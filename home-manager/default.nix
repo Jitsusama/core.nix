@@ -12,6 +12,7 @@
     ./git
     ./jq
     ./lsd
+    ./neovim
     ./nixfmt
     ./openssl
     ./ripgrep
