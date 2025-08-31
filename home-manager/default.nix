@@ -8,6 +8,7 @@
     ./dig
     ./fd
     ./fzf
+    ./git
     ./jq
     ./lsd
     ./nixfmt
