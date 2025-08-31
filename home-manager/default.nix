@@ -21,5 +21,6 @@
     ./yq
     ./zellij
     ./zoxide
+    ./zsh
   ];
 }
