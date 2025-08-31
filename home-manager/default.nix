@@ -8,6 +8,7 @@
     ./dig
     ./fd
     ./fzf
+    ./ghostty
     ./git
     ./jq
     ./lsd
@@ -18,6 +19,7 @@
     ./tree
     ./tree-sitter
     ./yq
+    ./zellij
     ./zoxide
   ];
 }

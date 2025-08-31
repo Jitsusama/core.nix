@@ -1,0 +1,30 @@
+theme = DjangoRebornAgain
+
+# Font settings
+font-size = 14
+font-family = VictorMono Nerd Font
+
+# Window settings
+background-opacity = 0.90
+unfocused-split-opacity = 0.77
+background-blur = 20
+window-height = 40
+window-width = 180
+macos-window-shadow = true
+quit-after-last-window-closed = false
+
+# macOS specific
+macos-option-as-alt = true
+
+# Clipboard
+clipboard-read = allow
+clipboard-write = allow
+copy-on-select = true
+
+# Cursor
+cursor-style = block
+cursor-style-blink = false
+
+# Shell integration
+shell-integration = detect
+shell-integration-features = cursor,sudo,title

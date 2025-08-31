@@ -1,0 +1,74 @@
+// Zdev Development Layout
+//
+// This layout creates a streamlined development environment with two vertically
+// split panes. The left pane contains Claude for AI-assisted development, while
+// the right pane has Neovim for code editing (top) and a shell (bottom) in a
+// stacked configuration. This creates a clean two-column workspace focused on
+// AI-enhanced development.
+//
+// Now with clean-hints styling for consistent UI
+//
+// Usage: zdev (or zellij action new-tab --layout zdev --cwd /path/to/project)
+
+layout {
+    pane size=1 borderless=true {
+        plugin location="https://github.com/dj95/zjstatus/releases/latest/download/zjstatus.wasm" {
+            format_left   "    #[fg=#CDD6F4,bold]#[normal]{tabs}"
+            format_center ""
+            format_right  ""
+            format_space  ""
+
+            border_enabled  "false"
+            hide_frame_for_single_pane "false"
+
+            // Clean tab display with brighter separators
+            tab_normal   " {name} #[fg=#6C7086]#[normal]"
+            tab_active   "#[fg=#CDD6F4,bold] {name} #[fg=#6C7086]#[normal]"
+
+            tab_separator ""
+
+            // Special indicators
+            tab_sync_indicator       " "
+            tab_fullscreen_indicator " "
+            tab_floating_indicator   " "
+        }
+    }
+    pane split_direction="vertical" {
+        pane size="50%" focus=true {
+            command "claude"
+        }
+        pane size="50%" stacked=true {
+            pane {
+                command "nvim"
+            }
+            pane
+        }
+    }
+    pane size=1 borderless=true {
+        plugin location="https://github.com/dj95/zjstatus/releases/latest/download/zjstatus.wasm" {
+            format_left   " {mode}"
+            format_center ""
+            format_right  ""
+            format_space  ""
+
+            border_enabled  "false"
+            hide_frame_for_single_pane "false"
+
+            // Mode indicator with bold shortcuts and mode-colored separators
+            mode_normal          "#[fg=#89B4FA,bold]NORMAL  #[fg=#CDD6F4,bold]C-g#[fg=#9399B2]│#[fg=#CDD6F4]lock #[fg=#89B4FA]#[fg=#CDD6F4] #[bold]p#[fg=#9399B2]│#[fg=#CDD6F4]pane #[fg=#89B4FA]#[fg=#CDD6F4] #[bold]t#[fg=#9399B2]│#[fg=#CDD6F4]tab #[fg=#89B4FA]#[fg=#CDD6F4] #[bold]r#[fg=#9399B2]│#[fg=#CDD6F4]resize #[fg=#89B4FA]#[fg=#CDD6F4] #[bold]s#[fg=#9399B2]│#[fg=#CDD6F4]scroll #[fg=#89B4FA]#[fg=#CDD6F4] #[bold]o#[fg=#9399B2]│#[fg=#CDD6F4]session #[fg=#89B4FA]#[fg=#CDD6F4] #[bold]m#[fg=#9399B2]│#[fg=#CDD6F4]move #[fg=#89B4FA]#[fg=#CDD6F4] #[bold]C-q#[fg=#9399B2]│#[fg=#CDD6F4]quit"
+            mode_locked          "#[fg=#7AA2F7,bold]LOCKED  #[fg=#CDD6F4,bold]C-g#[fg=#9399B2]│#[fg=#CDD6F4]unlock #[fg=#7AA2F7]#[fg=#CDD6F4] #[bold]C-Alt-n#[fg=#9399B2]│#[fg=#CDD6F4]new pane #[fg=#7AA2F7]#[fg=#CDD6F4] #[bold]C-Alt-[←→↑↓]#[fg=#9399B2]│#[fg=#CDD6F4]move focus #[fg=#7AA2F7]#[fg=#CDD6F4] #[bold]C-Alt-[+-]#[fg=#9399B2]│#[fg=#CDD6F4]resize"
+            mode_resize          "#[fg=#FAB387,bold]RESIZE  #[fg=#CDD6F4,bold]hjkl#[fg=#9399B2]│#[fg=#CDD6F4]resize #[fg=#FAB387]#[fg=#CDD6F4] #[bold]HJKL#[fg=#9399B2]│#[fg=#CDD6F4]resize more #[fg=#FAB387]#[fg=#CDD6F4] #[bold]=#[fg=#9399B2]│#[fg=#CDD6F4]increase #[fg=#FAB387]#[fg=#CDD6F4] #[bold]-#[fg=#9399B2]│#[fg=#CDD6F4]decrease #[fg=#FAB387]#[fg=#CDD6F4] #[bold]r#[fg=#9399B2]│#[fg=#CDD6F4]back"
+            mode_pane            "#[fg=#A6E3A1,bold]PANE    #[fg=#CDD6F4,bold]hjkl#[fg=#9399B2]│#[fg=#CDD6F4]focus #[fg=#A6E3A1]#[fg=#CDD6F4] #[bold]n#[fg=#9399B2]│#[fg=#CDD6F4]new #[fg=#A6E3A1]#[fg=#CDD6F4] #[bold]d#[fg=#9399B2]│#[fg=#CDD6F4]down #[fg=#A6E3A1]#[fg=#CDD6F4] #[bold]r#[fg=#9399B2]│#[fg=#CDD6F4]right #[fg=#A6E3A1]#[fg=#CDD6F4] #[bold]x#[fg=#9399B2]│#[fg=#CDD6F4]close #[fg=#A6E3A1]#[fg=#CDD6F4] #[bold]f#[fg=#9399B2]│#[fg=#CDD6F4]fullscreen #[fg=#A6E3A1]#[fg=#CDD6F4] #[bold]z#[fg=#9399B2]│#[fg=#CDD6F4]frames #[fg=#A6E3A1]#[fg=#CDD6F4] #[bold]w#[fg=#9399B2]│#[fg=#CDD6F4]float #[fg=#A6E3A1]#[fg=#CDD6F4] #[bold]e#[fg=#9399B2]│#[fg=#CDD6F4]embed #[fg=#A6E3A1]#[fg=#CDD6F4] #[bold]c#[fg=#9399B2]│#[fg=#CDD6F4]rename #[fg=#A6E3A1]#[fg=#CDD6F4] #[bold]i#[fg=#9399B2]│#[fg=#CDD6F4]pin #[fg=#A6E3A1]#[fg=#CDD6F4] #[bold]p#[fg=#9399B2]│#[fg=#CDD6F4]back"
+            mode_tab             "#[fg=#F9E2AF,bold]TAB     #[fg=#CDD6F4,bold]hl#[fg=#9399B2]│#[fg=#CDD6F4]switch #[fg=#F9E2AF]#[fg=#CDD6F4] #[bold]n#[fg=#9399B2]│#[fg=#CDD6F4]new #[fg=#F9E2AF]#[fg=#CDD6F4] #[bold]x#[fg=#9399B2]│#[fg=#CDD6F4]close #[fg=#F9E2AF]#[fg=#CDD6F4] #[bold]r#[fg=#9399B2]│#[fg=#CDD6F4]rename #[fg=#F9E2AF]#[fg=#CDD6F4] #[bold]s#[fg=#9399B2]│#[fg=#CDD6F4]sync #[fg=#F9E2AF]#[fg=#CDD6F4] #[bold]b#[fg=#9399B2]│#[fg=#CDD6F4]break #[fg=#F9E2AF]#[fg=#CDD6F4] #[bold]]#[fg=#9399B2]│#[fg=#CDD6F4]break right #[fg=#F9E2AF]#[fg=#CDD6F4] #[bold][#[fg=#9399B2]│#[fg=#CDD6F4]break left #[fg=#F9E2AF]#[fg=#CDD6F4] #[bold]1-9#[fg=#9399B2]│#[fg=#CDD6F4]go to #[fg=#F9E2AF]#[fg=#CDD6F4] #[bold]Tab#[fg=#9399B2]│#[fg=#CDD6F4]toggle #[fg=#F9E2AF]#[fg=#CDD6F4] #[bold]t#[fg=#9399B2]│#[fg=#CDD6F4]back"
+            mode_scroll          "#[fg=#F5C2E7,bold]SCROLL  #[fg=#CDD6F4,bold]jk#[fg=#9399B2]│#[fg=#CDD6F4]scroll #[fg=#F5C2E7]#[fg=#CDD6F4] #[bold]C-f#[fg=#9399B2]│#[fg=#CDD6F4]page down #[fg=#F5C2E7]#[fg=#CDD6F4] #[bold]C-b#[fg=#9399B2]│#[fg=#CDD6F4]page up #[fg=#F5C2E7]#[fg=#CDD6F4] #[bold]d#[fg=#9399B2]│#[fg=#CDD6F4]half down #[fg=#F5C2E7]#[fg=#CDD6F4] #[bold]u#[fg=#9399B2]│#[fg=#CDD6F4]half up #[fg=#F5C2E7]#[fg=#CDD6F4] #[bold]e#[fg=#9399B2]│#[fg=#CDD6F4]edit #[fg=#F5C2E7]#[fg=#CDD6F4] #[bold]f#[fg=#9399B2]│#[fg=#CDD6F4]search #[fg=#F5C2E7]#[fg=#CDD6F4] #[bold]C-c#[fg=#9399B2]│#[fg=#CDD6F4]bottom #[fg=#F5C2E7]#[fg=#CDD6F4] #[bold]s#[fg=#9399B2]│#[fg=#CDD6F4]back"
+            mode_enter_search    "#[fg=#CBA6F7,bold]SEARCH  #[fg=#CDD6F4]Type to search #[fg=#CBA6F7]#[fg=#CDD6F4] #[bold]Enter#[fg=#9399B2]│#[fg=#CDD6F4]confirm #[fg=#CBA6F7]#[fg=#CDD6F4] #[bold]C-c#[fg=#9399B2]│#[fg=#CDD6F4]cancel"
+            mode_search          "#[fg=#CBA6F7,bold]SEARCH  #[fg=#CDD6F4,bold]n#[fg=#9399B2]│#[fg=#CDD6F4]next #[fg=#CBA6F7]#[fg=#CDD6F4] #[bold]p#[fg=#9399B2]│#[fg=#CDD6F4]prev #[fg=#CBA6F7]#[fg=#CDD6F4] #[bold]c#[fg=#9399B2]│#[fg=#CDD6F4]case #[fg=#CBA6F7]#[fg=#CDD6F4] #[bold]w#[fg=#9399B2]│#[fg=#CDD6F4]word #[fg=#CBA6F7]#[fg=#CDD6F4] #[bold]o#[fg=#9399B2]│#[fg=#CDD6F4]wrap #[fg=#CBA6F7]#[fg=#CDD6F4] #[bold]C-c#[fg=#9399B2]│#[fg=#CDD6F4]exit"
+            mode_rename_tab      "#[fg=#F5C2E7,bold]RENAME  #[fg=#CDD6F4]Type new name #[fg=#F5C2E7]#[fg=#CDD6F4] #[bold]Enter#[fg=#9399B2]│#[fg=#CDD6F4]confirm"
+            mode_rename_pane     "#[fg=#F5C2E7,bold]RENAME  #[fg=#CDD6F4]Type new name #[fg=#F5C2E7]#[fg=#CDD6F4] #[bold]Enter#[fg=#9399B2]│#[fg=#CDD6F4]confirm"
+            mode_session         "#[fg=#94E2D5,bold]SESSION #[fg=#CDD6F4,bold]d#[fg=#9399B2]│#[fg=#CDD6F4]detach #[fg=#94E2D5]#[fg=#CDD6F4] #[bold]w#[fg=#9399B2]│#[fg=#CDD6F4]session manager #[fg=#94E2D5]#[fg=#CDD6F4] #[bold]c#[fg=#9399B2]│#[fg=#CDD6F4]configuration #[fg=#94E2D5]#[fg=#CDD6F4] #[bold]p#[fg=#9399B2]│#[fg=#CDD6F4]plugin manager #[fg=#94E2D5]#[fg=#CDD6F4] #[bold]a#[fg=#9399B2]│#[fg=#CDD6F4]about #[fg=#94E2D5]#[fg=#CDD6F4] #[bold]o#[fg=#9399B2]│#[fg=#CDD6F4]back"
+            mode_move            "#[fg=#F38BA8,bold]MOVE    #[fg=#CDD6F4,bold]hjkl#[fg=#9399B2]│#[fg=#CDD6F4]move pane #[fg=#F38BA8]#[fg=#CDD6F4] #[bold]n#[fg=#9399B2]│#[fg=#CDD6F4]move #[fg=#F38BA8]#[fg=#CDD6F4] #[bold]p#[fg=#9399B2]│#[fg=#CDD6F4]move backwards #[fg=#F38BA8]#[fg=#CDD6F4] #[bold]m#[fg=#9399B2]│#[fg=#CDD6F4]back"
+            mode_prompt          "#[fg=#CBA6F7,bold]PROMPT  #[fg=#CDD6F4]Answer the prompt..."
+            mode_tmux            "#[fg=#FFC387,bold]TMUX    #[fg=#CDD6F4,bold]C-b#[fg=#9399B2]│#[fg=#CDD6F4]send prefix"
+        }
+    }
+}
