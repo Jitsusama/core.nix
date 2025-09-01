@@ -8,8 +8,10 @@
     ./dig
     ./fd
     ./fzf
+    ./gh
     ./ghostty
     ./git
+    ./gnupg
     ./jq
     ./lsd
     ./neovim
