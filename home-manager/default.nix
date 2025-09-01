@@ -14,6 +14,7 @@
     ./git
     ./glow
     ./gnupg
+    ./homebrew
     ./jq
     ./lsd
     ./neovim

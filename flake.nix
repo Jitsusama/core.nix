@@ -2,9 +2,10 @@
   description = "Opinionated Core Nix Configuration";
 
   outputs =
-    { self, ... }:
+    { ... }:
     {
-      darwinModule = ./darwin;
-      homeManagerModule = ./home-manager;
+      nix-darwin = ./nix-darwin;
+      home-manager = ./home-manager;
     };
 }
+

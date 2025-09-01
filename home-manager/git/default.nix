@@ -2,6 +2,8 @@
   ...
 }:
 {
+  programs.zsh.oh-my-zsh.plugins = [ "git" ];
+
   programs.git = {
     enable = true;
     userName = "Joel Gerber";

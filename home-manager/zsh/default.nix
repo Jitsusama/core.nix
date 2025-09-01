@@ -4,19 +4,15 @@
 {
   programs.zsh = {
     enable = true;
-    shellAliases = {
-      cat = "bat";
-    };
     sessionVariables = {
       LANG = "en_US.UTF-8";
       LC_ALL = "en_US.UTF-8";
+      ZSH_THEME_TERM_TAB_TITLE_IDLE = "🐚 %~";
+      ZSH_THEME_TERM_TITLE_IDLE = "🐚 %~";
     };
     oh-my-zsh = {
       enable = true;
-      custom = "$HOME/.oh-my-zsh";
       plugins = [
-        "brew"
-        "git"
         "golang"
         "kubectl"
         "node"

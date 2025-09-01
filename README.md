@@ -1,4 +1,4 @@
-## 🌟 Overview
+# Core.Nix
 
 My opinionated base configuration for Nix flake setups, providing a foundational layer of development tools and settings for macOS. This repository focuses on nix-darwin and home-manager configurations that universally apply across different contexts - personal projects, work environments, or anywhere you need a consistent development setup.
 
@@ -6,9 +6,9 @@ Think of it as your "baseline development environment" - the tools and settings 
 
 ## 📁 Project Structure
 
-```
+```text
 core.nix/
-├── darwin/
+├── nix-darwin/
 │   └── default.nix      # macOS system preferences
 ├── home-manager/
 │   ├── default.nix      # Imports all modules
@@ -23,7 +23,7 @@ core.nix/
 └── LICENSE              # MIT license
 ```
 
-# 🚀 How To Use
+## 🚀 How To Use
 
 Add this as a flake input to your Nix configuration:
 
@@ -37,23 +37,19 @@ Add this as a flake input to your Nix configuration:
   outputs = { self, core, ... }@inputs: {
     # Option 1: Import everything (recommended to start)
     darwinConfigurations.hostname = {
-      imports = [
-        core.darwinModule
-      ];
+      imports = [ core.nix-darwin ];
     };
     homeConfigurations.username = {
-      imports = [
-        core.homeManagerModule
-      ];
+      imports = [ core.home-manager ];
     };
 
     # Option 2: Import only what you need
     homeConfigurations.username = {
       imports = [
         # Pick specific modules from core
-        core.homeManagerModule.neovim
-        core.homeManagerModule.git
-        core.homeManagerModule.zsh
+        core.home-manager.neovim
+        core.home-manager.git
+        core.home-manager.zsh
       ];
     };
   };
@@ -64,10 +60,7 @@ Then add your context-specific configuration on top:
 
 ```nix
 homeConfigurations.username = {
-  imports = [
-    core.homeManagerModule
-    # Your additional modules
-  ];
+  imports = [ core.home-manager ];
   
   # Add your git identity
   programs.git = {

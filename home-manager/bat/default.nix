@@ -12,4 +12,8 @@
       batwatch
     ];
   };
+
+  programs.zsh.shellAliases = {
+    cat = "bat";
+  };
 }
