@@ -8,7 +8,6 @@
       upgrade = false;
     };
     casks = [
-      "ghostty"
       "gimp"
       "inkscape"
       "raycast"

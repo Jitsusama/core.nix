@@ -10,7 +10,6 @@
     ./fd
     ./fzf
     ./gh
-    ./ghostty
     ./git
     ./glow
     ./gnupg
