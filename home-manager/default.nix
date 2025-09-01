@@ -4,6 +4,7 @@
     ./bat
     ./btop
     ./broot
+    ./claude
     ./curl
     ./dig
     ./fd
