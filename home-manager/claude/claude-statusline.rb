@@ -233,7 +233,7 @@ module Claude
         status_line << directory_segment << model_segment
 
         if token_metrics
-          status_line << context_segment << tokens_segment
+          status_line << context_segment
         end
 
         renderer.render(status_line)
@@ -281,16 +281,8 @@ module Claude
         content = renderer.format_composite(
           {icon: :database, text: '', color: :cyan},
           {icon: severity_icon, text: "#{token_metrics.context_percentage}%", color: severity_color}
-        )
-
-        Domain::Segment.new(content: content)
-      end
-
-      def tokens_segment
-        content = renderer.format_composite(
-          {icon: :download, text: format_count(token_metrics.input_tokens), color: :green},
           {icon: :pipe, text: '', color: :dark_blue},
-          {icon: :upload, text: format_count(token_metrics.output_tokens), color: :red}
+          {icon: :download, text: format_count(token_metrics.input_tokens), color: :green},
         )
 
         Domain::Segment.new(content: content)
