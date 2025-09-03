@@ -22,6 +22,10 @@
         "terraform"
       ];
     };
-    initContent = builtins.readFile ./init.zsh;
+    initContent = ''
+      ${builtins.readFile ./init.zsh}
+      ${builtins.readFile ./terminal.zsh}
+    '';
   };
 }
+
