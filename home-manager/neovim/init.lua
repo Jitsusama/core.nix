@@ -202,19 +202,19 @@ vim.api.nvim_create_autocmd('TermOpen', {
 
 -- Window Navigation (Alt+Shift+Arrow)
 vim.keymap.set('n', '<M-S-Left>', '<C-w>h', { desc = 'Go to left window' })
-vim.keymap.set('t', '<M-S-Left>', '<C-\\><C-o><C-w>h', { desc = 'Go to left window from terminal' })
+vim.keymap.set('t', '<M-S-Left>', '<C-\\><C-n><C-w>h', { desc = 'Go to left window from terminal' })
 vim.keymap.set('n', '<M-S-Right>', '<C-w>l', { desc = 'Go to right window' })
-vim.keymap.set('t', '<M-S-Right>', '<C-\\><C-o><C-w>l', { desc = 'Go to right window from terminal' })
+vim.keymap.set('t', '<M-S-Right>', '<C-\\><C-n><C-w>l', { desc = 'Go to right window from terminal' })
 vim.keymap.set('n', '<M-S-Up>', '<C-w>k', { desc = 'Go to upper window' })
-vim.keymap.set('t', '<M-S-Up>', '<C-\\><C-o><C-w>k', { desc = 'Go to upper window from terminal' })
+vim.keymap.set('t', '<M-S-Up>', '<C-\\><C-n><C-w>k', { desc = 'Go to upper window from terminal' })
 vim.keymap.set('n', '<M-S-Down>', '<C-w>j', { desc = 'Go to lower window' })
-vim.keymap.set('t', '<M-S-Down>', '<C-\\><C-o><C-w>j', { desc = 'Go to lower window from terminal' })
+vim.keymap.set('t', '<M-S-Down>', '<C-\\><C-n><C-w>j', { desc = 'Go to lower window from terminal' })
 
 -- Tab Navigation (Control+Arrow)
 vim.keymap.set('n', '<C-Left>', 'gT', { desc = 'Previous tab' })
-vim.keymap.set('t', '<C-Left>', '<C-\\><C-o>gT', { desc = 'Previous tab from terminal' })
+vim.keymap.set('t', '<C-Left>', '<C-\\><C-n>gT', { desc = 'Previous tab from terminal' })
 vim.keymap.set('n', '<C-Right>', 'gt', { desc = 'Next tab' })
-vim.keymap.set('t', '<C-Right>', '<C-\\><C-o>gt', { desc = 'Previous tab from terminal' })
+vim.keymap.set('t', '<C-Right>', '<C-\\><C-n>gt', { desc = 'Previous tab from terminal' })
 
 -- Terminal mode mappings
 vim.keymap.set('t', '<S-Esc>', '<C-\\><C-n>', { desc = 'Exit terminal mode' })
