@@ -279,10 +279,9 @@ module Claude
         end
 
         content = renderer.format_composite(
-          {icon: :database, text: '', color: :cyan},
-          {icon: severity_icon, text: "#{token_metrics.context_percentage}%", color: severity_color},
+          {icon: :download, text: format_count(token_metrics.input_tokens), color: :green},
           {icon: :pipe, text: '', color: :dark_blue},
-          {icon: :download, text: format_count(token_metrics.input_tokens), color: :green}
+          {icon: severity_icon, text: "#{token_metrics.context_percentage}%", color: severity_color},
         )
 
         Domain::Segment.new(content: content)
