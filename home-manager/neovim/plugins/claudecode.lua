@@ -4,6 +4,10 @@ claudecode.setup({
   diff_opts = {
     vertical_split = false, -- Use horizontal splits for better width in Zellij (default: true)
   },
+  terminal = {
+    split_side = 'left',
+    split_width_percentage = 0.50,
+  },
 })
 
 local augroup = vim.api.nvim_create_augroup('ClaudeCode', { clear = true })
@@ -16,3 +20,4 @@ vim.api.nvim_create_autocmd('FocusGained', {
   end,
   desc = 'Check for file changes when Neovim gains focus',
 })
+
