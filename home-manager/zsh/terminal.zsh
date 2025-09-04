@@ -27,8 +27,14 @@ function _emit_working_directory() {
 
 # Register hooks in execution order
 # precmd: runs before each prompt is displayed
-precmd_functions+=(
+# CRITICAL: _emit_command_finished must be FIRST to capture exit code
+precmd_functions=(
   _emit_command_finished    # Must be first to capture exit code
+  ${precmd_functions[@]}    # Preserve existing functions
+)
+
+# Add remaining precmd hooks (order doesn't matter for these)
+precmd_functions+=(
   _emit_prompt_start        # Mark prompt beginning
   _emit_working_directory   # Update terminal's CWD
 )
