@@ -142,7 +142,7 @@ module Claude
       class ANSITerminalRenderer
         ICONS = {
           folder: "\uF07B",
-          model: "\uF5DC",
+          model: "\uF2DB",
           database: "\uF1C0",
           download: "\uF019",
           upload: "\uF093",
