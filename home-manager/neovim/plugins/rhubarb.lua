@@ -2,23 +2,8 @@
 -- Provides file-level GitHub operations using :GBrowse
 
 -- File/Code operations (<leader>ghf) - GitHub permalinks only
-vim.keymap.set('n', '<leader>ghfy', function()
-  vim.cmd('.GBrowse!')
-  print('Copied GitHub permalink to clipboard')
-end, { desc = 'File yank permalink' })
-
-vim.keymap.set('v', '<leader>ghfy', function()
-  vim.cmd("'<,'>GBrowse!")
-  print('Copied GitHub permalink for selection to clipboard')
-end, { desc = 'File yank permalink (range)' })
-
-vim.keymap.set('n', '<leader>ghfo', function()
-  vim.cmd('.GBrowse')
-end, { desc = 'File open browser' })
-
-vim.keymap.set('v', '<leader>ghfo', function()
-  vim.cmd("'<,'>GBrowse")
-end, { desc = 'File open browser (range)' })
+vim.keymap.set({ 'n', 'v' }, '<leader>ghfy', ':GBrowse!<CR>', { desc = 'File yank permalink' })
+vim.keymap.set({ 'n', 'v' }, '<leader>ghfo', ':GBrowse<CR>', { desc = 'File open browser' })
 
 -- Register with which-key if available
 local wk_ok, which_key = pcall(require, 'which-key')
@@ -29,3 +14,4 @@ if wk_ok then
     { '<leader>ghfo', desc = 'File open browser', mode = { 'n', 'v' } },
   })
 end
+
