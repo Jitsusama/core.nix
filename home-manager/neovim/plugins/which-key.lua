@@ -8,6 +8,7 @@ end
 -- Icon definitions using Unicode characters
 local icons = {
   -- Primary domain icons
+  ai = '🤖',
   buffer = '🔲',
   code = '💻',
   file = '📁',
@@ -99,6 +100,8 @@ which_key.add({
   -- ========================================
 
   -- Primary Work Domains
+  { '<leader>a', group = 'AI', icon = icons.ai, mode = 'n' },
+  { '<leader>as', group = 'AI', icon = icons.ai, mode = 'v' },
   { '<leader>b', group = 'buffers', icon = icons.buffer, mode = { 'n', 'v' } },
   { '<leader>c', group = 'code', icon = icons.code, mode = { 'n', 'v' } },
   { '<leader>e', group = 'errors', icon = icons.error, mode = { 'n', 'v' } },

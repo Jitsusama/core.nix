@@ -50,6 +50,17 @@ The system uses **5 distinct input patterns**, each with a clear mental model:
 
 ### Primary Work Domains
 
+#### `<leader>a` - **AI/Claude** 🤖
+AI assistance and code collaboration operations.
+
+| Pattern | Key | Action | Description |
+|---------|-----|--------|-------------|
+| Picker | `<leader>aa` | AI focus terminal | Smart terminal focus/toggle |
+| Action | `<leader>as` | AI send context | Send buffer/visual selection to Claude |
+| Action | `<leader>ad` | AI diff accept | Accept Claude's proposed changes |
+| Action | `<leader>ar` | AI diff reject | Reject Claude's proposed changes |
+| Action | `<leader>am` | AI model select | Select Claude model (interactive) |
+
 #### `<leader>b` - **Buffers** 🔲
 Operations on open file buffers in memory.
 
