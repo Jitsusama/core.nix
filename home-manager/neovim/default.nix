@@ -38,21 +38,6 @@
         type = "lua";
         config = builtins.readFile ./plugins/aerial.lua;
       }
-      # Prismatic line decorations for the adventurous vim user - visual mode indicators.
-      {
-        plugin = pkgs.vimUtils.buildVimPlugin {
-          pname = "modes-nvim";
-          version = "2024-12-31";
-          src = pkgs.fetchFromGitHub {
-            owner = "mvllow";
-            repo = "modes.nvim";
-            rev = "69407cef8b8074db0c692abb9216cb123152ef46";
-            sha256 = "sha256-pBrCmarAV8hwntKfyrs1rW0yMMbn2VngcZNSLCUl19U=";
-          };
-        };
-        type = "lua";
-        config = builtins.readFile ./plugins/modes.lua;
-      }
       # Seamless integration with Claude Code.
       {
         plugin = pkgs.vimUtils.buildVimPlugin {
