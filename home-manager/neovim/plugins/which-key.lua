@@ -99,72 +99,71 @@ which_key.add({
   -- ========================================
 
   -- Primary Work Domains
-  { '<leader>b', group = 'buffers', icon = icons.buffer },
-  { '<leader>c', group = 'code', icon = icons.code },
-  { '<leader>e', group = 'errors', icon = icons.error },
-  { '<leader>f', group = 'files', icon = icons.file },
-  { '<leader>g', group = 'git', icon = icons.git },
-  { '<leader>s', group = 'search', icon = icons.search },
-  { '<leader>t', group = 'tests', icon = icons.test },
+  { '<leader>b', group = 'buffers', icon = icons.buffer, mode = { 'n', 'v' } },
+  { '<leader>c', group = 'code', icon = icons.code, mode = { 'n', 'v' } },
+  { '<leader>e', group = 'errors', icon = icons.error, mode = { 'n', 'v' } },
+  { '<leader>f', group = 'files', icon = icons.file, mode = { 'n', 'v' } },
+  { '<leader>g', group = 'git', icon = icons.git, mode = { 'n', 'v' } },
+  { '<leader>s', group = 'search', icon = icons.search, mode = { 'n', 'v' } },
+  { '<leader>t', group = 'tests', icon = icons.test, mode = { 'n', 'v' } },
 
   -- Supporting Domains
-  { '<leader>i', group = 'introspect', icon = icons.introspect },
-  { '<leader>k', group = 'workspace', icon = icons.project },
-  { '<leader>T', group = 'tabs', icon = icons.tab },
-  { '<leader>u', group = 'UI/settings', icon = icons.ui },
-  { '<leader>w', group = 'windows', icon = icons.window },
+  { '<leader>i', group = 'introspect', icon = icons.introspect, mode = { 'n', 'v' } },
+  { '<leader>k', group = 'workspace', icon = icons.project, mode = { 'n', 'v' } },
+  { '<leader>T', group = 'tabs', icon = icons.tab, mode = { 'n', 'v' } },
+  { '<leader>u', group = 'UI/settings', icon = icons.ui, mode = { 'n', 'v' } },
+  { '<leader>w', group = 'windows', icon = icons.window, mode = { 'n', 'v' } },
 
   -- ========================================
   -- CODE SUB-DOMAINS
   -- ========================================
-  { '<leader>cc', group = 'calls', icon = icons.navigate },
-  { '<leader>cl', group = 'lens', icon = icons.action },
-  { '<leader>co', group = 'outline', icon = icons.navigate },
-  { '<leader>cr', group = 'refactor', icon = icons.action },
-  { '<leader>cs', group = 'selection', icon = icons.picker },
-  { '<leader>ct', group = 'toggles', icon = icons.toggle },
+  { '<leader>cc', group = 'calls', icon = icons.navigate, mode = { 'n', 'v' } },
+  { '<leader>cl', group = 'lens', icon = icons.action, mode = { 'n', 'v' } },
+  { '<leader>co', group = 'outline', icon = icons.navigate, mode = { 'n', 'v' } },
+  { '<leader>cr', group = 'refactor', icon = icons.action, mode = { 'n', 'v' } },
+  { '<leader>cs', group = 'selection', icon = icons.picker, mode = { 'n', 'v' } },
+  { '<leader>ct', group = 'toggles', icon = icons.toggle, mode = { 'n', 'v' } },
 
   -- ========================================
   -- ERROR SUB-DOMAINS
   -- ========================================
-  { '<leader>et', group = 'toggles', icon = icons.toggle },
+  { '<leader>et', group = 'toggles', icon = icons.toggle, mode = { 'n', 'v' } },
 
   -- ========================================
   -- GIT SUB-DOMAINS
   -- ========================================
-  { '<leader>gb', group = 'branch', icon = icons.branch },
-  { '<leader>gc', group = 'commit', icon = icons.commit },
-  { '<leader>gh', group = 'GitHub', icon = icons.github },
-  { '<leader>gn', group = 'network', icon = icons.network },
-  { '<leader>gr', group = 'rebase', icon = icons.branch },
-  { '<leader>gs', group = 'stage', icon = icons.stage },
-  { '<leader>gt', group = 'stash', icon = icons.stash },
-  { '<leader>gw', group = 'working', icon = icons.working },
-  { '<leader>gm', group = 'merge', icon = icons.merge },
+  { '<leader>gb', group = 'branch', icon = icons.branch, mode = { 'n', 'v' } },
+  { '<leader>gc', group = 'commit', icon = icons.commit, mode = { 'n', 'v' } },
+  { '<leader>gh', group = 'GitHub', icon = icons.github, mode = { 'n', 'v' } },
+  { '<leader>gn', group = 'network', icon = icons.network, mode = { 'n', 'v' } },
+  { '<leader>gr', group = 'rebase', icon = icons.branch, mode = { 'n', 'v' } },
+  { '<leader>gs', group = 'stage', icon = icons.stage, mode = { 'n', 'v' } },
+  { '<leader>gt', group = 'stash', icon = icons.stash, mode = { 'n', 'v' } },
+  { '<leader>gw', group = 'working', icon = icons.working, mode = { 'n', 'v' } },
+  { '<leader>gm', group = 'merge', icon = icons.merge, mode = { 'n', 'v' } },
 
   -- GitHub sub-groups
-  { '<leader>gha', group = 'action', icon = '⚡' },
-  { '<leader>ghb', group = 'buffer', icon = '📋' },
-  { '<leader>ghc', group = 'comment', icon = '💬' },
-  { '<leader>ghf', group = 'file/code', icon = '📄' },
-  { '<leader>ghg', group = 'gist', icon = '📝' },
-  { '<leader>ghi', group = 'issue', icon = '📋' },
-  { '<leader>ghl', group = 'label', icon = '🏷️' },
-  { '<leader>ghm', group = 'merge', icon = '🔀' },
-  { '<leader>ghn', group = 'notification', icon = '🔔' },
-  { '<leader>ghp', group = 'pull request', icon = '🔄' },
-  { '<leader>ghr', group = 'repository', icon = '📚' },
-  { '<leader>ght', group = 'reaction', icon = '😄' },
-  { '<leader>ghT', group = 'thread', icon = '🧵' },
-  { '<leader>ghv', group = 'review', icon = '👁️' },
-
+  { '<leader>gha', group = 'action', icon = '⚡', mode = { 'n', 'v' } },
+  { '<leader>ghb', group = 'buffer', icon = '📋', mode = { 'n', 'v' } },
+  { '<leader>ghc', group = 'comment', icon = '💬', mode = { 'n', 'v' } },
+  { '<leader>ghf', group = 'file/code', icon = '📄', mode = { 'n', 'v' } },
+  { '<leader>ghg', group = 'gist', icon = '📝', mode = { 'n', 'v' } },
+  { '<leader>ghi', group = 'issue', icon = '📋', mode = { 'n', 'v' } },
+  { '<leader>ghl', group = 'label', icon = '🏷️', mode = { 'n', 'v' } },
+  { '<leader>ghm', group = 'merge', icon = '🔀', mode = { 'n', 'v' } },
+  { '<leader>ghn', group = 'notification', icon = '🔔', mode = { 'n', 'v' } },
+  { '<leader>ghp', group = 'pull request', icon = '🔄', mode = { 'n', 'v' } },
+  { '<leader>ghr', group = 'repository', icon = '📚', mode = { 'n', 'v' } },
+  { '<leader>ght', group = 'reaction', icon = '😄', mode = { 'n', 'v' } },
+  { '<leader>ghT', group = 'thread', icon = '🧵', mode = { 'n', 'v' } },
+  { '<leader>ghv', group = 'review', icon = '👁️', mode = { 'n', 'v' } },
 
   -- ========================================
   -- SPECIAL KEYS (Non-leader patterns)
   -- ========================================
 
   -- Go-to navigation (g prefix)
-  { 'g', group = 'go to', icon = icons.navigate },
+  { 'g', group = 'go to', icon = icons.navigate, mode = { 'n', 'v' } },
   { 'gd', desc = 'Go to definition' },
   { 'gD', desc = 'Go to declaration' },
   { 'gi', desc = 'Go to implementation' },
@@ -178,8 +177,8 @@ which_key.add({
   { 'gf', desc = 'Go to file under cursor' },
 
   -- Sequential navigation ([ and ] prefixes)
-  { '[', group = 'previous', icon = icons.navigate },
-  { ']', group = 'next', icon = icons.navigate },
+  { '[', group = 'previous', icon = icons.navigate, mode = { 'n', 'v' } },
+  { ']', group = 'next', icon = icons.navigate, mode = { 'n', 'v' } },
 
   -- Previous navigation
   { '[b', desc = 'Previous buffer' },
@@ -245,7 +244,6 @@ which_key.add({
   { '<leader>ul', desc = 'UI line numbers' },
   { '<leader>uw', desc = 'UI wrap' },
 
-
   -- Quick access
   { '<leader><leader>', desc = 'Resume last' },
   { '<leader>/', desc = 'Quick search', icon = icons.search },
@@ -289,4 +287,3 @@ end, { desc = 'Show which-key popup' })
 vim.keymap.set('n', '<C-p>', function()
   which_key.show()
 end, { desc = 'Command palette' })
-
