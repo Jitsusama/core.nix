@@ -7,6 +7,7 @@
     ./claude
     ./curl
     ./dig
+    ./direnv
     ./fd
     ./fzf
     ./gh
