@@ -33,7 +33,7 @@ vim.keymap.set('n', '<leader>fg', fzf.git_files, { desc = 'Find git files' })
 -- SEARCH DOMAIN - Enhanced search operations  
 -- ============================================================================
 
-vim.keymap.set('n', '<leader>ss', fzf.builtin, { desc = 'Search global (VS Code-like)' })
+vim.keymap.set('n', '<leader><leader>', fzf.builtin, { desc = 'Global picker (VS Code-like)' })
 vim.keymap.set('n', '<leader>sb', fzf.blines, { desc = 'Search buffer' })
 vim.keymap.set('n', '<leader>sB', fzf.lines, { desc = 'Search all buffers' })
 vim.keymap.set('n', '<leader>sp', fzf.live_grep, { desc = 'Search project' })
@@ -140,7 +140,7 @@ vim.keymap.set('n', '<leader>uc', fzf.colorschemes, { desc = 'UI colorschemes' }
 -- QUICK ACCESS FUNCTIONS
 -- ============================================================================
 
-vim.keymap.set('n', '<leader><leader>', fzf.resume, { desc = 'Resume last picker' })
+vim.keymap.set('n', '<leader>.', fzf.resume, { desc = 'Resume last picker' })
 vim.keymap.set('n', '<leader>/', fzf.blines, { desc = 'Quick buffer search' })
 
 -- ============================================================================

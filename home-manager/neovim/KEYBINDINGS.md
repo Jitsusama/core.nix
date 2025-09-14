@@ -370,7 +370,6 @@ All search and content discovery operations with **fzf-lua enhanced interface**.
 
 | Pattern | Key | Action | Description |
 |---------|-----|--------|-------------|
-| Picker | `<leader>ss` | Search global | **Global picker (VS Code-like unified search)** |
 | Action | `<leader>sb` | Search buffer | Current buffer fuzzy find (fzf-lua) |
 | Action | `<leader>sB` | Search all Buffers | Search across ALL open buffers (fzf-lua) |
 | Action | `<leader>sp` | Search project | **Live grep with real-time updates** (fzf-lua) |
@@ -590,7 +589,8 @@ Window management and layout operations.
 ### Special Access
 | Key | Action | Description |
 |-----|--------|-------------|
-| `<leader><leader>` | Resume last | Resume last telescope operation |
+| `<leader><leader>` | Global picker | **Global picker (VS Code-like unified search)** |
+| `<leader>.` | Resume last | Resume last fzf-lua operation |
 | `<leader>/` | Quick search | Search in current buffer |
 | `<leader>Q` | Quit all | Quit all buffers with confirmation |
 | `<leader>U` | Undo tree | Toggle undotree visualization |

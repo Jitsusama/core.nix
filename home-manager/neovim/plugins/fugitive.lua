@@ -5,14 +5,14 @@ local function map(mode, keys, func, desc)
   vim.keymap.set(mode, keys, func, { desc = desc })
 end
 
--- STATUS (standalone for quick access)
-map('n', '<leader>gg', ':Git<CR>', 'Git status')
+-- STATUS (standalone for quick access) - Now handled by fzf-lua
 
 -- Additional COMMIT operations
 map('n', '<leader>gcg', ':Git log --graph --oneline<CR>', 'Git commit graph')
 
 -- COMMIT operations (c prefix)
 map('n', '<leader>gcc', ':Git commit<CR>', 'Git commit create')
+map('n', '<leader>gcn', ':Git commit<CR>', 'Git commit new')
 map('n', '<leader>gca', ':Git commit --amend<CR>', 'Git commit amend')
 map('n', '<leader>gc!', ':Git commit --amend --no-edit<CR>', 'Git commit amend (no edit)')
 
@@ -23,19 +23,30 @@ map('n', '<leader>gbn', ':Git checkout -b ', 'Git branch new')
 map('n', '<leader>gbd', ':Git branch -d ', 'Git branch delete')
 map('n', '<leader>gbD', ':Git branch -D ', 'Git branch delete (force)')
 
--- STASH operations (t prefix for sTash)
-map('n', '<leader>gts', ':Git stash<CR>', 'Git stash save')
-map('n', '<leader>gtp', ':Git stash pop<CR>', 'Git stash pop')
-map('n', '<leader>gtl', ':Git stash list<CR>', 'Git stash list')
-map('n', '<leader>gta', ':Git stash apply<CR>', 'Git stash apply')
-map('n', '<leader>gtd', ':Git stash drop<CR>', 'Git stash drop')
+-- ARCHIVE/STASH operations (a prefix - reorganized from gt to ga)
+map('n', '<leader>gas', ':Git stash<CR>', 'Git archive save')
+map('n', '<leader>gap', ':Git stash pop<CR>', 'Git archive pop')
+map('n', '<leader>gal', ':Git stash apply<CR>', 'Git archive apply')
+map('n', '<leader>gad', ':Git stash drop<CR>', 'Git archive drop')
 
+-- TAG operations (t prefix - now available for tags)
+map('n', '<leader>gtn', function()
+  local tag_name = vim.fn.input('Tag name: ')
+  if tag_name ~= '' then
+    vim.cmd('Git tag ' .. tag_name)
+  end
+end, 'Git tag new')
+map('n', '<leader>gtd', function()
+  local tag_name = vim.fn.input('Delete tag: ')
+  if tag_name ~= '' then
+    vim.cmd('Git tag -d ' .. tag_name)
+  end
+end, 'Git tag delete')
 
 -- NETWORK operations (n prefix) - sync with remote
 map('n', '<leader>gnp', ':Git push<CR>', 'Git network push')
 map('n', '<leader>gnl', ':Git pull<CR>', 'Git network pull')
 map('n', '<leader>gnf', ':Git fetch<CR>', 'Git network fetch')
-
 
 -- Quick actions in fugitive status buffer
 vim.api.nvim_create_autocmd('FileType', {
@@ -57,11 +68,8 @@ vim.api.nvim_create_autocmd('FileType', {
 local wk_ok, which_key = pcall(require, 'which-key')
 if wk_ok then
   which_key.add({
-    -- Git status
-    { '<leader>gg', desc = 'Git status' },
-
     -- Commit operations
-    { '<leader>gcc', desc = 'Git commit create' },
+    { '<leader>gcn', desc = 'Git commit new' },
     { '<leader>gca', desc = 'Git commit amend' },
     { '<leader>gc!', desc = 'Git commit amend (no edit)' },
     { '<leader>gcg', desc = 'Git commit graph' },
@@ -73,12 +81,15 @@ if wk_ok then
     { '<leader>gbd', desc = 'Git branch delete' },
     { '<leader>gbD', desc = 'Git branch delete (force)' },
 
-    -- Stash operations
-    { '<leader>gts', desc = 'Git stash save' },
-    { '<leader>gtp', desc = 'Git stash pop' },
-    { '<leader>gtl', desc = 'Git stash list' },
-    { '<leader>gta', desc = 'Git stash apply' },
-    { '<leader>gtd', desc = 'Git stash drop' },
+    -- Archive/Stash operations (reorganized from gt to ga)
+    { '<leader>gas', desc = 'Git archive save' },
+    { '<leader>gap', desc = 'Git archive pop' },
+    { '<leader>gal', desc = 'Git archive apply' },
+    { '<leader>gad', desc = 'Git archive drop' },
+
+    -- Tag operations (now available in gt)
+    { '<leader>gtn', desc = 'Git tag new' },
+    { '<leader>gtd', desc = 'Git tag delete' },
 
     -- Network operations
     { '<leader>gnp', desc = 'Git network push' },
