@@ -27,12 +27,7 @@ vim.keymap.set('n', '[n', function()
 end, { desc = 'Previous note (todo)' })
 
 vim.keymap.set('n', '<leader>st', '<cmd>TodoQuickFix<cr>', {
-  desc = 'Search todos (quickfix)',
-  silent = true,
-})
-
-vim.keymap.set('n', '<leader>sT', '<cmd>TodoTelescope<cr>', {
-  desc = 'Search todos (telescope)',
+  desc = 'Search todos',
   silent = true,
 })
 
@@ -42,6 +37,5 @@ if wk_ok then
     { '[n', icon = '📝' },
     { ']n', icon = '📝' },
     { '<leader>st', icon = '🔍' },
-    { '<leader>sT', icon = '📋' },
   })
 end

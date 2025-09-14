@@ -136,31 +136,53 @@ Code intelligence, refactoring, and formatting operations.
 | `<leader>cti` | Code toggle inlay | Toggle inlay hints |
 
 #### `<leader>f` - **Files** 📁
-File system operations - finding, opening, and exploring files on disk.
+File system operations with **fzf-lua enhanced interface** for consistent performance.
 
 | Pattern | Key | Action | Description |
 |---------|-----|--------|-------------|
-| Picker | `<leader>ff` | Find files | Smart file finder (workspace) |
-| Action | `<leader>fr` | Files recent | Recently opened files |
+| Picker | `<leader>ff` | Find files | **Enhanced file finder** (fzf-lua) |
+| Action | `<leader>fr` | Files recent | **Recently opened files** (fzf-lua) |
 | Action | `<leader>fe` | Files explorer | File manager (Oil) |
-| Action | `<leader>fo` | Files open (smart) | Enhanced file finder across workspace |
+| Action | `<leader>fo` | Files open (global) | **Global file finder** (fzf-lua) |
+| Action | `<leader>fg` | Files git | **Git tracked files** (fzf-lua) |
 
 #### `<leader>g` - **Git** 🌿
-Version control operations, organized by workflow stage.
+Version control operations with **repeating character primary pickers** and enhanced fzf-lua interface.
 
 ##### Quick Status
 | Key | Action | Description |
 |-----|--------|-------------|
-| `<leader>gg` | Git status | Interactive git status |
+| `<leader>gg` | Git status | **Interactive git status** (fzf-lua enhanced) |
 
-##### Working Directory (`<leader>gw`)
+##### Archive/Stash Operations (`<leader>ga`)
 | Key | Action | Description |
 |-----|--------|-------------|
-| `<leader>gwh` | Git working hunk | Preview hunk changes |
-| `<leader>gwv` | Git working view | View file diff |
-| `<leader>gwH` | Git working vs HEAD | Compare to HEAD |
-| `<leader>gwd` | Git working discard | Discard hunk changes |
-| `<leader>gwD` | Git working Discard (file) | Discard all file changes |
+| `<leader>gaa` | Git archive list | **Stash list picker** (fzf-lua enhanced) |
+| `<leader>gas` | Git archive save | Save changes to stash |
+| `<leader>gap` | Git archive pop | Apply and remove stash |
+| `<leader>gal` | Git archive apply | Apply without removing |
+| `<leader>gad` | Git archive drop | Delete stash |
+
+##### Branches (`<leader>gb`)
+| Key | Action | Description |
+|-----|--------|-------------|
+| `<leader>gbb` | Git branch browser | **Branch list picker** (fzf-lua enhanced) |
+| `<leader>gbc` | Git branch checkout | Switch branch |
+| `<leader>gb-` | Git branch previous | Switch to previous branch |
+| `<leader>gbn` | Git branch new | Create and switch to branch |
+| `<leader>gbd` | Git branch delete | Delete branch |
+| `<leader>gbD` | Git branch Delete (force) | Force delete branch |
+
+##### Commits (`<leader>gc`)
+| Key | Action | Description |
+|-----|--------|-------------|
+| `<leader>gcc` | Git commit commits | **Commit history picker** (fzf-lua enhanced) |
+| `<leader>gcf` | Git commit file | **File commit history** (fzf-lua enhanced) |
+| `<leader>gca` | Git commit amend | Amend previous commit |
+| `<leader>gc!` | Git commit amend! | Amend without editing |
+| `<leader>gcg` | Git commit graph | View commit graph |
+| `<leader>gcb` | Git commit blame | Show line blame |
+| `<leader>gcn` | Git commit new | Create new commit |
 
 ##### Staging (`<leader>gs`)
 | Key | Action | Description |
@@ -170,26 +192,23 @@ Version control operations, organized by workflow stage.
 | `<leader>gsu` | Git stage undo hunk | Unstage hunk |
 | `<leader>gsv` | Git stage view | View staged changes |
 
-##### Commits (`<leader>gc`)
+##### Tags (`<leader>gt`)
 | Key | Action | Description |
 |-----|--------|-------------|
-| `<leader>gcc` | Git commit create | Create new commit |
-| `<leader>gca` | Git commit amend | Amend previous commit |
-| `<leader>gc!` | Git commit amend! | Amend without editing |
-| `<leader>gcg` | Git commit graph | View commit graph |
-| `<leader>gcv` | Git commit view | Browse commit history |
-| `<leader>gcf` | Git commit file | File commit history |
-| `<leader>gcb` | Git commit blame | Show line blame |
+| `<leader>gtt` | Git tag tags | **Tag list picker** (fzf-lua enhanced) |
+| `<leader>gtn` | Git tag new | Create new tag |
+| `<leader>gtd` | Git tag delete | Delete tag |
 
-##### Branches (`<leader>gb`)
+##### Working Directory (`<leader>gw`)
 | Key | Action | Description |
 |-----|--------|-------------|
-| `<leader>gbc` | Git branch checkout | Switch branch |
-| `<leader>gb-` | Git branch previous | Switch to previous branch |
-| `<leader>gbn` | Git branch new | Create and switch to branch |
-| `<leader>gbd` | Git branch delete | Delete branch |
-| `<leader>gbD` | Git branch Delete (force) | Force delete branch |
-| `<leader>gbl` | Git branch list | Browse branches |
+| `<leader>gww` | Git working hunks | **Hunk list picker** (fzf-lua enhanced) |
+| `<leader>gwb` | Git working blame | **Blame navigator** (fzf-lua enhanced) |
+| `<leader>gwh` | Git working hunk | Preview hunk changes |
+| `<leader>gwv` | Git working view | View file diff |
+| `<leader>gwH` | Git working vs HEAD | Compare to HEAD |
+| `<leader>gwd` | Git working discard | Discard hunk changes |
+| `<leader>gwD` | Git working Discard (file) | Discard all file changes |
 
 ##### GitHub (`<leader>gh`)
 
@@ -345,31 +364,25 @@ These operations only appear in which-key and only work when you're in a GitHub 
 | `<leader>gnl` | Git network pull | Pull from remote |
 | `<leader>gnf` | Git network fetch | Fetch from remote |
 
-##### Stash Operations (`<leader>gt`)
-| Key | Action | Description |
-|-----|--------|-------------|
-| `<leader>gts` | Git stash save | Save changes to stash |
-| `<leader>gtp` | Git stash pop | Apply and remove stash |
-| `<leader>gtl` | Git stash list | Browse stashes |
-| `<leader>gta` | Git stash apply | Apply without removing |
-| `<leader>gtd` | Git stash drop | Delete stash |
 
 #### `<leader>s` - **Search** 🔍
-All search and content discovery operations across buffers and workspace.
+All search and content discovery operations with **fzf-lua enhanced interface**.
 
 | Pattern | Key | Action | Description |
 |---------|-----|--------|-------------|
-| Picker | `<leader>ss` | Search picker | Primary search interface (buffer fuzzy find) |
-| Action | `<leader>sb` | Search buffer | Current buffer fuzzy find |
-| Action | `<leader>sp` | Search project | Live grep in current workspace |
-| Action | `<leader>sw` | Search word | Search word under cursor |
-| Action | `<leader>sy` | Search symbols | LSP workspace symbols |
-| Action | `<leader>sh` | Search history | Browse search history |
+| Picker | `<leader>ss` | Search global | **Global picker (VS Code-like unified search)** |
+| Action | `<leader>sb` | Search buffer | Current buffer fuzzy find (fzf-lua) |
+| Action | `<leader>sB` | Search all Buffers | Search across ALL open buffers (fzf-lua) |
+| Action | `<leader>sp` | Search project | **Live grep with real-time updates** (fzf-lua) |
+| Action | `<leader>sw` | Search word | Search word under cursor (fzf-lua) |
+| Action | `<leader>sy` | Search symbols | **LSP workspace symbols** (fzf-lua) |
+| Action | `<leader>sh` | Search history | Browse search history (fzf-lua) |
 | Action | `<leader>sc` | Search clear | Clear search highlighting |
-| Action | `<leader>sH` | Search help | Search help documentation |
+| Action | `<leader>sH` | Search help | Search help documentation (fzf-lua) |
 | Action | `<leader>sr` | Search replace | Search and replace |
 | Action | `<leader>st` | Search todos (quickfix) | Search TODO/FIXME/NOTE comments with quickfix |
-| Action | `<leader>sT` | Search todos (telescope) | Search TODO/FIXME/NOTE comments with Telescope |
+| Action | `<leader>sq` | Search quickfix | **Quickfix list browser** (fzf-lua) |
+| Action | `<leader>sQ` | Search location list | **Location list browser** (fzf-lua) |
 
 #### `<leader>t` - **Tests** 🧪
 Test execution, results, and debugging.

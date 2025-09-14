@@ -84,16 +84,10 @@ vim.api.nvim_create_autocmd('LspAttach', {
 
     vim.bo[bufnr].omnifunc = 'v:lua.vim.lsp.omnifunc'
 
-    -- GO-TO NAVIGATION (g prefix) - Direct jumps to locations
-    map(bufnr, 'n', 'gd', vim.lsp.buf.definition, 'Go to definition')
-    map(bufnr, 'n', 'gD', vim.lsp.buf.declaration, 'Go to declaration')
-    map(bufnr, 'n', 'gi', vim.lsp.buf.implementation, 'Go to implementation')
-    map(bufnr, 'n', 'gy', vim.lsp.buf.type_definition, 'Go to type definition')
-    map(bufnr, 'n', 'gr', vim.lsp.buf.references, 'Go to references')
+    -- GO-TO NAVIGATION (g prefix) - Handled by fzf-lua plugin
 
     -- CODE ACTIONS (leader c) - Operations that modify or analyze code
-    map(bufnr, 'n', '<leader>ca', vim.lsp.buf.code_action, 'Code action')
-    map(bufnr, 'v', '<leader>ca', vim.lsp.buf.code_action, 'Code action')
+    -- Note: <leader>ca, <leader>cci, <leader>cco now handled by fzf-lua plugin
     map(bufnr, 'n', '<leader>cR', vim.lsp.buf.rename, 'Code Rename')
 
     -- Code hover (special case - not navigation, but inspection)
@@ -104,9 +98,7 @@ vim.api.nvim_create_autocmd('LspAttach', {
       vim.lsp.buf.signature_help({ border = 'rounded' })
     end, 'Code Help (signature)')
 
-    -- Code calls (sub-domain)
-    map(bufnr, 'n', '<leader>cci', vim.lsp.buf.incoming_calls, 'Code calls incoming')
-    map(bufnr, 'n', '<leader>cco', vim.lsp.buf.outgoing_calls, 'Code calls outgoing')
+    -- Code calls (sub-domain) - Handled by fzf-lua plugin
 
     -- Code lens operations (sub-domain)
     map(bufnr, 'n', '<leader>clr', vim.lsp.codelens.run, 'Code lens run')
@@ -147,3 +139,7 @@ vim.api.nvim_create_autocmd('LspAttach', {
   end,
 })
 
+-- LSP server status introspection
+vim.keymap.set('n', '<leader>il', function()
+  vim.cmd('LspInfo')
+end, { desc = 'Introspect LSP' })

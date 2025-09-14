@@ -430,3 +430,22 @@ vim.keymap.set('v', '<leader>ghgn', function()
 end, { desc = 'Gist new (from selection)' })
 
 vim.keymap.set('n', '<leader>Q', '<cmd>confirm qall<cr>', { desc = 'Quit all' })
+
+vim.keymap.set('n', '<leader>sc', function()
+  vim.cmd('nohlsearch')
+end, { desc = 'Search clear' })
+
+-- Keep search/replace functionality
+vim.keymap.set('n', '<leader>sr', function()
+  -- Simple search and replace using built-in substitution
+  local search_term = vim.fn.input('Search for: ')
+  if search_term ~= '' then
+    local replace_term = vim.fn.input('Replace with: ')
+    local confirm = vim.fn.input('Replace all occurrences? (y/n): ')
+    if confirm:lower() == 'y' then
+      vim.cmd(string.format('%%s/%s/%s/g', vim.fn.escape(search_term, '/'), vim.fn.escape(replace_term, '/')))
+    else
+      vim.cmd(string.format('%%s/%s/%s/gc', vim.fn.escape(search_term, '/'), vim.fn.escape(replace_term, '/')))
+    end
+  end
+end, { desc = 'Search replace' })

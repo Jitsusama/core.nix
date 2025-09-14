@@ -89,6 +89,12 @@
         type = "lua";
         config = builtins.readFile ./plugins/flash.lua;
       }
+      # Powerful fuzzy finder powered by fzf.
+      {
+        plugin = fzf-lua;
+        type = "lua";
+        config = builtins.readFile ./plugins/fzf-lua.lua;
+      }
       # A Git wrapper so awesome, it should be illegal.
       {
         plugin = vim-fugitive;
@@ -171,12 +177,6 @@
         type = "lua";
         config = builtins.readFile ./plugins/rhubarb.lua;
       }
-      # Telescope extension for fast file loading.
-      {
-        plugin = smart-open-nvim;
-        type = "lua";
-        config = builtins.readFile ./plugins/smart-open.lua;
-      }
       # A collection of small QoL plugins.
       {
         plugin = snacks-nvim;
@@ -185,12 +185,6 @@
       }
       # SQLite LuaJIT binding with a very simple api.
       sqlite-lua
-      # Extendable fuzzy finder over lists.
-      {
-        plugin = telescope-nvim;
-        type = "lua";
-        config = builtins.readFile ./plugins/telescope.lua;
-      }
       # Nvim Treesitter configurations and abstraction layer.
       {
         plugin = nvim-treesitter.withAllGrammars;
