@@ -167,7 +167,6 @@ Version control operations with **repeating character primary pickers** and enha
 | Key | Action | Description |
 |-----|--------|-------------|
 | `<leader>gbb` | Git branch browser | **Branch list picker** (fzf-lua enhanced) |
-| `<leader>gbc` | Git branch checkout | Switch branch |
 | `<leader>gb-` | Git branch previous | Switch to previous branch |
 | `<leader>gbn` | Git branch new | Create and switch to branch |
 | `<leader>gbd` | Git branch delete | Delete branch |

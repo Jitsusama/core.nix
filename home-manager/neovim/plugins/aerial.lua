@@ -194,11 +194,11 @@ vim.keymap.set('n', '<leader>con', '<cmd>AerialNext<CR>', { desc = 'Code outline
 vim.keymap.set('n', '<leader>cop', '<cmd>AerialPrev<CR>', { desc = 'Code outline previous' })
 vim.keymap.set('n', '<leader>coN', '<cmd>AerialNavToggle<CR>', { desc = 'Code outline Navigate' })
 
--- Symbol search with telescope integration
+-- Symbol search with fzf-lua integration (replaces telescope)
 vim.keymap.set('n', '<leader>cos', function()
-  local telescope_ok = pcall(require, 'telescope')
-  if telescope_ok then
-    require('telescope').extensions.aerial.aerial()
+  local fzf_ok = pcall(require, 'fzf-lua')
+  if fzf_ok then
+    require('fzf-lua').lsp_document_symbols()
   else
     vim.cmd('AerialToggle')
   end
@@ -207,9 +207,3 @@ end, { desc = 'Code outline symbols' })
 -- SEQUENTIAL NAVIGATION: Next/previous symbols
 vim.keymap.set('n', ']s', '<cmd>AerialNext<CR>', { desc = 'Next symbol' })
 vim.keymap.set('n', '[s', '<cmd>AerialPrev<CR>', { desc = 'Previous symbol' })
-
--- Load Telescope extension if available
-local telescope_ok = pcall(require, 'telescope')
-if telescope_ok then
-  require('telescope').load_extension('aerial')
-end

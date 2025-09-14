@@ -11,13 +11,11 @@ end
 map('n', '<leader>gcg', ':Git log --graph --oneline<CR>', 'Git commit graph')
 
 -- COMMIT operations (c prefix)
-map('n', '<leader>gcc', ':Git commit<CR>', 'Git commit create')
 map('n', '<leader>gcn', ':Git commit<CR>', 'Git commit new')
 map('n', '<leader>gca', ':Git commit --amend<CR>', 'Git commit amend')
 map('n', '<leader>gc!', ':Git commit --amend --no-edit<CR>', 'Git commit amend (no edit)')
 
 -- BRANCH operations (b prefix)
-map('n', '<leader>gbc', ':Git checkout ', 'Git branch checkout')
 map('n', '<leader>gb-', ':Git checkout -<CR>', 'Git branch previous')
 map('n', '<leader>gbn', ':Git checkout -b ', 'Git branch new')
 map('n', '<leader>gbd', ':Git branch -d ', 'Git branch delete')
@@ -75,7 +73,6 @@ if wk_ok then
     { '<leader>gcg', desc = 'Git commit graph' },
 
     -- Branch operations
-    { '<leader>gbc', desc = 'Git branch checkout' },
     { '<leader>gb-', desc = 'Git branch previous' },
     { '<leader>gbn', desc = 'Git branch new' },
     { '<leader>gbd', desc = 'Git branch delete' },

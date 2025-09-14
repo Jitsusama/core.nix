@@ -135,13 +135,14 @@ which_key.add({
   -- ========================================
   -- GIT SUB-DOMAINS
   -- ========================================
+  { '<leader>ga', group = 'archive/stash', icon = icons.stash, mode = { 'n', 'v' } },
   { '<leader>gb', group = 'branch', icon = icons.branch, mode = { 'n', 'v' } },
   { '<leader>gc', group = 'commit', icon = icons.commit, mode = { 'n', 'v' } },
   { '<leader>gh', group = 'GitHub', icon = icons.github, mode = { 'n', 'v' } },
   { '<leader>gn', group = 'network', icon = icons.network, mode = { 'n', 'v' } },
   { '<leader>gr', group = 'rebase', icon = icons.branch, mode = { 'n', 'v' } },
   { '<leader>gs', group = 'stage', icon = icons.stage, mode = { 'n', 'v' } },
-  { '<leader>gt', group = 'stash', icon = icons.stash, mode = { 'n', 'v' } },
+  { '<leader>gt', group = 'tags', icon = '🏷️', mode = { 'n', 'v' } },
   { '<leader>gw', group = 'working', icon = icons.working, mode = { 'n', 'v' } },
   { '<leader>gm', group = 'merge', icon = icons.merge, mode = { 'n', 'v' } },
 
@@ -248,7 +249,7 @@ which_key.add({
   { '<leader>uw', desc = 'UI wrap' },
 
   -- Quick access
-  { '<leader><leader>', desc = 'Resume last' },
+  { '<leader><leader>', desc = 'Global picker (VS Code-like)' },
   { '<leader>/', desc = 'Quick search', icon = icons.search },
   {
     '<leader>?',
