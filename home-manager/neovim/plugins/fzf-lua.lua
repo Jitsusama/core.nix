@@ -34,7 +34,7 @@ vim.keymap.set('n', '<leader>fr', fzf.oldfiles, { desc = 'Find recent files' })
 vim.keymap.set('n', '<leader>fg', fzf.git_files, { desc = 'Find git files' })
 
 -- ============================================================================
--- SEARCH DOMAIN - Enhanced search operations  
+-- SEARCH DOMAIN - Enhanced search operations
 -- ============================================================================
 
 vim.keymap.set('n', '<leader><leader>', fzf.global, { desc = 'Global picker (VS Code-like)' })
@@ -68,7 +68,7 @@ vim.keymap.set('n', '<leader>gg', fzf.git_status, { desc = 'Git status' })
 -- Archive/Stash operations (<leader>ga*)
 vim.keymap.set('n', '<leader>gaa', fzf.git_stash, { desc = 'Archive stash (list)' })
 
--- Branch operations (<leader>gb*)  
+-- Branch operations (<leader>gb*)
 vim.keymap.set('n', '<leader>gbb', fzf.git_branches, { desc = 'Browse branches' })
 
 -- Commit operations (<leader>gc*)
@@ -99,14 +99,29 @@ vim.keymap.set('n', '<leader>cf', fzf.lsp_finder, { desc = 'Code finder (LSP com
 vim.api.nvim_create_autocmd('LspAttach', {
   group = vim.api.nvim_create_augroup('FzfLuaLspConfig', {}),
   callback = function(ev)
+    local ok, fzf = pcall(require, 'fzf-lua')
+    if not ok then
+      return
+    end
+
     local bufnr = ev.buf
     local opts = { buffer = bufnr }
 
     -- GO-TO NAVIGATION (g prefix) - Enhanced with fzf-lua pickers for better selection
     vim.keymap.set('n', 'gd', fzf.lsp_definitions, vim.tbl_extend('force', opts, { desc = 'Go to definition' }))
     vim.keymap.set('n', 'gD', fzf.lsp_declarations, vim.tbl_extend('force', opts, { desc = 'Go to declaration' }))
-    vim.keymap.set('n', 'gi', fzf.lsp_implementations, vim.tbl_extend('force', opts, { desc = 'Go to implementation' }))
-    vim.keymap.set('n', 'gy', fzf.lsp_type_definitions, vim.tbl_extend('force', opts, { desc = 'Go to type definition' }))
+    vim.keymap.set(
+      'n',
+      'gi',
+      fzf.lsp_implementations,
+      vim.tbl_extend('force', opts, { desc = 'Go to implementation' })
+    )
+    vim.keymap.set(
+      'n',
+      'gy',
+      fzf.lsp_type_definitions,
+      vim.tbl_extend('force', opts, { desc = 'Go to type definition' })
+    )
     vim.keymap.set('n', 'gr', fzf.lsp_references, vim.tbl_extend('force', opts, { desc = 'Go to references' }))
 
     -- CODE ACTIONS - Enhanced with fzf-lua
@@ -114,8 +129,18 @@ vim.api.nvim_create_autocmd('LspAttach', {
     vim.keymap.set('v', '<leader>ca', fzf.lsp_code_actions, vim.tbl_extend('force', opts, { desc = 'Code action' }))
 
     -- Code calls (sub-domain) - Enhanced with fzf-lua
-    vim.keymap.set('n', '<leader>cci', fzf.lsp_incoming_calls, vim.tbl_extend('force', opts, { desc = 'Code calls incoming' }))
-    vim.keymap.set('n', '<leader>cco', fzf.lsp_outgoing_calls, vim.tbl_extend('force', opts, { desc = 'Code calls outgoing' }))
+    vim.keymap.set(
+      'n',
+      '<leader>cci',
+      fzf.lsp_incoming_calls,
+      vim.tbl_extend('force', opts, { desc = 'Code calls incoming' })
+    )
+    vim.keymap.set(
+      'n',
+      '<leader>cco',
+      fzf.lsp_outgoing_calls,
+      vim.tbl_extend('force', opts, { desc = 'Code calls outgoing' })
+    )
   end,
 })
 
@@ -162,3 +187,4 @@ end, { desc = 'Complete path' })
 vim.keymap.set({ 'n', 'v', 'i' }, '<C-x><C-l>', function()
   fzf.complete_line()
 end, { desc = 'Complete line' })
+
