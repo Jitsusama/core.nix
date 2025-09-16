@@ -21,10 +21,6 @@ quit-after-last-window-closed = true
 macos-option-as-alt = true
 macos-window-shadow = true
 macos-titlebar-style = hidden
-macos-icon = custom-style
-macos-icon-frame = aluminum
-macos-icon-ghost-color = green
-macos-icon-screen-color = green
 
 # Clipboard
 clipboard-read = allow
