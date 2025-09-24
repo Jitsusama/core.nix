@@ -138,6 +138,12 @@
         type = "lua";
         config = builtins.readFile ./plugins/oil.lua;
       }
+      # Integration with OpenCode AI coding assistant.
+      {
+        plugin = opencode-nvim;
+        type = "lua";
+        config = builtins.readFile ./plugins/opencode.lua;
+      }
       # Asynchronous utilities for writing neovim LUA.
       plenary-nvim
       # The Refactoring library based off the refactoring book by Martin Fowler.
