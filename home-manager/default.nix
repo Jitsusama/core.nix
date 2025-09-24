@@ -20,6 +20,7 @@
     ./lsd
     ./neovim
     ./nixfmt
+    ./opencode
     ./openssl
     ./ripgrep
     ./telnet
