@@ -32,12 +32,12 @@
     ];
 
     plugins = with pkgs.vimPlugins; [
-      # A code outline window for skimming and quick navigation. - TODO: FIXME!!
-      # {
-      #   plugin = aerial-nvim;
-      #   type = "lua";
-      #   config = builtins.readFile ./plugins/aerial.lua;
-      # }
+      # A code outline window for skimming and quick navigation.
+      {
+        plugin = aerial-nvim;
+        type = "lua";
+        config = builtins.readFile ./plugins/aerial.lua;
+      }
       # Seamless integration with Claude Code.
       {
         plugin = pkgs.vimUtils.buildVimPlugin {
