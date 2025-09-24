@@ -40,16 +40,7 @@
       }
       # Seamless integration with Claude Code.
       {
-        plugin = pkgs.vimUtils.buildVimPlugin {
-          pname = "claudecode-nvim";
-          version = "2024-12-15";
-          src = pkgs.fetchFromGitHub {
-            owner = "coder";
-            repo = "claudecode.nvim";
-            rev = "v0.3.0";
-            sha256 = "sha256-sOBY2y/buInf+SxLwz6uYlUouDULwebY/nmDlbFbGa8=";
-          };
-        };
+        plugin = claudecode-nvim;
         type = "lua";
         config = builtins.readFile ./plugins/claudecode.lua;
       }
