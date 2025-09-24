@@ -119,19 +119,7 @@
         config = builtins.readFile ./plugins/neotest.lua;
       }
       # Neotest adapter for Minitest.
-      {
-        plugin = pkgs.vimUtils.buildVimPlugin {
-          pname = "neotest-minitest";
-          version = "2024-12-24";
-          src = pkgs.fetchFromGitHub {
-            owner = "zidhuss";
-            repo = "neotest-minitest";
-            rev = "4d1c19f80be0efff7656dea76a589c02bf418b68";
-            sha256 = "sha256-cw8o6UG2ETPAtwdIP4dAjs+d4//SbUljfYBhzMqdUZ4=";
-          };
-          doCheck = false;
-        };
-      }
+      neotest-minitest
       # A library for asynchronous IO.
       nvim-nio
       # Support for writing Nix expressions.
@@ -208,16 +196,7 @@
       }
       # Dims inactive portions of code for better focus using TreeSitter.
       {
-        plugin = pkgs.vimUtils.buildVimPlugin {
-          pname = "twilight-nvim";
-          version = "2024-12-31";
-          src = pkgs.fetchFromGitHub {
-            owner = "folke";
-            repo = "twilight.nvim";
-            rev = "8b7b50c0cb2dc781b2f4262a5ddd57571556d1e4";
-            sha256 = "sha256-WFE8FZU8E8i6mX9bFl80YkIypGXOOhKvGbLrBoPce0g=";
-          };
-        };
+        plugin = twilight-nvim;
         type = "lua";
         config = builtins.readFile ./plugins/twilight.lua;
       }
