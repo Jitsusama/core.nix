@@ -49,10 +49,6 @@
             rev = "v0.3.0";
             sha256 = "sha256-sOBY2y/buInf+SxLwz6uYlUouDULwebY/nmDlbFbGa8=";
           };
-          # Patch to make config options actually work.
-          patches = [
-            ./patches/claudecode-split.patch # Respect vertical_split setting
-          ];
         };
         type = "lua";
         config = builtins.readFile ./plugins/claudecode.lua;

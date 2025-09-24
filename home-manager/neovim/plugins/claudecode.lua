@@ -2,7 +2,7 @@ local claudecode = require('claudecode')
 
 claudecode.setup({
   diff_opts = {
-    vertical_split = false, -- Use horizontal splits for better width in Zellij (default: true)
+    layout = "horizontal",
   },
   terminal = {
     split_side = 'left',
