@@ -2,16 +2,21 @@ diff --git a/lua/aerial/fzf-lua.lua b/lua/aerial/fzf-lua.lua
 index 1234567..abcdefg 100644
 --- a/lua/aerial/fzf-lua.lua
 +++ b/lua/aerial/fzf-lua.lua
-@@ -3,7 +3,11 @@
- -- It can be deleted at any time; it is not required for aerial to work.
- -- This is only for people that want to customize the fzf-lua picker.
- --
+@@ -3,9 +3,15 @@ local config = require("aerial.config")
+ local data = require("aerial.data")
+ local highlight = require("aerial.highlight")
+
 -local fzf_lua = require("fzf-lua")
+-local make_entry = require("fzf-lua.make_entry")
+-local utils = require("fzf-lua.utils")
 +local ok, fzf_lua = pcall(require, "fzf-lua")
 +if not ok then
 +  -- fzf-lua not available, skip integration
 +  return {}
 +end
- local config = require("aerial.config")
- local data = require("aerial.data")
- local util = require("aerial.util")
++
++-- These are safe to require after confirming fzf-lua is available
++local make_entry = require("fzf-lua.make_entry")
++local utils = require("fzf-lua.utils")
+
+ local M = {}
