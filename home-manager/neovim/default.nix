@@ -34,7 +34,11 @@
     plugins = with pkgs.vimPlugins; [
       # A code outline window for skimming and quick navigation.
       {
-        plugin = aerial-nvim;
+        plugin = aerial-nvim.overrideAttrs (oldAttrs: {
+          patches = (oldAttrs.patches or []) ++ [
+            ./patches/aerial-fzf-lua.patch
+          ];
+        });
         type = "lua";
         config = builtins.readFile ./plugins/aerial.lua;
       }
