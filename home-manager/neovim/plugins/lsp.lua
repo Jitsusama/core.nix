@@ -1,4 +1,3 @@
-local lspconfig = require('lspconfig')
 local capabilities = require('cmp_nvim_lsp').default_capabilities()
 
 -- Configure LSP handlers for better UI
@@ -31,45 +30,50 @@ local function map(mode_or_bufnr, ...)
 end
 
 -- Nix LSP
-lspconfig.nil_ls.setup((function()
-  return {
-    capabilities = capabilities,
-    settings = {
-      ['nil'] = {
-        formatting = { command = { 'nixfmt' } },
-      },
+vim.lsp.config('nil_ls', {
+  cmd = { 'nil' },
+  filetypes = { 'nix' },
+  root_patterns = { 'flake.nix', '.git' },
+  capabilities = capabilities,
+  settings = {
+    ['nil'] = {
+      formatting = { command = { 'nixfmt' } },
     },
-  }
-end)())
+  },
+})
 
 -- Lua LSP
-lspconfig.lua_ls.setup((function()
-  return {
-    capabilities = capabilities,
-    settings = {
-      Lua = {
-        runtime = { version = 'LuaJIT' },
-        diagnostics = { globals = { 'vim' } },
-        workspace = {
-          library = vim.api.nvim_get_runtime_file('', true),
-          checkThirdParty = false,
-        },
-        telemetry = { enable = false },
-        format = {
-          enable = true,
-          defaultConfig = {
-            indent_style = 'space',
-            indent_size = '2',
-          },
+vim.lsp.config('lua_ls', {
+  cmd = { 'lua-language-server' },
+  filetypes = { 'lua' },
+  root_patterns = { '.luarc.json', '.luarc.jsonc', '.luacheckrc', '.stylua.toml', 'stylua.toml', 'selene.toml', 'selene.yml', '.git' },
+  capabilities = capabilities,
+  settings = {
+    Lua = {
+      runtime = { version = 'LuaJIT' },
+      diagnostics = { globals = { 'vim' } },
+      workspace = {
+        library = vim.api.nvim_get_runtime_file('', true),
+        checkThirdParty = false,
+      },
+      telemetry = { enable = false },
+      format = {
+        enable = true,
+        defaultConfig = {
+          indent_style = 'space',
+          indent_size = '2',
         },
       },
     },
-  }
-end)())
+  },
+})
 
 -- Ruby LSP
 -- Disabled auto-start as it's now handled by shadowenv configuration
-lspconfig.ruby_lsp.setup({
+vim.lsp.config('ruby_lsp', {
+  cmd = { 'ruby-lsp' },
+  filetypes = { 'ruby' },
+  root_patterns = { 'Gemfile', '.git' },
   autostart = false,
 })
 
