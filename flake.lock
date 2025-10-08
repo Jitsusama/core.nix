@@ -1,0 +1,26 @@
+{
+  "nodes": {
+    "root": {
+      "inputs": {
+        "wallpapers": "wallpapers"
+      }
+    },
+    "wallpapers": {
+      "locked": {
+        "lastModified": 1759889113,
+        "narHash": "sha256-jzfSApNJ/64BuRZpOHHJDogWPm1Zyff4ipNF3NfBRBo=",
+        "owner": "Jitsusama",
+        "repo": "wallpapers.nix",
+        "rev": "9a4c725e3a1c8be6dd30768512b6a3684a260f3c",
+        "type": "github"
+      },
+      "original": {
+        "owner": "Jitsusama",
+        "repo": "wallpapers.nix",
+        "type": "github"
+      }
+    }
+  },
+  "root": "root",
+  "version": 7
+}
