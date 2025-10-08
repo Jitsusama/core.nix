@@ -33,7 +33,7 @@ end
 vim.lsp.config('nil_ls', {
   cmd = { 'nil' },
   filetypes = { 'nix' },
-  root_patterns = { 'flake.nix', '.git' },
+  root_markers = { 'flake.nix', '.git' },
   capabilities = capabilities,
   settings = {
     ['nil'] = {
@@ -41,12 +41,13 @@ vim.lsp.config('nil_ls', {
     },
   },
 })
+vim.lsp.enable('nil_ls')
 
 -- Lua LSP
 vim.lsp.config('lua_ls', {
   cmd = { 'lua-language-server' },
   filetypes = { 'lua' },
-  root_patterns = { '.luarc.json', '.luarc.jsonc', '.luacheckrc', '.stylua.toml', 'stylua.toml', 'selene.toml', 'selene.yml', '.git' },
+  root_markers = { '.luarc.json', '.luarc.jsonc', '.luacheckrc', '.stylua.toml', 'stylua.toml', 'selene.toml', 'selene.yml', '.git' },
   capabilities = capabilities,
   settings = {
     Lua = {
@@ -67,14 +68,14 @@ vim.lsp.config('lua_ls', {
     },
   },
 })
+vim.lsp.enable('lua_ls')
 
 -- Ruby LSP
 -- Disabled auto-start as it's now handled by shadowenv configuration
 vim.lsp.config('ruby_lsp', {
   cmd = { 'ruby-lsp' },
   filetypes = { 'ruby' },
-  root_patterns = { 'Gemfile', '.git' },
-  autostart = false,
+  root_markers = { 'Gemfile', '.git' },
 })
 
 -- NEW KEYBINDING SYSTEM
