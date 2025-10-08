@@ -6,9 +6,13 @@ font-size = 14
 font-family = MonaspiceXe Nerd Font
 
 # Window settings
-background-opacity = 0.90
+background = 000A00
+background-image = WALLPAPER_PATH
+background-image-fit = contain
+background-image-repeat = true
+background-image-opacity = 0.40
+background-opacity = 1.00
 unfocused-split-opacity = 0.77
-background-blur = 20
 window-height = 40
 window-width = 180
 window-padding-x = 6
