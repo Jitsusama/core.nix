@@ -1,16 +1,5 @@
 local capabilities = require('cmp_nvim_lsp').default_capabilities()
 
--- Configure LSP handlers for better UI
-vim.lsp.handlers['textDocument/hover'] = vim.lsp.with(vim.lsp.handlers.hover, {
-  border = 'rounded',
-  max_width = 80,
-})
-
-vim.lsp.handlers['textDocument/signatureHelp'] = vim.lsp.with(vim.lsp.handlers.signature_help, {
-  border = 'rounded',
-  max_width = 80,
-})
-
 -- Unified helper function for setting keymaps
 -- If first argument is a number, it's treated as a buffer number
 local function map(mode_or_bufnr, ...)
@@ -47,7 +36,16 @@ vim.lsp.enable('nil_ls')
 vim.lsp.config('lua_ls', {
   cmd = { 'lua-language-server' },
   filetypes = { 'lua' },
-  root_markers = { '.luarc.json', '.luarc.jsonc', '.luacheckrc', '.stylua.toml', 'stylua.toml', 'selene.toml', 'selene.yml', '.git' },
+  root_markers = {
+    '.luarc.json',
+    '.luarc.jsonc',
+    '.luacheckrc',
+    '.stylua.toml',
+    'stylua.toml',
+    'selene.toml',
+    'selene.yml',
+    '.git',
+  },
   capabilities = capabilities,
   settings = {
     Lua = {
@@ -97,10 +95,10 @@ vim.api.nvim_create_autocmd('LspAttach', {
 
     -- Code hover (special case - not navigation, but inspection)
     map(bufnr, 'n', '<leader>ch', function()
-      vim.lsp.buf.hover({ border = 'rounded' })
+      vim.lsp.buf.hover({ border = 'rounded', max_width = 80 })
     end, 'Code hover')
     map(bufnr, 'n', '<leader>cH', function()
-      vim.lsp.buf.signature_help({ border = 'rounded' })
+      vim.lsp.buf.signature_help({ border = 'rounded', max_width = 80 })
     end, 'Code Help (signature)')
 
     -- Code calls (sub-domain) - Handled by fzf-lua plugin
