@@ -7,7 +7,9 @@
   programs.git = {
     enable = true;
     settings = {
-      userName = "Joel Gerber";
+      user = {
+        name = "Joel Gerber";
+      };
       aliases = {
         prune-branches = "!git fetch --prune && git branch -vv | grep ': gone]' | awk '{print $1}' | xargs -r git branch -D";
       };
