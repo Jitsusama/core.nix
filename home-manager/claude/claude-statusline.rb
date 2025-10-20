@@ -29,49 +29,21 @@ module Claude
         end
       end
 
-      # Entity tracking token consumption with context awareness
-      TokenConsumption = Struct.new(:input_tokens, :output_tokens, :context_limit, keyword_init: true) do
-        # Claude Code considers context "low" around 80-85% usage
-        DANGER_THRESHOLD = 85
-        WARNING_THRESHOLD = 70
-        # Claude Code reserves ~10% safety margin for its operations
-        SAFETY_MARGIN = 0.90
-
-        def context_percentage
-          return 0 if input_tokens.nil? || input_tokens == 0 || context_limit == 0
-          effective_limit = context_limit * SAFETY_MARGIN
-          (input_tokens.to_f / effective_limit * 100).round
-        end
-
-        def raw_percentage
-          return 0 if input_tokens.nil? || input_tokens == 0 || context_limit == 0
-          (input_tokens.to_f / context_limit * 100).round
-        end
-
-        def context_severity
-          case context_percentage
-          when DANGER_THRESHOLD.. then :danger
-          when WARNING_THRESHOLD.. then :warning
-          else :normal
-          end
-        end
-      end
+      # Entity tracking token consumption
+      TokenConsumption = Struct.new(:input_tokens, :output_tokens, keyword_init: true)
 
       # Value object for parsed Claude session data
-      ClaudeSession = Struct.new(:directory_name, :model_name, :transcript_path, :context_limit, keyword_init: true)
+      ClaudeSession = Struct.new(:directory_name, :model_name, :transcript_path, keyword_init: true)
     end
 
     module Adapters
       # Primary adapter - parses Claude Code's JSON input
       class ClaudeInputParser
-        DEFAULT_CONTEXT_LIMIT = 200_000
-
         def parse(json_input)
           Domain::ClaudeSession.new(
             directory_name: extract_directory_name(json_input),
             model_name: extract_model_name(json_input),
-            transcript_path: json_input.dig('transcript_path'),
-            context_limit: extract_context_limit(json_input)
+            transcript_path: json_input.dig('transcript_path')
           ).freeze
         end
 
@@ -95,17 +67,11 @@ module Claude
 
           version.empty? ? name : "#{name}-#{version}"
         end
-
-        def extract_context_limit(input)
-          # All current Claude models have 200k context
-          # Could be extended if Claude Code starts passing this info
-          DEFAULT_CONTEXT_LIMIT
-        end
       end
 
       # Primary adapter - reads transcript files
       class TranscriptReader
-        def read_token_consumption(path, context_limit)
+        def read_token_consumption(path)
           return nil unless path && File.exist?(path)
 
           messages = File.readlines(path)
@@ -130,8 +96,7 @@ module Claude
 
           Domain::TokenConsumption.new(
             input_tokens: input_total,
-            output_tokens: output_total,
-            context_limit: context_limit,
+            output_tokens: output_total
           )
         rescue => e
           nil
@@ -243,8 +208,7 @@ module Claude
 
       def token_metrics
         @token_metrics ||= transcript_reader.read_token_consumption(
-          session.transcript_path,
-          session.context_limit
+          session.transcript_path
         )
       end
 
@@ -266,25 +230,11 @@ module Claude
       end
 
       def context_segment
-        severity_icon = case token_metrics.context_severity
-        when :danger then :fire
-        when :warning then :warning
-        else :check
-        end
-
-        severity_color = case token_metrics.context_severity
-        when :danger then :red
-        when :warning then :yellow
-        else :green
-        end
-
-        content = renderer.format_composite(
-          {icon: :download, text: format_count(token_metrics.input_tokens), color: :green},
-          {icon: :pipe, text: '', color: :dark_blue},
-          {icon: severity_icon, text: "#{token_metrics.context_percentage}%", color: severity_color},
+        Domain::Segment.new(
+          content: format_count(token_metrics.input_tokens),
+          icon: :download,
+          color: :green
         )
-
-        Domain::Segment.new(content: content)
       end
 
       def format_count(value)
