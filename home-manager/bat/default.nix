@@ -11,7 +11,7 @@
     extraPackages = with pkgs.bat-extras; [
       batdiff
       batman
-      batgrep
+      # batgrep -- broken as of 2025/10/27
       batwatch
     ];
   };
