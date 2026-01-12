@@ -34,6 +34,7 @@
       "*.iml"
       "*.DS_Store"
       ".bundle/config"
+      ".worktrees/"
     ];
   };
 }

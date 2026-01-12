@@ -207,3 +207,4 @@ end, { desc = 'Code outline symbols' })
 -- SEQUENTIAL NAVIGATION: Next/previous symbols
 vim.keymap.set('n', ']s', '<cmd>AerialNext<CR>', { desc = 'Next symbol' })
 vim.keymap.set('n', '[s', '<cmd>AerialPrev<CR>', { desc = 'Previous symbol' })
+
