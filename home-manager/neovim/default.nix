@@ -22,12 +22,12 @@
 
     extraPackages = with pkgs; [
       nil # Nix LSP
-      nixfmt-rfc-style # Official Nix formatter
+      nixfmt # Official Nix formatter
       lua-language-server # Lua LSP
       stylua # Lua formatter for conform.nvim
     ];
 
-    extraLuaConfig = lib.concatLines [
+    initLua = lib.concatLines [
       (builtins.readFile ./init.lua)
     ];
 
