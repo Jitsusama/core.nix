@@ -26,6 +26,7 @@
     ./telnet
     ./tree
     ./tree-sitter
+    ./wezterm
     ./yq
     ./zellij
     ./zoxide
