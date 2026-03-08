@@ -13,6 +13,7 @@
       "inkscape"
       "raycast"
       "spotify"
+      "wezterm"
     ];
   };
 }
