@@ -123,7 +123,7 @@ config.hyperlink_rules = {
   },
   -- Then handle URLs not wrapped in brackets
   {
-    regex = "\\b\\w+://\\S+[)/a-zA-Z0-9-]+",
+    regex = "\\b\\w+://\\S+[/a-zA-Z0-9-]+",
     format = "$0",
   },
   -- implicit mailto link
