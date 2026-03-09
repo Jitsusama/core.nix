@@ -47,6 +47,9 @@ config.inactive_pane_hsb = {
 -- Cursor
 config.default_cursor_style = "SteadyBlock"
 
+-- Keyboard
+config.enable_kitty_keyboard = true
+
 -- Scrollback
 config.scrollback_lines = 10000
 
