@@ -35,6 +35,11 @@
       "*.DS_Store"
       ".bundle/config"
       ".worktrees/"
+      ".pi/*"
+      "!.pi/extensions/"
+      "!.pi/prompts/"
+      "!.pi/skills/"
+      "!.pi/themes/"
     ];
   };
 }
