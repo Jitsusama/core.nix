@@ -33,13 +33,14 @@
       "*.idea/"
       "*.iml"
       "*.DS_Store"
-      ".bundle/config"
+      "**/.bundle/config"
+      ".review/"
       ".worktrees/"
-      ".pi/*"
-      "!.pi/extensions/"
-      "!.pi/prompts/"
-      "!.pi/skills/"
-      "!.pi/themes/"
+      "**/.pi/*"
+      "!**/.pi/extensions/"
+      "!**/.pi/prompts/"
+      "!**/.pi/skills/"
+      "!**/.pi/themes/"
     ];
   };
 }
