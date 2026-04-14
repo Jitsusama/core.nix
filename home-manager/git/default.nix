@@ -34,6 +34,7 @@
       "*.iml"
       "*.DS_Store"
       ".bundle/config"
+      ".review/"
       ".worktrees/"
       ".pi/*"
       "!.pi/extensions/"
