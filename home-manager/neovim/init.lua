@@ -25,7 +25,6 @@ vim.opt.ruler = false -- Don't show cursor position in command line
 -- Better list characters
 vim.opt.list = true
 vim.opt.listchars = {
-  tab = '→ ',
   trail = '·',
   extends = '❯',
   precedes = '❮',
