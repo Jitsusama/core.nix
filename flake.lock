@@ -3,11 +3,11 @@
     "neovim-pi": {
       "flake": false,
       "locked": {
-        "lastModified": 1779154411,
-        "narHash": "sha256-su8cQGhuEjXlKgtsdyQy9AuNu4MRk77eNOGcQxfNQKo=",
+        "lastModified": 1779154777,
+        "narHash": "sha256-/EPCbYZwaxG8FFRmGquLHMPpyWf3TqEwkBuL7ztdO1c=",
         "owner": "Jitsusama",
         "repo": "neovim.pi",
-        "rev": "077a50503439b00be38a65d920b001542622d79d",
+        "rev": "98f66c487cedf82d60f7e2a689d720a7f1bce4ed",
         "type": "github"
       },
       "original": {
