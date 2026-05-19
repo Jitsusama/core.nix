@@ -1,6 +1,7 @@
 {
   pkgs,
   lib,
+  neovim-pi,
   ...
 }:
 {
@@ -35,7 +36,7 @@
       # A code outline window for skimming and quick navigation.
       {
         plugin = aerial-nvim.overrideAttrs (oldAttrs: {
-          patches = (oldAttrs.patches or []) ++ [
+          patches = (oldAttrs.patches or [ ]) ++ [
             ./patches/aerial-fzf-lua.patch
           ];
         });
@@ -124,6 +125,16 @@
       }
       # Neotest adapter for Minitest.
       neotest-minitest
+      # Companion plugin for pi: pairs nvim with a pi session over msgpack-rpc.
+      {
+        plugin = pkgs.vimUtils.buildVimPlugin {
+          pname = "neovim-pi";
+          version = neovim-pi.shortRev or "dev";
+          src = neovim-pi;
+        };
+        type = "lua";
+        config = builtins.readFile ./plugins/neovim-pi.lua;
+      }
       # A library for asynchronous IO.
       nvim-nio
       # Support for writing Nix expressions.

@@ -1,7 +1,24 @@
 {
   "nodes": {
+    "neovim-pi": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1779151313,
+        "narHash": "sha256-l87MAQVOiZzZ2tb0IizXwAXDfPzuFBzerMgaQU94Ahg=",
+        "owner": "Jitsusama",
+        "repo": "neovim.pi",
+        "rev": "33e16bfdd27018b068aed072031acfda032a8d83",
+        "type": "github"
+      },
+      "original": {
+        "owner": "Jitsusama",
+        "repo": "neovim.pi",
+        "type": "github"
+      }
+    },
     "root": {
       "inputs": {
+        "neovim-pi": "neovim-pi",
         "wallpapers": "wallpapers"
       }
     },
