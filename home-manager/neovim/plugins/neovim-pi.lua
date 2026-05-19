@@ -1,8 +1,7 @@
 require("neovim-pi").setup({
-  -- Socket pi looks for first when XDG_RUNTIME_DIR is unset (macOS).
-  listen = vim.fn.expand("~/.local/state/pi/neovim-pi.sock"),
-  -- Register the `pi://` BufReadCmd so pi can open buffers in this nvim.
+  -- Omit `listen` so the plugin defaults to a per-pid socket at
+  -- ~/.local/state/pi/nvim-<pid>.sock. Each nvim gets its own;
+  -- pi discovers them all and the user picks which to pair with.
   buffers = { enable = true },
-  -- Register `:PiStatus` and `:PiDetach` for quick inspection.
   commands = { enable = true },
 })
