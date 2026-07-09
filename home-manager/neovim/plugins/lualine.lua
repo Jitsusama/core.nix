@@ -24,15 +24,15 @@ local icons = {
   times_circle = vim.fn.nr2char(0xf00d),
 }
 
--- Helper function to get the full root directory path
+-- Helper function to get the full root directory path.
+-- Resolves the git root by walking up for a .git marker rather than
+-- shelling out. A synchronous vim.fn.system() call forces a screen
+-- redraw every time it returns, and lualine calls this on every
+-- statusline and tabline refresh, so the old subprocess spawned git
+-- once a second and flickered the cursor. vim.fs.root does it in
+-- process with no redraw.
 local function get_root_path()
-  local root = vim.fn.getcwd()
-  -- Try to get git root
-  local git_root = vim.fn.system('git rev-parse --show-toplevel 2>/dev/null'):gsub('\n', '')
-  if vim.v.shell_error == 0 and git_root ~= '' then
-    root = git_root
-  end
-  return root
+  return vim.fs.root(0, '.git') or vim.fn.getcwd()
 end
 
 -- Helper function to get the root directory basename
