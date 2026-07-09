@@ -14,6 +14,12 @@ vim.opt.titlestring = '📝 %f'
 vim.g.mapleader = ' '
 vim.g.maplocalleader = ' '
 
+-- Cursor: a calm blink, block in normal, bar in insert. A cursor blinks
+-- only when blinkon and blinkoff are both non-zero; the actual cadence is
+-- WezTerm's to own. This is a taste choice, not a fix: drop the blink
+-- markers (or this whole line) for a steady block instead.
+vim.opt.guicursor = 'n-v-c-sm:block-blinkwait700-blinkon400-blinkoff250,i-ci-ve:ver25-blinkwait700-blinkon400-blinkoff250,r-cr-o:hor20,t:block-blinkon500-blinkoff500-TermCursor'
+
 -- UI Polish - Clean and sleek interface
 vim.opt.pumblend = 10 -- Transparent completion popups
 vim.opt.pumheight = 10 -- Maximum popup menu height
