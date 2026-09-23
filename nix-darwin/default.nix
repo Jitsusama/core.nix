@@ -4,6 +4,7 @@
     ./fonts
     ./homebrew
     ./system
+    ./zsh
   ];
 }
 
