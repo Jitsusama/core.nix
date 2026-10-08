@@ -139,7 +139,7 @@ nix build --override-input core path:$HOME/src/core.nix \
   repository.
 - [Machines][2]: building a machine from core.nix.
 - [Testing][6]: what the checks catch.
-- [The kernel][8]: the kernel core.nix builds for NixOS, and how to change it.
+- [The kernel][9]: the kernel core.nix builds for NixOS, and how to change it.
 - [Decisions][7]: what was decided, against what, and why.
 
 [1]: flake.nix
@@ -149,5 +149,5 @@ nix build --override-input core path:$HOME/src/core.nix \
 [5]: docs/modules.md
 [6]: docs/testing.md
 [7]: docs/decisions/README.md
-[8]: docs/kernel.md
 [8]: examples/
+[9]: docs/kernel.md
