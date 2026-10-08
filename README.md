@@ -1,78 +1,151 @@
-# Core.Nix
+# core.nix
 
-My opinionated base configuration for Nix flake setups, providing a foundational layer of development tools and settings for macOS. This repository focuses on nix-darwin and home-manager configurations that universally apply across different contexts - personal projects, work environments, or anywhere you need a consistent development setup.
+The shared part of every one of Joel's machines, as a Nix library: the NixOS,
+nix-darwin and home-manager modules each machine is built from, and the roles
+that group them. It holds no machines and nothing tied to an employer; those
+live in the repositories that build on it.
 
-Think of it as your "baseline development environment" - the tools and settings you always want available, configured exactly how you like them, without any context-specific data like email addresses or API keys.
+## 🧭 How the Repositories Fit
 
-## 📁 Project Structure
+| Repository                    | Holds                                                   | Builds on |
+| ----------------------------- | ------------------------------------------------------- | --------- |
+| core.nix                      | Modules, roles, version pins and checks                 |           |
+| dotfiles                      | Personal machines and the personal layer                | core.nix  |
+| `//home/joel-gerber/dotfiles` | Work machines and the work layer, in Shopify's monorepo | core.nix  |
 
-```text
-core.nix/
-├── nix-darwin/
-│   └── default.nix      # macOS system preferences
-├── home-manager/
-│   ├── default.nix      # Imports all modules
-│   ├── neovim/          # Editor with plugins
-│   │   ├── default.nix
-│   │   └── plugins/
-│   ├── zsh/             # Shell with completions
-│   │   ├── default.nix
-│   │   └── init.zsh
-│   └── ...              # Each tool in its own module
-├── flake.nix            # Module exports
-└── LICENSE              # MIT license
-```
+Anything every machine shares belongs here. Anything personal or tied to work
+lives in the repository for that side, and the two never import each other.
 
-## 🚀 How To Use
+## 🧩 How It Fits Together
 
-Add this as a flake input to your Nix configuration:
+Everything here is plain Nix: no framework, nothing discovered from the file
+tree, nothing passed in from somewhere you can't see. [`flake.nix`][1] is the
+index. It names every module and role, and it is the one place that gives a
+module the inputs it needs. To see how any file fits, search for its path in
+`flake.nix`.
+
+A module is an ordinary module that configures one tool, and its file name
+says which module system it belongs to:
 
 ```nix
+# modules/bat/home.nix, trimmed: a home-manager module
 {
-  inputs = {
-    core.url = "github:Jitsusama/core.nix";
-    # ... other inputs
+  programs.bat = {
+    enable = true;
+    config.style = "changes";
   };
 
-  outputs = { self, core, ... }@inputs: {
-    # Option 1: Import everything (recommended to start)
-    darwinConfigurations.hostname = {
-      imports = [ core.nix-darwin ];
-    };
-    homeConfigurations.username = {
-      imports = [ core.home-manager ];
-    };
-
-    # Option 2: Import only what you need
-    homeConfigurations.username = {
-      imports = [
-        # Pick specific modules from core
-        core.home-manager.neovim
-        core.home-manager.git
-        core.home-manager.zsh
-      ];
-    };
-  };
+  programs.zsh.shellAliases.cat = "bat";
 }
 ```
 
-Then add your context-specific configuration on top:
+`flake.nix` gives it a name:
 
 ```nix
-homeConfigurations.username = {
-  imports = [ core.home-manager ];
-  
-  # Add your git identity
-  programs.git = {
-    userEmail = "your.email@example.com";
-    userName = "Your Name";
-  };
-  
-  # Add work-specific or personal tools
-  home.packages = with pkgs; [
-    internal-tool
-    company-cli
+homeModules = {
+  bat = ./modules/bat/home.nix;
+  # ...
+};
+```
+
+A role says what a machine is for, and only imports:
+
+```nix
+# roles/workstation/home.nix: a machine Joel writes code on
+{ homeModules }:
+{
+  imports = [
+    homeModules.base
+    homeModules.neovim
+    # ...
   ];
 }
 ```
 
+A machine, in its own repository, calls the stock builder and imports the
+roles it plays. A system role brings its home-manager half to every account:
+
+```nix
+nixosConfigurations.penelope = nixpkgs.lib.nixosSystem {
+  modules = [
+    core.nixosModules.workstation
+    core.nixosModules.graphical
+    ./machines/penelope
+  ];
+};
+```
+
+Choosing a module is importing it. There are no `enable` switches to turn
+modules on, and options exist only for settings that differ between machines,
+such as `jitsusama.identity.email`.
+
+## 📁 Layout
+
+```text
+core.nix/
+├── flake.nix              # the index: every module, role and input
+├── modules/<tool>/        # one directory per tool
+│   ├── home.nix           #   its home-manager module
+│   ├── darwin.nix         #   its nix-darwin module
+│   ├── nixos.nix          #   its NixOS module
+│   ├── system.nix         #   one module for both NixOS and nix-darwin
+│   └── <config files>     #   the tool's own configuration, in its own format
+├── roles/<role>/          # what a machine is for, one file per module system
+├── examples/              # machines written the way a machine repository would
+├── checks.nix             # what `nix flake check` runs
+├── treefmt.nix            # what `nix fmt` runs
+└── docs/                  # how it works, and why
+```
+
+## 🚀 Using It
+
+A machine repository takes core.nix as an input and follows its pins, so every
+machine runs a combination CI has checked:
+
+```nix
+inputs = {
+  core.url = "github:Jitsusama/core.nix";
+  nixpkgs.follows = "core/nixpkgs";
+  home-manager.follows = "core/home-manager";
+  nix-darwin.follows = "core/nix-darwin";
+};
+```
+
+Machines are applied with the stock commands, `sudo darwin-rebuild switch` or
+`sudo nixos-rebuild switch`. [Machines][2] has the rest, and [`examples/`][8]
+shows a whole machine of each kind.
+
+## 🔧 Working on It
+
+```sh
+nix fmt            # format and lint everything
+nix flake check    # evaluate every module, role and example, and check formatting
+```
+
+To try a change on a real machine before it lands, point its repository at
+your checkout:
+
+```sh
+nix build --override-input core path:$HOME/src/core.nix \
+  .#darwinConfigurations.methuselah.config.system.build.toplevel
+```
+
+## 📚 Documentation
+
+- [Architecture][3]: the vocabulary, how the pieces connect, and how to trace
+  any of them.
+- [Conventions][4]: the rules the code follows.
+- [Modules][5]: adding a module or a role, and changing one from another
+  repository.
+- [Machines][2]: building a machine from core.nix.
+- [Testing][6]: what the checks catch.
+- [Decisions][7]: what was decided, against what, and why.
+
+[1]: flake.nix
+[2]: docs/machines.md
+[3]: docs/architecture.md
+[4]: docs/conventions.md
+[5]: docs/modules.md
+[6]: docs/testing.md
+[7]: docs/decisions/README.md
+[8]: examples/
