@@ -82,6 +82,7 @@
         openssl = ./modules/openssl/home.nix;
         ripgrep = ./modules/ripgrep/home.nix;
         telnet = ./modules/telnet/home.nix;
+        theme = ./modules/theme/home.nix;
         tree = ./modules/tree/home.nix;
         tree-sitter = ./modules/tree-sitter/home.nix;
         wezterm = moduleFrom ./modules/wezterm/home.nix { inherit wallpapers; };
