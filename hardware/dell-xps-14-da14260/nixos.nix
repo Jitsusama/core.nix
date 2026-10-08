@@ -3,12 +3,11 @@
 # four CS35L57 SoundWire amplifiers, an IPU7 camera behind Intel's CVS bridge,
 # and Intel's BE211 Wi-Fi 7. docs/hardware.md says what works, where each
 # workaround comes from, and what's left.
-{ nixosModules }:
 { pkgs, ... }:
 {
   imports = [
-    nixosModules.kernel
-    nixosModules.keyboard
+    ../../modules/kernel/nixos.nix
+    ../../modules/keyboard/nixos.nix
   ];
 
   nixpkgs.hostPlatform = "x86_64-linux";

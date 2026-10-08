@@ -116,7 +116,7 @@
         home-manager = moduleFrom ./modules/home-manager/nixos.nix { inherit home-manager; };
         kernel = ./modules/kernel/nixos.nix;
         keyboard = ./modules/keyboard/nixos.nix;
-        keyd = moduleFrom ./modules/keyd/nixos.nix { inherit (self) nixosModules; };
+        keyd = ./modules/keyd/nixos.nix;
         memory = ./modules/memory/nixos.nix;
         nixpkgs = ./modules/nixpkgs/system.nix;
         perf = ./modules/perf/nixos.nix;
@@ -128,9 +128,7 @@
         graphical = moduleFrom ./roles/graphical/nixos.nix { inherit (self) nixosModules; };
         laptop = moduleFrom ./roles/laptop/nixos.nix { inherit (self) nixosModules; };
 
-        dell-xps-14-da14260 = moduleFrom ./hardware/dell-xps-14-da14260/nixos.nix {
-          inherit (self) nixosModules;
-        };
+        dell-xps-14-da14260 = ./hardware/dell-xps-14-da14260/nixos.nix;
       };
 
       # What core.nix builds that a cache can hold apart from any machine: the

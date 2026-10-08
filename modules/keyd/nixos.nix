@@ -2,10 +2,9 @@
 # other, a YubiKey included. keyd remaps the built-in keyboard alone, below
 # the compositor, so the layout holds everywhere: the console, the session,
 # and the systemd initrd, where the disk's PIN is typed.
-{ nixosModules }:
 { config, lib, ... }:
 {
-  imports = [ nixosModules.keyboard ];
+  imports = [ ../keyboard/nixos.nix ];
 
   services.keyd = {
     enable = true;
