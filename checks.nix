@@ -239,5 +239,23 @@ checkEach "nixos" (module: bareNixos [ module ]) self.nixosModules
         niri validate --config niri/config.kdl
         touch $out
       '';
+
+    # kitty reads back its files the same way. It warns about a setting it
+    # doesn't know and refuses a value it can't parse; it doesn't check that a
+    # mapped action exists.
+    kitty-accepts-its-configuration =
+      let
+        files = (account (bareNixos [ self.nixosModules.graphical ])).xdg.configFile;
+      in
+      pkgs.runCommandLocal "kitty-accepts-its-configuration" { nativeBuildInputs = [ pkgs.kitty ]; } ''
+        export HOME=$PWD
+        mkdir kitty
+        cp ${files."kitty/kitty.conf".source} kitty/kitty.conf
+        cp ${files."kitty/theme.conf".source} kitty/theme.conf
+        kitty +runpy 'from kitty.config import load_config; import sys; load_config(sys.argv[-1])' \
+          kitty/kitty.conf > complaints 2>&1
+        if [ -s complaints ]; then cat complaints; exit 1; fi
+        touch $out
+      '';
   }
 )

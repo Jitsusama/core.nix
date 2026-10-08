@@ -1,5 +1,5 @@
 # A NixOS machine with a screen in front of Joel: fonts, sound, and niri, with
-# niri's configuration in every account.
+# niri's configuration and kitty in every account.
 { nixosModules, homeModules }:
 {
   imports = [
@@ -8,5 +8,8 @@
     nixosModules.niri
     nixosModules.pipewire
   ];
-  home-manager.sharedModules = [ homeModules.niri ];
+  home-manager.sharedModules = [
+    homeModules.niri
+    homeModules.kitty
+  ];
 }
