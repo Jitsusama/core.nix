@@ -27,6 +27,14 @@ in
   # Optimize across the whole kernel at link time, with Clang's ThinLTO.
   LTO_CLANG_THIN = yes;
 
+  # Back all of a program's memory with huge pages where possible, which
+  # saves address lookups for compilers and language runtimes: Go's and
+  # rustc's allocators no longer ask for them, so nixpkgs's choice, huge pages
+  # only on request, leaves them out. Only programs that ask still wait for
+  # memory to be compacted into huge pages, so nothing else stalls for them.
+  TRANSPARENT_HUGEPAGE_ALWAYS = yes;
+  TRANSPARENT_HUGEPAGE_MADVISE = no;
+
   # The kernel can't build Rust with LTO while it keeps BTF type information,
   # which sched_ext and BPF tools need. No driver these machines use is
   # written in Rust, so Rust goes, with the options nixpkgs sets beside it.

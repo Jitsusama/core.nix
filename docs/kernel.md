@@ -58,7 +58,15 @@ configuration, and its own setting wins where the two differ. In short:
 | preempt the kernel anywhere       | `PREEMPT`, not `PREEMPT_LAZY`       |
 | tick at 1000 Hz, or not at all    | `HZ_1000`, `NO_HZ_FULL`             |
 | optimize across the whole kernel  | `LTO_CLANG_THIN`                    |
+| huge pages for every program      | `TRANSPARENT_HUGEPAGE_ALWAYS`       |
 | no Rust, which LTO and BTF forbid | `RUST` and the options that need it |
+
+nixpkgs gives huge pages only to programs that ask for them, with
+`TRANSPARENT_HUGEPAGE_MADVISE`, and the ones that would gain most no longer
+ask: Go's runtime and the allocator rustc uses. Giving them to every program
+saves address lookups across a build. Waiting for memory to be compacted into
+huge pages stays reserved for programs that ask, so nothing else stalls for
+it. Omarchy runs the same.
 
 Preemption stays switchable at boot, with `preempt=`, because nixpkgs keeps
 `PREEMPT_DYNAMIC` on. The rest of what a developer needs is already in
