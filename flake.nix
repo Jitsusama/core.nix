@@ -137,6 +137,7 @@
       packages.x86_64-linux = {
         kernel = import ./modules/kernel/package.nix nixpkgs.legacyPackages.x86_64-linux {
           cpu = null;
+          profile = null;
         };
       };
 

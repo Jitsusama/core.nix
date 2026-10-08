@@ -8,11 +8,11 @@ why it's built here rather than taken from a distribution.
 
 Everything about it is in [`modules/kernel/`][module]:
 
-| File           | What it holds                                               |
-| -------------- | ----------------------------------------------------------- |
-| `package.nix`  | the kernel: its series, compiler, CPU, patch and strictness |
-| `settings.nix` | the Kconfig settings, each with the intent behind it        |
-| `nixos.nix`    | the NixOS module, and the `jitsusama.kernel.cpu` option     |
+| File           | What it holds                                                        |
+| -------------- | -------------------------------------------------------------------- |
+| `package.nix`  | the kernel: its series, compiler, CPU, profile, patch and strictness |
+| `settings.nix` | the Kconfig settings, each with the intent behind it                 |
+| `nixos.nix`    | the NixOS module, with the `jitsusama.kernel` options                |
 
 `flake.nix` offers the module as `nixosModules.kernel`, and the kernel for any
 x86-64 machine as `packages.x86_64-linux.kernel`.
@@ -30,6 +30,10 @@ x86-64 machine as `packages.x86_64-linux.kernel`.
   optimus, `znver2` for penelope. So each machine gets a kernel of its own,
   scheduled and tuned for its cores. Without one, the kernel runs on any
   x86-64 machine, as upstream builds it.
+- **The profile:** whichever AutoFDO profile the machine recorded of the
+  kernel at work, in `jitsusama.kernel.profile`. Clang uses it to lay out and
+  inline the code the machine actually runs. [Profiling It](#profiling-it)
+  says how to record one.
 
 ### The Patch
 
@@ -58,6 +62,7 @@ configuration, and its own setting wins where the two differ. In short:
 | preempt the kernel anywhere       | `PREEMPT`, not `PREEMPT_LAZY`       |
 | tick at 1000 Hz, or not at all    | `HZ_1000`, `NO_HZ_FULL`             |
 | optimize across the whole kernel  | `LTO_CLANG_THIN`                    |
+| be ready to be profiled           | `AUTOFDO_CLANG`                     |
 | huge pages for every program      | `TRANSPARENT_HUGEPAGE_ALWAYS`       |
 | no Rust, which LTO and BTF forbid | `RUST` and the options that need it |
 
@@ -119,6 +124,38 @@ nix build .#nixosConfigurations.<machine>.config.boot.kernelPackages.kernel
 Either builds every module nixpkgs's configuration enables, so expect it to
 take an hour or so on a laptop.
 
+## Profiling It
+
+The kernel is always built ready to be profiled, so a machine can record what
+its kernel does in a day's work and have the next build optimized for it,
+with Clang's AutoFDO. It needs a CPU that records the branches it takes:
+Intel's last-branch records, which optimus's Panther Lake keeps on every
+core, or AMD's, from Zen 3 on. penelope's Zen 2 can't, so penelope builds
+without a profile.
+
+Record while the machine does its usual work, a build included. `-c` samples
+one branch in every 500009, the period the kernel's own guide suggests:
+
+```bash
+sudo perf record -e BR_INST_RETIRED.NEAR_TAKEN:k -a -N -b -c 500009 \
+  -o kernel.data -- sleep 1800
+```
+
+Turn the samples into a profile against the running kernel's `vmlinux`, with
+the LLVM that built it:
+
+```bash
+dev=$(nix build --no-link --print-out-paths \
+  .#nixosConfigurations.<machine>.config.boot.kernelPackages.kernel.dev)
+nix shell nixpkgs#llvmPackages_22.llvm --command llvm-profgen --kernel \
+  --binary="$dev/vmlinux" --perfdata=kernel.data --output=kernel.afdo
+```
+
+Commit `kernel.afdo` beside the machine's configuration and set
+`jitsusama.kernel.profile = ./kernel.afdo;`. Clang matches a profile to code
+by function and line, so an older profile still helps after a point release,
+if less; record a new one after moving to a new series.
+
 ## Changing It
 
 - **A setting:** add it to `settings.nix` with a comment saying why. Mark it
@@ -148,8 +185,10 @@ take an hour or so on a laptop.
 - **Rust.** The kernel can't build Rust with LTO while it keeps BTF type
   information, and BTF is what sched_ext schedulers and BPF tools read. No
   driver these machines use is written in Rust. Rust programs are unaffected.
-- **Profile-guided optimization.** AutoFDO and Propeller need profiles taken
-  on the running machine, so they come after it runs this kernel.
+- **Propeller.** It reorders the code within each function from a second
+  profile, taken of a kernel AutoFDO already optimized. Its profile tool,
+  Google's `create_llvm_prof`, isn't in nixpkgs, and AutoFDO should prove its
+  worth on optimus first.
 - **Turning off CPU mitigations.** The speed isn't worth the exposure.
 
 [decision]: decisions/0006-build-the-kernel-here.md

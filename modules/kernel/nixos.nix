@@ -1,5 +1,6 @@
 # Runs Joel's kernel, from package.nix, compiled for the CPU the machine's
-# hardware module names. Out-of-tree modules are built by the same compiler.
+# hardware module names and optimized with the profile the machine recorded.
+# Out-of-tree modules are built by the same compiler.
 {
   config,
   lib,
@@ -17,7 +18,18 @@
     '';
   };
 
+  options.jitsusama.kernel.profile = lib.mkOption {
+    type = lib.types.nullOr lib.types.path;
+    default = null;
+    example = lib.literalExpression "./kernel.afdo";
+    description = ''
+      An AutoFDO profile of the kernel at work on this machine, which Clang
+      optimizes the next build with. The machine sets it, since the profile is
+      of what it runs; docs/kernel.md says how to record one.
+    '';
+  };
+
   config.boot.kernelPackages = pkgs.linuxPackagesFor (
-    import ./package.nix pkgs { inherit (config.jitsusama.kernel) cpu; }
+    import ./package.nix pkgs { inherit (config.jitsusama.kernel) cpu profile; }
   );
 }
