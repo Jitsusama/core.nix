@@ -25,7 +25,7 @@ x86-64 machine as `packages.x86_64-linux.kernel`.
 - **The compiler:** Clang 22, linked with LLD, which link-time optimization
   needs. Not nixpkgs's default LLVM 21: its LLD, compiled with GCC 16 as
   nixpkgs compiles it, writes objects the kernel's objtool rejects.
-- **The CPU:** whichever one the machine's hardware module names in
+- **The CPU:** whichever one the machine's [hardware][hw] names in
   `jitsusama.kernel.cpu`, as Clang's `-march` names it: `pantherlake` for
   optimus, `znver2` for penelope. So each machine gets a kernel of its own,
   scheduled and tuned for its cores. Without one, the kernel runs on any
@@ -121,6 +121,8 @@ take an hour or so on a laptop.
   distributions shipping it.
 - **A machine's CPU:** set `jitsusama.kernel.cpu` in its hardware module, to a
   name from `clang --print-supported-cpus`.
+- **A patch one model needs:** add it to that model's `boot.kernelPatches`,
+  under the same bar; [the hardware guide][hw] has one.
 - **A new series:** change `linux_7_2` in `package.nix` to the new series,
   point BORE at its patch for that series, and update the hash and this
   document. The configuration check fails until the patch applies and every
@@ -147,5 +149,6 @@ take an hour or so on a laptop.
 [settings]: ../modules/kernel/settings.nix
 [memory]: ../modules/memory/nixos.nix
 [perf]: ../modules/perf/nixos.nix
+[hw]: hardware.md
 [1]: https://github.com/firelzrd/bore-scheduler
 [2]: https://git.kernel.org/torvalds/c/a6036a41bffb

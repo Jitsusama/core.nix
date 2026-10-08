@@ -116,6 +116,7 @@ let
   # doesn't offer its option at all. Only the configuration is built, in
   # minutes; the kernel itself takes far longer than a check should.
   kernelSettingsHold =
+    name: kernel:
     let
       settings = import ./modules/kernel/settings.nix { inherit lib; };
       expect =
@@ -127,8 +128,8 @@ let
           (if setting.optional or false then "optional" else "required")
         ];
     in
-    pkgs.runCommandLocal "kernel-settings-hold" { } ''
-      config=${self.packages.x86_64-linux.kernel.configfile}
+    pkgs.runCommandLocal name { } ''
+      config=${kernel.configfile}
       failed=
       expect() {
         grep -qxF "$1" "$config" && return
@@ -147,6 +148,7 @@ let
     fileset = lib.fileset.unions [
       ./modules
       ./roles
+      ./hardware
       ./examples
     ];
   };
@@ -215,6 +217,12 @@ checkEach "nixos" (module: bareNixos [ module ]) self.nixosModules
         touch $out
       '';
 }
-// lib.optionalAttrs (pkgs.stdenv.hostPlatform.system == "x86_64-linux") {
-  kernel-settings-hold = kernelSettingsHold;
-}
+// lib.optionalAttrs (pkgs.stdenv.hostPlatform.system == "x86_64-linux") (
+  lib.mapAttrs kernelSettingsHold {
+    kernel-settings-hold = self.packages.x86_64-linux.kernel;
+
+    # Each piece of hardware builds its own kernel, with its own patches.
+    kernel-settings-hold-dell-xps-14-da14260 =
+      (bareNixos [ self.nixosModules.dell-xps-14-da14260 ]).config.boot.kernelPackages.kernel;
+  }
+)

@@ -4,8 +4,8 @@
 and on main. Every check is defined in [`checks.nix`][1]. They evaluate
 machines without building them, which takes about three minutes on a 16-core
 laptop once the inputs are downloaded. The one exception is the kernel's
-configuration, which is built on x86_64-linux in a few more minutes, since
-that's the only way to know its patches apply.
+configuration, built on x86_64-linux for every piece of hardware in a few
+more minutes each, since that's the only way to know its patches apply.
 
 ## What Each Check Proves
 
@@ -23,6 +23,7 @@ that's the only way to know its patches apply.
 | `formatting`                    | everything is formatted and passes the linters            |
 | `nothing-work-specific`         | no module, role or example names anything work-only       |
 | `kernel-settings-hold`          | the kernel's patches apply and every setting holds        |
+| `kernel-settings-hold-<model>`  | the same for the kernel that hardware builds              |
 
 A bare machine has nothing but home-manager, nixpkgs' settings and one
 account, which every machine has. So a module that quietly relies on another,

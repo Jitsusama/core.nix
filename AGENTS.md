@@ -8,27 +8,28 @@ no framework, and nothing found by scanning the file tree.
 
 ## Map
 
-| Path              | Holds                                                     |
-| ----------------- | --------------------------------------------------------- |
-| `flake.nix`       | the index: every module, role and input, by module system |
-| `modules/<tool>/` | one tool: a module per system, and its own config files   |
-| `roles/<role>/`   | what a machine is for: imports only, one file per system  |
-| `examples/`       | machines built only from the outputs, as a consumer would |
-| `checks.nix`      | what `nix flake check` runs                               |
-| `treefmt.nix`     | what `nix fmt` runs                                       |
-| `docs/`           | architecture, conventions, guides and decision records    |
+| Path                | Holds                                                     |
+| ------------------- | --------------------------------------------------------- |
+| `flake.nix`         | the index: every module, role and input, by module system |
+| `modules/<tool>/`   | one tool: a module per system, and its own config files   |
+| `roles/<role>/`     | what a machine is for: imports only, one file per system  |
+| `hardware/<model>/` | one machine model's needs, and the kernel it runs         |
+| `examples/`         | machines built only from the outputs, as a consumer would |
+| `checks.nix`        | what `nix flake check` runs                               |
+| `treefmt.nix`       | what `nix fmt` runs                                       |
+| `docs/`             | architecture, conventions, guides and decision records    |
 
 A file's name says its module system: `home.nix` (home-manager), `darwin.nix`
 (nix-darwin), `nixos.nix` (NixOS) or `system.nix` (both NixOS and
 nix-darwin). To learn how any file fits, search `flake.nix` for its path. The
-words machine, role, module, layer, identity and account have one meaning
-each; [docs/architecture.md][2] defines them.
+words machine, role, module, hardware, layer, identity and account have one
+meaning each; [docs/architecture.md][2] defines them.
 
 ## Rules
 
-- Every connection must be followable by opening files. Name each new module
-  or role in `flake.nix`, in alphabetical order within its group. Never
-  discover files, look modules up by string, or use `specialArgs`.
+- Every connection must be followable by opening files. Name each new module,
+  role or hardware in `flake.nix`, in alphabetical order within its group.
+  Never discover files, look modules up by string, or use `specialArgs`.
 - A file that needs a flake input, or core's own modules, takes them by name
   as an outer function, `{ wallpapers }: { pkgs, ... }: { ... }`, and
   `flake.nix` gives them through `moduleFrom`, so the result can be imported
@@ -46,8 +47,8 @@ each; [docs/architecture.md][2] defines them.
   it in; don't translate it into Nix.
 - Never declare a setting another tool writes, and never put a secret or
   application state in a Nix value.
-- Nothing work-specific in `modules/`, `roles/` or `examples/`: no employer
-  names, no `/opt/dev`. A check fails on it.
+- Nothing work-specific in `modules/`, `roles/`, `hardware/` or `examples/`: no
+  employer names, no `/opt/dev`. A check fails on it.
 - Comments say why, in full sentences. A file opens with a comment saying
   what it is for when its path alone doesn't.
 - Lines stop at 100 characters; `nix fmt` decides the rest of the layout.
@@ -82,6 +83,8 @@ Renaming or removing an output or a `jitsusama.*` option is breaking: mark it
 - [docs/machines.md][5]: building a machine from core.nix
 - [docs/kernel.md][7]: the kernel, its patches and settings, and changing
   them
+- [docs/hardware.md][8]: each machine model, where its workarounds come from,
+  and what's left
 - [docs/decisions/][6]: why the design is what it is
 
 [1]: docs/testing.md
@@ -91,3 +94,4 @@ Renaming or removing an output or a `jitsusama.*` option is breaking: mark it
 [5]: docs/machines.md
 [6]: docs/decisions/
 [7]: docs/kernel.md
+[8]: docs/hardware.md
