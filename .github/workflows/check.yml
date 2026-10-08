@@ -1,0 +1,23 @@
+# Runs every check on each pull request and on main: formatting, the unit
+# tests, the design contracts, the options reference, and an evaluation of
+# every feature and host. The darwin parts evaluate on Linux, so one runner
+# covers both platforms. Actions are pinned by commit, with the release they
+# came from beside each.
+name: check
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: DeterminateSystems/determinate-nix-action@d0c908e6cbe9f89f36ed8205a3ab6f092636916a # v3.23.1
+      - uses: DeterminateSystems/magic-nix-cache-action@84c0677f58dcedf3b91f8223ce36a9ea5b3c84b7 # v15
+      - run: nix flake check --print-build-logs
