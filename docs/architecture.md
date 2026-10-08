@@ -16,6 +16,7 @@ Each word has one meaning, used the same way in code, directories and docs.
 | machine repository | a repository of machines built on core.nix    | dotfiles, `//home/joel-gerber/dotfiles`                 |
 | module             | one program or subsystem, configured          | `modules/bat/` becomes `homeModules.bat`                |
 | role               | what a machine is for                         | `roles/workstation/` becomes `nixosModules.workstation` |
+| hardware           | one machine model, and what it needs          | `nixosModules.dell-xps-14-da14260`                      |
 | layer              | what one side adds: personal or work          | the machine repository's own modules                    |
 | identity           | who Joel is on a machine                      | `jitsusama.identity.email`                              |
 | account            | the user home-manager configures              | `home-manager.users.<account>`                          |
@@ -47,6 +48,9 @@ nixosSystem, in a machine repository           file it opens
   `workstation` for one Joel writes code on, `graphical` for one with a screen
   in front of him. A role only imports. A system role imports the system
   modules and adds its home-manager half to every account.
+- **Hardware** is one machine model: what it needs to run well, in
+  `hardware/<model>/nixos.nix`. It decides the kernel. [The hardware
+  guide][5] says what each one does.
 - **[`flake.nix`][1]** is the index. It names every module and role, by module
   system, and gives each one what it takes.
 - **Machines** live in the machine repositories. They call the stock builders
@@ -55,8 +59,8 @@ nixosSystem, in a machine repository           file it opens
 
 ## Module Systems
 
-The file name inside a tool's or role's directory says which module system it
-belongs to, and which output of `flake.nix` names it:
+The file name inside a tool's, role's or hardware's directory says which module
+system it belongs to, and which output of `flake.nix` names it:
 
 | File         | Module system             | Named in                           |
 | ------------ | ------------------------- | ---------------------------------- |
@@ -153,7 +157,7 @@ fixed:
 | ---------------------------- | --------------------------------------------------------------- |
 | `homeModules`                | home-manager modules and roles                                  |
 | `darwinModules`              | nix-darwin modules and roles                                    |
-| `nixosModules`               | NixOS modules and roles                                         |
+| `nixosModules`               | NixOS modules, roles and hardware                               |
 | `packages`                   | what core builds itself: the kernel, for x86_64-linux           |
 | `checks`                     | every module and role evaluated, the examples, formatting       |
 | `formatter`                  | treefmt, for `nix fmt`                                          |
@@ -189,3 +193,4 @@ repository sees it only when it runs `nix flake update core`. [Decision
 [2]: decisions/0001-plain-flake.md
 [3]: decisions/0002-choosing-is-importing.md
 [4]: decisions/0005-modules-and-options-are-the-interface.md
+[5]: hardware.md

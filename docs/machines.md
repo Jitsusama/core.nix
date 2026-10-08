@@ -23,7 +23,10 @@ nixosConfigurations.penelope = nixpkgs.lib.nixosSystem {
 ```
 
 Each system role brings home-manager in and gives every account its
-home-manager half, so the account needs no imports of its own. A Mac is the
+home-manager half, so the account needs no imports of its own. A machine
+whose model core.nix knows also imports that hardware, such as
+`core.nixosModules.dell-xps-14-da14260`; [the hardware guide][2] says what
+each brings. A Mac is the
 same with `nix-darwin.lib.darwinSystem` and `core.darwinModules`.
 
 ## The Layer
@@ -49,7 +52,7 @@ It holds what belongs to that machine alone:
 ```nix
 # machines/penelope/default.nix
 {
-  imports = [ ./hardware.nix ];
+  imports = [ ./disks.nix ];
 
   networking.hostName = "penelope";
   nixpkgs.hostPlatform = "x86_64-linux";
@@ -101,3 +104,4 @@ nix flake update core
 ```
 
 [1]: ../examples/
+[2]: hardware.md

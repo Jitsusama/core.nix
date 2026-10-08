@@ -1,9 +1,9 @@
 # core.nix
 
 The shared part of every one of Joel's machines, as a Nix library: the NixOS,
-nix-darwin and home-manager modules each machine is built from, and the roles
-that group them. It holds no machines and nothing tied to an employer; those
-live in the repositories that build on it.
+nix-darwin and home-manager modules each machine is built from, the roles that
+group them, and the hardware each laptop needs. It holds no machines and nothing
+tied to an employer; those live in the repositories that build on it.
 
 ## 🧭 How the Repositories Fit
 
@@ -91,6 +91,7 @@ core.nix/
 │   ├── system.nix         #   one module for both NixOS and nix-darwin
 │   └── <config files>     #   the tool's own configuration, in its own format
 ├── roles/<role>/          # what a machine is for, one file per module system
+├── hardware/<model>/      # what one machine model needs, kernel included
 ├── examples/              # machines written the way a machine repository would
 ├── checks.nix             # what `nix flake check` runs
 ├── treefmt.nix            # what `nix fmt` runs
@@ -140,6 +141,7 @@ nix build --override-input core path:$HOME/src/core.nix \
 - [Machines][2]: building a machine from core.nix.
 - [Testing][6]: what the checks catch.
 - [The kernel][9]: the kernel core.nix builds for NixOS, and how to change it.
+- [Hardware][10]: each machine model core.nix supports, and what's left.
 - [Decisions][7]: what was decided, against what, and why.
 
 [1]: flake.nix
@@ -151,3 +153,4 @@ nix build --override-input core path:$HOME/src/core.nix \
 [7]: docs/decisions/README.md
 [8]: examples/
 [9]: docs/kernel.md
+[10]: docs/hardware.md

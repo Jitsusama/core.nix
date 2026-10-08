@@ -1,9 +1,10 @@
-# The index of core.nix: every module and role it offers, by module system,
-# the packages it builds, and what each one is given. Modules live in
-# modules/<tool>/ and roles in roles/<role>/, one file per module system:
-# home.nix for home-manager, darwin.nix, nixos.nix, or system.nix for one file
-# that is both of the last two. A module's other files sit beside it. To see
-# how any file fits, find its path here.
+# The index of core.nix: every module, role and piece of hardware it offers,
+# by module system, the packages it builds, and what each one is given.
+# Modules live in modules/<tool>/, roles in roles/<role>/ and hardware in
+# hardware/<model>/, one file per module system: home.nix for home-manager,
+# darwin.nix, nixos.nix, or system.nix for one file that is both of the last
+# two. A module's other files sit beside it. To see how any file fits, find
+# its path here.
 {
   description = "Joel's machines as a library: the modules and roles every machine builds from";
 
@@ -123,6 +124,10 @@
           inherit (self) nixosModules homeModules;
         };
         graphical = moduleFrom ./roles/graphical/nixos.nix { inherit (self) nixosModules; };
+
+        dell-xps-14-da14260 = moduleFrom ./hardware/dell-xps-14-da14260/nixos.nix {
+          inherit (self) nixosModules;
+        };
       };
 
       # What core.nix builds that a cache can hold apart from any machine: the
