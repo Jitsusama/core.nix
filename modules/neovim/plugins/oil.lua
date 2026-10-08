@@ -12,26 +12,26 @@ oil.setup({
   },
   -- Override conflicting keymaps to avoid conflicts with global mappings
   keymaps = {
-    ["g?"] = { "actions.show_help", mode = "n" },
-    ["<CR>"] = "actions.select",
-    ["<C-s>"] = { "actions.select", opts = { vertical = true } },
-    ["<C-h>"] = { "actions.select", opts = { horizontal = true } },
-    ["<C-t>"] = { "actions.select", opts = { tab = true } },
-    ["<C-p>"] = "actions.preview",
-    ["<C-c>"] = { "actions.close", mode = "n" },
-    ["<C-l>"] = "actions.refresh",
-    ["-"] = { "actions.parent", mode = "n" },
-    ["_"] = { "actions.open_cwd", mode = "n" },
-    ["`"] = { "actions.cd", mode = "n" },
-    ["~"] = { "actions.cd", opts = { scope = "tab" }, mode = "n" },
+    ['g?'] = { 'actions.show_help', mode = 'n' },
+    ['<CR>'] = 'actions.select',
+    ['<C-s>'] = { 'actions.select', opts = { vertical = true } },
+    ['<C-h>'] = { 'actions.select', opts = { horizontal = true } },
+    ['<C-t>'] = { 'actions.select', opts = { tab = true } },
+    ['<C-p>'] = 'actions.preview',
+    ['<C-c>'] = { 'actions.close', mode = 'n' },
+    ['<C-l>'] = 'actions.refresh',
+    ['-'] = { 'actions.parent', mode = 'n' },
+    ['_'] = { 'actions.open_cwd', mode = 'n' },
+    ['`'] = { 'actions.cd', mode = 'n' },
+    ['~'] = { 'actions.cd', opts = { scope = 'tab' }, mode = 'n' },
     -- Disable gs to avoid conflict with Flash navigation
-    ["gs"] = false,
+    ['gs'] = false,
     -- Keep gx but document it
-    ["gx"] = "actions.open_external",
+    ['gx'] = 'actions.open_external',
     -- Remap toggle hidden to avoid g. conflict (use gh instead)
-    ["gh"] = { "actions.toggle_hidden", mode = "n" },
-    ["g."] = false,
-    ["g\\"] = { "actions.toggle_trash", mode = "n" },
+    ['gh'] = { 'actions.toggle_hidden', mode = 'n' },
+    ['g.'] = false,
+    ['g\\'] = { 'actions.toggle_trash', mode = 'n' },
   },
 })
 

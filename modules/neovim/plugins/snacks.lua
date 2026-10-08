@@ -127,7 +127,6 @@ vim.keymap.set('n', '<leader>iN', function()
   Snacks.notifier.hide()
 end, { desc = 'Introspect Notifications clear' })
 
-
 -- SYSTEM CONTROLS (<C-*>)
 vim.keymap.set('n', '<C-/>', function()
   Snacks.terminal()

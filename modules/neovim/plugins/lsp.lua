@@ -111,7 +111,11 @@ vim.api.nvim_create_autocmd('LspAttach', {
     map(bufnr, 'n', '<leader>cti', function()
       local enabled = vim.lsp.inlay_hint.is_enabled()
       vim.lsp.inlay_hint.enable(not enabled)
-      vim.notify(enabled and 'Inlay hints disabled' or 'Inlay hints enabled', vim.log.levels.INFO, { title = 'Code' })
+      vim.notify(
+        enabled and 'Inlay hints disabled' or 'Inlay hints enabled',
+        vim.log.levels.INFO,
+        { title = 'Code' }
+      )
     end, 'Code toggle inlay hints')
 
     -- WORKSPACE MANAGEMENT (<leader>k)
@@ -122,7 +126,11 @@ vim.api.nvim_create_autocmd('LspAttach', {
       if #folders == 0 then
         vim.notify('No workspace folders configured', vim.log.levels.INFO, { title = 'Workspace' })
       else
-        vim.notify('Workspace folders:\n' .. table.concat(folders, '\n'), vim.log.levels.INFO, { title = 'Workspace' })
+        vim.notify(
+          'Workspace folders:\n' .. table.concat(folders, '\n'),
+          vim.log.levels.INFO,
+          { title = 'Workspace' }
+        )
       end
     end, 'Workspace list folders')
 

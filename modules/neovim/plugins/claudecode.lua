@@ -2,7 +2,7 @@ local claudecode = require('claudecode')
 
 claudecode.setup({
   diff_opts = {
-    layout = "horizontal",
+    layout = 'horizontal',
   },
   terminal = {
     split_side = 'left',
@@ -26,15 +26,40 @@ vim.api.nvim_create_autocmd('FocusGained', {
 -- ========================================
 
 -- Core Operations
-vim.keymap.set('n', '<leader>aa', '<cmd>ClaudeCodeFocus<CR>', { desc = 'AI focus terminal', silent = true })
-vim.keymap.set({ 'n', 'v' }, '<leader>as', '<cmd>ClaudeCodeSend<CR>', { desc = 'AI send context', silent = true })
+vim.keymap.set(
+  'n',
+  '<leader>aa',
+  '<cmd>ClaudeCodeFocus<CR>',
+  { desc = 'AI focus terminal', silent = true }
+)
+vim.keymap.set(
+  { 'n', 'v' },
+  '<leader>as',
+  '<cmd>ClaudeCodeSend<CR>',
+  { desc = 'AI send context', silent = true }
+)
 
 -- Diff Management
-vim.keymap.set('n', '<leader>ad', '<cmd>ClaudeCodeDiffAccept<CR>', { desc = 'AI diff accept', silent = true })
-vim.keymap.set('n', '<leader>ar', '<cmd>ClaudeCodeDiffDeny<CR>', { desc = 'AI diff reject', silent = true })
+vim.keymap.set(
+  'n',
+  '<leader>ad',
+  '<cmd>ClaudeCodeDiffAccept<CR>',
+  { desc = 'AI diff accept', silent = true }
+)
+vim.keymap.set(
+  'n',
+  '<leader>ar',
+  '<cmd>ClaudeCodeDiffDeny<CR>',
+  { desc = 'AI diff reject', silent = true }
+)
 
 -- Optional: Model Selection
-vim.keymap.set('n', '<leader>am', '<cmd>ClaudeCodeSelectModel<CR>', { desc = 'AI model select', silent = true })
+vim.keymap.set(
+  'n',
+  '<leader>am',
+  '<cmd>ClaudeCodeSelectModel<CR>',
+  { desc = 'AI model select', silent = true }
+)
 
 -- ========================================
 -- WHICH-KEY INTEGRATION
@@ -52,4 +77,3 @@ if ok then
     { '<leader>am', desc = 'AI model select', icon = '⚙️' },
   })
 end
-

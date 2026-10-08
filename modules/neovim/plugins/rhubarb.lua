@@ -14,4 +14,3 @@ if wk_ok then
     { '<leader>ghfo', desc = 'File open browser', mode = { 'n', 'v' } },
   })
 end
-

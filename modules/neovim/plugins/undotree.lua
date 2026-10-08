@@ -11,14 +11,14 @@ vim.g.undotree_SetFocusWhenToggle = 1
 -- Set up the keybinding
 vim.keymap.set('n', '<leader>U', vim.cmd.UndotreeToggle, {
   desc = 'Undo tree',
-  silent = true
+  silent = true,
 })
 
 -- Register the icon with which-key separately
 local ok, which_key = pcall(require, 'which-key')
 if ok then
   which_key.add({
-    { "<leader>U", icon = "🌳" }
+    { '<leader>U', icon = '🌳' },
   })
 end
 

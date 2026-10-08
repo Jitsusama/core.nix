@@ -18,7 +18,8 @@ vim.g.maplocalleader = ' '
 -- only when blinkon and blinkoff are both non-zero; the actual cadence is
 -- WezTerm's to own. This is a taste choice, not a fix: drop the blink
 -- markers (or this whole line) for a steady block instead.
-vim.opt.guicursor = 'n-v-c-sm:block-blinkwait700-blinkon400-blinkoff250,i-ci-ve:ver25-blinkwait700-blinkon400-blinkoff250,r-cr-o:hor20,t:block-blinkon500-blinkoff500-TermCursor'
+vim.opt.guicursor =
+  'n-v-c-sm:block-blinkwait700-blinkon400-blinkoff250,i-ci-ve:ver25-blinkwait700-blinkon400-blinkoff250,r-cr-o:hor20,t:block-blinkon500-blinkoff500-TermCursor'
 
 -- UI Polish - Clean and sleek interface
 vim.opt.pumblend = 10 -- Transparent completion popups
@@ -82,7 +83,8 @@ vim.opt.foldlevelstart = 99
 vim.opt.foldenable = true
 
 -- Session options
-vim.opt.sessionoptions = { 'buffers', 'curdir', 'tabpages', 'winsize', 'help', 'globals', 'skiprtp', 'folds' }
+vim.opt.sessionoptions =
+  { 'buffers', 'curdir', 'tabpages', 'winsize', 'help', 'globals', 'skiprtp', 'folds' }
 
 -- Configure diagnostics appearance with better defaults
 vim.diagnostic.config({
@@ -210,11 +212,21 @@ vim.api.nvim_create_autocmd('TermOpen', {
 vim.keymap.set('n', '<M-S-Left>', '<C-w>h', { desc = 'Go to left window' })
 vim.keymap.set('t', '<M-S-Left>', '<C-\\><C-n><C-w>h', { desc = 'Go to left window from terminal' })
 vim.keymap.set('n', '<M-S-Right>', '<C-w>l', { desc = 'Go to right window' })
-vim.keymap.set('t', '<M-S-Right>', '<C-\\><C-n><C-w>l', { desc = 'Go to right window from terminal' })
+vim.keymap.set(
+  't',
+  '<M-S-Right>',
+  '<C-\\><C-n><C-w>l',
+  { desc = 'Go to right window from terminal' }
+)
 vim.keymap.set('n', '<M-S-Up>', '<C-w>k', { desc = 'Go to upper window' })
 vim.keymap.set('t', '<M-S-Up>', '<C-\\><C-n><C-w>k', { desc = 'Go to upper window from terminal' })
 vim.keymap.set('n', '<M-S-Down>', '<C-w>j', { desc = 'Go to lower window' })
-vim.keymap.set('t', '<M-S-Down>', '<C-\\><C-n><C-w>j', { desc = 'Go to lower window from terminal' })
+vim.keymap.set(
+  't',
+  '<M-S-Down>',
+  '<C-\\><C-n><C-w>j',
+  { desc = 'Go to lower window from terminal' }
+)
 
 -- Tab Navigation (Control+Arrow)
 vim.keymap.set('n', '<C-Left>', 'gT', { desc = 'Previous tab' })
@@ -252,7 +264,12 @@ vim.keymap.set(
   "v:count == 0 ? 'gj' : 'j'",
   { expr = true, silent = true, desc = 'Down (wrapped)' }
 )
-vim.keymap.set({ 'n', 'x' }, '<Up>', "v:count == 0 ? 'gk' : 'k'", { expr = true, silent = true, desc = 'Up (wrapped)' })
+vim.keymap.set(
+  { 'n', 'x' },
+  '<Up>',
+  "v:count == 0 ? 'gk' : 'k'",
+  { expr = true, silent = true, desc = 'Up (wrapped)' }
+)
 
 -- ===============================================
 -- DOCUMENTED UI/SETTINGS DOMAIN (<leader>u)
@@ -449,9 +466,21 @@ vim.keymap.set('n', '<leader>sr', function()
     local replace_term = vim.fn.input('Replace with: ')
     local confirm = vim.fn.input('Replace all occurrences? (y/n): ')
     if confirm:lower() == 'y' then
-      vim.cmd(string.format('%%s/%s/%s/g', vim.fn.escape(search_term, '/'), vim.fn.escape(replace_term, '/')))
+      vim.cmd(
+        string.format(
+          '%%s/%s/%s/g',
+          vim.fn.escape(search_term, '/'),
+          vim.fn.escape(replace_term, '/')
+        )
+      )
     else
-      vim.cmd(string.format('%%s/%s/%s/gc', vim.fn.escape(search_term, '/'), vim.fn.escape(replace_term, '/')))
+      vim.cmd(
+        string.format(
+          '%%s/%s/%s/gc',
+          vim.fn.escape(search_term, '/'),
+          vim.fn.escape(replace_term, '/')
+        )
+      )
     end
   end
 end, { desc = 'Search replace' })
@@ -499,7 +528,7 @@ vim.keymap.set('n', ']d', function()
   vim.diagnostic.goto_next({ float = { border = 'rounded' } })
 end, { desc = 'Next diagnostic' })
 
--- [D / ]D - First/last diagnostic in file  
+-- [D / ]D - First/last diagnostic in file
 vim.keymap.set('n', '[D', function()
   vim.diagnostic.goto_prev({ float = { border = 'rounded' }, wrap = false })
   -- Go to first diagnostic by going to start and finding first
@@ -509,7 +538,7 @@ end, { desc = 'First diagnostic' })
 
 vim.keymap.set('n', ']D', function()
   vim.diagnostic.goto_next({ float = { border = 'rounded' }, wrap = false })
-  -- Go to last diagnostic by going to end and finding last  
+  -- Go to last diagnostic by going to end and finding last
   vim.cmd('normal! G')
   vim.diagnostic.goto_prev({ float = false, wrap = false })
 end, { desc = 'Last diagnostic' })

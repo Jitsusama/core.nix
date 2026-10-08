@@ -26,35 +26,34 @@ refactoring.setup({
 -- CODE DOMAIN: Refactoring operations
 
 -- Extract function (works in visual mode)
-vim.keymap.set("x", "<leader>cre", function()
+vim.keymap.set('x', '<leader>cre', function()
   refactoring.refactor('Extract Function')
-end, { desc = "Code refactor extract function" })
+end, { desc = 'Code refactor extract function' })
 
 -- Extract function to file (works in visual mode)
-vim.keymap.set("x", "<leader>crf", function()
+vim.keymap.set('x', '<leader>crf', function()
   refactoring.refactor('Extract Function To File')
-end, { desc = "Code refactor extract to file" })
+end, { desc = 'Code refactor extract to file' })
 
 -- Extract variable (works in visual mode)
-vim.keymap.set("x", "<leader>crv", function()
+vim.keymap.set('x', '<leader>crv', function()
   refactoring.refactor('Extract Variable')
-end, { desc = "Code refactor extract variable" })
+end, { desc = 'Code refactor extract variable' })
 
 -- Inline variable (works in normal and visual mode)
-vim.keymap.set({ "n", "x" }, "<leader>cri", function()
+vim.keymap.set({ 'n', 'x' }, '<leader>cri', function()
   refactoring.refactor('Inline Variable')
-end, { desc = "Code refactor inline variable" })
+end, { desc = 'Code refactor inline variable' })
 
 -- Extract block to if statement
-vim.keymap.set("x", "<leader>crb", function()
+vim.keymap.set('x', '<leader>crb', function()
   refactoring.refactor('Extract Block')
-end, { desc = "Code refactor extract block" })
+end, { desc = 'Code refactor extract block' })
 
 -- Extract block to if statement (from current line)
-vim.keymap.set("n", "<leader>crB", function()
+vim.keymap.set('n', '<leader>crB', function()
   refactoring.refactor('Extract Block To File')
-end, { desc = "Code refactor extract Block to file" })
-
+end, { desc = 'Code refactor extract Block to file' })
 
 -- Register with which-key
 local wk_ok, which_key = pcall(require, 'which-key')

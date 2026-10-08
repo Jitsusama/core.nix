@@ -138,7 +138,11 @@ require('octo').setup({
 
       -- Comment operations
       add_review_comment = { lhs = '<leader>ghca', desc = 'Comment add', mode = { 'n', 'x' } },
-      add_review_suggestion = { lhs = '<leader>ghcs', desc = 'Comment suggest', mode = { 'n', 'x' } },
+      add_review_suggestion = {
+        lhs = '<leader>ghcs',
+        desc = 'Comment suggest',
+        mode = { 'n', 'x' },
+      },
 
       -- Navigation
       focus_files = { lhs = '<leader>ghve', desc = 'reView focus files' },
@@ -197,7 +201,12 @@ vim.keymap.set('n', '<leader>ghis', ':Octo issue search<CR>', { desc = 'Issue se
 -- Pull Requests (<leader>ghp)
 vim.keymap.set('n', '<leader>ghpp', ':Octo pr list<CR>', { desc = 'PR picker' })
 vim.keymap.set('n', '<leader>ghpn', ':Octo pr create<CR>', { desc = 'PR new' })
-vim.keymap.set('n', '<leader>ghpc', ':Octo pr list author:@me<CR>', { desc = 'PR current (your PRs)' })
+vim.keymap.set(
+  'n',
+  '<leader>ghpc',
+  ':Octo pr list author:@me<CR>',
+  { desc = 'PR current (your PRs)' }
+)
 vim.keymap.set('n', '<leader>ghps', ':Octo pr search<CR>', { desc = 'PR search' })
 vim.keymap.set('n', '<leader>ghpC', ':Octo pr checks<CR>', { desc = 'PR Checks' })
 
@@ -246,4 +255,3 @@ if wk_ok then
     { '<leader>ghnn', desc = 'Notification picker' },
   })
 end
-

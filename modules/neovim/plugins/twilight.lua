@@ -25,4 +25,3 @@ require('twilight').setup({
 
 -- Keybinding following UI domain pattern
 vim.keymap.set('n', '<leader>ut', '<cmd>Twilight<cr>', { desc = 'UI twilight (focus mode)' })
-

@@ -50,7 +50,10 @@ require('lualine').setup({
   options = {
     icons_enabled = true,
     theme = 'gruvbox',
-    component_separators = { left = separators.thin_arrow_left, right = separators.thin_arrow_right },
+    component_separators = {
+      left = separators.thin_arrow_left,
+      right = separators.thin_arrow_right,
+    },
     section_separators = { left = separators.arrow_left, right = separators.arrow_right },
     disabled_filetypes = {
       statusline = { 'dashboard', 'alpha', 'ministarter' },

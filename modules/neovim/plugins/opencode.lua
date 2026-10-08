@@ -7,4 +7,3 @@ vim.g.opencode_opts = {
     auto_close = false,
   },
 }
-

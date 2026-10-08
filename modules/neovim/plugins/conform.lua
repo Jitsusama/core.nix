@@ -121,4 +121,3 @@ end
 vim.api.nvim_create_user_command('ConformInfo', function()
   require('conform').info()
 end, { desc = 'Show conform formatter info' })
-
