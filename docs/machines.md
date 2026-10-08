@@ -26,8 +26,8 @@ Each system role brings home-manager in and gives every account its
 home-manager half, so the account needs no imports of its own. A machine
 whose model core.nix knows also imports that hardware, such as
 `core.nixosModules.dell-xps-14-da14260`; [the hardware guide][2] says what
-each brings. A Mac is the
-same with `nix-darwin.lib.darwinSystem` and `core.darwinModules`.
+each brings. A Mac is the same with `nix-darwin.lib.darwinSystem` and
+`core.darwinModules`.
 
 ## The Layer
 
@@ -81,6 +81,19 @@ this order of preference:
 
 When more than one machine has to `lib.mkForce` the same value, core gets an
 option for it instead.
+
+A configuration file core writes as text, such as niri's `config.kdl`, merges
+as lines, so a machine adds its own after core's with `lib.mkAfter`. niri lets
+a later setting override an earlier one, so optimus can set its panel's
+scale:
+
+```nix
+home-manager.users.jitsusama.xdg.configFile."niri/config.kdl".text = lib.mkAfter ''
+  output "eDP-1" {
+      scale 2
+  }
+'';
+```
 
 ## Applying It
 

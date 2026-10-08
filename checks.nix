@@ -225,4 +225,19 @@ checkEach "nixos" (module: bareNixos [ module ]) self.nixosModules
     kernel-settings-hold-dell-xps-14-da14260 =
       (bareNixos [ self.nixosModules.dell-xps-14-da14260 ]).config.boot.kernelPackages.kernel;
   }
+  // {
+    # niri reads back the files an account gets and rejects anything it
+    # wouldn't load, from a misspelt action to a colour it can't parse.
+    niri-accepts-its-configuration =
+      let
+        files = (account (bareNixos [ self.nixosModules.graphical ])).xdg.configFile;
+      in
+      pkgs.runCommandLocal "niri-accepts-its-configuration" { nativeBuildInputs = [ pkgs.niri ]; } ''
+        mkdir niri
+        cp ${files."niri/config.kdl".source} niri/config.kdl
+        cp ${files."niri/theme.kdl".source} niri/theme.kdl
+        niri validate --config niri/config.kdl
+        touch $out
+      '';
+  }
 )

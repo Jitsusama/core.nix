@@ -77,6 +77,7 @@
         jq = ./modules/jq/home.nix;
         lsd = ./modules/lsd/home.nix;
         neovim = moduleFrom ./modules/neovim/home.nix { inherit neovim-pi; };
+        niri = ./modules/niri/home.nix;
         nixfmt = ./modules/nixfmt/home.nix;
         opencode = ./modules/opencode/home.nix;
         openssl = ./modules/openssl/home.nix;
@@ -119,6 +120,7 @@
         keyboard = ./modules/keyboard/nixos.nix;
         keyd = ./modules/keyd/nixos.nix;
         memory = ./modules/memory/nixos.nix;
+        niri = ./modules/niri/nixos.nix;
         nixpkgs = ./modules/nixpkgs/system.nix;
         perf = ./modules/perf/nixos.nix;
         pipewire = ./modules/pipewire/nixos.nix;
@@ -128,7 +130,9 @@
         workstation = moduleFrom ./roles/workstation/nixos.nix {
           inherit (self) nixosModules homeModules;
         };
-        graphical = moduleFrom ./roles/graphical/nixos.nix { inherit (self) nixosModules; };
+        graphical = moduleFrom ./roles/graphical/nixos.nix {
+          inherit (self) nixosModules homeModules;
+        };
         laptop = moduleFrom ./roles/laptop/nixos.nix { inherit (self) nixosModules; };
 
         dell-xps-14-da14260 = ./hardware/dell-xps-14-da14260/nixos.nix;

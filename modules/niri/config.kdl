@@ -1,0 +1,211 @@
+// Joel's niri: how it behaves. The colours come from theme.kdl, which
+// home.nix writes from jitsusama.theme. niri's own guide to every section:
+// https://github.com/niri-wm/niri/wiki/Configuration:-Introduction
+//
+// The keys follow Joel's own habits, from his i3, zellij and Neovim
+// configurations: Super for the compositor, the arrows for moving, Shift to
+// carry a window along, and nothing that ends the session on a bare chord.
+
+include "theme.kdl"
+
+input {
+    keyboard {
+        // Every keyboard reaches niri as US QWERTY: Joel's own lays out
+        // Colemak in its firmware, and keyd does it below niri for a laptop's.
+        xkb {
+            layout "us"
+        }
+        repeat-delay 200
+        repeat-rate 40
+    }
+
+    // As on his Mac: press to click, two fingers for the right button, and
+    // content that follows the fingers.
+    touchpad {
+        click-method "clickfinger"
+        natural-scroll
+        dwt
+    }
+
+    // A touchscreen is the laptop's own panel, which Linux names eDP-1.
+    // Unmapped, it would stretch across every screen plugged in.
+    touch {
+        map-to-output "eDP-1"
+    }
+
+    // Focus follows the pointer, as it did in i3, without scrolling the
+    // view to reveal a window the pointer only grazes.
+    focus-follows-mouse max-scroll-amount="0%"
+}
+
+layout {
+    gaps 10
+    center-focused-column "never"
+    default-column-width {
+        proportion 0.5
+    }
+    preset-column-widths {
+        proportion 0.33333
+        proportion 0.5
+        proportion 0.66667
+    }
+
+    // A thin border marks the focused window; no ring, no shadow, square
+    // corners.
+    focus-ring {
+        off
+    }
+    border {
+        width 2
+    }
+}
+
+// Programs draw no title bars of their own; niri's border says enough.
+prefer-no-csd
+
+// niri copies every screenshot to the clipboard and saves it here too.
+screenshot-path "~/Pictures/Screenshots/%Y-%m-%d %H-%M-%S.png"
+
+hotkey-overlay {
+    skip-at-startup
+}
+
+// Quick, and never in the way: a spring carries a swipe's speed and covers
+// 98% of the distance in 150 ms; windows open and close on Omarchy's
+// ease-out curve, shortened.
+animations {
+    workspace-switch {
+        spring damping-ratio=1.0 stiffness=1600 epsilon=0.001
+    }
+    horizontal-view-movement {
+        spring damping-ratio=1.0 stiffness=1600 epsilon=0.001
+    }
+    window-movement {
+        spring damping-ratio=1.0 stiffness=1600 epsilon=0.001
+    }
+    window-resize {
+        spring damping-ratio=1.0 stiffness=1600 epsilon=0.001
+    }
+    overview-open-close {
+        spring damping-ratio=1.0 stiffness=1600 epsilon=0.001
+    }
+    window-open {
+        duration-ms 150
+        curve "cubic-bezier" 0.23 1 0.32 1
+    }
+    window-close {
+        duration-ms 100
+        curve "cubic-bezier" 0.23 1 0.32 1
+    }
+    screenshot-ui-open {
+        duration-ms 100
+        curve "cubic-bezier" 0.23 1 0.32 1
+    }
+}
+
+binds {
+    // Programs, as in i3. The launcher arrives with the shell.
+    Super+Return { spawn "kitty"; }
+    Super+Shift+Slash { show-hotkey-overlay; }
+
+    // Closing is destructive, so it takes Shift, as in i3.
+    Super+Shift+Q repeat=false { close-window; }
+
+    // Focus with the arrows; Shift carries the window along.
+    Super+Left { focus-column-left; }
+    Super+Right { focus-column-right; }
+    Super+Up { focus-window-up; }
+    Super+Down { focus-window-down; }
+    Super+Shift+Left { move-column-left; }
+    Super+Shift+Right { move-column-right; }
+    Super+Shift+Up { move-window-up; }
+    Super+Shift+Down { move-window-down; }
+    Super+Home { focus-column-first; }
+    Super+End { focus-column-last; }
+    Super+Shift+Home { move-column-to-first; }
+    Super+Shift+End { move-column-to-last; }
+
+    // Ctrl reaches across to the other screens.
+    Super+Ctrl+Left { focus-monitor-left; }
+    Super+Ctrl+Right { focus-monitor-right; }
+    Super+Ctrl+Up { focus-monitor-up; }
+    Super+Ctrl+Down { focus-monitor-down; }
+    Super+Ctrl+Shift+Left { move-column-to-monitor-left; }
+    Super+Ctrl+Shift+Right { move-column-to-monitor-right; }
+    Super+Ctrl+Shift+Up { move-column-to-monitor-up; }
+    Super+Ctrl+Shift+Down { move-column-to-monitor-down; }
+
+    // Workspaces by number, as in i3; Page Up and Down walk through them.
+    Super+1 { focus-workspace 1; }
+    Super+2 { focus-workspace 2; }
+    Super+3 { focus-workspace 3; }
+    Super+4 { focus-workspace 4; }
+    Super+5 { focus-workspace 5; }
+    Super+6 { focus-workspace 6; }
+    Super+7 { focus-workspace 7; }
+    Super+8 { focus-workspace 8; }
+    Super+9 { focus-workspace 9; }
+    Super+Shift+1 { move-column-to-workspace 1; }
+    Super+Shift+2 { move-column-to-workspace 2; }
+    Super+Shift+3 { move-column-to-workspace 3; }
+    Super+Shift+4 { move-column-to-workspace 4; }
+    Super+Shift+5 { move-column-to-workspace 5; }
+    Super+Shift+6 { move-column-to-workspace 6; }
+    Super+Shift+7 { move-column-to-workspace 7; }
+    Super+Shift+8 { move-column-to-workspace 8; }
+    Super+Shift+9 { move-column-to-workspace 9; }
+    Super+Page_Up { focus-workspace-up; }
+    Super+Page_Down { focus-workspace-down; }
+    Super+Shift+Page_Up { move-column-to-workspace-up; }
+    Super+Shift+Page_Down { move-column-to-workspace-down; }
+    Super+Tab repeat=false { toggle-overview; }
+
+    // Sizes: r cycles the presets, as resizing was r in i3 and zellij; equals
+    // and minus grow and shrink, as in zellij. Shift turns to the height.
+    Super+R { switch-preset-column-width; }
+    Super+Shift+R { switch-preset-column-width-back; }
+    Super+Equal { set-column-width "+10%"; }
+    Super+Minus { set-column-width "-10%"; }
+    Super+Shift+Equal { set-window-height "+10%"; }
+    Super+Shift+Minus { set-window-height "-10%"; }
+
+    // Layout, with i3's letters where niri has the same idea.
+    Super+F { fullscreen-window; }
+    Super+Shift+F { toggle-window-floating; }
+    Super+W { toggle-column-tabbed-display; }
+    Super+M { maximize-column; }
+    Super+E { maximize-window-to-edges; }
+    Super+C { center-column; }
+    Super+BracketLeft { consume-or-expel-window-left; }
+    Super+BracketRight { consume-or-expel-window-right; }
+
+    // Hand every key to the focused program, as zellij's locked mode does,
+    // for a virtual machine or a remote desktop. The same chord gives them
+    // back.
+    Super+Escape allow-inhibiting=false { toggle-keyboard-shortcuts-inhibit; }
+
+    // Hardware keys, which also work at the lock screen.
+    XF86AudioRaiseVolume allow-when-locked=true {
+        spawn-sh "wpctl set-volume -l 1.0 @DEFAULT_AUDIO_SINK@ 5%+"
+    }
+    XF86AudioLowerVolume allow-when-locked=true {
+        spawn-sh "wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%-"
+    }
+    XF86AudioMute allow-when-locked=true {
+        spawn-sh "wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle"
+    }
+    XF86AudioMicMute allow-when-locked=true {
+        spawn-sh "wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle"
+    }
+    XF86MonBrightnessUp allow-when-locked=true {
+        spawn "brightnessctl" "--class=backlight" "set" "+5%"
+    }
+    XF86MonBrightnessDown allow-when-locked=true {
+        spawn "brightnessctl" "--class=backlight" "set" "5%-"
+    }
+
+    // Screenshots: pick a region, the whole screen, or one window.
+    Print { screenshot; }
+    Shift+Print { screenshot-screen; }
+    Ctrl+Print { screenshot-window; }
+}
