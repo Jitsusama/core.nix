@@ -12,6 +12,10 @@
       url = "github:nix-community/home-manager";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    treefmt-nix = {
+      url = "github:numtide/treefmt-nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
     wallpapers.url = "github:Jitsusama/wallpapers.nix";
     neovim-pi = {
       url = "github:Jitsusama/neovim.pi";
@@ -24,10 +28,18 @@
       self,
       nixpkgs,
       home-manager,
+      treefmt-nix,
       wallpapers,
       neovim-pi,
     }:
     let
+      systems = [
+        "x86_64-linux"
+        "aarch64-darwin"
+      ];
+      forEachSystem = f: nixpkgs.lib.genAttrs systems (system: f nixpkgs.legacyPackages.${system});
+      treefmt = pkgs: treefmt-nix.lib.evalModule pkgs ./treefmt.nix;
+
       # The module a file makes once it's given what it takes from here. The
       # key gives it the identity a path import has, so importing it twice
       # counts once and disabledModules can name it.
@@ -103,6 +115,12 @@
         };
         graphical = moduleFrom ./roles/graphical/nixos.nix { inherit (self) nixosModules; };
       };
+
+      formatter = forEachSystem (pkgs: (treefmt pkgs).config.build.wrapper);
+
+      checks = forEachSystem (pkgs: {
+        formatting = (treefmt pkgs).config.build.check self;
+      });
 
       # What dotfiles and the work repository import today: every module of
       # each class, in the order they were imported before the modules above
