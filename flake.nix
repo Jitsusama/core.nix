@@ -97,6 +97,7 @@
         home-manager = moduleFrom ./modules/home-manager/darwin.nix { inherit home-manager; };
         homebrew = ./modules/homebrew/darwin.nix;
         macos-defaults = ./modules/macos-defaults/darwin.nix;
+        memory = ./modules/memory/nixos.nix;
         nixpkgs = ./modules/nixpkgs/system.nix;
         zsh = ./modules/zsh/darwin.nix;
 
@@ -112,6 +113,7 @@
       nixosModules = {
         fonts = ./modules/fonts/system.nix;
         home-manager = moduleFrom ./modules/home-manager/nixos.nix { inherit home-manager; };
+        memory = ./modules/memory/nixos.nix;
         nixpkgs = ./modules/nixpkgs/system.nix;
 
         base = moduleFrom ./roles/base/nixos.nix { inherit (self) nixosModules homeModules; };
