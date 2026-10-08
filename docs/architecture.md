@@ -19,6 +19,7 @@ Each word has one meaning, used the same way in code, directories and docs.
 | hardware           | one machine model, and what it needs          | `nixosModules.dell-xps-14-da14260`                      |
 | layer              | what one side adds: personal or work          | the machine repository's own modules                    |
 | identity           | who Joel is on a machine                      | `jitsusama.identity.email`                              |
+| theme              | the look Joel's programs share                | `jitsusama.theme.colors.accent`                         |
 | account            | the user home-manager configures              | `home-manager.users.<account>`                          |
 
 Modules are named after the program or subsystem they configure, never after
@@ -176,6 +177,7 @@ modules and roles; `flake.nix` says so beside them.
 | `jitsusama.kernel.cpu`       | the CPU the kernel is compiled for, set per hardware |
 | `jitsusama.kernel.profile`   | the kernel's AutoFDO profile, recorded per machine   |
 | `jitsusama.keyboard.builtIn` | the machine's own keyboard, set per hardware         |
+| `jitsusama.theme.colors.*`   | each colour of the theme, Omarchy's Osaka Jade       |
 
 Renaming or removing an output or an option is a breaking change. A machine
 repository sees it only when it runs `nix flake update core`. [Decision
