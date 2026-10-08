@@ -99,6 +99,17 @@ let
       name = "${where}-${name}";
       value = evaluates "${where}-${name}" (addToBareMachine module);
     }) modules;
+
+  # The files a machine imports, and the examples that show how. Documentation
+  # may name an employer; these may not.
+  imported = lib.fileset.toSource {
+    root = ./.;
+    fileset = lib.fileset.unions [
+      ./modules
+      ./roles
+      ./examples
+    ];
+  };
 in
 checkEach "nixos" (module: bareNixos [ module ]) self.nixosModules
 // checkEach "darwin" (module: bareDarwin [ module ]) self.darwinModules
@@ -149,4 +160,18 @@ checkEach "nixos" (module: bareNixos [ module ]) self.nixosModules
       inherit nix-darwin;
     }
   );
+
+  # core.nix is public and shared by personal and work machines alike, so
+  # anything tied to an employer belongs in the work repository instead.
+  nothing-work-specific =
+    pkgs.runCommandLocal "nothing-work-specific" { nativeBuildInputs = [ pkgs.ripgrep ]; }
+      ''
+        cd ${imported}
+        if rg --ignore-case --fixed-strings --line-number --no-heading \
+          -e shopify -e /opt/dev -e gitstream -e devx .; then
+          echo "core.nix is shared by every machine; the lines above belong in the work repository."
+          exit 1
+        fi
+        touch $out
+      '';
 }
