@@ -10,6 +10,7 @@ nixosConfigurations.optimus = nixpkgs.lib.nixosSystem {
   modules = [
     core.nixosModules.workstation
     core.nixosModules.graphical
+    core.nixosModules.laptop
     core.nixosModules.dell-xps-14-da14260
     ./machines/optimus
   ];
@@ -22,6 +23,12 @@ The hardware decides the kernel: it imports the kernel module and sets
 in that model's `boot.kernelPatches`, under the same bar as the kernel's own
 patches: a clear purpose, from the people who maintain the driver, and
 accepted or on its way upstream.
+
+Hardware also says which keyboard is the machine's own, in
+`jitsusama.keyboard.builtIn`, so the `laptop` role can give that keyboard
+Colemak Mod-DH and leave every other keyboard as it is. The layout is a
+choice, so it lives in the role; which keyboard is built in is a fact, so it
+lives here.
 
 What stays with the machine: its disks and file systems, its name, and
 anything that's a preference rather than a need, such as a charge limit.
@@ -37,6 +44,7 @@ IPU7 behind Intel's CVS bridge, and Intel's BE211 Wi-Fi 7.
 | -------- | ---------------------------------------------------------------------- |
 | CPU      | the kernel compiled for `pantherlake`, microcode, thermald             |
 | Kernel   | the CVS patch below                                                    |
+| Keyboard | named as the built-in one: the embedded controller's PS/2 keyboard     |
 | Boot     | NVMe, USB and Thunderbolt drivers in the initrd, so a dock can unlock  |
 | Graphics | Mesa, with VA-API (iHD), oneVPL, OpenCL and Level Zero for the Arc GPU |
 | NPU      | `intel_vpu` with Level Zero                                            |

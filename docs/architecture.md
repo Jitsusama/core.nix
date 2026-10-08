@@ -46,8 +46,9 @@ nixosSystem, in a machine repository           file it opens
   directory per tool under `modules/`. The file name says which kind each is.
 - **Roles** say what a machine is for: `base` for every machine,
   `workstation` for one Joel writes code on, `graphical` for one with a screen
-  in front of him. A role only imports. A system role imports the system
-  modules and adds its home-manager half to every account.
+  in front of him, `laptop` for one he carries. A role only imports. A system
+  role imports the system modules and adds its home-manager half to every
+  account.
 - **Hardware** is one machine model: what it needs to run well, in
   `hardware/<model>/nixos.nix`. It decides the kernel. [The hardware
   guide][5] says what each one does.
@@ -89,9 +90,10 @@ through `home-manager.sharedModules`:
 }
 ```
 
-Roles build on one another by importing: `workstation` and `graphical` both
-import `base`. A machine playing both imports `base` twice, which counts once,
-because every role has a fixed identity; the next section explains how.
+Roles build on one another by importing: `workstation`, `graphical` and
+`laptop` all import `base`. A machine playing several imports `base` more than
+once, which counts once, because every role has a fixed identity; the next
+section explains how.
 
 ## How Inputs Reach a File
 
@@ -167,11 +169,12 @@ fixed:
 The last two rows exist only until both machine repositories import the
 modules and roles; `flake.nix` says so beside them.
 
-| Option                     | Means                                                |
-| -------------------------- | ---------------------------------------------------- |
-| `jitsusama.identity.name`  | the name Joel's work is attributed to                |
-| `jitsusama.identity.email` | the email address it's attributed to, set per layer  |
-| `jitsusama.kernel.cpu`     | the CPU the kernel is compiled for, set per hardware |
+| Option                       | Means                                                |
+| ---------------------------- | ---------------------------------------------------- |
+| `jitsusama.identity.name`    | the name Joel's work is attributed to                |
+| `jitsusama.identity.email`   | the email address it's attributed to, set per layer  |
+| `jitsusama.kernel.cpu`       | the CPU the kernel is compiled for, set per hardware |
+| `jitsusama.keyboard.builtIn` | the machine's own keyboard, set per hardware         |
 
 Renaming or removing an output or an option is a breaking change. A machine
 repository sees it only when it runs `nix flake update core`. [Decision

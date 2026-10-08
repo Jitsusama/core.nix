@@ -6,10 +6,17 @@
 { nixosModules }:
 { pkgs, ... }:
 {
-  imports = [ nixosModules.kernel ];
+  imports = [
+    nixosModules.kernel
+    nixosModules.keyboard
+  ];
 
   nixpkgs.hostPlatform = "x86_64-linux";
   jitsusama.kernel.cpu = "pantherlake";
+
+  # The keyboard is wired to the embedded controller, which presents it as a
+  # PS/2 keyboard.
+  jitsusama.keyboard.builtIn = [ "0001:0001" ];
 
   # Microcode, and the firmware for Wi-Fi, Bluetooth, the GPU and the audio
   # DSP, which Sound Open Firmware runs.

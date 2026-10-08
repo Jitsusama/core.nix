@@ -115,6 +115,8 @@
         fonts = ./modules/fonts/system.nix;
         home-manager = moduleFrom ./modules/home-manager/nixos.nix { inherit home-manager; };
         kernel = ./modules/kernel/nixos.nix;
+        keyboard = ./modules/keyboard/nixos.nix;
+        keyd = moduleFrom ./modules/keyd/nixos.nix { inherit (self) nixosModules; };
         memory = ./modules/memory/nixos.nix;
         nixpkgs = ./modules/nixpkgs/system.nix;
         perf = ./modules/perf/nixos.nix;
@@ -124,6 +126,7 @@
           inherit (self) nixosModules homeModules;
         };
         graphical = moduleFrom ./roles/graphical/nixos.nix { inherit (self) nixosModules; };
+        laptop = moduleFrom ./roles/laptop/nixos.nix { inherit (self) nixosModules; };
 
         dell-xps-14-da14260 = moduleFrom ./hardware/dell-xps-14-da14260/nixos.nix {
           inherit (self) nixosModules;
