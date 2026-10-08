@@ -3,13 +3,19 @@
 # four CS35L57 SoundWire amplifiers, an IPU7 camera behind Intel's CVS bridge,
 # and Intel's BE211 Wi-Fi 7. docs/hardware.md says what works, where each
 # workaround comes from, and what's left.
-{ nixosModules }:
 { pkgs, ... }:
 {
-  imports = [ nixosModules.kernel ];
+  imports = [
+    ../../modules/kernel/nixos.nix
+    ../../modules/keyboard/nixos.nix
+  ];
 
   nixpkgs.hostPlatform = "x86_64-linux";
   jitsusama.kernel.cpu = "pantherlake";
+
+  # The keyboard is wired to the embedded controller, which presents it as a
+  # PS/2 keyboard.
+  jitsusama.keyboard.builtIn = [ "0001:0001" ];
 
   # Microcode, and the firmware for Wi-Fi, Bluetooth, the GPU and the audio
   # DSP, which Sound Open Firmware runs.

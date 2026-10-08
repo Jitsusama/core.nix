@@ -25,7 +25,7 @@ other files. So:
 - A module is named after the program or subsystem it configures (`kitty`,
   `zsh`, `fonts`), never after an abstraction.
 - A role is named after what a machine is for: `base`, `workstation`,
-  `graphical`.
+  `graphical`, `laptop`.
 - No prefixes. The output and the directory already say what kind of thing a
   name is, and two names in `flake.nix` can't collide.
 
