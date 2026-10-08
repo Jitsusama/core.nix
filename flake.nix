@@ -12,6 +12,10 @@
       url = "github:nix-community/home-manager";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    nix-darwin = {
+      url = "github:nix-darwin/nix-darwin";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
     treefmt-nix = {
       url = "github:numtide/treefmt-nix";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -28,6 +32,7 @@
       self,
       nixpkgs,
       home-manager,
+      nix-darwin,
       treefmt-nix,
       wallpapers,
       neovim-pi,
@@ -118,9 +123,18 @@
 
       formatter = forEachSystem (pkgs: (treefmt pkgs).config.build.wrapper);
 
-      checks = forEachSystem (pkgs: {
-        formatting = (treefmt pkgs).config.build.check self;
-      });
+      checks = forEachSystem (
+        pkgs:
+        import ./checks.nix {
+          inherit
+            self
+            pkgs
+            nixpkgs
+            nix-darwin
+            ;
+          formatting = (treefmt pkgs).config.build.check self;
+        }
+      );
 
       # What dotfiles and the work repository import today: every module of
       # each class, in the order they were imported before the modules above
