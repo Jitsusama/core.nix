@@ -6,7 +6,8 @@
 # Import this with nixpkgs rather than calling it with callPackage, so the
 # kernel's override stays the one nixpkgs gives it: NixOS uses that to add
 # the features a machine needs. Then give it the CPU, as Clang's -march names
-# it, or null for any x86-64 machine.
+# it, or null for any x86-64 machine, and the machine's AutoFDO profile, or
+# null for none.
 {
   lib,
   fetchpatch,
@@ -17,7 +18,7 @@
   writeText,
   ...
 }:
-{ cpu }:
+{ cpu, profile }:
 let
   # Clang compiles and LLD links, which ThinLTO needs. LLVM 22 rather than
   # nixpkgs's default 21, whose LLD breaks objtool when compiled with GCC 16,
@@ -33,8 +34,13 @@ linux_7_2.override {
   stdenv = clangStdenv;
 
   # Compile for the machine's own CPU. The kernel adds these flags after the
-  # generic -march and -mtune of its own Makefile, so they win.
-  extraMakeFlags = [ "LLVM=1" ] ++ lib.optional (cpu != null) "KCFLAGS=@${cpuFlags}";
+  # generic -march and -mtune of its own Makefile, so they win. Then optimize
+  # for what the profile recorded the kernel doing.
+  extraMakeFlags = [
+    "LLVM=1"
+  ]
+  ++ lib.optional (cpu != null) "KCFLAGS=@${cpuFlags}"
+  ++ lib.optional (profile != null) "CLANG_AUTOFDO_PROFILE=${profile}";
 
   # Fail when nixpkgs's configuration or ours names an option this kernel
   # doesn't have, rather than dropping it silently.

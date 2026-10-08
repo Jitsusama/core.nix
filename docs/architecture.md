@@ -174,6 +174,7 @@ modules and roles; `flake.nix` says so beside them.
 | `jitsusama.identity.name`    | the name Joel's work is attributed to                |
 | `jitsusama.identity.email`   | the email address it's attributed to, set per layer  |
 | `jitsusama.kernel.cpu`       | the CPU the kernel is compiled for, set per hardware |
+| `jitsusama.kernel.profile`   | the kernel's AutoFDO profile, recorded per machine   |
 | `jitsusama.keyboard.builtIn` | the machine's own keyboard, set per hardware         |
 
 Renaming or removing an output or an option is a breaking change. A machine
