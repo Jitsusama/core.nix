@@ -121,6 +121,7 @@
         memory = ./modules/memory/nixos.nix;
         nixpkgs = ./modules/nixpkgs/system.nix;
         perf = ./modules/perf/nixos.nix;
+        pipewire = ./modules/pipewire/nixos.nix;
         power-profiles-daemon = ./modules/power-profiles-daemon/nixos.nix;
 
         base = moduleFrom ./roles/base/nixos.nix { inherit (self) nixosModules homeModules; };
