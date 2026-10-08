@@ -80,6 +80,8 @@ Renaming or removing an output or a `jitsusama.*` option is breaking: mark it
 - [docs/modules.md][4]: adding a module or a role, and changing one from a
   machine repository
 - [docs/machines.md][5]: building a machine from core.nix
+- [docs/kernel.md][7]: the kernel, its patches and settings, and changing
+  them
 - [docs/decisions/][6]: why the design is what it is
 
 [1]: docs/testing.md
@@ -88,3 +90,4 @@ Renaming or removing an output or a `jitsusama.*` option is breaking: mark it
 [4]: docs/modules.md
 [5]: docs/machines.md
 [6]: docs/decisions/
+[7]: docs/kernel.md

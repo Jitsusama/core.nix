@@ -11,6 +11,7 @@ replaces it and says so.
 | [0003][3] | core.nix owns the pins                       |
 | [0004][4] | home-manager runs inside the system          |
 | [0005][5] | Modules and options are the interface        |
+| [0006][6] | Build the kernel here                        |
 
 A new record copies the shape of the others: Status, Context, Decision,
 Alternatives and Consequences, numbered after the last.
@@ -20,3 +21,4 @@ Alternatives and Consequences, numbered after the last.
 [3]: 0003-core-owns-the-pins.md
 [4]: 0004-home-manager-inside-the-system.md
 [5]: 0005-modules-and-options-are-the-interface.md
+[6]: 0006-build-the-kernel-here.md

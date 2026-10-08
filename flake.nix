@@ -1,8 +1,9 @@
 # The index of core.nix: every module and role it offers, by module system,
-# and what each one is given. Modules live in modules/<tool>/ and roles in
-# roles/<role>/, one file per module system: home.nix for home-manager,
-# darwin.nix, nixos.nix, or system.nix for one file that is both of the last
-# two. To see how any file fits, find its path here.
+# the packages it builds, and what each one is given. Modules live in
+# modules/<tool>/ and roles in roles/<role>/, one file per module system:
+# home.nix for home-manager, darwin.nix, nixos.nix, or system.nix for one file
+# that is both of the last two. A module's other files sit beside it. To see
+# how any file fits, find its path here.
 {
   description = "Joel's machines as a library: the modules and roles every machine builds from";
 
@@ -112,13 +113,25 @@
       nixosModules = {
         fonts = ./modules/fonts/system.nix;
         home-manager = moduleFrom ./modules/home-manager/nixos.nix { inherit home-manager; };
+        kernel = ./modules/kernel/nixos.nix;
+        memory = ./modules/memory/nixos.nix;
         nixpkgs = ./modules/nixpkgs/system.nix;
+        perf = ./modules/perf/nixos.nix;
 
         base = moduleFrom ./roles/base/nixos.nix { inherit (self) nixosModules homeModules; };
         workstation = moduleFrom ./roles/workstation/nixos.nix {
           inherit (self) nixosModules homeModules;
         };
         graphical = moduleFrom ./roles/graphical/nixos.nix { inherit (self) nixosModules; };
+      };
+
+      # What core.nix builds that a cache can hold apart from any machine: the
+      # kernel for any x86-64 machine. A machine builds its own from the same
+      # file, for its CPU.
+      packages.x86_64-linux = {
+        kernel = import ./modules/kernel/package.nix nixpkgs.legacyPackages.x86_64-linux {
+          cpu = null;
+        };
       };
 
       formatter = forEachSystem (pkgs: (treefmt pkgs).config.build.wrapper);

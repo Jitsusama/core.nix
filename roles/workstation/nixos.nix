@@ -2,6 +2,10 @@
 # account.
 { nixosModules, homeModules }:
 {
-  imports = [ nixosModules.base ];
+  imports = [
+    nixosModules.base
+    nixosModules.memory
+    nixosModules.perf
+  ];
   home-manager.sharedModules = [ homeModules.workstation ];
 }
