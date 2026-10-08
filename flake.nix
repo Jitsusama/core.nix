@@ -129,7 +129,9 @@
       # kernel for any x86-64 machine. A machine builds its own from the same
       # file, for its CPU.
       packages.x86_64-linux = {
-        kernel = import ./modules/kernel/package.nix nixpkgs.legacyPackages.x86_64-linux { cpu = null; };
+        kernel = import ./modules/kernel/package.nix nixpkgs.legacyPackages.x86_64-linux {
+          cpu = null;
+        };
       };
 
       formatter = forEachSystem (pkgs: (treefmt pkgs).config.build.wrapper);
