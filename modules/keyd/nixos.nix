@@ -1,7 +1,8 @@
-# Joel types Colemak Mod-DH on a laptop's own keyboard and US QWERTY on any
-# other, a YubiKey included. keyd remaps the built-in keyboard alone, below
-# the compositor, so the layout holds everywhere: the console, the session,
-# and the systemd initrd, where the disk's PIN is typed.
+# Joel types Colemak Mod-DH. His own keyboard lays it out in its firmware and
+# sends US key codes, as a YubiKey does, but a laptop's keyboard needs the
+# layout from the system. keyd remaps the built-in keyboard alone, below the
+# compositor, so the layout holds everywhere: the console, the session, and
+# the systemd initrd, where the disk's PIN is typed.
 { config, lib, ... }:
 {
   imports = [ ../keyboard/nixos.nix ];
