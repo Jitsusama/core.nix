@@ -154,6 +154,7 @@ fixed:
 | `homeModules`                | home-manager modules and roles                                  |
 | `darwinModules`              | nix-darwin modules and roles                                    |
 | `nixosModules`               | NixOS modules and roles                                         |
+| `packages`                   | what core builds itself: the kernel, for x86_64-linux           |
 | `checks`                     | every module and role evaluated, the examples, formatting       |
 | `formatter`                  | treefmt, for `nix fmt`                                          |
 | `home-manager`, `nix-darwin` | what the machine repositories imported before the outputs above |
@@ -162,10 +163,11 @@ fixed:
 The last two rows exist only until both machine repositories import the
 modules and roles; `flake.nix` says so beside them.
 
-| Option                     | Means                                               |
-| -------------------------- | --------------------------------------------------- |
-| `jitsusama.identity.name`  | the name Joel's work is attributed to               |
-| `jitsusama.identity.email` | the email address it's attributed to, set per layer |
+| Option                     | Means                                                |
+| -------------------------- | ---------------------------------------------------- |
+| `jitsusama.identity.name`  | the name Joel's work is attributed to                |
+| `jitsusama.identity.email` | the email address it's attributed to, set per layer  |
+| `jitsusama.kernel.cpu`     | the CPU the kernel is compiled for, set per hardware |
 
 Renaming or removing an output or an option is a breaking change. A machine
 repository sees it only when it runs `nix flake update core`. [Decision

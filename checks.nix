@@ -100,6 +100,46 @@ let
       value = evaluates "${where}-${name}" (addToBareMachine module);
     }) modules;
 
+  # The line a kernel setting leaves in the finished configuration.
+  kernelConfigLine =
+    option: setting:
+    if setting ? freeform then
+      "CONFIG_${option}=${setting.freeform}"
+    else if setting.tristate == "n" then
+      "# CONFIG_${option} is not set"
+    else
+      "CONFIG_${option}=${setting.tristate}";
+
+  # The kernel's patches apply, its configuration resolves, and every setting
+  # in settings.nix is in the result: Kconfig quietly drops a setting whose
+  # dependencies aren't met. An optional setting also holds when the kernel
+  # doesn't offer its option at all. Only the configuration is built, in
+  # minutes; the kernel itself takes far longer than a check should.
+  kernelSettingsHold =
+    let
+      settings = import ./modules/kernel/settings.nix { inherit lib; };
+      expect =
+        option: setting:
+        lib.escapeShellArgs [
+          "expect"
+          (kernelConfigLine option setting)
+          option
+          (if setting.optional or false then "optional" else "required")
+        ];
+    in
+    pkgs.runCommandLocal "kernel-settings-hold" { } ''
+      config=${self.packages.x86_64-linux.kernel.configfile}
+      failed=
+      expect() {
+        grep -qxF "$1" "$config" && return
+        [ "$3" = optional ] && ! grep -qE "^(# )?CONFIG_$2[= ]" "$config" && return
+        echo "Kernel setting didn't hold: $1"
+        failed=1
+      }
+      ${lib.concatLines (lib.mapAttrsToList expect settings)}
+      [ -z "$failed" ] && touch $out
+    '';
+
   # The files a machine imports, and the examples that show how. Documentation
   # may name an employer; these may not.
   imported = lib.fileset.toSource {
@@ -174,4 +214,7 @@ checkEach "nixos" (module: bareNixos [ module ]) self.nixosModules
         fi
         touch $out
       '';
+}
+// lib.optionalAttrs (pkgs.stdenv.hostPlatform.system == "x86_64-linux") {
+  kernel-settings-hold = kernelSettingsHold;
 }

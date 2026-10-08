@@ -3,7 +3,9 @@
 `nix flake check` runs everything below, and CI runs it on every pull request
 and on main. Every check is defined in [`checks.nix`][1]. They evaluate
 machines without building them, which takes about three minutes on a 16-core
-laptop once the inputs are downloaded.
+laptop once the inputs are downloaded. The one exception is the kernel's
+configuration, which is built on x86_64-linux in a few more minutes, since
+that's the only way to know its patches apply.
 
 ## What Each Check Proves
 
@@ -20,6 +22,7 @@ laptop once the inputs are downloaded.
 | `example-darwin`                | the Mac example machine evaluates                         |
 | `formatting`                    | everything is formatted and passes the linters            |
 | `nothing-work-specific`         | no module, role or example names anything work-only       |
+| `kernel-settings-hold`          | the kernel's patches apply and every setting holds        |
 
 A bare machine has nothing but home-manager, nixpkgs' settings and one
 account, which every machine has. So a module that quietly relies on another,
@@ -30,6 +33,9 @@ the account, so it is checked too.
 The composition checks hold the promises roles make when combined, and the
 examples use core only through its outputs, as a machine repository does, so
 they test the library from a consumer's side.
+
+The kernel check builds only the configuration: the patched source, run
+through Kconfig. [The kernel guide][2] says what it catches.
 
 The checks read the modules from `flake.nix`, so a new module or role is
 checked as soon as it is named there. The Mac checks evaluate on Linux, so one
@@ -66,3 +72,4 @@ the break from a saved copy of the file, not from git, so that a staged break
 isn't restored by accident.
 
 [1]: ../checks.nix
+[2]: kernel.md

@@ -11,7 +11,7 @@ live in the repositories that build on it.
 | ----------------------------- | ------------------------------------------------------- | --------- |
 | core.nix                      | Modules, roles, version pins and checks                 |           |
 | dotfiles                      | Personal machines and the personal layer                | core.nix  |
-| `//home/joel-gerber/dotfiles` | Work machines and the work layer, in Shopify's monorepo | core.nix  |
+| `//home/joel-gerber/dotfiles` | Work machines and the work layer, in Shopify's monorepo   | core.nix  |
 
 Anything every machine shares belongs here. Anything personal or tied to work
 lives in the repository for that side, and the two never import each other.
@@ -139,6 +139,7 @@ nix build --override-input core path:$HOME/src/core.nix \
   repository.
 - [Machines][2]: building a machine from core.nix.
 - [Testing][6]: what the checks catch.
+- [The kernel][8]: the kernel core.nix builds for NixOS, and how to change it.
 - [Decisions][7]: what was decided, against what, and why.
 
 [1]: flake.nix
@@ -148,4 +149,5 @@ nix build --override-input core path:$HOME/src/core.nix \
 [5]: docs/modules.md
 [6]: docs/testing.md
 [7]: docs/decisions/README.md
+[8]: docs/kernel.md
 [8]: examples/
