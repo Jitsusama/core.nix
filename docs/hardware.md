@@ -111,6 +111,15 @@ speaker tuning too.
 - **Omarchy's Panel Replay patches.** Upstream turns Panel Replay off on this
   panel because it lags; Omarchy's patches turn it back on with a workaround
   nobody upstream has taken.
+- **intel-lpmd.** Omarchy runs Intel's low-power mode daemon here. When the
+  machine goes quiet, its profile for this CPU confines every task to the four
+  low-power cores until a burst of work arrives, so the first keystroke after
+  a pause lands on the slowest cores. Intel's Thread Director already steers
+  light work to efficient cores without fencing anything in.
+- **Dell's privacy driver (`DELL_WMI_PRIVACY`).** Omarchy's kernel has it, but
+  on this laptop it reports the microphone, camera shutter and privacy screen
+  all as unsupported. The mute key's light comes from `dell-laptop`, which is
+  in.
 
 [1]: kernel.md
 [2]: ../hardware/dell-xps-14-da14260/nixos.nix
