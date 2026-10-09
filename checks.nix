@@ -224,6 +224,18 @@ checkEach "nixos" (module: bareNixos [ module ]) (removeAttrs self.nixosModules 
       && (account machine).services.ssh-tpm-agent.enable
     );
 
+  # 1Password's Chrome extension talks to the desktop app through a helper in
+  # the onepassword group, and every account may unlock the app with its own
+  # password.
+  onepassword-works-with-chrome =
+    let
+      machine = bareNixos [ self.nixosModules.graphical ];
+    in
+    holds "onepassword-works-with-chrome" "1Password lacks its browser helper or its polkit owners." (
+      machine.config.security.wrappers."1Password-BrowserSupport".group or null == "onepassword"
+      && machine.config.programs._1password-gui.polkitPolicyOwners == [ "someone" ]
+    );
+
   # ssh-tpm-agent, and the signing that uses it, need the account to reach
   # the TPM, which the tpm module gives it.
   home-on-nixos-ssh-tpm-agent = evaluates "home-on-nixos-ssh-tpm-agent" (bareNixos [

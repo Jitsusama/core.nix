@@ -150,6 +150,7 @@
         networkmanager = ./modules/networkmanager/nixos.nix;
         niri = ./modules/niri/nixos.nix;
         nixpkgs = ./modules/nixpkgs/system.nix;
+        onepassword = ./modules/onepassword/nixos.nix;
         perf = ./modules/perf/nixos.nix;
         pipewire = ./modules/pipewire/nixos.nix;
         power-profiles-daemon = ./modules/power-profiles-daemon/nixos.nix;
