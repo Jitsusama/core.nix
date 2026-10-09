@@ -73,6 +73,7 @@
         bat = ./modules/bat/home.nix;
         broot = ./modules/broot/home.nix;
         btop = ./modules/btop/home.nix;
+        cargo = ./modules/cargo/home.nix;
         claude = ./modules/claude/home.nix;
         curl = ./modules/curl/home.nix;
         dig = ./modules/dig/home.nix;

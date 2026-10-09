@@ -276,6 +276,30 @@ checkEach "nixos" (module: bareNixos [ module ]) (removeAttrs self.nixosModules 
         touch $out
       '';
 
+    # cargo builds a program with the config an account gets, and mold is the
+    # linker that wrote it.
+    cargo-links-with-mold =
+      let
+        files = (account (bareNixos [ self.nixosModules.workstation ])).home.file;
+      in
+      pkgs.runCommandCC "cargo-links-with-mold"
+        {
+          nativeBuildInputs = [
+            pkgs.cargo
+            pkgs.rustc
+          ];
+        }
+        ''
+          export HOME=$PWD CARGO_HOME=$PWD/.cargo
+          mkdir -p .cargo hello/src
+          cp ${files.".cargo/config.toml".source} .cargo/config.toml
+          printf '[package]\nname = "hello"\nversion = "0.1.0"\nedition = "2024"\n' > hello/Cargo.toml
+          echo 'fn main() {}' > hello/src/main.rs
+          cargo build --offline --quiet --manifest-path hello/Cargo.toml
+          readelf -p .comment hello/target/debug/hello | grep mold
+          touch $out
+        '';
+
     # Boots a virtual machine through the whole install, since the disk layout
     # and Secure Boot decide whether a machine starts at all.
     secure-boot-installs = import ./tests/secure-boot.nix { inherit self pkgs; };
