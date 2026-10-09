@@ -1,10 +1,12 @@
-# Starts the graphical role's desktop in a virtual machine and uses it the way
-# Joel does: a notification appears, the volume and brightness bars come and
-# go as those change, the launcher finds and opens kitty, the lock screen
+# Starts the graphical role's desktop in a virtual machine and uses it the
+# way Joel does: a notification appears, the volume and brightness bars come
+# and go as those change, the launcher finds and opens kitty, the lock screen
 # refuses a wrong password and takes the right one, polkit's prompt lets the
-# account start a system service, and GTK programs draw in the theme. Each
-# part is checked by asking niri for the surface it drew, and photographed for
-# a person to look at. Quickshell has to start without a single QML error.
+# account start a system service, and GTK programs and monospaced text are in
+# the theme. niri says which surfaces it drew, photographs show their
+# colours, to the test and to a person looking, and the portal and fontconfig
+# answer for the settings. Quickshell has to start without a single QML
+# error.
 { self, pkgs }:
 let
   account = "jitsusama";
@@ -102,7 +104,7 @@ pkgs.testers.runNixOSTest {
   testScript =
     { nodes, ... }:
     let
-      inherit (nodes.machine.home-manager.users.${account}.jitsusama.theme) colors;
+      inherit (nodes.machine.home-manager.users.${account}.jitsusama.theme) colors font;
     in
     ''
       import json
@@ -233,6 +235,10 @@ pkgs.testers.runNixOSTest {
               " org.freedesktop.portal.Settings ReadOne ss org.freedesktop.appearance color-scheme"
           )
           t.assertIn("u 1", reply)
+
+      with subtest("monospace is the theme's font"):
+          family = as_account("${pkgs.fontconfig.bin}/bin/fc-match -f '%{family}' monospace")
+          t.assertIn("${font.family}", family)
 
       with subtest("GTK programs draw in the theme's colours"):
           zenity = "${pkgs.zenity}/bin/zenity --text-info --title=libadwaita --filename=${text}"

@@ -106,7 +106,8 @@ volume and brightness bars all read `Theme.qml`, which `home.nix` renders from
 the theme. A prompt that has to be a program of its own, such as the PIN prompt
 ssh-tpm-agent starts, is bemenu, which `modules/bemenu/home.nix` styles the same
 way. GTK programs, the file chooser among them, take the theme's colours from a
-stylesheet `modules/gtk/home.nix` writes.
+stylesheet `modules/gtk/home.nix` writes, and `modules/fontconfig/home.nix`
+makes the theme's font the one any program gets when it asks for monospace.
 
 ## Projects Bring Their Own Toolchains
 
