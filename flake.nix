@@ -195,9 +195,9 @@
         }
       );
 
-      # What dotfiles and the work repository import today: every module of
-      # each class, in the order they were imported before the modules above
-      # existed, so their machines build exactly as they did. The three that
+      # What machine repositories imported before the modules above existed:
+      # every module of each class, in the order they were imported then, so
+      # their machines build exactly as they did. The three that
       # take an input are applied directly rather than through moduleFrom,
       # whose extra level of imports would reorder lists such as Neovim's
       # plugins. These go once both import the modules and roles instead.

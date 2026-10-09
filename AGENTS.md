@@ -1,9 +1,8 @@
 # AGENTS.md
 
 core.nix is the shared library behind Joel's machines: NixOS, nix-darwin and
-home-manager modules, and the roles that group them. Machines live in two
-other repositories that build on it, dotfiles (personal) and
-`//home/joel-gerber/dotfiles` in Shopify's monorepo (work). It is plain Nix:
+home-manager modules, and the roles that group them. Machines live in the
+repositories that build on it, which core.nix never names. It is plain Nix:
 no framework, and nothing found by scanning the file tree.
 
 ## Map
@@ -47,8 +46,9 @@ meaning each; [docs/architecture.md][2] defines them.
   it in; don't translate it into Nix.
 - Never declare a setting another tool writes, and never put a secret or
   application state in a Nix value.
-- Nothing work-specific in `modules/`, `roles/`, `hardware/` or `examples/`: no
-  employer names, no `/opt/dev`. A check fails on it.
+- Name nothing that builds on core.nix, anywhere in it: no machine, no machine
+  repository, no employer. They name core.nix instead. `stands-alone` fails on
+  it.
 - Comments say why, in full sentences. A file opens with a comment saying
   what it is for when its path alone doesn't.
 - Lines stop at 100 characters; `nix fmt` decides the rest of the layout.

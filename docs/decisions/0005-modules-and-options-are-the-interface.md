@@ -6,11 +6,11 @@ Accepted, 2026-10-07.
 
 ## Context
 
-core.nix is a library. Two machine repositories build on it, one personal and
-one for work, and it has to serve personal and work laptops on NixOS and
-macOS, and perhaps servers later. Each repository adds its own layer and
-changes some of what core sets: the work layer sets a different email, adds
-its own zsh start-up code, and may drop a tool a role brought in.
+core.nix is a library. Machine repositories build on it, and it has to serve
+personal and work laptops on NixOS and macOS, and perhaps servers later. Each
+repository adds its own layer and changes some of what core sets: a layer may
+set a different email, add its own zsh start-up code, or drop a tool a role
+brought in.
 
 So the library needs an interface: what it hands its consumers, and how they
 change what it gives them. It must not become a framework they're forced into,

@@ -12,12 +12,12 @@ with the roles it plays, the repository's layer and a directory of the
 machine's own settings:
 
 ```nix
-nixosConfigurations.penelope = nixpkgs.lib.nixosSystem {
+nixosConfigurations.laptop = nixpkgs.lib.nixosSystem {
   modules = [
     core.nixosModules.workstation
     core.nixosModules.graphical
-    self.nixosModules.personal
-    ./machines/penelope
+    self.nixosModules.layer
+    ./machines/laptop
   ];
 };
 ```
@@ -31,30 +31,28 @@ each brings. A Mac is the same with `nix-darwin.lib.darwinSystem` and
 
 ## The Layer
 
-The layer is what one side adds to every machine of its own: the personal
-repository's apps and identity, or the work repository's tools. It's a set of
-modules in the machine repository, imported beside core's roles, and it sets
-core's options rather than repeating what core does:
+The layer is what a machine repository adds to every machine of its own,
+such as an identity or the apps no role brings. It's a set of modules in the
+machine repository, imported beside core's roles, and it sets core's options
+rather than repeating what core does:
 
 ```nix
-# layers/personal/home.nix
+# layer/home.nix
 {
-  jitsusama.identity.email = "joel@grrbrr.ca";
+  jitsusama.identity.email = "joel@example.com";
 }
 ```
-
-The two layers never import each other, so personal and work stay apart.
 
 ## The Machine's Own Directory
 
 It holds what belongs to that machine alone:
 
 ```nix
-# machines/penelope/default.nix
+# machines/laptop/default.nix
 {
   imports = [ ./disks.nix ];
 
-  networking.hostName = "penelope";
+  networking.hostName = "laptop";
   nixpkgs.hostPlatform = "x86_64-linux";
   users.users.jitsusama.isNormalUser = true;
   system.stateVersion = "25.05";
@@ -84,7 +82,7 @@ option for it instead.
 
 A configuration file core writes as text, such as niri's `config.kdl`, merges
 as lines, so a machine adds its own after core's with `lib.mkAfter`. niri lets
-a later setting override an earlier one, so optimus can set its panel's
+a later setting override an earlier one, so a machine can set its panel's
 scale:
 
 ```nix
@@ -99,9 +97,9 @@ home-manager.users.jitsusama.xdg.configFile."niri/config.kdl".text = lib.mkAfter
 
 ```sh
 nix flake check
-nixos-rebuild build --flake .#penelope
+nixos-rebuild build --flake .#laptop
 nix store diff-closures /run/current-system ./result
-sudo nixos-rebuild switch --flake .#penelope
+sudo nixos-rebuild switch --flake .#laptop
 ```
 
 On a Mac, `darwin-rebuild` takes the same arguments, with `sudo` only for the

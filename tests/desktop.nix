@@ -207,7 +207,7 @@ pkgs.testers.runNixOSTest {
           t.assertGreater(drawn, 100)
 
       with subtest("a notification appears"):
-          as_account("notify-send 'Build finished' 'optimus is ready'")
+          as_account("notify-send 'Build finished' 'the laptop is ready'")
           wait_for_surface("notifications")
           machine.sleep(1)
           machine.screenshot("notification")

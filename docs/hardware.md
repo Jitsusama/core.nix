@@ -6,13 +6,13 @@ after the model as its maker names it, and `flake.nix` exports it under the
 same name. A machine imports its hardware beside its roles:
 
 ```nix
-nixosConfigurations.optimus = nixpkgs.lib.nixosSystem {
+nixosConfigurations.laptop = nixpkgs.lib.nixosSystem {
   modules = [
     core.nixosModules.workstation
     core.nixosModules.graphical
     core.nixosModules.laptop
     core.nixosModules.dell-xps-14-da14260
-    ./machines/optimus
+    ./machines/laptop
   ];
 };
 ```
@@ -37,10 +37,10 @@ disk's layout is the same on every laptop, so it's a module, `disko`, and
 
 ## Dell XPS 14 (DA14260)
 
-[`hardware/dell-xps-14-da14260/nixos.nix`][2], for optimus. An Intel Core
-Ultra X7 358H (Panther Lake H), Arc B390 graphics, an NPU, a 2880x1800 120 Hz
-OLED touchscreen, four CS35L57 SoundWire amplifiers, an OV08X40 camera on the
-IPU7 behind Intel's CVS bridge, and Intel's BE211 Wi-Fi 7.
+[`hardware/dell-xps-14-da14260/nixos.nix`][2]. An Intel Core Ultra X7 358H
+(Panther Lake H), Arc B390 graphics, an NPU, a 2880x1800 120 Hz OLED
+touchscreen, four CS35L57 SoundWire amplifiers, an OV08X40 camera on the IPU7
+behind Intel's CVS bridge, and Intel's BE211 Wi-Fi 7.
 
 | Part     | What the module does                                                   |
 | -------- | ---------------------------------------------------------------------- |
