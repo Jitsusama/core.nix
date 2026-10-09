@@ -32,6 +32,7 @@ files, and a virtual machine taken through [the whole install][3].
 | `cargo-links-with-mold`           | cargo links an account's Rust builds with mold            |
 | `secure-boot-installs`            | the whole install works, on a VM with a TPM               |
 | `ssh-tpm-agent-signs`             | an SSH key in a VM's TPM signs, its PIN asked for         |
+| `commits-are-signed`              | Joel's commits and agents' are signed with their own keys |
 | `desktop-works`                   | the desktop shows, opens, locks and asks, in the theme    |
 
 A bare machine has nothing but home-manager, nixpkgs' settings and one

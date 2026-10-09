@@ -99,6 +99,7 @@
         openssl = ./modules/openssl/home.nix;
         quickshell = ./modules/quickshell/home.nix;
         ripgrep = ./modules/ripgrep/home.nix;
+        signing = ./modules/signing/home.nix;
         ssh-tpm-agent = ./modules/ssh-tpm-agent/home.nix;
         swayidle = ./modules/swayidle/home.nix;
         telnet = ./modules/telnet/home.nix;

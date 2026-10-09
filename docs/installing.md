@@ -18,6 +18,7 @@ update that breaks any of them fails CI.
 | Recovery    | the YubiKey (FIDO2), then a recovery key kept off the machine  |
 | Firmware    | an administrator password, so nobody can turn Secure Boot off  |
 | SSH keys    | the TPM's every day, and a spare on the YubiKey                |
+| Signing     | two keys in the TPM: Joel's, confirmed each time, and agents'  |
 
 The TPM opens the disk only for the same firmware (PCR 0), the same boot
 loader, kernel, initrd and command line (PCR 4), and the same Secure Boot keys
@@ -142,12 +143,28 @@ ssh-keygen -t ed25519-sk -O resident -O verify-required -C "$USER@yubikey"
 ```
 
 The first writes `~/.ssh/id_ecdsa.tpm`, which [`ssh-tpm-agent`][5] loads
-whenever it starts, so restart it once with
-`systemctl --user restart ssh-tpm-agent`. It asks for the key's PIN once a
-session, through the themed prompt. The second asks for the YubiKey's FIDO2 PIN (set one first with
+whenever it starts. It asks for the key's PIN once a session, through the
+themed prompt. The second asks for the YubiKey's FIDO2 PIN (set one first with
 `ykman fido access change-pin`) and a touch. It stays on the YubiKey, so
 `ssh-keygen -K` brings it back onto any machine. Add both public keys to
-GitHub.
+GitHub as authentication keys.
+
+Commits and tags are signed with two more keys in the TPM, as the Macs keep
+theirs in the Secure Enclave. [`signing`][6] picks Joel's when he commits at a
+terminal and the agents' when a harness commits over pipes:
+
+```sh
+mkdir -p ~/.local/share/signing
+ssh-tpm-keygen -C "$USER@$(hostname) signing" -f ~/.local/share/signing/joel-signing
+ssh-tpm-keygen -C "$USER@$(hostname) agents" -f ~/.ssh/agent-signing
+systemctl --user restart ssh-tpm-agent
+```
+
+Give Joel's a PIN and leave the agents' empty. Joel's lives outside `~/.ssh`
+so the agent doesn't load it on its own; the `signing-key` unit adds it so
+that every signature asks to be confirmed. Add both public keys to GitHub as
+signing keys, and to the machine repository's
+`jitsusama.signing.allowedSigners`, so git can say whose a signature is.
 
 ## When the TPM Refuses
 
@@ -171,3 +188,4 @@ should: find out why before typing the recovery key.
 [3]: ../examples/laptop.nix
 [4]: decisions/0008-own-keys-and-a-tpm-sealed-disk.md
 [5]: ../modules/ssh-tpm-agent/home.nix
+[6]: ../modules/signing/home.nix
