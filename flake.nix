@@ -124,6 +124,7 @@
         homebrew = ./modules/homebrew/darwin.nix;
         macos-defaults = ./modules/macos-defaults/darwin.nix;
         nixpkgs = ./modules/nixpkgs/system.nix;
+        yubikey = ./modules/yubikey/system.nix;
         zsh = ./modules/zsh/darwin.nix;
 
         base = moduleFrom ./roles/base/darwin.nix { inherit (self) darwinModules homeModules; };
@@ -156,7 +157,7 @@
         power-profiles-daemon = ./modules/power-profiles-daemon/nixos.nix;
         quickshell = ./modules/quickshell/nixos.nix;
         tpm = ./modules/tpm/nixos.nix;
-        yubikey = ./modules/yubikey/nixos.nix;
+        yubikey = ./modules/yubikey/system.nix;
 
         base = moduleFrom ./roles/base/nixos.nix { inherit (self) nixosModules homeModules; };
         workstation = moduleFrom ./roles/workstation/nixos.nix {
