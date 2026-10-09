@@ -86,6 +86,7 @@
         git = ./modules/git/home.nix;
         glow = ./modules/glow/home.nix;
         gnupg = ./modules/gnupg/home.nix;
+        gtk = ./modules/gtk/home.nix;
         home-manager = ./modules/home-manager/home.nix;
         homebrew = ./modules/homebrew/home.nix;
         identity = ./modules/identity/home.nix;

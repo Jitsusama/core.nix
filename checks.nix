@@ -158,6 +158,7 @@ let
   # role's home-manager.sharedModules.
   linuxOnly = [
     "bemenu"
+    "gtk"
     "quickshell"
     "signing"
     "ssh-tpm-agent"
