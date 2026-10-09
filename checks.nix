@@ -158,7 +158,9 @@ let
   # role's home-manager.sharedModules.
   linuxOnly = [
     "bemenu"
+    "quickshell"
     "ssh-tpm-agent"
+    "swayidle"
   ];
 in
 checkEach "nixos" (module: bareNixos [ module ]) (removeAttrs self.nixosModules [ "disko" ])
@@ -322,5 +324,6 @@ checkEach "nixos" (module: bareNixos [ module ]) (removeAttrs self.nixosModules 
     # and Secure Boot decide whether a machine starts at all.
     secure-boot-installs = import ./tests/secure-boot.nix { inherit self pkgs; };
     ssh-tpm-agent-signs = import ./tests/ssh-tpm-agent.nix { inherit self pkgs; };
+    desktop-works = import ./tests/desktop.nix { inherit self pkgs; };
   }
 )

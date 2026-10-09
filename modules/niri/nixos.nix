@@ -1,6 +1,6 @@
 # niri, the scrolling, tiling compositor Joel works in, and what it needs from
 # the system: its session, its portals, Xwayland for the X11 programs left,
-# and the tools its brightness keys call.
+# and the tools its brightness and media keys call.
 { pkgs, ... }:
 {
   programs.niri = {
@@ -13,5 +13,6 @@
     # niri starts it whenever an X11 program needs a display.
     pkgs.xwayland-satellite
     pkgs.brightnessctl
+    pkgs.playerctl
   ];
 }

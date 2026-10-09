@@ -100,6 +100,13 @@ the terminal, the compositor's borders, a PIN prompt, a notification and the
 lock screen all match, and changing one option changes them all. A program
 that can't take the theme's values doesn't get on a screen.
 
+One program draws the desktop: Quickshell, in `modules/quickshell/`. Its
+launcher on Super+Space, its notifications, lock screen, polkit prompt and
+volume bar all read `Theme.qml`, which `home.nix` renders from the theme. A
+prompt that has to be a program of its own, such as the PIN prompt
+ssh-tpm-agent starts, is bemenu, which `modules/bemenu/home.nix` styles the
+same way.
+
 ## Projects Bring Their Own Toolchains
 
 A project says which compiler it builds with, in its flake, its

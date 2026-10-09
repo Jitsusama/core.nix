@@ -97,8 +97,10 @@
         nixfmt = ./modules/nixfmt/home.nix;
         opencode = ./modules/opencode/home.nix;
         openssl = ./modules/openssl/home.nix;
+        quickshell = ./modules/quickshell/home.nix;
         ripgrep = ./modules/ripgrep/home.nix;
         ssh-tpm-agent = ./modules/ssh-tpm-agent/home.nix;
+        swayidle = ./modules/swayidle/home.nix;
         telnet = ./modules/telnet/home.nix;
         theme = ./modules/theme/home.nix;
         tree = ./modules/tree/home.nix;
@@ -134,6 +136,7 @@
         bluetooth = ./modules/bluetooth/nixos.nix;
         disko = moduleFrom ./modules/disko/nixos.nix { inherit disko; };
         fonts = ./modules/fonts/system.nix;
+        greetd = ./modules/greetd/nixos.nix;
         home-manager = moduleFrom ./modules/home-manager/nixos.nix { inherit home-manager; };
         kernel = ./modules/kernel/nixos.nix;
         keyboard = ./modules/keyboard/nixos.nix;
@@ -146,6 +149,7 @@
         perf = ./modules/perf/nixos.nix;
         pipewire = ./modules/pipewire/nixos.nix;
         power-profiles-daemon = ./modules/power-profiles-daemon/nixos.nix;
+        quickshell = ./modules/quickshell/nixos.nix;
         tpm = ./modules/tpm/nixos.nix;
         yubikey = ./modules/yubikey/nixos.nix;
 
