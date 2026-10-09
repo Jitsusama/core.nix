@@ -4,7 +4,7 @@
 # earlier one, so the machine's lines win.
 { config, ... }:
 let
-  colors = config.jitsusama.theme.colors;
+  inherit (config.jitsusama.theme) colors shape;
 in
 {
   imports = [ ../theme/home.nix ];
@@ -13,8 +13,10 @@ in
 
   xdg.configFile."niri/theme.kdl".text = ''
     layout {
+        gaps ${toString shape.gap}
         background-color "${colors.background}"
         border {
+            width ${toString shape.border}
             active-color "${colors.accent}"
             // Omarchy's inactive border, which its palette doesn't name.
             inactive-color "#595959aa"
@@ -26,6 +28,10 @@ in
         insert-hint {
             color "${colors.accent}80"
         }
+    }
+    window-rule {
+        geometry-corner-radius ${toString shape.radius}
+        clip-to-geometry true
     }
     overview {
         backdrop-color "${colors.darker_background}"

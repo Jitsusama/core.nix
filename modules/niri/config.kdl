@@ -38,8 +38,8 @@ input {
     focus-follows-mouse max-scroll-amount="0%"
 }
 
+// The gaps, border width and corners come from theme.kdl.
 layout {
-    gaps 10
     center-focused-column "never"
     default-column-width {
         proportion 0.5
@@ -50,13 +50,9 @@ layout {
         proportion 0.66667
     }
 
-    // A thin border marks the focused window; no ring, no shadow, square
-    // corners.
+    // A thin border marks the focused window; no ring, no shadow.
     focus-ring {
         off
-    }
-    border {
-        width 2
     }
 }
 
