@@ -30,6 +30,7 @@ files, and a virtual machine taken through [the whole install][3].
 | `kitty-accepts-its-configuration` | kitty loads its files without a complaint                 |
 | `cargo-links-with-mold`           | cargo links an account's Rust builds with mold            |
 | `secure-boot-installs`            | the whole install works, on a VM with a TPM               |
+| `ssh-tpm-agent-signs`             | an SSH key in a VM's TPM signs, its PIN asked for         |
 
 A bare machine has nothing but home-manager, nixpkgs' settings and one
 account, which every machine has. So a module that quietly relies on another,
@@ -52,7 +53,8 @@ wiped, and the TPM refuses once a measured PCR changes. It lives in
 
 The checks read the modules from `flake.nix`, so a new module or role is
 checked as soon as it is named there. The Mac checks evaluate on Linux, so one
-machine checks every platform.
+machine checks every platform. The home modules only a Linux account uses,
+listed as `linuxOnly` in `checks.nix`, are checked on NixOS alone.
 
 ## Running Part of It
 

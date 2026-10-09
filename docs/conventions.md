@@ -92,6 +92,14 @@ other tools. Five rules keep both working:
 
 A key another tool owns is never declared here at all.
 
+## One Look Everywhere
+
+Everything Joel sees draws itself from `jitsusama.theme`: its colours, its
+font and its shape. A module writes those into its program's own format, so
+the terminal, the compositor's borders, a PIN prompt, a notification and the
+lock screen all match, and changing one option changes them all. A program
+that can't take the theme's values doesn't get on a screen.
+
 ## Projects Bring Their Own Toolchains
 
 A project says which compiler it builds with, in its flake, its

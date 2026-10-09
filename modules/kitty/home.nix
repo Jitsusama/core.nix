@@ -3,7 +3,7 @@
 # template maps them, so kitty matches the rest of the desktop.
 { config, pkgs, ... }:
 let
-  colors = config.jitsusama.theme.colors;
+  inherit (config.jitsusama.theme) colors font;
 in
 {
   imports = [ ../theme/home.nix ];
@@ -16,6 +16,9 @@ in
   # colours from the palette's selection and bright foreground. The tab bar
   # is ours: Omarchy colours only the active tab.
   xdg.configFile."kitty/theme.conf".text = ''
+    font_family family="${font.family}"
+    font_size ${font.size}
+
     foreground ${colors.foreground}
     background ${colors.background}
     selection_foreground ${colors.bright_foreground}

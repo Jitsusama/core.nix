@@ -17,6 +17,7 @@ update that breaks any of them fails CI.
 | Daily key   | the TPM, bound to PCRs 0, 4 and 7, plus a PIN                  |
 | Recovery    | the YubiKey (FIDO2), then a recovery key kept off the machine  |
 | Firmware    | an administrator password, so nobody can turn Secure Boot off  |
+| SSH keys    | the TPM's every day, and a spare on the YubiKey                |
 
 The TPM opens the disk only for the same firmware (PCR 0), the same boot
 loader, kernel, initrd and command line (PCR 4), and the same Secure Boot keys
@@ -130,6 +131,24 @@ sudo systemd-cryptenroll $disk   # tpm2, fido2 and recovery, nothing else
 In the setup screen, set an administrator password, so turning Secure Boot
 off or changing its keys needs it.
 
+## 9. Make the SSH Keys
+
+The everyday SSH key lives in the TPM, and a spare lives on the YubiKey for
+when the TPM is wiped or the laptop is gone:
+
+```sh
+ssh-tpm-keygen -C "$USER@$(hostname)"
+ssh-keygen -t ed25519-sk -O resident -O verify-required -C "$USER@yubikey"
+```
+
+The first writes `~/.ssh/id_ecdsa.tpm`, which [`ssh-tpm-agent`][5] loads
+whenever it starts, so restart it once with
+`systemctl --user restart ssh-tpm-agent`. It asks for the key's PIN once a
+session, through the themed prompt. The second asks for the YubiKey's FIDO2 PIN (set one first with
+`ykman fido access change-pin`) and a touch. It stays on the YubiKey, so
+`ssh-keygen -K` brings it back onto any machine. Add both public keys to
+GitHub.
+
 ## When the TPM Refuses
 
 At boot, systemd asks for the PIN first. When the TPM won't release the key,
@@ -151,3 +170,4 @@ should: find out why before typing the recovery key.
 [2]: ../modules/lanzaboote/nixos.nix
 [3]: ../examples/laptop.nix
 [4]: decisions/0008-own-keys-and-a-tpm-sealed-disk.md
+[5]: ../modules/ssh-tpm-agent/home.nix

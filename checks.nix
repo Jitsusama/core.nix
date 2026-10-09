@@ -153,11 +153,22 @@ let
       ./examples
     ];
   };
+
+  # Home modules that only a Linux account can use, reached through a NixOS
+  # role's home-manager.sharedModules.
+  linuxOnly = [
+    "bemenu"
+    "ssh-tpm-agent"
+  ];
 in
 checkEach "nixos" (module: bareNixos [ module ]) (removeAttrs self.nixosModules [ "disko" ])
 // checkEach "darwin" (module: bareDarwin [ module ]) self.darwinModules
-// checkEach "home-on-nixos" (module: bareNixos [ (inAccount module) ]) self.homeModules
-// checkEach "home-on-darwin" (module: bareDarwin [ (inAccount module) ]) self.homeModules
+// checkEach "home-on-nixos" (module: bareNixos [ (inAccount module) ]) (
+  removeAttrs self.homeModules [ "ssh-tpm-agent" ]
+)
+// checkEach "home-on-darwin" (module: bareDarwin [ (inAccount module) ]) (
+  removeAttrs self.homeModules linuxOnly
+)
 // {
   inherit formatting;
 
@@ -190,6 +201,13 @@ checkEach "nixos" (module: bareNixos [ module ]) (removeAttrs self.nixosModules 
     holds "disabling-a-module-removes-it" "disabledModules left Neovim on the workstation." (
       !(account workstationWithoutNeovim).programs.neovim.enable
     );
+
+  # ssh-tpm-agent needs the account to reach the TPM, which the tpm module
+  # gives it.
+  home-on-nixos-ssh-tpm-agent = evaluates "home-on-nixos-ssh-tpm-agent" (bareNixos [
+    self.nixosModules.tpm
+    (inAccount self.homeModules.ssh-tpm-agent)
+  ]);
 
   # The disk module needs the machine's disk, so its check names one.
   nixos-disko = evaluates "nixos-disko" (bareNixos [
@@ -303,5 +321,6 @@ checkEach "nixos" (module: bareNixos [ module ]) (removeAttrs self.nixosModules 
     # Boots a virtual machine through the whole install, since the disk layout
     # and Secure Boot decide whether a machine starts at all.
     secure-boot-installs = import ./tests/secure-boot.nix { inherit self pkgs; };
+    ssh-tpm-agent-signs = import ./tests/ssh-tpm-agent.nix { inherit self pkgs; };
   }
 )
