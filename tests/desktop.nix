@@ -144,9 +144,11 @@ pkgs.testers.runNixOSTest {
 
       # The commonest colour inside a window, a little in from its edges.
       # niri says where a window is only once it floats, so it floats first.
+      # The first GTK window has taken over 30 seconds to open on a CI runner
+      # building the kernel beside the test, so this waits longer than the rest.
       def commonest_colour_in(title, picture):
           machine.wait_until_succeeds(
-              in_session(f"niri msg --json windows | grep -qF '\"title\":\"{title}\"'"), timeout=30
+              in_session(f"niri msg --json windows | grep -qF '\"title\":\"{title}\"'"), timeout=120
           )
           as_account(f"niri msg action move-window-to-floating --id {window_titled(title)['id']}")
           time.sleep(1)
