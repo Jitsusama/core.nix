@@ -21,6 +21,7 @@ files, and a virtual machine taken through [the whole install][3].
 | `disabling-a-module-removes-it`   | `disabledModules` removes a module a role brought in      |
 | `one-ssh-agent`                   | a workstation with a screen answers SSH with the TPM only |
 | `onepassword-works-with-chrome`   | 1Password has its Chrome helper and unlocks with polkit   |
+| `yubikey-on-every-workstation`    | Linux and Mac workstations both have the YubiKey's tools  |
 | `example-nixos`                   | the NixOS example machine evaluates                       |
 | `example-laptop`                  | the laptop example evaluates                              |
 | `example-darwin`                  | the Mac example machine evaluates                         |

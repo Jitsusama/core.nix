@@ -224,6 +224,21 @@ checkEach "nixos" (module: bareNixos [ module ]) (removeAttrs self.nixosModules 
       && machine.config.programs._1password-gui.polkitPolicyOwners == [ "someone" ]
     );
 
+  # The YubiKey gets Joel's keys back on any machine he writes code on, so both
+  # workstation roles bring its tools, a Mac as much as Linux.
+  yubikey-on-every-workstation =
+    let
+      hasYkman =
+        machine:
+        lib.any (
+          package: lib.getName package == "yubikey-manager"
+        ) machine.config.environment.systemPackages;
+    in
+    holds "yubikey-on-every-workstation" "A workstation lacks the YubiKey's tools." (
+      hasYkman (bareNixos [ self.nixosModules.workstation ])
+      && hasYkman (bareDarwin [ self.darwinModules.workstation ])
+    );
+
   # ssh-tpm-agent, and the signing that uses it, need the account to reach
   # the TPM, which the tpm module gives it.
   home-on-nixos-ssh-tpm-agent = evaluates "home-on-nixos-ssh-tpm-agent" (bareNixos [
