@@ -1,8 +1,9 @@
 # Quickshell draws everything on Joel's screen that isn't a window: the
 # launcher on Super+Space, notifications, the lock screen, polkit's password
-# prompt and the volume. Each is a QML file beside this one, linked as it is;
-# Theme.qml, written here from jitsusama.theme, gives them all the same look.
-# It runs with the graphical session, and restarts if it ever falls over.
+# prompt, and the volume and brightness. Each is a QML file beside this one,
+# linked as it is; Theme.qml, written here from jitsusama.theme, gives them all
+# the same look. It runs with the graphical session, and restarts if it ever
+# falls over.
 {
   config,
   lib,
@@ -20,6 +21,8 @@ let
     "Lock.qml"
     "Polkit.qml"
     "Volume.qml"
+    "Brightness.qml"
+    "Meter.qml"
   ];
 in
 {

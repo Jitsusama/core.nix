@@ -8,6 +8,7 @@ ShellRoot {
     Notifications {}
     Polkit {}
     Volume {}
+    Brightness {}
 
     Lock {
         id: lock
