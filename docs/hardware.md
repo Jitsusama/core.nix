@@ -105,13 +105,26 @@ how it measures, not what it does: WirePlumber hands a recording of the
 speakers the filter's input instead. `speakers-are-tuned` links its recorder
 by hand and hears the tuning.
 
+### Nothing to Add
+
+- **The touchpad.** It's a `2C2F` haptic pad on `hid-multitouch`. Omarchy
+  installs Dell's haptics daemon only for Synaptics pads (`VEN_06CB`), and
+  nothing for this one, and `hid-multitouch` registers no force feedback on
+  it, so it behaves here as it does on Omarchy.
+- **The mic-mute light.** `dell-laptop` gives it `audio-micmute` as its
+  trigger, and `snd-ctl-led` lights it whenever PipeWire mutes the
+  microphone. Omarchy's mute script sets the light itself, and writing it off
+  detaches the trigger, so there it stops following the mute after the first
+  unmute. Nothing here writes it.
+- **The Synaptics USB device** (`06cb:0701`) is the camera's USB-IO bridge,
+  bound to `usbio-bridge`, not a fingerprint reader. This laptop has none.
+
 ### What's Left
 
-| Part             | Why it isn't here yet                                                 |
-| ---------------- | --------------------------------------------------------------------- |
-| Camera           | nixpkgs's IPU7 camera software predates its CVS support; see below    |
-| Touchpad haptics | needs a package for Dell's haptics daemon                             |
-| Panel VRR        | the panel's range comes from a DisplayID block Linux doesn't read yet |
+| Part      | Why it isn't here yet                                                 |
+| --------- | --------------------------------------------------------------------- |
+| Camera    | nixpkgs's IPU7 camera software predates its CVS support; see below    |
+| Panel VRR | the panel's range comes from a DisplayID block Linux doesn't read yet |
 
 Each needs the laptop itself to prove, so each lands after the first boot.
 
