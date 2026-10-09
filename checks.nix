@@ -208,6 +208,12 @@ checkEach "nixos" (module: bareNixos [ module ]) (removeAttrs self.nixosModules 
       inherit nixpkgs;
     }
   );
+  example-laptop = evaluates "example-laptop" (
+    import ./examples/laptop.nix {
+      core = self;
+      inherit nixpkgs;
+    }
+  );
   example-darwin = evaluates "example-darwin" (
     import ./examples/darwin.nix {
       core = self;
@@ -269,5 +275,9 @@ checkEach "nixos" (module: bareNixos [ module ]) (removeAttrs self.nixosModules 
         if [ -s complaints ]; then cat complaints; exit 1; fi
         touch $out
       '';
+
+    # Boots a virtual machine through the whole install, since the disk layout
+    # and Secure Boot decide whether a machine starts at all.
+    secure-boot-installs = import ./tests/secure-boot.nix { inherit self pkgs; };
   }
 )
