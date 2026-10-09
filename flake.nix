@@ -22,7 +22,13 @@
       url = "github:numtide/treefmt-nix";
       inputs.nixpkgs.follows = "nixpkgs";
     };
-    # A release, since the disk's layout decides whether a machine boots at all.
+    # Releases, since both decide whether a machine boots at all.
+    lanzaboote = {
+      url = "github:nix-community/lanzaboote/v1.2.0";
+      inputs.nixpkgs.follows = "nixpkgs";
+      # Only lanzaboote's own CI uses it.
+      inputs.pre-commit.follows = "";
+    };
     disko = {
       url = "github:nix-community/disko/v1.13.0";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -41,6 +47,7 @@
       home-manager,
       nix-darwin,
       treefmt-nix,
+      lanzaboote,
       disko,
       wallpapers,
       neovim-pi,
@@ -127,6 +134,7 @@
         kernel = ./modules/kernel/nixos.nix;
         keyboard = ./modules/keyboard/nixos.nix;
         keyd = ./modules/keyd/nixos.nix;
+        lanzaboote = moduleFrom ./modules/lanzaboote/nixos.nix { inherit lanzaboote; };
         memory = ./modules/memory/nixos.nix;
         niri = ./modules/niri/nixos.nix;
         nixpkgs = ./modules/nixpkgs/system.nix;
