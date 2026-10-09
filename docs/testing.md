@@ -1,29 +1,34 @@
 # Testing
 
 `nix flake check` runs everything below, and CI runs it on every pull request
-and on main. Every check is defined in [`checks.nix`][1]. They evaluate
+and on main. Every check is defined in [`checks.nix`][1]. Most evaluate
 machines without building them, which takes about three minutes on a 16-core
-laptop once the inputs are downloaded. The one exception is the kernel's
-configuration, built on x86_64-linux for every piece of hardware in a few
-more minutes each, since that's the only way to know its patches apply.
+laptop once the inputs are downloaded. The rest build on x86_64-linux, because
+nothing short of running them proves what they cover: the kernel's
+configuration for every piece of hardware, niri and kitty reading back their
+files, and a virtual machine taken through [the whole install][3].
 
 ## What Each Check Proves
 
-| Check                           | Proves                                                    |
-| ------------------------------- | --------------------------------------------------------- |
-| `nixos-<name>`                  | the NixOS module or role evaluates on a bare machine      |
-| `darwin-<name>`                 | the nix-darwin module or role evaluates on a bare Mac     |
-| `home-on-nixos-<name>`          | the home-manager module or role evaluates on NixOS        |
-| `home-on-darwin-<name>`         | the home-manager module or role evaluates on a Mac        |
-| `nixos-role-twice-is-once`      | importing a NixOS role twice leaves the machine unchanged |
-| `darwin-role-twice-is-once`     | the same for a nix-darwin role                            |
-| `disabling-a-module-removes-it` | `disabledModules` removes a module a role brought in      |
-| `example-nixos`                 | the NixOS example machine evaluates                       |
-| `example-darwin`                | the Mac example machine evaluates                         |
-| `formatting`                    | everything is formatted and passes the linters            |
-| `nothing-work-specific`         | no module, role or example names anything work-only       |
-| `kernel-settings-hold`          | the kernel's patches apply and every setting holds        |
-| `kernel-settings-hold-<model>`  | the same for the kernel that hardware builds              |
+| Check                             | Proves                                                    |
+| --------------------------------- | --------------------------------------------------------- |
+| `nixos-<name>`                    | the NixOS module or role evaluates on a bare machine      |
+| `darwin-<name>`                   | the nix-darwin module or role evaluates on a bare Mac     |
+| `home-on-nixos-<name>`            | the home-manager module or role evaluates on NixOS        |
+| `home-on-darwin-<name>`           | the home-manager module or role evaluates on a Mac        |
+| `nixos-role-twice-is-once`        | importing a NixOS role twice leaves the machine unchanged |
+| `darwin-role-twice-is-once`       | the same for a nix-darwin role                            |
+| `disabling-a-module-removes-it`   | `disabledModules` removes a module a role brought in      |
+| `example-nixos`                   | the NixOS example machine evaluates                       |
+| `example-laptop`                  | the laptop example evaluates                              |
+| `example-darwin`                  | the Mac example machine evaluates                         |
+| `formatting`                      | everything is formatted and passes the linters            |
+| `nothing-work-specific`           | no module, role or example names anything work-only       |
+| `kernel-settings-hold`            | the kernel's patches apply and every setting holds        |
+| `kernel-settings-hold-<model>`    | the same for the kernel that hardware builds              |
+| `niri-accepts-its-configuration`  | niri loads the files an account gets                      |
+| `kitty-accepts-its-configuration` | kitty loads its files without a complaint                 |
+| `secure-boot-installs`            | the whole install works, on a VM with a TPM               |
 
 A bare machine has nothing but home-manager, nixpkgs' settings and one
 account, which every machine has. So a module that quietly relies on another,
@@ -37,6 +42,12 @@ they test the library from a consumer's side.
 
 The kernel check builds only the configuration: the patched source, run
 through Kconfig. [The kernel guide][2] says what it catches.
+
+The install check builds a disk image with disko and boots it under QEMU with
+a software TPM, then follows [the install guide][3] step by step: the keys are
+made and enrolled, the disk is bound to the TPM and a PIN, the passphrase is
+wiped, and the TPM refuses once a measured PCR changes. It lives in
+[`tests/secure-boot.nix`][4], since it's longer than the rest put together.
 
 The checks read the modules from `flake.nix`, so a new module or role is
 checked as soon as it is named there. The Mac checks evaluate on Linux, so one
@@ -74,3 +85,5 @@ isn't restored by accident.
 
 [1]: ../checks.nix
 [2]: kernel.md
+[3]: installing.md
+[4]: ../tests/secure-boot.nix

@@ -30,8 +30,10 @@ Colemak Mod-DH and leave every other keyboard as it is. The layout is a
 choice, so it lives in the role; which keyboard is built in is a fact, so it
 lives here.
 
-What stays with the machine: its disks and file systems, its name, and
-anything that's a preference rather than a need, such as a charge limit.
+What stays with the machine: which disk it installs onto, its name, and
+anything that's a preference rather than a need, such as a charge limit. The
+disk's layout is the same on every laptop, so it's a module, `disko`, and
+[the install guide][8] says how a machine gets onto it.
 
 ## Dell XPS 14 (DA14260)
 
@@ -128,3 +130,4 @@ speaker tuning too.
 [5]: https://github.com/omacom/omarchy/issues/9922
 [6]: https://github.com/intel/ipu7-camera-hal/commit/f167239b3ecf
 [7]: https://github.com/NixOS/nixos-hardware/pull/1912
+[8]: installing.md

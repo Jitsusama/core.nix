@@ -94,6 +94,7 @@ core.nix/
 ├── hardware/<model>/      # what one machine model needs, kernel included
 ├── examples/              # machines written the way a machine repository would
 ├── checks.nix             # what `nix flake check` runs
+├── tests/                 # checks that boot a virtual machine
 ├── treefmt.nix            # what `nix fmt` runs
 └── docs/                  # how it works, and why
 ```
@@ -139,6 +140,8 @@ nix build --override-input core path:$HOME/src/core.nix \
 - [Modules][5]: adding a module or a role, and changing one from another
   repository.
 - [Machines][2]: building a machine from core.nix.
+- [Installing][11]: a laptop from a blank disk to Secure Boot and a disk the
+  TPM unlocks.
 - [Testing][6]: what the checks catch.
 - [The kernel][9]: the kernel core.nix builds for NixOS, and how to change it.
 - [Hardware][10]: each machine model core.nix supports, and what's left.
@@ -154,3 +157,4 @@ nix build --override-input core path:$HOME/src/core.nix \
 [8]: examples/
 [9]: docs/kernel.md
 [10]: docs/hardware.md
+[11]: docs/installing.md
