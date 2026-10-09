@@ -158,6 +158,7 @@ let
   # role's home-manager.sharedModules.
   linuxOnly = [
     "bemenu"
+    "fontconfig"
     "gtk"
     "quickshell"
     "signing"

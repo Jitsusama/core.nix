@@ -80,6 +80,7 @@
         dig = ./modules/dig/home.nix;
         direnv = ./modules/direnv/home.nix;
         fd = ./modules/fd/home.nix;
+        fontconfig = ./modules/fontconfig/home.nix;
         fzf = ./modules/fzf/home.nix;
         gh = ./modules/gh/home.nix;
         ghostty = moduleFrom ./modules/ghostty/home.nix { inherit wallpapers; };
