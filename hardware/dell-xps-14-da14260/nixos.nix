@@ -8,6 +8,7 @@
   imports = [
     ../../modules/kernel/nixos.nix
     ../../modules/keyboard/nixos.nix
+    ./speakers.nix
   ];
 
   nixpkgs.hostPlatform = "x86_64-linux";

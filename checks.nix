@@ -347,6 +347,7 @@ checkEach "nixos" (module: bareNixos [ module ]) (removeAttrs self.nixosModules 
     secure-boot-installs = import ./tests/secure-boot.nix { inherit self pkgs; };
     ssh-tpm-agent-signs = import ./tests/ssh-tpm-agent.nix { inherit self pkgs; };
     commits-are-signed = import ./tests/signing.nix { inherit self pkgs; };
+    speakers-are-tuned = import ./tests/speakers.nix { inherit pkgs; };
     desktop-works = import ./tests/desktop.nix { inherit self pkgs; };
   }
 )

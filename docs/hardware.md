@@ -51,6 +51,7 @@ IPU7 behind Intel's CVS bridge, and Intel's BE211 Wi-Fi 7.
 | Graphics | Mesa, with VA-API (iHD), oneVPL, OpenCL and Level Zero for the Arc GPU |
 | NPU      | `intel_vpu` with Level Zero                                            |
 | Audio    | the firmware Sound Open Firmware runs on the DSP                       |
+| Speakers | Omarchy's tuning, as a smart filter; see below                         |
 | Sensors  | ambient light and presence through `iio-sensor-proxy`                  |
 | Docks    | bolt, which authorizes Thunderbolt and USB4 devices                    |
 | Firmware | fwupd, for the BIOS and firmware Dell publishes through LVFS           |
@@ -85,13 +86,31 @@ With the lid closed, Wi-Fi slows to a crawl even on a dock. Testing in
 software, though nobody has proven it, and nothing here fixes it. On a dock,
 Ethernet avoids it.
 
+### The Speaker Tuning
+
+Linux loads Dell's firmware for the amplifiers but has nothing in place of the
+Waves tuning Windows puts on top, so the speakers sound thin. The module runs
+[Omarchy's tuning][9] for this model unchanged: thirteen biquads per channel
+and a limiter, fitted to a measured EasyEffects profile, with no binary blob.
+It lives in [`speakers.conf`][10], beside the module, and runs as a PipeWire
+client of its own, so changing it restarts only the filter and never cuts off
+the programs playing.
+
+Omarchy attaches it as a sink of its own, which programs then have to play
+to. Here it's a WirePlumber smart filter on the speakers instead: they stay
+the device programs see, sound goes through the filter only on its way to
+them, and headphones and displays get it untouched. Omarchy gave up on smart
+filters because the filter seemed to pass sound through unchanged, but that's
+how it measures, not what it does: WirePlumber hands a recording of the
+speakers the filter's input instead. `speakers-are-tuned` links its recorder
+by hand and hears the tuning.
+
 ### What's Left
 
 | Part             | Why it isn't here yet                                                 |
 | ---------------- | --------------------------------------------------------------------- |
 | Camera           | nixpkgs's IPU7 camera software predates its CVS support; see below    |
 | Touchpad haptics | needs a package for Dell's haptics daemon                             |
-| Speaker tuning   | Omarchy's equalizer for these speakers, through PipeWire              |
 | Panel VRR        | the panel's range comes from a DisplayID block Linux doesn't read yet |
 
 Each needs the laptop itself to prove, so each lands after the first boot.
@@ -131,3 +150,5 @@ speaker tuning too.
 [6]: https://github.com/intel/ipu7-camera-hal/commit/f167239b3ecf
 [7]: https://github.com/NixOS/nixos-hardware/pull/1912
 [8]: installing.md
+[9]: https://github.com/omacom/omarchy/blob/a466dcc04f937a41c820aaa990a31f36ecaed543/default/audio/tunings/dell-xps-2026/filter-chain.conf
+[10]: ../hardware/dell-xps-14-da14260/speakers.conf
