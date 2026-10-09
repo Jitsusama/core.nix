@@ -72,9 +72,10 @@ system it belongs to, and which output of `flake.nix` names it:
 | `system.nix` | both NixOS and nix-darwin | `nixosModules` and `darwinModules` |
 
 A tool needing settings in more than one system has one file for each, side by
-side: zsh has `home.nix` for the shell and `darwin.nix` for what macOS needs
-around it. `system.nix` exists for settings the two systems spell the same
-way, such as fonts, so they are written once.
+side: zsh has `home.nix` for the shell, `system.nix` for what either system
+sets up around it, and `nixos.nix` for the login shell, which only NixOS sets.
+`system.nix` exists for settings the two systems spell the same way, such as
+zsh's and fonts, so they are written once.
 
 ## Roles and Their Two Halves
 
