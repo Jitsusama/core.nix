@@ -71,6 +71,7 @@
     {
       homeModules = {
         bat = ./modules/bat/home.nix;
+        bemenu = ./modules/bemenu/home.nix;
         broot = ./modules/broot/home.nix;
         btop = ./modules/btop/home.nix;
         cargo = ./modules/cargo/home.nix;
@@ -97,6 +98,7 @@
         opencode = ./modules/opencode/home.nix;
         openssl = ./modules/openssl/home.nix;
         ripgrep = ./modules/ripgrep/home.nix;
+        ssh-tpm-agent = ./modules/ssh-tpm-agent/home.nix;
         telnet = ./modules/telnet/home.nix;
         theme = ./modules/theme/home.nix;
         tree = ./modules/tree/home.nix;
@@ -142,6 +144,8 @@
         perf = ./modules/perf/nixos.nix;
         pipewire = ./modules/pipewire/nixos.nix;
         power-profiles-daemon = ./modules/power-profiles-daemon/nixos.nix;
+        tpm = ./modules/tpm/nixos.nix;
+        yubikey = ./modules/yubikey/nixos.nix;
 
         base = moduleFrom ./roles/base/nixos.nix { inherit (self) nixosModules homeModules; };
         workstation = moduleFrom ./roles/workstation/nixos.nix {
