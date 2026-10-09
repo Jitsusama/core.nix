@@ -158,7 +158,9 @@ let
   # role's home-manager.sharedModules.
   linuxOnly = [
     "bemenu"
+    "quickshell"
     "ssh-tpm-agent"
+    "swayidle"
   ];
 in
 checkEach "nixos" (module: bareNixos [ module ]) (removeAttrs self.nixosModules [ "disko" ])
@@ -200,6 +202,20 @@ checkEach "nixos" (module: bareNixos [ module ]) (removeAttrs self.nixosModules 
     in
     holds "disabling-a-module-removes-it" "disabledModules left Neovim on the workstation." (
       !(account workstationWithoutNeovim).programs.neovim.enable
+    );
+
+  # A workstation with a screen has one SSH agent, the TPM's, though niri
+  # brings gnome-keyring and its agent.
+  one-ssh-agent =
+    let
+      machine = bareNixos [
+        self.nixosModules.workstation
+        self.nixosModules.graphical
+      ];
+    in
+    holds "one-ssh-agent" "gcr's SSH agent runs beside ssh-tpm-agent." (
+      !machine.config.services.gnome.gcr-ssh-agent.enable
+      && (account machine).services.ssh-tpm-agent.enable
     );
 
   # ssh-tpm-agent needs the account to reach the TPM, which the tpm module
@@ -322,5 +338,6 @@ checkEach "nixos" (module: bareNixos [ module ]) (removeAttrs self.nixosModules 
     # and Secure Boot decide whether a machine starts at all.
     secure-boot-installs = import ./tests/secure-boot.nix { inherit self pkgs; };
     ssh-tpm-agent-signs = import ./tests/ssh-tpm-agent.nix { inherit self pkgs; };
+    desktop-works = import ./tests/desktop.nix { inherit self pkgs; };
   }
 )

@@ -179,6 +179,7 @@ modules and roles; `flake.nix` says so beside them.
 | `jitsusama.kernel.cpu`       | the CPU the kernel is compiled for, set per hardware |
 | `jitsusama.kernel.profile`   | the kernel's AutoFDO profile, recorded per machine   |
 | `jitsusama.keyboard.builtIn` | the machine's own keyboard, set per hardware         |
+| `jitsusama.login.account`    | the account signed in at boot, set per machine       |
 | `jitsusama.theme.colors.*`   | each colour of the theme, Omarchy's Osaka Jade       |
 | `jitsusama.theme.font.*`     | the font every program draws text in, and its size   |
 | `jitsusama.theme.shape.*`    | the border, corners and gaps every surface shares    |

@@ -19,6 +19,7 @@ files, and a virtual machine taken through [the whole install][3].
 | `nixos-role-twice-is-once`        | importing a NixOS role twice leaves the machine unchanged |
 | `darwin-role-twice-is-once`       | the same for a nix-darwin role                            |
 | `disabling-a-module-removes-it`   | `disabledModules` removes a module a role brought in      |
+| `one-ssh-agent`                   | a workstation with a screen answers SSH with the TPM only |
 | `example-nixos`                   | the NixOS example machine evaluates                       |
 | `example-laptop`                  | the laptop example evaluates                              |
 | `example-darwin`                  | the Mac example machine evaluates                         |
@@ -31,6 +32,7 @@ files, and a virtual machine taken through [the whole install][3].
 | `cargo-links-with-mold`           | cargo links an account's Rust builds with mold            |
 | `secure-boot-installs`            | the whole install works, on a VM with a TPM               |
 | `ssh-tpm-agent-signs`             | an SSH key in a VM's TPM signs, its PIN asked for         |
+| `desktop-works`                   | the desktop shows, opens, locks and asks, in the theme    |
 
 A bare machine has nothing but home-manager, nixpkgs' settings and one
 account, which every machine has. So a module that quietly relies on another,

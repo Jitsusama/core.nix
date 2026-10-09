@@ -20,6 +20,11 @@
     extraGroups = [ config.security.tpm2.tssGroup ];
   }) config.home-manager.users;
 
+  # ssh-tpm-agent is the account's SSH agent. gnome-keyring, which niri
+  # brings, would start gcr's agent beside it, and whichever started first
+  # would own SSH_AUTH_SOCK.
+  services.gnome.gcr-ssh-agent.enable = false;
+
   environment.systemPackages = [
     pkgs.tpm2-tools
     pkgs.age-plugin-tpm
