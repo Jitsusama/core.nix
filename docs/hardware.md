@@ -52,6 +52,7 @@ IPU7 behind Intel's CVS bridge, and Intel's BE211 Wi-Fi 7.
 | NPU      | `intel_vpu` with Level Zero                                            |
 | Audio    | the firmware Sound Open Firmware runs on the DSP                       |
 | Speakers | Omarchy's tuning, as a smart filter; see below                         |
+| Camera   | Intel's camera software, with the CVS bridge in its graph; see below   |
 | Sensors  | ambient light and presence through `iio-sensor-proxy`                  |
 | Docks    | bolt, which authorizes Thunderbolt and USB4 devices                    |
 | Firmware | fwupd, for the BIOS and firmware Dell publishes through LVFS           |
@@ -105,6 +106,26 @@ how it measures, not what it does: WirePlumber hands a recording of the
 speakers the filter's input instead. `speakers-are-tuned` links its recorder
 by hand and hears the tuning.
 
+### The Camera
+
+The OV08X40 sits behind the CVS bridge, which Linux 7.2 puts between the sensor
+and the IPU. [`camera.nix`][11] turns on nixpkgs's `hardware.ipu7`, which brings
+the image processor's module and firmware, and swaps in Intel's camera software
+from its main branch, which knows the bridge. A patch routes this sensor's graph
+through the bridge, as [Intel's own change][6] does for the next IPU. Programs
+open a loopback camera, "Built-in Camera", which a relay fills from the image
+processor at 1080p, turned upright: the sensor is mounted upside down.
+
+[nixos-hardware's profile for this laptop][7], not yet merged, worked out every
+piece: the patch, the order the bridge's drivers load in, keeping USB from
+suspending the bridge, hiding the raw capture nodes from PipeWire, and the
+relay's buffers and queue, without which it measured a few frames a second.
+[Omarchy's camera package][12] ships the same graph. The relay starts only when
+the image processor appears, so a machine without the camera never runs it.
+
+Omarchy also sharpens the picture and lowers its exposure. Whether that looks
+better is for the laptop to show, as is the camera itself.
+
 ### Nothing to Add
 
 - **The touchpad.** It's a `2C2F` haptic pad on `hid-multitouch`. Omarchy
@@ -123,17 +144,9 @@ by hand and hears the tuning.
 
 | Part      | Why it isn't here yet                                                 |
 | --------- | --------------------------------------------------------------------- |
-| Camera    | nixpkgs's IPU7 camera software predates its CVS support; see below    |
 | Panel VRR | the panel's range comes from a DisplayID block Linux doesn't read yet |
 
-Each needs the laptop itself to prove, so each lands after the first boot.
-
-The camera will build on two pieces of work. nixpkgs's `hardware.ipu7` runs
-the camera through Intel's image processor, but its release of Intel's camera
-software predates [the change][6] that routes the sensor through the CVS
-bridge 7.2 puts in front of it. [nixos-hardware's profile for this laptop][7],
-not yet merged, carries that change and the camera's tuning, and has the
-speaker tuning too.
+It needs the laptop itself to prove, so it lands after the first boot.
 
 ### Left Out on Purpose
 
@@ -165,3 +178,5 @@ speaker tuning too.
 [8]: installing.md
 [9]: https://github.com/omacom/omarchy/blob/a466dcc04f937a41c820aaa990a31f36ecaed543/default/audio/tunings/dell-xps-2026/filter-chain.conf
 [10]: ../hardware/dell-xps-14-da14260/speakers.conf
+[11]: ../hardware/dell-xps-14-da14260/camera.nix
+[12]: https://github.com/TsaiGaggery/hurrican_omarchy_enabling
