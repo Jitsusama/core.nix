@@ -1,7 +1,7 @@
 # niri, the scrolling, tiling compositor Joel works in, and what it needs from
 # the system: its session, its portals, Wayland for Chromium and Electron
-# programs, Xwayland for the X11 programs left, and the tools its brightness
-# and media keys call.
+# programs, Xwayland for the X11 programs left, the tools its brightness and
+# media keys call, and the clipboard's.
 { pkgs, ... }:
 {
   programs.niri = {
@@ -21,5 +21,9 @@
     pkgs.xwayland-satellite
     pkgs.brightnessctl
     pkgs.playerctl
+    # wl-copy and wl-paste, which programs in a terminal reach the clipboard
+    # through: Neovim's + register, and pi's copying and pasting of text and
+    # images.
+    pkgs.wl-clipboard
   ];
 }

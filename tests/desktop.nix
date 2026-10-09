@@ -2,11 +2,11 @@
 # way Joel does: a notification appears, the volume and brightness bars come
 # and go as those change, the launcher finds and opens kitty, the lock screen
 # refuses a wrong password and takes the right one, polkit's prompt lets the
-# account start a system service, and GTK programs and monospaced text are in
-# the theme. niri says which surfaces it drew, photographs show their
-# colours, to the test and to a person looking, and the portal and fontconfig
-# answer for the settings. Quickshell has to start without a single QML
-# error.
+# account start a system service, the clipboard takes and gives text, and GTK
+# programs and monospaced text are in the theme. niri says which surfaces it
+# drew, photographs show their colours, to the test and to a person looking,
+# and the portal and fontconfig answer for the settings. Quickshell has to
+# start without a single QML error.
 { self, pkgs }:
 let
   account = "jitsusama";
@@ -235,6 +235,12 @@ pkgs.testers.runNixOSTest {
               " org.freedesktop.portal.Settings ReadOne ss org.freedesktop.appearance color-scheme"
           )
           t.assertIn("u 1", reply)
+
+      with subtest("programs in a terminal reach the clipboard"):
+          # wl-copy stays behind to serve what it copied, so it lets go of the
+          # output the test reads.
+          as_account("echo -n 'from a terminal' | wl-copy > /dev/null 2>&1")
+          t.assertEqual(as_account("wl-paste --no-newline"), "from a terminal")
 
       with subtest("monospace is the theme's font"):
           family = as_account("${pkgs.fontconfig.bin}/bin/fc-match -f '%{family}' monospace")
