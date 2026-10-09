@@ -224,6 +224,13 @@ checkEach "nixos" (module: bareNixos [ module ]) (removeAttrs self.nixosModules 
       && machine.config.programs._1password-gui.polkitPolicyOwners == [ "someone" ]
     );
 
+  # home-manager configures zsh in every account but leaves the login shell to
+  # the system, so an account on NixOS has to be given zsh to read any of it.
+  # A Mac's accounts log in to zsh already.
+  zsh-is-the-login-shell =
+    holds "zsh-is-the-login-shell" "An account on NixOS doesn't log in to zsh."
+      (lib.getName (bareNixos [ self.nixosModules.base ]).config.users.users.someone.shell == "zsh");
+
   # The YubiKey gets Joel's keys back on any machine he writes code on, so both
   # workstation roles bring its tools, a Mac as much as Linux.
   yubikey-on-every-workstation =

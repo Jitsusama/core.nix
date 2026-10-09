@@ -75,12 +75,14 @@ output. zsh, for example:
 
 ```nix
 homeModules.zsh = ./modules/zsh/home.nix;
-darwinModules.zsh = ./modules/zsh/darwin.nix;
+darwinModules.zsh = ./modules/zsh/system.nix;
+nixosModules.zsh = ./modules/zsh/nixos.nix;
 ```
 
 When the setting is spelled the same on NixOS and nix-darwin, as fonts are,
 write it once as `system.nix` and name that one file in both `nixosModules`
-and `darwinModules`.
+and `darwinModules`. When one system needs more, as NixOS needs zsh made the
+login shell, that system's own file imports `system.nix` and adds it.
 
 ## Adding a Role
 
