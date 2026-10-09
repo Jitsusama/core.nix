@@ -8,6 +8,7 @@
   imports = [
     ../../modules/kernel/nixos.nix
     ../../modules/keyboard/nixos.nix
+    ./camera.nix
     ./speakers.nix
   ];
 
