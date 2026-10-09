@@ -13,6 +13,7 @@ replaces it and says so.
 | [0005][5] | Modules and options are the interface        |
 | [0006][6] | Build the kernel here                        |
 | [0007][7] | Hardware lives here                          |
+| [0008][8] | Only Joel's keys, and the TPM opens the disk |
 
 A new record copies the shape of the others: Status, Context, Decision,
 Alternatives and Consequences, numbered after the last.
@@ -24,3 +25,4 @@ Alternatives and Consequences, numbered after the last.
 [5]: 0005-modules-and-options-are-the-interface.md
 [6]: 0006-build-the-kernel-here.md
 [7]: 0007-hardware-lives-here.md
+[8]: 0008-own-keys-and-a-tpm-sealed-disk.md
