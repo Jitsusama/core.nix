@@ -1,10 +1,13 @@
 -- Twilight: Dims inactive portions of code for better focus
 
+local theme = require('theme')
+
 require('twilight').setup({
   dimming = {
-    -- Customize for gruvbox theme
-    color = { 'Normal', '#ebdbb2' },
-    term_bg = '#282828', -- Gruvbox dark background
+    -- The colour scheme draws no background, so twilight dims the text
+    -- towards the terminal's.
+    color = { 'Normal', theme.foreground },
+    term_bg = theme.background,
   },
   expand = {
     'function',

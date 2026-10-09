@@ -6,17 +6,7 @@ if not ok then
   return
 end
 
--- Configure todo-comments with minimal changes from defaults
-todo_comments.setup({
-  colors = {
-    error = { 'DiagnosticError', 'ErrorMsg', '#fb4934' }, -- gruvbox red (default: #DC2626)
-    warning = { 'DiagnosticWarn', 'WarningMsg', '#fabd2f' }, -- gruvbox yellow (default: #FBBF24)
-    info = { 'DiagnosticInfo', '#83a598' }, -- gruvbox blue (default: #2563EB)
-    hint = { 'DiagnosticHint', '#8ec07c' }, -- gruvbox aqua (default: #10B981)
-    default = { 'Identifier', '#d3869b' }, -- gruvbox purple (default: #7C3AED)
-    test = { 'Identifier', '#fe8019' }, -- gruvbox orange (default: #FF00FF)
-  },
-})
+todo_comments.setup({})
 
 vim.keymap.set('n', ']n', function()
   todo_comments.jump_next()
