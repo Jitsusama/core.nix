@@ -1,7 +1,8 @@
 # Starts the graphical role's desktop in a virtual machine and uses it the way
-# Joel does: a notification appears, the launcher finds and opens kitty, the
-# lock screen refuses a wrong password and takes the right one, and polkit's
-# prompt lets the account start a system service. Each part is checked by asking niri for
+# Joel does: a notification appears, the volume and brightness bars come and
+# go as those change, the launcher finds and opens kitty, the lock screen
+# refuses a wrong password and takes the right one, and polkit's prompt lets
+# the account start a system service. Each part is checked by asking niri for
 # the surface it drew, and photographed for a person to look at. Quickshell
 # has to start without a single QML error.
 { self, pkgs }:
@@ -15,9 +16,36 @@ pkgs.testers.runNixOSTest {
   node.pkgsReadOnly = false;
 
   nodes.machine =
-    { lib, pkgs, ... }:
+    {
+      config,
+      lib,
+      pkgs,
+      ...
+    }:
     {
       imports = [ self.nixosModules.graphical ];
+
+      # The VM has neither a backlight nor a sound card, so it gets one of each
+      # that drives nothing, which the kernel and PipeWire report as they do
+      # the laptop's.
+      boot.extraModulePackages = [
+        (config.boot.kernelPackages.callPackage ./stand-in-backlight { })
+      ];
+      boot.kernelModules = [ "stand-in-backlight" ];
+      services.pipewire.extraConfig.pipewire."90-stand-in-speakers"."context.objects" = [
+        {
+          factory = "adapter";
+          args = {
+            "factory.name" = "support.null-audio-sink";
+            "node.name" = "stand-in-speakers";
+            "media.class" = "Audio/Sink";
+            "audio.position" = [
+              "FL"
+              "FR"
+            ];
+          };
+        }
+      ];
 
       virtualisation = {
         memorySize = 4096;
@@ -57,6 +85,7 @@ pkgs.testers.runNixOSTest {
 
   testScript = ''
     import shlex
+    import time
 
     # A command as the account, inside its niri session: qs finds the shell by
     # the display it's on.
@@ -93,6 +122,24 @@ pkgs.testers.runNixOSTest {
         wait_for_surface("notifications")
         machine.sleep(1)
         machine.screenshot("notification")
+
+    with subtest("the volume shows when it changes, then goes"):
+        as_account("wpctl set-volume @DEFAULT_AUDIO_SINK@ 0.4")
+        wait_for_surface("volume")
+        # niri lists a surface before it has drawn its first frame.
+        time.sleep(0.5)
+        machine.screenshot("volume")
+        machine.wait_until_fails(in_session("niri msg layers | grep -q volume"), timeout=10)
+
+    # niri runs the brightness keys' command inside Joel's session, which is
+    # the one logind lets change a backlight, so the test has niri run it too.
+    with subtest("the brightness shows when the keys' command changes it, then goes"):
+        as_account("niri msg action spawn -- brightnessctl --class=backlight set 80%")
+        machine.wait_until_succeeds("grep -qx 80 /sys/class/backlight/stand-in/brightness", timeout=10)
+        wait_for_surface("brightness")
+        time.sleep(0.5)
+        machine.screenshot("brightness")
+        machine.wait_until_fails(in_session("niri msg layers | grep -q brightness"), timeout=10)
 
     with subtest("the launcher finds and opens kitty"):
         as_account("qs ipc call launcher toggle")

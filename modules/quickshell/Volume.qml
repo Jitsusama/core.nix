@@ -2,7 +2,6 @@
 // the bottom of the screen, as a bar in the theme.
 import Quickshell
 import Quickshell.Services.Pipewire
-import Quickshell.Wayland
 import QtQuick
 
 Scope {
@@ -36,33 +35,10 @@ Scope {
         onTriggered: root.shown = false
     }
 
-    PanelWindow {
+    Meter {
+        name: "volume"
         visible: root.shown
-        anchors.bottom: true
-        margins.bottom: Theme.gap * 6
-        implicitWidth: 320
-        implicitHeight: Theme.gap * 4
-        exclusionMode: ExclusionMode.Ignore
-        color: "transparent"
-        WlrLayershell.layer: WlrLayer.Overlay
-        WlrLayershell.namespace: "volume"
-
-        Rectangle {
-            anchors.fill: parent
-            color: Theme.background
-            border.color: Theme.accent
-            border.width: Theme.border
-            radius: Theme.radius
-
-            Rectangle {
-                anchors.left: parent.left
-                anchors.top: parent.top
-                anchors.bottom: parent.bottom
-                anchors.margins: Theme.gap
-                width: (parent.width - Theme.gap * 2) * Math.min(root.sink ? root.sink.audio.volume : 0, 1)
-                color: root.sink && root.sink.audio.muted ? Theme.muted : Theme.accent
-                radius: Theme.radius
-            }
-        }
+        level: root.sink ? root.sink.audio.volume : 0
+        off: root.sink ? root.sink.audio.muted : false
     }
 }
