@@ -22,6 +22,11 @@
       url = "github:numtide/treefmt-nix";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    # A release, since the disk's layout decides whether a machine boots at all.
+    disko = {
+      url = "github:nix-community/disko/v1.13.0";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
     wallpapers.url = "github:Jitsusama/wallpapers.nix";
     neovim-pi = {
       url = "github:Jitsusama/neovim.pi";
@@ -36,6 +41,7 @@
       home-manager,
       nix-darwin,
       treefmt-nix,
+      disko,
       wallpapers,
       neovim-pi,
     }:
@@ -115,6 +121,7 @@
       };
 
       nixosModules = {
+        disko = moduleFrom ./modules/disko/nixos.nix { inherit disko; };
         fonts = ./modules/fonts/system.nix;
         home-manager = moduleFrom ./modules/home-manager/nixos.nix { inherit home-manager; };
         kernel = ./modules/kernel/nixos.nix;

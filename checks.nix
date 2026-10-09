@@ -29,7 +29,8 @@ let
         {
           nixpkgs.hostPlatform = "x86_64-linux";
           boot.loader.grub.enable = false;
-          fileSystems."/" = {
+          # A module that lays out the disk replaces this.
+          fileSystems."/" = lib.mkDefault {
             device = "none";
             fsType = "tmpfs";
           };
@@ -153,7 +154,7 @@ let
     ];
   };
 in
-checkEach "nixos" (module: bareNixos [ module ]) self.nixosModules
+checkEach "nixos" (module: bareNixos [ module ]) (removeAttrs self.nixosModules [ "disko" ])
 // checkEach "darwin" (module: bareDarwin [ module ]) self.darwinModules
 // checkEach "home-on-nixos" (module: bareNixos [ (inAccount module) ]) self.homeModules
 // checkEach "home-on-darwin" (module: bareDarwin [ (inAccount module) ]) self.homeModules
@@ -189,6 +190,17 @@ checkEach "nixos" (module: bareNixos [ module ]) self.nixosModules
     holds "disabling-a-module-removes-it" "disabledModules left Neovim on the workstation." (
       !(account workstationWithoutNeovim).programs.neovim.enable
     );
+
+  # The disk module needs the machine's disk, so its check names one.
+  nixos-disko = evaluates "nixos-disko" (bareNixos [
+    self.nixosModules.disko
+    {
+      jitsusama.disk = {
+        device = "/dev/disk/by-id/nvme-example";
+        swapSize = "16G";
+      };
+    }
+  ]);
 
   example-nixos = evaluates "example-nixos" (
     import ./examples/nixos.nix {
