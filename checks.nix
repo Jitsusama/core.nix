@@ -159,6 +159,7 @@ let
   linuxOnly = [
     "bemenu"
     "quickshell"
+    "signing"
     "ssh-tpm-agent"
     "swayidle"
   ];
@@ -166,7 +167,10 @@ in
 checkEach "nixos" (module: bareNixos [ module ]) (removeAttrs self.nixosModules [ "disko" ])
 // checkEach "darwin" (module: bareDarwin [ module ]) self.darwinModules
 // checkEach "home-on-nixos" (module: bareNixos [ (inAccount module) ]) (
-  removeAttrs self.homeModules [ "ssh-tpm-agent" ]
+  removeAttrs self.homeModules [
+    "signing"
+    "ssh-tpm-agent"
+  ]
 )
 // checkEach "home-on-darwin" (module: bareDarwin [ (inAccount module) ]) (
   removeAttrs self.homeModules linuxOnly
@@ -218,11 +222,15 @@ checkEach "nixos" (module: bareNixos [ module ]) (removeAttrs self.nixosModules 
       && (account machine).services.ssh-tpm-agent.enable
     );
 
-  # ssh-tpm-agent needs the account to reach the TPM, which the tpm module
-  # gives it.
+  # ssh-tpm-agent, and the signing that uses it, need the account to reach
+  # the TPM, which the tpm module gives it.
   home-on-nixos-ssh-tpm-agent = evaluates "home-on-nixos-ssh-tpm-agent" (bareNixos [
     self.nixosModules.tpm
     (inAccount self.homeModules.ssh-tpm-agent)
+  ]);
+  home-on-nixos-signing = evaluates "home-on-nixos-signing" (bareNixos [
+    self.nixosModules.tpm
+    (inAccount self.homeModules.signing)
   ]);
 
   # The disk module needs the machine's disk, so its check names one.
@@ -338,6 +346,7 @@ checkEach "nixos" (module: bareNixos [ module ]) (removeAttrs self.nixosModules 
     # and Secure Boot decide whether a machine starts at all.
     secure-boot-installs = import ./tests/secure-boot.nix { inherit self pkgs; };
     ssh-tpm-agent-signs = import ./tests/ssh-tpm-agent.nix { inherit self pkgs; };
+    commits-are-signed = import ./tests/signing.nix { inherit self pkgs; };
     desktop-works = import ./tests/desktop.nix { inherit self pkgs; };
   }
 )

@@ -170,19 +170,20 @@ fixed:
 The last two rows exist only until both machine repositories import the
 modules and roles; `flake.nix` says so beside them.
 
-| Option                       | Means                                                |
-| ---------------------------- | ---------------------------------------------------- |
-| `jitsusama.disk.device`      | the disk to install onto, set per machine            |
-| `jitsusama.disk.swapSize`    | the swap file's size, at least the memory's          |
-| `jitsusama.identity.name`    | the name Joel's work is attributed to                |
-| `jitsusama.identity.email`   | the email address it's attributed to, set per layer  |
-| `jitsusama.kernel.cpu`       | the CPU the kernel is compiled for, set per hardware |
-| `jitsusama.kernel.profile`   | the kernel's AutoFDO profile, recorded per machine   |
-| `jitsusama.keyboard.builtIn` | the machine's own keyboard, set per hardware         |
-| `jitsusama.login.account`    | the account signed in at boot, set per machine       |
-| `jitsusama.theme.colors.*`   | each colour of the theme, Omarchy's Osaka Jade       |
-| `jitsusama.theme.font.*`     | the font every program draws text in, and its size   |
-| `jitsusama.theme.shape.*`    | the border, corners and gaps every surface shares    |
+| Option                             | Means                                                    |
+| ---------------------------------- | -------------------------------------------------------- |
+| `jitsusama.disk.device`            | the disk to install onto, set per machine                |
+| `jitsusama.disk.swapSize`          | the swap file's size, at least the memory's              |
+| `jitsusama.identity.name`          | the name Joel's work is attributed to                    |
+| `jitsusama.identity.email`         | the email address it's attributed to, set per layer      |
+| `jitsusama.kernel.cpu`             | the CPU the kernel is compiled for, set per hardware     |
+| `jitsusama.kernel.profile`         | the kernel's AutoFDO profile, recorded per machine       |
+| `jitsusama.keyboard.builtIn`       | the machine's own keyboard, set per hardware             |
+| `jitsusama.login.account`          | the account signed in at boot, set per machine           |
+| `jitsusama.signing.allowedSigners` | every key that signs Joel's work, per machine repository |
+| `jitsusama.theme.colors.*`         | each colour of the theme, Omarchy's Osaka Jade           |
+| `jitsusama.theme.font.*`           | the font every program draws text in, and its size       |
+| `jitsusama.theme.shape.*`          | the border, corners and gaps every surface shares        |
 
 Renaming or removing an output or an option is a breaking change. A machine
 repository sees it only when it runs `nix flake update core`. [Decision
