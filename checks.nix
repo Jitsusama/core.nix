@@ -204,6 +204,20 @@ checkEach "nixos" (module: bareNixos [ module ]) (removeAttrs self.nixosModules 
       !(account workstationWithoutNeovim).programs.neovim.enable
     );
 
+  # A workstation with a screen has one SSH agent, the TPM's, though niri
+  # brings gnome-keyring and its agent.
+  one-ssh-agent =
+    let
+      machine = bareNixos [
+        self.nixosModules.workstation
+        self.nixosModules.graphical
+      ];
+    in
+    holds "one-ssh-agent" "gcr's SSH agent runs beside ssh-tpm-agent." (
+      !machine.config.services.gnome.gcr-ssh-agent.enable
+      && (account machine).services.ssh-tpm-agent.enable
+    );
+
   # ssh-tpm-agent needs the account to reach the TPM, which the tpm module
   # gives it.
   home-on-nixos-ssh-tpm-agent = evaluates "home-on-nixos-ssh-tpm-agent" (bareNixos [
