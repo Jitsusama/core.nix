@@ -37,7 +37,9 @@ TPM's event log. [Decision 0008][4] weighs this against the alternatives.
 - The machine repository has the machine, importing `disko` and `lanzaboote`,
   with `jitsusama.disk.swapSize` at least the size of the memory.
 - A USB stick that boots NixOS, with the machine repository on it or reachable
-  over the network.
+  over the network. If the stick is itself a machine built on core's `disko`,
+  its `jitsusama.disk.name` differs from the one being installed, or the
+  install can take the stick's open volume for the new one.
 - The YubiKey, and somewhere off the machine to keep a recovery key.
 
 ## 1. Boot the Stick
@@ -103,7 +105,7 @@ sudo jq '[.pcrValues[].pcr] | unique' /var/lib/systemd/pcrlock.json   # [0, 4, 7
 ## 6. Bind the Disk to the TPM and a PIN
 
 ```sh
-disk=/dev/disk/by-partlabel/disk-main-system
+disk=/dev/disk/by-partlabel/system
 sudo systemd-cryptenroll --tpm2-device=auto --tpm2-with-pin=yes \
   --tpm2-pcrlock=/var/lib/systemd/pcrlock.json $disk
 sudo systemd-cryptenroll --fido2-device=auto $disk

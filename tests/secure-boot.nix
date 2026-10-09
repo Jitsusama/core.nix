@@ -143,7 +143,7 @@ pkgs.testers.runNixOSTest {
           pcrs = sorted(v["pcr"] for v in policy["pcrValues"])
           t.assertEqual(pcrs, [0, 4, 7])
 
-      disk = "/dev/disk/by-partlabel/disk-main-system"
+      disk = "/dev/disk/by-partlabel/system"
       with subtest("the runbook binds the disk to the TPM and a PIN"):
           machine.succeed(
               f"PASSWORD=${passphrase} NEWPIN=${pin} systemd-cryptenroll --tpm2-device=auto"

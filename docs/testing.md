@@ -23,6 +23,7 @@ files, and a virtual machine taken through [the whole install][3].
 | `onepassword-works-with-chrome`   | 1Password has its Chrome helper and unlocks with polkit   |
 | `yubikey-on-every-workstation`    | Linux and Mac workstations both have the YubiKey's tools  |
 | `zsh-is-the-login-shell`          | an account on NixOS logs in to zsh, as one on a Mac does  |
+| `disks-go-by-their-name`          | a disk's partitions and open volume carry its name        |
 | `example-nixos`                   | the NixOS example machine evaluates                       |
 | `example-laptop`                  | the laptop example evaluates                              |
 | `example-darwin`                  | the Mac example machine evaluates                         |
