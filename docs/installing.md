@@ -19,6 +19,7 @@ update that breaks any of them fails CI.
 | Firmware    | an administrator password, so nobody can turn Secure Boot off  |
 | SSH keys    | the TPM's every day, and a spare on the YubiKey                |
 | Signing     | two keys in the TPM: Joel's, confirmed each time, and agents'  |
+| Keyring     | a random password the TPM seals at the first login             |
 
 The TPM opens the disk only for the same firmware (PCR 0), the same boot
 loader, kernel, initrd and command line (PCR 4), and the same Secure Boot keys

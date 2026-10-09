@@ -137,6 +137,7 @@
         bluetooth = ./modules/bluetooth/nixos.nix;
         disko = moduleFrom ./modules/disko/nixos.nix { inherit disko; };
         fonts = ./modules/fonts/system.nix;
+        gnome-keyring = ./modules/gnome-keyring/nixos.nix;
         greetd = ./modules/greetd/nixos.nix;
         home-manager = moduleFrom ./modules/home-manager/nixos.nix { inherit home-manager; };
         kernel = ./modules/kernel/nixos.nix;
