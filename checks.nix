@@ -268,6 +268,28 @@ checkEach "nixos" (module: bareNixos [ module ]) (removeAttrs self.nixosModules 
     }
   ]);
 
+  # A disk's partitions and its open volume go by its name, so a machine's
+  # drive and a stick attached beside it are never taken for each other.
+  disks-go-by-their-name =
+    let
+      machine = bareNixos [
+        self.nixosModules.disko
+        {
+          jitsusama.disk = {
+            name = "stick";
+            device = "/dev/disk/by-id/usb-example";
+            swapSize = "4G";
+          };
+        }
+      ];
+      inherit (machine.config.disko.devices.disk.main.content.partitions) boot system;
+    in
+    holds "disks-go-by-their-name" "A disk's partitions or volume don't carry its name." (
+      boot.label == "stick-boot"
+      && system.label == "stick"
+      && machine.config.boot.initrd.luks.devices ? stick
+    );
+
   example-nixos = evaluates "example-nixos" (
     import ./examples/nixos.nix {
       core = self;
