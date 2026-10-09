@@ -92,6 +92,15 @@ other tools. Five rules keep both working:
 
 A key another tool owns is never declared here at all.
 
+## Projects Bring Their Own Toolchains
+
+A project says which compiler it builds with, in its flake, its
+`rust-toolchain.toml` or its `go.mod`, so it builds the same on every machine
+and in CI. core installs no compiler or language runtime for projects to
+lean on. It may set defaults that make every project's builds faster, such as
+mold as Rust's linker, as long as a project's own settings still win. A tool
+is installed system-wide only when it's worth having outside any project.
+
 ## Nix Is Code
 
 - Code reads top-down in domain language, and vertical space is earned: no

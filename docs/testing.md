@@ -28,6 +28,7 @@ files, and a virtual machine taken through [the whole install][3].
 | `kernel-settings-hold-<model>`    | the same for the kernel that hardware builds              |
 | `niri-accepts-its-configuration`  | niri loads the files an account gets                      |
 | `kitty-accepts-its-configuration` | kitty loads its files without a complaint                 |
+| `cargo-links-with-mold`           | cargo links an account's Rust builds with mold            |
 | `secure-boot-installs`            | the whole install works, on a VM with a TPM               |
 
 A bare machine has nothing but home-manager, nixpkgs' settings and one
