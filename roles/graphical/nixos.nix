@@ -1,8 +1,8 @@
 # A NixOS machine with a screen in front of Joel: fonts, sound, Bluetooth for
 # headphones and mice, a keyring the TPM unlocks, and niri, started at boot by
-# greetd. Every account gets
-# niri's configuration, kitty, and Quickshell for the launcher, notifications
-# and lock screen, which swayidle locks.
+# greetd. Every account gets niri's configuration, kitty, Quickshell for the
+# launcher, notifications and lock screen, which swayidle locks, and GTK
+# programs in the theme.
 { nixosModules, homeModules }:
 {
   imports = [
@@ -16,6 +16,7 @@
     nixosModules.quickshell
   ];
   home-manager.sharedModules = [
+    homeModules.gtk
     homeModules.niri
     homeModules.kitty
     homeModules.quickshell
