@@ -49,7 +49,7 @@ end
 require('lualine').setup({
   options = {
     icons_enabled = true,
-    theme = 'gruvbox',
+    theme = 'bamboo',
     component_separators = {
       left = separators.thin_arrow_left,
       right = separators.thin_arrow_right,

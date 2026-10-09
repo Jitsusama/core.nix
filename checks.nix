@@ -320,6 +320,38 @@ checkEach "nixos" (module: bareNixos [ module ]) (removeAttrs self.nixosModules 
         touch $out
       '';
 
+    # Neovim starts with the configuration an account gets, in bamboo drawn on
+    # the terminal's own background, and nothing it loads complains.
+    neovim-starts-in-the-theme =
+      let
+        home = account (bareNixos [ self.nixosModules.workstation ]);
+        files = home.xdg.configFile;
+        # home-manager puts the plugins where Neovim looks for packages.
+        plugins = home.xdg.dataFile."nvim/site/pack/hm".source;
+        report = "vim.g.colors_name .. ' ' .. tostring(vim.api.nvim_get_hl(0, { name = 'Normal' }).bg)";
+      in
+      pkgs.runCommandLocal "neovim-starts-in-the-theme"
+        {
+          # The programs the account gets, git and gh among them, which
+          # plugins call as they start.
+          nativeBuildInputs = [ home.home.path ];
+        }
+        ''
+          export HOME=$PWD XDG_CONFIG_HOME=$PWD/config XDG_DATA_HOME=$PWD/data
+          export XDG_STATE_HOME=$PWD/state XDG_CACHE_HOME=$PWD/cache
+          mkdir -p config/nvim/lua data/nvim/site/pack
+          ln -s ${plugins} data/nvim/site/pack/hm
+          cp ${files."nvim/init.lua".source} config/nvim/init.lua
+          cp ${files."nvim/lua/theme.lua".source} config/nvim/lua/theme.lua
+          nvim --headless -c "lua io.stdout:write(${report})" -c 'qa!' > answer 2> complaints
+          # claudecode says it has stopped as Neovim quits, which is news, not a
+          # complaint.
+          grep -v '\[INFO\]' complaints > errors || true
+          if [ -s errors ]; then cat errors; exit 1; fi
+          if [ "$(cat answer)" != "bamboo nil" ]; then cat answer; exit 1; fi
+          touch $out
+        '';
+
     # cargo builds a program with the config an account gets, and mold is the
     # linker that wrote it.
     cargo-links-with-mold =

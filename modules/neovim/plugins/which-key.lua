@@ -265,23 +265,6 @@ which_key.add({
   { '-', desc = 'Parent directory' },
 })
 
--- Apply custom which-key highlighting to match Telescope aesthetic
--- Using gruvbox colors for consistency
-vim.api.nvim_set_hl(0, 'WhichKeyNormal', { bg = '#282828' }) -- Same as Telescope results
-vim.api.nvim_set_hl(0, 'WhichKeyBorder', { fg = '#282828', bg = '#282828' }) -- Invisible border
-vim.api.nvim_set_hl(0, 'WhichKeyGroup', { fg = '#d79921', bold = true, underline = false }) -- Yellow like Telescope caret
-vim.api.nvim_set_hl(0, 'WhichKeyDesc', { fg = '#ebdbb2' }) -- Light text for descriptions
-vim.api.nvim_set_hl(0, 'WhichKeySeparator', { fg = '#504945' }) -- Subtle separator
-vim.api.nvim_set_hl(0, 'WhichKeyValue', { fg = '#83a598' }) -- Blue for values
-vim.api.nvim_set_hl(0, 'WhichKeyFloat', { bg = '#282828' }) -- Float window background
-vim.api.nvim_set_hl(0, 'WhichKeyIcon', { fg = '#d79921', underline = false }) -- Icons without underline
-
--- Style the footer/hint text consistently
-vim.api.nvim_set_hl(0, 'WhichKeyFooter', { fg = '#7c6f64', bg = '#282828' }) -- Muted gray for footer
-
--- Style the breadcrumb/title line with visual separation
-vim.api.nvim_set_hl(0, 'WhichKeyTitle', { fg = '#7c6f64', bg = '#1d2021', bold = true }) -- Darker bg for breadcrumb
-
 -- Optional: Add a command to manually trigger which-key
 vim.api.nvim_create_user_command('WhichKey', function()
   which_key.show()

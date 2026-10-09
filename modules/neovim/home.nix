@@ -1,5 +1,10 @@
 { neovim-pi }:
-{ pkgs, lib, ... }:
+{
+  config,
+  pkgs,
+  lib,
+  ...
+}:
 let
   inherit (pkgs) vimPlugins;
   # Most plugins are configured by a Lua file of the same name in ./plugins.
@@ -18,6 +23,14 @@ let
   };
 in
 {
+  imports = [ ../theme/home.nix ];
+
+  # The theme's colours, for the plugins that draw on the terminal's own
+  # background: require('theme').background.
+  xdg.configFile."nvim/lua/theme.lua".text = "return ${
+    lib.generators.toLua { } config.jitsusama.theme.colors
+  }\n";
+
   programs.git.ignores = [
     "*.swp"
     "*.swo"
@@ -48,6 +61,8 @@ in
     plugins = [
       # A code outline window for skimming and quick navigation.
       (configured aerial ./plugins/aerial.lua)
+      # The colour scheme Omarchy gives Neovim in its Osaka Jade theme.
+      (configured vimPlugins.bamboo-nvim ./plugins/bamboo.lua)
       # Seamless integration with Claude Code.
       (configured vimPlugins.claudecode-nvim ./plugins/claudecode.lua)
       # A completion engine plugin.
@@ -73,8 +88,6 @@ in
       (configured vimPlugins.vim-fugitive ./plugins/fugitive.lua)
       # Deep buffer integration for Git.
       (configured vimPlugins.gitsigns-nvim ./plugins/gitsigns.lua)
-      # A port of gruvbox theme with treesitter and semantic highlighting.
-      (configured vimPlugins.gruvbox-nvim ./plugins/gruvbox.lua)
       # Quickstart configs for Nvim LSP.
       (configured vimPlugins.nvim-lspconfig ./plugins/lsp.lua)
       # A blazing fast and statusline.
