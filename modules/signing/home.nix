@@ -106,7 +106,7 @@ in
   options.jitsusama.signing.allowedSigners = lib.mkOption {
     type = lib.types.listOf lib.types.str;
     default = [ ];
-    example = [ ''joel@grrbrr.ca namespaces="git" ecdsa-sha2-nistp256 AAAA...'' ];
+    example = [ ''joel@example.com namespaces="git" ecdsa-sha2-nistp256 AAAA...'' ];
     description = ''
       Lines of git's allowed_signers file: every key that has signed Joel's
       work, on every machine, so git can say whose a signature is. It's a

@@ -26,10 +26,10 @@ x86-64 machine as `packages.x86_64-linux.kernel`.
   needs. Not nixpkgs's default LLVM 21: its LLD, compiled with GCC 16 as
   nixpkgs compiles it, writes objects the kernel's objtool rejects.
 - **The CPU:** whichever one the machine's [hardware][hw] names in
-  `jitsusama.kernel.cpu`, as Clang's `-march` names it: `pantherlake` for
-  optimus, `znver2` for penelope. So each machine gets a kernel of its own,
-  scheduled and tuned for its cores. Without one, the kernel runs on any
-  x86-64 machine, as upstream builds it.
+  `jitsusama.kernel.cpu`, as Clang's `-march` names it: `pantherlake` for the
+  XPS 14, `znver2` for a Zen 2 laptop. So each machine gets a kernel of its own,
+  scheduled and tuned for its cores. Without one, the kernel runs on any x86-64
+  machine, as upstream builds it.
 - **The profile:** whichever AutoFDO profile the machine recorded of the
   kernel at work, in `jitsusama.kernel.profile`. Clang uses it to lay out and
   inline the code the machine actually runs. [Profiling It](#profiling-it)
@@ -127,11 +127,10 @@ take an hour or so on a laptop.
 ## Profiling It
 
 The kernel is always built ready to be profiled, so a machine can record what
-its kernel does in a day's work and have the next build optimized for it,
-with Clang's AutoFDO. It needs a CPU that records the branches it takes:
-Intel's last-branch records, which optimus's Panther Lake keeps on every
-core, or AMD's, from Zen 3 on. penelope's Zen 2 can't, so penelope builds
-without a profile.
+its kernel does in a day's work and have the next build optimized for it, with
+Clang's AutoFDO. It needs a CPU that records the branches it takes: Intel's
+last-branch records, which Panther Lake keeps on every core, or AMD's, from Zen
+3 on. A Zen 2 machine can't, so it builds without a profile.
 
 Record while the machine does its usual work, a build included. `-c` samples
 one branch in every 500009, the period the kernel's own guide suggests:
@@ -188,7 +187,7 @@ if less; record a new one after moving to a new series.
 - **Propeller.** It reorders the code within each function from a second
   profile, taken of a kernel AutoFDO already optimized. Its profile tool,
   Google's `create_llvm_prof`, isn't in nixpkgs, and AutoFDO should prove its
-  worth on optimus first.
+  worth on the XPS 14 first.
 - **Turning off CPU mitigations.** The speed isn't worth the exposure.
 
 [decision]: decisions/0006-build-the-kernel-here.md

@@ -4,14 +4,11 @@ How to add a tool to the machines, or change which machines get it.
 
 ## Where It Belongs
 
-| Which machines should have it               | Repository                    |
-| ------------------------------------------- | ----------------------------- |
-| Every machine                               | core.nix                      |
-| Personal machines only                      | dotfiles                      |
-| Work machines only, or it names an employer | `//home/joel-gerber/dotfiles` |
-
-A check holds core.nix to the last row: `nix flake check` fails if a module,
-role or example mentions a work-only name.
+A module belongs here when any machine built on core.nix could use it.
+Anything only some machines want, such as one person's apps or an employer's
+tools, belongs in the machine repository those machines live in. The
+`stands-alone` check holds core.nix to that: `nix flake check` fails when any
+file here names a machine, a machine repository or an employer.
 
 ## Adding a Module
 

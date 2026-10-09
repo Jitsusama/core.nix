@@ -11,7 +11,7 @@
     email = lib.mkOption {
       type = lib.types.nullOr lib.types.str;
       default = null;
-      example = "joel@grrbrr.ca";
+      example = "joel@example.com";
       description = "The email address Joel's work is attributed to, or null to leave it unset.";
     };
   };

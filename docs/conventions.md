@@ -48,8 +48,8 @@ choice, and leaving the line out is how a machine goes without.
 
 Options are declared only for settings that differ between machines, such as
 identity, under `jitsusama.*`. They are the extension points a machine
-repository is meant to set. The work repository's own options live under
-`shopify.*`.
+repository is meant to set. A machine repository's own options live under a
+namespace of its own.
 
 ## Roles Only Import
 

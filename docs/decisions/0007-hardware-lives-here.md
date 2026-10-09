@@ -29,8 +29,8 @@ nixos-hardware or Omarchy. A machine imports its hardware beside its roles.
   profile fits, a hardware module can import it and keep only the difference.
 - **Hardware in each machine's directory.** The kernel's CPU option, its
   build and its checks are core's, and core's CI couldn't check a model
-  defined elsewhere. A model owned on both sides, personal and work, would be
-  written twice, since the two machine repositories never import each other.
+  defined elsewhere. A model used by machines in two repositories would be
+  written twice, since machine repositories don't import each other.
 - **`nixos-generate-config`'s hardware file.** It records what it detected
   without saying why, and mixes the model's needs with the machine's disks.
   The disks stay with the machine; the rest moves here.

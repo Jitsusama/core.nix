@@ -5,16 +5,12 @@ nix-darwin and home-manager modules each machine is built from, the roles that
 group them, and the hardware each laptop needs. It holds no machines and nothing
 tied to an employer; those live in the repositories that build on it.
 
-## 🧭 How the Repositories Fit
+## 🧭 Where It Fits
 
-| Repository                    | Holds                                                   | Builds on |
-| ----------------------------- | ------------------------------------------------------- | --------- |
-| core.nix                      | Modules, roles, version pins and checks                 |           |
-| dotfiles                      | Personal machines and the personal layer                | core.nix  |
-| `//home/joel-gerber/dotfiles` | Work machines and the work layer, in Shopify's monorepo   | core.nix  |
-
-Anything every machine shares belongs here. Anything personal or tied to work
-lives in the repository for that side, and the two never import each other.
+A machine repository takes core.nix as an input and builds its machines from
+the modules and roles here, adding what only its own machines need. core.nix
+knows nothing about the repositories that use it, so anything only some
+machines want belongs in theirs.
 
 ## 🧩 How It Fits Together
 
@@ -66,11 +62,11 @@ A machine, in its own repository, calls the stock builder and imports the
 roles it plays. A system role brings its home-manager half to every account:
 
 ```nix
-nixosConfigurations.penelope = nixpkgs.lib.nixosSystem {
+nixosConfigurations.laptop = nixpkgs.lib.nixosSystem {
   modules = [
     core.nixosModules.workstation
     core.nixosModules.graphical
-    ./machines/penelope
+    ./machines/laptop
   ];
 };
 ```
@@ -129,7 +125,7 @@ your checkout:
 
 ```sh
 nix build --override-input core path:$HOME/src/core.nix \
-  .#darwinConfigurations.methuselah.config.system.build.toplevel
+  .#darwinConfigurations.<machine>.config.system.build.toplevel
 ```
 
 ## 📚 Documentation

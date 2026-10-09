@@ -142,18 +142,6 @@ let
       [ -z "$failed" ] && touch $out
     '';
 
-  # The files a machine imports, and the examples that show how. Documentation
-  # may name an employer; these may not.
-  imported = lib.fileset.toSource {
-    root = ./.;
-    fileset = lib.fileset.unions [
-      ./modules
-      ./roles
-      ./hardware
-      ./examples
-    ];
-  };
-
   # Home modules that only a Linux account can use, reached through a NixOS
   # role's home-manager.sharedModules.
   linuxOnly = [
@@ -277,19 +265,44 @@ checkEach "nixos" (module: bareNixos [ module ]) (removeAttrs self.nixosModules 
     }
   );
 
-  # core.nix is public and shared by personal and work machines alike, so
-  # anything tied to an employer belongs in the work repository instead.
-  nothing-work-specific =
-    pkgs.runCommandLocal "nothing-work-specific" { nativeBuildInputs = [ pkgs.ripgrep ]; }
-      ''
-        cd ${imported}
-        if rg --ignore-case --fixed-strings --line-number --no-heading \
-          -e shopify -e /opt/dev -e gitstream -e devx .; then
-          echo "core.nix is shared by every machine; the lines above belong in the work repository."
-          exit 1
-        fi
-        touch $out
-      '';
+  # core.nix knows nothing about what builds on it: no file names a machine, a
+  # machine repository or an employer, so the repositories that use core name
+  # it and never the other way round. Every file is read but this one, which
+  # has to name the words, and the lock file, which only names pins.
+  stands-alone =
+    let
+      outside = [
+        "shopify"
+        "/opt/dev"
+        "gitstream"
+        "devx"
+        "minerva"
+        "cloudflare"
+        "dotfiles"
+        "joel-gerber"
+        "joel.gerber"
+        "grrbrr"
+        "monorepo"
+        "work repository"
+        "work layer"
+        "personal repository"
+        "personal layer"
+        "optimus"
+        "penelope"
+        "methuselah"
+        "equilibrius"
+      ];
+    in
+    pkgs.runCommandLocal "stands-alone" { nativeBuildInputs = [ pkgs.ripgrep ]; } ''
+      cd ${./.}
+      if rg --ignore-case --fixed-strings --line-number --no-heading --hidden \
+        --glob '!checks.nix' --glob '!flake.lock' \
+        ${lib.concatMapStringsSep " " (word: "-e ${lib.escapeShellArg word}") outside} .; then
+        echo "The lines above name what builds on core.nix; they belong where it is built."
+        exit 1
+      fi
+      touch $out
+    '';
 }
 // lib.optionalAttrs (pkgs.stdenv.hostPlatform.system == "x86_64-linux") (
   lib.mapAttrs kernelSettingsHold {

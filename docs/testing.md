@@ -25,7 +25,7 @@ files, and a virtual machine taken through [the whole install][3].
 | `example-laptop`                  | the laptop example evaluates                              |
 | `example-darwin`                  | the Mac example machine evaluates                         |
 | `formatting`                      | everything is formatted and passes the linters            |
-| `nothing-work-specific`           | no module, role or example names anything work-only       |
+| `stands-alone`                    | nothing here names a machine, its repository or employer  |
 | `kernel-settings-hold`            | the kernel's patches apply and every setting holds        |
 | `kernel-settings-hold-<model>`    | the same for the kernel that hardware builds              |
 | `niri-accepts-its-configuration`  | niri loads the files an account gets                      |
@@ -69,7 +69,7 @@ listed as `linuxOnly` in `checks.nix`, are checked on NixOS alone.
 ```sh
 nix build .#checks.x86_64-linux.darwin-zsh               # one module
 nix build .#checks.x86_64-linux.darwin-workstation       # one role
-nix build -L .#checks.x86_64-linux.nothing-work-specific # with its output
+nix build -L .#checks.x86_64-linux.stands-alone          # with its output
 ```
 
 ## Checking a Machine Repository Against a Change
@@ -80,7 +80,7 @@ and after:
 
 ```sh
 nix eval --raw --override-input core path:$HOME/src/core.nix \
-  .#darwinConfigurations.methuselah.config.system.build.toplevel.drvPath
+  .#darwinConfigurations.<machine>.config.system.build.toplevel.drvPath
 nix run nixpkgs#nix-diff -- before.drv after.drv
 ```
 
