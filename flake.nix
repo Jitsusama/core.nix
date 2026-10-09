@@ -131,6 +131,7 @@
       };
 
       nixosModules = {
+        bluetooth = ./modules/bluetooth/nixos.nix;
         disko = moduleFrom ./modules/disko/nixos.nix { inherit disko; };
         fonts = ./modules/fonts/system.nix;
         home-manager = moduleFrom ./modules/home-manager/nixos.nix { inherit home-manager; };
@@ -139,6 +140,7 @@
         keyd = ./modules/keyd/nixos.nix;
         lanzaboote = moduleFrom ./modules/lanzaboote/nixos.nix { inherit lanzaboote; };
         memory = ./modules/memory/nixos.nix;
+        networkmanager = ./modules/networkmanager/nixos.nix;
         niri = ./modules/niri/nixos.nix;
         nixpkgs = ./modules/nixpkgs/system.nix;
         perf = ./modules/perf/nixos.nix;
