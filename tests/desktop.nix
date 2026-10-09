@@ -1,12 +1,13 @@
 # Starts the graphical role's desktop in a virtual machine and uses it the
-# way Joel does: a notification appears, the volume and brightness bars come
-# and go as those change, the launcher finds and opens kitty, the lock screen
-# refuses a wrong password and takes the right one, polkit's prompt lets the
-# account start a system service, the clipboard takes and gives text, and GTK
-# programs and monospaced text are in the theme. niri says which surfaces it
-# drew, photographs show their colours, to the test and to a person looking,
-# and the portal and fontconfig answer for the settings. Quickshell has to
-# start without a single QML error.
+# way Joel does: the overview shows the time and status, a notification
+# appears, the volume and brightness bars come and go as those change, the
+# launcher finds and opens kitty, the lock screen refuses a wrong password
+# and takes the right one, polkit's prompt lets the account start a system
+# service, the clipboard takes and gives text, and GTK programs and
+# monospaced text are in the theme. niri says which surfaces it drew,
+# photographs show their colours, to the test and to a person looking, and
+# the portal and fontconfig answer for the settings. Quickshell has to start
+# without a single QML error.
 { self, pkgs }:
 let
   account = "jitsusama";
@@ -40,7 +41,15 @@ pkgs.testers.runNixOSTest {
       boot.extraModulePackages = [
         (config.boot.kernelPackages.callPackage ./stand-in-backlight { })
       ];
-      boot.kernelModules = [ "stand-in-backlight" ];
+      boot.kernelModules = [
+        "stand-in-backlight"
+        # The kernel's own stand-in battery, which UPower reports as a laptop's.
+        "test_power"
+      ];
+      # The backdrop reads the battery from UPower and the network from
+      # NetworkManager, which the laptop role brings.
+      services.upower.enable = true;
+      networking.networkmanager.enable = true;
       services.pipewire.extraConfig.pipewire."90-stand-in-speakers"."context.objects" = [
         {
           factory = "adapter";
@@ -175,6 +184,27 @@ pkgs.testers.runNixOSTest {
           log = as_account("journalctl --user -u quickshell --no-pager -o cat")
           print(log)
           assert "ERROR" not in log and "Error:" not in log, "Quickshell reported an error"
+
+      # How much of the theme's foreground the left quarter of the screen draws,
+      # which the overview leaves free of workspaces.
+      def foreground_on_the_left(picture):
+          machine.screenshot(picture)
+          image = Image.open(os.path.join(machine.out_dir, picture + ".png")).convert("RGB")
+          left = image.crop((0, 0, image.width // 4, image.height))
+          counts = left.getcolors(left.width * left.height)
+          assert counts is not None
+          foreground = tuple(int("${colors.foreground}"[i : i + 2], 16) for i in (1, 3, 5))
+          return sum(count for count, colour in counts if colour == foreground)
+
+      with subtest("the overview shows the time and status, and only the overview"):
+          wait_for_surface("backdrop")
+          time.sleep(0.5)
+          t.assertEqual(foreground_on_the_left("workspace"), 0)
+          as_account("niri msg action open-overview")
+          time.sleep(1)
+          drawn = foreground_on_the_left("overview")
+          as_account("niri msg action close-overview")
+          t.assertGreater(drawn, 100)
 
       with subtest("a notification appears"):
           as_account("notify-send 'Build finished' 'optimus is ready'")

@@ -9,6 +9,7 @@ ShellRoot {
     Polkit {}
     Volume {}
     Brightness {}
+    Backdrop {}
 
     Lock {
         id: lock
