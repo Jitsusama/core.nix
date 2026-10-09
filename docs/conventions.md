@@ -101,13 +101,14 @@ lock screen all match, and changing one option changes them all. A program
 that can't take the theme's values doesn't get on a screen.
 
 One program draws the desktop: Quickshell, in `modules/quickshell/`. Its
-launcher on Super+Space, its notifications, lock screen, polkit prompt and
-volume and brightness bars all read `Theme.qml`, which `home.nix` renders from
-the theme. A prompt that has to be a program of its own, such as the PIN prompt
-ssh-tpm-agent starts, is bemenu, which `modules/bemenu/home.nix` styles the same
-way. GTK programs, the file chooser among them, take the theme's colours from a
-stylesheet `modules/gtk/home.nix` writes, and `modules/fontconfig/home.nix`
-makes the theme's font the one any program gets when it asks for monospace.
+launcher on Super+Space, notifications, lock screen, polkit prompt, volume and
+brightness bars, and the status in the overview's backdrop all read `Theme.qml`,
+which `home.nix` renders from the theme. A prompt that has to be a program of
+its own, such as the PIN prompt ssh-tpm-agent starts, is bemenu, which
+`modules/bemenu/home.nix` styles the same way. GTK programs, the file chooser
+among them, take the theme's colours from a stylesheet `modules/gtk/home.nix`
+writes, and `modules/fontconfig/home.nix` makes the theme's font the one any
+program gets when it asks for monospace.
 
 ## Projects Bring Their Own Toolchains
 

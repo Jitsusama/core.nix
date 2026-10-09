@@ -99,6 +99,13 @@ animations {
     }
 }
 
+// Quickshell's time and status sit behind the workspaces, seen only in the
+// overview and between workspaces.
+layer-rule {
+    match namespace="^backdrop$"
+    place-within-backdrop true
+}
+
 binds {
     // Programs, as in i3. The launcher lives in Quickshell, which also holds
     // locking and ending the session, so no chord ends it by accident.
