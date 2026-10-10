@@ -59,7 +59,9 @@ through Kconfig. [The kernel guide][2] says what it catches.
 The install check builds a disk image with disko and boots it under QEMU with
 a software TPM, then follows [the install guide][3] step by step: the keys are
 made and enrolled, the disk is bound to the TPM and a PIN, the passphrase is
-wiped, and the TPM refuses once a measured PCR changes. It lives in
+wiped, and the TPM refuses once a measured PCR changes. On the way it checks
+that enrolling without checksums refuses the option ROM of QEMU's network
+card, which the firmware runs. It lives in
 [`tests/secure-boot.nix`][4], since it's longer than the rest put together.
 
 The checks read the modules from `flake.nix`, so a new module or role is

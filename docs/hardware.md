@@ -139,6 +139,9 @@ better is for the laptop to show, as is the camera itself.
   unmute. Nothing here writes it.
 - **The Synaptics USB device** (`06cb:0701`) is the camera's USB-IO bridge,
   bound to `usbio-bridge`, not a fingerprint reader. This laptop has none.
+- **Option ROMs for Secure Boot.** The firmware runs none, so its TPM event
+  log holds no checksums and the keys go in alone, as lanzaboote enrols them
+  unless a machine says otherwise.
 
 ### What's Left
 

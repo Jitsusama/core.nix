@@ -28,9 +28,11 @@ still changes PCR 4, so it gets no key. lanzaboote rewrites the policy after
 every rebuild, so updates never need the disk enrolled again.
 
 Microsoft's keys stay out, so nothing they ever signed boots here, such as a
-shim that shows a fake disk prompt to learn the PIN. The firmware still runs
-the option ROMs it ran when the keys went in, by their checksums from the
-TPM's event log. [Decision 0008][4] weighs this against the alternatives.
+shim that shows a fake disk prompt to learn the PIN. A machine whose firmware
+runs option ROMs enrols their checksums from the TPM's event log beside the
+keys, so the firmware keeps running them; one whose firmware runs none
+enrols the keys alone. [Decision 0008][4] weighs this against the
+alternatives.
 
 ## Before Starting
 
@@ -41,6 +43,10 @@ TPM's event log. [Decision 0008][4] weighs this against the alternatives.
   its `jitsusama.disk.name` differs from the one being installed, or the
   install can take the stick's open volume for the new one.
 - The YubiKey, and somewhere off the machine to keep a recovery key.
+- Whether the machine's firmware runs option ROMs, if anyone knows. A machine
+  that does sets `boot.lanzaboote.autoEnrollKeys.includeChecksumsFromTPM`.
+  Nobody has to know in advance: step 4 stops and says so when the firmware
+  runs one.
 
 ## 1. Boot the Stick
 
@@ -92,6 +98,28 @@ reboots again. Type the passphrase once more, then check:
 bootctl status | grep 'Secure Boot'   # Secure Boot: enabled (user)
 sudo sbctl verify                     # every file on the boot partition signed
 ```
+
+If it still says setup or audit mode, the keys never reached the firmware.
+lanzaboote leaves them for systemd-boot only when
+`prepare-sb-auto-enroll.service` succeeds, so look there:
+
+```sh
+systemctl status prepare-sb-auto-enroll
+journalctl -b -u prepare-sb-auto-enroll
+```
+
+`Found OptionROM in the bootchain` means the firmware runs an option ROM that
+the keys alone would stop. Set
+`boot.lanzaboote.autoEnrollKeys.includeChecksumsFromTPM = true;` in the
+machine, install it for the next boot and reboot, which tries again:
+
+```sh
+nixos-rebuild boot --sudo --flake <machine repository>#<machine>
+```
+
+With it set on a machine whose firmware runs none, sbctl fails the other
+way, with `could not find any OpROM entries in the TPM eventlog`; take it out
+again.
 
 ## 5. Check the Policy
 
