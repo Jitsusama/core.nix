@@ -1,20 +1,24 @@
 # A NixOS machine Joel writes code on: the TPM for his keys and the YubiKey to
 # get them back, with the workstation role in every account, and the pieces
 # only Linux needs: Rust linking with mold, ssh-tpm-agent for the TPM's SSH
-# keys, and commits signed with them.
+# keys, commits signed with them, virtual machines through libvirt and
+# containers through Podman.
 { nixosModules, homeModules }:
 {
   imports = [
     nixosModules.base
+    nixosModules.libvirt
     nixosModules.memory
     nixosModules.nix-daemon
     nixosModules.perf
+    nixosModules.podman
     nixosModules.tpm
     nixosModules.yubikey
   ];
   home-manager.sharedModules = [
     homeModules.workstation
     homeModules.cargo
+    homeModules.podman
     homeModules.ssh-tpm-agent
     homeModules.signing
   ];

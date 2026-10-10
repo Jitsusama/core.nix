@@ -254,6 +254,23 @@ in
       && machine.config.boot.initrd.luks.devices ? stick
     );
 
+  # The kernel protects session.slice's memory only as far as every slice
+  # above it is protected, so a floor one of them lacks is a floor nobody has,
+  # and nothing says so.
+  session-memory-is-protected =
+    let
+      inherit (graphical.config) systemd;
+      floors = [
+        systemd.user.slices.session.sliceConfig.MemoryLow or null
+        systemd.slices.user.sliceConfig.MemoryLow or null
+        systemd.slices."user-".sliceConfig.MemoryLow or null
+        systemd.services."user@".serviceConfig.MemoryLow or null
+      ];
+    in
+    holds "session-memory-is-protected"
+      "A slice above session.slice lacks its memory floor, so session.slice has none."
+      (lib.all (floor: floor != null && floor == lib.head floors) floors);
+
   example-nixos = evaluates "example-nixos" (
     import ./examples/nixos.nix {
       core = self;

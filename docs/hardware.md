@@ -152,6 +152,29 @@ which detaches the trigger after the first unmute.
   log holds no checksums and the keys go in alone, as lanzaboote enrols them
   unless a machine says otherwise.
 
+### Measured, and Left as It Is
+
+Each of these was measured on the laptop and gained nothing, so nothing
+changes it:
+
+- **The long-term power limit.** Raising it from 30 W to the 38 W the
+  firmware allows ran no faster: Dell's skin-temperature policy holds
+  sustained power near 25 W either way.
+- **The performance profile on mains.** It sustains 22 to 28% more work than
+  balanced, which is why the charger follower asks for it. Easing the energy
+  preference under it to balance_performance kept the same speed, sustained
+  and in bursts.
+- **Wi-Fi power saving.** It stays on: off, the router's latency was the same
+  within the noise.
+- **Runtime power management of PCI devices.** Only the management engine's
+  two idle interfaces and the bridge to the embedded controller would
+  suspend, and the power saved was lost in the noise.
+- **The disk's 4 KiB format.** The drive offers one, but changing it erases
+  the drive. The `disko` module encrypts in 4 KiB sectors whatever the drive
+  reports, which on a RAM disk doubled dm-crypt's write speed. The installed
+  laptop keeps its 512-byte sectors: the drive writes slower than dm-crypt
+  does at either size, so re-encrypting it in place would gain nothing.
+
 ### What's Left
 
 | Part         | Why it isn't here yet                                                 |

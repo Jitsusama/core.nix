@@ -32,4 +32,11 @@
   config.boot.kernelPackages = pkgs.linuxPackagesFor (
     import ./package.nix pkgs { inherit (config.jitsusama.kernel) cpu profile; }
   );
+
+  # Every device's DMA goes through the IOMMU, so Wi-Fi, Bluetooth or GPU
+  # firmware can reach only the memory its driver gave it. Without this, an
+  # Intel laptop whose firmware asks for DMA protection translates only its
+  # Thunderbolt ports and lets every other device through untranslated. AMD's
+  # IOMMU already translates everything and ignores the parameter.
+  config.boot.kernelParams = [ "intel_iommu=on" ];
 }

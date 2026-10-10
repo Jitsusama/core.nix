@@ -38,11 +38,17 @@ let
         mv "$sealed.new" "$sealed"
       fi
 
+      # Decrypted before the daemon starts, so a decryption that fails stops
+      # here, and no child is left for the daemon to inherit and never reap.
+      # Taking the output drops the newline base64 ended the password with,
+      # and the here-string puts exactly one back.
+      password=$(${creds} decrypt --user --name=login "$sealed" -)
+
       # The daemon reads the password from its standard input, unlocks the
       # login keyring with it, and makes the keyring when there's none.
       exec /run/wrappers/bin/gnome-keyring-daemon \
         --replace --foreground --unlock --components=secrets \
-        < <(${creds} decrypt --user --name=login "$sealed" -)
+        <<<"$password"
     '';
   };
 in
@@ -65,4 +71,9 @@ in
       Restart = "on-failure";
     };
   };
+
+  # gnome-keyring's own autostart entry would start a second daemon at login,
+  # which finds this one holding the Secret Service and exits. Its pkcs11 entry
+  # stays, since it adds that component to this daemon.
+  systemd.user.units."app-gnome\\x2dkeyring\\x2dsecrets@autostart.service".enable = false;
 }

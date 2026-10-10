@@ -46,6 +46,13 @@ pkgs.testers.runNixOSTest {
     def log_in():
         as_joel("systemctl --user start compositor.service")
         as_joel("systemctl --user is-active gnome-keyring.service")
+        # The daemon never reaps a child it didn't start, so none may be left
+        # to it by the script that started it.
+        as_joel(
+            "! ps -o stat= --ppid"
+            " $(systemctl --user show -p MainPID --value gnome-keyring.service)"
+            " | grep -q Z"
+        )
 
     def log_out():
         as_joel("systemctl --user stop compositor.service gnome-keyring.service")

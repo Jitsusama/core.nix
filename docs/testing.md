@@ -52,6 +52,7 @@ quietly stopped holding.
 | `zsh-is-the-login-shell`            | an account on NixOS logs in to zsh, as one on a Mac does  |
 | `disks-go-by-their-name`            | a disk's partitions and open volume carry its name        |
 | `booted-generation-stays-installed` | a switch never removes the generation the machine booted  |
+| `session-memory-is-protected`       | every slice above session.slice carries its memory floor  |
 | `formatting`                        | everything is formatted and passes the linters            |
 | `stands-alone`                      | nothing here names a machine, its repository or employer  |
 | `ci-runs-every-vm-test`             | CI's workflow runs every virtual machine test             |
