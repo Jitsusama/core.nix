@@ -130,16 +130,33 @@ notification, a dialog, the greeter).
 The palette's colours are given meanings that hold on every surface, and a
 surface names a meaning, never a colour value:
 
-| Role       | Meaning                                                     |
-| ---------- | ----------------------------------------------------------- |
-| accent     | where Joel's attention is: one focal point per screen state |
-| alert      | something that needs him: a failure, an urgent window       |
-| foreground | what he reads and acts on                                   |
-| muted      | context: labels, units, separators, hints                   |
-| surface    | what sits behind text that sits on the wallpaper            |
+| Role       | Meaning                                                      |
+| ---------- | ------------------------------------------------------------ |
+| background | behind everything: windows, the terminal, menus              |
+| sunken     | below the background: a sidebar, an inactive tab, a list     |
+| deepest    | the very back: the overview's backdrop, a tab bar            |
+| raised     | above the background: a hovered row, an indicator            |
+| selection  | behind what's selected                                       |
+| text       | what he reads and acts on                                    |
+| strong     | text that stands out: a heading, a selected row, the cursor  |
+| muted      | text that gives context: labels, units, hints                |
+| rule       | separators and marks that aren't read as text                |
+| accent     | where Joel's attention is: one focal point per screen state  |
+| on_accent  | text drawn on the accent or on a state colour                |
+| alert      | something that needs him: a failure, an urgent window        |
+| warning    | something that will need him soon                            |
+| success    | something that went well                                     |
 
 Nothing else gets the accent, so it always means "here". Text is never drawn
-on the wallpaper without a surface behind it.
+on the wallpaper without a surface behind it. Muted text sits only on the
+background, sunken and deepest; on the raised and selection surfaces hints
+switch to text, since a muted that read there would be too bright to be
+muted.
+
+A terminal program draws with the terminal's sixteen ANSI colours, which
+carry no meaning of their own, and something that draws in shades, such as a
+graph, takes the theme's eight shades from the background to the brightest
+text.
 
 ## Glyphs
 
@@ -314,6 +331,9 @@ and refined deeply:
 name = "Osaka Jade"
 appearance = "dark"
 
+# Eight pigments from the background to the brightest text.
+shades = ["forest", "fern", "moss", "lichen", "seafoam", "parchment", "linen", "cream"]
+
 # The pigments: every colour the theme uses, named once.
 [palette]
 jade = "#509475"
@@ -326,6 +346,9 @@ accent = "jade"
 
 # The terminal's sixteen colours and its own, by pigment.
 [terminal]
+background = "forest"
+black = "forest"
+bright_black = "sage"
 
 # Code's roles (keyword, string, comment and the rest), by pigment and style.
 [syntax]
@@ -340,10 +363,12 @@ accent = "jade"
 [console]
 ```
 
-Only `palette`, `roles` and `terminal` are required. Every other table falls
-back to the defaults the theme module carries, so a theme changes only what it
-means to. Colours may carry alpha (`#rrggbbaa`). Roles always name a pigment,
-never a value, so changing one pigment recolours everything that means it.
+The shades, `palette`, `roles` and `terminal` are required. Every other table
+falls back to the defaults the theme module carries, so a theme changes only
+what it means to. Colours may carry alpha (`#rrggbbaa`). Roles always name a
+pigment, never a value, so changing one pigment recolours everything that
+means it. A pigment's name says what it looks like (jade, parchment, night),
+never what it's for, which is the role's job.
 
 **Bringing a theme in from elsewhere** is a translation into this format, done
 once by an agent and committed, so evaluation only ever reads one format.

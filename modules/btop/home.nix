@@ -1,61 +1,64 @@
-# btop in the theme's colours, slot for slot as Omarchy's template gives them:
+# btop in the theme's colours, slot for slot as Omarchy's template gives them,
+# with the theme's roles for its frame, the terminal's colours for its boxes
+# and meters, and the theme's shades for its graphs:
 # https://github.com/omacom/omarchy/blob/a466dcc04f937a41c820aaa990a31f36ecaed543/default/themed/btop.theme.tpl
 { config, lib, ... }:
 let
-  inherit (config.jitsusama.theme) colors;
+  inherit (config.jitsusama.theme) roles terminal shades;
+  shade = builtins.elemAt shades;
 
   slots = {
-    main_bg = colors.background;
-    main_fg = colors.foreground;
-    title = colors.foreground;
-    hi_fg = colors.accent;
-    selected_bg = colors.selection;
-    selected_fg = colors.accent;
-    inactive_fg = colors.muted;
-    graph_text = colors.light_foreground;
-    meter_bg = colors.selection;
-    proc_misc = colors.light_foreground;
-    cpu_box = colors.magenta;
-    mem_box = colors.green;
-    net_box = colors.red;
-    proc_box = colors.accent;
-    div_line = colors.muted;
-    temp_start = colors.green;
-    temp_mid = colors.yellow;
-    temp_end = colors.red;
-    cpu_start = colors.cyan;
-    cpu_mid = colors.blue;
-    cpu_end = colors.magenta;
-    free_start = colors.magenta;
-    free_mid = colors.blue;
-    free_end = colors.cyan;
-    cached_start = colors.blue;
-    cached_mid = colors.cyan;
-    cached_end = colors.magenta;
-    available_start = colors.yellow;
-    available_mid = colors.red;
-    available_end = colors.red;
-    used_start = colors.green;
-    used_mid = colors.cyan;
-    used_end = colors.blue;
-    download_start = colors.yellow;
-    download_mid = colors.red;
-    download_end = colors.red;
-    upload_start = colors.green;
-    upload_mid = colors.cyan;
-    upload_end = colors.blue;
-    process_start = colors.cyan;
-    process_mid = colors.blue;
-    process_end = colors.magenta;
+    main_bg = roles.background;
+    main_fg = roles.text;
+    title = roles.text;
+    hi_fg = roles.accent;
+    selected_bg = roles.selection;
+    selected_fg = roles.accent;
+    inactive_fg = roles.muted;
+    graph_text = shade 6;
+    meter_bg = roles.selection;
+    proc_misc = shade 6;
+    cpu_box = terminal.magenta;
+    mem_box = terminal.green;
+    net_box = terminal.red;
+    proc_box = roles.accent;
+    div_line = roles.rule;
+    temp_start = terminal.green;
+    temp_mid = terminal.yellow;
+    temp_end = terminal.red;
+    cpu_start = terminal.cyan;
+    cpu_mid = terminal.blue;
+    cpu_end = terminal.magenta;
+    free_start = terminal.magenta;
+    free_mid = terminal.blue;
+    free_end = terminal.cyan;
+    cached_start = terminal.blue;
+    cached_mid = terminal.cyan;
+    cached_end = terminal.magenta;
+    available_start = terminal.yellow;
+    available_mid = terminal.red;
+    available_end = terminal.red;
+    used_start = terminal.green;
+    used_mid = terminal.cyan;
+    used_end = terminal.blue;
+    download_start = terminal.yellow;
+    download_mid = terminal.red;
+    download_end = terminal.red;
+    upload_start = terminal.green;
+    upload_mid = terminal.cyan;
+    upload_end = terminal.blue;
+    process_start = terminal.cyan;
+    process_mid = terminal.blue;
+    process_end = terminal.magenta;
     # The graphs shade from the background to the brightest text.
-    gradient_color_0 = colors.background;
-    gradient_color_1 = colors.lighter_background;
-    gradient_color_2 = colors.selection;
-    gradient_color_3 = colors.muted;
-    gradient_color_4 = colors.dark_foreground;
-    gradient_color_5 = colors.foreground;
-    gradient_color_6 = colors.light_foreground;
-    gradient_color_7 = colors.bright_foreground;
+    gradient_color_0 = shade 0;
+    gradient_color_1 = shade 1;
+    gradient_color_2 = shade 2;
+    gradient_color_3 = shade 3;
+    gradient_color_4 = shade 4;
+    gradient_color_5 = shade 5;
+    gradient_color_6 = shade 6;
+    gradient_color_7 = shade 7;
   };
 in
 {

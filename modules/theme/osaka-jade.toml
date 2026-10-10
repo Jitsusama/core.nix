@@ -1,35 +1,78 @@
-# Omarchy's Osaka Jade palette, copied unchanged from Omarchy 4.0.4:
+# Osaka Jade: deep forest greens, parchment text and a jade accent. The
+# pigments are Omarchy 4.0.4's, each noted with the name Omarchy gives it:
 # https://github.com/omacom/omarchy/blob/c668141e9c42b13c80c9ca4ea108e11708c5e8a5/themes/osaka-jade/colors.toml
-# Copy a newer release's file over this one to follow Omarchy's changes.
+# Sage is ours: Omarchy's muted is too faint to read as text, so sage is its
+# hue made just light enough to pass 4.5:1 on the background.
 
-mode = "dark"
+name = "Osaka Jade"
+appearance = "dark"
 
-accent = "#509475"
-selection = "#32473B"
-muted = "#53685B"
+# From the background to the brightest text, for what draws in shades.
+shades = ["forest", "fern", "moss", "lichen", "seafoam", "parchment", "linen", "cream"]
 
-background = "#111c18"
-dark_background = "#0c1512"
-darker_background = "#090f0d"
-lighter_background = "#23372B"
+[palette]
+night = "#090f0d"       # darker_background
+deep_forest = "#0c1512" # dark_background
+forest = "#111c18"      # background
+fern = "#23372B"        # lighter_background
+moss = "#32473B"        # selection
+lichen = "#53685B"      # muted
+sage = "#718779"
+seafoam = "#81B8A8"     # dark_foreground
+parchment = "#C1C497"   # foreground
+linen = "#D6D5BC"       # light_foreground
+cream = "#F7E8B2"       # bright_foreground
+jade = "#509475"        # accent, blue
+pine = "#459451"        # yellow
+leaf = "#549e6a"        # green
+mint = "#63b07a"        # bright_green
+turquoise = "#2DD5B7"   # cyan
+aqua = "#8CD3CB"        # bright_cyan
+mist = "#ACD4CF"        # bright_blue
+celadon = "#75bbb3"     # bright_magenta
+orchid = "#D2689C"      # magenta
+vermilion = "#FF5345"   # red
+rose = "#db9f9c"        # bright_red
+gold = "#E5C736"        # bright_yellow
+bronze = "#a2734b"      # orange
+umber = "#513925"       # brown
 
-foreground = "#C1C497"
-dark_foreground = "#81B8A8"
-light_foreground = "#D6D5BC"
-bright_foreground = "#F7E8B2"
+[roles]
+background = "forest"
+sunken = "deep_forest"
+deepest = "night"
+raised = "fern"
+selection = "moss"
+text = "parchment"
+strong = "cream"
+muted = "sage"
+rule = "lichen"
+accent = "jade"
+on_accent = "night"
+alert = "vermilion"
+warning = "gold"
+success = "leaf"
 
-red = "#FF5345"
-yellow = "#459451"
-orange = "#a2734b"
-green = "#549e6a"
-cyan = "#2DD5B7"
-blue = "#509475"
-magenta = "#D2689C"
-brown = "#513925"
-
-bright_red = "#db9f9c"
-bright_yellow = "#E5C736"
-bright_green = "#63b07a"
-bright_cyan = "#8CD3CB"
-bright_blue = "#ACD4CF"
-bright_magenta = "#75bbb3"
+[terminal]
+background = "forest"
+foreground = "parchment"
+cursor = "cream"
+cursor_text = "forest"
+selection_background = "moss"
+selection_foreground = "cream"
+black = "forest"
+red = "vermilion"
+green = "leaf"
+yellow = "pine"
+blue = "jade"
+magenta = "orchid"
+cyan = "turquoise"
+white = "parchment"
+bright_black = "sage"
+bright_red = "rose"
+bright_green = "mint"
+bright_yellow = "gold"
+bright_blue = "mist"
+bright_magenta = "celadon"
+bright_cyan = "aqua"
+bright_white = "cream"

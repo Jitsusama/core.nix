@@ -45,7 +45,7 @@ Scope {
                     width: cards.width
                     implicitHeight: text.implicitHeight + Theme.gap * 2
                     color: Theme.background
-                    border.color: critical ? Theme.red : Theme.accent
+                    border.color: critical ? Theme.alert : Theme.accent
                     border.width: Theme.border
                     radius: Theme.radius
 
@@ -61,29 +61,29 @@ Scope {
                             visible: text !== ""
                             color: Theme.muted
                             elide: Text.ElideRight
-                            font.family: Theme.fontFamily
-                            font.pointSize: Theme.fontSize
+                            font.family: Theme.monoFamily
+                            font.pointSize: Theme.monoSize
                         }
                         Text {
                             width: parent.width
                             text: card.modelData.summary
-                            color: Theme.bright_foreground
+                            color: Theme.strong
                             wrapMode: Text.Wrap
-                            font.family: Theme.fontFamily
-                            font.pointSize: Theme.fontSize
+                            font.family: Theme.monoFamily
+                            font.pointSize: Theme.monoSize
                             font.bold: true
                         }
                         Text {
                             width: parent.width
                             text: card.modelData.body
                             visible: text !== ""
-                            color: Theme.foreground
+                            color: Theme.text
                             wrapMode: Text.Wrap
                             maximumLineCount: 6
                             elide: Text.ElideRight
                             textFormat: Text.StyledText
-                            font.family: Theme.fontFamily
-                            font.pointSize: Theme.fontSize
+                            font.family: Theme.monoFamily
+                            font.pointSize: Theme.monoSize
                         }
                     }
 

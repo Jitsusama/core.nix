@@ -145,9 +145,9 @@ Scope {
                             anchors.leftMargin: Theme.gap
                             anchors.verticalCenter: parent.verticalCenter
                             text: row.modelData.name
-                            color: row.ListView.isCurrentItem ? Theme.bright_foreground : Theme.foreground
-                            font.family: Theme.fontFamily
-                            font.pointSize: Theme.fontSize
+                            color: row.ListView.isCurrentItem ? Theme.strong : Theme.text
+                            font.family: Theme.monoFamily
+                            font.pointSize: Theme.monoSize
                         }
 
                         MouseArea {

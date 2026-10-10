@@ -95,10 +95,13 @@ A key another tool owns is never declared here at all.
 ## One Look Everywhere
 
 Everything Joel sees draws itself from `jitsusama.theme`: its colours, its
-font and its shape. A module writes those into its program's own format, so
-the terminal, the compositor's borders, a PIN prompt, a notification and the
-lock screen all match, and changing one option changes them all. A program
-that can't take the theme's values doesn't get on a screen.
+fonts and its shape, read from one theme file and named by what they mean
+(the text, the accent, an alert) rather than by value, as
+[docs/design.md][4] sets out. A module writes those into its program's own
+format, so the terminal, the compositor's borders, a PIN prompt, a
+notification and the lock screen all match, and changing one option changes
+them all. A program that can't take the theme's values doesn't get on a
+screen.
 
 One program draws the desktop: Quickshell, in `modules/quickshell/`. Its
 launcher on Super+Space, notifications, lock screen, polkit prompt, volume and
@@ -155,3 +158,4 @@ option breaks the machines that use it, so it is marked with `!`.
 [1]: testing.md
 [2]: https://www.conventionalcommits.org
 [3]: architecture.md#vocabulary
+[4]: design.md

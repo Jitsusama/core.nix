@@ -14,34 +14,33 @@
   ...
 }:
 let
-  inherit (config.jitsusama.theme) colors font shape;
+  inherit (config.jitsusama.theme) roles font shape;
 
   # Each surface's background and text, and the colours of buttons and
-  # messages that mean something. Text on those is dark, since the theme's
-  # light text is too faint on the accent.
+  # messages that mean something, with the theme's text for drawing on them.
   palette = {
-    window_bg_color = colors.background;
-    window_fg_color = colors.foreground;
-    view_bg_color = colors.dark_background;
-    view_fg_color = colors.foreground;
-    headerbar_bg_color = colors.background;
-    headerbar_fg_color = colors.foreground;
-    sidebar_bg_color = colors.dark_background;
-    sidebar_fg_color = colors.foreground;
-    dialog_bg_color = colors.background;
-    dialog_fg_color = colors.foreground;
-    popover_bg_color = colors.background;
-    popover_fg_color = colors.foreground;
-    accent_bg_color = colors.accent;
-    accent_fg_color = colors.darker_background;
-    destructive_bg_color = colors.red;
-    destructive_fg_color = colors.darker_background;
-    success_bg_color = colors.green;
-    success_fg_color = colors.darker_background;
-    warning_bg_color = colors.bright_yellow;
-    warning_fg_color = colors.darker_background;
-    error_bg_color = colors.red;
-    error_fg_color = colors.darker_background;
+    window_bg_color = roles.background;
+    window_fg_color = roles.text;
+    view_bg_color = roles.sunken;
+    view_fg_color = roles.text;
+    headerbar_bg_color = roles.background;
+    headerbar_fg_color = roles.text;
+    sidebar_bg_color = roles.sunken;
+    sidebar_fg_color = roles.text;
+    dialog_bg_color = roles.background;
+    dialog_fg_color = roles.text;
+    popover_bg_color = roles.background;
+    popover_fg_color = roles.text;
+    accent_bg_color = roles.accent;
+    accent_fg_color = roles.on_accent;
+    destructive_bg_color = roles.alert;
+    destructive_fg_color = roles.on_accent;
+    success_bg_color = roles.success;
+    success_fg_color = roles.on_accent;
+    warning_bg_color = roles.warning;
+    warning_fg_color = roles.on_accent;
+    error_bg_color = roles.alert;
+    error_fg_color = roles.on_accent;
   };
 
   # libadwaita and adw-gtk3 both draw from these names, and a user stylesheet
@@ -76,5 +75,6 @@ in
     '';
   };
 
-  dconf.settings."org/gnome/desktop/interface".monospace-font-name = "${font.family} ${font.size}";
+  dconf.settings."org/gnome/desktop/interface".monospace-font-name =
+    "${font.mono.family} ${font.mono.size}";
 }

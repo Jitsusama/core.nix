@@ -31,8 +31,8 @@ Rectangle {
         anchors.verticalCenter: parent.verticalCenter
         text: prompt.label
         color: Theme.accent
-        font.family: Theme.fontFamily
-        font.pointSize: Theme.fontSize
+        font.family: Theme.monoFamily
+        font.pointSize: Theme.monoSize
     }
 
     TextInput {
@@ -45,11 +45,11 @@ Rectangle {
         focus: true
         clip: true
         echoMode: prompt.secret ? TextInput.Password : TextInput.Normal
-        color: Theme.foreground
+        color: Theme.text
         selectionColor: Theme.selection
-        selectedTextColor: Theme.bright_foreground
-        font.family: Theme.fontFamily
-        font.pointSize: Theme.fontSize
+        selectedTextColor: Theme.strong
+        font.family: Theme.monoFamily
+        font.pointSize: Theme.monoSize
         onAccepted: prompt.accepted()
         Keys.onEscapePressed: prompt.cancelled()
     }

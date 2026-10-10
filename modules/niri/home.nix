@@ -15,7 +15,7 @@
   ...
 }:
 let
-  inherit (config.jitsusama.theme) colors shape;
+  inherit (config.jitsusama.theme) roles shape;
   cursor = {
     name = "Adwaita";
     package = pkgs.adwaita-icon-theme;
@@ -41,19 +41,18 @@ in
   xdg.configFile."niri/theme.kdl".text = ''
     layout {
         gaps ${toString shape.gap}
-        background-color "${colors.background}"
+        background-color "${roles.background}"
         border {
             width ${toString shape.border}
-            active-color "${colors.accent}"
-            // Omarchy's inactive border, which its palette doesn't name.
-            inactive-color "#595959aa"
+            active-color "${roles.accent}"
+            inactive-color "${roles.rule}"
         }
         tab-indicator {
-            active-color "${colors.accent}"
-            inactive-color "${colors.lighter_background}"
+            active-color "${roles.accent}"
+            inactive-color "${roles.raised}"
         }
         insert-hint {
-            color "${colors.accent}80"
+            color "${roles.accent}80"
         }
     }
     window-rule {
@@ -61,7 +60,7 @@ in
         clip-to-geometry true
     }
     overview {
-        backdrop-color "${colors.darker_background}"
+        backdrop-color "${roles.deepest}"
     }
     cursor {
         xcursor-theme "${cursor.name}"

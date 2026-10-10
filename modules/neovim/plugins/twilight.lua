@@ -6,7 +6,7 @@ require('twilight').setup({
   dimming = {
     -- The colour scheme draws no background, so twilight dims the text
     -- towards the terminal's.
-    color = { 'Normal', theme.foreground },
+    color = { 'Normal', theme.text },
     term_bg = theme.background,
   },
   expand = {

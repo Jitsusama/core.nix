@@ -51,9 +51,9 @@ Scope {
     }
 
     component Line: Text {
-        color: Theme.foreground
-        font.family: Theme.fontFamily
-        font.pointSize: Theme.fontSize
+        color: Theme.text
+        font.family: Theme.monoFamily
+        font.pointSize: Theme.monoSize
     }
 
     component Label: Line {
@@ -96,7 +96,7 @@ Scope {
 
                 Line {
                     text: Qt.formatDateTime(clock.date, "HH:mm")
-                    font.pointSize: Theme.fontSize * 4
+                    font.pointSize: Theme.monoSize * 4
                 }
 
                 Line {

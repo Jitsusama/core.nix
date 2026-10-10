@@ -55,7 +55,7 @@ Scope {
         id: sessionLock
 
         WlSessionLockSurface {
-            color: Theme.darker_background
+            color: Theme.deepest
 
             Column {
                 anchors.centerIn: parent
@@ -64,9 +64,9 @@ Scope {
                 Text {
                     anchors.horizontalCenter: parent.horizontalCenter
                     text: Qt.formatDateTime(clock.date, "HH:mm")
-                    color: Theme.foreground
-                    font.family: Theme.fontFamily
-                    font.pointSize: Theme.fontSize * 6
+                    color: Theme.text
+                    font.family: Theme.monoFamily
+                    font.pointSize: Theme.monoSize * 6
                 }
 
                 Prompt {

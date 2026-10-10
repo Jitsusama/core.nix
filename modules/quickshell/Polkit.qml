@@ -17,7 +17,7 @@ Scope {
         anchors.left: true
         anchors.right: true
         exclusionMode: ExclusionMode.Ignore
-        color: Qt.alpha(Theme.darker_background, 0.8)
+        color: Qt.alpha(Theme.deepest, 0.8)
         WlrLayershell.layer: WlrLayer.Overlay
         WlrLayershell.keyboardFocus: WlrKeyboardFocus.Exclusive
         WlrLayershell.namespace: "polkit"
@@ -30,20 +30,20 @@ Scope {
             Text {
                 width: parent.width
                 text: agent.flow ? agent.flow.message : ""
-                color: Theme.bright_foreground
+                color: Theme.strong
                 wrapMode: Text.Wrap
-                font.family: Theme.fontFamily
-                font.pointSize: Theme.fontSize
+                font.family: Theme.monoFamily
+                font.pointSize: Theme.monoSize
             }
 
             Text {
                 width: parent.width
                 text: agent.flow ? agent.flow.supplementaryMessage : ""
                 visible: text !== ""
-                color: agent.flow && agent.flow.supplementaryIsError ? Theme.red : Theme.muted
+                color: agent.flow && agent.flow.supplementaryIsError ? Theme.alert : Theme.muted
                 wrapMode: Text.Wrap
-                font.family: Theme.fontFamily
-                font.pointSize: Theme.fontSize
+                font.family: Theme.monoFamily
+                font.pointSize: Theme.monoSize
             }
 
             Prompt {

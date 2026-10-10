@@ -25,10 +25,16 @@ in
 {
   imports = [ ../theme/home.nix ];
 
-  # The theme's colours, for the plugins that draw on the terminal's own
-  # background: require('theme').background.
+  # The theme's roles, for the plugins that draw on the terminal's own
+  # background (require('theme').background), with the terminal's colours
+  # and the shades beside them.
   xdg.configFile."nvim/lua/theme.lua".text = "return ${
-    lib.generators.toLua { } config.jitsusama.theme.colors
+    lib.generators.toLua { } (
+      config.jitsusama.theme.roles
+      // {
+        inherit (config.jitsusama.theme) terminal shades;
+      }
+    )
   }\n";
 
   programs.git.ignores = [

@@ -10,23 +10,23 @@
   ...
 }:
 let
-  inherit (config.jitsusama.theme) colors font shape;
+  inherit (config.jitsusama.theme) roles font shape;
 
   flags = lib.concatStringsSep " " [
-    "--fn '${font.family} ${font.size}'"
+    "--fn '${font.mono.family} ${font.mono.size}'"
     "--center --width-factor 0.3 --list 8"
     "--border ${toString shape.border} --border-radius ${toString shape.radius}"
     "--hp ${toString shape.gap} --line-height ${toString (shape.gap * 3)}"
-    "--bdr '${colors.accent}'"
-    "--tb '${colors.background}' --tf '${colors.accent}'"
-    "--fb '${colors.background}' --ff '${colors.foreground}'"
-    "--cb '${colors.bright_foreground}' --cf '${colors.background}'"
-    "--nb '${colors.background}' --nf '${colors.foreground}'"
-    "--ab '${colors.background}' --af '${colors.foreground}'"
-    "--hb '${colors.selection}' --hf '${colors.bright_foreground}'"
-    "--sb '${colors.selection}' --sf '${colors.bright_foreground}'"
-    "--fbb '${colors.background}' --fbf '${colors.muted}'"
-    "--scb '${colors.background}' --scf '${colors.muted}'"
+    "--bdr '${roles.accent}'"
+    "--tb '${roles.background}' --tf '${roles.accent}'"
+    "--fb '${roles.background}' --ff '${roles.text}'"
+    "--cb '${roles.strong}' --cf '${roles.background}'"
+    "--nb '${roles.background}' --nf '${roles.text}'"
+    "--ab '${roles.background}' --af '${roles.text}'"
+    "--hb '${roles.selection}' --hf '${roles.strong}'"
+    "--sb '${roles.selection}' --sf '${roles.strong}'"
+    "--fbb '${roles.background}' --fbf '${roles.muted}'"
+    "--scb '${roles.background}' --scf '${roles.muted}'"
   ];
 in
 {

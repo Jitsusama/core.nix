@@ -117,7 +117,7 @@ pkgs.testers.runNixOSTest {
   testScript =
     { nodes, ... }:
     let
-      inherit (nodes.machine.home-manager.users.${account}.jitsusama.theme) colors font;
+      inherit (nodes.machine.home-manager.users.${account}.jitsusama.theme) roles font;
     in
     ''
       import json
@@ -209,7 +209,7 @@ pkgs.testers.runNixOSTest {
           left = image.crop((0, 0, image.width // 4, image.height))
           counts = left.getcolors(left.width * left.height)
           assert counts is not None
-          foreground = tuple(int("${colors.foreground}"[i : i + 2], 16) for i in (1, 3, 5))
+          foreground = tuple(int("${roles.text}"[i : i + 2], 16) for i in (1, 3, 5))
           return sum(count for count, colour in counts if colour == foreground)
 
       with subtest("the overview shows the time and status, and only the overview"):
@@ -290,7 +290,7 @@ pkgs.testers.runNixOSTest {
 
       with subtest("monospace is the theme's font"):
           family = as_account("${pkgs.fontconfig.bin}/bin/fc-match -f '%{family}' monospace")
-          t.assertIn("${font.family}", family)
+          t.assertIn("${font.mono.family}", family)
 
       with subtest("GTK programs draw in the theme's colours"):
           zenity = "${pkgs.zenity}/bin/zenity --text-info --title=libadwaita --filename=${text}"
@@ -299,14 +299,14 @@ pkgs.testers.runNixOSTest {
           # runs under the account's user manager, where niri's own unit puts
           # them on the laptop.
           as_account(f"systemd-run --user --collect {zenity}")
-          t.assertEqual(commonest_colour_in("libadwaita", "libadwaita"), "${colors.dark_background}".lower())
+          t.assertEqual(commonest_colour_in("libadwaita", "libadwaita"), "${roles.sunken}".lower())
           # The file chooser Chrome and Slack open, which the GTK portal draws
           # with GTK 3, asked for the way they ask.
           as_account(
               "busctl --user call org.freedesktop.portal.Desktop /org/freedesktop/portal/desktop"
               " org.freedesktop.portal.FileChooser OpenFile 'ssa{sv}' \"\" Open 0"
           )
-          t.assertEqual(commonest_colour_in("Open", "file-chooser"), "${colors.dark_background}".lower())
+          t.assertEqual(commonest_colour_in("Open", "file-chooser"), "${roles.sunken}".lower())
 
       machine.screenshot("desktop")
     '';

@@ -232,6 +232,30 @@ in
       "lanzaboote can remove the booted generation, which drops PCR 4 from the disk's policy."
       (machine.config.boot.lanzaboote.protectedSystem == "/run/booted-system");
 
+  # A theme that draws text too faint to read doesn't build. The ratio is
+  # WCAG's: black on white is 21:1, and #777777 on white just misses 4.5:1.
+  # Osaka Jade's own muted, at 2.90:1, is the faint text it was made to catch.
+  a-faint-theme-is-refused =
+    let
+      contrast = import ./modules/theme/contrast.nix { inherit lib; };
+      machine = bareNixos [
+        {
+          home-manager.users.someone = {
+            imports = [ ./modules/theme/home.nix ];
+            jitsusama.theme.roles.muted = "#53685B";
+          };
+        }
+      ];
+      refusals = map (check: check.message) (
+        lib.filter (check: !check.assertion) (account machine).assertions
+      );
+    in
+    holds "a-faint-theme-is-refused" "A theme with text too faint to read wasn't refused." (
+      contrast.show (contrast.ratio "#000000" "#ffffff") == "21.00"
+      && contrast.show (contrast.ratio "#777777" "#ffffff") == "4.47"
+      && lib.any (lib.hasInfix "muted on background: 2.90:1") refusals
+    );
+
   # A disk's partitions and its open volume go by its name, so a machine's
   # drive and a stick attached beside it are never taken for each other.
   disks-go-by-their-name =
@@ -398,7 +422,7 @@ in
         home = account workstation;
         files = home.xdg.configFile;
         foreground = lib.concatMapStringsSep ";" (byte: toString (lib.fromHexString byte)) (
-          builtins.match "#(..)(..)(..)" home.jitsusama.theme.colors.foreground
+          builtins.match "#(..)(..)(..)" home.jitsusama.theme.roles.text
         );
       in
       pkgs.runCommandLocal "btop-draws-in-the-theme"

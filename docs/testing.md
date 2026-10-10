@@ -53,6 +53,7 @@ quietly stopped holding.
 | `disks-go-by-their-name`            | a disk's partitions and open volume carry its name        |
 | `booted-generation-stays-installed` | a switch never removes the generation the machine booted  |
 | `session-memory-is-protected`       | every slice above session.slice carries its memory floor  |
+| `a-faint-theme-is-refused`          | a theme with text under WCAG's 4.5:1 doesn't build        |
 | `formatting`                        | everything is formatted and passes the linters            |
 | `stands-alone`                      | nothing here names a machine, its repository or employer  |
 | `ci-runs-every-vm-test`             | CI's workflow runs every virtual machine test             |

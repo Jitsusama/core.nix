@@ -11,7 +11,7 @@
   ...
 }:
 let
-  inherit (config.jitsusama.theme) colors font shape;
+  inherit (config.jitsusama.theme) roles font shape;
 
   qml = [
     "shell.qml"
@@ -43,10 +43,12 @@ in
 
         Singleton {
         ${lib.concatLines (
-          lib.mapAttrsToList (name: color: "    readonly property color ${name}: \"${color}\"") colors
+          lib.mapAttrsToList (name: color: "    readonly property color ${name}: \"${color}\"") roles
         )}
-            readonly property string fontFamily: "${font.family}"
-            readonly property real fontSize: ${font.size}
+            readonly property string monoFamily: "${font.mono.family}"
+            readonly property real monoSize: ${font.mono.size}
+            readonly property string sansFamily: "${font.sans.family}"
+            readonly property real sansSize: ${font.sans.size}
             readonly property int border: ${toString shape.border}
             readonly property int radius: ${toString shape.radius}
             readonly property int gap: ${toString shape.gap}
