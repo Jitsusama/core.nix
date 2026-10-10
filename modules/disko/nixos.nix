@@ -67,6 +67,13 @@ in
           content = {
             type = "luks";
             inherit (cfg) name;
+            # Encrypt in 4 KiB sectors, the size Btrfs writes, rather than the
+            # 512 bytes a disk formatted for old systems reports, so each block
+            # is one encryption instead of eight.
+            extraFormatArgs = [
+              "--sector-size"
+              "4096"
+            ];
             settings = {
               allowDiscards = true;
               # NVMe is fast enough that dm-crypt's queues only add latency.
