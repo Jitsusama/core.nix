@@ -1,12 +1,9 @@
-# Everything `nix flake check` runs.
-#
-# Each module and role is added, on its own, to a bare machine of every class
-# it can run on: NixOS and nix-darwin for system modules, and an account on
-# either for home-manager ones. A module that quietly depends on another fails
-# here rather than on a machine. Then come the promises roles make when they
-# are combined, and the example machines, which use core only through its
-# outputs, as a machine repository does. Evaluating catches broken options and
-# failed assertions without building anything, which keeps the checks fast.
+# Everything `nix flake check` runs, from the bottom of the pyramid up: the
+# promises modules and roles make, read from evaluated machines; the example
+# machines, which use core only through its outputs and so evaluate every
+# module there is; the real programs reading the files an account gets; and a
+# few virtual machines, each showing what nothing cheaper can. Each check has
+# to give a signal the ones below it don't, and docs/testing.md says which.
 {
   self,
   pkgs,
@@ -59,9 +56,6 @@ let
       ++ modules;
     };
 
-  # A home-manager module, given to the bare machine's one account.
-  inAccount = module: { home-manager.users.someone.imports = [ module ]; };
-
   # A check that passes when the machine evaluates. Writing out the path of
   # its derivation forces the whole configuration while building none of it.
   evaluates =
@@ -91,15 +85,6 @@ let
     '';
 
   account = machine: machine.config.home-manager.users.someone;
-
-  # One check per module, named after where it was added: "darwin-zsh" is the
-  # zsh module on a bare Mac.
-  checkEach =
-    where: addToBareMachine: modules:
-    lib.mapAttrs' (name: module: {
-      name = "${where}-${name}";
-      value = evaluates "${where}-${name}" (addToBareMachine module);
-    }) modules;
 
   # The line a kernel setting leaves in the finished configuration.
   kernelConfigLine =
@@ -142,44 +127,37 @@ let
       [ -z "$failed" ] && touch $out
     '';
 
-  # Home modules that only a Linux account can use, reached through a NixOS
-  # role's home-manager.sharedModules.
-  linuxOnly = [
-    "bemenu"
-    "fontconfig"
-    "gtk"
-    "quickshell"
-    "signing"
-    "ssh-tpm-agent"
-    "swayidle"
-  ];
+  # The machines most checks read, each evaluated once and shared, since an
+  # evaluation is most of what a check costs.
+  workstation = bareNixos [ self.nixosModules.workstation ];
+  graphical = bareNixos [ self.nixosModules.graphical ];
+  macWorkstation = bareDarwin [ self.darwinModules.workstation ];
+
+  # The virtual machine tests, which CI runs one to a runner beside the rest.
+  # Each has to show something nothing cheaper can.
+  vmTests = {
+    # The disk layout and Secure Boot decide whether a machine starts at all.
+    vm-secure-boot-installs = import ./tests/secure-boot.nix { inherit self pkgs; };
+    vm-commits-are-signed = import ./tests/signing.nix { inherit self pkgs; };
+    vm-keyring-opens-without-asking = import ./tests/gnome-keyring.nix { inherit self pkgs; };
+    vm-speakers-are-tuned = import ./tests/speakers.nix { inherit pkgs; };
+    vm-desktop-works = import ./tests/desktop.nix { inherit self pkgs; };
+  };
 in
-checkEach "nixos" (module: bareNixos [ module ]) (removeAttrs self.nixosModules [ "disko" ])
-// checkEach "darwin" (module: bareDarwin [ module ]) self.darwinModules
-// checkEach "home-on-nixos" (module: bareNixos [ (inAccount module) ]) (
-  removeAttrs self.homeModules [
-    "signing"
-    "ssh-tpm-agent"
-  ]
-)
-// checkEach "home-on-darwin" (module: bareDarwin [ (inAccount module) ]) (
-  removeAttrs self.homeModules linuxOnly
-)
-// {
+{
   inherit formatting;
 
   # Roles import the roles beneath them, so a machine importing two roles
   # imports the shared ones twice. That has to count once.
   nixos-role-twice-is-once =
-    same "nixos-role-twice-is-once" "Importing a NixOS role twice changed the machine."
-      (bareNixos [ self.nixosModules.workstation ])
+    same "nixos-role-twice-is-once" "Importing a NixOS role twice changed the machine." workstation
       (bareNixos [
         self.nixosModules.workstation
         self.nixosModules.workstation
       ]);
   darwin-role-twice-is-once =
     same "darwin-role-twice-is-once" "Importing a nix-darwin role twice changed the machine."
-      (bareDarwin [ self.darwinModules.workstation ])
+      macWorkstation
       (bareDarwin [
         self.darwinModules.workstation
         self.darwinModules.workstation
@@ -216,13 +194,11 @@ checkEach "nixos" (module: bareNixos [ module ]) (removeAttrs self.nixosModules 
   # the onepassword group, and every account may unlock the app with its own
   # password.
   onepassword-works-with-chrome =
-    let
-      machine = bareNixos [ self.nixosModules.graphical ];
-    in
-    holds "onepassword-works-with-chrome" "1Password lacks its browser helper or its polkit owners." (
-      machine.config.security.wrappers."1Password-BrowserSupport".group or null == "onepassword"
-      && machine.config.programs._1password-gui.polkitPolicyOwners == [ "someone" ]
-    );
+    holds "onepassword-works-with-chrome" "1Password lacks its browser helper or its polkit owners."
+      (
+        graphical.config.security.wrappers."1Password-BrowserSupport".group or null == "onepassword"
+        && graphical.config.programs._1password-gui.polkitPolicyOwners == [ "someone" ]
+      );
 
   # home-manager configures zsh in every account but leaves the login shell to
   # the system, so an account on NixOS has to be given zsh to read any of it.
@@ -242,8 +218,7 @@ checkEach "nixos" (module: bareNixos [ module ]) (removeAttrs self.nixosModules 
         ) machine.config.environment.systemPackages;
     in
     holds "yubikey-on-every-workstation" "A workstation lacks the YubiKey's tools." (
-      hasYkman (bareNixos [ self.nixosModules.workstation ])
-      && hasYkman (bareDarwin [ self.darwinModules.workstation ])
+      hasYkman workstation && hasYkman macWorkstation
     );
 
   # Every switch keeps the generation the machine booted on the ESP, so
@@ -256,28 +231,6 @@ checkEach "nixos" (module: bareNixos [ module ]) (removeAttrs self.nixosModules 
     holds "booted-generation-stays-installed"
       "lanzaboote can remove the booted generation, which drops PCR 4 from the disk's policy."
       (machine.config.boot.lanzaboote.protectedSystem == "/run/booted-system");
-
-  # ssh-tpm-agent, and the signing that uses it, need the account to reach
-  # the TPM, which the tpm module gives it.
-  home-on-nixos-ssh-tpm-agent = evaluates "home-on-nixos-ssh-tpm-agent" (bareNixos [
-    self.nixosModules.tpm
-    (inAccount self.homeModules.ssh-tpm-agent)
-  ]);
-  home-on-nixos-signing = evaluates "home-on-nixos-signing" (bareNixos [
-    self.nixosModules.tpm
-    (inAccount self.homeModules.signing)
-  ]);
-
-  # The disk module needs the machine's disk, so its check names one.
-  nixos-disko = evaluates "nixos-disko" (bareNixos [
-    self.nixosModules.disko
-    {
-      jitsusama.disk = {
-        device = "/dev/disk/by-id/nvme-example";
-        swapSize = "16G";
-      };
-    }
-  ]);
 
   # A disk's partitions and its open volume go by its name, so a machine's
   # drive and a stick attached beside it are never taken for each other.
@@ -372,7 +325,7 @@ checkEach "nixos" (module: bareNixos [ module ]) (removeAttrs self.nixosModules 
     # wouldn't load, from a misspelt action to a colour it can't parse.
     niri-accepts-its-configuration =
       let
-        files = (account (bareNixos [ self.nixosModules.graphical ])).xdg.configFile;
+        files = (account graphical).xdg.configFile;
       in
       pkgs.runCommandLocal "niri-accepts-its-configuration" { nativeBuildInputs = [ pkgs.niri ]; } ''
         mkdir niri
@@ -387,7 +340,7 @@ checkEach "nixos" (module: bareNixos [ module ]) (removeAttrs self.nixosModules 
     # check looks for the shapes programs ask for most in the theme it names.
     niri-cursor-has-its-shapes =
       let
-        home = account (bareNixos [ self.nixosModules.graphical ]);
+        home = account graphical;
         cursor = home.home.pointerCursor;
       in
       pkgs.runCommandLocal "niri-cursor-has-its-shapes" { } ''
@@ -407,7 +360,7 @@ checkEach "nixos" (module: bareNixos [ module ]) (removeAttrs self.nixosModules 
     # mapped action exists.
     kitty-accepts-its-configuration =
       let
-        files = (account (bareNixos [ self.nixosModules.graphical ])).xdg.configFile;
+        files = (account graphical).xdg.configFile;
       in
       pkgs.runCommandLocal "kitty-accepts-its-configuration" { nativeBuildInputs = [ pkgs.kitty ]; } ''
         export HOME=$PWD
@@ -425,7 +378,7 @@ checkEach "nixos" (module: bareNixos [ module ]) (removeAttrs self.nixosModules 
     # theme's text colour in what btop writes to its terminal.
     btop-draws-in-the-theme =
       let
-        home = account (bareNixos [ self.nixosModules.workstation ]);
+        home = account workstation;
         files = home.xdg.configFile;
         foreground = lib.concatMapStringsSep ";" (byte: toString (lib.fromHexString byte)) (
           builtins.match "#(..)(..)(..)" home.jitsusama.theme.colors.foreground
@@ -452,7 +405,7 @@ checkEach "nixos" (module: bareNixos [ module ]) (removeAttrs self.nixosModules 
     # the terminal's own background, and nothing it loads complains.
     neovim-starts-in-the-theme =
       let
-        home = account (bareNixos [ self.nixosModules.workstation ]);
+        home = account workstation;
         files = home.xdg.configFile;
         # home-manager puts the plugins where Neovim looks for packages.
         plugins = home.xdg.dataFile."nvim/site/pack/hm".source;
@@ -484,7 +437,7 @@ checkEach "nixos" (module: bareNixos [ module ]) (removeAttrs self.nixosModules 
     # linker that wrote it.
     cargo-links-with-mold =
       let
-        files = (account (bareNixos [ self.nixosModules.workstation ])).home.file;
+        files = (account workstation).home.file;
       in
       pkgs.runCommandCC "cargo-links-with-mold"
         {
@@ -504,13 +457,17 @@ checkEach "nixos" (module: bareNixos [ module ]) (removeAttrs self.nixosModules 
           touch $out
         '';
 
-    # Boots a virtual machine through the whole install, since the disk layout
-    # and Secure Boot decide whether a machine starts at all.
-    secure-boot-installs = import ./tests/secure-boot.nix { inherit self pkgs; };
-    ssh-tpm-agent-signs = import ./tests/ssh-tpm-agent.nix { inherit self pkgs; };
-    commits-are-signed = import ./tests/signing.nix { inherit self pkgs; };
-    keyring-opens-without-asking = import ./tests/gnome-keyring.nix { inherit self pkgs; };
-    speakers-are-tuned = import ./tests/speakers.nix { inherit pkgs; };
-    desktop-works = import ./tests/desktop.nix { inherit self pkgs; };
+    # CI runs the virtual machine tests by name, one to a runner, so one it
+    # doesn't name would never run there.
+    ci-runs-every-vm-test = pkgs.runCommandLocal "ci-runs-every-vm-test" { } ''
+      for test in ${lib.concatStringsSep " " (lib.attrNames vmTests)}; do
+        if ! grep -qx "          - $test" ${./.github/workflows/check.yml}; then
+          echo "CI's workflow doesn't run $test."
+          exit 1
+        fi
+      done
+      touch $out
+    '';
   }
+  // vmTests
 )

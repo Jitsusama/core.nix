@@ -3,9 +3,9 @@
 How a NixOS laptop goes from a blank disk to Secure Boot with Joel's own keys
 and a disk that opens with the TPM and a PIN. It applies to a machine that
 imports [`disko`][1] and [`lanzaboote`][2], as [the laptop example][3] does.
-The `secure-boot-installs` check walks the same steps on a virtual machine
+The `vm-secure-boot-installs` check walks the same steps on a virtual machine
 with a TPM, from the first boot to the TPM refusing a changed PCR, so a pin
-update that breaks any of them fails CI.
+update that breaks any of them fails its checks.
 
 ## What It Ends Up As
 

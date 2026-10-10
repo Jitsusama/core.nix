@@ -20,8 +20,7 @@ x86-64 machine as `packages.x86_64-linux.kernel`.
 ## What It Is
 
 - **The series:** 7.2, at whichever point release nixpkgs pins. Taking a new
-  nixpkgs, which the weekly pin update does, takes the latest 7.2 release with
-  its fixes.
+  nixpkgs takes the latest 7.2 release with its fixes.
 - **The compiler:** Clang 22, linked with LLD, which link-time optimization
   needs. Not nixpkgs's default LLVM 21: its LLD, compiled with GCC 16 as
   nixpkgs compiles it, writes objects the kernel's objtool rejects.

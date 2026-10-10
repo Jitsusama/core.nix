@@ -15,6 +15,7 @@ replaces it and says so.
 | [0007][7] | Hardware lives here                          |
 | [0008][8] | Only Joel's keys, and the TPM opens the disk |
 | [0009][9] | The TPM holds the keys                       |
+| [0010][10] | Checks serve the loop                        |
 
 A new record copies the shape of the others: Status, Context, Decision,
 Alternatives and Consequences, numbered after the last.
@@ -28,3 +29,4 @@ Alternatives and Consequences, numbered after the last.
 [7]: 0007-hardware-lives-here.md
 [8]: 0008-own-keys-and-a-tpm-sealed-disk.md
 [9]: 0009-the-tpm-holds-the-keys.md
+[10]: 0010-checks-serve-the-loop.md

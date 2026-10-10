@@ -56,14 +56,16 @@ meaning each; [docs/architecture.md][2] defines them.
 ## Commands
 
 ```sh
-nix fmt                                       # format and lint; run before committing
-nix flake check                               # everything CI runs
-nix build .#checks.x86_64-linux.darwin-<name> # one module or role; also nixos-, home-on-nixos-, home-on-darwin-
+nix fmt                                # format and lint; run before committing
+nix build .#checks.x86_64-linux.<name> # the checks a change touches, as you go
+nix flake check                        # everything, before pushing
 ```
 
-A change is done when `nix flake check` passes. A refactor is done when the
-machine repositories' machines evaluate to the same derivations as before;
-see [docs/testing.md][1].
+A change is done when `nix flake check` passes locally, and its machine builds
+with core pointed at the checkout. Nothing waits on CI, and nothing runs on a
+schedule. A refactor is done when the machine repositories' machines evaluate
+to the same derivations as before. A new check has to earn its place. All of
+it is in [docs/testing.md][1].
 
 ## Commits
 

@@ -68,5 +68,6 @@ the machine are the only other ways in; the install passphrase is wiped.
 - A machine with a graphics card needs Microsoft's keys, and says so in its
   own settings.
 - Reinstalling makes new keys, so the firmware goes back to setup mode first.
-- `secure-boot-installs` walks the install on a virtual machine with a TPM, so
-  a lanzaboote, disko or systemd update that breaks any step fails CI.
+- `vm-secure-boot-installs` walks the install on a virtual machine with a
+  TPM, so a lanzaboote, disko or systemd update that breaks any step fails
+  its checks.

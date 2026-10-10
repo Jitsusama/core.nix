@@ -103,7 +103,7 @@ the device programs see, sound goes through the filter only on its way to
 them, and headphones and displays get it untouched. Omarchy gave up on smart
 filters because the filter seemed to pass sound through unchanged, but that's
 how it measures, not what it does: WirePlumber hands a recording of the
-speakers the filter's input instead. `speakers-are-tuned` links its recorder
+speakers the filter's input instead. `vm-speakers-are-tuned` links its recorder
 by hand and hears the tuning.
 
 ### The Camera
