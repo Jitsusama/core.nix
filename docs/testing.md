@@ -56,6 +56,7 @@ quietly stopped holding.
 | `a-faint-theme-is-refused`          | a theme with text under WCAG's 4.5:1 doesn't build        |
 | `quickshell-restarts-with-its-files` | a switch restarts the shell when a file it reads changes  |
 | `quickshell-opens-programs-through-niri` | programs the shell opens survive the shell restarting |
+| `the-overview-takes-its-pieces` | a machine moves, cuts, retunes and adds the overview's pieces |
 | `a-claimed-chord-is-refused`        | a chord two layers claim, or one claims twice, is refused |
 | `a-theme-changes-everything`        | another theme leaves none of the first's colours behind   |
 | `nothing-names-its-own-look`        | no module but the theme's names a colour or a face        |

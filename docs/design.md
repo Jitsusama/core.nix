@@ -368,6 +368,15 @@ anything.
   overview's status, the margin mark, the editors' status lines, the boot
   splash's lines and every chord are lists that can be reordered, extended or
   cut. A new piece is a small function in the same shape as the built-in ones.
+- **One shape for every surface's pieces.** `modules/theme/pieces.nix` gives
+  it: pieces by name, so a machine changes one in a line or adds its own
+  beside the rest, each with its `order`, its `tier` (`always`, `when` it's
+  true, on `request`, or null to leave it out), its `collapse` rank (lowest
+  gives way first, null never), the theme glyph it wears while it's true as
+  its `mark`, its `source` (a built-in piece by name, or a file of the same
+  shape) and settings of its own, such as a format or a threshold. The
+  built-in settings are defaults, so a machine's own win without a fight. The
+  overview's status is the first, `jitsusama.quickshell.overview.pieces`.
 - **Rendered at build.** Nix fills the options into each program's own files,
   which stay in that program's format beside the module. Nothing parses a
   setting or looks one up while running, so a customised surface is exactly as
@@ -492,7 +501,7 @@ palette and its keys.
 | The console and emergency shell           | the console font         | console        |        |        |           |         |          |
 | The greeter                               | Quickshell, greetd       | both           |        |        |           |         |          |
 | The compositor                            | niri                     | none           |        |        |           |         |          |
-| The overview's status and the margin mark | Quickshell               | both           |        |        |           |         |          |
+| The overview's status and the margin mark | Quickshell               | both           | the time, the date, the battery with its time and watts, the network, the volume | the battery running low, offline, muted | step 2's doors | step 2 | volume, network, battery, date; the time stays |
 | The launcher and palette                  | Quickshell               | both           |        |        |           |         |          |
 | Notifications                             | Quickshell               | proportional   |        |        |           |         |          |
 | Menus and overlays                        | Quickshell               | both           |        |        |           |         |          |

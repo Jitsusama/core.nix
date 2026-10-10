@@ -268,6 +268,57 @@ in
       "A Quickshell file isn't among its unit's restart triggers, so a switch would leave the old one on screen."
       (files != { } && lib.all (file: lib.elem "${file.source}" triggers) (lib.attrValues files));
 
+  # A machine shapes what the overview shows in a line a change: a piece
+  # moved, cut, shown only while true, a threshold changed and the rest kept,
+  # and a piece of its own linked beside the built-in ones.
+  the-overview-takes-its-pieces =
+    let
+      own = pkgs.writeText "wide.qml" "Piece { value: settings.text }";
+      machine = bareNixos [
+        self.nixosModules.workstation
+        self.nixosModules.graphical
+        {
+          home-manager.users.someone.jitsusama.quickshell.overview.pieces = {
+            date.tier = null;
+            network.order = 25;
+            battery.low = 15;
+            volume.tier = "when";
+            wide = {
+              order = 60;
+              source = own;
+              label = "wide";
+              text = "a piece of the machine's own";
+              collapse = 5;
+              mark = "on";
+            };
+          };
+        }
+      ];
+      home = account machine;
+      rendered = lib.findFirst (lib.hasInfix "property var pieces: ") "" (
+        lib.splitString "\n" home.xdg.configFile."quickshell/Overview.qml".text
+      );
+      drawn = builtins.fromJSON (lib.last (lib.splitString "property var pieces: " rendered));
+      piece = lib.listToAttrs (map (piece: lib.nameValuePair piece.name piece) drawn);
+    in
+    holds "the-overview-takes-its-pieces"
+      "The overview didn't draw a machine's own pieces as it set them: their order, their cuts, their settings or its own file."
+      (
+        map (piece: piece.name) drawn == [
+          "time"
+          "network"
+          "battery"
+          "volume"
+          "wide"
+        ]
+        && piece.battery.low == 15
+        && piece.battery.critical == 10
+        && piece.volume.tier == "when"
+        && piece.wide.mark == "on"
+        && piece.wide.file == "wide.qml"
+        && "${home.xdg.configFile."quickshell/pieces/wide.qml".source}" == "${own}"
+      );
+
   # The shell hands every program it opens to niri, which gives it a scope of
   # its own. One the shell started itself would leave its helpers in the
   # shell's service, and restarting the shell would kill them.

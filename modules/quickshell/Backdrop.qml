@@ -1,54 +1,24 @@
 // What Joel sees when he opens niri's overview or moves between workspaces:
-// the time and the date, and how the battery, the network and the speakers
-// are. niri's layer rule in config.kdl puts it in the backdrop behind the
-// workspaces, so it shows only then and takes no space while he works. The
-// overview shrinks the workspaces to half the screen's width, centred, which
-// leaves the left quarter free for it.
+// by default the time and the date, and how the battery, the network and the
+// speakers are. niri's layer rule in config.kdl puts it in the backdrop
+// behind the workspaces, so it shows only then and takes no space while he
+// works. The overview shrinks the workspaces to half the screen's width,
+// centred, which leaves the left quarter free for it.
+//
+// What it shows is jitsusama.quickshell.overview.pieces, rendered into
+// Overview.qml. Pieces without a label are headings, the time at the size
+// its settings name and the date beneath it; the rest are rows, a muted
+// label beside each value. When the left quarter is too narrow, pieces give
+// way by their collapse rank, lowest first, until the widest fits.
 import Quickshell
-import Quickshell.Networking
-import Quickshell.Services.Pipewire
-import Quickshell.Services.UPower
 import Quickshell.Wayland
 import QtQuick
+// Quickshell finds a folder's types only once a file it loads imports it,
+// and the pieces are loaded later, by name.
+import qs.pieces
 
 Scope {
     id: root
-
-    readonly property UPowerDevice battery: UPower.displayDevice
-    readonly property PwNode sink: Pipewire.defaultAudioSink
-    readonly property NetworkDevice online: Networking.devices.values.find(device => device.connected) ?? null
-
-    readonly property string batteryState: {
-        const charge = Math.round(battery.percentage * 100) + "%";
-        switch (battery.state) {
-        case UPowerDeviceState.Charging:
-            return charge + ", charging";
-        case UPowerDeviceState.Discharging:
-            return battery.timeToEmpty > 0 ? charge + ", " + duration(battery.timeToEmpty) + " left" : charge;
-        default:
-            return charge;
-        }
-    }
-
-    readonly property string networkState: {
-        if (!online)
-            return "offline";
-        if (online.type === DeviceType.Wired)
-            return "wired";
-        const network = online.networks.values.find(network => network.connected);
-        return network ? network.name : online.name;
-    }
-
-    readonly property string volumeState: {
-        if (!sink)
-            return "none";
-        return sink.audio.muted ? "muted" : Math.round(sink.audio.volume * 100) + "%";
-    }
-
-    function duration(seconds) {
-        const minutes = Math.round(seconds / 60);
-        return Math.floor(minutes / 60) + ":" + String(minutes % 60).padStart(2, "0");
-    }
 
     component Line: Text {
         color: Theme.text
@@ -56,33 +26,46 @@ Scope {
         font.pointSize: Theme.mono.body
     }
 
-    component Label: Line {
-        color: Theme.muted
-    }
-
-    SystemClock {
-        id: clock
-        precision: SystemClock.Minutes
-    }
-
-    // Pipewire reports a node's volume only once something binds it.
-    PwObjectTracker {
-        objects: [root.sink]
-    }
-
     Variants {
         model: Quickshell.screens
 
         PanelWindow {
+            id: window
+
             required property ShellScreen modelData
+
+            // The left quarter, less the margin on either side of it.
+            readonly property real room: modelData.width / 4 - 2 * Theme.space.xxxl
+
+            // Everything with a collapse rank below this has given way.
+            readonly property real cutoff: {
+                const wanted = [...headings.children, ...rows.children].filter(item => item.wanted);
+                const widest = cut => Math.max(0, ...wanted
+                    .filter(item => item.entry.collapse === null || item.entry.collapse >= cut)
+                    .map(item => item.implicitWidth));
+                const ranks = [...new Set(wanted.map(item => item.entry.collapse).filter(rank => rank !== null))]
+                    .sort((a, b) => a - b);
+                let cut = -Infinity;
+                for (const rank of ranks) {
+                    if (widest(cut) <= room)
+                        break;
+                    cut = rank + 1;
+                }
+                return cut;
+            }
+
+            // Labels line up in one column, as wide as the widest of them.
+            readonly property real labelWidth: Math.max(0, ...[...rows.children]
+                .filter(item => item.wanted)
+                .map(item => item.labelWidth))
 
             screen: modelData
             anchors.top: true
             anchors.left: true
             margins.top: Theme.space.xxxl
             margins.left: Theme.space.xxxl
-            implicitWidth: status.implicitWidth
-            implicitHeight: status.implicitHeight
+            implicitWidth: Math.max(1, status.implicitWidth)
+            implicitHeight: Math.max(1, status.implicitHeight)
             // niri takes only a background surface that ignores the space
             // others reserve into the backdrop.
             exclusionMode: ExclusionMode.Ignore
@@ -90,44 +73,90 @@ Scope {
             WlrLayershell.layer: WlrLayer.Background
             WlrLayershell.namespace: "backdrop"
 
+            // One piece, loaded from its file with its settings, and drawn
+            // only while its tier says so and the space allows. An inline
+            // component sees nothing outside itself, so the cutoff is
+            // passed in.
+            component Shown: Item {
+                id: shown
+
+                required property var modelData
+                required property real cutoff
+                readonly property var entry: modelData
+                readonly property var piece: loader.item
+                readonly property bool wanted: piece !== null && piece.present
+                    && (entry.tier === "always" || (entry.tier === "when" && piece.active))
+                readonly property string text: !piece ? ""
+                    : (entry.mark !== null && piece.active ? Theme.glyph[entry.mark] + " " : "") + piece.value
+
+                visible: wanted && (entry.collapse === null || entry.collapse >= cutoff)
+
+                Loader {
+                    id: loader
+                    Component.onCompleted: setSource("pieces/" + shown.entry.file, { settings: shown.entry })
+                }
+            }
+
             Column {
                 id: status
-                spacing: Theme.space.m
+                spacing: Theme.space.xl
 
-                Line {
-                    text: Qt.formatDateTime(clock.date, "HH:mm")
-                    font.pointSize: Theme.mono.display
+                Column {
+                    id: headings
+                    spacing: Theme.space.m
+
+                    Repeater {
+                        model: Overview.pieces.filter(entry => entry.label === undefined)
+
+                        Shown {
+                            cutoff: window.cutoff
+                            implicitWidth: heading.implicitWidth
+                            implicitHeight: heading.implicitHeight
+                            width: implicitWidth
+                            height: visible ? implicitHeight : 0
+
+                            Line {
+                                id: heading
+                                text: parent.text
+                                color: Theme[parent.piece ? parent.piece.role : "text"]
+                                font.pointSize: Theme.mono[parent.entry.size ?? "body"]
+                            }
+                        }
+                    }
                 }
 
-                Line {
-                    text: Qt.formatDateTime(clock.date, "dddd d MMMM")
-                }
+                Column {
+                    id: rows
+                    spacing: Theme.space.xs
 
-                Grid {
-                    columns: 2
-                    columnSpacing: Theme.space.xl
-                    rowSpacing: Theme.space.xs
-                    topPadding: Theme.space.m
+                    Repeater {
+                        model: Overview.pieces.filter(entry => entry.label !== undefined)
 
-                    Label {
-                        text: "battery"
-                        visible: root.battery.isLaptopBattery
-                    }
-                    Line {
-                        text: root.batteryState
-                        visible: root.battery.isLaptopBattery
-                    }
-                    Label {
-                        text: "network"
-                    }
-                    Line {
-                        text: root.networkState
-                    }
-                    Label {
-                        text: "volume"
-                    }
-                    Line {
-                        text: root.volumeState
+                        Shown {
+                            id: row
+
+                            readonly property real labelWidth: label.implicitWidth
+
+                            cutoff: window.cutoff
+
+                            implicitWidth: window.labelWidth + Theme.space.xl + value.implicitWidth
+                            implicitHeight: value.implicitHeight
+                            width: implicitWidth
+                            height: visible ? implicitHeight : 0
+
+                            Line {
+                                id: label
+                                text: row.entry.label
+                                color: Theme.muted
+                            }
+
+                            Line {
+                                id: value
+                                x: window.labelWidth + Theme.space.xl
+                                text: row.text
+                                color: Theme[row.piece ? row.piece.role : "text"]
+                            }
+                        }
                     }
                 }
             }
