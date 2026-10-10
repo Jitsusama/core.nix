@@ -3,7 +3,8 @@
 # commit made over pipes is signed with the agent's key and asks nothing; one
 # made at a terminal is signed with Joel's key, after its PIN and a
 # confirmation; a refused confirmation leaves no commit. git verifies each
-# signature against the key that should have made it.
+# signature against the key that should have made it, and trusts the signers
+# the module lists without losing how it signs.
 { self, pkgs }:
 let
   pin = "2468";
@@ -19,6 +20,10 @@ let
     fi
   '';
   noPin = pkgs.writeShellScript "no-pin" "echo";
+  # Another machine's key. The keys under test are only made once the machine
+  # runs, so the test verifies against its own file; this one is what a
+  # machine lists, which must leave the rest of git's signing settings alone.
+  otherSigner = ''someone@test namespaces="git" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPE3v5gInXpF9AF9ZJDHfv+dG7ISngMHkCkmp/EeRCjL'';
 in
 pkgs.testers.runNixOSTest {
   name = "signing";
@@ -35,6 +40,7 @@ pkgs.testers.runNixOSTest {
     home-manager.users.joel = {
       imports = [ self.homeModules.signing ];
       jitsusama.identity.email = "joel@test";
+      jitsusama.signing.allowedSigners = [ otherSigner ];
       home.stateVersion = "26.05";
     };
   };
@@ -88,6 +94,10 @@ pkgs.testers.runNixOSTest {
         listed = as_joel("SSH_AUTH_SOCK=${runtime}/ssh-tpm-agent.sock ssh-add -l")
         assert "joel@test" in listed and "agent@test" in listed, listed
         as_joel("git init -q repo")
+
+    with subtest("git trusts the signers the module lists"):
+        signers = as_joel("cat \"$(git config gpg.ssh.allowedSignersFile)\"")
+        t.assertEqual(signers.strip(), ${builtins.toJSON otherSigner})
 
     with subtest("a commit over pipes is the agent's and asks nothing"):
         as_joel("git -C repo commit -q --allow-empty -m 'from a harness' < /dev/null")
