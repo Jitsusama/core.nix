@@ -62,10 +62,22 @@ That name is `jitsusama.disk.device` in the machine's settings.
 ## 2. Lay Out the Disk and Install
 
 ```sh
-sudo nix run github:nix-community/disko/v1.13.0#disko-install -- \
+sudo nix run github:nix-community/disko/de5708739256238fb912c62f03988815db89ec9a#disko-install -- \
   --flake <machine repository>#<machine> \
   --disk main /dev/disk/by-id/<disk> \
   --write-efi-boot-entries
+```
+
+disko is named by the commit of its v1.13.0 tag, the one core locks. Root's
+nix has no GitHub token, and a tag makes it ask GitHub's API to resolve it,
+which refuses requests without one once the network's shared quota is spent;
+a commit downloads without asking.
+Root can't sign in to a private input either, so when the machine repository
+has one, build the machine's system as the account first, which fetches the
+input into the store where root finds it:
+
+```sh
+nix build --no-link <machine repository>#nixosConfigurations.<machine>.config.system.build.toplevel
 ```
 
 disko asks for a passphrase before it encrypts the partition. It only has to
@@ -75,7 +87,7 @@ new system when it finishes, so mount it again to set the account's password
 before rebooting:
 
 ```sh
-sudo nix run github:nix-community/disko/v1.13.0 -- \
+sudo nix run github:nix-community/disko/de5708739256238fb912c62f03988815db89ec9a -- \
   --mode mount --flake <machine repository>#<machine>
 sudo nixos-enter --root /mnt -c 'passwd <account>'
 ```
