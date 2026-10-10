@@ -15,6 +15,11 @@
     };
   };
 
+  # keyd leaves on SIGTERM by calling exit with the signal's number, so a
+  # stop ends in status 15, which systemd would otherwise count as a failure
+  # at every shutdown and every switch to the running system.
+  systemd.services.keyd.serviceConfig.SuccessExitStatus = 15;
+
   # The same keyd in the initrd, reading the same file, so the layout is the
   # same when the disk asks for its PIN. It stops at the switch to the running
   # system, whose keyd takes over. evdev gives it the keyboard's events and
@@ -34,7 +39,10 @@
       before = [ "cryptsetup-pre.target" ];
       wants = [ "cryptsetup-pre.target" ];
       unitConfig.DefaultDependencies = false;
-      serviceConfig.ExecStart = lib.getExe config.services.keyd.package;
+      serviceConfig = {
+        ExecStart = lib.getExe config.services.keyd.package;
+        SuccessExitStatus = 15;
+      };
     };
   };
 }
