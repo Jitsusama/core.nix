@@ -99,7 +99,7 @@ a running system shows.
 | `vm-commits-are-signed`           | commits are signed with the TPM's keys, PINs asked for  |
 | `vm-keyring-opens-without-asking` | the keyring opens with its TPM-sealed password, unasked |
 | `vm-speakers-are-tuned`           | the XPS 14's speakers hear the tuning, headphones don't |
-| `vm-desktop-works`                | the desktop shows, opens, locks and asks, in the theme  |
+| `vm-desktop-works`                | it boots clean; the desktop shows, opens, locks and asks |
 
 The install test builds a disk image with disko and boots it with a software
 TPM, then follows [the install guide][3] step by step: the keys are made and
