@@ -103,6 +103,7 @@
         nixfmt = ./modules/nixfmt/home.nix;
         opencode = ./modules/opencode/home.nix;
         openssl = ./modules/openssl/home.nix;
+        podman = ./modules/podman/home.nix;
         quickshell = ./modules/quickshell/home.nix;
         ripgrep = ./modules/ripgrep/home.nix;
         signing = ./modules/signing/home.nix;
@@ -151,6 +152,7 @@
         keyboard = ./modules/keyboard/nixos.nix;
         keyd = ./modules/keyd/nixos.nix;
         lanzaboote = moduleFrom ./modules/lanzaboote/nixos.nix { inherit lanzaboote; };
+        libvirt = ./modules/libvirt/nixos.nix;
         memory = ./modules/memory/nixos.nix;
         networkmanager = ./modules/networkmanager/nixos.nix;
         niri = ./modules/niri/nixos.nix;
@@ -159,6 +161,7 @@
         onepassword = ./modules/onepassword/nixos.nix;
         perf = ./modules/perf/nixos.nix;
         pipewire = ./modules/pipewire/nixos.nix;
+        podman = ./modules/podman/nixos.nix;
         power-profiles-daemon = ./modules/power-profiles-daemon/nixos.nix;
         quickshell = ./modules/quickshell/nixos.nix;
         slices = ./modules/slices/nixos.nix;
