@@ -28,7 +28,13 @@ in
   # Also links it as ~/.icons/default and names it to GTK, for programs that
   # look there rather than at niri's variables. Home Manager offers this on
   # Linux only, and niri runs nowhere else.
-  home.pointerCursor = lib.mkIf pkgs.stdenv.hostPlatform.isLinux (cursor // { gtk.enable = true; });
+  home.pointerCursor = lib.mkIf pkgs.stdenv.hostPlatform.isLinux (
+    cursor
+    // {
+      enable = true;
+      gtk.enable = true;
+    }
+  );
 
   xdg.configFile."niri/config.kdl".text = builtins.readFile ./config.kdl;
 
