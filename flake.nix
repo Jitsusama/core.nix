@@ -161,6 +161,7 @@
         pipewire = ./modules/pipewire/nixos.nix;
         power-profiles-daemon = ./modules/power-profiles-daemon/nixos.nix;
         quickshell = ./modules/quickshell/nixos.nix;
+        slices = ./modules/slices/nixos.nix;
         tpm = ./modules/tpm/nixos.nix;
         yubikey = ./modules/yubikey/system.nix;
         zsh = ./modules/zsh/nixos.nix;

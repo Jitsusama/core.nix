@@ -2,7 +2,8 @@
 # headphones and mice, a keyring the TPM unlocks, 1Password, and niri, started
 # at boot by greetd. Every account gets niri's configuration, kitty, Quickshell
 # for the launcher, notifications and lock screen, which swayidle locks, and
-# GTK programs and the monospace default in the theme.
+# GTK programs and the monospace default in the theme. The compositor and
+# sound get the CPU and memory before anything Joel starts.
 { nixosModules, homeModules }:
 {
   imports = [
@@ -15,6 +16,7 @@
     nixosModules.onepassword
     nixosModules.pipewire
     nixosModules.quickshell
+    nixosModules.slices
   ];
   home-manager.sharedModules = [
     homeModules.fontconfig
