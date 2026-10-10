@@ -89,6 +89,13 @@ in
       Description = "Quickshell, which draws the launcher, notifications and lock screen";
       PartOf = [ "graphical-session.target" ];
       After = [ "graphical-session.target" ];
+      # Quickshell watches its files but not the links Home Manager swaps
+      # them by, so a switch would leave it drawing the old ones. Naming
+      # every file here changes the unit when any of them changes, and Home
+      # Manager restarts a changed unit.
+      X-Restart-Triggers = lib.mapAttrsToList (_: file: "${file.source}") (
+        lib.filterAttrs (name: _: lib.hasPrefix "quickshell/" name) config.xdg.configFile
+      );
     };
     Service = {
       ExecStart = lib.getExe' pkgs.quickshell "quickshell";

@@ -256,6 +256,18 @@ in
       && lib.any (lib.hasInfix "muted on background: 2.90:1") refusals
     );
 
+  # A switch restarts Quickshell when any file it reads changes, so the shell
+  # on screen is never the one from before the switch.
+  quickshell-restarts-with-its-files =
+    let
+      home = account graphical;
+      files = lib.filterAttrs (name: _: lib.hasPrefix "quickshell/" name) home.xdg.configFile;
+      triggers = home.systemd.user.services.quickshell.Unit.X-Restart-Triggers or [ ];
+    in
+    holds "quickshell-restarts-with-its-files"
+      "A Quickshell file isn't among its unit's restart triggers, so a switch would leave the old one on screen."
+      (files != { } && lib.all (file: lib.elem "${file.source}" triggers) (lib.attrValues files));
+
   # A chord two layers both claim never reaches the lower one, so a machine
   # with one doesn't build. The clashes here are spelt the way each program
   # spells its chords, so the map has to see through the spelling: kitty's
