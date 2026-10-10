@@ -1,7 +1,14 @@
 # Joel's kitty: kitty.conf says how it behaves, and theme.conf, written here
 # from jitsusama.theme, how it looks: the theme's terminal colours, and its
 # roles for the frame around them, so kitty matches the rest of the desktop.
-{ config, pkgs, ... }:
+# keys.conf, written here from jitsusama.kitty.keys, holds its shortcuts,
+# which also go into the keyboard map (modules/keys).
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 let
   inherit (config.jitsusama.theme)
     roles
@@ -13,15 +20,54 @@ let
   # kitty measures padding in points, 72 to the inch, where the theme's
   # spaces are logical pixels, 96 to the inch.
   points = pixels: toString (pixels * 3 / 4);
+
+  keys = config.jitsusama.kitty.keys;
 in
 {
-  imports = [ ../theme/home.nix ];
+  imports = [
+    ../theme/home.nix
+    ../keys/home.nix
+  ];
 
-  home.packages = [ pkgs.kitty ];
+  options.jitsusama.kitty.keys = lib.mkOption {
+    type = lib.types.listOf (
+      lib.types.submodule {
+        options = {
+          chord = lib.mkOption {
+            type = lib.types.str;
+            description = "The chord, as kitty spells it: ctrl+shift+t.";
+          };
+          does = lib.mkOption {
+            type = lib.types.str;
+            description = "What it does in plain words, as the launcher finds it.";
+          };
+          action = lib.mkOption {
+            type = lib.types.str;
+            description = "kitty's action, as kitty.conf would spell it: new_tab_with_cwd.";
+          };
+        };
+      }
+    );
+    default = [ ];
+    description = ''
+      kitty's shortcuts, the only ones it has, keys.nix's to begin with. A
+      machine's own are added to them; lib.mkForce replaces them all.
+    '';
+  };
 
-  xdg.configFile."kitty/kitty.conf".text = builtins.readFile ./kitty.conf;
+  config.jitsusama.kitty.keys = import ./keys.nix { inherit lib; };
 
-  xdg.configFile."kitty/theme.conf".text = ''
+  config.jitsusama.keys.terminal = map (key: { inherit (key) chord does; }) keys;
+
+  config.home.packages = [ pkgs.kitty ];
+
+  config.xdg.configFile."kitty/kitty.conf".text = builtins.readFile ./kitty.conf;
+
+  config.xdg.configFile."kitty/keys.conf".text = lib.concatMapStrings (
+    key: "map ${key.chord} ${key.action}\n"
+  ) keys;
+
+  config.xdg.configFile."kitty/theme.conf".text = ''
     font_family family="${font.mono.family}"
     font_size ${font.mono.size}
     window_padding_width ${points space.l} ${points space.xl}

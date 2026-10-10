@@ -10,6 +10,7 @@ ShellRoot {
     Volume {}
     Brightness {}
     Backdrop {}
+    Grid {}
 
     Lock {
         id: lock

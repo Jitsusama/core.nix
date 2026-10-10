@@ -22,9 +22,10 @@ ui {
 keybinds clear-defaults=true {
     normal {
     }
-    locked {
-        bind "Ctrl g" { SwitchToMode "Normal"; }
-    }
+    // The chords zellij answers in its resting mode, locked, and in normal
+    // mode too, are written here by home.nix from keys.nix, since they're
+    // the ones that reach it past the terminal and go in the keyboard map.
+    // @resting@
     resize {
         bind "r" { SwitchToMode "Normal"; }
         bind "h" "Left" { Resize "Increase Left"; }
@@ -167,31 +168,6 @@ keybinds clear-defaults=true {
     }
     shared_except "renamepane" "renametab" "entersearch" "locked" {
         bind "esc" { SwitchToMode "locked"; }
-    }
-    shared_among "normal" "locked" {
-        bind "Ctrl Alt n" { NewPane; }
-        bind "Ctrl Alt f" { ToggleFloatingPanes; }
-        bind "Ctrl Alt z" {
-            Run "zdev" "-n" {
-                name "🚀 Choose Development Project"
-                floating true
-                close_on_exit true
-                x "20%"
-                y "30%"
-                width "60%"
-                height "38%"
-            }
-        }
-        bind "Ctrl Alt i" { MoveTab "Left"; }
-        bind "Ctrl Alt o" { MoveTab "Right"; }
-        bind "Ctrl Alt Left" { MoveFocusOrTab "Left"; }
-        bind "Ctrl Alt Right" { MoveFocusOrTab "Right"; }
-        bind "Ctrl Alt Down" { MoveFocus "Down"; }
-        bind "Ctrl Alt Up" { MoveFocus "Up"; }
-        bind "Ctrl Alt =" "Ctrl Alt +" { Resize "Increase"; }
-        bind "Ctrl Alt -" { Resize "Decrease"; }
-        bind "Ctrl Alt [" { PreviousSwapLayout; }
-        bind "Ctrl Alt ]" { NextSwapLayout; }
     }
     shared_except "locked" "renametab" "renamepane" {
         bind "Enter" { SwitchToMode "Locked"; }

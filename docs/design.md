@@ -326,6 +326,37 @@ same idea gets the same key wherever it can.
   binds, the terminal's maps, Neovim's keymaps and pi's keybindings, and a
   check reports any chord two layers both claim.
 
+Each program's shortcuts are data: a chord, what it does in plain words, and
+the program's action, in `jitsusama.niri.binds`, `jitsusama.kitty.keys` and
+`jitsusama.zellij.keys`, rendered into each program's own file. They gather
+in `jitsusama.keys`, layer by layer from the desktop down, which refuses to
+build a machine where two layers claim one chord, or one layer claims a chord
+twice, and writes the whole map to `~/.config/jitsusama/keys.json` for the
+launcher and the "what's here" views. The words are the same ones niri shows
+in its own list of shortcuts.
+
+On the desktop, windows sit in a grid: columns side by side, each holding
+windows stacked above and below. Super with the arrows moves focus through
+it, and focus carries on over an edge the way niri lays things out, up and
+down into the next workspace, left and right onto the next screen. A
+modifier says what comes along:
+
+| Held       | Carries         | With the arrows                              |
+| ---------- | --------------- | -------------------------------------------- |
+| nothing    | focus           | to the next window, workspace or screen      |
+| Shift      | the column      | along the row, or the window up and down     |
+| Alt        | just the window | into the next column, or up and down its own |
+| Ctrl       | focus           | to the next screen, past any window          |
+| Ctrl+Shift | the column      | to the next screen                           |
+| Ctrl+Alt   | just the window | to the next screen                           |
+
+The numbers, Page Up and Page Down take the same modifiers to the workspaces.
+A letter keeps its meaning whatever is held: F fills, R sizes, M widens, C
+centres, and Shift turns a width into a height. A window opens in a column
+of its own, as niri opens it; Super+Shift+Return opens a terminal just below
+the focused window instead, and Super+Alt+Return does that for whichever
+window opens next, from the launcher or anywhere else.
+
 ## Customising
 
 Every choice comes with deep room to change it, and changing it never slows

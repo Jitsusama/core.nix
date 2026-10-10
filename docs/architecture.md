@@ -195,6 +195,10 @@ The last two rows exist only until no machine repository imports them;
 | `jitsusama.theme.type.*`           | the type scale's ratio, its steps, and each face's sizes |
 | `jitsusama.theme.motion.*`         | the spring, the curve and the durations of every motion  |
 | `jitsusama.theme.glyphs`           | every mark, by meaning, with its stand-in on a console   |
+| `jitsusama.keys.*`                 | every layer's shortcuts, checked for clashes             |
+| `jitsusama.niri.binds`             | niri's shortcuts: chord, plain words and action          |
+| `jitsusama.kitty.keys`             | kitty's shortcuts: chord, plain words and action         |
+| `jitsusama.zellij.keys`            | zellij's chords in its resting mode                      |
 
 Renaming or removing an output or an option is a breaking change. A machine
 repository sees it only when it runs `nix flake update core`. [Decision

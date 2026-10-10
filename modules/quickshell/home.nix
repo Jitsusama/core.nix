@@ -37,6 +37,7 @@ let
     "Brightness.qml"
     "Meter.qml"
     "Backdrop.qml"
+    "Grid.qml"
   ];
 in
 {

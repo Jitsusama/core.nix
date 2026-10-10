@@ -96,6 +96,7 @@
         homebrew = ./modules/homebrew/home.nix;
         identity = ./modules/identity/home.nix;
         jq = ./modules/jq/home.nix;
+        keys = ./modules/keys/home.nix;
         kitty = ./modules/kitty/home.nix;
         lsd = ./modules/lsd/home.nix;
         neovim = moduleFrom ./modules/neovim/home.nix { inherit neovim-pi; };

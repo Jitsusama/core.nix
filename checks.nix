@@ -256,6 +256,55 @@ in
       && lib.any (lib.hasInfix "muted on background: 2.90:1") refusals
     );
 
+  # A chord two layers both claim never reaches the lower one, so a machine
+  # with one doesn't build. The clashes here are spelt the way each program
+  # spells its chords, so the map has to see through the spelling: kitty's
+  # ctrl+alt+n is zellij's Ctrl Alt n, and its super+return is niri's
+  # Super+Return. A layer claiming one chord twice is refused too.
+  a-claimed-chord-is-refused =
+    let
+      machine = bareNixos [
+        self.nixosModules.workstation
+        self.nixosModules.graphical
+        {
+          home-manager.users.someone.jitsusama.kitty.keys = lib.mkAfter [
+            {
+              chord = "ctrl+alt+n";
+              does = "Open a window";
+              action = "new_os_window";
+            }
+            {
+              chord = "super+return";
+              does = "Open a tab";
+              action = "new_tab";
+            }
+            {
+              chord = "ctrl+shift+c";
+              does = "Copy again";
+              action = "copy_to_clipboard";
+            }
+          ];
+        }
+      ];
+      refusals = lib.concatMapStrings (check: check.message) (
+        lib.filter (check: !check.assertion) (account machine).assertions
+      );
+      fine =
+        lib.all (check: check.assertion)
+          (account (bareNixos [
+            self.nixosModules.workstation
+            self.nixosModules.graphical
+          ])).assertions;
+    in
+    holds "a-claimed-chord-is-refused"
+      "A chord two layers claim, or one layer claims twice, wasn't refused."
+      (
+        fine
+        && lib.hasInfix "ctrl+alt+n: terminal (Open a window) takes it from multiplexer (Open a pane)" refusals
+        && lib.hasInfix "super+enter: desktop (Open a terminal) takes it from terminal (Open a tab)" refusals
+        && lib.hasInfix "ctrl+shift+c in terminal: Copy, Copy again" refusals
+      );
+
   # Picking another theme changes everything the account draws: the desktop
   # rendered in Flexoki Light keeps none of Osaka Jade's colours anywhere in
   # its files, so no surface was left behind in the old one.
@@ -435,6 +484,7 @@ in
         mkdir niri
         cp ${files."niri/config.kdl".source} niri/config.kdl
         cp ${files."niri/theme.kdl".source} niri/theme.kdl
+        cp ${files."niri/binds.kdl".source} niri/binds.kdl
         niri validate --config niri/config.kdl
         touch $out
       '';
@@ -471,6 +521,7 @@ in
         mkdir kitty
         cp ${files."kitty/kitty.conf".source} kitty/kitty.conf
         cp ${files."kitty/theme.conf".source} kitty/theme.conf
+        cp ${files."kitty/keys.conf".source} kitty/keys.conf
         kitty +runpy 'from kitty.config import load_config; import sys; load_config(sys.argv[-1])' \
           kitty/kitty.conf > complaints 2>&1
         if [ -s complaints ]; then cat complaints; exit 1; fi
