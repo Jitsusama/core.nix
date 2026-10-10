@@ -25,6 +25,12 @@ pkgs.testers.runNixOSTest {
         device = "/dev/vda";
         swapSize = "64M";
       };
+      # OVMF runs the option ROM of QEMU's network card, so the keys carry its
+      # checksum, as a machine with a ROM of its own sets them to.
+      boot.lanzaboote.autoEnrollKeys.includeChecksumsFromTPM = true;
+      # The machine runs the check it would get without that, to see it
+      # refuse.
+      system.extraDependencies = [ config.system.build.optionRomCheck ];
       # Only the image builder reads it, to format the disk unattended.
       disko.devices.disk.main.content.partitions.system.content.passwordFile = toString (
         pkgs.writeText "passphrase" passphrase
@@ -127,6 +133,14 @@ pkgs.testers.runNixOSTest {
           print(status)
           t.assertIn("Secure Boot: enabled (user)", status)
           print(machine.succeed("sbctl verify"))
+
+      with subtest("without checksums, a firmware option ROM stops enrolment"):
+          check = "${nodes.machine.system.build.optionRomCheck}/bin/option-rom-check"
+          code, output = machine.execute(f"{check} 2>&1")
+          print(output)
+          t.assertNotEqual(code, 0)
+          t.assertIn("Found OptionROM", output)
+          t.assertIn("includeChecksumsFromTPM", output)
 
       with subtest("the real system installs with measured boot"):
           real = "${nodes.machine.system.build.toplevel}"
