@@ -10,7 +10,7 @@ ShellRoot {
     Volume {}
     Brightness {}
     Backdrop {}
-    Grid {}
+    OpenBelow {}
 
     Lock {
         id: lock

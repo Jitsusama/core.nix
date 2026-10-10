@@ -16,17 +16,27 @@ Scope {
 
     readonly property var actions: [
         { name: "Lock", run: () => root.lock.lock() },
-        { name: "Suspend", run: () => Quickshell.execDetached(["systemctl", "suspend"]) },
-        { name: "Log Out", run: () => Quickshell.execDetached(["niri", "msg", "action", "quit", "--skip-confirmation"]) },
-        { name: "Reboot", run: () => Quickshell.execDetached(["systemctl", "reboot"]) },
-        { name: "Power Off", run: () => Quickshell.execDetached(["systemctl", "poweroff"]) }
+        { name: "Suspend", run: () => Niri.spawn(["systemctl", "suspend"]) },
+        { name: "Log Out", run: () => Niri.act({ Quit: { skip_confirmation: true } }) },
+        { name: "Reboot", run: () => Niri.spawn(["systemctl", "reboot"]) },
+        { name: "Power Off", run: () => Niri.spawn(["systemctl", "poweroff"]) }
     ]
 
     readonly property var choices: {
         const applications = DesktopEntries.applications.values
             .filter(entry => !entry.noDisplay)
-            .map(entry => ({ name: entry.name, run: () => entry.execute() }));
+            .map(entry => ({ name: entry.name, run: () => Niri.spawn(root.command(entry)) }));
         return applications.concat(actions);
+    }
+
+    // What an application's entry runs, spelled out for niri to spawn: in
+    // kitty when the entry asks for a terminal, and from its own directory
+    // when it names one.
+    function command(entry: var): var {
+        const program = entry.runInTerminal ? ["kitty"].concat(entry.command) : entry.command;
+        if (entry.workingDirectory === "")
+            return program;
+        return ["sh", "-c", "cd -- \"$0\" && exec \"$@\"", entry.workingDirectory].concat(program);
     }
 
     property var matches: []

@@ -268,6 +268,20 @@ in
       "A Quickshell file isn't among its unit's restart triggers, so a switch would leave the old one on screen."
       (files != { } && lib.all (file: lib.elem "${file.source}" triggers) (lib.attrValues files));
 
+  # The shell hands every program it opens to niri, which gives it a scope of
+  # its own. One the shell started itself would leave its helpers in the
+  # shell's service, and restarting the shell would kill them.
+  quickshell-opens-programs-through-niri =
+    let
+      dir = ./modules/quickshell;
+      qml = lib.filter (lib.hasSuffix ".qml") (lib.attrNames (builtins.readDir dir));
+      starts = file: lib.hasInfix "execDetached" file || lib.hasInfix ".execute()" file;
+      culprits = lib.filter (name: starts (builtins.readFile (dir + "/${name}"))) qml;
+    in
+    holds "quickshell-opens-programs-through-niri"
+      "These start programs themselves rather than through Niri.spawn: ${lib.concatStringsSep ", " culprits}"
+      (qml != [ ] && culprits == [ ]);
+
   # A chord two layers both claim never reaches the lower one, so a machine
   # with one doesn't build. The clashes here are spelt the way each program
   # spells its chords, so the map has to see through the spelling: kitty's

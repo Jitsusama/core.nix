@@ -37,7 +37,8 @@ let
     "Brightness.qml"
     "Meter.qml"
     "Backdrop.qml"
-    "Grid.qml"
+    "OpenBelow.qml"
+    "Niri.qml"
   ];
 in
 {

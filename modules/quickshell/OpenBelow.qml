@@ -10,6 +10,9 @@
 // anything, listens only while it waits, and gives up after ten seconds or
 // as soon as the new window isn't where it expects, leaving it as niri put
 // it.
+//
+// It isn't called Grid, because QtQuick has a Grid of its own, and a file
+// importing QtQuick would get that one instead without a word.
 import Quickshell
 import Quickshell.Io
 import QtQuick
@@ -36,17 +39,12 @@ Scope {
         waiting = true;
         expiry.restart();
         if (program !== "")
-            Quickshell.execDetached([program]);
+            Niri.spawn([program]);
     }
 
     function finish(): void {
         waiting = false;
         expiry.stop();
-    }
-
-    function act(action: var): void {
-        requests.write(JSON.stringify({ Action: action }) + "\n");
-        requests.flush();
     }
 
     function position(id: var): var {
@@ -68,7 +66,7 @@ Scope {
             return;
         }
         placing = window.id;
-        act({ ConsumeOrExpelWindowLeft: { id: window.id } });
+        Niri.act({ ConsumeOrExpelWindowLeft: { id: window.id } });
     }
 
     // Folded in, the new window sits at the bottom of the column, so it
@@ -82,7 +80,7 @@ Scope {
             return;
         if (focused === placing)
             for (let move = there[1] - (here[1] + 1); move > 0; move--)
-                act({ MoveWindowUp: {} });
+                Niri.act({ MoveWindowUp: {} });
         finish();
     }
 
@@ -133,7 +131,9 @@ Scope {
     }
 
     // niri's event stream, open only while waiting. Its first events
-    // describe every window, which is how the anchor is found.
+    // describe every window, which is how the anchor is found. Actions go
+    // through Niri, since a connection that has asked for the event stream
+    // answers nothing else.
     Socket {
         path: Quickshell.env("NIRI_SOCKET")
         connected: root.waiting
@@ -148,21 +148,6 @@ Scope {
                 const event = JSON.parse(line);
                 if (!("Ok" in event))
                     root.handle(event);
-            }
-        }
-    }
-
-    // A second connection for the actions, since one that has asked for the
-    // event stream answers nothing else.
-    Socket {
-        id: requests
-        path: Quickshell.env("NIRI_SOCKET")
-        connected: root.waiting
-        parser: SplitParser {
-            onRead: line => {
-                const reply = JSON.parse(line);
-                if (reply.Err)
-                    console.warn("niri refused to place the window:", reply.Err);
             }
         }
     }
