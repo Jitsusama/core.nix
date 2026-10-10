@@ -56,7 +56,13 @@ the machine are the only other ways in; the install passphrase is wiped.
 
 - A firmware update changes PCR 0, so the next boot needs the YubiKey once;
   that boot measures the new firmware and the PIN works again after it.
-- systemd-pcrlock covers at most four generations, so lanzaboote keeps four.
+- systemd-pcrlock covers at most four generations, so lanzaboote keeps four,
+  and one of them is always the generation the machine booted. pcrlock can
+  only write a policy with PCR 4 while it can match the running boot's
+  measurements to an installed generation, so when a fifth switch without a
+  reboot removed the booted one, the disk was left sealed to PCRs 0 and 7
+  until the next boot. Keeping it takes one of the four places in the boot
+  menu; the generation it displaces can still be switched to.
 - systemd still calls pcrlock experimental, so every disk always has the
   recovery key.
 - A machine with a graphics card needs Microsoft's keys, and says so in its

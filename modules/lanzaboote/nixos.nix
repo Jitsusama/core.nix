@@ -80,7 +80,10 @@ in
     # The disk's TPM key opens only for the same firmware (PCR 0), the same
     # boot loader and signed kernel, initrd and command line (PCR 4), and the
     # same Secure Boot keys and state (PCR 7). systemd-pcrlock covers at most
-    # four generations.
+    # four generations, and one of them is always the booted one: pcrlock
+    # leaves PCR 4 out of the policy when it can't account for the boot it's
+    # running in, until the next reboot.
+    protectedSystem = "/run/booted-system";
     measuredBoot = {
       enable = true;
       pcrs = [

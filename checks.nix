@@ -246,6 +246,17 @@ checkEach "nixos" (module: bareNixos [ module ]) (removeAttrs self.nixosModules 
       && hasYkman (bareDarwin [ self.darwinModules.workstation ])
     );
 
+  # Every switch keeps the generation the machine booted on the ESP, so
+  # systemd-pcrlock can always account for the running boot and the disk's
+  # policy keeps PCR 4.
+  booted-generation-stays-installed =
+    let
+      machine = bareNixos [ self.nixosModules.lanzaboote ];
+    in
+    holds "booted-generation-stays-installed"
+      "lanzaboote can remove the booted generation, which drops PCR 4 from the disk's policy."
+      (machine.config.boot.lanzaboote.protectedSystem == "/run/booted-system");
+
   # ssh-tpm-agent, and the signing that uses it, need the account to reach
   # the TPM, which the tpm module gives it.
   home-on-nixos-ssh-tpm-agent = evaluates "home-on-nixos-ssh-tpm-agent" (bareNixos [
