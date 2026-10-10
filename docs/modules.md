@@ -41,7 +41,8 @@ file here names a machine, a machine repository or an employer.
    ```
 
 4. Run `nix fmt` and `nix flake check`. The checks pick the new module up
-   from `flake.nix`, so it is evaluated on its own without anything more.
+   through the examples once a role or another module imports it; see
+   [Testing][2].
 
 Keep the tool's configuration in its own format beside the module, such as
 `modules/glow/glow.yml`, and read it in rather than translating it to Nix.
@@ -135,3 +136,4 @@ have it don't import it.
 When a change suits every machine, it belongs in core.nix instead.
 
 [1]: machines.md#changing-what-core-sets
+[2]: testing.md

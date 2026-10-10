@@ -53,7 +53,7 @@ behind Intel's CVS bridge, and Intel's BE211 Wi-Fi 7.
 | Audio    | the firmware Sound Open Firmware runs on the DSP                       |
 | Speakers | Omarchy's tuning, as a smart filter; see below                         |
 | Camera   | Intel's camera software, with the CVS bridge in its graph; see below   |
-| Sensors  | ambient light and presence through `iio-sensor-proxy`                  |
+| Sensors  | ambient light through `iio-sensor-proxy`; see below                    |
 | Docks    | bolt, which authorizes Thunderbolt and USB4 devices                    |
 | Firmware | fwupd, for the BIOS and firmware Dell publishes through LVFS           |
 | Wi-Fi    | runs as Wi-Fi 6; see below                                             |
@@ -103,7 +103,7 @@ the device programs see, sound goes through the filter only on its way to
 them, and headphones and displays get it untouched. Omarchy gave up on smart
 filters because the filter seemed to pass sound through unchanged, but that's
 how it measures, not what it does: WirePlumber hands a recording of the
-speakers the filter's input instead. `speakers-are-tuned` links its recorder
+speakers the filter's input instead. `vm-speakers-are-tuned` links its recorder
 by hand and hears the tuning.
 
 ### The Camera
@@ -115,6 +115,8 @@ from its main branch, which knows the bridge. A patch routes this sensor's graph
 through the bridge, as [Intel's own change][6] does for the next IPU. Programs
 open a loopback camera, "Built-in Camera", which a relay fills from the image
 processor at 1080p, turned upright: the sensor is mounted upside down.
+PipeWire hides the raw capture nodes and the bare sensor libcamera offers,
+which it would otherwise rank above the loopback as the default camera.
 
 [nixos-hardware's profile for this laptop][7], not yet merged, worked out every
 piece: the patch, the order the bridge's drivers load in, keeping USB from
@@ -126,17 +128,24 @@ the image processor appears, so a machine without the camera never runs it.
 Omarchy also sharpens the picture and lowers its exposure. Whether that looks
 better is for the laptop to show, as is the camera itself.
 
+### The Mic-Mute Light
+
+`dell-laptop` gives the light `audio-micmute` as its trigger, and `snd-ctl-led`
+lights it for any switch attached to it. alsa-ucm-conf's cs42l45 profile
+attaches `cs42l45 FU 113 Channel Switch`, the switch PipeWire's mute flips, but
+only through a sysfs file root alone can write, so it happens only when
+`alsactl` opens the profile as root at boot, as Arch's udev rule does. NixOS's
+rule passes `-U`, which skips the profile, and runs only with ALSA persistence
+on. The [module][2] has udev write that one attachment itself when the card
+appears, with no program run. Omarchy's mute script sets the light instead,
+which detaches the trigger after the first unmute.
+
 ### Nothing to Add
 
 - **The touchpad.** It's a `2C2F` haptic pad on `hid-multitouch`. Omarchy
   installs Dell's haptics daemon only for Synaptics pads (`VEN_06CB`), and
   nothing for this one, and `hid-multitouch` registers no force feedback on
   it, so it behaves here as it does on Omarchy.
-- **The mic-mute light.** `dell-laptop` gives it `audio-micmute` as its
-  trigger, and `snd-ctl-led` lights it whenever PipeWire mutes the
-  microphone. Omarchy's mute script sets the light itself, and writing it off
-  detaches the trigger, so there it stops following the mute after the first
-  unmute. Nothing here writes it.
 - **The Synaptics USB device** (`06cb:0701`) is the camera's USB-IO bridge,
   bound to `usbio-bridge`, not a fingerprint reader. This laptop has none.
 - **Option ROMs for Secure Boot.** The firmware runs none, so its TPM event
@@ -145,11 +154,19 @@ better is for the laptop to show, as is the camera itself.
 
 ### What's Left
 
-| Part      | Why it isn't here yet                                                 |
-| --------- | --------------------------------------------------------------------- |
-| Panel VRR | the panel's range comes from a DisplayID block Linux doesn't read yet |
+| Part         | Why it isn't here yet                                                 |
+| ------------ | --------------------------------------------------------------------- |
+| Panel VRR    | the panel's range comes from a DisplayID block Linux doesn't read yet |
+| Presence     | `iio-sensor-proxy` doesn't publish the presence sensor; see below     |
+| Level Zero   | nixpkgs's GPU driver can't find its compiler and aborts; see below    |
 
-It needs the laptop itself to prove, so it lands after the first boot.
+- **Presence.** The sensor hub's attention sensor shows up as an IIO
+  proximity device, but `iio-sensor-proxy` has no near level for it and
+  publishes nothing, and nothing would read it yet.
+- **Level Zero on the GPU.** nixpkgs gives only the OpenCL driver its
+  compiler on its library path, so `libze_intel_gpu` can't load
+  `libigc.so.2` and aborts in `zeInit`. OpenCL works, and so does the NPU
+  through Level Zero. The fix is a line in nixpkgs's package.
 
 ### Left Out on Purpose
 

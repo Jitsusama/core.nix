@@ -24,7 +24,11 @@
     };
     # Releases, since both decide whether a machine boots at all.
     lanzaboote = {
-      url = "github:nix-community/lanzaboote/v1.2.0";
+      # Past 1.2.0 for protectedSystem, which keeps the booted generation
+      # installed so the disk's policy never loses PCR 4, and for loader
+      # measurements that survive a boot loader update. Back to a tag once a
+      # release carries both.
+      url = "github:nix-community/lanzaboote/5bc59941ad05cfa434501ab20770bc6c6e824d4a";
       inputs.nixpkgs.follows = "nixpkgs";
       # Only lanzaboote's own CI uses it.
       inputs.pre-commit.follows = "";
@@ -150,6 +154,7 @@
         memory = ./modules/memory/nixos.nix;
         networkmanager = ./modules/networkmanager/nixos.nix;
         niri = ./modules/niri/nixos.nix;
+        nix-daemon = ./modules/nix-daemon/nixos.nix;
         nixpkgs = ./modules/nixpkgs/system.nix;
         onepassword = ./modules/onepassword/nixos.nix;
         perf = ./modules/perf/nixos.nix;

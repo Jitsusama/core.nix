@@ -33,7 +33,11 @@ pkgs.testers.runNixOSTest {
       ...
     }:
     {
-      imports = [ self.nixosModules.graphical ];
+      imports = [
+        self.nixosModules.graphical
+        # The laptop role's power profiles, whose units start only at boot.
+        self.nixosModules.power-profiles-daemon
+      ];
 
       # The VM has neither a backlight nor a sound card, so it gets one of each
       # that drives nothing, which the kernel and PipeWire report as they do
@@ -179,6 +183,16 @@ pkgs.testers.runNixOSTest {
       # niri sets these as a session, then starts it.
       as_account("systemctl --user set-environment XDG_CURRENT_DESKTOP=niri XDG_SESSION_TYPE=wayland")
       as_account("systemctl --user start compositor")
+
+      # A loop in the order units start breaks nothing at a switch, when the
+      # targets are already reached, so only a boot shows it.
+      with subtest("the machine boots without an ordering cycle"):
+          machine.fail("journalctl -b -o cat | grep -F 'ordering cycle'")
+
+      with subtest("the power profile follows the charger from boot"):
+          machine.wait_until_succeeds(
+              "journalctl -b -o cat -u power-profile-follows-the-charger | grep -F 'power profile:'", timeout=30
+          )
 
       with subtest("Quickshell starts without a QML error"):
           as_account("systemctl --user start quickshell")

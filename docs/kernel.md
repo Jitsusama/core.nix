@@ -20,8 +20,7 @@ x86-64 machine as `packages.x86_64-linux.kernel`.
 ## What It Is
 
 - **The series:** 7.2, at whichever point release nixpkgs pins. Taking a new
-  nixpkgs, which the weekly pin update does, takes the latest 7.2 release with
-  its fixes.
+  nixpkgs takes the latest 7.2 release with its fixes.
 - **The compiler:** Clang 22, linked with LLD, which link-time optimization
   needs. Not nixpkgs's default LLVM 21: its LLD, compiled with GCC 16 as
   nixpkgs compiles it, writes objects the kernel's objtool rejects.
@@ -81,12 +80,14 @@ systemd-oomd, and multi-gen LRU for memory.
 
 ## Around It
 
-Two more modules tune the running kernel, and the workstation role brings
-both in:
+Three more modules tune the running kernel, and the workstation role brings
+all three in:
 
 - **[`memory`][memory]:** swap to zstd-compressed RAM, kill a runaway process
   before the machine thrashes, and write to disk steadily rather than in
   stalls, so a linking build never freezes the desktop.
+- **[`nix-daemon`][nix-daemon]:** builds run as batch work with idle I/O, so
+  they take the CPU and the disk only when nothing interactive wants them.
 - **[`perf`][perf]:** perf itself, and the settings that let Joel profile his
   own programs, kernel included, without root.
 
@@ -194,6 +195,7 @@ if less; record a new one after moving to a new series.
 [module]: ../modules/kernel/
 [settings]: ../modules/kernel/settings.nix
 [memory]: ../modules/memory/nixos.nix
+[nix-daemon]: ../modules/nix-daemon/nixos.nix
 [perf]: ../modules/perf/nixos.nix
 [hw]: hardware.md
 [1]: https://github.com/firelzrd/bore-scheduler

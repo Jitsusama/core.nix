@@ -7,6 +7,7 @@
   imports = [
     nixosModules.base
     nixosModules.memory
+    nixosModules.nix-daemon
     nixosModules.perf
     nixosModules.tpm
     nixosModules.yubikey

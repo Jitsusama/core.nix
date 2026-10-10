@@ -117,7 +117,7 @@ shows a whole machine of each kind.
 
 ```sh
 nix fmt            # format and lint everything
-nix flake check    # evaluate every module, role and example, and check formatting
+nix flake check    # every check; reruns only the ones a change can affect
 ```
 
 To try a change on a real machine before it lands, point its repository at

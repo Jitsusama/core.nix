@@ -70,22 +70,35 @@ in
     options v4l2loopback devices=0
   '';
 
-  # nixos-hardware found the bridge wedges when USB suspends it. The camera
-  # service starts when the ISP appears, so it never runs where there's no
-  # camera.
+  # nixos-hardware found the bridge wedges when USB suspends it. The match is
+  # on the device's own attributes, since its interfaces inherit them and have
+  # no autosuspend to set. The camera service starts when the ISP appears, so
+  # it never runs where there's no camera.
   services.udev.extraRules = ''
-    SUBSYSTEM=="usb", ATTRS{idVendor}=="06cb", ATTRS{idProduct}=="0701", ATTR{power/autosuspend}="-1"
+    SUBSYSTEM=="usb", ATTR{idVendor}=="06cb", ATTR{idProduct}=="0701", ATTR{power/autosuspend}="-1"
     SUBSYSTEM=="intel-ipu7-psys", TAG+="systemd", ENV{SYSTEMD_WANTS}+="camera.service"
   '';
 
   # The capture side gives every CSI-2 stream a raw V4L2 node no program can
-  # show, so PipeWire hides them and the loopback is the only camera listed.
-  services.pipewire.wireplumber.extraConfig."50-hide-raw-camera-nodes"."monitor.v4l2.rules" = [
-    {
-      matches = [ { "device.product.name" = "ipu7"; } ];
-      actions.update-props."device.disabled" = true;
-    }
-  ];
+  # show, and libcamera offers the bare sensor, which the HAL already holds
+  # and which PipeWire would otherwise rank above the loopback as the default
+  # camera. PipeWire hides both, so the loopback is the only camera listed.
+  # The only libcamera camera here is that sensor; a USB camera still shows
+  # through V4L2.
+  services.pipewire.wireplumber.extraConfig."50-hide-raw-camera-nodes" = {
+    "monitor.v4l2.rules" = [
+      {
+        matches = [ { "device.product.name" = "ipu7"; } ];
+        actions.update-props."device.disabled" = true;
+      }
+    ];
+    "monitor.libcamera.rules" = [
+      {
+        matches = [ { "device.api" = "libcamera"; } ];
+        actions.update-props."device.disabled" = true;
+      }
+    ];
+  };
 
   systemd.services.camera = {
     description = "The front camera, as a V4L2 camera programs can open";

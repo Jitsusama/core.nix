@@ -128,12 +128,13 @@ is installed system-wide only when it's worth having outside any project.
 - `nix fmt` decides layout. Lines stop at 100 characters.
 - deadnix and statix run with the formatter, so unused bindings and their
   usual mistakes never land.
-- Every module and role is checked on its own; see [Testing][1].
+- A check has to earn its place in the loop; see [Testing][1].
 
 ## Checks Before Switches
 
-Nothing is applied to a machine until `nix flake check` passes, locally and in
-CI. Before switching, compare what changes:
+Nothing is applied to a machine until `nix flake check` passes locally. CI
+runs the same checks as a backstop, and nothing waits on it. Before switching,
+compare what changes:
 
 ```sh
 nix store diff-closures /run/current-system ./result
