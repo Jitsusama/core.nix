@@ -122,16 +122,22 @@ in
     # settings, can't take signing back.
     programs.git.includes = lib.mkAfter [
       {
-        contents = {
-          gpg.format = "ssh";
-          gpg.ssh.program = lib.getExe tpmSign;
-          user.signingKey = "${joelKey}.pub";
-          commit.gpgSign = true;
-          tag.gpgSign = true;
-        }
-        // lib.optionalAttrs (cfg.allowedSigners != [ ]) {
-          gpg.ssh.allowedSignersFile = "${config.xdg.configHome}/git/allowed_signers";
-        };
+        # Recursive, since a plain // would put the signers' gpg section in
+        # place of the one that says how to sign.
+        contents =
+          lib.recursiveUpdate
+            {
+              gpg.format = "ssh";
+              gpg.ssh.program = lib.getExe tpmSign;
+              user.signingKey = "${joelKey}.pub";
+              commit.gpgSign = true;
+              tag.gpgSign = true;
+            }
+            (
+              lib.optionalAttrs (cfg.allowedSigners != [ ]) {
+                gpg.ssh.allowedSignersFile = "${config.xdg.configHome}/git/allowed_signers";
+              }
+            );
       }
     ];
 
