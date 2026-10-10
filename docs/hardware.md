@@ -128,6 +128,18 @@ the image processor appears, so a machine without the camera never runs it.
 Omarchy also sharpens the picture and lowers its exposure. Whether that looks
 better is for the laptop to show, as is the camera itself.
 
+### The Mic-Mute Light
+
+`dell-laptop` gives the light `audio-micmute` as its trigger, and `snd-ctl-led`
+lights it for any switch attached to it. alsa-ucm-conf's cs42l45 profile
+attaches `cs42l45 FU 113 Channel Switch`, the switch PipeWire's mute flips, but
+only through a sysfs file root alone can write, so it happens only when
+`alsactl` opens the profile as root at boot, as Arch's udev rule does. NixOS's
+rule passes `-U`, which skips the profile, and runs only with ALSA persistence
+on. The [module][2] has udev write that one attachment itself when the card
+appears, with no program run. Omarchy's mute script sets the light instead,
+which detaches the trigger after the first unmute.
+
 ### Nothing to Add
 
 - **The touchpad.** It's a `2C2F` haptic pad on `hid-multitouch`. Omarchy
@@ -145,19 +157,9 @@ better is for the laptop to show, as is the camera itself.
 | Part         | Why it isn't here yet                                                 |
 | ------------ | --------------------------------------------------------------------- |
 | Panel VRR    | the panel's range comes from a DisplayID block Linux doesn't read yet |
-| Mic-mute LED | nothing attaches the microphone's switch to it; see below             |
 | Presence     | `iio-sensor-proxy` doesn't publish the presence sensor; see below     |
 | Level Zero   | nixpkgs's GPU driver can't find its compiler and aborts; see below    |
 
-- **The mic-mute light.** `dell-laptop` gives it `audio-micmute` as its
-  trigger, and `snd-ctl-led` lights it for any switch attached to it.
-  alsa-ucm-conf's cs42l45 profile attaches `cs42l45 FU 113 Channel Switch`,
-  the switch PipeWire's mute flips, but only through a sysfs file root alone
-  can write, so it happens only when `alsactl` opens the profile as root at
-  boot, as Arch's udev rule does. NixOS's rule passes `-U`, which skips the
-  profile, and runs only with ALSA persistence on, so the attach list stays
-  empty and the light never follows the mute. Omarchy's mute script sets the
-  light itself, which detaches the trigger after the first unmute.
 - **Presence.** The sensor hub's attention sensor shows up as an IIO
   proximity device, but `iio-sensor-proxy` has no near level for it and
   publishes nothing, and nothing would read it yet.

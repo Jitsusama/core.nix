@@ -65,6 +65,17 @@
   # The NPU, through Level Zero.
   hardware.cpu.intel.npu.enable = true;
 
+  # The mute key's light follows the switch PipeWire's mute flips, as
+  # alsa-ucm-conf's cs42l45 profile would attach it if it ran as root. udev
+  # writes the attachment itself and runs nothing to do it. Sound Open Firmware
+  # loads the LED layer before the card registers, and the kernel makes the
+  # card's attach file in the same call that announces its controls, so the
+  # file is there by the time udev handles that event. The card must be the
+  # first one, which it is: the codec's is the only card the laptop has.
+  services.udev.extraRules = ''
+    SUBSYSTEM=="sound", KERNEL=="controlC0", ACTION=="add", ATTRS{id}=="sofsoundwire", ATTR{[sound/ctl-led]mic/card0/attach}="cs42l45 FU 113 Channel Switch"
+  '';
+
   # The ambient light and presence sensors, behind the Integrated Sensor Hub.
   hardware.sensor.iio.enable = true;
 
