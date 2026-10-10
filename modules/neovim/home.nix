@@ -26,13 +26,14 @@ in
   imports = [ ../theme/home.nix ];
 
   # The theme's roles, for the plugins that draw on the terminal's own
-  # background (require('theme').background), with the terminal's colours
-  # and the shades beside them.
+  # background (require('theme').background), with the terminal's colours,
+  # the shades and the marks beside them.
   xdg.configFile."nvim/lua/theme.lua".text = "return ${
     lib.generators.toLua { } (
       config.jitsusama.theme.roles
       // {
         inherit (config.jitsusama.theme) terminal shades;
+        glyphs = lib.mapAttrs (_: mark: mark.glyph) config.jitsusama.theme.glyphs;
       }
     )
   }\n";
@@ -142,7 +143,7 @@ in
       (configured vimPlugins.trouble-nvim ./plugins/trouble.lua)
       # Dims inactive portions of code for better focus using TreeSitter.
       (configured vimPlugins.twilight-nvim ./plugins/twilight.lua)
-      # Provides Nerd Font icons for use by plugins.
+      # Provides file type icons, from the Nerd Fonts set, for plugins.
       vimPlugins.nvim-web-devicons
       # Minimal telescope for aerial compatibility.
       {

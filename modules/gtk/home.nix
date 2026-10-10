@@ -1,10 +1,11 @@
 # GTK programs in the theme: libadwaita's, such as GNOME's portal dialogs, and
 # GTK 3's, such as the file chooser the GTK portal opens for Chrome and Slack.
 # Both read their colours from a stylesheet of Joel's that outranks their
-# theme, written here from jitsusama.theme. The desktop says it prefers dark,
-# which every program that asks the portal hears, websites included. Like
-# Omarchy's Osaka Jade, they keep Adwaita's shapes and its sans interface font
-# and use the Yaru-sage icons; monospaced text is in the theme's font.
+# theme, written here from jitsusama.theme. The desktop says whether it
+# prefers dark or light, as the theme is, which every program that asks the
+# portal hears, websites included. Like Omarchy's themes, they keep Adwaita's
+# shapes and its sans interface font and use the theme's Yaru icons;
+# monospaced text is in the theme's font.
 # libadwaita's colours:
 # https://gnome.pages.gitlab.gnome.org/libadwaita/doc/1.9/css-variables.html
 {
@@ -14,7 +15,13 @@
   ...
 }:
 let
-  inherit (config.jitsusama.theme) roles font shape;
+  inherit (config.jitsusama.theme)
+    roles
+    font
+    shape
+    appearance
+    icons
+    ;
 
   # Each surface's background and text, and the colours of buttons and
   # messages that mean something, with the theme's text for drawing on them.
@@ -54,15 +61,15 @@ in
 
   gtk = {
     enable = true;
-    colorScheme = "dark";
+    colorScheme = appearance;
     # adw-gtk3 draws GTK 3 as libadwaita draws GTK 4, which needs no theme.
     theme = {
-      name = "adw-gtk3-dark";
+      name = if appearance == "dark" then "adw-gtk3-dark" else "adw-gtk3";
       package = pkgs.adw-gtk3;
     };
     gtk4.theme = null;
     iconTheme = {
-      name = "Yaru-sage";
+      name = icons;
       package = pkgs.yaru-theme;
     };
     gtk3.extraCss = stylesheet;

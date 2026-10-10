@@ -18,7 +18,7 @@ Rectangle {
     }
 
     implicitWidth: 480
-    implicitHeight: input.implicitHeight + Theme.gap * 2
+    implicitHeight: input.implicitHeight + Theme.space.xl
     color: Theme.background
     border.color: Theme.accent
     border.width: Theme.border
@@ -27,20 +27,20 @@ Rectangle {
     Text {
         id: label
         anchors.left: parent.left
-        anchors.leftMargin: Theme.gap
+        anchors.leftMargin: Theme.space.m
         anchors.verticalCenter: parent.verticalCenter
         text: prompt.label
         color: Theme.accent
-        font.family: Theme.monoFamily
-        font.pointSize: Theme.monoSize
+        font.family: Theme.mono.family
+        font.pointSize: Theme.mono.body
     }
 
     TextInput {
         id: input
         anchors.left: label.right
-        anchors.leftMargin: prompt.label === "" ? 0 : Theme.gap
+        anchors.leftMargin: prompt.label === "" ? 0 : Theme.space.m
         anchors.right: parent.right
-        anchors.rightMargin: Theme.gap
+        anchors.rightMargin: Theme.space.m
         anchors.verticalCenter: parent.verticalCenter
         focus: true
         clip: true
@@ -48,8 +48,8 @@ Rectangle {
         color: Theme.text
         selectionColor: Theme.selection
         selectedTextColor: Theme.strong
-        font.family: Theme.monoFamily
-        font.pointSize: Theme.monoSize
+        font.family: Theme.mono.family
+        font.pointSize: Theme.mono.body
         onAccepted: prompt.accepted()
         Keys.onEscapePressed: prompt.cancelled()
     }

@@ -11,7 +11,20 @@
   ...
 }:
 let
-  inherit (config.jitsusama.theme) roles font shape;
+  inherit (config.jitsusama.theme)
+    roles
+    font
+    shape
+    space
+    type
+    motion
+    glyphs
+    ;
+
+  # A JavaScript object of the values, which QML reads as Theme.space.m.
+  object = values: "(${builtins.toJSON values})";
+  slowed = milliseconds: builtins.floor (milliseconds * builtins.fromJSON motion.slowdown + 0.5);
+  face = family: sizes: object ({ inherit family; } // lib.mapAttrs (_: builtins.fromJSON) sizes);
 
   qml = [
     "shell.qml"
@@ -45,13 +58,27 @@ in
         ${lib.concatLines (
           lib.mapAttrsToList (name: color: "    readonly property color ${name}: \"${color}\"") roles
         )}
-            readonly property string monoFamily: "${font.mono.family}"
-            readonly property real monoSize: ${font.mono.size}
-            readonly property string sansFamily: "${font.sans.family}"
-            readonly property real sansSize: ${font.sans.size}
+            readonly property var mono: ${face font.mono.family type.mono}
+            readonly property var sans: ${face font.sans.family type.sans}
+            readonly property var space: ${object (removeAttrs space [ "unit" ])}
             readonly property int border: ${toString shape.border}
             readonly property int radius: ${toString shape.radius}
-            readonly property int gap: ${toString shape.gap}
+            readonly property var motion: ${
+              object {
+                # Slowed as niri slows its own, so the two stay in step.
+                inherit (lib.mapAttrs (_: slowed) { inherit (motion) short medium long; })
+                  short
+                  medium
+                  long
+                  ;
+                # Easing.BezierSpline's form: the two control points, then the end.
+                curve = map builtins.fromJSON motion.curve ++ [
+                  1
+                  1
+                ];
+              }
+            }
+            readonly property var glyph: ${object (lib.mapAttrs (_: mark: mark.glyph) glyphs)}
         }
       '';
     };

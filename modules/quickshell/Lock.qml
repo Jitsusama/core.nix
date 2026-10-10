@@ -59,14 +59,14 @@ Scope {
 
             Column {
                 anchors.centerIn: parent
-                spacing: Theme.gap * 2
+                spacing: Theme.space.xl
 
                 Text {
                     anchors.horizontalCenter: parent.horizontalCenter
                     text: Qt.formatDateTime(clock.date, "HH:mm")
                     color: Theme.text
-                    font.family: Theme.monoFamily
-                    font.pointSize: Theme.monoSize * 6
+                    font.family: Theme.mono.family
+                    font.pointSize: Theme.mono.hero
                 }
 
                 Prompt {

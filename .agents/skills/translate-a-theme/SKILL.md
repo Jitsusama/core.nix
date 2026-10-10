@@ -20,7 +20,8 @@ them first, and read `modules/theme/osaka-jade.toml` as the worked example.
 A theme is one file, `modules/theme/<name>.toml`, named in kebab case, and
 listed in `themes` in `modules/theme/home.nix`. It holds:
 
-- `name` and `appearance` (`dark` or `light`).
+- `name`, `appearance` (`dark` or `light`) and `icons`, the Yaru icon theme
+  nearest its accent (`Yaru-sage`, `Yaru-blue`, and so on).
 - `shades`: eight pigments from the background to the brightest text.
 - `[palette]`: every colour the theme uses, once, as `#rrggbb` or
   `#rrggbbaa`.
@@ -84,8 +85,12 @@ says something about it.
    decided and why. Those are what Joel checks by eye.
 
 4. **Fill the terminal.** The source's own sixteen colours when it has them.
-   `bright_black` is text too (shell suggestions, comments), so it has to
-   read like `muted`, and often takes the same pigment.
+   Every one has to read on the terminal's background except the ones at
+   the background's own end: `black` on a dark theme, `white` and
+   `bright_white` on a light one. `bright_black` is text too (shell
+   suggestions, comments), so it has to read like `muted`. A light theme's
+   brighter inks are usually too faint on paper, so take the darker inks of
+   the same family and say so; `flexoki-light.toml` is the worked example.
 
 5. **Add it to `themes`** in `modules/theme/home.nix`.
 

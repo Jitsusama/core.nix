@@ -110,7 +110,18 @@ GitHub Next, so they share proportions, x-height and voice.
   precision for the same quantity everywhere.
 - **One scale.** Sizes come from one base and one ratio,
   `jitsusama.theme.type`, so every surface draws from the same few steps, and
-  a surface names the step, never a size.
+  a surface names the step, never a size. The ratio is a major third, 1.25:
+  far enough apart to read as different, near enough that a heading doesn't
+  shout. From a 10.5 point body:
+
+  | Step    | Power | Size (pt) | For                                       |
+  | ------- | ----- | --------- | ----------------------------------------- |
+  | small   | -1    | 8.4       | units beside a number, a footnote         |
+  | body    | 0     | 10.5      | almost everything                         |
+  | large   | 1     | 13.1      | a prompt's question, a notification title |
+  | title   | 2     | 16.4      | a heading in a menu or dialog             |
+  | display | 6     | 40.1      | the clock in the overview                 |
+  | hero    | 8     | 62.6      | the clock on the lock screen              |
 
 Each surface names which face it uses and why, in the surfaces table.
 
@@ -119,6 +130,19 @@ Each surface names which face it uses and why, in the surfaces table.
 One unit and a scale built from it, `jitsusama.theme.space`, so the padding in
 a menu, the gap between windows and the margin of a notification are the same
 few values. At a display scale of 2, every edge lands on a whole device pixel.
+The unit is 4 logical pixels, and the steps sit one unit apart where a pixel
+shows and further apart as they grow:
+
+| Step | Units | Pixels | For                                                |
+| ---- | ----- | ------ | -------------------------------------------------- |
+| xs   | 1     | 4      | between lines that belong together                 |
+| s    | 2     | 8      | between a mark and its text                        |
+| m    | 3     | 12     | inside a row, between windows, between cards       |
+| l    | 4     | 16     | a terminal's padding above and below               |
+| xl   | 6     | 24     | a terminal's padding at the sides, between columns |
+| xxl  | 8     | 32     | a meter's height, a row of a prompt list           |
+| xxxl | 12    | 48     | the overview's margin                              |
+| huge | 16    | 64     | an overlay's distance from the edge                |
 
 Whitespace groups things before borders or boxes do. Start with too much space
 and take it away. Density follows the moment: dense and scannable where Joel is
@@ -171,10 +195,21 @@ A console font holds at most 512 glyphs and none of Nerd Fonts' marks, so each
 glyph also has a stand-in the console can draw, and a surface running on a
 console (the prompt in an emergency shell) uses those.
 
+The table is `jitsusama.theme.glyphs`, each mark with what it means and its
+stand-in. Every program that can read it is given it: Quickshell as
+`Theme.glyph`, Neovim as `require('theme').glyphs`, and anything else through
+`~/.config/jitsusama/theme.json`, which holds the whole theme.
+
 ## Motion
 
 `jitsusama.theme.motion` holds the curves, durations and springs, and every
-program that animates renders them, so one change retimes everything. Nothing
+program that animates renders them, so one change retimes everything.
+Anything a gesture can carry rides a critically damped spring (stiffness
+1600, 98% of the way in about 150 ms), which keeps a swipe's speed and never
+wobbles. Everything else runs on one ease-out curve (0.23, 1, 0.32, 1), mostly
+there at once, for 100 ms when leaving, 150 ms when arriving and 250 ms for
+something large and rare. `motion.slowdown` stretches all of it at once, to
+look at one movement closely. Nothing
 moves in a way that delays input or focus, every animation holds the panel's
 refresh rate, the first frame of every surface is complete, and nothing jumps
 when its content changes size. Anything that stutters is a bug.
@@ -329,7 +364,8 @@ and refined deeply:
 
 ```toml
 name = "Osaka Jade"
-appearance = "dark"
+appearance = "dark"   # or "light", which the desktop tells every program
+icons = "Yaru-sage"  # one of Yaru's icon themes
 
 # Eight pigments from the background to the brightest text.
 shades = ["forest", "fern", "moss", "lichen", "seafoam", "parchment", "linen", "cream"]
@@ -353,12 +389,19 @@ bright_black = "sage"
 # Code's roles (keyword, string, comment and the rest), by pigment and style.
 [syntax]
 
-# The two faces and their features, the type scale, the space scale, motion,
-# the glyph table, the wallpaper and the console's font.
+# The type scale's ratio and steps, the space scale's unit and steps, motion's
+# spring, curve and durations, and any glyph to change, as the theme module's
+# options of the same names spell them.
 [type]
+ratio = "1.25"
 [space]
+unit = 4
 [motion]
+stiffness = 1600
 [glyphs]
+cursor = { glyph = "\u25b8", console = ">" }
+
+# Still to come: the wallpaper and the console's font.
 [wallpaper]
 [console]
 ```
@@ -454,8 +497,20 @@ as an exception with the reason.
 
 ## Decisions
 
-What each studio round settled, newest first, with the reason. Empty until the
-first round.
+What each studio round settled, newest first, with the reason.
+
+- **The monospace face stays Nerd Fonts' MonaspiceXe** (2026-10-10). Nerd
+  Fonts' patched Monaspace and Monaspace's own NF builds keep exactly the same
+  OpenType features: texture healing's eleven contextual lookups, the ten
+  ligature sets and every character variant. Monaspace's own build adds the
+  wide and semi-wide widths, but lacks 1,579 characters the patched one has,
+  among them every Braille pattern, which btop draws its graphs with, and
+  those would fall back to another face. The variable font has neither the
+  icons nor anything the static faces lack but its width axis.
+- **Muted text is sage, not Osaka Jade's own muted** (2026-10-10). Omarchy's
+  muted measures 2.90:1 on the background, too faint to read, so muted text
+  is its hue made just light enough to pass (4.52:1), and the original
+  stays for rules and marks that aren't read. Still to be judged by eye.
 
 [surfaces]: #surfaces
 [decisions]: #decisions

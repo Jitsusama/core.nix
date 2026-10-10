@@ -6,6 +6,8 @@
 
 name = "Osaka Jade"
 appearance = "dark"
+# Omarchy's icons for Osaka Jade: Yaru's, in sage.
+icons = "Yaru-sage"
 
 # From the background to the brightest text, for what draws in shades.
 shades = ["forest", "fern", "moss", "lichen", "seafoam", "parchment", "linen", "cream"]

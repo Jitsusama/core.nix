@@ -5,9 +5,10 @@
 // preferences. These settings apply universally across all sessions and tabs,
 // providing a consistent terminal multiplexer experience.
 //
-// For task-specific pane arrangements and layouts, refer to the layouts/ directory.
+// Its colours and its layouts' status bars are written by home.nix from
+// jitsusama.theme.
 
-theme "ayu-mirage"
+theme "jitsusama"
 default_mode "locked"
 default_layout "default"
 

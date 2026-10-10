@@ -52,8 +52,8 @@ Scope {
 
     component Line: Text {
         color: Theme.text
-        font.family: Theme.monoFamily
-        font.pointSize: Theme.monoSize
+        font.family: Theme.mono.family
+        font.pointSize: Theme.mono.body
     }
 
     component Label: Line {
@@ -79,8 +79,8 @@ Scope {
             screen: modelData
             anchors.top: true
             anchors.left: true
-            margins.top: Theme.gap * 4
-            margins.left: Theme.gap * 4
+            margins.top: Theme.space.xxxl
+            margins.left: Theme.space.xxxl
             implicitWidth: status.implicitWidth
             implicitHeight: status.implicitHeight
             // niri takes only a background surface that ignores the space
@@ -92,11 +92,11 @@ Scope {
 
             Column {
                 id: status
-                spacing: Theme.gap
+                spacing: Theme.space.m
 
                 Line {
                     text: Qt.formatDateTime(clock.date, "HH:mm")
-                    font.pointSize: Theme.monoSize * 4
+                    font.pointSize: Theme.mono.display
                 }
 
                 Line {
@@ -105,9 +105,9 @@ Scope {
 
                 Grid {
                     columns: 2
-                    columnSpacing: Theme.gap * 2
-                    rowSpacing: Theme.gap / 2
-                    topPadding: Theme.gap
+                    columnSpacing: Theme.space.xl
+                    rowSpacing: Theme.space.xs
+                    topPadding: Theme.space.m
 
                     Label {
                         text: "battery"

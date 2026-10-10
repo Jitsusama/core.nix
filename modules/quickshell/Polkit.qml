@@ -25,15 +25,15 @@ Scope {
         Column {
             anchors.centerIn: parent
             width: prompt.implicitWidth
-            spacing: Theme.gap
+            spacing: Theme.space.m
 
             Text {
                 width: parent.width
                 text: agent.flow ? agent.flow.message : ""
                 color: Theme.strong
                 wrapMode: Text.Wrap
-                font.family: Theme.monoFamily
-                font.pointSize: Theme.monoSize
+                font.family: Theme.mono.family
+                font.pointSize: Theme.mono.body
             }
 
             Text {
@@ -42,8 +42,8 @@ Scope {
                 visible: text !== ""
                 color: agent.flow && agent.flow.supplementaryIsError ? Theme.alert : Theme.muted
                 wrapMode: Text.Wrap
-                font.family: Theme.monoFamily
-                font.pointSize: Theme.monoSize
+                font.family: Theme.mono.family
+                font.pointSize: Theme.mono.body
             }
 
             Prompt {

@@ -1,12 +1,10 @@
 # General Settings
 auto-update = off
 
-# Font settings
-font-size = 14
-font-family = MonaspiceXe Nerd Font
+# The font, the colours and the padding, from jitsusama.theme.
+config-file = theme
 
 # Window settings
-background = 000A00
 background-image = WALLPAPER_PATH
 background-image-fit = contain
 background-image-repeat = true
@@ -15,8 +13,6 @@ background-opacity = 1.00
 unfocused-split-opacity = 0.77
 window-height = 40
 window-width = 180
-window-padding-x = 6
-window-padding-y = 6
 window-padding-balance = true
 window-save-state = always
 quit-after-last-window-closed = true

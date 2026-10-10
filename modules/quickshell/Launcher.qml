@@ -114,7 +114,7 @@ Scope {
 
             Rectangle {
                 width: parent.width
-                height: list.contentHeight + (root.matches.length > 0 ? Theme.gap * 2 : 0)
+                height: list.contentHeight + (root.matches.length > 0 ? Theme.space.xl : 0)
                 visible: root.matches.length > 0
                 color: Theme.background
                 border.color: Theme.accent
@@ -124,7 +124,7 @@ Scope {
                 ListView {
                     id: list
                     anchors.fill: parent
-                    anchors.margins: Theme.gap
+                    anchors.margins: Theme.space.m
                     interactive: false
                     model: root.matches
 
@@ -135,19 +135,19 @@ Scope {
                         required property int index
 
                         width: list.width
-                        height: name.implicitHeight + Theme.gap
+                        height: name.implicitHeight + Theme.space.m
                         color: ListView.isCurrentItem ? Theme.selection : "transparent"
                         radius: Theme.radius
 
                         Text {
                             id: name
                             anchors.left: parent.left
-                            anchors.leftMargin: Theme.gap
+                            anchors.leftMargin: Theme.space.m
                             anchors.verticalCenter: parent.verticalCenter
                             text: row.modelData.name
                             color: row.ListView.isCurrentItem ? Theme.strong : Theme.text
-                            font.family: Theme.monoFamily
-                            font.pointSize: Theme.monoSize
+                            font.family: Theme.mono.family
+                            font.pointSize: Theme.mono.body
                         }
 
                         MouseArea {

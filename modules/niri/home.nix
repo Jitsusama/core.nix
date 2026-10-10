@@ -15,7 +15,29 @@
   ...
 }:
 let
-  inherit (config.jitsusama.theme) roles shape;
+  inherit (config.jitsusama.theme) roles shape motion;
+
+  # Anything a gesture can carry rides a spring, which keeps a swipe's speed;
+  # the rest runs on the curve.
+  spring = ''
+    spring damping-ratio=${motion.spring.damping} stiffness=${toString motion.spring.stiffness} epsilon=${motion.spring.epsilon}
+  '';
+  timed = milliseconds: ''
+    duration-ms ${toString milliseconds}
+    curve "cubic-bezier" ${lib.concatStringsSep " " motion.curve}
+  '';
+  animations = {
+    workspace-switch = spring;
+    horizontal-view-movement = spring;
+    window-movement = spring;
+    window-resize = spring;
+    overview-open-close = spring;
+    window-open = timed motion.medium;
+    window-close = timed motion.short;
+    screenshot-ui-open = timed motion.short;
+    config-notification-open-close = timed motion.medium;
+    exit-confirmation-open-close = timed motion.medium;
+  };
   cursor = {
     name = "Adwaita";
     package = pkgs.adwaita-icon-theme;
@@ -66,5 +88,15 @@ in
         xcursor-theme "${cursor.name}"
         xcursor-size ${toString cursor.size}
     }
+    animations {
+        slowdown ${motion.slowdown}
+    ${
+      lib.concatStrings (
+        lib.mapAttrsToList (name: body: ''
+          ${name} {
+          ${body}}
+        '') animations
+      )
+    }}
   '';
 }

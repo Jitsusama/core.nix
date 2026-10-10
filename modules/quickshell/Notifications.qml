@@ -19,8 +19,8 @@ Scope {
         visible: server.trackedNotifications.values.length > 0
         anchors.top: true
         anchors.right: true
-        margins.top: Theme.gap
-        margins.right: Theme.gap
+        margins.top: Theme.space.m
+        margins.right: Theme.space.m
         implicitWidth: 400
         implicitHeight: cards.implicitHeight
         exclusionMode: ExclusionMode.Ignore
@@ -31,7 +31,7 @@ Scope {
         Column {
             id: cards
             width: parent.width
-            spacing: Theme.gap
+            spacing: Theme.space.m
 
             Repeater {
                 model: server.trackedNotifications
@@ -43,7 +43,7 @@ Scope {
                     readonly property bool critical: modelData.urgency === NotificationUrgency.Critical
 
                     width: cards.width
-                    implicitHeight: text.implicitHeight + Theme.gap * 2
+                    implicitHeight: text.implicitHeight + Theme.space.xl
                     color: Theme.background
                     border.color: critical ? Theme.alert : Theme.accent
                     border.width: Theme.border
@@ -52,8 +52,8 @@ Scope {
                     Column {
                         id: text
                         anchors.fill: parent
-                        anchors.margins: Theme.gap
-                        spacing: Theme.gap / 2
+                        anchors.margins: Theme.space.m
+                        spacing: Theme.space.xs
 
                         Text {
                             width: parent.width
@@ -61,16 +61,16 @@ Scope {
                             visible: text !== ""
                             color: Theme.muted
                             elide: Text.ElideRight
-                            font.family: Theme.monoFamily
-                            font.pointSize: Theme.monoSize
+                            font.family: Theme.mono.family
+                            font.pointSize: Theme.mono.body
                         }
                         Text {
                             width: parent.width
                             text: card.modelData.summary
                             color: Theme.strong
                             wrapMode: Text.Wrap
-                            font.family: Theme.monoFamily
-                            font.pointSize: Theme.monoSize
+                            font.family: Theme.mono.family
+                            font.pointSize: Theme.mono.body
                             font.bold: true
                         }
                         Text {
@@ -82,8 +82,8 @@ Scope {
                             maximumLineCount: 6
                             elide: Text.ElideRight
                             textFormat: Text.StyledText
-                            font.family: Theme.monoFamily
-                            font.pointSize: Theme.monoSize
+                            font.family: Theme.mono.family
+                            font.pointSize: Theme.mono.body
                         }
                     }
 

@@ -12,6 +12,7 @@ let
 
   themes = {
     osaka-jade = ./osaka-jade.toml;
+    flexoki-light = ./flexoki-light.toml;
   };
 
   theme = builtins.fromTOML (builtins.readFile cfg.file);
@@ -133,10 +134,196 @@ let
       "warning"
       "success"
     ]) [ (role "on_accent") ]
-    ++ on [ (term "background") ] (map term (lib.remove "black" ansi ++ [ "foreground" ]))
+    ++ on [ (term "background") ] (map term (lib.subtractLists background ansi ++ [ "foreground" ]))
     ++ on [ (term "selection_background") ] [ (term "selection_foreground") ];
 
+  # The ANSI colours at the background's own end, which programs don't draw
+  # text in on that background: black on a dark terminal, white on a light.
+  background =
+    if cfg.appearance == "light" then
+      [
+        "white"
+        "bright_white"
+      ]
+    else
+      [ "black" ];
+
   illegible = lib.filter (pair: contrast.ratio pair.fg.value pair.bg.value < 4.5) readable;
+
+  # A table the theme file may leave out, and a value in it, falling back to
+  # this module's default.
+  given =
+    table: key: default:
+    (theme.${table} or { }).${key} or default;
+
+  number = lib.types.strMatching "[0-9]+(\\.[0-9]+)?";
+
+  # Each step of the space scale, in units. One unit apart at the small end,
+  # where a pixel shows, and further apart as the steps grow.
+  spaceSteps = {
+    xs = 1;
+    s = 2;
+    m = 3;
+    l = 4;
+    xl = 6;
+    xxl = 8;
+    xxxl = 12;
+    huge = 16;
+  };
+
+  # Each step of the type scale, as a power of its ratio: body is the face's
+  # own size, and each step up multiplies it by the ratio once more.
+  typeSteps = {
+    small = -1;
+    body = 0;
+    large = 1;
+    title = 2;
+    display = 6;
+    hero = 8;
+  };
+
+  power =
+    x: n:
+    if n == 0 then
+      1.0
+    else if n < 0 then
+      power x (n + 1) / x
+    else
+      x * power x (n - 1);
+
+  # A size to a tenth of a point, as a string, since Nix prints floats with
+  # six places.
+  tenths =
+    x:
+    let
+      n = builtins.floor (x * 10 + 0.5);
+    in
+    "${toString (n / 10)}.${toString (n - n / 10 * 10)}";
+
+  sizes =
+    face:
+    lib.mapAttrs (
+      _: step:
+      tenths (builtins.fromJSON cfg.font.${face}.size * power (builtins.fromJSON cfg.type.ratio) step)
+    ) cfg.type.steps;
+
+  # A Nerd Font mark by its code point, since Nix strings can't spell one and
+  # an editor may not show it.
+  nerd = code: builtins.fromJSON ''"\u${code}"'';
+
+  # The marks every surface draws from, looked up by meaning, each with a
+  # stand-in a console font can draw. The set is pi's, which chose marks the
+  # monospace font has so columns stay aligned.
+  glyphs = {
+    cursor = {
+      glyph = "▸";
+      console = ">";
+      means = "the current row or choice";
+    };
+    separator = {
+      glyph = "·";
+      console = ".";
+      means = "a gap between two fields on one line";
+    };
+    complete = {
+      glyph = "◆";
+      console = "*";
+      means = "done, approved, passed";
+    };
+    pending = {
+      glyph = "◇";
+      console = "o";
+      means = "waiting, unanswered, not started";
+    };
+    active = {
+      glyph = "◈";
+      console = "@";
+      means = "in progress, the mode in use";
+    };
+    failed = {
+      glyph = "✕";
+      console = "x";
+      means = "failed, rejected, an error";
+    };
+    on = {
+      glyph = "●";
+      console = "*";
+      means = "a mode that's on, a state worth seeing";
+    };
+    stopped = {
+      glyph = "■";
+      console = "#";
+      means = "a mode or a run that's stopped";
+    };
+    queued = {
+      glyph = "◦";
+      console = "o";
+      means = "accepted, nothing spent on it yet";
+    };
+    running = {
+      glyph = "→";
+      console = ">";
+      means = "sent away and working";
+    };
+    done = {
+      glyph = "✓";
+      console = "v";
+      means = "finished well";
+    };
+    cancelled = {
+      glyph = "−";
+      console = "-";
+      means = "stopped by someone, neither passed nor failed";
+    };
+    rule = {
+      glyph = "─";
+      console = "-";
+      means = "a line between sections";
+    };
+    light_rule = {
+      glyph = "┄";
+      console = "-";
+      means = "a lighter line, within a section";
+    };
+    synced = {
+      glyph = nerd "f021";
+      console = "S";
+      means = "input goes to every pane at once";
+    };
+    fullscreen = {
+      glyph = nerd "f0b2";
+      console = "F";
+      means = "one thing fills the space";
+    };
+    floating = {
+      glyph = nerd "f2d0";
+      console = "W";
+      means = "something floats above the layout";
+    };
+    more = {
+      glyph = "…";
+      console = "~";
+      means = "something cut short, or more hidden";
+    };
+  };
+
+  glyph = lib.types.submodule {
+    options = {
+      glyph = lib.mkOption {
+        type = lib.types.str;
+        description = "The mark, in the monospace face.";
+      };
+      console = lib.mkOption {
+        type = lib.types.str;
+        description = "The mark a console font can draw, for a surface on the console.";
+      };
+      means = lib.mkOption {
+        type = lib.types.str;
+        default = "";
+        description = "What the mark means, wherever it's drawn.";
+      };
+    };
+  };
 in
 {
   options.jitsusama.theme = {
@@ -154,6 +341,26 @@ in
         The theme file to draw everything in, for a theme of a machine
         repository's own. docs/design.md describes the format.
       '';
+    };
+
+    appearance = lib.mkOption {
+      type = lib.types.enum [
+        "dark"
+        "light"
+      ];
+      default = theme.appearance;
+      defaultText = lib.literalMD "the theme file's";
+      description = ''
+        Whether the theme is light text on dark or dark on light, which
+        programs and websites are told through the desktop's colour scheme.
+      '';
+    };
+
+    icons = lib.mkOption {
+      type = lib.types.str;
+      default = theme.icons or "Yaru-sage";
+      defaultText = lib.literalMD "the theme file's, or Yaru's sage";
+      description = "The icon theme programs draw their icons from, one of Yaru's.";
     };
 
     palette = lib.mkOption {
@@ -221,6 +428,125 @@ in
       };
     };
 
+    space = {
+      unit = lib.mkOption {
+        type = lib.types.ints.positive;
+        default = given "space" "unit" 4;
+        description = ''
+          The unit every space is a whole number of, in logical pixels. At a
+          display scale of 2 any whole number lands on device pixels.
+        '';
+      };
+    }
+    // lib.mapAttrs (
+      step: units:
+      lib.mkOption {
+        type = lib.types.ints.unsigned;
+        default = given "space" step (cfg.space.unit * units);
+        defaultText = lib.literalMD "${toString units} × `space.unit`";
+        description = ''
+          The ${step} step of the space scale, in logical pixels. Padding,
+          margins and gaps name a step, never a number.
+        '';
+      }
+    ) spaceSteps;
+
+    type = {
+      ratio = lib.mkOption {
+        type = number;
+        # A major third: steps far enough apart to read as different, near
+        # enough that a heading doesn't shout.
+        default = given "type" "ratio" "1.25";
+        description = "How much bigger each step of the type scale is than the one below.";
+      };
+      steps = lib.mkOption {
+        type = lib.types.attrsOf lib.types.int;
+        default = typeSteps // given "type" "steps" { };
+        defaultText = lib.literalExpression (lib.generators.toPretty { } typeSteps);
+        description = ''
+          The steps of the type scale, each as how many times the ratio
+          multiplies the face's size: body is 0, a step smaller is -1.
+        '';
+      };
+      mono = lib.mkOption {
+        type = lib.types.attrsOf number;
+        default = sizes "mono";
+        defaultText = lib.literalMD "`font.mono.size` times the ratio to each step's power";
+        description = "Each step's size in points, in the monospaced face.";
+      };
+      sans = lib.mkOption {
+        type = lib.types.attrsOf number;
+        default = sizes "sans";
+        defaultText = lib.literalMD "`font.sans.size` times the ratio to each step's power";
+        description = "Each step's size in points, in the proportional face.";
+      };
+    };
+
+    motion = {
+      spring = {
+        damping = lib.mkOption {
+          type = number;
+          # Critically damped: as fast as a spring can settle without
+          # overshooting, so nothing wobbles.
+          default = given "motion" "damping" "1.0";
+          description = "The spring's damping ratio: 1 settles without overshooting.";
+        };
+        stiffness = lib.mkOption {
+          type = lib.types.ints.positive;
+          # Covers 98% of the distance in about 150 ms.
+          default = given "motion" "stiffness" 1600;
+          description = "How stiff the spring is: stiffer is quicker.";
+        };
+        epsilon = lib.mkOption {
+          type = number;
+          default = given "motion" "epsilon" "0.001";
+          description = "How close to still counts as stopped.";
+        };
+      };
+      curve = lib.mkOption {
+        type = lib.types.addCheck (lib.types.listOf number) (points: lib.length points == 4);
+        # A fast start that eases out, so a thing is mostly there at once.
+        default = given "motion" "curve" [
+          "0.23"
+          "1"
+          "0.32"
+          "1"
+        ];
+        description = "The cubic Bézier, x1 y1 x2 y2, for movements with a set duration.";
+      };
+      short = lib.mkOption {
+        type = lib.types.ints.positive;
+        default = given "motion" "short" 100;
+        description = "Milliseconds for something leaving, or small: a close, a fade.";
+      };
+      medium = lib.mkOption {
+        type = lib.types.ints.positive;
+        default = given "motion" "medium" 150;
+        description = "Milliseconds for something arriving: a window opening, a menu.";
+      };
+      long = lib.mkOption {
+        type = lib.types.ints.positive;
+        default = given "motion" "long" 250;
+        description = "Milliseconds for something large and rare: a wallpaper, the lock screen.";
+      };
+      slowdown = lib.mkOption {
+        type = number;
+        default = given "motion" "slowdown" "1";
+        description = "Slows every animation by this factor, to look at one closely.";
+      };
+    };
+
+    glyphs = lib.mkOption {
+      type = lib.types.attrsOf glyph;
+      default = lib.recursiveUpdate glyphs (theme.glyphs or { });
+      defaultText = lib.literalMD "pi's marks, with any the theme file changes";
+      description = ''
+        The marks every surface draws, by what they mean, each with a stand-in
+        a console font can draw. A surface looks a mark up here and never
+        types one of its own.
+      '';
+    };
+
     shape = {
       border = lib.mkOption {
         type = lib.types.ints.unsigned;
@@ -235,10 +561,30 @@ in
       };
       gap = lib.mkOption {
         type = lib.types.ints.unsigned;
-        default = 10;
-        description = "The space, in pixels, between windows and around the text in a prompt.";
+        default = cfg.space.m;
+        defaultText = lib.literalMD "`space.m`";
+        description = "The space, in pixels, between windows.";
       };
     };
+  };
+
+  # The whole theme, for a program that reads JSON rather than having a file
+  # of its own written: pi, a script, the stick's guide.
+  config.xdg.configFile."jitsusama/theme.json".text = builtins.toJSON {
+    inherit (cfg)
+      roles
+      terminal
+      shades
+      font
+      space
+      motion
+      shape
+      appearance
+      icons
+      ;
+    inherit (cfg.type) mono sans;
+    name = theme.name or cfg.name;
+    glyphs = lib.mapAttrs (_: mark: { inherit (mark) glyph console; }) cfg.glyphs;
   };
 
   config.assertions = [

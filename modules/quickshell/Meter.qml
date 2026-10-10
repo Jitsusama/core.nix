@@ -14,9 +14,9 @@ PanelWindow {
     property bool off: false
 
     anchors.bottom: true
-    margins.bottom: Theme.gap * 6
+    margins.bottom: Theme.space.huge
     implicitWidth: 320
-    implicitHeight: Theme.gap * 4
+    implicitHeight: Theme.space.xxl
     exclusionMode: ExclusionMode.Ignore
     color: "transparent"
     WlrLayershell.layer: WlrLayer.Overlay
@@ -33,8 +33,8 @@ PanelWindow {
             anchors.left: parent.left
             anchors.top: parent.top
             anchors.bottom: parent.bottom
-            anchors.margins: Theme.gap
-            width: (parent.width - Theme.gap * 2) * Math.max(0, Math.min(meter.level, 1))
+            anchors.margins: Theme.space.m
+            width: (parent.width - Theme.space.m * 2) * Math.max(0, Math.min(meter.level, 1))
             color: meter.off ? Theme.muted : Theme.accent
             radius: Theme.radius
         }

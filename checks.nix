@@ -256,6 +256,69 @@ in
       && lib.any (lib.hasInfix "muted on background: 2.90:1") refusals
     );
 
+  # Picking another theme changes everything the account draws: the desktop
+  # rendered in Flexoki Light keeps none of Osaka Jade's colours anywhere in
+  # its files, so no surface was left behind in the old one.
+  a-theme-changes-everything =
+    let
+      osakaJade = (builtins.fromTOML (builtins.readFile ./modules/theme/osaka-jade.toml)).palette;
+      machine = bareNixos [
+        self.nixosModules.workstation
+        self.nixosModules.graphical
+        { home-manager.users.someone.jitsusama.theme.name = "flexoki-light"; }
+      ];
+      home = account machine;
+    in
+    pkgs.runCommandLocal "a-theme-changes-everything" { nativeBuildInputs = [ pkgs.ripgrep ]; } ''
+      test ${lib.escapeShellArg home.jitsusama.theme.roles.background} = '#FFFCF0'
+      if rg --follow --ignore-case --fixed-strings --line-number --no-heading --hidden \
+        ${
+          lib.concatMapStringsSep " " (colour: "-e ${lib.escapeShellArg colour}") (lib.attrValues osakaJade)
+        } ${home.home-files}/; then
+        echo "The files above kept Osaka Jade's colours when the theme changed."
+        exit 1
+      fi
+      touch $out
+    '';
+
+  # Every surface takes its look from the theme, so no module but the theme's
+  # names a colour or a face of its own: one that did would stay put when the
+  # theme changes. Colours are caught as hex or CSS functions, faces by the
+  # families anything here installs or falls back to.
+  nothing-names-its-own-look =
+    let
+      colours = [
+        "#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?\\b"
+        "\\b(rgba?|hsla?)\\("
+      ];
+      faces = [
+        "Monaspice"
+        "Monaspace"
+        "Mona Sans"
+        "Hubot Sans"
+        "Fira Code"
+        "Fira Mono"
+        "Victor Mono"
+        "JetBrains Mono"
+        "Nerd Font"
+        "Adwaita Sans"
+        "Adwaita Mono"
+        "DejaVu"
+        "Noto Sans"
+        "Terminus"
+      ];
+      pattern = lib.concatStringsSep "|" (colours ++ [ "\\b(${lib.concatStringsSep "|" faces})\\b" ]);
+    in
+    pkgs.runCommandLocal "nothing-names-its-own-look" { nativeBuildInputs = [ pkgs.ripgrep ]; } ''
+      cd ${./.}
+      if rg --line-number --no-heading --hidden --glob '!modules/theme/**' \
+        -e ${lib.escapeShellArg pattern} modules roles hardware tests examples flake.nix; then
+        echo "The lines above name a colour or a face; name the theme's role or font instead."
+        exit 1
+      fi
+      touch $out
+    '';
+
   # A disk's partitions and its open volume go by its name, so a machine's
   # drive and a stick attached beside it are never taken for each other.
   disks-go-by-their-name =

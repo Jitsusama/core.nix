@@ -1,0 +1,88 @@
+# Flexoki Light: ink on warm paper, Steph Ango's palette for reading. The
+# pigments are Flexoki's, each noted with the name Flexoki gives it:
+# https://stephango.com/flexoki
+# Translated from Omarchy 4.0.4's flexoki-light, which picks a few of them:
+# https://github.com/omacom/omarchy/blob/c668141e9c42b13c80c9ca4ea108e11708c5e8a5/themes/flexoki-light/colors.toml
+# Light paper makes Flexoki's lighter inks too faint to read as text, so the
+# text roles and the terminal take its 600 and 700 inks where Omarchy took
+# its 400s, and two pigments are ours, marked below.
+
+name = "Flexoki Light"
+appearance = "light"
+# Omarchy's icons for Flexoki Light: Yaru's, in blue.
+icons = "Yaru-blue"
+
+# From the background to the darkest text, for what draws in shades.
+shades = ["paper", "bone", "flax", "stone", "pebble", "slate", "graphite", "ink"]
+
+[palette]
+paper = "#FFFCF0"    # paper
+bone = "#F2F0E5"     # base-50
+flax = "#E6E4D9"     # base-100
+dust = "#DAD8CE"     # base-150
+stone = "#CECDC3"    # base-200
+pebble = "#B7B5AC"   # base-300
+slate = "#6F6E69"    # base-600
+graphite = "#403E3C" # base-800
+ink = "#100F0F"      # black
+# Ours: base-600 darkened just enough to read on flax, the darkest surface
+# that carries muted text.
+pewter = "#666560"
+brick = "#AF3029"    # red-600
+garnet = "#942822"   # red-700
+rust = "#BC5215"     # orange-600
+mustard = "#806101"  # ours: yellow-700 darkened to read on flax
+ochre = "#8E6B01"    # yellow-700
+moss = "#536907"     # green-700
+spruce = "#1C6C66"   # cyan-700
+cobalt = "#205EA6"   # blue-600
+navy = "#1A4F8C"     # blue-700
+violet = "#5E409D"   # purple-600
+plum = "#A02F6F"     # magenta-600
+
+[roles]
+background = "paper"
+sunken = "bone"
+deepest = "flax"
+raised = "dust"
+selection = "stone"
+# Judgement: Flexoki draws text in ink, but then nothing can stand out from
+# it, so text is base-800 and strong is ink.
+text = "graphite"
+strong = "ink"
+muted = "pewter"
+rule = "pebble"
+accent = "cobalt"
+on_accent = "paper"
+alert = "brick"
+warning = "mustard"
+success = "moss"
+
+[terminal]
+background = "paper"
+foreground = "ink"
+cursor = "ink"
+cursor_text = "paper"
+selection_background = "stone"
+selection_foreground = "ink"
+black = "ink"
+red = "brick"
+green = "moss"
+yellow = "ochre"
+blue = "cobalt"
+magenta = "plum"
+cyan = "spruce"
+# White and bright white are the paper's end of a light terminal, as black
+# is a dark one's, and aren't drawn as text on it.
+white = "stone"
+bright_black = "slate"
+bright_red = "garnet"
+# Judgement: Flexoki's brighter greens and cyans don't read on paper, so the
+# bright ones repeat the normal ones; bright yellow takes orange, as light
+# terminals often do.
+bright_green = "moss"
+bright_yellow = "rust"
+bright_blue = "navy"
+bright_magenta = "violet"
+bright_cyan = "spruce"
+bright_white = "paper"

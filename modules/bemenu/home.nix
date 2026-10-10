@@ -10,13 +10,18 @@
   ...
 }:
 let
-  inherit (config.jitsusama.theme) roles font shape;
+  inherit (config.jitsusama.theme)
+    roles
+    font
+    shape
+    space
+    ;
 
   flags = lib.concatStringsSep " " [
     "--fn '${font.mono.family} ${font.mono.size}'"
     "--center --width-factor 0.3 --list 8"
     "--border ${toString shape.border} --border-radius ${toString shape.radius}"
-    "--hp ${toString shape.gap} --line-height ${toString (shape.gap * 3)}"
+    "--hp ${toString space.m} --line-height ${toString space.xxl}"
     "--bdr '${roles.accent}'"
     "--tb '${roles.background}' --tf '${roles.accent}'"
     "--fb '${roles.background}' --ff '${roles.text}'"

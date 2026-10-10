@@ -3,7 +3,16 @@
 # roles for the frame around them, so kitty matches the rest of the desktop.
 { config, pkgs, ... }:
 let
-  inherit (config.jitsusama.theme) roles terminal font;
+  inherit (config.jitsusama.theme)
+    roles
+    terminal
+    font
+    space
+    ;
+
+  # kitty measures padding in points, 72 to the inch, where the theme's
+  # spaces are logical pixels, 96 to the inch.
+  points = pixels: toString (pixels * 3 / 4);
 in
 {
   imports = [ ../theme/home.nix ];
@@ -15,6 +24,7 @@ in
   xdg.configFile."kitty/theme.conf".text = ''
     font_family family="${font.mono.family}"
     font_size ${font.mono.size}
+    window_padding_width ${points space.l} ${points space.xl}
 
     foreground ${terminal.foreground}
     background ${terminal.background}
