@@ -150,6 +150,7 @@
         memory = ./modules/memory/nixos.nix;
         networkmanager = ./modules/networkmanager/nixos.nix;
         niri = ./modules/niri/nixos.nix;
+        nix-daemon = ./modules/nix-daemon/nixos.nix;
         nixpkgs = ./modules/nixpkgs/system.nix;
         onepassword = ./modules/onepassword/nixos.nix;
         perf = ./modules/perf/nixos.nix;

@@ -81,12 +81,14 @@ systemd-oomd, and multi-gen LRU for memory.
 
 ## Around It
 
-Two more modules tune the running kernel, and the workstation role brings
-both in:
+Three more modules tune the running kernel, and the workstation role brings
+all three in:
 
 - **[`memory`][memory]:** swap to zstd-compressed RAM, kill a runaway process
   before the machine thrashes, and write to disk steadily rather than in
   stalls, so a linking build never freezes the desktop.
+- **[`nix-daemon`][nix-daemon]:** builds run as batch work with idle I/O, so
+  they take the CPU and the disk only when nothing interactive wants them.
 - **[`perf`][perf]:** perf itself, and the settings that let Joel profile his
   own programs, kernel included, without root.
 
@@ -194,6 +196,7 @@ if less; record a new one after moving to a new series.
 [module]: ../modules/kernel/
 [settings]: ../modules/kernel/settings.nix
 [memory]: ../modules/memory/nixos.nix
+[nix-daemon]: ../modules/nix-daemon/nixos.nix
 [perf]: ../modules/perf/nixos.nix
 [hw]: hardware.md
 [1]: https://github.com/firelzrd/bore-scheduler
