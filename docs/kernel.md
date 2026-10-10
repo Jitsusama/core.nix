@@ -80,14 +80,19 @@ systemd-oomd, and multi-gen LRU for memory.
 
 ## Around It
 
-Three more modules tune the running kernel, and the workstation role brings
-all three in:
+The kernel module also turns on `intel_iommu=on`, so every device's DMA is
+translated, where Intel's firmware opt-in translates only the Thunderbolt
+ports. Four more modules tune the running kernel. The workstation role brings
+in the first three, and the graphical role the last:
 
 - **[`memory`][memory]:** swap to zstd-compressed RAM, kill a runaway process
   before the machine thrashes, and write to disk steadily rather than in
   stalls, so a linking build never freezes the desktop.
-- **[`nix-daemon`][nix-daemon]:** builds run as batch work with idle I/O, so
-  they take the CPU and the disk only when nothing interactive wants them.
+- **[`nix-daemon`][nix-daemon]:** builds run as batch work, so they take the
+  CPU only when nothing interactive wants it, and systemd-oomd stops one that
+  starves the machine of memory.
+- **[`slices`][slices]:** the compositor and sound get ten times anyone
+  else's share of the CPU, and a floor of memory a build can't reclaim.
 - **[`perf`][perf]:** perf itself, and the settings that let Joel profile his
   own programs, kernel included, without root.
 
@@ -190,6 +195,13 @@ if less; record a new one after moving to a new series.
   Google's `create_llvm_prof`, isn't in nixpkgs, and AutoFDO should prove its
   worth on the XPS 14 first.
 - **Turning off CPU mitigations.** The speed isn't worth the exposure.
+- **An I/O scheduler.** NVMe runs without one. On the XPS 14, BFQ cut a
+  desktop read's p99 from 3 ms to 0.15 ms behind a build's I/O, but lost up
+  to nine tenths of the disk's throughput when uncontended; mq-deadline and
+  Kyber changed nothing, nor did `io.latency`. `io.cost` needs a model of the
+  disk, and the one it guesses is out by an order of magnitude.
+- **The TEO idle governor.** nixpkgs doesn't build it, and nothing measured
+  here says menu, the one it builds, chooses idle states badly.
 
 [decision]: decisions/0006-build-the-kernel-here.md
 [module]: ../modules/kernel/
@@ -197,6 +209,7 @@ if less; record a new one after moving to a new series.
 [memory]: ../modules/memory/nixos.nix
 [nix-daemon]: ../modules/nix-daemon/nixos.nix
 [perf]: ../modules/perf/nixos.nix
+[slices]: ../modules/slices/nixos.nix
 [hw]: hardware.md
 [1]: https://github.com/firelzrd/bore-scheduler
 [2]: https://git.kernel.org/torvalds/c/a6036a41bffb
