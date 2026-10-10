@@ -99,6 +99,9 @@ bootctl status | grep 'Secure Boot'   # Secure Boot: enabled (user)
 sudo sbctl verify                     # every file on the boot partition signed
 ```
 
+Some firmware, such as Dell's, locks itself into deployed mode once it has a
+platform key, so `enabled (deployed)` is as good as `enabled (user)`.
+
 If it still says setup or audit mode, the keys never reached the firmware.
 lanzaboote leaves them for systemd-boot only when
 `prepare-sb-auto-enroll.service` succeeds, so look there:
@@ -129,6 +132,9 @@ PCRs:
 ```sh
 sudo jq '[.pcrValues[].pcr] | unique' /var/lib/systemd/pcrlock.json   # [0, 4, 7]
 ```
+
+`[0, 4]` means Secure Boot isn't on yet, so go back to step 4 before binding
+the disk to it.
 
 ## 6. Bind the Disk to the TPM and a PIN
 
@@ -165,6 +171,9 @@ off or changing its keys needs it.
 
 ## 9. Make the SSH Keys
 
+Run this step as the account, never under sudo. Every key here belongs in the
+account's home, and under sudo they land in root's.
+
 The everyday SSH key lives in the TPM, and a spare lives on the YubiKey for
 when the TPM is wiped or the laptop is gone:
 
@@ -177,8 +186,11 @@ The first writes `~/.ssh/id_ecdsa.tpm`, which [`ssh-tpm-agent`][5] loads
 whenever it starts. It asks for the key's PIN once a session, through the
 themed prompt. The second asks for the YubiKey's FIDO2 PIN (set one first with
 `ykman fido access change-pin`) and a touch. It stays on the YubiKey, so
-`ssh-keygen -K` brings it back onto any machine. Add both public keys to
-GitHub as authentication keys.
+`ssh-keygen -K` brings it back onto any machine. If the YubiKey already holds
+the spare from another machine, ssh-keygen asks whether to overwrite it:
+answer no and run `ssh-keygen -K` instead, because a new key leaves every
+place the old one was added holding a key nothing can use. Add both public
+keys to GitHub as authentication keys.
 
 Commits and tags are signed with two more keys in the TPM, as the Macs keep
 theirs in the Secure Enclave. [`signing`][6] picks Joel's when he commits at a
