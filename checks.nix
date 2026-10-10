@@ -371,6 +371,26 @@ checkEach "nixos" (module: bareNixos [ module ]) (removeAttrs self.nixosModules 
         touch $out
       '';
 
+    # niri names a cursor theme, and a theme without a shape a program asks
+    # for leaves niri's built-in arrow in its place without a word, so the
+    # check looks for the shapes programs ask for most in the theme it names.
+    niri-cursor-has-its-shapes =
+      let
+        home = account (bareNixos [ self.nixosModules.graphical ]);
+        cursor = home.home.pointerCursor;
+      in
+      pkgs.runCommandLocal "niri-cursor-has-its-shapes" { } ''
+        grep -q 'xcursor-theme "${cursor.name}"' ${home.xdg.configFile."niri/theme.kdl".source}
+        for shape in default text pointer grab grabbing crosshair not-allowed help \
+          ew-resize ns-resize col-resize n-resize; do
+          if [ ! -e ${cursor.package}/share/icons/${cursor.name}/cursors/$shape ]; then
+            echo "${cursor.name} has no $shape cursor"
+            exit 1
+          fi
+        done
+        touch $out
+      '';
+
     # kitty reads back its files the same way. It warns about a setting it
     # doesn't know and refuses a value it can't parse; it doesn't check that a
     # mapped action exists.
