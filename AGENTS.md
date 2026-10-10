@@ -17,6 +17,7 @@ no framework, and nothing found by scanning the file tree.
 | `checks.nix`        | what `nix flake check` runs                               |
 | `treefmt.nix`       | what `nix fmt` runs                                       |
 | `docs/`             | architecture, conventions, guides and decision records    |
+| `.agents/skills/`   | how to do this repository's recurring jobs, step by step  |
 
 A file's name says its module system: `home.nix` (home-manager), `darwin.nix`
 (nix-darwin), `nixos.nix` (NixOS) or `system.nix` (both NixOS and
@@ -49,6 +50,10 @@ meaning each; [docs/architecture.md][2] defines them.
 - Name nothing that builds on core.nix, anywhere in it: no machine, no machine
   repository, no employer. They name core.nix instead. `stands-alone` fails on
   it.
+- Anything that puts something on a screen follows [docs/design.md][9]:
+  surfaces name the theme's roles and faces, never a colour or a font, and a
+  new program goes through its checklist. A theme from elsewhere is
+  translated with the `translate-a-theme` skill.
 - Comments say why, in full sentences. A file opens with a comment saying
   what it is for when its path alone doesn't.
 - Lines stop at 100 characters; `nix fmt` decides the rest of the layout.
@@ -87,6 +92,7 @@ Renaming or removing an output or a `jitsusama.*` option is breaking: mark it
   them
 - [docs/hardware.md][8]: each machine model, where its workarounds come from,
   and what's left
+- [docs/design.md][9]: how everything on a screen looks, reads and behaves
 - [docs/decisions/][6]: why the design is what it is
 
 [1]: docs/testing.md
@@ -97,3 +103,4 @@ Renaming or removing an output or a `jitsusama.*` option is breaking: mark it
 [6]: docs/decisions/
 [7]: docs/kernel.md
 [8]: docs/hardware.md
+[9]: docs/design.md
