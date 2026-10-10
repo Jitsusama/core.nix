@@ -70,11 +70,12 @@ in
     options v4l2loopback devices=0
   '';
 
-  # nixos-hardware found the bridge wedges when USB suspends it. The camera
-  # service starts when the ISP appears, so it never runs where there's no
-  # camera.
+  # nixos-hardware found the bridge wedges when USB suspends it. The match is
+  # on the device's own attributes, since its interfaces inherit them and have
+  # no autosuspend to set. The camera service starts when the ISP appears, so
+  # it never runs where there's no camera.
   services.udev.extraRules = ''
-    SUBSYSTEM=="usb", ATTRS{idVendor}=="06cb", ATTRS{idProduct}=="0701", ATTR{power/autosuspend}="-1"
+    SUBSYSTEM=="usb", ATTR{idVendor}=="06cb", ATTR{idProduct}=="0701", ATTR{power/autosuspend}="-1"
     SUBSYSTEM=="intel-ipu7-psys", TAG+="systemd", ENV{SYSTEMD_WANTS}+="camera.service"
   '';
 
