@@ -308,19 +308,31 @@ pkgs.testers.runNixOSTest {
 
       with subtest("the wallpaper stands behind the workspaces"):
           wait_for_surface("wallpaper")
-          # It fades in once it's read.
-          time.sleep(1)
-          _, colours, _ = colours_and_light("workspace")
-          t.assertGreater(colours, 1000, "the workspace shows a flat colour, not the picture")
+
+          # It fades in once it's read, which takes longer on a slower machine.
+          def painted(last):
+              _, colours, _ = colours_and_light("workspace")
+              if last:
+                  t.assertGreater(
+                      colours, 1000, "the workspace shows a flat colour, not the picture"
+                  )
+              return colours > 1000
+
+          retry(painted, timeout_seconds=30)
 
       with subtest("the overview shows the time and status, and only the overview"):
           machine.fail(in_session("niri msg layers | grep -qw status"))
           as_account("niri msg action open-overview")
           wait_for_surface("status")
-          time.sleep(1)
-          drawn = foreground_on_the_left("overview")
+
+          def shown(last):
+              drawn = foreground_on_the_left("overview")
+              if last:
+                  t.assertGreater(drawn, 100, "the overview shows no status")
+              return drawn > 100
+
+          retry(shown, timeout_seconds=30)
           as_account("niri msg action close-overview")
-          t.assertGreater(drawn, 100)
           machine.wait_until_fails(in_session("niri msg layers | grep -qw status"), timeout=10)
 
       with subtest("a notification appears"):
