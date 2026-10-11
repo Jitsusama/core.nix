@@ -10,23 +10,45 @@
 # password through polkit. Nobody joins the libvirtd group, which would hand
 # out root without one.
 #
-# Neither daemon lets QEMU set up io_uring. Since 10.2, QEMU's main loop runs
+# QEMU is refused io_uring. Since 10.2, QEMU's main loop runs
 # on io_uring when it can, and it loses wakeups: a firmware's TPM or CD-ROM
 # command never completes, and the guest sits out a 30 to 90 second timeout.
 # On a Core Ultra laptop on Linux 7.2, with QEMU 11.1, 9 of 10 UEFI boots
 # with a TPM stalled; with io_uring refused, 16 of 16 booted in about six
 # seconds, as 5 of 5 did on QEMU 10.1. Refused, QEMU falls back to epoll.
-# This comes out once QEMU fixes
+# The refusal wraps each QEMU binary rather than filtering the daemons: a
+# filter on a user service also stops it gaining privilege, and virtiofsd
+# needs newuidmap's to map the guest's users. This comes out once QEMU fixes
 # https://gitlab.com/qemu-project/qemu/-/issues/4581.
 { config, pkgs, ... }:
 let
-  # Every architecture QEMU emulates, so Arm and RISC-V guests run too.
-  inherit (pkgs) qemu;
+  refuseIoUring = pkgs.runCommandCC "refuse-io-uring" { buildInputs = [ pkgs.libseccomp ]; } ''
+    mkdir -p $out/bin
+    $CC -O2 -Wall -Werror -o $out/bin/refuse-io-uring ${./refuse-io-uring.c} -lseccomp
+  '';
 
-  # Every process the daemon starts, QEMU among them, inherits the filter.
-  refuseIoUring = {
-    SystemCallFilter = [ "~io_uring_setup" ];
-    SystemCallErrorNumber = "ENOSYS";
+  # Every architecture QEMU emulates, so Arm and RISC-V guests run too, each
+  # emulator run through the refusal.
+  qemu = pkgs.symlinkJoin {
+    name = "qemu-${pkgs.qemu.version}";
+    inherit (pkgs.qemu) version;
+    paths = [ pkgs.qemu ];
+    postBuild = ''
+      for emulator in $out/bin/qemu-system-* $out/bin/qemu-kvm; do
+        [ -e "$emulator" ] || continue
+        real=$(readlink -f "$emulator")
+        rm "$emulator"
+        printf '#!%s\nexec %s %s "$@"\n' ${pkgs.runtimeShell} \
+          ${refuseIoUring}/bin/refuse-io-uring "$real" > "$emulator"
+        chmod +x "$emulator"
+      done
+      # libvirt's module finds the firmware by this package's own path.
+      for descriptor in $out/share/qemu/firmware/*.json; do
+        real=$(readlink -f "$descriptor")
+        rm "$descriptor"
+        substitute "$real" "$descriptor" --replace-quiet ${pkgs.qemu} $out
+      done
+    '';
   };
 in
 {
@@ -44,8 +66,6 @@ in
     onBoot = "ignore";
     onShutdown = "shutdown";
   };
-
-  systemd.services.libvirtd.serviceConfig = refuseIoUring;
 
   # Session machines get a daemon of their own, started by its socket, which
   # is where virsh looks before starting one itself. A daemon virsh starts
@@ -67,16 +87,15 @@ in
     requires = [ "virtqemud.socket" ];
     after = [ "virtqemud.socket" ];
     # A unit's path is its own, not the session's, so the daemon is handed
-    # what it looks for there: QEMU, swtpm and passt.
+    # what it looks for there: QEMU, swtpm, passt, and the setuid newuidmap
+    # virtiofsd maps the guest's users with.
     path = [
       qemu
       pkgs.passt
       pkgs.swtpm
+      "/run/wrappers"
     ];
-    # The filter makes a user service give up gaining privilege, so a session
-    # machine can't use qemu-bridge-helper. Bridges are qemu:///system's job;
-    # session machines use passt.
-    serviceConfig = refuseIoUring // {
+    serviceConfig = {
       Type = "notify";
       # It exits two minutes after its last machine and client are gone.
       ExecStart = "${config.virtualisation.libvirtd.package}/sbin/virtqemud --timeout 120";
