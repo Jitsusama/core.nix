@@ -150,6 +150,14 @@ the disk to it.
 
 ## 6. Bind the Disk to the TPM and a PIN
 
+Turn the YubiKey's OTP off first. Touched when nothing has asked for it, the
+YubiKey types a one-time password and presses Enter, which at the disk prompt
+submits it as a PIN. FIDO2 and the smart card keep working:
+
+```sh
+ykman config usb --disable OTP
+```
+
 ```sh
 disk=/dev/disk/by-partlabel/system
 sudo systemd-cryptenroll --tpm2-device=auto --tpm2-with-pin=yes \
@@ -164,6 +172,16 @@ machine, and check it opens the disk:
 
 ```sh
 sudo cryptsetup open --test-passphrase $disk
+```
+
+The boot prompt tries the PIN on each key in token order, preferred key slots
+first. Prefer the TPM's, so it always goes first, even after it's enrolled
+again and its token comes after the YubiKey's. Otherwise every boot sends the
+PIN to the YubiKey first and spends one of its tries:
+
+```sh
+sudo systemd-cryptenroll $disk   # the tpm2 line gives its slot
+sudo cryptsetup config $disk --key-slot <tpm2 slot> --priority prefer
 ```
 
 ## 7. Wipe the Passphrase
@@ -223,17 +241,54 @@ signing keys, and to the machine repository's
 
 ## When the TPM Refuses
 
-At boot, systemd asks for the PIN first. When the TPM won't release the key,
-it asks for the YubiKey, then for the recovery key. Expect that:
+At boot, systemd asks for one PIN and tries it on each key in turn, the TPM
+first. When the TPM won't release the key, the same PIN goes to the YubiKey,
+and the prompt comes back: type the YubiKey's PIN, then touch it. The recovery
+key is tried only once the YubiKey is unplugged or blocked, so typed while it
+is plugged in it opens nothing; to use it, unplug the YubiKey. A wrong PIN
+costs a try on both: the TPM locks itself after 32 and forgives one every two
+hours it's on, and the YubiKey's FIDO2 PIN blocks for good after 8 in a row.
 
-- **After a firmware update.** It changes PCR 0. Unlock once with the YubiKey;
-  that boot measures the new firmware and rewrites the policy, so the PIN
-  works again from the next one. Updates through fwupd work with Secure Boot
-  on, because lanzaboote signs fwupd's EFI program with Joel's keys.
-- **After changing a Secure Boot setting or key.** It changes PCR 7 in the
-  same way.
+The policy can't follow a change it didn't predict. systemd-pcrlock rewrites
+it with a recovery PIN it keeps sealed to the policy itself, so once the
+firmware no longer matches, nothing can rewrite it. Relax the policy before
+the change:
+
+- **Before a firmware update,** through fwupd or the firmware's own flash.
+  It changes PCR 0, so take PCR 0 out of the policy:
+
+  ```sh
+  sudo systemd-pcrlock unlock-firmware-code
+  sudo systemctl restart systemd-pcrlock-make-policy
+  sudo jq '[.pcrValues[].pcr] | unique' /var/lib/systemd/pcrlock.json   # [4, 7]
+  ```
+
+  The first boot on the new firmware locks it again by itself, and the PIN
+  opens the disk at every boot throughout. Updates through fwupd work with
+  Secure Boot on, because lanzaboote signs fwupd's EFI program with Joel's
+  keys.
+- **Before changing a Secure Boot setting or key.** It changes PCR 7; run
+  `systemd-pcrlock unlock-secureboot-policy` first, in the same way.
 - **After too many wrong PINs.** The TPM locks itself for a while to stop
   guessing; the YubiKey still works.
+
+When a change got there first, unlock with the YubiKey, then replace the
+policy and enrol the TPM again. The last command checks the new slot opens
+with the PIN without opening anything; this cryptsetup ignores
+`--external-tokens-path`, so systemd's token plugins go on the library path:
+
+```sh
+disk=/dev/disk/by-partlabel/system
+sudo systemd-pcrlock remove-policy
+sudo systemctl restart systemd-pcrlock-make-policy
+sudo systemd-cryptenroll --unlock-fido2-device=auto --wipe-slot=tpm2 \
+  --tpm2-device=auto --tpm2-with-pin=yes \
+  --tpm2-pcrlock=/var/lib/systemd/pcrlock.json $disk
+sudo systemd-cryptenroll $disk   # the tpm2 line gives its slot
+sudo cryptsetup config $disk --key-slot <tpm2 slot> --priority prefer
+sudo env LD_LIBRARY_PATH=/run/current-system/sw/lib/cryptsetup \
+  cryptsetup open --test-passphrase --token-only --token-type systemd-tpm2 $disk
+```
 
 Anything else that makes the TPM refuse means the machine didn't boot what it
 should: find out why before typing the recovery key.
