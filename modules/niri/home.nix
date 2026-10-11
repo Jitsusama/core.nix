@@ -121,6 +121,7 @@ in
         gaps ${toString shape.gap}
         background-color "${roles.background}"
         border {
+            on
             width ${toString shape.border}
             active-color "${roles.accent}"
             inactive-color "${roles.rule}"

@@ -146,6 +146,14 @@ pkgs.testers.runNixOSTest {
           windows = json.loads(as_account("niri msg --json windows"))
           return next(window for window in windows if window["title"] == title)
 
+      # Where a floating window draws on the screen: left, top, width, height.
+      def drawn_at(window):
+          layout = window["layout"]
+          left = int(layout["tile_pos_in_workspace_view"][0] + layout["window_offset_in_tile"][0])
+          top = int(layout["tile_pos_in_workspace_view"][1] + layout["window_offset_in_tile"][1])
+          width, height = layout["window_size"]
+          return left, top, width, height
+
       # The commonest colour inside a window, a little in from its edges.
       # niri says where a window is only once it floats, so it floats first.
       # The first GTK window has taken over 30 seconds to open on a CI runner
@@ -159,10 +167,7 @@ pkgs.testers.runNixOSTest {
           machine.screenshot(picture)
           window = window_titled(title)
           print(window)
-          layout = window["layout"]
-          left = int(layout["tile_pos_in_workspace_view"][0] + layout["window_offset_in_tile"][0])
-          top = int(layout["tile_pos_in_workspace_view"][1] + layout["window_offset_in_tile"][1])
-          width, height = layout["window_size"]
+          left, top, width, height = drawn_at(window)
           image = Image.open(os.path.join(machine.out_dir, picture + ".png")).convert("RGB")
           inside = image.crop((left + 20, top + 20, left + width - 20, top + height - 20))
           # Pillow gives no counts when there are more colours than asked for,
@@ -254,6 +259,20 @@ pkgs.testers.runNixOSTest {
           machine.screenshot("launcher")
           machine.send_key("ret")
           machine.wait_until_succeeds(in_session("niri msg windows | grep -i kitty"), timeout=30)
+
+      # The border is all that marks the focused window, and niri leaves
+      # borders off unless its config turns them on.
+      with subtest("the focused window is framed in the accent"):
+          machine.wait_until_succeeds(in_session("niri msg focused-window | grep -qi kitty"), timeout=30)
+          window = json.loads(as_account("niri msg --json focused-window"))
+          as_account(f"niri msg action move-window-to-floating --id {window['id']}")
+          time.sleep(1)
+          machine.screenshot("focused")
+          left, top, _, height = drawn_at(json.loads(as_account("niri msg --json focused-window")))
+          image = Image.open(os.path.join(machine.out_dir, "focused.png")).convert("RGB")
+          beside = "#%02x%02x%02x" % image.getpixel((left - 1, top + height // 2))
+          as_account(f"niri msg action move-window-to-tiling --id {window['id']}")
+          t.assertEqual(beside, "${roles.accent}".lower())
 
       with subtest("the lock screen takes only the right password"):
           as_account("qs ipc call lock lock")
