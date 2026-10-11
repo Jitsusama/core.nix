@@ -1,5 +1,6 @@
-// The shell's one connection for telling niri what to do, over niri's own
-// socket, so asking costs no process.
+// The shell's connection to niri, over niri's own socket, so asking costs
+// no process: one socket for telling niri what to do, and one that hears
+// its events, for what the whole shell follows, such as the overview.
 //
 // Programs the shell opens are spawned by niri rather than by the shell.
 // niri gives each one a systemd scope of its own; one the shell started
@@ -17,6 +18,10 @@ Singleton {
 
     // Requests asked for before the socket connects, sent once it does.
     property var waiting: []
+
+    // Whether the overview is open. niri says so as the stream begins, and
+    // whenever it changes.
+    property bool overview: false
 
     function act(action: var): void {
         waiting.push(JSON.stringify({ Action: action }));
@@ -50,6 +55,26 @@ Singleton {
                 const reply = JSON.parse(line);
                 if (reply.Err)
                     console.warn("niri refused a request:", reply.Err);
+            }
+        }
+    }
+
+    Socket {
+        id: events
+        path: Quickshell.env("NIRI_SOCKET")
+        connected: true
+        onConnectionStateChanged: {
+            if (connected) {
+                write('"EventStream"\n');
+                flush();
+            }
+        }
+        parser: SplitParser {
+            onRead: line => {
+                // Only the overview's event is read whole; the rest pass by.
+                if (!line.startsWith('{"OverviewOpenedOrClosed"'))
+                    return;
+                root.overview = JSON.parse(line).OverviewOpenedOrClosed.is_open;
             }
         }
     }

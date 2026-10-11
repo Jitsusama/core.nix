@@ -4,7 +4,10 @@
 // closes, and ask with `qs ipc call lock isLocked`. If Quickshell dies while
 // locked, niri keeps the screens locked. The field is the prompt kind
 // (docs/design.md, Shape and Kinds): the padlock beside the dots, the accent
-// frame, and the alert frame after a wrong password.
+// frame, and the alert frame after a wrong password. Behind them is the
+// theme's lock picture, shown whole: the time is lifted off it by the
+// theme's text shadows, and both sit low, under the picture's sky. It fades
+// in once read, so locking never waits on it.
 import Quickshell
 import Quickshell.Io
 import Quickshell.Services.Pam
@@ -60,19 +63,46 @@ Scope {
         id: sessionLock
 
         WlSessionLockSurface {
+            id: surface
+
             color: Theme.deepest
 
+            Image {
+                anchors.fill: parent
+                visible: Theme.wallpaper.lock !== ""
+                source: visible ? "file://" + Theme.wallpaper.lock : ""
+                fillMode: Image.PreserveAspectCrop
+                readonly property real ratio: surface.screen?.devicePixelRatio ?? 1
+                // Read at the screen's own pixels, not the file's.
+                sourceSize: Qt.size(surface.width * ratio, surface.height * ratio)
+                asynchronous: true
+                opacity: status === Image.Ready ? 1 : 0
+
+                Behavior on opacity {
+                    NumberAnimation {
+                        duration: Theme.motion.long
+                        easing.type: Easing.BezierSpline
+                        easing.bezierCurve: Theme.motion.curve
+                    }
+                }
+            }
+
             Column {
-                anchors.centerIn: parent
+                anchors.horizontalCenter: parent.horizontalCenter
+                anchors.bottom: parent.bottom
+                anchors.bottomMargin: parent.height / 12
                 spacing: Theme.space.xl
 
-                Text {
+                Lifted {
                     anchors.horizontalCenter: parent.horizontalCenter
-                    text: Qt.formatDateTime(clock.date, "HH:mm")
-                    color: Theme.text
-                    font.family: Theme.mono.family
-                    font.pointSize: Theme.mono.hero
-                    font.features: { "tnum": 1 }
+
+                    Text {
+                        text: Qt.formatDateTime(clock.date, "HH:mm")
+                        color: Theme.text
+                        font.family: Theme.mono.family
+                        font.pointSize: Theme.mono.hero
+                        font.features: { "tnum": 1 }
+                    }
                 }
 
                 Floating {

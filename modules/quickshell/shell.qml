@@ -5,11 +5,12 @@
 import Quickshell
 
 ShellRoot {
+    Wallpaper {}
     Notifications {}
     Polkit {}
     Volume {}
     Brightness {}
-    Backdrop {}
+    Status {}
 
     OpenBelow {
         id: grid

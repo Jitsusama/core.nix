@@ -1,5 +1,6 @@
 # Starts the graphical role's desktop in a virtual machine and uses it the
-# way Joel does: the overview shows the time and status, a notification
+# way Joel does: the wallpaper stands behind the workspaces, the overview
+# shows the time and status, a notification
 # appears, the volume and brightness bars come and go as those change, the
 # launcher finds and opens kitty, the lock screen refuses a wrong password
 # and takes the right one, polkit's prompt lets the account start a system
@@ -50,7 +51,7 @@ pkgs.testers.runNixOSTest {
         # The kernel's own stand-in battery, which UPower reports as a laptop's.
         "test_power"
       ];
-      # The backdrop reads the battery from UPower and the network from
+      # The overview's status reads the battery from UPower and the network from
       # NetworkManager, which the laptop role brings.
       services.upower.enable = true;
       networking.networkmanager.enable = true;
@@ -125,7 +126,7 @@ pkgs.testers.runNixOSTest {
       import shlex
       import time
 
-      from PIL import Image
+      from PIL import Image, ImageStat
 
       # A command as the account, inside its niri session: qs finds the shell by
       # the display it's on.
@@ -217,15 +218,34 @@ pkgs.testers.runNixOSTest {
           foreground = tuple(int("${roles.text}"[i : i + 2], 16) for i in (1, 3, 5))
           return sum(count for count, colour in counts if colour == foreground)
 
+      # The screen, and how many colours a part of it holds, which a flat
+      # colour has one of, and how bright that part is, from 0 to 255. The part
+      # is a box of fractions of the screen, left, top, right and bottom.
+      def colours_and_light(picture, part=(0, 0, 1, 1)):
+          machine.screenshot(picture)
+          image = Image.open(os.path.join(machine.out_dir, picture + ".png")).convert("RGB")
+          w, h = image.size
+          box = image.crop((int(part[0] * w), int(part[1] * h), int(part[2] * w), int(part[3] * h)))
+          counts = box.getcolors(box.width * box.height)
+          assert counts is not None
+          return image, len(counts), ImageStat.Stat(box.convert("L")).mean[0]
+
+      with subtest("the wallpaper stands behind the workspaces"):
+          wait_for_surface("wallpaper")
+          # It fades in once it's read.
+          time.sleep(1)
+          _, colours, _ = colours_and_light("workspace")
+          t.assertGreater(colours, 1000, "the workspace shows a flat colour, not the picture")
+
       with subtest("the overview shows the time and status, and only the overview"):
-          wait_for_surface("backdrop")
-          time.sleep(0.5)
-          t.assertEqual(foreground_on_the_left("workspace"), 0)
+          machine.fail(in_session("niri msg layers | grep -qw status"))
           as_account("niri msg action open-overview")
+          wait_for_surface("status")
           time.sleep(1)
           drawn = foreground_on_the_left("overview")
           as_account("niri msg action close-overview")
           t.assertGreater(drawn, 100)
+          machine.wait_until_fails(in_session("niri msg layers | grep -qw status"), timeout=10)
 
       with subtest("a notification appears"):
           as_account("notify-send 'Build finished' 'the laptop is ready'")
@@ -284,7 +304,8 @@ pkgs.testers.runNixOSTest {
           machine.send_chars("wrong-password\n")
           machine.sleep(5)
           as_account("qs ipc call lock isLocked | grep -q true")
-          machine.screenshot("locked")
+          _, colours, _ = colours_and_light("locked")
+          t.assertGreater(colours, 1000, "the lock screen shows a flat colour, not its picture")
           machine.send_chars("${secret}\n")
           machine.wait_until_succeeds(in_session("qs ipc call lock isLocked | grep -q false"), timeout=30)
 

@@ -19,7 +19,17 @@
   ...
 }:
 let
-  inherit (config.jitsusama.theme) roles shape motion;
+  inherit (config.jitsusama.theme)
+    roles
+    shape
+    motion
+    wallpaper
+    ;
+
+  # With a picture behind the desktop, Quickshell draws it in the backdrop
+  # and the workspaces are clear over it, so it stands still while they
+  # move; their shadows in the overview would only smudge it.
+  pictured = wallpaper.desktop != null;
 
   bind = lib.types.submodule {
     options = {
@@ -153,7 +163,7 @@ in
   config.xdg.configFile."niri/theme.kdl".text = ''
     layout {
         gaps ${toString shape.gap}
-        background-color "${roles.deepest}"
+        background-color "${if pictured then "transparent" else roles.deepest}"
         border {
             on
             width ${toString shape.border}
@@ -174,6 +184,7 @@ in
     }
     overview {
         backdrop-color "${roles.deepest}"
+        ${lib.optionalString pictured "workspace-shadow { off; }"}
     }
     cursor {
         xcursor-theme "${cursor.name}"

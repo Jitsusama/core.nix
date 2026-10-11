@@ -173,8 +173,10 @@ surface names a meaning, never a colour value:
 | warning    | something that will need him soon                            |
 | success    | something that went well                                     |
 
-Nothing else gets the accent, so it always means "here". Text is never drawn
-on the wallpaper without a surface behind it. Muted text sits only on the
+Nothing else gets the accent, so it always means "here". The wallpaper is
+never dimmed or faded to make room for text: text set straight on a picture
+is lifted off it by the theme's text shadows (`wallpaper.shadows`), a crisp
+one set off down and right and a soft one around it. Muted text sits only on the
 background, sunken and deepest; on the raised and selection surfaces hints
 switch to text, since a muted that read there would be too bright to be
 muted.
@@ -528,8 +530,13 @@ cursor = { glyph = "\u25b8", console = ">" }
 [floating]
 opacity = "0.85"
 
-# Still to come: the wallpaper and the console's font.
+# The pictures behind the desktop and the lock screen, by their path in the
+# wallpapers input, and the shadows that lift text set on them.
 [wallpaper]
+desktop = "landscapes/glowing-city-green.png"
+lock = "landscapes/mountain-woods-green.png"
+
+# Still to come: the console's font.
 [console]
 ```
 
@@ -588,6 +595,7 @@ palette and its keys.
 | The console and emergency shell           | the console font         | console        |        |        |           |         |          |
 | The greeter                               | Quickshell, greetd       | both           |        |        |           |         |          |
 | The compositor                            | niri                     | none           |        |        |           |         |          |
+| The wallpaper                             | Quickshell, niri         | none           |        |        |           |         |          |
 | The overview's status and the margin mark | Quickshell               | both           | the time, the date, the battery with its time and watts, the network, the volume | the battery running low, offline, muted | step 2's doors | step 2 | volume, network, battery, date; the time stays |
 | The launcher and palette                  | Quickshell               | monospace      |        |        |           |         |          |
 | Notifications                             | Quickshell               | both           |        |        |           |         |          |
@@ -625,6 +633,19 @@ as an exception with the reason.
 ## Decisions
 
 What each studio round settled, newest first, with the reason.
+
+- **A painting that stands still** (2026-10-10). Of eight wallpapers shown
+  on the panel, from none to tiled damask, Joel kept Omarchy's two Osaka
+  Jade landscapes: the glowing city behind the desktop, being darker and
+  calm behind windows, and the green woods and mountains on the lock
+  screen, a threshold where a brighter picture belongs. The picture stands
+  still while the workspaces move over it, as niri's guide describes, since
+  a picture sliding with each workspace is motion that means nothing.
+  Dimming the picture, or fading it into the night behind text, hid the
+  painting Joel picked it for; text set on it is lifted by offset shadows
+  instead, and the picture shows whole. The overview's status moved above
+  the overview so the workspaces no longer cover it, and the lock screen's
+  time and field sit low, under its sky.
 
 - **One language for every surface** (2026-10-10). The launcher took a
   dozen rounds. Boxes inside boxes, mixed sizes and spacing, and Mona Sans

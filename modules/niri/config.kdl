@@ -72,10 +72,10 @@ hotkey-overlay {
     skip-at-startup
 }
 
-// Quickshell's time and status sit behind the workspaces, seen only in the
-// overview and between workspaces.
+// Quickshell's wallpaper sits behind the workspaces, which theme.kdl draws
+// clear when there's a picture, so it stands still while they move.
 layer-rule {
-    match namespace="^backdrop$"
+    match namespace="^wallpaper$"
     place-within-backdrop true
 }
 

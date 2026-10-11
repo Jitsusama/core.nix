@@ -105,7 +105,7 @@
         opencode = ./modules/opencode/home.nix;
         openssl = ./modules/openssl/home.nix;
         podman = ./modules/podman/home.nix;
-        quickshell = ./modules/quickshell/home.nix;
+        quickshell = moduleFrom ./modules/quickshell/home.nix { inherit wallpapers; };
         ripgrep = ./modules/ripgrep/home.nix;
         signing = ./modules/signing/home.nix;
         ssh-tpm-agent = ./modules/ssh-tpm-agent/home.nix;

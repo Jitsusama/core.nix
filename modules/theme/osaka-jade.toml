@@ -86,3 +86,9 @@ bright_blue = "mist"
 bright_magenta = "celadon"
 bright_cyan = "aqua"
 bright_white = "cream"
+
+# Omarchy's own paintings for Osaka Jade, chosen by Joel: the glowing city
+# behind the desktop, and the green woods and mountains on the lock screen.
+[wallpaper]
+desktop = "landscapes/glowing-city-green.png"
+lock = "landscapes/mountain-woods-green.png"

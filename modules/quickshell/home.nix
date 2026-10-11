@@ -1,11 +1,12 @@
 # Quickshell draws everything on Joel's screen that isn't a window: the
-# launcher on Super+Space, notifications, the lock screen, polkit's password
-# prompt, the volume and brightness, and the time and status in the overview's
-# backdrop. Each is a QML file beside this one, linked as it is; Theme.qml,
-# written here from jitsusama.theme, gives them all the same look. It runs with
-# the graphical session, and restarts if it ever falls over. What the
-# overview shows is jitsusama.quickshell.overview.pieces, rendered into
+# wallpaper, the launcher on Super+Space, notifications, the lock screen,
+# polkit's password prompt, the volume and brightness, and the time and status
+# over the overview. Each is a QML file beside this one, linked as it is;
+# Theme.qml, written here from jitsusama.theme, gives them all the same look.
+# It runs with the graphical session, and restarts if it ever falls over. What
+# the overview shows is jitsusama.quickshell.overview.pieces, rendered into
 # Overview.qml at build.
+{ wallpapers }:
 {
   config,
   lib,
@@ -22,7 +23,19 @@ let
     motion
     glyphs
     floating
+    wallpaper
     ;
+
+  # A picture the theme names, as a path in the wallpapers collection or an
+  # absolute one, or nothing for none.
+  picture =
+    name:
+    if name == null then
+      ""
+    else if lib.hasPrefix "/" name then
+      name
+    else
+      "${wallpapers}/${name}";
 
   # A JavaScript object of the values, which QML reads as Theme.space.m.
   object = values: "(${builtins.toJSON values})";
@@ -39,7 +52,9 @@ let
     "Volume.qml"
     "Brightness.qml"
     "Meter.qml"
-    "Backdrop.qml"
+    "Status.qml"
+    "Wallpaper.qml"
+    "Lifted.qml"
     "OpenBelow.qml"
     "Niri.qml"
     "Floating.qml"
@@ -335,6 +350,17 @@ in
                 }
               }
               readonly property var glyph: ${object (lib.mapAttrs (_: mark: mark.glyph) glyphs)}
+              // Each picture's file, empty for none.
+              readonly property var wallpaper: ${
+                object {
+                  desktop = picture wallpaper.desktop;
+                  lock = picture wallpaper.lock;
+                  shadows = map (s: {
+                    inherit (s) x y blur;
+                    opacity = builtins.fromJSON s.opacity;
+                  }) wallpaper.shadows;
+                }
+              }
           }
         '';
       };

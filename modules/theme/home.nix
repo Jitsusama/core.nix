@@ -652,6 +652,72 @@ in
         description = "The shadows under a floating surface, nearest first.";
       };
     };
+
+    wallpaper =
+      let
+        picture =
+          key: where:
+          lib.mkOption {
+            type = lib.types.nullOr lib.types.str;
+            default = given "wallpaper" key null;
+            description = ''
+              The picture behind ${where}: its path in the wallpapers collection
+              (github:Jitsusama/wallpapers.nix), such as
+              landscapes/glowing-city-green.png, or an absolute path to any
+              picture. Null draws the deepest colour instead.
+            '';
+          };
+      in
+      {
+        desktop = picture "desktop" "every workspace, standing still while they move";
+        lock = picture "lock" "the lock screen's time and field";
+        shadows = lib.mkOption {
+          type = lib.types.listOf (
+            lib.types.submodule {
+              options = {
+                x = lib.mkOption {
+                  type = lib.types.int;
+                  description = "How far right of the text, in pixels, the shadow falls.";
+                };
+                y = lib.mkOption {
+                  type = lib.types.int;
+                  description = "How far below the text, in pixels, the shadow falls.";
+                };
+                blur = lib.mkOption {
+                  type = lib.types.ints.unsigned;
+                  description = "How soft the shadow is, in pixels.";
+                };
+                opacity = lib.mkOption {
+                  type = number;
+                  description = "How dark the shadow is, from 0 to 1.";
+                };
+              };
+            }
+          );
+          # A crisp one set off down and right, which gives each letter an
+          # edge, and a soft one around it, which keeps a bright patch of the
+          # picture from reaching the letters.
+          default = given "wallpaper" "shadows" [
+            {
+              x = 1;
+              y = 2;
+              blur = 2;
+              opacity = "0.85";
+            }
+            {
+              x = 0;
+              y = 1;
+              blur = 16;
+              opacity = "0.6";
+            }
+          ];
+          description = ''
+            The shadows, in the shadow colour, that lift text set straight on
+            a picture, the overview's status and the lock screen's time, so it
+            reads while the picture shows whole. Nearest first.
+          '';
+        };
+      };
   };
 
   # The whole theme, for a program that reads JSON rather than having a file
@@ -666,6 +732,7 @@ in
       motion
       shape
       floating
+      wallpaper
       appearance
       icons
       ;

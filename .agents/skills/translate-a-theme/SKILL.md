@@ -30,9 +30,16 @@ listed in `themes` in `modules/theme/home.nix`. It holds:
 - `[terminal]`: the terminal's own six colours and its sixteen ANSI ones,
   each naming a pigment.
 
-Anything else the format grows (type, space, motion, glyphs, wallpaper) falls
-back to the theme module's defaults, so leave it out unless the source theme
-says something about it.
+Anything else the format grows (type, space, motion, glyphs, floating,
+wallpaper) falls back to the theme module's defaults, so leave it out unless
+the source theme says something about it.
+
+A source that ships pictures (Omarchy's `backgrounds/`) gets `[wallpaper]`
+`desktop` and `lock`, each a path in the wallpapers collection
+(github:Jitsusama/wallpapers.nix). Add the picture there first, as PNG,
+since Qt reads WebP only with a plugin the shell doesn't carry. The desktop
+wants a dark, calm picture, since windows sit on it; the lock screen can be
+brighter.
 
 ## Steps
 
