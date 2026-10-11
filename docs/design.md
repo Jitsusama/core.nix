@@ -719,6 +719,7 @@ by them isn't done.
 | The lock screen, polkit and PIN prompts   | Quickshell               | both           |        |        |           |         |          |
 | GTK and Qt apps, file and print dialogs   | gtk, qt                  | proportional   |        |        |           |         |          |
 | The browser                               | chrome                   | proportional   |        |        |           |         |          |
+| Images and drawings                       | gimp                     | proportional   |        |        |           |         |          |
 | Chat, passwords, calls                    | their own settings       | proportional   |        |        |           |         |          |
 | The terminal                              | kitty                    | monospace      |        |        |           |         |          |
 | The prompt                                | prompt                   | monospace      |        |        |           |         |          |
