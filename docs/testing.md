@@ -94,6 +94,7 @@ kernel guide][2] says what that catches.
 | `kitty-accepts-its-configuration` | kitty loads its files without a complaint                 |
 | `btop-draws-in-the-theme`         | btop draws in the theme's colours, not its own            |
 | `gimp-accepts-its-configuration`  | GIMP reads its preferences, the theme's palette and colours |
+| `inkscape-accepts-its-configuration` | Inkscape starts a drawing on the theme's desk and reads its stylesheet |
 | `neovim-starts-in-the-theme`      | Neovim starts in bamboo, transparent, without a complaint |
 | `cargo-links-with-mold`           | cargo links an account's Rust builds with mold            |
 

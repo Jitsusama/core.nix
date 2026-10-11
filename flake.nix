@@ -96,6 +96,7 @@
         home-manager = ./modules/home-manager/home.nix;
         homebrew = ./modules/homebrew/home.nix;
         identity = ./modules/identity/home.nix;
+        inkscape = ./modules/inkscape/home.nix;
         jq = ./modules/jq/home.nix;
         keys = ./modules/keys/home.nix;
         kitty = ./modules/kitty/home.nix;
@@ -151,6 +152,7 @@
         gpu = ./modules/gpu/nixos.nix;
         greetd = ./modules/greetd/nixos.nix;
         home-manager = moduleFrom ./modules/home-manager/nixos.nix { inherit home-manager; };
+        inkscape = ./modules/inkscape/nixos.nix;
         kernel = ./modules/kernel/nixos.nix;
         keyboard = ./modules/keyboard/nixos.nix;
         keyd = ./modules/keyd/nixos.nix;
