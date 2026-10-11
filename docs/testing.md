@@ -53,6 +53,13 @@ quietly stopped holding.
 | `disks-go-by-their-name`            | a disk's partitions and open volume carry its name        |
 | `booted-generation-stays-installed` | a switch never removes the generation the machine booted  |
 | `session-memory-is-protected`       | every slice above session.slice carries its memory floor  |
+| `a-faint-theme-is-refused`          | a theme with text under WCAG's 4.5:1 doesn't build        |
+| `quickshell-restarts-with-its-files` | a switch restarts the shell when a file it reads changes  |
+| `quickshell-opens-programs-through-niri` | programs the shell opens survive the shell restarting |
+| `the-overview-takes-its-pieces` | a machine moves, cuts, retunes and adds the overview's pieces |
+| `a-claimed-chord-is-refused`        | a chord two layers claim, or one claims twice, is refused |
+| `a-theme-changes-everything`        | another theme leaves none of the first's colours behind   |
+| `nothing-names-its-own-look`        | no module but the theme's names a colour or a face        |
 | `formatting`                        | everything is formatted and passes the linters            |
 | `stands-alone`                      | nothing here names a machine, its repository or employer  |
 | `ci-runs-every-vm-test`             | CI's workflow runs every virtual machine test             |

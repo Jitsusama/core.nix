@@ -1,26 +1,23 @@
 local wezterm = require('wezterm')
+-- The font, colours and padding, written by home.nix from jitsusama.theme.
+local theme = require('theme')
 local config = wezterm.config_builder()
 
--- Font settings
-config.font = wezterm.font('MonaspiceXe Nerd Font')
-config.font_size = 14
+config.font = wezterm.font(theme.font)
+config.font_size = theme.font_size
+config.colors = theme.colors
 
 -- Window settings
 config.initial_rows = 40
 config.initial_cols = 180
-config.window_padding = {
-  left = 16,
-  right = 16,
-  top = 12,
-  bottom = 12,
-}
+config.window_padding = theme.padding
 config.window_close_confirmation = 'NeverPrompt'
 config.quit_when_all_windows_are_closed = true
 
--- Background: dark green base (#000A00) with tiled image overlay
+-- Background: the theme's, with a tiled image over it
 config.background = {
   {
-    source = { Color = '#000A00' },
+    source = { Color = theme.colors.background },
     width = '100%',
     height = '100%',
   },
@@ -66,36 +63,10 @@ config.tab_bar_at_bottom = true
 config.tab_max_width = 32
 
 config.window_frame = {
-  font = wezterm.font('MonaspiceXe Nerd Font'),
-  font_size = 12,
-  active_titlebar_bg = 'rgba(0, 10, 0, 0.4)',
-  inactive_titlebar_bg = 'rgba(0, 10, 0, 0.4)',
-}
-
-config.colors = {
-  tab_bar = {
-    active_tab = {
-      bg_color = 'rgba(10, 31, 10, 0.5)',
-      fg_color = '#6A8A6A',
-      intensity = 'Bold',
-    },
-    inactive_tab = {
-      bg_color = 'rgba(0, 10, 0, 0.3)',
-      fg_color = '#3A4A3A',
-    },
-    inactive_tab_hover = {
-      bg_color = 'rgba(6, 18, 6, 0.5)',
-      fg_color = '#5A7A5A',
-    },
-    new_tab = {
-      bg_color = 'rgba(0, 10, 0, 0.3)',
-      fg_color = '#3A4A3A',
-    },
-    new_tab_hover = {
-      bg_color = 'rgba(6, 18, 6, 0.5)',
-      fg_color = '#5A7A5A',
-    },
-  },
+  font = wezterm.font(theme.font),
+  font_size = theme.font_size,
+  active_titlebar_bg = theme.frame.active_titlebar_bg,
+  inactive_titlebar_bg = theme.frame.inactive_titlebar_bg,
 }
 
 -- Hyperlink rules: override defaults to properly handle URLs in parens

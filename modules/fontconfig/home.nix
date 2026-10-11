@@ -6,6 +6,6 @@
 
   fonts.fontconfig = {
     enable = true;
-    defaultFonts.monospace = [ config.jitsusama.theme.font.family ];
+    defaultFonts.monospace = [ config.jitsusama.theme.font.mono.family ];
   };
 }

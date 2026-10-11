@@ -19,7 +19,7 @@ Each word has one meaning, used the same way in code, directories and docs.
 | hardware           | one machine model, and what it needs           | `nixosModules.dell-xps-14-da14260`                      |
 | layer              | what a machine repository adds to its machines | the machine repository's own modules                    |
 | identity           | who Joel is on a machine                       | `jitsusama.identity.email`                              |
-| theme              | the look every program Joel sees shares        | `jitsusama.theme.colors.accent`                         |
+| theme              | the look every program Joel sees shares        | `jitsusama.theme.roles.accent`                          |
 | account            | the user home-manager configures               | `home-manager.users.<account>`                          |
 
 Modules are named after the program or subsystem they configure, never after
@@ -182,9 +182,23 @@ The last two rows exist only until no machine repository imports them;
 | `jitsusama.keyboard.builtIn`       | the machine's own keyboard, set per hardware             |
 | `jitsusama.login.account`          | the account signed in at boot, set per machine           |
 | `jitsusama.signing.allowedSigners` | every key that signs Joel's work, per machine repository |
-| `jitsusama.theme.colors.*`         | each colour of the theme, Omarchy's Osaka Jade           |
-| `jitsusama.theme.font.*`           | the font every program draws text in, and its size       |
+| `jitsusama.theme.name`, `.file`    | which theme everything draws in, Osaka Jade by default   |
+| `jitsusama.theme.palette.*`        | every colour the theme uses, by the name it gives it     |
+| `jitsusama.theme.roles.*`          | what each colour means: text, muted, accent, alert       |
+| `jitsusama.theme.terminal.*`       | the terminal's own colours and its sixteen ANSI ones     |
+| `jitsusama.theme.shades`           | eight colours from the background to the brightest text  |
+| `jitsusama.theme.font.*`           | the monospaced and proportional faces, and their sizes   |
 | `jitsusama.theme.shape.*`          | the border, corners and gaps every surface shares        |
+| `jitsusama.theme.appearance`       | dark or light, as the desktop tells programs and sites   |
+| `jitsusama.theme.icons`            | the Yaru icon theme programs draw icons from             |
+| `jitsusama.theme.space.*`          | the unit and the steps every padding and margin names    |
+| `jitsusama.theme.type.*`           | the type scale's ratio, its steps, and each face's sizes |
+| `jitsusama.theme.motion.*`         | the spring, the curve and the durations of every motion  |
+| `jitsusama.theme.glyphs`           | every mark, by meaning, with its stand-in on a console   |
+| `jitsusama.keys.*`                 | every layer's shortcuts, checked for clashes             |
+| `jitsusama.niri.binds`             | niri's shortcuts: chord, plain words and action          |
+| `jitsusama.kitty.keys`             | kitty's shortcuts: chord, plain words and action         |
+| `jitsusama.zellij.keys`            | zellij's chords in its resting mode                      |
 
 Renaming or removing an output or an option is a breaking change. A machine
 repository sees it only when it runs `nix flake update core`. [Decision

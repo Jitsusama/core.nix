@@ -81,7 +81,9 @@ require('lualine').setup({
           end
           return ''
         end,
-        color = { fg = '#FF8C42' }, -- Claude's orange color
+        -- An agent at work is something worth seeing, not where Joel is, so it
+        -- takes the warning colour rather than the accent.
+        color = { fg = require('theme').warning },
       },
       {
         'diagnostics',

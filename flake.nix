@@ -96,6 +96,7 @@
         homebrew = ./modules/homebrew/home.nix;
         identity = ./modules/identity/home.nix;
         jq = ./modules/jq/home.nix;
+        keys = ./modules/keys/home.nix;
         kitty = ./modules/kitty/home.nix;
         lsd = ./modules/lsd/home.nix;
         neovim = moduleFrom ./modules/neovim/home.nix { inherit neovim-pi; };
@@ -104,7 +105,7 @@
         opencode = ./modules/opencode/home.nix;
         openssl = ./modules/openssl/home.nix;
         podman = ./modules/podman/home.nix;
-        quickshell = ./modules/quickshell/home.nix;
+        quickshell = moduleFrom ./modules/quickshell/home.nix { inherit wallpapers; };
         ripgrep = ./modules/ripgrep/home.nix;
         signing = ./modules/signing/home.nix;
         ssh-tpm-agent = ./modules/ssh-tpm-agent/home.nix;

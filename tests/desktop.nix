@@ -1,10 +1,12 @@
 # Starts the graphical role's desktop in a virtual machine and uses it the
-# way Joel does: the overview shows the time and status, a notification
-# appears, the volume and brightness bars come and go as those change, the
-# launcher finds and opens kitty, the lock screen refuses a wrong password
-# and takes the right one, polkit's prompt lets the account start a system
-# service, the clipboard takes and gives text, and GTK programs and
-# monospaced text are in the theme. niri says which surfaces it drew,
+# way Joel does: the wallpaper stands behind the workspaces, the overview
+# shows the time and status, a notification appears, the volume and
+# brightness bars come and go as those change, the launcher finds and opens
+# kitty and remembers it was picked, a terminal opens below the focused
+# window, the launcher switches to a window by its title, the lock screen
+# refuses a wrong password and takes the right one, polkit's prompt lets the
+# account start a system service, the clipboard takes and gives text, and
+# GTK programs and monospaced text are in the theme. niri says which surfaces it drew,
 # photographs show their colours, to the test and to a person looking, and
 # the portal and fontconfig answer for the settings. Quickshell has to start
 # without a single QML error.
@@ -50,7 +52,7 @@ pkgs.testers.runNixOSTest {
         # The kernel's own stand-in battery, which UPower reports as a laptop's.
         "test_power"
       ];
-      # The backdrop reads the battery from UPower and the network from
+      # The overview's status reads the battery from UPower and the network from
       # NetworkManager, which the laptop role brings.
       services.upower.enable = true;
       networking.networkmanager.enable = true;
@@ -65,6 +67,34 @@ pkgs.testers.runNixOSTest {
               "FL"
               "FR"
             ];
+          };
+        }
+      ];
+      # A microphone of the class a real one has, which Quickshell needs to see
+      # its audio: a loopback whose far side is a source, as Pipewire's guide
+      # makes one, since a null sink's ports face the wrong way for that class.
+      services.pipewire.extraConfig.pipewire."91-stand-in-microphone"."context.modules" = [
+        {
+          name = "libpipewire-module-loopback";
+          args = {
+            "capture.props" = {
+              "node.name" = "stand-in-microphone-input";
+              # Two channels, as a laptop's microphones are: Quickshell reads no
+              # volume from a loopback whose map and volumes differ in size.
+              "audio.position" = [
+                "FL"
+                "FR"
+              ];
+              "node.passive" = true;
+            };
+            "playback.props" = {
+              "node.name" = "stand-in-microphone";
+              "media.class" = "Audio/Source";
+              "audio.position" = [
+                "FL"
+                "FR"
+              ];
+            };
           };
         }
       ];
@@ -117,7 +147,7 @@ pkgs.testers.runNixOSTest {
   testScript =
     { nodes, ... }:
     let
-      inherit (nodes.machine.home-manager.users.${account}.jitsusama.theme) colors font;
+      inherit (nodes.machine.home-manager.users.${account}.jitsusama.theme) roles font;
     in
     ''
       import json
@@ -125,7 +155,7 @@ pkgs.testers.runNixOSTest {
       import shlex
       import time
 
-      from PIL import Image
+      from PIL import Image, ImageStat
 
       # A command as the account, inside its niri session: qs finds the shell by
       # the display it's on.
@@ -146,6 +176,14 @@ pkgs.testers.runNixOSTest {
           windows = json.loads(as_account("niri msg --json windows"))
           return next(window for window in windows if window["title"] == title)
 
+      # Where a floating window draws on the screen: left, top, width, height.
+      def drawn_at(window):
+          layout = window["layout"]
+          left = int(layout["tile_pos_in_workspace_view"][0] + layout["window_offset_in_tile"][0])
+          top = int(layout["tile_pos_in_workspace_view"][1] + layout["window_offset_in_tile"][1])
+          width, height = layout["window_size"]
+          return left, top, width, height
+
       # The commonest colour inside a window, a little in from its edges.
       # niri says where a window is only once it floats, so it floats first.
       # The first GTK window has taken over 30 seconds to open on a CI runner
@@ -159,10 +197,7 @@ pkgs.testers.runNixOSTest {
           machine.screenshot(picture)
           window = window_titled(title)
           print(window)
-          layout = window["layout"]
-          left = int(layout["tile_pos_in_workspace_view"][0] + layout["window_offset_in_tile"][0])
-          top = int(layout["tile_pos_in_workspace_view"][1] + layout["window_offset_in_tile"][1])
-          width, height = layout["window_size"]
+          left, top, width, height = drawn_at(window)
           image = Image.open(os.path.join(machine.out_dir, picture + ".png")).convert("RGB")
           inside = image.crop((left + 20, top + 20, left + width - 20, top + height - 20))
           # Pillow gives no counts when there are more colours than asked for,
@@ -209,18 +244,37 @@ pkgs.testers.runNixOSTest {
           left = image.crop((0, 0, image.width // 4, image.height))
           counts = left.getcolors(left.width * left.height)
           assert counts is not None
-          foreground = tuple(int("${colors.foreground}"[i : i + 2], 16) for i in (1, 3, 5))
+          foreground = tuple(int("${roles.text}"[i : i + 2], 16) for i in (1, 3, 5))
           return sum(count for count, colour in counts if colour == foreground)
 
+      # The screen, and how many colours a part of it holds, which a flat
+      # colour has one of, and how bright that part is, from 0 to 255. The part
+      # is a box of fractions of the screen, left, top, right and bottom.
+      def colours_and_light(picture, part=(0, 0, 1, 1)):
+          machine.screenshot(picture)
+          image = Image.open(os.path.join(machine.out_dir, picture + ".png")).convert("RGB")
+          w, h = image.size
+          box = image.crop((int(part[0] * w), int(part[1] * h), int(part[2] * w), int(part[3] * h)))
+          counts = box.getcolors(box.width * box.height)
+          assert counts is not None
+          return image, len(counts), ImageStat.Stat(box.convert("L")).mean[0]
+
+      with subtest("the wallpaper stands behind the workspaces"):
+          wait_for_surface("wallpaper")
+          # It fades in once it's read.
+          time.sleep(1)
+          _, colours, _ = colours_and_light("workspace")
+          t.assertGreater(colours, 1000, "the workspace shows a flat colour, not the picture")
+
       with subtest("the overview shows the time and status, and only the overview"):
-          wait_for_surface("backdrop")
-          time.sleep(0.5)
-          t.assertEqual(foreground_on_the_left("workspace"), 0)
+          machine.fail(in_session("niri msg layers | grep -qw status"))
           as_account("niri msg action open-overview")
+          wait_for_surface("status")
           time.sleep(1)
           drawn = foreground_on_the_left("overview")
           as_account("niri msg action close-overview")
           t.assertGreater(drawn, 100)
+          machine.wait_until_fails(in_session("niri msg layers | grep -qw status"), timeout=10)
 
       with subtest("a notification appears"):
           as_account("notify-send 'Build finished' 'the laptop is ready'")
@@ -229,12 +283,25 @@ pkgs.testers.runNixOSTest {
           machine.screenshot("notification")
 
       with subtest("the volume shows when it changes, then goes"):
+          # WirePlumber picks the defaults a moment after Pipewire lists the nodes.
+          defaults = "wpctl inspect @DEFAULT_AUDIO_SINK@ && wpctl inspect @DEFAULT_AUDIO_SOURCE@"
+          machine.wait_until_succeeds(in_session(defaults), timeout=30)
           as_account("wpctl set-volume @DEFAULT_AUDIO_SINK@ 0.4")
           wait_for_surface("volume")
           # niri lists a surface before it has drawn its first frame.
           time.sleep(0.5)
           machine.screenshot("volume")
           machine.wait_until_fails(in_session("niri msg layers | grep -q volume"), timeout=10)
+
+      # The microphone's key mutes it through the same command, which niri runs.
+      with subtest("the microphone shows when it mutes, then goes"):
+          as_account("niri msg action spawn -- wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle")
+          wait_for_surface("microphone")
+          time.sleep(0.5)
+          machine.screenshot("microphone")
+          t.assertIn("MUTED", as_account("wpctl get-volume @DEFAULT_AUDIO_SOURCE@"))
+          machine.wait_until_fails(in_session("niri msg layers | grep -q microphone"), timeout=10)
+          as_account("wpctl set-mute @DEFAULT_AUDIO_SOURCE@ 0")
 
       # niri runs the brightness keys' command inside Joel's session, which is
       # the one logind lets change a backlight, so the test has niri run it too.
@@ -246,14 +313,325 @@ pkgs.testers.runNixOSTest {
           machine.screenshot("brightness")
           machine.wait_until_fails(in_session("niri msg layers | grep -q brightness"), timeout=10)
 
-      with subtest("the launcher finds and opens kitty"):
+      with subtest("the charge shows when power goes and comes back, then goes"):
+          # The kernel's stand-in has two supplies, mains and USB, and UPower
+          # counts the machine on battery only with both off.
+          def power(state):
+              parameters = "/sys/module/test_power/parameters"
+              for supply in ["ac", "usb"]:
+                  machine.succeed(f"echo {state} > {parameters}/{supply}_online")
+
+          for state in ["off", "on"]:
+              power(state)
+              wait_for_surface("power")
+              time.sleep(0.5)
+              machine.screenshot(f"power-{state}")
+              machine.wait_until_fails(in_session("niri msg layers | grep -q power"), timeout=10)
+
+      # A photograph of the media keys' chords, whose marks lie past U+FFFF,
+      # and Escape leaving.
+      with subtest("the launcher shows the volume's chords, and Escape closes it"):
           as_account("qs ipc call launcher toggle")
           wait_for_surface("launcher")
+          time.sleep(0.5)
+          machine.send_chars("volume")
+          machine.sleep(1)
+          machine.screenshot("launcher-volume")
+          machine.send_key("esc")
+          machine.wait_until_fails(in_session("niri msg layers | grep -qw launcher"), timeout=10)
+
+      with subtest("the launcher finds and opens kitty, and learns that kitty was meant"):
+          as_account("qs ipc call launcher toggle")
+          wait_for_surface("launcher")
+          # niri lists the layer a frame before it holds the keyboard, and a
+          # letter typed in that frame goes to the window underneath.
+          time.sleep(0.5)
           machine.send_chars("kitty")
           machine.sleep(1)
           machine.screenshot("launcher")
           machine.send_key("ret")
           machine.wait_until_succeeds(in_session("niri msg windows | grep -i kitty"), timeout=30)
+          # What was picked for what was typed is kept for next time.
+          picked = "'\"kitty\":{\"program:kitty\"'"
+          machine.wait_until_succeeds(
+              in_session(f"grep -rqsF {picked} ~/.local/state/quickshell"), timeout=10
+          )
+
+      # The border is all that marks the focused window, and niri leaves
+      # borders off unless its config turns them on.
+      with subtest("the focused window is framed in the accent"):
+          machine.wait_until_succeeds(in_session("niri msg focused-window | grep -qi kitty"), timeout=30)
+          window = json.loads(as_account("niri msg --json focused-window"))
+          as_account(f"niri msg action move-window-to-floating --id {window['id']}")
+          time.sleep(1)
+          machine.screenshot("focused")
+          left, top, _, height = drawn_at(json.loads(as_account("niri msg --json focused-window")))
+          image = Image.open(os.path.join(machine.out_dir, "focused.png")).convert("RGB")
+          beside = "#%02x%02x%02x" % image.getpixel((left - 1, top + height // 2))
+          as_account(f"niri msg action move-window-to-tiling --id {window['id']}")
+          t.assertEqual(beside, "${roles.accent}".lower())
+
+      # niri opens a window in a column of its own, and the shell folds it
+      # in just below the focused one.
+      with subtest("a terminal opens below the focused window"):
+          anchor = json.loads(as_account("niri msg --json focused-window"))
+          as_account("qs ipc call grid below kitty")
+          kitties = "niri msg --json windows | grep -o '\"app_id\":\"kitty\"' | wc -l"
+          machine.wait_until_succeeds(in_session(f"{kitties} | grep -qx 2"), timeout=30)
+
+          def placed(_):
+              windows = json.loads(as_account("niri msg --json windows"))
+              at = {w["id"]: w["layout"]["pos_in_scrolling_layout"] for w in windows}
+              new = next(w["id"] for w in windows if w["id"] != anchor["id"])
+              here, there = at[anchor["id"]], at[new]
+              return there[0] == here[0] and there[1] == here[1] + 1
+
+          retry(placed, timeout_seconds=15)
+
+      # The launcher finds a window by its title, and Return goes to it.
+      with subtest("the launcher switches to a window by its title"):
+          as_account("niri msg action spawn -- kitty --title 'Notes for Tuesday'")
+          machine.wait_until_succeeds(
+              in_session("niri msg windows | grep -q 'Notes for Tuesday'"), timeout=30
+          )
+          as_account("niri msg action focus-window-previous")
+          machine.wait_until_fails(
+              in_session("niri msg focused-window | grep -q 'Notes for Tuesday'"), timeout=10
+          )
+          as_account("qs ipc call launcher toggle")
+          wait_for_surface("launcher")
+          time.sleep(0.5)
+          machine.send_chars("tuesday")
+          machine.sleep(1)
+          machine.screenshot("launcher-window")
+          machine.send_key("ret")
+          machine.wait_until_succeeds(
+              in_session("niri msg focused-window | grep -q 'Notes for Tuesday'"), timeout=10
+          )
+
+      # The right arrow steps into what can be done to a window, and a verb
+      # that needs a target asks for it in the same field.
+      with subtest("the launcher moves a window and copies its title"):
+          notes = json.loads(as_account("niri msg --json focused-window"))
+
+          def into_notes(verb):
+              as_account("qs ipc call launcher toggle")
+              wait_for_surface("launcher")
+              time.sleep(0.5)
+              machine.send_chars("tuesday")
+              time.sleep(0.5)
+              machine.send_key("right")
+              time.sleep(0.5)
+              machine.send_chars(verb)
+              time.sleep(0.5)
+
+          into_notes("copy")
+          machine.screenshot("launcher-verbs")
+          machine.send_key("ret")
+          machine.wait_until_fails(in_session("niri msg layers | grep -qw launcher"), timeout=10)
+          t.assertEqual(as_account("wl-paste --no-newline"), "Notes for Tuesday")
+
+          into_notes("move")
+          machine.send_key("ret")
+          time.sleep(0.5)
+          machine.screenshot("launcher-target")
+          machine.send_key("ret")
+
+          def moved(_):
+              windows = json.loads(as_account("niri msg --json windows"))
+              now = next(w for w in windows if w["id"] == notes["id"])
+              return now["workspace_id"] != notes["workspace_id"]
+
+          retry(moved, timeout_seconds=10)
+
+      with subtest("the launcher answers what's asked, and copies the answer"):
+
+          def answer(typed):
+              as_account("qs ipc call launcher toggle")
+              wait_for_surface("launcher")
+              time.sleep(0.5)
+              machine.send_chars(typed)
+              time.sleep(1)
+
+          def copied(typed, expected):
+              answer(typed)
+              machine.send_key("ret")
+              closed = in_session("niri msg layers | grep -qw launcher")
+              machine.wait_until_fails(closed, timeout=10)
+              t.assertEqual(as_account("wl-paste --no-newline"), expected)
+
+          copied("12*7", "84")
+          # The vendor comes from the list built from hwdata, so this proves it's there.
+          copied("3c:22:fb:12:34:56", "Apple, Inc.")
+          copied("5 km in mi", "3.10686")
+          answer("350 f in c")
+          machine.screenshot("launcher-units")
+          machine.send_key("esc")
+          # The zones come from the list built from tzdata, so this proves it's
+          # there. The minute may turn while it's asked, so either will do.
+          before = machine.succeed("date -u +%H:%M").strip()
+          answer("time in utc")
+          machine.screenshot("launcher-time")
+          machine.send_key("ret")
+          machine.wait_until_fails(in_session("niri msg layers | grep -qw launcher"), timeout=10)
+          after = machine.succeed("date -u +%H:%M").strip()
+          t.assertIn(as_account("wl-paste --no-newline"), [before, after])
+          # A theme's colour is found by its role, as the theme exports it.
+          theme = json.loads(as_account("cat ~/.config/jitsusama/theme.json"))
+          copied("colour accent", theme["roles"]["accent"].lower())
+          answer("#f53")
+          machine.screenshot("launcher-colour")
+          machine.send_key("esc")
+          answer("10.0.0.0/22")
+          machine.screenshot("launcher-answer")
+          machine.send_key("esc")
+          # With no network, what has to ask one says it couldn't, and nothing breaks.
+          for typed in ["8.8.8.8", "weather tokyo", "100 usd in cad", "ip"]:
+              answer(typed)
+              machine.send_key("esc")
+          time.sleep(11)
+          answer("weather tokyo")
+          machine.screenshot("launcher-offline")
+          machine.send_key("esc")
+          log = as_account("journalctl --user -u quickshell --no-pager -o cat")
+          assert "ERROR" not in log and "Error:" not in log, "an answer raised an error"
+
+      with subtest("the launcher finds emoji as one row, and steps into the rest"):
+          copied("tada", "\U0001F389")
+          answer("smiling")
+          machine.screenshot("launcher-emoji")
+          machine.send_key("right")
+          time.sleep(0.5)
+          machine.send_chars(" cat")
+          time.sleep(0.5)
+          machine.screenshot("launcher-emoji-all")
+          machine.send_key("ret")
+          closed = in_session("niri msg layers | grep -qw launcher")
+          machine.wait_until_fails(closed, timeout=10)
+          # The grinning cat with smiling eyes, first among the smiling cats.
+          t.assertEqual(as_account("wl-paste --no-newline"), "\U0001F638")
+
+      with subtest("Super+Shift+/ shows every layer's shortcuts, and runs the desktop's"):
+          windows = len(json.loads(as_account("niri msg --json windows")))
+          machine.send_key("meta_l-shift-slash")
+          wait_for_surface("launcher")
+          time.sleep(0.5)
+          machine.send_chars("paste")
+          time.sleep(0.5)
+          machine.screenshot("launcher-shortcuts")
+          for _ in "paste":
+              machine.send_key("backspace")
+          machine.send_chars("open a terminal")
+          time.sleep(0.5)
+          machine.send_key("ret")
+
+          def opened(_):
+              return len(json.loads(as_account("niri msg --json windows"))) > windows
+
+          retry(opened, timeout_seconds=15)
+
+      with subtest("Super+V finds what was copied earlier, and copies it again"):
+          keeping = as_account("systemctl --user is-active clipboard-history")
+          t.assertEqual(keeping.strip(), "active")
+          as_account("echo -n 'Notes for Tuesday' | wl-copy > /dev/null 2>&1")
+          time.sleep(0.5)
+          as_account("printf 'the second copy\\nover two lines' | wl-copy > /dev/null 2>&1")
+          time.sleep(0.5)
+          machine.send_key("meta_l-v")
+          wait_for_surface("launcher")
+          time.sleep(0.5)
+          machine.screenshot("launcher-copies-all")
+          machine.send_chars("tues")
+          time.sleep(0.5)
+          machine.screenshot("launcher-copies")
+          machine.send_key("ret")
+
+          def copied_again(_):
+              return as_account("wl-paste --no-newline") == "Notes for Tuesday"
+
+          retry(copied_again, timeout_seconds=10)
+
+      with subtest("the launcher's home shows each collection, and opens it"):
+          windows = len(json.loads(as_account("niri msg --json windows")))
+          as_account("qs ipc call launcher toggle")
+          wait_for_surface("launcher")
+          time.sleep(0.5)
+          machine.screenshot("launcher-home")
+          # The last row at home is the last collection, the shortcuts.
+          machine.send_key("pgdn")
+          machine.send_key("ret")
+          time.sleep(0.5)
+          # Opening a collection keeps the launcher open, where a program
+          # picked instead would close it.
+          wait_for_surface("launcher")
+          machine.send_chars("open a terminal")
+          time.sleep(0.5)
+          machine.send_key("ret")
+
+          def another(_):
+              return len(json.loads(as_account("niri msg --json windows"))) > windows
+
+          retry(another, timeout_seconds=15)
+
+      with subtest("a notice that came and went is found again in the launcher"):
+          # One its sender says not to keep isn't, though it's the newest match.
+          as_account("notify-send --transient 'Build finished twice' 'not kept'")
+          as_account("qs ipc call launcher toggle")
+          wait_for_surface("launcher")
+          time.sleep(0.5)
+          # Its row at home counts the one missed earlier, since it left by itself.
+          machine.screenshot("launcher-home-missed")
+          machine.send_chars("build fin")
+          time.sleep(0.5)
+          machine.screenshot("launcher-notices")
+          # Nothing sent it that can be gone to, so Return copies what it said.
+          machine.send_key("ret")
+
+          def told_again(_):
+              said = as_account("wl-paste --no-newline")
+              return said == "Build finished\nthe laptop is ready"
+
+          retry(told_again, timeout_seconds=10)
+          machine.wait_until_fails(in_session("niri msg layers | grep -q launcher"), timeout=10)
+          # Super+N opens all of them, which counts them seen.
+          machine.send_key("meta_l-n")
+          wait_for_surface("launcher")
+          time.sleep(0.5)
+          machine.screenshot("launcher-notices-all")
+          machine.send_key("esc")
+
+      with subtest("the launcher keeps the machine awake, lid shut too, then lets it sleep"):
+          held = "systemd-inhibit --list --no-pager | grep Caffeinate"
+          machine.wait_until_fails(in_session("niri msg layers | grep -q launcher"), timeout=10)
+          as_account("qs ipc call launcher toggle")
+          wait_for_surface("launcher")
+          time.sleep(0.5)
+          machine.send_chars("keep awake")
+          time.sleep(0.5)
+          machine.screenshot("launcher-keep-awake")
+          machine.send_key("ret")
+          machine.wait_until_succeeds(f"{held} | grep -q sleep:idle", timeout=10)
+          machine.wait_until_succeeds(f"{held} | grep -q handle-lid-switch", timeout=10)
+          # The overview's status says so while it holds, and so does home.
+          as_account("niri msg action open-overview")
+          wait_for_surface("status")
+          time.sleep(1)
+          machine.screenshot("overview-awake")
+          as_account("niri msg action close-overview")
+          # Without power the lid is let go, and taken again when it's back.
+          power("off")
+          machine.wait_until_fails(f"{held} | grep -q handle-lid-switch", timeout=10)
+          machine.succeed(f"{held} | grep -q sleep:idle")
+          power("on")
+          machine.wait_until_succeeds(f"{held} | grep -q handle-lid-switch", timeout=10)
+          as_account("qs ipc call launcher toggle")
+          wait_for_surface("launcher")
+          time.sleep(0.5)
+          machine.screenshot("launcher-home-awake")
+          machine.send_chars("let it sleep")
+          time.sleep(0.5)
+          machine.send_key("ret")
+          machine.wait_until_fails(held, timeout=10)
 
       with subtest("the lock screen takes only the right password"):
           as_account("qs ipc call lock lock")
@@ -262,7 +640,8 @@ pkgs.testers.runNixOSTest {
           machine.send_chars("wrong-password\n")
           machine.sleep(5)
           as_account("qs ipc call lock isLocked | grep -q true")
-          machine.screenshot("locked")
+          _, colours, _ = colours_and_light("locked")
+          t.assertGreater(colours, 1000, "the lock screen shows a flat colour, not its picture")
           machine.send_chars("${secret}\n")
           machine.wait_until_succeeds(in_session("qs ipc call lock isLocked | grep -q false"), timeout=30)
 
@@ -290,7 +669,7 @@ pkgs.testers.runNixOSTest {
 
       with subtest("monospace is the theme's font"):
           family = as_account("${pkgs.fontconfig.bin}/bin/fc-match -f '%{family}' monospace")
-          t.assertIn("${font.family}", family)
+          t.assertIn("${font.mono.family}", family)
 
       with subtest("GTK programs draw in the theme's colours"):
           zenity = "${pkgs.zenity}/bin/zenity --text-info --title=libadwaita --filename=${text}"
@@ -299,14 +678,14 @@ pkgs.testers.runNixOSTest {
           # runs under the account's user manager, where niri's own unit puts
           # them on the laptop.
           as_account(f"systemd-run --user --collect {zenity}")
-          t.assertEqual(commonest_colour_in("libadwaita", "libadwaita"), "${colors.dark_background}".lower())
+          t.assertEqual(commonest_colour_in("libadwaita", "libadwaita"), "${roles.sunken}".lower())
           # The file chooser Chrome and Slack open, which the GTK portal draws
           # with GTK 3, asked for the way they ask.
           as_account(
               "busctl --user call org.freedesktop.portal.Desktop /org/freedesktop/portal/desktop"
               " org.freedesktop.portal.FileChooser OpenFile 'ssa{sv}' \"\" Open 0"
           )
-          t.assertEqual(commonest_colour_in("Open", "file-chooser"), "${colors.dark_background}".lower())
+          t.assertEqual(commonest_colour_in("Open", "file-chooser"), "${roles.sunken}".lower())
 
       machine.screenshot("desktop")
     '';

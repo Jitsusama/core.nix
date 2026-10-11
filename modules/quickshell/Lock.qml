@@ -1,8 +1,13 @@
-// The lock screen: the time and a password box on every screen, checked by
+// The lock screen: the time and a password field on every screen, checked by
 // PAM through the quickshell service the system defines. Lock it with
 // `qs ipc call lock lock`, as swayidle does when Joel steps away or the lid
 // closes, and ask with `qs ipc call lock isLocked`. If Quickshell dies while
-// locked, niri keeps the screens locked.
+// locked, niri keeps the screens locked. The field is the prompt kind
+// (docs/design.md, Shape and Kinds): the padlock beside the dots, the accent
+// frame, and the alert frame after a wrong password. Behind them is the
+// theme's lock picture, shown whole: the time is lifted off it by the
+// theme's text shadows, and both sit low, under the picture's sky. It fades
+// in once read, so locking never waits on it.
 import Quickshell
 import Quickshell.Io
 import Quickshell.Services.Pam
@@ -11,6 +16,9 @@ import QtQuick
 
 Scope {
     id: root
+
+    // As wide as a long password's dots.
+    readonly property int width: 400
 
     property string password
     property bool failed: false
@@ -55,32 +63,78 @@ Scope {
         id: sessionLock
 
         WlSessionLockSurface {
-            color: Theme.darker_background
+            id: surface
+
+            color: Theme.deepest
+
+            Image {
+                anchors.fill: parent
+                visible: Theme.wallpaper.lock !== ""
+                source: visible ? "file://" + Theme.wallpaper.lock : ""
+                fillMode: Image.PreserveAspectCrop
+                readonly property real ratio: surface.screen?.devicePixelRatio ?? 1
+                // Read at the screen's own pixels, not the file's.
+                sourceSize: Qt.size(surface.width * ratio, surface.height * ratio)
+                asynchronous: true
+                opacity: status === Image.Ready ? 1 : 0
+
+                Behavior on opacity {
+                    NumberAnimation {
+                        duration: Theme.motion.long
+                        easing.type: Easing.BezierSpline
+                        easing.bezierCurve: Theme.motion.curve
+                    }
+                }
+            }
 
             Column {
-                anchors.centerIn: parent
-                spacing: Theme.gap * 2
+                anchors.horizontalCenter: parent.horizontalCenter
+                anchors.bottom: parent.bottom
+                anchors.bottomMargin: parent.height / 12
+                spacing: Theme.space.xl
 
-                Text {
+                Lifted {
                     anchors.horizontalCenter: parent.horizontalCenter
-                    text: Qt.formatDateTime(clock.date, "HH:mm")
-                    color: Theme.foreground
-                    font.family: Theme.fontFamily
-                    font.pointSize: Theme.fontSize * 6
+
+                    Text {
+                        text: Qt.formatDateTime(clock.date, "HH:mm")
+                        color: Theme.text
+                        font.family: Theme.mono.family
+                        font.pointSize: Theme.mono.hero
+                        font.features: { "tnum": 1 }
+                    }
                 }
 
-                Prompt {
-                    id: prompt
-                    label: root.failed ? "Try again" : "Password"
-                    secret: true
-                    onAccepted: {
-                        if (pam.active)
-                            return;
-                        root.password = text;
-                        clear();
-                        pam.start();
+                Floating {
+                    width: root.width
+                    keys: true
+                    urgent: root.failed
+
+                    Item {
+                        width: parent.width
+                        height: prompt.height + 2 * Theme.inset
+
+                        Prompt {
+                            id: prompt
+                            x: Theme.inset
+                            y: Theme.inset
+                            width: parent.width - 2 * Theme.inset
+                            glyph: String.fromCodePoint(0xf023)
+                            hue: Theme.machine
+                            secret: true
+                            hint: root.failed ? "try again" : ""
+                            onTextChanged: if (text !== "")
+                                root.failed = false
+                            onAccepted: {
+                                if (pam.active)
+                                    return;
+                                root.password = text;
+                                clear();
+                                pam.start();
+                            }
+                            onCancelled: clear()
+                        }
                     }
-                    onCancelled: clear()
                 }
             }
         }

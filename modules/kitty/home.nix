@@ -1,54 +1,107 @@
 # Joel's kitty: kitty.conf says how it behaves, and theme.conf, written here
-# from jitsusama.theme, how it looks. The colours map as Omarchy's own kitty
-# template maps them, so kitty matches the rest of the desktop.
-{ config, pkgs, ... }:
+# from jitsusama.theme, how it looks: the theme's terminal colours, and its
+# roles for the frame around them, so kitty matches the rest of the desktop.
+# keys.conf, written here from jitsusama.kitty.keys, holds its shortcuts,
+# which also go into the keyboard map (modules/keys).
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 let
-  inherit (config.jitsusama.theme) colors font;
+  inherit (config.jitsusama.theme)
+    roles
+    terminal
+    font
+    space
+    ;
+
+  # kitty measures padding in points, 72 to the inch, where the theme's
+  # spaces are logical pixels, 96 to the inch.
+  points = pixels: toString (pixels * 3 / 4);
+
+  keys = config.jitsusama.kitty.keys;
 in
 {
-  imports = [ ../theme/home.nix ];
+  imports = [
+    ../theme/home.nix
+    ../keys/home.nix
+  ];
 
-  home.packages = [ pkgs.kitty ];
+  options.jitsusama.kitty.keys = lib.mkOption {
+    type = lib.types.listOf (
+      lib.types.submodule {
+        options = {
+          chord = lib.mkOption {
+            type = lib.types.str;
+            description = "The chord, as kitty spells it: ctrl+shift+t.";
+          };
+          does = lib.mkOption {
+            type = lib.types.str;
+            description = "What it does in plain words, as the launcher finds it.";
+          };
+          action = lib.mkOption {
+            type = lib.types.str;
+            description = "kitty's action, as kitty.conf would spell it: new_tab_with_cwd.";
+          };
+        };
+      }
+    );
+    default = [ ];
+    description = ''
+      kitty's shortcuts, the only ones it has, keys.nix's to begin with. A
+      machine's own are added to them; lib.mkForce replaces them all.
+    '';
+  };
 
-  xdg.configFile."kitty/kitty.conf".text = builtins.readFile ./kitty.conf;
+  config.jitsusama.kitty.keys = import ./keys.nix { inherit lib; };
 
-  # From Omarchy's default/themed/kitty.conf.tpl, which takes the selection
-  # colours from the palette's selection and bright foreground. The tab bar
-  # is ours: Omarchy colours only the active tab.
-  xdg.configFile."kitty/theme.conf".text = ''
-    font_family family="${font.family}"
-    font_size ${font.size}
+  config.jitsusama.keys.terminal = map (key: { inherit (key) chord does; }) keys;
 
-    foreground ${colors.foreground}
-    background ${colors.background}
-    selection_foreground ${colors.bright_foreground}
-    selection_background ${colors.selection}
+  config.home.packages = [ pkgs.kitty ];
 
-    cursor ${colors.bright_foreground}
-    cursor_text_color ${colors.background}
+  config.xdg.configFile."kitty/kitty.conf".text = builtins.readFile ./kitty.conf;
 
-    active_border_color ${colors.accent}
-    tab_bar_background ${colors.darker_background}
-    active_tab_background ${colors.accent}
-    active_tab_foreground ${colors.background}
-    inactive_tab_background ${colors.dark_background}
-    inactive_tab_foreground ${colors.muted}
+  config.xdg.configFile."kitty/keys.conf".text = lib.concatMapStrings (
+    key: "map ${key.chord} ${key.action}\n"
+  ) keys;
 
-    color0 ${colors.background}
-    color1 ${colors.red}
-    color2 ${colors.green}
-    color3 ${colors.yellow}
-    color4 ${colors.blue}
-    color5 ${colors.magenta}
-    color6 ${colors.cyan}
-    color7 ${colors.foreground}
-    color8 ${colors.muted}
-    color9 ${colors.bright_red}
-    color10 ${colors.bright_green}
-    color11 ${colors.bright_yellow}
-    color12 ${colors.bright_blue}
-    color13 ${colors.bright_magenta}
-    color14 ${colors.bright_cyan}
-    color15 ${colors.bright_foreground}
+  config.xdg.configFile."kitty/theme.conf".text = ''
+    font_family family="${font.mono.family}"
+    font_size ${font.mono.size}
+    window_padding_width ${points space.l} ${points space.xl}
+
+    foreground ${terminal.foreground}
+    background ${terminal.background}
+    selection_foreground ${terminal.selection_foreground}
+    selection_background ${terminal.selection_background}
+
+    cursor ${terminal.cursor}
+    cursor_text_color ${terminal.cursor_text}
+
+    active_border_color ${roles.accent}
+    tab_bar_background ${roles.deepest}
+    active_tab_background ${roles.accent}
+    active_tab_foreground ${roles.on_accent}
+    inactive_tab_background ${roles.sunken}
+    inactive_tab_foreground ${roles.muted}
+
+    color0 ${terminal.black}
+    color1 ${terminal.red}
+    color2 ${terminal.green}
+    color3 ${terminal.yellow}
+    color4 ${terminal.blue}
+    color5 ${terminal.magenta}
+    color6 ${terminal.cyan}
+    color7 ${terminal.white}
+    color8 ${terminal.bright_black}
+    color9 ${terminal.bright_red}
+    color10 ${terminal.bright_green}
+    color11 ${terminal.bright_yellow}
+    color12 ${terminal.bright_blue}
+    color13 ${terminal.bright_magenta}
+    color14 ${terminal.bright_cyan}
+    color15 ${terminal.bright_white}
   '';
 }

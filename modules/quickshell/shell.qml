@@ -5,11 +5,20 @@
 import Quickshell
 
 ShellRoot {
+    Wallpaper {}
     Notifications {}
     Polkit {}
     Volume {}
+    Volume {
+        input: true
+    }
     Brightness {}
-    Backdrop {}
+    Power {}
+    Status {}
+
+    OpenBelow {
+        id: grid
+    }
 
     Lock {
         id: lock
@@ -17,5 +26,6 @@ ShellRoot {
 
     Launcher {
         lock: lock
+        grid: grid
     }
 }

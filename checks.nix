@@ -163,6 +163,16 @@ in
         self.darwinModules.workstation
       ]);
 
+  # Most of the icon font's marks lie past U+FFFF, which a single JSON escape
+  # can't reach: written as one, U+F075D read as U+F075 and a stray "d".
+  icon-marks-past-the-basic-plane =
+    let
+      nerd = import ./modules/theme/nerd.nix { inherit lib; };
+    in
+    holds "icon-marks-past-the-basic-plane" "An icon mark past U+FFFF came out as two characters." (
+      nerd "f075d" != nerd "f075" + "d" && builtins.stringLength (nerd "f075d") == 4
+    );
+
   # A machine can remove any module a role brought in, including the ones
   # made by giving a file one of core's inputs.
   disabling-a-module-removes-it =
@@ -231,6 +241,337 @@ in
     holds "booted-generation-stays-installed"
       "lanzaboote can remove the booted generation, which drops PCR 4 from the disk's policy."
       (machine.config.boot.lanzaboote.protectedSystem == "/run/booted-system");
+
+  # A theme that draws text too faint to read doesn't build. The ratio is
+  # WCAG's: black on white is 21:1, and #777777 on white just misses 4.5:1.
+  # Osaka Jade's own muted, at 2.90:1, is the faint text it was made to catch.
+  a-faint-theme-is-refused =
+    let
+      contrast = import ./modules/theme/contrast.nix { inherit lib; };
+      machine = bareNixos [
+        {
+          home-manager.users.someone = {
+            imports = [ ./modules/theme/home.nix ];
+            jitsusama.theme.roles.muted = "#53685B";
+          };
+        }
+      ];
+      refusals = map (check: check.message) (
+        lib.filter (check: !check.assertion) (account machine).assertions
+      );
+    in
+    holds "a-faint-theme-is-refused" "A theme with text too faint to read wasn't refused." (
+      contrast.show (contrast.ratio "#000000" "#ffffff") == "21.00"
+      && contrast.show (contrast.ratio "#777777" "#ffffff") == "4.47"
+      && lib.any (lib.hasInfix "muted on background: 2.90:1") refusals
+    );
+
+  # A switch restarts Quickshell when any file it reads changes, so the shell
+  # on screen is never the one from before the switch.
+  quickshell-restarts-with-its-files =
+    let
+      home = account graphical;
+      files = lib.filterAttrs (name: _: lib.hasPrefix "quickshell/" name) home.xdg.configFile;
+      triggers = home.systemd.user.services.quickshell.Unit.X-Restart-Triggers or [ ];
+    in
+    holds "quickshell-restarts-with-its-files"
+      "A Quickshell file isn't among its unit's restart triggers, so a switch would leave the old one on screen."
+      (files != { } && lib.all (file: lib.elem "${file.source}" triggers) (lib.attrValues files));
+
+  # A machine shapes what the overview shows in a line a change: a piece
+  # moved, cut, shown only while true, a threshold changed and the rest kept,
+  # and a piece of its own linked beside the built-in ones.
+  the-overview-takes-its-pieces =
+    let
+      own = pkgs.writeText "wide.qml" "Piece { value: settings.text }";
+      machine = bareNixos [
+        self.nixosModules.workstation
+        self.nixosModules.graphical
+        {
+          home-manager.users.someone.jitsusama.quickshell.overview.pieces = {
+            date.tier = null;
+            network.order = 25;
+            battery.low = 15;
+            volume.tier = "when";
+            wide = {
+              order = 60;
+              source = own;
+              label = "wide";
+              text = "a piece of the machine's own";
+              collapse = 5;
+              mark = "on";
+            };
+          };
+        }
+      ];
+      home = account machine;
+      rendered = lib.findFirst (lib.hasInfix "property var pieces: ") "" (
+        lib.splitString "\n" home.xdg.configFile."quickshell/Overview.qml".text
+      );
+      drawn = builtins.fromJSON (lib.last (lib.splitString "property var pieces: " rendered));
+      piece = lib.listToAttrs (map (piece: lib.nameValuePair piece.name piece) drawn);
+    in
+    holds "the-overview-takes-its-pieces"
+      "The overview didn't draw a machine's own pieces as it set them: their order, their cuts, their settings or its own file."
+      (
+        map (piece: piece.name) drawn == [
+          "time"
+          "network"
+          "battery"
+          "volume"
+          "awake"
+          "wide"
+        ]
+        && piece.battery.low == 15
+        && piece.battery.critical == 10
+        && piece.volume.tier == "when"
+        && piece.wide.mark == "on"
+        && piece.wide.file == "wide.qml"
+        && "${home.xdg.configFile."quickshell/pieces/wide.qml".source}" == "${own}"
+      );
+
+  # The shell hands every program it opens to niri, which gives it a scope of
+  # its own. One the shell started itself would leave its helpers in the
+  # shell's service, and restarting the shell would kill them.
+  quickshell-opens-programs-through-niri =
+    let
+      dir = ./modules/quickshell;
+      qml = lib.filter (lib.hasSuffix ".qml") (lib.attrNames (builtins.readDir dir));
+      starts = file: lib.hasInfix "execDetached" file || lib.hasInfix ".execute()" file;
+      culprits = lib.filter (name: starts (builtins.readFile (dir + "/${name}"))) qml;
+    in
+    holds "quickshell-opens-programs-through-niri"
+      "These start programs themselves rather than through Niri.spawn: ${lib.concatStringsSep ", " culprits}"
+      (qml != [ ] && culprits == [ ]);
+
+  # The launcher finds what's meant: for each query in tests/fuzzy.qml the
+  # right thing comes first, few rows are left, or nothing answers, and a
+  # query keeps within its budget, all in Qt's own JavaScript engine, the
+  # one the shell runs the matcher in.
+  the-launcher-finds-what-is-meant =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "the-launcher-finds-what-is-meant" { } ''
+      cp ${./tests/fuzzy.qml} fuzzy.qml
+      cp ${./modules/quickshell/Fuzzy.js} Fuzzy.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml ${qt}/bin/qml fuzzy.qml
+      touch $out
+    '';
+
+  # The launcher finds emoji by what they're called and what they mean, best
+  # first, as tests/emoji.qml lists them, over the list it's built with, and
+  # in about three times the least a search could take.
+  the-launcher-finds-emoji =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+      emoji = import ./modules/quickshell/launcher/emoji.nix { inherit lib pkgs; } "none";
+    in
+    pkgs.runCommandLocal "the-launcher-finds-emoji" { } ''
+      mkdir launcher
+      cp ${./tests/emoji.qml} emoji.qml
+      cp ${./modules/quickshell/Fuzzy.js} Fuzzy.js
+      cp ${./modules/quickshell/launcher/Emoji.js} launcher/Emoji.js
+      cp ${emoji} emoji.jsonl
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export QML_XHR_ALLOW_FILE_READ=1
+      export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml ${qt}/bin/qml emoji.qml
+      touch $out
+    '';
+
+  # The launcher answers what's asked: sums and number bases, IPv4 and IPv6
+  # addresses and networks with the kind of range each is in, hardware
+  # addresses, measures and the time in any zone tzdata names, as
+  # tests/answers.qml lists them, and leaves alone what isn't one, in Qt's
+  # own JavaScript engine.
+  the-launcher-answers-what-is-asked =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "the-launcher-answers-what-is-asked" { } ''
+      cp ${./tests/answers.qml} answers.qml
+      cp ${./modules/quickshell/launcher/Numbers.js} Numbers.js
+      cp ${./modules/quickshell/launcher/Addresses.js} Addresses.js
+      cp ${./modules/quickshell/launcher/Units.js} Units.js
+      cp ${./modules/quickshell/launcher/Zones.js} Zones.js
+      cp ${./modules/quickshell/launcher/Colours.js} Colours.js
+      cp ${./tests/colour-cases.js} colour-cases.js
+      cp ${import ./modules/quickshell/launcher/zones.nix { inherit lib pkgs; }} zones.jsonl
+      export QML_XHR_ALLOW_FILE_READ=1
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml ${qt}/bin/qml answers.qml
+      touch $out
+    '';
+
+  # Shape is a language (docs/design.md, Shape and Kinds): a border's width
+  # says "this is a thing" and a radius says whole or part, so no surface
+  # picks either for itself. Every corner is the theme's radius, or a part's
+  # radius the theme derives from it, and every border is the theme's.
+  quickshell-takes-its-shape-from-the-theme =
+    let
+      dir = ./modules/quickshell;
+      files =
+        lib.filter (lib.hasSuffix ".qml") (lib.attrNames (builtins.readDir dir))
+        ++ map (name: "pieces/${name}") (
+          lib.filter (lib.hasSuffix ".qml") (lib.attrNames (builtins.readDir (dir + "/pieces")))
+        );
+      allowed = {
+        radius = [
+          "Theme.radius"
+          "Theme.inner"
+        ];
+        width = [ "Theme.border" ];
+      };
+      shape =
+        line:
+        let
+          space = "[[:space:]]*";
+          property = "(border\\.width|[a-zA-Z]*[rR]adius)";
+          value = "([^;]*[^;[:space:]])";
+          found = builtins.match (space + property + space + ":" + space + value + space + ";?" + space) line;
+        in
+        if found == null then
+          null
+        else
+          {
+            kind = if lib.head found == "border.width" then "width" else "radius";
+            value = lib.elemAt found 1;
+          };
+      culprits = lib.concatMap (
+        name:
+        lib.concatMap (
+          line:
+          let
+            found = shape line;
+          in
+          lib.optional (
+            found != null && !(lib.elem found.value allowed.${found.kind})
+          ) "${name}: ${lib.trim line}"
+        ) (lib.splitString "\n" (builtins.readFile (dir + "/${name}")))
+      ) files;
+    in
+    holds "quickshell-takes-its-shape-from-the-theme" ''
+      These pick a radius or a border width of their own rather than the theme's:
+      ${lib.concatStringsSep "\n" culprits}'' (files != [ ] && culprits == [ ]);
+
+  # A chord two layers both claim never reaches the lower one, so a machine
+  # with one doesn't build. The clashes here are spelt the way each program
+  # spells its chords, so the map has to see through the spelling: kitty's
+  # ctrl+alt+n is zellij's Ctrl Alt n, and its super+return is niri's
+  # Super+Return. A layer claiming one chord twice is refused too.
+  a-claimed-chord-is-refused =
+    let
+      machine = bareNixos [
+        self.nixosModules.workstation
+        self.nixosModules.graphical
+        {
+          home-manager.users.someone.jitsusama.kitty.keys = lib.mkAfter [
+            {
+              chord = "ctrl+alt+n";
+              does = "Open a window";
+              action = "new_os_window";
+            }
+            {
+              chord = "super+return";
+              does = "Open a tab";
+              action = "new_tab";
+            }
+            {
+              chord = "ctrl+shift+c";
+              does = "Copy again";
+              action = "copy_to_clipboard";
+            }
+          ];
+        }
+      ];
+      refusals = lib.concatMapStrings (check: check.message) (
+        lib.filter (check: !check.assertion) (account machine).assertions
+      );
+      fine =
+        lib.all (check: check.assertion)
+          (account (bareNixos [
+            self.nixosModules.workstation
+            self.nixosModules.graphical
+          ])).assertions;
+    in
+    holds "a-claimed-chord-is-refused"
+      "A chord two layers claim, or one layer claims twice, wasn't refused."
+      (
+        fine
+        && lib.hasInfix "ctrl+alt+n: terminal (Open a window) takes it from multiplexer (Open a pane)" refusals
+        && lib.hasInfix "super+enter: desktop (Open a terminal) takes it from terminal (Open a tab)" refusals
+        && lib.hasInfix "ctrl+shift+c in terminal: Copy, Copy again" refusals
+      );
+
+  # Picking another theme changes everything the account draws: the desktop
+  # rendered in Flexoki Light keeps none of Osaka Jade's colours anywhere in
+  # its files, so no surface was left behind in the old one.
+  a-theme-changes-everything =
+    let
+      osakaJade = (builtins.fromTOML (builtins.readFile ./modules/theme/osaka-jade.toml)).palette;
+      machine = bareNixos [
+        self.nixosModules.workstation
+        self.nixosModules.graphical
+        { home-manager.users.someone.jitsusama.theme.name = "flexoki-light"; }
+      ];
+      home = account machine;
+    in
+    pkgs.runCommandLocal "a-theme-changes-everything" { nativeBuildInputs = [ pkgs.ripgrep ]; } ''
+      test ${lib.escapeShellArg home.jitsusama.theme.roles.background} = '#FFFCF0'
+      if rg --follow --ignore-case --fixed-strings --line-number --no-heading --hidden \
+        ${
+          lib.concatMapStringsSep " " (colour: "-e ${lib.escapeShellArg colour}") (lib.attrValues osakaJade)
+        } ${home.home-files}/; then
+        echo "The files above kept Osaka Jade's colours when the theme changed."
+        exit 1
+      fi
+      touch $out
+    '';
+
+  # Every surface takes its look from the theme, so no module but the theme's
+  # names a colour or a face of its own: one that did would stay put when the
+  # theme changes. Colours are caught as hex or CSS functions, faces by the
+  # families anything here installs or falls back to.
+  nothing-names-its-own-look =
+    let
+      colours = [
+        "#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?\\b"
+        "\\b(rgba?|hsla?)\\("
+      ];
+      faces = [
+        "Monaspice"
+        "Monaspace"
+        "Mona Sans"
+        "Hubot Sans"
+        "Fira Code"
+        "Fira Mono"
+        "Victor Mono"
+        "JetBrains Mono"
+        "Nerd Font"
+        "Adwaita Sans"
+        "Adwaita Mono"
+        "DejaVu"
+        "Noto Sans"
+        "Terminus"
+      ];
+      pattern = lib.concatStringsSep "|" (colours ++ [ "\\b(${lib.concatStringsSep "|" faces})\\b" ]);
+    in
+    pkgs.runCommandLocal "nothing-names-its-own-look" { nativeBuildInputs = [ pkgs.ripgrep ]; } ''
+      cd ${./.}
+      # The launcher's colour answers, and the colours they're tested on, name
+      # colours because colours are what's asked; neither is a look.
+      if rg --line-number --no-heading --hidden --glob '!modules/theme/**' \
+        --glob '!modules/quickshell/launcher/Colours.js' --glob '!tests/colour-cases.js' \
+        -e ${lib.escapeShellArg pattern} modules roles hardware tests examples flake.nix; then
+        echo "The lines above name a colour or a face; name the theme's role or font instead."
+        exit 1
+      fi
+      touch $out
+    '';
 
   # A disk's partitions and its open volume go by its name, so a machine's
   # drive and a stick attached beside it are never taken for each other.
@@ -348,6 +689,7 @@ in
         mkdir niri
         cp ${files."niri/config.kdl".source} niri/config.kdl
         cp ${files."niri/theme.kdl".source} niri/theme.kdl
+        cp ${files."niri/binds.kdl".source} niri/binds.kdl
         niri validate --config niri/config.kdl
         touch $out
       '';
@@ -384,6 +726,7 @@ in
         mkdir kitty
         cp ${files."kitty/kitty.conf".source} kitty/kitty.conf
         cp ${files."kitty/theme.conf".source} kitty/theme.conf
+        cp ${files."kitty/keys.conf".source} kitty/keys.conf
         kitty +runpy 'from kitty.config import load_config; import sys; load_config(sys.argv[-1])' \
           kitty/kitty.conf > complaints 2>&1
         if [ -s complaints ]; then cat complaints; exit 1; fi
@@ -398,7 +741,7 @@ in
         home = account workstation;
         files = home.xdg.configFile;
         foreground = lib.concatMapStringsSep ";" (byte: toString (lib.fromHexString byte)) (
-          builtins.match "#(..)(..)(..)" home.jitsusama.theme.colors.foreground
+          builtins.match "#(..)(..)(..)" home.jitsusama.theme.roles.text
         );
       in
       pkgs.runCommandLocal "btop-draws-in-the-theme"
