@@ -110,6 +110,21 @@ pkgs.testers.runNixOSTest {
             ];
           };
         }
+        # A second output, for the launcher's Sound to move to, ranked below
+        # the speakers so they're the one in use from the start.
+        {
+          factory = "adapter";
+          args = {
+            "factory.name" = "support.null-audio-sink";
+            "node.name" = "stand-in-headphones";
+            "media.class" = "Audio/Sink";
+            "priority.session" = 1;
+            "audio.position" = [
+              "FL"
+              "FR"
+            ];
+          };
+        }
       ];
       # A microphone of the class a real one has, which Quickshell needs to see
       # its audio: a loopback whose far side is a source, as Pipewire's guide
@@ -654,6 +669,19 @@ pkgs.testers.runNixOSTest {
               return len(json.loads(as_account("niri msg --json windows"))) > windows
 
           retry(another, timeout_seconds=15)
+
+      with subtest("the launcher's Sound moves sound to another output, and back"):
+          for output in ["stand-in-headphones", "stand-in-speakers"]:
+              as_account("qs ipc call launcher collection sound")
+              wait_for_surface("launcher")
+              time.sleep(0.5)
+              machine.screenshot(f"launcher-sound-{output}")
+              machine.send_chars(output.removeprefix("stand-in-"))
+              time.sleep(0.5)
+              machine.send_key("ret")
+              used = f"wpctl inspect @DEFAULT_AUDIO_SINK@ | grep -q 'node.name = \"{output}\"'"
+              machine.wait_until_succeeds(in_session(used), timeout=10)
+              machine.wait_until_fails(in_session("niri msg layers | grep -q launcher"), timeout=10)
 
       with subtest("a Wi-Fi network is joined from the launcher, a new one asking its password"):
           machine.wait_for_unit("hostapd.service")

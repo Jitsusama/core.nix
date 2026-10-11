@@ -363,6 +363,7 @@ let
     clipboard = ./launcher/Copies.qml;
     notices = ./launcher/PastNotices.qml;
     wifi = ./launcher/Wireless.qml;
+    sound = ./launcher/Sound.qml;
   };
 
   # The program that hears every copy, for the clipboard collection.
@@ -580,6 +581,12 @@ in
       wifi = {
         order = 102;
         source = "wifi";
+        weight = 0.9;
+      };
+      # The devices sound goes out of and comes in through.
+      sound = {
+        order = 103;
+        source = "sound";
         weight = 0.9;
       };
       clipboard = {
