@@ -360,6 +360,24 @@ in
       touch $out
     '';
 
+  # The launcher answers what's asked: sums and number bases, IPv4 and IPv6
+  # addresses and networks with the kind of range each is in, and hardware
+  # addresses, as tests/answers.qml lists them, and leaves alone what isn't
+  # one, in Qt's own JavaScript engine.
+  the-launcher-answers-what-is-asked =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "the-launcher-answers-what-is-asked" { } ''
+      cp ${./tests/answers.qml} answers.qml
+      cp ${./modules/quickshell/launcher/Numbers.js} Numbers.js
+      cp ${./modules/quickshell/launcher/Addresses.js} Addresses.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml ${qt}/bin/qml answers.qml
+      touch $out
+    '';
+
   # Shape is a language (docs/design.md, Shape and Kinds): a border's width
   # says "this is a thing" and a radius says whole or part, so no surface
   # picks either for itself. Every corner is the theme's radius, or a part's

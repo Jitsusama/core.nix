@@ -17,6 +17,13 @@
 // be done to it (verbs, a function giving rows of the same shape). A verb
 // that needs a target asks for one (ask) from the rows `targets` gives,
 // each with a `note` for the footer, and is named on Return by `verb`.
+//
+// A provider can answer rather than find: `answer(typed)` gives what's
+// typed plainly asks for, { headline, copy, rows, note }, or null. The
+// headline is drawn after what's typed and copied by Return; the rows,
+// made with copyRow, carry the detail. One that has to ask the network
+// answers at once with what it has and says `answered` when more arrives,
+// so the launcher asks again; `ask` keeps what a URL said for a while.
 import Quickshell
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
@@ -31,6 +38,78 @@ Scope {
     // The launcher, for what a thing needs of it: the lock, opening below.
     property var launcher: null
     property var things: []
+
+    signal answered
+
+    function answer(typed) {
+        return null;
+    }
+
+    // A file's text as it is now. A FileView blocks only on its first load:
+    // after that, a reload or a new path loads in the background and text()
+    // still says what the last load read, unless the load is waited for.
+    function read(file) {
+        file.reload();
+        file.waitForJob();
+        return file.text();
+    }
+
+    // A row whose Return copies `copy`, or its name, set while the launcher
+    // holds the keys, which a Wayland program needs to set the clipboard.
+    // A row with an empty `copy` says something and copies nothing.
+    function copyRow(fields) {
+        const text = fields.copy ?? fields.name;
+        return thing(Object.assign({
+            verb: text === "" ? "close" : "copy",
+            hue: "voice",
+            plain: true,
+            now: true,
+            run: () => {
+                if (text !== "")
+                    Quickshell.clipboardText = text;
+            }
+        }, fields));
+    }
+
+    // What each URL said, and when: { pending, value, failed, at }.
+    property var asked: ({})
+
+    // What a URL said as JSON, asking it again once `fresh` milliseconds
+    // have passed, and only then: the value it last gave, if any, comes
+    // back at once, and `answered` says when a new one has arrived. A
+    // failure is asked again after ten seconds.
+    function ask(url, fresh) {
+        const now = Date.now();
+        const kept = asked[url];
+        if (kept && (kept.pending || now - kept.at < (kept.failed ? 10000 : fresh)))
+            return kept;
+        const entry = {
+            pending: true,
+            value: kept ? kept.value : undefined,
+            failed: false,
+            at: now
+        };
+        asked[url] = entry;
+        const request = new XMLHttpRequest();
+        request.onreadystatechange = () => {
+            if (request.readyState !== XMLHttpRequest.DONE)
+                return;
+            entry.pending = false;
+            entry.at = Date.now();
+            entry.status = request.status;
+            try {
+                if (request.status !== 200)
+                    throw request.status;
+                entry.value = JSON.parse(request.responseText);
+            } catch (e) {
+                entry.failed = true;
+            }
+            provider.answered();
+        };
+        request.open("GET", url);
+        request.send();
+        return entry;
+    }
 
     // An application's own glyph where the icon font has one, by its desktop
     // entry's id or a window's app id, with a machine's own from
@@ -69,6 +148,7 @@ Scope {
             note: "",
             below: null,
             verbs: null,
+            plain: false,
             later: false,
             now: false
         }, fields);

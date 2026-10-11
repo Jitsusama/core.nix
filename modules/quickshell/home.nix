@@ -12,6 +12,9 @@
   config,
   lib,
   pkgs,
+  # The machine's own settings, which Home Manager gives when it's part of
+  # one, for the weather's home: the time zone.
+  osConfig ? { },
   ...
 }:
 let
@@ -63,6 +66,8 @@ let
     "Picks.qml"
     "pieces/Piece.qml"
     "launcher/Provider.qml"
+    "launcher/Numbers.js"
+    "launcher/Addresses.js"
   ];
 
   # A part's corners, the whole's radius less its border and inset.
@@ -203,7 +208,27 @@ let
     applications = ./launcher/Applications.qml;
     actions = ./launcher/Actions.qml;
     session = ./launcher/Session.qml;
+    calculator = ./launcher/Calculator.qml;
+    networks = ./launcher/Networks.qml;
+    vendors = ./launcher/Vendors.qml;
+    currency = ./launcher/Currency.qml;
+    weather = ./launcher/Weather.qml;
+    machine = ./launcher/Machine.qml;
   };
+
+  # The IEEE's hardware address vendors, from hwdata, in a file for each
+  # first byte: a line for each vendor, its first three bytes and its name,
+  # each after a line break, so one is found by what it starts with.
+  vendors = pkgs.runCommandLocal "hardware-address-vendors" { } ''
+    mkdir -p $out
+    ${lib.getExe pkgs.gawk} -v out=$out '
+      match($0, /^([0-9A-F]{6})[ \t]+\(base 16\)[ \t]+(.*[^ \t\r])/, m) {
+        file = out "/" substr(m[1], 1, 2)
+        if (!(file in seen)) { printf "\n" > file; seen[file] = 1 }
+        printf "%s\t%s\n", m[1], m[2] > file
+      }
+    ' ${pkgs.hwdata}/share/hwdata/oui.txt
+  '';
 
   providers = lib.sortOn (provider: provider.order) (
     lib.mapAttrsToList (name: provider: provider // { inherit name; }) (
@@ -288,6 +313,15 @@ in
         launcher/Provider.qml.
       '';
     };
+    lookups = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = ''
+        Whether an answer may ask the network when what's typed asks for it:
+        the weather, currency rates, public addresses and who holds one.
+        Off, nothing the launcher does leaves the machine.
+      '';
+    };
     learning = {
       enable = lib.mkOption {
         type = lib.types.bool;
@@ -328,6 +362,37 @@ in
         order = 40;
         source = "session";
         weight = 0.8;
+      };
+      # Answers, asked in this order; the first to answer is the one shown.
+      calculator = {
+        order = 50;
+        source = "calculator";
+      };
+      networks = {
+        order = 60;
+        source = "networks";
+        inherit (launcher) lookups;
+      };
+      vendors = {
+        order = 70;
+        source = "vendors";
+        directory = "${vendors}";
+      };
+      currency = {
+        order = 80;
+        source = "currency";
+        inherit (launcher) lookups;
+      };
+      weather = {
+        order = 90;
+        source = "weather";
+        units = "metric";
+        zone = osConfig.time.timeZone or null;
+        inherit (launcher) lookups;
+      };
+      machine = {
+        order = 100;
+        source = "machine";
       };
     };
 

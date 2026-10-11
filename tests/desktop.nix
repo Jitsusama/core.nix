@@ -388,6 +388,39 @@ pkgs.testers.runNixOSTest {
 
           retry(moved, timeout_seconds=10)
 
+      with subtest("the launcher answers what's asked, and copies the answer"):
+
+          def answer(typed):
+              as_account("qs ipc call launcher toggle")
+              wait_for_surface("launcher")
+              time.sleep(0.5)
+              machine.send_chars(typed)
+              time.sleep(1)
+
+          def copied(typed, expected):
+              answer(typed)
+              machine.send_key("ret")
+              closed = in_session("niri msg layers | grep -qw launcher")
+              machine.wait_until_fails(closed, timeout=10)
+              t.assertEqual(as_account("wl-paste --no-newline"), expected)
+
+          copied("12*7", "84")
+          # The vendor comes from the list built from hwdata, so this proves it's there.
+          copied("3c:22:fb:12:34:56", "Apple, Inc.")
+          answer("10.0.0.0/22")
+          machine.screenshot("launcher-answer")
+          machine.send_key("esc")
+          # With no network, what has to ask one says it couldn't, and nothing breaks.
+          for typed in ["8.8.8.8", "weather tokyo", "100 usd in cad", "ip"]:
+              answer(typed)
+              machine.send_key("esc")
+          time.sleep(11)
+          answer("weather tokyo")
+          machine.screenshot("launcher-offline")
+          machine.send_key("esc")
+          log = as_account("journalctl --user -u quickshell --no-pager -o cat")
+          assert "ERROR" not in log and "Error:" not in log, "an answer raised an error"
+
       with subtest("the lock screen takes only the right password"):
           as_account("qs ipc call lock lock")
           machine.wait_until_succeeds(in_session("qs ipc call lock isLocked | grep -q true"), timeout=30)

@@ -392,6 +392,13 @@ works the same way everywhere.
   field. What's held shows as chips; the left arrow steps back out, and
   Escape always closes. The footer names what Return does and where the
   arrows go.
+- **Answers in the field.** A sum, a base, an address or network, a hardware
+  address, money, the weather or how the machine is doing is answered in grey
+  right after what's typed, and that's the answer's only home. Return copies
+  it, Tab puts it in place of the question, and Down walks its detail, each
+  row copied the same way. The footer says where an answer came from. Nothing
+  leaves the machine unless the question needs the network, never for a
+  private address, and never with the launcher's `lookups` off.
 - **What's shown is the door to its detail.** The battery opens the power
   menu, the network opens its list, a notification count opens the history.
   Nothing keeps its detail somewhere else.

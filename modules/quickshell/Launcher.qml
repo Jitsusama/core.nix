@@ -54,14 +54,67 @@ Scope {
                 console.error(`The launcher's ${listed.name} couldn't load: ${file.errorString()}`);
                 continue;
             }
-            made.push(file.createObject(root, {
+            const source = file.createObject(root, {
                 settings: listed,
                 weight: listed.weight,
                 launcher: root
-            }));
+            });
+            source.answered.connect(root.reanswer);
+            made.push(source);
         }
         sources = made;
     }
+
+    // What the first provider to answer makes of what's typed, or null.
+    // The selection starts on its headline, at -1, above the rows.
+    property var answer: null
+    // What the search found, below an answer's rows.
+    property var found: []
+
+    function answering(letters) {
+        if (held.length > 0 || letters.trim() === "")
+            return null;
+        for (const source of sources) {
+            const said = source.answer(letters);
+            if (said)
+                return said;
+        }
+        return null;
+    }
+
+    // An answer's rows above what was found. Asked afresh, the selection
+    // goes to the top; when a late answer arrives, a selection already
+    // moved stays on the row it was on.
+    function compose(fresh) {
+        const before = answer ? answer.rows.length : 0;
+        answer = answering(typed);
+        const rows = answer ? answer.rows : [];
+        matches = rows.concat(found);
+        if (fresh || (current === -1 && !answer))
+            current = answer ? -1 : 0;
+        else if (current >= 0)
+            current = Math.max(0, Math.min(current + rows.length - before, matches.length - 1));
+    }
+
+    function reanswer() {
+        if (open && held.length === 0)
+            compose(false);
+    }
+
+    // The headline as a row of its own, for Return and the footer.
+    readonly property var headline: !answer ? null : {
+        name: answer.headline,
+        // An answer still being asked for has nothing to copy yet.
+        verb: (answer.copy ?? answer.headline) === "" ? "close" : "copy",
+        now: true,
+        note: answer.note ?? "",
+        run: () => {
+            const copy = answer.copy ?? answer.headline;
+            if (copy !== "")
+                Quickshell.clipboardText = copy;
+        }
+    }
+    readonly property var selected: current === -1 ? headline : matches[current] ?? null
 
     readonly property var choices: sources.reduce((all, source) => all.concat(source.things), [])
 
@@ -160,9 +213,14 @@ Scope {
                 }
                 matches = Fuzzy.keep(found).map(f => f.choice);
             }
-        } else if (words.length === 0) {
+            answer = null;
+            current = 0;
+            list.positionViewAtBeginning();
+            return;
+        }
+        if (words.length === 0) {
             candidates = [];
-            matches = [];
+            root.found = [];
         } else {
             const need = Fuzzy.letters(words);
             const found = [];
@@ -200,18 +258,23 @@ Scope {
                 f.kept = true;
                 f.times = before.times;
             }
-            matches = Fuzzy.keep(found).map(f =>
+            root.found = Fuzzy.keep(found).map(f =>
                 Object.assign({ byWord: f.byWord === true, times: f.times ?? 0 }, f.choice));
         }
-        current = 0;
+        compose(true);
         list.positionViewAtBeginning();
     }
 
-    onCurrentChanged: list.positionViewAtIndex(current, ListView.Contain)
+    onCurrentChanged: {
+        if (current >= 0)
+            list.positionViewAtIndex(current, ListView.Contain);
+    }
 
     // The rest of the selected name from where what's typed starts a word in
     // it, so the command line can finish the thought.
     readonly property string completion: {
+        if (current === -1 && answer)
+            return ` = ${answer.headline}`;
         const choice = matches[current];
         if (!choice || typed === "")
             return "";
@@ -226,7 +289,8 @@ Scope {
     // Worked out only for the rows drawn.
     function marked(choice) {
         const escape = text => text.replace(/&/g, "&amp;").replace(/</g, "&lt;");
-        const at = choice.byWord ? [] : Fuzzy.match(choice.prepared, words, true).positions ?? [];
+        const at = choice.byWord || choice.plain ? []
+            : Fuzzy.match(choice.prepared, words, true).positions ?? [];
         let out = "";
         for (let i = 0; i < choice.name.length; i++) {
             const letter = escape(choice.name[i]);
@@ -348,19 +412,31 @@ Scope {
                         ghost: root.completion
                         // Where the selection is, once there's more than fits.
                         aside: root.matches.length > root.rows
+                            && root.current >= 0
                             ? `${root.current + 1} of ${root.matches.length}` : ""
                         onTextChanged: root.search(text)
-                        onAccepted: below => root.run(root.matches[root.current], below)
-                        onCompleted: text = text + root.completion
+                        onAccepted: below => root.run(root.selected, below)
+                        // Tab on an answer puts the answer in place of the
+                        // question, so a sum can be carried on; one still
+                        // being asked for leaves the question as it is.
+                        onCompleted: {
+                            if (root.current !== -1 || !root.answer)
+                                text = text + root.completion;
+                            else if ((root.answer.copy ?? root.answer.headline) !== "")
+                                text = root.answer.copy ?? root.answer.headline;
+                        }
                         onCancelled: root.open = false
                         onForward: root.enter(root.matches[root.current])
                         onBackward: root.back()
-                        Keys.onUpPressed: root.current = Math.max(root.current - 1, 0)
+                        // The highest the selection goes: an answer's headline
+                        // sits above the rows, at -1.
+                        readonly property int highest: root.answer ? -1 : 0
+                        Keys.onUpPressed: root.current = Math.max(root.current - 1, highest)
                         Keys.onDownPressed: root.current
-                            = Math.min(root.current + 1, root.matches.length - 1)
+                            = Math.max(highest, Math.min(root.current + 1, root.matches.length - 1))
                         Keys.onPressed: event => {
                             if (event.key === Qt.Key_PageUp)
-                                root.current = Math.max(root.current - root.rows, 0);
+                                root.current = Math.max(root.current - root.rows, highest);
                             else if (event.key === Qt.Key_PageDown)
                                 root.current
                                     = Math.min(root.current + root.rows, root.matches.length - 1);
@@ -416,11 +492,11 @@ Scope {
                     Item {
                         id: foot
 
-                        readonly property var choice: root.matches[root.current]
+                        readonly property var choice: root.selected
 
                         width: parent.width
                         height: Theme.space.xxl + Theme.space.s
-                        visible: root.matches.length > 0
+                        visible: root.matches.length > 0 || root.answer !== null
 
                         Text {
                             x: Theme.space.l
@@ -430,8 +506,10 @@ Scope {
                             readonly property string asked: Fuzzy.words(root.typed).join(" ")
                             readonly property int times: foot.choice ? foot.choice.times ?? 0 : 0
 
+                            // An answer's footer says where it came from.
                             text: !foot.choice ? ""
-                                : foot.choice.note !== "" ? foot.choice.note
+                                : (foot.choice.note ?? "") !== "" ? foot.choice.note
+                                : foot.choice.plain && root.answer ? root.answer.note ?? ""
                                 : root.held.length > 0 ? root.held[0].row.context
                                 : times === 0 ? "" : `you picked this for \u201c${asked}\u201d ${
                                     times === 1 ? "once" : `${times} times`}`
@@ -479,7 +557,7 @@ Scope {
                     // With nothing typed, the shell says what it can do; with
                     // nothing found, it says so.
                     Choice {
-                        visible: root.matches.length === 0
+                        visible: root.matches.length === 0 && root.answer === null
                         glyph: root.typed === "" ? root.sparkle : root.ghost
                         hue: Theme.voice
                         quiet: true
