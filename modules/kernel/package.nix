@@ -72,5 +72,12 @@ linux_7_2.override {
       name = "irq-resend-nested";
       patch = ./irq-resend-nested.patch;
     }
+    {
+      # Lets the graphics driver keep its first eDP mode when the console
+      # starts, rather than modeset the panel a second time, dark for a
+      # second. Written here; docs/kernel.md has the cause.
+      name = "edp-sdp-caps";
+      patch = ./edp-sdp-caps.patch;
+    }
   ];
 }

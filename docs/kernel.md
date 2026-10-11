@@ -37,13 +37,14 @@ x86-64 machine as `packages.x86_64-linux.kernel`.
 ### The Patches
 
 BORE is fetched from its author at a fixed commit with its hash, so it can be
-traced to where it came from and can't change underneath the build. The other
-is a fix written here, kept until the kernel has its own:
+traced to where it came from and can't change underneath the build. The others
+are fixes written here, kept until the kernel has its own:
 
-| Patch                     | What it does              | From               |
-| ------------------------- | ------------------------- | ------------------ |
-| `bore.patch`              | the BORE scheduler        | [BORE's author][1] |
-| `irq-resend-nested.patch` | no bad IRQ trap on resume | written here       |
+| Patch                     | What it does                   | From               |
+| ------------------------- | ------------------------------ | ------------------ |
+| `bore.patch`              | the BORE scheduler             | [BORE's author][1] |
+| `irq-resend-nested.patch` | no bad IRQ trap on resume      | written here       |
+| `edp-sdp-caps.patch`      | a single eDP modeset at boot   | written here       |
 
 BORE is a small change to the kernel's own EEVDF scheduler: it favours tasks
 that run in short bursts, such as the compositor, terminal and editor, over
@@ -60,6 +61,21 @@ a resume the resend ran `handle_bad_irq()` and logged "unexpected IRQ trap".
 The patch climbs to the first parent that has a handler, and does nothing when
 none has, as the kernel already does for a nested interrupt with no parent.
 The patch file is the diff to send upstream.
+
+The eDP fix is for the screen going dark twice as the graphics driver starts.
+The driver commits a display state while it loads, before anything has asked
+the panel what it supports, and the console's first commit comes after. A
+panel that can vary its refresh rate takes the Adaptive-Sync SDP, but the
+driver only learns so in its detect hook, so the first state leaves the SDP
+out and the console's puts it in. The driver can't change that without a full
+modeset, which on the XPS 14's panel powers it off for its half-second power
+cycle and costs about 1.1 s, and the card isn't ready for the desktop until it
+ends. The patch reads the SDP caps when the panel is first set up, beside the
+compression caps read there already, so the console's commit matches and
+keeps the mode. One modeset is left: the firmware drives the panel at 8 bits
+with Display Stream Compression, and the driver forces a modeset over any
+firmware state that uses it, a FIXME it keeps until it can read that state
+back.
 
 ### The Settings
 

@@ -1,0 +1,39 @@
+drm/i915/dp: Read an eDP panel's SDP caps when it's set up
+
+Whether the sink takes the Adaptive-Sync SDP is only read in
+intel_dp_detect(), and the first detect comes after the initial commit
+the driver makes while it loads. On an eDP panel that can do VRR, that
+commit computes a state without the SDP, and the next one, the fbdev
+console's, with it. infoframes.enable then differs in a bit the fastset
+check only ignores while VRR is enabled, so the console's commit is a
+second full modeset, with the panel's power cycle, about 1.1 s dark.
+
+intel_edp_init_dpcd() already reads the eDP panel's DPCD and its DSC
+caps, so read the SDP caps there too. intel_dp_detect() still reads them
+again, as it does the DSC caps.
+
+--- a/drivers/gpu/drm/i915/display/intel_dp.c
++++ b/drivers/gpu/drm/i915/display/intel_dp.c
+@@ -4889,6 +4889,8 @@
+ 	intel_edp_set_data_override_rates(intel_dp);
+ }
+ 
++static void intel_dp_detect_sdp_caps(struct intel_dp *intel_dp);
++
+ static bool
+ intel_edp_init_dpcd(struct intel_dp *intel_dp, struct intel_connector *connector)
+ {
+@@ -4957,6 +4959,13 @@
+ 	/* Read the eDP DSC DPCD registers */
+ 	intel_dp_detect_dsc_caps(intel_dp, connector);
+ 
++	/*
++	 * And the SDP caps, so the state computed before the first detect,
++	 * as the initial commit's is, has the Adaptive-Sync SDP the next
++	 * commit's will, and that commit can be a fastset.
++	 */
++	intel_dp_detect_sdp_caps(intel_dp);
++
+ 	return true;
+ }
+ 
