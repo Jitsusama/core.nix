@@ -12,7 +12,9 @@
 # the kernel build took 202 s, against 233 s; and the Nix build kept 58% of
 # the throughput it had. An idle slice did no better for the apps, and since
 # it yields to everything in user.slice, a build in a terminal would stop
-# Nix's builds altogether.
+# Nix's builds altogether. The slice's name has no dash, since systemd reads
+# one as nesting: nix-build.slice would sit in a nix.slice at the default
+# weight, and its own weight would rank it only against its siblings.
 #
 # Builds also ask for idle I/O, which a disk scheduler that honours priority
 # would serve only when nothing else wants the disk. NVMe drives run without
@@ -28,10 +30,10 @@
   nix.daemonCPUSchedPolicy = "batch";
   nix.daemonIOSchedClass = "idle";
 
-  systemd.slices.nix-build.sliceConfig.CPUWeight = 10;
+  systemd.slices.build.sliceConfig.CPUWeight = 10;
 
   systemd.services.nix-daemon.serviceConfig = {
-    Slice = "nix-build.slice";
+    Slice = "build.slice";
     ManagedOOMMemoryPressure = "kill";
     ManagedOOMMemoryPressureLimit = "80%";
   };
