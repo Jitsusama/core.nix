@@ -181,15 +181,46 @@ changes it:
 | ------------ | --------------------------------------------------------------------- |
 | Panel VRR    | the panel's range comes from a DisplayID block Linux doesn't read yet |
 | Presence     | `iio-sensor-proxy` doesn't publish the presence sensor; see below     |
-| Level Zero   | nixpkgs's GPU driver can't find its compiler and aborts; see below    |
 
 - **Presence.** The sensor hub's attention sensor shows up as an IIO
   proximity device, but `iio-sensor-proxy` has no near level for it and
   publishes nothing, and nothing would read it yet.
-- **Level Zero on the GPU.** nixpkgs gives only the OpenCL driver its
-  compiler on its library path, so `libze_intel_gpu` can't load
-  `libigc.so.2` and aborts in `zeInit`. OpenCL works, and so does the NPU
-  through Level Zero. The fix is a line in nixpkgs's package.
+
+### Fixed Here Until nixpkgs Fixes It
+
+Packages nixpkgs builds wrong for this laptop are overridden in [the hardware
+file][2]. Each fix is the change nixpkgs's package needs, so it can go
+upstream as it is and the override can then come out.
+
+- **Level Zero on the GPU.** The compute runtime's `postFixup` gives only the
+  OpenCL driver, `libigdrcl.so`, the graphics compiler's libraries on its
+  RUNPATH. The Level Zero driver beside it gets nothing, so it can't
+  `dlopen` `libigc.so.2`, and `zeInit` aborts the whole program in
+  `command_stream_receiver.cpp`. OpenCL worked, but Level Zero didn't, for
+  the NPU either, since `zeInit` loads every driver. With the fix, `zeInit`
+  finds both the Arc B390 and the NPU. The fix in
+  `pkgs/by-name/in/intel-compute-runtime/package.nix`:
+
+  ```diff
+  -      $out/lib/intel-opencl/libigdrcl.so
+  +      $out/lib/intel-opencl/libigdrcl.so \
+  +      $out/lib/libze_intel_gpu.so.1
+  ```
+
+- **turbostat.** Its Makefile, `tools/power/x86/turbostat/Makefile`, sets
+  `CC = $(CROSS_COMPILE)gcc`, which wins over the `CC` the build environment
+  sets. The kernel's package set builds with clang here, so the build stops
+  at `gcc: command not found`. Passing the compiler on the command line
+  fixes it, and gives a cross build its own compiler too. The fix in
+  `pkgs/os-specific/linux/turbostat/default.nix`:
+
+  ```diff
+  -  makeFlags = [ "PREFIX=${placeholder "out"}" ];
+  +  makeFlags = [
+  +    "PREFIX=${placeholder "out"}"
+  +    "CC=${stdenv.cc.targetPrefix}cc"
+  +  ];
+  ```
 
 ### Left Out on Purpose
 

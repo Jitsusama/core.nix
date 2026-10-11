@@ -3,7 +3,40 @@
 # four CS35L57 SoundWire amplifiers, an IPU7 camera behind Intel's CVS bridge,
 # and Intel's BE211 Wi-Fi 7. docs/hardware.md says what works, where each
 # workaround comes from, and what's left.
-{ pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
+let
+  # nixpkgs gives only the compute runtime's OpenCL driver the graphics
+  # compiler's libraries on its RUNPATH, so Level Zero's GPU driver can't load
+  # libigc.so.2 and aborts in zeInit. This gives that driver the same RUNPATH,
+  # as the line docs/hardware.md has for nixpkgs would. Take it out once
+  # nixpkgs's package does it.
+  computeRuntime = pkgs.intel-compute-runtime.overrideAttrs (old: {
+    postFixup = old.postFixup + ''
+      patchelf --set-rpath ${
+        lib.makeLibraryPath [
+          pkgs.intel-gmmlib
+          pkgs.intel-graphics-compiler
+          pkgs.libva
+          pkgs.stdenv.cc.cc
+        ]
+      } \
+        $out/lib/libze_intel_gpu.so.1
+    '';
+  });
+
+  # turbostat's Makefile calls the compiler gcc, and the kernel's packages
+  # build with clang, which has no gcc, so nixpkgs's turbostat fails to
+  # build. cc is whichever compiler the set uses. Take the flag out once
+  # nixpkgs's package passes it.
+  turbostat = config.boot.kernelPackages.turbostat.overrideAttrs (old: {
+    makeFlags = old.makeFlags ++ [ "CC=cc" ];
+  });
+in
 {
   imports = [
     ../../modules/kernel/nixos.nix
@@ -57,7 +90,7 @@
     extraPackages = [
       pkgs.intel-media-driver
       pkgs.vpl-gpu-rt
-      pkgs.intel-compute-runtime
+      computeRuntime
     ];
   };
   environment.sessionVariables.LIBVA_DRIVER_NAME = "iHD";
@@ -82,6 +115,10 @@
   # Intel's thermal daemon, which sets the chip's power limits from the
   # laptop's own thermal tables as it heats.
   services.thermald.enable = true;
+
+  # Each core's frequency and idle states and the package's power, which is
+  # how the power limits and profiles here were measured.
+  environment.systemPackages = [ turbostat ];
 
   # Authorizes Thunderbolt and USB4 docks.
   services.hardware.bolt.enable = true;
