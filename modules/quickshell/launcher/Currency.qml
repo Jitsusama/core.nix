@@ -9,6 +9,8 @@ import "Numbers.js" as Numbers
 Provider {
     id: provider
 
+    examples: ["100 usd in cad", "eur to jpy"]
+
     // The currencies the bank publishes a rate for.
     readonly property var codes: ["AUD", "BGN", "BRL", "CAD", "CHF", "CNY", "CZK", "DKK", "EUR",
         "GBP", "HKD", "HUF", "IDR", "ILS", "INR", "ISK", "JPY", "KRW", "MXN", "MYR", "NOK", "NZD",

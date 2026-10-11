@@ -39,11 +39,17 @@ Provider {
                         : workspace && here && workspace.id === here.id ? "here"
                         : workspace ? `workspace ${workspace.idx}` : "",
                     context: workspace ? `on workspace ${workspace.idx}` : "",
+                    focused: window.is_focused,
                     run: () => Niri.act({ FocusWindow: { id: window.id } }),
                     below: below,
                     verbs: () => provider.verbs(window, title, program, below)
                 });
             });
+    }
+
+    // What's in front of you comes first at home, its verbs one arrow away.
+    function home() {
+        return things.filter(window => window.focused);
     }
 
     function glyph(code) {

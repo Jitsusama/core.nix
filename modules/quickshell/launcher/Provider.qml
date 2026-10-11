@@ -45,8 +45,20 @@ Scope {
         return null;
     }
 
+    // What it puts on the home screen, with nothing typed, before the
+    // likeliest picks: the windows' provider gives the focused window.
+    function home() {
+        return [];
+    }
+
+    // Things worth typing to try it, which the field suggests in turn at
+    // home, one each time the launcher opens.
+    property var examples: []
+
     // A provider with too many things to mix into the main search, such as
-    // emoji, is a collection: { noun, glyph, ask }. Its things stay out of
+    // emoji, is a collection: { noun, title, glyph, ask }, its title naming it
+    // on the home screen, and searched false if it adds no row to a search,
+    // only opened by its chord or from home. Its things stay out of
     // the main list. The launcher asks `search(typed)` for its matches, best
     // first, with how scattered the best is as Fuzzy.js grades a match,
     // { rows, grade }, and shows the best as one row with a count of the

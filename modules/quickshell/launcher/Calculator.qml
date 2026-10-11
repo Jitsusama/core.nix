@@ -6,6 +6,8 @@ import QtQuick
 import "Numbers.js" as Numbers
 
 Provider {
+    examples: ["255 in hex", "2^32", "sqrt(2)", "0b1010"]
+
     function answer(typed) {
         const said = Numbers.answer(typed, settings);
         if (!said)

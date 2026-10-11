@@ -15,6 +15,8 @@ import "Numbers.js" as Numbers
 Provider {
     id: provider
 
+    examples: ["ip", "10.0.0.0/22", "8.8.8.8", "2001:db8::/48"]
+
     readonly property bool lookups: settings.lookups !== false
     // How long what a registry or ipify said is kept, in milliseconds.
     readonly property int day: 24 * 60 * 60 * 1000

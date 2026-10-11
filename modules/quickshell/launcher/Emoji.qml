@@ -12,7 +12,13 @@ import "Emoji.js" as Emoji
 Provider {
     id: provider
 
-    collection: ({ noun: "emoji", glyph: String.fromCodePoint(0xf01f5), ask: "which emoji?" })
+    collection: ({
+        noun: "emoji",
+        title: "Emoji",
+        glyph: String.fromCodePoint(0xf01f5),
+        ask: "which emoji?"
+    })
+    examples: ["tada"]
 
     // Every emoji, in Unicode's order, read the first time it's needed.
     property var all: null

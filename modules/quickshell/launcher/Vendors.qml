@@ -11,6 +11,8 @@ import "Addresses.js" as Addresses
 Provider {
     id: provider
 
+    examples: ["3c:22:fb:12:34:56"]
+
     function glyph(code) {
         return String.fromCodePoint(code);
     }

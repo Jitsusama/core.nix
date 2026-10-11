@@ -15,6 +15,7 @@ Provider {
 
     collection: ({
         noun: "shortcuts",
+        title: "Shortcuts",
         glyph: String.fromCodePoint(0xf097b),
         ask: "which shortcut?",
         searched: false

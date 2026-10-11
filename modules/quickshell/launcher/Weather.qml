@@ -12,6 +12,8 @@ import "Numbers.js" as Numbers
 Provider {
     id: provider
 
+    examples: ["weather", "weather in tokyo"]
+
     readonly property bool imperial: settings.units === "imperial"
     readonly property var days: ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday",
         "Saturday"]
@@ -62,8 +64,9 @@ Provider {
         return `${Numbers.format(Math.round(value), 0, settings.group, settings.point)}\u00b0`;
     }
 
-    // Where "here" is, and how the footer says it was found.
-    function home() {
+    // Where "here" is, and how the footer says it was found. Not home(),
+    // which is what a provider puts on the launcher's home screen.
+    function local() {
         if (settings.place)
             return { name: settings.place, from: "" };
         if (!settings.zone)
@@ -81,7 +84,7 @@ Provider {
         if (!asked)
             return null;
         const away = asked[1] ? asked[1].trim() : "";
-        const here = home();
+        const here = local();
         if (away === "" && !here)
             return {
                 headline: "where?",

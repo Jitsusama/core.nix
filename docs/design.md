@@ -386,6 +386,12 @@ works the same way everywhere.
   than the best is left out. What's picked for what was typed becomes what
   it means, said in the footer, so there are no aliases to set up or
   remember.
+- **Home is what's next.** With nothing typed, the launcher shows what's in
+  front of you (the focused window, its verbs one arrow away), then the
+  likeliest picks, then after a gap each collection whole, with its size and
+  the chord that opens it. The field suggests something to try, a different
+  one each time it opens, drawn from what the providers can answer; Tab
+  takes it.
 - **Every row is a thing with verbs.** The right arrow at the end of the line
   steps into the selected row: what can be done to it, searched the same way,
   each with its chord, and a verb needing a target asks for it in the same

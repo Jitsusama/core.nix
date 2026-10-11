@@ -9,6 +9,8 @@ import "Numbers.js" as Numbers
 Provider {
     id: provider
 
+    examples: ["cpu", "memory", "uptime"]
+
     // The processors' counters when last asked, to tell how busy they've
     // been since; the first time, since boot.
     property var before: null

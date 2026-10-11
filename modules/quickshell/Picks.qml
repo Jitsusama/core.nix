@@ -62,6 +62,22 @@ Scope {
         return out;
     }
 
+    // What's been picked most, whatever it was picked for, fading as every
+    // pick does: the home screen's guess at what comes next. The things'
+    // keys, likeliest first.
+    function likeliest() {
+        if (!learns)
+            return [];
+        const now = Date.now();
+        const worth = {};
+        for (const asked in picks) {
+            const answers = picks[asked];
+            for (const thing in answers)
+                worth[thing] = (worth[thing] ?? 0) + fade(answers[thing], now);
+        }
+        return Object.keys(worth).sort((a, b) => worth[b] - worth[a]);
+    }
+
     // Remember that this thing was picked for what was typed.
     function picked(typed, thing) {
         const query = key(typed);

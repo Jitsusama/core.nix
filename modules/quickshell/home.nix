@@ -233,11 +233,26 @@ let
 
   # The desktop's binds the launcher can run, its own toggle left out, since
   # picking that from the launcher would only close it.
+  # Each with the launcher's collection it opens, if it opens one, so the
+  # launcher steps into it rather than closing to open again, and its home
+  # screen shows the chord beside the collection.
   actions = map (b: {
     inherit (b) does run;
     glyph = actionGlyph b.run;
     chord = map face' (lib.splitString "+" b.chord);
+    opens = if opensCollection b.run then lib.last b.run else "";
   }) (lib.filter (b: b.run != [ ] && b.run != launcherToggle) config.jitsusama.keys.desktop);
+  opensCollection =
+    run:
+    lib.length run == 6
+    &&
+      lib.take 5 run == [
+        "qs"
+        "ipc"
+        "call"
+        "launcher"
+        "collection"
+      ];
   launcherToggle = [
     "qs"
     "ipc"

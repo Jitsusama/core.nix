@@ -168,6 +168,81 @@ Scope {
         return rows;
     }
 
+    // How many of the likeliest picks the home screen shows.
+    readonly property int likely: 3
+
+    // With nothing typed: what's in front of you, the likeliest picks, then
+    // after a gap each collection whole, its size and the chord that opens
+    // it, so the chords are learned by seeing them where they're used.
+    function home() {
+        const rows = [];
+        const shown = new Set();
+        for (const source of sources)
+            for (const row of source.home()) {
+                rows.push(row);
+                shown.add(row.key);
+            }
+        const byKey = {};
+        for (const choice of choices)
+            byKey[choice.key] = choice;
+        let added = 0;
+        for (const key of picks.likeliest()) {
+            const choice = byKey[key];
+            if (!choice || shown.has(key))
+                continue;
+            rows.push(choice);
+            shown.add(key);
+            if (++added === likely)
+                break;
+        }
+        return rows.concat(collections.map((source, index) => whole(source, index === 0
+            && rows.length > 0)));
+    }
+
+    // A collection as one row at home: Return or the right arrow opens all
+    // of it.
+    function whole(source, gap) {
+        const collection = source.collection;
+        const name = source.settings.name;
+        const size = source.everything().length;
+        const opener = Shortcuts.actions.find(action => action.opens === name);
+        return {
+            key: `collection:${name}`,
+            verb: "open",
+            name: collection.title ?? collection.noun,
+            plain: true,
+            count: size === 0 ? "empty" : String(size).replace(/\B(?=(\d{3})+(?!\d))/g, ","),
+            glyph: collection.glyph,
+            hue: "voice",
+            chord: opener ? opener.chord : [],
+            side: "",
+            gap: gap,
+            opens: name,
+            from: source,
+            chip: collection.noun,
+            ask: collection.ask,
+            lead: collection.glyph,
+            leadHue: "voice",
+            verbs: () => source.everything()
+        };
+    }
+
+    // Something to try, a different one each time the launcher opens, taken
+    // in turn from each provider that has some, so every kind gets a turn.
+    readonly property var examples: {
+        const out = [];
+        const longest = Math.max(0, ...sources.map(source => source.examples.length));
+        for (let i = 0; i < longest; i++)
+            for (const source of sources)
+                if (i < source.examples.length)
+                    out.push(source.examples[i]);
+        return out;
+    }
+    property int tried: -1
+    readonly property string example: examples.length === 0 ? ""
+        : examples[Math.max(0, tried) % examples.length]
+    readonly property bool atHome: typed === "" && held.length === 0
+
     // A collection's matches with those picked before for what's typed
     // first, most picked first, the rest in their order.
     function learnedFirst(found, letters) {
@@ -288,7 +363,7 @@ Scope {
         gathered = gathering(letters);
         if (words.length === 0) {
             candidates = [];
-            root.found = [];
+            root.found = home();
         } else {
             const need = Fuzzy.letters(words);
             const found = [];
@@ -471,6 +546,7 @@ Scope {
         if (open) {
             pointer = Qt.point(-1, -1);
             held = [];
+            tried += 1;
             restart("");
         }
     }
@@ -519,9 +595,10 @@ Scope {
                         hint: root.held.length === 0 ? "what next?"
                             : root.held[root.held.length - 1].row.ask ?? "what to do?"
                         ghost: root.completion
-                        // Where the selection is, once there's more than fits.
-                        aside: root.matches.length > root.rows
-                            && root.current >= 0
+                        // At home, something to try; elsewhere, where the
+                        // selection is, once there's more than fits.
+                        aside: root.atHome && root.example !== "" ? `try  ${root.example}`
+                            : root.matches.length > root.rows && root.current >= 0
                             ? `${root.current + 1} of ${root.matches.length}` : ""
                         onTextChanged: root.search(text)
                         onAccepted: below => root.run(root.selected, below)
@@ -529,7 +606,10 @@ Scope {
                         // question, so a sum can be carried on; one still
                         // being asked for leaves the question as it is.
                         onCompleted: {
-                            if (root.current !== -1 || !root.answer)
+                            // At home, Tab takes the suggestion to try.
+                            if (root.atHome && root.example !== "")
+                                text = root.example;
+                            else if (root.current !== -1 || !root.answer)
                                 text = text + root.completion;
                             else if ((root.answer.copy ?? root.answer.headline) !== "")
                                 text = root.answer.copy ?? root.answer.headline;
@@ -570,26 +650,37 @@ Scope {
                         id: list
 
                         width: parent.width
-                        height: Math.min(count, root.rows) * Theme.space.xxxl
+                        // A gap sets the collections apart at home.
+                        readonly property int apart: root.matches.some(row => row.gap)
+                            ? Theme.space.m : 0
+                        height: Math.min(count, root.rows) * Theme.space.xxxl + apart
                         visible: count > 0
                         clip: true
                         boundsBehavior: Flickable.StopAtBounds
                         model: root.matches
 
-                        delegate: Choice {
+                        delegate: Item {
+                            id: entry
+
                             required property var modelData
                             required property int index
 
                             width: list.width
-                            selected: index === root.current
-                            glyph: modelData.glyph
-                            hue: Theme[modelData.hue]
-                            name: selected ? modelData.name : root.marked(modelData)
-                            chord: modelData.chord
-                            side: modelData.side
-                            count: modelData.count ?? ""
-                            onClicked: root.run(modelData, false)
-                            onPointed: at => root.pointed(index, at)
+                            height: Theme.space.xxxl + (modelData.gap ? list.apart : 0)
+
+                            Choice {
+                                anchors.bottom: parent.bottom
+                                selected: entry.index === root.current
+                                glyph: entry.modelData.glyph
+                                hue: Theme[entry.modelData.hue]
+                                name: selected ? entry.modelData.name
+                                    : root.marked(entry.modelData)
+                                chord: entry.modelData.chord
+                                side: entry.modelData.side
+                                count: entry.modelData.count ?? ""
+                                onClicked: root.run(entry.modelData, false)
+                                onPointed: at => root.pointed(entry.index, at)
+                            }
                         }
                     }
 
@@ -619,7 +710,7 @@ Scope {
                             text: !foot.choice ? ""
                                 : (foot.choice.note ?? "") !== "" ? foot.choice.note
                                 : foot.choice.plain && root.answer ? root.answer.note ?? ""
-                                : root.held.length > 0 ? root.held[0].row.context
+                                : root.held.length > 0 ? root.held[0].row.context ?? ""
                                 : times === 0 ? "" : `you picked this for \u201c${asked}\u201d ${
                                     times === 1 ? "once" : `${times} times`}`
                             color: Theme.muted
@@ -646,6 +737,8 @@ Scope {
                                         keys.push(["\u2192", choice.from ? "see all" : "more"]);
                                     if (root.held.length > 0)
                                         keys.push(["\u2190", "back"]);
+                                    if (root.atHome && root.example !== "")
+                                        keys.push(["\u21e5", "try it"]);
                                     return keys;
                                 }
 
