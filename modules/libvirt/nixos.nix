@@ -66,6 +66,13 @@ in
     description = "libvirt QEMU daemon, for session machines";
     requires = [ "virtqemud.socket" ];
     after = [ "virtqemud.socket" ];
+    # A unit's path is its own, not the session's, so the daemon is handed
+    # what it looks for there: QEMU, swtpm and passt.
+    path = [
+      qemu
+      pkgs.passt
+      pkgs.swtpm
+    ];
     # The filter makes a user service give up gaining privilege, so a session
     # machine can't use qemu-bridge-helper. Bridges are qemu:///system's job;
     # session machines use passt.
