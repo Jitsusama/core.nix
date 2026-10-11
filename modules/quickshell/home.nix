@@ -51,6 +51,8 @@ let
     "shell.qml"
     "Prompt.qml"
     "Launcher.qml"
+    "Choice.qml"
+    "Margin.qml"
     "Notifications.qml"
     "Lock.qml"
     "Polkit.qml"
@@ -68,6 +70,7 @@ let
     "Picks.qml"
     "Notices.qml"
     "Caffeinate.qml"
+    "Quiet.qml"
     "pieces/Piece.qml"
     "launcher/Provider.qml"
     "launcher/Numbers.js"
@@ -264,6 +267,9 @@ let
         notices = nerd "f009c";
       }
       .${lib.last run} or (nerd "f097b")
+    # The margin's drawer, which hangs from the top of the screen.
+    else if program == "qs" && lib.elem "margin" run then
+      nerd "f1513"
     else
       nerd "f2d0";
 
@@ -315,6 +321,11 @@ let
     network = ./pieces/Network.qml;
     volume = ./pieces/Volume.qml;
     awake = ./pieces/Awake.qml;
+    notices = ./pieces/Waiting.qml;
+    quiet = ./pieces/DoNotDisturb.qml;
+    microphone = ./pieces/Microphone.qml;
+    sharing = ./pieces/Sharing.qml;
+    recording = ./pieces/Recording.qml;
   };
 
   overview = pieces.drawn config.jitsusama.quickshell.overview.pieces;
@@ -601,6 +612,7 @@ in
         low = 20;
         critical = 10;
         collapse = 20;
+        mark = "low";
       };
       network = {
         order = 40;
@@ -621,6 +633,43 @@ in
         label = "awake";
         tier = "when";
         mark = "awake";
+      };
+      # What's on only now and then, each also a pull in the margin while
+      # it's true (Margin.qml), in the order the overview gives them.
+      notices = {
+        order = 54;
+        source = "notices";
+        label = "notices";
+        tier = "when";
+        mark = "waiting";
+      };
+      quiet = {
+        order = 57;
+        source = "quiet";
+        label = "quiet";
+        tier = "when";
+        mark = "quiet";
+      };
+      microphone = {
+        order = 70;
+        source = "microphone";
+        label = "mic";
+        tier = "when";
+        mark = "muted";
+      };
+      sharing = {
+        order = 80;
+        source = "sharing";
+        label = "sharing";
+        tier = "when";
+        mark = "sharing";
+      };
+      recording = {
+        order = 90;
+        source = "recording";
+        label = "recording";
+        tier = "when";
+        mark = "recording";
       };
     };
 

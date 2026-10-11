@@ -1,9 +1,15 @@
 // The notification server: each notification is a notice in the top right
 // corner, newest at the top. A click dismisses one; it leaves by itself when
-// its time is up, unless it's critical.
+// its time is up, unless it's critical. While notices are held (Quiet.qml),
+// only a critical one shows.
+//
+// The corner's right edge sits a step inside the windows' (Margin.qml), and
+// the notices make way below the margin's drawer while it's out.
 //
 // Each is kept in the session's history as it arrives (Notices.qml), for
-// the launcher to find later.
+// the launcher to find later. Super+N opens them there, by the keys, where
+// the ones still here can be answered or let go, and while it's open the
+// corner leaves them to it.
 //
 // It's the notice kind (docs/design.md, Shape and Kinds): the edge frame,
 // since it never takes the keys, or the alert's when critical; who or what
@@ -24,7 +30,6 @@ Scope {
 
     // When each notification arrived, by its id, for the footer's time.
     property var arrived: ({})
-
 
     function since(then, now) {
         const minutes = Math.floor((now - then) / 60000);
@@ -50,12 +55,14 @@ Scope {
             // One its sender marks transient asks not to be kept, as niri's
             // screenshot notice does.
             const urgent = notification.urgency === NotificationUrgency.Critical;
+            const held = Quiet.on && !urgent;
             if (!notification.transient)
-                Notices.arrived(notification, urgent);
+                Notices.arrived(notification, urgent, held);
             const id = notification.id;
             notification.closed.connect(reason => Notices.left(id,
                 reason === NotificationCloseReason.Expired));
-            notification.tracked = true;
+            // One held is let go at once, so it never shows.
+            notification.tracked = !held;
         }
     }
 
@@ -79,11 +86,11 @@ Scope {
             areas = found;
         }
 
-        visible: server.trackedNotifications.values.length > 0
+        visible: server.trackedNotifications.values.length > 0 && !Notices.gathered
         anchors.top: true
         anchors.right: true
-        implicitWidth: root.width + Theme.space.m + Theme.floating.reach
-        implicitHeight: stack.height + Theme.space.m + Theme.floating.reach
+        implicitWidth: root.width + Theme.space.m + Theme.space.s + Theme.floating.reach
+        implicitHeight: stack.height + stack.y + Theme.floating.reach
         exclusionMode: ExclusionMode.Ignore
         color: "transparent"
         mask: notices
@@ -94,7 +101,15 @@ Scope {
         Column {
             id: stack
             x: Theme.floating.reach
-            y: Theme.space.m
+            y: Theme.space.m + Notices.below
+
+            Behavior on y {
+                NumberAnimation {
+                    duration: Notices.below > 0 ? Theme.motion.medium : Theme.motion.short
+                    easing.type: Easing.BezierSpline
+                    easing.bezierCurve: Theme.motion.curve
+                }
+            }
             width: root.width
             spacing: Theme.space.m
 
@@ -204,10 +219,13 @@ Scope {
                         onClicked: card.modelData.dismiss()
                     }
 
-                    // Five seconds when the sender doesn't say.
+                    // Five seconds when the sender doesn't say. Quickshell's
+                    // documents call its timeout seconds, but it passes on
+                    // what the sender said, which is milliseconds.
                     Timer {
                         running: !card.urgent
-                        interval: card.modelData.expireTimeout > 0 ? card.modelData.expireTimeout * 1000 : 5000
+                        interval: card.modelData.expireTimeout > 0
+                            ? card.modelData.expireTimeout : 5000
                         onTriggered: card.modelData.expire()
                     }
                 }

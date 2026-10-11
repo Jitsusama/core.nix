@@ -761,6 +761,91 @@ pkgs.testers.runNixOSTest {
           machine.send_key("ret")
           machine.wait_until_fails(held, timeout=10)
 
+      # The margin is there only while something's on, and every part of it
+      # is reached by the keys: Super+O brings out the drawer with what wants
+      # Joel selected, the arrows move, Return does the action.
+      margin = "niri msg layers | grep -q margin"
+      notices = "niri msg layers | grep -q notifications"
+
+      with subtest("Super+O shows Keep Awake in the margin, and Return lets it sleep"):
+          machine.fail(in_session(margin))
+          as_account("systemctl --user start caffeinate.service")
+          wait_for_surface("margin")
+          time.sleep(0.5)
+          machine.screenshot("margin-awake")
+          machine.send_key("meta_l-o")
+          # The panel takes the keys, and a click anywhere else puts it away.
+          wait_for_surface("outside")
+          time.sleep(0.5)
+          machine.screenshot("margin-drawer")
+          machine.send_key("ret")
+          machine.wait_until_fails(held, timeout=10)
+          machine.wait_until_fails(in_session(margin), timeout=10)
+
+      with subtest("do not disturb holds a notice, shows it held, and ends from the margin"):
+          machine.wait_until_fails(in_session(notices), timeout=30)
+          as_account("qs ipc call launcher toggle")
+          wait_for_surface("launcher")
+          time.sleep(0.5)
+          machine.send_chars("do not disturb")
+          time.sleep(0.5)
+          machine.send_key("ret")
+          wait_for_surface("margin")
+          as_account("notify-send 'Held back' 'until it ends'")
+          time.sleep(2)
+          machine.fail(in_session(notices))
+          # Its panel offers ending it, an hour more, then what's held.
+          machine.send_key("meta_l-o")
+          wait_for_surface("outside")
+          time.sleep(0.5)
+          machine.screenshot("margin-quiet")
+          machine.send_key("down")
+          machine.send_key("down")
+          machine.send_key("ret")
+          wait_for_surface("launcher")
+          time.sleep(0.5)
+          machine.screenshot("launcher-held")
+          machine.send_key("esc")
+          machine.wait_until_fails(in_session("niri msg layers | grep -q launcher"), timeout=10)
+          machine.send_key("meta_l-o")
+          wait_for_surface("outside")
+          time.sleep(0.5)
+          machine.send_key("ret")
+          machine.wait_until_fails(in_session(margin), timeout=10)
+          as_account("test ! -s $XDG_RUNTIME_DIR/quiet")
+
+      with subtest("a missed notice lights its pull, and Return shows the notices"):
+          as_account("notify-send --expire-time=1000 'Peter' 'are you there?'")
+          wait_for_surface("notifications")
+          # On screen it isn't waiting yet; once it goes by itself, it is.
+          machine.wait_until_fails(in_session(notices), timeout=15)
+          wait_for_surface("margin")
+          time.sleep(0.5)
+          machine.screenshot("margin-waiting")
+          machine.send_key("meta_l-o")
+          wait_for_surface("outside")
+          time.sleep(0.5)
+          machine.send_key("ret")
+          wait_for_surface("launcher")
+          time.sleep(0.5)
+          machine.screenshot("launcher-from-margin")
+          machine.send_key("esc")
+          # Opening them counted them seen, so nothing's waiting.
+          machine.wait_until_fails(in_session(margin), timeout=10)
+
+      with subtest("the microphone muted shows in the margin, and Return unmutes it"):
+          as_account("wpctl set-mute @DEFAULT_AUDIO_SOURCE@ 1")
+          wait_for_surface("margin")
+          machine.wait_until_fails(in_session("niri msg layers | grep -q microphone"), timeout=10)
+          machine.send_key("meta_l-o")
+          wait_for_surface("outside")
+          time.sleep(0.5)
+          machine.screenshot("margin-muted")
+          machine.send_key("ret")
+          muted = "wpctl get-volume @DEFAULT_AUDIO_SOURCE@ | grep -q MUTED"
+          machine.wait_until_fails(in_session(muted), timeout=10)
+          machine.wait_until_fails(in_session(margin), timeout=10)
+
       with subtest("the lock screen takes only the right password"):
           as_account("qs ipc call lock lock")
           machine.wait_until_succeeds(in_session("qs ipc call lock isLocked | grep -q true"), timeout=30)

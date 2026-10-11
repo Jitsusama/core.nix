@@ -24,6 +24,11 @@ Singleton {
             .concat(plugged ? ["caffeinate-lid.service"] : []));
     }
 
+    // Keeps it awake, but lets shutting the lid sleep it.
+    function open() {
+        Niri.spawn(["systemctl", "--user", "stop", "caffeinate-lid.service"]);
+    }
+
     function release() {
         Niri.spawn(["systemctl", "--user", "stop", "caffeinate.service"]);
     }

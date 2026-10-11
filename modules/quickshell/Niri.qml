@@ -35,6 +35,12 @@ Singleton {
     property var focused: null
     property int revision: 0
 
+    // Every screencast by its stream's id: a program sharing the screen
+    // through the portal (PipeWire), or one recording it straight from niri
+    // (WlrScreencopy), as wf-recorder does. Replaced whole on each change,
+    // since they're few and change seldom.
+    property var casts: ({})
+
     // A window opened, or changed what it shows; one closed; some moved.
     signal windowOpenedOrChanged(var window)
     signal windowClosed(var id)
@@ -118,6 +124,18 @@ Singleton {
                     workspace.is_focused = workspace.id === change.id;
             }
             revision++;
+        } else if (event.CastsChanged) {
+            const all = {};
+            for (const cast of event.CastsChanged.casts)
+                all[cast.stream_id] = cast;
+            casts = all;
+        } else if (event.CastStartedOrChanged) {
+            const cast = event.CastStartedOrChanged.cast;
+            casts = Object.assign({}, casts, { [cast.stream_id]: cast });
+        } else if (event.CastStopped) {
+            const all = Object.assign({}, casts);
+            delete all[event.CastStopped.stream_id];
+            casts = all;
         } else if (event.WorkspaceActiveWindowChanged) {
             const change = event.WorkspaceActiveWindowChanged;
             if (workspaces[change.workspace_id])
