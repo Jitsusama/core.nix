@@ -36,6 +36,20 @@ let
   turbostat = config.boot.kernelPackages.turbostat.overrideAttrs (old: {
     makeFlags = old.makeFlags ++ [ "CC=cc" ];
   });
+
+  # power-profiles-daemon's performance profile asks the cores for the energy
+  # preference performance. On this chip balance_performance idled at 3.0 to
+  # 4.4 W against 7.0 to 9.5 W, ran a sixteen-thread load 9 to 11% faster,
+  # and woke and burst from idle as quickly; docs/hardware.md has the numbers. Its test of
+  # Intel's driver expects the value the profile writes, so it changes too.
+  powerProfiles = pkgs.power-profiles-daemon.overrideAttrs (old: {
+    postPatch = (old.postPatch or "") + ''
+      substituteInPlace src/ppd-driver-intel-pstate.c \
+        --replace-fail 'return "performance";' 'return "balance_performance";'
+      sed -i '/def test_intel_pstate(self):/,/def test_/ s/(energy_prefs, "performance")/(energy_prefs, "balance_performance")/' \
+        tests/integration_test.py
+    '';
+  });
 in
 {
   imports = [
@@ -115,6 +129,9 @@ in
   # Intel's thermal daemon, which sets the chip's power limits from the
   # laptop's own thermal tables as it heats.
   services.thermald.enable = true;
+
+  # The profiles' energy preferences, with performance's eased; see above.
+  services.power-profiles-daemon.package = powerProfiles;
 
   # Each core's frequency and idle states and the package's power, which is
   # how the power limits and profiles here were measured.

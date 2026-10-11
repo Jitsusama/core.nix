@@ -161,9 +161,7 @@ changes it:
   firmware allows ran no faster: Dell's skin-temperature policy holds
   sustained power near 25 W either way.
 - **The performance profile on mains.** It sustains 22 to 28% more work than
-  balanced, which is why the charger follower asks for it. Easing the energy
-  preference under it to balance_performance kept the same speed, sustained
-  and in bursts.
+  balanced, which is why the charger follower asks for it.
 - **Wi-Fi power saving.** It stays on: off, the router's latency was the same
   within the noise.
 - **Runtime power management of PCI devices.** Only the management engine's
@@ -174,6 +172,27 @@ changes it:
   reports, which on a RAM disk doubled dm-crypt's write speed. The installed
   laptop keeps its 512-byte sectors: the drive writes slower than dm-crypt
   does at either size, so re-encrypting it in place would gain nothing.
+
+### The Energy Preference
+
+power-profiles-daemon's performance profile asks Intel's driver for the
+energy preference `performance`. The module patches it to ask for
+`balance_performance`, as balanced already does on mains; the profiles still
+differ in the energy bias (0 against 6) and in the firmware's platform
+profile. Measured on a quiet laptop under the performance profile, with
+stress-ng's CPU stressor on sixteen threads for a minute:
+
+| Preference          | Idle         | Sustained, ops/s | Load power   | Burst from idle   | Wakeup p99    |
+| ------------------- | ------------ | ---------------- | ------------ | ----------------- | ------------- |
+| performance         | 7.0 to 9.5 W | 23,720           | 34.4 W       | 18.57 to 18.61 ms | 83 to 118 µs  |
+| balance_performance | 3.0 to 4.4 W | 25,859 to 26,219 | 38.3, 39.3 W | 18.55 to 18.70 ms | 77 to 164 µs  |
+
+Idle power falls by a third or more, and the load runs 9 to 11% faster for
+about the same work per joule. Bursts from idle (a fixed loop of about 19 ms,
+after 300 ms asleep) and wakeups (lateness past a 1 ms timer) are the same
+within the noise, over three interleaved runs each. An earlier comparison
+found no difference in idle power because it read idle while another
+session's builds kept the laptop 9% busy.
 
 ### What's Left
 
