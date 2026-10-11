@@ -1,0 +1,35 @@
+genirq: Don't resend through a nested parent with no handler
+
+When an interrupt that runs in its parent's thread arrives while it is
+disabled, enabling it resends it by retriggering its parent. If the parent
+is itself a nested thread, it has no flow handler, so the resend tasklet
+runs handle_bad_irq() and the kernel logs an unexpected IRQ trap. An SDCA
+codec's interrupt does this after resume: regmap-irq nests it in the
+SoundWire master's interrupt, which sdw_irq_map() makes a nested thread
+with no handler and no parent.
+
+Climb to the first ancestor that has a handler, and do nothing when there
+is none, as the code already does for a nested interrupt with no parent.
+
+--- a/kernel/irq/resend.c
++++ b/kernel/irq/resend.c
+@@ -59,12 +59,14 @@
+ 	 * If the interrupt is running in the thread context of the parent
+ 	 * irq we need to be careful, because we cannot trigger it
+ 	 * directly.
++	 *
++	 * The parent can itself be a nested thread, with no flow handler
++	 * of its own, as a SoundWire peripheral's interrupt nests in its
++	 * master's. Retriggering that would run handle_bad_irq(), so climb
++	 * to the first ancestor that has a handler, and do nothing when
++	 * there is none.
+ 	 */
+-	if (irq_settings_is_nested_thread(desc)) {
+-		/*
+-		 * If the parent_irq is valid, we retrigger the parent,
+-		 * otherwise we do nothing.
+-		 */
++	while (irq_settings_is_nested_thread(desc)) {
+ 		if (!desc->parent_irq)
+ 			return -EINVAL;
+ 

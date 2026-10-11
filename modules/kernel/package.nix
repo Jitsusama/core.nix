@@ -65,5 +65,12 @@ linux_7_2.override {
         hash = "sha256-6Qi12PX/YH9/PFfEbVexENJXo0uJeIulIYCwullqZqU=";
       };
     }
+    {
+      # Stops a resent interrupt from reaching handle_bad_irq() through a
+      # nested parent with no handler, as an SDCA codec's does after resume.
+      # Written here; docs/kernel.md has the cause.
+      name = "irq-resend-nested";
+      patch = ./irq-resend-nested.patch;
+    }
   ];
 }
