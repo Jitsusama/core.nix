@@ -314,6 +314,11 @@ let
       console = "W";
       means = "something floats above the layout";
     };
+    awake = {
+      glyph = nerd "f0176";
+      console = "C";
+      means = "the machine is kept from sleeping";
+    };
     more = {
       glyph = "…";
       console = "~";

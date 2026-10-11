@@ -319,6 +319,7 @@ in
           "network"
           "battery"
           "volume"
+          "awake"
           "wide"
         ]
         && piece.battery.low == 15

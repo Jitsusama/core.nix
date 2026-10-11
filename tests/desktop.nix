@@ -523,6 +523,45 @@ pkgs.testers.runNixOSTest {
           machine.screenshot("launcher-notices-all")
           machine.send_key("esc")
 
+      with subtest("the launcher keeps the machine awake, lid shut too, then lets it sleep"):
+          held = "systemd-inhibit --list --no-pager | grep Caffeinate"
+          machine.wait_until_fails(in_session("niri msg layers | grep -q launcher"), timeout=10)
+          as_account("qs ipc call launcher toggle")
+          wait_for_surface("launcher")
+          time.sleep(0.5)
+          machine.send_chars("keep awake")
+          time.sleep(0.5)
+          machine.screenshot("launcher-keep-awake")
+          machine.send_key("ret")
+          machine.wait_until_succeeds(f"{held} | grep -q sleep:idle", timeout=10)
+          machine.wait_until_succeeds(f"{held} | grep -q handle-lid-switch", timeout=10)
+          # The overview's status says so while it holds, and so does home.
+          as_account("niri msg action open-overview")
+          wait_for_surface("status")
+          time.sleep(1)
+          machine.screenshot("overview-awake")
+          as_account("niri msg action close-overview")
+          # Without power the lid is let go, and taken again when it's back.
+          # The kernel's stand-in has two supplies, mains and USB.
+          def power(state):
+              parameters = "/sys/module/test_power/parameters"
+              for supply in ["ac", "usb"]:
+                  machine.succeed(f"echo {state} > {parameters}/{supply}_online")
+
+          power("off")
+          machine.wait_until_fails(f"{held} | grep -q handle-lid-switch", timeout=10)
+          machine.succeed(f"{held} | grep -q sleep:idle")
+          power("on")
+          machine.wait_until_succeeds(f"{held} | grep -q handle-lid-switch", timeout=10)
+          as_account("qs ipc call launcher toggle")
+          wait_for_surface("launcher")
+          time.sleep(0.5)
+          machine.screenshot("launcher-home-awake")
+          machine.send_chars("let it sleep")
+          time.sleep(0.5)
+          machine.send_key("ret")
+          machine.wait_until_fails(held, timeout=10)
+
       with subtest("the lock screen takes only the right password"):
           as_account("qs ipc call lock lock")
           machine.wait_until_succeeds(in_session("qs ipc call lock isLocked | grep -q true"), timeout=30)

@@ -65,12 +65,41 @@ let
     "Fuzzy.js"
     "Picks.qml"
     "Notices.qml"
+    "Caffeinate.qml"
     "pieces/Piece.qml"
     "launcher/Provider.qml"
     "launcher/Numbers.js"
     "launcher/Addresses.js"
     "launcher/Emoji.js"
   ];
+
+  # A service holding one of logind's locks for as long as it runs, with a
+  # file saying so.
+  holding =
+    {
+      what,
+      flag,
+      ...
+    }@unit:
+    {
+      Unit = removeAttrs unit [
+        "what"
+        "flag"
+      ];
+      Service = {
+        ExecStart = lib.escapeShellArgs [
+          (lib.getExe' pkgs.systemd "systemd-inhibit")
+          "--what=${what}"
+          "--who=Caffeinate"
+          "--why=Kept awake from the launcher"
+          "--mode=block"
+          (lib.getExe' pkgs.coreutils "sleep")
+          "infinity"
+        ];
+        ExecStartPost = "${lib.getExe' pkgs.coreutils "touch"} %t/${flag}";
+        ExecStopPost = "${lib.getExe' pkgs.coreutils "rm"} -f %t/${flag}";
+      };
+    };
 
   # A part's corners, the whole's radius less its border and inset.
   inner = lib.max 0 (shape.radius - shape.border - shape.inset);
@@ -280,6 +309,7 @@ let
     battery = ./pieces/Battery.qml;
     network = ./pieces/Network.qml;
     volume = ./pieces/Volume.qml;
+    awake = ./pieces/Awake.qml;
   };
 
   overview = pieces.drawn config.jitsusama.quickshell.overview.pieces;
@@ -554,6 +584,14 @@ in
         label = "volume";
         collapse = 0;
       };
+      # A mode, so it never gives way.
+      awake = {
+        order = 60;
+        source = "awake";
+        label = "awake";
+        tier = "when";
+        mark = "awake";
+      };
     };
 
     home.packages = [ pkgs.quickshell ];
@@ -728,6 +766,25 @@ in
         RestartSec = 1;
       };
       Install.WantedBy = [ "graphical-session.target" ];
+    };
+
+    # Keeping awake, from the launcher (Caffeinate.qml): one service holds
+    # logind's lock against sleep and the other its lock against the lid,
+    # which the shell takes only while there's power. Each leaves a file in
+    # the runtime directory while it runs, for the shell to watch.
+    systemd.user.services.caffeinate = holding {
+      what = "sleep:idle";
+      flag = "caffeinated";
+      Description = "Keeps the machine from sleeping while work runs";
+      PartOf = [ "graphical-session.target" ];
+    };
+    systemd.user.services.caffeinate-lid = holding {
+      what = "handle-lid-switch";
+      flag = "caffeinated-lid";
+      Description = "Keeps the machine running with its lid shut, while there's power";
+      PartOf = [ "caffeinate.service" ];
+      After = [ "caffeinate.service" ];
+      ConditionACPower = true;
     };
 
     systemd.user.services.quickshell = {

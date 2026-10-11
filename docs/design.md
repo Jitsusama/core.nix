@@ -423,6 +423,11 @@ works the same way everywhere.
   read there, was seen; one that left by itself was missed, and the notices'
   row at home says how many until they're opened. Return on one goes to the
   program that sent it, its window when one is open.
+- **Awake on purpose.** Keep Awake, in the launcher, stops the machine
+  sleeping so work left running goes on, and with power it keeps running
+  with the lid shut. Without power the lid is let go, since a laptop shut in
+  a bag on its battery would cook. While it holds, Let It Sleep comes after
+  the focused window at home, and the overview's status says so.
 - **What's shown is the door to its detail.** The battery opens the power
   menu, the network opens its list, a notification count opens the history.
   Nothing keeps its detail somewhere else.
