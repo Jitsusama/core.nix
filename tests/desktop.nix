@@ -499,6 +499,8 @@ pkgs.testers.runNixOSTest {
           retry(another, timeout_seconds=15)
 
       with subtest("a notice that came and went is found again in the launcher"):
+          # One its sender says not to keep isn't, though it's the newest match.
+          as_account("notify-send --transient 'Build finished twice' 'not kept'")
           as_account("qs ipc call launcher toggle")
           wait_for_surface("launcher")
           time.sleep(0.5)

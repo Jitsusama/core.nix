@@ -47,7 +47,11 @@ Scope {
         keepOnReload: true
         onNotification: notification => {
             root.arrived[notification.id] = Date.now();
-            Notices.arrived(notification, notification.urgency === NotificationUrgency.Critical);
+            // One its sender marks transient asks not to be kept, as niri's
+            // screenshot notice does.
+            const urgent = notification.urgency === NotificationUrgency.Critical;
+            if (!notification.transient)
+                Notices.arrived(notification, urgent);
             const id = notification.id;
             notification.closed.connect(reason => Notices.left(id,
                 reason === NotificationCloseReason.Expired));
