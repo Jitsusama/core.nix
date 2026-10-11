@@ -4,6 +4,7 @@
 # and Intel's BE211 Wi-Fi 7. docs/hardware.md says what works, where each
 # workaround comes from, and what's left.
 {
+  config,
   lib,
   pkgs,
   ...
@@ -26,6 +27,14 @@ let
       } \
         $out/lib/libze_intel_gpu.so.1
     '';
+  });
+
+  # turbostat's Makefile calls the compiler gcc, and the kernel's packages
+  # build with clang, which has no gcc, so nixpkgs's turbostat fails to
+  # build. cc is whichever compiler the set uses. Take the flag out once
+  # nixpkgs's package passes it.
+  turbostat = config.boot.kernelPackages.turbostat.overrideAttrs (old: {
+    makeFlags = old.makeFlags ++ [ "CC=cc" ];
   });
 in
 {
@@ -106,6 +115,10 @@ in
   # Intel's thermal daemon, which sets the chip's power limits from the
   # laptop's own thermal tables as it heats.
   services.thermald.enable = true;
+
+  # Each core's frequency and idle states and the package's power, which is
+  # how the power limits and profiles here were measured.
+  environment.systemPackages = [ turbostat ];
 
   # Authorizes Thunderbolt and USB4 docks.
   services.hardware.bolt.enable = true;

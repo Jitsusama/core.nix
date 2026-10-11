@@ -207,6 +207,21 @@ upstream as it is and the override can then come out.
   +      $out/lib/libze_intel_gpu.so.1
   ```
 
+- **turbostat.** Its Makefile, `tools/power/x86/turbostat/Makefile`, sets
+  `CC = $(CROSS_COMPILE)gcc`, which wins over the `CC` the build environment
+  sets. The kernel's package set builds with clang here, so the build stops
+  at `gcc: command not found`. Passing the compiler on the command line
+  fixes it, and gives a cross build its own compiler too. The fix in
+  `pkgs/os-specific/linux/turbostat/default.nix`:
+
+  ```diff
+  -  makeFlags = [ "PREFIX=${placeholder "out"}" ];
+  +  makeFlags = [
+  +    "PREFIX=${placeholder "out"}"
+  +    "CC=${stdenv.cc.targetPrefix}cc"
+  +  ];
+  ```
+
 ### Left Out on Purpose
 
 - **`fred=on`.** Omarchy sets it, but 7.2 turns FRED on by default wherever
