@@ -635,6 +635,28 @@ in
           < (systemd.slices.user.sliceConfig.CPUWeight or 100)
       );
 
+  # greetd waits for the GPU the hardware names rather than for the boot to go
+  # idle, and the card gets the device unit it waits on. Without the udev tag
+  # the unit never appears, and the login waits out the device timeout.
+  greetd-waits-for-the-gpu =
+    let
+      xps = bareNixos [
+        self.nixosModules.graphical
+        self.nixosModules.dell-xps-14-da14260
+      ];
+      inherit (xps.config) jitsusama services systemd;
+      greetd = systemd.services.greetd;
+    in
+    holds "greetd-waits-for-the-gpu"
+      "greetd doesn't wait for ${jitsusama.gpu.unit}, or nothing tags the card for systemd."
+      (
+        greetd.serviceConfig.Type == "simple"
+        && lib.elem jitsusama.gpu.unit greetd.wants
+        && lib.elem jitsusama.gpu.unit greetd.after
+        && lib.hasInfix ''ENV{ID_PATH}=="${jitsusama.gpu.path}", TAG+="systemd"'' services.udev.extraRules
+        && graphical.config.systemd.services.greetd.serviceConfig.Type == "idle"
+      );
+
   example-nixos = evaluates "example-nixos" (
     import ./examples/nixos.nix {
       core = self;

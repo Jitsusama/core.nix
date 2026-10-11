@@ -9,8 +9,11 @@
 }:
 let
   niriSession = "${config.programs.niri.package}/bin/niri-session";
+  gpu = config.jitsusama.gpu.unit;
 in
 {
+  imports = [ ../gpu/nixos.nix ];
+
   options.jitsusama.login.account = lib.mkOption {
     type = lib.types.nullOr lib.types.str;
     default = null;
@@ -37,6 +40,17 @@ in
           command = niriSession;
         };
       };
+    };
+
+    # nixpkgs starts greetd once every other boot job has finished, which held
+    # the XPS 14's desktop back by up to 5.6 s, for jobs it doesn't need, such
+    # as waiting for the network. What niri does need is the GPU, so where the
+    # hardware names it, greetd waits for that instead. Wants rather than
+    # Requires: a GPU that never comes up delays the login, not blocks it.
+    systemd.services.greetd = lib.mkIf (gpu != null) {
+      wants = [ gpu ];
+      after = [ gpu ];
+      serviceConfig.Type = lib.mkForce "simple";
     };
   };
 }
