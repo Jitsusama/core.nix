@@ -13,6 +13,7 @@ import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
 import QtQuick
+import "Fuzzy.js" as Fuzzy
 
 Scope {
     id: root
@@ -23,6 +24,7 @@ Scope {
 
     // Wide enough for a long action and its chord at the large size.
     readonly property int width: 680
+    // How many results show at once; the rest are a scroll away.
     readonly property int rows: 8
 
     readonly property string sparkle: String.fromCodePoint(0xf0674)
@@ -39,7 +41,10 @@ Scope {
         { name: "Reboot", glyph: 0xf0453, run: () => Niri.spawn(["systemctl", "reboot"]) },
         { name: "Power Off", glyph: 0xf011, run: () => Niri.spawn(["systemctl", "poweroff"]) }
     ].map(action => ({
+        key: `session:${action.name}`,
+        verb: action.name.toLowerCase(),
         name: action.name,
+        prepared: Fuzzy.prepare(action.name),
         glyph: String.fromCodePoint(action.glyph),
         hue: "machine",
         chord: [],
@@ -61,11 +66,17 @@ Scope {
         const applications = DesktopEntries.applications.values
             .filter(entry => !entry.noDisplay)
             .map(entry => ({
+                key: `program:${entry.id}`,
+                verb: "open",
                 name: entry.name,
+                prepared: Fuzzy.prepare(entry.name),
                 glyph: String.fromCodePoint(root.programGlyphs[entry.id] ?? 0xf0614),
                 hue: "program",
                 chord: [],
                 side: entry.genericName.toLowerCase(),
+                // Found by what it is, too: "browser" finds Chrome.
+                keywords: Fuzzy.prepare([entry.genericName, entry.comment]
+                    .concat(Array.from(entry.keywords)).join(" ")),
                 run: () => Niri.spawn(root.command(entry)),
                 below: () => {
                     root.grid.below("");
@@ -74,7 +85,10 @@ Scope {
                 later: false
             }));
         const actions = Shortcuts.actions.map(action => ({
+            key: `action:${action.does}`,
+            verb: "run",
             name: action.does,
+            prepared: Fuzzy.prepare(action.does),
             glyph: action.glyph,
             hue: "action",
             chord: action.chord,
@@ -101,42 +115,78 @@ Scope {
     property int current: 0
     property var pending: null
 
-    // Where each typed letter lands in a name, in order, or null when one
-    // doesn't. A letter that starts a word or follows the last one counts
-    // for more, so the best match comes first.
-    function find(name, letters) {
-        const haystack = name.toLowerCase();
-        const at = [];
-        let total = 0;
-        let from = 0;
-        let previous = -2;
-        for (const letter of letters.toLowerCase()) {
-            const found = haystack.indexOf(letter, from);
-            if (found < 0)
-                return null;
-            at.push(found);
-            total += 1;
-            if (found === 0 || haystack[found - 1] === " ")
-                total += 2;
-            if (found === previous + 1)
-                total += 1;
-            previous = found;
-            from = found + 1;
-        }
-        return { at: at, score: total - haystack.length / 100 };
+    // The words typed, and every choice they found before the finest were
+    // kept: a longer query can only find fewer, so it searches these.
+    property var words: []
+    property var candidates: []
+
+    // What was picked for what was typed, which the ranking leans on.
+    Picks {
+        id: picks
     }
 
+    // How much one past pick for exactly this query is worth, against a
+    // match's score: enough to settle a close call, as much as a good match
+    // is worth, while a far better match can still win.
+    readonly property int learnedWorth: 100
+
+    // Every choice the words find, best first (Fuzzy.js says how), with
+    // what was picked for this query before leaning on the order (Picks.qml
+    // says how); a thing picked before is shown even when it matches more
+    // loosely than the rest. One found only by what it is, its keywords,
+    // ranks well below those found by name.
     function search(letters) {
+        const narrowing = typed !== "" && letters.startsWith(typed);
         typed = letters;
-        matches = letters === "" ? [] : choices
-            .map(choice => ({ choice: choice, found: find(choice.name, letters) }))
-            .filter(match => match.found !== null)
-            .sort((a, b) => b.found.score - a.found.score
-                || a.choice.name.localeCompare(b.choice.name))
-            .slice(0, rows)
-            .map(match => Object.assign({ at: match.found.at }, match.choice));
+        words = Fuzzy.words(letters);
+        if (words.length === 0) {
+            candidates = [];
+            matches = [];
+        } else {
+            const need = Fuzzy.letters(words);
+            const found = [];
+            for (const choice of narrowing ? candidates : choices) {
+                const byName = (choice.prepared.mask & need) === need
+                    ? Fuzzy.match(choice.prepared, words, false) : { score: -1 };
+                if (byName.score >= 0) {
+                    found.push({
+                        item: choice.prepared,
+                        score: byName.score,
+                        grade: byName.grade,
+                        choice: choice
+                    });
+                    continue;
+                }
+                if (!choice.keywords || (choice.keywords.mask & need) !== need)
+                    continue;
+                const byWord = Fuzzy.match(choice.keywords, words, false);
+                if (byWord.score >= 0)
+                    found.push({
+                        item: choice.prepared,
+                        score: byWord.score / 4,
+                        grade: byWord.grade,
+                        choice: choice,
+                        byWord: true
+                    });
+            }
+            candidates = found.map(f => f.choice);
+            const learned = picks.weights(letters);
+            for (const f of found) {
+                const before = learned[f.choice.key];
+                if (!before)
+                    continue;
+                f.score += learnedWorth * before.weight;
+                f.kept = true;
+                f.times = before.times;
+            }
+            matches = Fuzzy.keep(found).map(f =>
+                Object.assign({ byWord: f.byWord === true, times: f.times ?? 0 }, f.choice));
+        }
         current = 0;
+        list.positionViewAtBeginning();
     }
+
+    onCurrentChanged: list.positionViewAtIndex(current, ListView.Contain)
 
     // The rest of the selected name from where what's typed starts a word in
     // it, so the command line can finish the thought.
@@ -152,12 +202,14 @@ Scope {
     }
 
     // A name with the letters that matched brought forward, as styled text.
+    // Worked out only for the rows drawn.
     function marked(choice) {
         const escape = text => text.replace(/&/g, "&amp;").replace(/</g, "&lt;");
+        const at = choice.byWord ? [] : Fuzzy.match(choice.prepared, words, true).positions ?? [];
         let out = "";
         for (let i = 0; i < choice.name.length; i++) {
             const letter = escape(choice.name[i]);
-            out += choice.at.includes(i)
+            out += at.includes(i)
                 ? `<font color="${Theme.strong}">${letter}</font>`
                 : letter;
         }
@@ -168,6 +220,7 @@ Scope {
         open = false;
         if (!choice)
             return;
+        picks.picked(typed, choice.key);
         if (below && choice.below)
             choice.below();
         else if (choice.later) {
@@ -194,8 +247,21 @@ Scope {
         }
     }
 
+    // Where the pointer last was, in the window, so the selection follows
+    // it only when it moves: a launcher opening under a resting pointer, or
+    // a list scrolling under one, leaves the selection where the keys put it.
+    property point pointer: Qt.point(-1, -1)
+
+    function pointed(index, at) {
+        const moved = pointer.x >= 0 && (at.x !== pointer.x || at.y !== pointer.y);
+        pointer = at;
+        if (moved)
+            current = index;
+    }
+
     onOpenChanged: {
         if (open) {
+            pointer = Qt.point(-1, -1);
             prompt.clear();
             search("");
         }
@@ -239,6 +305,9 @@ Scope {
                         glyphWidth: Theme.space.xxl
                         hint: "what next?"
                         ghost: root.completion
+                        // Where the selection is, once there's more than fits.
+                        aside: root.matches.length > root.rows
+                            ? `${root.current + 1} of ${root.matches.length}` : ""
                         onTextChanged: root.search(text)
                         onAccepted: below => root.run(root.matches[root.current], below)
                         onCompleted: text = text + root.completion
@@ -246,6 +315,13 @@ Scope {
                         Keys.onUpPressed: root.current = Math.max(root.current - 1, 0)
                         Keys.onDownPressed: root.current
                             = Math.min(root.current + 1, root.matches.length - 1)
+                        Keys.onPressed: event => {
+                            if (event.key === Qt.Key_PageUp)
+                                root.current = Math.max(root.current - root.rows, 0);
+                            else if (event.key === Qt.Key_PageDown)
+                                root.current
+                                    = Math.min(root.current + root.rows, root.matches.length - 1);
+                        }
                     }
                 }
 
@@ -262,13 +338,21 @@ Scope {
                     topPadding: Theme.inset
                     bottomPadding: Theme.inset
 
-                    Repeater {
+                    ListView {
+                        id: list
+
+                        width: parent.width
+                        height: Math.min(count, root.rows) * Theme.space.xxxl
+                        visible: count > 0
+                        clip: true
+                        boundsBehavior: Flickable.StopAtBounds
                         model: root.matches
 
-                        Choice {
+                        delegate: Choice {
                             required property var modelData
                             required property int index
 
+                            width: list.width
                             selected: index === root.current
                             glyph: modelData.glyph
                             hue: Theme[modelData.hue]
@@ -276,7 +360,60 @@ Scope {
                             chord: modelData.chord
                             side: modelData.side
                             onClicked: root.run(modelData, false)
-                            onHovered: root.current = index
+                            onPointed: at => root.pointed(index, at)
+                        }
+                    }
+
+                    // What Return does here, and Shift+Return where it can,
+                    // with why the row is first when learning put it there:
+                    // the one place that teaches, so the rows stay clean.
+                    Item {
+                        id: foot
+
+                        readonly property var choice: root.matches[root.current]
+
+                        width: parent.width
+                        height: Theme.space.xxl + Theme.space.s
+                        visible: root.matches.length > 0
+
+                        Text {
+                            x: Theme.space.l
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: keys.x - x - Theme.space.xl
+                            elide: Text.ElideRight
+                            readonly property string asked: Fuzzy.words(root.typed).join(" ")
+                            readonly property int times: foot.choice ? foot.choice.times : 0
+
+                            text: times === 0 ? "" : `you picked this for \u201c${asked}\u201d ${
+                                times === 1 ? "once" : `${times} times`}`
+                            color: Theme.muted
+                            font.family: Theme.mono.family
+                            font.pointSize: Theme.mono.large
+                        }
+
+                        Row {
+                            id: keys
+                            anchors.right: parent.right
+                            anchors.rightMargin: Theme.space.l
+                            anchors.verticalCenter: parent.verticalCenter
+                            spacing: Theme.space.xl
+
+                            Repeater {
+                                model: !foot.choice ? []
+                                    : [["\u21b5", foot.choice.verb]].concat(
+                                        foot.choice.below ? [["\u21e7\u21b5", "below"]] : [])
+
+                                Text {
+                                    required property var modelData
+
+                                    text: `<font color="${Theme.text}">${modelData[0]}</font> `
+                                        + modelData[1]
+                                    textFormat: Text.StyledText
+                                    color: Theme.muted
+                                    font.family: Theme.mono.family
+                                    font.pointSize: Theme.mono.large
+                                }
+                            }
                         }
                     }
 
@@ -312,7 +449,8 @@ Scope {
         property bool quiet: false
 
         signal clicked
-        signal hovered
+        // The pointer is over the row, at this place in the window.
+        signal pointed(point at)
 
         width: parent.width
         height: Theme.space.xxxl
@@ -389,7 +527,7 @@ Scope {
             enabled: !row.quiet
             hoverEnabled: true
             onClicked: row.clicked()
-            onEntered: row.hovered()
+            onPositionChanged: mouse => row.pointed(mapToItem(null, mouse.x, mouse.y))
         }
     }
 }

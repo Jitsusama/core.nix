@@ -1,8 +1,8 @@
 # Starts the graphical role's desktop in a virtual machine and uses it the
 # way Joel does: the wallpaper stands behind the workspaces, the overview
-# shows the time and status, a notification
-# appears, the volume and brightness bars come and go as those change, the
-# launcher finds and opens kitty, the lock screen refuses a wrong password
+# shows the time and status, a notification appears, the volume and
+# brightness bars come and go as those change, the launcher finds and opens
+# kitty and remembers it was picked, the lock screen refuses a wrong password
 # and takes the right one, polkit's prompt lets the account start a system
 # service, the clipboard takes and gives text, and GTK programs and
 # monospaced text are in the theme. niri says which surfaces it drew,
@@ -283,7 +283,7 @@ pkgs.testers.runNixOSTest {
           machine.send_key("esc")
           machine.wait_until_fails(in_session("niri msg layers | grep -qw launcher"), timeout=10)
 
-      with subtest("the launcher finds and opens kitty"):
+      with subtest("the launcher finds and opens kitty, and learns that kitty was meant"):
           as_account("qs ipc call launcher toggle")
           wait_for_surface("launcher")
           # niri lists the layer a frame before it holds the keyboard, and a
@@ -294,6 +294,11 @@ pkgs.testers.runNixOSTest {
           machine.screenshot("launcher")
           machine.send_key("ret")
           machine.wait_until_succeeds(in_session("niri msg windows | grep -i kitty"), timeout=30)
+          # What was picked for what was typed is kept for next time.
+          picked = "'\"kitty\":{\"program:kitty\"'"
+          machine.wait_until_succeeds(
+              in_session(f"grep -rqsF {picked} ~/.local/state/quickshell"), timeout=10
+          )
 
       # The border is all that marks the focused window, and niri leaves
       # borders off unless its config turns them on.

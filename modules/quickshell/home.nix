@@ -58,6 +58,8 @@ let
     "OpenBelow.qml"
     "Niri.qml"
     "Floating.qml"
+    "Fuzzy.js"
+    "Picks.qml"
     "pieces/Piece.qml"
   ];
 

@@ -381,6 +381,11 @@ works the same way everywhere.
   list, a browser through its own palettes, a chat app through its quick
   switcher. A key bound anywhere on the desktop that the palette can't find is
   a failing check.
+- **Few rows, and learned.** A query leaves the handful of things it could
+  mean, not a wall: words match where they start, and a match more scattered
+  than the best is left out. What's picked for what was typed becomes what
+  it means, said in the footer, so there are no aliases to set up or
+  remember.
 - **What's shown is the door to its detail.** The battery opens the power
   menu, the network opens its list, a notification count opens the history.
   Nothing keeps its detail somewhere else.
@@ -633,6 +638,16 @@ as an exception with the reason.
 ## Decisions
 
 What each studio round settled, newest first, with the reason.
+
+- **A launcher that finds what's meant** (2026-10-11). Research into
+  Raycast, the launchers before it and the work on learning keys found two
+  complaints above the rest: modes entered before typing, and lists too long
+  to read. The launcher matches as fzf does, with nucleo's care over gaps,
+  but a word's first letter has to start a word unless the whole word lands
+  unbroken, and a match more scattered than the best is dropped, which is
+  what Alfred and LaunchBar knew. It learns from picks as LaunchBar and
+  Firefox's address bar do, keyed by what was typed. A check holds both its
+  rankings and its speed, run in Qt's own engine.
 
 - **A painting that stands still** (2026-10-10). Of eight wallpapers shown
   on the panel, from none to tiled damask, Joel kept Omarchy's two Osaka

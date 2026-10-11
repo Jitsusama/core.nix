@@ -343,6 +343,23 @@ in
       "These start programs themselves rather than through Niri.spawn: ${lib.concatStringsSep ", " culprits}"
       (qml != [ ] && culprits == [ ]);
 
+  # The launcher finds what's meant: for each query in tests/fuzzy.qml the
+  # right thing comes first, few rows are left, or nothing answers, and a
+  # query keeps within its budget, all in Qt's own JavaScript engine, the
+  # one the shell runs the matcher in.
+  the-launcher-finds-what-is-meant =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "the-launcher-finds-what-is-meant" { } ''
+      cp ${./tests/fuzzy.qml} fuzzy.qml
+      cp ${./modules/quickshell/Fuzzy.js} Fuzzy.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml ${qt}/bin/qml fuzzy.qml
+      touch $out
+    '';
+
   # Shape is a language (docs/design.md, Shape and Kinds): a border's width
   # says "this is a thing" and a radius says whole or part, so no surface
   # picks either for itself. Every corner is the theme's radius, or a part's

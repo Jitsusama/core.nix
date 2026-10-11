@@ -3,7 +3,8 @@
 // what it's for, since a line you act on is the one place a glyph starts a
 // line (docs/design.md, Shape and Kinds). A secret shows as dots right beside
 // the padlock. A ghost after what's typed offers how it could end, or, with
-// nothing typed, a hint.
+// nothing typed, a hint. An aside on the right, muted, says something about
+// what's typed, such as where the launcher's selection is among its matches.
 import QtQuick
 
 Item {
@@ -19,6 +20,8 @@ Item {
     property string ghost
     // Said in muted type while nothing's typed.
     property string hint
+    // Said in muted type at the right end of the line.
+    property string aside
     property alias text: input.text
 
     // Return, or Shift+Return, which asks for it below the focused window.
@@ -44,10 +47,23 @@ Item {
         font.pointSize: Theme.mono.large
     }
 
+    Text {
+        id: asideText
+        anchors.right: parent.right
+        anchors.rightMargin: Theme.space.l
+        anchors.verticalCenter: parent.verticalCenter
+        text: prompt.aside
+        color: Theme.muted
+        font.family: Theme.mono.family
+        font.pointSize: Theme.mono.large
+        font.features: { "tnum": 1 }
+    }
+
     TextInput {
         id: input
         x: Theme.space.l + prompt.glyphWidth
-        width: parent.width - x - Theme.space.l
+        width: (prompt.aside === "" ? parent.width - Theme.space.l
+            : asideText.x - Theme.space.xl) - x
         anchors.verticalCenter: parent.verticalCenter
         focus: true
         clip: true
