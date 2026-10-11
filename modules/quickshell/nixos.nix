@@ -4,10 +4,16 @@
 # whether caps lock is on, which nothing else tells it.
 #
 # The watcher (keyboard-lights.rs) reads the keyboards, which is what a
-# keylogger needs, so it gets nothing else: an account made for it and
-# thrown away, the input group, read access to input devices alone, no
-# network and a read-only system. It asks the kernel for the caps lock
-# light and nothing more, so a keystroke never reaches it.
+# keylogger needs, so it gets nothing else: an account of its own, the input
+# group, read access to input devices alone, no network and a read-only
+# system but for its directory. It asks the kernel for the caps lock light
+# and nothing more, so a keystroke never reaches it.
+#
+# Its directory is made at boot and stays until shutdown: Quickshell watches
+# the file through its directory, and loses the watch for good if the
+# directory goes or isn't there yet. A runtime directory of systemd's would
+# go each time the watcher restarted, and one it keeps, with an account it
+# makes, moves where Quickshell can't read.
 { pkgs, ... }:
 let
   # The standard library alone, so it builds with rustc and no crates.
@@ -20,16 +26,29 @@ in
 {
   security.pam.services.quickshell = { };
 
+  users.users.keyboard-lights = {
+    isSystemUser = true;
+    group = "keyboard-lights";
+  };
+  users.groups.keyboard-lights = { };
+
+  systemd.tmpfiles.settings.keyboard-lights."/run/keyboard-lights".d = {
+    mode = "0755";
+    user = "keyboard-lights";
+    group = "keyboard-lights";
+  };
+
   systemd.services.keyboard-lights = {
     description = "Says whether caps lock is on, for Quickshell";
     wantedBy = [ "multi-user.target" ];
     serviceConfig = {
       ExecStart = "${keyboardLights}/bin/keyboard-lights /run/keyboard-lights/capslock";
       Restart = "on-failure";
-      DynamicUser = true;
+      User = "keyboard-lights";
+      Group = "keyboard-lights";
       SupplementaryGroups = [ "input" ];
-      RuntimeDirectory = "keyboard-lights";
-      RuntimeDirectoryMode = "0755";
+      ReadWritePaths = [ "/run/keyboard-lights" ];
+      RemoveIPC = true;
       DevicePolicy = "closed";
       DeviceAllow = [ "char-input r" ];
       CapabilityBoundingSet = "";
