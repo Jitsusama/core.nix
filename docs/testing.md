@@ -95,6 +95,8 @@ kernel guide][2] says what that catches.
 | `btop-draws-in-the-theme`         | btop draws in the theme's colours, not its own            |
 | `gimp-accepts-its-configuration`  | GIMP reads its preferences, the theme's palette and colours |
 | `inkscape-accepts-its-configuration` | Inkscape starts a drawing on the theme's desk and reads its stylesheet |
+| `spotify-draws-in-the-theme`      | Spotify's client is built in the theme's colours and faces |
+| `spotify-player-accepts-its-configuration` | spotify-player starts with its settings          |
 | `neovim-starts-in-the-theme`      | Neovim starts in bamboo, transparent, without a complaint |
 | `cargo-links-with-mold`           | cargo links an account's Rust builds with mold            |
 

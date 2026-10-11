@@ -38,6 +38,11 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
     wallpapers.url = "github:Jitsusama/wallpapers.nix";
+    # Builds Spotify's client with the theme's colours in it.
+    spicetify-nix = {
+      url = "github:Gerg-L/spicetify-nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
     neovim-pi = {
       url = "github:Jitsusama/neovim.pi";
       flake = false;
@@ -55,6 +60,7 @@
       disko,
       wallpapers,
       neovim-pi,
+      spicetify-nix,
     }:
     let
       systems = [
@@ -110,6 +116,7 @@
         quickshell = moduleFrom ./modules/quickshell/home.nix { inherit wallpapers; };
         ripgrep = ./modules/ripgrep/home.nix;
         signing = ./modules/signing/home.nix;
+        spotify = moduleFrom ./modules/spotify/home.nix { inherit spicetify-nix; };
         ssh-tpm-agent = ./modules/ssh-tpm-agent/home.nix;
         swayidle = ./modules/swayidle/home.nix;
         telnet = ./modules/telnet/home.nix;
