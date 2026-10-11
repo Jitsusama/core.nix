@@ -249,7 +249,7 @@ that does. The kinds that follow from it:
 | palette | the launcher           | the accent                | a quarter down        | large, monospace  | a command line over a list |
 | prompt  | polkit, the lock screen | the accent, the alert after a wrong answer | dead centre | large | a scrim stops what's behind it; who asks and why, in words, then the padlock beside the dots |
 | notice  | a notification         | the edge, the alert when critical | the top right corner | body, Mona Sans | never takes the keys; who first, then the message, then a footer of where from and when |
-| meter   | the volume, the brightness | the edge              | bottom centre         | body, monospace   | reads a level back while it changes |
+| meter   | the volume, the microphone, the brightness, the charge when power comes or goes | the edge | bottom centre | body, monospace | reads a level back while it changes |
 
 **Floating surfaces** are the deepest colour at `floating.opacity`, cloudy
 enough to hint at what's beneath without showing it, over a blur of the

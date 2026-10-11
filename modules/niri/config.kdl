@@ -86,7 +86,7 @@ layer-rule {
 // hints at what it floats over. It's worked out again only while one shows
 // and what's beneath it changes.
 layer-rule {
-    match namespace="^(launcher|polkit|notifications|volume|brightness)$"
+    match namespace="^(launcher|polkit|notifications|volume|microphone|brightness|power)$"
     background-effect {
         xray false
     }

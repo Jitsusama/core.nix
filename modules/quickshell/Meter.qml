@@ -67,8 +67,17 @@ PanelWindow {
                 }
             }
 
+            // The widest the figure gets, so the bar's length never moves.
+            TextMetrics {
+                id: widest
+                font: value.font
+                text: "100%"
+            }
+
             Text {
                 id: value
+                width: Math.ceil(widest.advanceWidth)
+                horizontalAlignment: Text.AlignRight
                 anchors.right: parent.right
                 anchors.rightMargin: Theme.space.l - Theme.border
                 anchors.verticalCenter: parent.verticalCenter

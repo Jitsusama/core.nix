@@ -1,6 +1,7 @@
 // The battery: its charge, the time left or until full, or that it's on
-// power and holding, and the power it's drawing when there's any to tell. It's true while it runs low on battery, below `low` percent, and
-// takes the warning colour then and the alert colour below `critical`.
+// power and holding, and the power it's drawing when there's any to tell.
+// It's true while it runs low on battery, below `low` percent, and takes the
+// warning colour then and the alert colour below `critical`.
 import Quickshell.Services.UPower
 import QtQuick
 

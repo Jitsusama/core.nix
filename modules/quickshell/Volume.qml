@@ -1,5 +1,6 @@
-// Shows the speaker's volume for a moment whenever it changes or mutes, at
-// the bottom of the screen, as a bar in the theme.
+// Shows the speaker's volume, or with `input` the microphone's, for a moment
+// whenever it changes or mutes, at the bottom of the screen, as a bar in the
+// theme. Pipewire says when, so nothing is asked every so often.
 import Quickshell
 import Quickshell.Services.Pipewire
 import QtQuick
@@ -7,16 +8,20 @@ import QtQuick
 Scope {
     id: root
 
-    readonly property PwNode sink: Pipewire.defaultAudioSink
+    property bool input: false
+    readonly property PwNode node: input ? Pipewire.defaultAudioSource
+        : Pipewire.defaultAudioSink
+    // A node's audio arrives a moment after the node, once it's bound.
+    readonly property PwNodeAudio audio: node ? node.audio : null
     property bool shown: false
 
     // Pipewire reports a node's volume only once something binds it.
     PwObjectTracker {
-        objects: [root.sink]
+        objects: [root.node]
     }
 
     Connections {
-        target: root.sink ? root.sink.audio : null
+        target: root.audio
 
         function onVolumesChanged() {
             root.shown = true;
@@ -36,10 +41,11 @@ Scope {
     }
 
     Meter {
-        name: "volume"
-        glyph: String.fromCodePoint(off ? 0xf0581 : 0xf057e)
+        name: root.input ? "microphone" : "volume"
+        glyph: String.fromCodePoint(root.input ? (off ? 0xf036d : 0xf036c)
+            : (off ? 0xf0581 : 0xf057e))
         visible: root.shown
-        level: root.sink ? root.sink.audio.volume : 0
-        off: root.sink ? root.sink.audio.muted : false
+        level: root.audio ? root.audio.volume : 0
+        off: root.audio ? root.audio.muted : false
     }
 }

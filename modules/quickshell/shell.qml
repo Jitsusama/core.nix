@@ -9,7 +9,11 @@ ShellRoot {
     Notifications {}
     Polkit {}
     Volume {}
+    Volume {
+        input: true
+    }
     Brightness {}
+    Power {}
     Status {}
 
     OpenBelow {

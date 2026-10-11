@@ -70,6 +70,34 @@ pkgs.testers.runNixOSTest {
           };
         }
       ];
+      # A microphone of the class a real one has, which Quickshell needs to see
+      # its audio: a loopback whose far side is a source, as Pipewire's guide
+      # makes one, since a null sink's ports face the wrong way for that class.
+      services.pipewire.extraConfig.pipewire."91-stand-in-microphone"."context.modules" = [
+        {
+          name = "libpipewire-module-loopback";
+          args = {
+            "capture.props" = {
+              "node.name" = "stand-in-microphone-input";
+              # Two channels, as a laptop's microphones are: Quickshell reads no
+              # volume from a loopback whose map and volumes differ in size.
+              "audio.position" = [
+                "FL"
+                "FR"
+              ];
+              "node.passive" = true;
+            };
+            "playback.props" = {
+              "node.name" = "stand-in-microphone";
+              "media.class" = "Audio/Source";
+              "audio.position" = [
+                "FL"
+                "FR"
+              ];
+            };
+          };
+        }
+      ];
 
       virtualisation = {
         memorySize = 4096;
@@ -255,12 +283,25 @@ pkgs.testers.runNixOSTest {
           machine.screenshot("notification")
 
       with subtest("the volume shows when it changes, then goes"):
+          # WirePlumber picks the defaults a moment after Pipewire lists the nodes.
+          defaults = "wpctl inspect @DEFAULT_AUDIO_SINK@ && wpctl inspect @DEFAULT_AUDIO_SOURCE@"
+          machine.wait_until_succeeds(in_session(defaults), timeout=30)
           as_account("wpctl set-volume @DEFAULT_AUDIO_SINK@ 0.4")
           wait_for_surface("volume")
           # niri lists a surface before it has drawn its first frame.
           time.sleep(0.5)
           machine.screenshot("volume")
           machine.wait_until_fails(in_session("niri msg layers | grep -q volume"), timeout=10)
+
+      # The microphone's key mutes it through the same command, which niri runs.
+      with subtest("the microphone shows when it mutes, then goes"):
+          as_account("niri msg action spawn -- wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle")
+          wait_for_surface("microphone")
+          time.sleep(0.5)
+          machine.screenshot("microphone")
+          t.assertIn("MUTED", as_account("wpctl get-volume @DEFAULT_AUDIO_SOURCE@"))
+          machine.wait_until_fails(in_session("niri msg layers | grep -q microphone"), timeout=10)
+          as_account("wpctl set-mute @DEFAULT_AUDIO_SOURCE@ 0")
 
       # niri runs the brightness keys' command inside Joel's session, which is
       # the one logind lets change a backlight, so the test has niri run it too.
@@ -271,6 +312,21 @@ pkgs.testers.runNixOSTest {
           time.sleep(0.5)
           machine.screenshot("brightness")
           machine.wait_until_fails(in_session("niri msg layers | grep -q brightness"), timeout=10)
+
+      with subtest("the charge shows when power goes and comes back, then goes"):
+          # The kernel's stand-in has two supplies, mains and USB, and UPower
+          # counts the machine on battery only with both off.
+          def power(state):
+              parameters = "/sys/module/test_power/parameters"
+              for supply in ["ac", "usb"]:
+                  machine.succeed(f"echo {state} > {parameters}/{supply}_online")
+
+          for state in ["off", "on"]:
+              power(state)
+              wait_for_surface("power")
+              time.sleep(0.5)
+              machine.screenshot(f"power-{state}")
+              machine.wait_until_fails(in_session("niri msg layers | grep -q power"), timeout=10)
 
       # A photograph of the media keys' chords, whose marks lie past U+FFFF,
       # and Escape leaving.
@@ -563,12 +619,6 @@ pkgs.testers.runNixOSTest {
           machine.screenshot("overview-awake")
           as_account("niri msg action close-overview")
           # Without power the lid is let go, and taken again when it's back.
-          # The kernel's stand-in has two supplies, mains and USB.
-          def power(state):
-              parameters = "/sys/module/test_power/parameters"
-              for supply in ["ac", "usb"]:
-                  machine.succeed(f"echo {state} > {parameters}/{supply}_online")
-
           power("off")
           machine.wait_until_fails(f"{held} | grep -q handle-lid-switch", timeout=10)
           machine.succeed(f"{held} | grep -q sleep:idle")
