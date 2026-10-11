@@ -7,6 +7,7 @@
 import QtQuick
 import "Numbers.js" as Numbers
 import "Addresses.js" as Addresses
+import "Units.js" as Units
 
 QtObject {
     // What's typed, and the answer's headline.
@@ -87,6 +88,33 @@ QtObject {
     readonly property var notMacs: ["3c:22:fb:12:34", "3c:22-fb:12:34:56", "gg:22:fb:12:34:56",
         "3c22fb123456"]
 
+    // What's typed, and the conversion's headline.
+    readonly property var conversions: ({
+        "5 km in mi": "3.10686 mi",
+        "1 mi to km": "1.60934 km",
+        "6 ft in cm": "182.88 cm",
+        "3 in in cm": "7.62 cm",
+        "3 inches to cm": "7.62 cm",
+        "5 nautical miles in km": "9.26 km",
+        "1e3 m in km": "1 km",
+        "1 lb in kg": "0.453592 kg",
+        "1,500 g as kg": "1.5 kg",
+        "2 cups in ml": "473.176 mL",
+        "100 km/h in mph": "62.1371 mph",
+        "100 c in f": "212 \u00b0F",
+        "350f to c": "176.667 \u00b0C",
+        "0 kelvin in celsius": "-273.15 \u00b0C",
+        "1 gib in mb": "1,073.74 MB",
+        "10 gbit in gb": "1.25 GB",
+        "1 year in days": "365.25 d",
+        "90 deg in rad": "1.5708 rad",
+        "180 degrees in turns": "0.5 turn",
+        "1 kwh in kcal": "860.421 kcal",
+        "1 atm in psi": "14.6959 psi"
+    })
+    readonly property var notConversions: ["5 km in kg", "5 km in km", "100 usd in cad",
+        "255 in hex", "km in mi", "5 parsecs in km", "kitty", "5 km"]
+
     function quoted(value) {
         return JSON.stringify(value);
     }
@@ -153,6 +181,26 @@ QtObject {
             if (Addresses.mac(typed))
                 failures.push(`"${typed}" read as a hardware address, but it isn't one`);
         }
+
+        for (const typed in conversions) {
+            asked++;
+            const got = Units.answer(typed);
+            if (!got || got.headline !== conversions[typed])
+                failures.push(`"${typed}" converted to ${quoted(got && got.headline)}, `
+                    + `not "${conversions[typed]}"`);
+        }
+        for (const typed of notConversions) {
+            asked++;
+            const got = Units.answer(typed);
+            if (got)
+                failures.push(`"${typed}" converted to ${quoted(got.headline)}, `
+                    + "but nothing should");
+        }
+        const rated = Units.answer("5 km in mi");
+        asked++;
+        if (!rated || quoted(rated.rows.map(r => r.text))
+                !== quoted(["1 km = 0.621371 mi", "1 mi = 1.60934 km"]))
+            failures.push(`"5 km in mi" gave the rows ${quoted(rated && rated.rows)}`);
 
         // Said as warnings, since Qt keeps ordinary logging quiet.
         for (const failure of failures)

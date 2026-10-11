@@ -70,6 +70,7 @@ let
     "launcher/Provider.qml"
     "launcher/Numbers.js"
     "launcher/Addresses.js"
+    "launcher/Units.js"
     "launcher/Emoji.js"
   ];
 
@@ -334,6 +335,7 @@ let
     networks = ./launcher/Networks.qml;
     vendors = ./launcher/Vendors.qml;
     currency = ./launcher/Currency.qml;
+    units = ./launcher/Units.qml;
     weather = ./launcher/Weather.qml;
     machine = ./launcher/Machine.qml;
     emoji = ./launcher/Emoji.qml;
@@ -510,6 +512,10 @@ in
         order = 70;
         source = "vendors";
         directory = "${vendors}";
+      };
+      units = {
+        order = 75;
+        source = "units";
       };
       currency = {
         order = 80;

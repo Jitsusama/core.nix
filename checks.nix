@@ -394,6 +394,7 @@ in
       cp ${./tests/answers.qml} answers.qml
       cp ${./modules/quickshell/launcher/Numbers.js} Numbers.js
       cp ${./modules/quickshell/launcher/Addresses.js} Addresses.js
+      cp ${./modules/quickshell/launcher/Units.js} Units.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
       QML_IMPORT_PATH=${qt}/lib/qt-6/qml ${qt}/bin/qml answers.qml

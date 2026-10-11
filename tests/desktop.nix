@@ -407,6 +407,10 @@ pkgs.testers.runNixOSTest {
           copied("12*7", "84")
           # The vendor comes from the list built from hwdata, so this proves it's there.
           copied("3c:22:fb:12:34:56", "Apple, Inc.")
+          copied("5 km in mi", "3.10686")
+          answer("350 f in c")
+          machine.screenshot("launcher-units")
+          machine.send_key("esc")
           answer("10.0.0.0/22")
           machine.screenshot("launcher-answer")
           machine.send_key("esc")
