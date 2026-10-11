@@ -91,3 +91,22 @@ layer-rule {
         xray false
     }
 }
+
+// A shared screen never shows a secret or a message: the launcher holds the
+// clipboard's history, and polkit asks for a password. Notices are kept out
+// of the screenshots niri takes by itself as well, so one never lands in the
+// next shot; picking a region still sees them.
+layer-rule {
+    match namespace="^(launcher|polkit)$"
+    block-out-from "screencast"
+}
+
+layer-rule {
+    match namespace="^notifications$"
+    block-out-from "screen-capture"
+}
+
+window-rule {
+    match app-id="^1Password$"
+    block-out-from "screencast"
+}

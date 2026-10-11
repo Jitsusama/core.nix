@@ -169,10 +169,12 @@ in
             width ${toString shape.border}
             active-color "${roles.accent}"
             inactive-color "${roles.edge}"
+            urgent-color "${roles.alert}"
         }
         tab-indicator {
             active-color "${roles.accent}"
             inactive-color "${roles.raised}"
+            urgent-color "${roles.alert}"
         }
         insert-hint {
             color "${roles.accent}80"
