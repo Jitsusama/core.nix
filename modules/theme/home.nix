@@ -397,6 +397,16 @@ in
       '';
     };
 
+    title = lib.mkOption {
+      type = lib.types.str;
+      default = theme.name or cfg.name;
+      defaultText = lib.literalMD "the theme file's name";
+      description = ''
+        The theme's name as people read it, such as Osaka Jade: what a
+        program that lists themes or palettes calls it.
+      '';
+    };
+
     appearance = lib.mkOption {
       type = lib.types.enum [
         "dark"
@@ -823,7 +833,7 @@ in
       icons
       ;
     inherit (cfg.type) mono sans;
-    name = theme.name or cfg.name;
+    name = cfg.title;
     glyphs = lib.mapAttrs (_: mark: { inherit (mark) glyph console; }) cfg.glyphs;
   };
 
