@@ -22,8 +22,6 @@ import Quickshell.Io
 import Quickshell.Wayland
 import QtQuick
 import QtQuick.Effects
-// The pieces are loaded by name, so their folder is imported for its types.
-import qs.pieces
 
 Scope {
     id: root
@@ -39,27 +37,13 @@ Scope {
     // windows' own, so nothing lines up with a window's border by chance.
     readonly property int corner: Theme.space.m + Theme.space.s
 
-    // Every piece with a mark, loaded once, in the overview's order.
-    Item {
-        id: holder
-        visible: false
-
-        Repeater {
-            model: Overview.pieces.filter(entry => entry.mark !== null)
-
-            Loader {
-                required property var modelData
-                readonly property var entry: modelData
-                Component.onCompleted: setSource("pieces/" + entry.file, { settings: entry })
-            }
-        }
-    }
-
-    // What's on now: { entry, piece, glyph }, in the overview's order.
-    readonly property var on: [...holder.children]
-        .filter(loader => loader.item && loader.item.present && loader.item.active)
-        .map(loader => ({ entry: loader.entry, piece: loader.item,
-            glyph: Theme.glyph[loader.entry.mark] }))
+    // What's on now: every piece with a mark that's true, as { entry,
+    // piece, glyph }, in the overview's order.
+    readonly property var on: Facts.all
+        .filter(fact => fact.entry.mark !== null && fact.piece
+            && fact.piece.present && fact.piece.active)
+        .map(fact => ({ entry: fact.entry, piece: fact.piece,
+            glyph: Theme.glyph[fact.entry.mark] }))
 
     // The colour a thing wears: its kind's, or its role's, while it wants
     // Joel, and the text's otherwise.

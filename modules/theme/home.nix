@@ -748,8 +748,54 @@ in
           ];
           description = ''
             The shadows, in the shadow colour, that lift text set straight on
-            a picture, the overview's status and the lock screen's time, so it
+            a picture, the lock screen's time and the margin's pulls, so it
             reads while the picture shows whole. Nearest first.
+          '';
+        };
+        halo = lib.mkOption {
+          type = lib.types.listOf (
+            lib.types.submodule {
+              options = {
+                blur = lib.mkOption {
+                  type = lib.types.ints.unsigned;
+                  description = "How far the shadow spreads round the letters, in pixels.";
+                };
+                opacity = lib.mkOption {
+                  type = number;
+                  description = "How dark the shadow is, from 0 to 1.";
+                };
+              };
+            }
+          );
+          # Stacked from tight to wide, each nearly opaque, so the shade is
+          # all but solid at the ink and feathers out to nothing, with no
+          # edge of its own.
+          default = given "wallpaper" "halo" (
+            map
+              (blur: {
+                inherit blur;
+                opacity = "0.95";
+              })
+              [
+                1
+                2
+                3
+                4
+                5
+                6
+                8
+                10
+                13
+                16
+                24
+                40
+              ]
+          );
+          description = ''
+            The shadows, in the shadow colour and centred on the letters, that
+            hold text off whatever is behind it when that may be a picture or
+            a window: the overview's status, which lies over the workspaces.
+            Tightest first.
           '';
         };
       };
