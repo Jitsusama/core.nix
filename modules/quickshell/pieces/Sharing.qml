@@ -20,7 +20,8 @@ Piece {
     value: seen.length === 1 ? seen[0] : `${seen.length} things`
     title: "Sharing"
     hint: seen.length === 1 ? `Sharing ${seen[0]}` : `Sharing ${seen.length} things`
-    context: casts.length === 1 ? "notices still show" : seen.join(", ")
+    context: casts.length === 1 ? Quiet.shared ? "notices are held" : "notices still show"
+        : seen.join(", ")
     actions: [{
         glyph: String.fromCodePoint(0xf0d90),
         name: casts.length === 1 ? "Stop sharing" : "Stop sharing all of it",

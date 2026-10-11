@@ -432,6 +432,16 @@ in
     '';
   };
 
+  options.jitsusama.quickshell.quiet.whileSharing = lib.mkOption {
+    type = lib.types.bool;
+    default = true;
+    description = ''
+      Whether do not disturb is on by itself while another program sees the
+      screen, as a call shares it, and off again once nothing does. Ending it
+      meanwhile lets notices show until the sharing stops.
+    '';
+  };
+
   options.jitsusama.quickshell.launcher = {
     providers = lib.mkOption {
       type = lib.types.attrsOf (
@@ -741,6 +751,16 @@ in
                 )
               }
               readonly property var learning: ${object launcher.learning}
+          }
+        '';
+        "quickshell/Options.qml".text = ''
+          pragma Singleton
+          import Quickshell
+          import QtQuick
+
+          // The shell's own choices, from jitsusama.quickshell.
+          Singleton {
+              readonly property var quiet: ${object config.jitsusama.quickshell.quiet}
           }
         '';
         "quickshell/Overview.qml".text = ''

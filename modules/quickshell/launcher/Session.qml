@@ -27,8 +27,7 @@ Provider {
         verb: Quiet.on ? "end it" : "hold notices",
         name: Quiet.on ? "End Do Not Disturb" : "Do Not Disturb",
         keywords: "quiet focus dnd silence notifications notices hold",
-        side: !Quiet.on ? "for an hour" : Quiet.until > 0
-            ? `until ${Qt.formatDateTime(new Date(Quiet.until), "HH:mm")}` : "until it's ended",
+        side: Quiet.on ? Quiet.lasts : "for an hour",
         glyph: String.fromCodePoint(0xf00a0),
         hue: "voice",
         run: () => Quiet.on ? Quiet.end() : Quiet.keep(60),
