@@ -203,6 +203,14 @@ if less; record a new one after moving to a new series.
   disk, and the one it guesses is out by an order of magnitude.
 - **The TEO idle governor.** nixpkgs doesn't build it, and nothing measured
   here says menu, the one it builds, chooses idle states badly.
+- **A sched_ext scheduler.** The kernel can load one, but the two meant for
+  interactive use, scx_lavd and scx_bpfland, both lost to BORE's EEVDF on the
+  XPS 14. With a kernel build on every core, another app's wakeups waited
+  221 us at the 99th percentile under EEVDF, 3,409 us under scx_lavd and
+  226 us under scx_bpfland, which made the compositor and sound wait 674 us
+  against 106 us. The build took 158.8 s, against 164.8 s and 167.5 s. Idle
+  terminal scopes, from the [`slices`][slices] module, did better than
+  either: 68 us.
 
 [decision]: decisions/0006-build-the-kernel-here.md
 [module]: ../modules/kernel/
