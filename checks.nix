@@ -383,9 +383,10 @@ in
     '';
 
   # The launcher answers what's asked: sums and number bases, IPv4 and IPv6
-  # addresses and networks with the kind of range each is in, and hardware
-  # addresses, as tests/answers.qml lists them, and leaves alone what isn't
-  # one, in Qt's own JavaScript engine.
+  # addresses and networks with the kind of range each is in, hardware
+  # addresses, measures and the time in any zone tzdata names, as
+  # tests/answers.qml lists them, and leaves alone what isn't one, in Qt's
+  # own JavaScript engine.
   the-launcher-answers-what-is-asked =
     let
       qt = pkgs.qt6.qtdeclarative;
@@ -395,6 +396,9 @@ in
       cp ${./modules/quickshell/launcher/Numbers.js} Numbers.js
       cp ${./modules/quickshell/launcher/Addresses.js} Addresses.js
       cp ${./modules/quickshell/launcher/Units.js} Units.js
+      cp ${./modules/quickshell/launcher/Zones.js} Zones.js
+      cp ${import ./modules/quickshell/launcher/zones.nix { inherit lib pkgs; }} zones.jsonl
+      export QML_XHR_ALLOW_FILE_READ=1
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
       QML_IMPORT_PATH=${qt}/lib/qt-6/qml ${qt}/bin/qml answers.qml

@@ -411,6 +411,15 @@ pkgs.testers.runNixOSTest {
           answer("350 f in c")
           machine.screenshot("launcher-units")
           machine.send_key("esc")
+          # The zones come from the list built from tzdata, so this proves it's
+          # there. The minute may turn while it's asked, so either will do.
+          before = machine.succeed("date -u +%H:%M").strip()
+          answer("time in utc")
+          machine.screenshot("launcher-time")
+          machine.send_key("ret")
+          machine.wait_until_fails(in_session("niri msg layers | grep -qw launcher"), timeout=10)
+          after = machine.succeed("date -u +%H:%M").strip()
+          t.assertIn(as_account("wl-paste --no-newline"), [before, after])
           answer("10.0.0.0/22")
           machine.screenshot("launcher-answer")
           machine.send_key("esc")

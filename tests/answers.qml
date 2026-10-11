@@ -8,6 +8,7 @@ import QtQuick
 import "Numbers.js" as Numbers
 import "Addresses.js" as Addresses
 import "Units.js" as Units
+import "Zones.js" as Zones
 
 QtObject {
     // What's typed, and the answer's headline.
@@ -115,6 +116,29 @@ QtObject {
     readonly property var notConversions: ["5 km in kg", "5 km in km", "100 usd in cad",
         "255 in hex", "km in mi", "5 parsecs in km", "kitty", "5 km"]
 
+    // What's typed, when (in UTC), and the time there, from the zones
+    // zones.py built, told against Toronto.
+    readonly property var times: [
+        ["time in tokyo", "2026-01-15T12:00", "21:00"],
+        ["london time", "2026-01-15T12:00", "12:00"],
+        ["london time", "2026-07-15T12:00", "13:00"],
+        ["time in the uk", "2026-07-15T12:00", "13:00"],
+        ["time", "2026-01-15T12:00", "07:00"],
+        ["time", "2026-07-15T12:00", "08:00"],
+        ["what time is it in india?", "2026-01-15T12:00", "17:30"],
+        ["kathmandu time", "2026-01-15T12:00", "17:45"],
+        ["time in New York", "2026-01-15T12:00", "07:00"],
+        ["pst time", "2026-01-15T12:00", "04:00"],
+        ["time in south korea", "2026-01-15T12:00", "21:00"],
+        ["time in utc", "2026-01-15T12:00", "12:00"],
+        ["time in auckland", "2026-01-15T12:00", "01:00"],
+        // Toronto's clocks go forward at 02:00 on 8 March 2026, 07:00 UTC.
+        ["time", "2026-03-08T06:59", "01:59"],
+        ["time", "2026-03-08T07:00", "03:00"]
+    ]
+    readonly property var notTimes: ["bedtime", "uptime", "timer", "bed time", "kitty",
+        "time out"]
+
     function quoted(value) {
         return JSON.stringify(value);
     }
@@ -201,6 +225,50 @@ QtObject {
         if (!rated || quoted(rated.rows.map(r => r.text))
                 !== quoted(["1 km = 0.621371 mi", "1 mi = 1.60934 km"]))
             failures.push(`"5 km in mi" gave the rows ${quoted(rated && rated.rows)}`);
+
+        const read = new XMLHttpRequest();
+        read.open("GET", Qt.resolvedUrl("zones.jsonl"), false);
+        read.send();
+        const zones = Zones.prepare(read.responseText);
+        const at = when => Date.parse(`${when}:00Z`);
+        for (const [typed, when, time] of times) {
+            asked++;
+            const got = Zones.answer(typed, zones, at(when), "America/Toronto", 0);
+            if (!got || got.headline !== time)
+                failures.push(`"${typed}" at ${when} said ${quoted(got && got.headline)}, `
+                    + `not "${time}"`);
+        }
+        for (const typed of notTimes) {
+            asked++;
+            const got = Zones.answer(typed, zones, at("2026-01-15T12:00"), "America/Toronto", 0);
+            if (got)
+                failures.push(`"${typed}" told ${quoted(got)}, but nothing should`);
+        }
+        const told = Zones.answer("time in auckland", zones, at("2026-01-15T12:00"),
+            "America/Toronto", 0);
+        asked++;
+        const lines = answer => answer.rows.map(r => [r.text, r.side].filter(s => s).join(" "));
+        if (!told || quoted(lines(told)) !== quoted(["Friday 16 January tomorrow",
+                "18 h ahead of here", "Pacific/Auckland NZDT \u00b7 UTC+13"]))
+            failures.push(`"time in auckland" gave the rows ${quoted(told && told.rows)}`);
+        // Here, the day needs no "today", and UTC is said once.
+        const cases = [
+            ["time", ["Thursday 15 January", "America/Toronto EST \u00b7 UTC\u22125"]],
+            ["time in utc", ["Thursday 15 January today", "5 h ahead of here", "UTC"]],
+            ["time in kathmandu", ["Thursday 15 January today", "10 h 45 min ahead of here",
+                "Asia/Kathmandu UTC+5:45"]]
+        ];
+        for (const [typed, expected] of cases) {
+            asked++;
+            const got = Zones.answer(typed, zones, at("2026-01-15T12:00"), "America/Toronto", 0);
+            if (!got || quoted(lines(got)) !== quoted(expected))
+                failures.push(`"${typed}" gave the rows ${quoted(got && lines(got))}`);
+        }
+        asked++;
+        const away = Zones.answer("time in narnia", zones, at("2026-01-15T12:00"),
+            "America/Toronto", 0);
+        if (!away || away.unknown !== "narnia")
+            failures.push(`"time in narnia" gave ${quoted(away)}, not a place to look up`);
 
         // Said as warnings, since Qt keeps ordinary logging quiet.
         for (const failure of failures)

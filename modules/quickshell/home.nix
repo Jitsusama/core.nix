@@ -71,6 +71,7 @@ let
     "launcher/Numbers.js"
     "launcher/Addresses.js"
     "launcher/Units.js"
+    "launcher/Zones.js"
     "launcher/Emoji.js"
   ];
 
@@ -336,6 +337,7 @@ let
     vendors = ./launcher/Vendors.qml;
     currency = ./launcher/Currency.qml;
     units = ./launcher/Units.qml;
+    time = ./launcher/Clocks.qml;
     weather = ./launcher/Weather.qml;
     machine = ./launcher/Machine.qml;
     emoji = ./launcher/Emoji.qml;
@@ -350,6 +352,7 @@ let
 
   # Every emoji, in a skin tone.
   emojiList = import ./launcher/emoji.nix { inherit lib pkgs; };
+  timeZones = import ./launcher/zones.nix { inherit lib pkgs; };
 
   # The IEEE's hardware address vendors, from hwdata, in a file for each
   # first byte: a line for each vendor, its first three bytes and its name,
@@ -529,6 +532,12 @@ in
         zone = osConfig.time.timeZone or null;
         inherit (launcher) lookups;
       };
+      time = {
+        order = 95;
+        source = "time";
+        zone = osConfig.time.timeZone or null;
+        inherit (launcher) lookups;
+      };
       machine = {
         order = 100;
         source = "machine";
@@ -645,6 +654,9 @@ in
                     # built from the provider's own settings.
                     // lib.optionalAttrs (provider.source == "emoji") {
                       list = "${emojiList (provider.tone or "none")}";
+                    }
+                    // lib.optionalAttrs (provider.source == "time") {
+                      list = "${timeZones}";
                     }
                   ) providers
                 )
