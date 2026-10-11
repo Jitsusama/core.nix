@@ -420,6 +420,12 @@ pkgs.testers.runNixOSTest {
           machine.wait_until_fails(in_session("niri msg layers | grep -qw launcher"), timeout=10)
           after = machine.succeed("date -u +%H:%M").strip()
           t.assertIn(as_account("wl-paste --no-newline"), [before, after])
+          # A theme's colour is found by its role, as the theme exports it.
+          theme = json.loads(as_account("cat ~/.config/jitsusama/theme.json"))
+          copied("colour accent", theme["roles"]["accent"].lower())
+          answer("#f53")
+          machine.screenshot("launcher-colour")
+          machine.send_key("esc")
           answer("10.0.0.0/22")
           machine.screenshot("launcher-answer")
           machine.send_key("esc")

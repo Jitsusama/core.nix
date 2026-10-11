@@ -72,6 +72,7 @@ let
     "launcher/Addresses.js"
     "launcher/Units.js"
     "launcher/Zones.js"
+    "launcher/Colours.js"
     "launcher/Emoji.js"
   ];
 
@@ -337,6 +338,7 @@ let
     vendors = ./launcher/Vendors.qml;
     currency = ./launcher/Currency.qml;
     units = ./launcher/Units.qml;
+    colours = ./launcher/Colours.qml;
     time = ./launcher/Clocks.qml;
     weather = ./launcher/Weather.qml;
     machine = ./launcher/Machine.qml;
@@ -520,6 +522,10 @@ in
         order = 75;
         source = "units";
       };
+      colours = {
+        order = 78;
+        source = "colours";
+      };
       currency = {
         order = 80;
         source = "currency";
@@ -657,6 +663,11 @@ in
                     }
                     // lib.optionalAttrs (provider.source == "time") {
                       list = "${timeZones}";
+                    }
+                    # A colour is told against the theme's own pigments.
+                    // lib.optionalAttrs (provider.source == "colours") {
+                      inherit roles;
+                      inherit (config.jitsusama.theme) palette;
                     }
                   ) providers
                 )

@@ -398,14 +398,16 @@ works the same way everywhere.
   field. What's held shows as chips; the left arrow steps back out, and
   Escape always closes. The footer names what Return does and where the
   arrows go.
-- **Answers in the field.** A sum, a base, a measure in another unit, an
-  address or network, a hardware address, money, the time or the weather
-  somewhere, or how the machine is doing is answered in grey right after
-  what's typed, and that's the answer's only home. Return copies it, Tab
-  puts it in place of the question, and Down walks its detail, each row
-  copied the same way. The footer says where an answer came from. Nothing
-  leaves the machine unless the question needs the network, never for a
-  private address, and never with the launcher's `lookups` off.
+- **Answers in the field.** A sum, a base, a measure in another unit, a
+  colour in its other forms, an address or network, a hardware address,
+  money, the time or the weather somewhere, or how the machine is doing is
+  answered in grey right after what's typed, and that's the answer's only
+  home. A colour's first row wears it, and so does the theme's nearest
+  pigment. Return copies it, Tab puts it in place of the question, and Down
+  walks its detail, each row copied the same way. The footer says where an
+  answer came from. Nothing leaves the machine unless the question needs the
+  network, never for a private address, and never with the launcher's
+  `lookups` off.
 - **Large sets are one row each.** Emoji, the clipboard's history and past
   notices are too many to mix into the search: each that has a match
   adds one row, its best match with a count of the rest, so there's no

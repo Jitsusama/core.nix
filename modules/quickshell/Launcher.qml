@@ -674,7 +674,8 @@ Scope {
                                 anchors.bottom: parent.bottom
                                 selected: entry.index === root.current
                                 glyph: entry.modelData.glyph
-                                hue: Theme[entry.modelData.hue]
+                                // A colour's swatch wears the colour itself.
+                                hue: entry.modelData.swatch ?? Theme[entry.modelData.hue]
                                 name: selected ? entry.modelData.name
                                     : root.marked(entry.modelData)
                                 chord: entry.modelData.chord

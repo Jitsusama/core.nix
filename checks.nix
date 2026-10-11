@@ -397,6 +397,8 @@ in
       cp ${./modules/quickshell/launcher/Addresses.js} Addresses.js
       cp ${./modules/quickshell/launcher/Units.js} Units.js
       cp ${./modules/quickshell/launcher/Zones.js} Zones.js
+      cp ${./modules/quickshell/launcher/Colours.js} Colours.js
+      cp ${./tests/colour-cases.js} colour-cases.js
       cp ${import ./modules/quickshell/launcher/zones.nix { inherit lib pkgs; }} zones.jsonl
       export QML_XHR_ALLOW_FILE_READ=1
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
@@ -560,7 +562,10 @@ in
     in
     pkgs.runCommandLocal "nothing-names-its-own-look" { nativeBuildInputs = [ pkgs.ripgrep ]; } ''
       cd ${./.}
+      # The launcher's colour answers, and the colours they're tested on, name
+      # colours because colours are what's asked; neither is a look.
       if rg --line-number --no-heading --hidden --glob '!modules/theme/**' \
+        --glob '!modules/quickshell/launcher/Colours.js' --glob '!tests/colour-cases.js' \
         -e ${lib.escapeShellArg pattern} modules roles hardware tests examples flake.nix; then
         echo "The lines above name a colour or a face; name the theme's role or font instead."
         exit 1

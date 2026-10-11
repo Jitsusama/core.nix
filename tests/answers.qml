@@ -9,6 +9,8 @@ import "Numbers.js" as Numbers
 import "Addresses.js" as Addresses
 import "Units.js" as Units
 import "Zones.js" as Zones
+import "Colours.js" as Colours
+import "colour-cases.js" as ColourCases
 
 QtObject {
     // What's typed, and the answer's headline.
@@ -269,6 +271,26 @@ QtObject {
             "America/Toronto", 0);
         if (!away || away.unknown !== "narnia")
             failures.push(`"time in narnia" gave ${quoted(away)}, not a place to look up`);
+
+        for (const [typed, headline, rows] of ColourCases.answers) {
+            asked++;
+            const got = Colours.answer(typed, ColourCases.palette, ColourCases.roles);
+            const said = got && got.rows.map(r => [r.text, r.side].filter(s => s).join(" "));
+            if (!got || got.headline !== headline || quoted(said) !== quoted(rows))
+                failures.push(`"${typed}" gave ${quoted(got && got.headline)} and `
+                    + `${quoted(said)}, not "${headline}" and ${quoted(rows)}`);
+        }
+        asked++;
+        const [typed, worn] = ColourCases.swatch;
+        const swatched = Colours.answer(typed, ColourCases.palette, ColourCases.roles);
+        if (!swatched || swatched.rows[0].swatch !== worn)
+            failures.push(`"${typed}" wore ${quoted(swatched && swatched.rows[0].swatch)}`);
+        for (const typed of ColourCases.not) {
+            asked++;
+            const got = Colours.answer(typed, ColourCases.palette, ColourCases.roles);
+            if (got)
+                failures.push(`"${typed}" gave ${quoted(got.headline)}, but nothing should`);
+        }
 
         // Said as warnings, since Qt keeps ordinary logging quiet.
         for (const failure of failures)
