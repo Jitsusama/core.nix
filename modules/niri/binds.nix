@@ -52,6 +52,17 @@ in
     does = "Find a program or an action";
     action = ''spawn "qs" "ipc" "call" "launcher" "toggle";'';
   }
+  # The launcher's largest collections, each opened straight.
+  {
+    chord = "Super+V";
+    does = "Find something copied earlier";
+    action = ''spawn "qs" "ipc" "call" "launcher" "collection" "clipboard";'';
+  }
+  {
+    chord = "Super+Semicolon";
+    does = "Find an emoji";
+    action = ''spawn "qs" "ipc" "call" "launcher" "collection" "emoji";'';
+  }
   {
     chord = "Super+Shift+Slash";
     does = "Show these shortcuts";

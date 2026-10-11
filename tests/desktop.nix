@@ -455,6 +455,27 @@ pkgs.testers.runNixOSTest {
 
           retry(opened, timeout_seconds=15)
 
+      with subtest("Super+V finds what was copied earlier, and copies it again"):
+          keeping = as_account("systemctl --user is-active clipboard-history")
+          t.assertEqual(keeping.strip(), "active")
+          as_account("echo -n 'Notes for Tuesday' | wl-copy > /dev/null 2>&1")
+          time.sleep(0.5)
+          as_account("printf 'the second copy\\nover two lines' | wl-copy > /dev/null 2>&1")
+          time.sleep(0.5)
+          machine.send_key("meta_l-v")
+          wait_for_surface("launcher")
+          time.sleep(0.5)
+          machine.screenshot("launcher-copies-all")
+          machine.send_chars("tues")
+          time.sleep(0.5)
+          machine.screenshot("launcher-copies")
+          machine.send_key("ret")
+
+          def copied_again(_):
+              return as_account("wl-paste --no-newline") == "Notes for Tuesday"
+
+          retry(copied_again, timeout_seconds=10)
+
       with subtest("the lock screen takes only the right password"):
           as_account("qs ipc call lock lock")
           machine.wait_until_succeeds(in_session("qs ipc call lock isLocked | grep -q true"), timeout=30)

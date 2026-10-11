@@ -99,6 +99,7 @@ let
     Equal.text = "=";
     Slash.text = "/";
     Period.text = ".";
+    Semicolon.text = ";";
     Comma.text = ",";
     Grave.text = "`";
     BracketLeft.text = "[";
@@ -220,8 +221,13 @@ let
       nerd "f0570"
     else if lib.hasInfix "monitor" action then
       nerd "f0379"
+    # A collection's own glyph, as its row in the launcher wears.
     else if program == "qs" && lib.elem "collection" run then
-      nerd "f097b"
+      {
+        clipboard = nerd "f0a38";
+        emoji = nerd "f01f5";
+      }
+      .${lib.last run} or (nerd "f097b")
     else
       nerd "f2d0";
 
@@ -285,7 +291,12 @@ let
     machine = ./launcher/Machine.qml;
     emoji = ./launcher/Emoji.qml;
     shortcuts = ./launcher/KeyMap.qml;
+    clipboard = ./launcher/Copies.qml;
   };
+
+  # The program that hears every copy, for the clipboard collection.
+  clipboardHistory = pkgs.callPackage ./clipboard/package.nix { };
+  keepsCopies = launcher.providers.clipboard.enable or false;
 
   # Every emoji, in a skin tone.
   emojiList = import ./launcher/emoji.nix { inherit lib pkgs; };
@@ -468,7 +479,13 @@ in
         order = 100;
         source = "machine";
       };
-      # A collection, shown as one row below the rest.
+      # Collections, each shown as one row below the rest.
+      clipboard = {
+        order = 105;
+        source = "clipboard";
+        # How many copies are kept, in memory only.
+        keep = 200;
+      };
       emoji = {
         order = 110;
         source = "emoji";
@@ -669,6 +686,27 @@ in
           }
         '';
       };
+
+    # Keeps the clipboard's text copies for the launcher, which can't hear
+    # them itself, while the clipboard collection is on.
+    systemd.user.services.clipboard-history = lib.mkIf keepsCopies {
+      Unit = {
+        Description = "The clipboard's history, kept in memory for the launcher";
+        PartOf = [ "graphical-session.target" ];
+        After = [ "graphical-session.target" ];
+        Before = [ "quickshell.service" ];
+      };
+      Service = {
+        ExecStart = lib.concatStringsSep " " [
+          (lib.getExe clipboardHistory)
+          "--socket %t/clipboard-history.sock"
+          "--keep ${toString launcher.providers.clipboard.keep}"
+        ];
+        Restart = "on-failure";
+        RestartSec = 1;
+      };
+      Install.WantedBy = [ "graphical-session.target" ];
+    };
 
     systemd.user.services.quickshell = {
       Unit = {
