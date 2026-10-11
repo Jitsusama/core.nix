@@ -2,6 +2,18 @@
 # to whatever Joel is doing, so a build on every core never slows the desktop:
 # the scheduler never prefers a batch process over an interactive one.
 #
+# Batch only orders processes that share a group, though, and the daemon's
+# group, system.slice, weighs the same as Joel's user.slice, so a build took
+# half the CPU from his programs whatever its policy. In a slice of its own at
+# a tenth of their weight it takes what they leave. On the XPS 14, with a
+# kernel build in an app's scope, a sixteen-thread Nix build and a virtual
+# machine booting at once, a wakeup in another app waited 280 to 377 us at
+# the 99th percentile over two runs, against 802 to 1,534 us in system.slice;
+# the kernel build took 202 s, against 233 s; and the Nix build kept 58% of
+# the throughput it had. An idle slice did no better for the apps, and since
+# it yields to everything in user.slice, a build in a terminal would stop
+# Nix's builds altogether.
+#
 # Builds also ask for idle I/O, which a disk scheduler that honours priority
 # would serve only when nothing else wants the disk. NVMe drives run without
 # one, as the kernel sets them up and as measured fastest on the XPS 14, so
@@ -16,7 +28,10 @@
   nix.daemonCPUSchedPolicy = "batch";
   nix.daemonIOSchedClass = "idle";
 
+  systemd.slices.nix-build.sliceConfig.CPUWeight = 10;
+
   systemd.services.nix-daemon.serviceConfig = {
+    Slice = "nix-build.slice";
     ManagedOOMMemoryPressure = "kill";
     ManagedOOMMemoryPressureLimit = "80%";
   };

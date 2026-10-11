@@ -88,9 +88,10 @@ in the first three, and the graphical role the last:
 - **[`memory`][memory]:** swap to zstd-compressed RAM, kill a runaway process
   before the machine thrashes, and write to disk steadily rather than in
   stalls, so a linking build never freezes the desktop.
-- **[`nix-daemon`][nix-daemon]:** builds run as batch work, so they take the
-  CPU only when nothing interactive wants it, and systemd-oomd stops one that
-  starves the machine of memory.
+- **[`nix-daemon`][nix-daemon]:** builds run as batch work in a slice of
+  their own, at a tenth of the weight of the user's programs, so they take
+  the CPU only when nothing interactive wants it, and systemd-oomd stops one
+  that starves the machine of memory.
 - **[`slices`][slices]:** the compositor and sound get ten times anyone
   else's share of the CPU, and a floor of memory a build can't reclaim.
 - **[`perf`][perf]:** perf itself, and the settings that let Joel profile his
