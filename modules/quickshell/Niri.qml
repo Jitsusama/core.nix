@@ -66,8 +66,13 @@ Singleton {
         } else if (event.WindowOpenedOrChanged) {
             const window = event.WindowOpenedOrChanged.window;
             windows[window.id] = window;
-            if (window.is_focused)
+            // One that's focused takes focus from every other, as niri's IPC
+            // documents, without an event for each of them.
+            if (window.is_focused) {
                 focused = window.id;
+                for (const id in windows)
+                    windows[id].is_focused = windows[id].id === focused;
+            }
             revision++;
             windowOpenedOrChanged(window);
         } else if (event.WindowClosed) {
