@@ -197,7 +197,7 @@ QtObject {
         // look for its first word in each thing. A machine busy with other
         // work slows both alike, so the ratio holds where a time in
         // milliseconds wouldn't, and it still catches the matcher growing
-        // slower in kind. On optimus at rest a query over this list, the
+        // slower in kind. On a laptop at rest a query over this list, the
         // size of a desktop's main search, takes 0.12 ms, four and a half
         // looks' worth, against the 8.3 ms of a frame at 120 Hz; doing the
         // alignment twice over takes it to almost seven. Every query is
