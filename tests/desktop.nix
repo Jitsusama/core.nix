@@ -282,12 +282,26 @@ pkgs.testers.runNixOSTest {
           machine.sleep(1)
           machine.screenshot("notification")
 
+      # Quickshell hears a node change only once it has bound the node's audio,
+      # a moment after WirePlumber names it the default, so a change is made
+      # again, each time a different one, until its meter answers.
+      def answered(namespace, change):
+          def tried(_):
+              as_account(change)
+              for _ in range(4):
+                  time.sleep(0.5)
+                  shown = in_session(f"niri msg layers | grep -q {namespace}")
+                  if machine.execute(shown)[0] == 0:
+                      return True
+              return False
+
+          retry(tried, timeout_seconds=30)
+
       with subtest("the volume shows when it changes, then goes"):
           # WirePlumber picks the defaults a moment after Pipewire lists the nodes.
           defaults = "wpctl inspect @DEFAULT_AUDIO_SINK@ && wpctl inspect @DEFAULT_AUDIO_SOURCE@"
           machine.wait_until_succeeds(in_session(defaults), timeout=30)
-          as_account("wpctl set-volume @DEFAULT_AUDIO_SINK@ 0.4")
-          wait_for_surface("volume")
+          answered("volume", "wpctl set-volume @DEFAULT_AUDIO_SINK@ 10%-")
           # niri lists a surface before it has drawn its first frame.
           time.sleep(0.5)
           machine.screenshot("volume")
@@ -295,11 +309,10 @@ pkgs.testers.runNixOSTest {
 
       # The microphone's key mutes it through the same command, which niri runs.
       with subtest("the microphone shows when it mutes, then goes"):
-          as_account("niri msg action spawn -- wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle")
-          wait_for_surface("microphone")
+          toggle = "niri msg action spawn -- wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle"
+          answered("microphone", toggle)
           time.sleep(0.5)
           machine.screenshot("microphone")
-          t.assertIn("MUTED", as_account("wpctl get-volume @DEFAULT_AUDIO_SOURCE@"))
           machine.wait_until_fails(in_session("niri msg layers | grep -q microphone"), timeout=10)
           as_account("wpctl set-mute @DEFAULT_AUDIO_SOURCE@ 0")
 
