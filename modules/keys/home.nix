@@ -35,6 +35,15 @@ let
         type = lib.types.str;
         description = "What the chord does, in plain words, as the launcher finds it.";
       };
+      run = lib.mkOption {
+        type = lib.types.listOf lib.types.str;
+        default = [ ];
+        description = ''
+          A command that does the same, for the launcher to have niri start
+          when the action is picked by name. Empty for a chord only its own
+          program can act on, such as one inside the terminal.
+        '';
+      };
     };
   };
 
@@ -141,7 +150,14 @@ in
       map (layer: {
         name = layer;
         description = layers.${layer};
-        binds = map (b: { inherit (b) chord keys does; }) (spelled layer);
+        binds = map (b: {
+          inherit (b)
+            chord
+            keys
+            does
+            run
+            ;
+        }) (spelled layer);
       }) order
     );
 

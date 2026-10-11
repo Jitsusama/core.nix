@@ -82,6 +82,13 @@ says something about it.
      the darkest shade.
    - `alert`, `warning`, `success`: the source's error, warning and success
      colours, or its red, yellow and green.
+   - `shadow` is drawn faint under floating surfaces: the darkest shade on
+     a dark theme, the darkest ink on a light one.
+   - `action`, `program`, `machine`, `person`, `voice` are the hues glyphs
+     wear, one per kind of thing (docs/design.md, Colour): a yellow, a
+     cyan, a soft red, a magenta and a bright cyan or violet, five hues apart
+     from one another and from the accent, each reading on the backgrounds
+     as text does.
 
    Mark every role that wasn't a direct copy with a comment saying what was
    decided and why. Those are what Joel checks by eye.

@@ -117,8 +117,8 @@ GitHub Next, so they share proportions, x-height and voice.
   | Step    | Power | Size (pt) | For                                       |
   | ------- | ----- | --------- | ----------------------------------------- |
   | small   | -1    | 8.4       | units beside a number, a footnote         |
-  | body    | 0     | 10.5      | almost everything                         |
-  | large   | 1     | 13.1      | a prompt's question, a notification title |
+  | body    | 0     | 10.5      | almost everything: notices, meters, menus |
+  | large   | 1     | 13.1      | the launcher and every prompt             |
   | title   | 2     | 16.4      | a heading in a menu or dialog             |
   | display | 6     | 40.1      | the clock in the overview                 |
   | hero    | 8     | 62.6      | the clock on the lock screen              |
@@ -135,13 +135,13 @@ shows and further apart as they grow:
 
 | Step | Units | Pixels | For                                                |
 | ---- | ----- | ------ | -------------------------------------------------- |
-| xs   | 1     | 4      | between lines that belong together                 |
+| xs   | 1     | 4      | between lines that belong together, a part's inset |
 | s    | 2     | 8      | between a mark and its text                        |
-| m    | 3     | 12     | inside a row, between windows, between cards       |
-| l    | 4     | 16     | a terminal's padding above and below               |
+| m    | 3     | 12     | between windows, between notices, a field's glyph  |
+| l    | 4     | 16     | text inside its row, a terminal's padding          |
 | xl   | 6     | 24     | a terminal's padding at the sides, between columns |
-| xxl  | 8     | 32     | a meter's height, a row of a prompt list           |
-| xxxl | 12    | 48     | the overview's margin                              |
+| xxl  | 8     | 32     | a glyph's column in a list, a chord from its name  |
+| xxxl | 12    | 48     | a row of the launcher or a prompt, a meter         |
 | huge | 16    | 64     | an overlay's distance from the edge                |
 
 Whitespace groups things before borders or boxes do. Start with too much space
@@ -166,6 +166,7 @@ surface names a meaning, never a colour value:
 | muted      | text that gives context: labels, units, hints                |
 | rule       | separators and marks that aren't read as text                |
 | edge       | the outline of what isn't focused: a window, a field at rest |
+| shadow     | the shadow under a floating surface, drawn faint             |
 | accent     | where Joel's attention is: one focal point per screen state  |
 | on_accent  | text drawn on the accent or on a state colour                |
 | alert      | something that needs him: a failure, an urgent window        |
@@ -177,6 +178,22 @@ on the wallpaper without a surface behind it. Muted text sits only on the
 background, sunken and deepest; on the raised and selection surfaces hints
 switch to text, since a muted that read there would be too bright to be
 muted.
+
+**Colour goes on glyphs, never on text.** Text keeps to the text, strong and
+muted roles, so it always reads, and glyphs carry the colour, which is where
+the whimsy is. Each glyph hue is a kind of thing, the same kind on every
+surface:
+
+| Role    | A glyph for                    | In Osaka Jade | For example                     |
+| ------- | ------------------------------ | ------------- | ------------------------------- |
+| action  | something to do                | gold          | "Open a terminal" in the launcher |
+| program | a program                      | aqua          | kitty's cat, a browser's notice |
+| machine | the machine itself             | rose          | the padlock, power, the volume  |
+| person  | a person                       | orchid        | a message from someone          |
+| voice   | the shell speaking for itself  | turquoise     | an empty list, nothing found    |
+
+The accent is never a glyph's: it stays where the keys go, on a border and
+the caret. Glyph hues are held to the same contrast as text.
 
 A terminal program draws with the terminal's sixteen ANSI colours, which
 carry no meaning of their own, and something that draws in shades, such as a
@@ -200,6 +217,71 @@ The table is `jitsusama.theme.glyphs`, each mark with what it means and its
 stand-in. Every program that can read it is given it: Quickshell as
 `Theme.glyph`, Neovim as `require('theme').glyphs`, and anything else through
 `~/.config/jitsusama/theme.json`, which holds the whole theme.
+
+## Shape and Kinds
+
+Shape is a language too. Every visual property means one thing, the same
+thing on every surface, so a glance says what kind of thing is on screen and
+where the keys go. Different things look different, drawn from the same few
+words, so Joel never wonders what he's talking to.
+
+| Property                    | What it says                                                    |
+| --------------------------- | --------------------------------------------------------------- |
+| a border, `shape.border`    | this is a thing; its colour says where the keys go: the accent holds them, the edge doesn't, the alert needs Joel |
+| the radius, `shape.radius`  | a whole thing: a window, or anything floating                   |
+| a smaller radius            | a part of a thing, always the radius less the border and `shape.inset`, so the curves run parallel |
+| square                      | not a thing at all: text, a hairline, a bar's fill              |
+| a hairline across a surface | splits what's typed from what comes back                        |
+| cloudy, lifted by a shadow  | it floats above the windows, which stay opaque                  |
+| monospace                   | typing, or the machine being precise: commands, chords, figures, programs' names |
+| Mona Sans                   | the system saying something in words                            |
+| size                        | how much attention a kind asks, set for the kind and never changed within it |
+| weight and colour           | the hierarchy within a surface                                  |
+
+No surface picks a radius or a border width of its own; a check refuses any
+that does. The kinds that follow from it:
+
+| Kind    | For example            | Border                    | Where                 | Type              | What sets it apart |
+| ------- | ---------------------- | ------------------------- | --------------------- | ----------------- | ------------------ |
+| window  | a program              | the accent when focused, the edge otherwise | tiled | its own | opaque |
+| palette | the launcher           | the accent                | a quarter down        | large, monospace  | a command line over a list |
+| prompt  | polkit, the lock screen | the accent, the alert after a wrong answer | dead centre | large | a scrim stops what's behind it; who asks and why, in words, then the padlock beside the dots |
+| notice  | a notification         | the edge, the alert when critical | the top right corner | body, Mona Sans | never takes the keys; who first, then the message, then a footer of where from and when |
+| meter   | the volume, the brightness | the edge              | bottom centre         | body, monospace   | reads a level back while it changes |
+
+**Floating surfaces** are the deepest colour at `floating.opacity`, cloudy
+enough to hint at what's beneath without showing it, over a blur of the
+windows there. Each asks niri to blur exactly its own rounded shape, so the
+blur never spills past a corner. Two light shadows lift it
+(`floating.shadows`), and a prompt's scrim is the deepest colour at
+`floating.scrim`. The launcher's selected row is the selection colour at
+`floating.selection`, an inset inside the border.
+
+**A glyph leads a line only when the line is something to act on:** a field,
+such as the padlock beside a password or the magnifier on the command line,
+or a result in a list, where every row has one and they form a column. In a
+block of text a glyph never starts a line, since it would leave a hole under
+itself or push the text off its edge. It sits inline before the word it
+marks, or in a footer, as a notice signs where it came from: its glyph, a
+step apart, then its name at the bottom left, and the time at the bottom
+right. Edges line up to the ink, not the box, so a glyph's left edge and the
+letters above it share a column.
+
+**Chords are drawn key by key:** a key's own glyph where a proper one exists
+(the NixOS mark for Super, ⇧, ↵ and the arrows), its name where none does
+(Ctrl, Alt, Esc, Tab, Space), and a letter as itself, joined by + with the
+same room on each side, all muted, even on the selected row. A chord sits at
+the right of its row, at least `space.xxl` from the name. Nothing says what
+Escape does, since it always leaves.
+
+**The space from text to its frame is the same on every side,** measured to
+the letters rather than their boxes. In the palette and a prompt, large type
+sits in rows of `space.xxxl`, each region an inset inside the border and its
+text `space.l` inside its row. A notice keeps `space.l` from its letters to
+its frame, and a meter is `space.xxxl` tall with `space.l` at its sides.
+
+What takes the keys appears on the next frame, a notice slides in from its
+corner, and a prompt's scrim fades in.
 
 ## Motion
 
@@ -442,6 +524,10 @@ stiffness = 1600
 [glyphs]
 cursor = { glyph = "\u25b8", console = ">" }
 
+# How cloudy a floating surface is, its scrim and selection, and its shadows.
+[floating]
+opacity = "0.85"
+
 # Still to come: the wallpaper and the console's font.
 [wallpaper]
 [console]
@@ -503,8 +589,8 @@ palette and its keys.
 | The greeter                               | Quickshell, greetd       | both           |        |        |           |         |          |
 | The compositor                            | niri                     | none           |        |        |           |         |          |
 | The overview's status and the margin mark | Quickshell               | both           | the time, the date, the battery with its time and watts, the network, the volume | the battery running low, offline, muted | step 2's doors | step 2 | volume, network, battery, date; the time stays |
-| The launcher and palette                  | Quickshell               | both           |        |        |           |         |          |
-| Notifications                             | Quickshell               | proportional   |        |        |           |         |          |
+| The launcher and palette                  | Quickshell               | monospace      |        |        |           |         |          |
+| Notifications                             | Quickshell               | both           |        |        |           |         |          |
 | Menus and overlays                        | Quickshell               | both           |        |        |           |         |          |
 | The lock screen, polkit and PIN prompts   | Quickshell               | both           |        |        |           |         |          |
 | GTK and Qt apps, file and print dialogs   | gtk, qt                  | proportional   |        |        |           |         |          |
@@ -539,6 +625,20 @@ as an exception with the reason.
 ## Decisions
 
 What each studio round settled, newest first, with the reason.
+
+- **One language for every surface** (2026-10-10). The launcher took a
+  dozen rounds. Boxes inside boxes, mixed sizes and spacing, and Mona Sans
+  names beside a monospaced command line all read as clutter. Joel chose
+  the launcher set wholly in Monaspace at one size, a command line that
+  completes in place over a list, a hairline between them, the accent frame,
+  and a cloudy surface that only hints at what's beneath. From it came the
+  language above: one meaning per property, a kind for each sort of
+  surface, colour on glyphs only, chords drawn as glyphs, and glyphs leading
+  only the lines to act on. A glyph hanging over indented text, a badge
+  beside the block, a glyph at the end of its first line, a drop cap and a
+  sender written into the border were all tried for notices and prompts,
+  and each read as slightly off. What stayed: the padlock beside the dots,
+  and a notice signed in its footer.
 
 - **Windows are framed by a hairline, rounded a little** (2026-10-10). Of
   seven directions shown on the panel, from square 2 px borders to a ring

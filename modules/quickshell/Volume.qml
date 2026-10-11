@@ -37,6 +37,7 @@ Scope {
 
     Meter {
         name: "volume"
+        glyph: String.fromCodePoint(off ? 0xf0581 : 0xf057e)
         visible: root.shown
         level: root.sink ? root.sink.audio.volume : 0
         off: root.sink ? root.sink.audio.muted : false

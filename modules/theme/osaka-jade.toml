@@ -50,11 +50,18 @@ strong = "cream"
 muted = "sage"
 rule = "lichen"
 edge = "moss"
+shadow = "night"
 accent = "jade"
 on_accent = "night"
 alert = "vermilion"
 warning = "gold"
 success = "leaf"
+# The hues glyphs wear, one per kind of thing.
+action = "gold"
+program = "aqua"
+machine = "rose"
+person = "orchid"
+voice = "turquoise"
 
 [terminal]
 background = "forest"

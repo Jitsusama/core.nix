@@ -21,6 +21,7 @@ let
     type
     motion
     glyphs
+    floating
     ;
 
   # A JavaScript object of the values, which QML reads as Theme.space.m.
@@ -41,8 +42,120 @@ let
     "Backdrop.qml"
     "OpenBelow.qml"
     "Niri.qml"
+    "Floating.qml"
     "pieces/Piece.qml"
   ];
+
+  # A part's corners, the whole's radius less its border and inset.
+  inner = lib.max 0 (shape.radius - shape.border - shape.inset);
+
+  # A mark from the icon font by its code point, since Nix strings can't
+  # spell one.
+  nerd = code: builtins.fromJSON ''"\u${code}"'';
+
+  # How a chord's keys are drawn: a key's own glyph where a proper one
+  # exists, its name where none does, and a letter as itself (docs/design.md,
+  # Shape and Kinds). Icon marks draw wider than a letter, so they're
+  # marked to be given room.
+  keyFaces = {
+    Super = {
+      text = nerd "f313";
+      wide = true;
+    };
+    Shift.text = "⇧";
+    Return.text = "↵";
+    Up.text = "↑";
+    Down.text = "↓";
+    Left.text = "←";
+    Right.text = "→";
+    Escape.text = "Esc";
+    Page_Up.text = "PgUp";
+    Page_Down.text = "PgDn";
+    Minus.text = "-";
+    Equal.text = "=";
+    Slash.text = "/";
+    Period.text = ".";
+    Comma.text = ",";
+    Grave.text = "`";
+    BracketLeft.text = "[";
+    BracketRight.text = "]";
+    WheelScrollUp.text = "Wheel ↑";
+    WheelScrollDown.text = "Wheel ↓";
+    WheelScrollLeft.text = "Wheel ←";
+    WheelScrollRight.text = "Wheel →";
+    XF86AudioRaiseVolume = {
+      text = nerd "f075d";
+      wide = true;
+    };
+    XF86AudioLowerVolume = {
+      text = nerd "f075e";
+      wide = true;
+    };
+    XF86AudioMute = {
+      text = nerd "f075f";
+      wide = true;
+    };
+    XF86AudioMicMute = {
+      text = nerd "f036d";
+      wide = true;
+    };
+    XF86MonBrightnessUp = {
+      text = nerd "f00e0";
+      wide = true;
+    };
+    XF86MonBrightnessDown = {
+      text = nerd "f00de";
+      wide = true;
+    };
+    XF86AudioPrev = {
+      text = nerd "f04ae";
+      wide = true;
+    };
+    XF86AudioNext = {
+      text = nerd "f04ad";
+      wide = true;
+    };
+    XF86AudioPlay = {
+      text = nerd "f040e";
+      wide = true;
+    };
+  };
+  face' = key: { wide = false; } // (keyFaces.${key} or { text = key; });
+
+  # The glyph an action wears in the launcher, by what it runs.
+  actionGlyph =
+    run:
+    let
+      program = if run == [ ] then "" else lib.head run;
+      action = if program == "niri" then lib.elemAt run 3 else "";
+      says = lib.concatStringsSep " " run;
+    in
+    if lib.hasInfix "kitty" says then
+      nerd "f489"
+    else if lib.hasPrefix "screenshot" action then
+      nerd "f0e51"
+    else if lib.hasInfix "AUDIO_SOURCE" says then
+      nerd "f036d"
+    else if program == "sh" && lib.hasInfix "wpctl" says then
+      nerd "f057e"
+    else if program == "brightnessctl" then
+      nerd "f00e0"
+    else if program == "playerctl" then
+      nerd "f040e"
+    else if lib.hasInfix "workspace" action || lib.hasInfix "overview" action then
+      nerd "f0570"
+    else if lib.hasInfix "monitor" action then
+      nerd "f0379"
+    else
+      nerd "f2d0";
+
+  # The desktop's binds the launcher can run, its own toggle left out, since
+  # picking that from the launcher would only close it.
+  actions = map (b: {
+    inherit (b) does run;
+    glyph = actionGlyph b.run;
+    chord = map face' (lib.splitString "+" b.chord);
+  }) (lib.filter (b: b.run != [ ] && !(lib.elem "launcher" b.run)) config.jitsusama.keys.desktop);
 
   pieces = import ../theme/pieces.nix { inherit lib; };
 
@@ -64,7 +177,10 @@ let
   linked = piece: if isBuiltIn piece then builtIn.${piece.source} else piece.source;
 in
 {
-  imports = [ ../theme/home.nix ];
+  imports = [
+    ../theme/home.nix
+    ../keys/home.nix
+  ];
 
   options.jitsusama.quickshell.overview.pieces = lib.mkOption {
     type = lib.types.attrsOf (
@@ -158,6 +274,19 @@ in
               }
           }
         '';
+        # Not Keys.qml, which would hide QtQuick's Keys from every file.
+        "quickshell/Shortcuts.qml".text = ''
+          pragma Singleton
+          import Quickshell
+          import QtQuick
+
+          // The desktop's actions the launcher can find by name, from
+          // jitsusama.keys: what each does, its chord drawn key by key, its
+          // glyph and the command that does the same.
+          Singleton {
+              readonly property var actions: ${builtins.toJSON actions}
+          }
+        '';
         "quickshell/Theme.qml".text = ''
           pragma Singleton
           import Quickshell
@@ -172,6 +301,24 @@ in
               readonly property var space: ${object (removeAttrs space [ "unit" ])}
               readonly property int border: ${toString shape.border}
               readonly property int radius: ${toString shape.radius}
+              readonly property int inset: ${toString shape.inset}
+              // A part's corners: the whole's radius less its border and the
+              // inset, so the curves run parallel.
+              readonly property int inner: ${toString inner}
+              readonly property var floating: ${
+                object {
+                  opacity = builtins.fromJSON floating.opacity;
+                  scrim = builtins.fromJSON floating.scrim;
+                  selection = builtins.fromJSON floating.selection;
+                  # How far the shadows reach past the surface, which its
+                  # window leaves room for.
+                  reach = lib.foldl' lib.max 0 (map (s: s.offset + s.blur) floating.shadows);
+                  shadows = map (s: {
+                    inherit (s) offset blur;
+                    opacity = builtins.fromJSON s.opacity;
+                  }) floating.shadows;
+                }
+              }
               readonly property var motion: ${
                 object {
                   # Slowed as niri slows its own, so the two stay in step.

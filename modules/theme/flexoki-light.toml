@@ -53,11 +53,19 @@ strong = "ink"
 muted = "pewter"
 rule = "pebble"
 edge = "stone"
+shadow = "ink"
 accent = "cobalt"
 on_accent = "paper"
 alert = "brick"
 warning = "mustard"
 success = "moss"
+# The hues glyphs wear, one per kind of thing. Judgement: Flexoki's 400s are
+# too faint on its paper, so each is the darkest of its hue the palette has.
+action = "mustard"
+program = "spruce"
+machine = "garnet"
+person = "plum"
+voice = "violet"
 
 [terminal]
 background = "paper"

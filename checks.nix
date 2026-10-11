@@ -333,6 +333,57 @@ in
       "These start programs themselves rather than through Niri.spawn: ${lib.concatStringsSep ", " culprits}"
       (qml != [ ] && culprits == [ ]);
 
+  # Shape is a language (docs/design.md, Shape and Kinds): a border's width
+  # says "this is a thing" and a radius says whole or part, so no surface
+  # picks either for itself. Every corner is the theme's radius, or a part's
+  # radius the theme derives from it, and every border is the theme's.
+  quickshell-takes-its-shape-from-the-theme =
+    let
+      dir = ./modules/quickshell;
+      files =
+        lib.filter (lib.hasSuffix ".qml") (lib.attrNames (builtins.readDir dir))
+        ++ map (name: "pieces/${name}") (
+          lib.filter (lib.hasSuffix ".qml") (lib.attrNames (builtins.readDir (dir + "/pieces")))
+        );
+      allowed = {
+        radius = [
+          "Theme.radius"
+          "Theme.inner"
+        ];
+        width = [ "Theme.border" ];
+      };
+      shape =
+        line:
+        let
+          space = "[[:space:]]*";
+          property = "(border\\.width|[a-zA-Z]*[rR]adius)";
+          value = "([^;]*[^;[:space:]])";
+          found = builtins.match (space + property + space + ":" + space + value + space + ";?" + space) line;
+        in
+        if found == null then
+          null
+        else
+          {
+            kind = if lib.head found == "border.width" then "width" else "radius";
+            value = lib.elemAt found 1;
+          };
+      culprits = lib.concatMap (
+        name:
+        lib.concatMap (
+          line:
+          let
+            found = shape line;
+          in
+          lib.optional (
+            found != null && !(lib.elem found.value allowed.${found.kind})
+          ) "${name}: ${lib.trim line}"
+        ) (lib.splitString "\n" (builtins.readFile (dir + "/${name}")))
+      ) files;
+    in
+    holds "quickshell-takes-its-shape-from-the-theme" ''
+      These pick a radius or a border width of their own rather than the theme's:
+      ${lib.concatStringsSep "\n" culprits}'' (files != [ ] && culprits == [ ]);
+
   # A chord two layers both claim never reaches the lower one, so a machine
   # with one doesn't build. The clashes here are spelt the way each program
   # spells its chords, so the map has to see through the spelling: kitty's

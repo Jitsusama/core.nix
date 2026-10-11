@@ -55,6 +55,7 @@ Scope {
 
     Meter {
         name: "brightness"
+        glyph: String.fromCodePoint(0xf00e0)
         visible: root.shown
         level: root.level
     }

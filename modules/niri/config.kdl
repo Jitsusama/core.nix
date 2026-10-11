@@ -78,3 +78,14 @@ layer-rule {
     match namespace="^backdrop$"
     place-within-backdrop true
 }
+
+// Quickshell's floating surfaces ask niri to blur behind their own rounded
+// shape; this blurs the windows there, not only the wallpaper, so a surface
+// hints at what it floats over. It's worked out again only while one shows
+// and what's beneath it changes.
+layer-rule {
+    match namespace="^(launcher|polkit|notifications|volume|brightness)$"
+    background-effect {
+        xray false
+    }
+}

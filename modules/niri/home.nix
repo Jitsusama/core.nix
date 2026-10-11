@@ -99,7 +99,41 @@ in
     }
   );
 
-  config.jitsusama.keys.desktop = map (b: { inherit (b) chord does; }) binds;
+  # Each bind's action as a command the launcher has niri start, so an action
+  # found by name does what its chord does: a spawn runs its program, and
+  # anything else asks niri through its own command line, which fills in what
+  # the config leaves to defaults. Nothing runs until the action is picked.
+  config.jitsusama.keys.desktop = map (
+    b:
+    let
+      words = map (found: if lib.head found != null then lib.head found else lib.elemAt found 1) (
+        lib.filter lib.isList (builtins.split ''"([^"]*)"|([^ ";]+)'' b.action)
+      );
+      name = lib.head words;
+      arguments = lib.tail words;
+    in
+    {
+      inherit (b) chord does;
+      run =
+        if name == "spawn" then
+          arguments
+        else if name == "spawn-sh" then
+          [
+            "sh"
+            "-c"
+          ]
+          ++ arguments
+        else
+          [
+            "niri"
+            "msg"
+            "action"
+            name
+            "--"
+          ]
+          ++ arguments;
+    }
+  ) binds;
 
   config.xdg.configFile."niri/config.kdl".text = builtins.readFile ./config.kdl;
 

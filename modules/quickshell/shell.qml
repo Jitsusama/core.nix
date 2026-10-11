@@ -10,7 +10,10 @@ ShellRoot {
     Volume {}
     Brightness {}
     Backdrop {}
-    OpenBelow {}
+
+    OpenBelow {
+        id: grid
+    }
 
     Lock {
         id: lock
@@ -18,5 +21,6 @@ ShellRoot {
 
     Launcher {
         lock: lock
+        grid: grid
     }
 }

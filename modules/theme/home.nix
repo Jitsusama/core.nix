@@ -43,11 +43,19 @@ let
     muted = "text that gives context: labels, units, hints";
     rule = "separators and marks that aren't read as text";
     edge = "the outline of what isn't focused: a window, a field at rest";
+    shadow = "the shadow under a floating surface, drawn faint";
     accent = "where Joel's attention is: one focal point per screen state";
     on_accent = "text drawn on the accent or on any of the state colours";
     alert = "something that needs Joel: a failure, an urgent window";
     warning = "something that will need him soon";
     success = "something that went well";
+    # The hues glyphs wear, never text: each is one kind of thing, wherever
+    # it's drawn (docs/design.md, Colour).
+    action = "a glyph for something to do: a command, a shortcut";
+    program = "a glyph for a program: an application, where a notice came from";
+    machine = "a glyph for the machine itself: power, security, hardware";
+    person = "a glyph for a person: a message, a mention, a call";
+    voice = "a glyph for the shell speaking for itself: an empty list, a greeting";
   };
 
   terminal = {
@@ -115,6 +123,11 @@ let
           "alert"
           "warning"
           "success"
+          "action"
+          "program"
+          "machine"
+          "person"
+          "voice"
         ]
       )
     ++
@@ -567,6 +580,77 @@ in
         defaultText = lib.literalMD "`space.m`";
         description = "The space, in pixels, between windows.";
       };
+      inset = lib.mkOption {
+        type = lib.types.ints.unsigned;
+        default = cfg.space.xs;
+        defaultText = lib.literalMD "`space.xs`";
+        description = ''
+          How far, in pixels, a part sits inside the border of the whole it
+          belongs to, such as the launcher's selected row. A part's corners
+          are the radius less the border and this, so the curves run parallel.
+        '';
+      };
+    };
+
+    floating = {
+      opacity = lib.mkOption {
+        type = number;
+        # Picked in step 1's studio: a cloud that hints at what's beneath.
+        default = given "floating" "opacity" "0.85";
+        description = ''
+          How opaque a surface floating above the windows is, a launcher, a
+          prompt, a notice or a meter, drawn in the deepest colour over a blur
+          of what's beneath.
+        '';
+      };
+      scrim = lib.mkOption {
+        type = number;
+        default = given "floating" "scrim" "0.6";
+        description = ''
+          How opaque the deepest colour is over everything behind a prompt,
+          which stops the rest of the screen while it asks.
+        '';
+      };
+      selection = lib.mkOption {
+        type = number;
+        default = given "floating" "selection" "0.6";
+        description = "How opaque the selection is behind a selected row on a floating surface.";
+      };
+      shadows = lib.mkOption {
+        type = lib.types.listOf (
+          lib.types.submodule {
+            options = {
+              offset = lib.mkOption {
+                type = lib.types.ints.unsigned;
+                description = "How far below the surface, in pixels, the shadow falls.";
+              };
+              blur = lib.mkOption {
+                type = lib.types.ints.unsigned;
+                description = "How soft the shadow is, in pixels.";
+              };
+              opacity = lib.mkOption {
+                type = number;
+                description = "How dark the shadow is, from 0 to 1.";
+              };
+            };
+          }
+        );
+        # A close, crisp one that sets the edge and a far, soft one that
+        # lifts the surface, both light.
+        default = given "floating" "shadows" [
+          {
+            offset = 1;
+            blur = 2;
+            opacity = "0.2";
+          }
+          {
+            offset = 8;
+            blur = 24;
+            opacity = "0.25";
+          }
+        ];
+        description = "The shadows under a floating surface, nearest first.";
+      };
     };
   };
 
@@ -581,6 +665,7 @@ in
       space
       motion
       shape
+      floating
       appearance
       icons
       ;
