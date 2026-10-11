@@ -1,5 +1,5 @@
-// A colour in its other forms, as the launcher answers it: "#ff5345",
-// "rgb(255 83 69)", "hsl(4.5 100% 63.5%)", "oklch(68.4% 0.21 29.3)" or
+// A colour in its other forms, as the launcher answers it: "#ff6347",
+// "rgb(255 99 71)", "hsl(9.1 100% 63.9%)", "oklch(69.6% 0.196 32.3)" or
 // "colour accent" for one of the theme's own. It's the one file outside the
 // theme that names colours, because colours are what it's asked about.
 // Plain JavaScript, so tests/answers.qml runs it in Qt's own engine.

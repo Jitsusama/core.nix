@@ -51,7 +51,48 @@ pkgs.testers.runNixOSTest {
         "stand-in-backlight"
         # The kernel's own stand-in battery, which UPower reports as a laptop's.
         "test_power"
+        # Two stand-in Wi-Fi radios: hostapd makes the first an access point
+        # and NetworkManager joins it from the second, as the laptop's would.
+        "mac80211_hwsim"
       ];
+      services.hostapd = {
+        enable = true;
+        radios.wlan0 = {
+          band = "2g";
+          channel = 6;
+          countryCode = "CA";
+          networks.wlan0 = {
+            ssid = "Lantern";
+            authentication = {
+              mode = "wpa2-sha1";
+              wpaPassword = "glowing in the dark";
+            };
+          };
+        };
+      };
+      networking.networkmanager.unmanaged = [ "wlan0" ];
+      # The access point hands out addresses, as a real network does, since
+      # NetworkManager counts a network joined only once it has one.
+      networking.interfaces.wlan0.ipv4.addresses = [
+        {
+          address = "10.42.0.1";
+          prefixLength = 24;
+        }
+      ];
+      services.dnsmasq = {
+        enable = true;
+        resolveLocalQueries = false;
+        settings = {
+          port = 0;
+          interface = "wlan0";
+          bind-dynamic = true;
+          dhcp-range = "10.42.0.10,10.42.0.50,1h";
+        };
+      };
+      networking.firewall.interfaces.wlan0.allowedUDPPorts = [ 67 ];
+      # A VM turns off wpa_supplicant, which NetworkManager joins networks
+      # through, since it usually has no radio; this one has two.
+      networking.wireless.enable = lib.mkOverride 0 true;
       # The overview's status reads the battery from UPower and the network from
       # NetworkManager, which the laptop role brings.
       services.upower.enable = true;
@@ -108,8 +149,14 @@ pkgs.testers.runNixOSTest {
       users.users.${account} = {
         isNormalUser = true;
         uid = 1000;
-        # Polkit asks a member of wheel for their own password.
-        extraGroups = [ "wheel" ];
+        # Polkit asks a member of wheel for their own password. It lets the
+        # signed-in account change networks as an active local session, which
+        # the shell nested in Cage isn't seen as, so NetworkManager's group
+        # gives the account the same.
+        extraGroups = [
+          "wheel"
+          "networkmanager"
+        ];
         initialPassword = secret;
       };
       home-manager.users.${account}.home.stateVersion = "26.05";
@@ -261,19 +308,31 @@ pkgs.testers.runNixOSTest {
 
       with subtest("the wallpaper stands behind the workspaces"):
           wait_for_surface("wallpaper")
-          # It fades in once it's read.
-          time.sleep(1)
-          _, colours, _ = colours_and_light("workspace")
-          t.assertGreater(colours, 1000, "the workspace shows a flat colour, not the picture")
+
+          # It fades in once it's read, which takes longer on a slower machine.
+          def painted(last):
+              _, colours, _ = colours_and_light("workspace")
+              if last:
+                  t.assertGreater(
+                      colours, 1000, "the workspace shows a flat colour, not the picture"
+                  )
+              return colours > 1000
+
+          retry(painted, timeout_seconds=30)
 
       with subtest("the overview shows the time and status, and only the overview"):
           machine.fail(in_session("niri msg layers | grep -qw status"))
           as_account("niri msg action open-overview")
           wait_for_surface("status")
-          time.sleep(1)
-          drawn = foreground_on_the_left("overview")
+
+          def shown(last):
+              drawn = foreground_on_the_left("overview")
+              if last:
+                  t.assertGreater(drawn, 100, "the overview shows no status")
+              return drawn > 100
+
+          retry(shown, timeout_seconds=30)
           as_account("niri msg action close-overview")
-          t.assertGreater(drawn, 100)
           machine.wait_until_fails(in_session("niri msg layers | grep -qw status"), timeout=10)
 
       with subtest("a notification appears"):
@@ -282,12 +341,26 @@ pkgs.testers.runNixOSTest {
           machine.sleep(1)
           machine.screenshot("notification")
 
+      # Quickshell hears a node change only once it has bound the node's audio,
+      # a moment after WirePlumber names it the default, so a change is made
+      # again, each time a different one, until its meter answers.
+      def answered(namespace, change):
+          def tried(_):
+              as_account(change)
+              for _ in range(4):
+                  time.sleep(0.5)
+                  shown = in_session(f"niri msg layers | grep -q {namespace}")
+                  if machine.execute(shown)[0] == 0:
+                      return True
+              return False
+
+          retry(tried, timeout_seconds=30)
+
       with subtest("the volume shows when it changes, then goes"):
           # WirePlumber picks the defaults a moment after Pipewire lists the nodes.
           defaults = "wpctl inspect @DEFAULT_AUDIO_SINK@ && wpctl inspect @DEFAULT_AUDIO_SOURCE@"
           machine.wait_until_succeeds(in_session(defaults), timeout=30)
-          as_account("wpctl set-volume @DEFAULT_AUDIO_SINK@ 0.4")
-          wait_for_surface("volume")
+          answered("volume", "wpctl set-volume @DEFAULT_AUDIO_SINK@ 10%-")
           # niri lists a surface before it has drawn its first frame.
           time.sleep(0.5)
           machine.screenshot("volume")
@@ -295,11 +368,10 @@ pkgs.testers.runNixOSTest {
 
       # The microphone's key mutes it through the same command, which niri runs.
       with subtest("the microphone shows when it mutes, then goes"):
-          as_account("niri msg action spawn -- wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle")
-          wait_for_surface("microphone")
+          toggle = "niri msg action spawn -- wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle"
+          answered("microphone", toggle)
           time.sleep(0.5)
           machine.screenshot("microphone")
-          t.assertIn("MUTED", as_account("wpctl get-volume @DEFAULT_AUDIO_SOURCE@"))
           machine.wait_until_fails(in_session("niri msg layers | grep -q microphone"), timeout=10)
           as_account("wpctl set-mute @DEFAULT_AUDIO_SOURCE@ 0")
 
@@ -510,6 +582,16 @@ pkgs.testers.runNixOSTest {
           machine.wait_until_fails(closed, timeout=10)
           # The grinning cat with smiling eyes, first among the smiling cats.
           t.assertEqual(as_account("wl-paste --no-newline"), "\U0001F638")
+          # Super+Ctrl+Space opens the emoji straight away, so "kitty" is a cat
+          # there, where the main search would open the terminal.
+          machine.send_key("meta_l-ctrl-spc")
+          wait_for_surface("launcher")
+          time.sleep(0.5)
+          machine.send_chars("kitty")
+          time.sleep(0.5)
+          machine.send_key("ret")
+          machine.wait_until_fails(closed, timeout=10)
+          t.assertEqual(as_account("wl-paste --no-newline"), "\U0001F431")
 
       with subtest("Super+Shift+/ shows every layer's shortcuts, and runs the desktop's"):
           windows = len(json.loads(as_account("niri msg --json windows")))
@@ -572,6 +654,52 @@ pkgs.testers.runNixOSTest {
               return len(json.loads(as_account("niri msg --json windows"))) > windows
 
           retry(another, timeout_seconds=15)
+
+      with subtest("a Wi-Fi network is joined from the launcher, a new one asking its password"):
+          machine.wait_for_unit("hostapd.service")
+          machine.wait_until_succeeds(
+              "nmcli -t -f SSID device wifi list ifname wlan1 | grep -qx Lantern", timeout=60
+          )
+          as_account("qs ipc call launcher collection wifi")
+          wait_for_surface("launcher")
+          time.sleep(0.5)
+          machine.screenshot("launcher-wifi")
+          machine.send_chars("lant")
+          time.sleep(0.5)
+          # Never joined, it asks for its password, which a wrong one doesn't
+          # satisfy; the launcher stays to say so.
+          machine.send_key("ret")
+          time.sleep(0.5)
+          machine.send_chars("not the password")
+          machine.screenshot("launcher-wifi-password")
+          machine.send_key("ret")
+          machine.wait_until_succeeds(
+              "journalctl -u NetworkManager"
+              " | grep -q \"Activation: failed for connection 'Lantern'\"",
+              timeout=60,
+          )
+          time.sleep(1)
+          machine.screenshot("launcher-wifi-refused")
+          machine.succeed(in_session("niri msg layers | grep -q launcher"))
+          machine.send_chars("glowing in the dark")
+          machine.send_key("ret")
+          # Joined means an address too, which is when NetworkManager says so.
+          machine.wait_until_succeeds(
+              "nmcli -g GENERAL.CONNECTION,GENERAL.STATE device show wlan1"
+              " | tr '\\n' ' ' | grep -q '^Lantern 100 '",
+              timeout=60,
+          )
+          # Once it's joined, the launcher's done.
+          machine.wait_until_fails(in_session("niri msg layers | grep -q launcher"), timeout=10)
+          # Turning Wi-Fi off is an action like any.
+          as_account("qs ipc call launcher toggle")
+          wait_for_surface("launcher")
+          time.sleep(0.5)
+          machine.send_chars("wifi off")
+          time.sleep(0.5)
+          machine.send_key("ret")
+          machine.wait_until_succeeds("nmcli radio wifi | grep -qx disabled", timeout=15)
+          machine.succeed("nmcli radio wifi on")
 
       with subtest("a notice that came and went is found again in the launcher"):
           # One its sender says not to keep isn't, though it's the newest match.

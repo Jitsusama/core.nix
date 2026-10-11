@@ -348,6 +348,7 @@ let
     shortcuts = ./launcher/KeyMap.qml;
     clipboard = ./launcher/Copies.qml;
     notices = ./launcher/PastNotices.qml;
+    wifi = ./launcher/Wireless.qml;
   };
 
   # The program that hears every copy, for the clipboard collection.
@@ -550,7 +551,13 @@ in
         order = 100;
         source = "machine";
       };
-      # Collections, each shown as one row below the rest.
+      # Collections, each shown as one row below the rest. Wi-Fi's networks
+      # are one, and turning Wi-Fi off is found as an action.
+      wifi = {
+        order = 102;
+        source = "wifi";
+        weight = 0.9;
+      };
       clipboard = {
         order = 105;
         source = "clipboard";

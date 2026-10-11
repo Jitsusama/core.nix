@@ -60,6 +60,7 @@ Scope {
                 launcher: root
             });
             source.answered.connect(root.reanswer);
+            source.changed.connect(() => root.refreshed(source));
             made.push(source);
         }
         sources = made;
@@ -116,8 +117,9 @@ Scope {
     }
     readonly property var selected: current === -1 ? headline : matches[current] ?? null
 
-    readonly property var choices: sources.filter(source => !source.collection)
-        .reduce((all, source) => all.concat(source.things), [])
+    // A collection's members stay out of the main search, but a thing it
+    // offers beside them, such as turning Wi-Fi off, is found like any.
+    readonly property var choices: sources.reduce((all, source) => all.concat(source.things), [])
     readonly property var collections: sources.filter(source => source.collection)
 
     // A row for each collection that has matches: its best, with what's been
@@ -269,6 +271,10 @@ Scope {
     function enter(row) {
         if (!row)
             return false;
+        if (held.length > 0 && row.given) {
+            ask(row);
+            return true;
+        }
         const into = held.length === 0 ? (row.verbs ? row.verbs() : null)
             : row.targets ? row.targets() : null;
         if (!into || into.length === 0)
@@ -279,6 +285,39 @@ Scope {
         // A collection is stepped into with what was typed still searching it.
         restart(row.from ? typed : "");
         return true;
+    }
+
+    // What the field is asking for words for, such as a password: the step
+    // held last, when its row hands what's typed to `given`.
+    readonly property var asking: held.length > 0 && held[held.length - 1].row.given
+        ? held[held.length - 1].row : null
+
+    // Asks for words in the field, with nothing to choose from below it.
+    function ask(row) {
+        held = held.concat([{ row: row, typed: typed, rows: [] }]);
+        restart("");
+    }
+
+    // Hands over what was typed, and empties the field for another try
+    // while the footer says how it went.
+    function give() {
+        const words = prompt.text;
+        if (words === "")
+            return;
+        asking.given(words);
+        prompt.text = "";
+    }
+
+    // A collection whose things changed while it's open is searched again,
+    // the selection kept on the row it was on.
+    function refreshed(source) {
+        if (!open || asking || held.length === 0 || held[held.length - 1].row.from !== source)
+            return;
+        const key = selected ? selected.key : null;
+        search(typed);
+        const at = matches.findIndex(row => row.key === key);
+        if (at > 0)
+            current = at;
     }
 
     function back() {
@@ -332,6 +371,12 @@ Scope {
         const narrowing = typed !== "" && letters.startsWith(typed);
         typed = letters;
         words = Fuzzy.words(letters);
+        if (asking) {
+            matches = [];
+            answer = null;
+            current = 0;
+            return;
+        }
         if (held.length > 0) {
             const from = held[held.length - 1].row.from;
             // A collection searches itself, all of it until something's typed.
@@ -454,9 +499,20 @@ Scope {
             open = false;
             return;
         }
-        // A verb that needs a target asks for it.
+        // A verb that needs a target asks for it, and one that needs words
+        // asks for them.
         if (held.length > 0 && choice.targets) {
             enter(choice);
+            return;
+        }
+        if (choice.given) {
+            ask(choice);
+            return;
+        }
+        // One whose outcome takes a while keeps the launcher, which says how
+        // it's going.
+        if (choice.stays) {
+            choice.run();
             return;
         }
         // One that opens a collection steps into it, the launcher kept open.
@@ -590,8 +646,12 @@ Scope {
                         // A thing held leads the line with its own glyph.
                         readonly property var thing: root.held.length > 0
                             ? root.held[0].row : null
-                        glyph: thing ? thing.lead ?? thing.glyph : String.fromCodePoint(0xf0349)
-                        hue: thing ? Theme[thing.leadHue ?? thing.hue] : Theme.muted
+                        // A secret is typed beside the padlock.
+                        secret: root.asking !== null && root.asking.secret === true
+                        glyph: secret ? String.fromCodePoint(0xf023)
+                            : thing ? thing.lead ?? thing.glyph : String.fromCodePoint(0xf0349)
+                        hue: secret ? Theme.machine
+                            : thing ? Theme[thing.leadHue ?? thing.hue] : Theme.muted
                         glyphWidth: Theme.space.xxl
                         chips: root.held.map(step => ({ text: step.row.chip ?? step.row.name }))
                         hint: root.held.length === 0 ? "what next?"
@@ -603,7 +663,8 @@ Scope {
                             : root.matches.length > root.rows && root.current >= 0
                             ? `${root.current + 1} of ${root.matches.length}` : ""
                         onTextChanged: root.search(text)
-                        onAccepted: below => root.run(root.selected, below)
+                        onAccepted: below => root.asking ? root.give()
+                            : root.run(root.selected, below)
                         // Tab on an answer puts the answer in place of the
                         // question, so a sum can be carried on; one still
                         // being asked for leaves the question as it is.
@@ -695,11 +756,11 @@ Scope {
                     Item {
                         id: foot
 
-                        readonly property var choice: root.selected
+                        readonly property var choice: root.selected ?? root.asking
 
                         width: parent.width
                         height: Theme.space.xxl + Theme.space.s
-                        visible: root.matches.length > 0 || root.answer !== null
+                        visible: choice !== null
 
                         Text {
                             x: Theme.space.l
@@ -711,6 +772,7 @@ Scope {
 
                             // An answer's footer says where it came from.
                             text: !foot.choice ? ""
+                                : foot.choice.state ? foot.choice.state()
                                 : (foot.choice.note ?? "") !== "" ? foot.choice.note
                                 : foot.choice.plain && root.answer ? root.answer.note ?? ""
                                 : root.held.length > 0 ? root.held[0].row.context ?? ""
@@ -759,16 +821,22 @@ Scope {
                         }
                     }
 
-                    // With nothing typed, the shell says what it can do; with
-                    // nothing found, it says so.
+                    // With nothing typed, the shell says what it can do, or an
+                    // empty collection says it's empty in its own words; with
+                    // nothing found, it says so. A field asking for words has
+                    // only the footer below it.
                     Choice {
+                        readonly property var inside: root.held.length > 0
+                            ? root.held[root.held.length - 1].row.from ?? null : null
                         visible: root.matches.length === 0 && root.answer === null
+                            && root.asking === null
                         glyph: root.typed === "" ? root.sparkle : root.ghost
                         hue: Theme.voice
                         quiet: true
-                        name: root.typed === ""
-                            ? "A window, a program, an action, or what a key does."
-                            : `Nothing answers to \u201c${root.typed}\u201d.`
+                        name: root.typed !== "" ? `Nothing answers to \u201c${root.typed}\u201d.`
+                            : inside
+                                ? inside.collection.empty ?? `No ${inside.collection.noun} yet.`
+                            : "A window, a program, an action, or what a key does."
                     }
                 }
             }
