@@ -12,6 +12,7 @@ update that breaks any of them fails its checks.
 | Piece       | What it is                                                     |
 | ----------- | -------------------------------------------------------------- |
 | Boot        | systemd-boot and each generation, signed by lanzaboote         |
+| Boot menu   | hidden; hold Space at power-on for an older generation         |
 | Secure Boot | Joel's keys only, made on the machine and never copied off it  |
 | Disk        | a 1 GB boot partition, then LUKS2 holding Btrfs subvolumes     |
 | Daily key   | the TPM, bound to PCRs 0, 4 and 7, plus a PIN                  |
