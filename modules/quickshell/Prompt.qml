@@ -5,6 +5,8 @@
 // the padlock. A ghost after what's typed offers how it could end, or, with
 // nothing typed, a hint. An aside on the right, muted, says something about
 // what's typed, such as where the launcher's selection is among its matches.
+// Chips before what's typed hold what's being acted on: a thing, then a verb
+// waiting for its target.
 import QtQuick
 
 Item {
@@ -22,6 +24,8 @@ Item {
     property string hint
     // Said in muted type at the right end of the line.
     property string aside
+    // What's being acted on, each drawn as a chip: { text }.
+    property var chips: []
     property alias text: input.text
 
     // Return, or Shift+Return, which asks for it below the focused window.
@@ -29,6 +33,11 @@ Item {
     // Tab, which takes the ghost.
     signal completed
     signal cancelled
+    // The right arrow past the end of what's typed, and the left arrow before
+    // its start or Backspace with nothing typed: into what's selected, and
+    // back out.
+    signal forward
+    signal backward
 
     function clear() {
         input.text = "";
@@ -59,9 +68,41 @@ Item {
         font.features: { "tnum": 1 }
     }
 
+    // A chip is a part of the frame, so its corners are the part's radius,
+    // raised from the surface and set in the strong colour.
+    Row {
+        id: held
+        x: Theme.space.l + prompt.glyphWidth
+        anchors.verticalCenter: parent.verticalCenter
+        spacing: Theme.space.s
+
+        Repeater {
+            model: prompt.chips
+
+            Rectangle {
+                required property var modelData
+
+                width: chipText.implicitWidth + 2 * Theme.space.m
+                height: Theme.space.xxl
+                radius: Theme.inner
+                color: Theme.raised
+
+                Text {
+                    id: chipText
+                    anchors.centerIn: parent
+                    text: modelData.text
+                    color: Theme.strong
+                    font.family: Theme.mono.family
+                    font.pointSize: Theme.mono.large
+                }
+            }
+        }
+    }
+
     TextInput {
         id: input
         x: Theme.space.l + prompt.glyphWidth
+            + (prompt.chips.length > 0 ? held.width + Theme.space.m : 0)
         width: (prompt.aside === "" ? parent.width - Theme.space.l
             : asideText.x - Theme.space.xl) - x
         anchors.verticalCenter: parent.verticalCenter
@@ -83,6 +124,17 @@ Item {
         Keys.onEnterPressed: event => prompt.accepted((event.modifiers & Qt.ShiftModifier) !== 0)
         Keys.onTabPressed: prompt.completed()
         Keys.onEscapePressed: prompt.cancelled()
+        Keys.onPressed: event => {
+            const none = input.selectionStart === input.selectionEnd;
+            if (event.key === Qt.Key_Right && none && input.cursorPosition === input.text.length) {
+                prompt.forward();
+                event.accepted = true;
+            } else if ((event.key === Qt.Key_Left && none && input.cursorPosition === 0)
+                || (event.key === Qt.Key_Backspace && input.text === "")) {
+                prompt.backward();
+                event.accepted = true;
+            }
+        }
 
         // The caret in the accent, since it's where the keys go. It takes
         // no room of its own, so a ghost reads on as one word.
@@ -92,8 +144,10 @@ Item {
             visible: input.cursorVisible
         }
 
+        // A hint stands just clear of the caret; a ghost runs on from what's
+        // typed as one word.
         Text {
-            x: input.contentWidth
+            x: input.text === "" ? Theme.space.xs : input.contentWidth
             anchors.verticalCenter: parent.verticalCenter
             text: input.text === "" ? prompt.hint : prompt.ghost
             visible: text !== "" && (input.text === "" || !prompt.secret)

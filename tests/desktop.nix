@@ -353,6 +353,41 @@ pkgs.testers.runNixOSTest {
               in_session("niri msg focused-window | grep -q 'Notes for Tuesday'"), timeout=10
           )
 
+      # The right arrow steps into what can be done to a window, and a verb
+      # that needs a target asks for it in the same field.
+      with subtest("the launcher moves a window and copies its title"):
+          notes = json.loads(as_account("niri msg --json focused-window"))
+
+          def into_notes(verb):
+              as_account("qs ipc call launcher toggle")
+              wait_for_surface("launcher")
+              time.sleep(0.5)
+              machine.send_chars("tuesday")
+              time.sleep(0.5)
+              machine.send_key("right")
+              time.sleep(0.5)
+              machine.send_chars(verb)
+              time.sleep(0.5)
+
+          into_notes("copy")
+          machine.screenshot("launcher-verbs")
+          machine.send_key("ret")
+          machine.wait_until_fails(in_session("niri msg layers | grep -qw launcher"), timeout=10)
+          t.assertEqual(as_account("wl-paste --no-newline"), "Notes for Tuesday")
+
+          into_notes("move")
+          machine.send_key("ret")
+          time.sleep(0.5)
+          machine.screenshot("launcher-target")
+          machine.send_key("ret")
+
+          def moved(_):
+              windows = json.loads(as_account("niri msg --json windows"))
+              now = next(w for w in windows if w["id"] == notes["id"])
+              return now["workspace_id"] != notes["workspace_id"]
+
+          retry(moved, timeout_seconds=10)
+
       with subtest("the lock screen takes only the right password"):
           as_account("qs ipc call lock lock")
           machine.wait_until_succeeds(in_session("qs ipc call lock isLocked | grep -q true"), timeout=30)

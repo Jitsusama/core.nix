@@ -386,6 +386,12 @@ works the same way everywhere.
   than the best is left out. What's picked for what was typed becomes what
   it means, said in the footer, so there are no aliases to set up or
   remember.
+- **Every row is a thing with verbs.** The right arrow at the end of the line
+  steps into the selected row: what can be done to it, searched the same way,
+  each with its chord, and a verb needing a target asks for it in the same
+  field. What's held shows as chips; the left arrow steps back out, and
+  Escape always closes. The footer names what Return does and where the
+  arrows go.
 - **What's shown is the door to its detail.** The battery opens the power
   menu, the network opens its list, a notification count opens the history.
   Nothing keeps its detail somewhere else.

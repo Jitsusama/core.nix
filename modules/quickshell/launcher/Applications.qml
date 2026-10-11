@@ -10,28 +10,37 @@ Provider {
 
     things: DesktopEntries.applications.values
         .filter(entry => !entry.noDisplay)
-        .map(entry => thing({
-            key: `program:${entry.id}`,
-            verb: "open",
-            name: entry.name,
-            keywords: [entry.genericName, entry.comment]
-                .concat(Array.from(entry.keywords)).join(" "),
-            glyph: programGlyph(entry.id),
-            hue: "program",
-            side: entry.genericName.toLowerCase(),
-            run: () => Niri.spawn(provider.command(entry)),
-            below: () => {
-                provider.launcher.grid.below("");
-                Niri.spawn(provider.command(entry));
-            }
-        }))
-
-    // What an entry runs, spelled out for niri to spawn: in kitty when the
-    // entry asks for a terminal, and from its own directory when it names one.
-    function command(entry) {
-        const program = entry.runInTerminal ? ["kitty"].concat(entry.command) : entry.command;
-        if (entry.workingDirectory === "")
-            return program;
-        return ["sh", "-c", "cd -- \"$0\" && exec \"$@\"", entry.workingDirectory].concat(program);
-    }
+        .map(entry => {
+            const open = () => Niri.spawn(provider.command(entry));
+            const below = () => provider.launcher.grid.under(Niri.focused, provider.command(entry));
+            return thing({
+                key: `program:${entry.id}`,
+                verb: "open",
+                name: entry.name,
+                keywords: [entry.genericName, entry.comment]
+                    .concat(Array.from(entry.keywords)).join(" "),
+                glyph: programGlyph(entry.id),
+                hue: "program",
+                side: entry.genericName.toLowerCase(),
+                run: open,
+                below: below,
+                verbs: () => [
+                    thing({
+                        key: "verb:open",
+                        name: "Open it",
+                        glyph: String.fromCodePoint(0xf03cc),
+                        hue: "action",
+                        run: open
+                    }),
+                    thing({
+                        key: "verb:below",
+                        name: "Open it below this window",
+                        glyph: String.fromCodePoint(0xf03cc),
+                        hue: "action",
+                        chord: provider.launcher.belowChord,
+                        run: below
+                    })
+                ]
+            });
+        })
 }

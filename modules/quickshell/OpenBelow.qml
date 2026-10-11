@@ -28,14 +28,24 @@ Scope {
     property var placing: null
 
     function below(program: string): void {
+        under(Niri.focused, program === "" ? [] : [program]);
+    }
+
+    // Opens what the command runs below the window given, focusing it first
+    // when it isn't, since niri opens a window beside the focused one; an
+    // empty command places whichever window opens next.
+    function under(window: var, command: var): void {
         known = Object.assign({}, Niri.windows);
-        anchor = Niri.focused;
+        anchor = window;
         placing = null;
         waiting = anchor !== null;
-        if (waiting)
+        if (waiting) {
             expiry.restart();
-        if (program !== "")
-            Niri.spawn([program]);
+            if (Niri.focused !== anchor)
+                Niri.act({ FocusWindow: { id: anchor } });
+        }
+        if (command.length > 0)
+            Niri.spawn(command);
     }
 
     function finish(): void {

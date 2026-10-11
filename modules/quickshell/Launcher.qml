@@ -9,6 +9,12 @@
 // the order jitsusama.quickshell.launcher.providers lists them (rendered
 // into Providers.qml), so a kind of thing is added or removed in one line.
 //
+// The right arrow at the end of the line steps into the selected row: what
+// can be done to it, its verbs, searched the same way, and for a verb that
+// needs one, its target. What's held shows as chips in the field; the left
+// arrow, or Backspace with nothing typed, steps back out, and Escape always
+// closes the launcher.
+//
 // It's the palette kind (docs/design.md, Shape and Kinds): the accent frame,
 // since it holds the keys; a command line over a list, split by a hairline;
 // every row a glyph in its column, a name, and its chord or what it is.
@@ -59,6 +65,50 @@ Scope {
 
     readonly property var choices: sources.reduce((all, source) => all.concat(source.things), [])
 
+    // Shift+Return, as a chord beside a verb that does what it does.
+    readonly property var belowChord: [
+        { text: "\u21e7", wide: false },
+        { text: "\u21b5", wide: false }
+    ]
+
+    // What's been stepped into, each with what was typed before and the rows
+    // it offers: a thing and its verbs, then a verb and its targets.
+    property var held: []
+    readonly property var offered: held.length > 0 ? held[held.length - 1].rows : []
+
+    // Steps into a row: a thing's verbs, or a verb's targets. Says whether
+    // there was anywhere to go.
+    function enter(row) {
+        if (!row)
+            return false;
+        const into = held.length === 0 ? (row.verbs ? row.verbs() : null)
+            : row.targets ? row.targets() : null;
+        if (!into || into.length === 0)
+            return false;
+        held = held.concat([{ row: row, typed: typed, rows: into }]);
+        restart("");
+        return true;
+    }
+
+    function back() {
+        if (held.length === 0)
+            return;
+        const left = held[held.length - 1];
+        held = held.slice(0, -1);
+        restart(left.typed);
+    }
+
+    // Searches afresh for what the field is set to, since what was found
+    // before belongs to another step.
+    function restart(text) {
+        typed = "";
+        candidates = [];
+        if (prompt.text === text)
+            search(text);
+        else
+            prompt.text = text;
+    }
+
     property string typed: ""
     property var matches: []
     property int current: 0
@@ -91,7 +141,26 @@ Scope {
         const narrowing = typed !== "" && letters.startsWith(typed);
         typed = letters;
         words = Fuzzy.words(letters);
-        if (words.length === 0) {
+        if (held.length > 0) {
+            // A step's rows, all of them in their order until something's
+            // typed, then those it finds, best first.
+            if (words.length === 0)
+                matches = offered.slice();
+            else {
+                const found = [];
+                for (const row of offered) {
+                    const m = Fuzzy.match(row.prepared, words, false);
+                    if (m.score >= 0)
+                        found.push({
+                            item: row.prepared,
+                            score: m.score,
+                            grade: m.grade,
+                            choice: row
+                        });
+                }
+                matches = Fuzzy.keep(found).map(f => f.choice);
+            }
+        } else if (words.length === 0) {
             candidates = [];
             matches = [];
         } else {
@@ -169,10 +238,24 @@ Scope {
     }
 
     function run(choice, below) {
-        open = false;
-        if (!choice)
+        if (!choice) {
+            open = false;
             return;
-        picks.picked(typed, choice.key);
+        }
+        // A verb that needs a target asks for it.
+        if (held.length > 0 && choice.targets) {
+            enter(choice);
+            return;
+        }
+        // The clipboard takes text only from a program holding the keys.
+        if (choice.now)
+            choice.run();
+        open = false;
+        // Acting on a thing says it was what was meant by what was typed.
+        const first = held.length > 0 ? held[0] : { row: choice, typed: typed };
+        picks.picked(first.typed, first.row.key);
+        if (choice.now)
+            return;
         if (below && choice.below)
             choice.below();
         else if (choice.later) {
@@ -214,8 +297,8 @@ Scope {
     onOpenChanged: {
         if (open) {
             pointer = Qt.point(-1, -1);
-            prompt.clear();
-            search("");
+            held = [];
+            restart("");
         }
     }
 
@@ -253,9 +336,15 @@ Scope {
                         x: Theme.inset
                         y: Theme.inset
                         width: parent.width - 2 * Theme.inset
-                        glyph: String.fromCodePoint(0xf0349)
+                        // A thing held leads the line with its own glyph.
+                        readonly property var thing: root.held.length > 0
+                            ? root.held[0].row : null
+                        glyph: thing ? thing.glyph : String.fromCodePoint(0xf0349)
+                        hue: thing ? Theme[thing.hue] : Theme.muted
                         glyphWidth: Theme.space.xxl
-                        hint: "what next?"
+                        chips: root.held.map(step => ({ text: step.row.chip ?? step.row.name }))
+                        hint: root.held.length === 0 ? "what next?"
+                            : root.held[root.held.length - 1].row.ask ?? "what to do?"
                         ghost: root.completion
                         // Where the selection is, once there's more than fits.
                         aside: root.matches.length > root.rows
@@ -264,6 +353,8 @@ Scope {
                         onAccepted: below => root.run(root.matches[root.current], below)
                         onCompleted: text = text + root.completion
                         onCancelled: root.open = false
+                        onForward: root.enter(root.matches[root.current])
+                        onBackward: root.back()
                         Keys.onUpPressed: root.current = Math.max(root.current - 1, 0)
                         Keys.onDownPressed: root.current
                             = Math.min(root.current + 1, root.matches.length - 1)
@@ -311,14 +402,17 @@ Scope {
                             name: selected ? modelData.name : root.marked(modelData)
                             chord: modelData.chord
                             side: modelData.side
+                            count: modelData.count ?? ""
                             onClicked: root.run(modelData, false)
                             onPointed: at => root.pointed(index, at)
                         }
                     }
 
-                    // What Return does here, and Shift+Return where it can,
-                    // with why the row is first when learning put it there:
-                    // the one place that teaches, so the rows stay clean.
+                    // What Return does here, Shift+Return where it can, and
+                    // where the arrows step, with why the row is first when
+                    // learning put it there, where a held thing is, or the
+                    // chord a target has: the one place that teaches, so the
+                    // rows stay clean.
                     Item {
                         id: foot
 
@@ -334,10 +428,13 @@ Scope {
                             width: keys.x - x - Theme.space.xl
                             elide: Text.ElideRight
                             readonly property string asked: Fuzzy.words(root.typed).join(" ")
-                            readonly property int times: foot.choice ? foot.choice.times : 0
+                            readonly property int times: foot.choice ? foot.choice.times ?? 0 : 0
 
-                            text: times === 0 ? "" : `you picked this for \u201c${asked}\u201d ${
-                                times === 1 ? "once" : `${times} times`}`
+                            text: !foot.choice ? ""
+                                : foot.choice.note !== "" ? foot.choice.note
+                                : root.held.length > 0 ? root.held[0].row.context
+                                : times === 0 ? "" : `you picked this for \u201c${asked}\u201d ${
+                                    times === 1 ? "once" : `${times} times`}`
                             color: Theme.muted
                             font.family: Theme.mono.family
                             font.pointSize: Theme.mono.large
@@ -351,9 +448,19 @@ Scope {
                             spacing: Theme.space.xl
 
                             Repeater {
-                                model: !foot.choice ? []
-                                    : [["\u21b5", foot.choice.verb]].concat(
-                                        foot.choice.below ? [["\u21e7\u21b5", "below"]] : [])
+                                model: {
+                                    const choice = foot.choice;
+                                    if (!choice)
+                                        return [];
+                                    const keys = [["\u21b5", choice.verb ?? "run"]];
+                                    if (root.held.length === 0 && choice.below)
+                                        keys.push(["\u21e7\u21b5", "below"]);
+                                    if (root.held.length === 0 && choice.verbs)
+                                        keys.push(["\u2192", "more"]);
+                                    if (root.held.length > 0)
+                                        keys.push(["\u2190", "back"]);
+                                    return keys;
+                                }
 
                                 Text {
                                     required property var modelData
@@ -397,6 +504,8 @@ Scope {
         property string name
         property var chord: []
         property string side
+        // A word after the name, muted: "here" beside a workspace.
+        property string count
         // Said by the shell rather than found, so it's muted and can't be picked.
         property bool quiet: false
 
@@ -419,8 +528,10 @@ Scope {
         }
 
         Text {
+            id: nameText
             x: Theme.space.l + Theme.space.xxl
-            width: right.x - x - Theme.space.xxl
+            width: Math.min(implicitWidth, right.x - x - Theme.space.xxl
+                - (row.count === "" ? 0 : countText.implicitWidth + Theme.space.m))
             anchors.verticalCenter: parent.verticalCenter
             text: row.name
             textFormat: row.selected || row.quiet ? Text.PlainText : Text.StyledText
@@ -429,6 +540,17 @@ Scope {
             font.family: Theme.mono.family
             font.pointSize: Theme.mono.large
             font.weight: row.selected ? Font.Medium : Font.Normal
+        }
+
+        Text {
+            id: countText
+            x: nameText.x + nameText.width + Theme.space.m
+            anchors.verticalCenter: parent.verticalCenter
+            visible: row.count !== ""
+            text: row.count
+            color: Theme.muted
+            font.family: Theme.mono.family
+            font.pointSize: Theme.mono.large
         }
 
         // The chord key by key, joined by +, or what the row is.
