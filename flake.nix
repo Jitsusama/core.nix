@@ -123,6 +123,7 @@
         theme = ./modules/theme/home.nix;
         tree = ./modules/tree/home.nix;
         tree-sitter = ./modules/tree-sitter/home.nix;
+        tuple = ./modules/tuple/home.nix;
         wezterm = moduleFrom ./modules/wezterm/home.nix { inherit wallpapers; };
         yq = ./modules/yq/home.nix;
         zellij = ./modules/zellij/home.nix;

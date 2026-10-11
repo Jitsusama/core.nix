@@ -721,6 +721,7 @@ by them isn't done.
 | The browser                               | chrome                   | proportional   |        |        |           |         |          |
 | Images and drawings                       | gimp, inkscape           | proportional   |        |        |           |         |          |
 | Music                                     | spotify                  | both           |        |        |           |         |          |
+| Pairing                                   | tuple                    | its own        |        |        |           |         |          |
 | Chat, passwords, calls                    | their own settings       | proportional   |        |        |           |         |          |
 | The terminal                              | kitty                    | monospace      |        |        |           |         |          |
 | The prompt                                | prompt                   | monospace      |        |        |           |         |          |

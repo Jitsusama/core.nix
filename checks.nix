@@ -964,6 +964,28 @@ in
           touch $out
         '';
 
+    # Tuple shares a screen through the portal: the switch writes the setting
+    # where Tuple keeps it, and Tuple, which ignores a folder it doesn't know
+    # and a value not written as it writes one, has to read it back. So the
+    # check runs the switch's own steps, with the data folder moved here.
+    tuple-shares-through-the-portal =
+      let
+        home = account graphical;
+        tuple = lib.findFirst (package: lib.getName package == "tuple") null home.home.packages;
+        data = home.xdg.dataHome;
+      in
+      pkgs.runCommandLocal "tuple-shares-through-the-portal" { nativeBuildInputs = [ tuple ]; } ''
+        export HOME=$PWD XDG_DATA_HOME=$PWD/data XDG_RUNTIME_DIR=$PWD/run
+        mkdir -m 700 run
+        sed -n '\|^run .*${lib.escapeRegex data}/tuple/|{s|^run ||;s|${data}|'"$PWD"'/data|g;p}' \
+          ${home.home.activationPackage}/activate > steps
+        sh -e steps
+        tuple settings > said 2>&1 || true
+        tuple off > /dev/null 2>&1 || true
+        if ! grep -q '^capture | portal |' said; then cat said; exit 1; fi
+        touch $out
+      '';
+
     # btop draws in the theme with the files an account gets: a theme it can't
     # find falls back to btop's own without a word, so the check looks for the
     # theme's text colour in what btop writes to its terminal.
