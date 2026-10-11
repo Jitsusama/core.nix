@@ -75,6 +75,17 @@ Scope {
         return [];
     }
 
+    // What a collection's row at home says after its title: how many it
+    // holds, grouped by thousands.
+    function counted() {
+        const size = everything().length;
+        return size === 0 ? "empty" : String(size).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+    }
+
+    // A collection was stepped into, so all of it has been seen.
+    function opened() {
+    }
+
     // A collection's row: a thing whose name is made ready to match only
     // when it's first drawn, since a collection has thousands.
     function member(fields) {

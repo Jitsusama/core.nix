@@ -405,19 +405,24 @@ works the same way everywhere.
   row copied the same way. The footer says where an answer came from. Nothing
   leaves the machine unless the question needs the network, never for a
   private address, and never with the launcher's `lookups` off.
-- **Large sets are one row each.** Emoji, the clipboard's history and, later,
-  past notices are too many to mix into the search: each that has a match
+- **Large sets are one row each.** Emoji, the clipboard's history and past
+  notices are too many to mix into the search: each that has a match
   adds one row, its best match with a count of the rest, so there's no
   haystack and no mode to enter first. Return uses that match; the right
   arrow sees all of them, with what was typed still searching. The row sits
   below the matches as tidy as its own and above any scattered ones. Each
   also has a chord that opens it whole: Super+V the copies, Super+; the
-  emoji, Super+Shift+/ the shortcuts.
+  emoji, Super+N the notices, Super+Shift+/ the shortcuts.
 - **Copies stay in memory.** One program hears every text copy for the
   session and the shell asks it for them, so none is written to disk and
   none is kept that a password manager marks secret. A copy's glyph says
   what it is: several lines, a link, an address, a path and a number each
   wear their own, and plain text the clipboard's.
+- **A notice gone is not lost.** Every notice of the session stays in the
+  shell's memory. One clicked, or withdrawn by its program because it was
+  read there, was seen; one that left by itself was missed, and the notices'
+  row at home says how many until they're opened. Return on one goes to the
+  program that sent it, its window when one is open.
 - **What's shown is the door to its detail.** The battery opens the power
   menu, the network opens its list, a notification count opens the history.
   Nothing keeps its detail somewhere else.

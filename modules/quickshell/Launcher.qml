@@ -204,14 +204,13 @@ Scope {
     function whole(source, gap) {
         const collection = source.collection;
         const name = source.settings.name;
-        const size = source.everything().length;
         const opener = Shortcuts.actions.find(action => action.opens === name);
         return {
             key: `collection:${name}`,
             verb: "open",
             name: collection.title ?? collection.noun,
             plain: true,
-            count: size === 0 ? "empty" : String(size).replace(/\B(?=(\d{3})+(?!\d))/g, ","),
+            count: source.counted(),
             glyph: collection.glyph,
             hue: "voice",
             chord: opener ? opener.chord : [],
@@ -275,6 +274,8 @@ Scope {
         if (!into || into.length === 0)
             return false;
         held = held.concat([{ row: row, typed: typed, rows: into }]);
+        if (row.from)
+            row.from.opened();
         // A collection is stepped into with what was typed still searching it.
         restart(row.from ? typed : "");
         return true;
@@ -527,6 +528,7 @@ Scope {
             typed: "",
             rows: []
         }];
+        source.opened();
         restart("");
     }
 

@@ -2,6 +2,9 @@
 // corner, newest at the top. A click dismisses one; it leaves by itself when
 // its time is up, unless it's critical.
 //
+// Each is kept in the session's history as it arrives (Notices.qml), for
+// the launcher to find later.
+//
 // It's the notice kind (docs/design.md, Shape and Kinds): the edge frame,
 // since it never takes the keys, or the alert's when critical; who or what
 // first, in words, then the message; and a footer in muted monospace saying
@@ -22,19 +25,6 @@ Scope {
     // When each notification arrived, by its id, for the footer's time.
     property var arrived: ({})
 
-    // A sender's glyph where Nerd Fonts has one, and the hue of what it
-    // brings: a person's message wears the person's.
-    readonly property var senders: ({
-        "slack": { glyph: 0xf198, hue: "person" },
-        "google chrome": { glyph: 0xf268, hue: "program" },
-        "chromium": { glyph: 0xf268, hue: "program" },
-        "niri": { glyph: 0xf0e51, hue: "machine" }
-    })
-
-    function sender(name) {
-        const known = senders[name.toLowerCase()];
-        return known ?? { glyph: 0xf0f3, hue: "program" };
-    }
 
     function since(then, now) {
         const minutes = Math.floor((now - then) / 60000);
@@ -57,6 +47,10 @@ Scope {
         keepOnReload: true
         onNotification: notification => {
             root.arrived[notification.id] = Date.now();
+            Notices.arrived(notification, notification.urgency === NotificationUrgency.Critical);
+            const id = notification.id;
+            notification.closed.connect(reason => Notices.left(id,
+                reason === NotificationCloseReason.Expired));
             notification.tracked = true;
         }
     }
@@ -110,7 +104,7 @@ Scope {
                     id: card
 
                     required property Notification modelData
-                    readonly property var from: root.sender(modelData.appName)
+                    readonly property var from: Notices.sender(modelData.appName)
 
                     width: stack.width
                     urgent: modelData.urgency === NotificationUrgency.Critical

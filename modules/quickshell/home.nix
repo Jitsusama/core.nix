@@ -64,6 +64,7 @@ let
     "Floating.qml"
     "Fuzzy.js"
     "Picks.qml"
+    "Notices.qml"
     "pieces/Piece.qml"
     "launcher/Provider.qml"
     "launcher/Numbers.js"
@@ -226,6 +227,7 @@ let
       {
         clipboard = nerd "f0a38";
         emoji = nerd "f01f5";
+        notices = nerd "f009c";
       }
       .${lib.last run} or (nerd "f097b")
     else
@@ -307,6 +309,7 @@ let
     emoji = ./launcher/Emoji.qml;
     shortcuts = ./launcher/KeyMap.qml;
     clipboard = ./launcher/Copies.qml;
+    notices = ./launcher/PastNotices.qml;
   };
 
   # The program that hears every copy, for the clipboard collection.
@@ -505,6 +508,10 @@ in
         order = 110;
         source = "emoji";
         tone = "none";
+      };
+      notices = {
+        order = 115;
+        source = "notices";
       };
       # Opened by its own chord, not shown in a search.
       shortcuts = {

@@ -64,6 +64,11 @@ in
     action = ''spawn "qs" "ipc" "call" "launcher" "collection" "emoji";'';
   }
   {
+    chord = "Super+N";
+    does = "Find a notice that came earlier";
+    action = ''spawn "qs" "ipc" "call" "launcher" "collection" "notices";'';
+  }
+  {
     chord = "Super+Shift+Slash";
     does = "Show these shortcuts";
     # The launcher's collection of every layer's shortcuts, searchable, in

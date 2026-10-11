@@ -498,6 +498,31 @@ pkgs.testers.runNixOSTest {
 
           retry(another, timeout_seconds=15)
 
+      with subtest("a notice that came and went is found again in the launcher"):
+          as_account("qs ipc call launcher toggle")
+          wait_for_surface("launcher")
+          time.sleep(0.5)
+          # Its row at home counts the one missed earlier, since it left by itself.
+          machine.screenshot("launcher-home-missed")
+          machine.send_chars("build fin")
+          time.sleep(0.5)
+          machine.screenshot("launcher-notices")
+          # Nothing sent it that can be gone to, so Return copies what it said.
+          machine.send_key("ret")
+
+          def told_again(_):
+              said = as_account("wl-paste --no-newline")
+              return said == "Build finished\nthe laptop is ready"
+
+          retry(told_again, timeout_seconds=10)
+          machine.wait_until_fails(in_session("niri msg layers | grep -q launcher"), timeout=10)
+          # Super+N opens all of them, which counts them seen.
+          machine.send_key("meta_l-n")
+          wait_for_surface("launcher")
+          time.sleep(0.5)
+          machine.screenshot("launcher-notices-all")
+          machine.send_key("esc")
+
       with subtest("the lock screen takes only the right password"):
           as_account("qs ipc call lock lock")
           machine.wait_until_succeeds(in_session("qs ipc call lock isLocked | grep -q true"), timeout=30)
