@@ -61,6 +61,7 @@ let
     "Brightness.qml"
     "Meter.qml"
     "Status.qml"
+    "Facts.qml"
     "Wallpaper.qml"
     "Lifted.qml"
     "OpenBelow.qml"
@@ -828,6 +829,10 @@ in
                     inherit (s) x y blur;
                     opacity = builtins.fromJSON s.opacity;
                   }) wallpaper.shadows;
+                  halo = map (s: {
+                    inherit (s) blur;
+                    opacity = builtins.fromJSON s.opacity;
+                  }) wallpaper.halo;
                 }
               }
           }

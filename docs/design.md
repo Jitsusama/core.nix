@@ -187,8 +187,12 @@ surface names a meaning, never a colour value:
 Nothing else gets the accent, so it always means "here". The wallpaper is
 never dimmed or faded to make room for text: text set straight on a picture
 is lifted off it by the theme's text shadows (`wallpaper.shadows`), a crisp
-one set off down and right and a soft one around it. Muted text sits only on the
-background, sunken and deepest; on the raised and selection surfaces hints
+one set off down and right and a soft one around it. Text that may lie over a
+window as well, the overview's status, gets no box either: the theme's halo
+(`wallpaper.halo`) holds it off whatever is behind, shadows of the letters
+in the shadow colour, centred, stacked from tight to wide so the shade is all
+but solid at the ink and feathers out with no edge of its own. Muted text
+sits only on the background, sunken and deepest; on the raised and selection surfaces hints
 switch to text, since a muted that read there would be too bright to be
 muted.
 
@@ -768,6 +772,13 @@ What each studio round settled, newest first, with the reason.
   instead, and the picture shows whole. The overview's status moved above
   the overview so the workspaces no longer cover it, and the lock screen's
   time and field sit low, under its sky.
+
+- **The overview's status wears a halo** (2026-10-11). A card behind the
+  status, mostly opaque, read well over the workspaces but was "the large
+  block overlapping", and Joel asked for shadowing instead, letting text
+  and glyphs overlap with no opaque box. Of a card, the plain wallpaper
+  shadows and a halo, he chose the halo: twelve shadows centred on the
+  letters, from 1 px to 40 px, each the deepest colour at 0.95.
 
 - **One language for every surface** (2026-10-10). The launcher took a
   dozen rounds. Boxes inside boxes, mixed sizes and spacing, and Mona Sans
