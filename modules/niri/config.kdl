@@ -68,6 +68,8 @@ prefer-no-csd
 // niri copies every screenshot to the clipboard and saves it here too.
 screenshot-path "~/Pictures/Screenshots/%Y-%m-%d %H-%M-%S.png"
 
+// The launcher's collection of every layer's shortcuts stands in for niri's
+// overlay, which shows only niri's own, so the overlay never opens unasked.
 hotkey-overlay {
     skip-at-startup
 }

@@ -441,8 +441,9 @@ the program's action, in `jitsusama.niri.binds`, `jitsusama.kitty.keys` and
 in `jitsusama.keys`, layer by layer from the desktop down, which refuses to
 build a machine where two layers claim one chord, or one layer claims a chord
 twice, and writes the whole map to `~/.config/jitsusama/keys.json` for the
-launcher and the "what's here" views. The words are the same ones niri shows
-in its own list of shortcuts.
+launcher and the "what's here" views. Super+Shift+/ opens the desktop's view:
+the launcher's collection of every layer's shortcuts, searched by what they
+do, each with its chord and, in the footer, the layer it belongs to.
 
 On the desktop, windows sit in a grid: columns side by side, each holding
 windows stacked above and below. Super with the arrows moves focus through

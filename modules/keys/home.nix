@@ -25,27 +25,41 @@ let
     "program"
   ];
 
-  bind = lib.types.submodule {
-    options = {
-      chord = lib.mkOption {
-        type = lib.types.str;
-        description = "The chord, as its program spells it: Super+Return, ctrl+shift+t.";
+  bind = lib.types.submodule (
+    { config, ... }:
+    {
+      options = {
+        chord = lib.mkOption {
+          type = lib.types.str;
+          description = "The chord, as its program spells it: Super+Return, ctrl+shift+t.";
+        };
+        keys = lib.mkOption {
+          type = lib.types.str;
+          readOnly = true;
+          default = normalise config.chord;
+          defaultText = lib.literalMD "the chord in one spelling";
+          description = ''
+            The chord in the one spelling every layer's is brought to, for
+            comparing two and drawing them alike: modifiers in a set order,
+            then the key, all lower case, joined with +, as super+shift+/.
+          '';
+        };
+        does = lib.mkOption {
+          type = lib.types.str;
+          description = "What the chord does, in plain words, as the launcher finds it.";
+        };
+        run = lib.mkOption {
+          type = lib.types.listOf lib.types.str;
+          default = [ ];
+          description = ''
+            A command that does the same, for the launcher to have niri start
+            when the action is picked by name. Empty for a chord only its own
+            program can act on, such as one inside the terminal.
+          '';
+        };
       };
-      does = lib.mkOption {
-        type = lib.types.str;
-        description = "What the chord does, in plain words, as the launcher finds it.";
-      };
-      run = lib.mkOption {
-        type = lib.types.listOf lib.types.str;
-        default = [ ];
-        description = ''
-          A command that does the same, for the launcher to have niri start
-          when the action is picked by name. Empty for a chord only its own
-          program can act on, such as one inside the terminal.
-        '';
-      };
-    };
-  };
+    }
+  );
 
   # Each program spells chords its own way, so every chord is brought to one
   # spelling before two are compared: modifiers in a set order, then the key,
@@ -101,7 +115,7 @@ let
       lib.filter (modifier: lib.elem modifier named) modifierOrder ++ [ keyNames.${key} or key ]
     );
 
-  spelled = layer: map (b: b // { keys = normalise b.chord; }) cfg.${layer};
+  spelled = layer: cfg.${layer};
 
   # Every chord a layer claims that a layer above it also claims.
   clashes = lib.concatLists (

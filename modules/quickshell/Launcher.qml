@@ -144,6 +144,9 @@ Scope {
             return [];
         const rows = [];
         for (const source of collections) {
+            // One opened only by its own chord adds no row to a search.
+            if (source.collection.searched === false)
+                continue;
             const said = source.search(letters);
             const found = learnedFirst(said.rows, letters);
             if (found.length === 0)
@@ -380,6 +383,12 @@ Scope {
             enter(choice);
             return;
         }
+        // One that opens a collection steps into it, the launcher kept open.
+        if (choice.opens) {
+            picks.picked(typed, choice.key);
+            into(choice.opens);
+            return;
+        }
         // The clipboard takes text only from a program holding the keys.
         if (choice.now)
             choice.run();
@@ -415,6 +424,35 @@ Scope {
         function toggle(): void {
             root.open = !root.open;
         }
+
+        // Opens the launcher into a collection by its provider's name.
+        function collection(name: string): void {
+            root.into(name);
+        }
+    }
+
+    // Opens straight into a collection, all of it shown until something's
+    // typed; the left arrow steps out to the search. A name no collection
+    // has opens the search.
+    function into(name) {
+        open = true;
+        const source = collections.find(s => s.settings.name === name);
+        if (!source)
+            return;
+        held = [{
+            row: {
+                key: "",
+                name: source.collection.noun,
+                chip: source.collection.noun,
+                ask: source.collection.ask,
+                lead: source.collection.glyph,
+                leadHue: "voice",
+                from: source
+            },
+            typed: "",
+            rows: []
+        }];
+        restart("");
     }
 
     // Where the pointer last was, in the window, so the selection follows

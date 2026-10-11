@@ -436,6 +436,25 @@ pkgs.testers.runNixOSTest {
           # The grinning cat with smiling eyes, first among the smiling cats.
           t.assertEqual(as_account("wl-paste --no-newline"), "\U0001F638")
 
+      with subtest("Super+Shift+/ shows every layer's shortcuts, and runs the desktop's"):
+          windows = len(json.loads(as_account("niri msg --json windows")))
+          machine.send_key("meta_l-shift-slash")
+          wait_for_surface("launcher")
+          time.sleep(0.5)
+          machine.send_chars("paste")
+          time.sleep(0.5)
+          machine.screenshot("launcher-shortcuts")
+          for _ in "paste":
+              machine.send_key("backspace")
+          machine.send_chars("open a terminal")
+          time.sleep(0.5)
+          machine.send_key("ret")
+
+          def opened(_):
+              return len(json.loads(as_account("niri msg --json windows"))) > windows
+
+          retry(opened, timeout_seconds=15)
+
       with subtest("the lock screen takes only the right password"):
           as_account("qs ipc call lock lock")
           machine.wait_until_succeeds(in_session("qs ipc call lock isLocked | grep -q true"), timeout=30)

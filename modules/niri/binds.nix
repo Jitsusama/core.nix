@@ -55,7 +55,9 @@ in
   {
     chord = "Super+Shift+Slash";
     does = "Show these shortcuts";
-    action = "show-hotkey-overlay;";
+    # The launcher's collection of every layer's shortcuts, searchable, in
+    # place of niri's own overlay of only its own.
+    action = ''spawn "qs" "ipc" "call" "launcher" "collection" "shortcuts";'';
   }
 
   # Closing is destructive, so it takes Shift, as in i3.

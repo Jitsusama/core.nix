@@ -146,6 +146,56 @@ let
   };
   face' = key: { wide = false; } // (keyFaces.${key} or { text = key; });
 
+  # A chord in the key map's one spelling (super+shift+/), drawn key by key
+  # as the desktop's are: a key with a face wears it, a letter is a capital,
+  # and a word starts with one.
+  chordFaces =
+    keys:
+    let
+      faces = lib.mapAttrs' (name: lib.nameValuePair (lib.toLower name)) keyFaces // {
+        enter = keyFaces.Return;
+        pageup = keyFaces.Page_Up;
+        pagedown = keyFaces.Page_Down;
+      };
+      key = if lib.hasSuffix "++" keys then "+" else lib.last (lib.splitString "+" keys);
+      held = lib.init (lib.splitString "+" (lib.removeSuffix "+" keys));
+      face =
+        word:
+        {
+          wide = false;
+        }
+        // (faces.${word} or {
+          text =
+            if lib.stringLength word == 1 then
+              lib.toUpper word
+            else
+              lib.toUpper (lib.substring 0 1 word) + lib.substring 1 (-1) word;
+        }
+        );
+    in
+    map face (held ++ [ key ]);
+
+  # Every layer's shortcuts, top to bottom, for the launcher's collection of
+  # them: what each does, its chord, and for the desktop's, the command that
+  # does the same and the glyph its action wears.
+  shortcutLayers =
+    map
+      (layer: {
+        name = layer;
+        glyph = layerGlyphs.${layer};
+        binds = map (b: {
+          inherit (b) does run;
+          chord = chordFaces b.keys;
+          glyph = if layer == "desktop" then actionGlyph b.run else "";
+        }) config.jitsusama.keys.${layer};
+      })
+      [
+        "desktop"
+        "terminal"
+        "multiplexer"
+        "program"
+      ];
+
   # The glyph an action wears in the launcher, by what it runs.
   actionGlyph =
     run:
@@ -170,6 +220,8 @@ let
       nerd "f0570"
     else if lib.hasInfix "monitor" action then
       nerd "f0379"
+    else if program == "qs" && lib.elem "collection" run then
+      nerd "f097b"
     else
       nerd "f2d0";
 
@@ -179,7 +231,23 @@ let
     inherit (b) does run;
     glyph = actionGlyph b.run;
     chord = map face' (lib.splitString "+" b.chord);
-  }) (lib.filter (b: b.run != [ ] && !(lib.elem "launcher" b.run)) config.jitsusama.keys.desktop);
+  }) (lib.filter (b: b.run != [ ] && b.run != launcherToggle) config.jitsusama.keys.desktop);
+  launcherToggle = [
+    "qs"
+    "ipc"
+    "call"
+    "launcher"
+    "toggle"
+  ];
+
+  # The glyph each layer's shortcuts wear but the desktop's, whose actions
+  # wear their own.
+  layerGlyphs = {
+    desktop = "";
+    terminal = nerd "f489";
+    multiplexer = nerd "f0bcc";
+    program = nerd "f0614";
+  };
 
   pieces = import ../theme/pieces.nix { inherit lib; };
 
@@ -216,6 +284,7 @@ let
     weather = ./launcher/Weather.qml;
     machine = ./launcher/Machine.qml;
     emoji = ./launcher/Emoji.qml;
+    shortcuts = ./launcher/KeyMap.qml;
   };
 
   # Every emoji, in a skin tone.
@@ -405,6 +474,11 @@ in
         source = "emoji";
         tone = "none";
       };
+      # Opened by its own chord, not shown in a search.
+      shortcuts = {
+        order = 120;
+        source = "shortcuts";
+      };
     };
 
     # Each setting is a default, so a machine's own wins without a fight.
@@ -529,6 +603,8 @@ in
           // glyph and the command that does the same.
           Singleton {
               readonly property var actions: ${builtins.toJSON actions}
+              // Every layer's shortcuts, top to bottom, each with its glyph.
+              readonly property var layers: ${builtins.toJSON shortcutLayers}
           }
         '';
         "quickshell/Theme.qml".text = ''
