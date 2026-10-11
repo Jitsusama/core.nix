@@ -344,6 +344,11 @@ let
       console = "R";
       means = "the screen is being recorded";
     };
+    capitals = {
+      glyph = nerd "f0632";
+      console = "A";
+      means = "caps lock is on";
+    };
     low = {
       glyph = nerd "f0083";
       console = "B";

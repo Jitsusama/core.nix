@@ -72,6 +72,7 @@ let
     "Notices.qml"
     "Caffeinate.qml"
     "Quiet.qml"
+    "Lights.qml"
     "pieces/Piece.qml"
     "launcher/Provider.qml"
     "launcher/Numbers.js"
@@ -325,6 +326,7 @@ let
     notices = ./pieces/Waiting.qml;
     quiet = ./pieces/DoNotDisturb.qml;
     microphone = ./pieces/Microphone.qml;
+    capslock = ./pieces/CapsLock.qml;
     sharing = ./pieces/Sharing.qml;
     recording = ./pieces/Recording.qml;
   };
@@ -657,6 +659,13 @@ in
         label = "mic";
         tier = "when";
         mark = "muted";
+      };
+      capslock = {
+        order = 75;
+        source = "capslock";
+        label = "caps lock";
+        tier = "when";
+        mark = "capitals";
       };
       sharing = {
         order = 80;
