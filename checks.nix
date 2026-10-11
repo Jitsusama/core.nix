@@ -163,6 +163,16 @@ in
         self.darwinModules.workstation
       ]);
 
+  # Most of the icon font's marks lie past U+FFFF, which a single JSON escape
+  # can't reach: written as one, U+F075D read as U+F075 and a stray "d".
+  icon-marks-past-the-basic-plane =
+    let
+      nerd = import ./modules/theme/nerd.nix { inherit lib; };
+    in
+    holds "icon-marks-past-the-basic-plane" "An icon mark past U+FFFF came out as two characters." (
+      nerd "f075d" != nerd "f075" + "d" && builtins.stringLength (nerd "f075d") == 4
+    );
+
   # A machine can remove any module a role brought in, including the ones
   # made by giving a file one of core's inputs.
   disabling-a-module-removes-it =

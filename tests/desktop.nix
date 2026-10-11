@@ -271,6 +271,18 @@ pkgs.testers.runNixOSTest {
           machine.screenshot("brightness")
           machine.wait_until_fails(in_session("niri msg layers | grep -q brightness"), timeout=10)
 
+      # A photograph of the media keys' chords, whose marks lie past U+FFFF,
+      # and Escape leaving.
+      with subtest("the launcher shows the volume's chords, and Escape closes it"):
+          as_account("qs ipc call launcher toggle")
+          wait_for_surface("launcher")
+          time.sleep(0.5)
+          machine.send_chars("volume")
+          machine.sleep(1)
+          machine.screenshot("launcher-volume")
+          machine.send_key("esc")
+          machine.wait_until_fails(in_session("niri msg layers | grep -qw launcher"), timeout=10)
+
       with subtest("the launcher finds and opens kitty"):
           as_account("qs ipc call launcher toggle")
           wait_for_surface("launcher")

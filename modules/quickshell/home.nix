@@ -64,9 +64,8 @@ let
   # A part's corners, the whole's radius less its border and inset.
   inner = lib.max 0 (shape.radius - shape.border - shape.inset);
 
-  # A mark from the icon font by its code point, since Nix strings can't
-  # spell one.
-  nerd = code: builtins.fromJSON ''"\u${code}"'';
+  # A mark from the icon font by its code point.
+  nerd = import ../theme/nerd.nix { inherit lib; };
 
   # How a chord's keys are drawn: a key's own glyph where a proper one
   # exists, its name where none does, and a letter as itself (docs/design.md,

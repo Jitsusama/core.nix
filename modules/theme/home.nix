@@ -221,9 +221,9 @@ let
       tenths (builtins.fromJSON cfg.font.${face}.size * power (builtins.fromJSON cfg.type.ratio) step)
     ) cfg.type.steps;
 
-  # A Nerd Font mark by its code point, since Nix strings can't spell one and
-  # an editor may not show it.
-  nerd = code: builtins.fromJSON ''"\u${code}"'';
+  # A mark from the icon font by its code point, since an editor may not
+  # show one.
+  nerd = import ./nerd.nix { inherit lib; };
 
   # The marks every surface draws from, looked up by meaning, each with a
   # stand-in a console font can draw. The set is pi's, which chose marks the
