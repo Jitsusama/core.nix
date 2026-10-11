@@ -51,7 +51,48 @@ pkgs.testers.runNixOSTest {
         "stand-in-backlight"
         # The kernel's own stand-in battery, which UPower reports as a laptop's.
         "test_power"
+        # Two stand-in Wi-Fi radios: hostapd makes the first an access point
+        # and NetworkManager joins it from the second, as the laptop's would.
+        "mac80211_hwsim"
       ];
+      services.hostapd = {
+        enable = true;
+        radios.wlan0 = {
+          band = "2g";
+          channel = 6;
+          countryCode = "CA";
+          networks.wlan0 = {
+            ssid = "Lantern";
+            authentication = {
+              mode = "wpa2-sha1";
+              wpaPassword = "glowing in the dark";
+            };
+          };
+        };
+      };
+      networking.networkmanager.unmanaged = [ "wlan0" ];
+      # The access point hands out addresses, as a real network does, since
+      # NetworkManager counts a network joined only once it has one.
+      networking.interfaces.wlan0.ipv4.addresses = [
+        {
+          address = "10.42.0.1";
+          prefixLength = 24;
+        }
+      ];
+      services.dnsmasq = {
+        enable = true;
+        resolveLocalQueries = false;
+        settings = {
+          port = 0;
+          interface = "wlan0";
+          bind-dynamic = true;
+          dhcp-range = "10.42.0.10,10.42.0.50,1h";
+        };
+      };
+      networking.firewall.interfaces.wlan0.allowedUDPPorts = [ 67 ];
+      # A VM turns off wpa_supplicant, which NetworkManager joins networks
+      # through, since it usually has no radio; this one has two.
+      networking.wireless.enable = lib.mkOverride 0 true;
       # The overview's status reads the battery from UPower and the network from
       # NetworkManager, which the laptop role brings.
       services.upower.enable = true;
@@ -108,8 +149,14 @@ pkgs.testers.runNixOSTest {
       users.users.${account} = {
         isNormalUser = true;
         uid = 1000;
-        # Polkit asks a member of wheel for their own password.
-        extraGroups = [ "wheel" ];
+        # Polkit asks a member of wheel for their own password. It lets the
+        # signed-in account change networks as an active local session, which
+        # the shell nested in Cage isn't seen as, so NetworkManager's group
+        # gives the account the same.
+        extraGroups = [
+          "wheel"
+          "networkmanager"
+        ];
         initialPassword = secret;
       };
       home-manager.users.${account}.home.stateVersion = "26.05";
@@ -595,6 +642,52 @@ pkgs.testers.runNixOSTest {
               return len(json.loads(as_account("niri msg --json windows"))) > windows
 
           retry(another, timeout_seconds=15)
+
+      with subtest("a Wi-Fi network is joined from the launcher, a new one asking its password"):
+          machine.wait_for_unit("hostapd.service")
+          machine.wait_until_succeeds(
+              "nmcli -t -f SSID device wifi list ifname wlan1 | grep -qx Lantern", timeout=60
+          )
+          as_account("qs ipc call launcher collection wifi")
+          wait_for_surface("launcher")
+          time.sleep(0.5)
+          machine.screenshot("launcher-wifi")
+          machine.send_chars("lant")
+          time.sleep(0.5)
+          # Never joined, it asks for its password, which a wrong one doesn't
+          # satisfy; the launcher stays to say so.
+          machine.send_key("ret")
+          time.sleep(0.5)
+          machine.send_chars("not the password")
+          machine.screenshot("launcher-wifi-password")
+          machine.send_key("ret")
+          machine.wait_until_succeeds(
+              "journalctl -u NetworkManager"
+              " | grep -q \"Activation: failed for connection 'Lantern'\"",
+              timeout=60,
+          )
+          time.sleep(1)
+          machine.screenshot("launcher-wifi-refused")
+          machine.succeed(in_session("niri msg layers | grep -q launcher"))
+          machine.send_chars("glowing in the dark")
+          machine.send_key("ret")
+          # Joined means an address too, which is when NetworkManager says so.
+          machine.wait_until_succeeds(
+              "nmcli -g GENERAL.CONNECTION,GENERAL.STATE device show wlan1"
+              " | tr '\\n' ' ' | grep -q '^Lantern 100 '",
+              timeout=60,
+          )
+          # Once it's joined, the launcher's done.
+          machine.wait_until_fails(in_session("niri msg layers | grep -q launcher"), timeout=10)
+          # Turning Wi-Fi off is an action like any.
+          as_account("qs ipc call launcher toggle")
+          wait_for_surface("launcher")
+          time.sleep(0.5)
+          machine.send_chars("wifi off")
+          time.sleep(0.5)
+          machine.send_key("ret")
+          machine.wait_until_succeeds("nmcli radio wifi | grep -qx disabled", timeout=15)
+          machine.succeed("nmcli radio wifi on")
 
       with subtest("a notice that came and went is found again in the launcher"):
           # One its sender says not to keep isn't, though it's the newest match.

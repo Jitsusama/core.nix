@@ -17,6 +17,10 @@
 // be done to it (verbs, a function giving rows of the same shape). A verb
 // that needs a target asks for one (ask) from the rows `targets` gives,
 // each with a `note` for the footer, and is named on Return by `verb`.
+// One that needs words instead, such as a password, asks for them (ask)
+// in the field, dotted when `secret`, and hands them to `given`. A thing
+// whose outcome takes a while `stays`, keeping the launcher open, and its
+// `state()` tells the footer how it's going.
 //
 // A provider can answer rather than find: `answer(typed)` gives what's
 // typed plainly asks for, { headline, copy, rows, note }, or null. The
@@ -40,6 +44,8 @@ Scope {
     property var things: []
 
     signal answered
+    // A collection's things changed while it might be open.
+    signal changed
 
     function answer(typed) {
         return null;
@@ -57,9 +63,10 @@ Scope {
 
     // A provider with too many things to mix into the main search, such as
     // emoji, is a collection: { noun, title, glyph, ask }, its title naming it
-    // on the home screen, and searched false if it adds no row to a search,
-    // only opened by its chord or from home. Its things stay out of
-    // the main list. The launcher asks `search(typed)` for its matches, best
+    // on the home screen, `empty` saying what it says with nothing in it,
+    // and searched false if it adds no row to a search, only opened by its
+    // chord or from home. Its members stay out of the main list, though its
+    // `things` don't. The launcher asks `search(typed)` for its matches, best
     // first, with how scattered the best is as Fuzzy.js grades a match,
     // { rows, grade }, and shows the best as one row with a count of the
     // rest, below the main search's matches as tidy and above any looser;

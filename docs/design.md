@@ -408,15 +408,15 @@ works the same way everywhere.
   answer came from. Nothing leaves the machine unless the question needs the
   network, never for a private address, and never with the launcher's
   `lookups` off.
-- **Large sets are one row each.** Emoji, the clipboard's history and past
-  notices are too many to mix into the search: each that has a match
-  adds one row, its best match with a count of the rest, so there's no
-  haystack and no mode to enter first. Return uses that match; the right
-  arrow sees all of them, with what was typed still searching. The row sits
-  below the matches as tidy as its own and above any scattered ones. Each
-  also has a chord that opens it whole: Super+V the copies, Super+Ctrl+Space
-  the emoji (the Mac's chord for them), Super+N the notices, Super+Shift+/
-  the shortcuts.
+- **Large sets are one row each.** Emoji, the clipboard's history, past
+  notices and the Wi-Fi networks in reach are too many to mix into the
+  search: each that has a match adds one row, its best match with a count of
+  the rest, so there's no haystack and no mode to enter first. Return uses
+  that match; the right arrow sees all of them, with what was typed still
+  searching. The row sits below the matches as tidy as its own and above any
+  scattered ones. Each is whole at home, and most have a chord that opens
+  them: Super+V the copies, Super+Ctrl+Space the emoji (the Mac's chord for
+  them), Super+N the notices, Super+Shift+/ the shortcuts.
 - **Copies stay in memory.** One program hears every text copy for the
   session and the shell asks it for them, so none is written to disk and
   none is kept that a password manager marks secret. A copy's glyph says
@@ -427,6 +427,12 @@ works the same way everywhere.
   read there, was seen; one that left by itself was missed, and the notices'
   row at home says how many until they're opened. Return on one goes to the
   program that sent it, its window when one is open.
+- **Joining waits to say how it went.** Return on a Wi-Fi network joins it
+  and the launcher stays, its footer saying it's joining, until the network
+  takes it or says why not. A locked network met for the first time, or
+  one whose password changed, asks for the password in the field, the
+  padlock beside the dots. The radio looks for networks only while the
+  launcher is open.
 - **Awake on purpose.** Keep Awake, in the launcher, stops the machine
   sleeping so work left running goes on, and with power it keeps running
   with the lid shut. Without power the lid is let go, since a laptop shut in
