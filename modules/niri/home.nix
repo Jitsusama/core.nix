@@ -119,12 +119,12 @@ in
   config.xdg.configFile."niri/theme.kdl".text = ''
     layout {
         gaps ${toString shape.gap}
-        background-color "${roles.background}"
+        background-color "${roles.deepest}"
         border {
             on
             width ${toString shape.border}
             active-color "${roles.accent}"
-            inactive-color "${roles.rule}"
+            inactive-color "${roles.edge}"
         }
         tab-indicator {
             active-color "${roles.accent}"

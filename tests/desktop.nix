@@ -254,6 +254,9 @@ pkgs.testers.runNixOSTest {
       with subtest("the launcher finds and opens kitty"):
           as_account("qs ipc call launcher toggle")
           wait_for_surface("launcher")
+          # niri lists the layer a frame before it holds the keyboard, and a
+          # letter typed in that frame goes to the window underneath.
+          time.sleep(0.5)
           machine.send_chars("kitty")
           machine.sleep(1)
           machine.screenshot("launcher")

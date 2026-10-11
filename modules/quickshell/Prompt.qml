@@ -1,6 +1,8 @@
 // The one text box every part of the shell asks through: the launcher's
 // search, the lock screen's password and polkit's. A label sits in front of
-// what's typed, and a secret shows as dots.
+// what's typed, and a secret shows as dots. On its own it draws its own
+// frame; inside a surface that already has one, such as the launcher, it
+// draws none, so the two read as one thing.
 import QtQuick
 
 Rectangle {
@@ -8,6 +10,7 @@ Rectangle {
 
     property string label
     property bool secret: false
+    property bool framed: true
     property alias text: input.text
 
     signal accepted
@@ -19,10 +22,10 @@ Rectangle {
 
     implicitWidth: 480
     implicitHeight: input.implicitHeight + Theme.space.xl
-    color: Theme.background
+    color: framed ? Theme.background : "transparent"
     border.color: Theme.accent
-    border.width: Theme.border
-    radius: Theme.radius
+    border.width: framed ? Theme.border : 0
+    radius: framed ? Theme.radius : 0
 
     Text {
         id: label

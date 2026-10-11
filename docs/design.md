@@ -165,6 +165,7 @@ surface names a meaning, never a colour value:
 | strong     | text that stands out: a heading, a selected row, the cursor  |
 | muted      | text that gives context: labels, units, hints                |
 | rule       | separators and marks that aren't read as text                |
+| edge       | the outline of what isn't focused: a window, a field at rest |
 | accent     | where Joel's attention is: one focal point per screen state  |
 | on_accent  | text drawn on the accent or on a state colour                |
 | alert      | something that needs him: a failure, an urgent window        |
@@ -538,6 +539,14 @@ as an exception with the reason.
 ## Decisions
 
 What each studio round settled, newest first, with the reason.
+
+- **Windows are framed by a hairline, rounded a little** (2026-10-10). Of
+  seven directions shown on the panel, from square 2 px borders to a ring
+  outside the window, Joel chose the one between: a 1 px border in the
+  accent on the focused window and in the edge colour on the rest, corners
+  rounded to `space.s`, gaps of `space.m`, on the deepest background. Every
+  window keeps an outline, so the grid reads, and only the focused one
+  carries the accent.
 
 - **The monospace face stays Nerd Fonts' MonaspiceXe** (2026-10-10). Nerd
   Fonts' patched Monaspace and Monaspace's own NF builds keep exactly the same

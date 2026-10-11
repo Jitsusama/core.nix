@@ -42,6 +42,7 @@ let
     strong = "text that stands out: a heading, a selected row, the cursor";
     muted = "text that gives context: labels, units, hints";
     rule = "separators and marks that aren't read as text";
+    edge = "the outline of what isn't focused: a window, a field at rest";
     accent = "where Joel's attention is: one focal point per screen state";
     on_accent = "text drawn on the accent or on any of the state colours";
     alert = "something that needs Joel: a failure, an urgent window";
@@ -550,13 +551,14 @@ in
     shape = {
       border = lib.mkOption {
         type = lib.types.ints.unsigned;
-        default = 2;
+        # Picked in step 1's studio: a hairline that frames without weight.
+        default = 1;
         description = "How wide, in pixels, the border around a window or a prompt is.";
       };
       radius = lib.mkOption {
         type = lib.types.ints.unsigned;
-        # Square, as Omarchy draws them.
-        default = 0;
+        default = cfg.space.s;
+        defaultText = lib.literalMD "`space.s`";
         description = "How round, in pixels, the corners of a window or a prompt are.";
       };
       gap = lib.mkOption {

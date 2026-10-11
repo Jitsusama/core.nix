@@ -74,6 +74,8 @@ says something about it.
      deepest. A source's comment or muted colour is usually fainter than
      that; keep it as `rule`, and make `muted` a new pigment of its hue made
      just light enough to pass, as Osaka Jade's `sage` is.
+   - `edge` outlines what isn't focused, so it's quiet: a step brighter
+     than `raised`, often the source's inactive border or its selection.
    - `accent` is the one colour that means "here", so it's the source's
      focus or cursor colour, not merely its most saturated one.
    - `on_accent` is text on the accent and on the state colours, usually

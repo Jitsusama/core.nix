@@ -100,69 +100,93 @@ Scope {
         anchors.top: true
         margins.top: screen ? screen.height / 4 : 0
         implicitWidth: 600
-        implicitHeight: box.implicitHeight
+        implicitHeight: frame.height
         exclusionMode: ExclusionMode.Ignore
         color: "transparent"
         WlrLayershell.layer: WlrLayer.Overlay
         WlrLayershell.keyboardFocus: WlrKeyboardFocus.Exclusive
         WlrLayershell.namespace: "launcher"
 
-        Column {
-            id: box
+        // One surface: what's typed on top, a hairline, then what it matches.
+        // The selected row sits an inset inside the frame, with its corners
+        // rounded by the frame's radius less that inset, so the two curves
+        // run parallel.
+        Rectangle {
+            id: frame
+
+            readonly property int inset: Theme.space.xs
+
             width: parent.width
+            height: box.implicitHeight + 2 * Theme.border
+            color: Theme.background
+            border.color: Theme.accent
+            border.width: Theme.border
+            radius: Theme.radius
 
-            Prompt {
-                id: prompt
-                width: parent.width
-                label: "Run"
-                onTextChanged: root.search(text)
-                onAccepted: root.run(root.matches[list.currentIndex])
-                onCancelled: root.open = false
-                Keys.onUpPressed: list.decrementCurrentIndex()
-                Keys.onDownPressed: list.incrementCurrentIndex()
-            }
+            Column {
+                id: box
+                x: Theme.border
+                y: Theme.border
+                width: parent.width - 2 * Theme.border
 
-            Rectangle {
-                width: parent.width
-                height: list.contentHeight + (root.matches.length > 0 ? Theme.space.xl : 0)
-                visible: root.matches.length > 0
-                color: Theme.background
-                border.color: Theme.accent
-                border.width: Theme.border
-                radius: Theme.radius
+                Prompt {
+                    id: prompt
+                    width: parent.width
+                    framed: false
+                    label: "Run"
+                    onTextChanged: root.search(text)
+                    onAccepted: root.run(root.matches[list.currentIndex])
+                    onCancelled: root.open = false
+                    Keys.onUpPressed: list.decrementCurrentIndex()
+                    Keys.onDownPressed: list.incrementCurrentIndex()
+                }
 
-                ListView {
-                    id: list
-                    anchors.fill: parent
-                    anchors.margins: Theme.space.m
-                    interactive: false
-                    model: root.matches
+                Rectangle {
+                    width: parent.width
+                    height: Theme.border
+                    visible: root.matches.length > 0
+                    color: Theme.edge
+                }
 
-                    delegate: Rectangle {
-                        id: row
+                Item {
+                    width: parent.width
+                    height: list.contentHeight + 2 * frame.inset
+                    visible: root.matches.length > 0
 
-                        required property var modelData
-                        required property int index
+                    ListView {
+                        id: list
+                        anchors.fill: parent
+                        anchors.margins: frame.inset
+                        interactive: false
+                        model: root.matches
 
-                        width: list.width
-                        height: name.implicitHeight + Theme.space.m
-                        color: ListView.isCurrentItem ? Theme.selection : "transparent"
-                        radius: Theme.radius
+                        delegate: Rectangle {
+                            id: row
 
-                        Text {
-                            id: name
-                            anchors.left: parent.left
-                            anchors.leftMargin: Theme.space.m
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: row.modelData.name
-                            color: row.ListView.isCurrentItem ? Theme.strong : Theme.text
-                            font.family: Theme.mono.family
-                            font.pointSize: Theme.mono.body
-                        }
+                            required property var modelData
+                            required property int index
 
-                        MouseArea {
-                            anchors.fill: parent
-                            onClicked: root.run(row.modelData)
+                            width: list.width
+                            height: name.implicitHeight + Theme.space.m
+                            color: ListView.isCurrentItem ? Theme.selection : "transparent"
+                            radius: Math.max(Theme.radius - frame.inset, 0)
+
+                            Text {
+                                id: name
+                                anchors.left: parent.left
+                                // Lines up with the prompt's label above.
+                                anchors.leftMargin: Theme.space.m - frame.inset
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: row.modelData.name
+                                color: row.ListView.isCurrentItem ? Theme.strong : Theme.text
+                                font.family: Theme.mono.family
+                                font.pointSize: Theme.mono.body
+                            }
+
+                            MouseArea {
+                                anchors.fill: parent
+                                onClicked: root.run(row.modelData)
+                            }
                         }
                     }
                 }
