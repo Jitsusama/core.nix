@@ -857,6 +857,16 @@ pkgs.testers.runNixOSTest {
           machine.wait_until_succeeds(f"grep -qx 0 {capitals}", timeout=10)
           machine.wait_until_fails(in_session(margin), timeout=10)
 
+      with subtest("caps lock still shows after its watcher restarts"):
+          # Quickshell keeps running, so it must still hear the file.
+          machine.succeed("systemctl restart keyboard-lights")
+          machine.wait_for_unit("keyboard-lights.service")
+          machine.send_key("caps_lock")
+          machine.wait_until_succeeds(f"grep -qx 1 {capitals}", timeout=10)
+          wait_for_surface("margin")
+          machine.send_key("caps_lock")
+          machine.wait_until_fails(in_session(margin), timeout=10)
+
       with subtest("the lock screen takes only the right password"):
           as_account("qs ipc call lock lock")
           machine.wait_until_succeeds(in_session("qs ipc call lock isLocked | grep -q true"), timeout=30)
