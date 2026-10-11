@@ -1,0 +1,32 @@
+// Another program seeing the screen, as a call shares it through the portal:
+// true while niri says a PipeWire screencast streams, and what it sees, the
+// whole screen or one window. niri's events say when, so nothing is asked.
+import qs
+import QtQuick
+
+Piece {
+    readonly property var casts: Object.values(Niri.casts)
+        .filter(cast => cast.kind === "PipeWire" && cast.is_active)
+    // A window's title as it is now: windows change in place, and the
+    // revision says when.
+    readonly property var seen: {
+        Niri.revision;
+        return casts.map(cast => cast.target.Window
+            ? (Niri.windows[cast.target.Window.id] ?? { title: "a window" }).title
+            : cast.target.Output ? "the whole screen" : "nothing yet");
+    }
+
+    active: casts.length > 0
+    value: seen.length === 1 ? seen[0] : `${seen.length} things`
+    title: "Sharing"
+    hint: seen.length === 1 ? `Sharing ${seen[0]}` : `Sharing ${seen.length} things`
+    context: casts.length === 1 ? "notices still show" : seen.join(", ")
+    actions: [{
+        glyph: String.fromCodePoint(0xf0d90),
+        name: casts.length === 1 ? "Stop sharing" : "Stop sharing all of it",
+        run: () => {
+            for (const session of new Set(casts.map(cast => cast.session_id)))
+                Niri.act({ StopCast: { session_id: session } });
+        }
+    }]
+}

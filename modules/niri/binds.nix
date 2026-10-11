@@ -52,6 +52,14 @@ in
     does = "Find a program or an action";
     action = ''spawn "qs" "ipc" "call" "launcher" "toggle";'';
   }
+  # The margin's drawer: what's on, Keep Awake or do not disturb or the mic
+  # muted, and what can be done about it. O is a home key, under the right
+  # hand while the left thumb holds Super.
+  {
+    chord = "Super+O";
+    does = "Show what's on";
+    action = ''spawn "qs" "ipc" "call" "margin" "toggle";'';
+  }
   # The launcher's largest collections, each opened straight.
   {
     chord = "Super+V";

@@ -319,8 +319,13 @@ in
           "network"
           "battery"
           "volume"
+          "notices"
+          "quiet"
           "awake"
           "wide"
+          "microphone"
+          "sharing"
+          "recording"
         ]
         && piece.battery.low == 15
         && piece.battery.critical == 10

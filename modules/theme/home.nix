@@ -319,6 +319,36 @@ let
       console = "C";
       means = "the machine is kept from sleeping";
     };
+    waiting = {
+      glyph = nerd "f116b";
+      console = "N";
+      means = "notices came and went unseen";
+    };
+    quiet = {
+      glyph = nerd "f00a0";
+      console = "Q";
+      means = "notices are held, not shown";
+    };
+    muted = {
+      glyph = nerd "f036d";
+      console = "M";
+      means = "the microphone hears nothing";
+    };
+    sharing = {
+      glyph = nerd "f1483";
+      console = "V";
+      means = "another program sees the screen";
+    };
+    recording = {
+      glyph = nerd "f0ec2";
+      console = "R";
+      means = "the screen is being recorded";
+    };
+    low = {
+      glyph = nerd "f0083";
+      console = "B";
+      means = "the battery is running low";
+    };
     more = {
       glyph = "…";
       console = "~";

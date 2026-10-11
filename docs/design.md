@@ -37,35 +37,43 @@ And, as the design grew:
 - He has a very poor memory, so everything has to be intuitive and work the
   same way everywhere.
 - Things collapse cleanly and on purpose when space is short.
+- The keyboard is the way in to everything, without exception, and it has
+  to be comfortable; the pointer comes second.
 
 ## The Principles
 
-Every surface is held to the same eleven, and a surface isn't done until each
+Every surface is held to the same twelve, and a surface isn't done until each
 one is answered for it in [the surfaces table][surfaces].
 
-1. **Act or wonder.** Something is shown only if Joel would act on it, or
+1. **Keys first.** Everything can be done with the keyboard alone, and done
+   comfortably: a popup, a notice, a menu, a drawer, a prompt, every
+   surface. Each is designed around the keys and then given the pointer,
+   never the other way round, and nothing can be reached only by pointing.
+   Chords are short, keep to the hands' strong positions and favour a
+   mnemonic letter, which keeps its meaning on any layout.
+2. **Act or wonder.** Something is shown only if Joel would act on it, or
    wonder about it if it were gone. What passes is precise and quiet; what
    doesn't is one step away, behind the thing it belongs to.
-2. **One home.** A fact is drawn once on what can be on screen at the same
+3. **One home.** A fact is drawn once on what can be on screen at the same
    time.
-3. **The door.** Whatever is shown opens its own detail and controls, by Enter
+4. **The door.** Whatever is shown opens its own detail and controls, by Enter
    or a click.
-4. **Found by typing.** Every action can be found by typing what it does, in
+5. **Found by typing.** Every action can be found by typing what it does, in
    its layer's palette, with its key shown beside it.
-5. **Hints in place.** Keys sit beside the actions they trigger, in muted
+6. **Hints in place.** Keys sit beside the actions they trigger, in muted
    type, and each surface can turn them off once they're learned.
-6. **No hidden modes.** A mode always shows that it's on, and Escape always
+7. **No hidden modes.** A mode always shows that it's on, and Escape always
    leaves it.
-7. **One gesture per meaning.** Arrows move, Enter opens or confirms, Escape
+8. **One gesture per meaning.** Arrows move, Enter opens or confirms, Escape
    backs out one level, typing filters, and each layer has one "what's here"
    key.
-8. **Collapses on purpose.** As space shrinks, a surface gives way in a
+9. **Collapses on purpose.** As space shrinks, a surface gives way in a
    written order, never by truncation.
-9. **The theme, whole.** Type, colour, glyphs, space and motion come from the
-   theme and change with it.
-10. **Customisable at no cost.** Every choice is an option, rendered into the
+10. **The theme, whole.** Type, colour, glyphs, space and motion come from
+    the theme and change with it.
+11. **Customisable at no cost.** Every choice is an option, rendered into the
     program's own files when the machine is built.
-11. **Fast.** Inside the latency budgets, at the panel's full refresh rate,
+12. **Fast.** Inside the latency budgets, at the panel's full refresh rate,
     with nothing spawned or polled that needn't be.
 
 ## The Quality Bar
@@ -73,6 +81,9 @@ one is answered for it in [the surfaces table][surfaces].
 A surface is done only when all of this is true, and nothing is shown to Joel
 for judging before it's been judged here first.
 
+- **Driven by keys.** Everything it does has been done with the keyboard
+  alone, from the chord that reaches it to Escape, and its check does it
+  that way too.
 - **Designed first.** Its three tiers, the facts it owns, its collapse order,
   its palette entries and its keys are written in the surfaces table, and Joel
   has read them.
@@ -248,8 +259,9 @@ that does. The kinds that follow from it:
 | window  | a program              | the accent when focused, the edge otherwise | tiled | its own | opaque |
 | palette | the launcher           | the accent                | a quarter down        | large, monospace  | a command line over a list |
 | prompt  | polkit, the lock screen | the accent, the alert after a wrong answer | dead centre | large | a scrim stops what's behind it; who asks and why, in words, then the padlock beside the dots |
-| notice  | a notification         | the edge, the alert when critical | the top right corner | body, Mona Sans | never takes the keys; who first, then the message, then a footer of where from and when |
+| notice  | a notification         | the edge, the alert when critical | the top right corner | body, Mona Sans | takes no keys itself, since Super+N gathers it into the launcher; who first, then the message, then a footer of where from and when |
 | meter   | the volume, the microphone, the brightness, the charge when power comes or goes | the edge | bottom centre | body, monospace | reads a level back while it changes |
+| drawer  | the margin: Keep Awake, do not disturb, the mic muted, notices waiting | the rule, with no top | hanging from the top edge, at the top right | body, monospace | pulls at rest, glyphs once drawn out, and the launcher holding what's chosen |
 
 **Floating surfaces** are the deepest colour at `floating.opacity`, cloudy
 enough to hint at what's beneath without showing it, over a blur of the
@@ -281,6 +293,35 @@ the letters rather than their boxes. In the palette and a prompt, large type
 sits in rows of `space.xxxl`, each region an inset inside the border and its
 text `space.l` inside its row. A notice keeps `space.l` from its letters to
 its frame, and a meter is `space.xxxl` tall with `space.l` at its sides.
+
+**The top right corner sits a step inside the windows' edge,** `space.s`
+past their gap, so a notice or the drawer never lines up with a window's
+border by chance and reads as its own thing.
+
+**The drawer** is how the shell shows what's on that Joel would otherwise
+forget, without covering a window. At rest it's only pulls: a short line
+hanging from the screen's top edge, `space.xs` tall, for each thing that's
+true, as wide as its glyph and above where the glyph will be. Each is framed
+by a hairline in the rule colour and lifted off the picture by the
+wallpaper's text shadows. Super+O, or the pointer at the edge, draws the
+drawer out: it grows down from the edge with its glyphs riding its front
+edge, and the pulls hang on below it, the same height, outside it, as
+handles do. It has no top border, since it runs under the screen's edge, and
+it shades darker toward the back, so it has depth. Its glyphs sit `space.m`
+apart and `space.m` from its frame, measured to the ink, each with a short
+badge (a time, a count, a charge) a step after it. A glyph wears its kind's
+colour only while its thing wants Joel, so what has colour is what matters.
+
+The pointer resting on a glyph says what it is, in words, below the drawer;
+nothing is highlighted until it's chosen. Choosing one, by a click or by the
+keys, fills it in the selection colour and opens its panel, which is the
+launcher holding that thing: its glyph in its colour, its name in a chip and
+how it stands, then what can be done to it in the launcher's own rows, and
+the launcher's footer. Super+O opens on what wants Joel, or else the thing nearest the corner.
+The left and right arrows move between things, up and down between actions,
+Return does one, and Escape or Super+O puts it away. Notices below make way
+for it, so the two never cover each other, and while the overview is open
+the drawer goes, since the overview's status says the same.
 
 What takes the keys appears on the next frame, a notice slides in from its
 corner, and a prompt's scrim fades in.
@@ -352,11 +393,11 @@ it. Owners go by layer:
 | Directory, repository, branch, git state                               | the program running the window                     | nobody                       |
 | Window titles                                                          | a terminal's unseen tabs; the window switcher      | the window switcher          |
 
-The margin mark is the one always-visible desktop element: a small group of
-glyphs in one corner, empty when nothing is true, so the screen is calm by
-default. When the overview opens, it becomes part of the overview's status:
-one element in two states, not two copies. It's the first thing the shell's
-studio round tests, beside a version without it.
+The margin mark is the one always-visible desktop element: the drawer's
+pulls at the top right (Shape and Kinds), nothing at all when nothing is
+true, so the screen is calm by default. When the overview opens, it becomes
+part of the overview's status: one element in two states, not two copies.
+Both draw from the same pieces, so a piece with a mark is in each.
 
 ## Collapsing
 
@@ -477,6 +518,12 @@ twice, and writes the whole map to `~/.config/jitsusama/keys.json` for the
 launcher and the "what's here" views. Super+Shift+/ opens the desktop's view:
 the launcher's collection of every layer's shortcuts, searched by what they
 do, each with its chord and, in the footer, the layer it belongs to.
+
+Nothing the shell shows is reached only by pointing. Super+O brings out the
+margin's drawer with what's on, and Super+N gathers the notices, those still
+on screen too, into the launcher, where Return goes to who sent one and the
+right arrow offers its own actions (Reply, Mark as read), copying what it
+said, and letting it go.
 
 On the desktop, windows sit in a grid: columns side by side, each holding
 windows stacked above and below. Super with the arrows moves focus through
@@ -650,7 +697,8 @@ customised configuration, and the panel beside a small monitor.
 
 Every interactive surface, from power on to the last app. Each row is filled
 as its layer is built: its tiers, the facts it owns, how it collapses, its
-palette and its keys.
+palette and its keys, the keys first, since a surface that can't be driven
+by them isn't done.
 
 | Surface                                   | Module                   | Faces          | Tier 1 | Tier 2 | Behind it | Palette | Collapse |
 | ----------------------------------------- | ------------------------ | -------------- | ------ | ------ | --------- | ------- | -------- |

@@ -25,7 +25,12 @@ ShellRoot {
     }
 
     Launcher {
+        id: launcher
         lock: lock
         grid: grid
+    }
+
+    Margin {
+        launcher: launcher
     }
 }
