@@ -523,6 +523,16 @@ pkgs.testers.runNixOSTest {
           machine.wait_until_fails(closed, timeout=10)
           # The grinning cat with smiling eyes, first among the smiling cats.
           t.assertEqual(as_account("wl-paste --no-newline"), "\U0001F638")
+          # Super+Ctrl+Space opens the emoji straight away, so "kitty" is a cat
+          # there, where the main search would open the terminal.
+          machine.send_key("meta_l-ctrl-spc")
+          wait_for_surface("launcher")
+          time.sleep(0.5)
+          machine.send_chars("kitty")
+          time.sleep(0.5)
+          machine.send_key("ret")
+          machine.wait_until_fails(closed, timeout=10)
+          t.assertEqual(as_account("wl-paste --no-newline"), "\U0001F431")
 
       with subtest("Super+Shift+/ shows every layer's shortcuts, and runs the desktop's"):
           windows = len(json.loads(as_account("niri msg --json windows")))

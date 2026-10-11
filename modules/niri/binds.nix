@@ -59,7 +59,7 @@ in
     action = ''spawn "qs" "ipc" "call" "launcher" "collection" "clipboard";'';
   }
   {
-    chord = "Super+Semicolon";
+    chord = "Super+Ctrl+Space";
     does = "Find an emoji";
     action = ''spawn "qs" "ipc" "call" "launcher" "collection" "emoji";'';
   }

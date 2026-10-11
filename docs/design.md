@@ -414,8 +414,9 @@ works the same way everywhere.
   haystack and no mode to enter first. Return uses that match; the right
   arrow sees all of them, with what was typed still searching. The row sits
   below the matches as tidy as its own and above any scattered ones. Each
-  also has a chord that opens it whole: Super+V the copies, Super+; the
-  emoji, Super+N the notices, Super+Shift+/ the shortcuts.
+  also has a chord that opens it whole: Super+V the copies, Super+Ctrl+Space
+  the emoji (the Mac's chord for them), Super+N the notices, Super+Shift+/
+  the shortcuts.
 - **Copies stay in memory.** One program hears every text copy for the
   session and the shell asks it for them, so none is written to disk and
   none is kept that a password manager marks secret. A copy's glyph says
