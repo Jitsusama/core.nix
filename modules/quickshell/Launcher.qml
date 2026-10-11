@@ -1,10 +1,13 @@
 // The launcher on Super+Space, the desktop's command palette: type what you
-// want, an application, an action or what a key does, pick it with the
-// arrows, and Return runs it, or Shift+Return opens it below the focused
-// window. Tab takes the completion the command line offers. Each action
-// shows its chord, so keys are learned by use. Ending the session lives here
-// rather than on a key, so no chord ends it by accident. It lives in the
-// shell and only shows and hides, so it opens as fast as niri can draw it.
+// want, a window, an application, an action or what a key does, pick it
+// with the arrows, and Return runs it, or Shift+Return opens it below the
+// focused window. Tab takes the completion the command line offers. Each
+// action shows its chord, so keys are learned by use. It lives in the shell
+// and only shows and hides, so it opens as fast as niri can draw it.
+//
+// What it finds comes from its providers, one file each in launcher/, in
+// the order jitsusama.quickshell.launcher.providers lists them (rendered
+// into Providers.qml), so a kind of thing is added or removed in one line.
 //
 // It's the palette kind (docs/design.md, Shape and Kinds): the accent frame,
 // since it holds the keys; a command line over a list, split by a hairline;
@@ -13,6 +16,9 @@ import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
 import QtQuick
+// Quickshell makes a folder's files types only once something imports it,
+// and the providers are made from launcher/ by name, so it's imported here.
+import qs.launcher
 import "Fuzzy.js" as Fuzzy
 
 Scope {
@@ -30,85 +36,28 @@ Scope {
     readonly property string sparkle: String.fromCodePoint(0xf0674)
     readonly property string ghost: String.fromCodePoint(0xf02a0)
 
-    readonly property var session: [
-        { name: "Lock", glyph: 0xf023, run: () => root.lock.lock() },
-        { name: "Suspend", glyph: 0xf04b2, run: () => Niri.spawn(["systemctl", "suspend"]) },
-        {
-            name: "Log Out",
-            glyph: 0xf0343,
-            run: () => Niri.act({ Quit: { skip_confirmation: true } })
-        },
-        { name: "Reboot", glyph: 0xf0453, run: () => Niri.spawn(["systemctl", "reboot"]) },
-        { name: "Power Off", glyph: 0xf011, run: () => Niri.spawn(["systemctl", "poweroff"]) }
-    ].map(action => ({
-        key: `session:${action.name}`,
-        verb: action.name.toLowerCase(),
-        name: action.name,
-        prepared: Fuzzy.prepare(action.name),
-        glyph: String.fromCodePoint(action.glyph),
-        hue: "machine",
-        chord: [],
-        side: "",
-        run: action.run,
-        later: false
-    }))
+    // The providers, made from their files as the shell starts, each given
+    // its settings and weight; one that fails to load is said and skipped.
+    property var sources: []
 
-    // An application's own glyph where Nerd Fonts has one, by its entry's id.
-    readonly property var programGlyphs: ({
-        "kitty": 0xf011b,
-        "google-chrome": 0xf268,
-        "slack": 0xf198,
-        "nvim": 0xf36f,
-        "1password": 0xf0881
-    })
-
-    readonly property var choices: {
-        const applications = DesktopEntries.applications.values
-            .filter(entry => !entry.noDisplay)
-            .map(entry => ({
-                key: `program:${entry.id}`,
-                verb: "open",
-                name: entry.name,
-                prepared: Fuzzy.prepare(entry.name),
-                glyph: String.fromCodePoint(root.programGlyphs[entry.id] ?? 0xf0614),
-                hue: "program",
-                chord: [],
-                side: entry.genericName.toLowerCase(),
-                // Found by what it is, too: "browser" finds Chrome.
-                keywords: Fuzzy.prepare([entry.genericName, entry.comment]
-                    .concat(Array.from(entry.keywords)).join(" ")),
-                run: () => Niri.spawn(root.command(entry)),
-                below: () => {
-                    root.grid.below("");
-                    Niri.spawn(root.command(entry));
-                },
-                later: false
+    Component.onCompleted: {
+        const made = [];
+        for (const listed of Providers.providers) {
+            const file = Qt.createComponent(`launcher/${listed.file}`);
+            if (file.status !== Component.Ready) {
+                console.error(`The launcher's ${listed.name} couldn't load: ${file.errorString()}`);
+                continue;
+            }
+            made.push(file.createObject(root, {
+                settings: listed,
+                weight: listed.weight,
+                launcher: root
             }));
-        const actions = Shortcuts.actions.map(action => ({
-            key: `action:${action.does}`,
-            verb: "run",
-            name: action.does,
-            prepared: Fuzzy.prepare(action.does),
-            glyph: action.glyph,
-            hue: "action",
-            chord: action.chord,
-            side: "",
-            run: () => Niri.spawn(action.run),
-            // Acts on the screen, so it waits for the launcher to be gone.
-            later: true
-        }));
-        return applications.concat(actions, session);
+        }
+        sources = made;
     }
 
-    // What an application's entry runs, spelled out for niri to spawn: in
-    // kitty when the entry asks for a terminal, and from its own directory
-    // when it names one.
-    function command(entry: var): var {
-        const program = entry.runInTerminal ? ["kitty"].concat(entry.command) : entry.command;
-        if (entry.workingDirectory === "")
-            return program;
-        return ["sh", "-c", "cd -- \"$0\" && exec \"$@\"", entry.workingDirectory].concat(program);
-    }
+    readonly property var choices: sources.reduce((all, source) => all.concat(source.things), [])
 
     property string typed: ""
     property var matches: []
@@ -123,6 +72,9 @@ Scope {
     // What was picked for what was typed, which the ranking leans on.
     Picks {
         id: picks
+        learns: Providers.learning.enable
+        halfLife: Providers.learning.halfLife
+        remember: Providers.learning.remember
     }
 
     // How much one past pick for exactly this query is worth, against a
@@ -151,7 +103,7 @@ Scope {
                 if (byName.score >= 0) {
                     found.push({
                         item: choice.prepared,
-                        score: byName.score,
+                        score: byName.score * choice.weight,
                         grade: byName.grade,
                         choice: choice
                     });
@@ -163,7 +115,7 @@ Scope {
                 if (byWord.score >= 0)
                     found.push({
                         item: choice.prepared,
-                        score: byWord.score / 4,
+                        score: byWord.score * choice.weight / 4,
                         grade: byWord.grade,
                         choice: choice,
                         byWord: true
@@ -425,7 +377,7 @@ Scope {
                         hue: Theme.voice
                         quiet: true
                         name: root.typed === ""
-                            ? "A program, an action, or what a key does."
+                            ? "A window, a program, an action, or what a key does."
                             : `Nothing answers to \u201c${root.typed}\u201d.`
                     }
                 }

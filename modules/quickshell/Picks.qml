@@ -14,6 +14,8 @@ import QtQuick
 Scope {
     id: root
 
+    // Whether it learns at all; off, nothing is kept or leaned on.
+    property bool learns: true
     // Days until a pick counts half as much.
     property real halfLife: 14
     // How many queries to remember; the least recently used go first.
@@ -43,7 +45,7 @@ Scope {
         const query = key(typed);
         const now = Date.now();
         const out = {};
-        if (query === "")
+        if (!learns || query === "")
             return out;
         for (const asked in picks) {
             const exact = asked === query;
@@ -63,7 +65,7 @@ Scope {
     // Remember that this thing was picked for what was typed.
     function picked(typed, thing) {
         const query = key(typed);
-        if (query === "" || !thing)
+        if (!learns || query === "" || !thing)
             return;
         const now = Date.now();
         const answers = picks[query] ?? {};

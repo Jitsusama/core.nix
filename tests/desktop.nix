@@ -2,10 +2,11 @@
 # way Joel does: the wallpaper stands behind the workspaces, the overview
 # shows the time and status, a notification appears, the volume and
 # brightness bars come and go as those change, the launcher finds and opens
-# kitty and remembers it was picked, the lock screen refuses a wrong password
-# and takes the right one, polkit's prompt lets the account start a system
-# service, the clipboard takes and gives text, and GTK programs and
-# monospaced text are in the theme. niri says which surfaces it drew,
+# kitty and remembers it was picked, a terminal opens below the focused
+# window, the launcher switches to a window by its title, the lock screen
+# refuses a wrong password and takes the right one, polkit's prompt lets the
+# account start a system service, the clipboard takes and gives text, and
+# GTK programs and monospaced text are in the theme. niri says which surfaces it drew,
 # photographs show their colours, to the test and to a person looking, and
 # the portal and fontconfig answer for the settings. Quickshell has to start
 # without a single QML error.
@@ -313,6 +314,44 @@ pkgs.testers.runNixOSTest {
           beside = "#%02x%02x%02x" % image.getpixel((left - 1, top + height // 2))
           as_account(f"niri msg action move-window-to-tiling --id {window['id']}")
           t.assertEqual(beside, "${roles.accent}".lower())
+
+      # niri opens a window in a column of its own, and the shell folds it
+      # in just below the focused one.
+      with subtest("a terminal opens below the focused window"):
+          anchor = json.loads(as_account("niri msg --json focused-window"))
+          as_account("qs ipc call grid below kitty")
+          kitties = "niri msg --json windows | grep -o '\"app_id\":\"kitty\"' | wc -l"
+          machine.wait_until_succeeds(in_session(f"{kitties} | grep -qx 2"), timeout=30)
+
+          def placed(_):
+              windows = json.loads(as_account("niri msg --json windows"))
+              at = {w["id"]: w["layout"]["pos_in_scrolling_layout"] for w in windows}
+              new = next(w["id"] for w in windows if w["id"] != anchor["id"])
+              here, there = at[anchor["id"]], at[new]
+              return there[0] == here[0] and there[1] == here[1] + 1
+
+          retry(placed, timeout_seconds=15)
+
+      # The launcher finds a window by its title, and Return goes to it.
+      with subtest("the launcher switches to a window by its title"):
+          as_account("niri msg action spawn -- kitty --title 'Notes for Tuesday'")
+          machine.wait_until_succeeds(
+              in_session("niri msg windows | grep -q 'Notes for Tuesday'"), timeout=30
+          )
+          as_account("niri msg action focus-window-previous")
+          machine.wait_until_fails(
+              in_session("niri msg focused-window | grep -q 'Notes for Tuesday'"), timeout=10
+          )
+          as_account("qs ipc call launcher toggle")
+          wait_for_surface("launcher")
+          time.sleep(0.5)
+          machine.send_chars("tuesday")
+          machine.sleep(1)
+          machine.screenshot("launcher-window")
+          machine.send_key("ret")
+          machine.wait_until_succeeds(
+              in_session("niri msg focused-window | grep -q 'Notes for Tuesday'"), timeout=10
+          )
 
       with subtest("the lock screen takes only the right password"):
           as_account("qs ipc call lock lock")

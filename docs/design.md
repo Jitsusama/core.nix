@@ -467,6 +467,12 @@ anything.
   shape) and settings of its own, such as a format or a threshold. The
   built-in settings are defaults, so a machine's own win without a fight. The
   overview's status is the first, `jitsusama.quickshell.overview.pieces`.
+- **The launcher's kinds of thing are named the same way.**
+  `jitsusama.quickshell.launcher.providers` lists what it finds (windows,
+  applications, actions, the session), each a file of its own with an
+  `order`, a `weight` against the rest and a `source`, so a kind is turned
+  off, reweighted or added in a line; `jitsusama.quickshell.launcher.learning`
+  says whether and how fast it learns.
 - **Rendered at build.** Nix fills the options into each program's own files,
   which stay in that program's format beside the module. Nothing parses a
   setting or looks one up while running, so a customised surface is exactly as

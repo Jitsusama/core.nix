@@ -5,7 +5,8 @@
 # Theme.qml, written here from jitsusama.theme, gives them all the same look.
 # It runs with the graphical session, and restarts if it ever falls over. What
 # the overview shows is jitsusama.quickshell.overview.pieces, rendered into
-# Overview.qml at build.
+# Overview.qml at build, and what the launcher finds and how it learns are
+# jitsusama.quickshell.launcher, rendered into Providers.qml.
 { wallpapers }:
 {
   config,
@@ -61,6 +62,7 @@ let
     "Fuzzy.js"
     "Picks.qml"
     "pieces/Piece.qml"
+    "launcher/Provider.qml"
   ];
 
   # A part's corners, the whole's radius less its border and inset.
@@ -191,6 +193,36 @@ let
   fileName =
     piece: if isBuiltIn piece then baseNameOf builtIn.${piece.source} else "${piece.name}.qml";
   linked = piece: if isBuiltIn piece then builtIn.${piece.source} else piece.source;
+
+  launcher = config.jitsusama.quickshell.launcher;
+
+  # The kinds of thing the launcher has built in, by name, each a file in
+  # launcher/.
+  builtInProviders = {
+    windows = ./launcher/Windows.qml;
+    applications = ./launcher/Applications.qml;
+    actions = ./launcher/Actions.qml;
+    session = ./launcher/Session.qml;
+  };
+
+  providers = lib.sortOn (provider: provider.order) (
+    lib.mapAttrsToList (name: provider: provider // { inherit name; }) (
+      lib.filterAttrs (_: provider: provider.enable) launcher.providers
+    )
+  );
+
+  # Named as the overview's pieces are, so two never share a file.
+  isBuiltInProvider =
+    provider: builtins.isString provider.source && builtInProviders ? ${provider.source};
+  providerFile =
+    provider:
+    if isBuiltInProvider provider then
+      baseNameOf builtInProviders.${provider.source}
+    else
+      "${provider.name}.qml";
+  providerSource =
+    provider:
+    if isBuiltInProvider provider then builtInProviders.${provider.source} else provider.source;
 in
 {
   imports = [
@@ -218,7 +250,87 @@ in
     '';
   };
 
+  options.jitsusama.quickshell.launcher = {
+    providers = lib.mkOption {
+      type = lib.types.attrsOf (
+        lib.types.submodule {
+          # A provider's own settings sit beside these and go to its file as
+          # they are.
+          freeformType = lib.types.attrsOf lib.types.anything;
+          options = {
+            enable = lib.mkOption {
+              type = lib.types.bool;
+              default = true;
+              description = "Whether the launcher finds this kind of thing.";
+            };
+            order = lib.mkOption {
+              type = lib.types.int;
+              description = "Where it's made, lowest first; how well things match orders rows.";
+            };
+            weight = lib.mkOption {
+              type = lib.types.number;
+              default = 1;
+              description = "How its matches rank against the rest's, multiplying their score.";
+            };
+            source = lib.mkOption {
+              type = lib.types.either (lib.types.enum (lib.attrNames builtInProviders)) lib.types.path;
+              description = "What finds them: a built-in provider by name, or a file like one.";
+            };
+          };
+        }
+      );
+      description = ''
+        What the launcher finds, by name: windows, applications, actions and
+        the session, each with its order, weight and source, and settings of
+        its own beside them, such as `glyphs`, an application's glyph by its
+        id as a hex code point. A machine turns one off with `enable`, or
+        adds a provider whose source is a QML file starting from
+        launcher/Provider.qml.
+      '';
+    };
+    learning = {
+      enable = lib.mkOption {
+        type = lib.types.bool;
+        default = true;
+        description = "Whether what's picked for what was typed ranks it first next time.";
+      };
+      halfLife = lib.mkOption {
+        type = lib.types.number;
+        default = 14;
+        description = "Days until a pick counts half as much, so old habits fade.";
+      };
+      remember = lib.mkOption {
+        type = lib.types.ints.positive;
+        default = 500;
+        description = "How many queries are remembered; the least recently used go first.";
+      };
+    };
+  };
+
   config = {
+    # A thing found by name ranks a little ahead of an action matching as
+    # well, and an action ahead of ending the session.
+    jitsusama.quickshell.launcher.providers = lib.mapAttrs (_: lib.mapAttrs (_: lib.mkDefault)) {
+      windows = {
+        order = 10;
+        source = "windows";
+      };
+      applications = {
+        order = 20;
+        source = "applications";
+      };
+      actions = {
+        order = 30;
+        source = "actions";
+        weight = 0.9;
+      };
+      session = {
+        order = 40;
+        source = "session";
+        weight = 0.8;
+      };
+    };
+
     # Each setting is a default, so a machine's own wins without a fight.
     jitsusama.quickshell.overview.pieces = lib.mapAttrs (_: lib.mapAttrs (_: lib.mkDefault)) {
       time = {
@@ -266,7 +378,42 @@ in
           piece: lib.nameValuePair "quickshell/pieces/${fileName piece}" { source = linked piece; }
         ) overview
       )
+      // lib.listToAttrs (
+        map (
+          provider:
+          lib.nameValuePair "quickshell/launcher/${providerFile provider}" {
+            source = providerSource provider;
+          }
+        ) providers
+      )
       // {
+        "quickshell/Providers.qml".text = ''
+          pragma Singleton
+          import Quickshell
+          import QtQuick
+
+          // What the launcher finds, in order, from
+          // jitsusama.quickshell.launcher.providers, and how it learns, from
+          // jitsusama.quickshell.launcher.learning.
+          Singleton {
+              readonly property var providers: ${
+                builtins.toJSON (
+                  map (
+                    provider:
+                    removeAttrs provider [
+                      "source"
+                      "order"
+                      "enable"
+                    ]
+                    // {
+                      file = providerFile provider;
+                    }
+                  ) providers
+                )
+              }
+              readonly property var learning: ${object launcher.learning}
+          }
+        '';
         "quickshell/Overview.qml".text = ''
           pragma Singleton
           import Quickshell
