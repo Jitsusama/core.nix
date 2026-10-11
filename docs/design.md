@@ -399,6 +399,12 @@ works the same way everywhere.
   row copied the same way. The footer says where an answer came from. Nothing
   leaves the machine unless the question needs the network, never for a
   private address, and never with the launcher's `lookups` off.
+- **Large sets are one row each.** Emoji, and later the clipboard and past
+  notices, are too many to mix into the search: each that has a match adds
+  one row, its best match with a count of the rest, so there's no haystack
+  and no mode to enter first. Return uses that match; the right arrow sees
+  all of them, with what was typed still searching. The row sits below the
+  matches as tidy as its own and above any scattered ones.
 - **What's shown is the door to its detail.** The battery opens the power
   menu, the network opens its list, a notification count opens the history.
   Nothing keeps its detail somewhere else.

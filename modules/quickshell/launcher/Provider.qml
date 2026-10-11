@@ -45,6 +45,49 @@ Scope {
         return null;
     }
 
+    // A provider with too many things to mix into the main search, such as
+    // emoji, is a collection: { noun, glyph, ask }. Its things stay out of
+    // the main list. The launcher asks `search(typed)` for its matches, best
+    // first, with how scattered the best is as Fuzzy.js grades a match,
+    // { rows, grade }, and shows the best as one row with a count of the
+    // rest, below the main search's matches as tidy and above any looser;
+    // the right arrow steps into all of them, with what was typed kept, and
+    // `everything()` gives them all once nothing is.
+    property var collection: null
+
+    function search(typed) {
+        return { rows: [], grade: 0 };
+    }
+
+    function everything() {
+        return [];
+    }
+
+    // A collection's row: a thing whose name is made ready to match only
+    // when it's first drawn, since a collection has thousands.
+    function member(fields) {
+        const made = Object.assign({
+            chord: [],
+            side: "",
+            count: "",
+            context: "",
+            note: "",
+            below: null,
+            verbs: null,
+            plain: false,
+            later: false,
+            now: false,
+            keywords: null,
+            weight: provider.weight
+        }, fields);
+        let prepared = null;
+        Object.defineProperty(made, "prepared", {
+            enumerable: true,
+            get: () => prepared ?? (prepared = Fuzzy.prepare(made.name))
+        });
+        return made;
+    }
+
     // A file's text as it is now. A FileView blocks only on its first load:
     // after that, a reload or a new path loads in the background and text()
     // still says what the last load read, unless the load is waited for.

@@ -360,6 +360,27 @@ in
       touch $out
     '';
 
+  # The launcher finds emoji by what they're called and what they mean, best
+  # first, as tests/emoji.qml lists them, over the list it's built with, and
+  # in about three times the least a search could take.
+  the-launcher-finds-emoji =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+      emoji = import ./modules/quickshell/launcher/emoji.nix { inherit lib pkgs; } "none";
+    in
+    pkgs.runCommandLocal "the-launcher-finds-emoji" { } ''
+      mkdir launcher
+      cp ${./tests/emoji.qml} emoji.qml
+      cp ${./modules/quickshell/Fuzzy.js} Fuzzy.js
+      cp ${./modules/quickshell/launcher/Emoji.js} launcher/Emoji.js
+      cp ${emoji} emoji.jsonl
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export QML_XHR_ALLOW_FILE_READ=1
+      export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml ${qt}/bin/qml emoji.qml
+      touch $out
+    '';
+
   # The launcher answers what's asked: sums and number bases, IPv4 and IPv6
   # addresses and networks with the kind of range each is in, and hardware
   # addresses, as tests/answers.qml lists them, and leaves alone what isn't

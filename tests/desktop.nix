@@ -421,6 +421,21 @@ pkgs.testers.runNixOSTest {
           log = as_account("journalctl --user -u quickshell --no-pager -o cat")
           assert "ERROR" not in log and "Error:" not in log, "an answer raised an error"
 
+      with subtest("the launcher finds emoji as one row, and steps into the rest"):
+          copied("tada", "\U0001F389")
+          answer("smiling")
+          machine.screenshot("launcher-emoji")
+          machine.send_key("right")
+          time.sleep(0.5)
+          machine.send_chars(" cat")
+          time.sleep(0.5)
+          machine.screenshot("launcher-emoji-all")
+          machine.send_key("ret")
+          closed = in_session("niri msg layers | grep -qw launcher")
+          machine.wait_until_fails(closed, timeout=10)
+          # The grinning cat with smiling eyes, first among the smiling cats.
+          t.assertEqual(as_account("wl-paste --no-newline"), "\U0001F638")
+
       with subtest("the lock screen takes only the right password"):
           as_account("qs ipc call lock lock")
           machine.wait_until_succeeds(in_session("qs ipc call lock isLocked | grep -q true"), timeout=30)

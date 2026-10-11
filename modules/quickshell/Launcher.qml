@@ -89,7 +89,7 @@ Scope {
         const before = answer ? answer.rows.length : 0;
         answer = answering(typed);
         const rows = answer ? answer.rows : [];
-        matches = rows.concat(found);
+        matches = rows.concat(placed(found, gathered));
         if (fresh || (current === -1 && !answer))
             current = answer ? -1 : 0;
         else if (current >= 0)
@@ -116,7 +116,65 @@ Scope {
     }
     readonly property var selected: current === -1 ? headline : matches[current] ?? null
 
-    readonly property var choices: sources.reduce((all, source) => all.concat(source.things), [])
+    readonly property var choices: sources.filter(source => !source.collection)
+        .reduce((all, source) => all.concat(source.things), [])
+    readonly property var collections: sources.filter(source => source.collection)
+
+    // A row for each collection that has matches: its best, with what's been
+    // picked for this query before put first, and a count of the rest. Its
+    // verbs are the matches, which the right arrow steps into with what was
+    // typed kept. One letter finds too much of a collection to be worth a
+    // row.
+    property var gathered: []
+
+    // What was found with each collection's row among it: below the rows
+    // matched as tidily or picked before, above any matched more loosely,
+    // so "tada" is the party popper, not a scattered match for a command.
+    function placed(found, rows) {
+        const all = found.slice();
+        for (const row of rows) {
+            const at = all.findIndex(f => !f.kept && !f.from && f.grade > row.grade);
+            all.splice(at < 0 ? all.length : at, 0, row);
+        }
+        return all;
+    }
+
+    function gathering(letters) {
+        if (letters.replace(/\s+/g, "").length < 2)
+            return [];
+        const rows = [];
+        for (const source of collections) {
+            const said = source.search(letters);
+            const found = learnedFirst(said.rows, letters);
+            if (found.length === 0)
+                continue;
+            const best = found[0];
+            const noun = source.collection.noun;
+            rows.push(Object.assign({}, best, {
+                side: found.length > 1 ? `${found.length - 1} more ${noun}` : noun,
+                chip: noun,
+                ask: source.collection.ask,
+                lead: source.collection.glyph,
+                leadHue: "voice",
+                from: source,
+                // One picked before for this query is as tidy as can be.
+                grade: found[0] === said.rows[0] ? said.grade : 0,
+                verbs: () => found
+            }));
+        }
+        return rows;
+    }
+
+    // A collection's matches with those picked before for what's typed
+    // first, most picked first, the rest in their order.
+    function learnedFirst(found, letters) {
+        const learned = picks.weights(letters);
+        const before = found.filter(row => learned[row.key]);
+        if (before.length === 0)
+            return found;
+        before.sort((a, b) => learned[b.key].weight - learned[a.key].weight);
+        return before.concat(found.filter(row => !learned[row.key]));
+    }
 
     // Shift+Return, as a chord beside a verb that does what it does.
     readonly property var belowChord: [
@@ -139,7 +197,8 @@ Scope {
         if (!into || into.length === 0)
             return false;
         held = held.concat([{ row: row, typed: typed, rows: into }]);
-        restart("");
+        // A collection is stepped into with what was typed still searching it.
+        restart(row.from ? typed : "");
         return true;
     }
 
@@ -195,9 +254,14 @@ Scope {
         typed = letters;
         words = Fuzzy.words(letters);
         if (held.length > 0) {
+            const from = held[held.length - 1].row.from;
+            // A collection searches itself, all of it until something's typed.
+            if (from)
+                matches = words.length === 0 ? from.everything()
+                    : learnedFirst(from.search(letters).rows, letters);
             // A step's rows, all of them in their order until something's
             // typed, then those it finds, best first.
-            if (words.length === 0)
+            else if (words.length === 0)
                 matches = offered.slice();
             else {
                 const found = [];
@@ -218,6 +282,7 @@ Scope {
             list.positionViewAtBeginning();
             return;
         }
+        gathered = gathering(letters);
         if (words.length === 0) {
             candidates = [];
             root.found = [];
@@ -258,8 +323,12 @@ Scope {
                 f.kept = true;
                 f.times = before.times;
             }
-            root.found = Fuzzy.keep(found).map(f =>
-                Object.assign({ byWord: f.byWord === true, times: f.times ?? 0 }, f.choice));
+            root.found = Fuzzy.keep(found).map(f => Object.assign({
+                byWord: f.byWord === true,
+                times: f.times ?? 0,
+                grade: f.grade,
+                kept: f.kept === true
+            }, f.choice));
         }
         compose(true);
         list.positionViewAtBeginning();
@@ -315,9 +384,11 @@ Scope {
         if (choice.now)
             choice.run();
         open = false;
-        // Acting on a thing says it was what was meant by what was typed.
+        // Acting on a thing says it was what was meant by what was typed;
+        // in a collection, the one picked from it was.
         const first = held.length > 0 ? held[0] : { row: choice, typed: typed };
-        picks.picked(first.typed, first.row.key);
+        picks.picked(first.row.from ? typed : first.typed, first.row.from ? choice.key
+            : first.row.key);
         if (choice.now)
             return;
         if (below && choice.below)
@@ -403,8 +474,8 @@ Scope {
                         // A thing held leads the line with its own glyph.
                         readonly property var thing: root.held.length > 0
                             ? root.held[0].row : null
-                        glyph: thing ? thing.glyph : String.fromCodePoint(0xf0349)
-                        hue: thing ? Theme[thing.hue] : Theme.muted
+                        glyph: thing ? thing.lead ?? thing.glyph : String.fromCodePoint(0xf0349)
+                        hue: thing ? Theme[thing.leadHue ?? thing.hue] : Theme.muted
                         glyphWidth: Theme.space.xxl
                         chips: root.held.map(step => ({ text: step.row.chip ?? step.row.name }))
                         hint: root.held.length === 0 ? "what next?"
@@ -534,7 +605,7 @@ Scope {
                                     if (root.held.length === 0 && choice.below)
                                         keys.push(["\u21e7\u21b5", "below"]);
                                     if (root.held.length === 0 && choice.verbs)
-                                        keys.push(["\u2192", "more"]);
+                                        keys.push(["\u2192", choice.from ? "see all" : "more"]);
                                     if (root.held.length > 0)
                                         keys.push(["\u2190", "back"]);
                                     return keys;

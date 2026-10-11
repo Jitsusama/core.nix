@@ -68,6 +68,7 @@ let
     "launcher/Provider.qml"
     "launcher/Numbers.js"
     "launcher/Addresses.js"
+    "launcher/Emoji.js"
   ];
 
   # A part's corners, the whole's radius less its border and inset.
@@ -214,7 +215,11 @@ let
     currency = ./launcher/Currency.qml;
     weather = ./launcher/Weather.qml;
     machine = ./launcher/Machine.qml;
+    emoji = ./launcher/Emoji.qml;
   };
+
+  # Every emoji, in a skin tone.
+  emojiList = import ./launcher/emoji.nix { inherit lib pkgs; };
 
   # The IEEE's hardware address vendors, from hwdata, in a file for each
   # first byte: a line for each vendor, its first three bytes and its name,
@@ -394,6 +399,12 @@ in
         order = 100;
         source = "machine";
       };
+      # A collection, shown as one row below the rest.
+      emoji = {
+        order = 110;
+        source = "emoji";
+        tone = "none";
+      };
     };
 
     # Each setting is a default, so a machine's own wins without a fight.
@@ -472,6 +483,11 @@ in
                     ]
                     // {
                       file = providerFile provider;
+                    }
+                    # Emoji are listed in the tone chosen, so the list is
+                    # built from the provider's own settings.
+                    // lib.optionalAttrs (provider.source == "emoji") {
+                      list = "${emojiList (provider.tone or "none")}";
                     }
                   ) providers
                 )
