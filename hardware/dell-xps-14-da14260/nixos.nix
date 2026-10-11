@@ -3,7 +3,31 @@
 # four CS35L57 SoundWire amplifiers, an IPU7 camera behind Intel's CVS bridge,
 # and Intel's BE211 Wi-Fi 7. docs/hardware.md says what works, where each
 # workaround comes from, and what's left.
-{ pkgs, ... }:
+{
+  lib,
+  pkgs,
+  ...
+}:
+let
+  # nixpkgs gives only the compute runtime's OpenCL driver the graphics
+  # compiler's libraries on its RUNPATH, so Level Zero's GPU driver can't load
+  # libigc.so.2 and aborts in zeInit. This gives that driver the same RUNPATH,
+  # as the line docs/hardware.md has for nixpkgs would. Take it out once
+  # nixpkgs's package does it.
+  computeRuntime = pkgs.intel-compute-runtime.overrideAttrs (old: {
+    postFixup = old.postFixup + ''
+      patchelf --set-rpath ${
+        lib.makeLibraryPath [
+          pkgs.intel-gmmlib
+          pkgs.intel-graphics-compiler
+          pkgs.libva
+          pkgs.stdenv.cc.cc
+        ]
+      } \
+        $out/lib/libze_intel_gpu.so.1
+    '';
+  });
+in
 {
   imports = [
     ../../modules/kernel/nixos.nix
@@ -57,7 +81,7 @@
     extraPackages = [
       pkgs.intel-media-driver
       pkgs.vpl-gpu-rt
-      pkgs.intel-compute-runtime
+      computeRuntime
     ];
   };
   environment.sessionVariables.LIBVA_DRIVER_NAME = "iHD";
