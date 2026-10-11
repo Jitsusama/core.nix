@@ -612,6 +612,24 @@ in
       "A slice above session.slice lacks its memory floor, so session.slice has none."
       (lib.all (floor: floor != null && floor == lib.head floors) floors);
 
+  # Nix's builds yield to the user's programs only if their slice sits beside
+  # user.slice, at a lower weight. A dash in its name nests it in a parent at
+  # the default weight, and nothing says so.
+  nix-builds-yield-to-the-user =
+    let
+      inherit (workstation.config) systemd;
+      slice = systemd.services.nix-daemon.serviceConfig.Slice;
+      name = lib.removeSuffix ".slice" slice;
+    in
+    holds "nix-builds-yield-to-the-user"
+      "The Nix daemon's slice, ${slice}, isn't beside user.slice at a lower weight."
+      (
+        !(lib.hasInfix "-" name)
+        &&
+          (systemd.slices.${name}.sliceConfig.CPUWeight or 100)
+          < (systemd.slices.user.sliceConfig.CPUWeight or 100)
+      );
+
   example-nixos = evaluates "example-nixos" (
     import ./examples/nixos.nix {
       core = self;
