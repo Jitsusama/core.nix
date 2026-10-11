@@ -324,6 +324,7 @@ in
           "awake"
           "wide"
           "microphone"
+          "capslock"
           "sharing"
           "recording"
         ]

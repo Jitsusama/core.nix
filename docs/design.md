@@ -392,7 +392,7 @@ it. Owners go by layer:
 | Battery, power                                                         | the margin mark, only when low or charging matters | the overview's status        |
 | Network, Bluetooth, audio devices                                      | the margin mark, only when something's wrong       | the overview's status        |
 | Volume, brightness                                                     | an overlay while it changes                        | the overview's status        |
-| Do not disturb, caffeinate, recording, screen shared, microphone muted | the margin mark, while true                        | the same mark, in the status |
+| Do not disturb, caffeinate, recording, sharing, mic muted, caps lock   | the margin mark, while true                        | the same mark, in the status |
 | Notifications waiting                                                  | the margin mark, as a count                        | the overview's status        |
 | Directory, repository, branch, git state                               | the program running the window                     | nobody                       |
 | Window titles                                                          | a terminal's unseen tabs; the window switcher      | the window switcher          |

@@ -5,6 +5,8 @@
 // the padlock. A ghost after what's typed offers how it could end, or, with
 // nothing typed, a hint. An aside on the right, muted, says something about
 // what's typed, such as where the launcher's selection is among its matches.
+// A secret's aside says when caps lock is on, its glyph in the warning
+// colour, since a password typed in capitals fails with no reason given.
 // Chips before what's typed hold what's being acted on: a thing, then a verb
 // waiting for its target.
 import QtQuick
@@ -24,6 +26,8 @@ Item {
     property string hint
     // Said in muted type at the right end of the line.
     property string aside
+    readonly property bool capitals: secret && Lights.caps
+    readonly property string said: capitals ? "caps lock" : aside
     // What's being acted on, each drawn as a chip: { text }.
     property var chips: []
     property alias text: input.text
@@ -61,11 +65,23 @@ Item {
         anchors.right: parent.right
         anchors.rightMargin: Theme.space.l
         anchors.verticalCenter: parent.verticalCenter
-        text: prompt.aside
+        text: prompt.said
         color: Theme.muted
         font.family: Theme.mono.family
         font.pointSize: Theme.mono.large
         font.features: { "tnum": 1 }
+    }
+
+    Text {
+        id: capitalsGlyph
+        anchors.right: asideText.left
+        anchors.rightMargin: Theme.space.s
+        anchors.verticalCenter: parent.verticalCenter
+        visible: prompt.capitals
+        text: Theme.glyph.capitals
+        color: Theme.warning
+        font.family: Theme.mono.family
+        font.pointSize: Theme.mono.large
     }
 
     // A chip is a part of the frame, so its corners are the part's radius,
@@ -103,8 +119,9 @@ Item {
         id: input
         x: Theme.space.l + prompt.glyphWidth
             + (prompt.chips.length > 0 ? held.width + Theme.space.m : 0)
-        width: (prompt.aside === "" ? parent.width - Theme.space.l
-            : asideText.x - Theme.space.xl) - x
+        width: (prompt.said === "" ? parent.width - Theme.space.l
+            : asideText.x - Theme.space.xl - (prompt.capitals
+                ? Theme.space.s + capitalsGlyph.implicitWidth : 0)) - x
         anchors.verticalCenter: parent.verticalCenter
         focus: true
         clip: true

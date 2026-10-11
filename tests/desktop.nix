@@ -768,7 +768,8 @@ pkgs.testers.runNixOSTest {
       notices = "niri msg layers | grep -q notifications"
 
       with subtest("Super+O shows Keep Awake in the margin, and Return lets it sleep"):
-          machine.fail(in_session(margin))
+          # Keep Awake was just let go, and the margin leaves as it fades.
+          machine.wait_until_fails(in_session(margin), timeout=10)
           as_account("systemctl --user start caffeinate.service")
           wait_for_surface("margin")
           time.sleep(0.5)
@@ -844,6 +845,16 @@ pkgs.testers.runNixOSTest {
           machine.send_key("ret")
           muted = "wpctl get-volume @DEFAULT_AUDIO_SOURCE@ | grep -q MUTED"
           machine.wait_until_fails(in_session(muted), timeout=10)
+          machine.wait_until_fails(in_session(margin), timeout=10)
+
+      with subtest("caps lock shows in the margin while it's on"):
+          capitals = "/run/keyboard-lights/capslock"
+          machine.send_key("caps_lock")
+          machine.wait_until_succeeds(f"grep -qx 1 {capitals}", timeout=10)
+          wait_for_surface("margin")
+          machine.screenshot("margin-capitals")
+          machine.send_key("caps_lock")
+          machine.wait_until_succeeds(f"grep -qx 0 {capitals}", timeout=10)
           machine.wait_until_fails(in_session(margin), timeout=10)
 
       with subtest("the lock screen takes only the right password"):
