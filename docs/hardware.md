@@ -158,8 +158,9 @@ Each of these was measured on the laptop and gained nothing, so nothing
 changes it:
 
 - **The long-term power limit.** Raising it from 30 W to the 38 W the
-  firmware allows ran no faster: Dell's skin-temperature policy holds
-  sustained power near 25 W either way.
+  firmware allowed ran no faster: Dell's skin-temperature policy holds
+  sustained power near 25 W either way. BIOS 1.11.0 allows 41 W, and the
+  30 W limit holds as before.
 - **The performance profile on mains.** It sustains 22 to 28% more work than
   balanced, which is why the charger follower asks for it.
 - **Wi-Fi power saving.** It stays on: off, the router's latency was the same
@@ -204,6 +205,48 @@ session's builds kept the laptop 9% busy.
 - **Presence.** The sensor hub's attention sensor shows up as an IIO
   proximity device, but `iio-sensor-proxy` has no near level for it and
   publishes nothing, and nothing would read it yet.
+
+### Expected in the Journal
+
+Each of these turns up at every boot or resume, has been traced to its cause,
+and is harmless, so nothing silences or patches it:
+
+- **dbus-broker's "Ignoring duplicate name", at error priority.** NixOS
+  gives the bus `system-path`'s `share/dbus-1` beside each package's own, so
+  every service file is found twice, once through a link. Leaving
+  `system-path` out would lose the services only it has.
+- **NetworkManager's "error setting IPv4 forwarding to '0': Success"** for
+  `p2p-dev-wlp0s20f3`. The Wi-Fi P2P device has no kernel interface, so
+  `nm_device_sysctl_ip_conf_set()` gives up without setting errno, and the
+  warning prints errno 0. Forwarding stays off, as it should. NetworkManager
+  1.58's fix is an early return at the top of `_dev_ipforwarding4_set()`:
+  `if (nm_device_get_ip_ifindex(self) <= 0) return;`.
+- **"Esys_NV_DefineSpace ErrorCode (0x0000014c)", four times.** That's
+  `TPM_RC_NV_DEFINED`: systemd-tpm2-setup finds its NvPCR indexes already
+  defined from an earlier boot and carries on.
+- **"Anchor secret file ... different from current anchor secret,
+  updating."** systemd-tpm2-setup leaves a copy of the NvPCR anchor on the
+  ESP for the initrd, but runs before `/boot` is mounted, so finds no ESP and
+  leaves none. The initrd then makes a new anchor at every boot, and the unit
+  replaces `/var`'s copy. Nothing here seals to an NvPCR: the disk's policy
+  is PCRs 0, 4 and 7. Ordering the unit after `/boot` would put its 0.7 s on
+  the way to `sysinit.target`.
+- **"SMBus is busy, can't use it!", seven times.** The i801 driver finds the
+  bus busy as it probes. Nothing uses the bus: the LPDDR5's SPD isn't
+  registered while its write protection is on.
+- **No "RAPL domain uncore" on BIOS 1.11.0.** 1.10.1 reported it. It only
+  meters the uncore's energy; the power limits are unaffected.
+- **"UCSI_GET_PDOS failed (-95)".** The firmware's USB-C interface doesn't
+  support the command.
+- **Bluetooth's "Received gp1 mailbox interrupt" and "Failed to send
+  Intel_Write_DDC (-95)".** The controller doesn't take the DDC parameters,
+  and works without them.
+- **"Returned feature report did not match the request"** from the
+  touchpad, which answers one feature request with another report and works
+  as it should.
+- **Dummy regulators** for the camera sensor, the SPI flash and the four
+  amplifiers. ACPI names no supplies for them, and all three work as they
+  should.
 
 ### Fixed Here Until nixpkgs Fixes It
 
