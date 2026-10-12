@@ -1,16 +1,12 @@
 use disk_guard::activity::Process;
-use disk_guard::vouch::{Answer, answer, merge};
+use disk_guard::vouch::{Answer, answer, merge, reached_by};
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
 const ASKER: u32 = 1000;
 
-fn mine(path: &Path) -> Option<u32> {
-    if path.starts_with("/home/u/src/shared") {
-        Some(1001)
-    } else {
-        Some(ASKER)
-    }
+fn mine(path: &Path) -> bool {
+    !path.starts_with("/home/u/src/shared")
 }
 
 fn root_process() -> Process {
@@ -70,7 +66,6 @@ fn elsewhere() -> Process {
 fn asked() -> Answer {
     answer(
         &[root_process(), elsewhere()],
-        ASKER,
         &[PathBuf::from("/home/u/src")],
         mine,
     )
@@ -130,7 +125,7 @@ fn the_proc_macro_server_keeps_the_word_that_says_so() {
         OsString::from("rust-analyzer"),
         OsString::from("proc-macro"),
     ];
-    let told = answer(&[server], ASKER, &[PathBuf::from("/home/u/src")], mine);
+    let told = answer(&[server], &[PathBuf::from("/home/u/src")], mine);
     assert_eq!(
         told.touching[0].cmdline,
         [
@@ -144,7 +139,7 @@ fn the_proc_macro_server_keeps_the_word_that_says_so() {
 fn a_process_the_system_could_not_read_is_not_vouched_for() {
     let mut hidden = elsewhere();
     hidden.readable = false;
-    let told = answer(&[hidden], ASKER, &[PathBuf::from("/home/u/src")], mine);
+    let told = answer(&[hidden], &[PathBuf::from("/home/u/src")], mine);
     assert!(told.vouched.is_empty());
 }
 
@@ -190,4 +185,27 @@ fn what_the_system_vouches_for_replaces_what_the_asker_could_not_read() {
 fn a_reused_pid_is_not_what_the_system_vouched_for() {
     let merged = merge(vec![unreadable(300, 999)], &asked());
     assert!(!merged[0].readable);
+}
+
+#[test]
+fn a_path_is_the_askers_to_hear_of_beneath_anything_it_owns() {
+    let me = unsafe { libc::geteuid() };
+    if me == 0 {
+        return;
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("target/debug/.cargo-lock");
+    std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+    std::fs::write(&file, "").unwrap();
+    assert!(reached_by(&file, me));
+    assert!(reached_by(&dir.path().join("gone (deleted)"), me));
+    assert!(
+        !reached_by(&file, me + 1),
+        "nothing on the way is another's"
+    );
+    assert!(!reached_by(Path::new("/etc/hostname"), me));
+    assert!(
+        !reached_by(Path::new("src/vouch.rs"), me),
+        "a relative path means nothing to the system daemon"
+    );
 }

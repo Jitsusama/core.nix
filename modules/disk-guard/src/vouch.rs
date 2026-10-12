@@ -25,18 +25,23 @@ pub struct Answer {
 /// The variables that point a build at a target, as activity reads them.
 const BUILD_VARIABLES: [&str; 2] = ["CARGO_TARGET_DIR", "CARGO_BUILD_BUILD_DIR"];
 
-/// What the system daemon tells `asker` of `processes` beneath `roots`,
-/// where `owner` says whose a path is.
-pub fn answer(
-    processes: &[Process],
-    asker: u32,
-    roots: &[PathBuf],
-    owner: impl Fn(&Path) -> Option<u32>,
-) -> Answer {
+/// Whether `uid` owns `path` or a directory it lies in, and so whether
+/// it's theirs to hear of. A root-owned file a `sudo cargo` left in the
+/// account's target is in what the account may delete, so a process
+/// holding it has to count; a path that's gone is judged by what it lay in.
+pub fn reached_by(path: &Path, uid: u32) -> bool {
+    use std::os::unix::fs::MetadataExt;
+    path.is_absolute()
+        && path
+            .ancestors()
+            .any(|at| std::fs::symlink_metadata(at).is_ok_and(|meta| meta.uid() == uid))
+}
+
+/// What the system daemon tells an asker of `processes` beneath `roots`,
+/// where `reaches` says whether a path is the asker's to hear of.
+pub fn answer(processes: &[Process], roots: &[PathBuf], reaches: impl Fn(&Path) -> bool) -> Answer {
     let theirs = |path: &Path| {
-        path.is_absolute()
-            && roots.iter().any(|root| path.starts_with(root))
-            && owner(path) == Some(asker)
+        path.is_absolute() && roots.iter().any(|root| path.starts_with(root)) && reaches(path)
     };
     let mut told = Answer::default();
     for process in processes.iter().filter(|process| process.readable) {
@@ -55,7 +60,7 @@ pub fn answer(
                 // A variable naming the asker's target, something in it, or
                 // a directory of the asker's its targets sit in.
                 BUILD_VARIABLES.iter().any(|variable| name == variable)
-                    && owner(value) == Some(asker)
+                    && reaches(value)
                     && roots
                         .iter()
                         .any(|root| value.starts_with(root) || root.starts_with(value))
