@@ -52,7 +52,7 @@ quietly stopped holding.
 | `zsh-is-the-login-shell`            | an account on NixOS logs in to zsh, as one on a Mac does  |
 | `disks-go-by-their-name`            | a disk's partitions and open volume carry its name        |
 | `booted-generation-stays-installed` | a switch never removes the generation the machine booted  |
-| `session-memory-is-protected`       | every slice above session.slice carries its memory floor  |
+| `session-memory-is-protected`       | every slice above session.slice carries a hard memory floor |
 | `a-faint-theme-is-refused`          | a theme with text under WCAG's 4.5:1 doesn't build        |
 | `quickshell-restarts-with-its-files` | a switch restarts the shell when a file it reads changes  |
 | `quickshell-opens-programs-through-niri` | programs the shell opens survive the shell restarting |
