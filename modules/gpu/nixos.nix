@@ -37,5 +37,17 @@ in
     services.udev.extraRules = ''
       SUBSYSTEM=="drm", KERNEL=="card[0-9]*", ENV{ID_PATH}=="${path}", TAG+="systemd"
     '';
+
+    # A card that never comes up, because its driver failed or the system
+    # booted elsewhere, gives up on the unit after 15 s rather than systemd's
+    # 90, so what waits for it starts on whatever else draws. A working card
+    # was ready 4 to 6 s after the system started where this was measured.
+    systemd.units.${config.jitsusama.gpu.unit} = {
+      overrideStrategy = "asDropin";
+      text = ''
+        [Unit]
+        JobRunningTimeoutSec=15s
+      '';
+    };
   };
 }
