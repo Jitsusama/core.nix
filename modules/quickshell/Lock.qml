@@ -49,7 +49,9 @@ Scope {
         onCompleted: result => {
             root.password = "";
             root.failed = result !== PamResult.Success;
-            if (!root.failed)
+            if (root.failed)
+                Report.say("refused lock");
+            else
                 sessionLock.locked = false;
         }
     }
@@ -66,6 +68,10 @@ Scope {
             id: surface
 
             color: Theme.deepest
+
+            Reported {
+                name: "lock"
+            }
 
             Image {
                 anchors.fill: parent

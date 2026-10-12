@@ -566,26 +566,36 @@ Scope {
             root.into(name);
         }
 
-        // What the launcher shows, as JSON: whether it holds the keyboard,
-        // what's typed and held, and the row Return takes, with whether an
-        // answer is still being asked for. A script waits on this before it
-        // presses a key, rather than guessing how long the launcher takes.
         function showing(): string {
-            const row = root.selected;
-            return JSON.stringify({
-                open: root.open,
-                keys: root.open && prompt.Window.active,
-                typed: root.typed,
-                held: root.held.map(step => step.row.chip ?? step.row.name),
-                asking: !!root.asking,
-                selected: !row ? null : {
-                    name: row.name,
-                    verb: row.verb ?? "",
-                    settled: row !== root.headline || !root.answer.asking
-                }
-            });
+            return root.showing();
         }
     }
+
+    // What the launcher shows, as JSON: whether it holds the keyboard,
+    // what's typed and held, and the row Return takes, with whether an
+    // answer is still being asked for. A script waits on this before it
+    // presses a key, rather than guessing how long the launcher takes.
+    function showing() {
+        const row = root.selected;
+        return JSON.stringify({
+            open: root.open,
+            keys: root.open && prompt.Window.active,
+            typed: root.typed,
+            held: root.held.map(step => step.row.chip ?? step.row.name),
+            asking: !!root.asking,
+            selected: !row ? null : {
+                name: row.name,
+                verb: row.verb ?? "",
+                settled: row !== root.headline || !root.answer.asking
+            }
+        });
+    }
+
+    // Said each time it changes, while reports are on, so the test hears
+    // every step rather than asking over and over.
+    readonly property string shown: Options.reports ? showing() : ""
+
+    onShownChanged: Report.say(`showing ${shown}`)
 
     // Opens straight into a collection, all of it shown until something's
     // typed; the left arrow steps out to the search. A name no collection

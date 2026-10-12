@@ -14,6 +14,14 @@ Scope {
     // A node's audio arrives a moment after the node, once it's bound.
     readonly property PwNodeAudio audio: node ? node.audio : null
     property bool shown: false
+    // The node whose changes it hears, once it's bound: until then a change
+    // shows nothing.
+    readonly property string heard: node && node.ready && audio ? node.name : ""
+
+    onHeardChanged: {
+        if (heard !== "")
+            Report.say(`hears ${input ? "microphone" : "volume"} ${heard}`);
+    }
 
     // Pipewire reports a node's volume only once something binds it.
     PwObjectTracker {

@@ -32,6 +32,7 @@
 import Quickshell
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
+import "Asking.js" as Asking
 
 Scope {
     id: provider
@@ -155,7 +156,7 @@ Scope {
     function ask(url, fresh) {
         const now = Date.now();
         const kept = asked[url];
-        if (kept && (kept.pending || now - kept.at < (kept.failed ? 10000 : fresh)))
+        if (Asking.stands(kept, now, fresh, 10000))
             return kept;
         const entry = {
             pending: true,

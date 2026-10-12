@@ -81,6 +81,8 @@ Scope {
             const held = Quiet.on && !urgent;
             if (!notification.transient)
                 Notices.arrived(notification, urgent, held);
+            if (held)
+                Report.say(`held ${notification.summary}`);
             const id = notification.id;
             notification.closed.connect(reason => Notices.left(id,
                 reason === NotificationCloseReason.Expired ? "expired"
@@ -124,10 +126,27 @@ Scope {
         WlrLayershell.layer: WlrLayer.Overlay
         WlrLayershell.namespace: "notifications"
 
+        // A card coming or going changes the stack's height while the
+        // surface stays up.
+        Reported {
+            id: reported
+            name: "notifications"
+        }
+
+        // What's playing changes its card's words, not the stack's height.
+        Connections {
+            target: Music
+
+            function onCardChanged() {
+                reported.changed();
+            }
+        }
+
         Column {
             id: stack
             x: Theme.floating.reach
             y: Theme.space.m + Notices.below
+            onHeightChanged: reported.changed()
 
             Behavior on y {
                 NumberAnimation {
@@ -292,6 +311,8 @@ Scope {
 
                     width: stack.width
                     urgent: modelData.urgency === NotificationUrgency.Critical
+
+                    Component.onCompleted: Report.say(`shows card ${modelData.summary}`)
 
                     // A click anywhere on the card puts it away. It lies
                     // beneath the words, so an action's own area, drawn
@@ -460,9 +481,14 @@ Scope {
                     // Five seconds when the sender doesn't say, and ten for
                     // one offering something to do. Quickshell's documents
                     // call its timeout seconds, but it passes on what the
-                    // sender said, which is milliseconds.
+                    // sender said, which is milliseconds. It waits while the
+                    // launcher holds the notices, so one being acted on by
+                    // the keys can't go from under them, and starts again
+                    // in full when the cards come back.
                     Timer {
-                        running: !card.urgent
+                        running: !card.urgent && !Notices.gathered
+                        onRunningChanged: Report.say(
+                            `${running ? "counts" : "waits"} card ${card.modelData.summary}`)
                         interval: card.modelData.expireTimeout > 0
                             ? card.modelData.expireTimeout
                             : card.modelData.actions.length > 0 ? 10000 : 5000

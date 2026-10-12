@@ -249,6 +249,7 @@ Provider {
         function onConnectionFailed(reason) {
             const network = provider.joining;
             const launcher = provider.launcher;
+            Report.say(`refused wifi ${network ? network.name : ""}`);
             const at = launcher.selected ?? launcher.asking;
             if (reason === ConnectionFailReason.NoSecrets && provider.security(network).password) {
                 provider.trouble = network.known && !(at && at.secret)

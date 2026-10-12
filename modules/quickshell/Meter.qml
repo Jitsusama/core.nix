@@ -31,6 +31,10 @@ PanelWindow {
     WlrLayershell.layer: WlrLayer.Overlay
     WlrLayershell.namespace: meter.name
 
+    Reported {
+        name: meter.name
+    }
+
     Floating {
         id: card
         x: Theme.floating.reach

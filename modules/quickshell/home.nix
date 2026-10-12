@@ -77,6 +77,8 @@ let
     "Recorder.qml"
     "Quiet.qml"
     "Lights.qml"
+    "Report.qml"
+    "Reported.qml"
     "pieces/Piece.qml"
     "launcher/Provider.qml"
     "launcher/Numbers.js"
@@ -84,6 +86,7 @@ let
     "launcher/Units.js"
     "launcher/Zones.js"
     "launcher/Colours.js"
+    "launcher/Asking.js"
     "launcher/Emoji.js"
   ];
 
@@ -456,6 +459,17 @@ in
     '';
   };
 
+  options.jitsusama.quickshell.reports = lib.mkOption {
+    type = lib.types.bool;
+    default = false;
+    description = ''
+      Whether the shell writes what it does to the journal, a line for each,
+      such as a surface drawn or taking the keys, a notice held back, or the
+      launcher's state. The desktop test turns it on and waits on these lines
+      rather than guessing how long something takes.
+    '';
+  };
+
   options.jitsusama.quickshell.launcher = {
     providers = lib.mkOption {
       type = lib.types.attrsOf (
@@ -810,6 +824,7 @@ in
           // The shell's own choices, from jitsusama.quickshell.
           Singleton {
               readonly property var quiet: ${object config.jitsusama.quickshell.quiet}
+              readonly property bool reports: ${lib.boolToString config.jitsusama.quickshell.reports}
           }
         '';
         "quickshell/Overview.qml".text = ''

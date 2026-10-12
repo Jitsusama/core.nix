@@ -198,6 +198,10 @@ Scope {
             WlrLayershell.layer: WlrLayer.Top
             WlrLayershell.namespace: "status"
             WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
+
+            Reported {
+                name: "status"
+            }
             // Clicks pass through to the overview's workspaces.
             mask: Region {}
             // It fades with the overview, and is gone once faded, so it
