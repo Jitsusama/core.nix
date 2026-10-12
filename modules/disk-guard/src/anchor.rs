@@ -26,6 +26,9 @@ pub struct Dir {
 pub struct Detached<'a> {
     dir: &'a Dir,
     name: OsString,
+    /// Directories whose owner was given write permission so they could
+    /// move, with the modes they had, for a restore to give back.
+    modes: Vec<(OsString, u32)>,
 }
 
 /// The name every trash starts with, so one left by a crash is found and
@@ -46,9 +49,20 @@ impl Detached<'_> {
     pub fn restore(self) -> io::Result<()> {
         let trash = self.dir.writable(&self.name)?;
         let mut failed = None;
+        let mut back = Vec::new();
         for name in trash.names()? {
             let name = OsStr::from_bytes(&name);
-            if let Err(error) = rename(&trash, name, self.dir, name) {
+            match rename(&trash, name, self.dir, name) {
+                Ok(()) => back.push(name.to_owned()),
+                Err(error) => {
+                    failed.get_or_insert(error);
+                }
+            }
+        }
+        // Only what came back gets its mode back: whatever else holds the
+        // name now is someone else's.
+        for (name, mode) in self.modes.iter().filter(|(name, _)| back.contains(name)) {
+            if let Err(error) = self.dir.set_mode(name, *mode) {
                 failed.get_or_insert(error);
             }
         }
@@ -190,7 +204,6 @@ impl Dir {
         Ok((child.dev == self.dev).then_some(child))
     }
 
-    /// The names in this directory, without `.` and `..`.
     /// Removes one entry all the way down, as emptying a trash does.
     pub(crate) fn remove_entry(&self, name: &OsStr) -> io::Result<()> {
         remove(self, name, 0)
@@ -205,6 +218,7 @@ impl Dir {
         }
     }
 
+    /// The names in this directory, without `.` and `..`.
     pub(crate) fn names(&self) -> io::Result<Vec<Vec<u8>>> {
         let mut names = Vec::new();
         for entry in rustix::fs::Dir::read_from(&self.fd)? {
@@ -236,17 +250,30 @@ impl Dir {
             .filter(|name| !keep.iter().any(|kept| kept.as_bytes() == name.as_slice()))
             .collect();
         let trash = self.make_trash()?;
-        let detached = Detached {
+        let mut detached = Detached {
             dir: self,
             name: trash,
+            modes: Vec::new(),
         };
         let into = self.writable(&detached.name)?;
         for (moved, name) in names.iter().enumerate() {
             let name = OsStr::from_bytes(name);
-            if let Err(error) = rename(self, name, &into, name) {
-                for back in &names[..moved] {
-                    let back = OsStr::from_bytes(back);
-                    let _ = rename(&into, back, self, back);
+            if let Err(error) = self.move_into(name, &into, &mut detached.modes) {
+                // What failed to move is still in place; the rest goes back
+                // if it can, and only what's back gets its mode back.
+                let mut back = vec![name.to_owned()];
+                for earlier in &names[..moved] {
+                    let earlier = OsStr::from_bytes(earlier);
+                    if rename(&into, earlier, self, earlier).is_ok() {
+                        back.push(earlier.to_owned());
+                    }
+                }
+                for (name, mode) in detached
+                    .modes
+                    .iter()
+                    .filter(|(name, _)| back.contains(name))
+                {
+                    let _ = self.set_mode(name, *mode);
                 }
                 drop(into);
                 let _ = rustix::fs::unlinkat(&self.fd, &detached.name, AtFlags::REMOVEDIR);
@@ -288,7 +315,11 @@ impl Dir {
             let name = OsString::from_vec(name);
             let stat = rustix::fs::statat(&self.fd, &name, AtFlags::SYMLINK_NOFOLLOW)?;
             if FileType::from_raw_mode(stat.st_mode) == FileType::Directory {
-                found.push(Detached { dir: self, name });
+                found.push(Detached {
+                    dir: self,
+                    name,
+                    modes: Vec::new(),
+                });
             }
         }
         Ok(found)
@@ -318,15 +349,43 @@ impl Dir {
         Ok(dir)
     }
 
-    /// Makes an entry its owner can't even open usable, without following
-    /// it if it's a symlink: Linux has no fchmodat that refuses symlinks on
-    /// every kernel, so the entry is opened as a path, which opens nothing,
-    /// and changed through that.
+    /// Makes a directory its owner can't even open usable.
     fn chmod_entry(&self, name: &OsStr) -> io::Result<()> {
+        self.set_mode(name, Mode::RWXU.bits())
+    }
+
+    /// Moves one entry into a trash. A directory moving to a new parent
+    /// needs its owner's write permission, since its `..` changes, so one
+    /// refused for lack of it is given that and moved, and its mode noted.
+    fn move_into(
+        &self,
+        name: &OsStr,
+        into: &Dir,
+        modes: &mut Vec<(OsString, u32)>,
+    ) -> io::Result<()> {
+        match rename(self, name, into, name) {
+            Err(error) if error.kind() == io::ErrorKind::PermissionDenied => {
+                let stat = rustix::fs::statat(&self.fd, name, AtFlags::SYMLINK_NOFOLLOW)?;
+                if FileType::from_raw_mode(stat.st_mode) != FileType::Directory {
+                    return Err(error);
+                }
+                let mode = stat.st_mode & 0o7777;
+                self.set_mode(name, mode | 0o700)?;
+                modes.push((name.to_owned(), mode));
+                rename(self, name, into, name)
+            }
+            other => other,
+        }
+    }
+
+    /// Sets a directory entry's mode, never through a symlink: Linux has no
+    /// fchmodat that refuses symlinks on every kernel, so the entry is
+    /// opened as a path, which opens nothing, and changed through that.
+    fn set_mode(&self, name: &OsStr, mode: u32) -> io::Result<()> {
         let flags = OFlags::PATH | DIRECTORY.difference(OFlags::RDONLY);
         let path = rustix::fs::openat(&self.fd, name, flags, Mode::empty())?;
         let link = format!("/proc/self/fd/{}", std::os::fd::AsRawFd::as_raw_fd(&path));
-        Ok(rustix::fs::chmod(link.as_str(), Mode::RWXU)?)
+        Ok(rustix::fs::chmod(link.as_str(), Mode::from_raw_mode(mode))?)
     }
 
     fn size_into(&self, seen: &mut HashSet<u64>) -> io::Result<u64> {

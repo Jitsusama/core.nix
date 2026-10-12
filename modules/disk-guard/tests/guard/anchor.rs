@@ -5,8 +5,8 @@ use std::path::Path;
 
 const MIB: u64 = 1 << 20;
 
-fn sandbox() -> tempfile::TempDir {
-    tempfile::tempdir().unwrap()
+fn sandbox() -> crate::sandbox::Sandbox {
+    crate::sandbox::Sandbox::new()
 }
 
 /// Bytes that won't compress or share extents, so the filesystem has to
@@ -156,6 +156,63 @@ fn emptying_removes_the_trash_and_nothing_it_points_at() {
         fs::read_to_string(elsewhere.path().join("precious")).unwrap(),
         "keep"
     );
+}
+
+fn mode(path: &Path) -> u32 {
+    fs::symlink_metadata(path).unwrap().permissions().mode() & 0o777
+}
+
+/// A target holding read-only and unreadable directories right at its top,
+/// as a module cache's are, which a move into the trash has to change.
+fn locked_down(root: &Path) -> std::path::PathBuf {
+    let target = target(root);
+    fs::create_dir_all(target.join("sealed/inner")).unwrap();
+    fs::write(target.join("sealed/inner/f"), "x").unwrap();
+    fs::set_permissions(target.join("sealed"), fs::Permissions::from_mode(0o555)).unwrap();
+    fs::create_dir_all(target.join("shut")).unwrap();
+    fs::set_permissions(target.join("shut"), fs::Permissions::from_mode(0o000)).unwrap();
+    target
+}
+
+#[test]
+fn read_only_directories_at_the_top_are_detached_and_emptied() {
+    let root = sandbox();
+    let target = locked_down(root.path());
+    let dir = Dir::open(&target).unwrap();
+    dir.detach(&["criterion"]).unwrap().empty().unwrap();
+    assert_eq!(listing(&target), ["criterion"]);
+}
+
+#[test]
+fn read_only_directories_at_the_top_are_restored_as_they_were() {
+    let root = sandbox();
+    let target = locked_down(root.path());
+    let dir = Dir::open(&target).unwrap();
+    dir.detach(&["criterion"]).unwrap().restore().unwrap();
+    assert_eq!(
+        listing(&target),
+        ["CACHEDIR.TAG", "criterion", "debug", "sealed", "shut"]
+    );
+    assert_eq!(mode(&target.join("sealed")), 0o555);
+    assert_eq!(mode(&target.join("shut")), 0o000);
+    fs::set_permissions(target.join("sealed"), fs::Permissions::from_mode(0o755)).unwrap();
+    assert_eq!(
+        fs::read_to_string(target.join("sealed/inner/f")).unwrap(),
+        "x"
+    );
+}
+
+#[test]
+fn a_directory_that_took_the_name_meanwhile_keeps_its_own_mode() {
+    let root = sandbox();
+    let target = locked_down(root.path());
+    let dir = Dir::open(&target).unwrap();
+    let detached = dir.detach(&["criterion"]).unwrap();
+    fs::create_dir(target.join("sealed")).unwrap();
+    fs::set_permissions(target.join("sealed"), fs::Permissions::from_mode(0o750)).unwrap();
+    assert!(detached.restore().is_err());
+    assert_eq!(mode(&target.join("sealed")), 0o750);
+    assert_eq!(mode(&target.join("shut")), 0o000);
 }
 
 #[test]
