@@ -740,6 +740,17 @@ in
           < (systemd.slices.user.sliceConfig.CPUWeight or 100)
       );
 
+  # Nix collects garbage during a build once free space falls under min-free,
+  # and stops at max-free. A max-free at or under min-free stops it before it
+  # starts, and nothing says so.
+  nix-collects-before-the-disk-fills =
+    let
+      inherit (workstation.config.nix.settings) min-free max-free;
+    in
+    holds "nix-collects-before-the-disk-fills"
+      "The Nix daemon never collects garbage during a build: min-free is ${toString min-free}, max-free ${toString max-free}."
+      (min-free > 0 && max-free > min-free);
+
   # greetd waits for the GPU the hardware names rather than for the boot to go
   # idle, and the card gets the device unit it waits on. Without the udev tag
   # the unit never appears, and the login waits out the device timeout.
@@ -1177,6 +1188,41 @@ in
           readelf -p .comment hello/target/debug/hello | grep mold
           touch $out
         '';
+
+    # systemd-tmpfiles turns Btrfs's reclaim on for every filesystem mounted,
+    # data and metadata, and leaves the system chunks alone. It writes into a
+    # copy of sysfs with two filesystems, since a pattern that matches none
+    # passes without a word.
+    btrfs-reclaims-its-chunks =
+      let
+        rules = lib.filter (lib.hasInfix "/sys/fs/btrfs/") workstation.config.systemd.tmpfiles.rules;
+      in
+      pkgs.runCommandLocal "btrfs-reclaims-its-chunks" { nativeBuildInputs = [ pkgs.systemd ]; } ''
+        for fs in one two; do
+          for kind in data metadata system; do
+            mkdir -p root/sys/fs/btrfs/$fs/allocation/$kind
+            for setting in dynamic_reclaim periodic_reclaim; do
+              echo 0 > root/sys/fs/btrfs/$fs/allocation/$kind/$setting
+            done
+          done
+        done
+        systemd-tmpfiles --root=$PWD/root --create ${pkgs.writeText "btrfs.conf" (lib.concatLines rules)}
+        for fs in one two; do
+          for setting in dynamic_reclaim periodic_reclaim; do
+            for kind in data metadata; do
+              if [ "$(cat root/sys/fs/btrfs/$fs/allocation/$kind/$setting)" != 1 ]; then
+                echo "Btrfs's $setting is off for $kind."
+                exit 1
+              fi
+            done
+            if [ "$(cat root/sys/fs/btrfs/$fs/allocation/system/$setting)" != 0 ]; then
+              echo "Btrfs's $setting was turned on for the system chunks."
+              exit 1
+            fi
+          done
+        done
+        touch $out
+      '';
 
     # CI runs the virtual machine tests by name, one to a runner, so one it
     # doesn't name would never run there.

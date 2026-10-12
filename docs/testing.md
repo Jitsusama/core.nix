@@ -60,6 +60,7 @@ quietly stopped holding.
 | `quickshell-takes-its-shape-from-the-theme` | every corner and border in the shell is the theme's |
 | `icon-marks-past-the-basic-plane` | an icon mark past U+FFFF reaches the shell whole |
 | `nix-builds-yield-to-the-user` | Nix's builds run at a lower weight than the user's programs |
+| `nix-collects-before-the-disk-fills` | Nix collects garbage during a build that fills the disk |
 
 ### The Shell's Logic
 
@@ -115,6 +116,7 @@ kernel guide][2] says what that catches.
 | `tuple-shares-through-the-portal` | Tuple reads the portal setting where the switch writes it |
 | `neovim-starts-in-the-theme`      | Neovim starts in bamboo, transparent, without a complaint |
 | `cargo-links-with-mold`           | cargo links an account's Rust builds with mold            |
+| `btrfs-reclaims-its-chunks`       | tmpfiles turns Btrfs's reclaim on for data and metadata   |
 
 ### Virtual Machines
 

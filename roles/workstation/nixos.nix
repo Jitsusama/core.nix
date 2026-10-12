@@ -2,11 +2,15 @@
 # get them back, with the workstation role in every account, and the pieces
 # only Linux needs: Rust linking with mold, ssh-tpm-agent for the TPM's SSH
 # keys, commits signed with them, virtual machines through libvirt and
-# containers through Podman.
+# containers through Podman. Builds churn its disk, so Btrfs keeps room for
+# its metadata, Nix collects its garbage before the disk fills, and crashes
+# keep only a few days of cores.
 { nixosModules, homeModules }:
 {
   imports = [
     nixosModules.base
+    nixosModules.btrfs
+    nixosModules.coredump
     nixosModules.libvirt
     nixosModules.memory
     nixosModules.nix-daemon

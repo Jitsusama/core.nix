@@ -180,20 +180,24 @@ xz and 0.3 s from zstd, for 16.3 MB against 11.9 MB.
 
 The kernel module also turns on `intel_iommu=on`, so every device's DMA is
 translated, where Intel's firmware opt-in translates only the Thunderbolt
-ports. Four more modules tune the running kernel. The workstation role brings
-in the first three, and the graphical role the last:
+ports. Five more modules tune the running kernel. The workstation role brings
+in the first four, and the graphical role the last:
 
+- **[`btrfs`][btrfs]:** the kernel gives nearly empty chunks back once
+  unallocated space runs short, so metadata always has room to grow and a
+  write never fails while space is free.
 - **[`memory`][memory]:** swap to zstd-compressed RAM, kill a runaway process
   before the machine thrashes, and write to disk steadily rather than in
   stalls, so a linking build never freezes the desktop.
 - **[`nix-daemon`][nix-daemon]:** builds run as batch work in a slice of
   their own, at a tenth of the weight of the user's programs, so they take
-  the CPU only when nothing interactive wants it, and systemd-oomd stops one
-  that starves the machine of memory.
-- **[`slices`][slices]:** the compositor and sound get ten times anyone
-  else's share of the CPU, and a floor of memory a build can't reclaim.
+  the CPU only when nothing interactive wants it, systemd-oomd stops one
+  that starves the machine of memory, and the daemon collects garbage before
+  a build fills the disk.
 - **[`perf`][perf]:** perf itself, and the settings that let Joel profile his
   own programs, kernel included, without root.
+- **[`slices`][slices]:** the compositor and sound get ten times anyone
+  else's share of the CPU, and a floor of memory a build can't reclaim.
 
 ## How It's Checked
 
@@ -329,6 +333,7 @@ if less; record a new one after moving to a new series.
 [decision]: decisions/0006-build-the-kernel-here.md
 [module]: ../modules/kernel/
 [settings]: ../modules/kernel/settings.nix
+[btrfs]: ../modules/btrfs/nixos.nix
 [memory]: ../modules/memory/nixos.nix
 [nix-daemon]: ../modules/nix-daemon/nixos.nix
 [perf]: ../modules/perf/nixos.nix
