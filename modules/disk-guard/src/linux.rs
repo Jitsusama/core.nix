@@ -13,6 +13,26 @@ const BTRFS_IOC_FS_INFO: libc::c_ulong = 0x8400_941f;
 /// Where sysfs keeps each Btrfs filesystem's directory.
 const BTRFS_SYSFS: &str = "/sys/fs/btrfs";
 
+/// When the machine booted, in wall seconds, and how many clock ticks a
+/// second process start times count in.
+pub fn boot(proc_stat: &std::path::Path) -> io::Result<crate::snapshots::Boot> {
+    let text = fs::read_to_string(proc_stat)?;
+    let wall: f64 = text
+        .lines()
+        .find_map(|line| line.strip_prefix("btime "))
+        .and_then(|value| value.trim().parse().ok())
+        .ok_or_else(|| io::Error::other("no boot time in the kernel's statistics"))?;
+    // SAFETY: sysconf only reads a constant.
+    let ticks = unsafe { libc::sysconf(libc::_SC_CLK_TCK) };
+    if ticks <= 0 {
+        return Err(io::Error::last_os_error());
+    }
+    Ok(crate::snapshots::Boot {
+        wall,
+        ticks: ticks as f64,
+    })
+}
+
 /// The space of the filesystem `path` is on: `free` is what an
 /// unprivileged writer may still use. On Btrfs its allocation comes too,
 /// unless there's no sysfs to read it from, as in a build sandbox.

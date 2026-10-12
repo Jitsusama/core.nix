@@ -1,5 +1,5 @@
 use disk_guard::band::BtrfsSpace;
-use disk_guard::linux::{btrfs_allocation, power, pressure, settle, space, tick};
+use disk_guard::linux::{boot, btrfs_allocation, power, pressure, settle, space, tick};
 use disk_guard::moments::{Power, Stall};
 use std::fs;
 use std::path::Path;
@@ -281,4 +281,31 @@ fn a_missing_count_is_an_error_rather_than_a_guess() {
     sysfs(root.path());
     fs::remove_file(root.path().join("allocation/metadata/bytes_used")).unwrap();
     assert!(btrfs_allocation(root.path()).is_err());
+}
+
+#[test]
+fn the_boot_is_dated_from_the_kernels_statistics() {
+    let root = tempfile::tempdir().unwrap();
+    let stat = root.path().join("stat");
+    fs::write(
+        &stat,
+        "cpu  1 2 3\nintr 9\nbtime 1760000000\nprocesses 77\n",
+    )
+    .unwrap();
+    let booted = boot(&stat).unwrap();
+    assert_eq!(booted.wall, 1_760_000_000.0);
+    assert_eq!(booted.ticks, unsafe { libc::sysconf(libc::_SC_CLK_TCK) }
+        as f64);
+    fs::write(&stat, "cpu  1 2 3\n").unwrap();
+    assert!(boot(&stat).is_err());
+}
+
+#[test]
+fn this_machines_boot_is_in_the_past() {
+    let booted = boot(Path::new("/proc/stat")).unwrap();
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs_f64();
+    assert!(booted.wall > 0.0 && booted.wall < now);
 }
