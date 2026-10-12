@@ -15,6 +15,9 @@ use std::time::SystemTime;
 pub trait Looker {
     /// How the target is used right now.
     fn judge(&mut self, target: &Path, checkout: Option<&Path>) -> io::Result<Use>;
+    /// Something was just moved aside, so the judgement after it must look
+    /// afresh rather than at what was seen before.
+    fn moved(&mut self);
     /// Who waits on the locks the guard holds on these inodes.
     fn waiters(&mut self, inodes: &[u64]) -> io::Result<Vec<i32>>;
 }
@@ -81,6 +84,7 @@ pub fn target(
         }
         Err(error) => return Outcome::Failed(format!("moving it aside: {error}")),
     };
+    looker.moved();
     let reason = match looker.waiters(&held.inodes()) {
         Err(error) => Some(format!("its lock's waiters can't be read: {error}")),
         Ok(waiters) if !waiters.is_empty() => Some("a build waits on its lock".to_owned()),
@@ -246,6 +250,7 @@ pub fn entry(
         }
         Err(error) => return failed("moving it aside", error),
     };
+    looker.moved();
     if let Some(reason) = judged(looker) {
         return match detached.restore() {
             Ok(()) => Outcome::Kept(reason),

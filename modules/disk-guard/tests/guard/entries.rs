@@ -52,16 +52,21 @@ fn reclaimed(script: &mut Script, name: &str) -> (Sandbox, PathBuf, Outcome) {
 
 #[test]
 fn an_idle_directory_goes_whole_and_alone() {
-    let (_root, dir, outcome) = reclaimed(&mut Script::default(), "run-1");
+    let mut script = Script::default();
+    let (_root, dir, outcome) = reclaimed(&mut script, "run-1");
     assert_eq!(outcome, Outcome::Reclaimed);
     assert_eq!(names(&dir), ["notes.txt", "run-2"]);
+    // Told of the move before judging again, so it looks afresh.
+    assert_eq!(script.heard, ["judge", "moved", "judge"]);
 }
 
 #[test]
 fn an_idle_file_goes() {
-    let (_root, dir, outcome) = reclaimed(&mut Script::default(), "notes.txt");
+    let mut script = Script::default();
+    let (_root, dir, outcome) = reclaimed(&mut script, "notes.txt");
     assert_eq!(outcome, Outcome::Reclaimed);
     assert_eq!(names(&dir), ["run-1", "run-2"]);
+    assert_eq!(script.heard, ["judge"]);
 }
 
 #[test]

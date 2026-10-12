@@ -14,14 +14,22 @@ pub(crate) struct Script {
     pub(crate) uses: VecDeque<Use>,
     pub(crate) waiters: VecDeque<Vec<i32>>,
     pub(crate) asked_waiters_for: Vec<Vec<u64>>,
+    /// What it was asked or told, in order.
+    pub(crate) heard: Vec<&'static str>,
 }
 
 impl Looker for Script {
     fn judge(&mut self, _target: &Path, _checkout: Option<&Path>) -> io::Result<Use> {
+        self.heard.push("judge");
         Ok(self.uses.pop_front().unwrap_or(Use::Free))
     }
 
+    fn moved(&mut self) {
+        self.heard.push("moved");
+    }
+
     fn waiters(&mut self, inodes: &[u64]) -> io::Result<Vec<i32>> {
+        self.heard.push("waiters");
         self.asked_waiters_for.push(inodes.to_vec());
         Ok(self.waiters.pop_front().unwrap_or_default())
     }
@@ -96,6 +104,8 @@ fn an_idle_target_is_emptied_but_for_its_benchmarks() {
     // The lock was held while the waiters were checked.
     assert_eq!(script.asked_waiters_for.len(), 1);
     assert_eq!(script.asked_waiters_for[0].len(), 1);
+    // Told of the move before judging again, so it looks afresh.
+    assert_eq!(script.heard, ["judge", "moved", "waiters", "judge"]);
 }
 
 #[test]
