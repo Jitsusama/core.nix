@@ -6,9 +6,13 @@
 # path for whatever libvirt won't express.
 #
 # virsh connects to qemu:///session by default, where machines run as Joel and
-# need no privilege. qemu:///system, for bridges and passthrough, asks for his
-# password through polkit. Nobody joins the libvirtd group, which would hand
-# out root without one.
+# need no privilege. They join libvirt's NAT network through QEMU's setuid
+# bridge helper, with --network bridge=virbr0, for an address the host and
+# other machines reach, DHCP and DNS. qemu:///system, for passthrough and raw
+# disks, asks for his password through polkit, and polkit keeps the answer
+# for the process that asked, not the login, so every virsh run asks again:
+# put a batch in one virsh, its commands split by semicolons. Nobody joins
+# the libvirtd group, which would hand out root without one.
 #
 # QEMU is refused io_uring. Since 10.2, QEMU's main loop runs
 # on io_uring when it can, and it loses wakeups: a firmware's TPM or CD-ROM
@@ -115,4 +119,23 @@ in
   ];
 
   environment.sessionVariables.LIBVIRT_DEFAULT_URI = "qemu:///session";
+
+  # The bridge session machines join, virbr0, exists only while libvirt's
+  # default network runs, and nothing starts it but a system client. Started
+  # once at boot, off the login's path; the network outlives the daemon.
+  systemd.services.libvirt-default-network = {
+    description = "libvirt's default NAT network, for session machines";
+    requires = [ "libvirtd.service" ];
+    after = [ "libvirtd.service" ];
+    wantedBy = [ "multi-user.target" ];
+    path = [ config.virtualisation.libvirtd.package ];
+    serviceConfig = {
+      Type = "oneshot";
+      RemainAfterExit = true;
+    };
+    script = ''
+      virsh --connect qemu:///system net-info default | grep -q '^Active: *yes' ||
+        virsh --connect qemu:///system net-start default
+    '';
+  };
 }
