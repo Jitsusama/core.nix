@@ -12,6 +12,7 @@ pub mod discover;
 pub mod linux;
 pub mod locks;
 pub mod moments;
+pub mod nix_builds;
 pub mod pass;
 pub mod plan;
 pub mod reclaim;

@@ -64,14 +64,15 @@ pub fn entries(dir: &Path, pattern: &Regex) -> Vec<Snapshot> {
     found
 }
 
-/// Whether a snapshot's maker is gone: no process has its pid, runs
-/// `command` and started before the snapshot appeared, so a pid the kernel
-/// gave to someone since keeps nothing alive. A process with its pid that
-/// can't be read keeps it, since it can't be ruled out.
-pub fn orphaned(snapshot: &Snapshot, processes: &[Process], command: &str, boot: Boot) -> bool {
+/// Whether a snapshot's maker is gone: no process has its pid, runs one of
+/// `commands` and started before the snapshot appeared, so a pid the
+/// kernel gave to someone since keeps nothing alive. A process with its pid
+/// that can't be read keeps it, since it can't be ruled out.
+pub fn orphaned(snapshot: &Snapshot, processes: &[Process], commands: &[&str], boot: Boot) -> bool {
     let maker = |process: &&Process| {
         let started = boot.wall + process.start_ticks as f64 / boot.ticks;
-        !process.readable || (runs(process, command) && started <= snapshot.born + SLACK)
+        let runs_one = commands.iter().any(|command| runs(process, command));
+        !process.readable || (runs_one && started <= snapshot.born + SLACK)
     };
     !processes
         .iter()

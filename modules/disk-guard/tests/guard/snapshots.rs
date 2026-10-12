@@ -65,7 +65,7 @@ fn a_snapshot_whose_process_runs_is_kept() {
     assert!(!orphaned(
         &snapshot(42, 3_000.0),
         &processes,
-        "monobus",
+        &["monobus"],
         BOOT
     ));
 }
@@ -76,7 +76,7 @@ fn a_snapshot_whose_process_is_gone_is_orphaned() {
     assert!(orphaned(
         &snapshot(42, 3_000.0),
         &processes,
-        "monobus",
+        &["monobus"],
         BOOT
     ));
 }
@@ -86,9 +86,9 @@ fn a_reused_pid_keeps_nothing_alive() {
     // Another program now has the pid, or the same program started after
     // the snapshot was made, so it can't be the one that made it.
     let other = [running(42, 2_000.0, "/usr/bin/vim")];
-    assert!(orphaned(&snapshot(42, 3_000.0), &other, "monobus", BOOT));
+    assert!(orphaned(&snapshot(42, 3_000.0), &other, &["monobus"], BOOT));
     let later = [running(42, 4_000.0, "/nix/store/abc-monobus/bin/monobus")];
-    assert!(orphaned(&snapshot(42, 3_000.0), &later, "monobus", BOOT));
+    assert!(orphaned(&snapshot(42, 3_000.0), &later, &["monobus"], BOOT));
 }
 
 #[test]
@@ -101,7 +101,7 @@ fn a_process_that_cant_be_read_keeps_its_snapshot() {
     assert!(!orphaned(
         &snapshot(42, 3_000.0),
         &[hidden],
-        "monobus",
+        &["monobus"],
         BOOT
     ));
 }
@@ -113,7 +113,12 @@ fn a_wrapped_program_is_known_by_its_own_name() {
         2_000.0,
         "/nix/store/abc-monobus/bin/.monobus-wrapped",
     )];
-    assert!(!orphaned(&snapshot(42, 3_000.0), &wrapped, "monobus", BOOT));
+    assert!(!orphaned(
+        &snapshot(42, 3_000.0),
+        &wrapped,
+        &["monobus"],
+        BOOT
+    ));
 }
 
 #[test]
