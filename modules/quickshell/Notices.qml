@@ -53,6 +53,7 @@ Singleton {
     // never missed.
     readonly property var senders: ({
         "slack": { glyph: 0xf198, hue: "person" },
+        "tuple": { glyph: 0xf03f2, hue: "person" },
         "google chrome": { glyph: 0xf268, hue: "program" },
         "chromium": { glyph: 0xf268, hue: "program" },
         "niri": { glyph: 0xf0e51, hue: "machine" },

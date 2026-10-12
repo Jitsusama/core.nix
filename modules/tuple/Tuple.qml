@@ -1,12 +1,22 @@
 pragma Singleton
 // Tuple's calls, as the shell sees them, for the margin's piece (Call.qml)
 // and the launcher's rows (Calls.qml). Tuple's command starts, joins and
-// ends a call and says nothing after, so whether Joel is in one comes from
-// the daemon's log, which Tuple writes in its data, where the XDG spec puts
-// it: a line when a call connects, and one when it ends, or when the daemon
-// starts or stops, which ends any call it had. The log is followed as it's
-// written, from its last lines when the shell starts, so a call already
-// going counts. What a line means is Tuple.js's to say.
+// ends a call and says nothing after, so how a call stands comes from the
+// daemon's log, which Tuple writes in its data, where the XDG spec puts it:
+// when a call connects and ends, who comes and goes, a call ringing, and
+// whether Tuple sends Joel's voice. The log is followed as it's written,
+// from its last lines when the shell starts, so a call already going
+// counts. What a line means is Tuple.js's to say.
+//
+// Tuple on Linux doesn't yet tell Joel when someone joins or leaves, or
+// that everyone else has left, so the shell does, as notices of Tuple's,
+// for lines written since it started. Who came and went matters only as
+// it happens, since the margin says who's there, so those ask not to be
+// kept; one that offers something is kept, so the keys reach it too, and
+// withdrawn once it can't be done; and a call that rang and wasn't
+// answered is kept, as a missed call. Each person is named
+// from tuple ls, read once whenever someone new comes, since it lists
+// every contact.
 //
 // Joel's room keeps one link, which tuple new prints as it opens the room.
 // It's kept in the shell's state, to copy again without opening the room.
@@ -24,13 +34,38 @@ Singleton {
     readonly property string log: `${Quickshell.env("XDG_DATA_HOME")
         || Quickshell.env("HOME") + "/.local/share"}/tuple/0/log.txt`
 
-    property bool calling: false
+    // How the call stands, as Tuple.js tells it from the log.
+    property var call: Log.none
+    readonly property bool calling: call.calling
     // When the call connected, in milliseconds since 1970.
-    property real since: 0
+    readonly property real since: call.since
+    // Who's in it besides Joel, each by whatever the log knows them by.
+    readonly property var others: Log.others(call)
+    // The names tuple ls gives them, by the number Tuple knows them by.
+    property var names: ({})
+    // Who's calling Joel, while a ring lasts, or "".
+    property string ringing: ""
+    // Whether Tuple keeps Joel's voice from the call, once it's said: true,
+    // false, or null, unknown.
+    property var muted: null
     // Joel's room's link, once tuple new has printed it.
     property string room: ""
     // The call link last copied, until something else is.
     property string copied: ""
+
+    // When the shell started, before which nothing in the log is news.
+    readonly property real started: Date.now()
+    // A ring Tuple stops writing about is over after a minute, as a phone's
+    // would be, whatever the log leaves unsaid.
+    readonly property int ringsFor: 60 * 1000
+
+    // Someone's name, or "" when tuple ls didn't list them.
+    function name(who) {
+        return names[Log.number(who)] ?? "";
+    }
+
+    // The people in the call, as a sentence says them.
+    readonly property string company: Log.company(others.map(who => name(who)))
 
     // Opens Joel's room and copies its link, to hand to whoever's joining.
     function open() {
@@ -50,23 +85,239 @@ Singleton {
         Niri.spawn(["tuple", "share"]);
     }
 
+    // Tuple answers whether he was already, so its answer is how he stands
+    // even when the shell had it wrong.
+    function mute(quiet) {
+        muting.command = ["tuple", quiet ? "mute" : "unmute"];
+        muting.running = true;
+    }
+
     function copyRoom() {
         if (room !== "")
             Niri.spawn(["wl-copy", room]);
+    }
+
+    // Brings forward the window Tuple opened last, where a ringing call is
+    // answered, since Tuple's command can't answer one.
+    function show() {
+        const tuples = Object.values(Niri.windows).filter(window => window.app_id === "Tuple");
+        if (tuples.length > 0)
+            Niri.act({ FocusWindow: { id: Math.max(...tuples.map(window => window.id)) } });
+    }
+
+    // What's to be said, kept until tuple ls has named whoever it's about.
+    property var telling: []
+
+    function tell(what, who) {
+        telling = telling.concat([{ what: what, who: who }]);
+        if (!learn())
+            Qt.callLater(root.say);
+    }
+
+    // Everyone the shell might name, by the numbers tuple ls hasn't been
+    // asked about: those in the call, sharing, calling, or to be told of.
+    function unnamed() {
+        return others.concat(call.showing, [ringing], telling.map(told => told.who))
+            .map(who => Log.number(who))
+            .filter(id => id !== "" && !(id in names));
+    }
+
+    // Asks tuple ls about anyone not yet named, saying whether it had to.
+    function learn() {
+        if (unnamed().length === 0)
+            return false;
+        listing.running = true;
+        return true;
+    }
+
+    function say() {
+        if (listing.running)
+            return;
+        for (const { what, who } of telling) {
+            const someone = name(who) || "Someone";
+            if (what === "came")
+                notify(`${someone} joined the call`, "", [], false);
+            else if (what === "went")
+                notify(`${someone} left the call`, "", [], false);
+            else if (what === "alone")
+                notify(`${someone} left the call`, "You're the only one still in it", [
+                    ["leave", "Leave the call"]
+                ], true);
+            else if (what === "rings")
+                notify(`${someone} is calling`, "Answer in Tuple's window", [
+                    ["show", "Show the call"]
+                ], true);
+            else if (what === "missed")
+                notify(`Missed a call from ${name(who) || "someone"}`, "", [], true);
+        }
+        telling = [];
+    }
+
+    // The notices on screen that offer something, by their ids, each with
+    // what it offers.
+    property var offering: ({})
+
+    // Puts away Tuple's notices that offer what can't be done any more,
+    // leaving a call that's over or showing a ring that's stopped. Each is
+    // closed as its program would close it, by its id, which counts it
+    // read.
+    function withdraw(key) {
+        for (const [id, keys] of Object.entries(offering))
+            if (keys.includes(key))
+                closing.createObject(root, {
+                    command: ["busctl", "--user", "call", "org.freedesktop.Notifications",
+                        "/org/freedesktop/Notifications", "org.freedesktop.Notifications",
+                        "CloseNotification", "u", id]
+                });
+    }
+
+    function notify(summary, body, actions, kept) {
+        notice.createObject(root, {
+            offers: actions.map(([key]) => key),
+            command: ["notify-send", "--app-name=Tuple", "--print-id"]
+                .concat(kept ? [] : ["--transient"])
+                .concat(actions.map(([key, label]) => `--action=${key}=${label}`))
+                .concat([summary], body === "" ? [] : [body])
+        });
+    }
+
+    function heard(line) {
+        const before = call;
+        const now = Date.now();
+        call = Log.after(call, line, now);
+        if (call === before)
+            return;
+        if (call.muted !== before.muted && call.muted !== null)
+            muted = call.muted;
+        if (!call.calling && before.calling) {
+            muted = null;
+            withdraw("leave");
+        }
+        const rang = call.ringing !== "" && now - call.rang < ringsFor;
+        const rung = ringing;
+        ringing = rang ? call.ringing : "";
+        if (rung !== "" && !rang)
+            withdraw("show");
+        if (rang)
+            ringEnds.restart();
+        learn();
+        // Only what's happened since the shell started is news.
+        const at = Log.written(line, now);
+        if (at < started)
+            return;
+        if (rung !== "" && !rang && !Log.answering(line))
+            tell("missed", rung);
+        if (call.ringing !== "" && call.ringing !== before.ringing)
+            tell("rings", call.ringing);
+        // Whoever's there as Joel joins was there already, and everyone
+        // goes as he leaves, so neither is news.
+        if (!call.calling || !before.calling)
+            return;
+        const was = Log.others(before);
+        const is = Log.others(call);
+        if (at - call.since > settling)
+            for (const who of is.filter(who => !was.includes(who)))
+                tell("came", who);
+        const went = was.filter(who => !is.includes(who));
+        for (const who of went)
+            tell(is.length === 0 && who === went[went.length - 1] ? "alone" : "went", who);
+    }
+
+    // How long after a call connects its people are still arriving, as
+    // Tuple adds those already in it one by one.
+    readonly property int settling: 5 * 1000
+
+    Timer {
+        id: ringEnds
+        interval: Math.max(0, root.call.rang + root.ringsFor - Date.now())
+        onTriggered: {
+            const rung = root.ringing;
+            root.ringing = "";
+            root.withdraw("show");
+            if (rung !== "")
+                root.tell("missed", rung);
+        }
     }
 
     Process {
         running: true
         command: ["tail", "-F", "-n", "400", root.log]
         stdout: SplitParser {
-            onRead: line => {
-                const call = Log.after({
-                    calling: root.calling,
-                    since: root.since
-                }, line, Date.now());
-                root.since = call.since;
-                root.calling = call.calling;
+            onRead: line => root.heard(line)
+        }
+    }
+
+    // Every contact, to find names in, read only when someone new comes.
+    Process {
+        id: listing
+        command: ["tuple", "ls"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                // One it doesn't list is kept as "", so it isn't asked again.
+                const found = Object.assign({}, root.names);
+                for (const id of root.unnamed())
+                    found[id] = Log.named(this.text, id);
+                root.names = found;
             }
+        }
+        onExited: Qt.callLater(root.say)
+    }
+
+    Process {
+        id: muting
+        stdout: SplitParser {
+            onRead: line => {
+                const said = line.trim();
+                if (said === "muted" || said === "already muted")
+                    root.muted = true;
+                else if (said === "unmuted" || said === "already unmuted")
+                    root.muted = false;
+            }
+        }
+    }
+
+    // A notice of Tuple's, which notify-send waits on while it has actions,
+    // printing its id as it's shown and then the action Joel picks.
+    Component {
+        id: notice
+
+        Process {
+            id: asking
+
+            property var offers: []
+            property string shown: ""
+
+            running: true
+            stdout: SplitParser {
+                onRead: line => {
+                    const said = line.trim();
+                    if (asking.shown === "" && /^\d+$/.test(said)) {
+                        asking.shown = said;
+                        if (asking.offers.length > 0)
+                            root.offering = Object.assign({}, root.offering,
+                                { [said]: asking.offers });
+                    } else if (said === "leave")
+                        root.leave();
+                    else if (said === "show")
+                        root.show();
+                }
+            }
+            onExited: {
+                const still = Object.assign({}, root.offering);
+                delete still[asking.shown];
+                root.offering = still;
+                asking.destroy();
+            }
+        }
+    }
+
+    Component {
+        id: closing
+
+        Process {
+            id: close
+            running: true
+            onExited: close.destroy()
         }
     }
 
