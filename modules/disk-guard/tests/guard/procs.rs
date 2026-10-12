@@ -25,6 +25,29 @@ fn stat(pid: u32, name: &str, flags: u64, start: u64) -> String {
     format!("{pid} ({name}) {}\n", fields.join(" "))
 }
 
+/// A fake `/proc` that opens its hidden directory again when dropped, or
+/// the temp directory holding it couldn't be removed.
+struct FakeProc(tempfile::TempDir);
+
+impl FakeProc {
+    fn new() -> Self {
+        let dir = tempfile::tempdir().unwrap();
+        fake_proc(dir.path());
+        FakeProc(dir)
+    }
+
+    fn path(&self) -> &Path {
+        self.0.path()
+    }
+}
+
+impl Drop for FakeProc {
+    fn drop(&mut self) {
+        let hidden = self.0.path().join("200/fd");
+        let _ = fs::set_permissions(hidden, fs::Permissions::from_mode(0o700));
+    }
+}
+
 /// A fake `/proc`: a cargo build, a process of another account whose
 /// details are hidden, and a kernel thread.
 fn fake_proc(root: &Path) {
@@ -77,8 +100,7 @@ fn fake_proc(root: &Path) {
 
 #[test]
 fn a_process_is_read_from_its_proc_directory() {
-    let root = tempfile::tempdir().unwrap();
-    fake_proc(root.path());
+    let root = FakeProc::new();
     let all = processes(root.path()).unwrap();
     let cargo = all
         .iter()
@@ -123,8 +145,7 @@ fn a_process_is_read_from_its_proc_directory() {
 
 #[test]
 fn a_process_whose_details_are_hidden_is_unreadable() {
-    let root = tempfile::tempdir().unwrap();
-    fake_proc(root.path());
+    let root = FakeProc::new();
     let all = processes(root.path()).unwrap();
     let sshd = all.iter().find(|p| p.pid == 200).expect("sshd wasn't read");
     assert_eq!(sshd.uid, 0);
@@ -134,8 +155,7 @@ fn a_process_whose_details_are_hidden_is_unreadable() {
 
 #[test]
 fn kernel_threads_and_other_entries_are_left_out() {
-    let root = tempfile::tempdir().unwrap();
-    fake_proc(root.path());
+    let root = FakeProc::new();
     let mut pids: Vec<u32> = processes(root.path())
         .unwrap()
         .iter()
