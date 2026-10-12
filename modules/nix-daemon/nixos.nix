@@ -26,9 +26,24 @@
 # kernel's OOM killer, which picks by size and could pick the browser instead.
 # oomd stops the daemon's whole group, every build with it; the daemon starts
 # again with the next connection.
+#
+# A build that brings free space under 24 GiB has the daemon collect garbage
+# until 64 GiB is free, so Nix never fills the disk by itself, whatever else
+# looks after it. The daemon checks every 5 s while it builds, and collects
+# only garbage, nothing a profile or a root still needs. Nix's default of 0
+# never collects: the XPS 14 made 238 GiB of garbage in its first three days,
+# most of it disk images of up to 9 GiB each. 24 GiB leaves room for two of
+# those to finish while the collection runs, and 40 GiB more keeps it from
+# running again with the next build.
+let
+  gib = 1024 * 1024 * 1024;
+in
 {
   nix.daemonCPUSchedPolicy = "batch";
   nix.daemonIOSchedClass = "idle";
+
+  nix.settings.min-free = 24 * gib;
+  nix.settings.max-free = 64 * gib;
 
   systemd.slices.build.sliceConfig.CPUWeight = 10;
 

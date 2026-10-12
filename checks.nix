@@ -725,6 +725,17 @@ in
           < (systemd.slices.user.sliceConfig.CPUWeight or 100)
       );
 
+  # Nix collects garbage during a build once free space falls under min-free,
+  # and stops at max-free. A max-free at or under min-free stops it before it
+  # starts, and nothing says so.
+  nix-collects-before-the-disk-fills =
+    let
+      inherit (workstation.config.nix.settings) min-free max-free;
+    in
+    holds "nix-collects-before-the-disk-fills"
+      "The Nix daemon never collects garbage during a build: min-free is ${toString min-free}, max-free ${toString max-free}."
+      (min-free > 0 && max-free > min-free);
+
   # greetd waits for the GPU the hardware names rather than for the boot to go
   # idle, and the card gets the device unit it waits on. Without the udev tag
   # the unit never appears, and the login waits out the device timeout.

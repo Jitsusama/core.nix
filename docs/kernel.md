@@ -188,8 +188,9 @@ in the first three, and the graphical role the last:
   stalls, so a linking build never freezes the desktop.
 - **[`nix-daemon`][nix-daemon]:** builds run as batch work in a slice of
   their own, at a tenth of the weight of the user's programs, so they take
-  the CPU only when nothing interactive wants it, and systemd-oomd stops one
-  that starves the machine of memory.
+  the CPU only when nothing interactive wants it, systemd-oomd stops one
+  that starves the machine of memory, and the daemon collects garbage before
+  a build fills the disk.
 - **[`slices`][slices]:** the compositor and sound get ten times anyone
   else's share of the CPU, and a floor of memory a build can't reclaim.
 - **[`perf`][perf]:** perf itself, and the settings that let Joel profile his

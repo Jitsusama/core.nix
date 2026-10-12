@@ -2,7 +2,8 @@
 # get them back, with the workstation role in every account, and the pieces
 # only Linux needs: Rust linking with mold, ssh-tpm-agent for the TPM's SSH
 # keys, commits signed with them, virtual machines through libvirt and
-# containers through Podman.
+# containers through Podman. Builds churn its disk, so Nix collects its
+# garbage before the disk fills.
 { nixosModules, homeModules }:
 {
   imports = [
