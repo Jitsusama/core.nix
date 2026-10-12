@@ -1,3 +1,4 @@
+use disk_guard::band::Band;
 use disk_guard::clock::Tick;
 use disk_guard::config::Config;
 use disk_guard::daemon::{Guard, Places, Senses};
@@ -180,6 +181,49 @@ fn the_system_daemon_vouches_for_what_this_account_cant_read() {
         !cold.exists(),
         "process 300 touches nothing of this account's"
     );
+}
+
+#[test]
+fn a_preview_says_what_a_pass_would_take_and_takes_nothing() {
+    let home = Home::new();
+    let first = home.cold_scratch("run-1");
+    let second = home.cold_scratch("run-2");
+    let trashed = home.trashed("old.txt", "2001-09-09T01:46:40");
+    let mut guard = home.guard(home.config("0%", "100%"));
+    let previews = guard.preview(&tick(), Some(Band::Pressure), None).unwrap();
+    assert_eq!(previews.len(), 1);
+    let preview = &previews[0];
+    assert_eq!(preview.band, Band::Pressure);
+    let mut taken: Vec<_> = preview.taken.iter().map(|c| c.path.clone()).collect();
+    taken.sort();
+    let mut expected = vec![first.clone(), second.clone(), trashed.clone()];
+    expected.sort();
+    assert_eq!(taken, expected);
+    assert_eq!(preview.end, "exhausted");
+    assert!(first.exists() && second.exists() && trashed.exists());
+    assert!(
+        home.journal().is_empty(),
+        "nothing done, nothing journalled"
+    );
+}
+
+#[test]
+fn pretending_free_space_bands_the_preview() {
+    let home = Home::new();
+    let cold = home.cold_scratch("run-1");
+    let mut guard = home.guard(home.config("50%", "60%"));
+    let short = guard.preview(&tick(), None, Some(0)).unwrap();
+    assert_eq!(short[0].band, Band::Pressure);
+    assert_eq!(short[0].free, 0);
+    assert_eq!(short[0].taken[0].path, cold);
+    let total = short[0].total;
+    let roomy = guard.preview(&tick(), None, Some(total)).unwrap();
+    assert_eq!(roomy[0].band, Band::Healthy);
+    assert!(
+        roomy[0].taken.is_empty(),
+        "scratch with no healthy window stays while healthy"
+    );
+    assert!(cold.exists());
 }
 
 #[test]

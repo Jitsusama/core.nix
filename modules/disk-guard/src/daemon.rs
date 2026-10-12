@@ -10,16 +10,19 @@ use crate::finished::{self, Answers, Predicate};
 use crate::host::{FRESH, Filesystem, Reclaim, Scan};
 use crate::journal::{self, Journal, Line};
 use crate::moments::{Power, Pressure};
-use crate::pass::{End, Goal, pass};
+use crate::pass::{Disk, End, Goal, Learned, Outcome, Reclaimer, pass};
+use crate::plan::Candidate;
 use crate::state::{self, Memory};
 use crate::survey::{Offer, World, survey};
 use serde::Serialize;
+use std::cell::Cell;
 use std::collections::BTreeMap;
 use std::ffi::OsString;
 use std::fs;
 use std::io;
 use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 use std::time::Instant;
 
 /// What the machine is doing, read by the caller each step.
@@ -98,6 +101,18 @@ pub struct FilesystemStatus {
     pub total: u64,
     /// Seconds until the next band at the present fill, if it's filling.
     pub forecast: Option<f64>,
+}
+
+/// What a pass on one filesystem would take, in order, done nowhere.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Preview {
+    pub path: PathBuf,
+    pub band: Band,
+    pub free: u64,
+    pub total: u64,
+    pub target: u64,
+    pub end: String,
+    pub taken: Vec<crate::plan::Candidate>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -225,6 +240,28 @@ impl Guard {
 
     /// Surveys once and runs each filesystem's pass over what lies on it.
     fn passes(&mut self, tick: &Tick, due: &[(u64, Decision, Thresholds)]) -> io::Result<()> {
+        let (mut scan, offers) = self.offers(tick)?;
+        for &(device, decision, thresholds) in due {
+            let Some(path) = self
+                .watched
+                .get(&device)
+                .map(|watched| watched.path.clone())
+            else {
+                continue;
+            };
+            let here: Vec<Offer> = offers
+                .iter()
+                .filter(|offer| offer.device == device)
+                .cloned()
+                .collect();
+            self.pass_on(tick, path, &here, decision, thresholds, &mut scan)?;
+        }
+        Ok(())
+    }
+
+    /// Every process, scanned for the pass to judge by, and what every
+    /// source offers.
+    fn offers(&mut self, tick: &Tick) -> io::Result<(Scan, Vec<Offer>)> {
         let me = std::process::id();
         let mut scan = Scan::new(&self.processes, Path::new("/proc/locks"), me, FRESH);
         if let Some(socket) = &self.system {
@@ -264,78 +301,143 @@ impl Guard {
                 finished: &mut finished,
             },
         );
-        for &(device, decision, thresholds) in due {
-            let Some(path) = self
-                .watched
-                .get(&device)
-                .map(|watched| watched.path.clone())
-            else {
+        Ok((scan, offers))
+    }
+
+    /// Runs one filesystem's pass over what lies there and journals it.
+    fn pass_on(
+        &mut self,
+        tick: &Tick,
+        path: PathBuf,
+        here: &[Offer],
+        decision: Decision,
+        thresholds: Thresholds,
+        scan: &mut Scan,
+    ) -> io::Result<()> {
+        let candidates: Vec<_> = here.iter().map(|offer| offer.candidate.clone()).collect();
+        let (band, goal) = match decision {
+            Decision::Reach(band) => (band, Goal::Reach),
+            _ => (Band::Healthy, Goal::Upkeep),
+        };
+        let started = Instant::now();
+        let mut reclaim = Reclaim::new(here, scan);
+        let report = pass(
+            &mut Filesystem::new(&path),
+            &mut reclaim,
+            &candidates,
+            &thresholds,
+            band,
+            goal,
+            &mut self.memory.learned,
+        );
+        if goal == Goal::Reach {
+            let seconds = started.elapsed().as_secs_f64();
+            self.memory.pass_seconds = Some(match self.memory.pass_seconds {
+                Some(before) => before + PASS_WEIGHT * (seconds - before),
+                None => seconds,
+            });
+        } else {
+            self.memory.upkept = Some(tick.wall);
+        }
+        for (taken, outcome) in &report.actions {
+            let Some(candidate) = candidates.iter().find(|c| &c.path == taken) else {
                 continue;
             };
-            let here: Vec<Offer> = offers
+            self.journal.write(&Line::Action {
+                at: tick.wall,
+                band: report.band,
+                path: taken.clone(),
+                kind: candidate.class.kind().to_owned(),
+                size: candidate.size,
+                outcome: outcome.clone(),
+            })?;
+        }
+        let end = ending(&report.end);
+        self.journal.write(&Line::Pass {
+            at: tick.wall,
+            band: report.band,
+            end: end.clone(),
+            freed: report.freed,
+        })?;
+        self.last = Some(LastPass {
+            at: tick.wall,
+            path,
+            band: report.band,
+            end,
+            freed: report.freed,
+        });
+        Ok(())
+    }
+
+    /// What a pass would take now on each filesystem, in `band` and with
+    /// `free` bytes free when given, taking nothing. It runs the pass
+    /// itself against a disk that frees what learning predicts, so it
+    /// shows the order a pass goes in and where it would stop; whether
+    /// each would be found in use is only known when it's tried.
+    pub fn preview(
+        &mut self,
+        tick: &Tick,
+        band: Option<Band>,
+        free: Option<u64>,
+    ) -> io::Result<Vec<Preview>> {
+        self.memory.awake.observe(tick);
+        self.watch();
+        let (_, offers) = self.offers(tick)?;
+        let mut previews = Vec::new();
+        for (&device, watched) in &self.watched {
+            let Ok(space) = crate::linux::space(&watched.path) else {
+                continue;
+            };
+            let space = Space {
+                free: free.unwrap_or(space.free),
+                ..space
+            };
+            let thresholds = Thresholds::new(&self.config.bands, space.total);
+            let band = band.unwrap_or_else(|| thresholds.band(&space, Band::Healthy));
+            let goal = if band == Band::Healthy {
+                Goal::Upkeep
+            } else {
+                Goal::Reach
+            };
+            let candidates: Vec<_> = offers
                 .iter()
                 .filter(|offer| offer.device == device)
-                .cloned()
+                .map(|offer| offer.candidate.clone())
                 .collect();
-            let candidates: Vec<_> = here.iter().map(|offer| offer.candidate.clone()).collect();
-            let (band, goal) = match decision {
-                Decision::Reach(band) => (band, Goal::Reach),
-                _ => (Band::Healthy, Goal::Upkeep),
-            };
-            let started = Instant::now();
-            let mut reclaim = Reclaim::new(&here, &mut scan);
+            let freed = Rc::new(Cell::new(space.free));
+            let mut learned = self.memory.learned.clone();
             let report = pass(
-                &mut Filesystem::new(&path),
-                &mut reclaim,
+                &mut Pretend {
+                    space,
+                    free: freed.clone(),
+                },
+                &mut Pretending {
+                    learned: self.memory.learned.clone(),
+                    free: freed,
+                    total: space.total,
+                },
                 &candidates,
                 &thresholds,
                 band,
                 goal,
-                &mut self.memory.learned,
+                &mut learned,
             );
-            if goal == Goal::Reach {
-                let seconds = started.elapsed().as_secs_f64();
-                self.memory.pass_seconds = Some(match self.memory.pass_seconds {
-                    Some(before) => before + PASS_WEIGHT * (seconds - before),
-                    None => seconds,
-                });
-            } else {
-                self.memory.upkept = Some(tick.wall);
-            }
-            for (taken, outcome) in &report.actions {
-                let Some(candidate) = candidates.iter().find(|c| &c.path == taken) else {
-                    continue;
-                };
-                self.journal.write(&Line::Action {
-                    at: tick.wall,
-                    band: report.band,
-                    path: taken.clone(),
-                    kind: candidate.class.kind().to_owned(),
-                    size: candidate.size,
-                    outcome: outcome.clone(),
-                })?;
-            }
-            let end = match &report.end {
-                End::Reached => "reached".to_owned(),
-                End::Exhausted => "exhausted".to_owned(),
-                End::Stalled => "stalled".to_owned(),
-                End::Failed(why) => format!("failed: {why}"),
-            };
-            self.journal.write(&Line::Pass {
-                at: tick.wall,
-                band: report.band,
-                end: end.clone(),
-                freed: report.freed,
-            })?;
-            self.last = Some(LastPass {
-                at: tick.wall,
-                path,
-                band: report.band,
-                end,
-                freed: report.freed,
+            let taken = report
+                .actions
+                .iter()
+                .filter_map(|(path, _)| candidates.iter().find(|c| &c.path == path).cloned())
+                .collect();
+            previews.push(Preview {
+                path: watched.path.clone(),
+                band,
+                free: space.free,
+                total: space.total,
+                target: thresholds.target,
+                end: ending(&report.end),
+                taken,
             });
         }
-        Ok(())
+        Ok(previews)
     }
 
     pub fn status(&self, now: f64) -> Status {
@@ -409,5 +511,55 @@ fn paths(source: &Source) -> Vec<&Path> {
         | Source::Coredumps { path }
         | Source::NixBuilds { path } => vec![path.as_path()],
         Source::Podman { .. } | Source::Producer { .. } | Source::Finished { .. } => Vec::new(),
+    }
+}
+
+/// How a pass ended, in the journal's words.
+fn ending(end: &End) -> String {
+    match end {
+        End::Reached => "reached".to_owned(),
+        End::Exhausted => "exhausted".to_owned(),
+        End::Stalled => "stalled".to_owned(),
+        End::Failed(why) => format!("failed: {why}"),
+    }
+}
+
+/// A disk for a preview, whose free space is what was pretended plus
+/// what the pretend reclaimer has freed.
+struct Pretend {
+    space: Space,
+    free: Rc<Cell<u64>>,
+}
+
+impl Disk for Pretend {
+    fn space(&mut self) -> io::Result<Space> {
+        Ok(Space {
+            free: self.free.get(),
+            ..self.space
+        })
+    }
+
+    fn settle(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+
+    fn now(&self) -> f64 {
+        0.0
+    }
+}
+
+/// Frees what learning predicts each candidate would, taking nothing.
+struct Pretending {
+    learned: Learned,
+    free: Rc<Cell<u64>>,
+    total: u64,
+}
+
+impl Reclaimer for Pretending {
+    fn reclaim(&mut self, candidate: &Candidate) -> Outcome {
+        let freed = (candidate.size as f64 * self.learned.ratio(candidate.class)) as u64;
+        self.free
+            .set(self.free.get().saturating_add(freed).min(self.total));
+        Outcome::Reclaimed
     }
 }
