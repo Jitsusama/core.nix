@@ -4,6 +4,7 @@ mod activity;
 mod age;
 mod anchor;
 mod band;
+mod caches;
 mod clock;
 mod config;
 mod coredumps;

@@ -4,6 +4,7 @@ pub mod activity;
 pub mod age;
 pub mod anchor;
 pub mod band;
+pub mod caches;
 pub mod clock;
 pub mod config;
 pub mod coredumps;
