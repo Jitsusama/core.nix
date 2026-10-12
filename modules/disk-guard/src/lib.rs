@@ -9,6 +9,8 @@ pub mod clock;
 pub mod commands;
 pub mod config;
 pub mod coredumps;
+#[cfg(target_os = "linux")]
+pub mod daemon;
 pub mod decide;
 pub mod discover;
 pub mod finished;

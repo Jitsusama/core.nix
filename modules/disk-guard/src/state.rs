@@ -25,6 +25,10 @@ pub struct Memory {
     /// When routine upkeep last ran, in wall seconds.
     #[serde(default)]
     pub upkept: Option<f64>,
+    /// How long a pass reaching for the target takes, in seconds,
+    /// averaged over recent passes.
+    #[serde(default)]
+    pub pass_seconds: Option<f64>,
     /// What a newer guard wrote that this one doesn't know.
     #[serde(flatten)]
     pub rest: serde_json::Map<String, serde_json::Value>,
@@ -37,6 +41,7 @@ impl Default for Memory {
             awake: Awake::default(),
             learned: Learned::default(),
             upkept: None,
+            pass_seconds: None,
             rest: serde_json::Map::new(),
         }
     }

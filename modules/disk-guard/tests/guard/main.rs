@@ -9,6 +9,8 @@ mod clock;
 mod commands;
 mod config;
 mod coredumps;
+#[cfg(target_os = "linux")]
+mod daemon;
 mod decide;
 mod discover;
 mod entries;
