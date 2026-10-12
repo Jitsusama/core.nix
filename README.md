@@ -141,6 +141,8 @@ nix build --override-input core path:$HOME/src/core.nix \
 - [Testing][6]: what the checks catch.
 - [The kernel][9]: the kernel core.nix builds for NixOS, and how to change it.
 - [Hardware][10]: each machine model core.nix supports, and what's left.
+- [The ErgoDox][12]: the keyboard's firmware, how to change its layout and
+  flash it.
 - [Decisions][7]: what was decided, against what, and why.
 
 [1]: flake.nix
@@ -154,3 +156,4 @@ nix build --override-input core path:$HOME/src/core.nix \
 [9]: docs/kernel.md
 [10]: docs/hardware.md
 [11]: docs/installing.md
+[12]: docs/ergodox.md

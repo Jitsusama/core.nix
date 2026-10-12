@@ -1,0 +1,15 @@
+QMK checks each USB endpoint it sets up and then ignores the answer, so GCC
+16 calls the result set but unused and QMK's -Werror stops the build. This
+says the result is ignored on purpose, as QMK's own code treats it, rather
+than letting every warning through.
+
+--- a/tmk_core/protocol/lufa/lufa.c
++++ b/tmk_core/protocol/lufa/lufa.c
+@@ -391,6 +391,7 @@
+     ConfigSuccess &= Endpoint_ConfigureEndpoint((DIGITIZER_IN_EPNUM | ENDPOINT_DIR_IN), EP_TYPE_INTERRUPT, DIGITIZER_EPSIZE, 1);
+ #endif
+ 
++    (void)ConfigSuccess;
+     usb_device_state_set_configuration(USB_DeviceState == DEVICE_STATE_Configured, USB_Device_ConfigurationNumber);
+ }
+ 

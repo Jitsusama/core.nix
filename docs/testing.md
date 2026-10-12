@@ -49,6 +49,7 @@ quietly stopped holding.
 | `one-ssh-agent`                     | a workstation with a screen answers SSH with the TPM only |
 | `onepassword-works-with-chrome`     | 1Password has its Chrome helper and unlocks with polkit   |
 | `yubikey-on-every-workstation`      | Linux and Mac workstations both have the YubiKey's tools  |
+| `ergodox-on-every-workstation`      | every workstation can flash the ErgoDox, a Mac as much as Linux |
 | `zsh-is-the-login-shell`            | an account on NixOS logs in to zsh, as one on a Mac does  |
 | `disks-go-by-their-name`            | a disk's partitions and open volume carry its name        |
 | `booted-generation-stays-installed` | a switch never removes the generation the machine booted  |
@@ -117,6 +118,7 @@ kernel guide][2] says what that catches.
 | `git-settings-stay-writable`      | programs write git's settings and the declared ones still win |
 | `neovim-starts-in-the-theme`      | Neovim starts in bamboo, transparent, without a complaint |
 | `cargo-links-with-mold`           | cargo links an account's Rust builds with mold            |
+| `the-ergodox-layout-builds`       | the layout fits the board and answers with its own serial |
 | `btrfs-reclaims-its-chunks`       | tmpfiles turns Btrfs's reclaim on for data and metadata   |
 
 ### Virtual Machines

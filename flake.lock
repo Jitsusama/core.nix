@@ -80,6 +80,23 @@
         "type": "github"
       }
     },
+    "lufa": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1661479795,
+        "narHash": "sha256-BCaLSOn9ksj0+gYNdiTkZqrgKbGEbWNxnxrh3TOpsOY=",
+        "owner": "qmk",
+        "repo": "lufa",
+        "rev": "549b97320d515bfca2f95c145a67bd13be968faa",
+        "type": "github"
+      },
+      "original": {
+        "owner": "qmk",
+        "repo": "lufa",
+        "rev": "549b97320d515bfca2f95c145a67bd13be968faa",
+        "type": "github"
+      }
+    },
     "neovim-pi": {
       "flake": false,
       "locked": {
@@ -132,14 +149,51 @@
         "type": "github"
       }
     },
+    "printf": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1656536398,
+        "narHash": "sha256-RgeQ1Hg1j9DF4C2N/0Qh6iGAFg8vAY1NdbxFMCcMoGQ=",
+        "owner": "qmk",
+        "repo": "printf",
+        "rev": "c2e3b4e10d281e7f0f694d3ecbd9f320977288cc",
+        "type": "github"
+      },
+      "original": {
+        "owner": "qmk",
+        "repo": "printf",
+        "rev": "c2e3b4e10d281e7f0f694d3ecbd9f320977288cc",
+        "type": "github"
+      }
+    },
+    "qmk": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1752113542,
+        "narHash": "sha256-O1US7Jq2Hd9u/RGcNLIkbWAw0safxN2mEjy5Ks9ssvc=",
+        "owner": "zsa",
+        "repo": "qmk_firmware",
+        "rev": "5456d00fd858d746df47b1f30e456075c6a4ba24",
+        "type": "github"
+      },
+      "original": {
+        "owner": "zsa",
+        "repo": "qmk_firmware",
+        "rev": "5456d00fd858d746df47b1f30e456075c6a4ba24",
+        "type": "github"
+      }
+    },
     "root": {
       "inputs": {
         "disko": "disko",
         "home-manager": "home-manager",
         "lanzaboote": "lanzaboote",
+        "lufa": "lufa",
         "neovim-pi": "neovim-pi",
         "nix-darwin": "nix-darwin",
         "nixpkgs": "nixpkgs",
+        "printf": "printf",
+        "qmk": "qmk",
         "spicetify-nix": "spicetify-nix",
         "treefmt-nix": "treefmt-nix",
         "wallpapers": "wallpapers"
