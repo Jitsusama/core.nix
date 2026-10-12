@@ -406,6 +406,7 @@ in
       cp ${./modules/quickshell/launcher/Units.js} Units.js
       cp ${./modules/quickshell/launcher/Zones.js} Zones.js
       cp ${./modules/quickshell/launcher/Colours.js} Colours.js
+      cp ${./modules/quickshell/launcher/Asking.js} Asking.js
       cp ${./tests/colour-cases.js} colour-cases.js
       cp ${import ./modules/quickshell/launcher/zones.nix { inherit lib pkgs; }} zones.jsonl
       export QML_XHR_ALLOW_FILE_READ=1
@@ -453,6 +454,7 @@ in
         mkdir runtime launcher && chmod 700 runtime
         cp ${./modules/quickshell/Fuzzy.js} Fuzzy.js
         cp ${./modules/quickshell/launcher/Provider.qml} launcher/Provider.qml
+        cp ${./modules/quickshell/launcher/Asking.js} launcher/Asking.js
         cp ${./modules/quickshell/launcher/Accessories.qml} launcher/Accessories.qml
         cp ${./tests/bluetooth-pairing.qml} shell.qml
         cp ${pkgs.writeText "Niri.qml" ''

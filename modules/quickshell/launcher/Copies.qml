@@ -102,6 +102,7 @@ Provider {
         const kept = all.filter(row => row.text !== said.text);
         kept.unshift(made(said));
         all = kept.slice(0, settings.keep ?? 200);
+        Report.say(`heard copy ${said.text.split("\n")[0]}`);
     }
 
     function search(typed) {

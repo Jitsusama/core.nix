@@ -56,6 +56,10 @@ Scope {
         WlrLayershell.keyboardFocus: WlrKeyboardFocus.Exclusive
         WlrLayershell.namespace: "polkit"
 
+        Reported {
+            name: "polkit"
+        }
+
         Rectangle {
             id: scrim
             anchors.fill: parent

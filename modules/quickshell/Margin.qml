@@ -184,6 +184,21 @@ Scope {
                 WlrLayershell.keyboardFocus: here.panelled
                     ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
 
+                // A pull coming or going changes what's drawn while the
+                // margin stays up.
+                Reported {
+                    id: reported
+                    name: "margin"
+                }
+
+                Connections {
+                    target: root
+
+                    function onOnChanged() {
+                        reported.changed();
+                    }
+                }
+
                 // The pointer reaches the strip above the windows over the
                 // pulls, a column wider at its left, and once the drawer is
                 // out, the drawer and what hangs below it.

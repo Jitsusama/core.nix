@@ -44,6 +44,16 @@ Provider {
         return { entry: entry, window: window ?? null };
     }
 
+    // Goes to the program that sent it: its window as things are now, since
+    // windows come and go, or the program, opened.
+    function go(app) {
+        const now = source(app);
+        if (now.window)
+            Niri.act({ FocusWindow: { id: now.window.id } });
+        else if (now.entry)
+            Niri.spawn(command(now.entry));
+    }
+
     function made(notice) {
         const said = notice.body === "" ? notice.summary : `${notice.summary}\n${notice.body}`;
         const from = source(notice.app);
@@ -64,25 +74,25 @@ Provider {
             verbs: () => provider.verbs(notice, said),
             run: () => {
                 Notices.mark(notice.id, true);
-                if (!from.window && !from.entry) {
+                if (!from.window && !from.entry)
                     Quickshell.clipboardText = said;
-                    return;
-                }
-                // Its window as things are now, since windows come and go.
-                const now = provider.source(notice.app);
-                if (now.window)
-                    Niri.act({ FocusWindow: { id: now.window.id } });
-                else if (now.entry)
-                    Niri.spawn(provider.command(now.entry));
+                else
+                    provider.go(notice.app);
             }
         });
     }
 
     // What can be done to a notice: what its program offers while it's on
-    // screen, then copying what it said, then letting it go.
+    // screen, then copying what it said, then letting it go. Quickshell
+    // destroys a notification's actions when it closes or its program
+    // replaces it, so each is found again by its identifier when it's run;
+    // one whose notice has gone by then goes to its program instead.
     function verbs(notice, said) {
         const live = Notices.live[notice.id] ?? null;
-        const offered = live ? live.actions.map(action => thing({
+        const offered = live ? live.actions.map(action => ({
+            identifier: action.identifier,
+            text: action.text
+        })).map(action => thing({
             key: `verb:notice:${action.identifier}`,
             name: action.text,
             glyph: String.fromCodePoint(/reply/i.test(action.text) ? 0xf045a : 0xf0ce0),
@@ -90,7 +100,13 @@ Provider {
             later: true,
             run: () => {
                 Notices.mark(notice.id, true);
-                action.invoke();
+                const still = Notices.live[notice.id] ?? null;
+                const now = still
+                    ? still.actions.find(a => a.identifier === action.identifier) ?? null : null;
+                if (now)
+                    now.invoke();
+                else
+                    provider.go(notice.app);
             }
         })) : [];
         return offered.concat([thing({
@@ -114,7 +130,11 @@ Provider {
             name: "Let it go",
             glyph: String.fromCodePoint(0xf0a91),
             hue: "action",
-            run: () => live.dismiss()
+            run: () => {
+                const still = Notices.live[notice.id] ?? null;
+                if (still)
+                    still.dismiss();
+            }
         })] : []);
     }
 

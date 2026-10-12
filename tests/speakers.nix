@@ -53,7 +53,9 @@ pkgs.testers.runNixOSTest {
         return machine.succeed("su - joel -c " + shlex.quote(environment + command))
 
     # Plays a tone to the default sink while recording what reaches the given
-    # one, and gives the level of the middle second, away from the edges. The
+    # one, and gives the level of the tone's middle second, away from its
+    # edges: sox finds where the tone starts in the recording, so nothing
+    # waits for the graph to settle before it plays or after it ends. The
     # recorder is linked to the sink's monitor by hand: left to WirePlumber, a
     # recording of a sink with a smart filter is given the filter's input
     # instead, which is the sound before the filter has touched it.
@@ -62,12 +64,15 @@ pkgs.testers.runNixOSTest {
             "pw-record -P '{ node.name = heard node.autoconnect = false }' heard.wav & recording=$!;"
             " until pw-link -i | grep -q '^heard:input_FR'; do sleep 0.1; done;"
             f" pw-link {sink}:monitor_FL heard:input_FL; pw-link {sink}:monitor_FR heard:input_FR;"
-            f" sleep 0.5; pw-play tone-{frequency}.wav; sleep 0.5;"
+            f" pw-play tone-{frequency}.wav;"
             # pw-record exits with 1 when interrupted, so its file is the
             # evidence rather than its status.
             " kill -INT $recording; wait $recording; test -s heard.wav"
         )
-        rms = as_joel("sox heard.wav -n trim 1.5 1 stat 2>&1 | awk '/RMS +amplitude/ {print $3}'")
+        rms = as_joel(
+            "sox heard.wav -n silence 1 0.01 0.1% trim 1 1 stat 2>&1"
+            " | awk '/RMS +amplitude/ {print $3}'"
+        )
         return float(rms)
 
     def decibels(heard, played):

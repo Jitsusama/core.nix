@@ -94,7 +94,7 @@ pkgs.testers.runNixOSTest {
   testScript =
     { nodes, ... }:
     ''
-      import json, os, subprocess, tempfile, time
+      import json, os, subprocess, tempfile
 
       # The machine writes to an overlay, since the image is in the store.
       overlay = tempfile.NamedTemporaryFile(suffix=".qcow2")
@@ -108,9 +108,9 @@ pkgs.testers.runNixOSTest {
       # to open before anything looks for the next one.
       def unlock(secret):
           machine.wait_for_console_text("Please enter")
-          # The serial console shows the prompt before tty1 reads keys.
-          time.sleep(1)
-          machine.send_chars(secret + "\n")
+          # The agent that wrote the prompt to the serial console reads it
+          # there, where tty1's may not be reading keys yet.
+          machine.send_console(secret + "\n")
           machine.wait_for_console_text("Finished .*Cryptography Setup for system")
 
       machine.start(allow_reboot=True)

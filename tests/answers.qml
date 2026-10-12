@@ -10,6 +10,7 @@ import "Addresses.js" as Addresses
 import "Units.js" as Units
 import "Zones.js" as Zones
 import "Colours.js" as Colours
+import "Asking.js" as Asking
 import "colour-cases.js" as ColourCases
 
 QtObject {
@@ -290,6 +291,23 @@ QtObject {
             const got = Colours.answer(typed, ColourCases.palette, ColourCases.roles);
             if (got)
                 failures.push(`"${typed}" gave ${quoted(got.headline)}, but nothing should`);
+        }
+
+        // What a URL said stands while it's asked, then for its fresh
+        // time after an answer, or the failure's time after a failure, and
+        // is asked again after either.
+        const standing = [
+            ["nothing asked yet", null, 0, false],
+            ["still being asked", { pending: true, at: 0 }, 60000, true],
+            ["an answer, fresh", { at: 0 }, 59999, true],
+            ["an answer, stale", { at: 0 }, 60000, false],
+            ["a failure, fresh", { failed: true, at: 0 }, 9999, true],
+            ["a failure, stale", { failed: true, at: 0 }, 10000, false]
+        ];
+        for (const [what, entry, now, stands] of standing) {
+            asked++;
+            if (Asking.stands(entry, now, 60000, 10000) !== stands)
+                failures.push(`${what} ${stands ? "was asked again" : "wasn't asked again"}`);
         }
 
         // Said as warnings, since Qt keeps ordinary logging quiet.
