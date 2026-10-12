@@ -6,6 +6,7 @@
 // and nothing is spawned.
 import qs
 import Quickshell
+import Quickshell.Bluetooth
 import Quickshell.Services.Pipewire
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
@@ -38,7 +39,7 @@ Provider {
     // Hardware, not a program's stream, and not a filter that puts itself in
     // front of a device, as the speaker's tuning does.
     readonly property var nodes: Pipewire.nodes.values
-        .filter(node => node.audio !== null && !node.isStream
+        .filter(node => !!node.audio && !node.isStream
             && (node.type & PwNodeType.Audio) && (node.isSink || (node.type & PwNodeType.Source)))
     readonly property var devices: nodes
         .filter(node => node.properties["filter.smart"] !== "true" && (displayed || !display(node)))
@@ -59,12 +60,20 @@ Provider {
         return node.nickname || node.description || node.name;
     }
 
-    // What it is, from what PipeWire knows of it: over Bluetooth, through a
-    // display, worn, or the machine's own.
+    // What it is, from what PipeWire knows of it, and for a Bluetooth device
+    // what BlueZ says it is, since PipeWire keeps that on the device rather
+    // than its sound: over Bluetooth, through a display, worn, or the
+    // machine's own.
     function kind(node) {
-        const said = `${node.name} ${named(node)} ${node.properties["device.form-factor"] ?? ""}`
-            .toLowerCase();
-        const bluetooth = said.includes("bluez");
+        // WirePlumber's stand-in for a headset's microphone says whose it is
+        // only in its name.
+        const address = node.properties["api.bluez5.address"]
+            ?? (/^bluez_input\.([0-9A-F:]{17})$/.exec(node.name) || ["", ""])[1];
+        const accessory = address
+            ? Bluetooth.devices.values.find(device => device.address === address) : null;
+        const said = [node.name, named(node), node.properties["device.form-factor"] ?? "",
+            accessory ? accessory.icon : ""].join(" ").toLowerCase();
+        const bluetooth = !!address || said.includes("bluez");
         if (!node.isSink)
             return said.includes("headset") ? 0xf02ce : 0xf036c;
         if (display(node))
@@ -125,7 +134,9 @@ Provider {
             || named(a).localeCompare(named(b)));
     }
 
-    readonly property var all: ordered(outputs).concat(ordered(inputs)).map(node => made(node))
+    // A device going away can be read once more before the lists drop it.
+    readonly property var all: ordered(outputs).concat(ordered(inputs))
+        .filter(node => !!node.audio).map(node => made(node))
     onAllChanged: changed()
 
     function search(typed) {
