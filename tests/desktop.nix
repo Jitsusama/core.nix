@@ -983,6 +983,18 @@ pkgs.testers.runNixOSTest {
           )
           t.assertEqual(commonest_colour_in("Open", "file-chooser"), "${roles.sunken}".lower())
 
+      # With no agent BlueZ refuses every pairing, even one asked for here.
+      # BlueZ starts when a radio appears, which the VM has none of, so it's
+      # started as a radio would, once the kernel's Bluetooth is loaded. It
+      # comes last, since BlueZ starting midway disturbs the session's audio
+      # for the subtests after it.
+      with subtest("a Bluetooth agent answers for paired devices"):
+          machine.succeed("modprobe bluetooth && systemctl start bluetooth.service")
+          machine.wait_until_succeeds(
+              "journalctl -u bluetooth-agent | grep -q 'Default agent requested'", timeout=30
+          )
+          machine.succeed("systemctl is-active bluetooth-agent")
+
       machine.screenshot("desktop")
     '';
 }
