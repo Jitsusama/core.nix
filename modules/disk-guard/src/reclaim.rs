@@ -2,13 +2,14 @@
 
 use crate::activity::Use;
 use crate::anchor::Dir;
-use crate::locks::{Hold, hold_cargo};
+use crate::locks::{Hold, hold_cargo, hold_session};
 use crate::pass::Outcome;
 use crate::plan::Candidate;
 use std::ffi::OsStr;
 use std::io;
 use std::os::unix::ffi::OsStrExt;
 use std::path::Path;
+use std::time::SystemTime;
 
 /// What the reclaimer asks of the machine at each moment.
 pub trait Looker {
@@ -96,6 +97,68 @@ pub fn target(
     match detached.empty() {
         Ok(()) => Outcome::Reclaimed,
         Err(error) => Outcome::Failed(format!("emptying {}: {error}", trash.to_string_lossy())),
+    }
+}
+
+/// Reclaims one crate's incremental directory. Renaming it aside, as a
+/// target is, would break a rustc starting in it, since rustc works by
+/// path. So every session's lock is held first, and any session rustc
+/// holds, is still `-working` or is too young to collect keeps the lot.
+/// Then each session goes and then its lock, the order rustc's own
+/// collection uses, and the directory goes only if nothing is left in it,
+/// so a session rustc started meanwhile survives.
+pub fn variant(root: &Dir, root_path: &Path, candidate: &Candidate, now: SystemTime) -> Outcome {
+    let Ok(relative) = candidate.path.strip_prefix(root_path) else {
+        return Outcome::Failed(format!("outside its root {}", root_path.display()));
+    };
+    let (Some(parent), Some(name)) = (relative.parent(), relative.file_name()) else {
+        return Outcome::Failed("not a variant's directory".to_owned());
+    };
+    let opened = root.child(parent).and_then(|parent| {
+        let found = parent.entry(name)?;
+        Ok((found.ok_or(io::ErrorKind::NotFound)?, parent))
+    });
+    let (dir, parent) = match opened {
+        Ok(opened) => opened,
+        Err(error) => return Outcome::Failed(format!("opening it: {error}")),
+    };
+    let names = match dir.names() {
+        Ok(names) => names,
+        Err(error) => return Outcome::Failed(format!("reading it: {error}")),
+    };
+    let sessions: Vec<&[u8]> = names
+        .iter()
+        .map(Vec::as_slice)
+        .filter(|name| name.starts_with(b"s-") && !name.ends_with(b".lock"))
+        .collect();
+    if sessions.iter().any(|name| name.ends_with(b"-working")) {
+        return Outcome::Kept("rustc is compiling it".to_owned());
+    }
+    let mut held = Vec::new();
+    for session in &sessions {
+        match hold_session(&dir, OsStr::from_bytes(session), now) {
+            Ok(Hold::Held(hold)) => held.push(hold),
+            Ok(Hold::Busy(what)) => {
+                return Outcome::Kept(format!("rustc holds {}", what.display()));
+            }
+            Err(error) => return Outcome::Failed(format!("taking its locks: {error}")),
+        }
+    }
+    for session in &sessions {
+        let lock = session
+            .rsplitn(2, |&byte| byte == b'-')
+            .nth(1)
+            .unwrap_or(session);
+        let lock = [lock, b".lock"].concat();
+        let removed = dir.remove_entry(OsStr::from_bytes(session));
+        if let Err(error) = removed.and_then(|()| dir.remove_entry(OsStr::from_bytes(&lock))) {
+            return Outcome::Failed(format!("removing a session: {error}"));
+        }
+    }
+    drop(held);
+    match parent.remove_if_empty(name) {
+        Ok(_) => Outcome::Reclaimed,
+        Err(error) => Outcome::Failed(format!("removing its directory: {error}")),
     }
 }
 

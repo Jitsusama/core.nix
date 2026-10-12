@@ -78,7 +78,7 @@ fn stamp(at: SystemTime) -> String {
 
 /// A crate's incremental directory with one finished session made at
 /// `made`, and its lock file; answers the session's name.
-fn session(crate_dir: &Path, made: SystemTime) -> String {
+pub(crate) fn session(crate_dir: &Path, made: SystemTime) -> String {
     let prefix = format!("s-{}-1f2e3d", stamp(made));
     fs::create_dir_all(crate_dir.join(format!("{prefix}-0a1b2c3d"))).unwrap();
     fs::write(crate_dir.join(format!("{prefix}.lock")), "").unwrap();
@@ -86,7 +86,7 @@ fn session(crate_dir: &Path, made: SystemTime) -> String {
 }
 
 /// A POSIX record lock, as rustc takes on its session, or None if held.
-fn posix_lock(path: &Path) -> Option<File> {
+pub(crate) fn posix_lock(path: &Path) -> Option<File> {
     let file = fs::OpenOptions::new()
         .read(true)
         .write(true)

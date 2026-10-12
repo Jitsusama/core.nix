@@ -5,12 +5,12 @@ use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 
 /// A path's own modification time, never through a symlink.
-fn mtime(path: &Path) -> Option<f64> {
+pub(crate) fn mtime(path: &Path) -> Option<f64> {
     let meta = fs::symlink_metadata(path).ok()?;
     Some(meta.mtime() as f64 + meta.mtime_nsec() as f64 / 1e9)
 }
 
-fn subdirs(dir: &Path) -> Vec<PathBuf> {
+pub(crate) fn subdirs(dir: &Path) -> Vec<PathBuf> {
     let Ok(entries) = fs::read_dir(dir) else {
         return Vec::new();
     };
@@ -48,12 +48,7 @@ fn head_log(dir: &Path) -> Option<PathBuf> {
 /// target with neither yet is dated by itself, so a new one isn't taken as
 /// ancient.
 pub fn last_build(target: &Path, checkout: Option<&Path>) -> f64 {
-    let mut profiles = Vec::new();
-    for child in subdirs(target) {
-        profiles.extend(subdirs(&child));
-        profiles.push(child);
-    }
-    let built = profiles
+    let built = profiles(target)
         .iter()
         .flat_map(|profile| [profile.join("deps"), profile.join(".fingerprint")])
         .filter_map(|dir| mtime(&dir))
@@ -65,6 +60,17 @@ pub fn last_build(target: &Path, checkout: Option<&Path>) -> f64 {
         .chain(committed)
         .reduce(f64::max)
         .unwrap_or(0.0)
+}
+
+/// Every directory a profile may be in: one level down, or two under a
+/// target triple. Which are profiles is for the caller to see.
+pub(crate) fn profiles(target: &Path) -> Vec<PathBuf> {
+    let mut profiles = Vec::new();
+    for child in subdirs(target) {
+        profiles.extend(subdirs(&child));
+        profiles.push(child);
+    }
+    profiles
 }
 
 /// When HEAD last moved in the checkout holding `dir`.

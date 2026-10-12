@@ -1,7 +1,7 @@
 //! Turning the targets and installs discovery found into candidates.
 
 use crate::activity::Use;
-use crate::age::{last_build, last_commit, last_write};
+use crate::age::{last_build, last_commit, last_write, mtime, profiles, subdirs};
 use crate::clock::Awake;
 use crate::discover::{Checkout, Found, Kind};
 use crate::plan::{Candidate, Class};
@@ -16,6 +16,43 @@ pub struct Seen {
     pub size: u64,
     /// When it was last built or installed into, in wall seconds.
     pub last_used: f64,
+}
+
+/// One crate's incremental directory in a target, one per set of flags it
+/// was compiled with.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Variant {
+    pub path: PathBuf,
+    pub last_used: f64,
+}
+
+/// Every crate variant in a target's profiles, dated by its newest session:
+/// rustc starts one on every incremental compile and keeps the last that
+/// finished. One with a session still `-working` is mid-compile and isn't
+/// offered.
+pub fn variants(target: &Path) -> Vec<Variant> {
+    let crates = profiles(target)
+        .into_iter()
+        .flat_map(|p| subdirs(&p.join("incremental")));
+    let mut found = Vec::new();
+    for path in crates {
+        let sessions = subdirs(&path);
+        let named = |dir: &PathBuf| dir.file_name().map(|n| n.to_string_lossy().into_owned());
+        let names: Vec<String> = sessions.iter().filter_map(named).collect();
+        if names.iter().any(|name| name.ends_with("-working")) {
+            continue;
+        }
+        let stamps = sessions
+            .iter()
+            .zip(&names)
+            .filter(|(_, name)| name.starts_with("s-"));
+        let newest = stamps.filter_map(|(dir, _)| mtime(dir)).reduce(f64::max);
+        let Some(last_used) = newest.or_else(|| mtime(&path)) else {
+            continue;
+        };
+        found.push(Variant { path, last_used });
+    }
+    found
 }
 
 /// More entries than this at an install's top and it counts as used now.

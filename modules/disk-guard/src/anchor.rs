@@ -196,6 +196,15 @@ impl Dir {
         remove(self, name, 0)
     }
 
+    /// Removes a directory only if nothing is in it: true if it went.
+    pub(crate) fn remove_if_empty(&self, name: &OsStr) -> io::Result<bool> {
+        match rustix::fs::unlinkat(&self.fd, name, AtFlags::REMOVEDIR) {
+            Ok(()) => Ok(true),
+            Err(Errno::NOTEMPTY | Errno::EXIST) => Ok(false),
+            Err(error) => Err(error.into()),
+        }
+    }
+
     pub(crate) fn names(&self) -> io::Result<Vec<Vec<u8>>> {
         let mut names = Vec::new();
         for entry in rustix::fs::Dir::read_from(&self.fd)? {
