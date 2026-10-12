@@ -441,6 +441,30 @@ in
       touch $out
     '';
 
+  # BlueZ says a new device is connected once its link is up, before it's
+  # paired, so the launcher's Bluetooth would stop following a pairing early
+  # and leave the device untrusted. The VM has no radio, so this drives it
+  # through Quickshell itself with stand-in devices (tests/bluetooth-pairing.qml).
+  bluetooth-pairs-before-it-connects =
+    pkgs.runCommandLocal "bluetooth-pairs-before-it-connects" { }
+      ''
+        mkdir runtime launcher && chmod 700 runtime
+        cp ${./modules/quickshell/Fuzzy.js} Fuzzy.js
+        cp ${./modules/quickshell/launcher/Provider.qml} launcher/Provider.qml
+        cp ${./modules/quickshell/launcher/Accessories.qml} launcher/Accessories.qml
+        cp ${./tests/bluetooth-pairing.qml} shell.qml
+        cp ${pkgs.writeText "Niri.qml" ''
+          pragma Singleton
+          import Quickshell
+          import QtQuick
+          Singleton { function spawn(command) {} }
+        ''} Niri.qml
+        export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
+        export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+        timeout 60 ${lib.getExe' pkgs.quickshell "qs"} -p shell.qml
+        touch $out
+      '';
+
   # Shape is a language (docs/design.md, Shape and Kinds): a border's width
   # says "this is a thing" and a radius says whole or part, so no surface
   # picks either for itself. Every corner is the theme's radius, or a part's
