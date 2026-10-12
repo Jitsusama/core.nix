@@ -1,6 +1,6 @@
 use disk_guard::anchor::Dir;
 use std::fs;
-use std::os::unix::fs::symlink;
+use std::os::unix::fs::{PermissionsExt, symlink};
 use std::path::Path;
 
 const MIB: u64 = 1 << 20;
@@ -80,6 +80,100 @@ fn size_counts_what_is_allocated_beneath() {
         .size()
         .unwrap();
     assert!((3 * MIB..3 * MIB + 256 * 1024).contains(&size), "{size}");
+}
+
+/// What a directory holds, by name, sorted, with trash shown as one name.
+fn listing(path: &Path) -> Vec<String> {
+    let mut names: Vec<String> = fs::read_dir(path)
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name().into_string().unwrap())
+        .map(|name| {
+            if name.starts_with(".disk-guard-trash-") {
+                "trash".into()
+            } else {
+                name
+            }
+        })
+        .collect();
+    names.sort();
+    names
+}
+
+fn target(root: &Path) -> std::path::PathBuf {
+    let target = root.join("target");
+    fs::create_dir_all(target.join("debug/deps")).unwrap();
+    fs::create_dir_all(target.join("criterion/base")).unwrap();
+    fs::write(target.join("debug/deps/libx.rlib"), "rlib").unwrap();
+    fs::write(target.join("criterion/base/estimates.json"), "{}").unwrap();
+    fs::write(target.join("CACHEDIR.TAG"), "tag").unwrap();
+    target
+}
+
+#[test]
+fn detaching_moves_all_but_what_is_kept_into_one_trash() {
+    let root = sandbox();
+    let target = target(root.path());
+    let dir = Dir::open(&target).unwrap();
+    let detached = dir.detach(&["criterion"]).unwrap();
+    assert_eq!(listing(&target), ["criterion", "trash"]);
+    let trash = target.join(detached.name());
+    assert_eq!(listing(&trash), ["CACHEDIR.TAG", "debug"]);
+}
+
+#[test]
+fn restoring_puts_everything_back_as_it_was() {
+    let root = sandbox();
+    let target = target(root.path());
+    let dir = Dir::open(&target).unwrap();
+    dir.detach(&["criterion"]).unwrap().restore().unwrap();
+    assert_eq!(listing(&target), ["CACHEDIR.TAG", "criterion", "debug"]);
+    assert_eq!(
+        fs::read_to_string(target.join("debug/deps/libx.rlib")).unwrap(),
+        "rlib"
+    );
+}
+
+#[test]
+fn emptying_removes_the_trash_and_nothing_it_points_at() {
+    let root = sandbox();
+    let elsewhere = sandbox();
+    fs::write(elsewhere.path().join("precious"), "keep").unwrap();
+    let target = target(root.path());
+    symlink(elsewhere.path(), target.join("debug/away")).unwrap();
+    symlink(elsewhere.path().join("precious"), target.join("debug/file")).unwrap();
+    // Go's module cache makes its directories read-only.
+    fs::create_dir_all(target.join("debug/locked/inner")).unwrap();
+    fs::write(target.join("debug/locked/inner/f"), "x").unwrap();
+    for path in ["debug/locked/inner", "debug/locked"] {
+        fs::set_permissions(target.join(path), fs::Permissions::from_mode(0o555)).unwrap();
+    }
+    fs::create_dir_all(target.join("debug/shut/inner")).unwrap();
+    fs::set_permissions(target.join("debug/shut"), fs::Permissions::from_mode(0o000)).unwrap();
+    let dir = Dir::open(&target).unwrap();
+    dir.detach(&["criterion"]).unwrap().empty().unwrap();
+    assert_eq!(listing(&target), ["criterion"]);
+    assert_eq!(
+        fs::read_to_string(elsewhere.path().join("precious")).unwrap(),
+        "keep"
+    );
+}
+
+#[test]
+fn a_trash_left_behind_is_found_and_never_moved_into_another() {
+    let root = sandbox();
+    let target = target(root.path());
+    let dir = Dir::open(&target).unwrap();
+    let first = dir.detach(&["criterion"]).unwrap().name().to_owned();
+    fs::create_dir(target.join("release")).unwrap();
+    let second = dir.detach(&["criterion"]).unwrap().name().to_owned();
+    assert_ne!(first, second);
+    assert_eq!(listing(&target.join(&second)), ["release"]);
+    let leftovers = dir.leftovers().unwrap();
+    assert_eq!(leftovers.len(), 2);
+    for trash in leftovers {
+        trash.empty().unwrap();
+    }
+    assert_eq!(listing(&target), ["criterion"]);
 }
 
 #[test]
