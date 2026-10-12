@@ -213,7 +213,7 @@ fn the_live_pressure_reads() {
     }
 }
 
-/// A laptop's supplies as optimus shows them: mains and a USB-C source for
+/// A laptop's supplies as one shows them: mains and a USB-C source for
 /// the system, its battery, and a mouse's battery.
 fn supplies(root: &Path, mains: &str, usb: &str, capacity: &str) {
     text(root, "AC/type", "Mains\n");

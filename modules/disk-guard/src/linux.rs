@@ -43,8 +43,9 @@ const BTRFS_IOC_WAIT_SYNC: libc::c_ulong = 0x4008_9416;
 
 /// Waits until what was deleted on `path`'s filesystem shows as free.
 /// Btrfs frees extents only when its transaction commits, about 30 s
-/// later, so it's asked to commit: 6 to 10 ms on optimus, and it writes no
-/// one else's dirty data. Anywhere else, `syncfs` does it.
+/// later, so it's asked to commit. That took 6 to 10 ms on a laptop's NVMe
+/// disk under a 3 GB write, against 33 ms for `syncfs`, and it writes no one
+/// else's dirty data. Anywhere else, `syncfs` does it.
 pub fn settle(path: &Path) -> io::Result<()> {
     let flags = rustix::fs::OFlags::RDONLY | rustix::fs::OFlags::CLOEXEC;
     let fd = rustix::fs::open(path, flags, rustix::fs::Mode::empty())?;
