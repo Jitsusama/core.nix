@@ -20,6 +20,24 @@ fn target(root: &Path) -> PathBuf {
     target
 }
 
+/// Whether `free` comes true within a second. A lock belongs to its open
+/// file description, which a child another test forks shares until it
+/// execs and closes it, so a lock the guard let go can look held for a
+/// moment: 34 rounds in 5,000 with a thread spawning, every one free
+/// 50 ms later.
+fn soon(mut free: impl FnMut() -> bool) -> bool {
+    let deadline = std::time::Instant::now() + Duration::from_secs(1);
+    loop {
+        if free() {
+            return true;
+        }
+        if std::time::Instant::now() > deadline {
+            return false;
+        }
+        std::thread::sleep(Duration::from_millis(5));
+    }
+}
+
 fn held(hold: Hold) -> disk_guard::locks::Held {
     match hold {
         Hold::Held(held) => held,
@@ -39,7 +57,10 @@ fn an_idle_target_is_held_against_cargo_until_let_go() {
         "the guard doesn't hold it"
     );
     drop(held);
-    assert!(cargo.try_lock_shared().is_ok(), "the guard didn't let go");
+    assert!(
+        soon(|| cargo.try_lock_shared().is_ok()),
+        "the guard didn't let go"
+    );
 }
 
 #[test]
@@ -59,7 +80,7 @@ fn a_target_cargo_holds_is_busy_and_nothing_stays_held() {
     }
     let other = File::open(target.join("debug/.cargo-build-lock")).unwrap();
     assert!(
-        other.try_lock().is_ok(),
+        soon(|| other.try_lock().is_ok()),
         "a lock taken before the busy one stayed held"
     );
 }
@@ -115,7 +136,10 @@ fn an_old_session_nobody_holds_is_held_against_rustc() {
         "rustc could lock a session the guard holds"
     );
     drop(held);
-    assert!(posix_lock(&lock).is_some(), "the guard didn't let go");
+    assert!(
+        soon(|| posix_lock(&lock).is_some()),
+        "the guard didn't let go"
+    );
 }
 
 #[test]

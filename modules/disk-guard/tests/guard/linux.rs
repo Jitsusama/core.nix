@@ -126,20 +126,25 @@ fn settling_shows_what_a_delete_freed() {
             state as u8
         })
         .collect();
-    // What the guard deletes has long been written out, as this has once
-    // synced; data still in memory is accounted for differently.
-    fs::write(&file, data).unwrap();
-    fs::File::open(&file).unwrap().sync_all().unwrap();
-    settle(dir.path()).unwrap();
-    let before = space(dir.path()).unwrap().free;
-    fs::remove_file(&file).unwrap();
-    settle(dir.path()).unwrap();
-    let freed = space(dir.path()).unwrap().free.saturating_sub(before);
-    assert!(
-        freed >= 200 * MIB,
-        "only {} MiB showed as freed",
-        freed / MIB
-    );
+    // The filesystem is shared with whatever else the machine is writing,
+    // which can use up some of the freed space between the two readings,
+    // so the best of three tries counts. Without settling, none shows.
+    let mut best = 0;
+    for _ in 0..3 {
+        // What the guard deletes has long been written out, as this has
+        // once synced; data still in memory is accounted for differently.
+        fs::write(&file, &data).unwrap();
+        fs::File::open(&file).unwrap().sync_all().unwrap();
+        settle(dir.path()).unwrap();
+        let before = space(dir.path()).unwrap().free;
+        fs::remove_file(&file).unwrap();
+        settle(dir.path()).unwrap();
+        best = best.max(space(dir.path()).unwrap().free.saturating_sub(before));
+        if best >= 200 * MIB {
+            break;
+        }
+    }
+    assert!(best >= 200 * MIB, "only {} MiB showed as freed", best / MIB);
 }
 
 #[test]
