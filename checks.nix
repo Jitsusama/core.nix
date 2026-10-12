@@ -701,9 +701,10 @@ in
       greetd = systemd.services.greetd;
     in
     holds "greetd-waits-for-the-gpu"
-      "greetd doesn't wait for ${jitsusama.gpu.unit}, or nothing tags the card for systemd."
+      "greetd doesn't wait for ${jitsusama.gpu.unit}, nothing tags the card for systemd, or nothing caps the wait."
       (
         greetd.serviceConfig.Type == "simple"
+        && lib.hasInfix "JobRunningTimeoutSec=15s" systemd.units.${jitsusama.gpu.unit}.text
         && lib.elem jitsusama.gpu.unit greetd.wants
         && lib.elem jitsusama.gpu.unit greetd.after
         && lib.hasInfix ''ENV{ID_PATH}=="${jitsusama.gpu.path}", TAG+="systemd"'' services.udev.extraRules
