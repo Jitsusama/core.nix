@@ -89,6 +89,13 @@ in
         hash = "sha256-javJIhGW6mUlgQjgUTgKCEqpD7704+t8zZLtVTe72Dw=";
       };
     }
+    {
+      # The four amplifiers probe at once and each takes that pin for itself,
+      # so now and then one finds it taken and the sound card never comes.
+      # Written here; the patch says why.
+      name = "cs35l56-spkid-lock";
+      patch = ./cs35l56-spkid-lock.patch;
+    }
   ];
 
   # The disk, and the USB and Thunderbolt ports a dock's keyboard arrives

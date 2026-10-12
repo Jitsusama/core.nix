@@ -75,6 +75,27 @@ the stable series; Omarchy carries the same fix for this laptop. Drop the
 patch once nixpkgs's kernel includes it: the build fails when a patch no
 longer applies, which says when.
 
+With the CVS bridge out of the way, the amplifiers still race each other for
+the pin. They probe at once, and each requests it exclusively, reads it and
+puts it back, so on one boot in six an amplifier found it taken and failed
+with that same -EBUSY, and the card didn't register until the amplifier was
+bound by hand. `cs35l56-spkid-lock.patch`, written here, makes them take turns
+with a lock around the read; the patch says why.
+
+### The Boot Clock
+
+The firmware hands over to the boot loader at 400 MHz with HWP off, and holds
+the CPU there for as long as it likes, ignoring the 1.9 GHz IA32_PERF_CTL
+asks for: 130 ms into lanzaboote's stub on one boot, through the whole 3 s of
+the loader on another, and through 26.9 s of the firmware's own on a third.
+No thermal or power limit was in force. At 400 MHz the stub's SHA-256 of the
+kernel and initrd runs at 84 TSC ticks a byte against 7.4 at full speed.
+
+core's stub turns HWP on at entry, which Linux does at every boot anyway, and
+records what it found in the volatile `StubHwp` variable: IA32_PM_ENABLE and
+IA32_PERF_STATUS as handed over, and IA32_PERF_STATUS a millisecond after.
+It can't shorten the firmware's own time.
+
 ### Wi-Fi
 
 The BE211's Wi-Fi 7 receive path drops a link to its slowest rate, so the
