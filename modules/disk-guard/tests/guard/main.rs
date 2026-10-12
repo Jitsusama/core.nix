@@ -9,6 +9,7 @@ mod discover;
 #[cfg(target_os = "linux")]
 mod linux;
 mod locks;
+mod plan;
 #[cfg(target_os = "linux")]
 mod procs;
 mod units;
