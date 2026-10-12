@@ -15,6 +15,7 @@ mod entries;
 mod finished;
 #[cfg(target_os = "linux")]
 mod host;
+mod journal;
 #[cfg(target_os = "linux")]
 mod linux;
 mod locks;
