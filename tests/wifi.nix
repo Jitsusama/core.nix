@@ -154,8 +154,6 @@ pkgs.testers.runNixOSTest {
         '';
       };
 
-      environment.etc."lantern-password".text = "glowing in the dark\n";
-
       environment.systemPackages = [
         pkgs.iw
         pkgs.dig
@@ -163,14 +161,15 @@ pkgs.testers.runNixOSTest {
     };
 
   testScript = ''
-    # Lantern as the launcher saves it: only what's its own.
+    # Lantern as the launcher saves it: only what's its own, with its
+    # password sealed to this machine.
     lantern = [
         "[Match]",
         "SSID=Lantern",
         "",
         "[X-WiFi]",
         "Security=personal",
-        "Secret=/etc/lantern-password",
+        "Secret=/var/lib/wifid/networks/lantern.cred",
         "Priority=10",
     ]
     saved = "/var/lib/wifid/networks/lantern.network"
@@ -232,6 +231,10 @@ pkgs.testers.runNixOSTest {
     with subtest("a network saved from the launcher is laid over the defaults and joined first"):
         lines = " ".join(f"'{line}'" for line in lantern)
         machine.succeed(f"printf '%s\\n' {lines} > {saved}")
+        machine.succeed(
+            "printf 'glowing in the dark' | systemd-creds encrypt --name=lantern"
+            " - /var/lib/wifid/networks/lantern.cred"
+        )
         machine.succeed("systemctl restart wifid")
         joined("Lantern")
         holds_address("10.42.0.")

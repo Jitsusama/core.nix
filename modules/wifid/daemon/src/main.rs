@@ -8,6 +8,7 @@
 mod address;
 mod card;
 mod network;
+mod secret;
 mod store;
 mod supplicant;
 mod syntax;
@@ -15,7 +16,6 @@ mod syntax;
 use std::collections::HashMap;
 use std::error::Error;
 use std::fs;
-use std::io;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
@@ -26,6 +26,7 @@ use zbus::zvariant;
 
 use address::AddressKey;
 use card::Card;
+use secret::Credentials;
 use store::{Saved, Store};
 use supplicant::{InterfaceProxy, JoinableProxy, SupplicantProxy};
 
@@ -57,6 +58,7 @@ async fn run() -> Result<(), Box<dyn Error>> {
     fs::create_dir_all(&store.runtime)?;
     store.give_networkd_all()?;
     let key = AddressKey::kept_in(&Path::new(STATE).join("address-key"))?;
+    let credentials = Credentials::system();
 
     let bus = Connection::system().await?;
     reload_networkd(&bus).await?;
@@ -64,11 +66,18 @@ async fn run() -> Result<(), Box<dyn Error>> {
     let owners = DBusProxy::new(&bus).await?;
     let mut changes = owners.receive_name_owner_changed().await?;
     let supplicant = SupplicantProxy::new(&bus).await?;
-    add_cards(&bus, &supplicant, &store, &key).await;
+    let wifid = Wifid {
+        bus: &bus,
+        supplicant: &supplicant,
+        store: &store,
+        key: &key,
+        credentials: &credentials,
+    };
+    wifid.add_cards().await;
     while let Some(change) = changes.next().await {
         let Ok(args) = change.args() else { continue };
         if args.name() == "fi.w1.wpa_supplicant1" && args.new_owner().is_some() {
-            add_cards(&bus, &supplicant, &store, &key).await;
+            wifid.add_cards().await;
         }
     }
     Ok(())
@@ -87,100 +96,89 @@ async fn reload_networkd(bus: &Connection) -> zbus::Result<()> {
     .map(|_| ())
 }
 
-/// Gives wpa_supplicant every card, each with every saved network. A card
-/// or network that can't be added is said in the journal and passed over,
-/// so one bad file never keeps the machine off every network.
-async fn add_cards(
-    bus: &Connection,
-    supplicant: &SupplicantProxy<'_>,
-    store: &Store,
-    key: &AddressKey,
-) {
-    let cards = match card::all(Path::new("/sys")) {
-        Ok(cards) => cards,
-        Err(error) => return eprintln!("<3>wifid: can't list the Wi-Fi cards: {error}"),
-    };
-    let networks = match store.networks() {
-        Ok(listing) => {
-            for (file, reason) in listing.unreadable {
-                eprintln!("<4>wifid: {}: {reason}", file.display());
-            }
-            listing.saved
-        }
-        Err(error) => return eprintln!("<3>wifid: can't read the saved networks: {error}"),
-    };
-    for card in cards {
-        if let Err(error) = add_card(bus, supplicant, &card, &networks, key).await {
-            eprintln!("<3>wifid: can't add {}: {error}", card.name);
-        }
-    }
+/// What wifid works with once it has started.
+struct Wifid<'a> {
+    bus: &'a Connection,
+    supplicant: &'a SupplicantProxy<'a>,
+    store: &'a Store,
+    key: &'a AddressKey,
+    credentials: &'a Credentials,
 }
 
-async fn add_card(
-    bus: &Connection,
-    supplicant: &SupplicantProxy<'_>,
-    card: &Card,
-    networks: &[Saved],
-    key: &AddressKey,
-) -> zbus::Result<()> {
-    let path = match supplicant.get_interface(&card.name).await {
-        Ok(path) => path,
-        Err(_) => {
-            let args = HashMap::from([
-                ("Ifname", zvariant::Value::from(card.name.as_str())),
-                ("ConfigFile", zvariant::Value::from(CARD_SETTINGS)),
-            ]);
-            supplicant.create_interface(args).await?
-        }
-    };
-    let interface = InterfaceProxy::builder(bus).path(path)?.build().await?;
-    interface.remove_all_networks().await?;
-    let mut added: Vec<&str> = Vec::new();
-    for saved in networks {
-        let name = saved.network.name.as_str();
-        // Nix's networks come first, and win over the launcher's of the
-        // same name.
-        if added.contains(&name) {
-            continue;
-        }
-        let password = match password(saved) {
-            Ok(password) => password,
-            Err(error) => {
-                eprintln!("<4>wifid: {name}: can't read its password: {error}");
-                continue;
-            }
+impl Wifid<'_> {
+    /// Gives wpa_supplicant every card, each with every saved network. A card
+    /// or network that can't be added is said in the journal and passed over,
+    /// so one bad file never keeps the machine off every network.
+    async fn add_cards(&self) {
+        let cards = match card::all(Path::new("/sys")) {
+            Ok(cards) => cards,
+            Err(error) => return eprintln!("<3>wifid: can't list the Wi-Fi cards: {error}"),
         };
-        let address = key.address(card.address, name);
-        let fields = match supplicant::properties(&saved.network, password.as_deref(), address) {
-            Ok(fields) => fields,
-            Err(unjoinable) => {
-                eprintln!("<4>wifid: {name}: {}", unjoinable.0);
-                continue;
+        let networks = match self.store.networks() {
+            Ok(listing) => {
+                for (file, reason) in listing.unreadable {
+                    eprintln!("<4>wifid: {}: {reason}", file.display());
+                }
+                listing.saved
             }
+            Err(error) => return eprintln!("<3>wifid: can't read the saved networks: {error}"),
         };
-        let path = interface
-            .add_network(supplicant::dictionary(fields))
-            .await?;
-        JoinableProxy::builder(bus)
-            .path(path)?
-            .build()
-            .await?
-            .set_enabled(true)
-            .await?;
-        added.push(name);
+        for card in cards {
+            if let Err(error) = self.add_card(&card, &networks).await {
+                eprintln!("<3>wifid: can't add {}: {error}", card.name);
+            }
+        }
     }
-    Ok(())
-}
 
-/// The network's password, from the file its Secret names. One newline
-/// at the end is the file's, not the password's.
-fn password(saved: &Saved) -> io::Result<Option<String>> {
-    let Some(file) = &saved.network.secret else {
-        return Ok(None);
-    };
-    let mut password = fs::read_to_string(file)?;
-    if password.ends_with('\n') {
-        password.pop();
+    async fn add_card(&self, card: &Card, networks: &[Saved]) -> zbus::Result<()> {
+        let (bus, supplicant) = (self.bus, self.supplicant);
+        let path = match supplicant.get_interface(&card.name).await {
+            Ok(path) => path,
+            Err(_) => {
+                let args = HashMap::from([
+                    ("Ifname", zvariant::Value::from(card.name.as_str())),
+                    ("ConfigFile", zvariant::Value::from(CARD_SETTINGS)),
+                ]);
+                supplicant.create_interface(args).await?
+            }
+        };
+        let interface = InterfaceProxy::builder(bus).path(path)?.build().await?;
+        interface.remove_all_networks().await?;
+        let mut added: Vec<&str> = Vec::new();
+        for saved in networks {
+            let name = saved.network.name.as_str();
+            // Nix's networks come first, and win over the launcher's of the
+            // same name.
+            if added.contains(&name) {
+                continue;
+            }
+            let password = match secret::password(&saved.network, self.credentials).await {
+                Ok(password) => password,
+                Err(error) => {
+                    eprintln!("<4>wifid: {name}: can't read its password: {error}");
+                    continue;
+                }
+            };
+            let address = self.key.address(card.address, name);
+            let fields = match supplicant::properties(&saved.network, password.as_deref(), address)
+            {
+                Ok(fields) => fields,
+                Err(unjoinable) => {
+                    eprintln!("<4>wifid: {name}: {}", unjoinable.0);
+                    continue;
+                }
+            };
+            let path = interface
+                .add_network(supplicant::dictionary(fields))
+                .await?;
+            JoinableProxy::builder(bus)
+                .path(path)?
+                .build()
+                .await?
+                .set_enabled(true)
+                .await?;
+            added.push(name);
+        }
+        Ok(())
     }
-    Ok(Some(password))
 }

@@ -8,13 +8,14 @@
 //!
 //! [X-WiFi]
 //! Security=personal
-//! Secret=/var/lib/wifid/secrets/roadside-inn
+//! Secret=/var/lib/wifid/networks/roadside-inn.cred
 //! ```
 //!
 //! | Key        | Values                              | Default |
 //! | ---------- | ----------------------------------- | ------- |
 //! | `Security` | open or personal                    | open    |
-//! | `Secret`   | the file holding the password       | none    |
+//! | `Secret`   | the file holding the password, or a | none    |
+//! |            | .cred file of it sealed by systemd  |         |
 //! | `Priority` | a number, highest joined first      | 0       |
 //! | `Hidden`   | yes when it doesn't announce itself | no      |
 //! | `Address`  | network, card or random             | network |
