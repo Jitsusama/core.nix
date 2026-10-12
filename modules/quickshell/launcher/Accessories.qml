@@ -85,13 +85,19 @@ Provider {
     property var joining: null
     property string trouble: ""
 
+    // A new device is trusted before it pairs. Headphones start their audio
+    // the moment they're paired, and with no agent to ask, BlueZ refuses an
+    // untrusted device's audio, so it hangs up; trust given after pairing
+    // comes too late. A pairing that fails takes the trust back.
     function join(device) {
         trouble = "";
         joining = device;
-        if (device.paired)
+        if (device.paired) {
             device.connect();
-        else
-            device.pair();
+            return;
+        }
+        device.trusted = true;
+        device.pair();
     }
 
     function said(device, otherwise) {
@@ -179,9 +185,9 @@ Provider {
 
     // How the device being connected went. BlueZ says a new device is
     // connected as soon as its link is up, before pairing is done, so only a
-    // paired one is finished: paired, it's trusted, so it may come back by
-    // itself, and connected if it isn't yet. A pairing that ends unpaired
-    // says so.
+    // paired one is finished: paired, it's connected if it isn't yet, and
+    // trusted, so it comes back by itself. A pairing that ends unpaired
+    // says so and is no longer trusted.
     Connections {
         target: provider.joining
 
@@ -198,8 +204,10 @@ Provider {
 
         function onPairingChanged() {
             const device = provider.joining;
-            if (device && !device.pairing && !device.paired)
+            if (device && !device.pairing && !device.paired) {
+                device.trusted = false;
                 provider.trouble = "it didn't pair; it may want a passkey";
+            }
         }
 
         function onConnectedChanged() {
