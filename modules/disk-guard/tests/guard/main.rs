@@ -6,6 +6,7 @@ mod anchor;
 mod band;
 mod clock;
 mod config;
+mod coredumps;
 mod discover;
 mod entries;
 #[cfg(target_os = "linux")]
