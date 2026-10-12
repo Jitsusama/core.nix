@@ -7,4 +7,6 @@ mod config;
 #[cfg(target_os = "linux")]
 mod linux;
 mod locks;
+#[cfg(target_os = "linux")]
+mod procs;
 mod units;

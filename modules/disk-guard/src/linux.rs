@@ -157,6 +157,144 @@ pub fn power(supplies: &Path) -> io::Result<crate::moments::Power> {
     })
 }
 
+/// `PF_KTHREAD` in a process's flags: a kernel thread, which holds no files.
+const PF_KTHREAD: u64 = 0x0020_0000;
+
+/// The environment variables that point a build somewhere, which are all
+/// the guard keeps of a process's environment.
+const BUILD_VARIABLES: [&str; 3] = ["CARGO_TARGET_DIR", "CARGO_BUILD_BUILD_DIR", "TMPDIR"];
+
+/// Every process `/proc` shows, but kernel threads and zombies. A process
+/// that exits mid-scan is left out. One whose cwd, files or maps are hidden,
+/// as another account's are, reads as unreadable rather than as idle.
+pub fn processes(proc: &Path) -> io::Result<Vec<crate::activity::Process>> {
+    let mut all = Vec::new();
+    for entry in fs::read_dir(proc)? {
+        let entry = entry?;
+        let Some(pid) = entry
+            .file_name()
+            .to_str()
+            .and_then(|name| name.parse().ok())
+        else {
+            continue;
+        };
+        if let Some(process) = process(&entry.path(), pid) {
+            all.push(process);
+        }
+    }
+    Ok(all)
+}
+
+/// One process, or none when it's gone, a kernel thread or a zombie.
+fn process(dir: &Path, pid: u32) -> Option<crate::activity::Process> {
+    use std::os::unix::ffi::OsStrExt;
+    let stat = fs::read_to_string(dir.join("stat")).ok()?;
+    // The name sits in parentheses and may hold any of them itself.
+    let (open, close) = (stat.find('(')?, stat.rfind(')')?);
+    let name = stat.get(open + 1..close)?.to_owned();
+    // Fields from the state (the third) on; field n is at n - 3.
+    let fields: Vec<&str> = stat.get(close + 1..)?.split_whitespace().collect();
+    let flags: u64 = fields.get(6)?.parse().ok()?;
+    if fields.first() == Some(&"Z") || flags & PF_KTHREAD != 0 {
+        return None;
+    }
+    let start_ticks = fields.get(19)?.parse().ok()?;
+    let status = fs::read_to_string(dir.join("status")).ok()?;
+    let uid = status
+        .lines()
+        .find_map(|line| line.strip_prefix("Uid:"))
+        .and_then(|ids| ids.split_whitespace().next())
+        .and_then(|id| id.parse().ok())?;
+
+    let words = |bytes: Vec<u8>| -> Vec<OsString> {
+        bytes
+            .split(|&byte| byte == 0)
+            .filter(|word| !word.is_empty())
+            .map(|word| std::ffi::OsStr::from_bytes(word).to_owned())
+            .collect()
+    };
+    let cmdline = fs::read(dir.join("cmdline")).map(words).unwrap_or_default();
+    let env = fs::read(dir.join("environ"))
+        .map(words)
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|pair| {
+            let bytes = pair.as_bytes();
+            let equals = bytes.iter().position(|&byte| byte == b'=')?;
+            let key = std::ffi::OsStr::from_bytes(&bytes[..equals]);
+            BUILD_VARIABLES.iter().any(|name| key == *name).then(|| {
+                (
+                    key.to_owned(),
+                    std::ffi::OsStr::from_bytes(&bytes[equals + 1..]).to_owned(),
+                )
+            })
+        })
+        .collect();
+
+    let cwd = fs::read_link(dir.join("cwd"));
+    let exe = fs::read_link(dir.join("exe")).ok();
+    let files = fs::read_dir(dir.join("fd")).map(|fds| {
+        let mut files: Vec<PathBuf> = fds
+            .filter_map(|fd| fs::read_link(fd.ok()?.path()).ok())
+            .filter(|target| target.is_absolute())
+            .collect();
+        files.sort();
+        files.dedup();
+        files
+    });
+    let maps = fs::read_to_string(dir.join("maps")).map(|text| {
+        let mut maps: Vec<PathBuf> = Vec::new();
+        for line in text.lines() {
+            if let Some(path) = mapped_path(line)
+                && !maps.contains(&path)
+            {
+                maps.push(path);
+            }
+        }
+        maps
+    });
+    let readable = cwd.is_ok() && files.is_ok() && maps.is_ok();
+    let write_bytes = fs::read_to_string(dir.join("io")).ok().and_then(|io| {
+        io.lines()
+            .find_map(|line| line.strip_prefix("write_bytes:")?.trim().parse().ok())
+    });
+    let cgroup = fs::read_to_string(dir.join("cgroup"))
+        .ok()
+        .and_then(|text| {
+            text.lines()
+                .find_map(|line| line.strip_prefix("0::").map(str::to_owned))
+        });
+    Some(crate::activity::Process {
+        pid,
+        uid,
+        start_ticks,
+        name,
+        exe,
+        cwd: cwd.ok(),
+        cmdline,
+        env,
+        files: files.unwrap_or_default(),
+        maps: maps.unwrap_or_default(),
+        readable,
+        write_bytes,
+        cgroup,
+    })
+}
+
+/// The file a line of `/proc/<pid>/maps` maps, if it maps one. The path is
+/// everything after the fifth field, spaces and all, less the kernel's
+/// " (deleted)" for a file since unlinked.
+fn mapped_path(line: &str) -> Option<PathBuf> {
+    let mut rest = line;
+    for _ in 0..5 {
+        rest = rest.trim_start();
+        rest = &rest[rest.find(' ')?..];
+    }
+    let path = rest.trim_start();
+    let path = path.strip_suffix(" (deleted)").unwrap_or(path);
+    path.starts_with('/').then(|| PathBuf::from(path))
+}
+
 /// A Btrfs filesystem's id, as its sysfs directory is named.
 fn btrfs_fsid(path: &Path) -> io::Result<PathBuf> {
     let flags = rustix::fs::OFlags::RDONLY | rustix::fs::OFlags::CLOEXEC;
@@ -182,6 +320,7 @@ fn btrfs_fsid(path: &Path) -> io::Result<PathBuf> {
     );
     Ok(PathBuf::from(fsid))
 }
+use std::ffi::OsString;
 use std::fs;
 use std::io;
 use std::path::Path;
