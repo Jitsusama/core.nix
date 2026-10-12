@@ -365,6 +365,7 @@ let
     wifi = ./launcher/Wireless.qml;
     sound = ./launcher/Sound.qml;
     bluetooth = ./launcher/Accessories.qml;
+    displays = ./launcher/Displays.qml;
   };
 
   # The program that hears every copy, for the clipboard collection.
@@ -595,6 +596,13 @@ in
       bluetooth = {
         order = 104;
         source = "bluetooth";
+        weight = 0.9;
+      };
+      # Each display's scale, refresh rate, size and rotation, for the
+      # session.
+      displays = {
+        order = 106;
+        source = "displays";
         weight = 0.9;
       };
       clipboard = {

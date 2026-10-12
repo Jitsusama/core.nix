@@ -266,6 +266,10 @@ Scope {
     property var held: []
     readonly property var offered: held.length > 0 ? held[held.length - 1].rows : []
 
+    // Whether the step held last is a collection, whose members are things
+    // with verbs of their own, as at the top.
+    readonly property bool collecting: held.length > 0 && !!held[held.length - 1].row.from
+
     // Steps into a row: a thing's verbs, or a verb's targets. Says whether
     // there was anywhere to go.
     function enter(row) {
@@ -275,7 +279,7 @@ Scope {
             ask(row);
             return true;
         }
-        const into = held.length === 0 ? (row.verbs ? row.verbs() : null)
+        const into = held.length === 0 || collecting ? (row.verbs ? row.verbs() : null)
             : row.targets ? row.targets() : null;
         if (!into || into.length === 0)
             return false;
@@ -798,7 +802,7 @@ Scope {
                                     const keys = [["\u21b5", choice.verb ?? "run"]];
                                     if (root.held.length === 0 && choice.below)
                                         keys.push(["\u21e7\u21b5", "below"]);
-                                    if (root.held.length === 0 && choice.verbs)
+                                    if ((root.held.length === 0 || root.collecting) && choice.verbs)
                                         keys.push(["\u2192", choice.from ? "see all" : "more"]);
                                     if (root.held.length > 0)
                                         keys.push(["\u2190", "back"]);

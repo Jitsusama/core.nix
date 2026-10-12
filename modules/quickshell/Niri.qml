@@ -18,8 +18,10 @@ import QtQuick
 Singleton {
     id: root
 
-    // Requests asked for before the socket connects, sent once it does.
+    // Requests asked for before the socket connects, sent once it does, and
+    // what hears each one's answer, in the order niri answers them.
     property var waiting: []
+    property var answers: []
 
     // Whether the overview is open. niri says so as the stream begins, and
     // whenever it changes.
@@ -144,7 +146,14 @@ Singleton {
     }
 
     function act(action: var): void {
-        waiting.push(JSON.stringify({ Action: action }));
+        request({ Action: action }, null);
+    }
+
+    // Asks niri something, such as "Outputs", and hands what it says to
+    // `answer`; or tells it something, with nothing to hear back.
+    function request(asked: var, answer: var): void {
+        waiting.push(JSON.stringify(asked));
+        answers.push(answer);
         if (socket.connected)
             send();
         else
@@ -167,14 +176,21 @@ Singleton {
         path: Quickshell.env("NIRI_SOCKET")
         connected: true
         onConnectionStateChanged: {
-            if (connected && root.waiting.length > 0)
+            // Requests sent on a connection that closed are never answered,
+            // so only the unsent keep a place in line.
+            if (!connected)
+                root.answers = root.answers.slice(root.answers.length - root.waiting.length);
+            else if (root.waiting.length > 0)
                 root.send();
         }
         parser: SplitParser {
             onRead: line => {
                 const reply = JSON.parse(line);
+                const answer = root.answers.shift();
                 if (reply.Err)
                     console.warn("niri refused a request:", reply.Err);
+                else if (answer)
+                    answer(reply.Ok);
             }
         }
     }
