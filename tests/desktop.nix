@@ -6,11 +6,12 @@
 # window, the launcher switches to a window by its title, the lock screen
 # refuses a wrong password and takes the right one, polkit's prompt lets the
 # account start a system service, what's playing shows in the margin and a
-# media key shows what it is, a call shows in the margin while it lasts, the
+# media key shows what it is, a call shows in the margin while it lasts, a
+# copied call's link can be joined until something else is copied, the
 # clipboard takes and gives text, and GTK programs and monospaced text are
 # in the theme. niri says which surfaces it drew, photographs show their
-# colours, to the test and to a person looking, and
-# the portal and fontconfig answer for the settings. Quickshell has to start
+# colours, to the test and to a person looking, and the portal and
+# fontconfig answer for the settings. Quickshell has to start
 # without a single QML error.
 { self, pkgs }:
 let
@@ -981,6 +982,29 @@ pkgs.testers.runNixOSTest {
           machine.screenshot("margin-call")
           said("Caller.cpp:985|invalidating call")
           machine.wait_until_fails(in_session(margin), timeout=10)
+
+      with subtest("a copied call's link can be joined until something else is copied"):
+          link = "https://tuple.app/c/from-a-chat"
+          as_account(f"echo -n 'pair with me? {link}' | wl-copy > /dev/null 2>&1")
+          as_account("qs ipc call launcher toggle")
+          launcher_ready()
+          type_in("join", selecting="Join the Tuple call")
+          machine.send_key("esc")
+          machine.wait_until_fails(in_session("niri msg layers | grep -qw launcher"), timeout=10)
+
+          # A screenshot is copied as an image alone, with no text to read.
+          as_account("printf '\\211PNG\\r\\n' | wl-copy --type image/png > /dev/null 2>&1")
+          as_account("qs ipc call launcher toggle")
+          launcher_ready()
+          type_in("join")
+
+          def joins_nothing(shown):
+              row = shown["selected"]
+              return row is None or "Tuple" not in row["name"]
+
+          launcher_until(joins_nothing)
+          machine.send_key("esc")
+          machine.wait_until_fails(in_session("niri msg layers | grep -qw launcher"), timeout=10)
 
       with subtest("caps lock shows in the margin while it's on"):
           capitals = "/run/keyboard-lights/capslock"
