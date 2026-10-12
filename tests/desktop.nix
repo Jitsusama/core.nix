@@ -6,13 +6,15 @@
 # window, the launcher switches to a window by its title, the lock screen
 # refuses a wrong password and takes the right one, polkit's prompt lets the
 # account start a system service, what's playing shows in the margin and a
-# media key shows what it is, a call shows in the margin while it lasts, a
-# copied call's link can be joined until something else is copied, the
-# clipboard takes and gives text, and GTK programs and monospaced text are
-# in the theme. niri says which surfaces it drew, photographs show their
-# colours, to the test and to a person looking, and the portal and
-# fontconfig answer for the settings. Quickshell has to start
-# without a single QML error.
+# media key shows what it is, a call shows in the margin while it lasts,
+# people coming and going in it are said and Joel can leave from the last
+# one's notice, a ringing call wants him and one not answered is kept as
+# missed, a copied call's link can be joined until something else is
+# copied, the clipboard takes and gives text, and GTK programs and
+# monospaced text are in the theme. niri says which surfaces it drew,
+# photographs show their colours, to the test and to a person looking, and
+# the portal and fontconfig answer for the settings. Quickshell has to
+# start without a single QML error.
 { self, pkgs }:
 let
   account = "jitsusama";
@@ -1187,8 +1189,9 @@ pkgs.testers.runNixOSTest {
           as_account("systemctl --user stop tuple")
           written = "~/.local/share/tuple/0/log.txt"
 
-          def said(message):
-              line = f"$(date -u +%H:%M:%S.000)|1|1|info|{message}"
+          # A line as the daemon writes it, as if `ago` seconds since.
+          def said(message, ago=0):
+              line = f"$(date -u -d '-{ago} sec' +%H:%M:%S.000)|1|1|info|{message}"
               as_account(f"mkdir -p $(dirname {written}) && echo \"{line}\" >> {written}")
 
           machine.wait_until_fails(in_session(margin), timeout=10)
@@ -1196,6 +1199,52 @@ pkgs.testers.runNixOSTest {
               said("call connected")
           photograph("margin-call")
           said("Caller.cpp:985|invalidating call")
+          machine.wait_until_fails(in_session(margin), timeout=10)
+
+      with subtest("people coming and going in a Tuple call are said, and Joel can leave"):
+          # Whoever comes is "a guest", not a number, which tuple ls would
+          # be asked about, and with the daemon stopped it starts one.
+          offered = "pgrep -f '[n]otify-send --app-name=Tuple .*--action={0}'"
+          # Those there as Joel joins aren't news, so the call connected a
+          # while before the guest comes.
+          with told("drawn margin"):
+              said("call connected", ago=10)
+          with told("shows card Someone joined the call"):
+              said("peer joined call: a guest")
+          photograph("notice-joined")
+          with told("shows card Someone left the call"):
+              said("peer left call: a guest")
+          machine.succeed(offered.format("leave"))
+          photograph("notice-alone")
+          # Leaving runs tuple end, which starts the stopped daemon, whose
+          # new log ends the call.
+          machine.send_key("meta_l-n")
+          launcher_ready()
+          launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Leave the call")
+          machine.send_key("ret")
+          machine.wait_until_fails(in_session(margin), timeout=15)
+          machine.wait_until_fails(offered.format("leave"), timeout=10)
+          as_account("tuple off")
+
+      with subtest("a Tuple call ringing wants Joel, and one not answered is kept as missed"):
+          offered = "pgrep -f '[n]otify-send --app-name=Tuple .*--action=show'"
+          machine.wait_until_fails(in_session(margin), timeout=10)
+          with told("shows card Someone is calling"):
+              said("received incoming call: a caller")
+          wait_for_surface("margin")
+          machine.succeed(offered)
+          photograph("margin-ringing")
+          # The caller gives up: the ring's notice goes, and a missed call stays.
+          said("Caller.cpp:985|invalidating call")
+          machine.wait_until_fails(offered, timeout=10)
+          kept = "grep -q 'Missed a call from someone' ~/.local/state/quickshell/by-shell/*/notices.json"
+          machine.wait_until_succeeds(in_session(kept), timeout=10)
+          # Once it goes by itself it waits, and the margin shows it.
+          machine.wait_until_fails(in_session(notices), timeout=15)
+          wait_for_surface("margin")
+          machine.send_key("meta_l-n")
+          launcher_ready()
+          machine.send_key("esc")
           machine.wait_until_fails(in_session(margin), timeout=10)
 
       with subtest("a copied call's link can be joined until something else is copied"):

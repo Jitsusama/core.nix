@@ -1094,6 +1094,58 @@ in
         touch $out
       '';
 
+    # A call link opened in a browser comes back as tuple://join, which only
+    # the desktop entry's command takes, so the check runs it as the entry
+    # does, with stand-ins for tuple and notify-send, over links like the
+    # page's and ones it mustn't run. xdg-open finds the entry by what it
+    # says it opens, beside a list of defaults a browser wrote, which names
+    # none for Tuple's links.
+    tuple-opens-its-links =
+      let
+        home = account graphical;
+        tuple = lib.findFirst (package: lib.getName package == "tuple") null home.home.packages;
+        entry = home.home.file."${home.xdg.dataHome}/applications/tuple.desktop".text;
+      in
+      pkgs.runCommandLocal "tuple-opens-its-links" { nativeBuildInputs = [ pkgs.xdg-utils ]; } ''
+        mkdir -p data/applications config
+        printf '%s' ${lib.escapeShellArg entry} > tuple.desktop
+        cp tuple.desktop data/applications/
+        printf '[Default Applications]\nx-scheme-handler/https=browser.desktop\n' \
+          > config/mimeapps.list
+        found=$(HOME=$PWD XDG_DATA_HOME=$PWD/data XDG_DATA_DIRS=$PWD/none \
+          XDG_CONFIG_HOME=$PWD/config XDG_CURRENT_DESKTOP=niri \
+          xdg-mime query default x-scheme-handler/tuple)
+        if [ "$found" != tuple.desktop ]; then
+          echo "xdg-open opens Tuple's links with '$found'"
+          exit 1
+        fi
+        opens=$(sed -n 's|^Exec=\(.*\) %u$|\1|p' tuple.desktop)
+        sed -e 's|${lib.getExe tuple}|'"$PWD"'/tuple|g' \
+          -e 's|/nix/store/[^ ]*/bin/notify-send|'"$PWD"'/notify-send|g' "$opens" > opens
+        for stand_in in tuple notify-send; do
+          printf '#!/bin/sh\necho "%s $*" > "%s/asked"\n' "$stand_in" "$PWD" > "$stand_in"
+        done
+        chmod +x opens tuple notify-send
+
+        failed=0
+        opening() {
+          rm -f asked
+          ./opens "$1"
+          if [ "$(cat asked)" != "$2" ]; then
+            echo "'$1' asked '$(cat asked)', not '$2'"
+            failed=1
+          fi
+        }
+        opening 'tuple://join?call_url_slug=U7BVv2' 'tuple join https://tuple.app/c/U7BVv2'
+        opening 'tuple://join?from=web&call_url_slug=a_b-9' 'tuple join https://tuple.app/c/a_b-9'
+        opening 'tuple://join?call_url_slug=a;b' "notify-send --app-name=Tuple Tuple can't open that link tuple://join?call_url_slug=a;b"
+        opening 'tuple://join?call_url_slug=*' "notify-send --app-name=Tuple Tuple can't open that link tuple://join?call_url_slug=*"
+        opening 'tuple://auth?code=abc' "notify-send --app-name=Tuple Tuple can't open that link tuple://auth?code=abc"
+        opening "" 'tuple on'
+        [ "$failed" = 0 ]
+        touch $out
+      '';
+
     # btop draws in the theme with the files an account gets: a theme it can't
     # find falls back to btop's own without a word, so the check looks for the
     # theme's text colour in what btop writes to its terminal.

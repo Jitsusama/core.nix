@@ -1,9 +1,11 @@
 // Tuple's calls in the launcher (Tuple.qml), each row there only when it
 // can be done: opening Joel's room and copying its link to hand on, or
 // joining the call whose link was just copied, while he's in none; leaving
-// the call, and sharing the screen into it, while he's in one; and copying
-// his room's link once it's known. A copied link is also first at home,
-// since opening the launcher just after copying one is when it's wanted.
+// the call, sharing the screen into it, and muting him in it or letting
+// him be heard, while he's in one; bringing forward a ringing call's
+// window, where it's answered; and copying his room's link once it's
+// known. A ringing call and a copied link are also first at home, since
+// opening the launcher then is when they're wanted.
 import qs
 import QtQuick
 
@@ -32,7 +34,18 @@ Provider {
         run: () => Tuple.join(provider.joinable)
     })
 
-    things: (Tuple.calling ? [thing({
+    readonly property var answering: Tuple.ringing === "" || Tuple.calling ? null : thing({
+        key: "tuple:ringing",
+        verb: "show",
+        name: `Show the Tuple call from ${Tuple.name(Tuple.ringing) || "someone"}`,
+        keywords: "pair ringing answer",
+        glyph: glyph(0xf03f2),
+        hue: "person",
+        note: "answer it in Tuple's window",
+        run: () => Tuple.show()
+    })
+
+    things: (answering ? [answering] : []).concat(Tuple.calling ? [thing({
         key: "tuple:leave",
         verb: "leave",
         name: "Leave the Tuple call",
@@ -50,6 +63,16 @@ Provider {
         hue: "action",
         later: true,
         run: () => Tuple.share()
+    })], [thing({
+        key: "tuple:mute",
+        verb: Tuple.muted === true ? "unmute" : "mute",
+        name: Tuple.muted === true ? "Let them hear me again in the Tuple call"
+            : "Mute me in the Tuple call",
+        keywords: "pair microphone voice",
+        glyph: glyph(Tuple.muted === true ? 0xf036c : 0xf036d),
+        hue: "action",
+        later: true,
+        run: () => Tuple.mute(Tuple.muted !== true)
     })]) : [thing({
         key: "tuple:open",
         verb: "open",
@@ -72,6 +95,6 @@ Provider {
     })])
 
     function home() {
-        return joining ? [joining] : [];
+        return (answering ? [answering] : []).concat(joining ? [joining] : []);
     }
 }

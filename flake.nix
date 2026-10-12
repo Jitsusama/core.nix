@@ -124,7 +124,7 @@
         theme = ./modules/theme/home.nix;
         tree = ./modules/tree/home.nix;
         tree-sitter = ./modules/tree-sitter/home.nix;
-        tuple = moduleFrom ./modules/tuple/home.nix { inherit (self.homeModules) quickshell; };
+        tuple = moduleFrom ./modules/tuple/home.nix { inherit (self.homeModules) niri quickshell; };
         wezterm = moduleFrom ./modules/wezterm/home.nix { inherit wallpapers; };
         yq = ./modules/yq/home.nix;
         zellij = ./modules/zellij/home.nix;

@@ -723,7 +723,7 @@ by them isn't done.
 | The browser                               | chrome                   | proportional   |        |        |           |         |          |
 | Images and drawings                       | gimp, inkscape           | proportional   |        |        |           |         |          |
 | Music                                     | spotify, Quickshell      | both           | nothing | a note in the margin while any player plays; for a moment, the track as a notice | the mark's panel: the track, artist, album and player; pause, next, previous, the player's window, and pausing a second player | Play or pause the music, Play the next track, Play the previous track, on the media keys | the mark carries no words; a title wraps to two lines, then gives way |
-| Pairing                                   | tuple, Quickshell        | both           | nothing | a phone in the margin while in a call | the mark's panel: how long; leave, share the screen, mute the microphone, copy the room's link | the launcher's rows: open the room and copy its link, join a copied call's link, first at home once copied, leave, share | the mark carries no words; its panel says how long |
+| Pairing                                   | tuple, Quickshell, niri  | both           | nothing | a phone in the margin while in a call, and wanting Joel while one rings; for a moment, who joined or left, and that he's the only one left; a ring, and a missed call kept | the mark's panel: how long, and who with or who's sharing; leave, share the screen, mute him in Tuple, copy the room's link; while ringing, show the call | the launcher's rows: show a ringing call, first at home; open the room and copy its link; join a copied call's link, first at home once copied; leave, share, mute; a tuple: link from the browser joins its room | the mark carries no words; its panel says how long and who with |
 | Chat, passwords, calls                    | their own settings       | proportional   |        |        |           |         |          |
 | The terminal                              | kitty                    | monospace      |        |        |           |         |          |
 | The prompt                                | prompt                   | monospace      |        |        |           |         |          |
@@ -754,6 +754,27 @@ as an exception with the reason.
 ## Decisions
 
 What each studio round settled, newest first, with the reason.
+
+- **Who's in a call, and a call that rings** (2026-10-12). Tuple on Linux
+  leaves unfinished the notices its Mac app gives: someone joining,
+  everyone else gone, a ring. Its daemon still writes each to its log, so
+  the shell says them. Who joined and who left are notices that matter only
+  as they happen, since the panel names who's there; the last one leaving
+  offers to leave as well; a ring wants Joel in the margin and offers to
+  bring forward Tuple's window, where it's answered, since the command
+  can't; and a ring nobody answered is kept, as a missed call. Names come
+  from tuple ls, asked once for anyone not yet known. Muting is now
+  Tuple's own, which the others see, rather than the microphone's, which
+  has its own mark, and Tuple's answer says how Joel stands even when the
+  shell had it wrong. Tuple's windows reach niri under one name with no
+  title, and most are small, so all of them float at the size Tuple asks
+  for. Its cursor over a share is a layer no rule reaches, and nothing of
+  Tuple's is kept out of a screencast, which would draw the share black. A
+  call link opened in the browser comes back as tuple://join, which
+  Tuple's Linux command doesn't take, so its desktop entry does. What
+  fills each message's blank was read from the program, not yet seen with
+  a second person in the call, so a blank that isn't a number shows as
+  "Someone".
 
 - **A call, while it lasts** (2026-10-11). Tuple on Linux is a command and
   a daemon with no window to look at, so the shell is where a call shows:
