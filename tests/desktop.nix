@@ -803,6 +803,38 @@ pkgs.testers.runNixOSTest {
           machine.screenshot("launcher-notices-all")
           machine.send_key("esc")
 
+      with subtest("a notice's action is done by the keys, and one not acted on stays unread"):
+          machine.wait_until_fails(in_session("niri msg layers | grep -q launcher"), timeout=10)
+          as_account("notify-send 'Lunch' 'at noon'")
+          # notify-send waits for the answer, so it runs on its own.
+          as_account(
+              "notify-send --action=play='Play it' 'Recording saved' 'x.mp4'"
+              " > /tmp/answer 2>&1 < /dev/null &"
+          )
+          wait_for_surface("notifications")
+          time.sleep(0.5)
+          machine.screenshot("notice-with-action")
+          # Qt only warns when a layout never settles, which left the
+          # card's words piled at its top.
+          log = as_account("journalctl --user -u quickshell --no-pager -o cat")
+          assert "polish() loop" not in log, "a notice's layout never settles"
+          # Super+N opens on what it offers, so Return does the first.
+          machine.send_key("meta_l-n")
+          launcher_ready()
+          launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Play it")
+          machine.screenshot("launcher-notice-actions")
+          machine.send_key("ret")
+          machine.wait_until_succeeds("grep -qx play /tmp/answer", timeout=15)
+          machine.wait_until_fails(in_session("niri msg layers | grep -q launcher"), timeout=10)
+          # The history is kept on disk, the one acted on read and the one
+          # that only arrived still unread.
+          kept = "cat ~/.local/state/quickshell/by-shell/*/notices.json"
+          machine.wait_until_succeeds(
+              in_session(kept + " | grep -q '\"summary\":\"Recording saved\"[^}]*\"read\":true'"),
+              timeout=10,
+          )
+          as_account(kept + " | grep -q '\"summary\":\"Lunch\"[^}]*\"read\":false'")
+
       with subtest("the launcher keeps the machine awake, lid shut too, then lets it sleep"):
           held = "systemd-inhibit --list --no-pager | grep Caffeinate"
           machine.wait_until_fails(in_session("niri msg layers | grep -q launcher"), timeout=10)

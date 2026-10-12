@@ -74,6 +74,7 @@ let
     "Picks.qml"
     "Notices.qml"
     "Caffeinate.qml"
+    "Recorder.qml"
     "Quiet.qml"
     "Lights.qml"
     "pieces/Piece.qml"
@@ -252,6 +253,9 @@ let
       nerd "f489"
     else if lib.hasPrefix "screenshot" action then
       nerd "f0e51"
+    # What the margin shows while the screen is recorded.
+    else if program == "qs" && lib.elem "recording" run then
+      config.jitsusama.theme.glyphs.recording.glyph
     # What the margin shows while the screen is shared.
     else if lib.hasInfix "dynamic-cast" action then
       config.jitsusama.theme.glyphs.sharing.glyph
@@ -731,7 +735,14 @@ in
       };
     };
 
-    home.packages = [ pkgs.quickshell ];
+    # The recorder's tools (Recorder.qml): wf-recorder records, slurp
+    # picks a region, and notify-send says where the file went.
+    home.packages = [
+      pkgs.quickshell
+      pkgs.wf-recorder
+      pkgs.slurp
+      pkgs.libnotify
+    ];
 
     xdg.configFile =
       lib.genAttrs (map (file: "quickshell/${file}") qml) (path: {

@@ -9,7 +9,9 @@
 // Each is kept in the session's history as it arrives (Notices.qml), for
 // the launcher to find later. Super+N opens them there, by the keys, where
 // the ones still here can be answered or let go, and while it's open the
-// corner leaves them to it.
+// corner leaves them to it. A notice offering something to do (Reply, Play
+// it) lists it above its footer with that chord beside it, and the chord
+// opens straight on what it offers, so Return does the first.
 //
 // It's the notice kind (docs/design.md, Shape and Kinds): the edge frame,
 // since it never takes the keys, or the alert's when critical; who or what
@@ -46,6 +48,12 @@ Scope {
     // When each notification arrived, by its id, for the footer's time.
     property var arrived: ({})
 
+    // The chord that opens the notices, as the launcher draws chords.
+    readonly property string reach: {
+        const opener = Shortcuts.actions.find(action => action.opens === "notices");
+        return opener ? opener.chord.map(key => key.text).join(" + ") : "";
+    }
+
     function since(then, now) {
         const minutes = Math.floor((now - then) / 60000);
         if (minutes < 1)
@@ -75,7 +83,9 @@ Scope {
                 Notices.arrived(notification, urgent, held);
             const id = notification.id;
             notification.closed.connect(reason => Notices.left(id,
-                reason === NotificationCloseReason.Expired));
+                reason === NotificationCloseReason.Expired ? "expired"
+                : reason === NotificationCloseReason.CloseRequested ? "withdrawn"
+                : "dismissed"));
             // One held is let go at once, so it never shows.
             notification.tracked = !held;
         }
@@ -321,6 +331,77 @@ Scope {
                             font.pointSize: Theme.sans.body
                         }
 
+                        // What the sender offers, each run by a click or by
+                        // the keys: the chord on the right opens the
+                        // launcher on them, the first held for Return.
+                        Item {
+                            width: parent.width
+                            height: root.line + Theme.space.s
+                            visible: card.modelData.actions.length > 0
+
+                            Row {
+                                anchors.bottom: parent.bottom
+                                spacing: Theme.space.m
+
+                                Repeater {
+                                    model: card.modelData.actions
+
+                                    // The pointer's area beside the words,
+                                    // not among them, so the Row never
+                                    // lays out what takes its own size.
+                                    Item {
+                                        id: offer
+                                        required property var modelData
+                                        width: face.width
+                                        height: face.height
+
+                                        Row {
+                                            id: face
+                                            spacing: Theme.space.s
+
+                                            Text {
+                                                height: root.line
+                                                verticalAlignment: Text.AlignVCenter
+                                                text: String.fromCodePoint(0xf0ce0)
+                                                color: Theme.action
+                                                font.family: Theme.mono.family
+                                                font.pointSize: Theme.mono.body
+                                            }
+
+                                            Text {
+                                                height: root.line
+                                                verticalAlignment: Text.AlignVCenter
+                                                text: offer.modelData.text
+                                                color: Theme.text
+                                                font.family: Theme.sans.family
+                                                font.pointSize: Theme.sans.body
+                                            }
+                                        }
+
+                                        MouseArea {
+                                            z: 1
+                                            anchors.fill: parent
+                                            onClicked: {
+                                                Notices.mark(card.modelData.id, true);
+                                                offer.modelData.invoke();
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            Text {
+                                anchors.right: parent.right
+                                anchors.bottom: parent.bottom
+                                height: root.line
+                                verticalAlignment: Text.AlignVCenter
+                                text: root.reach
+                                color: Theme.muted
+                                font.family: Theme.mono.family
+                                font.pointSize: Theme.mono.body
+                            }
+                        }
+
                         // Where it came from and when, a step below the message.
                         Item {
                             width: parent.width
@@ -374,13 +455,15 @@ Scope {
                         onClicked: card.modelData.dismiss()
                     }
 
-                    // Five seconds when the sender doesn't say. Quickshell's
-                    // documents call its timeout seconds, but it passes on
-                    // what the sender said, which is milliseconds.
+                    // Five seconds when the sender doesn't say, and ten for
+                    // one offering something to do. Quickshell's documents
+                    // call its timeout seconds, but it passes on what the
+                    // sender said, which is milliseconds.
                     Timer {
                         running: !card.urgent
                         interval: card.modelData.expireTimeout > 0
-                            ? card.modelData.expireTimeout : 5000
+                            ? card.modelData.expireTimeout
+                            : card.modelData.actions.length > 0 ? 10000 : 5000
                         onTriggered: card.modelData.expire()
                     }
                 }

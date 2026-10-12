@@ -589,7 +589,8 @@ Scope {
 
     // Opens straight into a collection, all of it shown until something's
     // typed; the left arrow steps out to the search. A name no collection
-    // has opens the search.
+    // has opens the search. A collection may lead with one member, which
+    // opens on its actions, as the notices do for one still on screen.
     function into(name) {
         open = true;
         const source = collections.find(s => s.settings.name === name);
@@ -610,6 +611,9 @@ Scope {
         }];
         source.opened();
         restart("");
+        const lead = source.leading ? source.leading() : null;
+        if (lead)
+            enter(lead);
     }
 
     // Where the pointer last was, in the window, so the selection follows
