@@ -13,7 +13,8 @@ use crate::activity::Process;
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Answer {
     /// Every process the system daemon read, by pid and start in ticks.
     pub vouched: Vec<(u32, u64)>,

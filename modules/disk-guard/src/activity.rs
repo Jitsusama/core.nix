@@ -177,8 +177,10 @@ pub fn judge(processes: &[Process], me: u32, target: &Path, checkout: Option<&Pa
         })
 }
 
-/// One process as the platform reads it.
-#[derive(Clone, Debug, Default, PartialEq)]
+/// One process as the platform reads it. It crosses the system daemon's
+/// socket, where a path that isn't UTF-8 won't go, and the asker then
+/// keeps the process unknown.
+#[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Process {
     pub pid: u32,
     pub uid: u32,

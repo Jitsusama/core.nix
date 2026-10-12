@@ -28,6 +28,8 @@ pub mod plan;
 pub mod reclaim;
 pub mod scratch;
 pub mod snapshots;
+#[cfg(target_os = "linux")]
+pub mod socket;
 pub mod state;
 pub mod survey;
 pub mod temp;

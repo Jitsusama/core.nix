@@ -31,6 +31,8 @@ mod reclaim;
 mod sandbox;
 mod scratch;
 mod snapshots;
+#[cfg(target_os = "linux")]
+mod socket;
 mod state;
 mod survey;
 mod temp;
