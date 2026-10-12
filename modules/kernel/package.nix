@@ -11,6 +11,7 @@
 {
   lib,
   fetchpatch,
+  fetchurl,
   kernelPatches,
   linux_7_2,
   llvmPackages_22,
@@ -29,9 +30,26 @@ let
   # Clang reads the CPU flags from a file because nixpkgs splits make flags on
   # spaces while it configures the kernel.
   cpuFlags = writeText "kernel-cpu-flags" "-march=${cpu} -mtune=${cpu}";
+
+  # The newest stable release, until nixpkgs's pin reaches it. It applies
+  # only while nixpkgs's is older, so it never holds the kernel back.
+  # docs/kernel.md says why this release.
+  stable = {
+    version = "7.2.10";
+    hash = "sha256-L+qnBFPpH1Qb5qXJB42BaOCBr0Wj2XGAVIUFOM/y6/M=";
+  };
 in
 linux_7_2.override {
   stdenv = clangStdenv;
+
+  argsOverride = lib.optionalAttrs (lib.versionOlder linux_7_2.version stable.version) {
+    inherit (stable) version;
+    modDirVersion = stable.version;
+    src = fetchurl {
+      url = "mirror://kernel/linux/kernel/v7.x/linux-${stable.version}.tar.xz";
+      inherit (stable) hash;
+    };
+  };
 
   # Compile for the machine's own CPU. The kernel adds these flags after the
   # generic -march and -mtune of its own Makefile, so they win. Then optimize

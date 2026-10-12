@@ -19,8 +19,14 @@ x86-64 machine as `packages.x86_64-linux.kernel`.
 
 ## What It Is
 
-- **The series:** 7.2, at whichever point release nixpkgs pins. Taking a new
-  nixpkgs takes the latest 7.2 release with its fixes.
+- **The series:** 7.2, at whichever point release nixpkgs pins, or a newer
+  one `package.nix` names in `stable` while nixpkgs catches up. Taking a new
+  nixpkgs takes the latest 7.2 release with its fixes, and `stable` stops
+  applying once nixpkgs's release is as new. It names 7.2.10, newer than the
+  pinned nixpkgs's 7.2.9, for its fixes to what the XPS 14 runs:
+  use-after-frees in Bluetooth's core and in cache-aware scheduling, overruns
+  in the Intel Bluetooth driver, the SDCA codec's power management, the TPM
+  driver, and a deadlock freeing slab memory under the scheduler's lock.
 - **The compiler:** Clang 22, linked with LLD, which link-time optimization
   needs. Not nixpkgs's default LLVM 21: its LLD, compiled with GCC 16 as
   nixpkgs compiles it, writes objects the kernel's objtool rejects.
@@ -93,6 +99,8 @@ configuration, and its own setting wins where the two differ. In short:
 | no Rust, which LTO and BTF forbid | `RUST` and the options that need it |
 | build in what every boot loads    | AES-NI, vfat, the firewall's set    |
 | decompress modules quickly        | `MODULE_COMPRESS_ZSTD`, not xz      |
+| no allocation profiler            | `MEM_ALLOC_PROFILING` off           |
+| reboot after a panic              | `PANIC_TIMEOUT` of 10 s             |
 
 nixpkgs gives huge pages only to programs that ask for them, with
 `TRANSPARENT_HUGEPAGE_MADVISE`, and the ones that would gain most no longer
@@ -100,6 +108,20 @@ ask: Go's runtime and the allocator rustc uses. Giving them to every program
 saves address lookups across a build. Waiting for memory to be compacted into
 huge pages stays reserved for programs that ask, so nothing else stalls for
 it. Omarchy runs the same.
+
+nixpkgs builds in memory allocation profiling and starts it at boot, so the
+kernel counts every allocation by the line that made it, for
+`/proc/allocinfo`. On the XPS 14 its own tables held 210 MiB: 129.5 MB of
+page extensions and 91.1 MB of slab object vectors. Over four interleaved
+rounds of stress-ng, turned off at run time, fork ran 0.2 to 12.9% faster
+per CPU second, about 3% in the middle, and dentry churn about 2%. Turning
+it off at boot, with `sysctl.vm.mem_profiling=never`, frees the page
+extensions but still leaves a tag slot in every slab object's vector, so
+it comes out of the build. A leak hunt can build it back in.
+
+A panic otherwise waits forever, and on the XPS 14 [both crashes][crashes]
+froze it until the power button was held. Ten seconds later the record is
+already in pstore, so rebooting loses nothing.
 
 Preemption stays switchable at boot, with `preempt=`, because nixpkgs keeps
 `PREEMPT_DYNAMIC` on. The rest of what a developer needs is already in
@@ -249,6 +271,10 @@ if less; record a new one after moving to a new series.
 - **A fix written here:** put it beside `package.nix` as a patch whose header
   says what it fixes and why, so the file can go upstream as it is, and drop
   it once the kernel has its own.
+- **A newer point release:** set `stable` in `package.nix` to its version
+  and the tarball's hash, from kernel.org's `sha256sums.asc`, converted with
+  `nix hash convert --hash-algo sha256`. The configuration check applies
+  every patch to it.
 - **A machine's CPU:** set `jitsusama.kernel.cpu` in its hardware module, to a
   name from `clang --print-supported-cpus`.
 - **A patch one model needs:** add it to that model's `boot.kernelPatches`,
@@ -308,5 +334,6 @@ if less; record a new one after moving to a new series.
 [perf]: ../modules/perf/nixos.nix
 [slices]: ../modules/slices/nixos.nix
 [hw]: hardware.md
+[crashes]: hardware.md#the-two-crashes
 [1]: https://github.com/firelzrd/bore-scheduler
 [2]: https://git.kernel.org/torvalds/c/a6036a41bffb

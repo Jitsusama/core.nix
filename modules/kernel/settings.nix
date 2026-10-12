@@ -7,6 +7,7 @@ let
     yes
     no
     option
+    freeform
     ;
 in
 {
@@ -70,6 +71,18 @@ in
   IP6_NF_IPTABLES = yes;
   IP_NF_MATCH_RPFILTER = yes;
   IP6_NF_MATCH_RPFILTER = yes;
+
+  # Don't count every allocation by the line that made it. nixpkgs counts
+  # from boot, and the counting's own tables then hold about 210 MiB and add a
+  # hook to every slab allocation and free: turned off, fork ran about 3%
+  # faster per CPU second. Nothing here reads /proc/allocinfo, and a leak hunt
+  # can turn it back on. The kernel stops offering the default without it.
+  MEM_ALLOC_PROFILING = no;
+  MEM_ALLOC_PROFILING_ENABLED_BY_DEFAULT = option no;
+
+  # Reboot ten seconds after a panic, rather than freeze until the power
+  # button is held. The panic's record is in pstore by then.
+  PANIC_TIMEOUT = freeform "10";
 
   # Compress modules with zstd, which the kernel decompresses about six
   # times faster than nixpkgs's xz, for about a third more disk space.

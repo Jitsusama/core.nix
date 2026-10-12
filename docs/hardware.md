@@ -101,7 +101,9 @@ It can't shorten the firmware's own time.
 The BE211's Wi-Fi 7 receive path drops a link to its slowest rate, so the
 module turns Wi-Fi 7 off and the card runs as Wi-Fi 6. The workaround comes
 from [Omarchy][4], which applies it to this laptop; remove it once a Wi-Fi 7
-link holds its rate without it.
+link holds its rate without it. Turning Wi-Fi 7 back on lets the card offer
+multi-link, and the kernel then answers nothing through the old wireless
+extensions, which WARP's service still reads its Wi-Fi statistics through.
 
 With the lid closed, Wi-Fi slows to a crawl even on a dock. Testing in
 [Omarchy's report][5] points to the antennas in the closed lid rather than to
@@ -216,6 +218,36 @@ within the noise, over three interleaved runs each. An earlier comparison
 found no difference in idle power because it read idle while another
 session's builds kept the laptop 9% busy.
 
+### The Two Crashes
+
+The laptop has panicked twice, both times on BIOS 1.10.1 and kernel 7.2.9,
+and pstore kept both records:
+
+- **At boot, 20 s in.** An RCU callback freeing a dentry read the slab's
+  record of which allocation tag the dentry was charged to, and found one in
+  the modules' tag area whose counter pointer was garbage, so
+  `__alloc_tagging_slab_free_hook()` faulted. It came 60 ms after the
+  camera's ISYS bound the CVS bridge.
+- **At reboot, after a suspend.** `device_shutdown()` found that the device
+  before the one it was removing had been freed: the `kobj.entry` link at
+  offset 8 of its 1 KiB slab object held an address in the modules' tag area
+  instead. Offset 8 is where an entry in a slab's object vector keeps its
+  tag, so the freed device's memory had become some slab's object vector.
+
+Each is a use-after-free: something freed memory that was still in use. In
+the second, the allocation profiler's bookkeeping was only the next owner of
+that memory, writing where it was entitled to. Neither record names what
+freed it. 7.2.10 and the memory list hold no fix for the object vectors that
+would match, and there have been no crashes since, over five boots on BIOS
+1.11.0. Both kernels carried the staging IPU7 drivers and Intel's
+out-of-tree psys module, which the camera needs.
+
+Two settings in [the kernel guide][1] answer what can be answered without a
+culprit: the profiler is out of the build, and a panic reboots after ten
+seconds instead of freezing the laptop. If it happens again, the record is in
+`/var/lib/systemd/pstore`, and the next step is a kernel built with KASAN,
+which names both the code that freed the memory and the code that used it.
+
 ### What's Left
 
 | Part         | Why it isn't here yet                                                 |
@@ -275,6 +307,37 @@ and is harmless, so nothing silences or patches it:
 - **"Returned feature report did not match the request"** from the
   touchpad, which answers one feature request with another report and works
   as it should.
+- **"Defer on undeferrable control"**, three times, from the headset
+  codec's SDCA function. The codec answers busy while its firmware loads, and
+  the driver polls until it's ready; Dell's tables don't mark those controls
+  as ones that may answer busy, which is all the message says. The jack's
+  controls all appear.
+- **"ASoC: Parent card not yet available, widget card binding deferred"**,
+  four times. The DSP's topology loads before the card registers, and its
+  widgets bind once it does.
+- **igen6_edac's "resource sanity check ... spans more than PNP0C02:03" and
+  "mapping multiple BARs".** The memory controller's error driver maps
+  128 KiB of its registers, where ACPI reserves 32 KiB. It reads only its
+  own registers.
+- **The camera bridge's "GPIO 11 is not in FW pins bitmap" and "Invalid
+  speed 400000 adjusting to bus max 100000".** ACPI names a pin and a bus
+  speed the USB-IO bridge's firmware doesn't offer, and the driver uses what
+  it does. The camera works.
+- **"HPET dysfunctional in PC10. Force disabled."** and "no address or irqs
+  in _CRS". The kernel turns HPET off on any CPU whose deepest idle state
+  stops it, and the TSC keeps time.
+- **i8042's "Warning: Keylock active".** The keyboard controller's keylock
+  status bit is set, which the kernel only reports.
+- **"No UUID available providing old NGUID".** The drive reports no UUID, so
+  the kernel names it by its NGUID.
+- **"WQBC data block query control method not found".** One data block in
+  Dell's WMI tables has no method to read it, so the WMI bus leaves that block
+  out.
+- **"`tokio-rt-worker' uses wireless extensions"**, once a boot. WARP's
+  service reads Wi-Fi statistics through the old interface. It still gets
+  them because Wi-Fi 7 is off: on a card with multi-link on, the kernel
+  answers nothing. stress-ng run as root repeats the warning, since it resets
+  the kernel's once-only warnings.
 - **Dummy regulators** for the camera sensor, the SPI flash and the four
   amplifiers. ACPI names no supplies for them, and all three work as they
   should.
