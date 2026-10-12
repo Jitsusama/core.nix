@@ -14,6 +14,12 @@
 # Tuple writes a desktop entry each time its daemon starts, one that runs
 # tuple with nothing after it, which only prints the command's help. This
 # entry takes its place, hidden, since there's no window to open.
+#
+# The shell is where a call shows (docs/design.md, Calls): a piece in the
+# margin while Joel's in one, with leaving, sharing and muting in its panel,
+# and the launcher's rows to open his room, join a call whose link was
+# copied, and leave. Tuple.qml follows the daemon's log for both.
+{ quickshell }:
 {
   config,
   lib,
@@ -25,7 +31,29 @@ let
   settings = "${config.xdg.dataHome}/tuple/0/settings";
 in
 {
+  imports = [ quickshell ];
+
   home.packages = [ pkgs.tuple ];
+
+  xdg.configFile = {
+    "quickshell/Tuple.qml".source = ./Tuple.qml;
+    "quickshell/Tuple.js".source = ./Tuple.js;
+  };
+  jitsusama.quickshell = {
+    overview.pieces.call = {
+      # Before the sharing, which a call often brings.
+      order = 78;
+      source = ./Call.qml;
+      label = "call";
+      tier = "when";
+      mark = "call";
+    };
+    # Beside the desktop's actions, since each is one.
+    launcher.providers.tuple = {
+      order = 45;
+      source = ./Calls.qml;
+    };
+  };
 
   systemd.user.services.tuple = {
     Unit = {

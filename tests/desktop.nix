@@ -6,9 +6,10 @@
 # window, the launcher switches to a window by its title, the lock screen
 # refuses a wrong password and takes the right one, polkit's prompt lets the
 # account start a system service, what's playing shows in the margin and a
-# media key shows what it is, the clipboard takes and gives text, and GTK
-# programs and monospaced text are in the theme. niri says which surfaces
-# it drew, photographs show their colours, to the test and to a person looking, and
+# media key shows what it is, a call shows in the margin while it lasts, the
+# clipboard takes and gives text, and GTK programs and monospaced text are
+# in the theme. niri says which surfaces it drew, photographs show their
+# colours, to the test and to a person looking, and
 # the portal and fontconfig answer for the settings. Quickshell has to start
 # without a single QML error.
 { self, pkgs }:
@@ -930,6 +931,24 @@ pkgs.testers.runNixOSTest {
           machine.wait_until_fails(in_session(margin), timeout=10)
           machine.wait_until_fails(in_session(notices), timeout=15)
           as_account("systemctl --user stop player")
+
+      with subtest("a Tuple call shows in the margin while it lasts"):
+          # Only a call writes these lines, so they're written here, with
+          # the daemon stopped, since it rewrites its log as it starts.
+          as_account("systemctl --user stop tuple")
+          written = "~/.local/share/tuple/0/log.txt"
+
+          def said(message):
+              line = f"$(date -u +%H:%M:%S.000)|1|1|info|{message}"
+              as_account(f"mkdir -p $(dirname {written}) && echo \"{line}\" >> {written}")
+
+          machine.wait_until_fails(in_session(margin), timeout=10)
+          said("call connected")
+          wait_for_surface("margin")
+          time.sleep(0.5)
+          machine.screenshot("margin-call")
+          said("Caller.cpp:985|invalidating call")
+          machine.wait_until_fails(in_session(margin), timeout=10)
 
       with subtest("caps lock shows in the margin while it's on"):
           capitals = "/run/keyboard-lights/capslock"

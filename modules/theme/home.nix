@@ -334,6 +334,11 @@ let
       console = "M";
       means = "the microphone hears nothing";
     };
+    call = {
+      glyph = nerd "f03f2";
+      console = "T";
+      means = "a call is under way";
+    };
     sharing = {
       glyph = nerd "f1483";
       console = "V";

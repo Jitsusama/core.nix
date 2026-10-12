@@ -325,6 +325,7 @@ in
           "wide"
           "microphone"
           "capslock"
+          "call"
           "sharing"
           "recording"
           "playing"
@@ -480,6 +481,22 @@ in
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
       QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml music.qml
+      touch $out
+    '';
+
+  # Whether Joel's in a Tuple call comes from the daemon's log, which only a
+  # real call writes, so tests/tuple.qml gives Tuple.js lines like its own:
+  # what starts a call, what ends one, when it began, and a call's link.
+  the-shell-follows-tuple-calls =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "the-shell-follows-tuple-calls" { } ''
+      cp ${./tests/tuple.qml} tuple.qml
+      cp ${./modules/tuple/Tuple.js} Tuple.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml tuple.qml
       touch $out
     '';
 
