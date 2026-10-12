@@ -41,7 +41,23 @@ struct Watched {
     band: Band,
     fill: Fill,
     space: Option<Space>,
+    /// After a pass that fell short: no other until this monotonic time,
+    /// unless the band gets worse than it was.
+    rest: Option<Rest>,
 }
+
+#[derive(Clone, Copy, Debug)]
+struct Rest {
+    until: f64,
+    seconds: f64,
+    band: Band,
+}
+
+/// How long a filesystem rests after a pass that fell short, at first and
+/// at most: what was kept is in use or can't be judged, and looking again
+/// at once would only find the same and spend a scan saying so.
+const FIRST_REST: f64 = 60.0;
+const LONGEST_REST: f64 = 900.0;
 
 /// How long a pass is assumed to take before one has been timed.
 const FIRST_PASS_SECONDS: f64 = 60.0;
@@ -192,6 +208,9 @@ impl Guard {
             watched.band = thresholds.band(&space, watched.band);
             watched.fill.observe(tick.monotonic, space.free);
             watched.space = Some(space);
+            if watched.band == Band::Healthy {
+                watched.rest = None;
+            }
             let decision = decide(&Situation {
                 band: watched.band,
                 free: space.free,
@@ -202,7 +221,11 @@ impl Guard {
                 now: tick.wall,
                 spare,
             });
-            if decision != Decision::Rest {
+            let resting = watched.rest.is_some_and(|rest| {
+                tick.monotonic < rest.until
+                    && matches!(decision, Decision::Reach(band) if band <= rest.band)
+            });
+            if decision != Decision::Rest && !resting {
                 due.push((device, decision, thresholds));
             }
         }
@@ -233,6 +256,7 @@ impl Guard {
                 band: Band::Healthy,
                 fill: Fill::default(),
                 space: None,
+                rest: None,
             });
             seen.insert(meta.dev(), watched);
         }
@@ -255,7 +279,22 @@ impl Guard {
                 .filter(|offer| offer.device == device)
                 .cloned()
                 .collect();
-            self.pass_on(tick, path, &here, decision, thresholds, &mut scan)?;
+            let end = self.pass_on(tick, path, &here, decision, thresholds, &mut scan)?;
+            let Decision::Reach(band) = decision else {
+                continue;
+            };
+            if let Some(watched) = self.watched.get_mut(&device) {
+                watched.rest = (end != End::Reached).then(|| {
+                    let seconds = watched
+                        .rest
+                        .map_or(FIRST_REST, |rest| (rest.seconds * 2.0).min(LONGEST_REST));
+                    Rest {
+                        until: tick.monotonic + seconds,
+                        seconds,
+                        band,
+                    }
+                });
+            }
         }
         Ok(())
     }
@@ -314,7 +353,7 @@ impl Guard {
         decision: Decision,
         thresholds: Thresholds,
         scan: &mut Scan,
-    ) -> io::Result<()> {
+    ) -> io::Result<End> {
         let candidates: Vec<_> = here.iter().map(|offer| offer.candidate.clone()).collect();
         let (band, goal) = match decision {
             Decision::Reach(band) => (band, Goal::Reach),
@@ -367,7 +406,7 @@ impl Guard {
             end,
             freed: report.freed,
         });
-        Ok(())
+        Ok(report.end)
     }
 
     /// What a pass would take now on each filesystem, in `band` and with

@@ -184,6 +184,34 @@ fn the_system_daemon_vouches_for_what_this_account_cant_read() {
     );
 }
 
+fn tick_at(monotonic: f64) -> Tick {
+    Tick {
+        monotonic,
+        ..tick()
+    }
+}
+
+#[test]
+fn a_pass_that_falls_short_rests_before_the_next_and_longer_each_time() {
+    let home = Home::new();
+    home.cold_scratch("run-1");
+    // Kept every time, since process 300 can't be judged.
+    home.hidden(300, 77);
+    let mut guard = home.guard(home.config("100%", "100%"));
+    let passes = || {
+        home.journal()
+            .iter()
+            .filter(|line| line["event"] == "pass")
+            .count()
+    };
+    let mut seen = Vec::new();
+    for at in [3600.0, 3605.0, 3655.0, 3661.0, 3700.0, 3775.0, 3782.0] {
+        guard.step(&tick_at(at), &CALM).unwrap();
+        seen.push(passes());
+    }
+    assert_eq!(seen, [1, 1, 1, 2, 2, 2, 3], "a minute's rest, then two");
+}
+
 #[test]
 fn a_preview_says_what_a_pass_would_take_and_takes_nothing() {
     let home = Home::new();
