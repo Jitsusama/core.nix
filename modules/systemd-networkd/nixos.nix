@@ -24,7 +24,8 @@
   };
 
   systemd.network.networks = {
-    # A stranger's Wi-Fi learns as little as it can: no hostname, and an
+    # A stranger's Wi-Fi learns as little as it can, and changes nothing
+    # beyond the link: no hostname sent or taken, and an
     # identity that follows the address wpa_supplicant gives this network, so
     # no two networks can tell they've met the same machine. Nothing goes in
     # resolved's global settings, which would reach every resolver on the
@@ -47,12 +48,14 @@
       dhcpV4Config = {
         ClientIdentifier = "mac";
         SendHostname = false;
+        UseHostname = false;
         # A cable beats Wi-Fi, as it does under NetworkManager.
         RouteMetric = 600;
       };
       dhcpV6Config = {
         DUIDType = "link-layer";
         SendHostname = false;
+        UseHostname = false;
       };
       ipv6AcceptRAConfig.RouteMetric = 600;
     };
@@ -73,9 +76,13 @@
       dhcpV4Config = {
         ClientIdentifier = "mac";
         SendHostname = false;
+        UseHostname = false;
         RouteMetric = 100;
       };
-      dhcpV6Config.SendHostname = false;
+      dhcpV6Config = {
+        SendHostname = false;
+        UseHostname = false;
+      };
       ipv6AcceptRAConfig.RouteMetric = 100;
     };
   };
