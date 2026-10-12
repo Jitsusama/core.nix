@@ -19,8 +19,14 @@ x86-64 machine as `packages.x86_64-linux.kernel`.
 
 ## What It Is
 
-- **The series:** 7.2, at whichever point release nixpkgs pins. Taking a new
-  nixpkgs takes the latest 7.2 release with its fixes.
+- **The series:** 7.2, at whichever point release nixpkgs pins, or a newer
+  one `package.nix` names in `stable` while nixpkgs catches up. Taking a new
+  nixpkgs takes the latest 7.2 release with its fixes, and `stable` stops
+  applying once nixpkgs's release is as new. It names 7.2.10, newer than the
+  pinned nixpkgs's 7.2.9, for its fixes to what the XPS 14 runs:
+  use-after-frees in Bluetooth's core and in cache-aware scheduling, overruns
+  in the Intel Bluetooth driver, the SDCA codec's power management, the TPM
+  driver, and a deadlock freeing slab memory under the scheduler's lock.
 - **The compiler:** Clang 22, linked with LLD, which link-time optimization
   needs. Not nixpkgs's default LLVM 21: its LLD, compiled with GCC 16 as
   nixpkgs compiles it, writes objects the kernel's objtool rejects.
@@ -265,6 +271,10 @@ if less; record a new one after moving to a new series.
 - **A fix written here:** put it beside `package.nix` as a patch whose header
   says what it fixes and why, so the file can go upstream as it is, and drop
   it once the kernel has its own.
+- **A newer point release:** set `stable` in `package.nix` to its version
+  and the tarball's hash, from kernel.org's `sha256sums.asc`, converted with
+  `nix hash convert --hash-algo sha256`. The configuration check applies
+  every patch to it.
 - **A machine's CPU:** set `jitsusama.kernel.cpu` in its hardware module, to a
   name from `clang --print-supported-cpus`.
 - **A patch one model needs:** add it to that model's `boot.kernelPatches`,
