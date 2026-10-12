@@ -231,6 +231,19 @@ in
       hasYkman workstation && hasYkman macWorkstation
     );
 
+  # Joel plugs the ErgoDox into every machine he writes code on, so every
+  # account on one can flash it, and on Linux its devices are open to him.
+  ergodox-on-every-workstation =
+    let
+      hasErgodox =
+        machine: lib.any (package: lib.getName package == "ergodox") (account machine).home.packages;
+    in
+    holds "ergodox-on-every-workstation" "A workstation can't flash the ErgoDox." (
+      hasErgodox workstation
+      && hasErgodox macWorkstation
+      && workstation.config.hardware.keyboard.zsa.enable
+    );
+
   # Every switch keeps the generation the machine booted on the ESP, so
   # systemd-pcrlock can always account for the running boot and the disk's
   # policy keeps PCR 4.
@@ -1310,6 +1323,38 @@ in
           echo 'fn main() {}' > hello/src/main.rs
           cargo build --offline --quiet --manifest-path hello/Cargo.toml
           readelf -p .comment hello/target/debug/hello | grep mold
+          touch $out
+        '';
+
+    # The ErgoDox's layout compiles into firmware that fits the board, and the
+    # board will answer with the build's own serial number, never Oryx's, so
+    # ZSA's tools don't take it for an Oryx layout and replace it. USB gives
+    # a serial number in UTF-16.
+    the-ergodox-layout-builds =
+      let
+        firmware = import ./modules/ergodox/firmware.nix pkgs {
+          firmware = self.inputs.qmk;
+          inherit (self.inputs) lufa printf;
+        };
+      in
+      pkgs.runCommandLocal "the-ergodox-layout-builds"
+        {
+          nativeBuildInputs = [
+            pkgs.pkgsCross.avr.buildPackages.binutils
+            pkgs.python3
+          ];
+        }
+        ''
+          avr-objcopy -I ihex -O binary ${firmware}/ergodox.hex image
+          python3 - ${firmware}/serial <<'EOF'
+          import sys
+          image = open("image", "rb").read()
+          serial = open(sys.argv[1]).read().strip()
+          if serial.encode("utf-16-le") not in image:
+              sys.exit(f"The board wouldn't answer with the build's serial, {serial}.")
+          if "omjyr".encode("utf-16-le") in image:
+              sys.exit("The board would still answer with Oryx's serial.")
+          EOF
           touch $out
         '';
 

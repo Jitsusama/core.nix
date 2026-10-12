@@ -1,4 +1,5 @@
-# A machine Joel writes code on: Neovim, zellij and coding agents.
+# A machine Joel writes code on: Neovim, zellij and coding agents, and the
+# ErgoDox he plugs into each one.
 { homeModules }:
 {
   imports = [
@@ -7,5 +8,6 @@
     homeModules.zellij
     homeModules.claude
     homeModules.opencode
+    homeModules.ergodox
   ];
 }

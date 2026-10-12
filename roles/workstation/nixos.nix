@@ -4,13 +4,15 @@
 # keys, commits signed with them, virtual machines through libvirt and
 # containers through Podman. Builds churn its disk, so Btrfs keeps room for
 # its metadata, Nix collects its garbage before the disk fills, and crashes
-# keep only a few days of cores.
+# keep only a few days of cores. The ErgoDox's devices are open to Joel, so
+# it can be flashed.
 { nixosModules, homeModules }:
 {
   imports = [
     nixosModules.base
     nixosModules.btrfs
     nixosModules.coredump
+    nixosModules.ergodox
     nixosModules.libvirt
     nixosModules.memory
     nixosModules.nix-daemon

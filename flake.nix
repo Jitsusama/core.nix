@@ -47,6 +47,22 @@
       url = "github:Jitsusama/neovim.pi";
       flake = false;
     };
+    # The ErgoDox's firmware: ZSA's QMK, the firmware24 branch its layout was
+    # made for, and the two of its submodules a board with an AVR chip builds
+    # with, at the commits that branch records for them. The three move
+    # together, so they're pinned by commit rather than by branch.
+    qmk = {
+      url = "github:zsa/qmk_firmware/5456d00fd858d746df47b1f30e456075c6a4ba24";
+      flake = false;
+    };
+    lufa = {
+      url = "github:qmk/lufa/549b97320d515bfca2f95c145a67bd13be968faa";
+      flake = false;
+    };
+    printf = {
+      url = "github:qmk/printf/c2e3b4e10d281e7f0f694d3ecbd9f320977288cc";
+      flake = false;
+    };
   };
 
   outputs =
@@ -61,6 +77,9 @@
       wallpapers,
       neovim-pi,
       spicetify-nix,
+      qmk,
+      lufa,
+      printf,
     }:
     let
       systems = [
@@ -89,6 +108,7 @@
         curl = ./modules/curl/home.nix;
         dig = ./modules/dig/home.nix;
         direnv = ./modules/direnv/home.nix;
+        ergodox = moduleFrom ./modules/ergodox/home.nix { inherit qmk lufa printf; };
         fd = ./modules/fd/home.nix;
         fontconfig = ./modules/fontconfig/home.nix;
         fzf = ./modules/fzf/home.nix;
@@ -158,6 +178,7 @@
         btrfs = ./modules/btrfs/nixos.nix;
         coredump = ./modules/coredump/nixos.nix;
         disko = moduleFrom ./modules/disko/nixos.nix { inherit disko; };
+        ergodox = ./modules/ergodox/nixos.nix;
         fonts = ./modules/fonts/system.nix;
         gnome-keyring = ./modules/gnome-keyring/nixos.nix;
         gpu = ./modules/gpu/nixos.nix;
