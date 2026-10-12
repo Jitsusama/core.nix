@@ -6,11 +6,10 @@
 # it after it's installed, and Spotify keeps its own prefs file, which holds
 # the account it signs in with.
 #
-# The shell shows each new track itself (Music.qml), so Spotify's own notice
-# for one is turned off where Spotify takes a pref from its command line.
-# Spotify rewrites prefs from memory when it quits, so a line written there
-# while it ran would be lost; and Spicetify's own launch flags reach only a
-# Spotify that Spicetify starts, never the one the launcher opens.
+# The shell shows each new track itself (Music.qml). Spotify's own notice
+# for one is off unless it's turned on in Spotify's settings, and Spotify
+# keeps that choice in prefs, a file it rewrites from memory as it quits, so
+# it's left to Spotify. Spotify doesn't take that pref from its command line.
 #
 # spotify-player plays and browses Spotify from the terminal, as a Spotify
 # Connect device of its own. It draws in the terminal's colours, which are
@@ -68,12 +67,6 @@ in
 
   programs.spicetify = {
     enable = true;
-    # On the wrapper nixpkgs' Spotify already has, which Spicetify keeps.
-    spotifyPackage = pkgs.spotify.overrideAttrs (old: {
-      preFixup = (old.preFixup or "") + ''
-        gappsWrapperArgs+=(--add-flags --ui.track_os_notifications_enabled=false)
-      '';
-    });
     customColorScheme = lib.mapAttrs (_: lib.removePrefix "#") scheme;
     # Spicetify's plain theme, which only recolours, with the faces added.
     theme = spices.themes.default // {
