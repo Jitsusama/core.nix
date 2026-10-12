@@ -836,6 +836,64 @@ pkgs.testers.runNixOSTest {
           )
           as_account(kept + " | grep -q '\"summary\":\"Lunch\"[^}]*\"read\":false'")
 
+      # A notice offering to play, and where its action's glyph is drawn, as
+      # a fraction of the screen. The glyph is the only thing in the action
+      # colour. notify-send waits for the answer, so it runs on its own, and
+      # the notice stays a minute, so only a click closes it sooner.
+      def offer_to_play(picture):
+          machine.wait_until_fails(in_session("niri msg layers | grep -q notifications"), timeout=30)
+          as_account(
+              f"notify-send --expire-time=60000 --action=play='Play it' '{picture}' 'y.mp4'"
+              " > /tmp/answer 2>&1 < /dev/null &"
+          )
+          wait_for_surface("notifications")
+          time.sleep(0.5)
+          machine.screenshot(picture)
+          image = Image.open(os.path.join(machine.out_dir, picture + ".png")).convert("RGB")
+          pixels = image.tobytes()
+          action = [int("${roles.action}"[i : i + 2], 16) for i in (1, 3, 5)]
+          drawn = [
+              (x, y)
+              for y in range(image.height)
+              for x in range(image.width)
+              if sum(abs(pixels[3 * (y * image.width + x) + c] - action[c]) for c in range(3)) < 40
+          ]
+          assert drawn, "the action's glyph isn't drawn"
+          xs, ys = [x for x, _ in drawn], [y for _, y in drawn]
+          assert max(xs) - min(xs) < 30 and max(ys) - min(ys) < 30, f"more than one glyph: {drawn}"
+          return sum(xs) / len(xs) / image.width, sum(ys) / len(ys) / image.height
+
+      # A click there, by QEMU's tablet, which spans the screen from 0 to
+      # 32767. The driver says a command's arguments are strings, so the
+      # events go through JSON to reach it as they are.
+      def click(x, y):
+          def tablet(*events):
+              assert machine.qmp_client is not None
+              machine.qmp_client.send("input-send-event", json.loads(json.dumps({"events": events})))
+
+          tablet(
+              {"type": "abs", "data": {"axis": "x", "value": int(x * 32767)}},
+              {"type": "abs", "data": {"axis": "y", "value": int(y * 32767)}},
+          )
+          time.sleep(0.5)
+          tablet({"type": "btn", "data": {"down": True, "button": "left"}})
+          tablet({"type": "btn", "data": {"down": False, "button": "left"}})
+
+      # notify-send ends once its notice closes, saying the action if one
+      # was done and nothing if the notice was only put away.
+      def answered():
+          machine.wait_until_fails("pgrep -f '[n]otify-send .*--action=play'", timeout=15)
+          return machine.succeed("cat /tmp/answer").strip()
+
+      with subtest("a click on a notice's action does it, and anywhere else puts it away"):
+          x, y = offer_to_play("notice-to-click")
+          click(x, y)
+          assert answered() == "play", "a click on the action put the notice away instead"
+          # A little above the action is the notice's message.
+          x, y = offer_to_play("notice-to-put-away")
+          click(x, y - 0.04)
+          assert answered() == "", "a click on the message did the action"
+
       with subtest("the launcher keeps the machine awake, lid shut too, then lets it sleep"):
           held = "systemd-inhibit --list --no-pager | grep Caffeinate"
           machine.wait_until_fails(in_session("niri msg layers | grep -q launcher"), timeout=10)

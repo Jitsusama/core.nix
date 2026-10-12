@@ -293,6 +293,15 @@ Scope {
                     width: stack.width
                     urgent: modelData.urgency === NotificationUrgency.Critical
 
+                    // A click anywhere on the card puts it away. It lies
+                    // beneath the words, so an action's own area, drawn
+                    // later, takes the click on the action.
+                    MouseArea {
+                        width: parent.width
+                        height: words.height
+                        onClicked: card.modelData.dismiss()
+                    }
+
                     Column {
                         id: words
                         x: Theme.space.l
@@ -379,7 +388,6 @@ Scope {
                                         }
 
                                         MouseArea {
-                                            z: 1
                                             anchors.fill: parent
                                             onClicked: {
                                                 Notices.mark(card.modelData.id, true);
@@ -447,12 +455,6 @@ Scope {
                                 font.features: { "tnum": 1 }
                             }
                         }
-                    }
-
-                    MouseArea {
-                        width: parent.width
-                        height: words.height
-                        onClicked: card.modelData.dismiss()
                     }
 
                     // Five seconds when the sender doesn't say, and ten for
