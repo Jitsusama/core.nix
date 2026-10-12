@@ -108,7 +108,14 @@ in
     "uas"
     "sd_mod"
   ];
-  boot.kernelModules = [ "kvm-intel" ];
+  boot.kernelModules = [
+    "kvm-intel"
+    # thermald looks once, as it starts, for the power limits the CPU's own
+    # registers hold, and udev loads the driver for them a second later, so
+    # it warns they're missing. Loading it with the early modules, which
+    # finish before thermald may start, has them there first.
+    "intel_rapl_msr"
+  ];
 
   # Video decoding and encoding through VA-API and oneVPL, and OpenCL and
   # Level Zero for compute, all on the Arc GPU.
