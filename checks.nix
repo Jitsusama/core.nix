@@ -325,6 +325,7 @@ in
           "wide"
           "microphone"
           "capslock"
+          "call"
           "sharing"
           "recording"
           "playing"
@@ -480,6 +481,22 @@ in
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
       QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml music.qml
+      touch $out
+    '';
+
+  # Whether Joel's in a Tuple call comes from the daemon's log, which only a
+  # real call writes, so tests/tuple.qml gives Tuple.js lines like its own:
+  # what starts a call, what ends one, when it began, and a call's link.
+  the-shell-follows-tuple-calls =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "the-shell-follows-tuple-calls" { } ''
+      cp ${./tests/tuple.qml} tuple.qml
+      cp ${./modules/tuple/Tuple.js} Tuple.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml tuple.qml
       touch $out
     '';
 
@@ -978,6 +995,19 @@ in
         grep -q -F -- '--encore-body-font-stack: "${font.sans.family}"' ${client}/user.css
         grep -q "href='colors.css'" ${client}/index.html
         grep -q "href='user.css'" ${client}/index.html
+        touch $out
+      '';
+
+    # Spotify leaves each new track's notice to the shell: the flag that turns
+    # its own off is on the wrapper the launcher runs, which a change to how
+    # Spicetify wraps the client would drop without a word.
+    spotify-leaves-track-notices-to-the-shell =
+      let
+        home = account graphical;
+        wrapper = "${home.programs.spicetify.spicedSpotify}/share/spotify/spotify";
+      in
+      pkgs.runCommandLocal "spotify-leaves-track-notices-to-the-shell" { } ''
+        grep -q -F -- '--ui.track_os_notifications_enabled=false' ${wrapper}
         touch $out
       '';
 

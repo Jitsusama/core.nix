@@ -26,8 +26,9 @@
 // typed plainly asks for, { headline, copy, rows, note }, or null. The
 // headline is drawn after what's typed and copied by Return; the rows,
 // made with copyRow, carry the detail. One that has to ask the network
-// answers at once with what it has and says `answered` when more arrives,
-// so the launcher asks again; `ask` keeps what a URL said for a while.
+// answers at once with what it has, `asking` true while it waits, and says
+// `answered` when more arrives, so the launcher asks again; `ask` keeps
+// what a URL said for a while.
 import Quickshell
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
@@ -192,7 +193,10 @@ Scope {
         "google-chrome": "f268",
         "slack": "f198",
         "nvim": "f36f",
-        "1password": "f0881"
+        "1password": "f0881",
+        "gimp": "f338",
+        "org.inkscape.inkscape": "f33b",
+        "spotify": "f1bc"
     }, settings.glyphs ?? {})
 
     function programGlyph(id) {

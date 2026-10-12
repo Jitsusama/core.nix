@@ -5,9 +5,11 @@
 # kitty and remembers it was picked, a terminal opens below the focused
 # window, the launcher switches to a window by its title, the lock screen
 # refuses a wrong password and takes the right one, polkit's prompt lets the
-# account start a system service, the clipboard takes and gives text, and
-# GTK programs and monospaced text are in the theme. niri says which surfaces it drew,
-# photographs show their colours, to the test and to a person looking, and
+# account start a system service, what's playing shows in the margin and a
+# media key shows what it is, a call shows in the margin while it lasts, the
+# clipboard takes and gives text, and GTK programs and monospaced text are
+# in the theme. niri says which surfaces it drew, photographs show their
+# colours, to the test and to a person looking, and
 # the portal and fontconfig answer for the settings. Quickshell has to start
 # without a single QML error.
 { self, pkgs }:
@@ -175,7 +177,11 @@ pkgs.testers.runNixOSTest {
         initialPassword = secret;
       };
       home-manager.users.${account}.home.stateVersion = "26.05";
-      environment.systemPackages = [ pkgs.libnotify ];
+      environment.systemPackages = [
+        pkgs.libnotify
+        # A player that tells the desktop what it plays, as Spotify does.
+        (pkgs.mpv.override { scripts = [ pkgs.mpvScripts.mpris ]; })
+      ];
 
       # Starting a system service is something only an admin may do, so systemd
       # asks polkit, and polkit asks the account through its agent.
@@ -210,6 +216,16 @@ pkgs.testers.runNixOSTest {
     { nodes, ... }:
     let
       inherit (nodes.machine.home-manager.users.${account}.jitsusama.theme) roles font;
+
+      # A silent track with a title, an artist and a cover, for a player to
+      # play through no sound card at all.
+      track = pkgs.runCommandLocal "track.mp3" { nativeBuildInputs = [ pkgs.ffmpeg-headless ]; } ''
+        ffmpeg -loglevel error -f lavfi -i color=c=0x${pkgs.lib.removePrefix "#" roles.program}:s=300x300 \
+          -frames:v 1 cover.png
+        ffmpeg -loglevel error -f lavfi -i anullsrc=r=44100:cl=stereo -i cover.png -t 60 \
+          -map 0 -map 1 -c:a libmp3lame -c:v png -disposition:v attached_pic \
+          -metadata title="Bless The Child" -metadata artist=Nightwish $out
+      '';
     in
     ''
       import json
@@ -233,6 +249,44 @@ pkgs.testers.runNixOSTest {
 
       def wait_for_surface(namespace):
           machine.wait_until_succeeds(in_session(f"niri msg layers | grep -q {namespace}"), timeout=30)
+
+      # What the launcher shows, from its showing call: whether it holds the
+      # keys, what's typed and held, and the row Return takes. Under load the
+      # launcher lags the keys sent to it, so each step waits on this rather
+      # than on a guess at how long it takes.
+      def showing():
+          return json.loads(as_account("qs ipc call launcher showing"))
+
+      def launcher_until(test, timeout=30):
+          retry(lambda _: test(showing()), timeout_seconds=timeout)
+
+      # niri lists the layer a frame before it gives it the keys, and a letter
+      # typed in that frame goes to the window underneath.
+      def launcher_ready():
+          wait_for_surface("launcher")
+          launcher_until(lambda shown: shown["open"] and shown["keys"])
+
+      # Types into the launcher, and waits until it holds every letter with the
+      # row Return takes settled, since an answer still being looked up closes
+      # the launcher without copying. A row that comes from something found
+      # later, such as a window or a copy, can be named to wait for as well.
+      def type_in(text, selecting=""):
+          machine.send_chars(text)
+
+          def holds(shown):
+              row = shown["selected"]
+              name = row["name"].lower() if row else ""
+              settled = row is None or row["settled"]
+              return shown["typed"].endswith(text) and settled and selecting.lower() in name
+
+          launcher_until(holds)
+
+      # A key that steps into the selected row, which the launcher then holds:
+      # the right arrow into a thing's verbs, or Return into what a verb asks.
+      def step_in(key="right"):
+          before = len(showing()["held"])
+          machine.send_key(key)
+          launcher_until(lambda shown: len(shown["held"]) > before)
 
       def window_titled(title):
           windows = json.loads(as_account("niri msg --json windows"))
@@ -419,25 +473,20 @@ pkgs.testers.runNixOSTest {
       # and Escape leaving.
       with subtest("the launcher shows the volume's chords, and Escape closes it"):
           as_account("qs ipc call launcher toggle")
-          wait_for_surface("launcher")
-          time.sleep(0.5)
-          machine.send_chars("volume")
-          machine.sleep(1)
+          launcher_ready()
+          type_in("volume")
           machine.screenshot("launcher-volume")
           machine.send_key("esc")
           machine.wait_until_fails(in_session("niri msg layers | grep -qw launcher"), timeout=10)
 
       with subtest("the launcher finds and opens kitty, and learns that kitty was meant"):
           as_account("qs ipc call launcher toggle")
-          wait_for_surface("launcher")
-          # niri lists the layer a frame before it holds the keyboard, and a
-          # letter typed in that frame goes to the window underneath.
-          time.sleep(0.5)
-          machine.send_chars("kitty")
-          machine.sleep(1)
+          launcher_ready()
+          type_in("kitty", selecting="kitty")
           machine.screenshot("launcher")
           machine.send_key("ret")
-          machine.wait_until_succeeds(in_session("niri msg windows | grep -i kitty"), timeout=30)
+          # The first window opened can take as long as the first GTK one.
+          machine.wait_until_succeeds(in_session("niri msg windows | grep -i kitty"), timeout=120)
           # What was picked for what was typed is kept for next time.
           picked = "'\"kitty\":{\"program:kitty\"'"
           machine.wait_until_succeeds(
@@ -486,10 +535,8 @@ pkgs.testers.runNixOSTest {
               in_session("niri msg focused-window | grep -q 'Notes for Tuesday'"), timeout=10
           )
           as_account("qs ipc call launcher toggle")
-          wait_for_surface("launcher")
-          time.sleep(0.5)
-          machine.send_chars("tuesday")
-          machine.sleep(1)
+          launcher_ready()
+          type_in("tuesday", selecting="Notes for Tuesday")
           machine.screenshot("launcher-window")
           machine.send_key("ret")
           machine.wait_until_succeeds(
@@ -503,14 +550,10 @@ pkgs.testers.runNixOSTest {
 
           def into_notes(verb):
               as_account("qs ipc call launcher toggle")
-              wait_for_surface("launcher")
-              time.sleep(0.5)
-              machine.send_chars("tuesday")
-              time.sleep(0.5)
-              machine.send_key("right")
-              time.sleep(0.5)
-              machine.send_chars(verb)
-              time.sleep(0.5)
+              launcher_ready()
+              type_in("tuesday", selecting="Notes for Tuesday")
+              step_in()
+              type_in(verb)
 
           into_notes("copy")
           machine.screenshot("launcher-verbs")
@@ -519,8 +562,7 @@ pkgs.testers.runNixOSTest {
           t.assertEqual(as_account("wl-paste --no-newline"), "Notes for Tuesday")
 
           into_notes("move")
-          machine.send_key("ret")
-          time.sleep(0.5)
+          step_in("ret")
           machine.screenshot("launcher-target")
           machine.send_key("ret")
 
@@ -535,10 +577,8 @@ pkgs.testers.runNixOSTest {
 
           def answer(typed):
               as_account("qs ipc call launcher toggle")
-              wait_for_surface("launcher")
-              time.sleep(0.5)
-              machine.send_chars(typed)
-              time.sleep(1)
+              launcher_ready()
+              type_in(typed)
 
           def copied(typed, expected):
               answer(typed)
@@ -587,10 +627,8 @@ pkgs.testers.runNixOSTest {
           copied("tada", "\U0001F389")
           answer("smiling")
           machine.screenshot("launcher-emoji")
-          machine.send_key("right")
-          time.sleep(0.5)
-          machine.send_chars(" cat")
-          time.sleep(0.5)
+          step_in()
+          type_in(" cat")
           machine.screenshot("launcher-emoji-all")
           machine.send_key("ret")
           closed = in_session("niri msg layers | grep -qw launcher")
@@ -600,10 +638,8 @@ pkgs.testers.runNixOSTest {
           # Super+Ctrl+Space opens the emoji straight away, so "kitty" is a cat
           # there, where the main search would open the terminal.
           machine.send_key("meta_l-ctrl-spc")
-          wait_for_surface("launcher")
-          time.sleep(0.5)
-          machine.send_chars("kitty")
-          time.sleep(0.5)
+          launcher_ready()
+          type_in("kitty")
           machine.send_key("ret")
           machine.wait_until_fails(closed, timeout=10)
           t.assertEqual(as_account("wl-paste --no-newline"), "\U0001F431")
@@ -611,15 +647,12 @@ pkgs.testers.runNixOSTest {
       with subtest("Super+Shift+/ shows every layer's shortcuts, and runs the desktop's"):
           windows = len(json.loads(as_account("niri msg --json windows")))
           machine.send_key("meta_l-shift-slash")
-          wait_for_surface("launcher")
-          time.sleep(0.5)
-          machine.send_chars("paste")
-          time.sleep(0.5)
+          launcher_ready()
+          type_in("paste")
           machine.screenshot("launcher-shortcuts")
           for _ in "paste":
               machine.send_key("backspace")
-          machine.send_chars("open a terminal")
-          time.sleep(0.5)
+          type_in("open a terminal")
           machine.send_key("ret")
 
           def opened(_):
@@ -635,11 +668,9 @@ pkgs.testers.runNixOSTest {
           as_account("printf 'the second copy\\nover two lines' | wl-copy > /dev/null 2>&1")
           time.sleep(0.5)
           machine.send_key("meta_l-v")
-          wait_for_surface("launcher")
-          time.sleep(0.5)
+          launcher_ready()
           machine.screenshot("launcher-copies-all")
-          machine.send_chars("tues")
-          time.sleep(0.5)
+          type_in("tues", selecting="Notes for Tuesday")
           machine.screenshot("launcher-copies")
           machine.send_key("ret")
 
@@ -651,20 +682,16 @@ pkgs.testers.runNixOSTest {
       with subtest("the launcher's home shows each collection, and opens it"):
           windows = len(json.loads(as_account("niri msg --json windows")))
           as_account("qs ipc call launcher toggle")
-          wait_for_surface("launcher")
-          time.sleep(0.5)
+          launcher_ready()
           machine.screenshot("launcher-home")
           # The last row at home is the last collection, the shortcuts; a page
           # down stops there, so two reach it however long home grows.
           machine.send_key("pgdn")
           machine.send_key("pgdn")
-          machine.send_key("ret")
-          time.sleep(0.5)
           # Opening a collection keeps the launcher open, where a program
           # picked instead would close it.
-          wait_for_surface("launcher")
-          machine.send_chars("open a terminal")
-          time.sleep(0.5)
+          step_in("ret")
+          type_in("open a terminal")
           machine.send_key("ret")
 
           def another(_):
@@ -675,11 +702,10 @@ pkgs.testers.runNixOSTest {
       with subtest("the launcher's Sound moves sound to another output, and back"):
           for output in ["stand-in-headphones", "stand-in-speakers"]:
               as_account("qs ipc call launcher collection sound")
-              wait_for_surface("launcher")
-              time.sleep(0.5)
+              launcher_ready()
               machine.screenshot(f"launcher-sound-{output}")
-              machine.send_chars(output.removeprefix("stand-in-"))
-              time.sleep(0.5)
+              kind = output.removeprefix("stand-in-")
+              type_in(kind, selecting=kind)
               machine.send_key("ret")
               used = f"wpctl inspect @DEFAULT_AUDIO_SINK@ | grep -q 'node.name = \"{output}\"'"
               machine.wait_until_succeeds(in_session(used), timeout=10)
@@ -688,10 +714,8 @@ pkgs.testers.runNixOSTest {
       with subtest("the launcher sets the power profile"):
           for typed, profile in [("power saver", "power-saver"), ("balanced power", "balanced")]:
               as_account("qs ipc call launcher toggle")
-              wait_for_surface("launcher")
-              time.sleep(0.5)
-              machine.send_chars(typed)
-              time.sleep(0.5)
+              launcher_ready()
+              type_in(typed)
               machine.send_key("ret")
               machine.wait_until_succeeds(f"powerprofilesctl get | grep -qx {profile}", timeout=10)
               machine.wait_until_fails(in_session("niri msg layers | grep -q launcher"), timeout=10)
@@ -706,13 +730,10 @@ pkgs.testers.runNixOSTest {
 
           for wanted in [1.5, scale()]:
               as_account("qs ipc call launcher collection displays")
-              wait_for_surface("launcher")
-              time.sleep(0.5)
-              machine.send_key("right")
-              time.sleep(0.5)
+              launcher_ready()
+              step_in()
               machine.screenshot("launcher-displays")
-              machine.send_chars(f"scale {round(wanted * 100)}")
-              time.sleep(0.5)
+              type_in(f"scale {round(wanted * 100)}")
               machine.send_key("ret")
               retry(lambda _, wanted=wanted: scale() == wanted, timeout_seconds=15)
               machine.wait_until_fails(in_session("niri msg layers | grep -q launcher"), timeout=10)
@@ -723,16 +744,13 @@ pkgs.testers.runNixOSTest {
               "nmcli -t -f SSID device wifi list ifname wlan1 | grep -qx Lantern", timeout=60
           )
           as_account("qs ipc call launcher collection wifi")
-          wait_for_surface("launcher")
-          time.sleep(0.5)
+          launcher_ready()
           machine.screenshot("launcher-wifi")
-          machine.send_chars("lant")
-          time.sleep(0.5)
+          type_in("lant", selecting="Lantern")
           # Never joined, it asks for its password, which a wrong one doesn't
           # satisfy; the launcher stays to say so.
-          machine.send_key("ret")
-          time.sleep(0.5)
-          machine.send_chars("not the password")
+          step_in("ret")
+          type_in("not the password")
           machine.screenshot("launcher-wifi-password")
           machine.send_key("ret")
           machine.wait_until_succeeds(
@@ -743,7 +761,7 @@ pkgs.testers.runNixOSTest {
           time.sleep(1)
           machine.screenshot("launcher-wifi-refused")
           machine.succeed(in_session("niri msg layers | grep -q launcher"))
-          machine.send_chars("glowing in the dark")
+          type_in("glowing in the dark")
           machine.send_key("ret")
           # Joined means an address too, which is when NetworkManager says so.
           machine.wait_until_succeeds(
@@ -755,10 +773,8 @@ pkgs.testers.runNixOSTest {
           machine.wait_until_fails(in_session("niri msg layers | grep -q launcher"), timeout=10)
           # Turning Wi-Fi off is an action like any.
           as_account("qs ipc call launcher toggle")
-          wait_for_surface("launcher")
-          time.sleep(0.5)
-          machine.send_chars("wifi off")
-          time.sleep(0.5)
+          launcher_ready()
+          type_in("wifi off")
           machine.send_key("ret")
           machine.wait_until_succeeds("nmcli radio wifi | grep -qx disabled", timeout=15)
           machine.succeed("nmcli radio wifi on")
@@ -767,12 +783,10 @@ pkgs.testers.runNixOSTest {
           # One its sender says not to keep isn't, though it's the newest match.
           as_account("notify-send --transient 'Build finished twice' 'not kept'")
           as_account("qs ipc call launcher toggle")
-          wait_for_surface("launcher")
-          time.sleep(0.5)
+          launcher_ready()
           # Its row at home counts the one missed earlier, since it left by itself.
           machine.screenshot("launcher-home-missed")
-          machine.send_chars("build fin")
-          time.sleep(0.5)
+          type_in("build fin", selecting="the laptop is ready")
           machine.screenshot("launcher-notices")
           # Nothing sent it that can be gone to, so Return copies what it said.
           machine.send_key("ret")
@@ -785,8 +799,7 @@ pkgs.testers.runNixOSTest {
           machine.wait_until_fails(in_session("niri msg layers | grep -q launcher"), timeout=10)
           # Super+N opens all of them, which counts them seen.
           machine.send_key("meta_l-n")
-          wait_for_surface("launcher")
-          time.sleep(0.5)
+          launcher_ready()
           machine.screenshot("launcher-notices-all")
           machine.send_key("esc")
 
@@ -794,10 +807,8 @@ pkgs.testers.runNixOSTest {
           held = "systemd-inhibit --list --no-pager | grep Caffeinate"
           machine.wait_until_fails(in_session("niri msg layers | grep -q launcher"), timeout=10)
           as_account("qs ipc call launcher toggle")
-          wait_for_surface("launcher")
-          time.sleep(0.5)
-          machine.send_chars("keep awake")
-          time.sleep(0.5)
+          launcher_ready()
+          type_in("keep awake")
           machine.screenshot("launcher-keep-awake")
           machine.send_key("ret")
           machine.wait_until_succeeds(f"{held} | grep -q sleep:idle", timeout=10)
@@ -815,11 +826,9 @@ pkgs.testers.runNixOSTest {
           power("on")
           machine.wait_until_succeeds(f"{held} | grep -q handle-lid-switch", timeout=10)
           as_account("qs ipc call launcher toggle")
-          wait_for_surface("launcher")
-          time.sleep(0.5)
+          launcher_ready()
           machine.screenshot("launcher-home-awake")
-          machine.send_chars("let it sleep")
-          time.sleep(0.5)
+          type_in("let it sleep")
           machine.send_key("ret")
           machine.wait_until_fails(held, timeout=10)
 
@@ -848,10 +857,8 @@ pkgs.testers.runNixOSTest {
       with subtest("do not disturb holds a notice, shows it held, and ends from the margin"):
           machine.wait_until_fails(in_session(notices), timeout=30)
           as_account("qs ipc call launcher toggle")
-          wait_for_surface("launcher")
-          time.sleep(0.5)
-          machine.send_chars("do not disturb")
-          time.sleep(0.5)
+          launcher_ready()
+          type_in("do not disturb")
           machine.send_key("ret")
           wait_for_surface("margin")
           as_account("notify-send 'Held back' 'until it ends'")
@@ -865,8 +872,7 @@ pkgs.testers.runNixOSTest {
           machine.send_key("down")
           machine.send_key("down")
           machine.send_key("ret")
-          wait_for_surface("launcher")
-          time.sleep(0.5)
+          launcher_ready()
           machine.screenshot("launcher-held")
           machine.send_key("esc")
           machine.wait_until_fails(in_session("niri msg layers | grep -q launcher"), timeout=10)
@@ -889,8 +895,7 @@ pkgs.testers.runNixOSTest {
           wait_for_surface("outside")
           time.sleep(0.5)
           machine.send_key("ret")
-          wait_for_surface("launcher")
-          time.sleep(0.5)
+          launcher_ready()
           machine.screenshot("launcher-from-margin")
           machine.send_key("esc")
           # Opening them counted them seen, so nothing's waiting.
@@ -907,6 +912,42 @@ pkgs.testers.runNixOSTest {
           machine.send_key("ret")
           muted = "wpctl get-volume @DEFAULT_AUDIO_SOURCE@ | grep -q MUTED"
           machine.wait_until_fails(in_session(muted), timeout=10)
+          machine.wait_until_fails(in_session(margin), timeout=10)
+
+      # Any player that tells the desktop what it plays shows in the margin
+      # while it plays, and the media keys' command shows what it is.
+      with subtest("what's playing shows in the margin, and a media key shows what it is"):
+          machine.wait_until_fails(in_session(margin), timeout=10)
+          as_account("systemd-run --user --unit=player mpv --ao=null --no-video --loop ${track}")
+          wait_for_surface("margin")
+          time.sleep(0.5)
+          machine.screenshot("margin-playing")
+          # The play key pauses it, and the card says what was paused.
+          as_account("qs ipc call music toggle")
+          wait_for_surface("notifications")
+          time.sleep(0.5)
+          machine.screenshot("music-card")
+          # Paused, nothing's playing, so the margin goes; the card goes by itself.
+          machine.wait_until_fails(in_session(margin), timeout=10)
+          machine.wait_until_fails(in_session(notices), timeout=15)
+          as_account("systemctl --user stop player")
+
+      with subtest("a Tuple call shows in the margin while it lasts"):
+          # Only a call writes these lines, so they're written here, with
+          # the daemon stopped, since it rewrites its log as it starts.
+          as_account("systemctl --user stop tuple")
+          written = "~/.local/share/tuple/0/log.txt"
+
+          def said(message):
+              line = f"$(date -u +%H:%M:%S.000)|1|1|info|{message}"
+              as_account(f"mkdir -p $(dirname {written}) && echo \"{line}\" >> {written}")
+
+          machine.wait_until_fails(in_session(margin), timeout=10)
+          said("call connected")
+          wait_for_surface("margin")
+          time.sleep(0.5)
+          machine.screenshot("margin-call")
+          said("Caller.cpp:985|invalidating call")
           machine.wait_until_fails(in_session(margin), timeout=10)
 
       with subtest("caps lock shows in the margin while it's on"):

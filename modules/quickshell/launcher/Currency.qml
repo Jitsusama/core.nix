@@ -46,7 +46,8 @@ Provider {
                 headline: said.failed ? "no rate" : "\u2026",
                 copy: "",
                 rows: [],
-                note: said.failed ? "Frankfurter didn't answer" : "asking Frankfurter"
+                note: said.failed ? "Frankfurter didn't answer" : "asking Frankfurter",
+                asking: !said.failed
             };
         const each = said.value.rates[to];
         const total = amount * each;

@@ -155,7 +155,8 @@ Provider {
             headline: entry.failed ? "no forecast" : "\u2026",
             copy: "",
             rows: [],
-            note: entry.failed ? `${who} didn't answer` : `asking ${who}`
+            note: entry.failed ? `${who} didn't answer` : `asking ${who}`,
+            asking: !entry.failed
         };
     }
 }

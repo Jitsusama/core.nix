@@ -394,6 +394,7 @@ it. Owners go by layer:
 | Volume, brightness                                                     | an overlay while it changes                        | the overview's status        |
 | Do not disturb, caffeinate, recording, sharing, mic muted, caps lock   | the margin mark, while true                        | the same mark, in the status |
 | Music playing                                                          | the margin mark while it plays; a notice for a moment when the track changes or a media key is pressed | the same mark, in the status |
+| In a call                                                              | the margin mark, while in one                      | the same mark, in the status |
 | Notifications waiting                                                  | the margin mark, as a count                        | the overview's status        |
 | Directory, repository, branch, git state                               | the program running the window                     | nobody                       |
 | Window titles                                                          | a terminal's unseen tabs; the window switcher      | the window switcher          |
@@ -722,7 +723,7 @@ by them isn't done.
 | The browser                               | chrome                   | proportional   |        |        |           |         |          |
 | Images and drawings                       | gimp, inkscape           | proportional   |        |        |           |         |          |
 | Music                                     | spotify, Quickshell      | both           | nothing | a note in the margin while any player plays; for a moment, the track as a notice | the mark's panel: the track, artist, album and player; pause, next, previous, the player's window, and pausing a second player | Play or pause the music, Play the next track, Play the previous track, on the media keys | the mark carries no words; a title wraps to two lines, then gives way |
-| Pairing                                   | tuple                    | its own        |        |        |           |         |          |
+| Pairing                                   | tuple, Quickshell        | both           | nothing | a phone in the margin while in a call | the mark's panel: how long; leave, share the screen, mute the microphone, copy the room's link | the launcher's rows: open the room and copy its link, join a copied call's link, first at home once copied, leave, share | the mark carries no words; its panel says how long |
 | Chat, passwords, calls                    | their own settings       | proportional   |        |        |           |         |          |
 | The terminal                              | kitty                    | monospace      |        |        |           |         |          |
 | The prompt                                | prompt                   | monospace      |        |        |           |         |          |
@@ -753,6 +754,18 @@ as an exception with the reason.
 ## Decisions
 
 What each studio round settled, newest first, with the reason.
+
+- **A call, while it lasts** (2026-10-11). Tuple on Linux is a command and
+  a daemon with no window to look at, so the shell is where a call shows:
+  a phone in the margin while Joel's in one, as recording and sharing are
+  marked, and a panel that says how long and offers what a call needs. A
+  call's link arrives pasted in a chat, so a copied one puts a row to join
+  it first on the launcher's home, and Joel's own room is opened from there
+  with its link copied to hand on. Sharing starts from the panel only while
+  nothing's shared, since the sharing mark is where a share stops; muting
+  is the microphone's, since Tuple says nothing of its own mute. Who's in
+  the call, a ring, and Tuple's transcripts wait for Tuple to say them on
+  Linux.
 
 - **What's playing, for a moment and while it plays** (2026-10-11). Joel
   plays music from Spotify, spotify-player and his phone, and wanted the
