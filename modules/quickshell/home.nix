@@ -364,6 +364,7 @@ let
     notices = ./launcher/PastNotices.qml;
     wifi = ./launcher/Wireless.qml;
     sound = ./launcher/Sound.qml;
+    bluetooth = ./launcher/Accessories.qml;
   };
 
   # The program that hears every copy, for the clipboard collection.
@@ -587,6 +588,13 @@ in
       sound = {
         order = 103;
         source = "sound";
+        weight = 0.9;
+      };
+      # The headphones, mice and keyboards paired or around, and turning
+      # Bluetooth off as an action.
+      bluetooth = {
+        order = 104;
+        source = "bluetooth";
         weight = 0.9;
       };
       clipboard = {
