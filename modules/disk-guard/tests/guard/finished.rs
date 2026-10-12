@@ -7,7 +7,7 @@ use std::time::Duration;
 
 /// Runs git in a fixture repository, reading none of the machine's own
 /// configuration, so the fixture is the same wherever the tests run.
-fn git(dir: &Path, args: &[&str]) -> String {
+pub(crate) fn git(dir: &Path, args: &[&str]) -> String {
     let out = Command::new("git")
         .arg("-C")
         .arg(dir)

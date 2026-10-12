@@ -4,6 +4,7 @@ use crate::clock::{Awake, local};
 use crate::plan::{Candidate, Class};
 use regex_lite::Regex;
 use std::fs;
+use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 use std::time::UNIX_EPOCH;
@@ -98,6 +99,96 @@ pub fn find(root: &Path, quests: &Path) -> Vec<Workspace> {
 /// time since its keeping began: when the quest finished, or when the
 /// workspace appeared if later, and never before the last write in it.
 /// A quest retired before its workspace appeared has nothing to keep.
+/// How deep a workspace is searched for linked worktrees, and how many
+/// entries are read.
+const LINK_DEPTH: usize = 8;
+const LINK_BUDGET: usize = 50_000;
+
+/// The repositories outside a workspace that have worktrees linked into
+/// it: each `.git` file names `<repository>/worktrees/<name>`. Their
+/// records outlive the workspace, keeping its branches from being checked
+/// out elsewhere, until pruned. Repositories inside go with it.
+pub fn linked(workspace: &Path) -> Vec<PathBuf> {
+    let (Ok(top), Ok(inside)) = (fs::symlink_metadata(workspace), workspace.canonicalize()) else {
+        return Vec::new();
+    };
+    let mut found: Vec<PathBuf> = Vec::new();
+    let mut budget = LINK_BUDGET;
+    let mut pending = vec![(workspace.to_path_buf(), 0)];
+    while let Some((dir, depth)) = pending.pop() {
+        let Ok(listing) = fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in listing.filter_map(Result::ok) {
+            if budget == 0 {
+                return found;
+            }
+            budget -= 1;
+            let path = entry.path();
+            let Ok(meta) = fs::symlink_metadata(&path) else {
+                continue;
+            };
+            let named_git = entry.file_name() == ".git";
+            if meta.dev() != top.dev() {
+                continue;
+            }
+            if meta.is_dir() && !named_git && depth + 1 < LINK_DEPTH {
+                pending.push((path, depth + 1));
+            } else if meta.is_file()
+                && named_git
+                && let Some(common) = linked_from(&path)
+                && !common.starts_with(&inside)
+                && !found.contains(&common)
+            {
+                found.push(common);
+            }
+        }
+    }
+    found.sort();
+    found
+}
+
+/// The repository a worktree's `.git` file links it from.
+fn linked_from(dot_git: &Path) -> Option<PathBuf> {
+    let text = fs::read(dot_git).ok().filter(|text| text.len() <= 4096)?;
+    let line = std::str::from_utf8(&text).ok()?.lines().next()?;
+    let gitdir = Path::new(line.strip_prefix("gitdir:")?.trim());
+    // Relative paths, as worktree.useRelativePaths writes, are from the
+    // worktree.
+    let gitdir = dot_git.parent()?.join(gitdir);
+    let worktrees = gitdir.parent()?;
+    if worktrees.file_name()? != "worktrees" {
+        return None;
+    }
+    worktrees.parent()?.canonicalize().ok()
+}
+
+/// Tells a repository to forget worktrees that no longer exist.
+pub fn prune(common: &Path) -> std::io::Result<()> {
+    let job = crate::commands::Job {
+        argv: vec![
+            "git".into(),
+            format!("--git-dir={}", common.display()).into(),
+            "worktree".into(),
+            "prune".into(),
+        ],
+        cwd: None,
+        env: Vec::new(),
+        timeout: std::time::Duration::from_secs(60),
+        limit: 64 << 10,
+    };
+    match crate::commands::run(&job)? {
+        crate::commands::Ran::Finished(output) if output.status == Some(0) => Ok(()),
+        crate::commands::Ran::Finished(output) => Err(std::io::Error::other(format!(
+            "git worktree prune failed: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        ))),
+        crate::commands::Ran::TimedOut => {
+            Err(std::io::Error::other("git worktree prune timed out"))
+        }
+    }
+}
+
 pub fn candidate(
     workspace: &Workspace,
     written: f64,

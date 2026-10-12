@@ -140,3 +140,71 @@ fn a_live_quests_workspace_is_no_candidate() {
         );
     }
 }
+
+/// A repository outside the workspace with a worktree linked into it, a
+/// clone of its own inside, and a repository whose worktree is also inside.
+fn linked_fixture(root: &Path) -> (PathBuf, PathBuf) {
+    use crate::finished::git;
+    let repo = root.join("repo");
+    let workspace = root.join("QEST-20261012-ABC123");
+    fs::create_dir_all(&repo).unwrap();
+    fs::create_dir_all(workspace.join("deep")).unwrap();
+    git(&repo, &["init", "-q", "-b", "main"]);
+    git(&repo, &["commit", "-q", "--allow-empty", "-m", "first"]);
+    let tree = workspace.join("deep/tree");
+    git(
+        &repo,
+        &[
+            "worktree",
+            "add",
+            "-q",
+            "-b",
+            "feature",
+            tree.to_str().unwrap(),
+        ],
+    );
+    let inner = workspace.join("inner");
+    fs::create_dir_all(&inner).unwrap();
+    git(&inner, &["init", "-q", "-b", "main"]);
+    git(&inner, &["commit", "-q", "--allow-empty", "-m", "first"]);
+    let inner_tree = workspace.join("inner-tree");
+    git(
+        &inner,
+        &[
+            "worktree",
+            "add",
+            "-q",
+            "-b",
+            "x",
+            inner_tree.to_str().unwrap(),
+        ],
+    );
+    (repo, workspace)
+}
+
+#[test]
+fn the_repositories_a_workspace_links_worktrees_from_are_found() {
+    let root = tempfile::tempdir().unwrap();
+    let (repo, workspace) = linked_fixture(root.path());
+    let common = repo.join(".git").canonicalize().unwrap();
+    assert_eq!(disk_guard::workspaces::linked(&workspace), [common]);
+}
+
+#[test]
+fn once_a_workspace_goes_its_worktrees_are_pruned_from_their_repository() {
+    use crate::finished::git;
+    let root = tempfile::tempdir().unwrap();
+    let (repo, workspace) = linked_fixture(root.path());
+    let linked = disk_guard::workspaces::linked(&workspace);
+    fs::remove_dir_all(&workspace).unwrap();
+    for common in &linked {
+        disk_guard::workspaces::prune(common).unwrap();
+    }
+    assert_eq!(
+        git(&repo, &["worktree", "list", "--porcelain"])
+            .matches("worktree ")
+            .count(),
+        1
+    );
+    git(&repo, &["checkout", "-q", "feature"]);
+}
