@@ -8,7 +8,8 @@ use crate::pass::{Disk, Outcome, Reclaimer};
 use crate::plan::Candidate;
 use crate::reclaim::{self, Looker};
 use crate::survey::{Action, Offer};
-use crate::workspaces;
+use crate::vouch::{self, Answer};
+use crate::{socket, workspaces};
 use std::collections::HashMap;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -28,7 +29,24 @@ pub struct Scan {
     me: u32,
     fresh: Duration,
     seen: Option<(Instant, Vec<Process>)>,
+    voucher: Option<Voucher>,
 }
+
+/// The system daemon, asked about the processes this account can't read.
+struct Voucher {
+    socket: PathBuf,
+    roots: Vec<PathBuf>,
+    /// The last answer, or the failure to get one, and when.
+    heard: Option<(Instant, Result<Answer, String>)>,
+}
+
+/// How long to wait for the system daemon, which scans every process to
+/// answer.
+const ASK_TIMEOUT: Duration = Duration::from_secs(2);
+
+/// How long to go without asking a system daemon that didn't answer, so
+/// one that hangs costs a pass two seconds now and then, not every scan.
+const ASK_AGAIN: Duration = Duration::from_secs(30);
 
 impl Scan {
     pub fn new(proc: &Path, locks: &Path, me: u32, fresh: Duration) -> Self {
@@ -38,6 +56,55 @@ impl Scan {
             me,
             fresh,
             seen: None,
+            voucher: None,
+        }
+    }
+
+    /// Asks the system daemon at `socket` about the processes this account
+    /// can't read, for what they touch beneath `roots`. Its answer is kept
+    /// as long as a scan is, even across a move: a process started since
+    /// has a pid and start it didn't vouch for, and stays unknown.
+    pub fn vouched_by(mut self, socket: &Path, roots: &[PathBuf]) -> Self {
+        self.voucher = Some(Voucher {
+            socket: socket.to_owned(),
+            roots: roots.to_vec(),
+            heard: None,
+        });
+        self
+    }
+
+    /// Why the system daemon last couldn't be asked, if it couldn't.
+    pub fn unheard(&self) -> Option<&str> {
+        match &self.voucher.as_ref()?.heard {
+            Some((_, Err(why))) => Some(why),
+            _ => None,
+        }
+    }
+
+    fn vouched(&mut self, local: Vec<Process>) -> Vec<Process> {
+        let fresh = self.fresh;
+        let Some(voucher) = &mut self.voucher else {
+            return local;
+        };
+        if local.iter().all(|process| process.readable) {
+            return local;
+        }
+        let current = match &voucher.heard {
+            Some((at, Ok(_))) => at.elapsed() < fresh,
+            Some((at, Err(_))) => at.elapsed() < ASK_AGAIN,
+            None => false,
+        };
+        if !current {
+            let request = socket::Request::Processes {
+                roots: voucher.roots.clone(),
+            };
+            let heard = socket::ask(&voucher.socket, &request, ASK_TIMEOUT)
+                .map_err(|error| error.to_string());
+            voucher.heard = Some((Instant::now(), heard));
+        }
+        match &voucher.heard {
+            Some((_, Ok(answer))) => vouch::merge(local, answer),
+            _ => local,
         }
     }
 
@@ -48,7 +115,8 @@ impl Scan {
         };
         if stale {
             let taken = Instant::now();
-            self.seen = Some((taken, crate::linux::processes(&self.proc)?));
+            let local = crate::linux::processes(&self.proc)?;
+            self.seen = Some((taken, self.vouched(local)));
         }
         Ok(self.seen.as_ref().map_or(&[], |(_, processes)| processes))
     }
