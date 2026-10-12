@@ -1,0 +1,47 @@
+ASoC: cs35l56: Take turns reading a shared speaker ID GPIO
+
+On the Dell XPS 14 DA14260, all four CS35L57 amps read their speaker ID
+from the same host GPIO, and they probe at the same time: two of them
+log their supplies within the same millisecond. cs35l56_get_speaker_id()
+requests the GPIO exclusively, reads it and puts it back, so an amp that
+asks while another holds it gets -EBUSY. That isn't a deferral, so its
+probe fails for good, and with one amp missing the SoundWire machine
+driver never registers the sound card. It happened on one boot in six.
+
+A mutex around the request, the read and the put makes the amps take
+turns. It's held for microseconds, and only by amps whose speaker ID
+comes from GPIOs.
+
+diff -ruN a/sound/soc/codecs/cs35l56-shared.c b/sound/soc/codecs/cs35l56-shared.c
+--- a/sound/soc/codecs/cs35l56-shared.c
++++ b/sound/soc/codecs/cs35l56-shared.c
+@@ -14,6 +14,7 @@
+ #include <linux/fs.h>
+ #include <linux/gpio/consumer.h>
+ #include <linux/kstrtox.h>
++#include <linux/mutex.h>
+ #include <linux/pm_runtime.h>
+ #include <linux/regmap.h>
+ #include <linux/regulator/consumer.h>
+@@ -1535,6 +1536,13 @@
+ }
+ EXPORT_SYMBOL_NS_GPL(cs35l56_hw_init, "SND_SOC_CS35L56_SHARED");
+ 
++/*
++ * Amps that share one speaker-ID GPIO probe at the same time, and each
++ * requests the GPIO exclusively, so one that asks while another holds it
++ * would get -EBUSY and fail its probe. Take turns.
++ */
++static DEFINE_MUTEX(cs35l56_spkid_gpio_lock);
++
+ int cs35l56_get_speaker_id(struct cs35l56_base *cs35l56_base)
+ {
+ 	struct gpio_descs *descs;
+@@ -1559,6 +1567,7 @@
+ 	}
+ 
+ 	/* Read the speaker type qualifier from the motherboard GPIOs */
++	guard(mutex)(&cs35l56_spkid_gpio_lock);
+ 	descs = gpiod_get_array_optional(cs35l56_base->dev, "spk-id", GPIOD_IN);
+ 	if (!descs) {
+ 		return -ENOENT;
