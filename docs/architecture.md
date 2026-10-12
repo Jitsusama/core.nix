@@ -175,6 +175,7 @@ The last two rows exist only until no machine repository imports them;
 | ---------------------------------- | -------------------------------------------------------- |
 | `jitsusama.disk.device`            | the disk to install onto, set per machine                |
 | `jitsusama.disk.swapSize`          | the swap file's size, at least the memory's              |
+| `jitsusama.git.programIncludes`    | files programs include from git's global file themselves |
 | `jitsusama.identity.name`          | the name Joel's work is attributed to                    |
 | `jitsusama.identity.email`         | the email address it's attributed to, set per layer      |
 | `jitsusama.kernel.cpu`             | the CPU the kernel is compiled for, set per hardware     |

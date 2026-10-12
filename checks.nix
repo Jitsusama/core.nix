@@ -1075,12 +1075,24 @@ in
     # Programs change their own git settings with git config --global, which
     # fails on a file the store holds, and what's declared still has to win
     # over what they wrote. So the check runs the switch's own step, with the
-    # account's home moved here, then writes as programs do, dev's include of
-    # its own file among them, and switches again. Neither global file may be
-    # a link, or an older generation's link would be in the way of a rollback.
+    # account's home moved here, then writes as programs do, an include of
+    # their own file among them, and switches again. A program that includes
+    # its file itself has to find it ahead of the declared settings after the
+    # first switch, once, or it adds another below them, as dev does. Neither
+    # global file may be a link, or an older generation's link would be in
+    # the way of a rollback.
     git-settings-stay-writable =
       let
-        home = account workstation;
+        home = account (bareNixos [
+          self.nixosModules.workstation
+          {
+            home-manager.users.someone =
+              { config, ... }:
+              {
+                jitsusama.git.programIncludes = [ "${config.xdg.configHome}/program/gitconfig" ];
+              };
+          }
+        ]);
         homeDir = home.home.homeDirectory;
         declared = home.programs.git.settings.user.name;
       in
@@ -1102,8 +1114,30 @@ in
             exit 1
           fi
         }
+        mkdir -p home/.config/program
+        printf '[user]\n\tname = program\n[program]\n\tsetting = 1\n' > home/.config/program/gitconfig
+        includes() {
+          git config --global --no-includes --get-all include.path | tr '\n' ' '
+        }
+        # The count the program makes before it adds its include, as dev does.
+        programs() {
+          git config --global --no-includes --get-all include.path |
+            sed "s|^~/|$HOME/|" | grep -cxF "$HOME/.config/program/gitconfig"
+        }
         sh -e step
+        if [ "$(includes)" != "$HOME/.config/program/gitconfig $HOME/.config/git/declared.config " ]; then
+          echo "after a switch: ~/.gitconfig includes $(includes)"
+          exit 1
+        fi
         expect user.name ${lib.escapeShellArg declared} "after a switch"
+        expect program.setting 1 "after a switch"
+        git config --global --fixed-value --unset-all include.path "$HOME/.config/program/gitconfig"
+        git config --global --add include.path "~/.config/program/gitconfig"
+        sh -e step
+        if [ "$(programs)" != 1 ]; then
+          echo "after a switch: the program's include is in ~/.gitconfig $(programs) times"
+          exit 1
+        fi
         printf '[user]\n\tname = included\n' > home/tool.config
         git config --global --add include.path "$HOME/tool.config"
         git config --global tool.setting 1
