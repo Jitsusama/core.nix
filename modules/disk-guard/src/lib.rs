@@ -5,6 +5,8 @@ pub mod age;
 pub mod anchor;
 pub mod band;
 pub mod caches;
+#[cfg(target_os = "linux")]
+pub mod cli;
 pub mod clock;
 pub mod commands;
 pub mod config;

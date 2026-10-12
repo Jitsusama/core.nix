@@ -5,6 +5,8 @@ mod age;
 mod anchor;
 mod band;
 mod caches;
+#[cfg(target_os = "linux")]
+mod cli;
 mod clock;
 mod commands;
 mod config;

@@ -14,6 +14,7 @@ use crate::pass::{Disk, End, Goal, Learned, Outcome, Reclaimer, pass};
 use crate::plan::Candidate;
 use crate::state::{self, Memory};
 use crate::survey::{Offer, World, survey};
+use crate::units::Size;
 use serde::Serialize;
 use std::cell::Cell;
 use std::collections::BTreeMap;
@@ -378,7 +379,7 @@ impl Guard {
         &mut self,
         tick: &Tick,
         band: Option<Band>,
-        free: Option<u64>,
+        free: Option<Size>,
     ) -> io::Result<Vec<Preview>> {
         self.memory.awake.observe(tick);
         self.watch();
@@ -388,11 +389,24 @@ impl Guard {
             let Ok(space) = crate::linux::space(&watched.path) else {
                 continue;
             };
+            let thresholds = Thresholds::new(&self.config.bands, space.total);
+            // A band asked for alone is pretended by free space just short
+            // of it, so a plan for urgent shows what urgent would take.
+            let short_of = match band {
+                Some(Band::Pressure) => Some(thresholds.pressure),
+                Some(Band::Urgent) => Some(thresholds.urgent),
+                Some(Band::Critical) => Some(thresholds.critical),
+                Some(Band::Healthy) | None => None,
+            };
+            let pretended = match (free, short_of) {
+                (Some(free), _) => free.of(space.total),
+                (None, Some(start)) => space.free.min(start.saturating_sub(1)),
+                (None, None) => space.free,
+            };
             let space = Space {
-                free: free.unwrap_or(space.free),
+                free: pretended,
                 ..space
             };
-            let thresholds = Thresholds::new(&self.config.bands, space.total);
             let band = band.unwrap_or_else(|| thresholds.band(&space, Band::Healthy));
             let goal = if band == Band::Healthy {
                 Goal::Upkeep

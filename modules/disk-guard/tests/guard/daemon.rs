@@ -3,6 +3,7 @@ use disk_guard::clock::Tick;
 use disk_guard::config::Config;
 use disk_guard::daemon::{Guard, Places, Senses};
 use disk_guard::moments::{Power, Pressure};
+use disk_guard::units::Size;
 use rustix::fs::{AtFlags, CWD, Timespec, Timestamps, utimensat};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -212,12 +213,23 @@ fn pretending_free_space_bands_the_preview() {
     let home = Home::new();
     let cold = home.cold_scratch("run-1");
     let mut guard = home.guard(home.config("50%", "60%"));
-    let short = guard.preview(&tick(), None, Some(0)).unwrap();
+    let short = guard.preview(&tick(), None, Some(Size::Bytes(0))).unwrap();
     assert_eq!(short[0].band, Band::Pressure);
     assert_eq!(short[0].free, 0);
     assert_eq!(short[0].taken[0].path, cold);
     let total = short[0].total;
-    let roomy = guard.preview(&tick(), None, Some(total)).unwrap();
+    let roomy = guard
+        .preview(&tick(), None, Some(Size::Percent(100.0)))
+        .unwrap();
+    assert_eq!(roomy[0].free, total);
+    let mut low = home.guard(home.config("1%", "2%"));
+    let banded = low.preview(&tick(), Some(Band::Pressure), None).unwrap();
+    assert!(
+        banded[0].free < total / 100,
+        "a band alone pretends free space just short of it: {} of {total}",
+        banded[0].free
+    );
+    assert_eq!(banded[0].taken[0].path, cold);
     assert_eq!(roomy[0].band, Band::Healthy);
     assert!(
         roomy[0].taken.is_empty(),
