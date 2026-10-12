@@ -13,6 +13,8 @@ mod discover;
 mod entries;
 mod finished;
 #[cfg(target_os = "linux")]
+mod host;
+#[cfg(target_os = "linux")]
 mod linux;
 mod locks;
 mod logs;

@@ -4,20 +4,20 @@ use std::fs;
 use std::os::unix::fs::{PermissionsExt, symlink};
 use std::path::{Path, PathBuf};
 
-fn text(root: &Path, path: &str, value: &str) {
+pub(crate) fn text(root: &Path, path: &str, value: &str) {
     let path = root.join(path);
     fs::create_dir_all(path.parent().unwrap()).unwrap();
     fs::write(path, value).unwrap();
 }
 
-fn link(root: &Path, path: &str, to: &str) {
+pub(crate) fn link(root: &Path, path: &str, to: &str) {
     let path = root.join(path);
     fs::create_dir_all(path.parent().unwrap()).unwrap();
     symlink(to, path).unwrap();
 }
 
 /// `/proc/<pid>/stat` with its name, flags and start in clock ticks.
-fn stat(pid: u32, name: &str, flags: u64, start: u64) -> String {
+pub(crate) fn stat(pid: u32, name: &str, flags: u64, start: u64) -> String {
     let mut fields = vec!["0".to_string(); 49];
     fields[0] = "S".into();
     fields[6] = flags.to_string();
@@ -169,7 +169,7 @@ fn kernel_threads_and_other_entries_are_left_out() {
 /// lock (inode 7) by flock with a build waiting on it, and a rustc session
 /// lock (inode 8) by OFD, which shows no pid, with another waiting. Another
 /// filesystem has a lock of its own on an inode 7, with a waiter of its own.
-const LOCKS: &str = "\
+pub(crate) const LOCKS: &str = "\
 1: FLOCK  ADVISORY  WRITE 42 00:23:7 0 EOF
 1: -> FLOCK  ADVISORY  WRITE 500 00:23:7 0 EOF
 2: OFDLCK ADVISORY  WRITE -1 00:23:8 0 EOF

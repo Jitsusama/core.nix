@@ -12,6 +12,8 @@ pub mod coredumps;
 pub mod discover;
 pub mod finished;
 #[cfg(target_os = "linux")]
+pub mod host;
+#[cfg(target_os = "linux")]
 pub mod linux;
 pub mod locks;
 pub mod logs;
