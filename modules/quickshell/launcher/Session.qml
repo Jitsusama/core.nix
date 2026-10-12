@@ -1,8 +1,9 @@
-// Locking, keeping awake, holding notices and ending the session. These live
-// here rather than on a key, so no chord ends the session by accident. While
-// the machine is kept awake or notices are held, undoing it leads the home
-// screen, since a mode should never hold unseen.
+// Locking, keeping awake, holding notices, the power profile and ending the
+// session. These live here rather than on a key, so no chord ends the
+// session by accident. While the machine is kept awake or notices are held,
+// undoing it leads the home screen, since a mode should never hold unseen.
 import qs
+import Quickshell.Services.UPower
 import QtQuick
 
 Provider {
@@ -40,7 +41,25 @@ Provider {
         }))
     })
 
-    things: [awake, quiet].concat([
+    // Each power profile is found by its own name, the one in use saying
+    // so; the charger's coming and going picks one again.
+    readonly property var profiles: [
+        { profile: PowerProfile.PowerSaver, name: "Power Saver", glyph: 0xf032a },
+        { profile: PowerProfile.Balanced, name: "Balanced Power", glyph: 0xf05d1 },
+        { profile: PowerProfile.Performance, name: "Performance", glyph: 0xf04c5 }
+    ].filter(choice => choice.profile !== PowerProfile.Performance
+        || PowerProfiles.hasPerformanceProfile).map(choice => thing({
+        key: `session:power:${choice.name}`,
+        verb: "use",
+        name: choice.name,
+        keywords: "power profile energy battery speed",
+        side: PowerProfiles.profile === choice.profile ? "in use" : "",
+        glyph: String.fromCodePoint(choice.glyph),
+        hue: "machine",
+        run: () => PowerProfiles.profile = choice.profile
+    }))
+
+    things: [awake, quiet].concat(profiles, [
         { name: "Lock", glyph: 0xf023, run: () => provider.launcher.lock.lock() },
         { name: "Suspend", glyph: 0xf04b2, run: () => Niri.spawn(["systemctl", "suspend"]) },
         {

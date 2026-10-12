@@ -683,6 +683,17 @@ pkgs.testers.runNixOSTest {
               machine.wait_until_succeeds(in_session(used), timeout=10)
               machine.wait_until_fails(in_session("niri msg layers | grep -q launcher"), timeout=10)
 
+      with subtest("the launcher sets the power profile"):
+          for typed, profile in [("power saver", "power-saver"), ("balanced power", "balanced")]:
+              as_account("qs ipc call launcher toggle")
+              wait_for_surface("launcher")
+              time.sleep(0.5)
+              machine.send_chars(typed)
+              time.sleep(0.5)
+              machine.send_key("ret")
+              machine.wait_until_succeeds(f"powerprofilesctl get | grep -qx {profile}", timeout=10)
+              machine.wait_until_fails(in_session("niri msg layers | grep -q launcher"), timeout=10)
+
       with subtest("a Wi-Fi network is joined from the launcher, a new one asking its password"):
           machine.wait_for_unit("hostapd.service")
           machine.wait_until_succeeds(
