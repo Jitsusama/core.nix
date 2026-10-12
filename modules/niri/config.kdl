@@ -12,8 +12,11 @@ input {
     keyboard {
         // Every keyboard reaches niri as US QWERTY: Joel's own lays out
         // Colemak in its firmware, and keyd does it below niri for a laptop's.
+        // Its number pad always types digits, as on a Mac, since nothing
+        // turns Num Lock on and the keyboard has no key for it.
         xkb {
             layout "us"
+            options "numpad:mac"
         }
     }
 

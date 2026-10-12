@@ -80,6 +80,19 @@ Scope {
         }
     }
 
+    // A keyboard's Do Not Disturb key holds notices until it's pressed
+    // again, as a Mac's does, or lets them show if they're held.
+    IpcHandler {
+        target: "quiet"
+
+        function toggle(): void {
+            if (Quiet.on)
+                Quiet.end();
+            else
+                Quiet.keep(0);
+        }
+    }
+
     NotificationServer {
         id: server
         bodySupported: true
