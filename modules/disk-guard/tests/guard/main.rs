@@ -6,6 +6,7 @@ mod anchor;
 mod band;
 mod caches;
 mod clock;
+mod commands;
 mod config;
 mod coredumps;
 mod discover;

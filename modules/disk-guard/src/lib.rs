@@ -6,6 +6,7 @@ pub mod anchor;
 pub mod band;
 pub mod caches;
 pub mod clock;
+pub mod commands;
 pub mod config;
 pub mod coredumps;
 pub mod discover;
