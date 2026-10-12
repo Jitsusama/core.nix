@@ -165,9 +165,23 @@ Provider {
         return rows;
     }
 
-    // How the device being connected went: paired, it's trusted, so it may
-    // come back by itself, and connected; connected, the launcher's done, if
-    // it's still on that device; a pairing that ends unpaired says so.
+    // Done with the device being connected: the launcher closes, if it's
+    // still on that device.
+    function finish(device) {
+        joining = null;
+        const launcher = provider.launcher;
+        if (!launcher)
+            return;
+        const at = launcher.selected ?? launcher.asking;
+        if (launcher.open && at && at.device === device)
+            launcher.open = false;
+    }
+
+    // How the device being connected went. BlueZ says a new device is
+    // connected as soon as its link is up, before pairing is done, so only a
+    // paired one is finished: paired, it's trusted, so it may come back by
+    // itself, and connected if it isn't yet. A pairing that ends unpaired
+    // says so.
     Connections {
         target: provider.joining
 
@@ -176,7 +190,10 @@ Provider {
             if (!device || !device.paired)
                 return;
             device.trusted = true;
-            device.connect();
+            if (device.connected)
+                provider.finish(device);
+            else
+                device.connect();
         }
 
         function onPairingChanged() {
@@ -187,13 +204,8 @@ Provider {
 
         function onConnectedChanged() {
             const device = provider.joining;
-            if (!device || !device.connected)
-                return;
-            provider.joining = null;
-            const launcher = provider.launcher;
-            const at = launcher.selected ?? launcher.asking;
-            if (launcher.open && at && at.device === device)
-                launcher.open = false;
+            if (device && device.connected && device.paired)
+                provider.finish(device);
         }
 
         function onStateChanged() {
