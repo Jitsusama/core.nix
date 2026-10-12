@@ -4,13 +4,14 @@
 # for the launcher, notifications and lock screen, which swayidle locks, and
 # GTK programs and the monospace default in the theme. It also gets the
 # programs Joel draws, watches, listens and pairs with: GIMP, Inkscape, which
-# opens SVG drawings, mpv, which opens video, Spotify and Tuple. The
+# opens SVG drawings, mpv, which opens video, the camera, Spotify and Tuple. The
 # compositor and sound get the CPU and memory before anything Joel starts.
 { nixosModules, homeModules }:
 {
   imports = [
     nixosModules.base
     nixosModules.bluetooth
+    nixosModules.camera
     nixosModules.fonts
     nixosModules.gnome-keyring
     nixosModules.greetd
@@ -23,6 +24,7 @@
     nixosModules.slices
   ];
   home-manager.sharedModules = [
+    homeModules.camera
     homeModules.fontconfig
     homeModules.gimp
     homeModules.gtk

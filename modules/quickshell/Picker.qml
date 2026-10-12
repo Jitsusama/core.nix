@@ -1,13 +1,14 @@
 pragma Singleton
 // Picking part of the screen by the keys, for a screenshot or a recording
-// (Recorder.qml). It opens on the whole screen, or on the focused window when
-// it floats, since niri says where only those sit. The arrows keep the half
-// they point at, Shift and an arrow move the box by its own size, Ctrl and an
-// arrow push that edge out a step, and Ctrl, Shift and an arrow pull it in.
-// Typing letters picks cells of a lettered grid instead, row then column,
+// (Recorder.qml), once the Capture collection is asked for a region
+// (launcher/Capture.qml). Its keys work as they do on text. Letters pick
+// cells of a lettered grid, shown from the start, row then column,
 // alphabetically from the top left: one cell's two letters, then another's,
-// make the box from one to the other. Return takes the box and Escape leaves
-// the grid, or the picker. The pointer has no part in it.
+// make the box from one to the other. The arrows move the box a step, and
+// Shift and an arrow size it from its bottom right corner, as Shift extends
+// a selection. It opens on the middle of the screen, so the first key moves
+// something already there. Return takes the box; Escape clears the letters
+// typed, or goes back to the Capture collection. The pointer has no part.
 //
 // What the keys do to the box is Picking.js's, tested on its own
 // (tests/picking.qml). The box is drawn clear and the rest of the screen
@@ -23,8 +24,9 @@ import "Picking.js" as Picking
 Singleton {
     id: root
 
-    // What's being picked for, while it is: { title, glyph, done }, where
-    // done is given the box as wf-recorder and grim take it.
+    // What's being picked for, while it is: { title, glyph, done, back },
+    // where done is given the box as wf-recorder and grim take it, and back
+    // is called when Escape leaves.
     property var asked: null
     property var box: ({ x: 0, y: 0, width: 0, height: 0 })
     // The letters typed toward a cell, and the first cell, once picked.
@@ -35,28 +37,16 @@ Singleton {
     property bool leaving: false
     readonly property int step: Theme.space.l
 
-    function pick(title: string, glyph: string, done: var): void {
+    function pick(title: string, glyph: string, done: var, back: var): void {
         typed = "";
         first = null;
         leaving = false;
-        asked = { title, glyph, done };
+        asked = { title, glyph, done, back };
     }
 
     // The box it opens on, once its window knows its screen.
     function start(screen: var): void {
-        box = { x: 0, y: 0, width: screen.width, height: screen.height };
-        const focused = Niri.focused;
-        const layout = focused ? focused.layout : null;
-        if (layout && layout.tile_pos_in_workspace_view) {
-            const [x, y] = layout.tile_pos_in_workspace_view;
-            const [dx, dy] = layout.window_offset_in_tile;
-            const [width, height] = layout.window_size;
-            const left = Math.max(0, Math.round(x + dx)), top = Math.max(0, Math.round(y + dy));
-            const right = Math.min(screen.width, Math.round(x + dx) + width);
-            const bottom = Math.min(screen.height, Math.round(y + dy) + height);
-            if (right - left >= 16 && bottom - top >= 16)
-                box = { x: left, y: top, width: right - left, height: bottom - top };
-        }
+        box = Picking.start(screen);
     }
 
     function letter(text: string, cells: var): void {
@@ -77,14 +67,18 @@ Singleton {
         }
     }
 
-    // Escape leaves the grid first, so nothing is lost by pressing it once.
+    // Escape clears the letters first, so nothing is lost by pressing it
+    // once.
     function back(): void {
         if (lettered) {
             typed = "";
             first = null;
-        } else {
-            asked = null;
+            return;
         }
+        const back = asked.back;
+        asked = null;
+        if (back)
+            back();
     }
 
     function take(): void {
@@ -116,13 +110,13 @@ Singleton {
                 height: height
             })
         readonly property var cells: Picking.grid(bounds)
-        // The box drawn: the first cell while the second is being typed, and
-        // none while the first is.
-        readonly property var shown: root.lettered ? root.first : root.box
+        // The box drawn: the first cell while the second is being typed.
+        readonly property var shown: root.first ?? root.box
 
-        // The box it opens on is the screen's, which the window learns only
-        // once niri has configured it, a moment after it shows. Started on
-        // showing, it opened on an empty box, and Return took nothing.
+        // The box it opens on comes from the screen's size, which the window
+        // learns only once niri has configured it, a moment after it shows.
+        // Started on showing, it opened on an empty box, and Return took
+        // nothing.
         readonly property bool sized: visible && width > 0 && height > 0
 
         onSizedChanged: {
@@ -167,15 +161,14 @@ Singleton {
                 }[event.key];
                 const shift = (event.modifiers & Qt.ShiftModifier) !== 0;
                 const ctrl = (event.modifiers & Qt.ControlModifier) !== 0;
-                if (side !== undefined) {
+                if (side !== undefined && !ctrl) {
+                    // A cell picked and an arrow pressed carries on from it.
                     if (root.first !== null)
                         root.box = root.first;
                     root.typed = "";
                     root.first = null;
-                    root.box = ctrl && shift ? Picking.pulled(root.box, side, root.step)
-                        : ctrl ? Picking.pushed(root.box, side, root.step, window.bounds)
-                        : shift ? Picking.moved(root.box, side, window.bounds)
-                        : Picking.halved(root.box, side);
+                    root.box = shift ? Picking.sized(root.box, side, root.step, window.bounds)
+                        : Picking.moved(root.box, side, root.step, window.bounds);
                 } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
                     root.take();
                 } else if (event.key === Qt.Key_Escape) {
@@ -240,10 +233,11 @@ Singleton {
                 }
             }
 
-            // The grid's letters, each at its cell's middle, the ones what's
-            // typed still leads to in the strong colour.
+            // The grid's letters, each at its cell's middle, always there so
+            // nothing has to be known to use them: quiet until typing begins,
+            // then the ones what's typed still leads to in the strong colour.
             Repeater {
-                model: root.lettered ? window.cells.rows * window.cells.columns : 0
+                model: window.cells.rows * window.cells.columns
 
                 Rectangle {
                     required property int index
@@ -251,7 +245,8 @@ Singleton {
                     readonly property int row: Math.floor(index / window.cells.columns)
                     readonly property int column: index % window.cells.columns
                     readonly property string label: Picking.letter(row) + Picking.letter(column)
-                    readonly property bool leads: label.startsWith(root.typed)
+                    readonly property bool leads: root.typed !== ""
+                        && label.startsWith(root.typed)
 
                     x: Math.round((column + 0.5) * window.cells.width - width / 2)
                     y: Math.round((row + 0.5) * window.cells.height - height / 2)
@@ -259,7 +254,7 @@ Singleton {
                     height: labelText.implicitHeight + Theme.space.xs
                     radius: Theme.inner
                     color: Qt.alpha(Theme.raised, Theme.floating.opacity)
-                    opacity: leads ? 1 : 0.4
+                    opacity: leads ? 1 : root.typed === "" ? 0.7 : 0.3
 
                     Text {
                         id: labelText
@@ -275,7 +270,10 @@ Singleton {
             Floating {
                 id: panel
 
-                readonly property real size: 680
+                // The launcher's width, or the hints' if they ever need more,
+                // so nothing spills past the panel.
+                readonly property real size: Math.max(680, hints.implicitWidth
+                    + 2 * Theme.space.l)
 
                 x: Math.round((window.width - size) / 2)
                 y: window.height - height - Theme.space.huge
@@ -323,7 +321,6 @@ Singleton {
                         Text {
                             x: chip.x + chip.width + Theme.space.m
                             anchors.verticalCenter: parent.verticalCenter
-                            visible: root.lettered
                             readonly property string corner: root.first === null ? "" : "\u2192 "
                             text: `<font color="${Theme.strong}">${corner}${root.typed}</font>`
                                 + (root.typed === ""
@@ -363,6 +360,7 @@ Singleton {
                         height: Theme.space.xxl + Theme.space.s
 
                         Row {
+                            id: hints
                             anchors.right: parent.right
                             anchors.rightMargin: Theme.space.l
                             anchors.verticalCenter: parent.verticalCenter
@@ -371,10 +369,10 @@ Singleton {
                             Repeater {
                                 model: root.lettered
                                     ? [["a\u2013z", "row, then column"], ["\u232b", "undo"],
-                                        ["Esc", "arrows"], ["\u21b5", "take"]]
-                                    : [["\u2190 \u2192 \u2191 \u2193", "halve"], ["\u21e7", "move"],
-                                        ["Ctrl", "grow"], ["Ctrl \u21e7", "shrink"],
-                                        ["a\u2013z", "cells"], ["\u21b5", "take"]]
+                                        ["Esc", "clear"], ["\u21b5", "take"]]
+                                    : [["a\u2013z", "cells"],
+                                        ["\u2190 \u2192 \u2191 \u2193", "move"],
+                                        ["\u21e7", "size"], ["Esc", "back"], ["\u21b5", "take"]]
 
                                 Text {
                                     required property var modelData

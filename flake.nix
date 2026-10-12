@@ -103,6 +103,7 @@
         bemenu = ./modules/bemenu/home.nix;
         broot = ./modules/broot/home.nix;
         btop = ./modules/btop/home.nix;
+        camera = ./modules/camera/home.nix;
         cargo = ./modules/cargo/home.nix;
         claude = ./modules/claude/home.nix;
         curl = ./modules/curl/home.nix;
@@ -176,6 +177,7 @@
       nixosModules = {
         bluetooth = ./modules/bluetooth/nixos.nix;
         btrfs = ./modules/btrfs/nixos.nix;
+        camera = ./modules/camera/nixos.nix;
         coredump = ./modules/coredump/nixos.nix;
         disko = moduleFrom ./modules/disko/nixos.nix { inherit disko; };
         ergodox = ./modules/ergodox/nixos.nix;

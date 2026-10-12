@@ -572,8 +572,8 @@ Scope {
     }
 
     // What the launcher shows, as JSON: whether it holds the keyboard,
-    // what's typed and held, and the row Return takes, with whether an
-    // answer is still being asked for. A script waits on this before it
+    // what's typed and held, and the row Return takes, with its chord and
+    // whether an answer is still being asked for. A script waits on this before it
     // presses a key, rather than guessing how long the launcher takes.
     function showing() {
         const row = root.selected;
@@ -586,6 +586,7 @@ Scope {
             selected: !row ? null : {
                 name: row.name,
                 verb: row.verb ?? "",
+                chord: (row.chord ?? []).map(key => key.text).join(" "),
                 settled: row !== root.headline || !root.answer.asking
             }
         });
