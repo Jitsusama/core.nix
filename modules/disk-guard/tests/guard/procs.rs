@@ -1,4 +1,4 @@
-use disk_guard::linux::processes;
+use disk_guard::linux::{lock_waiters, processes};
 use std::ffi::OsString;
 use std::fs;
 use std::os::unix::fs::{PermissionsExt, symlink};
@@ -143,6 +143,69 @@ fn kernel_threads_and_other_entries_are_left_out() {
         .collect();
     pids.sort();
     assert_eq!(pids, [100, 200]);
+}
+
+/// `/proc/locks` as Linux writes it. The guard (pid 42) holds cargo's
+/// lock (inode 7) by flock with a build waiting on it, and a rustc session
+/// lock (inode 8) by OFD, which shows no pid, with another waiting. Another
+/// filesystem has a lock of its own on an inode 7, with a waiter of its own.
+const LOCKS: &str = "\
+1: FLOCK  ADVISORY  WRITE 42 00:23:7 0 EOF
+1: -> FLOCK  ADVISORY  WRITE 500 00:23:7 0 EOF
+2: OFDLCK ADVISORY  WRITE -1 00:23:8 0 EOF
+2: -> OFDLCK ADVISORY  WRITE -1 00:23:8 0 EOF
+3: FLOCK  ADVISORY  WRITE 900 fd:01:7 0 EOF
+3: -> FLOCK  ADVISORY  WRITE 901 fd:01:7 0 EOF
+4: POSIX  ADVISORY  READ 77 00:23:9 0 EOF
+";
+
+#[test]
+fn waiters_on_the_guards_own_locks_are_found() {
+    let root = tempfile::tempdir().unwrap();
+    text(root.path(), "locks", LOCKS);
+    let locks = root.path().join("locks");
+    assert_eq!(lock_waiters(&locks, 42, &[7]).unwrap(), [500]);
+    assert_eq!(lock_waiters(&locks, 42, &[7, 8]).unwrap(), [500, -1]);
+}
+
+#[test]
+fn locks_no_one_waits_on_have_no_waiters() {
+    let root = tempfile::tempdir().unwrap();
+    text(root.path(), "locks", LOCKS);
+    let locks = root.path().join("locks");
+    assert!(lock_waiters(&locks, 42, &[9]).unwrap().is_empty());
+    assert!(lock_waiters(&locks, 43, &[7]).unwrap().is_empty());
+}
+
+#[test]
+fn a_build_waiting_on_a_held_lock_is_seen() {
+    use rustix::fs::{FlockOperation, flock};
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join(".cargo-lock");
+    let held = fs::File::create(&path).unwrap();
+    flock(&held, FlockOperation::LockExclusive).unwrap();
+    let inode = std::os::unix::fs::MetadataExt::ino(&held.metadata().unwrap());
+    let waiter = {
+        let path = path.clone();
+        std::thread::spawn(move || {
+            flock(fs::File::open(path).unwrap(), FlockOperation::LockExclusive).unwrap()
+        })
+    };
+    let me = std::process::id();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    let mut waiters = Vec::new();
+    while waiters.is_empty() && std::time::Instant::now() < deadline {
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        waiters = lock_waiters(Path::new("/proc/locks"), me, &[inode]).unwrap();
+    }
+    assert_eq!(waiters, [me as i32]);
+    drop(held);
+    waiter.join().unwrap();
+    assert!(
+        lock_waiters(Path::new("/proc/locks"), me, &[inode])
+            .unwrap()
+            .is_empty()
+    );
 }
 
 #[test]

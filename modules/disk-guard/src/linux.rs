@@ -157,6 +157,38 @@ pub fn power(supplies: &Path) -> io::Result<crate::moments::Power> {
     })
 }
 
+/// The processes waiting on locks the guard (`me`) holds on these inodes,
+/// by `/proc/locks`, where an OFD lock's pid reads -1. Its lines name a
+/// device by numbers stat doesn't give on Btrfs (00:23 where stat says 0:52),
+/// so the device is taken from the guard's own lock's line.
+pub fn lock_waiters(proc_locks: &Path, me: u32, inodes: &[u64]) -> io::Result<Vec<i32>> {
+    let text = fs::read_to_string(proc_locks)?;
+    // Each line: id, an arrow for a waiter, kind, mode, access, pid, then
+    // major:minor:inode.
+    let parse = |line: &str| -> Option<(bool, String, i32, String)> {
+        let mut words = line.split_whitespace().skip(1).peekable();
+        let waiting = words.next_if_eq(&"->").is_some();
+        let kind = words.next()?.to_owned();
+        let pid = words.nth(2)?.parse().ok()?;
+        Some((waiting, kind, pid, words.next()?.to_owned()))
+    };
+    let lines: Vec<_> = text.lines().filter_map(parse).collect();
+    let held: Vec<&str> = lines
+        .iter()
+        .filter(|(waiting, kind, pid, file)| {
+            let mine = *pid == me as i32 || (kind == "OFDLCK" && *pid == -1);
+            let inode = file.rsplit(':').next().and_then(|inode| inode.parse().ok());
+            !waiting && mine && inode.is_some_and(|inode: u64| inodes.contains(&inode))
+        })
+        .map(|(_, _, _, file)| file.as_str())
+        .collect();
+    Ok(lines
+        .iter()
+        .filter(|(waiting, _, _, file)| *waiting && held.contains(&file.as_str()))
+        .map(|(_, _, pid, _)| *pid)
+        .collect())
+}
+
 /// `PF_KTHREAD` in a process's flags: a kernel thread, which holds no files.
 const PF_KTHREAD: u64 = 0x0020_0000;
 
