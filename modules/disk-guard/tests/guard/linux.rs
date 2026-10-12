@@ -1,5 +1,5 @@
 use disk_guard::band::BtrfsSpace;
-use disk_guard::linux::{btrfs_allocation, settle, space};
+use disk_guard::linux::{btrfs_allocation, settle, space, tick};
 use std::fs;
 use std::path::Path;
 use std::process::Command;
@@ -139,6 +139,22 @@ fn settling_shows_what_a_delete_freed() {
         "only {} MiB showed as freed",
         freed / MIB
     );
+}
+
+#[test]
+fn a_tick_reads_the_clocks_and_the_boot() {
+    let first = tick().unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(20));
+    let second = tick().unwrap();
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap();
+    assert!((second.wall - now.as_secs_f64()).abs() < 1.0);
+    assert!(second.monotonic - first.monotonic >= 0.02);
+    assert!(first.monotonic > 0.0 && first.suspended >= 0.0);
+    assert_eq!(first.boot, second.boot);
+    let boot = fs::read_to_string("/proc/sys/kernel/random/boot_id").unwrap();
+    assert_eq!(first.boot, boot.trim());
 }
 
 #[test]

@@ -64,6 +64,35 @@ pub fn settle(path: &Path) -> io::Result<()> {
     Ok(())
 }
 
+/// One reading of a clock, in seconds.
+fn clock(id: libc::clockid_t) -> io::Result<f64> {
+    let mut time = libc::timespec {
+        tv_sec: 0,
+        tv_nsec: 0,
+    };
+    // SAFETY: time is a valid timespec the kernel fills in.
+    if unsafe { libc::clock_gettime(id, &mut time) } != 0 {
+        return Err(io::Error::last_os_error());
+    }
+    Ok(time.tv_sec as f64 + time.tv_nsec as f64 / 1e9)
+}
+
+/// The clocks awake time is counted from. Monotonic time stops while the
+/// machine sleeps and boot time doesn't, so suspended time is the gap
+/// between them; the boot id tells one boot from the next.
+pub fn tick() -> io::Result<crate::clock::Tick> {
+    let monotonic = clock(libc::CLOCK_MONOTONIC)?;
+    let boottime = clock(libc::CLOCK_BOOTTIME)?;
+    let wall = clock(libc::CLOCK_REALTIME)?;
+    let boot = fs::read_to_string("/proc/sys/kernel/random/boot_id")?;
+    Ok(crate::clock::Tick {
+        wall,
+        monotonic,
+        suspended: (boottime - monotonic).max(0.0),
+        boot: boot.trim().to_owned(),
+    })
+}
+
 /// A Btrfs filesystem's id, as its sysfs directory is named.
 fn btrfs_fsid(path: &Path) -> io::Result<PathBuf> {
     let flags = rustix::fs::OFlags::RDONLY | rustix::fs::OFlags::CLOEXEC;
