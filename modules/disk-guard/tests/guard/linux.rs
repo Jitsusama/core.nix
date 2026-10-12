@@ -1,5 +1,6 @@
 use disk_guard::band::BtrfsSpace;
-use disk_guard::linux::{btrfs_allocation, settle, space, tick};
+use disk_guard::linux::{btrfs_allocation, power, pressure, settle, space, tick};
+use disk_guard::moments::{Power, Stall};
 use std::fs;
 use std::path::Path;
 use std::process::Command;
@@ -155,6 +156,118 @@ fn a_tick_reads_the_clocks_and_the_boot() {
     assert_eq!(first.boot, second.boot);
     let boot = fs::read_to_string("/proc/sys/kernel/random/boot_id").unwrap();
     assert_eq!(first.boot, boot.trim());
+}
+
+fn text(root: &Path, path: &str, value: &str) {
+    let path = root.join(path);
+    fs::create_dir_all(path.parent().unwrap()).unwrap();
+    fs::write(path, value).unwrap();
+}
+
+#[test]
+fn pressure_is_the_last_ten_seconds_of_each_stall() {
+    let root = tempfile::tempdir().unwrap();
+    let io = "some avg10=12.50 avg60=3.00 avg300=0.82 total=136859772\n\
+              full avg10=4.25 avg60=1.00 avg300=0.19 total=60570158\n";
+    text(root.path(), "io", io);
+    text(
+        root.path(),
+        "memory",
+        &io.replace("12.50", "0.50").replace("4.25", "0.00"),
+    );
+    // CPU pressure had no full line before Linux 5.13.
+    text(
+        root.path(),
+        "cpu",
+        "some avg10=30.00 avg60=0.00 avg300=0.00 total=1\n",
+    );
+    let pressure = pressure(root.path()).unwrap();
+    assert_eq!(
+        pressure.io,
+        Stall {
+            some: 12.5,
+            full: 4.25
+        }
+    );
+    assert_eq!(
+        pressure.memory,
+        Stall {
+            some: 0.5,
+            full: 0.0
+        }
+    );
+    assert_eq!(
+        pressure.cpu,
+        Stall {
+            some: 30.0,
+            full: 0.0
+        }
+    );
+}
+
+#[test]
+fn the_live_pressure_reads() {
+    if Path::new("/proc/pressure/io").exists() {
+        let pressure = pressure(Path::new("/proc/pressure")).unwrap();
+        assert!((0.0..=100.0).contains(&pressure.io.some));
+    }
+}
+
+/// A laptop's supplies as optimus shows them: mains and a USB-C source for
+/// the system, its battery, and a mouse's battery.
+fn supplies(root: &Path, mains: &str, usb: &str, capacity: &str) {
+    text(root, "AC/type", "Mains\n");
+    text(root, "AC/online", mains);
+    text(root, "ucsi-source-psy-USBC000:001/type", "USB\n");
+    text(root, "ucsi-source-psy-USBC000:001/scope", "System\n");
+    text(root, "ucsi-source-psy-USBC000:001/online", usb);
+    text(root, "BAT0/type", "Battery\n");
+    text(root, "BAT0/capacity", capacity);
+    text(root, "BAT0/status", "Discharging\n");
+    text(root, "hidpp_battery_0/type", "Battery\n");
+    text(root, "hidpp_battery_0/scope", "Device\n");
+    text(root, "hidpp_battery_0/capacity", "5\n");
+}
+
+#[test]
+fn power_comes_from_any_system_supply_and_the_systems_battery() {
+    let root = tempfile::tempdir().unwrap();
+    supplies(root.path(), "1\n", "0\n", "95\n");
+    assert_eq!(
+        power(root.path()).unwrap(),
+        Power {
+            mains: true,
+            battery: Some(95)
+        }
+    );
+    supplies(root.path(), "0\n", "1\n", "40\n");
+    assert_eq!(
+        power(root.path()).unwrap(),
+        Power {
+            mains: true,
+            battery: Some(40)
+        }
+    );
+    supplies(root.path(), "0\n", "0\n", "40\n");
+    assert_eq!(
+        power(root.path()).unwrap(),
+        Power {
+            mains: false,
+            battery: Some(40)
+        }
+    );
+}
+
+#[test]
+fn a_machine_with_no_supplies_is_on_mains() {
+    let root = tempfile::tempdir().unwrap();
+    assert_eq!(
+        power(root.path()).unwrap(),
+        Power {
+            mains: true,
+            battery: None
+        }
+    );
 }
 
 #[test]

@@ -7,4 +7,5 @@ pub mod config;
 #[cfg(target_os = "linux")]
 pub mod linux;
 pub mod locks;
+pub mod moments;
 pub mod units;

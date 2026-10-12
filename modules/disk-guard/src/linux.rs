@@ -93,6 +93,70 @@ pub fn tick() -> io::Result<crate::clock::Tick> {
     })
 }
 
+/// The stalls PSI reports (`/proc/pressure`), each over its last ten
+/// seconds. A resource whose file is missing, or a line an older kernel
+/// doesn't write, reads as no stall.
+pub fn pressure(proc_pressure: &Path) -> io::Result<crate::moments::Pressure> {
+    let stall = |resource: &str| -> io::Result<crate::moments::Stall> {
+        let text = match fs::read_to_string(proc_pressure.join(resource)) {
+            Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(Default::default()),
+            other => other?,
+        };
+        let mut stall = crate::moments::Stall::default();
+        for line in text.lines() {
+            let mut words = line.split_whitespace();
+            let which = words.next();
+            let average = words
+                .find_map(|word| word.strip_prefix("avg10="))
+                .and_then(|value| value.parse().ok());
+            match (which, average) {
+                (Some("some"), Some(value)) => stall.some = value,
+                (Some("full"), Some(value)) => stall.full = value,
+                _ => {}
+            }
+        }
+        Ok(stall)
+    };
+    Ok(crate::moments::Pressure {
+        io: stall("io")?,
+        memory: stall("memory")?,
+        cpu: stall("cpu")?,
+    })
+}
+
+/// Where power comes from, by the supplies in `/sys/class/power_supply`.
+/// Supplies scoped to a device, such as a mouse's battery, say nothing
+/// about the machine. A battery's status can read Discharging while mains
+/// is online, so only the supplies' own online state counts. A machine with
+/// no supplies at all is a desktop, on mains.
+pub fn power(supplies: &Path) -> io::Result<crate::moments::Power> {
+    let read = |path: PathBuf| fs::read_to_string(path).map(|text| text.trim().to_owned());
+    let (mut sources, mut online, mut charges) = (0, false, Vec::new());
+    for supply in fs::read_dir(supplies)? {
+        let supply = supply?.path();
+        if read(supply.join("scope")).is_ok_and(|scope| scope == "Device") {
+            continue;
+        }
+        match read(supply.join("type"))?.as_str() {
+            "Battery" => {
+                if let Ok(charge) = read(supply.join("capacity"))?.parse::<u8>() {
+                    charges.push(charge);
+                }
+            }
+            _ => {
+                sources += 1;
+                online |= read(supply.join("online")).is_ok_and(|state| state == "1");
+            }
+        }
+    }
+    let battery = (!charges.is_empty())
+        .then(|| (charges.iter().map(|&c| c as u32).sum::<u32>() / charges.len() as u32) as u8);
+    Ok(crate::moments::Power {
+        mains: online || (sources == 0 && battery.is_none()),
+        battery,
+    })
+}
+
 /// A Btrfs filesystem's id, as its sysfs directory is named.
 fn btrfs_fsid(path: &Path) -> io::Result<PathBuf> {
     let flags = rustix::fs::OFlags::RDONLY | rustix::fs::OFlags::CLOEXEC;
