@@ -32,6 +32,8 @@ mod procs;
 mod reclaim;
 mod sandbox;
 mod scratch;
+#[cfg(target_os = "linux")]
+mod serve;
 mod snapshots;
 #[cfg(target_os = "linux")]
 mod socket;

@@ -1,0 +1,134 @@
+//! Running the daemons: one per scope, stepping until told to stop, and
+//! the system daemon answering over its socket for the processes a user
+//! daemon can't read.
+
+use crate::daemon::{Guard, Senses};
+use crate::moments::Power;
+use crate::socket::{Request, Server};
+use crate::vouch;
+use std::fs::{File, OpenOptions};
+use std::io::{self, Write};
+use std::os::unix::fs::OpenOptionsExt;
+use std::path::{Path, PathBuf};
+use std::time::Duration;
+
+/// Takes the lock that keeps one daemon to a state directory, or None
+/// while another daemon holds it. It's held as long as the file is open,
+/// and the kernel lets it go when the daemon dies however it dies.
+pub fn hold(state: &Path) -> io::Result<Option<File>> {
+    let file = OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .mode(0o600)
+        .open(state.join("lock"))?;
+    match rustix::fs::flock(&file, rustix::fs::FlockOperation::NonBlockingLockExclusive) {
+        Ok(()) => Ok(Some(file)),
+        Err(rustix::io::Errno::WOULDBLOCK) => Ok(None),
+        Err(error) => Err(error.into()),
+    }
+}
+
+/// Answers on `socket`, from a thread of its own, which processes read
+/// from `proc` touch what each asker owns, each account at most once
+/// `every`.
+pub fn answering(socket: &Path, proc: &Path, every: Duration) -> io::Result<()> {
+    let mut server = Server::bind(socket, every)?;
+    let proc: PathBuf = proc.to_owned();
+    std::thread::Builder::new()
+        .name("answering".to_owned())
+        .spawn(move || {
+            loop {
+                let served = server.serve(&mut |uid, request| {
+                    let Request::Processes { roots } = request;
+                    let processes =
+                        crate::linux::processes(&proc).map_err(|error| error.to_string())?;
+                    Ok(vouch::answer(&processes, &roots, |path| {
+                        vouch::reached_by(path, uid)
+                    }))
+                });
+                if let Err(error) = served {
+                    // Out of descriptors, most likely; a moment may free one.
+                    eprintln!("disk-guard: answering: {error}");
+                    std::thread::sleep(Duration::from_millis(500));
+                }
+            }
+        })?;
+    Ok(())
+}
+
+/// Steps `guard` until `wait`, given how long to wait, says to stop. A
+/// step that fails is told of on `err` and the next goes on, since what
+/// failed (a filesystem gone, a full disk refusing the status file) may
+/// not fail next time, and a guard that stopped would guard nothing.
+pub fn steps(
+    guard: &mut Guard,
+    every: Duration,
+    mut wait: impl FnMut(Duration) -> bool,
+    err: &mut dyn Write,
+) {
+    loop {
+        let stepped = crate::linux::tick().and_then(|tick| guard.step(&tick, &senses()));
+        if let Err(error) = stepped {
+            let _ = writeln!(err, "disk-guard: {error}");
+        }
+        if wait(every) {
+            return;
+        }
+    }
+}
+
+/// Blocks `signals` in this thread, and in every thread it starts after,
+/// and gives a wait that ends early, saying so, once one of them comes.
+/// A signal during a step waits for the step to finish, so a pass is
+/// never cut off halfway by a stop. Call it before starting any thread,
+/// or a thread that doesn't block them takes them and dies.
+pub fn stopping(signals: &[i32]) -> io::Result<impl FnMut(Duration) -> bool + use<>> {
+    // SAFETY: set is a sigset_t the calls fill in and then only read.
+    let set = unsafe {
+        let mut set: libc::sigset_t = std::mem::zeroed();
+        libc::sigemptyset(&mut set);
+        for &signal in signals {
+            libc::sigaddset(&mut set, signal);
+        }
+        let blocked = libc::pthread_sigmask(libc::SIG_BLOCK, &set, std::ptr::null_mut());
+        if blocked != 0 {
+            return Err(io::Error::from_raw_os_error(blocked));
+        }
+        set
+    };
+    Ok(move |wait: Duration| {
+        let deadline = std::time::Instant::now() + wait;
+        loop {
+            let left = deadline.saturating_duration_since(std::time::Instant::now());
+            let timeout = libc::timespec {
+                tv_sec: left.as_secs() as libc::time_t,
+                tv_nsec: left.subsec_nanos() as libc::c_long,
+            };
+            // SAFETY: set and timeout are valid for the call; no siginfo
+            // is asked for.
+            let taken = unsafe { libc::sigtimedwait(&set, std::ptr::null_mut(), &timeout) };
+            if taken > 0 {
+                return true;
+            }
+            // Woken by another signal, wait out the rest; timed out, done.
+            if io::Error::last_os_error().raw_os_error() != Some(libc::EINTR) || left.is_zero() {
+                return false;
+            }
+        }
+    })
+}
+
+/// What the machine is doing. What can't be read is taken as least in
+/// the way: a machine with no supplies to read runs on mains, and no
+/// stall to read is no stall.
+pub fn senses() -> Senses {
+    Senses {
+        power: crate::linux::power(Path::new("/sys/class/power_supply")).unwrap_or(Power {
+            mains: true,
+            battery: None,
+        }),
+        saver: false,
+        pressure: crate::linux::pressure(Path::new("/proc/pressure")).unwrap_or_default(),
+    }
+}

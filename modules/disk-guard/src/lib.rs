@@ -29,6 +29,8 @@ pub mod pass;
 pub mod plan;
 pub mod reclaim;
 pub mod scratch;
+#[cfg(target_os = "linux")]
+pub mod serve;
 pub mod snapshots;
 #[cfg(target_os = "linux")]
 pub mod socket;

@@ -3,14 +3,17 @@
 //! parser crate would be most of the binary's dependencies.
 
 use crate::band::Band;
-use crate::config::Config;
+use crate::config::{Config, Scope};
 use crate::daemon::{Guard, Places};
+use crate::serve::{answering, hold, steps, stopping};
 use crate::units::{Size, Span};
 use serde_json::Value;
 use std::ffi::OsString;
 use std::fs;
 use std::io::{self, Write};
+use std::os::unix::fs::DirBuilderExt;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Command {
@@ -48,6 +51,8 @@ pub struct Env {
     pub state: PathBuf,
     /// The user daemon's status file.
     pub status: PathBuf,
+    pub system_config: PathBuf,
+    pub system_state: PathBuf,
     pub system_status: PathBuf,
     pub system_socket: PathBuf,
     /// Where processes are read from: `/proc`.
@@ -88,6 +93,8 @@ impl Env {
             config: config.join("disk-guard/config.json"),
             state: state.join("disk-guard"),
             status: runtime.join("disk-guard/status.json"),
+            system_config: PathBuf::from("/etc/disk-guard/config.json"),
+            system_state: PathBuf::from("/var/lib/disk-guard"),
             system_status: PathBuf::from("/run/disk-guard/status.json"),
             system_socket: PathBuf::from("/run/disk-guard/socket"),
             processes: PathBuf::from("/proc"),
@@ -234,10 +241,8 @@ pub fn run(command: Command, env: &Env, out: &mut dyn Write, err: &mut dyn Write
             band,
             pretend_free,
         } => plan(env, config, band, pretend_free, out),
-        Command::User { .. } | Command::System { .. } => Err((
-            REFUSED,
-            "the daemons are run from the binary's main".to_owned(),
-        )),
+        Command::User { config, state } => daemon(env, Scope::User, config, state, err),
+        Command::System { config, state } => daemon(env, Scope::System, config, state, err),
     };
     match done {
         Ok(code) => code,
@@ -249,6 +254,74 @@ pub fn run(command: Command, env: &Env, out: &mut dyn Write, err: &mut dyn Write
 }
 
 type Done = Result<i32, (i32, String)>;
+
+/// How often a daemon steps.
+const STEP_EVERY: Duration = Duration::from_secs(5);
+
+/// How often each account may ask the system daemon.
+const ASK_EVERY: Duration = Duration::from_millis(500);
+
+/// Runs a daemon until it's told to stop.
+fn daemon(
+    env: &Env,
+    scope: Scope,
+    config: Option<PathBuf>,
+    state: Option<PathBuf>,
+    err: &mut dyn Write,
+) -> Done {
+    // Before any thread starts, so every thread blocks them too.
+    let mut wait = stopping(&[libc::SIGTERM, libc::SIGINT, libc::SIGHUP]).map_err(failed)?;
+    let (default_config, default_state, name) = match scope {
+        Scope::User => (&env.config, &env.state, "user"),
+        Scope::System => (&env.system_config, &env.system_state, "system"),
+    };
+    let config_path = config.unwrap_or_else(|| default_config.clone());
+    let config = read_config(&config_path)?;
+    if config.scope != scope {
+        return Err((
+            REFUSED,
+            format!(
+                "{} is a config for the other daemon, not the {name} daemon",
+                config_path.display()
+            ),
+        ));
+    }
+    let state = state.unwrap_or_else(|| default_state.clone());
+    fs::DirBuilder::new()
+        .recursive(true)
+        .mode(0o700)
+        .create(&state)
+        .map_err(|error| (REFUSED, format!("{}: {error}", state.display())))?;
+    let Some(_held) = hold(&state).map_err(failed)? else {
+        return Err((
+            RUNNING,
+            format!("a {name} daemon already runs with {}", state.display()),
+        ));
+    };
+    let places = match scope {
+        Scope::User => Places {
+            state: state.clone(),
+            status: Some(env.status.clone()),
+            processes: env.processes.clone(),
+            system: Some(env.system_socket.clone()),
+        },
+        Scope::System => {
+            if let Some(dir) = env.system_socket.parent() {
+                fs::create_dir_all(dir).map_err(failed)?;
+            }
+            answering(&env.system_socket, &env.processes, ASK_EVERY).map_err(failed)?;
+            Places {
+                state: state.clone(),
+                status: Some(env.system_status.clone()),
+                processes: env.processes.clone(),
+                system: None,
+            }
+        }
+    };
+    let mut guard = Guard::new(config, &places).map_err(failed)?;
+    steps(&mut guard, STEP_EVERY, &mut wait, err);
+    Ok(FINE)
+}
 
 fn read_config(path: &Path) -> Result<Config, (i32, String)> {
     let text = fs::read_to_string(path)

@@ -88,6 +88,8 @@ impl Machine {
             config: root.join("config/disk-guard/config.json"),
             state: root.join("state/disk-guard"),
             status: root.join("run/disk-guard/status.json"),
+            system_config: root.join("etc/disk-guard/config.json"),
+            system_state: root.join("var/lib/disk-guard"),
             system_status: root.join("system/status.json"),
             system_socket: root.join("system/socket"),
             processes: root.join("proc"),
@@ -228,6 +230,26 @@ fn the_journal_is_read_oldest_first_and_since_when_asked() {
     assert_eq!(out.lines().count(), 1, "{out}");
     assert!(out.contains("/new"));
     serde_json::from_str::<serde_json::Value>(out.trim()).unwrap();
+}
+
+#[test]
+fn a_daemon_refuses_another_scopes_config_and_a_second_of_itself() {
+    let machine = Machine::new();
+    let system = machine.root.join("system.json");
+    machine.config(
+        &system,
+        r#"{ "version": 1, "scope": "system", "sources": {} }"#,
+    );
+    let (code, _, err) = machine.run(&format!("user --config {}", system.display()));
+    assert_eq!(code, 1);
+    assert!(err.contains("system"), "{err}");
+
+    machine.config(&machine.env.config, GOOD);
+    let held = disk_guard::serve::hold(&machine.env.state).unwrap();
+    assert!(held.is_some());
+    let (code, _, err) = machine.run("user");
+    assert_eq!(code, 2);
+    assert!(err.contains("already"), "{err}");
 }
 
 #[test]
