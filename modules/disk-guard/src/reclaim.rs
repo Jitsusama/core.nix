@@ -188,6 +188,80 @@ pub fn trashed(trash: &Dir, trash_path: &Path, candidate: &Candidate) -> Outcome
     }
 }
 
+/// Reclaims one entry under `root`, which `root_path` names: a scratch
+/// run, a temp leftover, a workspace or a cache. It's judged first, and a
+/// file or symlink is then unlinked, never followed. A directory's
+/// contents are moved aside into a trash inside it and it's judged again,
+/// so a process that arrived meanwhile gets everything back; then the
+/// trash is emptied and the directory removed if nothing new is in it.
+pub fn entry(
+    root: &Dir,
+    root_path: &Path,
+    candidate: &Candidate,
+    looker: &mut impl Looker,
+) -> Outcome {
+    let Ok(relative) = candidate.path.strip_prefix(root_path) else {
+        return Outcome::Failed(format!("outside its root {}", root_path.display()));
+    };
+    let (Some(parent), Some(name)) = (relative.parent(), relative.file_name()) else {
+        return Outcome::Failed("its root itself".to_owned());
+    };
+    let checkout = candidate.checkout.as_deref();
+    let judged = |looker: &mut _| match Looker::judge(looker, &candidate.path, checkout) {
+        Ok(used) => refusal(used, candidate.occupied),
+        Err(error) => Some(format!("its use can't be judged: {error}")),
+    };
+    if let Some(reason) = judged(looker) {
+        return Outcome::Kept(reason);
+    }
+    let parent = match root.child(parent) {
+        Ok(parent) => parent,
+        Err(error) => return Outcome::Failed(format!("opening where it lies: {error}")),
+    };
+    let failed = |doing: &str, error: io::Error| Outcome::Failed(format!("{doing}: {error}"));
+    match parent.kind(name) {
+        None => return Outcome::Reclaimed,
+        Some(rustix::fs::FileType::Directory) => {}
+        Some(_) => {
+            return match parent.remove_entry(name) {
+                Ok(()) => Outcome::Reclaimed,
+                Err(error) => failed("removing it", error),
+            };
+        }
+    }
+    let dir = match parent.entry(name) {
+        Ok(Some(dir)) => dir,
+        Ok(None) => return Outcome::Failed("on another filesystem".to_owned()),
+        Err(error) => return failed("opening it", error),
+    };
+    let detached = match dir.detach(&[]) {
+        Ok(detached) => detached,
+        Err(error) if error.raw_os_error() == Some(libc::ENOSPC) => {
+            // Too full to make the trash: it was judged free just now.
+            drop(dir);
+            return match parent.remove_entry(name) {
+                Ok(()) => Outcome::Reclaimed,
+                Err(error) => failed("removing it in place", error),
+            };
+        }
+        Err(error) => return failed("moving it aside", error),
+    };
+    if let Some(reason) = judged(looker) {
+        return match detached.restore() {
+            Ok(()) => Outcome::Kept(reason),
+            Err(error) => Outcome::Failed(format!("{reason}, and putting it back failed: {error}")),
+        };
+    }
+    if let Err(error) = detached.empty() {
+        return failed("emptying it", error);
+    }
+    drop(dir);
+    match parent.remove_if_empty(name) {
+        Ok(_) => Outcome::Reclaimed,
+        Err(error) => failed("removing it", error),
+    }
+}
+
 /// Deletes a target's contents where they lie, all but `keep`, for a disk
 /// too full to make a trash in. Every profile's fingerprints go first, so
 /// a removal that's stopped part way, the guard killed or its machine

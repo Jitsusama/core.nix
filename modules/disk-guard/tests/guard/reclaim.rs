@@ -10,10 +10,10 @@ use std::path::{Path, PathBuf};
 
 /// Answers each judgement and waiter check from a script, in turn.
 #[derive(Default)]
-struct Script {
-    uses: VecDeque<Use>,
-    waiters: VecDeque<Vec<i32>>,
-    asked_waiters_for: Vec<Vec<u64>>,
+pub(crate) struct Script {
+    pub(crate) uses: VecDeque<Use>,
+    pub(crate) waiters: VecDeque<Vec<i32>>,
+    pub(crate) asked_waiters_for: Vec<Vec<u64>>,
 }
 
 impl Looker for Script {

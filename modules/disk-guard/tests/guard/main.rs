@@ -7,6 +7,7 @@ mod band;
 mod clock;
 mod config;
 mod discover;
+mod entries;
 #[cfg(target_os = "linux")]
 mod linux;
 mod locks;
