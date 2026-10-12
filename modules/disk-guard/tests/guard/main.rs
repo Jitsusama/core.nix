@@ -16,6 +16,7 @@ mod plan;
 mod procs;
 mod reclaim;
 mod temp;
+mod trash;
 mod trees;
 mod units;
 mod variants;

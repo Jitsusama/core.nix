@@ -162,6 +162,32 @@ pub fn variant(root: &Dir, root_path: &Path, candidate: &Candidate, now: SystemT
     }
 }
 
+/// Reclaims one thing in a trash that `trash` opens and `trash_path`
+/// names: the thing under `files/`, then its `.trashinfo`, so an
+/// interrupted removal leaves an info file that's tidied next time rather
+/// than a file nothing dates.
+pub fn trashed(trash: &Dir, trash_path: &Path, candidate: &Candidate) -> Outcome {
+    let relative = candidate.path.strip_prefix(trash_path.join("files"));
+    let name = match relative.map(|relative| (relative.parent(), relative.file_name())) {
+        Ok((Some(parent), Some(name))) if parent.as_os_str().is_empty() => name,
+        _ => return Outcome::Failed("not in the trash's files".to_owned()),
+    };
+    let mut info = name.to_owned();
+    info.push(".trashinfo");
+    let removed = trash
+        .child(Path::new("files"))
+        .and_then(|files| files.remove_entry(name))
+        .and_then(|()| match trash.child(Path::new("info")) {
+            Ok(dir) => dir.remove_entry(&info),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
+            Err(error) => Err(error),
+        });
+    match removed {
+        Ok(()) => Outcome::Reclaimed,
+        Err(error) => Outcome::Failed(format!("removing it: {error}")),
+    }
+}
+
 /// Deletes a target's contents where they lie, all but `keep`, for a disk
 /// too full to make a trash in. Every profile's fingerprints go first, so
 /// a removal that's stopped part way, the guard killed or its machine
