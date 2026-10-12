@@ -191,6 +191,11 @@ impl Dir {
     }
 
     /// The names in this directory, without `.` and `..`.
+    /// Removes one entry all the way down, as emptying a trash does.
+    pub(crate) fn remove_entry(&self, name: &OsStr) -> io::Result<()> {
+        remove(self, name, 0)
+    }
+
     pub(crate) fn names(&self) -> io::Result<Vec<Vec<u8>>> {
         let mut names = Vec::new();
         for entry in rustix::fs::Dir::read_from(&self.fd)? {

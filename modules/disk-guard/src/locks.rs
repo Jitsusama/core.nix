@@ -33,6 +33,15 @@ impl Held {
     pub fn count(&self) -> usize {
         self.files.len()
     }
+
+    /// The inodes of the lock files held, which `/proc/locks` names them by.
+    pub fn inodes(&self) -> Vec<u64> {
+        let stats = self
+            .files
+            .iter()
+            .filter_map(|fd| rustix::fs::fstat(fd).ok());
+        stats.map(|stat| stat.st_ino).collect()
+    }
 }
 
 pub enum Hold {

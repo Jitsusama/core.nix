@@ -13,4 +13,5 @@ mod pass;
 mod plan;
 #[cfg(target_os = "linux")]
 mod procs;
+mod reclaim;
 mod units;
