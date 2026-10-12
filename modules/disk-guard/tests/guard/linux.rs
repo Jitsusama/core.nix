@@ -1,9 +1,14 @@
 use disk_guard::band::BtrfsSpace;
-use disk_guard::linux::{boot, btrfs_allocation, power, pressure, settle, space, tick};
+use disk_guard::linux::{boot, btrfs_allocation, patiently, power, pressure, settle, space, tick};
 use disk_guard::moments::{Power, Stall};
+use std::cell::Cell;
 use std::fs;
+use std::io;
 use std::path::Path;
 use std::process::Command;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, mpsc};
+use std::time::{Duration, Instant};
 
 const GIB: u64 = 1 << 30;
 const MIB: u64 = 1 << 20;
@@ -308,4 +313,86 @@ fn this_machines_boot_is_in_the_past() {
         .unwrap()
         .as_secs_f64();
     assert!(booted.wall > 0.0 && booted.wall < now);
+}
+
+const PATIENCE: Duration = Duration::from_millis(100);
+
+#[test]
+fn a_commit_in_time_is_all_settling_takes() {
+    let stuck = Arc::new(AtomicBool::new(false));
+    let fell_back = Cell::new(false);
+    patiently(
+        &stuck,
+        PATIENCE,
+        || Ok(()),
+        || {
+            fell_back.set(true);
+            Ok(())
+        },
+    )
+    .unwrap();
+    assert!(!fell_back.get());
+    let failing = patiently(&stuck, PATIENCE, || Err(io::Error::other("no")), || Ok(()));
+    assert_eq!(failing.unwrap_err().to_string(), "no");
+}
+
+#[test]
+fn a_commit_that_hangs_is_given_up_on_for_the_fallback() {
+    let stuck = Arc::new(AtomicBool::new(false));
+    let (release, released) = mpsc::channel::<()>();
+    let (done, finished) = mpsc::channel::<()>();
+    let started = Instant::now();
+    patiently(
+        &stuck,
+        PATIENCE,
+        move || {
+            // Hangs until the fallback runs, as a commit nobody starts does.
+            let _ = released.recv_timeout(Duration::from_secs(5));
+            done.send(()).unwrap();
+            Ok(())
+        },
+        || {
+            release.send(()).unwrap();
+            Ok(())
+        },
+    )
+    .unwrap();
+    assert!(
+        started.elapsed() < Duration::from_secs(2),
+        "{:?}",
+        started.elapsed()
+    );
+    finished.recv_timeout(Duration::from_secs(5)).unwrap();
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while stuck.load(Ordering::SeqCst) && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    assert!(!stuck.load(Ordering::SeqCst), "the hung commit came back");
+}
+
+#[test]
+fn while_a_commit_is_stuck_no_other_is_begun() {
+    let stuck = Arc::new(AtomicBool::new(true));
+    let (began, begun) = mpsc::channel::<()>();
+    let fell_back = Cell::new(false);
+    let started = Instant::now();
+    patiently(
+        &stuck,
+        PATIENCE,
+        move || {
+            began.send(()).unwrap();
+            Ok(())
+        },
+        || {
+            fell_back.set(true);
+            Ok(())
+        },
+    )
+    .unwrap();
+    assert!(fell_back.get());
+    assert!(
+        started.elapsed() < PATIENCE,
+        "no waiting on a commit known stuck"
+    );
+    assert!(begun.recv_timeout(Duration::from_millis(200)).is_err());
 }

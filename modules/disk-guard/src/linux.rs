@@ -3,6 +3,9 @@
 use crate::band::{BtrfsSpace, Space};
 use std::os::fd::AsRawFd;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, mpsc};
+use std::time::Duration;
 
 const BTRFS_SUPER_MAGIC: u64 = 0x9123_683e;
 
@@ -66,23 +69,90 @@ const BTRFS_IOC_WAIT_SYNC: libc::c_ulong = 0x4008_9416;
 /// later, so it's asked to commit. That took 6 to 10 ms on a laptop's NVMe
 /// disk under a 3 GB write, against 33 ms for `syncfs`, and it writes no one
 /// else's dirty data. Anywhere else, `syncfs` does it.
+///
+/// Btrfs's commit is begun by its transaction thread, and a request that
+/// reaches the thread while it's busy with another commit can wait out
+/// the whole commit interval: two settling at once waited 10 to 30 s in
+/// half of ten runs, in `btrfs_commit_transaction_async`. So a commit not
+/// back within a second gives way to `syncfs`, which commits in the
+/// caller's own time and so frees the one waiting too.
 pub fn settle(path: &Path) -> io::Result<()> {
     let flags = rustix::fs::OFlags::RDONLY | rustix::fs::OFlags::CLOEXEC;
     let fd = rustix::fs::open(path, flags, rustix::fs::Mode::empty())?;
     if rustix::fs::fstatfs(&fd)?.f_type as u64 != BTRFS_SUPER_MAGIC {
         return Ok(rustix::fs::syncfs(&fd)?);
     }
-    let mut transaction: u64 = 0;
-    // SAFETY: the kernel writes one u64 into transaction, which outlives
-    // the call; WAIT_SYNC only reads it.
-    unsafe {
-        if libc::ioctl(fd.as_raw_fd(), BTRFS_IOC_START_SYNC as _, &mut transaction) != 0
-            || libc::ioctl(fd.as_raw_fd(), BTRFS_IOC_WAIT_SYNC as _, &transaction) != 0
-        {
-            return Err(io::Error::last_os_error());
-        }
+    let committing = rustix::io::fcntl_dupfd_cloexec(&fd, 0)?;
+    patiently(
+        &COMMITTING,
+        COMMIT_PATIENCE,
+        move || {
+            let mut transaction: u64 = 0;
+            // SAFETY: the kernel writes one u64 into transaction, which
+            // outlives the call; WAIT_SYNC only reads it.
+            let done = unsafe {
+                libc::ioctl(
+                    committing.as_raw_fd(),
+                    BTRFS_IOC_START_SYNC as _,
+                    &mut transaction,
+                ) == 0
+                    && libc::ioctl(
+                        committing.as_raw_fd(),
+                        BTRFS_IOC_WAIT_SYNC as _,
+                        &transaction,
+                    ) == 0
+            };
+            if done {
+                Ok(())
+            } else {
+                Err(io::Error::last_os_error())
+            }
+        },
+        || Ok(rustix::fs::syncfs(&fd)?),
+    )
+}
+
+/// Whether a Btrfs commit this process asked for hasn't come back.
+static COMMITTING: std::sync::LazyLock<Arc<AtomicBool>> =
+    std::sync::LazyLock::new(|| Arc::new(AtomicBool::new(false)));
+
+/// How long a Btrfs commit is waited for, against the 6 to 45 ms one takes.
+const COMMIT_PATIENCE: Duration = Duration::from_secs(1);
+
+/// Runs `commit` on a thread of its own and waits `patience` for it,
+/// running `fallback` instead once that's past, or at once while an
+/// earlier commit is still out, which `stuck` says. A commit given up on
+/// finishes in its own time and clears `stuck`.
+pub fn patiently(
+    stuck: &Arc<AtomicBool>,
+    patience: Duration,
+    commit: impl FnOnce() -> io::Result<()> + Send + 'static,
+    fallback: impl FnOnce() -> io::Result<()>,
+) -> io::Result<()> {
+    if stuck
+        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+        .is_err()
+    {
+        return fallback();
     }
-    Ok(())
+    let (sender, answer) = mpsc::channel();
+    let out = Arc::clone(stuck);
+    let spawned = std::thread::Builder::new()
+        .name("settle".to_owned())
+        .spawn(move || {
+            let done = commit();
+            out.store(false, Ordering::SeqCst);
+            // Nobody hears a commit that came back too late.
+            let _ = sender.send(done);
+        });
+    if spawned.is_err() {
+        stuck.store(false, Ordering::SeqCst);
+        return fallback();
+    }
+    match answer.recv_timeout(patience) {
+        Ok(done) => done,
+        Err(_) => fallback(),
+    }
 }
 
 /// One reading of a clock, in seconds.
