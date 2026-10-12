@@ -55,7 +55,14 @@ fn everything() -> Vec<Candidate> {
         occupied(candidate("install-shell-2d", Class::Install, 2.0 * DAY)),
         candidate("variant-8d", Class::Variant, 8.0 * DAY),
         candidate("variant-2d", Class::Variant, 2.0 * DAY),
-        candidate("cache-go", Class::Cache { rank: 0 }, 0.0),
+        candidate(
+            "cache-go",
+            Class::Cache {
+                rank: 0,
+                from: Band::Urgent,
+            },
+            0.0,
+        ),
         candidate("temp-2d", Class::Temp, 2.0 * DAY),
         candidate("trash-31d", Class::Trash, 31.0 * DAY),
         candidate("trash-8d", Class::Trash, 8.0 * DAY),
@@ -145,14 +152,53 @@ fn a_finished_tree_someone_sits_in_is_judged_as_occupied() {
 }
 
 #[test]
+fn a_cache_is_taken_from_its_own_band_on() {
+    let soon = candidate(
+        "soon",
+        Class::Cache {
+            rank: 0,
+            from: Band::Pressure,
+        },
+        0.0,
+    );
+    let late = candidate(
+        "late",
+        Class::Cache {
+            rank: 0,
+            from: Band::Critical,
+        },
+        0.0,
+    );
+    let both = [soon, late];
+    assert!(taken(&both, Band::Healthy).is_empty());
+    assert_eq!(taken(&both, Band::Pressure), ["soon"]);
+    assert_eq!(taken(&both, Band::Urgent), ["soon"]);
+    assert_eq!(taken(&both, Band::Critical), ["soon", "late"]);
+}
+
+#[test]
 fn the_plan_goes_cheapest_loss_first() {
     let candidates = vec![
         occupied(candidate("occupied", Class::Target, 0.0)),
         candidate("replaced", Class::Replaced, 2.0 * DAY),
         candidate("idle-newer", Class::Target, HOUR),
         candidate("idle-older", Class::Target, 9.0 * HOUR),
-        candidate("cache-modules", Class::Cache { rank: 5 }, 0.0),
-        candidate("cache-build", Class::Cache { rank: 0 }, 0.0),
+        candidate(
+            "cache-modules",
+            Class::Cache {
+                rank: 5,
+                from: Band::Urgent,
+            },
+            0.0,
+        ),
+        candidate(
+            "cache-build",
+            Class::Cache {
+                rank: 0,
+                from: Band::Urgent,
+            },
+            0.0,
+        ),
         candidate("producer", Class::Producer, 0.0),
         candidate("variant", Class::Variant, 3.0 * HOUR),
         candidate("garbage", Class::Garbage, 0.0),

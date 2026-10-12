@@ -91,6 +91,9 @@ pub enum Source {
         from: Band,
         #[serde(default)]
         protocol: Option<CacheProtocol>,
+        /// Where it stands among caches, cheapest to refill first.
+        #[serde(default = "middle_rank")]
+        rank: u8,
     },
     /// Entries that go once nothing has written to them for the band's
     /// window, while healthy only with a window of their own.
@@ -139,6 +142,10 @@ pub enum Source {
 
 fn urgent() -> Band {
     Band::Urgent
+}
+
+fn middle_rank() -> u8 {
+    50
 }
 
 impl Source {

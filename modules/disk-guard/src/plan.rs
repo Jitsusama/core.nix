@@ -33,9 +33,10 @@ pub enum Class {
     Workspace,
     Temp,
     Trash,
-    /// A cache, ranked by how cheaply it refills.
+    /// A cache, ranked by how cheaply it refills, taken from a band on.
     Cache {
         rank: u8,
+        from: Band,
     },
     Coredump,
     /// A Nix build directory no build holds.
@@ -137,7 +138,18 @@ pub fn group(candidate: &Candidate, band: Band) -> Option<Group> {
         Class::Workspace => (Group::Waste, [days(30.0), days(7.0), days(1.0), AT_ONCE]),
         Class::Temp => (Group::Waste, [days(1.0), days(1.0), hours(6.0), hours(2.0)]),
         Class::Trash => (Group::Waste, [days(30.0), days(7.0), days(1.0), AT_ONCE]),
-        Class::Cache { .. } => (Group::Caches, [NEVER, NEVER, AT_ONCE, AT_ONCE]),
+        Class::Cache { from, .. } => {
+            let from = |band: Band| if band >= from { AT_ONCE } else { NEVER };
+            (
+                Group::Caches,
+                [
+                    from(Band::Healthy),
+                    from(Band::Pressure),
+                    from(Band::Urgent),
+                    from(Band::Critical),
+                ],
+            )
+        }
         Class::Coredump if candidate.idle < DAY => {
             (Group::Occupied, [NEVER, NEVER, NEVER, AT_ONCE])
         }
@@ -179,7 +191,7 @@ pub fn plan(
         })
         .collect();
     let rank = |step: &Step| match candidates[step.index].class {
-        Class::Cache { rank } => rank,
+        Class::Cache { rank, .. } => rank,
         _ => 0,
     };
     steps.sort_by(|a, b| {

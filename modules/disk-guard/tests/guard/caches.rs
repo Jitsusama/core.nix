@@ -1,3 +1,4 @@
+use disk_guard::band::Band;
 use disk_guard::caches::{Entry, go_build, go_entry, whole};
 use disk_guard::clock::Awake;
 use disk_guard::plan::Class;
@@ -72,8 +73,14 @@ fn a_go_entry_is_a_cache_aged_by_its_last_use() {
         last_used: 1_000.0,
         size: 6,
     };
-    let made = go_entry(&entry, 1, &Awake::default(), 5_000.0);
-    assert_eq!(made.class, Class::Cache { rank: 1 });
+    let made = go_entry(&entry, 1, Band::Pressure, &Awake::default(), 5_000.0);
+    assert_eq!(
+        made.class,
+        Class::Cache {
+            rank: 1,
+            from: Band::Pressure
+        }
+    );
     assert_eq!(made.idle, 4_000.0);
     assert_eq!(made.size, 6);
     assert_eq!(made.path, entry.path);
@@ -81,8 +88,14 @@ fn a_go_entry_is_a_cache_aged_by_its_last_use() {
 
 #[test]
 fn a_cache_without_a_protocol_goes_whole() {
-    let made = whole(Path::new("/c/npm/_cacache"), 3, 42);
-    assert_eq!(made.class, Class::Cache { rank: 3 });
+    let made = whole(Path::new("/c/npm/_cacache"), 3, Band::Urgent, 42);
+    assert_eq!(
+        made.class,
+        Class::Cache {
+            rank: 3,
+            from: Band::Urgent
+        }
+    );
     assert_eq!(made.path, Path::new("/c/npm/_cacache"));
     assert_eq!(made.size, 42);
     assert_eq!(made.idle, 0.0);

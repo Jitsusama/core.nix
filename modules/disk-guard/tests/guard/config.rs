@@ -14,7 +14,8 @@ const USER: &str = r#"{
     "src": { "kind": "cargo", "roots": ["/home/u/src"], "depth": null },
     "trees": { "kind": "cargo", "roots": ["/home/u/trees"], "depth": 3 },
     "go-build": { "kind": "cache", "path": "/home/u/.cache/go-build",
-                  "from": "urgent", "protocol": "go-build" },
+                  "from": "urgent", "protocol": "go-build", "rank": 1 },
+    "npm": { "kind": "cache", "path": "/home/u/.npm/_cacache" },
     "scratch": { "kind": "scratch", "path": "/home/u/.dev/cargo", "healthy": "30d" },
     "snapshots": { "kind": "snapshots", "path": "/home/u/snapshots",
                    "pattern": "^[a-z]+_\\d+_(?P<pid>\\d+)$", "command": "snapd" },
@@ -49,6 +50,16 @@ fn a_user_config_is_read() {
             path: PathBuf::from("/home/u/.cache/go-build"),
             from: Band::Urgent,
             protocol: Some(CacheProtocol::GoBuild),
+            rank: 1,
+        }
+    );
+    assert_eq!(
+        config.sources["npm"],
+        Source::Cache {
+            path: PathBuf::from("/home/u/.npm/_cacache"),
+            from: Band::Urgent,
+            protocol: None,
+            rank: 50,
         }
     );
     match &config.sources["gc"] {

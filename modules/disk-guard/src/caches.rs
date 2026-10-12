@@ -6,6 +6,7 @@
 //! write-ahead log of the one deleted can be corrupted when it next opens.
 //! Go's build cache is read entry by entry, as Go's own trim reads it.
 
+use crate::band::Band;
 use crate::clock::Awake;
 use crate::plan::{Candidate, Class};
 use regex_lite::Regex;
@@ -71,10 +72,10 @@ pub fn go_build(cache: &Path) -> Vec<Entry> {
 }
 
 /// One of Go's entries, longest unused first within its rank.
-pub fn go_entry(entry: &Entry, rank: u8, awake: &Awake, now: f64) -> Candidate {
+pub fn go_entry(entry: &Entry, rank: u8, from: Band, awake: &Awake, now: f64) -> Candidate {
     Candidate {
         path: entry.path.clone(),
-        class: Class::Cache { rank },
+        class: Class::Cache { rank, from },
         idle: awake.since(entry.last_used.min(now), now).max(0.0),
         size: entry.size,
         occupied: false,
@@ -84,10 +85,10 @@ pub fn go_entry(entry: &Entry, rank: u8, awake: &Awake, now: f64) -> Candidate {
 }
 
 /// A whole cache, which its band takes at once.
-pub fn whole(path: &Path, rank: u8, size: u64) -> Candidate {
+pub fn whole(path: &Path, rank: u8, from: Band, size: u64) -> Candidate {
     Candidate {
         path: path.to_owned(),
-        class: Class::Cache { rank },
+        class: Class::Cache { rank, from },
         idle: 0.0,
         size,
         occupied: false,
