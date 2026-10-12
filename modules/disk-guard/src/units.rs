@@ -1,5 +1,8 @@
 //! The two kinds of quantity a config names: how long, and how much.
 
+use serde::de::{self, Deserializer, Visitor};
+use serde::{Deserialize, Serialize, Serializer};
+use std::fmt;
 use std::time::Duration;
 
 /// How long, written as a run of whole numbers each with a unit: `20s`, `5m`,
@@ -82,5 +85,38 @@ impl Size {
             Size::Bytes(bytes) => bytes,
             Size::Percent(share) => (total as f64 * share / 100.0) as u64,
         }
+    }
+}
+
+impl<'de> Deserialize<'de> for Span {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Span, D::Error> {
+        let text = String::deserialize(deserializer)?;
+        Span::parse(&text).map_err(de::Error::custom)
+    }
+}
+
+impl Serialize for Span {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&format!("{}s", self.0.as_secs()))
+    }
+}
+
+/// A size in JSON is a whole number of bytes or a string `parse` reads.
+impl<'de> Deserialize<'de> for Size {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Size, D::Error> {
+        struct Sizes;
+        impl Visitor<'_> for Sizes {
+            type Value = Size;
+            fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                f.write_str("whole bytes, or a string such as 15% or 24GiB")
+            }
+            fn visit_u64<E: de::Error>(self, bytes: u64) -> Result<Size, E> {
+                Ok(Size::Bytes(bytes))
+            }
+            fn visit_str<E: de::Error>(self, text: &str) -> Result<Size, E> {
+                Size::parse(text).map_err(E::custom)
+            }
+        }
+        deserializer.deserialize_any(Sizes)
     }
 }
