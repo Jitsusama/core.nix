@@ -981,6 +981,19 @@ in
         touch $out
       '';
 
+    # Spotify leaves each new track's notice to the shell: the flag that turns
+    # its own off is on the wrapper the launcher runs, which a change to how
+    # Spicetify wraps the client would drop without a word.
+    spotify-leaves-track-notices-to-the-shell =
+      let
+        home = account graphical;
+        wrapper = "${home.programs.spicetify.spicedSpotify}/share/spotify/spotify";
+      in
+      pkgs.runCommandLocal "spotify-leaves-track-notices-to-the-shell" { } ''
+        grep -q -F -- '--ui.track_os_notifications_enabled=false' ${wrapper}
+        touch $out
+      '';
+
     # spotify-player reads its settings before anything else and stops at a
     # value it can't use; it ignores a setting it doesn't know.
     spotify-player-accepts-its-configuration =
