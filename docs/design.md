@@ -721,7 +721,7 @@ by them isn't done.
 | The lock screen, polkit and PIN prompts   | Quickshell               | both           |        |        |           |         |          |
 | GTK and Qt apps, file and print dialogs   | gtk, qt                  | proportional   |        |        |           |         |          |
 | The browser                               | chrome                   | proportional   |        |        |           |         |          |
-| Images and drawings                       | gimp, inkscape           | proportional   |        |        |           |         |          |
+| Images and drawings                       | gimp, inkscape, Quickshell | proportional | nothing | nothing | nothing | the launcher's row: edit the newest screenshot in GIMP, at home below the window in front for two minutes after it's taken |          |
 | Music                                     | spotify, Quickshell      | both           | nothing | a note in the margin while any player plays; for a moment, the track as a notice | the mark's panel: the track, artist, album and player; pause, next, previous, the player's window, and pausing a second player | Play or pause the music, Play the next track, Play the previous track, on the media keys | the mark carries no words; a title wraps to two lines, then gives way |
 | Pairing                                   | tuple, Quickshell, niri  | both           | nothing | a phone in the margin while in a call, and wanting Joel while one rings; for a moment, who joined or left, and that he's the only one left; a ring, and a missed call kept | the mark's panel: how long, and who with or who's sharing; leave, share the screen, mute him in Tuple, copy the room's link; while ringing, show the call | the launcher's rows: show a ringing call, first at home; open the room and copy its link; join a copied call's link, first at home once copied; leave, share, mute; a tuple: link from the browser joins its room | the mark carries no words; its panel says how long and who with |
 | Chat, passwords, calls                    | their own settings       | proportional   |        |        |           |         |          |
@@ -754,6 +754,17 @@ as an exception with the reason.
 ## Decisions
 
 What each studio round settled, newest first, with the reason.
+
+- **A screenshot to mark up** (2026-10-12). A screenshot is most often
+  taken to point at something in it, so the launcher offers the newest to
+  edit in GIMP, at home just below the window in front for two minutes
+  after it's taken, and found by typing after that. Every screenshot lands in one folder, niri's own and
+  the region ones the shell takes with grim, and niri tells the shell only
+  of its own, so the folder is what's watched; it's made at login, since
+  niri makes it only with its first screenshot. niri and the shell already
+  say a screenshot was taken, so GIMP's row adds no notice of its own.
+  GIMP's and Inkscape's dialogs float by niri's own rule for windows with a
+  parent, so neither needs a window rule.
 
 - **Who's in a call, and a call that rings** (2026-10-12). Tuple on Linux
   leaves unfinished the notices its Mac app gives: someone joining,

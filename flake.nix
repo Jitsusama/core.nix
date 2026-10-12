@@ -94,7 +94,7 @@
         fzf = ./modules/fzf/home.nix;
         gh = ./modules/gh/home.nix;
         ghostty = moduleFrom ./modules/ghostty/home.nix { inherit wallpapers; };
-        gimp = ./modules/gimp/home.nix;
+        gimp = moduleFrom ./modules/gimp/home.nix { inherit (self.homeModules) quickshell; };
         git = ./modules/git/home.nix;
         glow = ./modules/glow/home.nix;
         gnupg = ./modules/gnupg/home.nix;

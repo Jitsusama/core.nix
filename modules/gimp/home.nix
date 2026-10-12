@@ -9,6 +9,10 @@
 # with GIMP3_SYSCONFDIR pointing at its own system folder with gimprc
 # replaced by this module's: preferences GIMP reads before the account's
 # own, so a choice made in Preferences still wins.
+#
+# The launcher offers the newest screenshot to edit in GIMP
+# (Screenshot.qml), at home for a couple of minutes after it's taken.
+{ quickshell }:
 {
   config,
   lib,
@@ -21,6 +25,10 @@ let
   # GIMP keeps its settings in a folder for each release series.
   series = "3.2";
   folder = "${config.xdg.configHome}/GIMP/${series}";
+
+  # Where niri's screenshot-path and the shell's region pictures
+  # (Recorder.qml) both save.
+  screenshots = "${config.home.homeDirectory}/Pictures/Screenshots";
 
   # The colours GIMP's theme names, in themes/Default/gimp-dark.css and
   # gimp-light.css, and what each means here.
@@ -94,9 +102,23 @@ let
   };
 in
 {
-  imports = [ ../theme/home.nix ];
+  imports = [
+    ../theme/home.nix
+    quickshell
+  ];
 
   home.packages = [ wrapped ];
+
+  # After Tuple's, beside the desktop's actions, since it's one.
+  jitsusama.quickshell.launcher.providers.gimp = {
+    order = 46;
+    source = ./Screenshot.qml;
+    folder = screenshots;
+  };
+
+  # niri makes the folder only with the first screenshot, and a folder that
+  # isn't there can't be watched, so it's made at login, before the shell.
+  systemd.user.tmpfiles.rules = [ "d ${screenshots} - - - -" ];
 
   home.file."${folder}/gimp.css".text = stylesheet;
   home.file."${folder}/palettes/${config.jitsusama.theme.title}.gpl".text =

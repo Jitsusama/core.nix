@@ -840,6 +840,31 @@ pkgs.testers.runNixOSTest {
 
           retry(another, timeout_seconds=15)
 
+      with subtest("a screenshot just taken is at the launcher's home, and opens in GIMP"):
+          pictures = "/home/${account}/Pictures/Screenshots"
+          # Made at login, since niri makes it only with its first screenshot
+          # and the launcher watches it from the start.
+          machine.succeed(f"test -d {pictures}")
+          as_account("niri msg action screenshot-screen")
+          machine.wait_until_succeeds(f"ls {pictures}/*.png", timeout=15)
+          picture = machine.succeed(f"ls {pictures}/*.png").strip()
+          as_account("qs ipc call launcher toggle")
+          launcher_ready()
+          # Just below the window in front, which home always puts first.
+          machine.send_key("down")
+          launcher_until(
+              lambda shown: (shown["selected"] or {}).get("name") == "Edit the screenshot in GIMP"
+          )
+          machine.send_key("ret")
+          machine.wait_until_succeeds(f"pgrep -u ${account} -f '[g]imp.*{picture}'", timeout=30)
+          # GIMP goes before it draws, so no window of its own takes the keys
+          # meant for what follows, and the picture too, since the region
+          # screenshot's subtest waits for one of its own. GIMP takes any other
+          # signal as a crash, and writes its backtrace to the log.
+          machine.succeed("pkill -KILL -u ${account} -f '[g]imp'")
+          machine.wait_until_fails("pgrep -u ${account} -f '[g]imp'", timeout=30)
+          machine.succeed(f"rm {pictures}/*.png")
+
       with subtest("the launcher's Sound moves sound to another output, and back"):
           for output in ["stand-in-headphones", "stand-in-speakers"]:
               as_account("qs ipc call launcher collection sound")
