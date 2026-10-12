@@ -4,4 +4,5 @@ pub mod anchor;
 pub mod band;
 pub mod clock;
 pub mod config;
+pub mod locks;
 pub mod units;

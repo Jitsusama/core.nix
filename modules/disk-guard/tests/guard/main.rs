@@ -4,4 +4,5 @@ mod anchor;
 mod band;
 mod clock;
 mod config;
+mod locks;
 mod units;

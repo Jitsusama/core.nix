@@ -158,16 +158,38 @@ impl Dir {
         Ok(child)
     }
 
+    /// Opens one regular file of this directory to read, never through a
+    /// symlink and never waiting on a pipe someone left in its place.
+    pub(crate) fn file(&self, name: &OsStr) -> io::Result<OwnedFd> {
+        let flags = OFlags::RDONLY | OFlags::NOFOLLOW | OFlags::CLOEXEC | OFlags::NONBLOCK;
+        let fd = rustix::fs::openat(&self.fd, name, flags, Mode::empty())?;
+        let kind = FileType::from_raw_mode(rustix::fs::fstat(&fd)?.st_mode);
+        if kind != FileType::RegularFile {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "not a regular file",
+            ));
+        }
+        Ok(fd)
+    }
+
+    /// Whether an entry of this directory is a directory, without following
+    /// it, and `None` when it's gone.
+    pub(crate) fn kind(&self, name: &OsStr) -> Option<FileType> {
+        let stat = rustix::fs::statat(&self.fd, name, AtFlags::SYMLINK_NOFOLLOW).ok()?;
+        Some(FileType::from_raw_mode(stat.st_mode))
+    }
+
     /// Opens one entry of this directory, if it's a directory on the same
     /// filesystem.
-    fn entry(&self, name: &OsStr) -> io::Result<Option<Dir>> {
+    pub(crate) fn entry(&self, name: &OsStr) -> io::Result<Option<Dir>> {
         let fd = rustix::fs::openat(&self.fd, name, DIRECTORY, Mode::empty())?;
         let child = Dir::from_fd(fd)?;
         Ok((child.dev == self.dev).then_some(child))
     }
 
     /// The names in this directory, without `.` and `..`.
-    fn names(&self) -> io::Result<Vec<Vec<u8>>> {
+    pub(crate) fn names(&self) -> io::Result<Vec<Vec<u8>>> {
         let mut names = Vec::new();
         for entry in rustix::fs::Dir::read_from(&self.fd)? {
             let name = entry?.file_name().to_bytes().to_vec();
