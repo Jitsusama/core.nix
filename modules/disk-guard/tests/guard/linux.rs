@@ -1,5 +1,5 @@
 use disk_guard::band::BtrfsSpace;
-use disk_guard::linux::{btrfs_allocation, space};
+use disk_guard::linux::{btrfs_allocation, settle, space};
 use std::fs;
 use std::path::Path;
 use std::process::Command;
@@ -110,6 +110,35 @@ fn space_reads_the_filesystem_a_path_is_on() {
     } else if !btrfs {
         assert_eq!(space.btrfs, None);
     }
+}
+
+#[test]
+fn settling_shows_what_a_delete_freed() {
+    let dir = tempfile::tempdir_in(env!("CARGO_TARGET_TMPDIR")).unwrap();
+    let file = dir.path().join("noise");
+    let mut state: u64 = 0x2545_f491_4f6c_dd1d;
+    let data: Vec<u8> = (0..256 * MIB)
+        .map(|_| {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            state as u8
+        })
+        .collect();
+    // What the guard deletes has long been written out, as this has once
+    // synced; data still in memory is accounted for differently.
+    fs::write(&file, data).unwrap();
+    fs::File::open(&file).unwrap().sync_all().unwrap();
+    settle(dir.path()).unwrap();
+    let before = space(dir.path()).unwrap().free;
+    fs::remove_file(&file).unwrap();
+    settle(dir.path()).unwrap();
+    let freed = space(dir.path()).unwrap().free.saturating_sub(before);
+    assert!(
+        freed >= 200 * MIB,
+        "only {} MiB showed as freed",
+        freed / MIB
+    );
 }
 
 #[test]

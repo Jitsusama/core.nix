@@ -34,6 +34,36 @@ pub fn space(path: &Path) -> io::Result<Space> {
     })
 }
 
+/// `BTRFS_IOC_START_SYNC`, `_IOR(0x94, 24, __u64)`: starts committing the
+/// running transaction and says which one it is.
+const BTRFS_IOC_START_SYNC: libc::c_ulong = 0x8008_9418;
+
+/// `BTRFS_IOC_WAIT_SYNC`, `_IOW(0x94, 22, __u64)`: waits for that commit.
+const BTRFS_IOC_WAIT_SYNC: libc::c_ulong = 0x4008_9416;
+
+/// Waits until what was deleted on `path`'s filesystem shows as free.
+/// Btrfs frees extents only when its transaction commits, about 30 s
+/// later, so it's asked to commit: 6 to 10 ms on optimus, and it writes no
+/// one else's dirty data. Anywhere else, `syncfs` does it.
+pub fn settle(path: &Path) -> io::Result<()> {
+    let flags = rustix::fs::OFlags::RDONLY | rustix::fs::OFlags::CLOEXEC;
+    let fd = rustix::fs::open(path, flags, rustix::fs::Mode::empty())?;
+    if rustix::fs::fstatfs(&fd)?.f_type as u64 != BTRFS_SUPER_MAGIC {
+        return Ok(rustix::fs::syncfs(&fd)?);
+    }
+    let mut transaction: u64 = 0;
+    // SAFETY: the kernel writes one u64 into transaction, which outlives
+    // the call; WAIT_SYNC only reads it.
+    unsafe {
+        if libc::ioctl(fd.as_raw_fd(), BTRFS_IOC_START_SYNC as _, &mut transaction) != 0
+            || libc::ioctl(fd.as_raw_fd(), BTRFS_IOC_WAIT_SYNC as _, &transaction) != 0
+        {
+            return Err(io::Error::last_os_error());
+        }
+    }
+    Ok(())
+}
+
 /// A Btrfs filesystem's id, as its sysfs directory is named.
 fn btrfs_fsid(path: &Path) -> io::Result<PathBuf> {
     let flags = rustix::fs::OFlags::RDONLY | rustix::fs::OFlags::CLOEXEC;
