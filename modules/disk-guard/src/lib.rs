@@ -24,6 +24,7 @@ pub mod plan;
 pub mod reclaim;
 pub mod scratch;
 pub mod snapshots;
+pub mod state;
 pub mod survey;
 pub mod temp;
 pub mod trash;

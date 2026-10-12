@@ -27,6 +27,7 @@ mod reclaim;
 mod sandbox;
 mod scratch;
 mod snapshots;
+mod state;
 mod survey;
 mod temp;
 mod trash;
