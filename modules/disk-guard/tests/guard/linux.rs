@@ -1,7 +1,8 @@
 use disk_guard::band::BtrfsSpace;
-use disk_guard::linux::btrfs_allocation;
+use disk_guard::linux::{btrfs_allocation, space};
 use std::fs;
 use std::path::Path;
+use std::process::Command;
 
 const GIB: u64 = 1 << 30;
 const MIB: u64 = 1 << 20;
@@ -71,6 +72,44 @@ fn a_filesystem_over_two_devices_counts_both() {
         btrfs_allocation(root.path()).unwrap().unallocated,
         unallocated
     );
+}
+
+/// What a command says about `path`, its output trimmed.
+fn says(program: &str, args: &[&str], path: &Path) -> Option<String> {
+    let output = Command::new(program).args(args).arg(path).output().ok()?;
+    output
+        .status
+        .success()
+        .then(|| String::from_utf8_lossy(&output.stdout).trim().to_owned())
+}
+
+#[test]
+fn space_reads_the_filesystem_a_path_is_on() {
+    let dir = tempfile::tempdir_in(env!("CARGO_TARGET_TMPDIR")).unwrap();
+    let space = space(dir.path()).unwrap();
+    assert!(space.total > 0 && space.free <= space.total, "{space:?}");
+    let blocks = says("df", &["--output=size,avail", "-B1"], dir.path());
+    if let Some(Some(line)) = blocks.map(|text| text.lines().last().map(str::to_owned)) {
+        let numbers: Vec<u64> = line
+            .split_whitespace()
+            .map(|n| n.parse().unwrap())
+            .collect();
+        assert_eq!(space.total, numbers[0]);
+        // Other writers move free space between the two readings.
+        assert!(
+            space.free.abs_diff(numbers[1]) < 1 << 30,
+            "{} against {}",
+            space.free,
+            numbers[1]
+        );
+    }
+    let btrfs = says("findmnt", &["-no", "FSTYPE", "-T"], dir.path()).as_deref() == Some("btrfs");
+    if btrfs && Path::new("/sys/fs/btrfs").exists() {
+        let allocation = space.btrfs.expect("Btrfs without its allocation");
+        assert!(allocation.unallocated < space.total * 2 && allocation.global_reserve > 0);
+    } else if !btrfs {
+        assert_eq!(space.btrfs, None);
+    }
 }
 
 #[test]
