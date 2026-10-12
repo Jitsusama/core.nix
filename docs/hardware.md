@@ -215,10 +215,12 @@ and is harmless, so nothing silences or patches it:
   gives the bus `system-path`'s `share/dbus-1` beside each package's own, so
   every service file is found twice, once through a link. Leaving
   `system-path` out would lose the services only it has.
-- **NetworkManager's "error setting IPv4 forwarding to '0': Success"** for
+- **NetworkManager's "error setting IPv4 forwarding to '0'"** for
   `p2p-dev-wlp0s20f3`. The Wi-Fi P2P device has no kernel interface, so
   `nm_device_sysctl_ip_conf_set()` gives up without setting errno, and the
-  warning prints errno 0. Forwarding stays off, as it should. NetworkManager
+  warning ends with whatever errno was left: "Success" at one boot,
+  "Resource temporarily unavailable" at the next. Forwarding stays off, as
+  it should. NetworkManager
   1.58's fix is an early return at the top of `_dev_ipforwarding4_set()`:
   `if (nm_device_get_ip_ifindex(self) <= 0) return;`.
 - **"Esys_NV_DefineSpace ErrorCode (0x0000014c)", four times.** That's
@@ -238,6 +240,14 @@ and is harmless, so nothing silences or patches it:
   meters the uncore's energy; the power limits are unaffected.
 - **"UCSI_GET_PDOS failed (-95)".** The firmware's USB-C interface doesn't
   support the command.
+- **xe's "Selective fetch area calculation failed in pipe A"**, once. When
+  the panel's self refresh can't work out which part of a frame changed, the
+  driver sends the whole frame instead, and says so the first time. The
+  driver marks the case as one still to optimise.
+- **"no PCM in topology for HDMI converter 3"** from the sound card. The
+  HDMI codec has four converters and the DSP's topology three outputs. The
+  GPU drives four displays, the panel being one, so the three cover every
+  external display.
 - **Bluetooth's "Received gp1 mailbox interrupt" and "Failed to send
   Intel_Write_DDC (-95)".** The controller doesn't take the DDC parameters,
   and works without them.
