@@ -75,6 +75,8 @@ let
     "Notices.qml"
     "Caffeinate.qml"
     "Recorder.qml"
+    "Picker.qml"
+    "Picking.js"
     "Quiet.qml"
     "Lights.qml"
     "Report.qml"
@@ -749,12 +751,14 @@ in
       };
     };
 
-    # The recorder's tools (Recorder.qml): wf-recorder records, slurp
-    # picks a region, and notify-send says where the file went.
+    # The recorder's tools (Recorder.qml): wf-recorder records, grim takes
+    # a region's picture and wl-copy copies it, and notify-send says where
+    # the file went.
     home.packages = [
       pkgs.quickshell
       pkgs.wf-recorder
-      pkgs.slurp
+      pkgs.grim
+      pkgs.wl-clipboard
       pkgs.libnotify
     ];
 

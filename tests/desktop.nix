@@ -1041,6 +1041,7 @@ pkgs.testers.runNixOSTest {
           return machine.succeed("cat /tmp/answer").strip()
 
       with subtest("a click on a notice's action does it, and anywhere else puts it away"):
+          since = mark()
           x, y = offer_to_play("notice-to-click")
           click(x, y)
           assert answered() == "play", "a click on the action put the notice away instead"
@@ -1048,6 +1049,13 @@ pkgs.testers.runNixOSTest {
           x, y = offer_to_play("notice-to-put-away")
           click(x, y - 0.04)
           assert answered() == "", "a click on the message did the action"
+          # Neither was missed, so the margin never once said one waits: a
+          # notice arriving or leaving mustn't flash it.
+          said = as_account(
+              "journalctl --user --unit=quickshell --no-pager --output=cat"
+              f" --after-cursor={shlex.quote(since)}"
+          )
+          t.assertNotIn("holds margin waiting", said, "the margin flashed a waiting notice")
 
       with subtest("the launcher keeps the machine awake, lid shut too, then lets it sleep"):
           held = "systemd-inhibit --list --no-pager | grep Caffeinate"
@@ -1233,9 +1241,64 @@ pkgs.testers.runNixOSTest {
           machine.send_key("caps_lock")
           machine.wait_until_fails(in_session(margin), timeout=10)
 
+      # Print opens the shell's picker, which the keys drive. Letters name
+      # the grid's cells, row then column, so aa to jp spans the screen
+      # whatever it opened on; then the arrows halve it and Ctrl pushes an
+      # edge out a step, and Return takes its picture.
+      with subtest("Print picks a region by the keys, and takes its picture"):
+          pictures = "/home/${account}/Pictures/Screenshots"
+          # The picker covers the screen niri gives it, whatever cage leaves.
+          logical = json.loads(as_account("niri msg --json focused-output"))["logical"]
+          wide, high = logical["width"], logical["height"]
+          half = (wide // 2 + 16, high // 2)
+          with told("keys picker"):
+              machine.send_key("sysrq")
+          machine.send_chars("aajp")
+          for key in ("left", "up", "ctrl-right"):
+              machine.send_key(key)
+          photograph("picker")
+          with told(f"picked 0,0 {half[0]}x{half[1]}"):
+              machine.send_key("ret")
+          machine.wait_until_succeeds(f"ls {pictures}/*.png", timeout=15)
+          # A PNG says its width and height in its header, from byte 16.
+          newest = f"ls -t {pictures}/*.png | head -1"
+          size = machine.succeed(f"{newest} | xargs -d '\\n' od -An -tu1 -j16 -N8")
+          b = [int(n) for n in size.split()]
+          t.assertEqual((b[2] * 256 + b[3], b[6] * 256 + b[7]), half)
+
+          # One cell's letters and another's make the box between them, and
+          # the grid shows while they're typed.
+          with told("keys picker"):
+              machine.send_key("sysrq")
+          machine.send_chars("aab")
+          photograph("picker-cells")
+          rows = round(16 * high / wide)
+          with told(f"picked 0,0 {round(2 * wide / 16)}x{round(2 * high / rows)}"):
+              machine.send_chars("b\n")
+
+          # Escape leaves the grid first, then the picker, taking nothing.
+          with told("keys picker"):
+              machine.send_key("sysrq")
+          machine.send_chars("c")
+          machine.send_key("esc")
+          with told("gone picker"):
+              machine.send_key("esc")
+
+      # Super+Shift+N puts the cards away, and each is still there unread.
+      with subtest("Super+Shift+N puts the notices away"):
+          with told("shows card Standup"):
+              as_account("notify-send --urgency=critical 'Standup' 'in five minutes'")
+          with told("gone notifications"):
+              machine.send_key("meta_l-shift-n")
+          kept = "cat ~/.local/state/quickshell/by-shell/*/notices.json"
+          machine.wait_until_succeeds(
+              in_session(kept + " | grep -q '\"summary\":\"Standup\"[^}]*\"read\":false'"),
+              timeout=10,
+          )
+
       with subtest("the lock screen takes only the right password"):
           with told("keys lock"):
-              as_account("qs ipc call lock lock")
+              machine.send_key("meta_l-l")
           as_account("qs ipc call lock isLocked | grep -q true")
           # PAM answers a wrong password after a delay, which the lock says.
           with told("refused lock"):

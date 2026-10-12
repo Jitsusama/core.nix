@@ -30,7 +30,8 @@ let
   };
 in
 # Programs, as in i3. The launcher lives in Quickshell, which also holds
-# locking and ending the session, so no chord ends it by accident.
+# ending the session, so no chord ends it by accident. Locking loses
+# nothing, so it has a chord.
 [
   {
     chord = "Super+Return";
@@ -75,6 +76,18 @@ in
     chord = "Super+N";
     does = "Find a notice that came earlier";
     action = ''spawn "qs" "ipc" "call" "launcher" "collection" "notices";'';
+  }
+  # The cards on screen put away, as a click on each would: each stays
+  # unread where Super+N finds it.
+  {
+    chord = "Super+Shift+N";
+    does = "Put the notices away";
+    action = ''spawn "qs" "ipc" "call" "notices" "putAway";'';
+  }
+  {
+    chord = "Super+L";
+    does = "Lock the screen";
+    action = ''spawn "qs" "ipc" "call" "lock" "lock";'';
   }
   {
     chord = "Super+Shift+Slash";
@@ -517,11 +530,13 @@ in
     flags = locked;
   }
 
-  # Screenshots: pick a region, the whole screen, or one window.
+  # Screenshots: pick a region, the whole screen, or one window. A region is
+  # picked by the keys in Quickshell (Picker.qml), since niri's own picker
+  # takes only the pointer.
   {
     chord = "Print";
     does = "Take a screenshot of a region";
-    action = "screenshot;";
+    action = ''spawn "qs" "ipc" "call" "screenshot" "region";'';
   }
   {
     chord = "Shift+Print";

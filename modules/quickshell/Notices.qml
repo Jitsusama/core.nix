@@ -90,22 +90,24 @@ Singleton {
             missed: !from.answers,
             read: false
         };
-        history = fresh([notice].concat(history.filter(kept => kept.id !== notice.id)));
+        // Live before it's kept, so it never reads as missed and gone from
+        // the screen for the moment between, which would flash the margin.
         if (!held)
             live = Object.assign({}, live, { [notice.id]: notification });
+        history = fresh([notice].concat(history.filter(kept => kept.id !== notice.id)));
     }
 
     // How one left, as "expired", "dismissed" or "withdrawn": only one that
     // went by itself was missed, and one its program withdrew was read there.
+    // It's no longer missed before it leaves the screen, for the same reason.
     function left(id, how) {
+        if (how !== "expired")
+            history = history.map(notice => notice.id !== id ? notice
+                : Object.assign({}, notice, { missed: false },
+                    how === "withdrawn" ? { read: true } : {}));
         const still = Object.assign({}, live);
         delete still[id];
         live = still;
-        if (how === "expired")
-            return;
-        history = history.map(notice => notice.id !== id ? notice
-            : Object.assign({}, notice, { missed: false },
-                how === "withdrawn" ? { read: true } : {}));
     }
 
     // Marks one read, or unread again.

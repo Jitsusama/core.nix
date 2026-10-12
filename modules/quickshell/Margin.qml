@@ -196,6 +196,8 @@ Scope {
 
                     function onOnChanged() {
                         reported.changed();
+                        const marks = root.on.map(fact => fact.entry.mark);
+                        Report.say(`holds margin ${marks.join(" ")}`);
                     }
                 }
 

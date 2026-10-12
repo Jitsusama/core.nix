@@ -1,11 +1,15 @@
 pragma Singleton
-// Recording the screen: the focused screen, or a region picked with the
-// pointer, each into a file of its own beside the screenshots'
+// Recording the screen: the focused screen, or a region picked by the keys
+// (Picker.qml), each into a file of its own beside the screenshots'
 // (Videos/Recordings, named by when it began). niri tells only the portal's
 // shares where a tiled window sits, so a window isn't recorded alone. The
 // chord or action that starts a recording stops it too, so there's one
 // gesture to remember, and the margin shows it while it runs
 // (pieces/Recording.qml).
+//
+// A region's picture is taken here too, since niri's own picker takes only
+// the pointer. It's saved where niri saves its screenshots, and copied, as
+// niri's are.
 //
 // wf-recorder does the recording through niri, which tells the shell when
 // it starts and stops, so nothing here keeps any state of its own. It
@@ -51,14 +55,27 @@ Singleton {
         record(workspace === null ? [] : ["--output", workspace.output]);
     }
 
-    // The region is picked with the pointer, the one way to draw a box.
     function region(): void {
         if (stopped())
             return;
-        what = "a region";
-        record([], ["slurp", "-d", "-w", String(Theme.border),
-            "-b", hex(Theme.shadow, 0), "-c", hex(Theme.accent, 1),
-            "-s", hex(Theme.selection, Theme.floating.selection)]);
+        Picker.pick("Record a region", Theme.glyph.recording, geometry => {
+            what = "a region";
+            record(["--geometry", geometry]);
+        });
+    }
+
+    function screenshot(): void {
+        const script = [
+            'folder=$HOME/Pictures/Screenshots',
+            'mkdir -p "$folder" || exit',
+            'file=$folder/"Screenshot from $(date "+%Y-%m-%d %H-%M-%S").png"',
+            'grim -g "$1" "$file" || exit',
+            'wl-copy --type image/png < "$file"',
+            'notify-send --app-name=Screenshot --transient \\',
+            '    "Screenshot copied" "Pictures/Screenshots/${file##*/}"'
+        ].join("\n");
+        Picker.pick("Screenshot a region", String.fromCodePoint(0xf0e51),
+            geometry => Niri.spawn(["sh", "-c", script, "screenshot", geometry]));
     }
 
     function stopped(): bool {
@@ -70,24 +87,12 @@ Singleton {
         return true;
     }
 
-    // A colour as slurp writes it, red, green, blue and alpha in hex.
-    function hex(colour: color, alpha: real): string {
-        const byte = value => Math.round(value * 255).toString(16).padStart(2, "0");
-        return "#" + [colour.r, colour.g, colour.b, alpha].map(byte).join("");
-    }
-
-    // Records into a new file with these arguments, or, given a picker,
-    // into the region it prints.
-    function record(given, picker) {
+    // Records into a new file with these arguments.
+    function record(given: var): void {
         starting = true;
-        // Drawing a region takes a while longer than starting does.
-        settled.interval = picker === undefined ? 5000 : 60000;
         settled.restart();
         const script = [
             'folder=$1; shift',
-            'if [ "$1" = pick ]; then',
-            '    shift; region=$("$@") || exit 0; set -- --geometry "$region"',
-            'fi',
             'mkdir -p "$folder" || exit',
             'file=$folder/$(date "+%Y-%m-%d %H-%M-%S").mp4',
             // Intel's and AMD's drivers encode through VA-API.
@@ -100,14 +105,14 @@ Singleton {
             '    "Recording saved" "Videos/Recordings/${file##*/}")',
             '[ "$asked" = play ] && exec xdg-open "$file"'
         ].join("\n");
-        const picking = picker === undefined ? [] : ["pick"].concat(picker);
-        Niri.spawn(["sh", "-c", script, "recorder", folder].concat(picking, given));
+        Niri.spawn(["sh", "-c", script, "recorder", folder].concat(given));
     }
 
-    // Gives up waiting for niri when a recording never began: the region's
-    // picker was dismissed, or wf-recorder failed.
+    // Gives up waiting for niri when a recording never began, as when
+    // wf-recorder failed.
     Timer {
         id: settled
+        interval: 5000
         onTriggered: root.starting = false
     }
 
@@ -124,6 +129,14 @@ Singleton {
 
         function stop(): void {
             root.stop();
+        }
+    }
+
+    IpcHandler {
+        target: "screenshot"
+
+        function region(): void {
+            root.screenshot();
         }
     }
 }
