@@ -529,6 +529,19 @@ in
     action = ''spawn "brightnessctl" "--class=backlight" "set" "5%-";'';
     flags = locked;
   }
+  {
+    # The keyboard's lock key, which macOS reads as locking the screen.
+    chord = "XF86ScreenSaver";
+    does = "Lock the screen";
+    action = ''spawn "qs" "ipc" "call" "lock" "lock";'';
+  }
+  {
+    # The keyboard's Do Not Disturb key, which holds notices until it's
+    # pressed again, as macOS's Focus key does (Quiet.qml).
+    chord = "XF86DoNotDisturb";
+    does = "Hold notices, or let them show";
+    action = ''spawn "qs" "ipc" "call" "quiet" "toggle";'';
+  }
 
   # Screenshots: pick a region, the whole screen, or one window. A region is
   # picked by the keys in Quickshell (Picker.qml), since niri's own picker
