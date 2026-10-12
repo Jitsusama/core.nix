@@ -93,6 +93,8 @@ configuration, and its own setting wins where the two differ. In short:
 | no Rust, which LTO and BTF forbid | `RUST` and the options that need it |
 | build in what every boot loads    | AES-NI, vfat, the firewall's set    |
 | decompress modules quickly        | `MODULE_COMPRESS_ZSTD`, not xz      |
+| no allocation profiler            | `MEM_ALLOC_PROFILING` off           |
+| reboot after a panic              | `PANIC_TIMEOUT` of 10 s             |
 
 nixpkgs gives huge pages only to programs that ask for them, with
 `TRANSPARENT_HUGEPAGE_MADVISE`, and the ones that would gain most no longer
@@ -100,6 +102,20 @@ ask: Go's runtime and the allocator rustc uses. Giving them to every program
 saves address lookups across a build. Waiting for memory to be compacted into
 huge pages stays reserved for programs that ask, so nothing else stalls for
 it. Omarchy runs the same.
+
+nixpkgs builds in memory allocation profiling and starts it at boot, so the
+kernel counts every allocation by the line that made it, for
+`/proc/allocinfo`. On the XPS 14 its own tables held 210 MiB: 129.5 MB of
+page extensions and 91.1 MB of slab object vectors. Over four interleaved
+rounds of stress-ng, turned off at run time, fork ran 0.2 to 12.9% faster
+per CPU second, about 3% in the middle, and dentry churn about 2%. Turning
+it off at boot, with `sysctl.vm.mem_profiling=never`, frees the page
+extensions but still leaves a tag slot in every slab object's vector, so
+it comes out of the build. A leak hunt can build it back in.
+
+A panic otherwise waits forever, and on the XPS 14 [both crashes][crashes]
+froze it until the power button was held. Ten seconds later the record is
+already in pstore, so rebooting loses nothing.
 
 Preemption stays switchable at boot, with `preempt=`, because nixpkgs keeps
 `PREEMPT_DYNAMIC` on. The rest of what a developer needs is already in
@@ -308,5 +324,6 @@ if less; record a new one after moving to a new series.
 [perf]: ../modules/perf/nixos.nix
 [slices]: ../modules/slices/nixos.nix
 [hw]: hardware.md
+[crashes]: hardware.md#the-two-crashes
 [1]: https://github.com/firelzrd/bore-scheduler
 [2]: https://git.kernel.org/torvalds/c/a6036a41bffb
