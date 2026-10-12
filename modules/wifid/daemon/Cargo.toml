@@ -1,0 +1,14 @@
+# The daemon: joins Wi-Fi networks through wpa_supplicant, writes their
+# networkd files, checks for a sign-in page and answers the shell over
+# varlink (src/main.rs says how).
+[package]
+name = "wifid"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+
+[dev-dependencies]
+tempfile = "3.27"
