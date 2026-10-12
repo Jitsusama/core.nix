@@ -18,6 +18,7 @@ mod procs;
 mod reclaim;
 mod sandbox;
 mod scratch;
+mod snapshots;
 mod temp;
 mod trash;
 mod trees;

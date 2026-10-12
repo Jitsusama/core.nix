@@ -73,6 +73,12 @@ fn names(process: &Process) -> impl Iterator<Item = String> + '_ {
     })
 }
 
+/// Whether a process runs the program named `command`, by its executable
+/// or the name it was called by.
+pub fn runs(process: &Process, command: &str) -> bool {
+    names(process).any(|name| name == command)
+}
+
 fn builds(process: &Process) -> bool {
     names(process).any(|name| BUILD_TOOLS.contains(&name.as_str()))
 }
