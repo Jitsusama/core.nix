@@ -42,6 +42,9 @@ pkgs.testers.runNixOSTest {
         self.nixosModules.graphical
         # The laptop role's power profiles, whose units start only at boot.
         self.nixosModules.power-profiles-daemon
+        # The workstation role's, which sets how the account's manager watches
+        # pressure.
+        self.nixosModules.memory
       ];
 
       # The VM has neither a backlight nor a sound card, so it gets one of each
@@ -340,6 +343,12 @@ pkgs.testers.runNixOSTest {
       # targets are already reached, so only a boot shows it.
       with subtest("the machine boots without an ordering cycle"):
           machine.fail("journalctl -b -o cat | grep -F 'ordering cycle'")
+
+      # A user manager handed its whole service's pressure to watch can't set
+      # its own threshold on it, and says so each time it starts or reloads.
+      with subtest("every user manager watches its own pressure"):
+          as_account("systemctl --user daemon-reload")
+          machine.fail("journalctl -b -o cat | grep -F 'pressure threshold'")
 
       with subtest("the power profile follows the charger from boot"):
           machine.wait_until_succeeds(

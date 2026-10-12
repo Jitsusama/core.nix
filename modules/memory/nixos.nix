@@ -35,4 +35,20 @@
   # When pressure lasts, systemd-oomd stops the whole runaway group, such as a
   # build, rather than whichever process the kernel picks.
   systemd.oomd.enableUserSlices = true;
+
+  # systemd 261 watches CPU and IO pressure as well as memory, and hands each
+  # service the cgroup file to watch. Its user@.service turns that off for
+  # memory alone, so a user manager is handed IO pressure for every program in
+  # its account, can't put its own threshold on it, and warns each time it
+  # starts or reloads. It does nothing when CPU or IO pressure rises, so it
+  # watches only itself, as it already does for memory. The change upstream's
+  # units/user@.service.in needs:
+  #
+  #      MemoryPressureWatch=skip
+  #     +CPUPressureWatch=skip
+  #     +IOPressureWatch=skip
+  systemd.services."user@".serviceConfig = {
+    CPUPressureWatch = "skip";
+    IOPressureWatch = "skip";
+  };
 }
