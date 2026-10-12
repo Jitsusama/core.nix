@@ -3,21 +3,21 @@ use std::fs;
 use std::os::unix::fs::symlink;
 use std::path::{Path, PathBuf};
 
-const CARGO_TAG: &str = "Signature: 8a477f597d28d172789f06886806bc55\n\
+pub(crate) const CARGO_TAG: &str = "Signature: 8a477f597d28d172789f06886806bc55\n\
                          # This file is a cache directory tag created by cargo.\n";
 
-fn file(path: &Path, text: &str) {
+pub(crate) fn file(path: &Path, text: &str) {
     fs::create_dir_all(path.parent().unwrap()).unwrap();
     fs::write(path, text).unwrap();
 }
 
-fn dir(path: &Path) -> PathBuf {
+pub(crate) fn dir(path: &Path) -> PathBuf {
     fs::create_dir_all(path).unwrap();
     path.to_owned()
 }
 
 /// A git checkout holding a crate at `crate_dir`.
-fn checkout(root: &Path, name: &str, crate_dir: &str) -> PathBuf {
+pub(crate) fn checkout(root: &Path, name: &str, crate_dir: &str) -> PathBuf {
     let top = dir(&root.join(name));
     dir(&top.join(".git"));
     file(&top.join(crate_dir).join("Cargo.toml"), "[package]\n");
