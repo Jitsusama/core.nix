@@ -29,6 +29,11 @@
     # Looks for a better access point of the same network when the signal
     # drops below -70 dBm, every 30 seconds, and hourly otherwise.
     bgscan="simple:30:-70:3600"
+    # Protects management frames wherever the access point can, so nobody
+    # nearby can knock the card off a network that offers it.
     pmf=1
+    # Turns a WPA3 password into a key either way an access point asks for,
+    # the newer hash-to-element way included, which some offer alone.
+    sae_pwe=2
   '';
 }
