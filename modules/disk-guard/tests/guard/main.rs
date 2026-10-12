@@ -5,6 +5,7 @@ mod anchor;
 mod band;
 mod clock;
 mod config;
+mod discover;
 #[cfg(target_os = "linux")]
 mod linux;
 mod locks;
