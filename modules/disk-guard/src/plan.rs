@@ -48,6 +48,28 @@ pub enum Class {
     Producer,
 }
 
+impl Class {
+    /// The kind's name, which what it frees is learned under.
+    pub fn kind(self) -> &'static str {
+        match self {
+            Class::Target => "target",
+            Class::Install => "install",
+            Class::Variant => "variant",
+            Class::Scratch { .. } => "scratch",
+            Class::Snapshot => "snapshot",
+            Class::Workspace => "workspace",
+            Class::Temp => "temp",
+            Class::Trash => "trash",
+            Class::Cache { .. } => "cache",
+            Class::Coredump => "coredump",
+            Class::NixBuild => "nix-build",
+            Class::Replaced => "replaced",
+            Class::Garbage => "garbage",
+            Class::Producer => "producer",
+        }
+    }
+}
+
 /// Something a pass may reclaim. `idle` is the awake time since it was last
 /// used, or since it was kept for what it was kept for; `size` is logical.
 #[derive(Clone, Debug, PartialEq)]

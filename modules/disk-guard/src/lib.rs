@@ -10,5 +10,6 @@ pub mod discover;
 pub mod linux;
 pub mod locks;
 pub mod moments;
+pub mod pass;
 pub mod plan;
 pub mod units;
