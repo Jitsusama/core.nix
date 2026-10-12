@@ -654,7 +654,9 @@ pkgs.testers.runNixOSTest {
           wait_for_surface("launcher")
           time.sleep(0.5)
           machine.screenshot("launcher-home")
-          # The last row at home is the last collection, the shortcuts.
+          # The last row at home is the last collection, the shortcuts; a page
+          # down stops there, so two reach it however long home grows.
+          machine.send_key("pgdn")
           machine.send_key("pgdn")
           machine.send_key("ret")
           time.sleep(0.5)
@@ -692,6 +694,27 @@ pkgs.testers.runNixOSTest {
               time.sleep(0.5)
               machine.send_key("ret")
               machine.wait_until_succeeds(f"powerprofilesctl get | grep -qx {profile}", timeout=10)
+              machine.wait_until_fails(in_session("niri msg layers | grep -q launcher"), timeout=10)
+
+      # The right arrow on one of a collection's members offers its own
+      # actions, as on anything at the top.
+      with subtest("the launcher's Displays scales a display by keys, and back"):
+
+          def scale():
+              outputs = json.loads(as_account("niri msg --json outputs"))
+              return next(iter(outputs.values()))["logical"]["scale"]
+
+          for wanted in [1.5, scale()]:
+              as_account("qs ipc call launcher collection displays")
+              wait_for_surface("launcher")
+              time.sleep(0.5)
+              machine.send_key("right")
+              time.sleep(0.5)
+              machine.screenshot("launcher-displays")
+              machine.send_chars(f"scale {round(wanted * 100)}")
+              time.sleep(0.5)
+              machine.send_key("ret")
+              retry(lambda _, wanted=wanted: scale() == wanted, timeout_seconds=15)
               machine.wait_until_fails(in_session("niri msg layers | grep -q launcher"), timeout=10)
 
       with subtest("a Wi-Fi network is joined from the launcher, a new one asking its password"):
