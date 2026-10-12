@@ -1,5 +1,9 @@
 # The disk guard, built from this directory, its scenarios run as it builds.
-{ lib, rustPlatform }:
+{
+  git,
+  lib,
+  rustPlatform,
+}:
 rustPlatform.buildRustPackage {
   pname = "disk-guard";
   version = "0.1.0";
@@ -13,6 +17,8 @@ rustPlatform.buildRustPackage {
     ];
   };
   cargoLock.lockFile = ./Cargo.lock;
+  # The predicate scenarios read a real checkout, through git as the guard does.
+  nativeCheckInputs = [ git ];
   meta = {
     description = "Keeps a disk from filling without breaking a build";
     license = lib.licenses.mit;

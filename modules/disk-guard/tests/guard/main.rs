@@ -11,6 +11,7 @@ mod config;
 mod coredumps;
 mod discover;
 mod entries;
+mod finished;
 #[cfg(target_os = "linux")]
 mod linux;
 mod locks;
