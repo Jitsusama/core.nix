@@ -239,6 +239,19 @@
       };
 
       formatter = forEachSystem (pkgs: (treefmt pkgs).config.build.wrapper);
+      # The tools for working on core's own programs, so nothing but Nix has
+      # to be installed first. direnv enters it in a program's directory.
+      devShells = forEachSystem (pkgs: {
+        default = pkgs.mkShell {
+          packages = [
+            pkgs.cargo
+            pkgs.clippy
+            pkgs.rust-analyzer
+            pkgs.rustc
+            pkgs.rustfmt
+          ];
+        };
+      });
 
       # Where core.nix's own programs are worked on, with the toolchain
       # their packages build with: `nix develop`, then cargo in the
