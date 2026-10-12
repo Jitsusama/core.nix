@@ -4,9 +4,11 @@
 # traffic crosses the stand-in air rather than taking a shortcut through the
 # machine. One network is declared in Nix and one saved as the launcher
 # saves it. A joined network gets its address and DNS server and sees an
-# address of the card's own for it; a resolver for a private domain, set up
-# the way a development DNS server is, keeps answering through every join;
-# and a routing rule another program made, as a VPN's client does, survives
+# address of the card's own for it. wifid finds which network wants a
+# sign-in, asking the network's own DNS server even while a VPN's servers
+# stand in for it. A resolver for a private domain, set up the way a
+# development DNS server is, keeps answering through every join; and a
+# routing rule another program made, as a VPN's client does, survives
 # joining, reconfiguring and networkd restarting.
 { self, pkgs }:
 let
@@ -60,6 +62,33 @@ let
     address=/router.lantern/10.42.0.1
     address=/front-desk.inn/10.43.0.1
     no-resolv
+    # The check page is on each network's own router, so a check finds the
+    # one it meant only by asking that network's server.
+    addn-hosts=${checkPageAddresses}
+    localise-queries
+  '';
+
+  checkPageAddresses = pkgs.writeText "check-page" ''
+    10.42.0.1 connectivitycheck.gstatic.com
+    10.43.0.1 connectivitycheck.gstatic.com
+  '';
+
+  # Lantern reaches beyond itself, so its check page answers as Google's
+  # does; the Inn sends every guest to its front desk first.
+  checkPage = pkgs.writeText "check-page.py" ''
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+
+    class Page(BaseHTTPRequestHandler):
+        def do_GET(self):
+            if self.connection.getsockname()[0] == "10.42.0.1":
+                self.send_response(204)
+            else:
+                self.send_response(302)
+                self.send_header("Location", "http://front-desk.inn/sign-in")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+
+    HTTPServer(("", 80), Page).serve_forever()
   '';
 in
 pkgs.testers.runNixOSTest {
@@ -117,8 +146,16 @@ pkgs.testers.runNixOSTest {
           "lantern.service"
           "inn.service"
         ];
+        before = [ "wifid.service" ];
         serviceConfig = inAir.serviceConfig // {
           ExecStart = "${lib.getExe pkgs.dnsmasq} --keep-in-foreground --conf-file=${networks}";
+        };
+      };
+
+      systemd.services.check-page = inAir // {
+        before = [ "wifid.service" ];
+        serviceConfig = inAir.serviceConfig // {
+          ExecStart = "${lib.getExe pkgs.python3} ${checkPage}";
         };
       };
 
@@ -204,6 +241,14 @@ pkgs.testers.runNixOSTest {
                 f"ip {family} rule show | grep -q 'not from all fwmark 0x100cf lookup 65743'"
             )
 
+    def says(line):
+        """Waits for wifid, as it runs now, to say line in the journal."""
+        machine.wait_until_succeeds(
+            "journalctl -o cat _PID=$(systemctl show -P MainPID wifid)"
+            f" | grep -qxF '{line}'",
+            timeout=30,
+        )
+
     def shown():
         """The address the card is showing the network it's on."""
         return machine.succeed("cat /sys/class/net/wlan2/address").strip()
@@ -222,6 +267,9 @@ pkgs.testers.runNixOSTest {
         holds_address("10.43.0.")
         on_file("/etc/systemd/network/50-wifi-roadside-inn.network")
         answers("front-desk.inn", "10.43.0.1")
+
+    with subtest("wifid finds the Inn wants a sign-in, and where"):
+        says("Roadside Inn on wlan2 wants a sign-in at http://front-desk.inn/sign-in")
 
     with subtest("the network sees an address the card chose for it"):
         inn_address = shown()
@@ -249,6 +297,9 @@ pkgs.testers.runNixOSTest {
         answers("probe.corp.internal", "10.99.0.7")
         lantern_address = shown()
         assert lantern_address not in (inn_address, card), lantern_address
+
+    with subtest("and finds Lantern reaches beyond itself"):
+        says("Lantern on wlan2 reaches beyond itself")
 
     with subtest("a stranger's network gets no LLMNR or mDNS"):
         status = machine.succeed("resolvectl status wlan2")
@@ -286,6 +337,14 @@ pkgs.testers.runNixOSTest {
         machine.wait_until_succeeds("wpa_cli -i wlan2 ping | grep -qx PONG", timeout=30)
         joined("Roadside Inn")
         holds_address("10.43.0.")
+
+    with subtest("the check asks the network's own DNS server while a VPN's stand in"):
+        # WARP points the link at its own servers while it's connected.
+        machine.succeed("resolvectl dns wlan2 192.0.2.53")
+        machine.succeed("resolvectl dns wlan2 | grep -q '192.0.2.53$'")
+        machine.succeed("systemctl restart wifid")
+        says("Roadside Inn on wlan2 wants a sign-in at http://front-desk.inn/sign-in")
+        machine.succeed("resolvectl revert wlan2")
 
     with subtest("networkd's file for a network no longer saved is taken away"):
         machine.succeed(f"rm {saved}")
