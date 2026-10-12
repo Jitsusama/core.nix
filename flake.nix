@@ -156,6 +156,7 @@
       nixosModules = {
         bluetooth = ./modules/bluetooth/nixos.nix;
         btrfs = ./modules/btrfs/nixos.nix;
+        coredump = ./modules/coredump/nixos.nix;
         disko = moduleFrom ./modules/disko/nixos.nix { inherit disko; };
         fonts = ./modules/fonts/system.nix;
         gnome-keyring = ./modules/gnome-keyring/nixos.nix;
