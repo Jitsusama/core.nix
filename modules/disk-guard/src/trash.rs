@@ -2,7 +2,7 @@
 //! what was deleted under `files/`, and beside each under `info/` a
 //! `.trashinfo` saying when, in local time with no zone.
 
-use crate::clock::Awake;
+use crate::clock::{Awake, local};
 use crate::plan::{Candidate, Class};
 use regex_lite::Regex;
 use std::collections::BTreeSet;
@@ -27,27 +27,6 @@ const SUFFIX: &str = ".trashinfo";
 static DELETED: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?m)^DeletionDate=(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})").unwrap()
 });
-
-/// A local time as wall seconds, through the C library so the zone and
-/// its daylight saving are read as everything else on the machine reads
-/// them.
-fn local(fields: [i32; 6]) -> Option<f64> {
-    let [year, month, day, hour, minute, second] = fields;
-    // SAFETY: tm is plain data, zeroed is a valid value, and mktime reads
-    // and normalizes only the struct it's given.
-    let mut tm: libc::tm = unsafe { std::mem::zeroed() };
-    tm.tm_year = year - 1900;
-    tm.tm_mon = month - 1;
-    tm.tm_mday = day;
-    tm.tm_hour = hour;
-    tm.tm_min = minute;
-    tm.tm_sec = second;
-    // Whether daylight saving applies is for mktime to work out.
-    tm.tm_isdst = -1;
-    // SAFETY: as above.
-    let seconds = unsafe { libc::mktime(&mut tm) };
-    (seconds != -1).then_some(seconds as f64)
-}
 
 fn deletion_date(info: &Path) -> Option<f64> {
     let text = fs::read_to_string(info).ok()?;

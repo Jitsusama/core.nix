@@ -18,3 +18,4 @@ pub mod temp;
 pub mod trash;
 pub mod trees;
 pub mod units;
+pub mod workspaces;

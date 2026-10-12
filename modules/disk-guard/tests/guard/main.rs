@@ -20,3 +20,4 @@ mod trash;
 mod trees;
 mod units;
 mod variants;
+mod workspaces;

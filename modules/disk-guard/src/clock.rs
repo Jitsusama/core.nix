@@ -7,6 +7,28 @@
 
 use serde::{Deserialize, Serialize};
 
+/// A local time, as year, month, day, hour, minute and second, in wall
+/// seconds. It goes through the C library so the zone and its daylight
+/// saving are read as everything else on the machine reads them; a day
+/// past a month's end rolls into the next, as `mktime` normalizes it.
+pub(crate) fn local(fields: [i32; 6]) -> Option<f64> {
+    let [year, month, day, hour, minute, second] = fields;
+    // SAFETY: tm is plain data, zeroed is a valid value, and mktime reads
+    // and normalizes only the struct it's given.
+    let mut tm: libc::tm = unsafe { std::mem::zeroed() };
+    tm.tm_year = year - 1900;
+    tm.tm_mon = month - 1;
+    tm.tm_mday = day;
+    tm.tm_hour = hour;
+    tm.tm_min = minute;
+    tm.tm_sec = second;
+    // Whether daylight saving applies is for mktime to work out.
+    tm.tm_isdst = -1;
+    // SAFETY: as above.
+    let seconds = unsafe { libc::mktime(&mut tm) };
+    (seconds != -1).then_some(seconds as f64)
+}
+
 /// One reading of the clocks, in seconds: wall time, time since boot
 /// without suspends, time spent suspended since boot, and the boot's id.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
