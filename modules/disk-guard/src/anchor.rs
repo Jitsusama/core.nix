@@ -155,11 +155,17 @@ impl Dir {
         })
     }
 
-    /// Opens a directory beneath this one.
+    /// Opens a directory beneath this one, or this one again for the empty
+    /// path, as the parent of an entry lying directly in it is.
     pub fn child(&self, relative: &Path) -> io::Result<Dir> {
         if relative.is_absolute() {
             return Err(io::Error::new(io::ErrorKind::InvalidInput, "not beneath"));
         }
+        let relative = if relative.as_os_str().is_empty() {
+            Path::new(".")
+        } else {
+            relative
+        };
         let resolve = ResolveFlags::BENEATH | ResolveFlags::NO_SYMLINKS | ResolveFlags::NO_XDEV;
         let fd = rustix::fs::openat2(&self.fd, relative, DIRECTORY, Mode::empty(), resolve)?;
         let child = Dir::from_fd(fd)?;

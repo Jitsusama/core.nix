@@ -34,6 +34,15 @@ fn a_root_opens_real_directories_beneath_it() {
 }
 
 #[test]
+fn the_empty_path_beneath_a_root_is_the_root() {
+    let root = sandbox();
+    fs::create_dir_all(root.path().join("a")).unwrap();
+    let dir = Dir::open(root.path()).unwrap();
+    let itself = dir.child(Path::new("")).unwrap();
+    assert!(itself.child(Path::new("a")).is_ok());
+}
+
+#[test]
 fn nothing_beneath_a_root_is_reached_through_a_symlink() {
     let root = sandbox();
     let elsewhere = sandbox();

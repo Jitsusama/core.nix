@@ -65,6 +65,24 @@ fn an_idle_file_goes() {
 }
 
 #[test]
+fn an_entry_directly_in_its_root_goes() {
+    // As a temp leftover lies straight in the temp directory.
+    let root = Sandbox::new();
+    let dir = scratch(root.path());
+    let anchor = Dir::open(&dir).unwrap();
+    for name in ["run-1", "notes.txt"] {
+        let outcome = entry(
+            &anchor,
+            &dir,
+            &candidate(&dir.join(name)),
+            &mut Script::default(),
+        );
+        assert_eq!(outcome, Outcome::Reclaimed, "{name}");
+    }
+    assert_eq!(names(&dir), ["run-2"]);
+}
+
+#[test]
 fn a_symlink_goes_and_what_it_names_stays() {
     let root = Sandbox::new();
     let dir = scratch(root.path());
