@@ -58,11 +58,15 @@ pub struct Places {
     pub status: Option<PathBuf>,
     /// Where processes are read from: `/proc`.
     pub processes: PathBuf,
+    /// The system daemon's socket, for a user daemon to ask about the
+    /// processes it can't read.
+    pub system: Option<PathBuf>,
 }
 
 pub struct Guard {
     config: Config,
     processes: PathBuf,
+    system: Option<PathBuf>,
     memory_path: PathBuf,
     memory: Memory,
     journal: Journal,
@@ -138,6 +142,7 @@ impl Guard {
         Ok(Guard {
             config,
             processes: places.processes.clone(),
+            system: places.system.clone(),
             memory_path,
             memory,
             journal: Journal::new(&state.join("journal.jsonl"), journal::LIMIT),
@@ -222,6 +227,16 @@ impl Guard {
     fn passes(&mut self, tick: &Tick, due: &[(u64, Decision, Thresholds)]) -> io::Result<()> {
         let me = std::process::id();
         let mut scan = Scan::new(&self.processes, Path::new("/proc/locks"), me, FRESH);
+        if let Some(socket) = &self.system {
+            let roots: Vec<PathBuf> = self
+                .config
+                .sources
+                .values()
+                .flat_map(paths)
+                .map(Path::to_owned)
+                .collect();
+            scan = scan.vouched_by(socket, &roots);
+        }
         let processes = scan.processes()?.to_vec();
         let boot = crate::linux::boot(Path::new("/proc/stat"))?;
         let (predicates, answers) = (&self.predicates, &mut self.answers);

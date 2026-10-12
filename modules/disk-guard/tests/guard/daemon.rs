@@ -111,12 +111,29 @@ impl Home {
     }
 
     fn guard(&self, config: Config) -> Guard {
-        let places = Places {
+        Guard::new(config, &self.places()).unwrap()
+    }
+
+    fn places(&self) -> Places {
+        Places {
             state: self.root.join("state"),
             status: Some(self.root.join("status.json")),
             processes: self.root.join("proc"),
-        };
-        Guard::new(config, &places).unwrap()
+            system: None,
+        }
+    }
+
+    /// A process of root's this account can't read.
+    fn hidden(&self, pid: u32, start: u64) {
+        let proc = self.root.join("proc");
+        let at = |file: &str| format!("{pid}/{file}");
+        crate::procs::text(
+            &proc,
+            &at("stat"),
+            &crate::procs::stat(pid, "rustc", 0, start),
+        );
+        crate::procs::text(&proc, &at("status"), "Name:\trustc\nUid:\t0\t0\t0\t0\n");
+        crate::procs::text(&proc, &at("cmdline"), "");
     }
 
     fn journal(&self) -> Vec<serde_json::Value> {
@@ -130,6 +147,39 @@ impl Home {
     fn status(&self) -> serde_json::Value {
         serde_json::from_str(&fs::read_to_string(self.root.join("status.json")).unwrap()).unwrap()
     }
+}
+
+#[test]
+fn the_system_daemon_vouches_for_what_this_account_cant_read() {
+    let home = Home::new();
+    let cold = home.cold_scratch("run-1");
+    home.hidden(300, 77);
+    let mut alone = home.guard(home.config("100%", "100%"));
+    alone.step(&tick(), &CALM).unwrap();
+    assert!(cold.exists(), "kept while process 300 can't be judged");
+
+    let socket = home.root.join("system.socket");
+    let mut server = disk_guard::socket::Server::bind(&socket, std::time::Duration::ZERO).unwrap();
+    std::thread::spawn(move || {
+        server
+            .serve(&mut |_, _| {
+                Ok(disk_guard::vouch::Answer {
+                    vouched: vec![(300, 77)],
+                    touching: vec![],
+                })
+            })
+            .unwrap();
+    });
+    let places = Places {
+        system: Some(socket),
+        ..home.places()
+    };
+    let mut vouched = Guard::new(home.config("100%", "100%"), &places).unwrap();
+    vouched.step(&tick(), &CALM).unwrap();
+    assert!(
+        !cold.exists(),
+        "process 300 touches nothing of this account's"
+    );
 }
 
 #[test]
