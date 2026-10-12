@@ -120,8 +120,13 @@ Singleton {
         // none while the first is.
         readonly property var shown: root.lettered ? root.first : root.box
 
-        onVisibleChanged: {
-            if (visible)
+        // The box it opens on is the screen's, which the window learns only
+        // once niri has configured it, a moment after it shows. Started on
+        // showing, it opened on an empty box, and Return took nothing.
+        readonly property bool sized: visible && width > 0 && height > 0
+
+        onSizedChanged: {
+            if (sized)
                 root.start(bounds);
         }
 

@@ -1300,6 +1300,21 @@ pkgs.testers.runNixOSTest {
           logical = json.loads(as_account("niri msg --json focused-output"))["logical"]
           wide, high = logical["width"], logical["height"]
           half = (wide // 2 + 16, high // 2)
+
+          # Return at once takes the box it opened on, the screen or the
+          # focused window, which has to be there from its first frame.
+          def sized(geometry):
+              width, height = geometry.split(" ")[1].split("x")
+              return int(width) > 0 and int(height) > 0
+
+          with told("keys picker"):
+              machine.send_key("sysrq")
+          since = mark()
+          machine.send_key("ret")
+          reported("picked ", sized, since, 30)
+          machine.wait_until_succeeds(f"ls {pictures}/*.png", timeout=15)
+          machine.succeed(f"rm {pictures}/*.png")
+
           with told("keys picker"):
               machine.send_key("sysrq")
           machine.send_chars("aajp")
