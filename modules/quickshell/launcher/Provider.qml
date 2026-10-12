@@ -192,7 +192,10 @@ Scope {
         "google-chrome": "f268",
         "slack": "f198",
         "nvim": "f36f",
-        "1password": "f0881"
+        "1password": "f0881",
+        "gimp": "f338",
+        "org.inkscape.inkscape": "f33b",
+        "spotify": "f1bc"
     }, settings.glyphs ?? {})
 
     function programGlyph(id) {
