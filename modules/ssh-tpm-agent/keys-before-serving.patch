@@ -1,0 +1,57 @@
+agent: Hold the keys before serving
+
+NewAgent starts serving its listener straight away, and main adds the keys
+it preloaded only afterwards. Under socket activation the connection that
+started the agent is already waiting, so it's answered with no keys: the
+first signature after login fails with "No private key found for public
+key", and the next one works.
+
+Hand the preloaded keys to NewAgent, which holds them before it serves. The
+argument is variadic, so the tests' calls are unchanged.
+
+diff -ru a/agent/agent.go b/agent/agent.go
+--- a/agent/agent.go
++++ b/agent/agent.go
+@@ -524,7 +524,7 @@
+ 	return keys, err
+ }
+ 
+-func NewAgent(listener *net.UnixListener, agents []agent.ExtendedAgent, keyring func() *keyring.ThreadKeyring, tpmFetch func() transport.TPMCloser, ownerPassword func() ([]byte, error), pin func(key.SSHTPMKeys) ([]byte, error)) *Agent {
++func NewAgent(listener *net.UnixListener, agents []agent.ExtendedAgent, keyring func() *keyring.ThreadKeyring, tpmFetch func() transport.TPMCloser, ownerPassword func() ([]byte, error), pin func(key.SSHTPMKeys) ([]byte, error), keys ...key.SSHTPMKeys) *Agent {
+ 	a := &Agent{
+ 		agents:   agents,
+ 		tpm:      tpmFetch,
+@@ -532,7 +532,7 @@
+ 		listener: listener,
+ 		pin:      pin,
+ 		quit:     make(chan any),
+-		keys:     []key.SSHTPMKeys{},
++		keys:     append([]key.SSHTPMKeys{}, keys...),
+ 		hierkeys: []*key.HierSSHTPMKey{},
+ 		keyring:  keyring,
+ 	}
+diff -ru a/cmd/ssh-tpm-agent/main.go b/cmd/ssh-tpm-agent/main.go
+--- a/cmd/ssh-tpm-agent/main.go
++++ b/cmd/ssh-tpm-agent/main.go
+@@ -278,6 +278,10 @@
+ 			}
+ 			return nil, fmt.Errorf("failed getting pin for key: %w", err)
+ 		},
++
++		// Keys, in place before the agent serves the connection that
++		// started it
++		keys...,
+ 	)
+ 
+ 	// Signal handling
+@@ -290,10 +294,6 @@
+ 		}
+ 	}()
+ 
+-	if !noLoad {
+-		agent.LoadKeys(keys)
+-	}
+-
+ 	if hierarchy != "" {
+ 		if err := agent.AddHierarchyKeys(hierarchy); err != nil {
+ 			log.Fatal(err)

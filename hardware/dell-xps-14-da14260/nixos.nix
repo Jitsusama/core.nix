@@ -53,6 +53,7 @@ let
 in
 {
   imports = [
+    ../../modules/gpu/nixos.nix
     ../../modules/kernel/nixos.nix
     ../../modules/keyboard/nixos.nix
     ./camera.nix
@@ -65,6 +66,11 @@ in
   # The keyboard is wired to the embedded controller, which presents it as a
   # PS/2 keyboard.
   jitsusama.keyboard.builtIn = [ "0001:0001" ];
+
+  # The Arc GPU. Its driver takes the firmware framebuffer's card away as it
+  # starts, and has its own ready about 1.6 s later, so for that long there's
+  # no card at all.
+  jitsusama.gpu.path = "pci-0000:00:02.0";
 
   # Microcode, and the firmware for Wi-Fi, Bluetooth, the GPU and the audio
   # DSP, which Sound Open Firmware runs.

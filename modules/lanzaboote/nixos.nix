@@ -47,6 +47,10 @@ in
   # lanzaboote installs and signs systemd-boot itself.
   boot.loader.systemd-boot.enable = lib.mkForce false;
   boot.loader.efi.canTouchEfiVariables = true;
+  # Boot the newest generation straight away, rather than after nixpkgs's
+  # five seconds in the menu. Holding a key, such as Space, at power-on
+  # brings the menu up, for an older generation.
+  boot.loader.timeout = 0;
   # The TPM and the PIN are asked for by the systemd initrd.
   boot.initrd.systemd.enable = true;
 

@@ -26,6 +26,14 @@ in
 
   services.ssh-tpm-agent.enable = true;
 
+  # The agent starts serving before it holds the keys it read from ~/.ssh, so
+  # the request that wakes it through its socket finds none, and the first
+  # signature after login failed. The patch is the change upstream needs; take
+  # it out once a release carries it.
+  services.ssh-tpm-agent.package = pkgs.ssh-tpm-agent.overrideAttrs (old: {
+    patches = (old.patches or [ ]) ++ [ ./keys-before-serving.patch ];
+  });
+
   home.packages = [ askpass ];
   home.sessionVariables.SSH_ASKPASS = lib.getExe askpass;
   systemd.user.sessionVariables.SSH_ASKPASS = lib.getExe askpass;

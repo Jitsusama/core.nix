@@ -1,6 +1,7 @@
 # Stores a secret in a virtual machine's keyring the way Chrome and Slack do,
 # then starts the keyring again, as the next login does, and reads the secret
-# back. Nothing may ask for a password along the way: there's no one here to
+# back, once after the session starts it and once when a program asks first.
+# Nothing may ask for a password along the way: there's no one here to
 # answer, so a prompt waits until the timeout fails the step. The keyring on
 # disk must not hold the secret in the clear.
 { self, pkgs }:
@@ -42,10 +43,23 @@ pkgs.testers.runNixOSTest {
         )
         return machine.succeed("su - joel -c " + shlex.quote(environment + command))
 
-    # The compositor starts only once the keyring is unlocked and ready.
+    # The compositor doesn't wait for the keyring, which comes up beside it.
     def log_in():
         as_joel("systemctl --user start compositor.service")
-        as_joel("systemctl --user is-active gnome-keyring.service")
+        keyring_is_up()
+
+    def keyring_is_up():
+        as_joel(
+            "timeout 30 sh -c 'until systemctl --user is-active -q"
+            " gnome-keyring.service; do sleep 0.2; done'"
+        )
+        # The unit's daemon is the only one: none started beside it. The
+        # brackets keep this command's own shell from matching.
+        daemons = "pgrep -u joel -f '[b]in/gnome-keyring-daemon'"
+        as_joel(
+            f"test $({daemons} | wc -l) = 1 && {daemons} | grep -qx"
+            " $(systemctl --user show -p MainPID --value gnome-keyring.service)"
+        )
         # The daemon never reaps a child it didn't start, so none may be left
         # to it by the script that started it.
         as_joel(
@@ -84,5 +98,14 @@ pkgs.testers.runNixOSTest {
         log_in()
         secret = as_joel("timeout 10 secret-tool lookup service slack account joel")
         t.assertEqual(secret, "hunter2")
+
+    # A program can ask before the keyring is up. Asking starts the unit, and
+    # the answer waits for it to unlock, where gnome-keyring's own D-Bus
+    # files would start a second daemon with the keyring locked.
+    with subtest("a program that asks first gets the unlocked keyring"):
+        log_out()
+        secret = as_joel("timeout 10 secret-tool lookup service slack account joel")
+        t.assertEqual(secret, "hunter2")
+        keyring_is_up()
   '';
 }

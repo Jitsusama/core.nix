@@ -34,14 +34,17 @@ x86-64 machine as `packages.x86_64-linux.kernel`.
   inline the code the machine actually runs. [Profiling It](#profiling-it)
   says how to record one.
 
-### The Patch
+### The Patches
 
-One patch, fetched from its author at a fixed commit with its hash, so it can
-be traced to where it came from and can't change underneath the build:
+BORE is fetched from its author at a fixed commit with its hash, so it can be
+traced to where it came from and can't change underneath the build. The others
+are fixes written here, kept until the kernel has its own:
 
-| Patch        | What it adds                     | From                         |
-| ------------ | -------------------------------- | ---------------------------- |
-| `bore.patch` | the BORE scheduler, `SCHED_BORE` | [firelzrd/bore-scheduler][1] |
+| Patch                     | What it does                   | From               |
+| ------------------------- | ------------------------------ | ------------------ |
+| `bore.patch`              | the BORE scheduler             | [BORE's author][1] |
+| `irq-resend-nested.patch` | no bad IRQ trap on resume      | written here       |
+| `edp-sdp-caps.patch`      | a single eDP modeset at boot   | written here       |
 
 BORE is a small change to the kernel's own EEVDF scheduler: it favours tasks
 that run in short bursts, such as the compositor, terminal and editor, over
@@ -49,6 +52,30 @@ ones that run flat out, such as a build. Its author releases it for every
 stable series, and CachyOS has made it its default.
 
 nixpkgs's own two patches, applied to every kernel it builds, are kept.
+
+The IRQ fix is for interrupts that run in their parent's thread. When one
+arrives while it's disabled, enabling it resends it by retriggering its
+parent. An SDCA codec's interrupt, as on the XPS 14, nests in its SoundWire
+master's, which is itself a nested thread with no handler of its own, so after
+a resume the resend ran `handle_bad_irq()` and logged "unexpected IRQ trap".
+The patch climbs to the first parent that has a handler, and does nothing when
+none has, as the kernel already does for a nested interrupt with no parent.
+The patch file is the diff to send upstream.
+
+The eDP fix is for the screen going dark twice as the graphics driver starts.
+The driver commits a display state while it loads, before anything has asked
+the panel what it supports, and the console's first commit comes after. A
+panel that can vary its refresh rate takes the Adaptive-Sync SDP, but the
+driver only learns so in its detect hook, so the first state leaves the SDP
+out and the console's puts it in. The driver can't change that without a full
+modeset, which on the XPS 14's panel powers it off for its half-second power
+cycle and costs about 1.1 s, and the card isn't ready for the desktop until it
+ends. The patch reads the SDP caps when the panel is first set up, beside the
+compression caps read there already, so the console's commit matches and
+keeps the mode. One modeset is left: the firmware drives the panel at 8 bits
+with Display Stream Compression, and the driver forces a modeset over any
+firmware state that uses it, a FIXME it keeps until it can read that state
+back.
 
 ### The Settings
 
@@ -64,6 +91,8 @@ configuration, and its own setting wins where the two differ. In short:
 | be ready to be profiled           | `AUTOFDO_CLANG`                     |
 | huge pages for every program      | `TRANSPARENT_HUGEPAGE_ALWAYS`       |
 | no Rust, which LTO and BTF forbid | `RUST` and the options that need it |
+| build in what every boot loads    | AES-NI, vfat, the firewall's set    |
+| decompress modules quickly        | `MODULE_COMPRESS_ZSTD`, not xz      |
 
 nixpkgs gives huge pages only to programs that ask for them, with
 `TRANSPARENT_HUGEPAGE_MADVISE`, and the ones that would gain most no longer
@@ -77,6 +106,53 @@ Preemption stays switchable at boot, with `preempt=`, because nixpkgs keeps
 nixpkgs's configuration: KVM, user namespaces and overlayfs for containers,
 BTF, BPF, sched_ext, kprobes, uprobes and ftrace for tracing, PSI for
 systemd-oomd, and multi-gen LRU for memory.
+
+### Built In or a Module
+
+A module costs a load at every boot that uses it: something runs modprobe,
+which decompresses and links it, and whatever needs it waits. Built in, it's
+there from the start, but its start-up runs on one CPU before `/init`, used or
+not, and it can't be reloaded. Its code runs as fast either way: module code
+sits on 2 MiB pages too, and instruction page walks cost 0.10 to 0.43% of the
+XPS 14's cycles for all its code together, under fio on btrfs over dm-crypt.
+
+So a module is built in here when every boot loads it, it loads no firmware,
+and nobody needs to reload it. Measured on the XPS 14:
+
+- **AES-NI's ciphers, built in.** As a module, `aesni_intel` isn't in the
+  initrd, so the encrypted disk opened on the generic XTS code and kept it
+  until the next boot. Through dm-crypt over a zero device, that read 7.2 to
+  9.0 GB/s per CPU, against 18.1 to 22.3 GB/s for AES-NI's own XTS. Reading
+  the disk in 1 MiB blocks, the generic code took a fifth of the kernel's
+  cycles.
+- **vfat and its two code pages, built in.** Mounting the EFI system
+  partition took 0.19 to 2.03 s over four boots, and 5 to 44 ms with the
+  modules already loaded. Everything after `local-fs.target` waits for it.
+- **The NixOS firewall's netfilter set, built in.** `nf_tables`,
+  `nft_compat`, conntrack, x_tables and its conntrack, pkttype, port and
+  rpfilter matches. The firewall took 0.8 to 3.5 s at boot, loading them as
+  its rules asked, and 0.4 s to reload with them loaded. The network waits
+  for it.
+- **btrfs, dm-crypt and NVMe, modules.** They load in the initrd while the
+  disk's PIN is typed, so the boot doesn't wait for them, and btrfs's 116 ms
+  start-up, raid6's benchmark included, would only delay the PIN prompt.
+  Built in, ThinLTO could inline across them and the kernel, but btrfs took
+  at most a quarter of the kernel's cycles, under random writes, so the gain
+  is too small to measure.
+- **KVM, a module.** Loading `kvm_intel` takes 80 ms. Built in, every boot
+  would wait for it before `/init`, and it couldn't be reloaded with other
+  parameters.
+- **Drivers that load firmware, modules.** The GPU, Wi-Fi, sound, camera and
+  Bluetooth drivers. Built in, they'd ask for firmware before the root
+  filesystem holds it, and a stuck device couldn't be reset by reloading.
+- **What's loaded on demand, modules.** Overlayfs, FUSE, TUN, vhost, bridges,
+  WireGuard and other filesystems. Built in, every boot pays their start-up:
+  xfs's alone took 235 ms.
+
+Modules are compressed with zstd rather than nixpkgs's xz. Loading xfs's
+9.8 MB took 288 to 314 ms from xz, 236 to 255 ms from zstd and 232 to 242 ms
+uncompressed. Decompressing all 288 modules a boot loads took about 1 s from
+xz and 0.3 s from zstd, for 16.3 MB against 11.9 MB.
 
 ## Around It
 
@@ -170,6 +246,9 @@ if less; record a new one after moving to a new series.
   with a comment saying what it adds. It has to earn its place: a clear
   purpose, a maintainer who releases it for every stable series, and other
   distributions shipping it.
+- **A fix written here:** put it beside `package.nix` as a patch whose header
+  says what it fixes and why, so the file can go upstream as it is, and drop
+  it once the kernel has its own.
 - **A machine's CPU:** set `jitsusama.kernel.cpu` in its hardware module, to a
   name from `clang --print-supported-cpus`.
 - **A patch one model needs:** add it to that model's `boot.kernelPatches`,
@@ -201,6 +280,15 @@ if less; record a new one after moving to a new series.
   to nine tenths of the disk's throughput when uncontended; mq-deadline and
   Kyber changed nothing, nor did `io.latency`. `io.cost` needs a model of the
   disk, and the one it guesses is out by an order of magnitude.
+- **Building in every module a boot loads.** See
+  [Built In or a Module](#built-in-or-a-module): only the ones the boot waits
+  for earn it.
+- **4096-byte sectors on an encrypted disk.** The XPS 14's disk was
+  formatted with 512-byte sectors, so a 4 KiB read is eight XTS operations.
+  Through dm-crypt over a zero device, 4096-byte sectors gave 9 to 20% more
+  random 4 KiB operations a second, but from 820,000 to 1,050,000 already,
+  two and a half to three times what the disk itself does. Not worth
+  re-encrypting a disk for; free to choose when formatting one.
 - **The TEO idle governor.** nixpkgs doesn't build it, and nothing measured
   here says menu, the one it builds, chooses idle states badly.
 - **A sched_ext scheduler.** The kernel can load one, but the two meant for

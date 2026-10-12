@@ -40,6 +40,42 @@ in
   TRANSPARENT_HUGEPAGE_ALWAYS = yes;
   TRANSPARENT_HUGEPAGE_MADVISE = no;
 
+  # Build in what every boot loads, so it's there before anything asks for
+  # it. The rest stay modules, since built in they'd cost their start-up at
+  # every boot whether used or not; docs/kernel.md has the measurements.
+  #
+  # AES-NI's ciphers. As a module it isn't in the initrd, so the encrypted
+  # disk opens on the generic XTS code instead, which reads 2.4 times slower
+  # per CPU, and keeps it until the next boot.
+  CRYPTO_AES_NI_INTEL = yes;
+
+  # What mounting the EFI system partition needs. As modules, loading them
+  # while every device's driver loads held the mount for up to two seconds,
+  # and everything after local-fs.target with it.
+  FAT_FS = yes;
+  VFAT_FS = yes;
+  NLS_CODEPAGE_437 = yes;
+  NLS_ISO8859_1 = yes;
+
+  # What the NixOS firewall's rules need, which it otherwise loads one
+  # module at a time while the network waits for it. The rpfilter matches
+  # sit inside the legacy iptables menus, so those come too.
+  NETFILTER_XTABLES = yes;
+  NF_TABLES = yes;
+  NFT_COMPAT = yes;
+  NF_CONNTRACK = yes;
+  NETFILTER_XT_MATCH_CONNTRACK = yes;
+  NETFILTER_XT_MATCH_PKTTYPE = yes;
+  IP_NF_IPTABLES = yes;
+  IP6_NF_IPTABLES = yes;
+  IP_NF_MATCH_RPFILTER = yes;
+  IP6_NF_MATCH_RPFILTER = yes;
+
+  # Compress modules with zstd, which the kernel decompresses about six
+  # times faster than nixpkgs's xz, for about a third more disk space.
+  MODULE_COMPRESS_ZSTD = yes;
+  MODULE_COMPRESS_XZ = no;
+
   # The kernel can't build Rust with LTO while it keeps BTF type information,
   # which sched_ext and BPF tools need. No driver these machines use is
   # written in Rust, so Rust goes, with the options nixpkgs sets beside it.
