@@ -363,6 +363,7 @@ let
     clipboard = ./launcher/Copies.qml;
     notices = ./launcher/PastNotices.qml;
     wifi = ./launcher/Wireless.qml;
+    sound = ./launcher/Sound.qml;
   };
 
   # The program that hears every copy, for the clipboard collection.
@@ -429,6 +430,16 @@ in
       changes one setting in one line, or adds a piece whose source is a
       QML file starting from pieces/Piece.qml; lib.mkForce replaces them
       all.
+    '';
+  };
+
+  options.jitsusama.quickshell.quiet.whileSharing = lib.mkOption {
+    type = lib.types.bool;
+    default = true;
+    description = ''
+      Whether do not disturb is on by itself while another program sees the
+      screen, as a call shares it, and off again once nothing does. Ending it
+      meanwhile lets notices show until the sharing stops.
     '';
   };
 
@@ -570,6 +581,12 @@ in
       wifi = {
         order = 102;
         source = "wifi";
+        weight = 0.9;
+      };
+      # The devices sound goes out of and comes in through.
+      sound = {
+        order = 103;
+        source = "sound";
         weight = 0.9;
       };
       clipboard = {
@@ -741,6 +758,16 @@ in
                 )
               }
               readonly property var learning: ${object launcher.learning}
+          }
+        '';
+        "quickshell/Options.qml".text = ''
+          pragma Singleton
+          import Quickshell
+          import QtQuick
+
+          // The shell's own choices, from jitsusama.quickshell.
+          Singleton {
+              readonly property var quiet: ${object config.jitsusama.quickshell.quiet}
           }
         '';
         "quickshell/Overview.qml".text = ''

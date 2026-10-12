@@ -1,10 +1,11 @@
 // Do not disturb (Quiet.qml): until when notices are held, and how many
-// have been. It's a mode, so it's true the whole time it's on.
+// have been. It's a mode, so it's true the whole time it's on, whether Joel
+// turned it on or the screen being shared did.
 import qs
 import QtQuick
 
 Piece {
-    readonly property string ends: Quiet.until > 0
+    readonly property string ends: Quiet.kept && Quiet.until > 0
         ? Qt.formatDateTime(new Date(Quiet.until), "HH:mm") : ""
     // The chord that opens the notices, beside the action that does.
     readonly property var opening: Shortcuts.actions
@@ -13,17 +14,16 @@ Piece {
 
     active: Quiet.on
     hue: "voice"
-    value: ends === "" ? "until it's ended" : `until ${ends}`
+    value: Quiet.lasts
     title: "Do Not Disturb"
     badge: ends
-    hint: (ends === "" ? "Quiet until it's ended" : `Quiet until ${ends}`)
-        + (held === 0 ? "" : `, ${held} held`)
+    hint: `Quiet ${Quiet.lasts}` + (held === 0 ? "" : `, ${held} held`)
     context: held === 0 ? "nothing held yet" : held === 1 ? "1 notice held" : `${held} notices held`
     actions: [{
         glyph: String.fromCodePoint(0xf009f),
-        name: "End it now",
+        name: Quiet.kept ? "End it now" : "Let notices show",
         run: () => Quiet.end()
-    }].concat(Quiet.until > 0 ? [{
+    }].concat(ends !== "" ? [{
         glyph: String.fromCodePoint(0xf1862),
         name: "An hour more",
         run: () => Quiet.more(60)
