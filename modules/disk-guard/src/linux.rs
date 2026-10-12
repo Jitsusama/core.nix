@@ -163,7 +163,24 @@ pub fn power(supplies: &Path) -> io::Result<crate::moments::Power> {
 /// device by numbers stat doesn't give on Btrfs (00:23 where stat says 0:52),
 /// so the device is taken from the guard's own lock's line.
 pub fn lock_waiters(proc_locks: &Path, me: u32, inodes: &[u64]) -> io::Result<Vec<i32>> {
-    let text = fs::read_to_string(proc_locks)?;
+    // The kernel prints a held lock and its waiters as one record, but
+    // lists the records a page at a time, letting go of them in between,
+    // so locks coming and going elsewhere can print a record twice or skip
+    // one. A listing missing one of the guard's own locks is read again,
+    // and one that keeps missing it can't say who waits.
+    for _ in 0..LISTING_TRIES {
+        if let Some(waiters) = waiters_in(&fs::read_to_string(proc_locks)?, me, inodes) {
+            return Ok(waiters);
+        }
+    }
+    Err(io::Error::other(
+        "the lock listing keeps missing a lock the guard holds",
+    ))
+}
+
+const LISTING_TRIES: usize = 3;
+
+fn waiters_in(text: &str, me: u32, inodes: &[u64]) -> Option<Vec<i32>> {
     // Each line: id, an arrow for a waiter, kind, mode, access, pid, then
     // major:minor:inode.
     let parse = |line: &str| -> Option<(bool, String, i32, String)> {
@@ -183,11 +200,20 @@ pub fn lock_waiters(proc_locks: &Path, me: u32, inodes: &[u64]) -> io::Result<Ve
         })
         .map(|(_, _, _, file)| file.as_str())
         .collect();
-    Ok(lines
-        .iter()
-        .filter(|(waiting, _, _, file)| *waiting && held.contains(&file.as_str()))
-        .map(|(_, _, pid, _)| *pid)
-        .collect())
+    let shown = |inode: &u64| {
+        held.iter()
+            .any(|file| file.rsplit(':').next() == Some(inode.to_string().as_str()))
+    };
+    if !inodes.iter().all(shown) {
+        return None;
+    }
+    let mut waiters = Vec::new();
+    for (waiting, _, pid, file) in &lines {
+        if *waiting && held.contains(&file.as_str()) && !waiters.contains(pid) {
+            waiters.push(*pid);
+        }
+    }
+    Some(waiters)
 }
 
 /// `PF_KTHREAD` in a process's flags: a kernel thread, which holds no files.

@@ -177,6 +177,7 @@ const LOCKS: &str = "\
 3: FLOCK  ADVISORY  WRITE 900 fd:01:7 0 EOF
 3: -> FLOCK  ADVISORY  WRITE 901 fd:01:7 0 EOF
 4: POSIX  ADVISORY  READ 77 00:23:9 0 EOF
+5: FLOCK  ADVISORY  WRITE 42 00:23:10 0 EOF
 ";
 
 #[test]
@@ -189,12 +190,36 @@ fn waiters_on_the_guards_own_locks_are_found() {
 }
 
 #[test]
-fn locks_no_one_waits_on_have_no_waiters() {
+fn a_lock_no_one_waits_on_has_no_waiters() {
     let root = tempfile::tempdir().unwrap();
     text(root.path(), "locks", LOCKS);
     let locks = root.path().join("locks");
-    assert!(lock_waiters(&locks, 42, &[9]).unwrap().is_empty());
-    assert!(lock_waiters(&locks, 43, &[7]).unwrap().is_empty());
+    assert!(lock_waiters(&locks, 42, &[10]).unwrap().is_empty());
+}
+
+/// The kernel lists locks a page at a time, and other locks coming and
+/// going between pages can skip a record, so a lock the guard holds that
+/// the listing doesn't show means its waiters can't be known.
+#[test]
+fn a_listing_without_a_lock_the_guard_holds_is_an_error() {
+    let root = tempfile::tempdir().unwrap();
+    text(root.path(), "locks", LOCKS);
+    let locks = root.path().join("locks");
+    assert!(lock_waiters(&locks, 42, &[9]).is_err());
+    assert!(lock_waiters(&locks, 43, &[7]).is_err());
+    assert!(lock_waiters(&locks, 42, &[7, 11]).is_err());
+}
+
+/// The same paging can print a record twice.
+#[test]
+fn a_waiter_listed_twice_is_one_waiter() {
+    let root = tempfile::tempdir().unwrap();
+    let twice = format!(
+        "{LOCKS}1: FLOCK  ADVISORY  WRITE 42 00:23:7 0 EOF\n1: -> FLOCK  ADVISORY  WRITE 500 00:23:7 0 EOF\n"
+    );
+    text(root.path(), "locks", &twice);
+    let locks = root.path().join("locks");
+    assert_eq!(lock_waiters(&locks, 42, &[7]).unwrap(), [500]);
 }
 
 #[test]
@@ -221,6 +246,8 @@ fn a_build_waiting_on_a_held_lock_is_seen() {
     assert_eq!(waiters, [me as i32]);
     drop(held);
     waiter.join().unwrap();
+    let again = fs::File::open(&path).unwrap();
+    flock(&again, FlockOperation::LockExclusive).unwrap();
     assert!(
         lock_waiters(Path::new("/proc/locks"), me, &[inode])
             .unwrap()
