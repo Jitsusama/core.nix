@@ -114,7 +114,7 @@ kernel guide][2] says what that catches.
 | `spotify-draws-in-the-theme`      | Spotify's client is built in the theme's colours and faces |
 | `spotify-player-accepts-its-configuration` | spotify-player starts with its settings          |
 | `tuple-shares-through-the-portal` | Tuple reads the portal setting where the switch writes it |
-| `git-settings-stay-writable`      | programs write git's settings, and the declared ones win |
+| `git-settings-stay-writable`      | programs write git's settings and the declared ones still win |
 | `neovim-starts-in-the-theme`      | Neovim starts in bamboo, transparent, without a complaint |
 | `cargo-links-with-mold`           | cargo links an account's Rust builds with mold            |
 | `btrfs-reclaims-its-chunks`       | tmpfiles turns Btrfs's reclaim on for data and metadata   |

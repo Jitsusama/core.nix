@@ -3,9 +3,14 @@
 # git then reads after everything a program wrote. Run on every switch, which
 # puts the include back at the end after something added a section below it.
 #
-# Usage: declared-last <declared file> <global file>
+# A program that includes its own file from the global one adds the include
+# when it doesn't find it there, below the declared settings, so the files
+# named after these two are included first, ahead of them.
+#
+# Usage: declared-last <declared file> <global file> [program file...]
 declared=$1
 global=$2
+shift 2
 
 if [ -L "$global" ]; then
   echo "$global is a link, so git can't write to it; leaving it as it is" >&2
@@ -16,11 +21,19 @@ fi
 escaped=$(printf '%s' "$declared" | sed 's/[\\"]/\\&/g')
 include=$(printf '[include]\n\tpath = "%s"' "$escaped")
 
-if [ -f "$global" ] && [ "$(tail -n 2 "$global")" = "$include" ]; then
+touch "$global"
+for program in "$@"; do
+  # A program may have written its path from ~, which git expands.
+  if ! git config --file "$global" --no-includes --get-all include.path |
+    sed "s|^~/|$HOME/|" | grep -qxF "$program"; then
+    git config --file "$global" --add include.path "$program"
+  fi
+done
+
+if [ "$(tail -n 2 "$global")" = "$include" ]; then
   exit 0
 fi
 
-touch "$global"
 status=0
 git config --file "$global" --fixed-value --unset-all include.path "$declared" || status=$?
 # 5 means it wasn't there to remove.
