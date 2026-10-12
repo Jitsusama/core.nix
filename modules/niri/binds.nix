@@ -533,4 +533,25 @@ in
     does = "Take a screenshot of the window";
     action = "screenshot-window;";
   }
+
+  # Sharing, for a call that shares niri's switchable target, which a
+  # program asks for once and which shows what these chords point it at:
+  # Super moves Print from a picture to the share, with Ctrl for the window
+  # and Shift for the screen as above. The share starts blank, so nothing is
+  # shown before it's pointed at something.
+  {
+    chord = "Super+Ctrl+Print";
+    does = "Switch the share to this window";
+    action = "set-dynamic-cast-window;";
+  }
+  {
+    chord = "Super+Shift+Print";
+    does = "Switch the share to this screen";
+    action = "set-dynamic-cast-monitor;";
+  }
+  {
+    chord = "Super+Print";
+    does = "Blank the share";
+    action = "clear-dynamic-cast-target;";
+  }
 ]

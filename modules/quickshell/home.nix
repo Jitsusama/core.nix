@@ -252,6 +252,9 @@ let
       nerd "f489"
     else if lib.hasPrefix "screenshot" action then
       nerd "f0e51"
+    # What the margin shows while the screen is shared.
+    else if lib.hasInfix "dynamic-cast" action then
+      config.jitsusama.theme.glyphs.sharing.glyph
     else if lib.hasInfix "AUDIO_SOURCE" says then
       nerd "f036d"
     else if program == "sh" && lib.hasInfix "wpctl" says then
