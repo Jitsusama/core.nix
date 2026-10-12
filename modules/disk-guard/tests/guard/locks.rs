@@ -1,8 +1,11 @@
 use disk_guard::anchor::Dir;
-use disk_guard::locks::{Hold, hold_cargo};
+use disk_guard::locks::{Hold, hold_cargo, hold_session};
+use std::ffi::OsStr;
 use std::fs::{self, File};
+use std::os::fd::AsRawFd;
 use std::os::unix::fs::symlink;
 use std::path::{Path, PathBuf};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 /// A target as cargo leaves it: a profile for the host, one for a cross
 /// target, and lock files in each.
@@ -59,6 +62,100 @@ fn a_target_cargo_holds_is_busy_and_nothing_stays_held() {
         other.try_lock().is_ok(),
         "a lock taken before the busy one stayed held"
     );
+}
+
+/// rustc's session timestamp: microseconds since the epoch in base 36.
+fn stamp(at: SystemTime) -> String {
+    let mut micros = at.duration_since(UNIX_EPOCH).unwrap().as_micros() as u64;
+    let mut digits = Vec::new();
+    while micros > 0 {
+        digits.push(b"0123456789abcdefghijklmnopqrstuvwxyz"[(micros % 36) as usize]);
+        micros /= 36;
+    }
+    digits.reverse();
+    String::from_utf8(digits).unwrap()
+}
+
+/// A crate's incremental directory with one finished session made at
+/// `made`, and its lock file; answers the session's name.
+fn session(crate_dir: &Path, made: SystemTime) -> String {
+    let prefix = format!("s-{}-1f2e3d", stamp(made));
+    fs::create_dir_all(crate_dir.join(format!("{prefix}-0a1b2c3d"))).unwrap();
+    fs::write(crate_dir.join(format!("{prefix}.lock")), "").unwrap();
+    format!("{prefix}-0a1b2c3d")
+}
+
+/// A POSIX record lock, as rustc takes on its session, or None if held.
+fn posix_lock(path: &Path) -> Option<File> {
+    let file = fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(path)
+        .unwrap();
+    let mut lock: libc::flock = unsafe { std::mem::zeroed() };
+    lock.l_type = libc::F_WRLCK as _;
+    lock.l_whence = libc::SEEK_SET as _;
+    let taken = unsafe { libc::fcntl(file.as_raw_fd(), libc::F_SETLK, &lock) } == 0;
+    taken.then_some(file)
+}
+
+#[test]
+fn an_old_session_nobody_holds_is_held_against_rustc() {
+    let root = tempfile::tempdir().unwrap();
+    let now = SystemTime::now();
+    let name = session(root.path(), now - Duration::from_secs(60));
+    let dir = Dir::open(root.path()).unwrap();
+    let held = held(hold_session(&dir, OsStr::new(&name), now).unwrap());
+    assert_eq!(held.count(), 1);
+    let lock = root
+        .path()
+        .join(format!("{}.lock", name.rsplit_once('-').unwrap().0));
+    assert!(
+        posix_lock(&lock).is_none(),
+        "rustc could lock a session the guard holds"
+    );
+    drop(held);
+    assert!(posix_lock(&lock).is_some(), "the guard didn't let go");
+}
+
+#[test]
+fn a_session_rustc_holds_is_busy() {
+    let root = tempfile::tempdir().unwrap();
+    let now = SystemTime::now();
+    let name = session(root.path(), now - Duration::from_secs(60));
+    let lock = root
+        .path()
+        .join(format!("{}.lock", name.rsplit_once('-').unwrap().0));
+    let _rustc = posix_lock(&lock).unwrap();
+    let dir = Dir::open(root.path()).unwrap();
+    assert!(matches!(
+        hold_session(&dir, OsStr::new(&name), now).unwrap(),
+        Hold::Busy(_)
+    ));
+}
+
+#[test]
+fn a_session_younger_than_ten_seconds_is_busy() {
+    let root = tempfile::tempdir().unwrap();
+    let now = SystemTime::now();
+    let name = session(root.path(), now - Duration::from_secs(5));
+    let dir = Dir::open(root.path()).unwrap();
+    assert!(matches!(
+        hold_session(&dir, OsStr::new(&name), now).unwrap(),
+        Hold::Busy(_)
+    ));
+}
+
+#[test]
+fn a_name_rustc_wouldnt_give_is_busy() {
+    let root = tempfile::tempdir().unwrap();
+    fs::create_dir(root.path().join("s-zz-x")).unwrap();
+    let dir = Dir::open(root.path()).unwrap();
+    let now = SystemTime::now();
+    assert!(matches!(
+        hold_session(&dir, OsStr::new("s-zz-x"), now).unwrap(),
+        Hold::Busy(_)
+    ));
 }
 
 #[test]

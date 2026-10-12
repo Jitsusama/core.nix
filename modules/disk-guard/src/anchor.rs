@@ -158,10 +158,12 @@ impl Dir {
         Ok(child)
     }
 
-    /// Opens one regular file of this directory to read, never through a
-    /// symlink and never waiting on a pipe someone left in its place.
-    pub(crate) fn file(&self, name: &OsStr) -> io::Result<OwnedFd> {
-        let flags = OFlags::RDONLY | OFlags::NOFOLLOW | OFlags::CLOEXEC | OFlags::NONBLOCK;
+    /// Opens one regular file of this directory, to read or to read and
+    /// write, never through a symlink and never waiting on a pipe someone
+    /// left in its place.
+    pub(crate) fn file(&self, name: &OsStr, write: bool) -> io::Result<OwnedFd> {
+        let access = if write { OFlags::RDWR } else { OFlags::RDONLY };
+        let flags = access | OFlags::NOFOLLOW | OFlags::CLOEXEC | OFlags::NONBLOCK;
         let fd = rustix::fs::openat(&self.fd, name, flags, Mode::empty())?;
         let kind = FileType::from_raw_mode(rustix::fs::fstat(&fd)?.st_mode);
         if kind != FileType::RegularFile {
