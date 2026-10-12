@@ -12,6 +12,7 @@
 }:
 let
   enrolment = config.boot.lanzaboote.autoEnrollKeys;
+  lanzabootePackages = lanzaboote.packages.${pkgs.stdenv.hostPlatform.system};
 
   # Leaving Microsoft's keys out makes lanzaboote pass sbctl
   # --yes-this-might-brick-my-machine, which also skips sbctl's refusal to
@@ -57,6 +58,15 @@ in
   boot.lanzaboote = {
     enable = true;
     pkiBundle = "/var/lib/sbctl";
+
+    # The stub turns HWP on before it hashes the kernel and initrd, which
+    # some firmware leaves off with the CPU at its lowest clock. The patch
+    # says why.
+    package = lanzabootePackages.lzbt.override {
+      stub = lanzabootePackages.stub.overrideAttrs (old: {
+        patches = (old.patches or [ ]) ++ [ ./stub-hwp.patch ];
+      });
+    };
 
     # The first boot makes the keys, and systemd-boot enrols them into the
     # firmware on the next, so no key is ever made anywhere else.
