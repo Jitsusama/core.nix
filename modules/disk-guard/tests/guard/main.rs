@@ -1,5 +1,6 @@
 //! The guard's scenarios, one binary so they build once.
 
+mod activity;
 mod anchor;
 mod band;
 mod clock;
