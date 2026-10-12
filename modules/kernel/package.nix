@@ -97,5 +97,12 @@ linux_7_2.override {
       name = "edp-sdp-caps";
       patch = ./edp-sdp-caps.patch;
     }
+    {
+      # Keeps the name of the Wi-Fi network a card joined where networkd
+      # reads it, when the access point names no country. Written here;
+      # docs/kernel.md has the cause.
+      name = "cfg80211-ssid-without-country";
+      patch = ./cfg80211-ssid-without-country.patch;
+    }
   ];
 }

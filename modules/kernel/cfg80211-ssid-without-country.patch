@@ -1,0 +1,69 @@
+wifi: cfg80211: Set the SSID before looking for a country element
+
+Commit c38c70185101 ("wifi: cfg80211: Set SSID if it is not already
+set") sets wdev->u.client.ssid in __cfg80211_connect_result() for a
+connection made without NL80211_CMD_CONNECT, as wpa_supplicant makes one
+through its own SME. It does so at the end of the function, after the
+country element is passed to the regulatory code, and that part returns
+early when the BSS has no country element. An access point without one,
+as hostapd is by default, so leaves the SSID unset for as long as the
+connection lasts: NL80211_CMD_GET_INTERFACE reports
+none, and systemd-networkd can neither show it nor match the link's
+.network file on it.
+
+Set the SSID before looking for the country element.
+
+--- a/net/wireless/sme.c
++++ b/net/wireless/sme.c
+@@ -872,6 +872,25 @@
+ 
+ 	cfg80211_upload_connect_keys(wdev);
+ 
++	if (!wdev->u.client.ssid_len) {
++		rcu_read_lock();
++		for_each_valid_link(cr, link) {
++			u32 ssid_len;
++
++			ssid = ieee80211_bss_get_elem(cr->links[link].bss,
++						      WLAN_EID_SSID);
++
++			if (!ssid || !ssid->datalen)
++				continue;
++
++			ssid_len = min(ssid->datalen, IEEE80211_MAX_SSID_LEN);
++			memcpy(wdev->u.client.ssid, ssid->data, ssid_len);
++			wdev->u.client.ssid_len = ssid_len;
++			break;
++		}
++		rcu_read_unlock();
++	}
++
+ 	rcu_read_lock();
+ 	for_each_valid_link(cr, link) {
+ 		country_elem =
+@@ -897,25 +916,6 @@
+ 				   country_data, country_datalen);
+ 	kfree(country_data);
+ 
+-	if (!wdev->u.client.ssid_len) {
+-		rcu_read_lock();
+-		for_each_valid_link(cr, link) {
+-			u32 ssid_len;
+-
+-			ssid = ieee80211_bss_get_elem(cr->links[link].bss,
+-						      WLAN_EID_SSID);
+-
+-			if (!ssid || !ssid->datalen)
+-				continue;
+-
+-			ssid_len = min(ssid->datalen, IEEE80211_MAX_SSID_LEN);
+-			memcpy(wdev->u.client.ssid, ssid->data, ssid_len);
+-			wdev->u.client.ssid_len = ssid_len;
+-			break;
+-		}
+-		rcu_read_unlock();
+-	}
+-
+ 	return;
+ out:
+ 	for_each_valid_link(cr, link)
