@@ -9,6 +9,7 @@ mod clock;
 mod commands;
 mod config;
 mod coredumps;
+mod decide;
 mod discover;
 mod entries;
 mod finished;
