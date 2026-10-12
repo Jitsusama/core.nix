@@ -69,6 +69,7 @@ fn candidate(path: &Path, occupied: bool) -> Candidate {
         size: 0,
         occupied,
         spent: false,
+        checkout: None,
     }
 }
 

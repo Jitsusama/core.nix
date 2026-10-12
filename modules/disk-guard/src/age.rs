@@ -59,12 +59,17 @@ pub fn last_build(target: &Path, checkout: Option<&Path>) -> f64 {
         .filter_map(|dir| mtime(&dir))
         .reduce(f64::max)
         .or_else(|| mtime(target));
-    let committed = checkout.and_then(head_log).and_then(|log| mtime(&log));
+    let committed = checkout.and_then(last_commit);
     built
         .into_iter()
         .chain(committed)
         .reduce(f64::max)
         .unwrap_or(0.0)
+}
+
+/// When HEAD last moved in the checkout holding `dir`.
+pub fn last_commit(dir: &Path) -> Option<f64> {
+    mtime(&head_log(dir)?)
 }
 
 /// The newest modification time of `path` and everything within `depth`

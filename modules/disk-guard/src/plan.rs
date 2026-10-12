@@ -82,6 +82,8 @@ pub struct Candidate {
     pub occupied: bool,
     /// Its tree is finished or gone.
     pub spent: bool,
+    /// The checkout it was built for, when known.
+    pub checkout: Option<PathBuf>,
 }
 
 /// One candidate a plan takes, by its index among those offered.

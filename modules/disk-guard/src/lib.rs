@@ -14,4 +14,5 @@ pub mod moments;
 pub mod pass;
 pub mod plan;
 pub mod reclaim;
+pub mod trees;
 pub mod units;

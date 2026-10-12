@@ -14,6 +14,7 @@ fn candidate(name: &str, class: Class, idle: f64) -> Candidate {
         size: GIB,
         occupied: false,
         spent: false,
+        checkout: None,
     }
 }
 

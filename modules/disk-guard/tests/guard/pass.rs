@@ -111,6 +111,7 @@ fn targets(count: usize, idle: f64) -> Vec<Candidate> {
             size: GIB,
             occupied: false,
             spent: false,
+            checkout: None,
         })
         .collect()
 }
@@ -299,6 +300,7 @@ fn upkeep_takes_everything_due_on_a_healthy_disk() {
         size: GIB,
         occupied: false,
         spent: false,
+        checkout: None,
     });
     let run = run(
         FakeDisk::new(50 * GIB),

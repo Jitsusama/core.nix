@@ -15,4 +15,5 @@ mod plan;
 #[cfg(target_os = "linux")]
 mod procs;
 mod reclaim;
+mod trees;
 mod units;
