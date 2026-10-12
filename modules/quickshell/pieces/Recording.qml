@@ -1,7 +1,7 @@
 // The screen being recorded straight from niri, as wf-recorder does: true
 // while niri says such a screencast streams, and for how long. The clock
-// ticks only while it's true, so it costs nothing otherwise. A recorder is
-// stopped as Ctrl+C would, so it finishes the file.
+// ticks only while it's true, so it costs nothing otherwise. Recorder.qml
+// starts and stops it.
 import qs
 import Quickshell
 import QtQuick
@@ -9,8 +9,7 @@ import QtQuick
 Piece {
     id: piece
 
-    readonly property var casts: Object.values(Niri.casts)
-        .filter(cast => cast.kind === "WlrScreencopy" && cast.is_active)
+    readonly property var casts: Recorder.casts
     // When it was first seen, since niri doesn't say when it began.
     property real began: 0
     readonly property int seconds: active ? Math.max(0, (clock.date - began) / 1000) : 0
@@ -22,16 +21,12 @@ Piece {
     value: length
     title: "Recording"
     badge: length
-    hint: `Recording the screen, ${length}`
-    context: casts.every(cast => cast.target.Output) ? "the whole screen" : "one window"
+    hint: `Recording ${Recorder.what}, ${length}`
+    context: Recorder.what
     actions: casts.some(cast => cast.pid !== null) ? [{
         glyph: String.fromCodePoint(0xf04db),
         name: "Stop recording",
-        run: () => {
-            for (const cast of casts)
-                if (cast.pid !== null)
-                    Niri.spawn(["kill", "-INT", String(cast.pid)]);
-        }
+        run: () => Recorder.stop()
     }] : []
 
     SystemClock {

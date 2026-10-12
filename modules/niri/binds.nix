@@ -534,6 +534,17 @@ in
     action = "screenshot-window;";
   }
 
+  # A recording, with Alt as the picture that moves: the chord that starts it
+  # stops it (Quickshell's Recorder.qml). With Alt held niri can't tell Shift
+  # or Ctrl on this key, so a region is the launcher's to record, and niri
+  # says where a tiled window sits only to the portal's shares, so a window
+  # isn't recorded on its own.
+  {
+    chord = "Alt+Print";
+    does = "Record the screen, or stop recording";
+    action = ''spawn "qs" "ipc" "call" "recording" "screen";'';
+  }
+
   # Sharing, for a call that shares niri's switchable target, which a
   # program asks for once and which shows what these chords point it at:
   # Super moves Print from a picture to the share, with Ctrl for the window

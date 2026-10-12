@@ -5,9 +5,10 @@
 // many were missed until it's opened. Return goes to the program that sent
 // one, its window if it has one open, or copies what it said when nothing
 // sent it that can be gone to. The right arrow steps into what else can be
-// done: copying what it said, and while it's still on screen, its own
-// actions (Reply, Mark as read) and letting it go, so a notice is driven
-// by the keys as well as by the pointer.
+// done: copying what it said, marking it read or unread, and while it's
+// still on screen, its own actions (Reply, Mark as read) and letting it go,
+// so a notice is driven by the keys as well as by the pointer. Each says
+// whether it's unread beside its age; acting on one reads it.
 import qs
 import Quickshell
 import QtQuick
@@ -55,12 +56,14 @@ Provider {
             hue: notice.hue,
             note: notice.app,
             at: notice.at,
+            unread: !notice.read,
             // The clipboard takes text only while the launcher holds the
             // keys; going to a window waits for the launcher to be gone.
             now: !from.window && !from.entry,
             later: true,
             verbs: () => provider.verbs(notice, said),
             run: () => {
+                Notices.mark(notice.id, true);
                 if (!from.window && !from.entry) {
                     Quickshell.clipboardText = said;
                     return;
@@ -85,7 +88,10 @@ Provider {
             glyph: String.fromCodePoint(/reply/i.test(action.text) ? 0xf045a : 0xf0ce0),
             hue: "action",
             later: true,
-            run: () => action.invoke()
+            run: () => {
+                Notices.mark(notice.id, true);
+                action.invoke();
+            }
         })) : [];
         return offered.concat([thing({
             key: "verb:notice:copy",
@@ -93,7 +99,16 @@ Provider {
             glyph: String.fromCodePoint(0xf018f),
             hue: "action",
             now: true,
-            run: () => Quickshell.clipboardText = said
+            run: () => {
+                Notices.mark(notice.id, true);
+                Quickshell.clipboardText = said;
+            }
+        }), thing({
+            key: "verb:notice:mark",
+            name: notice.read ? "Mark it unread" : "Mark it read",
+            glyph: String.fromCodePoint(notice.read ? 0xf0b92 : 0xf01ef),
+            hue: "action",
+            run: () => Notices.mark(notice.id, !notice.read)
         })], live ? [thing({
             key: "verb:notice:dismiss",
             name: "Let it go",
@@ -109,7 +124,7 @@ Provider {
 
     function aged(rows) {
         for (const row of rows)
-            row.side = ago(row.at);
+            row.side = row.unread ? `unread · ${ago(row.at)}` : ago(row.at);
         return rows;
     }
 
@@ -144,6 +159,15 @@ Provider {
 
     function opened() {
         Notices.seen();
+    }
+
+    // The newest notice still on screen that offers something to do, whose
+    // actions the collection's chord opens on (Launcher.qml's into), as its
+    // card says.
+    function leading() {
+        const index = Notices.history.findIndex(notice => notice.id in Notices.live
+            && Notices.live[notice.id].actions.length > 0);
+        return index < 0 ? null : all[index];
     }
 
     // The notices on screen step aside while this is open, so each is in
