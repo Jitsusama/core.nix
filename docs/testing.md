@@ -57,6 +57,21 @@ quietly stopped holding.
 | `quickshell-restarts-with-its-files` | a switch restarts the shell when a file it reads changes  |
 | `quickshell-opens-programs-through-niri` | programs the shell opens survive the shell restarting |
 | `the-overview-takes-its-pieces` | a machine moves, cuts, retunes and adds the overview's pieces |
+| `quickshell-takes-its-shape-from-the-theme` | every corner and border in the shell is the theme's |
+| `icon-marks-past-the-basic-plane` | an icon mark past U+FFFF reaches the shell whole |
+| `nix-builds-yield-to-the-user` | Nix's builds run at a lower weight than the user's programs |
+
+### The Shell's Logic
+
+Run in Qt's own JavaScript engine, the one the shell runs it in, over cases
+written beside each in `tests/`.
+
+| Check                                 | Proves                                                  |
+| ------------------------------------- | ------------------------------------------------------- |
+| `the-launcher-finds-what-is-meant`    | the right row comes first for each query, within budget |
+| `the-launcher-finds-emoji`            | emoji are found by name and meaning, best first         |
+| `the-launcher-answers-what-is-asked`  | sums, addresses, measures, zones and colours answer     |
+| `the-music-follows-the-player`        | the music is the player that started last, never playerctld's echo |
 | `a-claimed-chord-is-refused`        | a chord two layers claim, or one claims twice, is refused |
 | `a-theme-changes-everything`        | another theme leaves none of the first's colours behind   |
 | `nothing-names-its-own-look`        | no module but the theme's names a colour or a face        |

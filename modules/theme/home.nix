@@ -344,6 +344,11 @@ let
       console = "R";
       means = "the screen is being recorded";
     };
+    playing = {
+      glyph = nerd "f075a";
+      console = "P";
+      means = "music is playing";
+    };
     capitals = {
       glyph = nerd "f0632";
       console = "A";

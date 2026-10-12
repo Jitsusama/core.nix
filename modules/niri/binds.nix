@@ -485,21 +485,23 @@ in
     flags = locked;
   }
   {
+    # The shell's music (Music.qml), so the keys act on the player it
+    # shows, and show what they did.
     chord = "XF86AudioPlay";
-    does = "Play or pause";
-    action = ''spawn "playerctl" "play-pause";'';
+    does = "Play or pause the music";
+    action = ''spawn "qs" "ipc" "call" "music" "toggle";'';
     flags = locked;
   }
   {
     chord = "XF86AudioNext";
     does = "Play the next track";
-    action = ''spawn "playerctl" "next";'';
+    action = ''spawn "qs" "ipc" "call" "music" "next";'';
     flags = locked;
   }
   {
     chord = "XF86AudioPrev";
     does = "Play the previous track";
-    action = ''spawn "playerctl" "previous";'';
+    action = ''spawn "qs" "ipc" "call" "music" "previous";'';
     flags = locked;
   }
   {

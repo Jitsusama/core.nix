@@ -327,6 +327,7 @@ in
           "capslock"
           "sharing"
           "recording"
+          "playing"
         ]
         && piece.battery.low == 15
         && piece.battery.critical == 10
@@ -464,6 +465,23 @@ in
         timeout 60 ${lib.getExe' pkgs.quickshell "qs"} -p shell.qml
         touch $out
       '';
+
+  # The music is the player that matters: of those playing, the last to
+  # start, else the last that played, which a play key resumes, and never
+  # playerctld's echo of another, as tests/music.qml lists them, with where
+  # in the track said as the card says it.
+  the-music-follows-the-player =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "the-music-follows-the-player" { } ''
+      cp ${./tests/music.qml} music.qml
+      cp ${./modules/quickshell/Music.js} Music.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml music.qml
+      touch $out
+    '';
 
   # Shape is a language (docs/design.md, Shape and Kinds): a border's width
   # says "this is a thing" and a radius says whole or part, so no surface
