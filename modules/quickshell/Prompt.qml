@@ -8,7 +8,9 @@
 // A secret's aside says when caps lock is on, its glyph in the warning
 // colour, since a password typed in capitals fails with no reason given.
 // Chips before what's typed hold what's being acted on: a thing, then a verb
-// waiting for its target.
+// waiting for its target. They share what the line has once what's typed
+// has room for its hint: a short one keeps its width, the others split what
+// remains, and one too long for its share ends in an ellipsis.
 import QtQuick
 
 Item {
@@ -31,6 +33,12 @@ Item {
     // What's being acted on, each drawn as a chip: { text }.
     property var chips: []
     property alias text: input.text
+
+    // Where what's typed has to end: before the aside, and before caps
+    // lock's glyph when it shows.
+    readonly property real end: said === "" ? width - Theme.space.l
+        : asideText.x - Theme.space.xl
+            - (capitals ? Theme.space.s + capitalsGlyph.implicitWidth : 0)
 
     // Return, or Shift+Return, which asks for it below the focused window.
     signal accepted(bool below)
@@ -84,6 +92,28 @@ Item {
         font.pointSize: Theme.mono.large
     }
 
+    FontMetrics {
+        id: chipFace
+        font.family: Theme.mono.family
+        font.pointSize: Theme.mono.large
+    }
+
+    // Each chip's words' width: what it needs where it fits, and otherwise
+    // an even share of what the shorter ones leave.
+    readonly property var fitted: {
+        const typing = Math.max(chipFace.advanceWidth(hint), 12 * chipFace.averageCharacterWidth);
+        let left = Math.max(0, end - Theme.space.l - glyphWidth - Theme.space.m - typing
+            - Theme.space.s * Math.max(0, chips.length - 1) - 2 * Theme.space.m * chips.length);
+        const wanted = chips.map(chip => Math.ceil(chipFace.advanceWidth(chip.text)) + 1);
+        const given = wanted.slice();
+        const order = wanted.map((_, index) => index).sort((a, b) => wanted[a] - wanted[b]);
+        order.forEach((index, done) => {
+            given[index] = Math.min(wanted[index], Math.floor(left / (order.length - done)));
+            left -= given[index];
+        });
+        return given;
+    }
+
     // A chip is a part of the frame, so its corners are the part's radius,
     // raised from the surface and set in the strong colour.
     Row {
@@ -97,8 +127,9 @@ Item {
 
             Rectangle {
                 required property var modelData
+                required property int index
 
-                width: chipText.implicitWidth + 2 * Theme.space.m
+                width: chipText.width + 2 * Theme.space.m
                 height: Theme.space.xxl
                 radius: Theme.inner
                 color: Theme.raised
@@ -106,7 +137,9 @@ Item {
                 Text {
                     id: chipText
                     anchors.centerIn: parent
+                    width: prompt.fitted[index] ?? implicitWidth
                     text: modelData.text
+                    elide: Text.ElideRight
                     color: Theme.strong
                     font.family: Theme.mono.family
                     font.pointSize: Theme.mono.large
@@ -119,9 +152,7 @@ Item {
         id: input
         x: Theme.space.l + prompt.glyphWidth
             + (prompt.chips.length > 0 ? held.width + Theme.space.m : 0)
-        width: (prompt.said === "" ? parent.width - Theme.space.l
-            : asideText.x - Theme.space.xl - (prompt.capitals
-                ? Theme.space.s + capitalsGlyph.implicitWidth : 0)) - x
+        width: prompt.end - x
         anchors.verticalCenter: parent.verticalCenter
         focus: true
         clip: true

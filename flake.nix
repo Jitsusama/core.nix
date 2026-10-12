@@ -107,6 +107,7 @@
         keys = ./modules/keys/home.nix;
         kitty = ./modules/kitty/home.nix;
         lsd = ./modules/lsd/home.nix;
+        mpv = ./modules/mpv/home.nix;
         neovim = moduleFrom ./modules/neovim/home.nix { inherit neovim-pi; };
         niri = ./modules/niri/home.nix;
         nixfmt = ./modules/nixfmt/home.nix;
@@ -167,6 +168,7 @@
         lanzaboote = moduleFrom ./modules/lanzaboote/nixos.nix { inherit lanzaboote; };
         libvirt = ./modules/libvirt/nixos.nix;
         memory = ./modules/memory/nixos.nix;
+        mpv = ./modules/mpv/nixos.nix;
         networkmanager = ./modules/networkmanager/nixos.nix;
         niri = ./modules/niri/nixos.nix;
         nix-daemon = ./modules/nix-daemon/nixos.nix;
