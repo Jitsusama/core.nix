@@ -24,6 +24,7 @@
 // and the player and where in the track in the footer. It's no message, so
 // it isn't kept; a click lets it go.
 import Quickshell
+import Quickshell.Io
 import Quickshell.Services.Notifications
 import Quickshell.Wayland
 import QtQuick
@@ -66,6 +67,17 @@ Scope {
     SystemClock {
         id: clock
         precision: SystemClock.Minutes
+    }
+
+    // Super+Shift+N puts every card away, as a click on each would, so each
+    // stays unread where Super+N finds it.
+    IpcHandler {
+        target: "notices"
+
+        function putAway(): void {
+            for (const notification of server.trackedNotifications.values.slice())
+                notification.dismiss();
+        }
     }
 
     NotificationServer {

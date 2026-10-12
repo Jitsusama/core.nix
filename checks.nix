@@ -416,6 +416,21 @@ in
       touch $out
     '';
 
+  # The region picker's keys halve, move, push and pull its box, and letters
+  # name the grid's cells, as tests/picking.qml says, in Qt's own engine.
+  the-picker-picks-what-the-keys-say =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "the-picker-picks-what-the-keys-say" { } ''
+      cp ${./tests/picking.qml} picking.qml
+      cp ${./modules/quickshell/Picking.js} Picking.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml ${qt}/bin/qml picking.qml
+      touch $out
+    '';
+
   # Do not disturb holds notices while the screen is shared and lets them go
   # after, as tests/quiet.qml drives it through Quickshell itself, with
   # niri's casts, the notices and the shell's options stood in for.
