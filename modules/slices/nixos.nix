@@ -18,14 +18,23 @@
 # the rest saturates every core, a virtual machine's build say: a light task
 # in a terminal then waited at most 7 ms, and a heavy one gets what is left.
 #
-# session.slice holds about 350 MiB, so a 1 GiB floor keeps it in memory
-# however hard a build pushes. The kernel protects a slice only as far as each
-# slice above it is protected, so every one on the way down claims the same
-# floor, and none of it goes anywhere else.
+# session.slice peaks at about 400 MiB, so a 1 GiB floor keeps it in memory
+# however hard a build pushes. The floor is a hard one, MemoryMin: the kernel
+# takes a soft one, MemoryLow, back whenever it finds nothing else to take, and
+# when an evaluation filled a 61 GiB laptop it did so 215,001 times, leaving
+# two thirds of niri in swap. niri then read keys up to 281 ms late, and past
+# the 200 ms repeat delay a program takes a key that was let go as held. In a
+# 4 GiB virtual machine with zram and a swapfile behind it, a program reading
+# keys in session.slice, with 200 MiB it touches a little of on each one, read
+# them at most 728 ms late under a 5 GB hog and 5.3 s under a 6 GB one with
+# the soft floor, and at most 7.3 ms under either with the hard one. The
+# kernel protects a slice only as far as each slice above it is protected, so
+# every one on the way down claims the same floor, and none of it goes
+# anywhere else.
 {
   systemd.user.slices.session.sliceConfig = {
     CPUWeight = 1000;
-    MemoryLow = "1G";
+    MemoryMin = "1G";
   };
 
   # A drop-in for every kitty-<pid>-<n>.scope, which kitty makes as it opens
@@ -38,13 +47,13 @@
     '';
   };
 
-  systemd.slices.user.sliceConfig.MemoryLow = "1G";
+  systemd.slices.user.sliceConfig.MemoryMin = "1G";
 
   # Every account's user-<uid>.slice, which logind makes as it logs in.
   systemd.slices."user-" = {
     overrideStrategy = "asDropin";
-    sliceConfig.MemoryLow = "1G";
+    sliceConfig.MemoryMin = "1G";
   };
 
-  systemd.services."user@".serviceConfig.MemoryLow = "1G";
+  systemd.services."user@".serviceConfig.MemoryMin = "1G";
 }

@@ -707,19 +707,20 @@ in
 
   # The kernel protects session.slice's memory only as far as every slice
   # above it is protected, so a floor one of them lacks is a floor nobody has,
-  # and nothing says so.
+  # and nothing says so. Only a hard floor counts: the kernel takes a soft one
+  # back under pressure, and the compositor reads keys late.
   session-memory-is-protected =
     let
       inherit (graphical.config) systemd;
       floors = [
-        systemd.user.slices.session.sliceConfig.MemoryLow or null
-        systemd.slices.user.sliceConfig.MemoryLow or null
-        systemd.slices."user-".sliceConfig.MemoryLow or null
-        systemd.services."user@".serviceConfig.MemoryLow or null
+        systemd.user.slices.session.sliceConfig.MemoryMin or null
+        systemd.slices.user.sliceConfig.MemoryMin or null
+        systemd.slices."user-".sliceConfig.MemoryMin or null
+        systemd.services."user@".serviceConfig.MemoryMin or null
       ];
     in
     holds "session-memory-is-protected"
-      "A slice above session.slice lacks its memory floor, so session.slice has none."
+      "A slice above session.slice lacks its hard memory floor, so session.slice has none."
       (lib.all (floor: floor != null && floor == lib.head floors) floors);
 
   # Nix's builds yield to the user's programs only if their slice sits beside
@@ -868,6 +869,7 @@ in
         cp ${files."niri/config.kdl".source} niri/config.kdl
         cp ${files."niri/theme.kdl".source} niri/theme.kdl
         cp ${files."niri/binds.kdl".source} niri/binds.kdl
+        cp ${files."niri/keyboard.kdl".source} niri/keyboard.kdl
         niri validate --config niri/config.kdl
         touch $out
       '';
