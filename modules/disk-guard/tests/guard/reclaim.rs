@@ -36,7 +36,7 @@ impl Looker for Script {
 }
 
 /// A built target under a root, with cargo's lock and a benchmark baseline.
-fn built(root: &Path) -> PathBuf {
+pub(crate) fn built(root: &Path) -> PathBuf {
     let target = root.join("app/target");
     for dir in [
         "debug/deps",

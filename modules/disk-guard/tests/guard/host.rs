@@ -1,9 +1,13 @@
 use crate::procs::{LOCKS, link, stat, text};
 use disk_guard::activity::Use;
-use disk_guard::host::Scan;
+use disk_guard::host::{Filesystem, Reclaim, Scan};
+use disk_guard::pass::{Disk, Outcome, Reclaimer};
+use disk_guard::plan::{Candidate, Class};
 use disk_guard::reclaim::Looker;
+use disk_guard::survey::{Action, Offer};
+use std::fs;
 use std::path::Path;
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
 /// A readable process sitting in `cwd`, in a fake `/proc`.
 fn sitting(proc: &Path, pid: u32, cwd: &str) {
@@ -68,6 +72,151 @@ fn waiters_are_read_from_the_lock_listing() {
     text(proc.path(), "locks", LOCKS);
     let mut scan = Scan::new(proc.path(), &proc.path().join("locks"), 42, Duration::ZERO);
     assert_eq!(scan.waiters(&[7]).unwrap(), [500]);
+}
+
+fn offer(path: &Path, class: Class, action: Action) -> Offer {
+    Offer {
+        candidate: Candidate {
+            path: path.to_owned(),
+            class,
+            idle: 0.0,
+            size: 0,
+            occupied: false,
+            spent: false,
+            checkout: None,
+        },
+        action,
+        device: 0,
+    }
+}
+
+/// A scan of a `/proc` with nothing in it, so nothing is in use, that
+/// reads the real lock listing as this process, which takes the locks.
+fn empty_scan(proc: &Path) -> Scan {
+    Scan::new(
+        proc,
+        Path::new("/proc/locks"),
+        std::process::id(),
+        Duration::ZERO,
+    )
+}
+
+#[test]
+fn each_offer_is_reclaimed_as_its_action_says() {
+    let proc = tempfile::tempdir().unwrap();
+    let root = tempfile::tempdir().unwrap();
+    let root = fs::canonicalize(root.path()).unwrap();
+    let target = crate::reclaim::built(&root);
+    let crate_dir = root.join("app/target/debug/incremental/app-1a2b3c");
+    crate::locks::session(&crate_dir, SystemTime::now() - Duration::from_secs(3600));
+    let scratch = root.join("scratch/run-1");
+    fs::create_dir_all(&scratch).unwrap();
+    fs::write(scratch.join("out"), "x").unwrap();
+    let trash = root.join("Trash");
+    fs::create_dir_all(trash.join("files")).unwrap();
+    fs::create_dir_all(trash.join("info")).unwrap();
+    fs::write(trash.join("files/old.txt"), "old").unwrap();
+    fs::write(trash.join("info/old.txt.trashinfo"), "[Trash Info]\n").unwrap();
+    let offers = [
+        offer(
+            &crate_dir,
+            Class::Variant,
+            Action::Variant { root: root.clone() },
+        ),
+        offer(
+            &target,
+            Class::Target,
+            Action::Target { root: root.clone() },
+        ),
+        offer(
+            &scratch,
+            Class::Scratch { healthy: None },
+            Action::Entry {
+                root: root.join("scratch"),
+            },
+        ),
+        offer(
+            &trash.join("files/old.txt"),
+            Class::Trash,
+            Action::Trash {
+                trash: trash.clone(),
+            },
+        ),
+    ];
+    let mut scan = empty_scan(proc.path());
+    let mut reclaim = Reclaim::new(&offers, &mut scan);
+    for offered in &offers {
+        assert_eq!(
+            reclaim.reclaim(&offered.candidate),
+            Outcome::Reclaimed,
+            "{:?}",
+            offered.action
+        );
+    }
+    assert!(!crate_dir.exists());
+    assert_eq!(
+        fs::read_dir(&target).unwrap().count(),
+        1,
+        "only the benchmarks are left"
+    );
+    assert!(!scratch.exists());
+    assert!(!trash.join("files/old.txt").exists());
+    assert!(!trash.join("info/old.txt.trashinfo").exists());
+}
+
+#[test]
+fn a_workspace_goes_and_its_worktrees_are_pruned() {
+    use crate::finished::git;
+    let proc = tempfile::tempdir().unwrap();
+    let root = tempfile::tempdir().unwrap();
+    let root = fs::canonicalize(root.path()).unwrap();
+    let (repo, workspace) = crate::workspaces::linked_fixture(&root);
+    let offers = [offer(
+        &workspace,
+        Class::Workspace,
+        Action::Workspace { root: root.clone() },
+    )];
+    let mut scan = empty_scan(proc.path());
+    let mut reclaim = Reclaim::new(&offers, &mut scan);
+    assert_eq!(reclaim.reclaim(&offers[0].candidate), Outcome::Reclaimed);
+    assert!(!workspace.exists());
+    let listed = git(&repo, &["worktree", "list", "--porcelain"]);
+    assert_eq!(listed.matches("worktree ").count(), 1, "{listed}");
+    assert!(reclaim.notes().is_empty());
+}
+
+#[test]
+fn a_candidate_no_offer_names_fails_untouched() {
+    let proc = tempfile::tempdir().unwrap();
+    let root = tempfile::tempdir().unwrap();
+    let stray = root.path().join("stray");
+    fs::create_dir_all(&stray).unwrap();
+    let mut scan = empty_scan(proc.path());
+    let mut reclaim = Reclaim::new(&[], &mut scan);
+    let named = offer(
+        &stray,
+        Class::Temp,
+        Action::Entry {
+            root: root.path().to_owned(),
+        },
+    );
+    assert!(matches!(
+        reclaim.reclaim(&named.candidate),
+        Outcome::Failed(_)
+    ));
+    assert!(stray.exists());
+}
+
+#[test]
+fn a_filesystem_is_measured_and_settled_where_it_lies() {
+    let root = tempfile::tempdir().unwrap();
+    let mut disk = Filesystem::new(root.path());
+    let space = disk.space().unwrap();
+    assert!(space.total > 0 && space.free <= space.total);
+    disk.settle().unwrap();
+    let before = disk.now();
+    std::thread::sleep(Duration::from_millis(5));
+    assert!(disk.now() > before);
 }
 
 #[test]

@@ -143,7 +143,7 @@ fn a_live_quests_workspace_is_no_candidate() {
 
 /// A repository outside the workspace with a worktree linked into it, a
 /// clone of its own inside, and a repository whose worktree is also inside.
-fn linked_fixture(root: &Path) -> (PathBuf, PathBuf) {
+pub(crate) fn linked_fixture(root: &Path) -> (PathBuf, PathBuf) {
     use crate::finished::git;
     let repo = root.join("repo");
     let workspace = root.join("QEST-20261012-ABC123");
