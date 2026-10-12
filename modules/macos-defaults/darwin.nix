@@ -1,3 +1,6 @@
+let
+  repeat = import ../keyboard/repeat.nix;
+in
 {
   system.defaults = {
     CustomUserPreferences = {
@@ -39,7 +42,10 @@
       AppleICUForce24HourTime = true;
       AppleInterfaceStyle = "Dark";
       AppleShowAllExtensions = true;
-      KeyRepeat = 2;
+      # macOS counts both in steps of 15 ms: the wait before the first
+      # repeat, and the wait between repeats.
+      InitialKeyRepeat = builtins.floor (repeat.delay / 15.0 + 0.5);
+      KeyRepeat = builtins.floor (1000.0 / repeat.rate / 15 + 0.5);
       NSAutomaticCapitalizationEnabled = false;
       NSAutomaticPeriodSubstitutionEnabled = false;
       "com.apple.trackpad.forceClick" = true;

@@ -1,10 +1,12 @@
 // Joel's niri: how it behaves. home.nix writes the rest beside it: the
-// colours, spaces and animations in theme.kdl, from jitsusama.theme, and the
-// shortcuts in binds.kdl, from binds.nix. niri's own guide to every section:
+// colours, spaces and animations in theme.kdl, from jitsusama.theme, the
+// shortcuts in binds.kdl, from binds.nix, and how a held key repeats in
+// keyboard.kdl, from ../keyboard/repeat.nix. niri's own guide to every section:
 // https://github.com/niri-wm/niri/wiki/Configuration:-Introduction
 
 include "theme.kdl"
 include "binds.kdl"
+include "keyboard.kdl"
 
 input {
     keyboard {
@@ -13,8 +15,6 @@ input {
         xkb {
             layout "us"
         }
-        repeat-delay 200
-        repeat-rate 40
     }
 
     // As on his Mac: press to click, two fingers for the right button, and

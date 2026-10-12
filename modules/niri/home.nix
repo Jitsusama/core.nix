@@ -1,6 +1,7 @@
 # Joel's niri: config.kdl says how it behaves, theme.kdl, written here from
-# jitsusama.theme, how it looks, and binds.kdl, written here from
-# jitsusama.niri.binds, what its keys do. The binds also go into the keyboard
+# jitsusama.theme, how it looks, binds.kdl, written here from
+# jitsusama.niri.binds, what its keys do, and keyboard.kdl, written here from
+# modules/keyboard/repeat.nix, how a held key repeats, as a Mac's does. The binds also go into the keyboard
 # map (modules/keys), which refuses a chord another layer claims.
 #
 # config.kdl is text a machine can add to, with lib.mkAfter, such as a
@@ -146,6 +147,19 @@ in
   ) binds;
 
   config.xdg.configFile."niri/config.kdl".text = builtins.readFile ./config.kdl;
+
+  config.xdg.configFile."niri/keyboard.kdl".text =
+    let
+      repeat = import ../keyboard/repeat.nix;
+    in
+    ''
+      input {
+          keyboard {
+              repeat-delay ${toString repeat.delay}
+              repeat-rate ${toString repeat.rate}
+          }
+      }
+    '';
 
   config.xdg.configFile."niri/binds.kdl".text = ''
     binds {

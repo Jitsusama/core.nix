@@ -869,6 +869,7 @@ in
         cp ${files."niri/config.kdl".source} niri/config.kdl
         cp ${files."niri/theme.kdl".source} niri/theme.kdl
         cp ${files."niri/binds.kdl".source} niri/binds.kdl
+        cp ${files."niri/keyboard.kdl".source} niri/keyboard.kdl
         niri validate --config niri/config.kdl
         touch $out
       '';
