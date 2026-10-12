@@ -1,0 +1,9 @@
+# GIMP's system preferences, which it reads before the account's own gimprc,
+# so anything set in Preferences still wins. home.nix adds the lines that
+# come from the theme. Every key is described in GIMP's own copy of this file:
+# etc/gimp/3.0/gimprc in the package.
+
+# No dialog at start, and no help button beside every dialog's own: F1 still
+# opens GIMP's manual.
+(show-welcome-dialog no)
+(show-help-button no)

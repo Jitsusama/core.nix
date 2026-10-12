@@ -38,6 +38,11 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
     wallpapers.url = "github:Jitsusama/wallpapers.nix";
+    # Builds Spotify's client with the theme's colours in it.
+    spicetify-nix = {
+      url = "github:Gerg-L/spicetify-nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
     neovim-pi = {
       url = "github:Jitsusama/neovim.pi";
       flake = false;
@@ -55,6 +60,7 @@
       disko,
       wallpapers,
       neovim-pi,
+      spicetify-nix,
     }:
     let
       systems = [
@@ -88,6 +94,7 @@
         fzf = ./modules/fzf/home.nix;
         gh = ./modules/gh/home.nix;
         ghostty = moduleFrom ./modules/ghostty/home.nix { inherit wallpapers; };
+        gimp = ./modules/gimp/home.nix;
         git = ./modules/git/home.nix;
         glow = ./modules/glow/home.nix;
         gnupg = ./modules/gnupg/home.nix;
@@ -95,6 +102,7 @@
         home-manager = ./modules/home-manager/home.nix;
         homebrew = ./modules/homebrew/home.nix;
         identity = ./modules/identity/home.nix;
+        inkscape = ./modules/inkscape/home.nix;
         jq = ./modules/jq/home.nix;
         keys = ./modules/keys/home.nix;
         kitty = ./modules/kitty/home.nix;
@@ -108,12 +116,14 @@
         quickshell = moduleFrom ./modules/quickshell/home.nix { inherit wallpapers; };
         ripgrep = ./modules/ripgrep/home.nix;
         signing = ./modules/signing/home.nix;
+        spotify = moduleFrom ./modules/spotify/home.nix { inherit spicetify-nix; };
         ssh-tpm-agent = ./modules/ssh-tpm-agent/home.nix;
         swayidle = ./modules/swayidle/home.nix;
         telnet = ./modules/telnet/home.nix;
         theme = ./modules/theme/home.nix;
         tree = ./modules/tree/home.nix;
         tree-sitter = ./modules/tree-sitter/home.nix;
+        tuple = ./modules/tuple/home.nix;
         wezterm = moduleFrom ./modules/wezterm/home.nix { inherit wallpapers; };
         yq = ./modules/yq/home.nix;
         zellij = ./modules/zellij/home.nix;
@@ -150,6 +160,7 @@
         gpu = ./modules/gpu/nixos.nix;
         greetd = ./modules/greetd/nixos.nix;
         home-manager = moduleFrom ./modules/home-manager/nixos.nix { inherit home-manager; };
+        inkscape = ./modules/inkscape/nixos.nix;
         kernel = ./modules/kernel/nixos.nix;
         keyboard = ./modules/keyboard/nixos.nix;
         keyd = ./modules/keyd/nixos.nix;

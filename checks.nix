@@ -327,6 +327,7 @@ in
           "capslock"
           "sharing"
           "recording"
+          "playing"
         ]
         && piece.battery.low == 15
         && piece.battery.critical == 10
@@ -464,6 +465,23 @@ in
         timeout 60 ${lib.getExe' pkgs.quickshell "qs"} -p shell.qml
         touch $out
       '';
+
+  # The music is the player that matters: of those playing, the last to
+  # start, else the last that played, which a play key resumes, and never
+  # playerctld's echo of another, as tests/music.qml lists them, with where
+  # in the track said as the card says it.
+  the-music-follows-the-player =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "the-music-follows-the-player" { } ''
+      cp ${./tests/music.qml} music.qml
+      cp ${./modules/quickshell/Music.js} Music.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml music.qml
+      touch $out
+    '';
 
   # Shape is a language (docs/design.md, Shape and Kinds): a border's width
   # says "this is a thing" and a radius says whole or part, so no surface
@@ -829,6 +847,160 @@ in
         kitty +runpy 'from kitty.config import load_config; import sys; load_config(sys.argv[-1])' \
           kitty/kitty.conf > complaints 2>&1
         if [ -s complaints ]; then cat complaints; exit 1; fi
+        touch $out
+      '';
+
+    # GIMP reads the files an account gets as it would at start: its system
+    # preferences, where only GIMP's own copy of gimprc says a key exists; the
+    # theme's palette, by name, with every pigment; and the stylesheet, which
+    # GTK, GIMP's own copy, refuses if it can't parse it. A colour GIMP's
+    # theme stops naming would be redefined to no effect, so the names have to
+    # be the theme's exactly.
+    gimp-accepts-its-configuration =
+      let
+        home = account graphical;
+        inherit (home.jitsusama.theme) title appearance palette;
+        gimp = lib.findFirst (package: lib.getName package == "gimp") null home.home.packages;
+        folder = "${home.xdg.configHome}/GIMP/3.2";
+        files = home.home.file;
+        reads = pkgs.writeText "reads.py" ''
+          import gi
+          gi.require_version("Gtk", "3.0")
+          from gi.repository import Gimp, Gtk
+          assert Gimp.gimprc_query("theme-color-scheme") == "${appearance}", "no colour scheme"
+          assert Gimp.gimprc_query("show-help-button") == "no", "no system gimprc"
+          palette = Gimp.Palette.get_by_name("${title}")
+          assert palette is not None, "no ${title} palette"
+          assert palette.get_color_count() == ${toString (lib.length (lib.attrNames palette))}, "pigments missing"
+          Gtk.CssProvider().load_from_path("GIMP/3.2/gimp.css")
+          open("read", "w").close()
+        '';
+      in
+      pkgs.runCommandLocal "gimp-accepts-its-configuration" { nativeBuildInputs = [ gimp ]; } ''
+        export HOME=$PWD XDG_CONFIG_HOME=$PWD
+        mkdir -p GIMP/3.2/palettes
+        cp ${files."${folder}/gimp.css".source} GIMP/3.2/gimp.css
+        cp ${files."${folder}/palettes/${title}.gpl".source} "GIMP/3.2/palettes/${title}.gpl"
+        gimp-console -i --no-fonts --batch-interpreter=python-fu-eval -b - --quit < ${reads} \
+          > said 2>&1 || true
+        if [ ! -e read ] || grep -i 'gimprc' said; then cat said; exit 1; fi
+        grep -o '@define-color [a-z-]*' ${gimp}/share/gimp/3.0/themes/Default/gimp-${appearance}.css \
+          | sort > theirs
+        grep -o '@define-color [a-z-]*' GIMP/3.2/gimp.css | sort > ours
+        diff theirs ours
+        touch $out
+      '';
+
+    # Inkscape starts a new drawing from the account's profile, on the theme's
+    # desk: a template it can't find leaves its own grey one without a word.
+    # Inkscape draws nothing without a screen, so GTK reads the stylesheet
+    # instead, refusing what it can't parse, and every name it recolours has
+    # to be one Inkscape's own stylesheets still use.
+    inkscape-accepts-its-configuration =
+      let
+        home = account graphical;
+        inherit (home.jitsusama.theme) roles;
+        inkscape = lib.findFirst (
+          package: lib.getName package == "inkscape-with-extensions"
+        ) null home.home.packages;
+        profile = "${home.xdg.configHome}/inkscape";
+        files = home.home.file;
+        python = pkgs.python3.withPackages (packages: [ packages.pygobject3 ]);
+        typelibs = lib.makeSearchPath "lib/girepository-1.0" [
+          pkgs.gtk3
+          pkgs.gdk-pixbuf
+          pkgs.pango.out
+          pkgs.harfbuzz
+          pkgs.at-spi2-core
+          pkgs.gobject-introspection
+        ];
+        parses = pkgs.writeText "parses.py" ''
+          import gi, sys
+          gi.require_version("Gtk", "3.0")
+          from gi.repository import Gtk
+          Gtk.CssProvider().load_from_path(sys.argv[1])
+        '';
+      in
+      pkgs.runCommandLocal "inkscape-accepts-its-configuration"
+        {
+          nativeBuildInputs = [
+            inkscape
+            python
+          ];
+        }
+        ''
+          export HOME=$PWD INKSCAPE_PROFILE_DIR=$PWD/profile
+          mkdir -p profile/ui profile/templates
+          cp ${files."${profile}/ui/user.css".source} profile/ui/user.css
+          cp ${files."${profile}/templates/default.svg".source} profile/templates/default.svg
+          inkscape --actions='file-new;export-filename:new.svg;export-do' > said 2>&1 || true
+          if ! grep -q 'inkscape:deskcolor="${roles.sunken}"' new.svg; then cat said; exit 1; fi
+          GI_TYPELIB_PATH=${typelibs} python3 ${parses} profile/ui/user.css
+          sed -n -E 's/^ *([^ /*].*[^ ]) *[{,]$/\1/p' profile/ui/user.css > selectors
+          while read -r selector; do
+            if ! grep -q -F -- "$selector" ${inkscape}/share/inkscape/ui/*.css; then
+              echo "Inkscape's stylesheets no longer use $selector"
+              exit 1
+            fi
+          done < selectors
+          touch $out
+        '';
+
+    # Spotify's client is built in the theme: Spicetify patches the client
+    # it's given, and one it can't patch, such as a newer Spotify than it
+    # knows, would draw in Spotify's own colours. So the check looks for the
+    # theme's background and faces in the client the account gets, and for
+    # the page loading them.
+    spotify-draws-in-the-theme =
+      let
+        home = account graphical;
+        inherit (home.jitsusama.theme) roles font;
+        client = "${home.programs.spicetify.spicedSpotify}/share/spotify/Apps/xpui";
+      in
+      pkgs.runCommandLocal "spotify-draws-in-the-theme" { } ''
+        grep -q -F -- '--spice-main: ${lib.toLower roles.background};' ${client}/colors.css
+        grep -q -F -- '--encore-body-font-stack: "${font.sans.family}"' ${client}/user.css
+        grep -q "href='colors.css'" ${client}/index.html
+        grep -q "href='user.css'" ${client}/index.html
+        touch $out
+      '';
+
+    # spotify-player reads its settings before anything else and stops at a
+    # value it can't use; it ignores a setting it doesn't know.
+    spotify-player-accepts-its-configuration =
+      let
+        home = account graphical;
+        files = home.xdg.configFile;
+      in
+      pkgs.runCommandLocal "spotify-player-accepts-its-configuration"
+        { nativeBuildInputs = [ home.programs.spotify-player.package ]; }
+        ''
+          export HOME=$PWD
+          mkdir config cache
+          cp ${files."spotify-player/app.toml".source} config/app.toml
+          spotify_player -c config -C cache features
+          touch $out
+        '';
+
+    # Tuple shares a screen through the portal: the switch writes the setting
+    # where Tuple keeps it, and Tuple, which ignores a folder it doesn't know
+    # and a value not written as it writes one, has to read it back. So the
+    # check runs the switch's own steps, with the data folder moved here.
+    tuple-shares-through-the-portal =
+      let
+        home = account graphical;
+        tuple = lib.findFirst (package: lib.getName package == "tuple") null home.home.packages;
+        data = home.xdg.dataHome;
+      in
+      pkgs.runCommandLocal "tuple-shares-through-the-portal" { nativeBuildInputs = [ tuple ]; } ''
+        export HOME=$PWD XDG_DATA_HOME=$PWD/data XDG_RUNTIME_DIR=$PWD/run
+        mkdir -m 700 run
+        sed -n '\|^run .*${lib.escapeRegex data}/tuple/|{s|^run ||;s|${data}|'"$PWD"'/data|g;p}' \
+          ${home.home.activationPackage}/activate > steps
+        sh -e steps
+        tuple settings > said 2>&1 || true
+        tuple off > /dev/null 2>&1 || true
+        if ! grep -q '^capture | portal |' said; then cat said; exit 1; fi
         touch $out
       '';
 

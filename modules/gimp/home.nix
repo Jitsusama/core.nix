@@ -1,0 +1,115 @@
+# GIMP in the theme. GIMP's own theme draws every widget from a handful of
+# named colours, which gimp.css, a stylesheet GIMP reads after its theme and
+# never writes, redefines from jitsusama.theme's roles. The theme's pigments
+# are a palette beside the ones GIMP ships. Both go in GIMP's settings
+# folder; GIMP owns everything else there, such as gimprc, sessionrc and
+# shortcutsrc, which it rewrites and a link would break.
+#
+# GIMP comes with G'MIC's filters and Resynthesizer's healing, and starts
+# with GIMP3_SYSCONFDIR pointing at its own system folder with gimprc
+# replaced by this module's: preferences GIMP reads before the account's
+# own, so a choice made in Preferences still wins.
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
+let
+  inherit (config.jitsusama.theme) roles font appearance;
+
+  # GIMP keeps its settings in a folder for each release series.
+  series = "3.2";
+  folder = "${config.xdg.configHome}/GIMP/${series}";
+
+  # The colours GIMP's theme names, in themes/Default/gimp-dark.css and
+  # gimp-light.css, and what each means here.
+  colours = {
+    fg-color = roles.text;
+    bg-color = roles.background;
+    border-color = roles.edge;
+    dimmed-fg-color = roles.muted;
+    disabled-fg-color = roles.rule;
+    disabled-button-color = roles.raised;
+    hover-color = roles.raised;
+    widget-bg-color = roles.sunken;
+    selected-color = roles.selection;
+    extreme-bg-color = roles.deepest;
+    extreme-selected-color = roles.raised;
+    strong-border-color = roles.edge;
+    stronger-border-color = roles.rule;
+    edge-border-color = roles.edge;
+    scrollbar-slider-color = roles.muted;
+    scrollbar-trough-color = roles.sunken;
+  };
+
+  stylesheet = ''
+    /* GIMP's colours, from jitsusama.theme's roles. */
+    ${lib.concatLines (lib.mapAttrsToList (name: colour: "@define-color ${name} ${colour};") colours)}
+    /* The rulers' marks, drawn faint over the canvas's edge. */
+    @define-color ruler-color alpha(${roles.rule}, 0.3);
+  '';
+
+  gimp = pkgs.gimp3-with-plugins.override {
+    plugins = [
+      pkgs.gimpPlugins.gmic
+      pkgs.gimpPlugins.resynthesizer
+    ];
+  };
+
+  gimprc = pkgs.writeText "gimprc" ''
+    ${builtins.readFile ./gimprc}
+    # From the theme: its colour scheme, and its sans for new text.
+    (theme-color-scheme ${appearance})
+    (default-font "${font.sans.family}")
+  '';
+
+  # GIMP's system folder, with gimprc replaced and the rest as it ships, since
+  # GIMP3_SYSCONFDIR stands in for the whole folder.
+  sysconf = pkgs.runCommandLocal "gimp-sysconf" { } ''
+    mkdir $out
+    for file in ${gimp}/etc/gimp/3.0/*; do
+      ln -s "$file" "$out/$(basename "$file")"
+    done
+    ln -sf ${gimprc} $out/gimprc
+  '';
+
+  # The desktop entry starts gimp-3.2, and gimp and gimp-3 link to it.
+  wrapped = pkgs.symlinkJoin {
+    name = "gimp-${gimp.version}";
+    inherit (gimp) version meta;
+    outputs = [
+      "out"
+      "man"
+    ];
+    paths = [ gimp ];
+    nativeBuildInputs = [ pkgs.makeWrapper ];
+    postBuild = ''
+      for program in gimp-${series} gimp-console-${series}; do
+        wrapProgram $out/bin/$program --set GIMP3_SYSCONFDIR ${sysconf}
+      done
+      ln -s ${gimp.man} $man
+    '';
+    passthru = { inherit sysconf; };
+  };
+in
+{
+  imports = [ ../theme/home.nix ];
+
+  home.packages = [ wrapped ];
+
+  home.file."${folder}/gimp.css".text = stylesheet;
+  home.file."${folder}/palettes/${config.jitsusama.theme.title}.gpl".text =
+    import ../theme/palette-file.nix { inherit lib; }
+      config.jitsusama.theme;
+
+  assertions = [
+    {
+      assertion = lib.versions.majorMinor gimp.version == series;
+      message = ''
+        GIMP is ${gimp.version}, which keeps its settings somewhere other than
+        GIMP/${series}; modules/gimp/home.nix's series needs to follow it.
+      '';
+    }
+  ];
+}

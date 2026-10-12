@@ -485,21 +485,23 @@ in
     flags = locked;
   }
   {
+    # The shell's music (Music.qml), so the keys act on the player it
+    # shows, and show what they did.
     chord = "XF86AudioPlay";
-    does = "Play or pause";
-    action = ''spawn "playerctl" "play-pause";'';
+    does = "Play or pause the music";
+    action = ''spawn "qs" "ipc" "call" "music" "toggle";'';
     flags = locked;
   }
   {
     chord = "XF86AudioNext";
     does = "Play the next track";
-    action = ''spawn "playerctl" "next";'';
+    action = ''spawn "qs" "ipc" "call" "music" "next";'';
     flags = locked;
   }
   {
     chord = "XF86AudioPrev";
     does = "Play the previous track";
-    action = ''spawn "playerctl" "previous";'';
+    action = ''spawn "qs" "ipc" "call" "music" "previous";'';
     flags = locked;
   }
   {
@@ -530,5 +532,26 @@ in
     chord = "Ctrl+Print";
     does = "Take a screenshot of the window";
     action = "screenshot-window;";
+  }
+
+  # Sharing, for a call that shares niri's switchable target, which a
+  # program asks for once and which shows what these chords point it at:
+  # Super moves Print from a picture to the share, with Ctrl for the window
+  # and Shift for the screen as above. The share starts blank, so nothing is
+  # shown before it's pointed at something.
+  {
+    chord = "Super+Ctrl+Print";
+    does = "Switch the share to this window";
+    action = "set-dynamic-cast-window;";
+  }
+  {
+    chord = "Super+Shift+Print";
+    does = "Switch the share to this screen";
+    action = "set-dynamic-cast-monitor;";
+  }
+  {
+    chord = "Super+Print";
+    does = "Blank the share";
+    action = "clear-dynamic-cast-target;";
   }
 ]

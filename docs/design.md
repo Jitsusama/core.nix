@@ -393,6 +393,7 @@ it. Owners go by layer:
 | Network, Bluetooth, audio devices                                      | the margin mark, only when something's wrong       | the overview's status        |
 | Volume, brightness                                                     | an overlay while it changes                        | the overview's status        |
 | Do not disturb, caffeinate, recording, sharing, mic muted, caps lock   | the margin mark, while true                        | the same mark, in the status |
+| Music playing                                                          | the margin mark while it plays; a notice for a moment when the track changes or a media key is pressed | the same mark, in the status |
 | Notifications waiting                                                  | the margin mark, as a count                        | the overview's status        |
 | Directory, repository, branch, git state                               | the program running the window                     | nobody                       |
 | Window titles                                                          | a terminal's unseen tabs; the window switcher      | the window switcher          |
@@ -719,6 +720,9 @@ by them isn't done.
 | The lock screen, polkit and PIN prompts   | Quickshell               | both           |        |        |           |         |          |
 | GTK and Qt apps, file and print dialogs   | gtk, qt                  | proportional   |        |        |           |         |          |
 | The browser                               | chrome                   | proportional   |        |        |           |         |          |
+| Images and drawings                       | gimp, inkscape           | proportional   |        |        |           |         |          |
+| Music                                     | spotify, Quickshell      | both           | nothing | a note in the margin while any player plays; for a moment, the track as a notice | the mark's panel: the track, artist, album and player; pause, next, previous, the player's window, and pausing a second player | Play or pause the music, Play the next track, Play the previous track, on the media keys | the mark carries no words; a title wraps to two lines, then gives way |
+| Pairing                                   | tuple                    | its own        |        |        |           |         |          |
 | Chat, passwords, calls                    | their own settings       | proportional   |        |        |           |         |          |
 | The terminal                              | kitty                    | monospace      |        |        |           |         |          |
 | The prompt                                | prompt                   | monospace      |        |        |           |         |          |
@@ -749,6 +753,23 @@ as an exception with the reason.
 ## Decisions
 
 What each studio round settled, newest first, with the reason.
+
+- **What's playing, for a moment and while it plays** (2026-10-11). Joel
+  plays music from Spotify, spotify-player and his phone, and wanted the
+  track only when it changes or a media key is pressed, then gone. Of three
+  directions on the panel, a meter at the bottom, a notice in the corner
+  with the cover, and words lifted by the halo with no box, he chose the
+  notice: it's where he looks for what just happened, and the cover is
+  recognised before the words are read. Then he asked for something to say
+  music is playing at all, from any player, so the margin carries a note
+  while one plays and none while paused. Both come from MPRIS, so a
+  browser's tab or mpv counts as Spotify does, and the media keys go
+  through the shell, so they act on the player it shows. Seen in every
+  state with two players, the card had to follow the player a key acted
+  on, since pausing one hands the music to the other; play resumes the
+  last player paused, not the last started; two of one name are told apart
+  by what they play; and a player is offered to be shown only when it has
+  a window, since opening its program would start a second one.
 
 - **A launcher that finds what's meant** (2026-10-11). Research into
   Raycast, the launchers before it and the work on learning keys found two

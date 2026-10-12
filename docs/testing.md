@@ -57,6 +57,21 @@ quietly stopped holding.
 | `quickshell-restarts-with-its-files` | a switch restarts the shell when a file it reads changes  |
 | `quickshell-opens-programs-through-niri` | programs the shell opens survive the shell restarting |
 | `the-overview-takes-its-pieces` | a machine moves, cuts, retunes and adds the overview's pieces |
+| `quickshell-takes-its-shape-from-the-theme` | every corner and border in the shell is the theme's |
+| `icon-marks-past-the-basic-plane` | an icon mark past U+FFFF reaches the shell whole |
+| `nix-builds-yield-to-the-user` | Nix's builds run at a lower weight than the user's programs |
+
+### The Shell's Logic
+
+Run in Qt's own JavaScript engine, the one the shell runs it in, over cases
+written beside each in `tests/`.
+
+| Check                                 | Proves                                                  |
+| ------------------------------------- | ------------------------------------------------------- |
+| `the-launcher-finds-what-is-meant`    | the right row comes first for each query, within budget |
+| `the-launcher-finds-emoji`            | emoji are found by name and meaning, best first         |
+| `the-launcher-answers-what-is-asked`  | sums, addresses, measures, zones and colours answer     |
+| `the-music-follows-the-player`        | the music is the player that started last, never playerctld's echo |
 | `a-claimed-chord-is-refused`        | a chord two layers claim, or one claims twice, is refused |
 | `a-theme-changes-everything`        | another theme leaves none of the first's colours behind   |
 | `nothing-names-its-own-look`        | no module but the theme's names a colour or a face        |
@@ -93,6 +108,11 @@ kernel guide][2] says what that catches.
 | `niri-cursor-has-its-shapes`      | the cursor theme niri names has the shapes programs ask for |
 | `kitty-accepts-its-configuration` | kitty loads its files without a complaint                 |
 | `btop-draws-in-the-theme`         | btop draws in the theme's colours, not its own            |
+| `gimp-accepts-its-configuration`  | GIMP reads its preferences, the theme's palette and colours |
+| `inkscape-accepts-its-configuration` | Inkscape starts a drawing on the theme's desk and reads its stylesheet |
+| `spotify-draws-in-the-theme`      | Spotify's client is built in the theme's colours and faces |
+| `spotify-player-accepts-its-configuration` | spotify-player starts with its settings          |
+| `tuple-shares-through-the-portal` | Tuple reads the portal setting where the switch writes it |
 | `neovim-starts-in-the-theme`      | Neovim starts in bamboo, transparent, without a complaint |
 | `cargo-links-with-mold`           | cargo links an account's Rust builds with mold            |
 

@@ -1,10 +1,11 @@
 # Quickshell draws everything on Joel's screen that isn't a window: the
 # wallpaper, the launcher on Super+Space, notifications, the lock screen,
 # polkit's password prompt, the volume, microphone, brightness and charge as
-# they change, and the time and status over the overview. Each is a QML file
-# beside this one, linked as it is; Theme.qml, written here from
-# jitsusama.theme, gives them all the same look. It runs with the graphical
-# session, and restarts if it ever falls over. What the overview shows is
+# they change, what's playing, and the time and status over the overview.
+# Each is a QML file beside this one, linked as it is; Theme.qml, written
+# here from jitsusama.theme, gives them all the same look. It runs with the
+# graphical session, and restarts if it ever falls over. What the overview
+# shows is
 # jitsusama.quickshell.overview.pieces, rendered into Overview.qml at build,
 # and what the launcher finds and how it learns are
 # jitsusama.quickshell.launcher, rendered into Providers.qml.
@@ -54,6 +55,8 @@ let
     "Choice.qml"
     "Margin.qml"
     "Notifications.qml"
+    "Music.qml"
+    "Music.js"
     "Lock.qml"
     "Polkit.qml"
     "Volume.qml"
@@ -249,13 +252,16 @@ let
       nerd "f489"
     else if lib.hasPrefix "screenshot" action then
       nerd "f0e51"
+    # What the margin shows while the screen is shared.
+    else if lib.hasInfix "dynamic-cast" action then
+      config.jitsusama.theme.glyphs.sharing.glyph
     else if lib.hasInfix "AUDIO_SOURCE" says then
       nerd "f036d"
     else if program == "sh" && lib.hasInfix "wpctl" says then
       nerd "f057e"
     else if program == "brightnessctl" then
       nerd "f00e0"
-    else if program == "playerctl" then
+    else if program == "qs" && lib.elem "music" run then
       nerd "f040e"
     else if lib.hasInfix "workspace" action || lib.hasInfix "overview" action then
       nerd "f0570"
@@ -329,6 +335,7 @@ let
     capslock = ./pieces/CapsLock.qml;
     sharing = ./pieces/Sharing.qml;
     recording = ./pieces/Recording.qml;
+    playing = ./pieces/Playing.qml;
   };
 
   overview = pieces.drawn config.jitsusama.quickshell.overview.pieces;
@@ -713,6 +720,14 @@ in
         label = "recording";
         tier = "when";
         mark = "recording";
+      };
+      # The least of them, since music never needs Joel.
+      playing = {
+        order = 95;
+        source = "playing";
+        label = "playing";
+        tier = "when";
+        mark = "playing";
       };
     };
 

@@ -344,6 +344,11 @@ let
       console = "R";
       means = "the screen is being recorded";
     };
+    playing = {
+      glyph = nerd "f075a";
+      console = "P";
+      means = "music is playing";
+    };
     capitals = {
       glyph = nerd "f0632";
       console = "A";
@@ -394,6 +399,16 @@ in
       description = ''
         The theme file to draw everything in, for a theme of a machine
         repository's own. docs/design.md describes the format.
+      '';
+    };
+
+    title = lib.mkOption {
+      type = lib.types.str;
+      default = theme.name or cfg.name;
+      defaultText = lib.literalMD "the theme file's name";
+      description = ''
+        The theme's name as people read it, such as Osaka Jade: what a
+        program that lists themes or palettes calls it.
       '';
     };
 
@@ -823,7 +838,7 @@ in
       icons
       ;
     inherit (cfg.type) mono sans;
-    name = theme.name or cfg.name;
+    name = cfg.title;
     glyphs = lib.mapAttrs (_: mark: { inherit (mark) glyph console; }) cfg.glyphs;
   };
 
