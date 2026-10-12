@@ -67,7 +67,7 @@ fn btrfs_short_of_metadata_room_is_critical_whatever_data_says() {
     let mut tight = space(500);
     tight.btrfs = Some(BtrfsSpace {
         unallocated: 512,
-        data_chunk: 1024,
+        metadata_chunk: 1024,
         metadata_free: 100,
         global_reserve: 60,
     });

@@ -24,8 +24,12 @@ pub struct Space {
 /// What Btrfs has left to allocate, which `f_bavail` doesn't show.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct BtrfsSpace {
+    /// Device space no chunk holds yet.
     pub unallocated: u64,
-    pub data_chunk: u64,
+    /// The device space one more metadata chunk takes, with every copy its
+    /// profile keeps (two for dup).
+    pub metadata_chunk: u64,
+    /// Metadata chunks' room not yet used, reserved, pinned or read-only.
     pub metadata_free: u64,
     pub global_reserve: u64,
 }
@@ -93,9 +97,9 @@ impl Thresholds {
 
 impl BtrfsSpace {
     /// Btrfs reserves metadata room of its own, and once it can allocate
-    /// no new chunk, metadata can run out and fail every write with
-    /// ENOSPC while data space still shows free.
+    /// no new metadata chunk, metadata can run out and fail every write
+    /// with ENOSPC while data space still shows free.
     pub fn short_of_metadata_room(&self) -> bool {
-        self.unallocated < self.data_chunk && self.metadata_free < 2 * self.global_reserve
+        self.unallocated < self.metadata_chunk && self.metadata_free < 2 * self.global_reserve
     }
 }
