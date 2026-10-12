@@ -1083,6 +1083,55 @@ in
           touch $out
         '';
 
+    # Programs change their own git settings with git config --global, which
+    # fails on a file the store holds, and what's declared still has to win
+    # over what they wrote. So the check runs the switch's own step, with the
+    # account's home moved here, then writes as programs do, dev's include of
+    # its own file among them, and switches again. Neither global file may be
+    # a link, or an older generation's link would be in the way of a rollback.
+    git-settings-stay-writable =
+      let
+        home = account workstation;
+        homeDir = home.home.homeDirectory;
+        declared = home.programs.git.settings.user.name;
+      in
+      pkgs.runCommandLocal "git-settings-stay-writable" { nativeBuildInputs = [ pkgs.git ]; } ''
+        export HOME=$PWD/home GIT_CONFIG_NOSYSTEM=1
+        mkdir -p home/.config/git
+        for linked in .gitconfig .config/git/config; do
+          if [ -e ${home.home-files}/$linked ]; then
+            echo "~/$linked is a link to the store"
+            exit 1
+          fi
+        done
+        cp ${home.home-files}/.config/git/declared.config home/.config/git/
+        sed -n '\|declared-last|{s|^run ||;s|${lib.escapeRegex homeDir}|'"$HOME"'|g;p}' \
+          ${home.home.activationPackage}/activate > step
+        expect() {
+          if [ "$(git config --get "$1")" != "$2" ]; then
+            echo "$3: $1 is '$(git config --get "$1")', not '$2'"
+            exit 1
+          fi
+        }
+        sh -e step
+        expect user.name ${lib.escapeShellArg declared} "after a switch"
+        printf '[user]\n\tname = included\n' > home/tool.config
+        git config --global --add include.path "$HOME/tool.config"
+        git config --global tool.setting 1
+        git config --global user.name tool
+        expect tool.setting 1 "after a program wrote it"
+        sh -e step
+        expect user.name ${lib.escapeShellArg declared} "after the next switch"
+        expect tool.setting 1 "after the next switch"
+        cp home/.gitconfig before
+        sh -e step
+        if ! cmp -s before home/.gitconfig; then
+          echo "a switch with nothing to do changed ~/.gitconfig"
+          exit 1
+        fi
+        touch $out
+      '';
+
     # Tuple shares a screen through the portal: the switch writes the setting
     # where Tuple keeps it, and Tuple, which ignores a folder it doesn't know
     # and a value not written as it writes one, has to read it back. So the
