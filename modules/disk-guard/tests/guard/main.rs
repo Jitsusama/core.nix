@@ -12,6 +12,7 @@ mod entries;
 #[cfg(target_os = "linux")]
 mod linux;
 mod locks;
+mod logs;
 mod nix_builds;
 mod pass;
 mod plan;

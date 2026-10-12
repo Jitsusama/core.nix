@@ -11,6 +11,7 @@ pub mod discover;
 #[cfg(target_os = "linux")]
 pub mod linux;
 pub mod locks;
+pub mod logs;
 pub mod moments;
 pub mod nix_builds;
 pub mod pass;
