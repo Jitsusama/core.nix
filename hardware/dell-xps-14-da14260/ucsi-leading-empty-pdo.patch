@@ -1,0 +1,54 @@
+usb: typec: ucsi: Drop an empty object ahead of the PDOs
+
+On the Dell XPS 14 DA14260, the PPM answers GET_PDOS for the partner's
+source capabilities with an empty object first. A 100 W charger offering
+5, 9, 12, 15 and 20 V and a PPS range comes back as 0, 5 V, 9 V, 12 V at
+offset 0 and 15 V, 20 V, PPS at offset 4. The RDO names object position
+5, the 20 V PDO, but src_pdos[4] holds 15 V, so voltage_now reads 15 V
+on a 20 V contract. The partner's capabilities stop at the first empty
+PDO, so they register with none.
+
+The first PDO is always the vSafe5V Fixed Supply and never empty, so an
+empty one there is dropped and the rest move up.
+
+diff -ruN a/drivers/usb/typec/ucsi/ucsi.c b/drivers/usb/typec/ucsi/ucsi.c
+--- a/drivers/usb/typec/ucsi/ucsi.c
++++ b/drivers/usb/typec/ucsi/ucsi.c
+@@ -899,16 +899,29 @@
+ 		return ret;
+ 
+ 	num_pdos = ret / sizeof(u32); /* number of bytes to 32-bit PDOs */
+-	if (num_pdos < UCSI_MAX_PDOS)
+-		return num_pdos;
++	if (num_pdos == UCSI_MAX_PDOS) {
++		/* get the remaining PDOs, if any */
++		ret = ucsi_read_pdos(con, role, is_partner, pdos, UCSI_MAX_PDOS,
++				     PDO_MAX_OBJECTS - UCSI_MAX_PDOS);
++		if (ret < 0)
++			return ret;
+ 
+-	/* get the remaining PDOs, if any */
+-	ret = ucsi_read_pdos(con, role, is_partner, pdos, UCSI_MAX_PDOS,
+-			     PDO_MAX_OBJECTS - UCSI_MAX_PDOS);
+-	if (ret < 0)
+-		return ret;
++		num_pdos += ret / sizeof(u32);
++	}
++
++	/*
++	 * Some PPMs put an empty object ahead of the PDOs. The first PDO is
++	 * always the vSafe5V Fixed Supply, so an empty one is never real, and
++	 * left in place it puts every PDO one position late: the RDO's object
++	 * position then names the wrong PDO, and the capabilities stop at it.
++	 */
++	if (num_pdos && !pdos[0]) {
++		num_pdos--;
++		memmove(pdos, pdos + 1, num_pdos * sizeof(u32));
++		pdos[num_pdos] = 0;
++	}
+ 
+-	return ret / sizeof(u32) + num_pdos;
++	return num_pdos;
+ }
+ 
+ static int ucsi_get_src_pdos(struct ucsi_connector *con)
