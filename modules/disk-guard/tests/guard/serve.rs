@@ -3,7 +3,7 @@ use disk_guard::config::Config;
 use disk_guard::daemon::{Guard, Places};
 use disk_guard::notices::Change;
 use disk_guard::serve::{Desk, answering, hold, senses, steps, stopping};
-use disk_guard::socket::{Request, ask};
+use disk_guard::socket::{Reply, Request, ask};
 use std::fs;
 use std::path::Path;
 use std::time::Duration;
@@ -53,11 +53,15 @@ fn the_system_daemon_answers_for_what_the_asker_owns() {
     let request = Request::Processes {
         roots: vec![root.join("src"), "/proc".into()],
     };
-    let told = ask(&socket, &request, Duration::from_secs(5)).unwrap();
+    let answer = |request: &Request| match ask(&socket, request, Duration::from_secs(5)) {
+        Ok(Reply::Answer(answer)) => answer,
+        other => panic!("{other:?}"),
+    };
+    let told = answer(&request);
     assert!(told.vouched.contains(&(700, 500)) && told.vouched.contains(&(701, 500)));
     assert_eq!(told.touching.len(), 1, "{told:?}");
     assert_eq!(told.touching[0].cwd.as_deref(), Some(mine.as_path()));
-    let again = ask(&socket, &request, Duration::from_secs(5)).unwrap();
+    let again = answer(&request);
     assert_eq!(again.vouched.len(), 2, "it goes on answering");
 }
 

@@ -1,5 +1,6 @@
 use disk_guard::activity::Process;
-use disk_guard::socket::{Request, Server, ask};
+use disk_guard::band::Band;
+use disk_guard::socket::{Reply, Request, Responder, Server, ask};
 use disk_guard::vouch::Answer;
 use std::io::{Read, Write};
 use std::os::unix::net::UnixStream;
@@ -23,26 +24,37 @@ fn told() -> Answer {
 }
 
 /// A server answering `connections` connections in a thread, reporting
-/// who asked and for what.
+/// who asked and for what. A collect is handed over unanswered, for the
+/// test to answer when it likes; anything else is answered at once.
 fn serving(
     every: Duration,
     connections: usize,
-) -> (tempfile::TempDir, PathBuf, mpsc::Receiver<(u32, Request)>) {
+) -> (
+    tempfile::TempDir,
+    PathBuf,
+    mpsc::Receiver<(u32, Request)>,
+    mpsc::Receiver<Responder>,
+) {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("socket");
     let mut server = Server::bind(&path, every).unwrap();
     let (sender, asked) = mpsc::channel();
+    let (handing, handed) = mpsc::channel();
     std::thread::spawn(move || {
         for _ in 0..connections {
             server
-                .serve(&mut |uid, request| {
-                    sender.send((uid, request)).unwrap();
-                    Ok(told())
+                .serve(&mut |uid, request, responder| {
+                    sender.send((uid, request.clone())).unwrap();
+                    match request {
+                        Request::Processes { .. } => responder.send(&Reply::Answer(told())),
+                        Request::Watching { paths } => responder.send(&Reply::Collects(paths)),
+                        Request::Collect { .. } => handing.send(responder).unwrap(),
+                    }
                 })
                 .unwrap();
         }
     });
-    (dir, path, asked)
+    (dir, path, asked, handed)
 }
 
 fn roots() -> Request {
@@ -53,8 +65,8 @@ fn roots() -> Request {
 
 #[test]
 fn a_request_is_answered_and_its_asker_known() {
-    let (_dir, path, asked) = serving(Duration::ZERO, 1);
-    assert_eq!(ask(&path, &roots(), SECOND).unwrap(), told());
+    let (_dir, path, asked, _) = serving(Duration::ZERO, 1);
+    assert_eq!(ask(&path, &roots(), SECOND).unwrap(), Reply::Answer(told()));
     let (uid, request) = asked.recv().unwrap();
     assert_eq!(uid, unsafe { libc::geteuid() });
     assert_eq!(request, roots());
@@ -62,15 +74,54 @@ fn a_request_is_answered_and_its_asker_known() {
 
 #[test]
 fn an_asker_may_ask_once_a_second() {
-    let (_dir, path, _asked) = serving(Duration::from_secs(60), 2);
+    let (_dir, path, _asked, _) = serving(Duration::from_secs(60), 2);
     assert!(ask(&path, &roots(), SECOND).is_ok());
     let refused = ask(&path, &roots(), SECOND).unwrap_err();
     assert!(refused.to_string().contains("too soon"), "{refused}");
 }
 
 #[test]
+fn each_kind_of_request_waits_its_own_turn() {
+    let (_dir, path, _asked, _) = serving(Duration::from_secs(60), 3);
+    let watching = Request::Watching {
+        paths: vec![PathBuf::from("/home")],
+    };
+    assert!(ask(&path, &roots(), SECOND).is_ok());
+    assert_eq!(
+        ask(&path, &watching, SECOND).unwrap(),
+        Reply::Collects(vec![PathBuf::from("/home")]),
+        "a heartbeat isn't held up by asking about processes"
+    );
+    assert!(
+        ask(&path, &watching, SECOND).is_err(),
+        "but has its own turn"
+    );
+}
+
+#[test]
+fn a_reply_can_come_later_while_others_are_answered() {
+    let (_dir, path, _asked, handed) = serving(Duration::ZERO, 2);
+    let collecting = path.clone();
+    let collected = std::thread::spawn(move || {
+        let collect = Request::Collect {
+            path: PathBuf::from("/home"),
+            band: Band::Urgent,
+        };
+        ask(&collecting, &collect, Duration::from_secs(10))
+    });
+    let waiting = handed.recv_timeout(Duration::from_secs(5)).unwrap();
+    assert_eq!(ask(&path, &roots(), SECOND).unwrap(), Reply::Answer(told()));
+    assert!(!collected.is_finished(), "still waiting for its reply");
+    waiting.send(&Reply::Collected("reached".to_owned()));
+    assert_eq!(
+        collected.join().unwrap().unwrap(),
+        Reply::Collected("reached".to_owned())
+    );
+}
+
+#[test]
 fn a_request_that_wont_read_is_refused_and_the_server_goes_on() {
-    let (_dir, path, _asked) = serving(Duration::ZERO, 3);
+    let (_dir, path, _asked, _) = serving(Duration::ZERO, 3);
     let mut stream = UnixStream::connect(&path).unwrap();
     stream.write_all(b"{ not json }\n").unwrap();
     let mut reply = String::new();
@@ -79,17 +130,17 @@ fn a_request_that_wont_read_is_refused_and_the_server_goes_on() {
     let mut endless = UnixStream::connect(&path).unwrap();
     endless.write_all(&vec![b'x'; 200_000]).unwrap_or(());
     drop(endless);
-    assert_eq!(ask(&path, &roots(), SECOND).unwrap(), told());
+    assert_eq!(ask(&path, &roots(), SECOND).unwrap(), Reply::Answer(told()));
 }
 
 #[test]
 fn an_asker_that_says_nothing_cant_hold_the_server() {
-    let (_dir, path, _asked) = serving(Duration::ZERO, 2);
+    let (_dir, path, _asked, _) = serving(Duration::ZERO, 2);
     let _silent = UnixStream::connect(&path).unwrap();
     let started = std::time::Instant::now();
     assert_eq!(
         ask(&path, &roots(), Duration::from_secs(5)).unwrap(),
-        told()
+        Reply::Answer(told())
     );
     assert!(started.elapsed() < Duration::from_secs(3));
 }

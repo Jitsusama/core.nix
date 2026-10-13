@@ -99,8 +99,11 @@ impl Scan {
             let request = socket::Request::Processes {
                 roots: voucher.roots.clone(),
             };
-            let heard = socket::ask(&voucher.socket, &request, ASK_TIMEOUT)
-                .map_err(|error| error.to_string());
+            let heard = match socket::ask(&voucher.socket, &request, ASK_TIMEOUT) {
+                Ok(socket::Reply::Answer(answer)) => Ok(answer),
+                Ok(other) => Err(format!("the system daemon answered {other:?}")),
+                Err(error) => Err(error.to_string()),
+            };
             voucher.heard = Some((Instant::now(), heard));
         }
         match &voucher.heard {

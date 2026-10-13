@@ -93,12 +93,14 @@ fn vouching(
     std::thread::spawn(move || {
         for _ in 0..answers {
             server
-                .serve(&mut |_, _| {
+                .serve(&mut |_, _, responder| {
                     sender.send(()).unwrap();
-                    Ok(disk_guard::vouch::Answer {
-                        vouched: touching.iter().map(|p| (p.pid, p.start_ticks)).collect(),
-                        touching: touching.clone(),
-                    })
+                    responder.send(&disk_guard::socket::Reply::Answer(
+                        disk_guard::vouch::Answer {
+                            vouched: touching.iter().map(|p| (p.pid, p.start_ticks)).collect(),
+                            touching: touching.clone(),
+                        },
+                    ))
                 })
                 .unwrap();
         }

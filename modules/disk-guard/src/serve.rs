@@ -5,7 +5,7 @@
 use crate::daemon::{Guard, Senses};
 use crate::moments::Power;
 use crate::notices::Change;
-use crate::socket::{Request, Server};
+use crate::socket::{Reply, Request, Server};
 use crate::vouch;
 use std::fs::{File, OpenOptions};
 use std::io::{self, Write};
@@ -40,13 +40,19 @@ pub fn answering(socket: &Path, proc: &Path, every: Duration) -> io::Result<()> 
         .name("answering".to_owned())
         .spawn(move || {
             loop {
-                let served = server.serve(&mut |uid, request| {
-                    let Request::Processes { roots } = request;
-                    let processes =
-                        crate::linux::processes(&proc).map_err(|error| error.to_string())?;
-                    Ok(vouch::answer(&processes, &roots, |path| {
-                        vouch::reached_by(path, uid)
-                    }))
+                let served = server.serve(&mut |uid, request, responder| {
+                    let reply = match request {
+                        Request::Processes { roots } => match crate::linux::processes(&proc) {
+                            Ok(processes) => {
+                                Reply::Answer(vouch::answer(&processes, &roots, |path| {
+                                    vouch::reached_by(path, uid)
+                                }))
+                            }
+                            Err(error) => Reply::Error(error.to_string()),
+                        },
+                        _ => Reply::Error("not asked of this daemon yet".to_owned()),
+                    };
+                    responder.send(&reply);
                 });
                 if let Err(error) = served {
                     // Out of descriptors, most likely; a moment may free one.

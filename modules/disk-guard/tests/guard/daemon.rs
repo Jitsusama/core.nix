@@ -167,11 +167,13 @@ fn the_system_daemon_vouches_for_what_this_account_cant_read() {
     let mut server = disk_guard::socket::Server::bind(&socket, std::time::Duration::ZERO).unwrap();
     std::thread::spawn(move || {
         server
-            .serve(&mut |_, _| {
-                Ok(disk_guard::vouch::Answer {
-                    vouched: vec![(300, 77)],
-                    touching: vec![],
-                })
+            .serve(&mut |_, _, responder| {
+                responder.send(&disk_guard::socket::Reply::Answer(
+                    disk_guard::vouch::Answer {
+                        vouched: vec![(300, 77)],
+                        touching: vec![],
+                    },
+                ))
             })
             .unwrap();
     });

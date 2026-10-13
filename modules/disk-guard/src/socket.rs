@@ -1,8 +1,10 @@
 //! The system daemon's socket: one JSON request a connection, answered
-//! with one JSON line. The kernel says who asks, each account may ask once
-//! a second, and a request is cut off past 64 KiB or a second of silence,
-//! so no asker can hold the daemon up.
+//! with one JSON line. The kernel says who asks, each account may ask each
+//! kind of request once a second, and a request is cut off past 64 KiB or
+//! a second of silence, so no asker can hold the daemon up. A reply may
+//! come later, from elsewhere, while the server hears others.
 
+use crate::band::Band;
 use crate::vouch::Answer;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -19,13 +21,56 @@ use std::time::{Duration, Instant};
 pub enum Request {
     /// The processes touching the asker's files beneath these roots.
     Processes { roots: Vec<PathBuf> },
+    /// A user daemon's heartbeat: the filesystems it watches, by a path on
+    /// each. Answered with those the system collects garbage on, whose
+    /// passes the user daemon then drives.
+    Watching { paths: Vec<PathBuf> },
+    /// The garbage on the filesystem holding `path`, taken as a pass in
+    /// `band` would take it. Answered once that pass ends.
+    Collect { path: PathBuf, band: Band },
 }
 
-#[derive(Serialize, Deserialize)]
+impl Request {
+    fn kind(&self) -> &'static str {
+        match self {
+            Request::Processes { .. } => "processes",
+            Request::Watching { .. } => "watching",
+            Request::Collect { .. } => "collect",
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
-enum Reply {
+pub enum Reply {
     Answer(Answer),
+    /// Of the paths watched, those on a filesystem the system collects on.
+    Collects(Vec<PathBuf>),
+    /// How the collecting pass ended.
+    Collected(String),
     Error(String),
+}
+
+/// A connection waiting for its reply, which may be sent from any thread.
+pub struct Responder {
+    stream: UnixStream,
+}
+
+impl Responder {
+    pub fn new(stream: UnixStream) -> Responder {
+        Responder { stream }
+    }
+
+    /// Sends the reply and closes the connection. An asker that went away
+    /// hears nothing, which is its own concern.
+    pub fn send(mut self, reply: &Reply) {
+        let mut line = serde_json::to_vec(reply).unwrap_or_else(|error| {
+            serde_json::to_vec(&Reply::Error(format!("the answer won't go: {error}")))
+                .unwrap_or_default()
+        });
+        line.push(b'\n');
+        let _ = self.stream.write_all(&line);
+    }
 }
 
 /// The most a request may hold.
@@ -38,7 +83,7 @@ const PATIENCE: Duration = Duration::from_secs(1);
 pub struct Server {
     listener: UnixListener,
     every: Duration,
-    asked: HashMap<u32, Instant>,
+    asked: HashMap<(u32, &'static str), Instant>,
 }
 
 impl Server {
@@ -59,26 +104,14 @@ impl Server {
         })
     }
 
-    /// Takes one connection and answers it.
-    pub fn serve(
-        &mut self,
-        handle: &mut dyn FnMut(u32, Request) -> Result<Answer, String>,
-    ) -> io::Result<()> {
-        let (mut stream, _) = self.listener.accept()?;
-        let reply = match self.read(&stream) {
-            Ok((uid, request)) => match handle(uid, request) {
-                Ok(answer) => Reply::Answer(answer),
-                Err(why) => Reply::Error(why),
-            },
-            Err(why) => Reply::Error(why),
-        };
-        let mut line = serde_json::to_vec(&reply).unwrap_or_else(|error| {
-            serde_json::to_vec(&Reply::Error(format!("the answer won't go: {error}")))
-                .unwrap_or_default()
-        });
-        line.push(b'\n');
-        // An asker that went away hears nothing, which is its own concern.
-        let _ = stream.write_all(&line);
+    /// Takes one connection and hands its request to `handle`, with the
+    /// connection to reply on, now or later.
+    pub fn serve(&mut self, handle: &mut dyn FnMut(u32, Request, Responder)) -> io::Result<()> {
+        let (stream, _) = self.listener.accept()?;
+        match self.read(&stream) {
+            Ok((uid, request)) => handle(uid, request, Responder::new(stream)),
+            Err(why) => Responder::new(stream).send(&Reply::Error(why)),
+        }
         Ok(())
     }
 
@@ -97,17 +130,18 @@ impl Server {
         if !line.ends_with(b"\n") {
             return Err("a request is one line of at most 64 KiB".to_owned());
         }
+        let request: Request = serde_json::from_slice(&line)
+            .map_err(|error| format!("the request won't read: {error}"))?;
         let now = Instant::now();
+        let turn = (uid, request.kind());
         if self
             .asked
-            .get(&uid)
+            .get(&turn)
             .is_some_and(|at| now.duration_since(*at) < self.every)
         {
             return Err("too soon: ask at most once a second".to_owned());
         }
-        let request = serde_json::from_slice(&line)
-            .map_err(|error| format!("the request won't read: {error}"))?;
-        self.asked.insert(uid, now);
+        self.asked.insert(turn, now);
         Ok((uid, request))
     }
 }
@@ -138,8 +172,8 @@ fn peer(stream: &UnixStream) -> io::Result<u32> {
 }
 
 /// Asks the daemon listening at `path`, waiting at most `timeout` for each
-/// part of the exchange.
-pub fn ask(path: &Path, request: &Request, timeout: Duration) -> io::Result<Answer> {
+/// part of the exchange. A reply of an error is an error.
+pub fn ask(path: &Path, request: &Request, timeout: Duration) -> io::Result<Reply> {
     let mut stream = UnixStream::connect(path)?;
     stream.set_read_timeout(Some(timeout))?;
     stream.set_write_timeout(Some(timeout))?;
@@ -149,8 +183,8 @@ pub fn ask(path: &Path, request: &Request, timeout: Duration) -> io::Result<Answ
     let mut reply = Vec::new();
     (&mut stream).take(ANSWER_LIMIT).read_to_end(&mut reply)?;
     match serde_json::from_slice(&reply) {
-        Ok(Reply::Answer(answer)) => Ok(answer),
         Ok(Reply::Error(why)) => Err(io::Error::other(why)),
+        Ok(reply) => Ok(reply),
         Err(error) => Err(io::Error::new(io::ErrorKind::InvalidData, error)),
     }
 }
