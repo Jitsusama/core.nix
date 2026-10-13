@@ -4,7 +4,9 @@
 // joined or joins another, and the launcher stays, saying how far the join
 // has got, until the network takes the card or says why not; a locked
 // network met for the first time, or one whose password didn't work, asks
-// for its password in the field beside the padlock. Turning Wi-Fi off and
+// for its password in the field beside the padlock, and one asking for an
+// account asks its name, its server's domain and its password in turn, the
+// server proving it's that domain's before it's told. Turning Wi-Fi off and
 // on is an action in the main search. Everything comes from wifid over its
 // socket (Wifi.qml), and the cards look for networks only while the
 // launcher is open.
@@ -69,8 +71,8 @@ Provider {
         return SignIn.network !== "" ? [signIn] : [];
     }
 
-    // How a network is joined, in words, and whether a password typed here
-    // opens it: one asking for an account can't be joined from here yet.
+    // How a network is joined, in words, and what's typed here to open it:
+    // a password, or an account with its server and password.
     function security(network) {
         switch (network.security) {
         case "open":
@@ -78,7 +80,7 @@ Provider {
         case "personal":
             return { words: "a password", locked: true, password: true };
         default:
-            return { words: "an account", locked: true };
+            return { words: "an account", locked: true, password: true, account: true };
         }
     }
 
@@ -124,10 +126,58 @@ Provider {
     property string troubled: ""
     property string trouble: ""
 
-    function join(network, password) {
+    function join(network, password, account) {
         troubled = "";
         trouble = "";
-        Wifi.join(network.name, password);
+        Wifi.join(network.name, password, account);
+    }
+
+    // A network asking for an account, met for the first time, asks the
+    // account's name, then the domain its server proves it's the network's
+    // with, then the password, each in the field in turn. PEAP is how most
+    // are joined; TTLS is a verb.
+    function accountFor(network, method) {
+        return thing({
+            key: `wifi:${network.name}:identity`,
+            verb: "next",
+            name: network.name,
+            chip: network.name,
+            ask: "the account's name",
+            network: network.name,
+            state: () => provider.said(network, `an account, over ${method.toUpperCase()}`),
+            given: identity => provider.launcher.ask(provider.serverFor(network, method, identity))
+        });
+    }
+
+    function serverFor(network, method, identity) {
+        return thing({
+            key: `wifi:${network.name}:server`,
+            verb: "next",
+            name: network.name,
+            chip: identity,
+            ask: "its server's domain",
+            network: network.name,
+            state: () => provider.said(network, "the domain its server's certificate names"),
+            given: domain => provider.launcher.ask(provider.passwordFor(network, {
+                method: method,
+                identity: identity,
+                serverDomain: domain
+            }))
+        });
+    }
+
+    function passwordFor(network, account) {
+        return thing({
+            key: `wifi:${network.name}:account-password`,
+            verb: "join",
+            name: network.name,
+            chip: account.identity,
+            ask: "password",
+            secret: true,
+            network: network.name,
+            state: () => provider.said(network, account.serverDomain),
+            given: password => provider.join(network, password, account)
+        });
     }
 
     // How far a join has got, in the footer's words.
@@ -166,30 +216,31 @@ Provider {
     function made(network) {
         const locked = security(network);
         const joined = network.connected;
-        // Met for the first time behind a password, it asks for one.
-        const asks = !joined && !network.known && locked.password === true;
-        const elsewhere = !joined && !network.known && locked.locked && !locked.password;
+        // Met for the first time behind a password, it asks for one; behind
+        // an account, for the account first.
+        const met = !joined && !network.known;
+        const asks = met && locked.password === true && !locked.account;
         const signal = network.strength > 0 ? `${network.strength} of 4 bars · ` : "";
         const note = `${signal}${locked.words}`;
+        const opening = met && locked.account ? provider.accountFor(network, "peap") : null;
         return member({
             key: `wifi:${network.name}`,
-            verb: joined ? "leave" : elsewhere ? "" : "join",
+            verb: joined ? "leave" : "join",
             name: network.name,
             glyph: strengthGlyph(network.strength, locked.locked),
             hue: "machine",
             side: joined ? "connected" : network.known ? "saved" : "",
-            note: elsewhere ? `${note} · not joinable from here yet` : note,
+            note: note,
             network: network.name,
             state: () => provider.said(network, note),
             // Joining keeps the launcher, which says how it went.
             stays: !joined,
             secret: asks,
-            ask: asks ? "password" : "",
+            ask: asks ? "password" : opening ? opening.ask : "",
             chip: network.name,
-            given: asks ? password => provider.join(network, password) : null,
-            run: joined ? () => Wifi.leave(network.name)
-                : elsewhere ? () => {}
-                : () => provider.join(network),
+            given: asks ? password => provider.join(network, password)
+                : opening ? opening.given : null,
+            run: joined ? () => Wifi.leave(network.name) : () => provider.join(network),
             verbs: () => provider.verbs(network, locked)
         });
     }
@@ -219,7 +270,7 @@ Provider {
                 state: () => provider.said(network, ""),
                 run: () => provider.join(network)
             }));
-        // Nix keeps the passwords of the networks it declares.
+        // Nix keeps the passwords and accounts of the networks it declares.
         if (locked.password === true && !network.declared)
             rows.push(Object.assign(asking(network, ""), {
                 key: "verb:wifi-password",
@@ -228,6 +279,15 @@ Provider {
                 hue: "action",
                 chip: "password"
             }));
+        if (locked.account === true && !network.declared)
+            for (const method of ["peap", "ttls"])
+                rows.push(Object.assign(accountFor(network, method), {
+                    key: `verb:wifi-account-${method}`,
+                    name: `Join it with an account over ${method.toUpperCase()}`,
+                    glyph: glyph(0xf0306),
+                    hue: "action",
+                    chip: "account"
+                }));
         if (network.known && !network.declared) {
             rows.push(thing({
                 key: "verb:wifi-trust",
@@ -269,6 +329,16 @@ Provider {
             const network = provider.networks.find(network => network.name === name)
                 ?? provider.described(name, "personal", 0);
             provider.troubled = name;
+            // One asking for an account is asked again from its account's
+            // name, since a join that failed keeps nothing new.
+            const account = provider.security(network).account === true;
+            if (refused === "NeedsAccount" || (account && refused === "WrongPassword")) {
+                provider.trouble = refused === "NeedsAccount" ? "it asks for an account"
+                    : "that account's password didn't work";
+                if (showing && !launcher.asking)
+                    launcher.ask(provider.accountFor(network, "peap"));
+                return;
+            }
             if (refused === "WrongPassword" || refused === "NeedsPassword") {
                 provider.trouble = refused === "NeedsPassword" ? "it asks for a password"
                     : network.known && !(at && at.secret) ? "its password has changed"
@@ -281,6 +351,7 @@ Provider {
                 TimedOut: "it didn't answer in time",
                 NotNearby: "it's out of reach",
                 TurnedAway: "it didn't let this machine join",
+                ServerUnproven: "its server couldn't prove it's that domain's",
                 Declared: "Nix keeps its password"
             }[refused] ?? "it couldn't be joined";
         }
