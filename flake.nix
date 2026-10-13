@@ -114,7 +114,7 @@
         fzf = ./modules/fzf/home.nix;
         gh = ./modules/gh/home.nix;
         ghostty = moduleFrom ./modules/ghostty/home.nix { inherit wallpapers; };
-        gimp = moduleFrom ./modules/gimp/home.nix { inherit (self.homeModules) quickshell; };
+        gimp = moduleFrom ./modules/gimp/home.nix { inherit (self.homeModules) niri quickshell; };
         git = ./modules/git/home.nix;
         glow = ./modules/glow/home.nix;
         gnupg = ./modules/gnupg/home.nix;
@@ -122,7 +122,7 @@
         home-manager = ./modules/home-manager/home.nix;
         homebrew = ./modules/homebrew/home.nix;
         identity = ./modules/identity/home.nix;
-        inkscape = ./modules/inkscape/home.nix;
+        inkscape = moduleFrom ./modules/inkscape/home.nix { inherit (self.homeModules) niri; };
         jq = ./modules/jq/home.nix;
         keys = ./modules/keys/home.nix;
         kitty = ./modules/kitty/home.nix;
@@ -140,6 +140,7 @@
         spotify = moduleFrom ./modules/spotify/home.nix { inherit spicetify-nix; };
         ssh-tpm-agent = ./modules/ssh-tpm-agent/home.nix;
         swayidle = ./modules/swayidle/home.nix;
+        swayimg = moduleFrom ./modules/swayimg/home.nix { inherit (self.homeModules) niri quickshell; };
         telnet = ./modules/telnet/home.nix;
         theme = ./modules/theme/home.nix;
         tree = ./modules/tree/home.nix;
@@ -147,6 +148,7 @@
         tuple = moduleFrom ./modules/tuple/home.nix { inherit (self.homeModules) niri quickshell; };
         wezterm = moduleFrom ./modules/wezterm/home.nix { inherit wallpapers; };
         yq = ./modules/yq/home.nix;
+        zathura = ./modules/zathura/home.nix;
         zellij = ./modules/zellij/home.nix;
         zoxide = ./modules/zoxide/home.nix;
         zsh = ./modules/zsh/home.nix;
@@ -185,7 +187,6 @@
         gpu = ./modules/gpu/nixos.nix;
         greetd = ./modules/greetd/nixos.nix;
         home-manager = moduleFrom ./modules/home-manager/nixos.nix { inherit home-manager; };
-        inkscape = ./modules/inkscape/nixos.nix;
         kernel = ./modules/kernel/nixos.nix;
         keyboard = ./modules/keyboard/nixos.nix;
         keyd = ./modules/keyd/nixos.nix;
@@ -204,8 +205,10 @@
         power-profiles-daemon = ./modules/power-profiles-daemon/nixos.nix;
         quickshell = ./modules/quickshell/nixos.nix;
         slices = ./modules/slices/nixos.nix;
+        swayimg = ./modules/swayimg/nixos.nix;
         tpm = ./modules/tpm/nixos.nix;
         yubikey = ./modules/yubikey/system.nix;
+        zathura = ./modules/zathura/nixos.nix;
         zsh = ./modules/zsh/nixos.nix;
 
         base = moduleFrom ./roles/base/nixos.nix { inherit (self) nixosModules homeModules; };

@@ -12,7 +12,10 @@
 #
 # The launcher offers the newest screenshot to edit in GIMP
 # (Screenshot.qml), at home for a couple of minutes after it's taken.
-{ quickshell }:
+#
+# GIMP's main window opens across the screen's whole width, since at niri's
+# half a column its docks cover the picture; its dialogs still float.
+{ niri, quickshell }:
 {
   config,
   lib,
@@ -104,10 +107,21 @@ in
 {
   imports = [
     ../theme/home.nix
+    niri
     quickshell
   ];
 
   home.packages = [ wrapped ];
+
+  # The main window is the only one titled this as it opens; by the time a
+  # picture is in it, the title names the picture. Maximized in niri keeps
+  # the gaps around it, as every window has.
+  xdg.configFile."niri/config.kdl".text = lib.mkAfter ''
+    window-rule {
+        match app-id="^gimp$" title="^GNU Image Manipulation Program$"
+        open-maximized true
+    }
+  '';
 
   # After Tuple's, beside the desktop's actions, since it's one.
   jitsusama.quickshell.launcher.providers.gimp = {

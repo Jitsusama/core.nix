@@ -7,3 +7,10 @@
 # opens GIMP's manual.
 (show-welcome-dialog no)
 (show-help-button no)
+
+# More to undo than GIMP's five steps and a gigabyte an image: a step over a
+# whole screenshot is about 20 MB, and what the tile cache can't hold goes
+# to GIMP's swap file, not to memory. GIMP works out its threads and its
+# tile cache from the machine it runs on, so those are left to it.
+(undo-levels 25)
+(undo-size 2G)

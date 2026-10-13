@@ -197,7 +197,9 @@ Scope {
         "1password": "f0881",
         "gimp": "f338",
         "org.inkscape.inkscape": "f33b",
-        "spotify": "f1bc"
+        "spotify": "f1bc",
+        "swayimg": "f02e9",
+        "org.pwmt.zathura": "f0219"
     }, settings.glyphs ?? {})
 
     function programGlyph(id) {

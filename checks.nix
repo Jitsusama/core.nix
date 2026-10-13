@@ -1155,6 +1155,80 @@ in
           touch $out
         '';
 
+    # swayimg shows a picture with the account's settings, on a screen of
+    # its own, and quits once it's drawn. A setting it can't take stops the
+    # rest of its settings from being read, said only as it starts, so
+    # anything it says fails this. It has the machine's fonts, since with
+    # none at all it would say it found no face. Pictures open in swayimg.
+    swayimg-accepts-its-configuration =
+      let
+        home = account graphical;
+        files = home.xdg.configFile;
+        opens = graphical.config.xdg.mime.defaultApplications."image/png" or "";
+        fonts = pkgs.makeFontsConf { fontDirectories = graphical.config.fonts.packages; };
+      in
+      assert opens == "swayimg.desktop";
+      pkgs.runCommandLocal "swayimg-accepts-its-configuration"
+        {
+          nativeBuildInputs = [
+            home.programs.swayimg.package
+            pkgs.cage
+          ];
+        }
+        ''
+          export HOME=$PWD XDG_CONFIG_HOME=$PWD/config XDG_RUNTIME_DIR=$PWD/run
+          export FONTCONFIG_FILE=${fonts} WLR_BACKENDS=headless WLR_RENDERER=pixman
+          export WLR_LIBINPUT_NO_DEVICES=1
+          mkdir -p config/swayimg run
+          chmod 700 run
+          cp ${files."swayimg/init.lua".source} config/swayimg/init.lua
+          cp ${files."swayimg/nix.lua".source} config/swayimg/nix.lua
+          printf 'P3\n1 1\n255\n0 0 0\n' > picture.ppm
+          timeout 30 cage -- swayimg \
+            --execute='swayimg.on_redrawn(function() swayimg.exit(0) end)' picture.ppm \
+            > said 2>&1 || { cat said; exit 1; }
+          # cage's own lines begin with the time.
+          if grep -v '^[0-9][0-9]:' said | grep -i -E 'error|warning|deprecated|unable'; then
+            exit 1
+          fi
+          touch $out
+        '';
+
+    # zathura opens a page with the account's settings. It names a setting
+    # or a colour it can't take and goes on without it, and stays open until
+    # it's closed, so it's given a few seconds to say so. Documents open in
+    # zathura.
+    zathura-accepts-its-configuration =
+      let
+        home = account graphical;
+        opens = graphical.config.xdg.mime.defaultApplications."application/pdf" or "";
+        page = import ./tests/page.nix { inherit lib pkgs; };
+      in
+      assert opens == "org.pwmt.zathura-pdf-mupdf.desktop";
+      pkgs.runCommandLocal "zathura-accepts-its-configuration"
+        {
+          nativeBuildInputs = [
+            home.programs.zathura.package
+            pkgs.cage
+          ];
+        }
+        ''
+          export HOME=$PWD XDG_CONFIG_HOME=$PWD/config XDG_DATA_HOME=$PWD/data
+          export XDG_RUNTIME_DIR=$PWD/run GDK_BACKEND=wayland
+          export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+          export WLR_BACKENDS=headless WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1
+          mkdir -p config/zathura data run
+          chmod 700 run
+          cp ${home.xdg.configFile."zathura/zathurarc".source} config/zathura/zathurarc
+          # cage ends when zathura does, so only a zathura still open at the
+          # end of the wait opened.
+          status=0
+          timeout 5 cage -- zathura ${page} > said 2>&1 || status=$?
+          if [ $status -ne 124 ]; then cat said; exit 1; fi
+          if grep -E '^(warning|error):' said; then exit 1; fi
+          touch $out
+        '';
+
     # Programs change their own git settings with git config --global, which
     # fails on a file the store holds, and what's declared still has to win
     # over what they wrote. So the check runs the switch's own step, with the
@@ -1259,6 +1333,42 @@ in
         if ! grep -q '^capture | portal |' said; then cat said; exit 1; fi
         touch $out
       '';
+
+    # The tuple command completes in zsh, which only shows when Tab offers
+    # nothing, so the check completes each kind of argument in a real line
+    # editor (tests/tuple-completion.zsh). Its tuple is a stand-in, since
+    # the real one lists contacts only once signed in, so the real one's
+    # settings are held to the shape the completion reads them in.
+    tuple-completes-in-zsh =
+      let
+        home = account graphical;
+        tuple = lib.findFirst (package: lib.getName package == "tuple") null home.home.packages;
+        completion = lib.findFirst (
+          package: lib.getName package == "tuple-zsh-completion"
+        ) null home.home.packages;
+      in
+      pkgs.runCommandLocal "tuple-completes-in-zsh"
+        {
+          nativeBuildInputs = [
+            tuple
+            pkgs.zsh
+          ];
+        }
+        ''
+          export HOME=$PWD XDG_DATA_HOME=$PWD/data XDG_RUNTIME_DIR=$PWD/run
+          mkdir -m 700 run
+          tuple settings > settings 2>&1 || true
+          tuple off > /dev/null 2>&1 || true
+          if ! grep -q '^capture | ' settings || grep -v -E '^[a-z-]+ \| [^|]* \| ' settings; then
+            echo "tuple settings no longer lists name | value | what it is:"
+            cat settings
+            exit 1
+          fi
+          zsh -f ${./tests/tuple-completion.zsh} \
+            ${completion}/share/zsh/site-functions/_tuple \
+            ${lib.getExe' pkgs.wl-clipboard "wl-paste"}
+          touch $out
+        '';
 
     # A call link opened in a browser comes back as tuple://join, which only
     # the desktop entry's command takes, so the check runs it as the entry

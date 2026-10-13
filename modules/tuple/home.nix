@@ -39,6 +39,11 @@
 # in its panel, the launcher's rows to open his room, join a call whose link
 # was copied, and leave, and notices as people come and go, which Tuple on
 # Linux doesn't give yet. Tuple.qml follows the daemon's log for them all.
+#
+# The tuple command completes in zsh (_tuple), which Tuple doesn't ship:
+# join takes a call's link from the clipboard, favorite and unfavorite a
+# contact by any part of a name or email, and set a setting by its name,
+# said with what it is now, then the values Tuple says it takes.
 { niri, quickshell }:
 {
   config,
@@ -77,6 +82,16 @@ let
     exec ${lib.getExe' pkgs.libnotify "notify-send"} --app-name=Tuple \
       "Tuple can't open that link" "$link"
   '';
+
+  # zsh's completion for the tuple command, which Tuple doesn't ship (_tuple).
+  completion = pkgs.runCommandLocal "tuple-zsh-completion" { } ''
+    install -D ${
+      pkgs.replaceVars ./_tuple {
+        wlPaste = lib.getExe' pkgs.wl-clipboard "wl-paste";
+        grep = lib.getExe pkgs.gnugrep;
+      }
+    } $out/share/zsh/site-functions/_tuple
+  '';
 in
 {
   imports = [
@@ -84,7 +99,10 @@ in
     quickshell
   ];
 
-  home.packages = [ pkgs.tuple ];
+  home.packages = [
+    pkgs.tuple
+    completion
+  ];
 
   xdg.configFile = {
     "quickshell/Tuple.qml".source = ./Tuple.qml;
