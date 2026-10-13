@@ -217,7 +217,7 @@ pkgs.testers.runNixOSTest {
           as_joel("mkdir -p ~/src ~/.cache/thing ~/.config/systemd/user/disk-guard.service.d")
           as_joel("cp ${userDropIn} ~/.config/systemd/user/disk-guard.service.d/test.conf")
           as_joel("head -c 300M /dev/urandom > ~/.cache/thing/blob")
-          built("idle", 900)
+          built("idle", 700)
           built("fresh", 300)
           # Built three days ago, and nothing since.
           as_joel("find ~/src/idle -exec touch -h -d '3 days ago' {} +")
@@ -228,7 +228,9 @@ pkgs.testers.runNixOSTest {
           wait_for_band("/home", "healthy")
 
       with subtest("at pressure an idle target goes, and a fresh one and a cache stay"):
-          fill_to(0.37)
+          # The idle target alone leaves the pass short of its target, so only
+          # the fresh one's window keeps it.
+          fill_to(0.26)
           gone("/home/joel/src/idle/target/debug/bulk")
           wait_for_band("/home", "healthy")
           there("/home/joel/src/fresh/target/debug/bulk")
