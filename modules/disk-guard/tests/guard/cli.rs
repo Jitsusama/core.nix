@@ -56,6 +56,13 @@ fn the_commands_that_answer_read_their_options() {
         }
     );
     assert_eq!(parse(&words("thaw")).unwrap(), Command::Thaw);
+    assert_eq!(
+        parse(&words("explain /home/u/src/app/target")).unwrap(),
+        Command::Explain {
+            path: PathBuf::from("/home/u/src/app/target"),
+            config: None
+        }
+    );
 }
 
 #[test]
@@ -251,6 +258,65 @@ fn a_daemon_refuses_another_scopes_config_and_a_second_of_itself() {
     let (code, _, err) = machine.run("user");
     assert_eq!(code, 2);
     assert!(err.contains("already"), "{err}");
+}
+
+#[test]
+fn explain_says_how_each_band_would_treat_a_path() {
+    let machine = Machine::new();
+    let trash = machine.root.join("Trash");
+    fs::create_dir_all(trash.join("files")).unwrap();
+    fs::create_dir_all(trash.join("info")).unwrap();
+    fs::write(trash.join("files/old.txt"), "x".repeat(4096)).unwrap();
+    fs::write(
+        trash.join("info/old.txt.trashinfo"),
+        "[Trash Info]\nPath=/x/old.txt\nDeletionDate=2001-09-09T01:46:40\n",
+    )
+    .unwrap();
+    machine.config(
+        &machine.env.config,
+        &format!(
+            r#"{{ "version": 1, "scope": "user",
+                 "sources": {{ "trash": {{ "kind": "trash", "path": "{}" }} }} }}"#,
+            trash.display()
+        ),
+    );
+    let old = trash.join("files/old.txt");
+    let (code, out, err) = machine.run(&format!("explain {}", old.display()));
+    assert_eq!(code, 0, "{err}");
+    let lines: Vec<&str> = out.lines().collect();
+    assert!(
+        lines[0].starts_with(&format!("{}: trash, 4.0 KiB, idle ", old.display())),
+        "{out}"
+    );
+    assert_eq!(
+        &lines[1..],
+        [
+            "  in use: by nothing",
+            "  healthy: after 30.0 d idle",
+            "  pressure: after 7.0 d idle",
+            "  urgent: after 24.0 h idle",
+            "  critical: at once",
+        ],
+        "{out}"
+    );
+    // A file inside what's offered is told of by what holds it.
+    fs::create_dir_all(trash.join("files/old-dir")).unwrap();
+    fs::write(trash.join("files/old-dir/inside.txt"), "x").unwrap();
+    fs::write(
+        trash.join("info/old-dir.trashinfo"),
+        "[Trash Info]\nPath=/x/old-dir\nDeletionDate=2001-09-09T01:46:40\n",
+    )
+    .unwrap();
+    let inside = trash.join("files/old-dir/inside.txt");
+    let (_, out, _) = machine.run(&format!("explain {}", inside.display()));
+    let held = format!("{}: trash, ", trash.join("files/old-dir").display());
+    assert!(out.starts_with(&held), "{out}");
+    let (code, out, _) = machine.run("explain /nowhere/at/all");
+    assert_eq!(code, 0);
+    assert_eq!(
+        out,
+        "No source offers /nowhere/at/all or anything holding it, so the guard leaves it be.\n"
+    );
 }
 
 #[test]

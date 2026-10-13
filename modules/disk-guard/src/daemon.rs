@@ -201,6 +201,25 @@ pub struct Guard {
     unread: (usize, Option<String>),
     /// Whether the memory read was damaged, and is still to be set aside.
     damaged: bool,
+    /// The trees the last survey kept for their use without offering.
+    kept: Vec<(PathBuf, crate::activity::Use)>,
+}
+
+/// Why a path stays or would go.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Explained {
+    /// A source offers it, or what holds it, in use this way now.
+    Offered {
+        candidate: Candidate,
+        used: crate::activity::Use,
+    },
+    /// A source found the tree holding it, which is kept for its use.
+    Kept {
+        path: PathBuf,
+        used: crate::activity::Use,
+    },
+    /// No source finds it or anything holding it.
+    Nothing,
 }
 
 /// Where a listing on its own thread sends the dead paths, or why not.
@@ -334,6 +353,51 @@ impl Guard {
             writers: Writers::default(),
             unread: (0, None),
             damaged,
+            kept: Vec::new(),
+        })
+    }
+
+    /// The candidate a source offers at `path`, or the nearest one holding
+    /// it, and how it's in use now. Nothing is taken.
+    pub fn explain(&mut self, tick: &Tick, path: &Path) -> io::Result<Explained> {
+        self.memory.awake.observe(tick);
+        self.watch();
+        let (mut scan, offers) = self.offers(tick)?;
+        let holds = |held: &Path| path.starts_with(held);
+        let offered = offers
+            .into_iter()
+            .map(|offer| offer.candidate)
+            .filter(|candidate| holds(&candidate.path))
+            .max_by_key(|candidate| candidate.path.as_os_str().len());
+        let kept = self
+            .kept
+            .iter()
+            .filter(|(tree, _)| holds(tree))
+            .max_by_key(|(tree, _)| tree.as_os_str().len())
+            .cloned();
+        // The nearest of either is what decides it.
+        let deeper = |kept: &PathBuf, candidate: &Candidate| {
+            kept.as_os_str().len() > candidate.path.as_os_str().len()
+        };
+        Ok(match (offered, kept) {
+            (Some(candidate), Some((tree, _))) if !deeper(&tree, &candidate) => {
+                let used = crate::reclaim::Looker::judge(
+                    &mut scan,
+                    &candidate.path,
+                    candidate.checkout.as_deref(),
+                )?;
+                Explained::Offered { candidate, used }
+            }
+            (_, Some((path, used))) => Explained::Kept { path, used },
+            (Some(candidate), None) => {
+                let used = crate::reclaim::Looker::judge(
+                    &mut scan,
+                    &candidate.path,
+                    candidate.checkout.as_deref(),
+                )?;
+                Explained::Offered { candidate, used }
+            }
+            (None, None) => Explained::Nothing,
         })
     }
 
@@ -1210,21 +1274,23 @@ impl Guard {
                 finished::ask(predicate, dir, &checkout)
             })
         };
-        let mut offers = survey(
-            &self.config,
-            &mut World {
-                processes: &processes,
-                me,
-                // SAFETY: geteuid only reads the process's own credentials.
-                uid: unsafe { libc::geteuid() },
-                boot,
-                awake: &self.memory.awake,
-                now: tick.wall,
-                finished: &mut finished,
-                ran: &self.memory.ran,
-                uses: &uses,
-            },
-        );
+        let mut world = World {
+            processes: &processes,
+            me,
+            // SAFETY: geteuid only reads the process's own credentials.
+            uid: unsafe { libc::geteuid() },
+            boot,
+            awake: &self.memory.awake,
+            now: tick.wall,
+            finished: &mut finished,
+            ran: &self.memory.ran,
+            uses: &uses,
+            kept: Vec::new(),
+        };
+        let mut offers = survey(&self.config, &mut world);
+        let kept = std::mem::take(&mut world.kept);
+        drop(world);
+        self.kept = kept;
         offers.extend(self.generation_offers(tick));
         offers.extend(self.garbage_offers(tick));
         offers.extend(self.asked_offers());

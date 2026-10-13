@@ -109,6 +109,9 @@ pub struct World<'a> {
     /// When each build's artifacts were last opened, as far as the watch
     /// on their `deps` has seen.
     pub uses: &'a Uses,
+    /// The trees found and kept for their use without being offered, as
+    /// the survey goes, so a plan or explanation can say why.
+    pub kept: Vec<(PathBuf, Use)>,
 }
 
 /// How deep and how widely a workspace's writes are read.
@@ -386,6 +389,7 @@ fn trees_under(
         // The candidate refuses these too; deciding first spares sizing a
         // tree a build is writing to.
         if matches!(used, Use::Busy(_) | Use::Unknown(_)) {
+            world.kept.push((tree.path.clone(), used));
             continue;
         }
         let finished = checkout.is_some_and(|dir| (world.finished)(dir));

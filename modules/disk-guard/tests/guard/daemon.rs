@@ -1,7 +1,7 @@
 use disk_guard::band::Band;
 use disk_guard::clock::Tick;
 use disk_guard::config::Config;
-use disk_guard::daemon::{Guard, Places, Senses};
+use disk_guard::daemon::{Explained, Guard, Places, Senses};
 use disk_guard::moments::{Power, Pressure};
 use disk_guard::replaced::Uses;
 use disk_guard::socket::{Reply, Request};
@@ -708,6 +708,37 @@ fn a_healthy_disk_gets_its_upkeep_and_then_rests() {
     let mut again = home.guard(home.config("0%", "0%"));
     again.step(&tick(), &CALM).unwrap();
     assert!(later.exists());
+}
+
+#[test]
+fn a_tree_kept_for_its_use_is_explained_as_kept_and_why() {
+    let home = Home::new();
+    let (config, deps) = home.replaced_build("0%");
+    let target = deps.parent().unwrap().parent().unwrap().to_owned();
+    // cargo, building in the checkout.
+    let proc = home.root.join("proc");
+    let me = unsafe { libc::geteuid() };
+    crate::procs::text(&proc, "400/stat", &crate::procs::stat(400, "cargo", 0, 90));
+    crate::procs::text(
+        &proc,
+        "400/status",
+        &format!("Name:\tcargo\nUid:\t{me}\t{me}\t{me}\t{me}\n"),
+    );
+    crate::procs::text(&proc, "400/cmdline", "cargo\0build\0");
+    crate::procs::text(&proc, "400/maps", "");
+    crate::procs::link(&proc, "400/cwd", target.join("debug").to_str().unwrap());
+    crate::procs::link(&proc, "400/exe", "/bin/cargo");
+    fs::create_dir_all(proc.join("400/fd")).unwrap();
+    let mut guard = home.guard(config);
+    let inside = deps.join(format!("libapp-{OLD}.rlib"));
+    let explained = guard.explain(&tick(), &inside).unwrap();
+    assert_eq!(
+        explained,
+        Explained::Kept {
+            path: target,
+            used: disk_guard::activity::Use::Busy(400)
+        }
+    );
 }
 
 #[test]

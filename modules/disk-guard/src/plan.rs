@@ -134,7 +134,7 @@ const DAY: f64 = 86400.0;
 
 /// A window per band, healthy first: how long a candidate must have been
 /// idle, in awake seconds, before that band takes it. None never does.
-type Windows = [Option<f64>; 4];
+pub type Windows = [Option<f64>; 4];
 
 const NEVER: Option<f64> = None;
 const AT_ONCE: Option<f64> = Some(0.0);
@@ -147,10 +147,17 @@ fn days(n: f64) -> Option<f64> {
     Some(n * DAY)
 }
 
-/// The group a band takes a candidate in, if it takes it at all. The
-/// windows are the plan's table; a tree someone sits in goes only as
-/// occupied, however finished it is.
+/// The group a band takes a candidate in, if it takes it at all.
 pub fn group(candidate: &Candidate, band: Band) -> Option<Group> {
+    let (group, windows) = windows(candidate);
+    let window = windows[band as usize]?;
+    (candidate.idle >= window).then_some(group)
+}
+
+/// The group a candidate goes in, and how long it must have been idle
+/// before each band takes it. This is the plan's table; a tree someone
+/// sits in goes only as occupied, however finished it is.
+pub fn windows(candidate: &Candidate) -> (Group, Windows) {
     let tree = matches!(candidate.class, Class::Target | Class::Install);
     let (group, windows): (Group, Windows) = match candidate.class {
         Class::Target | Class::Install if candidate.occupied => match candidate.class {
@@ -221,8 +228,7 @@ pub fn group(candidate: &Candidate, band: Band) -> Option<Group> {
         Class::Podman { unused: false } => (Group::Caches, [NEVER, NEVER, hours(1.0), hours(1.0)]),
         Class::Podman { unused: true } => (Group::Occupied, [NEVER, NEVER, NEVER, hours(1.0)]),
     };
-    let window = windows[band as usize]?;
-    (candidate.idle >= window).then_some(group)
+    (group, windows)
 }
 
 /// What a band takes, cheapest loss first: by group, caches by how cheaply

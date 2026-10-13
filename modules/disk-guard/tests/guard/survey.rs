@@ -65,6 +65,7 @@ fn offers_using(
         finished: &mut finished,
         ran,
         uses,
+        kept: Vec::new(),
     };
     let mut found = survey(config, &mut world);
     found.sort_by(|a, b| a.candidate.path.cmp(&b.candidate.path));

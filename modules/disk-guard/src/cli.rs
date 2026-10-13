@@ -4,7 +4,7 @@
 
 use crate::band::Band;
 use crate::config::{Config, Scope};
-use crate::daemon::{Guard, Places};
+use crate::daemon::{Explained, Guard, Places};
 use crate::serve::{answering, hold, steps, stopping};
 use crate::units::{Size, Span, shown as size};
 use serde_json::Value;
@@ -41,6 +41,10 @@ pub enum Command {
         file: PathBuf,
     },
     Thaw,
+    Explain {
+        path: PathBuf,
+        config: Option<PathBuf>,
+    },
 }
 
 /// Where the commands find things, worked out once from the environment.
@@ -74,6 +78,7 @@ const USAGE: &str = "usage: disk-guard user|system [--config FILE] [--state DIR]
        disk-guard plan [--config FILE] [--band BAND] [--pretend-free SIZE]
        disk-guard journal [--since SPAN] [--json]
        disk-guard check-config FILE
+       disk-guard explain PATH [--config FILE]
        disk-guard thaw";
 
 impl Env {
@@ -153,6 +158,17 @@ pub fn parse(args: &[OsString]) -> Result<Command, String> {
             _ => return Err(format!("check-config takes one file\n{USAGE}")),
         },
         Some("thaw") => Command::Thaw,
+        Some("explain") => {
+            let config = options.path("--config")?;
+            match options.positional.as_slice() {
+                [path] => {
+                    let path = PathBuf::from(path);
+                    options.positional.clear();
+                    Command::Explain { path, config }
+                }
+                _ => return Err(format!("explain takes one path\n{USAGE}")),
+            }
+        }
         _ => return Err(format!("{name:?} is not a command\n{USAGE}")),
     };
     options.finished()?;
@@ -247,6 +263,7 @@ pub fn run(command: Command, env: &Env, out: &mut dyn Write, err: &mut dyn Write
         Command::User { config, state } => daemon(env, Scope::User, config, state, err),
         Command::System { config, state } => daemon(env, Scope::System, config, state, err),
         Command::Thaw => thaw(out),
+        Command::Explain { path, config } => explain(env, &path, config, out),
     };
     match done {
         Ok(code) => code,
@@ -357,6 +374,67 @@ fn daemon(
         }
     }
     steps(&mut guard, STEP_EVERY, &mut wait, &mut desk, err);
+    Ok(FINE)
+}
+
+/// Says why `path` stays or would go: the candidate a source offers there
+/// or holding it, how it's in use now, and what each band would do.
+fn explain(env: &Env, path: &Path, config: Option<PathBuf>, out: &mut dyn Write) -> Done {
+    let config = read_config(config.as_deref().unwrap_or(&env.config))?;
+    let places = Places {
+        state: env.state.clone(),
+        status: None,
+        processes: env.processes.clone(),
+        system: Some(env.system_socket.clone()),
+        running: running(),
+    };
+    let mut guard = Guard::new(config, &places).map_err(failed)?;
+    let tick = crate::linux::tick().map_err(failed)?;
+    let used_as = |used: crate::activity::Use| match used {
+        crate::activity::Use::Free => "by nothing".to_owned(),
+        crate::activity::Use::Busy(pid) => format!("busy: process {pid} works in it"),
+        crate::activity::Use::Occupied(pid) => format!("process {pid} sits in its tree"),
+        crate::activity::Use::Unknown(pid) => format!("maybe: process {pid} can't be read"),
+    };
+    let (candidate, used) = match guard.explain(&tick, path).map_err(failed)? {
+        Explained::Offered { candidate, used } => (candidate, used),
+        Explained::Kept { path, used } => {
+            writeln!(out, "{}: kept while it's used", path.display()).map_err(failed)?;
+            writeln!(out, "  in use: {}", used_as(used)).map_err(failed)?;
+            return Ok(FINE);
+        }
+        Explained::Nothing => {
+            writeln!(
+                out,
+                "No source offers {} or anything holding it, so the guard leaves it be.",
+                path.display()
+            )
+            .map_err(failed)?;
+            return Ok(FINE);
+        }
+    };
+    writeln!(
+        out,
+        "{}: {}, {}, idle {}",
+        candidate.path.display(),
+        candidate.class.kind(),
+        size(candidate.size),
+        span(candidate.idle)
+    )
+    .map_err(failed)?;
+    writeln!(out, "  in use: {}", used_as(used)).map_err(failed)?;
+    let (_, windows) = crate::plan::windows(&candidate);
+    for (band, window) in ["healthy", "pressure", "urgent", "critical"]
+        .iter()
+        .zip(windows)
+    {
+        let when = match window {
+            None => "never".to_owned(),
+            Some(window) if window <= 0.0 => "at once".to_owned(),
+            Some(window) => format!("after {} idle", span(window)),
+        };
+        writeln!(out, "  {band}: {when}").map_err(failed)?;
+    }
     Ok(FINE)
 }
 
