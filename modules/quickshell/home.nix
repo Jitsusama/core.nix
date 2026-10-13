@@ -444,7 +444,11 @@ let
   # to standard output, and a refusal exits nonzero. The shell answers into
   # a folder made for it, watched before asking so the answer can't come
   # unseen. A notice lasts until the program stops the askpass, and anything
-  # that ends it early takes the prompt back down.
+  # that ends it early takes the prompt back down. The shell holds an ask only
+  # in memory, so while one is up the askpass checks every few seconds that
+  # the shell still has it: a shell that restarted is asked again, and once
+  # no shell has answered for 20 seconds the askpass refuses. Otherwise the
+  # program would wait on it forever, and ssh-tpm-agent every key with it.
   askpass = pkgs.writeShellApplication {
     name = "ssh-askpass";
     runtimeInputs = [
@@ -481,12 +485,29 @@ let
       trap 'exit 1' TERM INT HUP
       while read -r line <&3 && [ "$line" != "Watches established." ]; do :; done
 
-      if ! qs ipc call askpass ask "$kind" "$asker" "$1" "$reply" > /dev/null; then
+      ask() { qs ipc call askpass ask "$kind" "$asker" "$1" "$reply" > /dev/null; }
+      if ! ask "$1"; then
         echo "ssh-askpass: the shell isn't there to ask" >&2
         exit 1
       fi
+      every=3 unanswered=0
       until settled; do
-        read -r _ <&3 || exit 1
+        status=0
+        read -r -t "$every" _ <&3 || status=$?
+        # Beyond 128 is the wait ending; anything else is the watcher gone.
+        [ "$status" -eq 0 ] && continue
+        [ "$status" -gt 128 ] || exit 1
+        if waiting=$(qs ipc call askpass waiting "$reply" 2> /dev/null); then
+          unanswered=0
+          # Answered just now, or forgotten by a shell that restarted.
+          [ "$waiting" = true ] || settled || ask "$1" || true
+        else
+          unanswered=$((unanswered + every))
+          if [ "$unanswered" -ge 20 ]; then
+            echo "ssh-askpass: the shell went away without answering" >&2
+            exit 1
+          fi
+        fi
       done
       [ -e "$reply/answer" ] || exit 1
       [ "$kind" = confirm ] || cat "$reply/answer"

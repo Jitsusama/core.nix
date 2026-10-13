@@ -12,7 +12,8 @@
 // asks through IPC, naming it. The answer is written there as "answer", or
 // "refused", and the askpass says it and deletes the folder, so a PIN rests
 // only in memory, and only for that moment. A second program asking waits
-// until the first is answered.
+// until the first is answered. Asks live only here, so an askpass checks this
+// still has its own while it waits, and asks again after a restart.
 import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
@@ -68,8 +69,14 @@ Scope {
         function ask(kind: string, asker: string, prompt: string, reply: string): void {
             const folder = reply.startsWith(`${root.runtime}/`)
                 ? reply.slice(root.runtime.length + 1) : "";
-            if (/^askpass\.[A-Za-z0-9]+$/.test(folder))
+            if (/^askpass\.[A-Za-z0-9]+$/.test(folder) && !waiting(reply))
                 root.asks = root.asks.concat([{ kind, asker, prompt, reply }]);
+        }
+
+        // Whether the askpass waiting on the folder reply is still being asked
+        // for, which a shell that restarted since has forgotten.
+        function waiting(reply: string): bool {
+            return root.asks.some(ask => ask.reply === reply);
         }
 
         // Stops asking, once the program has its answer some other way or

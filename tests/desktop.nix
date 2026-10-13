@@ -1729,9 +1729,9 @@ pkgs.testers.runNixOSTest {
           def ask(kind, prompt):
               as_account(f"systemd-run --user --collect --quiet -- ${asking} {kind} '{prompt}'")
 
-          def answered(kind, code, answer=""):
+          def answered(kind, code, answer="", timeout=30):
               exit = f"$XDG_RUNTIME_DIR/asked-{kind}.exit"
-              machine.wait_until_succeeds(in_session(f"test -e {exit}"), timeout=30)
+              machine.wait_until_succeeds(in_session(f"test -e {exit}"), timeout=timeout)
               t.assertEqual(as_account(f"cat {exit}").strip(), str(code))
               t.assertEqual(as_account(f"cat $XDG_RUNTIME_DIR/asked-{kind}.answer"), answer)
 
@@ -1764,6 +1764,23 @@ pkgs.testers.runNixOSTest {
               as_account("pkill -TERM -f '^[^ ]*bash [^ ]*ssh-askpass Confirm'")
           answered("none", 1)
           as_account("! ls $XDG_RUNTIME_DIR | grep -q '^askpass'")
+
+      # The shell holds an ask only in memory, as a switch restarts it.
+      with subtest("the askpass asks a restarted shell again, and gives up on a gone one"):
+          with told("keys askpass"):
+              ask("confirm", signing)
+          with told("keys askpass", timeout=60):
+              as_account("systemctl --user restart quickshell")
+          machine.send_key("ret")
+          answered("confirm", 0)
+
+          with told("keys askpass"):
+              ask("confirm", signing)
+          as_account("systemctl --user stop quickshell")
+          answered("confirm", 1, timeout=60)
+          as_account("! ls $XDG_RUNTIME_DIR | grep -q '^askpass'")
+          as_account("systemctl --user start quickshell")
+          machine.wait_until_succeeds(in_session("qs ipc show | grep -q askpass"), timeout=60)
 
       # Chrome and Slack ask the desktop portal, and websites hear it from them.
       with subtest("the desktop says it prefers dark"):

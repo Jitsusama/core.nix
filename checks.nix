@@ -499,6 +499,21 @@ in
       touch $out
     '';
 
+  # The askpass asks a shell that restarted mid-prompt again, and refuses
+  # once none has answered for a while, rather than holding ssh-tpm-agent
+  # and every key behind it forever, as tests/askpass-waits.sh says. The
+  # desktop test restarts a real shell, in minutes; this says it in one.
+  the-askpass-outlives-its-shell =
+    let
+      askpass = (account graphical).home.sessionVariables.SSH_ASKPASS;
+    in
+    pkgs.runCommandLocal "the-askpass-outlives-its-shell" { } ''
+      ${lib.getExe' pkgs.coreutils "timeout"} 300 ${lib.getExe pkgs.bash} \
+        ${./tests/askpass-waits.sh} ${askpass} ||
+        { echo "the askpass is still waiting, or got something wrong"; exit 1; }
+      touch $out
+    '';
+
   # The camera's viewfinder script names nothing it never set, which Lua
   # would otherwise read as nothing and carry on.
   the-camera-script-names-what-it-sets =
