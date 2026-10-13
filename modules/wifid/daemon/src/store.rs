@@ -128,16 +128,44 @@ impl Store {
         Ok(())
     }
 
-    /// Takes away a network the launcher saved, handing it back so that
-    /// whatever else it had, such as its secret, can go too.
+    /// Takes away a network the launcher saved, with the password the
+    /// launcher sealed beside it, and hands it back.
     pub fn forget(&self, name: &str) -> Result<Network, Failure> {
+        let saved = self.launchers(name)?;
+        fs::remove_file(&saved.file)?;
+        // A file networkd was never given, or a password already gone, is
+        // as forgotten as can be.
+        let mut gone = vec![self.given_to_networkd(&saved.file)];
+        let secret = saved.network.secret.as_ref();
+        gone.extend(
+            secret
+                .filter(|secret| secret.parent() == Some(&self.saved))
+                .cloned(),
+        );
+        for file in gone {
+            match fs::remove_file(file) {
+                Err(error) if error.kind() != io::ErrorKind::NotFound => return Err(error.into()),
+                _ => {}
+            }
+        }
+        Ok(saved.network)
+    }
+
+    /// Trusts the network, or stops trusting it, and gives networkd its file.
+    pub fn trust(&self, name: &str, trusted: bool) -> Result<(), Failure> {
+        let mut network = self.launchers(name)?.network;
+        network.trusted = trusted;
+        self.save(&network)
+    }
+
+    /// The network of that name the launcher saved, refusing one Nix
+    /// declares.
+    fn launchers(&self, name: &str) -> Result<Saved, Failure> {
         let saved = self.find(name)?.ok_or(Failure::NotSaved)?;
         if saved.declared {
             return Err(Failure::Declared(saved.file));
         }
-        fs::remove_file(self.given_to_networkd(&saved.file))?;
-        fs::remove_file(&saved.file)?;
-        Ok(saved.network)
+        Ok(saved)
     }
 
     /// The network of that name. Nix's comes first, so when both have one,
@@ -459,6 +487,92 @@ mod tests {
         let (_root, store) = store();
 
         assert!(matches!(store.forget("Lantern"), Err(Failure::NotSaved)));
+    }
+
+    #[test]
+    fn forgetting_a_network_takes_away_the_password_sealed_beside_it() {
+        let (_root, store) = store();
+        let sealed = store.saved.join("lantern.cred");
+        fs::write(&sealed, "sealed").unwrap();
+        let mut network = lantern();
+        network.secret = Some(sealed.clone());
+        store.save(&network).unwrap();
+
+        store.forget("Lantern").unwrap();
+
+        assert!(!sealed.exists());
+    }
+
+    #[test]
+    fn forgetting_a_network_leaves_a_password_kept_elsewhere() {
+        let (root, store) = store();
+        let elsewhere = root.path().join("lantern-password");
+        fs::write(&elsewhere, "hunter2").unwrap();
+        let mut network = lantern();
+        network.secret = Some(elsewhere.clone());
+        store.save(&network).unwrap();
+
+        store.forget("Lantern").unwrap();
+
+        assert!(elsewhere.exists());
+    }
+
+    #[test]
+    fn a_network_networkd_was_never_given_is_still_forgotten() {
+        let (_root, store) = store();
+        store.save(&lantern()).unwrap();
+        fs::remove_file(store.runtime.join("50-wifi-lantern.network")).unwrap();
+
+        store.forget("Lantern").unwrap();
+
+        assert_eq!(store.networks().unwrap().saved, vec![]);
+    }
+
+    #[test]
+    fn trusting_a_network_gives_networkd_its_file_with_multicast_dns() {
+        let (_root, store) = store();
+        let mut network = lantern();
+        network.trusted = false;
+        store.save(&network).unwrap();
+
+        store.trust("Lantern", true).unwrap();
+
+        assert!(store.networks().unwrap().saved[0].network.trusted);
+        let given = fs::read_to_string(store.runtime.join("50-wifi-lantern.network")).unwrap();
+        assert!(given.contains("MulticastDNS=yes"), "{given}");
+    }
+
+    #[test]
+    fn a_network_no_longer_trusted_is_left_to_the_defaults() {
+        let (_root, store) = store();
+        store.save(&lantern()).unwrap();
+
+        store.trust("Lantern", false).unwrap();
+
+        assert!(!store.networks().unwrap().saved[0].network.trusted);
+        let given = fs::read_to_string(store.runtime.join("50-wifi-lantern.network")).unwrap();
+        assert!(given.contains("MulticastDNS=no"), "{given}");
+    }
+
+    #[test]
+    fn a_network_nix_declares_cant_be_trusted_from_here() {
+        let (_root, store) = store();
+        let inn = store.declared.join("50-wifi-roadside-inn.network");
+        fs::write(&inn, "[Match]\nSSID=\"Roadside Inn\"\n\n[X-WiFi]\n").unwrap();
+
+        let refused = store.trust("Roadside Inn", true);
+
+        assert!(matches!(refused, Err(Failure::Declared(file)) if file == inn));
+    }
+
+    #[test]
+    fn a_network_never_saved_cant_be_trusted() {
+        let (_root, store) = store();
+
+        assert!(matches!(
+            store.trust("Lantern", true),
+            Err(Failure::NotSaved)
+        ));
     }
 
     #[test]

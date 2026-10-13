@@ -14,6 +14,9 @@
 # joining, reconfiguring and networkd restarting. Nothing that should leave
 # the card on its network takes it off: not wifid starting again, nor a
 # saved file it can't read, nor another card plugged in and pulled out.
+# The shell, as an account of the machine's and no other, is told all of
+# it over varlink as it changes, and can have wifid check again, trust a
+# network or forget one, though never one Nix declares.
 { self, pkgs }:
 let
   inherit (pkgs) lib;
@@ -331,12 +334,25 @@ pkgs.testers.runNixOSTest {
 
     wifi = "/run/wifid/io.jitsusama.Wifi"
 
-    def ask(method, user="guest"):
-        """Asks wifid something as the account would, and reads the answer."""
-        answer = machine.succeed(
-            f"runuser -u {user} -- varlinkctl call {wifi} io.jitsusama.Wifi.{method} '{{}}'"
+    def calling(method, parameters):
+        """How an account of the machine's asks wifid something."""
+        return (
+            f"runuser -u guest -- varlinkctl call {wifi}"
+            f" io.jitsusama.Wifi.{method} '{json.dumps(parameters)}'"
         )
-        return json.loads(answer or "{}")
+
+    def ask(method, parameters={}):
+        """Asks wifid something as the account would, and reads the answer."""
+        return json.loads(machine.succeed(calling(method, parameters)) or "{}")
+
+    def refused(method, parameters, error):
+        """Checks wifid refuses, saying why."""
+        said = machine.fail(f"{calling(method, parameters)} 2>&1")
+        assert f"failed: io.jitsusama.Wifi.{error}" in said, said
+
+    def saved_as(name):
+        """The saved network of that name, as wifid tells the shell."""
+        return [network for network in ask("Describe")["saved"] if network["name"] == name]
 
     def journal_now():
         """Where the journal is, to read on from."""
@@ -379,8 +395,8 @@ pkgs.testers.runNixOSTest {
                 "signIn": "http://front-desk.inn/sign-in",
             }
         ], described
-        inn = [network for network in described["saved"] if network["name"] == "Roadside Inn"]
-        assert inn[0]["declared"] and inn[0]["security"] == "open", described
+        inn = saved_as("Roadside Inn")
+        assert inn[0]["declared"] and inn[0]["security"] == "open", inn
         machine.fail(
             f"runuser -u stranger -- varlinkctl call {wifi} io.jitsusama.Wifi.Describe '{{}}'"
         )
@@ -426,6 +442,20 @@ pkgs.testers.runNixOSTest {
     with subtest("a stranger's network gets no LLMNR or mDNS"):
         status = machine.succeed("resolvectl status wlan2")
         assert "-LLMNR" in status and "-mDNS" in status, status
+
+    with subtest("trusting it from the shell turns on mDNS, and the card stays on it"):
+        since = journal_now()
+        ask("Trust", {"name": "Lantern", "trusted": True})
+        machine.wait_until_succeeds("resolvectl status wlan2 | grep -qF +mDNS", timeout=30)
+        machine.succeed(f"grep -qx MulticastDNS=yes {saved}")
+        assert saved_as("Lantern")[0]["trusted"], saved_as("Lantern")
+        ask("Trust", {"name": "Lantern", "trusted": False})
+        machine.wait_until_succeeds("resolvectl status wlan2 | grep -qF -- -mDNS", timeout=30)
+        assert not saved_as("Lantern")[0]["trusted"], saved_as("Lantern")
+        holds_address("10.42.0.")
+        stayed_on(since)
+        refused("Trust", {"name": "Roadside Inn", "trusted": True}, "Declared")
+        refused("Trust", {"name": "Nowhere", "trusted": True}, "NotSaved")
 
     # WARP's own rule, at its own priority, for both families.
     for family in ("-4", "-6"):
@@ -492,11 +522,27 @@ pkgs.testers.runNixOSTest {
         says("Roadside Inn on wlan2 wants a sign-in at http://front-desk.inn/sign-in")
         machine.succeed("resolvectl revert wlan2")
 
+    with subtest("forgetting Lantern takes it from everywhere, and the card stays on the Inn"):
+        since = journal_now()
+        ask("Forget", {"name": "Lantern"})
+        for gone in (saved, given, "/var/lib/wifid/networks/lantern.cred"):
+            machine.succeed(f"! test -e {gone}")
+        held = machine.succeed("wpa_cli -i wlan2 list_networks")
+        assert "Roadside Inn" in held and "Lantern" not in held, held
+        assert saved_as("Lantern") == [], saved_as("Lantern")
+        stayed_on(since)
+        refused("Forget", {"name": "Lantern"}, "NotSaved")
+        refused("Forget", {"name": "Roadside Inn"}, "Declared")
+        joined("Roadside Inn")
+
     with subtest("networkd's file for a network no longer saved is taken away"):
-        machine.succeed(f"rm {saved}")
+        gone = "/run/systemd/network/50-wifi-gone.network"
+        machine.succeed(
+            f"printf '# Written by wifid from /var/lib/wifid/networks/gone.network\\n' > {gone}"
+        )
         machine.succeed("systemctl restart wifid")
         machine.wait_for_unit("wifid.service")
-        machine.wait_until_succeeds(f"! test -e {given}", timeout=30)
+        machine.wait_until_succeeds(f"! test -e {gone}", timeout=30)
 
     with subtest("signing in at the Inn is noticed when asked, and the shell told"):
         machine.succeed(

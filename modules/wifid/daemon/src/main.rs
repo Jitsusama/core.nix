@@ -40,7 +40,7 @@ use std::process::ExitCode;
 use std::sync::Arc;
 
 use futures_util::StreamExt;
-use tokio::sync::watch;
+use tokio::sync::{mpsc, watch};
 use tokio::time::{Instant, sleep_until};
 use zbus::fdo::DBusProxy;
 use zbus::proxy::CacheProperties;
@@ -53,7 +53,7 @@ use card::Card;
 use check::{Checker, Settings, Verdict};
 use link::Link;
 use secret::Credentials;
-use service::Wifi;
+use service::{Ask, Refused, Wifi};
 use state::State;
 use store::{Saved, Store};
 use supplicant::{InterfaceProxy, JoinableProxy, SupplicantProxy};
@@ -152,9 +152,11 @@ async fn run() -> Result<(), Box<dyn Error>> {
         state: state.clone(),
         followed: HashMap::new(),
     };
+    let (asks, mut taken) = mpsc::channel(1);
     let wifi = Wifi {
         state: state.subscribe(),
         asked: networks.asked.clone(),
+        asks,
     };
     // Every card there is now was given wpa_supplicant above.
     networks.follow_all(all_links(&bus).await);
@@ -195,6 +197,7 @@ async fn run() -> Result<(), Box<dyn Error>> {
                         }
                     }
                 }
+                Some(ask) = taken.recv() => wifid.answer(ask).await,
                 Some(sleep) = sleeps.next() => {
                     if sleep.args().is_ok_and(|args| !args.start) {
                         networks.asked.send_modify(|asked| *asked += 1);
@@ -548,6 +551,39 @@ impl Wifid<'_> {
             self.joinable(&network).await?.set_enabled(true).await?;
         }
         Ok(())
+    }
+
+    /// Changes the saved networks as asked, and says how it went once
+    /// networkd and wpa_supplicant have every network as it now stands.
+    async fn answer(&self, ask: Ask) {
+        let (changed, done) = match ask {
+            Ask::Forget { name, done } => (self.store.forget(&name).map(|_| ()), done),
+            Ask::Trust {
+                name,
+                trusted,
+                done,
+            } => (self.store.trust(&name, trusted), done),
+        };
+        let answer = match changed {
+            Ok(()) => self.given_everything().await,
+            Err(store::Failure::Declared(_)) => Err(Refused::Declared),
+            Err(store::Failure::NotSaved) => Err(Refused::NotSaved),
+            Err(store::Failure::Io(error)) => Err(Refused::Failed {
+                reason: error.to_string(),
+            }),
+        };
+        // Whoever asked may have stopped waiting, which changes nothing.
+        let _ = done.send(answer);
+    }
+
+    /// Has networkd read its files again and gives wpa_supplicant every
+    /// card's networks again, as the store now holds them.
+    async fn given_everything(&self) -> Result<(), Refused> {
+        let reloaded = reload_networkd(self.bus).await;
+        self.add_cards().await;
+        reloaded.map_err(|error| Refused::Failed {
+            reason: format!("networkd didn't read its files again: {error}"),
+        })
     }
 
     async fn joinable(&self, network: &OwnedObjectPath) -> zbus::Result<JoinableProxy<'_>> {
