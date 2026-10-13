@@ -13,7 +13,7 @@ use std::ffi::{OsStr, OsString};
 use std::io;
 use std::os::fd::OwnedFd;
 use std::os::unix::ffi::{OsStrExt, OsStringExt};
-use std::path::Path;
+use std::path::{Component, Path};
 
 pub struct Dir {
     fd: OwnedFd,
@@ -176,6 +176,33 @@ impl Dir {
             ));
         }
         Ok(child)
+    }
+
+    /// Opens a directory beneath this one a component at a time, each one
+    /// without following a symlink and checked to be on this filesystem,
+    /// refusing any `..`. It's how `child` resolves where there's no
+    /// `openat2`, and public so Linux's tests hold it to the same rules.
+    #[doc(hidden)]
+    pub fn child_stepwise(&self, relative: &Path) -> io::Result<Dir> {
+        let mut dir = Dir::from_fd(rustix::fs::openat(&self.fd, ".", DIRECTORY, Mode::empty())?)?;
+        for component in relative.components() {
+            let name = match component {
+                Component::CurDir => continue,
+                Component::Normal(name) => name,
+                _ => {
+                    return Err(io::Error::new(io::ErrorKind::InvalidInput, "not beneath"));
+                }
+            };
+            let next = Dir::from_fd(rustix::fs::openat(&dir.fd, name, DIRECTORY, Mode::empty())?)?;
+            if next.dev != self.dev {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "another filesystem",
+                ));
+            }
+            dir = next;
+        }
+        Ok(dir)
     }
 
     /// Opens one regular file of this directory, to read or to read and
