@@ -40,6 +40,80 @@ let
     mv "$out.part" "$out.exit"
   '';
 
+  # A stand-in touchscreen, as wide as the screen, which swipes with as many
+  # fingers as it's told, one way: each line written to /run/touchscreen is
+  # how many and which way, as lisgd spells them (RL is from right to left).
+  # Writing waits until it's read, so a swipe has started once it returns.
+  touchscreen =
+    pkgs.writers.writePython3 "touchscreen"
+      {
+        libraries = [ pkgs.python3Packages.evdev ];
+        flakeIgnore = [ "E501" ];
+      }
+      ''
+        import os
+        import time
+        from evdev import AbsInfo, UInput, ecodes as e
+
+        width, height = 1280, 800
+        fifo = "/run/touchscreen"
+
+
+        def axis(most):
+            return AbsInfo(0, 0, most, 0, 0, 10)
+
+
+        device = UInput(
+            {
+                e.EV_KEY: [e.BTN_TOUCH],
+                e.EV_ABS: [
+                    (e.ABS_X, axis(width - 1)),
+                    (e.ABS_Y, axis(height - 1)),
+                    (e.ABS_MT_SLOT, axis(9)),
+                    (e.ABS_MT_TRACKING_ID, axis(65535)),
+                    (e.ABS_MT_POSITION_X, axis(width - 1)),
+                    (e.ABS_MT_POSITION_Y, axis(height - 1)),
+                ],
+            },
+            name="stand-in touchscreen",
+            input_props=[e.INPUT_PROP_DIRECT],
+        )
+
+        # From the middle, a third of the screen the way it's told.
+        ways = {"LR": (1, 0), "RL": (-1, 0), "UD": (0, 1), "DU": (0, -1)}
+
+
+        def swipe(fingers, way):
+            dx, dy = ways[way]
+            steps = 10
+            for step in range(steps + 1):
+                for finger in range(fingers):
+                    x = width // 2 + dx * width // 3 * step // steps + 40 * finger * abs(dy)
+                    y = height // 2 + dy * height // 3 * step // steps + 40 * finger * abs(dx)
+                    device.write(e.EV_ABS, e.ABS_MT_SLOT, finger)
+                    if step == 0:
+                        device.write(e.EV_ABS, e.ABS_MT_TRACKING_ID, finger + 1)
+                    device.write(e.EV_ABS, e.ABS_MT_POSITION_X, x)
+                    device.write(e.EV_ABS, e.ABS_MT_POSITION_Y, y)
+                if step == 0:
+                    device.write(e.EV_KEY, e.BTN_TOUCH, 1)
+                device.syn()
+                time.sleep(0.02)
+            for finger in range(fingers):
+                device.write(e.EV_ABS, e.ABS_MT_SLOT, finger)
+                device.write(e.EV_ABS, e.ABS_MT_TRACKING_ID, -1)
+            device.write(e.EV_KEY, e.BTN_TOUCH, 0)
+            device.syn()
+
+
+        os.mkfifo(fifo)
+        while True:
+            with open(fifo) as asked:
+                for line in asked:
+                    fingers, way = line.split()
+                    swipe(int(fingers), way)
+      '';
+
   # A picture and a document to open, as a download would be.
   picture = "${pkgs.nixos-icons}/share/icons/hicolor/256x256/apps/nix-snowflake.png";
   page = import ./page.nix {
@@ -122,6 +196,8 @@ pkgs.testers.runNixOSTest {
         # Two stand-in Wi-Fi radios: hostapd makes the first an access point
         # and NetworkManager joins it from the second, as the laptop's would.
         "mac80211_hwsim"
+        # For a stand-in touchscreen.
+        "uinput"
       ];
       services.hostapd = {
         enable = true;
@@ -1845,6 +1921,61 @@ pkgs.testers.runNixOSTest {
               " org.freedesktop.portal.FileChooser OpenFile 'ssa{sv}' \"\" Open 0"
           )
           t.assertEqual(commonest_colour_in("Open", "file-chooser", sunken), sunken)
+
+      # Swipes on a touchscreen move through the desktop as the touchpad's do.
+      # udev opens the touchscreen to the account signed in at the seat, and
+      # starts lisgd when it's plugged in.
+      with subtest("swipes on the touchscreen move through the workspaces"):
+          machine.succeed("systemd-run --unit=touchscreen ${touchscreen}")
+          machine.wait_for_file("/run/touchscreen", timeout=30)
+          machine.wait_for_file("/dev/input/touchscreen", timeout=30)
+          machine.succeed(
+              "${pkgs.acl}/bin/getfacl -p /dev/input/touchscreen | grep -q '^user:${account}:rw'"
+          )
+
+          # lisgd hears the touchscreen once it has it open.
+          def holding(_):
+              status, _ = machine.execute(
+                  "ls -l /proc/$(pgrep -u ${account} -x lisgd)/fd | grep -q "
+                  "$(readlink -f /dev/input/touchscreen)"
+              )
+              return status == 0
+
+          retry(holding, timeout_seconds=30)
+
+          def focused_workspace():
+              workspaces = json.loads(as_account("niri msg --json workspaces"))
+              return next(w["idx"] for w in workspaces if w["is_focused"])
+
+          def overview_open():
+              return json.loads(as_account("niri msg --json overview-state"))["is_open"]
+
+          # lisgd turns a swipe as the screen is turned, so it means what it
+          # looks like. niri nested in Cage says its screen is turned over,
+          # so the stand-in swipes the way a person seeing it would.
+          outputs = json.loads(as_account("niri msg --json outputs"))
+          turn = next(iter(outputs.values()))["logical"]["transform"]
+          print(f"niri's screen is turned {turn}")
+          over = {"DU": "UD", "UD": "DU", "LR": "RL", "RL": "LR"}
+          assert turn in ("Normal", "180", "Flipped180"), f"no swipes for a screen turned {turn}"
+
+          def swiped(fingers, way, until):
+              drawn = way if turn == "Normal" else over[way]
+              machine.succeed(f"echo '{fingers} {drawn}' > /run/touchscreen")
+              try:
+                  retry(lambda _: until(), timeout_seconds=10)
+              except Exception:
+                  print(as_account("journalctl --user -u lisgd --no-pager -o cat"))
+                  raise
+
+          first = focused_workspace()
+          swiped(3, "DU", lambda: focused_workspace() == first + 1)
+          swiped(3, "UD", lambda: focused_workspace() == first)
+          swiped(4, "DU", overview_open)
+          swiped(4, "UD", lambda: not overview_open())
+          # Unplugged, lisgd stops with it.
+          machine.succeed("systemctl stop touchscreen")
+          machine.wait_until_fails(in_session("systemctl --user is-active lisgd"), timeout=30)
 
       # With no agent BlueZ refuses every pairing, even one asked for here.
       # BlueZ starts when a radio appears, which the VM has none of, so it's
