@@ -180,6 +180,7 @@
         coredump = ./modules/coredump/nixos.nix;
         disko = moduleFrom ./modules/disko/nixos.nix { inherit disko; };
         ergodox = ./modules/ergodox/nixos.nix;
+        firmware-settings = ./modules/firmware-settings/nixos.nix;
         fonts = ./modules/fonts/system.nix;
         gnome-keyring = ./modules/gnome-keyring/nixos.nix;
         gpu = ./modules/gpu/nixos.nix;

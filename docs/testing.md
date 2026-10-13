@@ -123,6 +123,7 @@ kernel guide][2] says what that catches.
 | `the-ergodox-command-reaches-the-board` | `ergodox` writes each command whole to the board's channel alone |
 | `the-ergodox-watch-tells-the-layer` | the layer watcher finds the board and says only what it's told |
 | `btrfs-reclaims-its-chunks`       | tmpfiles turns Btrfs's reclaim on for data and metadata   |
+| `the-firmware-takes-what-is-declared` | `firmware-settings` names what differs, writes it with the password, then wipes it |
 
 ### Virtual Machines
 
