@@ -1186,3 +1186,44 @@ fn the_opens_a_watch_hears_are_kept_for_the_next_guard() {
     assert!(kept.watched.contains_key(&deps), "{kept:?}");
     assert!(kept.opened.contains_key(&rlib), "{kept:?}");
 }
+
+#[test]
+fn a_deps_made_anew_is_marked_again_within_the_hour() {
+    let Ok(watch) = disk_guard::opens::Watch::new() else {
+        eprintln!("no fanotify here, so nothing to check");
+        return;
+    };
+    let home = Home::new();
+    let (config, deps) = home.replaced_build("0%");
+    let mut guard = home.guard(config);
+    guard.listen(std::sync::Arc::new(watch));
+    guard.step(&tick(), &CALM).unwrap();
+    // Cleaned and built again: the old mark went with the old directory.
+    fs::remove_dir_all(&deps).unwrap();
+    home.replaced_build("0%");
+    let at = |seconds: f64| Tick {
+        wall: wall() + seconds,
+        ..tick()
+    };
+    guard.step(&at(3601.0), &CALM).unwrap();
+    let rlib = deps.join(format!("libapp-{NEW}.rlib"));
+    std::process::Command::new("cat")
+        .arg(&rlib)
+        .output()
+        .unwrap();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    let mut seconds = 3601.0;
+    let kept = loop {
+        // Each step late enough after the last that the guard saves.
+        seconds += 400.0;
+        guard.step(&at(seconds), &CALM).unwrap();
+        let kept: Uses = disk_guard::state::load(&home.root.join("state/uses.json"))
+            .unwrap()
+            .unwrap_or_default();
+        if kept.opened.contains_key(&rlib) || std::time::Instant::now() > deadline {
+            break kept;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    };
+    assert!(kept.opened.contains_key(&rlib), "{kept:?}");
+}
