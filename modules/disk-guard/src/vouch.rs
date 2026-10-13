@@ -22,8 +22,7 @@ pub struct Answer {
     pub touching: Vec<Process>,
 }
 
-/// The variables that point a build at a target, as activity reads them.
-const BUILD_VARIABLES: [&str; 2] = ["CARGO_TARGET_DIR", "CARGO_BUILD_BUILD_DIR"];
+use crate::activity::BUILD_VARIABLES;
 
 /// Whether `uid` owns `path` or a directory it lies in, and so whether
 /// it's theirs to hear of. A root-owned file a `sudo cargo` left in the

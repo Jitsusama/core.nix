@@ -61,7 +61,7 @@ fn fake_proc(root: &Path) {
     text(
         root,
         "100/environ",
-        "HOME=/home/u\0CARGO_TARGET_DIR=/home/u/t\0SECRET=x\0",
+        "HOME=/home/u\0CARGO_TARGET_DIR=/home/u/t\0SECRET=x\0CARGO_HOME=/home/u/.dev/cargo/a\0",
     );
     link(root, "100/cwd", "/home/u/src/app");
     link(root, "100/exe", "/nix/store/abc-cargo/bin/cargo");
@@ -120,10 +120,16 @@ fn a_process_is_read_from_its_proc_directory() {
     // Only build variables are kept from the environment.
     assert_eq!(
         cargo.env,
-        vec![(
-            OsString::from("CARGO_TARGET_DIR"),
-            OsString::from("/home/u/t")
-        )]
+        vec![
+            (
+                OsString::from("CARGO_TARGET_DIR"),
+                OsString::from("/home/u/t")
+            ),
+            (
+                OsString::from("CARGO_HOME"),
+                OsString::from("/home/u/.dev/cargo/a")
+            )
+        ]
     );
     let files: Vec<PathBuf> = ["/dev/null", "/home/u/src/app/target/debug/.cargo-lock"]
         .map(PathBuf::from)

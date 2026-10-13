@@ -32,6 +32,10 @@ fn root_process() -> Process {
                 OsString::from("CARGO_BUILD_BUILD_DIR"),
                 OsString::from("/var/build"),
             ),
+            (
+                OsString::from("CARGO_HOME"),
+                OsString::from("/home/u/src/cargo-home"),
+            ),
         ],
         files: vec![
             PathBuf::from("/home/u/src/app/target/debug/.cargo-lock"),
@@ -90,10 +94,16 @@ fn a_process_touching_the_askers_roots_is_told_of_only_there() {
     );
     assert_eq!(
         seen.env,
-        [(
-            OsString::from("CARGO_TARGET_DIR"),
-            OsString::from("/home/u/src/app/target")
-        )]
+        [
+            (
+                OsString::from("CARGO_TARGET_DIR"),
+                OsString::from("/home/u/src/app/target")
+            ),
+            (
+                OsString::from("CARGO_HOME"),
+                OsString::from("/home/u/src/cargo-home")
+            )
+        ]
     );
     assert_eq!(
         seen.exe.as_deref(),

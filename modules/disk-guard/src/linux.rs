@@ -310,9 +310,15 @@ fn waiters_in(text: &str, me: u32, inodes: &[u64]) -> Option<Vec<i32>> {
 /// `PF_KTHREAD` in a process's flags: a kernel thread, which holds no files.
 const PF_KTHREAD: u64 = 0x0020_0000;
 
-/// The environment variables that point a build somewhere, which are all
-/// the guard keeps of a process's environment.
-const BUILD_VARIABLES: [&str; 3] = ["CARGO_TARGET_DIR", "CARGO_BUILD_BUILD_DIR", "TMPDIR"];
+/// Whether the guard keeps a variable of a process's environment: those
+/// that point a build somewhere, and the temporary directory it uses, which
+/// are all it keeps.
+fn kept(name: &[u8]) -> bool {
+    name == b"TMPDIR"
+        || crate::activity::BUILD_VARIABLES
+            .iter()
+            .any(|variable| name == variable.as_bytes())
+}
 
 /// Every process `/proc` shows, but kernel threads and zombies. A process
 /// that exits mid-scan is left out. One whose cwd, files or maps are hidden,
@@ -372,7 +378,7 @@ fn process(dir: &Path, pid: u32) -> Option<crate::activity::Process> {
             let bytes = pair.as_bytes();
             let equals = bytes.iter().position(|&byte| byte == b'=')?;
             let key = std::ffi::OsStr::from_bytes(&bytes[..equals]);
-            BUILD_VARIABLES.iter().any(|name| key == *name).then(|| {
+            kept(key.as_bytes()).then(|| {
                 (
                     key.to_owned(),
                     std::ffi::OsStr::from_bytes(&bytes[equals + 1..]).to_owned(),
