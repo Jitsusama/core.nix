@@ -173,6 +173,7 @@ pub struct Reclaim<'a> {
     actions: HashMap<PathBuf, Action>,
     scan: &'a mut Scan,
     notes: Vec<String>,
+    gentle: bool,
 }
 
 impl<'a> Reclaim<'a> {
@@ -185,7 +186,15 @@ impl<'a> Reclaim<'a> {
             actions,
             scan,
             notes: Vec::new(),
+            gentle: false,
         }
+    }
+
+    /// For a pass that can wait: the commands it runs do so at idle
+    /// priority, so a collection never slows the work it makes room for.
+    pub fn gently(mut self) -> Self {
+        self.gentle = true;
+        self
     }
 
     /// What went wrong after a reclaim that freed its space anyway.
@@ -216,7 +225,7 @@ impl Reclaimer for Reclaim<'_> {
             }
             Action::Entry { .. } => reclaim::entry(&root, root_path, candidate, self.scan),
             Action::Trash { .. } => reclaim::trashed(&root, root_path, candidate),
-            Action::Run { argv, timeout, .. } => run(argv, *timeout),
+            Action::Run { argv, timeout, .. } => run(argv, *timeout, self.gentle),
             Action::Trim { .. } => {
                 let Ok(relative) = candidate.path.strip_prefix(root_path) else {
                     return Outcome::Failed(format!("outside its root {}", root_path.display()));
@@ -252,13 +261,14 @@ const OUTPUT_LIMIT: usize = 64 << 10;
 
 /// Runs a source's command; anything but a clean exit is a failure, told
 /// with the last thing it said on its errors.
-fn run(argv: &[String], timeout: Duration) -> Outcome {
+fn run(argv: &[String], timeout: Duration, idle: bool) -> Outcome {
     let job = Job {
         argv: argv.iter().map(Into::into).collect(),
         cwd: None,
         env: Vec::new(),
         timeout,
         limit: OUTPUT_LIMIT,
+        idle,
     };
     match commands::run(&job) {
         Ok(Ran::Finished(Output {

@@ -9,7 +9,30 @@ fn job(words: &[&str]) -> Job {
         env: Vec::new(),
         timeout: Duration::from_secs(10),
         limit: 1 << 20,
+        idle: false,
     }
+}
+
+/// The scheduling policy a command ran under, from its own stat line.
+fn policy(job: &Job) -> u32 {
+    let output = finished(run(job).unwrap());
+    let stat = String::from_utf8(output.stdout).unwrap();
+    let after_name = stat.rsplit_once(')').unwrap().1;
+    // Field 41 of the line, counted from the state, which is field 3.
+    after_name
+        .split_whitespace()
+        .nth(41 - 3)
+        .unwrap()
+        .parse()
+        .unwrap()
+}
+
+#[test]
+fn an_idle_command_runs_at_idle_priority_and_any_other_as_the_guard_does() {
+    let mut job = job(&["cat", "/proc/self/stat"]);
+    assert_eq!(policy(&job), libc::SCHED_OTHER as u32);
+    job.idle = true;
+    assert_eq!(policy(&job), libc::SCHED_IDLE as u32);
 }
 
 fn finished(ran: Ran) -> disk_guard::commands::Output {

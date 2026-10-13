@@ -350,6 +350,47 @@ fn a_routine_pass_gives_way_when_the_disk_gets_busy_and_comes_back_later() {
     );
 }
 
+/// The scheduling policy a producer ran under in one step of a guard
+/// whose bands are `pressure` and `urgent`.
+fn producer_policy(pressure: &str, urgent: f64) -> String {
+    use disk_guard::config::Source;
+    use disk_guard::units::Span;
+    let home = Home::new();
+    let marker = home.root.join("policy");
+    let mut config = home.config(pressure, "100%");
+    config.bands.urgent = Size::Percent(urgent);
+    config.sources.insert(
+        "gc".to_owned(),
+        Source::Producer {
+            command: vec![
+                "/bin/sh".to_owned(),
+                "-c".to_owned(),
+                format!("cut -d' ' -f41 /proc/$$/stat > {}", marker.display()),
+            ],
+            path: home.root.clone(),
+            every: Some(Span(std::time::Duration::from_secs(60))),
+            from: Some(Band::Urgent),
+            timeout: Span(std::time::Duration::from_secs(10)),
+        },
+    );
+    home.guard(config).step(&tick(), &CALM).unwrap();
+    fs::read_to_string(&marker).unwrap().trim().to_owned()
+}
+
+#[test]
+fn a_command_runs_at_idle_priority_unless_the_pass_is_urgent() {
+    assert_eq!(
+        producer_policy("0%", 0.0),
+        libc::SCHED_IDLE.to_string(),
+        "upkeep"
+    );
+    assert_eq!(
+        producer_policy("100%", 100.0),
+        libc::SCHED_OTHER.to_string(),
+        "urgent"
+    );
+}
+
 #[test]
 fn an_urgent_pass_never_gives_way() {
     let home = Home::new();

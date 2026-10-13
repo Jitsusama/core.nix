@@ -21,6 +21,8 @@ pub struct Job {
     pub timeout: Duration,
     /// How much of each stream is kept.
     pub limit: usize,
+    /// Whether it runs at idle priority, for the processor and the disk.
+    pub idle: bool,
 }
 
 #[derive(Debug, Default)]
@@ -46,6 +48,27 @@ const TICK: Duration = Duration::from_millis(50);
 /// case something it started holds the streams open.
 const GRACE: Duration = Duration::from_millis(200);
 
+/// Puts the calling thread at idle priority for the processor and the
+/// disk. Best effort: a command the kernel won't lower still runs, at the
+/// guard's own priority, and its timeout bounds it either way. Done in the
+/// child alone, since an account can't raise a thread back from idle.
+fn idle() {
+    const IOPRIO_WHO_PROCESS: libc::c_int = 1;
+    const IOPRIO_CLASS_IDLE: libc::c_int = 3;
+    const IOPRIO_CLASS_SHIFT: libc::c_int = 13;
+    let param = libc::sched_param { sched_priority: 0 };
+    // SAFETY: both act on the calling thread alone, with valid arguments.
+    unsafe {
+        libc::sched_setscheduler(0, libc::SCHED_IDLE, &param);
+        libc::syscall(
+            libc::SYS_ioprio_set,
+            IOPRIO_WHO_PROCESS,
+            0,
+            IOPRIO_CLASS_IDLE << IOPRIO_CLASS_SHIFT,
+        );
+    }
+}
+
 pub fn run(job: &Job) -> io::Result<Ran> {
     let Some((program, args)) = job.argv.split_first() else {
         return Err(io::Error::new(io::ErrorKind::InvalidInput, "no program"));
@@ -60,6 +83,16 @@ pub fn run(job: &Job) -> io::Result<Ran> {
         .process_group(0);
     if let Some(cwd) = &job.cwd {
         command.current_dir(cwd);
+    }
+    if job.idle {
+        // SAFETY: between fork and exec, only two system calls, both safe
+        // in a forked child, touching nothing of the parent's.
+        unsafe {
+            command.pre_exec(|| {
+                idle();
+                Ok(())
+            });
+        }
     }
     let mut child = command.spawn()?;
     let deadline = Instant::now() + job.timeout;

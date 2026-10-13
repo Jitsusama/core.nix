@@ -44,6 +44,7 @@ fn git(dir: &Path, args: &[&str]) -> Option<String> {
         env: vec![(OsString::from("GIT_OPTIONAL_LOCKS"), OsString::from("0"))],
         timeout: GIT_TIMEOUT,
         limit: 64 << 10,
+        idle: false,
     };
     match commands::run(&job).ok()? {
         Ran::Finished(output) if output.status == Some(0) => {
@@ -110,6 +111,7 @@ pub fn ask(predicate: &Predicate, dir: &Path, checkout: &Checkout) -> bool {
         ],
         timeout: predicate.timeout,
         limit: 64 << 10,
+        idle: false,
     };
     match commands::run(&job) {
         Ok(Ran::Finished(output)) if output.status == Some(0) && !output.truncated => {

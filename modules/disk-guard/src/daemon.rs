@@ -407,9 +407,14 @@ impl Guard {
         let started = Instant::now();
         let gentle = band < Band::Urgent;
         let pressure = self.processes.join("pressure");
+        let reclaimer = Reclaim::new(here, scan);
         let mut reclaim = Journaled {
             inner: Yielding {
-                inner: Reclaim::new(here, scan),
+                inner: if gentle {
+                    reclaimer.gently()
+                } else {
+                    reclaimer
+                },
                 busy: move || {
                     gentle
                         && !crate::decide::calm(

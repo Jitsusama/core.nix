@@ -176,6 +176,7 @@ pub fn prune(common: &Path) -> std::io::Result<()> {
         env: Vec::new(),
         timeout: std::time::Duration::from_secs(60),
         limit: 64 << 10,
+        idle: false,
     };
     match crate::commands::run(&job)? {
         crate::commands::Ran::Finished(output) if output.status == Some(0) => Ok(()),
