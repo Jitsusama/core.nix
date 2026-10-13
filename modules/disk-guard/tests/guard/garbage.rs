@@ -42,7 +42,7 @@ fn fake_nix(dir: &Path, count: usize) -> std::path::PathBuf {
         &dir.join("nix"),
         &format!(
             "[ \"$1 $2\" = '--extra-experimental-features nix-command' ] || exit 9\nshift 2\n\
-             [ \"$1 $2\" = 'path-info --json' ] || exit 9\nshift 2\n\
+             [ \"$1 $2 $3\" = 'path-info --json --offline' ] || exit 9\nshift 3\n\
              echo $# >> {}\n\
              printf '{{'; sep=''\n\
              for p in \"$@\"; do\n\
