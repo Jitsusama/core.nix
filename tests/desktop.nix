@@ -1192,8 +1192,9 @@ pkgs.testers.runNixOSTest {
           machine.wait_until_succeeds(in_session(window), timeout=60)
           photograph("sign-in", timeout=20)
           # Its one button signs in, and the window closes as Lantern lets
-          # the machine through.
-          machine.send_key("ret")
+          # the machine through, its notice taken back with it.
+          with told("withdrew sign-in Lantern", timeout=60):
+              machine.send_key("ret")
           machine.wait_until_fails(in_session(window), timeout=60)
           machine.succeed(f"{described} | grep -qF '\"reach\":\"online\"'")
           # The Office asks for an account: met for the first time, it asks

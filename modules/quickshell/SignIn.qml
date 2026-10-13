@@ -26,12 +26,33 @@ Singleton {
     property var told: []
 
     function follow(): void {
-        const wanting = Wifi.cards.filter(card => card.reach === "signIn").map(card => card.network);
+        // One being checked again still wants it until the check says not,
+        // or its notice would come and go with every check.
+        const still = card => card.reach === "signIn"
+            || (card.reach === "checking" && told.includes(card.network));
+        const wanting = Wifi.cards.filter(still).map(card => card.network);
+        for (const network of told.filter(network => !wanting.includes(network)))
+            withdraw(network);
         told = told.filter(network => wanting.includes(network));
         for (const network of wanting.filter(network => !told.includes(network))) {
             told = told.concat([network]);
             tell(network);
         }
+    }
+
+    // A network that no longer wants a sign-in takes its notice back: off
+    // the screen if it's still there, and read in the history, so it never
+    // waits there as missed once there's nothing to do about it.
+    function withdraw(network: string): void {
+        const summary = `${network} wants a sign-in`;
+        const ours = notice => notice.appName === "Wi-Fi" && notice.summary === summary;
+        for (const id in Notices.live)
+            if (ours(Notices.live[id]))
+                Notices.live[id].dismiss();
+        for (const notice of Notices.history)
+            if (notice.app === "Wi-Fi" && notice.summary === summary && !notice.read)
+                Notices.mark(notice.id, true);
+        Report.say(`withdrew sign-in ${network}`);
     }
 
     // The notice's action comes back through the shell, so the door stays
