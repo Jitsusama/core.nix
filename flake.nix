@@ -127,6 +127,7 @@
         jq = ./modules/jq/home.nix;
         keys = ./modules/keys/home.nix;
         kitty = ./modules/kitty/home.nix;
+        lisgd = ./modules/lisgd/home.nix;
         lsd = ./modules/lsd/home.nix;
         mpv = ./modules/mpv/home.nix;
         neovim = moduleFrom ./modules/neovim/home.nix { inherit neovim-pi; };
@@ -195,6 +196,7 @@
         keyd = ./modules/keyd/nixos.nix;
         lanzaboote = moduleFrom ./modules/lanzaboote/nixos.nix { inherit lanzaboote; };
         libvirt = ./modules/libvirt/nixos.nix;
+        lisgd = ./modules/lisgd/nixos.nix;
         memory = ./modules/memory/nixos.nix;
         mpv = ./modules/mpv/nixos.nix;
         networkmanager = ./modules/networkmanager/nixos.nix;

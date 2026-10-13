@@ -1,9 +1,20 @@
 # greetd starts niri at boot. Unlocking the disk has just proved it's Joel, so
-# the machine's own account signs in by itself, once; after logging out,
-# tuigreet asks who's there.
+# the machine's own account signs in by itself, once; after logging out, the
+# greeter asks who's there.
+#
+# The greeter (greeter.qml) is Quickshell in a niri of its own, run as
+# greetd's greeter account, wearing the look of the account that signs in:
+# its Quickshell files and niri's look and keyboard come from that account's
+# home configuration, so a theme reaches the greeter as it reaches the
+# desktop. That niri has no keys bound, so the greeter's field is all there
+# is to type into. Should the greeter stop without having signed anyone in,
+# tuigreet asks on the console instead, so a broken greeter never locks Joel
+# out. A machine with no such account, or no home configuration for it, gets
+# tuigreet alone.
 {
   config,
   lib,
+  options,
   pkgs,
   ...
 }:
@@ -35,35 +46,159 @@ let
     chmod +x $out
   '';
 
+  cfg = config.jitsusama.login;
   gpu = config.jitsusama.gpu.unit;
+  niri = config.programs.niri.package;
+
+  tuigreet = [
+    (lib.getExe pkgs.tuigreet)
+    "--time"
+    "--remember"
+    "--asterisks"
+    "--cmd"
+    (lib.escapeShellArgs cfg.session)
+  ];
+
+  # The account's home configuration, when the machine has one for it.
+  home =
+    if cfg.account != null && options ? home-manager then
+      config.home-manager.users.${cfg.account} or null
+    else
+      null;
+  files = home.home-files;
+
+  # Every account that can sign in, the machine's own first, each called by
+  # the first word of its description.
+  accounts =
+    let
+      people = lib.filterAttrs (_: user: user.isNormalUser) config.users.users;
+      called =
+        name:
+        let
+          words = lib.splitString " " people.${name}.description;
+        in
+        if people.${name}.description == "" then name else builtins.head words;
+      names = [ cfg.account ] ++ lib.filter (name: name != cfg.account) (lib.attrNames people);
+    in
+    map (name: {
+      inherit name;
+      called = called name;
+    }) (lib.filter (name: people ? ${name}) names);
+
+  # The account's Quickshell files with the greeter beside them.
+  shell = pkgs.runCommand "greeter-shell" { } ''
+    cp -rL --no-preserve=mode ${files}/.config/quickshell $out
+    cp ${
+      pkgs.replaceVars ./greeter.qml {
+        accounts = builtins.toJSON accounts;
+        session = builtins.toJSON cfg.session;
+        analyze = lib.getExe' config.systemd.package "systemd-analyze";
+      }
+    } $out/greeter.qml
+  '';
+
+  # Starts the greeter inside its niri, and ends that niri once the greeter
+  # has gone, whether it signed someone in or fell over. niri gives what it
+  # starts nowhere to write, so the greeter writes to the journal.
+  greet = pkgs.writeShellScript "greet" ''
+    ${lib.getExe' config.systemd.package "systemd-cat"} --identifier=greeter \
+      ${lib.getExe pkgs.quickshell} -p ${shell}/greeter.qml
+    exec ${lib.getExe niri} msg action quit --skip-confirmation
+  '';
+
+  # The account's niri, bound to nothing, starting the greeter. The account's
+  # binds would open a terminal as the greeter's account, so they're left out.
+  # Its config already keeps niri's overlay of keys from showing at start.
+  # Nothing here needs the pointer, which would sit over the time, so it
+  # hides once it's still or the keys are typed on.
+  compositor = pkgs.runCommand "greeter-niri" { nativeBuildInputs = [ niri ]; } ''
+    mkdir $out
+    cp -L ${files}/.config/niri/theme.kdl ${files}/.config/niri/keyboard.kdl $out/
+    chmod u+w $out/theme.kdl
+    substituteInPlace $out/theme.kdl --replace-fail 'cursor {' \
+      "$(printf 'cursor {\n    hide-when-typing\n    hide-after-inactive-ms 1000')"
+    echo 'binds {}' > $out/binds.kdl
+    cat ${files}/.config/niri/config.kdl - > $out/config.kdl <<'EOF'
+
+    // The greeter's own: it starts Quickshell's greeter and nothing else.
+    spawn-at-startup "${greet}"
+    EOF
+    HOME=$TMPDIR niri validate -c $out/config.kdl
+  '';
+
+  # Runs the greeter where everything it writes goes in the login's runtime
+  # folder, since the greeter's account has no home. When it stops without
+  # saying it signed someone in, tuigreet asks instead. greetd gives a greeter
+  # the console to write on, which tuigreet needs, so niri and the greeter
+  # write to the journal instead, as greeter.
+  greeter = pkgs.writeShellScript "greeter" ''
+    if [ -z "''${XDG_RUNTIME_DIR:-}" ] || [ ! -w "$XDG_RUNTIME_DIR" ]; then
+      XDG_RUNTIME_DIR=$(${lib.getExe' pkgs.coreutils "mktemp"} -d /tmp/greeter.XXXXXXXX)
+      export XDG_RUNTIME_DIR
+    fi
+    export XDG_CACHE_HOME=$XDG_RUNTIME_DIR/cache XDG_STATE_HOME=$XDG_RUNTIME_DIR/state
+    export XDG_DATA_HOME=$XDG_RUNTIME_DIR/data
+    ${lib.getExe' pkgs.coreutils "rm"} -f "$XDG_RUNTIME_DIR/greeter-launching"
+    ${lib.getExe' config.systemd.package "systemd-cat"} --identifier=greeter \
+      ${lib.escapeShellArgs cfg.compositor} -c ${compositor}/config.kdl
+    if [ -e "$XDG_RUNTIME_DIR/greeter-launching" ]; then
+      exit 0
+    fi
+    echo "greeter: it stopped without signing anyone in, so tuigreet asks" >&2
+    exec ${lib.escapeShellArgs tuigreet}
+  '';
+
+  # What asks who's there: the greeter, or tuigreet alone where there's no
+  # account's look for the greeter to wear.
+  asks = if home != null then "${greeter}" else lib.escapeShellArgs tuigreet;
 in
 {
   imports = [ ../gpu/nixos.nix ];
 
-  options.jitsusama.login.account = lib.mkOption {
-    type = lib.types.nullOr lib.types.str;
-    default = null;
-    example = "joel";
-    description = "The account that signs in by itself at boot, set per machine.";
+  options.jitsusama.login = {
+    account = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      example = "joel";
+      description = ''
+        The machine's own account, set per machine: the one the greeter
+        asks first and dresses in, and the one that signs in by itself at
+        boot when automatic is on.
+      '';
+    };
+
+    automatic = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = "Whether the account signs in by itself at boot, without the greeter.";
+    };
+
+    # What the desktop test changes, since its VM can't run niri on a screen.
+    session = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      internal = true;
+      default = [ "${niriSession}" ];
+      description = "The command that starts the session once someone's signed in.";
+    };
+
+    compositor = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      internal = true;
+      default = [ (lib.getExe niri) ];
+      description = "How the greeter's niri starts, before its config is named.";
+    };
   };
 
   config = {
     services.greetd = {
       enable = true;
       settings = {
-        default_session.command = lib.escapeShellArgs [
-          (lib.getExe pkgs.tuigreet)
-          "--time"
-          "--remember"
-          "--asterisks"
-          "--cmd"
-          niriSession
-        ];
+        default_session.command = asks;
       }
-      // lib.optionalAttrs (config.jitsusama.login.account != null) {
+      // lib.optionalAttrs (cfg.account != null && cfg.automatic) {
         initial_session = {
-          user = config.jitsusama.login.account;
-          command = niriSession;
+          user = cfg.account;
+          command = lib.escapeShellArgs cfg.session;
         };
       };
     };

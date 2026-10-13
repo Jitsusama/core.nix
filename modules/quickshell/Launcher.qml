@@ -261,9 +261,36 @@ Scope {
         { text: "\u21b5", wide: false }
     ]
 
-    // What's been stepped into, each with what was typed before and the rows
-    // it offers: a thing and its verbs, then a verb and its targets.
+    // What's been stepped into, each with the rows it offers and where the
+    // step before it was left: what was typed, the row selected and how far
+    // the list was scrolled, so stepping back out finds it as it was. A
+    // thing and its verbs, then a verb and its targets.
     property var held: []
+
+    // Where the launcher is now, for a step into something to keep.
+    function here() {
+        const row = selected;
+        return {
+            typed: typed,
+            at: current,
+            key: row && row.key ? row.key : "",
+            scroll: list.contentY
+        };
+    }
+
+    // Selects what was selected before, by its key when it's still there,
+    // since what was searched again may have moved it, or else by where it
+    // was, and scrolls the list back to where it stood.
+    function reselect(left) {
+        const byKey = left.key === "" ? -1 : matches.findIndex(row => row.key === left.key);
+        const lowest = answer ? -1 : 0;
+        const at = left.at === -1 && answer ? -1
+            : byKey >= 0 ? byKey : Math.max(lowest, Math.min(left.at, matches.length - 1));
+        list.contentY = left.scroll;
+        current = at;
+        if (current >= 0)
+            list.positionViewAtIndex(current, ListView.Contain);
+    }
     readonly property var offered: held.length > 0 ? held[held.length - 1].rows : []
 
     // Whether the step held last is a collection, whose members are things
@@ -283,7 +310,7 @@ Scope {
             : row.targets ? row.targets() : null;
         if (!into || into.length === 0)
             return false;
-        held = held.concat([{ row: row, typed: typed, rows: into }]);
+        held = held.concat([Object.assign(here(), { row: row, rows: into })]);
         if (row.from)
             row.from.opened();
         // A collection is stepped into with what was typed still searching it.
@@ -298,7 +325,7 @@ Scope {
 
     // Asks for words in the field, with nothing to choose from below it.
     function ask(row) {
-        held = held.concat([{ row: row, typed: typed, rows: [] }]);
+        held = held.concat([Object.assign(here(), { row: row, rows: [] })]);
         restart("");
     }
 
@@ -330,6 +357,7 @@ Scope {
         const left = held[held.length - 1];
         held = held.slice(0, -1);
         restart(left.typed);
+        reselect(left);
     }
 
     // Searches afresh for what the field is set to, since what was found
@@ -607,7 +635,7 @@ Scope {
         const source = collections.find(s => s.settings.name === name);
         if (!source)
             return;
-        held = [{
+        held = [Object.assign(here(), {
             row: {
                 key: "",
                 name: source.collection.noun,
@@ -617,9 +645,8 @@ Scope {
                 leadHue: "voice",
                 from: source
             },
-            typed: "",
             rows: []
-        }];
+        })];
         source.opened();
         restart("");
         const lead = source.leading ? source.leading() : null;
