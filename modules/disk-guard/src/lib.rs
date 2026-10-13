@@ -36,6 +36,7 @@ pub mod pass;
 pub mod plan;
 pub mod pool;
 pub mod reclaim;
+pub mod replaced;
 pub mod scratch;
 #[cfg(target_os = "linux")]
 pub mod serve;

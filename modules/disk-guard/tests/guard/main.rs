@@ -40,6 +40,7 @@ mod pool;
 #[cfg(target_os = "linux")]
 mod procs;
 mod reclaim;
+mod replaced;
 mod sandbox;
 mod scratch;
 #[cfg(target_os = "linux")]
