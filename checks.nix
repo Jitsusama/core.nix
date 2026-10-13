@@ -445,6 +445,21 @@ in
       touch $out
     '';
 
+  # The askpass prompt says who's asking for what, for each program's words,
+  # as tests/askpass.qml says, in Qt's own engine.
+  the-askpass-says-who-asks-for-what =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "the-askpass-says-who-asks-for-what" { } ''
+      cp ${./tests/askpass.qml} askpass.qml
+      cp ${./modules/quickshell/Askpass.js} Askpass.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml ${qt}/bin/qml askpass.qml
+      touch $out
+    '';
+
   # The camera's viewfinder script names nothing it never set, which Lua
   # would otherwise read as nothing and carry on.
   the-camera-script-names-what-it-sets =

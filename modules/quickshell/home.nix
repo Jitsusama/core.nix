@@ -1,7 +1,8 @@
 # Quickshell draws everything on Joel's screen that isn't a window: the
 # wallpaper, the launcher on Super+Space, notifications, the lock screen,
-# polkit's password prompt, the volume, microphone, brightness and charge as
-# they change, what's playing, and the time and status over the overview.
+# polkit's password prompt, SSH's askpass for a PIN or a yes, the volume,
+# microphone, brightness and charge as they change, what's playing, and the
+# time and status over the overview.
 # Each is a QML file beside this one, linked as it is; Theme.qml, written
 # here from jitsusama.theme, gives them all the same look. It runs with the
 # graphical session, and restarts if it ever falls over. What the overview
@@ -51,6 +52,7 @@ let
   qml = [
     "shell.qml"
     "Prompt.qml"
+    "KeyHints.qml"
     "Launcher.qml"
     "Choice.qml"
     "Margin.qml"
@@ -59,6 +61,8 @@ let
     "Music.js"
     "Lock.qml"
     "Polkit.qml"
+    "Askpass.qml"
+    "Askpass.js"
     "Volume.qml"
     "Power.qml"
     "Brightness.qml"
@@ -433,6 +437,61 @@ let
   providerSource =
     provider:
     if isBuiltInProvider provider then builtInProviders.${provider.source} else provider.source;
+
+  # OpenSSH's askpass, asked through the shell (Askpass.qml): the prompt is
+  # the only argument, SSH_ASKPASS_PROMPT says whether it's a secret, a yes
+  # ("confirm") or a notice that waits on a touch ("none"), the answer goes
+  # to standard output, and a refusal exits nonzero. The shell answers into
+  # a folder made for it, watched before asking so the answer can't come
+  # unseen. A notice lasts until the program stops the askpass, and anything
+  # that ends it early takes the prompt back down.
+  askpass = pkgs.writeShellApplication {
+    name = "ssh-askpass";
+    runtimeInputs = [
+      pkgs.coreutils
+      pkgs.inotify-tools
+      pkgs.quickshell
+    ];
+    text = ''
+      kind=''${SSH_ASKPASS_PROMPT:-secret}
+      # Who asked: the program that ran this, or the script an interpreter
+      # runs, named without its store path or a wrapper's dots.
+      argv=()
+      mapfile -d "" -t argv < "/proc/$PPID/cmdline" || true
+      asker=''${argv[0]:-}
+      asker=''${asker##*/}
+      case $asker in
+        bash | sh | dash | zsh | python* | perl)
+          script=''${argv[1]:-}
+          [[ $script == -* || $script == "" ]] || asker=''${script##*/}
+          ;;
+      esac
+      [[ $asker =~ ^[0-9a-z]{32}-(.+)$ ]] && asker=''${BASH_REMATCH[1]}
+      [[ $asker =~ ^\.(.+)-wrapped$ ]] && asker=''${BASH_REMATCH[1]}
+      reply=$(mktemp -d -p "$XDG_RUNTIME_DIR" askpass.XXXXXXXX)
+      exec 3< <(exec inotifywait -m -e moved_to,close_write --format %f "$reply" 2>&1)
+      watcher=$!
+      settled() { [ -e "$reply/answer" ] || [ -e "$reply/refused" ]; }
+      finish() {
+        settled || qs ipc call askpass withdraw "$reply" > /dev/null 2>&1 || true
+        kill "$watcher" 2> /dev/null || true
+        rm -rf "$reply"
+      }
+      trap finish EXIT
+      trap 'exit 1' TERM INT HUP
+      while read -r line <&3 && [ "$line" != "Watches established." ]; do :; done
+
+      if ! qs ipc call askpass ask "$kind" "$asker" "$1" "$reply" > /dev/null; then
+        echo "ssh-askpass: the shell isn't there to ask" >&2
+        exit 1
+      fi
+      until settled; do
+        read -r _ <&3 || exit 1
+      done
+      [ -e "$reply/answer" ] || exit 1
+      [ "$kind" = confirm ] || cat "$reply/answer"
+    '';
+  };
 in
 {
   imports = [
@@ -787,12 +846,18 @@ in
     # a region's picture and wl-copy copies it, and notify-send says where
     # the file went.
     home.packages = [
+      askpass
       pkgs.quickshell
       pkgs.wf-recorder
       pkgs.grim
       pkgs.wl-clipboard
       pkgs.libnotify
     ];
+
+    # For shells and for the services systemd starts, ssh-tpm-agent among
+    # them.
+    home.sessionVariables.SSH_ASKPASS = lib.getExe askpass;
+    systemd.user.sessionVariables.SSH_ASKPASS = lib.getExe askpass;
 
     xdg.configFile =
       lib.genAttrs (map (file: "quickshell/${file}") qml) (path: {

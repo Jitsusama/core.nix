@@ -822,40 +822,25 @@ Scope {
                             font.pointSize: Theme.mono.large
                         }
 
-                        Row {
+                        KeyHints {
                             id: keys
                             anchors.right: parent.right
                             anchors.rightMargin: Theme.space.l
                             anchors.verticalCenter: parent.verticalCenter
-                            spacing: Theme.space.xl
-
-                            Repeater {
-                                model: {
-                                    const choice = foot.choice;
-                                    if (!choice)
-                                        return [];
-                                    const keys = [["\u21b5", choice.verb ?? "run"]];
-                                    if (root.held.length === 0 && choice.below)
-                                        keys.push(["\u21e7\u21b5", "below"]);
-                                    if ((root.held.length === 0 || root.collecting) && choice.verbs)
-                                        keys.push(["\u2192", choice.from ? "see all" : "more"]);
-                                    if (root.held.length > 0)
-                                        keys.push(["\u2190", "back"]);
-                                    if (root.atHome && root.example !== "")
-                                        keys.push(["\u21e5", "try it"]);
-                                    return keys;
-                                }
-
-                                Text {
-                                    required property var modelData
-
-                                    text: `<font color="${Theme.text}">${modelData[0]}</font> `
-                                        + modelData[1]
-                                    textFormat: Text.StyledText
-                                    color: Theme.muted
-                                    font.family: Theme.mono.family
-                                    font.pointSize: Theme.mono.large
-                                }
+                            keys: {
+                                const choice = foot.choice;
+                                if (!choice)
+                                    return [];
+                                const keys = [["\u21b5", choice.verb ?? "run"]];
+                                if (root.held.length === 0 && choice.below)
+                                    keys.push(["\u21e7\u21b5", "below"]);
+                                if ((root.held.length === 0 || root.collecting) && choice.verbs)
+                                    keys.push(["\u2192", choice.from ? "see all" : "more"]);
+                                if (root.held.length > 0)
+                                    keys.push(["\u2190", "back"]);
+                                if (root.atHome && root.example !== "")
+                                    keys.push(["\u21e5", "try it"]);
+                                return keys;
                             }
                         }
                     }

@@ -100,7 +100,6 @@
     {
       homeModules = {
         bat = ./modules/bat/home.nix;
-        bemenu = ./modules/bemenu/home.nix;
         broot = ./modules/broot/home.nix;
         btop = ./modules/btop/home.nix;
         camera = ./modules/camera/home.nix;

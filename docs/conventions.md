@@ -106,12 +106,12 @@ screen.
 One program draws the desktop: Quickshell, in `modules/quickshell/`. Its
 launcher on Super+Space, notifications, lock screen, polkit prompt, volume and
 brightness bars, and the status in the overview's backdrop all read `Theme.qml`,
-which `home.nix` renders from the theme. A prompt that has to be a program of
-its own, such as the PIN prompt ssh-tpm-agent starts, is bemenu, which
-`modules/bemenu/home.nix` styles the same way. GTK programs, the file chooser
-among them, take the theme's colours from a stylesheet `modules/gtk/home.nix`
-writes, and `modules/fontconfig/home.nix` makes the theme's font the one any
-program gets when it asks for monospace.
+which `home.nix` renders from the theme. A prompt a program starts as a program
+of its own, such as the PIN prompt ssh-tpm-agent asks through `SSH_ASKPASS`, is
+a small program that asks the shell, so it looks like the rest. GTK programs,
+the file chooser among them, take the theme's colours from a stylesheet
+`modules/gtk/home.nix` writes, and `modules/fontconfig/home.nix` makes the
+theme's font the one any program gets when it asks for monospace.
 
 ## Projects Bring Their Own Toolchains
 

@@ -2,8 +2,12 @@
 // stops the screen and a prompt asks for Joel's password. It's the prompt
 // kind (docs/design.md, Shape and Kinds): dead centre, the accent frame as
 // it holds the keys, who's asking and why in words, then the padlock beside
-// the dots. A wrong password turns the frame to the alert and says so.
-// Escape refuses.
+// the dots, then what the keys do. A wrong password turns the frame to the
+// alert and says so. Escape refuses.
+//
+// polkit says which action is asked for but not which program asked, so the
+// asker is the one that owns the action: org.freedesktop.systemd1's actions
+// are systemd's.
 import Quickshell
 import Quickshell.Services.Polkit
 import Quickshell.Wayland
@@ -24,6 +28,14 @@ Scope {
     readonly property var flow: agent.flow
     readonly property bool failed: flow !== null && flow.supplementaryIsError
         && flow.supplementaryMessage !== ""
+    // The program owning the action: its name after its maker's reversed
+    // domain, without the version a D-Bus name ends in.
+    readonly property string asker: {
+        const parts = flow ? flow.actionId.split(".") : [];
+        const known = { policykit: "pkexec", login: "logind" };
+        const name = parts.length > 3 ? parts[2].replace(/\d+$/, "") : "";
+        return known[name] ?? (name || "polkit");
+    }
     readonly property string who: {
         const identity = flow ? flow.selectedIdentity : null;
         return identity ? (identity.displayName || identity.name || "") : Quickshell.env("USER");
@@ -89,7 +101,7 @@ Scope {
                         width: parent.width
                         textFormat: Text.RichText
                         readonly property string asker:
-                            `<span style="font-family:'${Theme.mono.family}'">polkit</span>`
+                            `<span style="font-family:'${Theme.mono.family}'">${root.asker}</span>`
                         readonly property string owner:
                             `<span style="color:${Theme.strong};font-weight:500">${root.who}</span>`
                         text: `${asker} needs ${owner}'s password`
@@ -139,6 +151,24 @@ Scope {
                             root.flow.cancelAuthenticationRequest();
                             clear();
                         }
+                    }
+                }
+
+                Rectangle {
+                    width: parent.width
+                    height: Theme.border
+                    color: Theme.edge
+                }
+
+                Item {
+                    width: parent.width
+                    height: Theme.space.xxl + Theme.space.s
+
+                    KeyHints {
+                        anchors.right: parent.right
+                        anchors.rightMargin: Theme.space.l
+                        anchors.verticalCenter: parent.verticalCenter
+                        keys: [["\u21b5", "allow"], ["Esc", "refuse"]]
                     }
                 }
             }
