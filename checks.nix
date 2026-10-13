@@ -484,6 +484,49 @@ in
       touch $out
     '';
 
+  # The launcher's Keyboard collection finds the ErgoDox's keys and actions
+  # and shows what it finds on the layout, as tests/keyboard.qml drives it
+  # through Quickshell itself, over the firmware's own description of the
+  # board, locked on Numb, with niri and the shortcuts stood in for.
+  the-launcher-finds-the-keyboards-keys =
+    let
+      singleton =
+        name: body:
+        pkgs.writeText name ''
+          pragma Singleton
+          import Quickshell
+          import QtQuick
+          Singleton { ${body} }
+        '';
+      firmware = import ./modules/ergodox/firmware.nix pkgs {
+        firmware = self.inputs.qmk;
+        inherit (self.inputs) lufa printf;
+      };
+      niri = singleton "Niri.qml" ''
+        property var spawned: []
+        function spawn(command) { spawned = command; }
+      '';
+    in
+    pkgs.runCommandLocal "the-launcher-finds-the-keyboards-keys" { } ''
+      mkdir -p runtime config/ergodox launcher && chmod 700 runtime
+      echo "Numb locked" > runtime/keyboard-layer
+      cp ${firmware}/shell.json config/ergodox/layout.json
+      cp ${./tests/keyboard.qml} shell.qml
+      cp ${./modules/quickshell/KeyboardLayout.qml} KeyboardLayout.qml
+      cp ${./modules/quickshell/KeyboardLayer.qml} KeyboardLayer.qml
+      cp ${./modules/quickshell/Fuzzy.js} Fuzzy.js
+      cp ${./modules/quickshell/launcher/Provider.qml} launcher/Provider.qml
+      cp ${./modules/quickshell/launcher/Asking.js} launcher/Asking.js
+      cp ${./modules/quickshell/launcher/Keyboard.qml} launcher/Keyboard.qml
+      cp ${niri} Niri.qml
+      cp ${singleton "Shortcuts.qml" "property var actions: []"} Shortcuts.qml
+      export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime XDG_CONFIG_HOME=$TMPDIR/config
+      export LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+      timeout 60 ${lib.getExe' pkgs.quickshell "qs"} -p shell.qml
+      touch $out
+    '';
+
   # BlueZ says a new device is connected once its link is up, before it's
   # paired, so the launcher's Bluetooth would stop following a pairing early
   # and leave the device untrusted. The VM has no radio, so this drives it

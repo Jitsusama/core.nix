@@ -13,6 +13,7 @@ ShellRoot {
         input: true
     }
     Brightness {}
+    KeyboardMap {}
     Power {}
     Status {}
 

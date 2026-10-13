@@ -80,6 +80,8 @@ let
     "Quiet.qml"
     "Lights.qml"
     "KeyboardLayer.qml"
+    "KeyboardLayout.qml"
+    "KeyboardMap.qml"
     "Report.qml"
     "Reported.qml"
     "pieces/Piece.qml"
@@ -289,6 +291,8 @@ let
     # The margin's drawer, which hangs from the top of the screen.
     else if program == "qs" && lib.elem "margin" run then
       nerd "f1513"
+    else if program == "qs" && lib.elem "keyboard" run then
+      nerd "f030c"
     else
       nerd "f2d0";
 
@@ -379,6 +383,7 @@ let
     machine = ./launcher/Machine.qml;
     emoji = ./launcher/Emoji.qml;
     shortcuts = ./launcher/KeyMap.qml;
+    keyboard = ./launcher/Keyboard.qml;
     clipboard = ./launcher/Copies.qml;
     notices = ./launcher/PastNotices.qml;
     wifi = ./launcher/Wireless.qml;
@@ -664,6 +669,13 @@ in
       shortcuts = {
         order = 120;
         source = "shortcuts";
+      };
+      # A keyboard's layout and what can be done to it, where a keyboard's
+      # module describes one (KeyboardLayout.qml), and empty elsewhere.
+      keyboard = {
+        order = 107;
+        source = "keyboard";
+        weight = 0.9;
       };
     };
 

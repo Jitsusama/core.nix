@@ -265,6 +265,7 @@ that does. The kinds that follow from it:
 | prompt  | polkit, the lock screen | the accent, the alert after a wrong answer | dead centre | large | a scrim stops what's behind it; who asks and why, in words, then the padlock beside the dots |
 | notice  | a notification         | the edge, the alert when critical | the top right corner | body, Mona Sans | takes no keys itself, since Super+N gathers it into the launcher; who first, then the message, then a footer of where from and when |
 | meter   | the volume, the microphone, the brightness, the charge when power comes or goes | the edge | bottom centre | body, monospace | reads a level back while it changes |
+| map     | the keyboard's layout  | the edge                  | bottom centre         | body, monospace   | the keys where they sit, their layer named, following the board while typing carries on |
 | drawer  | the margin: Keep Awake, do not disturb, the mic muted, notices waiting | the rule, with no top | hanging from the top edge, at the top right | body, monospace | pulls at rest, glyphs once drawn out, and the launcher holding what's chosen |
 
 **Floating surfaces** are the deepest colour at `floating.opacity`, cloudy
