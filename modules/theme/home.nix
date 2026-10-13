@@ -359,6 +359,11 @@ let
       console = "A";
       means = "caps lock is on";
     };
+    layer = {
+      glyph = nerd "f0328";
+      console = "L";
+      means = "the keyboard is locked on another layer";
+    };
     low = {
       glyph = nerd "f0083";
       console = "B";

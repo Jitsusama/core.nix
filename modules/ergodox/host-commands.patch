@@ -1,0 +1,42 @@
+ZSA's raw HID handler answers every command it doesn't know with an error,
+and its own definition leaves a keymap no way in. This gives commands Oryx
+doesn't define, DISCONNECT among them, to the keymap first, and answers
+with the error only when the keymap doesn't take them either.
+
+--- a/keyboards/zsa/common/oryx.h
++++ b/keyboards/zsa/common/oryx.h
+@@ -92,6 +92,10 @@
+ void oryx_layer_event(void);
+ void layer_state_set_oryx(layer_state_t state);
+ 
++// A command Oryx doesn't handle goes here, and the keymap answers true when
++// it took it.
++bool oryx_raw_hid_receive_user(uint8_t *data, uint8_t length);
++
+ 
+ #if defined(RGB_MATRIX_ENABLE) && !defined(KEYBOARD_ergodox_ez_glow)
+ extern RGB webhid_leds[RGB_MATRIX_LED_COUNT];
+--- a/keyboards/zsa/common/oryx.c
++++ b/keyboards/zsa/common/oryx.c
+@@ -119,6 +119,10 @@
+ #endif
+ }
+ 
++__attribute__((weak)) bool oryx_raw_hid_receive_user(uint8_t *data, uint8_t length) {
++    return false;
++}
++
+ void raw_hid_receive(uint8_t *data, uint8_t length) {
+     uint8_t  command = data[0];
+     uint8_t *param   = &data[1];
+@@ -297,7 +301,9 @@
+             break;
+         }
+         default:
+-            oryx_error(ORYX_ERR_UNKNOWN_COMMAND);
++            if (!oryx_raw_hid_receive_user(data, length)) {
++                oryx_error(ORYX_ERR_UNKNOWN_COMMAND);
++            }
+     }
+ }
+ 

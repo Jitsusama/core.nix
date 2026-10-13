@@ -59,7 +59,10 @@ stdenvNoCC.mkDerivation {
   version = builtins.substring 0 7 firmware.rev;
   src = firmware;
 
-  patches = [ ./unused-config-result.patch ];
+  patches = [
+    ./unused-config-result.patch
+    ./host-commands.patch
+  ];
 
   # QMK's submodules aren't in GitHub's archive of it, and its build finds a
   # keymap by the folder it sits in.

@@ -79,6 +79,7 @@ let
     "Picking.js"
     "Quiet.qml"
     "Lights.qml"
+    "KeyboardLayer.qml"
     "Report.qml"
     "Reported.qml"
     "pieces/Piece.qml"
@@ -343,6 +344,7 @@ let
     quiet = ./pieces/DoNotDisturb.qml;
     microphone = ./pieces/Microphone.qml;
     capslock = ./pieces/CapsLock.qml;
+    layer = ./pieces/Layer.qml;
     sharing = ./pieces/Sharing.qml;
     recording = ./pieces/Recording.qml;
     playing = ./pieces/Playing.qml;
@@ -737,6 +739,13 @@ in
         label = "caps lock";
         tier = "when";
         mark = "capitals";
+      };
+      layer = {
+        order = 77;
+        source = "layer";
+        label = "layer";
+        tier = "when";
+        mark = "layer";
       };
       sharing = {
         order = 80;
