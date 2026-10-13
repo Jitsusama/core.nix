@@ -5,6 +5,7 @@
 
 use crate::age::mtime;
 use regex_lite::Regex;
+use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fs;
 use std::os::unix::fs::MetadataExt;
@@ -23,6 +24,51 @@ pub struct Build {
     /// When its newest file was written, in wall seconds.
     pub written: f64,
     pub size: u64,
+}
+
+/// When each library artifact was last opened, as the watch on its `deps`
+/// saw it, and since when each `deps` has been watched. Kept across
+/// restarts, since a build replaced a week ago is judged by a week of it.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct Uses {
+    pub opened: BTreeMap<PathBuf, f64>,
+    pub watched: BTreeMap<PathBuf, f64>,
+}
+
+impl Uses {
+    pub fn opened(&mut self, path: &Path, at: f64) {
+        let last = self.opened.entry(path.to_owned()).or_insert(at);
+        *last = last.max(at);
+    }
+
+    /// Notes that `deps` is watched from `at`, unless it already was.
+    pub fn watching(&mut self, deps: &Path, at: f64) {
+        self.watched.entry(deps.to_owned()).or_insert(at);
+    }
+
+    /// The watch lost events at `at`, which could have been opens of
+    /// anything it watches, so everything counts as used then.
+    pub fn lost(&mut self, at: f64) {
+        for since in self.watched.values_mut() {
+            *since = since.max(at);
+        }
+    }
+
+    /// Drops what's no longer there, so the store holds only what's built.
+    pub fn forget_gone(&mut self) {
+        let there = |path: &PathBuf| path.symlink_metadata().is_ok();
+        self.opened.retain(|path, _| there(path));
+        self.watched.retain(|path, _| there(path));
+    }
+
+    /// When a build was last used: its newest open, when it was written if
+    /// later, and never before its `deps` was watched, since an open before
+    /// then went unseen. Nothing when nobody watches it.
+    pub fn last_used(&self, build: &Build) -> Option<f64> {
+        let since = *self.watched.get(&build.deps)?;
+        let opened = build.files.iter().filter_map(|file| self.opened.get(file));
+        Some(opened.fold(since.max(build.written), |last, &at| last.max(at)))
+    }
 }
 
 /// A library cargo built, which later builds read: `lib<crate>-<digest>`

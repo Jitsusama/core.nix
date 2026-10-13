@@ -1,5 +1,5 @@
 use crate::discover::file;
-use disk_guard::replaced::{Build, replaced};
+use disk_guard::replaced::{Build, Uses, replaced};
 use rustix::fs::{AtFlags, CWD, Timespec, Timestamps, utimensat};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -82,6 +82,56 @@ fn an_older_build_of_a_crate_is_replaced_and_the_newest_stays() {
         found,
         vec![build("debug"), build("x86_64-unknown-linux-gnu/release")]
     );
+}
+
+fn build(deps: &Path, written: f64) -> Build {
+    Build {
+        deps: deps.to_owned(),
+        name: "alpha".to_owned(),
+        digest: OLD.to_owned(),
+        files: vec![
+            deps.join(format!("libalpha-{OLD}.rlib")),
+            deps.join(format!("libalpha-{OLD}.rmeta")),
+        ],
+        fingerprint: None,
+        written,
+        size: 10,
+    }
+}
+
+#[test]
+fn a_build_is_used_when_last_opened_and_never_before_its_deps_was_watched() {
+    let deps = Path::new("/t/target/debug/deps");
+    let mut uses = Uses::default();
+    // Nobody watched it, so nobody knows.
+    assert_eq!(uses.last_used(&build(deps, 1_000.0)), None);
+    uses.watching(deps, 5_000.0);
+    assert_eq!(uses.last_used(&build(deps, 1_000.0)), Some(5_000.0));
+    assert_eq!(uses.last_used(&build(deps, 6_000.0)), Some(6_000.0));
+    uses.opened(&deps.join(format!("libalpha-{OLD}.rmeta")), 9_000.0);
+    uses.opened(&deps.join("libbeta-3333333333333333.rlib"), 12_000.0);
+    assert_eq!(uses.last_used(&build(deps, 1_000.0)), Some(9_000.0));
+    // Watching again later keeps when it began.
+    uses.watching(deps, 20_000.0);
+    assert_eq!(uses.last_used(&build(deps, 1_000.0)), Some(9_000.0));
+    // Events lost to an overflow could have been opens of anything.
+    uses.lost(30_000.0);
+    assert_eq!(uses.last_used(&build(deps, 1_000.0)), Some(30_000.0));
+}
+
+#[test]
+fn uses_of_what_is_gone_are_forgotten() {
+    let root = tempfile::tempdir().unwrap();
+    let deps = root.path().join("deps");
+    let kept = artifact(&deps, "libalpha-2222222222222222.rlib", 1_000);
+    let mut uses = Uses::default();
+    uses.watching(&deps, 1.0);
+    uses.watching(&root.path().join("gone"), 1.0);
+    uses.opened(&kept, 2.0);
+    uses.opened(&deps.join("libgone-5555555555555555.rlib"), 3.0);
+    uses.forget_gone();
+    assert_eq!(uses.watched.keys().collect::<Vec<_>>(), vec![&deps]);
+    assert_eq!(uses.opened.keys().collect::<Vec<_>>(), vec![&kept]);
 }
 
 #[test]
