@@ -103,12 +103,15 @@ in
         RuntimeDirectoryMode = "0755";
         StateDirectory = "disk-guard";
         StateDirectoryMode = "0700";
-        # The guard holds little itself and stays under the high mark, which
-        # reclaims the page cache its walks fill. Root's Nix lists the dead
-        # paths in this cgroup, so the ceiling leaves it room. A command
-        # that still overruns it is killed and journaled, never the guard.
-        MemoryHigh = "256M";
-        MemoryMax = "1G";
+        # The guard holds 35 MiB itself, but root's Nix lists and describes
+        # the dead paths in this cgroup: on a workstation's store of 100,000
+        # paths the listing held about 400 MiB, and under a 256 MiB high mark
+        # it swapped and crawled for minutes where it takes one. The high
+        # mark leaves it that room twice over, and still reclaims the page
+        # cache the walks fill. A command that overruns the ceiling is killed
+        # and journaled, never the guard.
+        MemoryHigh = "1G";
+        MemoryMax = "2G";
         OOMPolicy = "continue";
         Restart = "on-failure";
         RestartSec = "30s";
