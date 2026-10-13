@@ -119,6 +119,8 @@ kernel guide][2] says what that catches.
 | `neovim-starts-in-the-theme`      | Neovim starts in bamboo, transparent, without a complaint |
 | `cargo-links-with-mold`           | cargo links an account's Rust builds with mold            |
 | `the-ergodox-layout-builds`       | the layout fits the board and answers with its own serial |
+| `the-ergodox-command-reaches-the-board` | `ergodox` writes each command whole to the board's channel alone |
+| `the-ergodox-watch-tells-the-layer` | the layer watcher finds the board and says only what it's told |
 | `btrfs-reclaims-its-chunks`       | tmpfiles turns Btrfs's reclaim on for data and metadata   |
 
 ### Virtual Machines

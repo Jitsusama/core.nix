@@ -1358,6 +1358,75 @@ in
           touch $out
         '';
 
+    # The ergodox command finds the board's channel in a copy of sysfs by
+    # ZSA's vendor number and Oryx's usage page together, and writes each
+    # command as one report. Another vendor's raw channel and the board's
+    # keyboard get nothing, and with no channel the command says so.
+    the-ergodox-command-reaches-the-board =
+      let
+        ergodox = lib.findFirst (
+          package: lib.getName package == "ergodox"
+        ) (throw "No ergodox command.") (account workstation).home.packages;
+      in
+      pkgs.runCommandLocal "the-ergodox-command-reaches-the-board" { } ''
+        node() {
+          mkdir -p root/sys/class/hidraw/$1/device root/dev
+          echo "HID_ID=$2" > root/sys/class/hidraw/$1/device/uevent
+          printf "$3" > root/sys/class/hidraw/$1/device/report_descriptor
+          : > root/dev/$1
+        }
+        node hidraw0 0003:0000046D:0000C52B '\006\140\377\011\141'
+        node hidraw1 0003:00003297:00004976 '\005\001\011\006'
+        node hidraw2 0003:00003297:00004976 '\006\140\377\011\141'
+        export ERGODOX_ROOT=$PWD/root
+
+        sent() { od -An -tx1 -v root/dev/$1 | tr -d ' \n'; }
+        expect() {
+          ${ergodox}/bin/ergodox $1 $2
+          want=00$3$(printf '%060d' 0)
+          [ "$(sent hidraw2)" = "$want" ] || {
+            echo "ergodox $1 $2 wrote $(sent hidraw2), not $want."
+            exit 1
+          }
+          [ -z "$(sent hidraw0)$(sent hidraw1)" ] || {
+            echo "ergodox $1 $2 wrote to a node that isn't the board's channel."
+            exit 1
+          }
+        }
+        expect bootloader "" 8000
+        expect layer numb 8202
+        expect layer Punk 8201
+        expect layer 0 8200
+        expect lights off 8300
+        expect brighter "" 8401
+        expect dimmer "" 8400
+
+        status=0
+        ${ergodox}/bin/ergodox layer sideways 2> /dev/null || status=$?
+        [ $status = 64 ] || { echo "An unknown layer exited $status, not 64."; exit 1; }
+
+        rm -r root/sys/class/hidraw/hidraw2 root/dev/hidraw2
+        status=0
+        ${ergodox}/bin/ergodox bootloader 2> /dev/null || status=$?
+        [ $status = 69 ] || { echo "With no board, bootloader exited $status, not 69."; exit 1; }
+        [ -z "$(sent hidraw0)$(sent hidraw1)" ] || {
+          echo "With no board, ergodox wrote to another node."
+          exit 1
+        }
+        touch $out
+      '';
+
+    # The layer watcher's own tests: it finds the board's channel as the
+    # command does, asks to watch in one report, and says only what a watch
+    # report tells it, by the layer's name.
+    the-ergodox-watch-tells-the-layer =
+      pkgs.runCommandCC "the-ergodox-watch-tells-the-layer" { nativeBuildInputs = [ pkgs.rustc ]; }
+        ''
+          rustc --edition 2024 --test -D warnings -o tests ${./modules/ergodox/ergodox-watch.rs}
+          ./tests
+          touch $out
+        '';
+
     # systemd-tmpfiles turns Btrfs's reclaim on for every filesystem mounted,
     # data and metadata, and leaves the system chunks alone. It writes into a
     # copy of sysfs with two filesystems, since a pattern that matches none
