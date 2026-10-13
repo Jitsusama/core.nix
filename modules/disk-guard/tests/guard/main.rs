@@ -16,6 +16,7 @@ mod coredumps;
 #[cfg(target_os = "linux")]
 mod daemon;
 mod decide;
+mod dedupe;
 #[cfg(target_os = "linux")]
 mod desktop;
 mod discover;

@@ -14,6 +14,7 @@ pub mod coredumps;
 #[cfg(target_os = "linux")]
 pub mod daemon;
 pub mod decide;
+pub mod dedupe;
 #[cfg(target_os = "linux")]
 pub mod desktop;
 pub mod discover;
