@@ -102,11 +102,15 @@ impl Home {
     }
 
     /// A user config whose bands are shares of the filesystem, so `100%`
-    /// puts any disk in pressure and `0%` keeps it healthy.
+    /// puts any disk in pressure and `0%` keeps it healthy. Its Nix store
+    /// doesn't exist: with no system daemon answering, a user daemon
+    /// collects garbage itself from urgent on, and the machine's own store
+    /// is no test's to collect.
     fn config(&self, pressure: &str, target: &str) -> Config {
         Config::parse(&format!(
             r#"{{ "version": 1, "scope": "user", "status_file": true,
                  "bands": {{ "pressure": "{pressure}", "urgent": "0%", "critical": "0%", "target": "{target}" }},
+                 "nix": {{ "bin": "{0}/no-nix/nix", "store": "{0}/no-nix/store" }},
                  "sources": {{
                    "scratch": {{ "kind": "scratch", "path": "{0}/scratch" }},
                    "trash": {{ "kind": "trash", "path": "{0}/Trash" }}
@@ -159,7 +163,7 @@ impl Home {
 /// A system daemon at `socket` that vouches for process 300, says it
 /// collects on every filesystem watched when `collects`, and collects
 /// whenever asked, telling what it heard.
-fn fake_system(socket: &Path, collects: bool) -> std::sync::mpsc::Receiver<Request> {
+pub(crate) fn fake_system(socket: &Path, collects: bool) -> std::sync::mpsc::Receiver<Request> {
     let mut server = disk_guard::socket::Server::bind(socket, std::time::Duration::ZERO).unwrap();
     let (telling, heard) = std::sync::mpsc::channel();
     std::thread::spawn(move || {

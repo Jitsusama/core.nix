@@ -125,7 +125,8 @@ fn guard_at(root: &Path, pressure: &str) -> Guard {
     let config = Config::parse(&format!(
         r#"{{ "version": 1, "scope": "user", "status_file": true,
              "bands": {{ "pressure": "{pressure}", "urgent": "0%", "critical": "0%", "target": "{pressure}" }},
-             "sources": {{ "trash": {{ "kind": "trash", "path": "{}" }} }} }}"#,
+             "nix": {{ "bin": "{0}/no-nix/nix", "store": "{0}/no-nix/store" }},
+             "sources": {{ "trash": {{ "kind": "trash", "path": "{0}" }} }} }}"#,
         root.display()
     ))
     .unwrap();
