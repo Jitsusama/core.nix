@@ -79,15 +79,35 @@ impl Store {
         let script = |name: &str, body: String| {
             crate::garbage::script(&root.join("bin").join(name), &body);
         };
+        // Linking logs apart, so the garbage's log reads as it did.
+        let linked = root.join("linked");
+        script(
+            "systemd-run",
+            "[ \"$1\" = --scope ] || exit 9\n\
+             while [ \"$1\" != -- ]; do shift; done; shift\n\
+             exec \"$@\"\n"
+                .to_owned(),
+        );
         script(
             "nix-store",
             format!(
-                "[ \"$*\" = '--gc --print-dead' ] || exit 9\n\
+                "if [ \"$*\" = --optimise ]; then\n\
+                   echo \"optimise {policy}\" >> {linked}\n\
+                   [ -e {slow}-broken ] && {{ echo 'error: database is locked' >&2; exit 1; }}\n\
+                   if [ -e {slow} ]; then\n\
+                     trap 'echo stopped >> {linked}; exit 1' TERM\n\
+                     sleep 30 & wait\n\
+                   fi\n\
+                   echo '1.0 GiB freed by hard-linking 3 files' >&2; exit 0\n\
+                 fi\n\
+                 [ \"$*\" = '--gc --print-dead' ] || exit 9\n\
                  echo \"list {policy}\" >> {log}\n\
                  for p in {store}/*; do [ -e \"$p/meta\" ] && echo \"$p\"; done\n\
                  exit 0\n",
                 log = log.display(),
                 store = root.join("store").display(),
+                linked = linked.display(),
+                slow = root.join("slow").display(),
             ),
         );
         script(
@@ -163,6 +183,7 @@ impl Store {
                  "nix": {{ "bin": "{0}/bin/nix", "store": "{0}/store",
                           "profiles": "{0}/profiles", "generations": {{ "keep": 2 }} }},
                  "garbage": {{ "keep": "3d", "budget": "10%" }},
+                 "dedupe": {{ "systemd_run": "{0}/bin/systemd-run" }},
                  "boot": "{0}/boot",
                  "sources": {{}} }}"#,
             self.root.display()
@@ -208,6 +229,34 @@ impl Store {
             collects,
         });
         asking
+    }
+
+    /// What linking the store's files logged, each run with its policy.
+    fn linked(&self) -> Vec<String> {
+        let log = fs::read_to_string(self.root.join("linked")).unwrap_or_default();
+        log.lines().map(str::to_owned).collect()
+    }
+
+    /// The journal's lines for linking runs, oldest first.
+    fn deduped(&self) -> Vec<serde_json::Value> {
+        let journal = fs::read_to_string(self.root.join("state/journal.jsonl")).unwrap_or_default();
+        journal
+            .lines()
+            .map(|line| serde_json::from_str::<serde_json::Value>(line).unwrap())
+            .filter(|line| line["kind"] == "dedupe")
+            .collect()
+    }
+
+    /// Has the guard remember a linking run that finished `ago` since.
+    fn remember_deduped(&self, ago: f64) {
+        let memory = disk_guard::state::Memory {
+            deduped: Some(disk_guard::dedupe::Deduped {
+                at: now() - ago,
+                freed: 1 << 40,
+            }),
+            ..Default::default()
+        };
+        disk_guard::state::save(&self.root.join("state/memory.json"), &memory).unwrap();
     }
 
     fn gc_ran(&self) -> bool {
@@ -529,6 +578,124 @@ fn a_user_daemon_expires_its_own_profiles_generations() {
     store.step_until(&mut guard, |store| !store.expired().is_empty());
     let expected = format!("expire -p {} --delete-generations 1 5", home.display());
     assert_eq!(store.expired(), [expected]);
+}
+
+/// What the moment is like on a desktop set to save power.
+const SAVING: Senses = Senses {
+    saver: true,
+    ..CALM
+};
+
+/// Steps `guard` a few times, with time for anything it started apart.
+fn steps(guard: &mut Guard, senses: &Senses) {
+    for _ in 0..5 {
+        guard.step(&tick(), senses).unwrap();
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
+/// Steps `guard` and then waits long enough for a run it started apart
+/// to have said so even on a busy machine, for checking none did.
+fn steps_then_wait(guard: &mut Guard, senses: &Senses) {
+    steps(guard, senses);
+    std::thread::sleep(Duration::from_millis(500));
+}
+
+#[test]
+fn a_healthy_store_is_linked_in_a_spare_moment_and_then_left_a_week() {
+    let store = Store::new();
+    let mut guard = store.guard(store.config("0%", "0%"));
+    store.step_until(&mut guard, |store| !store.deduped().is_empty());
+    steps_then_wait(&mut guard, &CALM);
+    assert_eq!(store.linked(), ["optimise 5"], "once, at idle priority");
+    let deduped = store.deduped();
+    assert_eq!(deduped.len(), 1);
+    assert_eq!(deduped[0]["outcome"], "reclaimed");
+    assert_eq!(deduped[0]["size"], 1u64 << 30);
+    assert_eq!(
+        deduped[0]["path"],
+        store.root.join("store").to_str().unwrap()
+    );
+}
+
+#[test]
+fn linking_is_due_again_a_week_after_the_last_run() {
+    let lately = Store::new();
+    lately.remember_deduped(DAY);
+    let mut guard = lately.guard(lately.config("0%", "0%"));
+    lately.step_until(&mut guard, |store| {
+        store.root.join("state/garbage.json").exists()
+    });
+    steps_then_wait(&mut guard, &CALM);
+    assert!(lately.linked().is_empty(), "{:?}", lately.linked());
+
+    let long_ago = Store::new();
+    long_ago.remember_deduped(8.0 * DAY);
+    let mut guard = long_ago.guard(long_ago.config("0%", "0%"));
+    long_ago.step_until(&mut guard, |store| !store.deduped().is_empty());
+    assert_eq!(long_ago.linked(), ["optimise 5"]);
+}
+
+#[test]
+fn linking_waits_for_a_spare_moment_and_a_healthy_store() {
+    let saving = Store::new();
+    let mut guard = saving.guard(saving.config("0%", "0%"));
+    steps_then_wait(&mut guard, &SAVING);
+    assert!(saving.linked().is_empty(), "{:?}", saving.linked());
+
+    let pressed = Store::new();
+    let mut guard = pressed.guard(pressed.config("100%", "0%"));
+    pressed.step_until(&mut guard, |store| {
+        store.root.join("state/garbage.json").exists()
+    });
+    steps_then_wait(&mut guard, &CALM);
+    assert!(pressed.linked().is_empty(), "{:?}", pressed.linked());
+}
+
+#[test]
+fn a_run_stops_when_the_moment_ends_and_isnt_counted_done() {
+    let store = Store::new();
+    fs::write(store.root.join("slow"), "").unwrap();
+    let mut guard = store.guard(store.config("0%", "0%"));
+    store.step_until(&mut guard, |store| !store.linked().is_empty());
+    let started = Instant::now();
+    while !store.linked().contains(&"stopped".to_owned()) {
+        assert!(
+            started.elapsed() < Duration::from_secs(10),
+            "{:?}",
+            store.linked()
+        );
+        steps(&mut guard, &SAVING);
+    }
+    steps(&mut guard, &SAVING);
+    let stopped = store.deduped();
+    assert_eq!(stopped.len(), 1, "{stopped:?}");
+    assert_eq!(stopped[0]["outcome"], "kept", "{stopped:?}");
+
+    fs::remove_file(store.root.join("slow")).unwrap();
+    store.step_until(&mut guard, |store| store.deduped().len() == 2);
+    assert_eq!(store.deduped()[1]["outcome"], "reclaimed");
+    assert_eq!(store.linked(), ["optimise 5", "stopped", "optimise 5"]);
+}
+
+#[test]
+fn a_failed_run_is_journaled_and_not_tried_again_at_once() {
+    let store = Store::new();
+    fs::write(store.root.join("slow-broken"), "").unwrap();
+    let mut guard = store.guard(store.config("0%", "0%"));
+    store.step_until(&mut guard, |store| !store.deduped().is_empty());
+    steps_then_wait(&mut guard, &CALM);
+    let failed = store.deduped();
+    assert_eq!(failed.len(), 1, "{failed:?}");
+    assert_eq!(failed[0]["outcome"], "failed");
+    assert!(
+        failed[0]["reason"]
+            .as_str()
+            .unwrap()
+            .contains("database is locked"),
+        "{failed:?}"
+    );
+    assert_eq!(store.linked(), ["optimise 5"]);
 }
 
 #[test]

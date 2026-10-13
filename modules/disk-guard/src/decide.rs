@@ -126,12 +126,18 @@ const STALL_CEILING: f64 = 10.0;
 /// half charged, not saving power, awake for ten minutes, and not stalling
 /// on the disk or memory.
 pub fn spare(power: Power, saver: bool, awake: &Awake, now: f64, pressure: Pressure) -> bool {
-    let powered = power.mains || power.battery.is_some_and(|charge| charge > BATTERY_FLOOR);
     let settled = awake
         .spans()
         .last()
         .is_some_and(|(start, _)| now - start >= SETTLING);
-    powered && !saver && settled && calm(pressure)
+    powered(power, saver) && settled && calm(pressure)
+}
+
+/// Whether the power allows work that can wait: on mains or a battery
+/// well charged, and not set to save it.
+pub fn powered(power: Power, saver: bool) -> bool {
+    let charged = power.mains || power.battery.is_some_and(|charge| charge > BATTERY_FLOOR);
+    charged && !saver
 }
 
 /// Whether tasks stall on the disk and on memory little enough for work

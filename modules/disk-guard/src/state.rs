@@ -32,6 +32,9 @@ pub struct Memory {
     /// When each source's command last ran, in wall seconds, by name.
     #[serde(default)]
     pub ran: std::collections::BTreeMap<String, f64>,
+    /// The last run linking the store's identical files that finished.
+    #[serde(default)]
+    pub deduped: Option<crate::dedupe::Deduped>,
     /// What a newer guard wrote that this one doesn't know.
     #[serde(flatten)]
     pub rest: serde_json::Map<String, serde_json::Value>,
@@ -46,6 +49,7 @@ impl Default for Memory {
             upkept: None,
             pass_seconds: None,
             ran: std::collections::BTreeMap::new(),
+            deduped: None,
             rest: serde_json::Map::new(),
         }
     }

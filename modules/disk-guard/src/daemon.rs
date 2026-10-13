@@ -6,7 +6,8 @@ use crate::anchor::Dir;
 use crate::band::{Band, Space, Thresholds};
 use crate::clock::Tick;
 use crate::config::{Config, Source};
-use crate::decide::{Decision, Fill, Situation, decide, spare};
+use crate::decide::{Decision, Fill, Situation, decide, powered, spare};
+use crate::dedupe::{self, Deduped};
 use crate::finished::{self, Answers, Predicate};
 use crate::garbage::{self, BATCH_BYTES, Batch, Dead, GC_TIMEOUT, Listing};
 use crate::generations::{self, Boot};
@@ -29,6 +30,7 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, TryRecvError};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
@@ -78,6 +80,13 @@ const HEARTBEAT_EVERY: f64 = 30.0;
 
 /// What the garbage's commands and candidates are named for.
 const GARBAGE: &str = "garbage";
+/// What linking the store's identical files is journaled and run as.
+const DEDUPE: &str = "dedupe";
+/// How long after a failed run linking the store's files the next waits.
+const DEDUPE_RETRY: f64 = 86400.0;
+
+type DedupeOut = (f64, Arc<AtomicBool>, Receiver<Result<Option<u64>, String>>);
+
 /// The candidates a profile's generations are offered as.
 const GENERATIONS: &str = "generations";
 const YOUNG_GENERATIONS: &str = "generations:young";
@@ -147,6 +156,11 @@ pub struct Guard {
     /// Whether garbage is to be listed again at once, generations having
     /// expired since the listing began.
     relist: bool,
+    /// A run linking the store's identical files: when it began, what
+    /// stops it, and where it tells how it ended.
+    dedupe_out: Option<DedupeOut>,
+    /// When the last such run failed.
+    dedupe_failed: Option<f64>,
 }
 
 /// Where a listing on its own thread sends the dead paths, or why not.
@@ -262,6 +276,8 @@ impl Guard {
             running: places.running.clone(),
             system_heard: false,
             relist: false,
+            dedupe_out: None,
+            dedupe_failed: None,
         })
     }
 
@@ -319,6 +335,7 @@ impl Guard {
             }
         }
         self.list_garbage(tick.wall, spare);
+        self.dedupe(tick, spare, powered(senses.power, senses.saver))?;
         self.collects(tick);
         let passed = !due.is_empty();
         if passed {
@@ -535,6 +552,86 @@ impl Guard {
             Ok(_) => self.listing_out = Some((now, out)),
             Err(error) => eprintln!("disk-guard: listing Nix's garbage: {error}"),
         }
+    }
+
+    /// Links the store's identical files on a thread, in a spare moment
+    /// while it's healthy and a run is due, and stops a run once the store
+    /// leaves healthy or the power stops being spare. Not once the disk
+    /// stalls: its own reads stall it. Each run is journaled, and only one
+    /// that finished counts as done.
+    fn dedupe(&mut self, tick: &Tick, spare: bool, powered: bool) -> io::Result<()> {
+        let Some(system) = &self.config.system else {
+            return Ok(());
+        };
+        let store = self.config.nix.store.clone();
+        let Some(watched) = pool(&store)
+            .ok()
+            .and_then(|device| self.watched.get(&device))
+        else {
+            return Ok(());
+        };
+        let (band, space) = (watched.band, watched.space);
+        if let Some((begun, stop, out)) = &self.dedupe_out {
+            if band > Band::Healthy || !powered {
+                stop.store(true, Ordering::Relaxed);
+            }
+            let ended = match out.try_recv() {
+                Err(TryRecvError::Empty) => return Ok(()),
+                Err(TryRecvError::Disconnected) => Err("its thread ended unheard".to_owned()),
+                Ok(ended) => ended,
+            };
+            let begun = *begun;
+            self.dedupe_out = None;
+            let (outcome, size) = match ended {
+                Ok(Some(freed)) => {
+                    self.memory.deduped = Some(Deduped { at: begun, freed });
+                    self.saved_at = None;
+                    (Outcome::Reclaimed, freed)
+                }
+                Ok(None) => (Outcome::Kept("stopped as the moment ended".to_owned()), 0),
+                Err(why) => {
+                    self.dedupe_failed = Some(tick.wall);
+                    (Outcome::Failed(why), 0)
+                }
+            };
+            return self.journal.write(&Line::Action {
+                at: tick.wall,
+                band,
+                path: store,
+                kind: DEDUPE.to_owned(),
+                size,
+                outcome,
+            });
+        }
+        let failed_lately = self
+            .dedupe_failed
+            .is_some_and(|at| tick.wall - at < DEDUPE_RETRY);
+        let Some(space) = space else {
+            return Ok(());
+        };
+        let every = system.dedupe.every.0.as_secs_f64();
+        let due = dedupe::due(self.memory.deduped.as_ref(), tick.wall, every, space.total);
+        if band > Band::Healthy || !spare || failed_lately || !due {
+            return Ok(());
+        }
+        let (systemd_run, nix) = (
+            system.dedupe.systemd_run.clone(),
+            self.config.nix.bin.clone(),
+        );
+        let stop = Arc::new(AtomicBool::new(false));
+        let stopping = Arc::clone(&stop);
+        let (tell, out) = mpsc::channel();
+        let running = std::thread::Builder::new()
+            .name(DEDUPE.to_owned())
+            .spawn(move || {
+                // A guard that stopped meanwhile has no one to hear it.
+                let _ = tell.send(dedupe::optimise(&systemd_run, &nix, &stopping));
+            });
+        match running {
+            Ok(_) => self.dedupe_out = Some((tick.wall, stop, out)),
+            Err(error) => eprintln!("disk-guard: linking the store's files: {error}"),
+        }
+        Ok(())
     }
 
     /// The garbage config and the store's device, for a system daemon.

@@ -409,11 +409,18 @@ impl Default for Generations {
 pub struct Dedupe {
     #[serde(default = "Dedupe::every")]
     pub every: Span,
+    /// What confines a run to a scope of its own.
+    #[serde(default = "Dedupe::systemd_run")]
+    pub systemd_run: PathBuf,
 }
 
 impl Dedupe {
     fn every() -> Span {
         Span(Duration::from_secs(7 * 86400))
+    }
+
+    fn systemd_run() -> PathBuf {
+        PathBuf::from("/run/current-system/systemd/bin/systemd-run")
     }
 }
 
@@ -421,6 +428,7 @@ impl Default for Dedupe {
     fn default() -> Dedupe {
         Dedupe {
             every: Dedupe::every(),
+            systemd_run: Dedupe::systemd_run(),
         }
     }
 }
@@ -508,12 +516,15 @@ impl Config {
             }
             Scope::System => {
                 let boot = rendered.boot.ok_or("the system daemon needs boot")?;
-                if !plain_absolute(&boot) {
-                    return Err(format!("{} is not a plain absolute path", boot.display()));
+                let dedupe = rendered.dedupe.unwrap_or_default();
+                for path in [&boot, &dedupe.systemd_run] {
+                    if !plain_absolute(path) {
+                        return Err(format!("{} is not a plain absolute path", path.display()));
+                    }
                 }
                 Some(System {
                     garbage: rendered.garbage.unwrap_or_default(),
-                    dedupe: rendered.dedupe.unwrap_or_default(),
+                    dedupe,
                     boot,
                 })
             }

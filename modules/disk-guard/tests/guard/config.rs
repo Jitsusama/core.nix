@@ -117,6 +117,16 @@ fn a_system_config_carries_its_own_sections() {
     assert_eq!(system.garbage.budget, Size::Percent(10.0));
     assert_eq!(system.boot, PathBuf::from("/boot"));
     assert_eq!(
+        system.dedupe.systemd_run,
+        PathBuf::from("/run/current-system/systemd/bin/systemd-run"),
+        "NixOS's own unless told"
+    );
+    let relative = Config::parse(
+        r#"{"version": 1, "scope": "system", "boot": "/boot",
+            "dedupe": {"systemd_run": "bin/systemd-run"}, "sources": {}}"#,
+    );
+    assert!(relative.unwrap_err().contains("bin/systemd-run"));
+    assert_eq!(
         config.nix.profiles,
         Some(PathBuf::from("/nix/var/nix/profiles")),
         "the machine's profiles unless told"
