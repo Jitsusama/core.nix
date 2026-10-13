@@ -52,12 +52,20 @@ pub enum Class {
     },
     /// A log past its limit, trimmed to its last part.
     Log,
+    /// podman's prune of dangling images and build cache, or of every
+    /// image no container uses.
+    Podman {
+        unused: bool,
+    },
 }
 
 impl Class {
     /// Whether it's a command, whose yield is known only by measuring.
     pub fn command(self) -> bool {
-        matches!(self, Class::Producer { .. } | Class::Garbage)
+        matches!(
+            self,
+            Class::Producer { .. } | Class::Podman { .. } | Class::Garbage
+        )
     }
 
     /// The kind's name, which what it frees is learned under.
@@ -78,6 +86,7 @@ impl Class {
             Class::Garbage => "garbage",
             Class::Producer { .. } => "producer",
             Class::Log => "log",
+            Class::Podman { .. } => "podman",
         }
     }
 }
@@ -190,6 +199,9 @@ pub fn group(candidate: &Candidate, band: Band) -> Option<Group> {
         }
         // What's trimmed is history nobody reads; the rest stays.
         Class::Log => (Group::Waste, [AT_ONCE; 4]),
+        // At most hourly, like a producer's.
+        Class::Podman { unused: false } => (Group::Caches, [NEVER, NEVER, hours(1.0), hours(1.0)]),
+        Class::Podman { unused: true } => (Group::Occupied, [NEVER, NEVER, NEVER, hours(1.0)]),
     };
     let window = windows[band as usize]?;
     (candidate.idle >= window).then_some(group)
@@ -220,7 +232,9 @@ pub fn plan(
         })
         .collect();
     let rank = |step: &Step| match candidates[step.index].class {
-        Class::Cache { rank, .. } => rank,
+        Class::Cache { rank, .. } => u16::from(rank),
+        // After every cache: images are the slowest to fetch again.
+        Class::Podman { .. } => u16::MAX,
         _ => 0,
     };
     steps.sort_by(|a, b| {

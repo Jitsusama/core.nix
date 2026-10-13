@@ -277,17 +277,10 @@ pub fn survey(config: &Config, world: &mut World) -> Vec<Offer> {
                 timeout,
             } => {
                 let Some(device) = device(path) else { continue };
-                let idle = world.ran.get(name).map_or(f64::INFINITY, |&at| {
-                    world.awake.since(at.min(world.now), world.now)
-                });
-                // Named for where it runs and which source it is, since it
-                // is no file of its own.
-                let mut named = path.clone().into_os_string();
-                named.push("#");
-                named.push(name);
+                let idle = since_ran(world, name);
                 offers.push(Offer {
                     candidate: Candidate {
-                        path: PathBuf::from(named),
+                        path: named(path, name),
                         class: Class::Producer {
                             every: every.map(|span| span.0.as_secs_f64()),
                             from: *from,
@@ -308,7 +301,35 @@ pub fn survey(config: &Config, world: &mut World) -> Vec<Offer> {
                     device,
                 });
             }
-            Source::Podman { .. } | Source::Finished { .. } => {}
+            Source::Podman { command, path } => {
+                let Some(device) = device(path) else { continue };
+                let program = command.to_string_lossy().into_owned();
+                for (unused, source, how) in [
+                    (false, name.clone(), "--build-cache"),
+                    (true, format!("{name}:unused"), "--all"),
+                ] {
+                    let argv = [&program, "image", "prune", "--force", how];
+                    offers.push(Offer {
+                        candidate: Candidate {
+                            path: named(path, &source),
+                            class: Class::Podman { unused },
+                            idle: since_ran(world, &source),
+                            size: 0,
+                            occupied: false,
+                            spent: false,
+                            checkout: None,
+                        },
+                        action: Action::Run {
+                            root: path.clone(),
+                            source,
+                            argv: argv.map(str::to_owned).to_vec(),
+                            timeout: PODMAN_TIMEOUT,
+                        },
+                        device,
+                    });
+                }
+            }
+            Source::Finished { .. } => {}
         }
     }
     offers
@@ -386,6 +407,25 @@ fn trees_under(
             }
         }
     }
+}
+
+/// How long podman's prunes may take.
+const PODMAN_TIMEOUT: Duration = Duration::from_secs(300);
+
+/// A command's candidate, named for where it runs and what it is, since
+/// it is no file of its own.
+fn named(path: &Path, source: &str) -> PathBuf {
+    let mut named = path.as_os_str().to_owned();
+    named.push("#");
+    named.push(source);
+    PathBuf::from(named)
+}
+
+/// The awake time since a source's command last ran, or forever.
+fn since_ran(world: &World, source: &str) -> f64 {
+    world.ran.get(source).map_or(f64::INFINITY, |&at| {
+        world.awake.since(at.min(world.now), world.now)
+    })
 }
 
 fn device(path: &Path) -> Option<u64> {

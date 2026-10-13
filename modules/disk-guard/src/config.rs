@@ -116,8 +116,8 @@ pub enum Source {
     Trash { path: PathBuf },
     /// Logs, each kept to its last part once past a limit.
     Logs { path: PathBuf },
-    /// podman's own prune commands.
-    Podman { command: PathBuf },
+    /// podman's own prune commands, for the storage at `path`.
+    Podman { command: PathBuf, path: PathBuf },
     /// A producer's own collection, run from a band or on a schedule.
     Producer {
         command: Vec<String>,
@@ -178,6 +178,7 @@ impl Source {
             Source::Cache { .. }
             | Source::Temp { .. }
             | Source::Logs { .. }
+            | Source::Podman { .. }
             | Source::Producer { .. } => true,
             Source::Coredumps { .. } | Source::NixBuilds { .. } => scope == Scope::System,
             _ => scope == Scope::User,
@@ -199,7 +200,7 @@ impl Source {
             | Source::Coredumps { path }
             | Source::NixBuilds { path }
             | Source::Producer { path, .. } => vec![path],
-            Source::Podman { command } => vec![command],
+            Source::Podman { command, path } => vec![command, path],
             Source::Finished { .. } => vec![],
         }
     }

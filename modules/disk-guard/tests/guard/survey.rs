@@ -386,6 +386,47 @@ fn producers_are_offered_where_they_free_idle_since_they_last_ran() {
 }
 
 #[test]
+fn podmans_prunes_are_offered_where_its_storage_lies() {
+    let home = tempfile::tempdir().unwrap();
+    let home = real(home.path());
+    let storage = dir(&home.join("containers/storage"));
+    let config = config(&format!(
+        r#""podman": {{ "kind": "podman", "command": "/bin/podman", "path": "{}" }}"#,
+        storage.display()
+    ));
+    let ran = [("podman".to_owned(), now() - 100.0)].into();
+    let found = offers_after(&config, &[], &|_| false, &ran);
+    assert_eq!(found.len(), 2);
+    let named = |suffix: &str| PathBuf::from(format!("{}#{suffix}", storage.display()));
+    let dangling = find(&found, &named("podman"));
+    assert_eq!(dangling.candidate.class, Class::Podman { unused: false });
+    assert!((dangling.candidate.idle - 100.0).abs() < 5.0);
+    let argv = |args: &[&str]| -> Vec<String> {
+        std::iter::once("/bin/podman")
+            .chain(args.iter().copied())
+            .map(str::to_owned)
+            .collect()
+    };
+    let run = |source: &str, args: &[&str]| Action::Run {
+        root: storage.clone(),
+        source: source.to_owned(),
+        argv: argv(args),
+        timeout: Duration::from_secs(300),
+    };
+    assert_eq!(
+        dangling.action,
+        run("podman", &["image", "prune", "--force", "--build-cache"])
+    );
+    let unused = find(&found, &named("podman:unused"));
+    assert_eq!(unused.candidate.class, Class::Podman { unused: true });
+    assert_eq!(unused.candidate.idle, f64::INFINITY, "remembered apart");
+    assert_eq!(
+        unused.action,
+        run("podman:unused", &["image", "prune", "--force", "--all"])
+    );
+}
+
+#[test]
 fn logs_past_their_limit_are_offered_to_be_trimmed() {
     let home = tempfile::tempdir().unwrap();
     let home = real(home.path());

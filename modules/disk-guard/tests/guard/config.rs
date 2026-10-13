@@ -21,6 +21,8 @@ const USER: &str = r#"{
                    "pattern": "^[a-z]+_\\d+_(?P<pid>\\d+)$", "command": "snapd" },
     "gc": { "kind": "producer", "command": ["/bin/gc", "now"], "path": "/home/u/src",
             "every": "6h", "from": "healthy", "timeout": "5m" },
+    "podman": { "kind": "podman", "command": "/bin/podman",
+                "path": "/home/u/.local/share/containers/storage" },
     "merged": { "kind": "finished", "remote": "^https://example\\.com/",
                 "command": ["/bin/merged"], "timeout": "20s" }
   }
@@ -75,6 +77,13 @@ fn a_user_config_is_read() {
         }
         other => panic!("gc read as {other:?}"),
     }
+    assert_eq!(
+        config.sources["podman"],
+        Source::Podman {
+            command: PathBuf::from("/bin/podman"),
+            path: PathBuf::from("/home/u/.local/share/containers/storage"),
+        }
+    );
 }
 
 #[test]

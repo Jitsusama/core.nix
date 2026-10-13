@@ -270,6 +270,37 @@ fn a_producer_runs_on_its_schedule_and_from_its_band_at_most_hourly() {
 }
 
 #[test]
+fn podman_prunes_after_the_caches_from_urgent_and_its_unused_images_at_critical() {
+    let dangling = Class::Podman { unused: false };
+    let unused = Class::Podman { unused: true };
+    let cache = Class::Cache {
+        rank: 200,
+        from: Band::Urgent,
+    };
+    let candidates = [
+        candidate("podman-unused", unused, 2.0 * HOUR),
+        candidate("podman", dangling, 2.0 * HOUR),
+        candidate("cache", cache, 0.0),
+        candidate("idle", Class::Target, 7.0 * HOUR),
+    ];
+    assert_eq!(taken(&candidates, Band::Pressure), ["idle"]);
+    assert_eq!(
+        taken(&candidates, Band::Urgent),
+        ["cache", "podman", "idle"]
+    );
+    assert_eq!(
+        taken(&candidates, Band::Critical),
+        ["cache", "podman", "idle", "podman-unused"]
+    );
+    let recent = [
+        candidate("podman-unused", unused, 0.5 * HOUR),
+        candidate("podman", dangling, 0.5 * HOUR),
+    ];
+    assert!(taken(&recent, Band::Critical).is_empty(), "at most hourly");
+    assert!(dangling.command() && unused.command());
+}
+
+#[test]
 fn an_oversized_log_is_trimmed_as_waste_in_every_band() {
     let log = [candidate("app.log", Class::Log, 0.0)];
     for band in [Band::Healthy, Band::Pressure, Band::Urgent, Band::Critical] {

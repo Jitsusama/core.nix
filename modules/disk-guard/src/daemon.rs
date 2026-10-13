@@ -611,8 +611,9 @@ fn paths(source: &Source) -> Vec<&Path> {
         | Source::Logs { path }
         | Source::Coredumps { path }
         | Source::NixBuilds { path }
-        | Source::Producer { path, .. } => vec![path.as_path()],
-        Source::Podman { .. } | Source::Finished { .. } => Vec::new(),
+        | Source::Producer { path, .. }
+        | Source::Podman { path, .. } => vec![path.as_path()],
+        Source::Finished { .. } => Vec::new(),
     }
 }
 
