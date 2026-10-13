@@ -171,11 +171,11 @@ Provider {
             key: `wifi:${network.name}:account-password`,
             verb: "join",
             name: network.name,
-            chip: account.identity,
+            chip: account.serverDomain,
             ask: "password",
             secret: true,
             network: network.name,
-            state: () => provider.said(network, account.serverDomain),
+            state: () => provider.said(network, `${account.identity}'s password`),
             given: password => provider.join(network, password, account)
         });
     }
