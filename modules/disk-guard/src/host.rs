@@ -254,6 +254,15 @@ impl Reclaimer for Reclaim<'_> {
                     Err(error) => Outcome::Failed(format!("asking the system daemon: {error}")),
                 }
             }
+            Action::Expire {
+                nix,
+                profile,
+                numbers,
+                ..
+            } => match crate::generations::expire(nix, profile, numbers, self.gentle) {
+                Ok(()) => Outcome::Reclaimed,
+                Err(why) => Outcome::Failed(why),
+            },
             Action::Collect { nix, paths, .. } => match garbage::delete(nix, paths, self.gentle) {
                 Ok(()) => Outcome::Reclaimed,
                 Err(why) => Outcome::Failed(why),

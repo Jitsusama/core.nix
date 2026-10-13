@@ -305,6 +305,7 @@ fn daemon(
             status: Some(env.status.clone()),
             processes: env.processes.clone(),
             system: Some(env.system_socket.clone()),
+            running: running(),
         },
         Scope::System => {
             if let Some(dir) = env.system_socket.parent() {
@@ -319,6 +320,7 @@ fn daemon(
                 status: Some(env.system_status.clone()),
                 processes: env.processes.clone(),
                 system: None,
+                running: running(),
             }
         }
     };
@@ -330,6 +332,14 @@ fn daemon(
     }
     steps(&mut guard, STEP_EVERY, &mut wait, &mut desk, err);
     Ok(FINE)
+}
+
+/// The links to the systems running and booted, NixOS's own, whose
+/// generations never expire.
+fn running() -> Vec<PathBuf> {
+    ["/run/current-system", "/run/booted-system"]
+        .map(PathBuf::from)
+        .to_vec()
 }
 
 fn read_config(path: &Path) -> Result<Config, (i32, String)> {
@@ -492,6 +502,7 @@ fn plan(
         status: None,
         processes: env.processes.clone(),
         system: Some(env.system_socket.clone()),
+        running: running(),
     };
     let mut guard = Guard::new(config, &places).map_err(failed)?;
     let tick = crate::linux::tick().map_err(failed)?;

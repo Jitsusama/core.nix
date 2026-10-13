@@ -9,6 +9,7 @@ use crate::config::{Config, Source};
 use crate::decide::{Decision, Fill, Situation, decide, spare};
 use crate::finished::{self, Answers, Predicate};
 use crate::garbage::{self, BATCH_BYTES, Batch, Dead, GC_TIMEOUT, Listing};
+use crate::generations::{self, Boot};
 use crate::host::{FRESH, Filesystem, Reclaim, Scan};
 use crate::journal::{self, Journal, Journaled, Line};
 use crate::moments::{Power, Pressure};
@@ -77,6 +78,9 @@ const HEARTBEAT_EVERY: f64 = 30.0;
 
 /// What the garbage's commands and candidates are named for.
 const GARBAGE: &str = "garbage";
+/// The candidates a profile's generations are offered as.
+const GENERATIONS: &str = "generations";
+const YOUNG_GENERATIONS: &str = "generations:young";
 /// How old Nix's garbage listing may grow on a healthy disk, and under
 /// pressure; and how long a listing that failed waits for the next.
 const LISTING_FRESH: f64 = 86400.0;
@@ -102,6 +106,8 @@ pub struct Places {
     /// The system daemon's socket, for a user daemon to ask about the
     /// processes it can't read.
     pub system: Option<PathBuf>,
+    /// Links to the systems running and booted, whose generations stay.
+    pub running: Vec<PathBuf>,
 }
 
 pub struct Guard {
@@ -133,6 +139,11 @@ pub struct Guard {
     /// For a user daemon, the filesystems the system daemon collects
     /// garbage on, by device, as it last said.
     collected_on: BTreeSet<u64>,
+    /// Links to the systems running and booted.
+    running: Vec<PathBuf>,
+    /// Whether garbage is to be listed again at once, generations having
+    /// expired since the listing began.
+    relist: bool,
 }
 
 /// Where a listing on its own thread sends the dead paths, or why not.
@@ -245,6 +256,8 @@ impl Guard {
             listing_out: None,
             hearing: None,
             collected_on: BTreeSet::new(),
+            running: places.running.clone(),
+            relist: false,
         })
     }
 
@@ -423,8 +436,9 @@ impl Guard {
         }
     }
 
-    /// A pass of only the garbage on the filesystem holding `path`, in
-    /// `band`, for the user daemon driving its order.
+    /// A pass of only the system's share of the store on the filesystem
+    /// holding `path`, its generations and its garbage, in `band`, for the
+    /// user daemon driving its order.
     fn collect(&mut self, tick: &Tick, path: &Path, band: Band) -> Result<End, String> {
         let device = pool(path).map_err(|error| format!("{}: {error}", path.display()))?;
         let mount = match (self.store(), self.watched.get(&device)) {
@@ -433,8 +447,9 @@ impl Guard {
         };
         let space = crate::linux::space(&mount).map_err(|error| error.to_string())?;
         let thresholds = Thresholds::new(&self.config.bands, space.total);
-        let here = self.garbage_offers(tick);
-        // Garbage takes no process to judge, so the scan is never read.
+        let mut here = self.generation_offers(tick);
+        here.extend(self.garbage_offers(tick));
+        // Neither takes a process to judge, so the scan is never read.
         let me = std::process::id();
         let mut scan = Scan::new(&self.processes, Path::new("/proc/locks"), me, FRESH);
         let decision = Decision::Reach(band);
@@ -489,12 +504,13 @@ impl Guard {
             .is_some_and(|watched| watched.band > Band::Healthy);
         let age = |at: Option<f64>| at.map_or(f64::INFINITY, |at| now - at);
         let listed = age(self.listing.as_ref().map(|listing| listing.listed_at));
-        let due = age(self.listing_begun) >= LISTING_RETRY
-            && if pressed {
-                listed >= LISTING_PRESSED
-            } else {
-                spare && listed >= LISTING_FRESH
-            };
+        let due = self.relist
+            || age(self.listing_begun) >= LISTING_RETRY
+                && if pressed {
+                    listed >= LISTING_PRESSED
+                } else {
+                    spare && listed >= LISTING_FRESH
+                };
         if !due {
             return;
         }
@@ -507,6 +523,7 @@ impl Guard {
                 let _ = tell.send(garbage::list(&nix, !pressed));
             });
         self.listing_begun = Some(now);
+        self.relist = false;
         match listing {
             Ok(_) => self.listing_out = Some((now, out)),
             Err(error) => eprintln!("disk-guard: listing Nix's garbage: {error}"),
@@ -607,15 +624,83 @@ impl Guard {
             .collect()
     }
 
+    /// A profile's generations that may go, each profile offering those
+    /// routine takes and, apart, those only pressure takes, in garbage's
+    /// group ahead of it and measured as commands, though what they free
+    /// shows only as garbage. The system profile's are judged against
+    /// the boot partition's entries; no other profile boots.
+    fn generation_offers(&self, tick: &Tick) -> Vec<Offer> {
+        let nix = &self.config.nix;
+        let Some(dir) = &nix.profiles else {
+            return Vec::new();
+        };
+        let (Ok(device), Ok(profiles)) = (pool(&nix.store), generations::profiles(dir)) else {
+            return Vec::new();
+        };
+        let in_use: Vec<PathBuf> = self
+            .running
+            .iter()
+            .filter_map(|link| fs::read_link(link).ok())
+            .collect();
+        let mut offers = Vec::new();
+        for profile in profiles {
+            let boot = match &self.config.system {
+                Some(system) if profile.path == dir.join("system") => {
+                    match generations::entries(&system.boot) {
+                        Ok(numbers) => Boot::Entries(numbers),
+                        Err(_) => Boot::Unreadable,
+                    }
+                }
+                _ => Boot::NotBooted,
+            };
+            let (routine, young) = generations::expired(
+                &profile,
+                &in_use,
+                &boot,
+                usize::try_from(nix.generations.keep).unwrap_or(usize::MAX),
+                nix.generations.young.0.as_secs_f64(),
+                tick.wall,
+            );
+            let Some(root) = profile.path.parent() else {
+                continue;
+            };
+            for (numbers, kept, name) in [
+                (routine, false, GENERATIONS),
+                (young, true, YOUNG_GENERATIONS),
+            ] {
+                if numbers.is_empty() {
+                    continue;
+                }
+                offers.push(Offer {
+                    candidate: Candidate {
+                        path: named(&profile.path, name),
+                        class: Class::Generations { kept },
+                        idle: 0.0,
+                        size: 0,
+                        occupied: false,
+                        spent: false,
+                        checkout: None,
+                    },
+                    action: Action::Expire {
+                        root: root.to_owned(),
+                        nix: nix.bin.clone(),
+                        profile: profile.path.clone(),
+                        numbers,
+                    },
+                    device,
+                });
+            }
+        }
+        offers
+    }
+
     /// Notes every filesystem a source or the store lies on, keeping what
-    /// was seen of those already watched.
+    /// was seen of those already watched. A user daemon watches the store
+    /// when it looks after an account's generations, which free it.
     fn watch(&mut self) {
         let mut seen = BTreeMap::new();
-        let store = self
-            .config
-            .system
-            .as_ref()
-            .map(|_| self.config.nix.store.as_path());
+        let store = (self.config.system.is_some() || self.config.nix.profiles.is_some())
+            .then_some(self.config.nix.store.as_path());
         for path in self.config.sources.values().flat_map(paths).chain(store) {
             let (Ok(meta), Ok(device)) = (fs::metadata(path), pool(path)) else {
                 continue;
@@ -714,6 +799,7 @@ impl Guard {
                 ran: &self.memory.ran,
             },
         );
+        offers.extend(self.generation_offers(tick));
         offers.extend(self.garbage_offers(tick));
         offers.extend(self.asked_offers());
         Ok((scan, offers))
@@ -781,10 +867,17 @@ impl Guard {
             self.memory.upkept = Some(tick.wall);
         }
         // Whatever came of it, so a failing command waits its window too.
-        for (taken, _) in &report.actions {
+        for (taken, outcome) in &report.actions {
             let offered = here.iter().find(|offer| &offer.candidate.path == taken);
-            if let Some(Action::Run { source, .. }) = offered.map(|offer| &offer.action) {
-                self.memory.ran.insert(source.clone(), tick.wall);
+            match offered.map(|offer| &offer.action) {
+                Some(Action::Run { source, .. }) => {
+                    self.memory.ran.insert(source.clone(), tick.wall);
+                }
+                // What they kept is garbage now, which no listing holds.
+                Some(Action::Expire { .. }) if *outcome == Outcome::Reclaimed => {
+                    self.relist = true;
+                }
+                _ => {}
             }
         }
         let end = ending(&report.end);

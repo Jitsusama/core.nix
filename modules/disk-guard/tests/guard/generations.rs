@@ -11,11 +11,22 @@ const NOW: f64 = 100.0 * DAY;
 /// A profile `name` in `dir` with a generation for each `(number, days
 /// ago)`, the current one being `current`, each pointing at its own system.
 fn profile(dir: &Path, name: &str, generations: &[(u32, f64)], current: u32) -> PathBuf {
+    profile_at(dir, name, generations, current, NOW)
+}
+
+/// The same, its ages counted back from `now`.
+pub(crate) fn profile_at(
+    dir: &Path,
+    name: &str,
+    generations: &[(u32, f64)],
+    current: u32,
+    now: f64,
+) -> PathBuf {
     for &(number, ago) in generations {
         let link = dir.join(format!("{name}-{number}-link"));
         symlink(format!("/nix/store/{number}-system"), &link).unwrap();
         let at = Timespec {
-            tv_sec: (NOW - ago * DAY) as i64,
+            tv_sec: (now - ago * DAY) as i64,
             tv_nsec: 0,
         };
         let times = Timestamps {

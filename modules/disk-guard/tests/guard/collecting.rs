@@ -64,7 +64,14 @@ impl Store {
     fn new() -> Store {
         let dir = tempfile::tempdir().unwrap();
         let root = fs::canonicalize(dir.path()).unwrap();
-        for sub in ["store", "bin", "state", "proc", "boot"] {
+        for sub in [
+            "store",
+            "bin",
+            "state",
+            "proc",
+            "boot/EFI/Linux",
+            "profiles",
+        ] {
             fs::create_dir_all(root.join(sub)).unwrap();
         }
         let log = root.join("log");
@@ -99,7 +106,41 @@ impl Store {
                 log = log.display(),
             ),
         );
+        script(
+            "nix-env",
+            format!(
+                "[ \"$1 $3\" = '-p --delete-generations' ] || exit 9\n\
+                 echo \"expire $* {policy}\" >> {log}\n\
+                 profile=$2; shift 3\n\
+                 for n in \"$@\"; do rm \"$profile-$n-link\"; done\n",
+                log = log.display(),
+            ),
+        );
         Store { _dir: dir, root }
+    }
+
+    /// The profile `name`, under `profiles/` or deeper, with a generation
+    /// for each `(number, days ago)`, `current` being the one in use.
+    fn profile(&self, name: &str, generations: &[(u32, f64)], current: u32) -> PathBuf {
+        let path = self.root.join("profiles").join(name);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let file = path.file_name().unwrap().to_str().unwrap();
+        crate::generations::profile_at(path.parent().unwrap(), file, generations, current, now())
+    }
+
+    /// A boot entry for the system's generation `number`, as lanzaboote
+    /// names it.
+    fn entry(&self, number: u32) {
+        let name = format!("nixos-generation-{number}-abcdefgh.efi");
+        fs::write(self.root.join("boot/EFI/Linux").join(name), "").unwrap();
+    }
+
+    /// The `expire` lines logged, each with its policy.
+    fn expired(&self) -> Vec<String> {
+        self.log()
+            .into_iter()
+            .filter(|line| line.starts_with("expire"))
+            .collect()
     }
 
     /// A dead store path registered `ago` seconds since, of `size` bytes.
@@ -120,7 +161,7 @@ impl Store {
                  "bands": {{ "pressure": "{pressure}", "urgent": "{urgent}", "critical": "0%",
                             "target": "{pressure}" }},
                  "nix": {{ "bin": "{0}/bin/nix", "store": "{0}/store",
-                          "profiles": "{0}/profiles" }},
+                          "profiles": "{0}/profiles", "generations": {{ "keep": 2 }} }},
                  "garbage": {{ "keep": "3d", "budget": "10%" }},
                  "boot": "{0}/boot",
                  "sources": {{}} }}"#,
@@ -137,9 +178,19 @@ impl Store {
                 status: Some(self.root.join("status.json")),
                 processes: self.root.join("proc"),
                 system: None,
+                running: vec![self.root.join("running")],
             },
         )
         .unwrap()
+    }
+
+    /// Has the running system be what generation `number` links to.
+    fn running(&self, number: u32) {
+        std::os::unix::fs::symlink(
+            format!("/nix/store/{number}-system"),
+            self.root.join("running"),
+        )
+        .unwrap();
     }
 
     /// Has `guard` hear that a user daemon spoke for the store's filesystem
@@ -259,6 +310,156 @@ fn a_user_daemon_quiet_for_a_minute_leaves_the_system_to_pass_alone() {
     let _asking = store.spoken_for(&mut guard, Duration::from_secs(61));
     guard.step(&tick(), &CALM).unwrap();
     assert!(store.gc_ran(), "{:?}", store.log());
+}
+
+/// Six system generations: 6 is current, 2 is running, 3 has a boot
+/// entry, 5 and 6 are the newest two, 4 is under a week old and 1 is old.
+fn generations(store: &Store) -> PathBuf {
+    let ages = [
+        (1, 30.0),
+        (2, 29.0),
+        (3, 20.0),
+        (4, 3.0),
+        (5, 2.0),
+        (6, 1.0),
+    ];
+    let system = store.profile("system", &ages, 6);
+    store.running(2);
+    store.entry(3);
+    system
+}
+
+#[test]
+fn routine_upkeep_expires_old_generations_and_lists_the_garbage_again() {
+    let store = Store::new();
+    let system = generations(&store);
+    let mut guard = store.guard(store.config("0%", "0%"));
+    store.step_until(&mut guard, |store| {
+        let log = store.log();
+        let expired = log.iter().position(|line| line.starts_with("expire"));
+        expired.is_some_and(|at| log[at..].iter().any(|line| line.starts_with("list")))
+    });
+    let expected = format!("expire -p {} --delete-generations 1 5", system.display());
+    assert_eq!(
+        store.expired(),
+        [expected],
+        "old ones only, at idle priority"
+    );
+}
+
+#[test]
+fn pressure_takes_young_generations_too_but_never_one_that_boots_or_runs() {
+    let store = Store::new();
+    let system = generations(&store);
+    let mut guard = store.guard(store.config("100%", "0%"));
+    store.step_until(&mut guard, |store| store.expired().len() == 2);
+    let mut expired = store.expired();
+    expired.sort();
+    let expire = |numbers: &str| {
+        format!(
+            "expire -p {} --delete-generations {numbers} 5",
+            system.display()
+        )
+    };
+    assert_eq!(expired, [expire("1"), expire("4")]);
+}
+
+#[test]
+fn an_unreadable_boot_partition_keeps_every_system_generation() {
+    use std::os::unix::fs::PermissionsExt;
+    // SAFETY: geteuid only reads the process's own credentials.
+    if unsafe { libc::geteuid() } == 0 {
+        eprintln!("skipped: root reads any directory");
+        return;
+    }
+    let store = Store::new();
+    generations(&store);
+    let root = store.profile(
+        "per-user/root/profile",
+        &[(1, 30.0), (2, 20.0), (3, 1.0)],
+        3,
+    );
+    let boot = store.root.join("boot");
+    fs::set_permissions(&boot, fs::Permissions::from_mode(0o000)).unwrap();
+    let mut guard = store.guard(store.config("100%", "0%"));
+    store.step_until(&mut guard, |store| !store.expired().is_empty());
+    for _ in 0..3 {
+        guard.step(&tick(), &CALM).unwrap();
+    }
+    fs::set_permissions(&boot, fs::Permissions::from_mode(0o755)).unwrap();
+    let expected = format!("expire -p {} --delete-generations 1 5", root.display());
+    assert_eq!(
+        store.expired(),
+        [expected],
+        "a profile nothing boots still expires"
+    );
+}
+
+#[test]
+fn a_collect_asked_expires_young_generations_ahead_of_the_garbage() {
+    let store = Store::new();
+    let system = generations(&store);
+    let old = store.dead("aaa-old", 10.0 * DAY, 4096);
+    let mut guard = store.guard(store.config("100%", "0%"));
+    let asking = store.spoken_for(&mut guard, Duration::ZERO);
+    store.step_until(&mut guard, |store| {
+        store.root.join("state/garbage.json").exists()
+    });
+    assert!(
+        store.expired().is_empty(),
+        "the user daemon drives the order: {:?}",
+        store.log()
+    );
+    let (mut ours, theirs) = UnixStream::pair().unwrap();
+    asking
+        .send((
+            store.root.join("store"),
+            Band::Pressure,
+            Responder::new(theirs),
+        ))
+        .unwrap();
+    guard.step(&tick(), &CALM).unwrap();
+    let mut reply = String::new();
+    ours.read_to_string(&mut reply).unwrap();
+    let mut expired = store.expired();
+    expired.sort();
+    let expire = |numbers: &str| {
+        format!(
+            "expire -p {} --delete-generations {numbers} 5",
+            system.display()
+        )
+    };
+    assert_eq!(expired, [expire("1"), expire("4")], "{reply}");
+    let log = store.log();
+    let deleted = log
+        .iter()
+        .position(|line| line == &format!("delete {}", old.display()));
+    let last = log.iter().rposition(|line| line.starts_with("expire"));
+    assert!(
+        deleted > last,
+        "generations make garbage, so go first: {log:?}"
+    );
+}
+
+#[test]
+fn a_user_daemon_expires_its_own_profiles_generations() {
+    let store = Store::new();
+    let ages = [(1, 30.0), (2, 20.0), (3, 1.0)];
+    let home = store.profile("home-manager", &ages, 3);
+    let config = Config::parse(&format!(
+        r#"{{ "version": 1, "scope": "user",
+             "bands": {{ "pressure": "0%", "urgent": "0%", "critical": "0%",
+                        "target": "0%" }},
+             "nix": {{ "bin": "{0}/bin/nix", "store": "{0}/store",
+                      "profiles": "{0}/profiles", "generations": {{ "keep": 2 }} }},
+             "sources": {{}} }}"#,
+        store.root.display()
+    ))
+    .unwrap();
+    let mut guard = store.guard(config);
+    store.step_until(&mut guard, |store| !store.expired().is_empty());
+    let expected = format!("expire -p {} --delete-generations 1 5", home.display());
+    assert_eq!(store.expired(), [expected]);
 }
 
 #[test]

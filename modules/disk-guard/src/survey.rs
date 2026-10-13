@@ -50,6 +50,14 @@ pub enum Action {
     /// The system daemon's garbage on the filesystem mounted at `root`,
     /// asked of it at `socket` in the pass's band.
     Ask { root: PathBuf, socket: PathBuf },
+    /// A profile's generations, expired by `nix-env` beside `nix`; `root`
+    /// is the directory holding the profile.
+    Expire {
+        root: PathBuf,
+        nix: PathBuf,
+        profile: PathBuf,
+        numbers: Vec<u32>,
+    },
 }
 
 impl Action {
@@ -63,7 +71,8 @@ impl Action {
             | Action::Trim { root }
             | Action::Run { root, .. }
             | Action::Collect { root, .. }
-            | Action::Ask { root, .. } => root,
+            | Action::Ask { root, .. }
+            | Action::Expire { root, .. } => root,
             Action::Trash { trash } => trash,
         }
     }

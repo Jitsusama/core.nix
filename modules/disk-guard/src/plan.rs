@@ -49,6 +49,12 @@ pub enum Class {
         kept: bool,
         order: u16,
     },
+    /// A profile's generations that may expire, and whether a healthy
+    /// disk keeps them, being young. Expiring frees nothing itself: it
+    /// makes garbage of what only they kept.
+    Generations {
+        kept: bool,
+    },
     /// A producer's own collection, run every so long, or from a band on.
     Producer {
         every: Option<f64>,
@@ -68,7 +74,10 @@ impl Class {
     pub fn command(self) -> bool {
         matches!(
             self,
-            Class::Producer { .. } | Class::Podman { .. } | Class::Garbage { .. }
+            Class::Producer { .. }
+                | Class::Podman { .. }
+                | Class::Garbage { .. }
+                | Class::Generations { .. }
         )
     }
 
@@ -88,6 +97,7 @@ impl Class {
             Class::NixBuild => "nix-build",
             Class::Replaced => "replaced",
             Class::Garbage { .. } => "garbage",
+            Class::Generations { .. } => "generations",
             Class::Producer { .. } => "producer",
             Class::Log => "log",
             Class::Podman { .. } => "podman",
@@ -186,6 +196,8 @@ pub fn group(candidate: &Candidate, band: Band) -> Option<Group> {
         // What's young and within budget waits for pressure.
         Class::Garbage { kept: true, .. } => (Group::Garbage, [NEVER, AT_ONCE, AT_ONCE, AT_ONCE]),
         Class::Garbage { kept: false, .. } => (Group::Garbage, [AT_ONCE; 4]),
+        Class::Generations { kept: true } => (Group::Garbage, [NEVER, AT_ONCE, AT_ONCE, AT_ONCE]),
+        Class::Generations { kept: false } => (Group::Garbage, [AT_ONCE; 4]),
         Class::Producer { every, from } => {
             // From its band on as often as an hour allows, so a band that
             // keeps returning doesn't run a long collection every pass.
@@ -241,8 +253,10 @@ pub fn plan(
         Class::Cache { rank, .. } => u16::from(rank),
         // After every cache: images are the slowest to fetch again.
         Class::Podman { .. } => u16::MAX,
-        // The garbage policy's own order: by age, then by size.
-        Class::Garbage { order, .. } => order,
+        // Generations first, since what they free is garbage, then the
+        // garbage policy's own order: by age, then by size.
+        Class::Generations { .. } => 0,
+        Class::Garbage { order, .. } => order.saturating_add(1),
         _ => 0,
     };
     steps.sort_by(|a, b| {

@@ -137,6 +137,7 @@ fn guard_at(root: &Path, pressure: &str) -> Guard {
             status: Some(root.join("status.json")),
             processes: root.join("proc"),
             system: None,
+            running: Vec::new(),
         },
     )
     .unwrap()

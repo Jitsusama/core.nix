@@ -126,6 +126,7 @@ impl Home {
             status: Some(self.root.join("status.json")),
             processes: self.root.join("proc"),
             system: None,
+            running: Vec::new(),
         }
     }
 
