@@ -51,6 +51,7 @@ are fixes written here, kept until the kernel has its own:
 | `bore.patch`              | the BORE scheduler             | [BORE's author][1] |
 | `irq-resend-nested.patch` | no bad IRQ trap on resume      | written here       |
 | `edp-sdp-caps.patch`      | a single eDP modeset at boot   | written here       |
+| `cfg80211-ssid-without-country.patch` | the joined network's name | written here |
 
 BORE is a small change to the kernel's own EEVDF scheduler: it favours tasks
 that run in short bursts, such as the compositor, terminal and editor, over
@@ -82,6 +83,17 @@ keeps the mode. One modeset is left: the firmware drives the panel at 8 bits
 with Display Stream Compression, and the driver forces a modeset over any
 firmware state that uses it, a FIXME it keeps until it can read that state
 back.
+
+The Wi-Fi fix is for networkd not knowing which network a card joined.
+wpa_supplicant joins through its own authentication and association steps
+rather than the kernel's connect command, and for that kind of join the
+kernel only records the network's name at the end of the function that
+finishes it, after passing the access point's country to the regulatory
+code. That part returns early when the access point names no country, so
+the name was never recorded, and networkd couldn't match a saved network's
+file on it, or tell it had moved to another network and needed a new
+address. The patch records the name first. Most access points name their
+country, but hostapd doesn't unless it's told to.
 
 ### The Settings
 

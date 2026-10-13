@@ -1,0 +1,27 @@
+# The daemon: joins Wi-Fi networks through wpa_supplicant, writes their
+# networkd files, checks for a sign-in page and answers the shell over
+# varlink (src/main.rs says how).
+[package]
+name = "wifid"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+base64 = "0.23"
+futures-util = { version = "0.3", default-features = false }
+hmac = "0.13"
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+sha2 = "0.11"
+tokio = { version = "1.53", features = ["io-util", "macros", "net", "rt", "sync", "time"] }
+tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "tls12"] }
+zbus = { version = "5.19", default-features = false, features = ["tokio"] }
+# zlink logs through tracing, which says nothing with no subscriber, so wifid
+# keeps to its own journal lines.
+zlink = { version = "0.7", default-features = false, features = ["service", "tokio", "tracing"] }
+
+[dev-dependencies]
+tempfile = "3.27"

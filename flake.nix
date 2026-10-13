@@ -208,7 +208,10 @@
         quickshell = ./modules/quickshell/nixos.nix;
         slices = ./modules/slices/nixos.nix;
         swayimg = ./modules/swayimg/nixos.nix;
+        systemd-networkd = ./modules/systemd-networkd/nixos.nix;
         tpm = ./modules/tpm/nixos.nix;
+        wifid = ./modules/wifid/nixos.nix;
+        wpa_supplicant = ./modules/wpa_supplicant/nixos.nix;
         yubikey = ./modules/yubikey/system.nix;
         zathura = ./modules/zathura/nixos.nix;
         zsh = ./modules/zsh/nixos.nix;
@@ -236,6 +239,21 @@
       };
 
       formatter = forEachSystem (pkgs: (treefmt pkgs).config.build.wrapper);
+
+      # Where core.nix's own programs are worked on, with the toolchain
+      # their packages build with: `nix develop`, then cargo in the
+      # program's directory.
+      devShells.x86_64-linux.default =
+        let
+          pkgs = nixpkgs.legacyPackages.x86_64-linux;
+        in
+        pkgs.mkShell {
+          inputsFrom = [ (pkgs.callPackage ./modules/wifid/package.nix { }) ];
+          packages = [
+            pkgs.clippy
+            pkgs.rustfmt
+          ];
+        };
 
       checks = forEachSystem (
         pkgs:
