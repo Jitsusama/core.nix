@@ -51,10 +51,12 @@ let
   # it reports something starting with a prefix after a point in its
   # journal, or since the boot with no point given, then prints every
   # report since that point, each as "said", a tab and what was said, and
-  # last the point it read to, as "cursor" and a tab. journalctl follows
-  # the journal as it's written, so nothing is asked over and over. The
-  # journal keeps Quickshell's lines as bytes, since it colours their
-  # level, so they're read as plain text: JSON would give them as numbers.
+  # last the point it read to, as "cursor" and a tab. It reads the journal
+  # again every fifth of a second rather than following it, since
+  # journalctl's follower is not always woken for an entry: on a busy
+  # machine it missed one in 300 that a fresh read found. The journal
+  # keeps Quickshell's lines as bytes, since it colours their level, so
+  # they're read as plain text: JSON would give them as numbers.
   reports = pkgs.writeShellApplication {
     name = "reports";
     runtimeInputs = [
@@ -65,16 +67,17 @@ let
     ];
     text = ''
       since=$1 seconds=$2 prefix=$3
-      journal=(journalctl --user --unit=quickshell --no-pager --output=cat --lines=all)
+      journal=(journalctl --user --unit=quickshell --no-pager --output=cat)
+      journal+=(--lines=all --show-cursor)
       if [ -n "$since" ]; then journal+=("--after-cursor=$since"); else journal+=(--boot); fi
-      exec 3< <(exec "''${journal[@]}" --follow)
-      follower=$!
-      heard=0
-      timeout "$seconds" grep -m1 -aqF "report[$prefix" <&3 || heard=$?
-      kill "$follower" 2> /dev/null || true
-      [ "$heard" = 0 ] || exit "$heard"
-      "''${journal[@]}" --show-cursor \
-        | sed -n -e 's/^-- cursor: /cursor\t/p' -e 's/.*report\[\(.*\)\]$/said\t\1/p'
+      deadline=$((SECONDS + seconds))
+      while :; do
+        said=$("''${journal[@]}")
+        if grep -aqF "report[$prefix" <<< "$said"; then break; fi
+        [ "$SECONDS" -lt "$deadline" ] || exit 1
+        sleep 0.2
+      done
+      sed -n -e 's/^-- cursor: /cursor\t/p' -e 's/.*report\[\(.*\)\]$/said\t\1/p' <<< "$said"
     '';
   };
 in
