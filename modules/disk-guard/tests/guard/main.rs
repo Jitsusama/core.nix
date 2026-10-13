@@ -41,6 +41,7 @@ mod opens;
 mod pass;
 mod plan;
 mod pool;
+mod procargs;
 #[cfg(target_os = "linux")]
 mod procs;
 mod reclaim;

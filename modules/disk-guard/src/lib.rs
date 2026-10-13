@@ -39,6 +39,7 @@ pub mod opens;
 pub mod pass;
 pub mod plan;
 pub mod pool;
+pub mod procargs;
 pub mod reclaim;
 pub mod replaced;
 pub mod scratch;
