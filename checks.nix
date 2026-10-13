@@ -1334,6 +1334,42 @@ in
         touch $out
       '';
 
+    # The tuple command completes in zsh, which only shows when Tab offers
+    # nothing, so the check completes each kind of argument in a real line
+    # editor (tests/tuple-completion.zsh). Its tuple is a stand-in, since
+    # the real one lists contacts only once signed in, so the real one's
+    # settings are held to the shape the completion reads them in.
+    tuple-completes-in-zsh =
+      let
+        home = account graphical;
+        tuple = lib.findFirst (package: lib.getName package == "tuple") null home.home.packages;
+        completion = lib.findFirst (
+          package: lib.getName package == "tuple-zsh-completion"
+        ) null home.home.packages;
+      in
+      pkgs.runCommandLocal "tuple-completes-in-zsh"
+        {
+          nativeBuildInputs = [
+            tuple
+            pkgs.zsh
+          ];
+        }
+        ''
+          export HOME=$PWD XDG_DATA_HOME=$PWD/data XDG_RUNTIME_DIR=$PWD/run
+          mkdir -m 700 run
+          tuple settings > settings 2>&1 || true
+          tuple off > /dev/null 2>&1 || true
+          if ! grep -q '^capture | ' settings || grep -v -E '^[a-z-]+ \| [^|]* \| ' settings; then
+            echo "tuple settings no longer lists name | value | what it is:"
+            cat settings
+            exit 1
+          fi
+          zsh -f ${./tests/tuple-completion.zsh} \
+            ${completion}/share/zsh/site-functions/_tuple \
+            ${lib.getExe' pkgs.wl-clipboard "wl-paste"}
+          touch $out
+        '';
+
     # A call link opened in a browser comes back as tuple://join, which only
     # the desktop entry's command takes, so the check runs it as the entry
     # does, with stand-ins for tuple and notify-send, over links like the
