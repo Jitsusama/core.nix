@@ -441,6 +441,75 @@ fn a_collect_asked_expires_young_generations_ahead_of_the_garbage() {
     );
 }
 
+/// A user daemon's config watching the store, at `urgent` and below.
+fn user_config(store: &Store, urgent: &str) -> Config {
+    Config::parse(&format!(
+        r#"{{ "version": 1, "scope": "user",
+             "bands": {{ "pressure": "{urgent}", "urgent": "{urgent}", "critical": "0%",
+                        "target": "{urgent}" }},
+             "nix": {{ "bin": "{0}/bin/nix", "store": "{0}/store",
+                      "profiles": "{0}/profiles" }},
+             "sources": {{}} }}"#,
+        store.root.display()
+    ))
+    .unwrap()
+}
+
+#[test]
+fn a_user_daemon_with_no_system_daemon_collects_garbage_itself_from_urgent() {
+    let store = Store::new();
+    store
+        .guard(user_config(&store, "0%"))
+        .step(&tick(), &CALM)
+        .unwrap();
+    assert!(!store.gc_ran(), "healthy: {:?}", store.log());
+    let mut guard = store.guard(user_config(&store, "100%"));
+    guard.step(&tick(), &CALM).unwrap();
+    let log = store.log();
+    assert!(
+        log.iter().any(|line| line == "gc --max 8589934592 0"),
+        "{log:?}"
+    );
+}
+
+#[test]
+fn a_user_daemon_collects_itself_while_the_system_daemon_is_down() {
+    let store = Store::new();
+    let mut guard = Guard::new(
+        user_config(&store, "100%"),
+        &Places {
+            state: store.root.join("state"),
+            status: None,
+            processes: store.root.join("proc"),
+            system: Some(store.root.join("nobody.socket")),
+            running: Vec::new(),
+        },
+    )
+    .unwrap();
+    guard.step(&tick(), &CALM).unwrap();
+    assert!(store.gc_ran(), "{:?}", store.log());
+}
+
+#[test]
+fn a_user_daemon_leaves_garbage_to_a_system_daemon_that_answers() {
+    let store = Store::new();
+    let socket = store.root.join("system.socket");
+    let _heard = crate::daemon::fake_system(&socket, false);
+    let mut guard = Guard::new(
+        user_config(&store, "100%"),
+        &Places {
+            state: store.root.join("state"),
+            status: None,
+            processes: store.root.join("proc"),
+            system: Some(socket),
+            running: Vec::new(),
+        },
+    )
+    .unwrap();
+    guard.step(&tick(), &CALM).unwrap();
+    assert!(!store.gc_ran(), "{:?}", store.log());
+}
+
 #[test]
 fn a_user_daemon_expires_its_own_profiles_generations() {
     let store = Store::new();

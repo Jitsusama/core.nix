@@ -141,6 +141,9 @@ pub struct Guard {
     collected_on: BTreeSet<u64>,
     /// Links to the systems running and booted.
     running: Vec<PathBuf>,
+    /// For a user daemon, whether the system daemon answered its last
+    /// heartbeat.
+    system_heard: bool,
     /// Whether garbage is to be listed again at once, generations having
     /// expired since the listing began.
     relist: bool,
@@ -257,6 +260,7 @@ impl Guard {
             hearing: None,
             collected_on: BTreeSet::new(),
             running: places.running.clone(),
+            system_heard: false,
             relist: false,
         })
     }
@@ -367,6 +371,7 @@ impl Guard {
     /// passes alone a minute later.
     fn heartbeat(&mut self) {
         let Some(socket) = &self.system else {
+            self.system_heard = false;
             return;
         };
         let paths: Vec<PathBuf> = self.watched.values().map(|w| w.path.clone()).collect();
@@ -375,7 +380,9 @@ impl Guard {
             return;
         }
         let watching = Request::Watching { paths };
-        self.collected_on = match crate::socket::ask(socket, &watching, HEARTBEAT_TIMEOUT) {
+        let heard = crate::socket::ask(socket, &watching, HEARTBEAT_TIMEOUT);
+        self.system_heard = heard.is_ok();
+        self.collected_on = match heard {
             Ok(Reply::Collects(held)) => held.iter().filter_map(|path| pool(path).ok()).collect(),
             _ => BTreeSet::new(),
         };
@@ -566,10 +573,16 @@ impl Guard {
     /// `nix store gc`, which collects in no order of its own.
     fn garbage_offers(&self, tick: &Tick) -> Vec<Offer> {
         let Some((_, device)) = self.store() else {
-            return Vec::new();
+            // A user daemon no system daemon answers collects alone, as any
+            // of Nix's clients may: the nix-daemon refuses only to ignore
+            // liveness.
+            let alone = self.config.system.is_none() && !self.system_heard;
+            return match pool(&self.config.nix.store) {
+                Ok(device) if alone => vec![self.gc_offer(tick, device)],
+                _ => Vec::new(),
+            };
         };
         let store = &self.config.nix.store;
-        let nix = self.config.nix.bin.to_string_lossy().into_owned();
         let candidate = |path, class, idle, size| Candidate {
             path,
             class,
@@ -580,26 +593,7 @@ impl Guard {
             checkout: None,
         };
         let Some(listing) = &self.listing else {
-            let ran = self.memory.ran.get(GARBAGE).map_or(f64::INFINITY, |&at| {
-                self.memory.awake.since(at.min(tick.wall), tick.wall)
-            });
-            let class = Class::Producer {
-                every: None,
-                from: Some(Band::Urgent),
-            };
-            let max = BATCH_BYTES.to_string();
-            return vec![Offer {
-                candidate: candidate(named(store, GARBAGE), class, ran, 0),
-                action: Action::Run {
-                    root: store.clone(),
-                    source: GARBAGE.to_owned(),
-                    argv: [nix.as_str(), "store", "gc", "--max", &max]
-                        .map(str::to_owned)
-                        .to_vec(),
-                    timeout: GC_TIMEOUT,
-                },
-                device,
-            }];
+            return vec![self.gc_offer(tick, device)];
         };
         self.batches(listing, tick.wall)
             .into_iter()
@@ -622,6 +616,40 @@ impl Guard {
                 device,
             })
             .collect()
+    }
+
+    /// Hourly steps of `nix store gc` from urgent on, which collects in
+    /// no order of its own: for want of a listing, or of a system daemon.
+    fn gc_offer(&self, tick: &Tick, device: u64) -> Offer {
+        let store = &self.config.nix.store;
+        let ran = self.memory.ran.get(GARBAGE).map_or(f64::INFINITY, |&at| {
+            self.memory.awake.since(at.min(tick.wall), tick.wall)
+        });
+        let max = BATCH_BYTES.to_string();
+        let nix = self.config.nix.bin.to_string_lossy();
+        Offer {
+            candidate: Candidate {
+                path: named(store, GARBAGE),
+                class: Class::Producer {
+                    every: None,
+                    from: Some(Band::Urgent),
+                },
+                idle: ran,
+                size: 0,
+                occupied: false,
+                spent: false,
+                checkout: None,
+            },
+            action: Action::Run {
+                root: store.clone(),
+                source: GARBAGE.to_owned(),
+                argv: [&nix, "store", "gc", "--max", &max]
+                    .map(|word| word.to_string())
+                    .to_vec(),
+                timeout: GC_TIMEOUT,
+            },
+            device,
+        }
     }
 
     /// A profile's generations that may go, each profile offering those
