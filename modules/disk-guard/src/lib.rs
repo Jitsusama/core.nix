@@ -18,6 +18,7 @@ pub mod decide;
 pub mod desktop;
 pub mod discover;
 pub mod finished;
+pub mod garbage;
 #[cfg(target_os = "linux")]
 pub mod host;
 pub mod journal;
