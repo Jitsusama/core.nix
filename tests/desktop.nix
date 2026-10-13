@@ -21,6 +21,20 @@ let
   account = "jitsusama";
   secret = "correct-horse";
 
+  # A certificate authority the machine trusts, and the Office's server's
+  # certificate from it, naming radius.office.test.
+  certificates = pkgs.runCommand "stand-in-certificates" { nativeBuildInputs = [ pkgs.openssl ]; } ''
+    mkdir $out
+    cd $out
+    key="-newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes"
+    openssl req -x509 $key -days 3650 -subj /CN=Stand-in -keyout authority.key -out authority.pem \
+      -addext basicConstraints=critical,CA:TRUE -addext keyUsage=critical,keyCertSign
+    openssl req $key -subj /CN=radius.office.test -keyout radius.key -out radius.csr
+    printf '%s\n' subjectAltName=DNS:radius.office.test extendedKeyUsage=serverAuth > radius.ext
+    openssl x509 -req -in radius.csr -CA authority.pem -CAkey authority.key -CAcreateserial \
+      -days 3650 -extfile radius.ext -out radius.pem
+  '';
+
   # Lantern's front desk, as a hotel's: every page is sent there until
   # someone signs in, which its one button does.
   frontDesk = pkgs.writeText "front-desk.py" ''
@@ -230,14 +244,15 @@ pkgs.testers.runNixOSTest {
         "v4l2loopback"
         # The kernel's own stand-in battery, which UPower reports as a laptop's.
         "test_power"
-        # Two stand-in Wi-Fi radios: hostapd makes the first an access point
-        # and wifid joins it from the second, as the laptop's would.
+        # Three stand-in Wi-Fi radios: hostapd makes the first and the last
+        # access points, and wifid joins them from the second, as the
+        # laptop's would.
         "mac80211_hwsim"
         # For a stand-in touchscreen.
         "uinput"
       ];
-      # The access point's radio moves to a namespace of its own before
-      # anything joins, so wlan1 is the machine's only card and the join
+      # The access points' radios move to a namespace of their own before
+      # anything joins, so wlan1 is the machine's only card and each join
       # crosses the stand-in air.
       systemd.services.air = {
         after = [ "systemd-modules-load.service" ];
@@ -253,11 +268,14 @@ pkgs.testers.runNixOSTest {
           RemainAfterExit = true;
         };
         script = ''
-          until [ -e /sys/class/net/wlan1/phy80211/name ]; do sleep 0.1; done
+          until [ -e /sys/class/net/wlan2/phy80211/name ]; do sleep 0.1; done
           ip netns add air
-          iw phy "$(cat /sys/class/net/wlan0/phy80211/name)" set netns name air
+          for card in wlan0 wlan2; do
+            iw phy "$(cat /sys/class/net/$card/phy80211/name)" set netns name air
+          done
           ip -n air link set lo up
           ip -n air address add 10.42.0.1/24 dev wlan0
+          ip -n air address add 10.44.0.1/24 dev wlan2
         '';
       };
       systemd.services.lantern = {
@@ -281,8 +299,41 @@ pkgs.testers.runNixOSTest {
           ''}";
         };
       };
-      # The access point hands out addresses, as a real network does, and
-      # says every name is its own, as a network wanting a sign-in does.
+      # The Office asks for an account, as a workplace's network does, and
+      # its server proves itself with the certificate naming
+      # radius.office.test.
+      systemd.services.office = {
+        after = [ "air.service" ];
+        requires = [ "air.service" ];
+        wantedBy = [ "multi-user.target" ];
+        serviceConfig = {
+          NetworkNamespacePath = "/run/netns/air";
+          ExecStart = "${lib.getExe' pkgs.hostapd "hostapd"} ${pkgs.writeText "office.conf" ''
+            interface=wlan2
+            driver=nl80211
+            hw_mode=g
+            channel=1
+            country_code=CA
+            ieee80211d=1
+            ssid=Office
+            wpa=2
+            wpa_key_mgmt=WPA-EAP
+            rsn_pairwise=CCMP
+            ieee8021x=1
+            eap_server=1
+            eap_user_file=${pkgs.writeText "office-accounts" ''
+              * PEAP,TTLS
+              "joel" MSCHAPV2,TTLS-PAP,TTLS-MSCHAPV2 "hunter22" [2]
+            ''}
+            ca_cert=${certificates}/authority.pem
+            server_cert=${certificates}/radius.pem
+            private_key=${certificates}/radius.key
+          ''}";
+        };
+      };
+      security.pki.certificateFiles = [ "${certificates}/authority.pem" ];
+      # The access points hand out addresses, as a real network does, and
+      # say every name is Lantern's, as a network wanting a sign-in does.
       systemd.services.lantern-addresses = {
         after = [ "lantern.service" ];
         requires = [ "air.service" ];
@@ -292,6 +343,7 @@ pkgs.testers.runNixOSTest {
           ExecStart = lib.concatStringsSep " " [
             "${lib.getExe pkgs.dnsmasq} --keep-in-foreground --dhcp-leasefile=/run/lantern.leases"
             "--interface=wlan0 --bind-dynamic --dhcp-range=10.42.0.10,10.42.0.50,1h"
+            "--interface=wlan2 --dhcp-range=10.44.0.10,10.44.0.50,1h"
             "--no-resolv --no-hosts --address=/#/10.42.0.1"
           ];
         };
@@ -307,6 +359,7 @@ pkgs.testers.runNixOSTest {
       };
       boot.extraModprobeConfig = ''
         options v4l2loopback video_nr=9 exclusive_caps=1 card_label=Camera
+        options mac80211_hwsim radios=3
       '';
       systemd.services.stand-in-camera = {
         wantedBy = [ "multi-user.target" ];
@@ -1253,6 +1306,25 @@ pkgs.testers.runNixOSTest {
           machine.send_key("ret")
           machine.wait_until_fails(in_session(window), timeout=60)
           machine.succeed(f"{described} | grep -qF '\"reach\":\"online\"'")
+          # The Office asks for an account: met for the first time, it asks
+          # the account's name, its server's domain and its password in
+          # turn, and joins.
+          machine.wait_until_succeeds(
+              f"{wifi}.Scan '{{}}' && {wifi}.Describe '{{}}' | grep -q '\"Office\"'", timeout=60
+          )
+          as_account("qs ipc call launcher collection wifi")
+          launcher_ready()
+          type_in("office", selecting="Office")
+          step_in("ret")
+          type_in("joel")
+          step_in("ret")
+          type_in("radius.office.test")
+          step_in("ret")
+          type_in("hunter22")
+          photograph("launcher-wifi-account")
+          machine.send_key("ret")
+          machine.wait_until_succeeds("journalctl -u wifid | grep -q 'joined Office on wlan1'", timeout=60)
+          machine.wait_until_fails(in_session("niri msg layers | grep -q launcher"), timeout=10)
           # Turning Wi-Fi off is an action like any.
           as_account("qs ipc call launcher toggle")
           launcher_ready()
