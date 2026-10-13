@@ -63,7 +63,7 @@ meaning each; [docs/architecture.md][2] defines them.
 ```sh
 nix fmt                                # format and lint; run before committing
 nix build .#checks.x86_64-linux.<name> # the checks a change touches, as you go
-nix flake check                        # everything, before pushing
+nix flake check --keep-going           # everything, before pushing
 ```
 
 A change is done when `nix flake check` passes locally, and its machine builds

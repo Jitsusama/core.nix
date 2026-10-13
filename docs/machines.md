@@ -96,7 +96,7 @@ home-manager.users.jitsusama.xdg.configFile."niri/config.kdl".text = lib.mkAfter
 ## Applying It
 
 ```sh
-nix flake check
+nix flake check --keep-going
 nixos-rebuild build --flake .#laptop
 nix store diff-closures /run/current-system ./result
 sudo nixos-rebuild switch --flake .#laptop

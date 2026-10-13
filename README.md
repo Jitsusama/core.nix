@@ -116,8 +116,8 @@ shows a whole machine of each kind.
 ## 🔧 Working on It
 
 ```sh
-nix fmt            # format and lint everything
-nix flake check    # every check; reruns only the ones a change can affect
+nix fmt                         # format and lint everything
+nix flake check --keep-going    # every check; reruns only the ones a change can affect
 ```
 
 To try a change on a real machine before it lands, point its repository at

@@ -9,13 +9,19 @@ cheaper check already tells them. Every check is defined in
 
 ```sh
 nix build .#checks.x86_64-linux.<name>   # the checks the change touches, as you go
-nix flake check                          # everything, before pushing
+nix flake check --keep-going             # everything, before pushing
 ```
 
 `nix flake check` runs every check, but Nix reuses any check whose inputs
 didn't change, so a change pays only for the checks it can affect. With the
-builds already done, what's left is evaluation, about half a minute on a
-16-core laptop. A change to the boot path reruns the install test; a change
+builds already done, what's left is evaluation, under a minute on a 16-core
+laptop busy with other builds.
+
+`--keep-going` lets every check finish when one fails, so the run names all
+the failures rather than the first. Determinate Nix needs it besides: when a
+check fails while others are still building, it cancels them and then aborts
+on an assertion (`buildResults.size() == toBuild.size()`) before naming the
+check that failed. A change to the boot path reruns the install test; a change
 to a theme reruns the programs that read it and the desktop test.
 
 To try a change on a real machine, build it from its repository with core
