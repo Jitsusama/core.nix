@@ -20,6 +20,7 @@ fn status(bands: &[(&str, Band, u64)], last: Option<LastPass>) -> Status {
             })
             .collect(),
         last,
+        frozen: Vec::new(),
     }
 }
 

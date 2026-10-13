@@ -707,6 +707,246 @@ fn upkeep_waits_for_a_machine_that_can_spare_it() {
     assert!(!expired.exists());
 }
 
+/// A service manager that freezes nothing, saying what it was asked.
+#[derive(Clone, Default)]
+struct Manager {
+    calls: std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+    /// Whether what it froze stays frozen, until somebody thaws it.
+    thawed: std::sync::Arc<std::sync::atomic::AtomicBool>,
+}
+
+impl Manager {
+    fn calls(&self) -> Vec<String> {
+        self.calls.lock().unwrap().clone()
+    }
+}
+
+impl disk_guard::freezer::Freeze for Manager {
+    fn freeze(&mut self, unit: &str, pids: &[u32], _: &str) -> Result<(), String> {
+        self.calls
+            .lock()
+            .unwrap()
+            .push(format!("freeze {unit} {pids:?}"));
+        Ok(())
+    }
+
+    fn thaw(&mut self, unit: &str) -> Result<(), String> {
+        self.calls.lock().unwrap().push(format!("thaw {unit}"));
+        Ok(())
+    }
+
+    fn frozen(&mut self, _: &str) -> Result<bool, String> {
+        Ok(!self.thawed.load(std::sync::atomic::Ordering::Relaxed))
+    }
+}
+
+impl Home {
+    /// A config whose disk is critical, or healthy, with an empty scratch
+    /// source on it, so a pass finds nothing to take.
+    fn critical(&self, critical: bool) -> Config {
+        let share = if critical { "100%" } else { "0%" };
+        fs::create_dir_all(self.root.join("scratch")).unwrap();
+        Config::parse(&format!(
+            r#"{{ "version": 1, "scope": "user", "status_file": true, "notify": false,
+                 "bands": {{ "pressure": "{share}", "urgent": "{share}", "critical": "{share}", "target": "{share}" }},
+                 "nix": {{ "bin": "{0}/no-nix/nix", "store": "{0}/no-nix/store" }},
+                 "sources": {{ "scratch": {{ "kind": "scratch", "path": "{0}/scratch" }} }} }}"#,
+            self.root.display()
+        ))
+        .unwrap()
+    }
+
+    /// A process of the account's in `cgroup`, with a child, writing a
+    /// file on the guarded disk, having written `written` bytes so far.
+    fn writer(&self, pid: u32, cgroup: &str, written: u64) {
+        let proc = self.root.join("proc");
+        let me = unsafe { libc::geteuid() };
+        for (pid, parent, name) in [(pid, 1, "dd"), (pid + 1, pid, "dd-helper")] {
+            let at = |file: &str| format!("{pid}/{file}");
+            let mut fields = vec!["0".to_string(); 49];
+            fields[0] = "S".into();
+            fields[1] = parent.to_string();
+            fields[19] = "500".into();
+            crate::procs::text(
+                &proc,
+                &at("stat"),
+                &format!("{pid} ({name}) {}\n", fields.join(" ")),
+            );
+            crate::procs::text(
+                &proc,
+                &at("status"),
+                &format!("Name:\t{name}\nUid:\t{me}\t{me}\t{me}\t{me}\n"),
+            );
+            crate::procs::text(&proc, &at("cmdline"), name);
+            crate::procs::text(&proc, &at("cgroup"), &format!("0::{cgroup}\n"));
+            // The child writes nothing itself.
+            let mine = if parent == 1 { written } else { 0 };
+            crate::procs::text(&proc, &at("io"), &format!("write_bytes: {mine}\n"));
+        }
+        let out = self.root.join("filling");
+        fs::write(&out, "x").unwrap();
+        let fd = proc.join(format!("{pid}/fd/3"));
+        if fd.symlink_metadata().is_err() {
+            crate::procs::link(&proc, &format!("{pid}/fd/3"), out.to_str().unwrap());
+        }
+    }
+
+    fn memory(&self) -> serde_json::Value {
+        serde_json::from_str(&fs::read_to_string(self.root.join("state/memory.json")).unwrap())
+            .unwrap()
+    }
+}
+
+fn uid() -> u32 {
+    unsafe { libc::geteuid() }
+}
+
+fn app(uid: u32) -> String {
+    format!("/user.slice/user-{uid}.slice/user@{uid}.service/app.slice/app-kitty.scope")
+}
+
+const GIB: u64 = 1 << 30;
+
+/// Steps `guard` as a runaway writer fills its disk: a step with nothing
+/// to take, then one 30 seconds later after 2 GiB more.
+fn running_away(home: &Home, guard: &mut Guard, cgroup: &str) {
+    home.writer(700, cgroup, 0);
+    guard.step(&tick(), &CALM).unwrap();
+    home.writer(700, cgroup, 2 * GIB);
+    let later = Tick {
+        wall: wall() + 30.0,
+        monotonic: 3630.0,
+        ..tick()
+    };
+    guard.step(&later, &CALM).unwrap();
+}
+
+#[test]
+fn at_critical_with_nothing_left_the_runaway_writer_is_frozen_with_its_children() {
+    let home = Home::new();
+    let manager = Manager::default();
+    let mut guard = home.guard(home.critical(true));
+    guard.freeze_with(Box::new(manager.clone()));
+    running_away(&home, &mut guard, &app(uid()));
+    assert_eq!(
+        manager.calls(),
+        ["freeze disk-guard-freeze-700.scope [700, 701]"]
+    );
+    let frozen = &home.status()["frozen"];
+    assert_eq!(frozen[0]["name"], "dd", "{frozen}");
+    assert_eq!(frozen[0]["unit"], "disk-guard-freeze-700.scope");
+    assert!(
+        home.journal().iter().any(|line| line["kind"] == "freeze"),
+        "{:?}",
+        home.journal()
+    );
+}
+
+#[test]
+fn a_writer_with_nothing_open_on_the_disk_or_writing_slowly_is_left_alone() {
+    let home = Home::new();
+    let manager = Manager::default();
+    let mut guard = home.guard(home.critical(true));
+    guard.freeze_with(Box::new(manager.clone()));
+    home.writer(700, &app(uid()), 0);
+    // Its only file is on another filesystem.
+    fs::remove_file(home.root.join("proc/700/fd/3")).unwrap();
+    crate::procs::link(&home.root.join("proc"), "700/fd/3", "/dev/null");
+    running_away(&home, &mut guard, &app(uid()));
+    assert!(
+        manager.calls().is_empty(),
+        "another disk's: {:?}",
+        manager.calls()
+    );
+
+    let home = Home::new();
+    let mut guard = home.guard(home.critical(true));
+    guard.freeze_with(Box::new(manager.clone()));
+    home.writer(700, &app(uid()), 0);
+    guard.step(&tick(), &CALM).unwrap();
+    // 300 KiB in 30 seconds is nothing that fills a disk.
+    home.writer(700, &app(uid()), 300 << 10);
+    let later = Tick {
+        wall: wall() + 30.0,
+        monotonic: 3630.0,
+        ..tick()
+    };
+    guard.step(&later, &CALM).unwrap();
+    assert!(
+        manager.calls().is_empty(),
+        "a slow one: {:?}",
+        manager.calls()
+    );
+}
+
+#[test]
+fn nothing_in_a_session_is_ever_frozen() {
+    let home = Home::new();
+    let manager = Manager::default();
+    let mut guard = home.guard(home.critical(true));
+    guard.freeze_with(Box::new(manager.clone()));
+    let session = format!(
+        "/user.slice/user-{0}.slice/user@{0}.service/session.slice/foot.service",
+        uid()
+    );
+    running_away(&home, &mut guard, &session);
+    assert!(manager.calls().is_empty(), "{:?}", manager.calls());
+}
+
+#[test]
+fn a_frozen_writer_is_thawed_once_the_disk_has_room() {
+    let home = Home::new();
+    let manager = Manager::default();
+    let mut guard = home.guard(home.critical(true));
+    guard.freeze_with(Box::new(manager.clone()));
+    running_away(&home, &mut guard, &app(uid()));
+    drop(guard);
+    // The next guard, the disk now healthy, remembers what it froze.
+    let mut guard = home.guard(home.critical(false));
+    guard.freeze_with(Box::new(manager.clone()));
+    guard.step(&tick(), &CALM).unwrap();
+    assert_eq!(
+        manager.calls().last().unwrap(),
+        "thaw disk-guard-freeze-700.scope"
+    );
+    assert_eq!(home.memory()["frozen"], serde_json::json!([]));
+}
+
+#[test]
+fn a_writer_thawed_by_hand_is_never_frozen_again() {
+    let home = Home::new();
+    let manager = Manager::default();
+    let mut guard = home.guard(home.critical(true));
+    guard.freeze_with(Box::new(manager.clone()));
+    running_away(&home, &mut guard, &app(uid()));
+    manager
+        .thawed
+        .store(true, std::sync::atomic::Ordering::Relaxed);
+    for (i, written) in [(1.0, 4 * GIB), (2.0, 6 * GIB), (3.0, 8 * GIB)] {
+        home.writer(700, &app(uid()), written);
+        let later = Tick {
+            wall: wall() + 30.0 + 30.0 * i,
+            monotonic: 3630.0 + 30.0 * i,
+            ..tick()
+        };
+        guard.step(&later, &CALM).unwrap();
+    }
+    assert_eq!(
+        manager.calls(),
+        ["freeze disk-guard-freeze-700.scope [700, 701]"]
+    );
+    assert_eq!(home.status()["frozen"], serde_json::json!([]));
+    // Once it's gone, there's nobody left to spare.
+    fs::remove_dir_all(home.root.join("proc/700")).unwrap();
+    let gone = Tick {
+        wall: wall() + 1_000.0,
+        monotonic: 4_600.0,
+        ..tick()
+    };
+    guard.step(&gone, &CALM).unwrap();
+    assert_eq!(home.memory()["spared"], serde_json::json!([]));
+}
+
 const OLD: &str = "1111111111111111";
 const NEW: &str = "2222222222222222";
 

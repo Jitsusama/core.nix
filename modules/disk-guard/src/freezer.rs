@@ -39,6 +39,66 @@ type Listed = (
     OwnedObjectPath,
 );
 
+/// What the daemon freezes and thaws through: a service manager, or a
+/// stand-in for one.
+pub trait Freeze {
+    fn freeze(&mut self, unit: &str, pids: &[u32], description: &str) -> Result<(), String>;
+    fn thaw(&mut self, unit: &str) -> Result<(), String>;
+    fn frozen(&mut self, unit: &str) -> Result<bool, String>;
+}
+
+impl Freeze for Freezer {
+    fn freeze(&mut self, unit: &str, pids: &[u32], description: &str) -> Result<(), String> {
+        Freezer::freeze(self, unit, pids, description).map_err(|error| error.to_string())
+    }
+
+    fn thaw(&mut self, unit: &str) -> Result<(), String> {
+        Freezer::thaw(self, unit).map_err(|error| error.to_string())
+    }
+
+    fn frozen(&mut self, unit: &str) -> Result<bool, String> {
+        Freezer::frozen(self, unit).map_err(|error| error.to_string())
+    }
+}
+
+/// The account's own service manager, on its session bus, connected when
+/// first needed and again after a failed call, since the bus can go and
+/// come back while the guard runs.
+#[derive(Default)]
+pub struct Session {
+    freezer: Option<Freezer>,
+}
+
+impl Session {
+    fn with<T>(&mut self, call: impl Fn(&Freezer) -> zbus::Result<T>) -> Result<T, String> {
+        if self.freezer.is_none() {
+            let builder = zbus::blocking::connection::Builder::session()
+                .map_err(|error| error.to_string())?;
+            let connection = crate::desktop::patient(builder).map_err(|error| error.to_string())?;
+            self.freezer = Some(Freezer::new(connection));
+        }
+        let result = call(self.freezer.as_ref().expect("connected just now"));
+        if result.is_err() {
+            self.freezer = None;
+        }
+        result.map_err(|error| error.to_string())
+    }
+}
+
+impl Freeze for Session {
+    fn freeze(&mut self, unit: &str, pids: &[u32], description: &str) -> Result<(), String> {
+        self.with(|freezer| freezer.freeze(unit, pids, description))
+    }
+
+    fn thaw(&mut self, unit: &str) -> Result<(), String> {
+        self.with(|freezer| freezer.thaw(unit))
+    }
+
+    fn frozen(&mut self, unit: &str) -> Result<bool, String> {
+        self.with(|freezer| freezer.frozen(unit))
+    }
+}
+
 /// A service manager, the account's or the machine's.
 pub struct Freezer {
     connection: Connection,

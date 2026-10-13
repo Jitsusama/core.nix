@@ -24,6 +24,7 @@ use crate::socket::{Reply, Request, Responder};
 use crate::state::{self, Memory};
 use crate::survey::{Action, Offer, World, named, survey};
 use crate::units::Size;
+use crate::writers::{self, Frozen, Writers};
 use serde::Serialize;
 use std::cell::Cell;
 use std::collections::HashMap;
@@ -81,6 +82,22 @@ const SAVE_EVERY: f64 = 300.0;
 /// How often the targets are walked for a `deps` to watch: one built since
 /// goes unheard until then, and is dated from when it's first watched.
 const MARK_EVERY: f64 = 3600.0;
+
+/// How far back writes are weighed when choosing what to freeze.
+const WRITING_WINDOW: f64 = 60.0;
+
+/// The least a writer must write, in bytes a second, to be what fills a
+/// disk at critical: anything slower isn't worth stopping.
+const RUNAWAY: f64 = 1024.0 * 1024.0;
+
+/// Whether process `pid` has a file open on the filesystem `device`.
+fn writes_on(processes: &Path, pid: u32, device: u64) -> bool {
+    let Ok(fds) = fs::read_dir(processes.join(pid.to_string()).join("fd")) else {
+        return false;
+    };
+    fds.filter_map(Result::ok)
+        .any(|fd| pool(&fd.path()).is_ok_and(|pool| pool == device))
+}
 /// How often the status file is written when nothing in it has changed,
 /// so its heartbeat says the guard is alive.
 const HEARTBEAT_EVERY: f64 = 30.0;
@@ -176,6 +193,10 @@ pub struct Guard {
     /// marked what's built.
     opens: Option<Arc<crate::opens::Watch>>,
     marked_at: Option<f64>,
+    /// What freezes a runaway writer, once given one, and what each
+    /// process has written lately.
+    freeze: Option<Box<dyn crate::freezer::Freeze>>,
+    writers: Writers,
 }
 
 /// Where a listing on its own thread sends the dead paths, or why not.
@@ -199,6 +220,8 @@ pub struct Status {
     pub heartbeat: f64,
     pub filesystems: Vec<FilesystemStatus>,
     pub last: Option<LastPass>,
+    /// The writers frozen now, for the desktop to offer to thaw.
+    pub frozen: Vec<crate::writers::Frozen>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -301,6 +324,148 @@ impl Guard {
             uses_path,
             opens: None,
             marked_at: None,
+            freeze: None,
+            writers: Writers::default(),
+        })
+    }
+
+    /// Freezes a runaway writer through `freeze`, when nothing else is
+    /// left to take; without one, nothing is ever frozen.
+    pub fn freeze_with(&mut self, freeze: Box<dyn crate::freezer::Freeze>) {
+        self.freeze = Some(freeze);
+    }
+
+    /// Freezes what's filling a disk that's critical with nothing left to
+    /// take, and thaws what was frozen once its disk has room again, or
+    /// lets it go when somebody thawed it by hand. Only the account's own
+    /// processes, outside its sessions, and never the guard.
+    fn runaways(&mut self, tick: &Tick) -> io::Result<()> {
+        let Some(freeze) = self.freeze.as_mut() else {
+            return Ok(());
+        };
+        let band_of = |path: &Path| {
+            self.watched
+                .values()
+                .find(|watched| watched.path == path)
+                .map(|watched| watched.band)
+        };
+        // First what's frozen: thawed with room, let go when thawed already.
+        let mut still = Vec::new();
+        for frozen in std::mem::take(&mut self.memory.frozen) {
+            let roomy = band_of(&frozen.path).is_none_or(|band| band < Band::Urgent);
+            let (kept, outcome) = if roomy {
+                match freeze.thaw(&frozen.unit) {
+                    Ok(()) => (false, Outcome::Reclaimed),
+                    Err(why) => (true, Outcome::Failed(why)),
+                }
+            } else {
+                match freeze.frozen(&frozen.unit) {
+                    Ok(true) => (true, Outcome::Reclaimed),
+                    // Thawed by somebody else, or gone: theirs to decide.
+                    _ => {
+                        self.memory.spared.push((frozen.pid, frozen.start));
+                        (false, Outcome::Kept("thawed already".to_owned()))
+                    }
+                }
+            };
+            if !kept || roomy {
+                self.journal.write(&Line::Action {
+                    at: tick.wall,
+                    band: band_of(&frozen.path).unwrap_or(Band::Healthy),
+                    path: named(&frozen.path, &format!("{}:{}", frozen.name, frozen.pid)),
+                    kind: "thaw".to_owned(),
+                    size: 0,
+                    outcome,
+                })?;
+            }
+            if kept {
+                still.push(frozen);
+            }
+        }
+        self.memory.frozen = still;
+        if self
+            .watched
+            .values()
+            .all(|watched| watched.band == Band::Healthy)
+        {
+            self.writers = Writers::default();
+            return Ok(());
+        }
+        // SAFETY: geteuid only reads the process's own credentials.
+        let me = unsafe { libc::geteuid() };
+        let samples: Vec<_> = writers::sample(&self.processes)
+            .into_iter()
+            .filter(|sample| sample.uid == me)
+            .collect();
+        self.writers.observe(samples.clone(), tick.wall);
+        // A process spared is spared while it lives; a pid reused is another.
+        self.memory.spared.retain(|&(pid, start)| {
+            samples
+                .iter()
+                .any(|sample| sample.pid == pid && sample.start == start)
+        });
+        let Some(writer) = self.writers.dominant(WRITING_WINDOW, tick.wall) else {
+            return Ok(());
+        };
+        let freezable = writer.rate >= RUNAWAY
+            && writer.pid != std::process::id()
+            && !self.memory.spared.contains(&(writer.pid, writer.start))
+            && !self
+                .memory
+                .frozen
+                .iter()
+                .any(|frozen| frozen.pid == writer.pid)
+            && writer.cgroup.as_deref().is_some_and(|cgroup| {
+                cgroup.starts_with(&format!("/user.slice/user-{me}.slice/user@{me}.service/"))
+                    && !cgroup.contains("/session.slice/")
+                    && !cgroup.contains("disk-guard")
+            });
+        if !freezable {
+            return Ok(());
+        }
+        // A disk at critical whose last pass found nothing left, and that
+        // the writer has a file open on.
+        let Some((path, band)) = self
+            .watched
+            .iter()
+            .filter(|(_, watched)| {
+                watched.band == Band::Critical
+                    && watched.rest.is_some_and(|rest| rest.band == Band::Critical)
+            })
+            .find(|(device, _)| writes_on(&self.processes, writer.pid, **device))
+            .map(|(_, watched)| (watched.path.clone(), watched.band))
+        else {
+            return Ok(());
+        };
+        let unit = crate::freezer::unit_for(writer.pid);
+        let pids = writers::descendants(&samples, writer.pid);
+        let description = format!(
+            "{} (pid {}), frozen by disk-guard for filling {}",
+            writer.name,
+            writer.pid,
+            path.display()
+        );
+        let outcome = match freeze.freeze(&unit, &pids, &description) {
+            Ok(()) => {
+                self.memory.frozen.push(Frozen {
+                    unit,
+                    pid: writer.pid,
+                    start: writer.start,
+                    name: writer.name.clone(),
+                    path: path.clone(),
+                    at: tick.wall,
+                });
+                Outcome::Reclaimed
+            }
+            Err(why) => Outcome::Failed(why),
+        };
+        self.journal.write(&Line::Action {
+            at: tick.wall,
+            band,
+            path: named(&path, &format!("{}:{}", writer.name, writer.pid)),
+            kind: "freeze".to_owned(),
+            size: writer.written,
+            outcome,
         })
     }
 
@@ -435,6 +600,9 @@ impl Guard {
         if passed {
             self.passes(tick, &due)?;
         }
+        let frozen = self.memory.frozen.len();
+        self.runaways(tick)?;
+        let passed = passed || frozen != self.memory.frozen.len();
         if passed || self.saved_at.is_none_or(|at| tick.wall - at >= SAVE_EVERY) {
             state::save(&self.memory_path, &self.memory)?;
             let uses = self
@@ -1243,6 +1411,7 @@ impl Guard {
             heartbeat: now,
             filesystems,
             last: self.last.clone(),
+            frozen: self.memory.frozen.clone(),
         }
     }
 

@@ -35,6 +35,13 @@ pub struct Memory {
     /// The last run linking the store's identical files that finished.
     #[serde(default)]
     pub deduped: Option<crate::dedupe::Deduped>,
+    /// The writers frozen now, kept so the next guard thaws them.
+    #[serde(default)]
+    pub frozen: Vec<crate::writers::Frozen>,
+    /// Writers somebody thawed by hand, by pid and start, never frozen
+    /// again while they live.
+    #[serde(default)]
+    pub spared: Vec<(u32, u64)>,
     /// What a newer guard wrote that this one doesn't know.
     #[serde(flatten)]
     pub rest: serde_json::Map<String, serde_json::Value>,
@@ -50,6 +57,8 @@ impl Default for Memory {
             pass_seconds: None,
             ran: std::collections::BTreeMap::new(),
             deduped: None,
+            frozen: Vec::new(),
+            spared: Vec::new(),
             rest: serde_json::Map::new(),
         }
     }

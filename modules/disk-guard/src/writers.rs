@@ -31,6 +31,19 @@ pub struct Writer {
     pub cgroup: Option<String>,
 }
 
+/// A writer the guard froze: its scope, who it is, and the filesystem it
+/// was filling, by where it's mounted.
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct Frozen {
+    pub unit: String,
+    pub pid: u32,
+    pub start: u64,
+    pub name: String,
+    pub path: std::path::PathBuf,
+    /// When, in wall seconds.
+    pub at: f64,
+}
+
 /// The longest window anything asks about; older samples are dropped.
 const KEPT: f64 = 600.0;
 
