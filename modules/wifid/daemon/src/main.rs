@@ -102,6 +102,28 @@ async fn main() -> ExitCode {
     }
 }
 
+/// A stream read on a task of its own, so zbus always has room for what it
+/// hears. zbus stops reading the bus while any stream it feeds is full, and
+/// so stops handing back replies, so a loop waiting on a reply while its own
+/// streams go unread would wait forever.
+fn drained<S>(stream: S) -> mpsc::UnboundedReceiver<S::Item>
+where
+    S: futures_util::Stream + Send + 'static,
+    S::Item: Send + 'static,
+{
+    let (sending, drained) = mpsc::unbounded_channel();
+    tokio::spawn(async move {
+        let mut stream = std::pin::pin!(stream);
+        while let Some(item) = stream.next().await {
+            // Nobody reads any more once wifid is stopping.
+            if sending.send(item).is_err() {
+                return;
+            }
+        }
+    });
+    drained
+}
+
 async fn run() -> Result<(), Box<dyn Error>> {
     let store = Store {
         declared: PathBuf::from("/etc/systemd/network"),
@@ -129,7 +151,7 @@ async fn run() -> Result<(), Box<dyn Error>> {
     }
 
     let owners = DBusProxy::new(&bus).await?;
-    let mut changes = owners.receive_name_owner_changed().await?;
+    let mut changes = drained(owners.receive_name_owner_changed().await?);
     let supplicant = SupplicantProxy::new(&bus).await?;
     let state = watch::Sender::new(State::default());
     let wifid = Wifid {
@@ -148,7 +170,7 @@ async fn run() -> Result<(), Box<dyn Error>> {
         .msg_type(zbus::message::Type::Signal)
         .path_namespace("/fi/w1/wpa_supplicant1")?
         .build();
-    let mut heard = MessageStream::for_match_rule(rule, &bus, None).await?;
+    let mut heard = drained(MessageStream::for_match_rule(rule, &bus, None).await?);
     let mut air = Air {
         points: HashMap::new(),
         state: state.clone(),
@@ -162,11 +184,13 @@ async fn run() -> Result<(), Box<dyn Error>> {
         .member("PropertiesChanged")?
         .path_namespace("/org/freedesktop/network1/link")?
         .build();
-    let mut links = MessageStream::for_match_rule(rule, &bus, None).await?;
-    let mut sleeps = LoginProxy::new(&bus)
-        .await?
-        .receive_prepare_for_sleep()
-        .await?;
+    let mut links = drained(MessageStream::for_match_rule(rule, &bus, None).await?);
+    let mut sleeps = drained(
+        LoginProxy::new(&bus)
+            .await?
+            .receive_prepare_for_sleep()
+            .await?,
+    );
     let mut networks = Networks {
         checker: Arc::new(Checker {
             settings: settings(),
@@ -192,7 +216,7 @@ async fn run() -> Result<(), Box<dyn Error>> {
         loop {
             let deadline = joining.as_ref().map(|joining| joining.deadline);
             tokio::select! {
-                Some(change) = changes.next() => {
+                Some(change) = changes.recv() => {
                     let Ok(args) = change.args() else { continue };
                     if args.new_owner().is_none() {
                         continue;
@@ -212,7 +236,7 @@ async fn run() -> Result<(), Box<dyn Error>> {
                         _ => {}
                     }
                 }
-                Some(Ok(message)) = links.next() => {
+                Some(Ok(message)) = links.recv() => {
                     let header = message.header();
                     let Some(path) = header.path() else { continue };
                     match one_link(&bus, path).await {
@@ -231,7 +255,7 @@ async fn run() -> Result<(), Box<dyn Error>> {
                         }
                     }
                 }
-                Some(Ok(message)) = heard.next() => air.take_in(&bus, &message).await,
+                Some(Ok(message)) = heard.recv() => air.take_in(&bus, &message).await,
                 Some(event) = switched.recv() => {
                     let was = radios.on();
                     radios.take_in(event);
@@ -283,7 +307,7 @@ async fn run() -> Result<(), Box<dyn Error>> {
                         wifid.settle(late, Err(Refused::TimedOut)).await;
                     }
                 }
-                Some(sleep) = sleeps.next() => {
+                Some(sleep) = sleeps.recv() => {
                     if sleep.args().is_ok_and(|args| !args.start) {
                         networks.asked.send_modify(|asked| *asked += 1);
                     }
@@ -1406,5 +1430,37 @@ impl Wifid<'_> {
             .cache_properties(CacheProperties::No)
             .build()
             .await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // zbus hands a stream each message only once the one before has been
+    // taken, as a channel with room for one does, so nothing it says after
+    // that gets through, replies included, until somebody reads.
+    #[tokio::test]
+    async fn a_drained_stream_is_read_while_nobody_reads_what_it_gave() {
+        let (feeding, fed) = mpsc::channel(1);
+        let stream = futures_util::stream::unfold(fed, |mut fed| async move {
+            fed.recv().await.map(|said| (said, fed))
+        });
+        let mut drained = drained(stream);
+
+        let feeder = async {
+            for said in 0..100 {
+                feeding.send(said).await.unwrap();
+            }
+        };
+        let kept_up = tokio::time::timeout(Duration::from_secs(5), feeder).await;
+
+        assert!(kept_up.is_ok(), "the stream stopped taking messages");
+        drop(feeding);
+        let mut heard = Vec::new();
+        while let Some(said) = drained.recv().await {
+            heard.push(said);
+        }
+        assert_eq!(heard, (0..100).collect::<Vec<_>>());
     }
 }
