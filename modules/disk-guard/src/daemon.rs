@@ -2,13 +2,14 @@
 //! forecast every filesystem a source lies on, and run a pass on each one
 //! that needs it, journalling what it did and keeping what it learned.
 
+use crate::anchor::Dir;
 use crate::band::{Band, Space, Thresholds};
 use crate::clock::Tick;
 use crate::config::{Config, Source};
 use crate::decide::{Decision, Fill, Situation, decide, spare};
 use crate::finished::{self, Answers, Predicate};
 use crate::host::{FRESH, Filesystem, Reclaim, Scan};
-use crate::journal::{self, Journal, Line};
+use crate::journal::{self, Journal, Journaled, Line};
 use crate::moments::{Power, Pressure};
 use crate::pass::{Disk, End, Goal, Learned, Outcome, Reclaimer, pass};
 use crate::plan::Candidate;
@@ -97,6 +98,8 @@ pub struct Guard {
     last: Option<LastPass>,
     saved_at: Option<f64>,
     written: Option<(f64, Status)>,
+    /// Whether what an earlier run left moved aside has been seen to.
+    resumed: bool,
 }
 
 /// What the status file says, for the desktop's disk piece and
@@ -185,10 +188,17 @@ impl Guard {
             last: None,
             saved_at: None,
             written: None,
+            resumed: false,
         })
     }
 
     pub fn step(&mut self, tick: &Tick, senses: &Senses) -> io::Result<()> {
+        // Once: what it resumes it journals as ended, so looking again
+        // would only re-read the journal every step to find nothing.
+        if !self.resumed {
+            self.resumed = true;
+            self.resume(tick)?;
+        }
         self.memory.awake.observe(tick);
         self.watch();
         let spare = spare(
@@ -238,6 +248,40 @@ impl Guard {
             self.saved_at = Some(tick.wall);
         }
         self.write_status(tick.wall)
+    }
+
+    /// Empties what a run that died mid reclaim left moved aside: the trash
+    /// in each directory it began and never ended. Never put back, since
+    /// its paths have been missing since, and outputs restored beside a
+    /// build that has moved on could pass for fresh.
+    fn resume(&mut self, tick: &Tick) -> io::Result<()> {
+        for (path, root) in self.journal.unfinished()? {
+            let emptied = (|| -> io::Result<()> {
+                let relative = path
+                    .strip_prefix(&root)
+                    .map_err(|_| io::Error::other("outside its root"))?;
+                let dir = match Dir::open(&root).and_then(|root| root.child(relative)) {
+                    Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(()),
+                    opened => opened?,
+                };
+                for left in dir.leftovers()? {
+                    left.empty()?;
+                }
+                Ok(())
+            })();
+            self.journal.write(&Line::Action {
+                at: tick.wall,
+                band: Band::Healthy,
+                path,
+                kind: "resumed".to_owned(),
+                size: 0,
+                outcome: match emptied {
+                    Ok(()) => Outcome::Reclaimed,
+                    Err(error) => Outcome::Failed(format!("emptying what was left: {error}")),
+                },
+            })?;
+        }
+        Ok(())
     }
 
     /// Notes every filesystem a source lies on, keeping what was seen of
@@ -360,7 +404,16 @@ impl Guard {
             _ => (Band::Healthy, Goal::Upkeep),
         };
         let started = Instant::now();
-        let mut reclaim = Reclaim::new(here, scan);
+        let mut reclaim = Journaled {
+            inner: Reclaim::new(here, scan),
+            journal: &mut self.journal,
+            roots: here
+                .iter()
+                .map(|offer| (offer.candidate.path.clone(), offer.action.root().to_owned()))
+                .collect(),
+            at: tick.wall,
+            band,
+        };
         let report = pass(
             &mut Filesystem::new(&path),
             &mut reclaim,
@@ -378,19 +431,6 @@ impl Guard {
             });
         } else {
             self.memory.upkept = Some(tick.wall);
-        }
-        for (taken, outcome) in &report.actions {
-            let Some(candidate) = candidates.iter().find(|c| &c.path == taken) else {
-                continue;
-            };
-            self.journal.write(&Line::Action {
-                at: tick.wall,
-                band: report.band,
-                path: taken.clone(),
-                kind: candidate.class.kind().to_owned(),
-                size: candidate.size,
-                outcome: outcome.clone(),
-            })?;
         }
         let end = ending(&report.end);
         self.journal.write(&Line::Pass {

@@ -33,6 +33,19 @@ pub enum Action {
     Workspace { root: PathBuf },
 }
 
+impl Action {
+    /// The directory its delete is anchored to.
+    pub fn root(&self) -> &Path {
+        match self {
+            Action::Target { root }
+            | Action::Variant { root }
+            | Action::Entry { root }
+            | Action::Workspace { root } => root,
+            Action::Trash { trash } => trash,
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct Offer {
     pub candidate: Candidate,

@@ -198,13 +198,7 @@ impl Reclaimer for Reclaim<'_> {
         let Some(action) = self.actions.get(&candidate.path) else {
             return Outcome::Failed("no source offered it".to_owned());
         };
-        let root_path = match action {
-            Action::Target { root }
-            | Action::Variant { root }
-            | Action::Entry { root }
-            | Action::Workspace { root } => root,
-            Action::Trash { trash } => trash,
-        };
+        let root_path = action.root();
         let root = match Dir::open(root_path) {
             Ok(root) => root,
             Err(error) => {

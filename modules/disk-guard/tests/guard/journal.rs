@@ -1,6 +1,7 @@
 use disk_guard::band::Band;
-use disk_guard::journal::{Journal, Line};
-use disk_guard::pass::Outcome;
+use disk_guard::journal::{Journal, Journaled, Line};
+use disk_guard::pass::{Outcome, Reclaimer};
+use disk_guard::plan::{Candidate, Class};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -88,6 +89,113 @@ fn a_journal_past_its_limit_starts_again_keeping_one_before_it() {
         2,
         "only one earlier journal is kept: {names:?}"
     );
+}
+
+fn begin(path: &str, root: &str) -> Line {
+    Line::Begin {
+        at: 1_760_000_000.0,
+        path: PathBuf::from(path),
+        root: PathBuf::from(root),
+    }
+}
+
+#[test]
+fn what_was_begun_and_never_ended_is_found_across_both_files() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("journal.jsonl");
+    let mut journal = Journal::new(&path, 400);
+    journal.write(&begin("/t/a", "/t")).unwrap();
+    journal.write(&reclaimed("/t/a")).unwrap();
+    journal.write(&begin("/t/b", "/t")).unwrap();
+    journal.write(&reclaimed("/t/x")).unwrap();
+    journal.write(&begin("/t/c", "/t")).unwrap();
+    journal.write(&reclaimed("/t/c")).unwrap();
+    journal.write(&begin("/u/d", "/u")).unwrap();
+    assert!(
+        dir.path().join("journal.jsonl.1").exists(),
+        "the lines span both files"
+    );
+    assert_eq!(
+        journal.unfinished().unwrap(),
+        [
+            (PathBuf::from("/t/b"), PathBuf::from("/t")),
+            (PathBuf::from("/u/d"), PathBuf::from("/u")),
+        ]
+    );
+    let read = lines(&path);
+    let begun = read
+        .iter()
+        .find(|line| line["event"] == "begin" && line["path"] == "/u/d")
+        .unwrap();
+    assert_eq!(begun["root"], "/u");
+}
+
+/// Reads the journal from inside each reclaim, as a guard dying there
+/// would leave it.
+struct Peeking {
+    journal: PathBuf,
+    seen: Vec<Vec<(PathBuf, PathBuf)>>,
+}
+
+impl Reclaimer for Peeking {
+    fn reclaim(&mut self, _: &Candidate) -> Outcome {
+        self.seen
+            .push(Journal::new(&self.journal, 1 << 20).unfinished().unwrap());
+        Outcome::Reclaimed
+    }
+}
+
+fn candidate(path: &Path) -> Candidate {
+    Candidate {
+        path: path.to_owned(),
+        class: Class::Scratch { healthy: None },
+        idle: 0.0,
+        size: 5,
+        occupied: false,
+        spent: false,
+        checkout: None,
+    }
+}
+
+#[test]
+fn a_directory_is_begun_before_it_is_reclaimed_and_ended_after() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("journal.jsonl");
+    let (run, file) = (dir.path().join("run"), dir.path().join("out.log"));
+    fs::create_dir(&run).unwrap();
+    fs::write(&file, "x").unwrap();
+    let mut journal = Journal::new(&path, 1 << 20);
+    let mut journaled = Journaled {
+        inner: Peeking {
+            journal: path.clone(),
+            seen: Vec::new(),
+        },
+        journal: &mut journal,
+        roots: [&run, &file]
+            .into_iter()
+            .map(|p| (p.clone(), dir.path().to_owned()))
+            .collect(),
+        at: 1.0,
+        band: Band::Pressure,
+    };
+    assert_eq!(journaled.reclaim(&candidate(&run)), Outcome::Reclaimed);
+    assert_eq!(journaled.reclaim(&candidate(&file)), Outcome::Reclaimed);
+    assert_eq!(
+        journaled.inner.seen,
+        [vec![(run.clone(), dir.path().to_owned())], vec![]],
+        "a directory is begun before it's touched; a file, unlinked at once, isn't"
+    );
+    assert!(journal.unfinished().unwrap().is_empty(), "both ended");
+    let read = lines(&path);
+    assert_eq!(read.len(), 3);
+    assert_eq!(read[2]["kind"], "scratch");
+}
+
+#[test]
+fn nothing_journalled_has_nothing_unfinished() {
+    let dir = tempfile::tempdir().unwrap();
+    let journal = Journal::new(&dir.path().join("journal.jsonl"), 400);
+    assert!(journal.unfinished().unwrap().is_empty());
 }
 
 #[test]

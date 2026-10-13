@@ -184,6 +184,93 @@ fn the_system_daemon_vouches_for_what_this_account_cant_read() {
     );
 }
 
+#[test]
+fn a_directory_is_begun_in_the_journal_before_it_is_moved() {
+    let home = Home::new();
+    let cold = home.cold_scratch("run-1");
+    let trashed = home.trashed("old.txt", "2001-09-09T01:46:40");
+    let mut guard = home.guard(home.config("100%", "100%"));
+    guard.step(&tick(), &CALM).unwrap();
+    let said: Vec<(String, String)> = home
+        .journal()
+        .iter()
+        .map(|line| {
+            (
+                line["event"].as_str().unwrap().to_owned(),
+                line["path"].as_str().unwrap_or("").to_owned(),
+            )
+        })
+        .collect();
+    let at = |event: &str, path: &Path| {
+        said.iter()
+            .position(|(e, p)| e == event && p == path.to_str().unwrap())
+    };
+    let (begun, done) = (at("begin", &cold).unwrap(), at("action", &cold).unwrap());
+    assert!(begun < done, "{said:?}");
+    assert!(
+        at("begin", &trashed).is_none(),
+        "a file goes in one unlink: {said:?}"
+    );
+    assert!(at("action", &trashed).unwrap() < at("pass", Path::new("")).unwrap());
+    let begin = &home.journal()[begun];
+    assert_eq!(begin["root"], home.root.join("scratch").to_str().unwrap());
+}
+
+#[test]
+fn what_a_guard_left_moved_aside_is_emptied_when_the_next_starts() {
+    let home = Home::new();
+    let left = |name: &str| {
+        let entry = home.root.join("scratch").join(name);
+        let trash = entry.join(".disk-guard-trash-abc123");
+        fs::create_dir_all(trash.join("deep")).unwrap();
+        fs::write(trash.join("deep/out"), "built").unwrap();
+        (entry, trash)
+    };
+    let (unfinished, its_trash) = left("run-1");
+    let (finished, kept_trash) = left("run-2");
+    let scratch = home.root.join("scratch");
+    let line = |event: &str, path: &Path| {
+        format!(
+            r#"{{"event":"{event}","at":1.0,"band":"pressure","path":"{}","root":"{}","kind":"scratch","size":5,"outcome":"reclaimed"}}"#,
+            path.display(),
+            scratch.display()
+        )
+    };
+    fs::write(
+        home.root.join("state/journal.jsonl"),
+        [
+            line("begin", &unfinished),
+            line("begin", &finished),
+            line("action", &finished),
+        ]
+        .join("\n")
+            + "\n",
+    )
+    .unwrap();
+    let mut guard = home.guard(home.config("0%", "0%"));
+    guard.step(&tick(), &CALM).unwrap();
+    assert!(!its_trash.exists(), "emptied");
+    assert!(unfinished.exists(), "only what was moved aside goes");
+    assert!(kept_trash.exists(), "what was ended is no one's to resume");
+    let resumed = home
+        .journal()
+        .into_iter()
+        .find(|line| line["event"] == "action" && line["kind"] == "resumed")
+        .unwrap();
+    assert_eq!(resumed["path"], unfinished.to_str().unwrap());
+    assert_eq!(resumed["outcome"], "reclaimed");
+    guard.step(&tick(), &CALM).unwrap();
+    let resumes = home
+        .journal()
+        .iter()
+        .filter(|line| line["kind"] == "resumed")
+        .count();
+    assert_eq!(
+        resumes, 1,
+        "what was resumed is ended, and not resumed again"
+    );
+}
+
 fn tick_at(monotonic: f64) -> Tick {
     Tick {
         monotonic,
