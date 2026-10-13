@@ -66,7 +66,10 @@ struct Home {
 
 impl Home {
     fn new() -> Home {
-        let dir = tempfile::tempdir().unwrap();
+        Home::within(tempfile::tempdir().unwrap())
+    }
+
+    fn within(dir: tempfile::TempDir) -> Home {
         let root = fs::canonicalize(dir.path()).unwrap();
         fs::create_dir_all(root.join("state")).unwrap();
         // No processes, so nothing is in use.
@@ -522,6 +525,41 @@ fn a_disk_in_a_band_is_answered_by_a_pass() {
     assert_eq!(status["filesystems"][0]["band"], "pressure");
     assert!(status["heartbeat"].as_f64().unwrap() > 0.0);
     assert!(home.root.join("state/memory.json").exists());
+}
+
+#[test]
+fn a_filesystem_is_named_by_where_it_is_mounted() {
+    use std::os::unix::fs::MetadataExt;
+    let named = |home: &Home| {
+        home.cold_scratch("run-1");
+        home.guard(home.config("0%", "0%"))
+            .step(&tick(), &CALM)
+            .unwrap();
+        PathBuf::from(home.status()["filesystems"][0]["path"].as_str().unwrap())
+    };
+    let device = |path: &Path| fs::metadata(path).unwrap().dev();
+    let home = Home::new();
+    let mount = named(&home);
+    assert!(
+        home.root.starts_with(&mount),
+        "{mount:?} holds {:?}",
+        home.root
+    );
+    assert_eq!(device(&mount), device(&home.root));
+    if let Some(above) = mount.parent() {
+        assert_ne!(
+            device(above),
+            device(&mount),
+            "{mount:?} is the top of its device"
+        );
+    }
+    // A mount whose parent lies on another device, which a temporary
+    // directory on the root filesystem can't show.
+    let shm = Path::new("/dev/shm");
+    if shm.is_dir() && device(shm) != device(Path::new("/dev")) {
+        let home = Home::within(tempfile::tempdir_in(shm).unwrap());
+        assert_eq!(named(&home), shm);
+    }
 }
 
 #[test]

@@ -103,15 +103,17 @@ fn a_pass_below_healthy_tells_what_it_freed_and_how_it_ended() {
     assert_eq!(notice.summary, "Freed 5.0 GiB on /home, short of room");
     assert_eq!(
         notice.body,
-        "25.0 GiB free. Nothing more is safe to take: `disk-guard plan` shows what's left."
+        "25.0 GiB free. Nothing more is safe to take; disk-guard plan shows what's left."
     );
     assert_eq!(notice.urgency, Urgency::Critical);
     let stalled = status(
         &[("/home", Band::Urgent, 60)],
         pass(1.0, Band::Urgent, "stalled", 0),
     );
+    let notice = shown(change(&before, &stalled));
+    assert_eq!(notice.summary, "Nothing freed on /home, short of room");
     assert_eq!(
-        shown(change(&before, &stalled)).body,
+        notice.body,
         "60.0 GiB free. Deleting stopped freeing space, so the guard waits before trying again."
     );
     let failed = status(

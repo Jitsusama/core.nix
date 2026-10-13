@@ -295,8 +295,8 @@ impl Guard {
             if !meta.is_dir() || seen.contains_key(&meta.dev()) {
                 continue;
             }
-            let watched = self.watched.remove(&meta.dev()).unwrap_or(Watched {
-                path: path.to_owned(),
+            let watched = self.watched.remove(&meta.dev()).unwrap_or_else(|| Watched {
+                path: mounted(path, meta.dev()),
                 band: Band::Healthy,
                 fill: Fill::default(),
                 space: None,
@@ -652,6 +652,22 @@ impl<R: Reclaimer, B: FnMut() -> bool> Reclaimer for Yielding<R, B> {
         }
         self.inner.reclaim(candidate)
     }
+}
+
+/// Where the filesystem holding `path`, on `device`, is mounted: the
+/// highest directory above it still on that device, which is how a
+/// person knows the disk. A Btrfs subvolume counts as its own, as the
+/// kernel reports it. Failing that, `path` itself.
+fn mounted(path: &Path, device: u64) -> PathBuf {
+    let Ok(mut top) = fs::canonicalize(path) else {
+        return path.to_owned();
+    };
+    while let Some(above) = top.parent()
+        && fs::metadata(above).is_ok_and(|meta| meta.dev() == device)
+    {
+        top = above.to_owned();
+    }
+    top
 }
 
 /// How a pass ended, in the journal's words.

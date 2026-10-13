@@ -46,30 +46,29 @@ pub fn change(before: &Status, after: &Status) -> Option<Change> {
                 |filesystem| shown(filesystem.free),
             );
         let place = last.path.display();
-        let freed = shown(last.freed);
+        let freed = if last.freed == 0 {
+            format!("Nothing freed on {place}")
+        } else {
+            format!("Freed {} on {place}", shown(last.freed))
+        };
+        let short = format!("{freed}, short of room");
+        // Plain text: a notification server may show markup as it's written.
         let (summary, body) = match last.end.as_str() {
-            "reached" => (
-                format!("Freed {freed} on {place}"),
-                format!("{free} free now."),
-            ),
+            "reached" => (freed, format!("{free} free now.")),
             "exhausted" => (
-                format!("Freed {freed} on {place}, short of room"),
+                short,
                 format!(
-                    "{free} free. Nothing more is safe to take: `disk-guard plan` shows \
-                     what's left."
+                    "{free} free. Nothing more is safe to take; disk-guard plan shows what's left."
                 ),
             ),
             "stalled" => (
-                format!("Freed {freed} on {place}, short of room"),
+                short,
                 format!(
                     "{free} free. Deleting stopped freeing space, so the guard waits before \
                      trying again."
                 ),
             ),
-            failed => (
-                format!("Freed {freed} on {place}, short of room"),
-                format!("{free} free. It {failed}."),
-            ),
+            failed => (short, format!("{free} free. It {failed}.")),
         };
         return Some(Change::Show(Notice {
             summary,
