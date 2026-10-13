@@ -316,9 +316,15 @@ pub struct Garbage {
     /// The `nix` that collects it; `nix-store` is beside it.
     #[serde(default = "Garbage::nix")]
     pub nix: PathBuf,
+    /// Where the store lies, whose filesystem collecting frees.
+    #[serde(default = "Garbage::store")]
+    pub store: PathBuf,
 }
 
 impl Garbage {
+    fn store() -> PathBuf {
+        PathBuf::from("/nix/store")
+    }
     fn nix() -> PathBuf {
         PathBuf::from("/run/current-system/sw/bin/nix")
     }
@@ -336,6 +342,7 @@ impl Default for Garbage {
             keep: Garbage::keep(),
             budget: Garbage::budget(),
             nix: Garbage::nix(),
+            store: Garbage::store(),
         }
     }
 }
@@ -483,7 +490,7 @@ impl Config {
                     .profiles
                     .unwrap_or_else(|| PathBuf::from("/nix/var/nix/profiles"));
                 let garbage = rendered.garbage.unwrap_or_default();
-                for path in [&boot, &profiles, &garbage.nix] {
+                for path in [&boot, &profiles, &garbage.nix, &garbage.store] {
                     if !plain_absolute(path) {
                         return Err(format!("{} is not a plain absolute path", path.display()));
                     }

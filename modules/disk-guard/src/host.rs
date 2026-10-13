@@ -10,7 +10,7 @@ use crate::plan::Candidate;
 use crate::reclaim::{self, Looker};
 use crate::survey::{Action, Offer};
 use crate::vouch::{self, Answer};
-use crate::{logs, socket, workspaces};
+use crate::{garbage, logs, socket, workspaces};
 use std::collections::HashMap;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -226,6 +226,11 @@ impl Reclaimer for Reclaim<'_> {
             Action::Entry { .. } => reclaim::entry(&root, root_path, candidate, self.scan),
             Action::Trash { .. } => reclaim::trashed(&root, root_path, candidate),
             Action::Run { argv, timeout, .. } => run(argv, *timeout, self.gentle),
+            // Nix judges liveness itself, under its own lock.
+            Action::Collect { nix, paths, .. } => match garbage::delete(nix, paths, self.gentle) {
+                Ok(()) => Outcome::Reclaimed,
+                Err(why) => Outcome::Failed(why),
+            },
             Action::Trim { .. } => {
                 let Ok(relative) = candidate.path.strip_prefix(root_path) else {
                     return Outcome::Failed(format!("outside its root {}", root_path.display()));

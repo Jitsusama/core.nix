@@ -8,13 +8,14 @@ use crate::clock::Tick;
 use crate::config::{Config, Source};
 use crate::decide::{Decision, Fill, Situation, decide, spare};
 use crate::finished::{self, Answers, Predicate};
+use crate::garbage::{self, BATCH_BYTES, Batch, Dead, GC_TIMEOUT, Listing};
 use crate::host::{FRESH, Filesystem, Reclaim, Scan};
 use crate::journal::{self, Journal, Journaled, Line};
 use crate::moments::{Power, Pressure};
 use crate::pass::{Disk, End, Goal, Learned, Outcome, Reclaimer, pass};
-use crate::plan::Candidate;
+use crate::plan::{Candidate, Class};
 use crate::state::{self, Memory};
-use crate::survey::{Action, Offer, World, survey};
+use crate::survey::{Action, Offer, World, named, survey};
 use crate::units::Size;
 use serde::Serialize;
 use std::cell::Cell;
@@ -25,6 +26,7 @@ use std::io;
 use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
+use std::sync::mpsc::{self, Receiver, TryRecvError};
 use std::time::Instant;
 
 /// What the machine is doing, read by the caller each step.
@@ -70,6 +72,16 @@ const SAVE_EVERY: f64 = 300.0;
 /// so its heartbeat says the guard is alive.
 const HEARTBEAT_EVERY: f64 = 30.0;
 
+/// What the garbage's commands and candidates are named for.
+const GARBAGE: &str = "garbage";
+/// How old Nix's garbage listing may grow on a healthy disk, and under
+/// pressure; and how long a listing that failed waits for the next.
+const LISTING_FRESH: f64 = 86400.0;
+const LISTING_PRESSED: f64 = 3600.0;
+const LISTING_RETRY: f64 = 3600.0;
+/// The most paths deleted in one go, so one refused path costs little.
+const MOST_PER_BATCH: usize = 300;
+
 /// Where a guard keeps and reads things.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Places {
@@ -100,7 +112,18 @@ pub struct Guard {
     written: Option<(f64, Status)>,
     /// Whether what an earlier run left moved aside has been seen to.
     resumed: bool,
+    /// Nix's garbage as last listed, for the system daemon, and where it's
+    /// kept for the next guard.
+    listing: Option<Listing>,
+    listing_path: PathBuf,
+    /// When a listing last began, so one that failed waits.
+    listing_begun: Option<f64>,
+    /// A listing under way on its own thread, and when it began.
+    listing_out: Option<(f64, Listening)>,
 }
+
+/// Where a listing on its own thread sends the dead paths, or why not.
+type Listening = Receiver<Result<Vec<Dead>, String>>;
 
 /// What the status file says, for the desktop's disk piece and
 /// `disk-guard status`.
@@ -174,6 +197,11 @@ impl Guard {
             })
             .collect();
         let status_path = places.status.clone().filter(|_| config.status_file);
+        let listing_path = state.join("garbage.json");
+        // One that can't be read is listed afresh.
+        let listing: Option<Listing> = fs::read(&listing_path)
+            .ok()
+            .and_then(|bytes| serde_json::from_slice(&bytes).ok());
         Ok(Guard {
             config,
             processes: places.processes.clone(),
@@ -189,6 +217,10 @@ impl Guard {
             saved_at: None,
             written: None,
             resumed: false,
+            listing_begun: listing.as_ref().map(|listing| listing.listed_at),
+            listing,
+            listing_path,
+            listing_out: None,
         })
     }
 
@@ -201,6 +233,7 @@ impl Guard {
         }
         self.memory.awake.observe(tick);
         self.watch();
+        self.heard_garbage(tick.wall)?;
         let spare = spare(
             senses.power,
             senses.saver,
@@ -239,6 +272,7 @@ impl Guard {
                 due.push((device, decision, thresholds));
             }
         }
+        self.list_garbage(tick.wall, spare);
         let passed = !due.is_empty();
         if passed {
             self.passes(tick, &due)?;
@@ -284,11 +318,182 @@ impl Guard {
         Ok(())
     }
 
-    /// Notes every filesystem a source lies on, keeping what was seen of
-    /// those already watched.
+    /// Takes a listing of Nix's garbage that has finished, keeping it for
+    /// the next guard, and makes upkeep due when routine would take some.
+    fn heard_garbage(&mut self, now: f64) -> io::Result<()> {
+        let Some((begun, out)) = &self.listing_out else {
+            return Ok(());
+        };
+        let heard = match out.try_recv() {
+            Err(TryRecvError::Empty) => return Ok(()),
+            Ok(heard) => heard,
+            Err(TryRecvError::Disconnected) => Err("the listing stopped".to_owned()),
+        };
+        let begun = *begun;
+        self.listing_out = None;
+        match heard {
+            Ok(dead) => {
+                let listing = Listing {
+                    listed_at: begun,
+                    dead,
+                };
+                state::save(&self.listing_path, &listing)?;
+                if self.batches(&listing, now).iter().any(|batch| !batch.kept) {
+                    self.memory.upkept = None;
+                }
+                self.listing = Some(listing);
+            }
+            // Tried again in an hour; until then the listing before stands.
+            Err(why) => eprintln!("disk-guard: listing Nix's garbage: {why}"),
+        }
+        Ok(())
+    }
+
+    /// Begins listing Nix's garbage on its own thread when it's due: daily
+    /// at a spare moment, at idle priority; and at once when the store's
+    /// filesystem is under pressure and the listing is an hour old.
+    fn list_garbage(&mut self, now: f64, spare: bool) {
+        if self.listing_out.is_some() {
+            return;
+        }
+        let Some((garbage, device)) = self.store() else {
+            return;
+        };
+        let pressed = self
+            .watched
+            .get(&device)
+            .is_some_and(|watched| watched.band > Band::Healthy);
+        let age = |at: Option<f64>| at.map_or(f64::INFINITY, |at| now - at);
+        let listed = age(self.listing.as_ref().map(|listing| listing.listed_at));
+        let due = age(self.listing_begun) >= LISTING_RETRY
+            && if pressed {
+                listed >= LISTING_PRESSED
+            } else {
+                spare && listed >= LISTING_FRESH
+            };
+        if !due {
+            return;
+        }
+        let nix = garbage.nix.clone();
+        let (tell, out) = mpsc::channel();
+        let listing = std::thread::Builder::new()
+            .name(GARBAGE.to_owned())
+            .spawn(move || {
+                // A guard that stopped meanwhile has no one to hear it.
+                let _ = tell.send(garbage::list(&nix, !pressed));
+            });
+        self.listing_begun = Some(now);
+        match listing {
+            Ok(_) => self.listing_out = Some((now, out)),
+            Err(error) => eprintln!("disk-guard: listing Nix's garbage: {error}"),
+        }
+    }
+
+    /// The garbage config and the store's device, for a system daemon.
+    fn store(&self) -> Option<(&crate::config::Garbage, u64)> {
+        let garbage = &self.config.system.as_ref()?.garbage;
+        let meta = fs::metadata(&garbage.store).ok()?;
+        Some((garbage, meta.dev()))
+    }
+
+    /// The listing's garbage that is still there, in the batches and the
+    /// order it goes in.
+    fn batches(&self, listing: &Listing, now: f64) -> Vec<Batch> {
+        let Some((garbage, _)) = self.store() else {
+            return Vec::new();
+        };
+        let Ok(space) = crate::linux::space(&garbage.store) else {
+            return Vec::new();
+        };
+        let there: Vec<Dead> = listing
+            .dead
+            .iter()
+            .filter(|dead| Path::new(&dead.path).symlink_metadata().is_ok())
+            .cloned()
+            .collect();
+        let keep = garbage.keep.0.as_secs_f64();
+        garbage::batches(
+            &there,
+            now,
+            keep,
+            garbage.budget.of(space.total),
+            MOST_PER_BATCH,
+        )
+    }
+
+    /// What Nix's garbage offers: the listing's batches in the policy's
+    /// order; or with no listing yet, from urgent on, hourly steps of
+    /// `nix store gc`, which collects in no order of its own.
+    fn garbage_offers(&self, tick: &Tick) -> Vec<Offer> {
+        let Some((garbage, device)) = self.store() else {
+            return Vec::new();
+        };
+        let store = &garbage.store;
+        let nix = garbage.nix.to_string_lossy().into_owned();
+        let candidate = |path, class, idle, size| Candidate {
+            path,
+            class,
+            idle,
+            size,
+            occupied: false,
+            spent: false,
+            checkout: None,
+        };
+        let Some(listing) = &self.listing else {
+            let ran = self.memory.ran.get(GARBAGE).map_or(f64::INFINITY, |&at| {
+                self.memory.awake.since(at.min(tick.wall), tick.wall)
+            });
+            let class = Class::Producer {
+                every: None,
+                from: Some(Band::Urgent),
+            };
+            let max = BATCH_BYTES.to_string();
+            return vec![Offer {
+                candidate: candidate(named(store, GARBAGE), class, ran, 0),
+                action: Action::Run {
+                    root: store.clone(),
+                    source: GARBAGE.to_owned(),
+                    argv: [nix.as_str(), "store", "gc", "--max", &max]
+                        .map(str::to_owned)
+                        .to_vec(),
+                    timeout: GC_TIMEOUT,
+                },
+                device,
+            }];
+        };
+        self.batches(listing, tick.wall)
+            .into_iter()
+            .enumerate()
+            .map(|(order, batch)| Offer {
+                candidate: candidate(
+                    named(store, &format!("{GARBAGE}-{order}")),
+                    Class::Garbage {
+                        kept: batch.kept,
+                        order: u16::try_from(order).unwrap_or(u16::MAX),
+                    },
+                    (tick.wall - batch.newest).max(0.0),
+                    batch.size,
+                ),
+                action: Action::Collect {
+                    root: store.clone(),
+                    nix: garbage.nix.clone(),
+                    paths: batch.paths,
+                },
+                device,
+            })
+            .collect()
+    }
+
+    /// Notes every filesystem a source or the store lies on, keeping what
+    /// was seen of those already watched.
     fn watch(&mut self) {
         let mut seen = BTreeMap::new();
-        for path in self.config.sources.values().flat_map(paths) {
+        let store = self
+            .config
+            .system
+            .as_ref()
+            .map(|system| system.garbage.store.as_path());
+        for path in self.config.sources.values().flat_map(paths).chain(store) {
             let Ok(meta) = fs::metadata(path) else {
                 continue;
             };
@@ -372,7 +577,7 @@ impl Guard {
                 finished::ask(predicate, dir, &checkout)
             })
         };
-        let offers = survey(
+        let mut offers = survey(
             &self.config,
             &mut World {
                 processes: &processes,
@@ -386,6 +591,7 @@ impl Guard {
                 ran: &self.memory.ran,
             },
         );
+        offers.extend(self.garbage_offers(tick));
         Ok((scan, offers))
     }
 

@@ -3,10 +3,28 @@ use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 
-/// Writes an executable shell script.
-fn script(path: &Path, body: &str) {
+/// Writes an executable shell script and waits until it can be run. A test
+/// thread that forked while it was being written holds it open for writing
+/// until its child execs, and running it before then fails with "Text file
+/// busy". Once it runs, no writer is left. Every script here refuses an
+/// argument it doesn't know before doing anything.
+pub(crate) fn script(path: &Path, body: &str) {
     fs::write(path, format!("#!/bin/sh\n{body}")).unwrap();
     fs::set_permissions(path, fs::Permissions::from_mode(0o755)).unwrap();
+    for _ in 0..500 {
+        let tried = std::process::Command::new(path)
+            .arg("--are-you-busy")
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status();
+        match tried {
+            Err(error) if error.raw_os_error() == Some(libc::ETXTBSY) => {
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+            _ => return,
+        }
+    }
+    panic!("{} stayed busy", path.display());
 }
 
 /// A `nix-store` that lists `count` dead paths, and a `nix` that tells of

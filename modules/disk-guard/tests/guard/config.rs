@@ -121,6 +121,7 @@ fn a_system_config_carries_its_own_sections() {
         PathBuf::from("/run/current-system/sw/bin/nix"),
         "the system's own nix unless told"
     );
+    assert_eq!(system.garbage.store, PathBuf::from("/nix/store"));
     let relative = Config::parse(
         r#"{"version": 1, "scope": "system", "garbage": {"nix": "bin/nix"},
             "boot": "/boot", "sources": {}}"#,

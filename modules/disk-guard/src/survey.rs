@@ -41,6 +41,12 @@ pub enum Action {
         argv: Vec<String>,
         timeout: Duration,
     },
+    /// A batch of Nix's garbage, deleted by `nix store delete`.
+    Collect {
+        root: PathBuf,
+        nix: PathBuf,
+        paths: Vec<String>,
+    },
 }
 
 impl Action {
@@ -52,7 +58,8 @@ impl Action {
             | Action::Entry { root }
             | Action::Workspace { root }
             | Action::Trim { root }
-            | Action::Run { root, .. } => root,
+            | Action::Run { root, .. }
+            | Action::Collect { root, .. } => root,
             Action::Trash { trash } => trash,
         }
     }
@@ -414,7 +421,7 @@ const PODMAN_TIMEOUT: Duration = Duration::from_secs(300);
 
 /// A command's candidate, named for where it runs and what it is, since
 /// it is no file of its own.
-fn named(path: &Path, source: &str) -> PathBuf {
+pub(crate) fn named(path: &Path, source: &str) -> PathBuf {
     let mut named = path.as_os_str().to_owned();
     named.push("#");
     named.push(source);

@@ -8,6 +8,8 @@ mod caches;
 #[cfg(target_os = "linux")]
 mod cli;
 mod clock;
+#[cfg(target_os = "linux")]
+mod collecting;
 mod commands;
 mod config;
 mod coredumps;

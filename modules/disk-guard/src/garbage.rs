@@ -7,6 +7,7 @@
 //! moment is closed under referrers, and deleting it takes nothing newer.
 
 use crate::commands::{self, Job, Ran};
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::cmp::Reverse;
 use std::collections::{BTreeSet, BinaryHeap, HashMap};
@@ -20,7 +21,7 @@ use std::time::Duration;
 pub const BATCH_BYTES: u64 = 8 << 30;
 
 /// A store path no root reaches, as `nix path-info` describes it.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Dead {
     pub path: String,
     /// When it was registered, in wall seconds.
@@ -30,6 +31,21 @@ pub struct Dead {
     /// The store paths it refers to, dead or alive.
     pub references: Vec<String>,
 }
+
+/// The dead paths as last listed, kept across restarts since listing them
+/// takes about a minute of the disk's time.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Listing {
+    /// When the listing began, in wall seconds: garbage made since isn't
+    /// in it.
+    pub listed_at: f64,
+    pub dead: Vec<Dead>,
+}
+
+/// How long one step of `nix store gc --max` may take, when there is no
+/// listing to delete from.
+pub const GC_TIMEOUT: Duration = Duration::from_secs(10 * 60);
 
 /// Dead paths to delete together, in the order given.
 #[derive(Clone, Debug, PartialEq)]
@@ -206,8 +222,9 @@ fn name(argv: &[&OsStr]) -> String {
 /// The garbage in the order it goes, in batches of at most `most` paths
 /// that close once they hold `BATCH_BYTES`:
 /// first what is older than `keep`, oldest first; then the young, largest
-/// first, each only once no garbage left refers to it. A batch is kept
-/// while healthy once the young garbage left fits in `budget` bytes.
+/// first, each after the garbage still referring to it, since Nix deletes
+/// those with it anyway. A batch is kept while healthy once the young
+/// garbage left fits in `budget` bytes.
 pub fn batches(dead: &[Dead], now: f64, keep: f64, budget: u64, most: usize) -> Vec<Batch> {
     let index: HashMap<&str, usize> = dead
         .iter()
