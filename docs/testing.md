@@ -84,6 +84,7 @@ written beside each in `tests/`.
 | `the-launcher-finds-the-keyboards-keys` | a key is found by what it types, and shown where it is |
 | `the-launcher-answers-what-is-asked`  | sums, addresses, measures, zones and colours answer     |
 | `the-music-follows-the-player`        | the music is the player that started last, never playerctld's echo |
+| `the-disk-piece-reads-the-guards`     | the disk piece says the worst disk as the guards wrote it, and a guard gone quiet |
 | `a-claimed-chord-is-refused`        | a chord two layers claim, or one claims twice, is refused |
 | `a-theme-changes-everything`        | another theme leaves none of the first's colours behind   |
 | `nothing-names-its-own-look`        | no module but the theme's names a colour or a face        |

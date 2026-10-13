@@ -398,6 +398,7 @@ it. Owners go by layer:
 | Music playing                                                          | the margin mark while it plays; a notice for a moment when the track changes or a media key is pressed | the same mark, in the status |
 | In a call                                                              | the margin mark, while in one                      | the same mark, in the status |
 | Notifications waiting                                                  | the margin mark, as a count                        | the overview's status        |
+| Disk space                                                             | the margin mark, only while a disk is short of room or nothing watches it; a notice when the guard acts | the same mark, in the status |
 | Directory, repository, branch, git state                               | the program running the window                     | nobody                       |
 | Window titles                                                          | a terminal's unseen tabs; the window switcher      | the window switcher          |
 

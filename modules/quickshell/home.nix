@@ -348,6 +348,7 @@ let
     network = ./pieces/Network.qml;
     volume = ./pieces/Volume.qml;
     awake = ./pieces/Awake.qml;
+    disk = ./pieces/Disk.qml;
     notices = ./pieces/Waiting.qml;
     quiet = ./pieces/DoNotDisturb.qml;
     microphone = ./pieces/Microphone.qml;
@@ -817,6 +818,15 @@ in
         label = "quiet";
         tier = "when";
         mark = "quiet";
+      };
+      # Only while a disk is short of room or nothing watches them: the
+      # guard keeps them healthy without being asked.
+      disk = {
+        order = 58;
+        source = "disk";
+        label = "disks";
+        tier = "when";
+        mark = "disk";
       };
       microphone = {
         order = 70;

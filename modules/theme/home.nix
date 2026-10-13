@@ -369,6 +369,11 @@ let
       console = "B";
       means = "the battery is running low";
     };
+    disk = {
+      glyph = nerd "f02ca";
+      console = "D";
+      means = "a disk is short of room, or nothing watches it";
+    };
     more = {
       glyph = "…";
       console = "~";
