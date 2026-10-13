@@ -56,6 +56,8 @@ behind Intel's CVS bridge, and Intel's BE211 Wi-Fi 7.
 | Sensors  | ambient light through `iio-sensor-proxy`; see below                    |
 | Docks    | bolt, which authorizes Thunderbolt and USB4 devices                    |
 | Firmware | fwupd, for the BIOS and firmware Dell publishes through LVFS           |
+| Battery  | charges to 80% and again below 75%, in the BIOS; see below             |
+| BIOS     | the thermal mode and four other settings held where they were chosen   |
 | Wi-Fi    | runs as Wi-Fi 6; see below                                             |
 
 ### The CVS Patch
@@ -162,6 +164,39 @@ rule passes `-U`, which skips the profile, and runs only with ALSA persistence
 on. The [module][2] has udev write that one attachment itself when the card
 appears, with no program run. Omarchy's mute script sets the light instead,
 which detaches the trigger after the first unmute.
+
+### The Charge Limit
+
+The battery stops charging at 80% and starts again below 75%. A lithium cell
+ages fastest held near full, and faster warm: Battery University puts a cell
+kept a year at 25 °C at 96% of its capacity at 40% charge, against 80% at
+full. With the starting point that close, the laptop leaves the charger near
+80% however briefly it was plugged in; a start of 50 would leave one plugged
+in at 70% uncharged. On mains the laptop runs from the charger either way, so
+the limit costs no speed.
+
+`dell-laptop` offers these as `charge_types` and the charge thresholds, but
+with a BIOS password set every write fails with EIO: Dell's token writes need
+a key made from the password, and the driver sends none. So the module sets
+them through the BIOS's own settings ([firmware-settings][13]), which take
+the admin password. The thresholds are read-only until the mode is Custom
+(`ReadOnlyIfNot:PrimaryBattChargeCfg=Custom`), so the first pass writes the
+mode and the second the thresholds. The battery reports the new limits at
+once, though the BIOS also asks for a boot to finish taking them.
+power-profiles-daemon leaves a battery in the custom mode alone.
+
+To charge to full once, `run0 firmware-settings set CustomChargeStop 100`,
+and `run0 firmware-settings apply` after to bring the limit back. Both ask
+for the admin password.
+
+The module holds five more settings that were chosen here, since a BIOS
+update or reset can change them without a word, as 1.11.0 turned the
+adapter warnings off. The thermal mode stays
+Performance, which the power limits were measured in; SAGV stays on, so the
+memory slows when idle, for the battery; the keyboard's light stays dim; the
+adapter warnings stay off, so a charger the BIOS thinks too weak doesn't
+hold the boot; and downgrades stay allowed, so a bad BIOS can be rolled back.
+Secure Boot's settings stay out: recovering those is the enrolment's job.
 
 ### Nothing to Add
 
@@ -410,3 +445,4 @@ upstream as it is and the override can then come out.
 [10]: ../hardware/dell-xps-14-da14260/speakers.conf
 [11]: ../hardware/dell-xps-14-da14260/camera.nix
 [12]: https://github.com/TsaiGaggery/hurrican_omarchy_enabling
+[13]: ../modules/firmware-settings/nixos.nix
