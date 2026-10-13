@@ -393,6 +393,7 @@ pkgs.testers.runNixOSTest {
                 "network": "Roadside Inn",
                 "reach": "signIn",
                 "signIn": "http://front-desk.inn/sign-in",
+                "trouble": None,
             }
         ], described
         inn = saved_as("Roadside Inn")
@@ -576,5 +577,52 @@ pkgs.testers.runNixOSTest {
     with subtest("a network letting only the plain check through reaches no further"):
         machine.succeed("systemctl restart wifid")
         says("Roadside Inn on wlan2 reaches no further")
+
+    def hears(name):
+        """Has the cards look, and says whether they hear the network."""
+        ask("Scan")
+        return any(network["name"] == name for network in ask("Describe")["nearby"])
+
+    def joining(parameters):
+        """Joins as the launcher does, giving each step wifid said, or why not."""
+        call = calling("Join", parameters).replace("call", "call --more --json=short", 1)
+        status, said = machine.execute(f"{call} 2>&1")
+        # An error's parameters are printed too, and have no stage.
+        replies = [json.loads(line) for line in said.splitlines() if line.startswith("{")]
+        stages = [reply["stage"] for reply in replies if "stage" in reply]
+        return status, stages, said
+
+    sealed = "/var/lib/wifid/networks/lantern.cred"
+
+    with subtest("joining Lantern from the launcher with the wrong password saves nothing"):
+        machine.systemctl("start lantern")
+        retry(lambda _: hears("Lantern"), timeout_seconds=60)
+        refused("Join", {"name": "Lantern"}, "NeedsPassword")
+        refused("Join", {"name": "Nowhere"}, "NotNearby")
+        status, stages, said = joining({"name": "Lantern", "password": "not the password"})
+        assert status != 0 and "failed: io.jitsusama.Wifi.WrongPassword" in said, said
+        assert stages[:1] == ["joining"] and "online" not in stages, said
+        assert saved_as("Lantern") == [], saved_as("Lantern")
+        machine.succeed(f"! test -e {sealed}")
+        joined("Roadside Inn")
+
+    with subtest("and with the right one, it's saved sealed and said joined step by step"):
+        status, stages, said = joining({"name": "Lantern", "password": "glowing in the dark"})
+        assert status == 0, said
+        # Lantern's session ran out long ago, so it wants a sign-in again.
+        assert stages[0] == "joining" and stages[-1] == "signIn", said
+        joined("Lantern")
+        holds_address("10.42.0.")
+        lantern = saved_as("Lantern")
+        assert lantern and not lantern[0]["declared"], lantern
+        held = machine.succeed(f"cat {sealed}")
+        assert "glowing" not in held, held
+        held = machine.succeed("wpa_cli -i wlan2 list_networks")
+        assert "[DISABLED]" not in held, held
+
+    with subtest("joining the Inn again moves the card, and says how far the Inn reaches"):
+        status, stages, said = joining({"name": "Roadside Inn"})
+        assert status == 0 and stages[-1] == "limited", said
+        joined("Roadside Inn")
   '';
 }

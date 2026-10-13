@@ -4,9 +4,9 @@
 //! writes networkd's file for each in /run, laid over the Wi-Fi defaults, so
 //! a change to the defaults reaches every saved network.
 
-use std::fs;
-use std::io;
-use std::os::unix::fs::PermissionsExt;
+use std::fs::{self, OpenOptions};
+use std::io::{self, Write};
+use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 
 use crate::network::Network;
@@ -156,6 +156,35 @@ impl Store {
         let mut network = self.launchers(name)?.network;
         network.trusted = trusted;
         self.save(&network)
+    }
+
+    /// Where the launcher keeps a network's sealed password: beside its
+    /// file and named for it, since systemd opens the password only under
+    /// the name it was sealed with. Refuses a network Nix declares.
+    pub fn password_file(&self, name: &str) -> Result<PathBuf, Failure> {
+        let file = match self.find(name)? {
+            Some(saved) if saved.declared => return Err(Failure::Declared(saved.file)),
+            Some(saved) => saved.file,
+            None => self.new_file(name),
+        };
+        Ok(file.with_extension("cred"))
+    }
+
+    /// Keeps a sealed password, readable by wifid alone, whole or not at all.
+    pub fn keep_password(&self, file: &Path, sealed: &str) -> io::Result<()> {
+        let name = file.file_name().unwrap_or_default().to_string_lossy();
+        let partial = file.with_file_name(format!(".{name}.partial"));
+        let mut written = OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .mode(0o600)
+            .open(&partial)?;
+        written.write_all(sealed.as_bytes())?;
+        // A partial file left by a wifid that stopped part-way keeps the
+        // mode it was made with, which mode() above doesn't change.
+        fs::set_permissions(&partial, fs::Permissions::from_mode(0o600))?;
+        fs::rename(&partial, file)
     }
 
     /// The network of that name the launcher saved, refusing one Nix
@@ -321,6 +350,68 @@ mod tests {
                 declared: false,
             }]
         );
+    }
+
+    #[test]
+    fn a_new_network_s_password_is_kept_beside_where_its_file_will_be() {
+        let (_root, store) = store();
+
+        let file = store.password_file("Lantern").unwrap();
+        store.keep_password(&file, "sealed").unwrap();
+        store
+            .save(&Network {
+                secret: Some(file.clone()),
+                ..lantern()
+            })
+            .unwrap();
+
+        assert_eq!(file, store.saved.join("lantern.cred"));
+        assert_eq!(fs::read_to_string(&file).unwrap(), "sealed");
+        assert_eq!(
+            fs::metadata(&file).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+        assert!(store.saved.join("lantern.network").exists());
+    }
+
+    #[test]
+    fn a_saved_network_s_password_is_kept_where_its_file_is() {
+        let (_root, store) = store();
+        let taken = Network {
+            name: "lantern!".into(),
+            ..lantern()
+        };
+        store.save(&taken).unwrap();
+        store.save(&lantern()).unwrap();
+
+        let file = store.password_file("Lantern").unwrap();
+
+        assert_eq!(file, store.saved.join("lantern-2.cred"));
+    }
+
+    #[test]
+    fn a_password_kept_again_replaces_the_one_before() {
+        let (_root, store) = store();
+        let file = store.password_file("Lantern").unwrap();
+        store.keep_password(&file, "before").unwrap();
+
+        store.keep_password(&file, "after").unwrap();
+
+        assert_eq!(fs::read_to_string(&file).unwrap(), "after");
+    }
+
+    #[test]
+    fn a_network_nix_declares_keeps_no_password_from_here() {
+        let (_root, store) = store();
+        fs::write(
+            store.declared.join("50-wifi-lantern.network"),
+            "[Match]\nSSID=Lantern\n\n[X-WiFi]\nSecurity=personal\n",
+        )
+        .unwrap();
+
+        let file = store.password_file("Lantern");
+
+        assert!(matches!(file, Err(Failure::Declared(_))), "{file:?}");
     }
 
     #[test]

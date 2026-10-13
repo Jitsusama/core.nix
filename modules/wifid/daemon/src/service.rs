@@ -13,13 +13,15 @@ use std::io;
 use std::os::fd::{FromRawFd, OwnedFd};
 use std::process;
 
-use futures_util::Stream;
 use futures_util::stream;
+use futures_util::{Stream, StreamExt};
+use serde::{Deserialize, Serialize};
 use tokio::sync::{mpsc, oneshot, watch};
+use zlink::introspect::{CustomType, Type};
 use zlink::tokio::unix::Listener;
 use zlink::{Reply, introspect, service};
 
-use crate::state::{Card, Described, Nearby, Reach, Saved, Security, State};
+use crate::state::{Card, Described, Nearby, Reach, Saved, Security, State, Trouble};
 
 pub struct Wifi {
     pub state: watch::Receiver<State>,
@@ -34,6 +36,12 @@ pub struct Wifi {
 /// how it went.
 #[derive(Debug)]
 pub enum Ask {
+    /// Joining a network, with where to say each step and how it ended.
+    Join {
+        name: String,
+        password: Option<String>,
+        progress: mpsc::Sender<Result<Stage, Refused>>,
+    },
     Scan {
         done: oneshot::Sender<Result<(), Refused>>,
     },
@@ -56,13 +64,55 @@ pub enum Refused {
     Declared,
     /// No network of that name is saved.
     NotSaved,
+    /// The network asks for a password, and none was given.
+    NeedsPassword,
+    /// The network isn't saved, and no card hears it.
+    NotNearby,
+    /// The password didn't work.
+    WrongPassword,
+    /// The access point turned the card away.
+    TurnedAway,
+    /// The card didn't join the network in time.
+    TimedOut,
     /// wifid tried and couldn't, for this reason.
     Failed { reason: String },
 }
 
+/// How far joining has got.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Type)]
+pub struct Joining {
+    pub stage: Stage,
+}
+
+/// A step in joining a network. The last is how far the network reaches.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize, CustomType)]
+#[serde(rename_all = "camelCase")]
+#[zlink(rename_all = "camelCase")]
+pub enum Stage {
+    /// Finding the network and agreeing how to join it.
+    Joining,
+    /// On the network and waiting for an address.
+    GettingAddress,
+    /// Finding out how far the network reaches.
+    Checking,
+    /// Beyond itself.
+    Online,
+    /// Nowhere until someone signs in.
+    SignIn,
+    /// Nowhere, or nowhere sensible.
+    Limited,
+}
+
+impl Stage {
+    /// Whether joining is done.
+    pub fn is_final(self) -> bool {
+        matches!(self, Stage::Online | Stage::SignIn | Stage::Limited)
+    }
+}
+
 #[service(
     interface = "io.jitsusama.Wifi",
-    types = [Card, Nearby, Reach, Saved, Security],
+    types = [Card, Nearby, Reach, Saved, Security, Stage, Trouble],
     vendor = "jitsusama",
     product = "wifid",
     version = env!("CARGO_PKG_VERSION"),
@@ -96,6 +146,46 @@ impl Wifi {
         self.asked.send_modify(|asked| *asked += 1);
     }
 
+    /// Joins a network, saving it first when it's new or given a password.
+    /// Called with more, it says each step as the card takes it. Either way
+    /// it ends with how far the network reaches, or why the card couldn't
+    /// join it.
+    #[zlink(more)]
+    async fn join(
+        &self,
+        more: bool,
+        name: String,
+        password: Option<String>,
+    ) -> impl Stream<Item = Result<Reply<Joining>, Refused>> + Unpin {
+        let (progress, steps) = mpsc::channel(8);
+        let join = Ask::Join {
+            name,
+            password,
+            progress,
+        };
+        let asked = self.asks.send(join).await.is_ok();
+        let replies = stream::unfold((steps, asked), move |(mut steps, going)| async move {
+            if !going {
+                return None;
+            }
+            loop {
+                let stage = match steps.recv().await {
+                    Some(Ok(stage)) => stage,
+                    Some(Err(refused)) => return Some((Err(refused), (steps, false))),
+                    None => return Some((Err(stopping()), (steps, false))),
+                };
+                let last = stage.is_final();
+                if more || last {
+                    let reply = Reply::new(Some(Joining { stage })).set_continues(Some(!last));
+                    return Some((Ok(reply), (steps, !last)));
+                }
+            }
+        });
+        // wifid stopping before it was even asked ends the stream at once.
+        let unasked = (!asked).then(|| Err(stopping()));
+        Box::pin(stream::iter(unasked).chain(replies))
+    }
+
     /// Has every card look for networks now. Describe says what they hear.
     async fn scan(&self) -> Result<(), Refused> {
         self.ask(|done| Ask::Scan { done }).await
@@ -124,12 +214,15 @@ impl Wifi {
         &self,
         ask: impl FnOnce(oneshot::Sender<Result<(), Refused>>) -> Ask,
     ) -> Result<(), Refused> {
-        let stopping = || Refused::Failed {
-            reason: "wifid is stopping".into(),
-        };
         let (done, answer) = oneshot::channel();
         self.asks.send(ask(done)).await.map_err(|_| stopping())?;
         answer.await.map_err(|_| stopping())?
+    }
+}
+
+fn stopping() -> Refused {
+    Refused::Failed {
+        reason: "wifid is stopping".into(),
     }
 }
 
@@ -226,6 +319,102 @@ mod tests {
 
         assert!(checks.has_changed().unwrap());
         assert_eq!(*checks.borrow_and_update(), 1);
+    }
+
+    /// Joins as the shell would, with wifid's main loop saying these.
+    async fn joined(
+        more: bool,
+        said: Vec<Result<Stage, Refused>>,
+    ) -> (
+        Vec<Result<Reply<Joining>, Refused>>,
+        (String, Option<String>),
+    ) {
+        let (wifi, _, _, mut taken) = asking();
+        let main_loop = tokio::spawn(async move {
+            let Some(Ask::Join {
+                name,
+                password,
+                progress,
+            }) = taken.recv().await
+            else {
+                panic!("wasn't asked to join");
+            };
+            for step in said {
+                progress.send(step).await.unwrap();
+            }
+            (name, password)
+        });
+
+        let replies = wifi.join(more, "Lantern".into(), Some("pass".into())).await;
+        drop(wifi);
+        let replies = replies.collect().await;
+
+        (replies, main_loop.await.unwrap())
+    }
+
+    fn stages(replies: &[Result<Reply<Joining>, Refused>]) -> Vec<(Stage, Option<bool>)> {
+        replies
+            .iter()
+            .map(|reply| {
+                let reply = reply.as_ref().unwrap();
+                (reply.parameters().unwrap().stage, reply.continues())
+            })
+            .collect()
+    }
+
+    #[tokio::test]
+    async fn joining_with_more_says_each_step_until_how_far_the_network_reaches() {
+        let said = vec![
+            Ok(Stage::Joining),
+            Ok(Stage::GettingAddress),
+            Ok(Stage::Checking),
+            Ok(Stage::SignIn),
+        ];
+
+        let (replies, asked) = joined(true, said).await;
+
+        assert_eq!(asked, ("Lantern".into(), Some("pass".into())));
+        assert_eq!(
+            stages(&replies),
+            [
+                (Stage::Joining, Some(true)),
+                (Stage::GettingAddress, Some(true)),
+                (Stage::Checking, Some(true)),
+                (Stage::SignIn, Some(false)),
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn joining_without_more_answers_once_with_how_far_it_reaches() {
+        let said = vec![Ok(Stage::Joining), Ok(Stage::Checking), Ok(Stage::Online)];
+
+        let (replies, _) = joined(false, said).await;
+
+        assert_eq!(stages(&replies), [(Stage::Online, Some(false))]);
+    }
+
+    #[tokio::test]
+    async fn joining_ends_with_why_the_card_couldn_t() {
+        let said = vec![Ok(Stage::Joining), Err(Refused::WrongPassword)];
+
+        let (replies, _) = joined(true, said).await;
+
+        assert_eq!(stages(&replies[..1]), [(Stage::Joining, Some(true))]);
+        assert!(
+            matches!(replies[1..], [Err(Refused::WrongPassword)]),
+            "{replies:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn joining_cut_short_by_wifid_stopping_says_so() {
+        let (replies, _) = joined(true, vec![Ok(Stage::Joining)]).await;
+
+        assert!(
+            matches!(replies.last(), Some(Err(Refused::Failed { .. }))),
+            "{replies:?}"
+        );
     }
 
     #[tokio::test]

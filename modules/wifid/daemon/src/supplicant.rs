@@ -103,7 +103,7 @@ pub fn properties(
 /// A password as wpa_supplicant takes it. Sixty-four hex digits are the
 /// key itself, which it reads as bytes; anything else it reads as text
 /// and works the key out from.
-fn psk(password: &str) -> Result<Value, Unjoinable> {
+pub fn psk(password: &str) -> Result<Value, Unjoinable> {
     if password.len() == 64 && password.bytes().all(|byte| byte.is_ascii_hexdigit()) {
         let pairs = password.as_bytes().chunks(2);
         let key = pairs.map(|pair| hex(pair[0]) << 4 | hex(pair[1])).collect();
@@ -228,6 +228,12 @@ pub trait Interface {
     fn remove_network(&self, path: &ObjectPath<'_>) -> zbus::Result<()>;
 
     fn scan(&self, args: HashMap<&str, zvariant::Value<'_>>) -> zbus::Result<()>;
+
+    /// Joins this network now, turning every other the card holds off.
+    fn select_network(&self, path: &ObjectPath<'_>) -> zbus::Result<()>;
+
+    #[zbus(property)]
+    fn ifname(&self) -> zbus::Result<String>;
 
     #[zbus(property)]
     fn networks(&self) -> zbus::Result<Vec<OwnedObjectPath>>;
