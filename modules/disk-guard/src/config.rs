@@ -313,9 +313,15 @@ pub struct Garbage {
     /// How much young garbage may stay before the largest goes.
     #[serde(default = "Garbage::budget")]
     pub budget: Size,
+    /// The `nix` that collects it; `nix-store` is beside it.
+    #[serde(default = "Garbage::nix")]
+    pub nix: PathBuf,
 }
 
 impl Garbage {
+    fn nix() -> PathBuf {
+        PathBuf::from("/run/current-system/sw/bin/nix")
+    }
     fn keep() -> Span {
         Span(Duration::from_secs(3 * 86400))
     }
@@ -329,6 +335,7 @@ impl Default for Garbage {
         Garbage {
             keep: Garbage::keep(),
             budget: Garbage::budget(),
+            nix: Garbage::nix(),
         }
     }
 }
@@ -475,13 +482,14 @@ impl Config {
                 let profiles = rendered
                     .profiles
                     .unwrap_or_else(|| PathBuf::from("/nix/var/nix/profiles"));
-                for path in [&boot, &profiles] {
+                let garbage = rendered.garbage.unwrap_or_default();
+                for path in [&boot, &profiles, &garbage.nix] {
                     if !plain_absolute(path) {
                         return Err(format!("{} is not a plain absolute path", path.display()));
                     }
                 }
                 Some(System {
-                    garbage: rendered.garbage.unwrap_or_default(),
+                    garbage,
                     generations: rendered.generations.unwrap_or_default(),
                     dedupe: rendered.dedupe.unwrap_or_default(),
                     boot,

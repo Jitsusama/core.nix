@@ -1,4 +1,68 @@
-use disk_guard::garbage::{Batch, Dead, batches, parse};
+use disk_guard::garbage::{Batch, Dead, batches, list, parse};
+use std::fs;
+use std::os::unix::fs::PermissionsExt;
+use std::path::Path;
+
+/// Writes an executable shell script.
+fn script(path: &Path, body: &str) {
+    fs::write(path, format!("#!/bin/sh\n{body}")).unwrap();
+    fs::set_permissions(path, fs::Permissions::from_mode(0o755)).unwrap();
+}
+
+/// A `nix-store` that lists `count` dead paths, and a `nix` that tells of
+/// each it's asked about and notes how many it was asked at once.
+fn fake_nix(dir: &Path, count: usize) -> std::path::PathBuf {
+    script(
+        &dir.join("nix-store"),
+        &format!(
+            "[ \"$*\" = '--gc --print-dead' ] || exit 9\n\
+             echo 'finding garbage collector roots...' >&2\n\
+             i=0; while [ $i -lt {count} ]; do echo /nix/store/p$i; i=$((i+1)); done\n"
+        ),
+    );
+    script(
+        &dir.join("nix"),
+        &format!(
+            "[ \"$1 $2\" = 'path-info --json' ] || exit 9\nshift 2\n\
+             echo $# >> {}\n\
+             printf '{{'; sep=''\n\
+             for p in \"$@\"; do\n\
+               printf '%s\"%s\":{{\"narSize\":1,\"registrationTime\":5,\"references\":[]}}' \"$sep\" \"$p\"\n\
+               sep=,\n\
+             done\n\
+             printf '}}'\n",
+            dir.join("asked").display()
+        ),
+    );
+    dir.join("nix")
+}
+
+#[test]
+fn the_dead_are_listed_and_described_in_chunks_the_kernel_takes() {
+    let dir = tempfile::tempdir().unwrap();
+    let nix = fake_nix(dir.path(), 2500);
+    let dead = list(&nix, false).unwrap();
+    assert_eq!(dead.len(), 2500);
+    assert!(
+        dead.iter()
+            .any(|path| path.path == "/nix/store/p2499" && path.size == 1)
+    );
+    let asked = fs::read_to_string(dir.path().join("asked")).unwrap();
+    assert_eq!(asked, "1000\n1000\n500\n");
+}
+
+#[test]
+fn a_listing_that_fails_says_why() {
+    let dir = tempfile::tempdir().unwrap();
+    script(
+        &dir.path().join("nix-store"),
+        "echo 'error: cannot connect to the daemon' >&2; exit 1\n",
+    );
+    let failed = list(&dir.path().join("nix"), false).unwrap_err();
+    assert!(failed.contains("cannot connect to the daemon"), "{failed}");
+    let none = tempfile::tempdir().unwrap();
+    assert_eq!(list(&fake_nix(none.path(), 0), false).unwrap(), []);
+}
 
 const DAY: f64 = 86400.0;
 const NOW: f64 = 100.0 * DAY;

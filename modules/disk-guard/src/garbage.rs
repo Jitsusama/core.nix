@@ -6,9 +6,13 @@
 //! and all its dead referrers. Under that date, all garbage older than any
 //! moment is closed under referrers, and deleting it takes nothing newer.
 
+use crate::commands::{self, Job, Ran};
 use serde_json::Value;
 use std::cmp::Reverse;
 use std::collections::{BTreeSet, BinaryHeap, HashMap};
+use std::ffi::OsStr;
+use std::path::Path;
+use std::time::Duration;
 
 /// What a batch holds before it closes. A pass measures what it freed
 /// only between batches, so one batch of a whole pile of disk images
@@ -72,6 +76,75 @@ pub fn parse(json: &str) -> Result<Vec<Dead>, String> {
             })
         })
         .collect()
+}
+
+/// How many paths one `nix path-info` is asked about, so its arguments
+/// stay well inside what the kernel lets a program be given.
+const CHUNK: usize = 1000;
+/// How long listing the dead may take: about a minute on a store of
+/// 240 GiB of garbage, and far longer at idle priority on a busy disk.
+const LIST_TIMEOUT: Duration = Duration::from_secs(30 * 60);
+/// How long describing one chunk may take.
+const DESCRIBE_TIMEOUT: Duration = Duration::from_secs(5 * 60);
+/// The most of a command's output read: a listing of 12,000 paths is
+/// 4 MiB, and a chunk's description about 3.
+const OUTPUT_LIMIT: usize = 256 << 20;
+
+/// Every dead path, through `nix-store --gc --print-dead` beside `nix`,
+/// and what each weighs and refers to, through `nix path-info`. With
+/// `idle`, at idle priority. A path that died since is found at the next
+/// listing; one that came alive is refused by Nix when it's deleted.
+pub fn list(nix: &Path, idle: bool) -> Result<Vec<Dead>, String> {
+    let store = nix.with_file_name("nix-store");
+    let listed = ran(
+        &[store.as_os_str(), "--gc".as_ref(), "--print-dead".as_ref()],
+        LIST_TIMEOUT,
+        idle,
+    )?;
+    let paths: Vec<&str> = listed
+        .lines()
+        .filter(|line| line.starts_with('/'))
+        .collect();
+    let mut dead = Vec::with_capacity(paths.len());
+    for chunk in paths.chunks(CHUNK) {
+        let mut argv: Vec<&OsStr> = vec![nix.as_os_str(), "path-info".as_ref(), "--json".as_ref()];
+        argv.extend(chunk.iter().map(OsStr::new));
+        dead.extend(parse(&ran(&argv, DESCRIBE_TIMEOUT, idle)?)?);
+    }
+    Ok(dead)
+}
+
+/// What a command printed, or why it failed, in its own last words.
+fn ran(argv: &[&OsStr], timeout: Duration, idle: bool) -> Result<String, String> {
+    let name = Path::new(argv[0])
+        .file_name()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .into_owned();
+    let job = Job {
+        argv: argv.iter().map(|&arg| arg.to_owned()).collect(),
+        cwd: None,
+        env: Vec::new(),
+        timeout,
+        limit: OUTPUT_LIMIT,
+        idle,
+    };
+    match commands::run(&job).map_err(|error| format!("starting {name}: {error}"))? {
+        Ran::TimedOut => Err(format!("{name} ran past {timeout:?}")),
+        Ran::Finished(output) if output.truncated => Err(format!("{name} said more than it may")),
+        Ran::Finished(output) if output.status == Some(0) => {
+            String::from_utf8(output.stdout).map_err(|_| format!("{name} printed what isn't text"))
+        }
+        Ran::Finished(output) => {
+            let said = String::from_utf8_lossy(&output.stderr);
+            let last = said
+                .lines()
+                .rev()
+                .find(|line| !line.trim().is_empty())
+                .unwrap_or("");
+            Err(format!("{name} failed: {last}"))
+        }
+    }
 }
 
 /// The garbage in the order it goes, in batches of at most `most` paths

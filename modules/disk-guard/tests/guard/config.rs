@@ -116,6 +116,16 @@ fn a_system_config_carries_its_own_sections() {
     assert_eq!(config.scope, Scope::System);
     let system = config.system.unwrap();
     assert_eq!(system.garbage.budget, Size::Percent(10.0));
+    assert_eq!(
+        system.garbage.nix,
+        PathBuf::from("/run/current-system/sw/bin/nix"),
+        "the system's own nix unless told"
+    );
+    let relative = Config::parse(
+        r#"{"version": 1, "scope": "system", "garbage": {"nix": "bin/nix"},
+            "boot": "/boot", "sources": {}}"#,
+    );
+    assert!(relative.unwrap_err().contains("bin/nix"));
     assert_eq!(system.generations.keep, 5);
     assert_eq!(system.boot, PathBuf::from("/boot"));
 }
