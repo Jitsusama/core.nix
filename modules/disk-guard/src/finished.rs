@@ -122,13 +122,20 @@ pub fn ask(predicate: &Predicate, dir: &Path, checkout: &Checkout) -> bool {
 }
 
 /// Answers remembered per checkout: a finished head stays finished, and
-/// an unfinished one is asked about again after an hour.
-#[derive(Default)]
+/// an unfinished one is asked about again after an hour. Kept across
+/// restarts, since asking a forge about every checkout again costs a
+/// round trip each.
+#[derive(Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct Answers {
     known: HashMap<PathBuf, (String, bool, f64)>,
 }
 
 impl Answers {
+    /// Drops the answers for checkouts that are gone.
+    pub fn forget_gone(&mut self) {
+        self.known.retain(|dir, _| dir.symlink_metadata().is_ok());
+    }
+
     pub fn finished(
         &mut self,
         dir: &Path,

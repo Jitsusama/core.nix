@@ -153,6 +153,8 @@ pub struct Guard {
     status_path: Option<PathBuf>,
     predicates: Vec<Predicate>,
     answers: Answers,
+    /// Where the answers are kept for the next guard.
+    answers_path: PathBuf,
     watched: BTreeMap<u64, Watched>,
     last: Option<LastPass>,
     saved_at: Option<f64>,
@@ -328,6 +330,12 @@ impl Guard {
             .ok()
             .and_then(|bytes| serde_json::from_slice(&bytes).ok());
         // What can't be read starts afresh: an unwatched deps dates nothing.
+        let answers_path = state.join("finished.json");
+        let mut answers: Answers = state::load(&answers_path)
+            .ok()
+            .flatten()
+            .unwrap_or_default();
+        answers.forget_gone();
         let uses_path = state.join("uses.json");
         let mut uses: Uses = state::load(&uses_path).ok().flatten().unwrap_or_default();
         uses.forget_gone();
@@ -340,7 +348,8 @@ impl Guard {
             journal: Journal::new(&state.join("journal.jsonl"), journal::LIMIT),
             status_path,
             predicates,
-            answers: Answers::default(),
+            answers,
+            answers_path,
             watched: BTreeMap::new(),
             last: None,
             saved_at: None,
@@ -716,6 +725,7 @@ impl Guard {
                 .unwrap_or_else(|poisoned| poisoned.into_inner())
                 .clone();
             state::save(&self.uses_path, &uses)?;
+            state::save(&self.answers_path, &self.answers)?;
             self.saved_at = Some(tick.wall);
         }
         self.write_status(tick.wall)

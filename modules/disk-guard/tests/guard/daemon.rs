@@ -742,6 +742,61 @@ fn a_tree_kept_for_its_use_is_explained_as_kept_and_why() {
 }
 
 #[test]
+fn a_predicates_answer_is_kept_for_the_next_guard() {
+    use crate::finished::git;
+    let home = Home::new();
+    let (_, deps) = home.replaced_build("0%");
+    let app = home.root.join("src/app");
+    git(&app, &["init", "-q", "-b", "work"]);
+    git(
+        &app,
+        &["remote", "add", "origin", "https://example.com/app.git"],
+    );
+    git(&app, &["add", "Cargo.toml"]);
+    git(&app, &["commit", "-q", "-m", "one"]);
+    let asked = home.root.join("asked");
+    let predicate = home.root.join("merged");
+    fs::write(
+        &predicate,
+        format!(
+            "#!/bin/sh\necho asked >> {}\necho '{{\"finished\": true}}'\n",
+            asked.display()
+        ),
+    )
+    .unwrap();
+    use std::os::unix::fs::PermissionsExt;
+    fs::set_permissions(&predicate, fs::Permissions::from_mode(0o755)).unwrap();
+    let config = || {
+        Config::parse(&format!(
+            r#"{{ "version": 1, "scope": "user", "notify": false,
+                 "bands": {{ "pressure": "0%", "urgent": "0%", "critical": "0%", "target": "0%" }},
+                 "nix": {{ "bin": "{0}/no-nix/nix", "store": "{0}/no-nix/store" }},
+                 "sources": {{
+                   "src": {{ "kind": "cargo", "roots": ["{0}/src"] }},
+                   "merged": {{ "kind": "finished", "remote": "^https://example\\.com/",
+                                "command": ["{1}"], "timeout": "5s" }} }} }}"#,
+            home.root.display(),
+            predicate.display()
+        ))
+        .unwrap()
+    };
+    let _ = deps;
+    let mut first = home.guard(config());
+    first.step(&tick(), &CALM).unwrap();
+    let times = || {
+        fs::read_to_string(&asked)
+            .unwrap_or_default()
+            .lines()
+            .count()
+    };
+    assert_eq!(times(), 1, "routine upkeep asks once");
+    drop(first);
+    let mut second = home.guard(config());
+    second.preview(&tick(), Some(Band::Pressure), None).unwrap();
+    assert_eq!(times(), 1, "a finished head is known still");
+}
+
+#[test]
 fn a_preview_leaves_a_damaged_memory_as_it_found_it() {
     let home = Home::new();
     fs::write(home.root.join("state/memory.json"), "{ \"learned\": ").unwrap();
