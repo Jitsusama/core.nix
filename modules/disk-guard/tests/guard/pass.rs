@@ -175,6 +175,67 @@ fn a_pass_reclaims_down_to_the_target_and_stops() {
 }
 
 #[test]
+fn a_command_is_measured_before_anything_more_is_taken() {
+    let producer = Candidate {
+        path: PathBuf::from("/home/u/src#gc"),
+        class: Class::Producer,
+        idle: f64::INFINITY,
+        size: 0,
+        occupied: false,
+        spent: false,
+        checkout: None,
+    };
+    let mut candidates = vec![producer.clone()];
+    candidates.extend(targets(10, 7.0 * HOUR));
+    let run = run(
+        FakeDisk::new(14 * GIB),
+        &candidates,
+        Goal::Reach,
+        [(producer.path.clone(), 6 * GIB)].into(),
+        Vec::new(),
+    );
+    assert_eq!(run.end, End::Reached);
+    assert_eq!(run.taken, [producer.path], "what it freed was enough");
+}
+
+#[test]
+fn a_command_is_measured_alone_so_what_it_frees_is_no_one_elses() {
+    let producer = Candidate {
+        path: PathBuf::from("/home/u/src#gc"),
+        class: Class::Producer,
+        idle: f64::INFINITY,
+        size: 0,
+        occupied: false,
+        spent: false,
+        checkout: None,
+    };
+    let temp = Candidate {
+        path: PathBuf::from("/tmp/tmp.Ab3dE9fGh1"),
+        class: Class::Temp,
+        idle: 30.0 * 86_400.0,
+        size: GIB,
+        ..producer.clone()
+    };
+    let mut candidates = vec![temp.clone(), producer.clone()];
+    candidates.extend(targets(10, 7.0 * HOUR));
+    let run = run(
+        FakeDisk::new(14 * GIB),
+        &candidates,
+        Goal::Reach,
+        [(producer.path.clone(), 4 * GIB)].into(),
+        Vec::new(),
+    );
+    assert_eq!(run.end, End::Reached);
+    assert_eq!(run.taken[..2], [temp.path, producer.path]);
+    assert_eq!(run.taken.len(), 3, "one target made up the rest");
+    let ratio = run.learned.ratio(Class::Temp);
+    assert!(
+        (ratio - 1.0).abs() < 0.05,
+        "temp freed its own size: {ratio}"
+    );
+}
+
+#[test]
 fn what_each_kind_frees_is_learned_and_planned_by() {
     let candidates = targets(20, 7.0 * HOUR);
     let halves = candidates

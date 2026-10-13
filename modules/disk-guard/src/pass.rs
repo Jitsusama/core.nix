@@ -154,16 +154,24 @@ pub fn pass(
         let (mut predicted, mut batch) = (0, Vec::new());
         for step in steps {
             let index = left[step.index];
-            taken[index] = true;
             let candidate = &candidates[index];
+            // A command is measured alone, so what it frees is credited to
+            // no one else, and is measured before anything more goes, since
+            // it may have been enough.
+            if candidate.class.command() && !batch.is_empty() {
+                break;
+            }
+            taken[index] = true;
             let outcome = reclaimer.reclaim(candidate);
-            if outcome == Outcome::Reclaimed {
+            let reclaimed = outcome == Outcome::Reclaimed;
+            if reclaimed {
                 predicted += step.predicted;
                 batch.push(candidate);
             }
             report.actions.push((candidate.path.clone(), outcome));
             let enough = remaining.is_some_and(|remaining| predicted >= remaining);
-            if enough || disk.now() - started >= BATCH_SECONDS {
+            let measure = reclaimed && candidate.class.command();
+            if enough || measure || disk.now() - started >= BATCH_SECONDS {
                 break;
             }
         }

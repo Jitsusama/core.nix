@@ -52,6 +52,11 @@ pub enum Class {
 }
 
 impl Class {
+    /// Whether it's a command, whose yield is known only by measuring.
+    pub fn command(self) -> bool {
+        matches!(self, Class::Producer | Class::Garbage)
+    }
+
     /// The kind's name, which what it frees is learned under.
     pub fn kind(self) -> &'static str {
         match self {
