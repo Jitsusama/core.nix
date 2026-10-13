@@ -272,6 +272,39 @@ fn a_daemon_refuses_another_scopes_config_and_a_second_of_itself() {
 }
 
 #[test]
+fn explain_says_why_the_system_daemon_could_not_vouch_for_a_process() {
+    let machine = Machine::new();
+    let scratch = machine.root.join("scratch");
+    fs::create_dir_all(scratch.join("run-1")).unwrap();
+    machine.config(
+        &machine.env.config,
+        &format!(
+            r#"{{ "version": 1, "scope": "user",
+                 "sources": {{ "scratch": {{ "kind": "scratch", "path": "{}" }} }} }}"#,
+            scratch.display()
+        ),
+    );
+    // Root's, so the account can't read it, with no system daemon to ask.
+    let proc = &machine.env.processes;
+    crate::procs::text(proc, "300/stat", &crate::procs::stat(300, "rustc", 0, 77));
+    crate::procs::text(proc, "300/status", "Name:\trustc\nUid:\t0\t0\t0\t0\n");
+    crate::procs::text(proc, "300/cmdline", "");
+    let run = scratch.join("run-1");
+    let (code, out, err) = machine.run(&format!("explain {}", run.display()));
+    assert_eq!(code, 0, "{err}");
+    let said = out
+        .lines()
+        .find(|line| line.starts_with("  in use: "))
+        .unwrap_or_default();
+    assert!(
+        said.starts_with(
+            "  in use: maybe: process 300 can't be read, and the system daemon couldn't be asked ("
+        ),
+        "{out}"
+    );
+}
+
+#[test]
 fn explain_says_how_each_band_would_treat_a_path() {
     let machine = Machine::new();
     let trash = machine.root.join("Trash");

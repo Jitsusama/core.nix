@@ -390,13 +390,21 @@ fn explain(env: &Env, path: &Path, config: Option<PathBuf>, out: &mut dyn Write)
     };
     let mut guard = Guard::new(config, &places).map_err(failed)?;
     let tick = crate::linux::tick().map_err(failed)?;
+    let explained = guard.explain(&tick, path).map_err(failed)?;
+    let (_, unheard) = guard.unread();
     let used_as = |used: crate::activity::Use| match used {
         crate::activity::Use::Free => "by nothing".to_owned(),
         crate::activity::Use::Busy(pid) => format!("busy: process {pid} works in it"),
         crate::activity::Use::Occupied(pid) => format!("process {pid} sits in its tree"),
-        crate::activity::Use::Unknown(pid) => format!("maybe: process {pid} can't be read"),
+        crate::activity::Use::Unknown(pid) => match &unheard {
+            Some(why) => format!(
+                "maybe: process {pid} can't be read, and the system daemon couldn't be asked \
+                 ({why})"
+            ),
+            None => format!("maybe: process {pid} can't be read"),
+        },
     };
-    let (candidate, used) = match guard.explain(&tick, path).map_err(failed)? {
+    let (candidate, used) = match explained {
         Explained::Offered { candidate, used } => (candidate, used),
         Explained::Kept { path, used } => {
             writeln!(out, "{}: kept while it's used", path.display()).map_err(failed)?;
