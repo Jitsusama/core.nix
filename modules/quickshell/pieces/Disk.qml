@@ -4,8 +4,9 @@
 // directories, so it asks nothing, and a disk both watch is as the worse of
 // them says. It's true while a disk is short of room, below healthy, and
 // takes the warning colour then and the alert colour at critical, when it
-// wants Joel: the guard is taking all it safely can. It's true as well when
-// a guard has stopped writing, since then nothing watches the disks.
+// wants Joel: the guard is taking all it safely can. A writer the guard froze
+// for filling a disk wants him too, with a way to let it go on. It's true as
+// well when a guard has stopped writing, since then nothing watches the disks.
 import qs
 import Quickshell
 import Quickshell.Io
@@ -33,19 +34,23 @@ Piece {
     readonly property bool silent: said.some(
         status => clock.now - status.heartbeat > (settings.silence ?? 120))
     readonly property var last: account.said?.last ?? null
+    // What the account's guard froze for filling a disk, if anything.
+    readonly property var frozen: account.said?.frozen ?? []
 
     present: said.length > 0
-    active: short || silent
-    role: critical ? "alert" : active ? "warning" : "text"
-    wants: critical
-    value: short || !silent
+    active: short || silent || frozen.length > 0
+    role: critical || frozen.length > 0 ? "alert" : active ? "warning" : "text"
+    wants: critical || frozen.length > 0
+    value: frozen.length > 0 ? "froze " + frozen.map(writer => writer.name).join(", ")
+        : short || !silent
         ? (worst === null ? "" : `${shown(worst.free)} free on ${worst.path}`
             + (short ? `, ${worst.band}` : ""))
         : "not watching"
 
     title: "Disks"
     badge: worst === null ? "" : brief(worst.free)
-    hint: short ? `${worst.path} is short of room: ${shown(worst.free)} free`
+    hint: frozen.length > 0 ? `${frozen[0].name} was frozen for filling ${frozen[0].path}`
+        : short ? `${worst.path} is short of room: ${shown(worst.free)} free`
         : silent ? "Nothing is watching the disks" : value
     context: {
         const parts = [];
@@ -61,11 +66,15 @@ Piece {
             parts.push("the guard's unit says why");
         return parts.join("; ");
     }
-    actions: [{
+    actions: (frozen.length > 0 ? [{
+        glyph: String.fromCodePoint(0xf040a),
+        name: "Let it go on",
+        run: () => Niri.spawn(["disk-guard", "thaw"])
+    }] : []).concat([{
         glyph: String.fromCodePoint(0xf0349),
         name: "See what it would take",
         run: () => Niri.spawn(["kitty", "--hold", "disk-guard", "plan"])
-    }].concat(silent ? [{
+    }]).concat(silent ? [{
         glyph: String.fromCodePoint(0xf040a),
         name: "Start the guard",
         run: () => Niri.spawn(["systemctl", "--user", "restart", "disk-guard.service"])

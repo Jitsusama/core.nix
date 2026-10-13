@@ -4,7 +4,8 @@
 // shown but not true, a disk under pressure is a warning with how much is
 // free and the pass that left it short, a critical one wants Joel, the worse
 // of the two guards' words wins for a disk both watch, a disk only the
-// machine's guard watches counts, a guard that stopped writing is a warning
+// machine's guard watches counts, a writer frozen wants Joel with a way to let
+// it go on, a guard that stopped writing is a warning
 // of its own with a way to start it, and a guard that never wrote leaves no
 // piece. It exits 0 once every case holds, and otherwise 1, saying which
 // case didn't.
@@ -25,9 +26,9 @@ ShellRoot {
             forecast: forecast ?? null };
     }
 
-    function status(disks, last, heartbeat) {
+    function status(disks, last, heartbeat, frozen) {
         return JSON.stringify({ version: 1, heartbeat: heartbeat ?? root.now,
-            filesystems: disks, last: last ?? null });
+            filesystems: disks, last: last ?? null, frozen: frozen ?? [] });
     }
 
     // Each case: what each guard says (null: nothing written), and what
@@ -70,6 +71,17 @@ ShellRoot {
         account: status([disk("/", "healthy", 400)]),
         machine: status([disk("/", "healthy", 400), disk("/boot", "critical", 0.01)]),
         holds: piece => piece.wants && piece.value === "10.2 MiB free on /boot, critical"
+    }, {
+        what: "a writer frozen",
+        // Thawed only above urgent, so frozen still at urgent.
+        account: status([disk("/", "urgent", 50)], null, null, [{
+            unit: "disk-guard-freeze-700.scope", pid: 700, start: 5, name: "dd",
+            path: "/", at: root.now }]),
+        machine: status([]),
+        holds: piece => piece.active && piece.role === "alert" && piece.wants
+            && piece.value === "froze dd"
+            && piece.hint === "dd was frozen for filling /"
+            && piece.actions[0].name === "Let it go on"
     }, {
         what: "a guard that stopped",
         account: status([disk("/", "healthy", 400)], null, root.now - 600),
