@@ -42,6 +42,32 @@ fn shown(change: Option<Change>) -> Notice {
 }
 
 #[test]
+fn a_writer_frozen_is_told_at_once_with_how_to_let_it_go_on() {
+    let short = status(
+        &[("/home", Band::Critical, 2)],
+        pass(1.0, Band::Critical, "exhausted", 0),
+    );
+    let mut frozen = short.clone();
+    frozen.frozen.push(disk_guard::writers::Frozen {
+        unit: "disk-guard-freeze-700.scope".to_owned(),
+        pid: 700,
+        start: 500,
+        name: "dd".to_owned(),
+        path: PathBuf::from("/home"),
+        at: 2.0,
+    });
+    let notice = shown(change(&short, &frozen));
+    assert_eq!(notice.summary, "Froze dd, which was filling /home");
+    assert_eq!(
+        notice.body,
+        "Nothing else was safe to take. It goes on by itself once there's room, or now with \
+         disk-guard thaw."
+    );
+    assert_eq!(notice.urgency, Urgency::Critical);
+    assert_eq!(change(&frozen, &frozen), None, "told once");
+}
+
+#[test]
 fn nothing_changing_says_nothing() {
     let calm = status(&[("/home", Band::Healthy, 400)], None);
     assert_eq!(change(&calm, &calm), None);
