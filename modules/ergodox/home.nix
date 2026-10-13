@@ -1,7 +1,8 @@
 # The ErgoDox EZ, on every machine Joel plugs it into: its firmware, built
 # from the layout beside this file, the `ergodox` command that writes it to
-# the board and sends it commands, and zapp, ZSA's flasher, which that
-# command runs. On Linux the
+# the board and sends it commands, zapp, ZSA's flasher, which that command
+# runs, and the layout described for the shell, in ergodox/layout.json among
+# the account's settings. On Linux the
 # board's USB devices need the permissions nixos.nix gives them; a Mac lets
 # any program reach them.
 {
@@ -17,6 +18,8 @@ let
   };
 in
 {
+  xdg.configFile."ergodox/layout.json".source = "${firmware}/shell.json";
+
   home.packages = [
     pkgs.zapp
     (pkgs.writeShellApplication {

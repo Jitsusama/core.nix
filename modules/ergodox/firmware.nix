@@ -1,8 +1,9 @@
 # The ErgoDox EZ Glow's firmware, built from ZSA's QMK with the layout in
 # keymap/: Oryx's source for the layout, as Oryx gave it, with a serial
 # number of its own. It holds ergodox.hex, which zapp writes to the board;
-# layout.json, QMK's own reading of keymap.c, which is what the shell draws
-# the layers from; and serial, what the board answers once it runs this
+# layout.json, QMK's own reading of keymap.c; shell.json, that reading
+# described for the shell by describe.py, which is what it draws the layers
+# and finds keys from; and serial, what the board answers once it runs this
 # build.
 #
 # Import this with nixpkgs, then give it ZSA's QMK and the LUFA and printf
@@ -11,6 +12,7 @@
   lib,
   stdenvNoCC,
   pkgsCross,
+  python3,
   python3Packages,
   qmk,
   which,
@@ -77,6 +79,7 @@ stdenvNoCC.mkDerivation {
 
   nativeBuildInputs = [
     cli
+    python3
     which
     pkgsCross.avr.buildPackages.gcc
     pkgsCross.avr.buildPackages.binutils
@@ -89,6 +92,8 @@ stdenvNoCC.mkDerivation {
     export HOME=$TMPDIR QMK_HOME=$PWD
     make ${board}:${name} SKIP_GIT=yes EXTRAFLAGS='-DSERIAL_NUMBER=\"${serial}\"'
     qmk c2json --no-cpp -kb ${board} -km ${name} -o layout.json ${keymapIn}/keymap.c
+    python3 ${./describe.py} layout.json keyboards/zsa/ergodox_ez/info.json \
+      ${lib.escapeShellArgs (import ./layers.nix)} > shell.json
     runHook postBuild
   '';
 
@@ -96,6 +101,7 @@ stdenvNoCC.mkDerivation {
     runHook preInstall
     install -D -m 444 ${lib.replaceStrings [ "/" ] [ "_" ] board}_${name}.hex $out/ergodox.hex
     install -m 444 layout.json $out/layout.json
+    install -m 444 shell.json $out/shell.json
     printf '%s\n' '${serial}' > $out/serial
     runHook postInstall
   '';
