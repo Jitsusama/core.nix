@@ -775,13 +775,20 @@ What each studio round settled, newest first, with the reason.
 - **A screenshot to mark up** (2026-10-12). A screenshot is most often
   taken to point at something in it, so the launcher offers the newest to
   edit in GIMP, at home just below the window in front for two minutes
-  after it's taken, and found by typing after that. Every screenshot lands in one folder, niri's own and
-  the region ones the shell takes with grim, and niri tells the shell only
-  of its own, so the folder is what's watched; it's made at login, since
-  niri makes it only with its first screenshot. niri and the shell already
-  say a screenshot was taken, so GIMP's row adds no notice of its own.
-  GIMP's and Inkscape's dialogs float by niri's own rule for windows with a
-  parent, so neither needs a window rule.
+  after it's taken, and found by typing after that. Every screenshot lands
+  in one folder, niri's own and the region ones the shell takes with grim,
+  and niri tells the shell only of its own, so the folder is what's
+  watched; it's made at login, since niri makes it only with its first
+  screenshot. niri and the shell already say a screenshot was taken, so
+  GIMP's row adds no notice of its own. GIMP's and Inkscape's dialogs float
+  by niri's own rule for windows with a parent.
+
+- **An editor gets the screen's width** (2026-10-12). At half a column,
+  GIMP's docks cover the picture and Inkscape's leave a sliver of the
+  drawing, so their main windows open as a full-width column, gaps kept,
+  and Inkscape no longer covers the screen edge to edge as it asks to.
+  Super+R still narrows them. Each main window is matched by the title it
+  opens with, so its splash and dialogs keep floating.
 
 - **Who's in a call, and a call that rings** (2026-10-12). Tuple on Linux
   leaves unfinished the notices its Mac app gives: someone joining,

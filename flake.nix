@@ -114,7 +114,7 @@
         fzf = ./modules/fzf/home.nix;
         gh = ./modules/gh/home.nix;
         ghostty = moduleFrom ./modules/ghostty/home.nix { inherit wallpapers; };
-        gimp = moduleFrom ./modules/gimp/home.nix { inherit (self.homeModules) quickshell; };
+        gimp = moduleFrom ./modules/gimp/home.nix { inherit (self.homeModules) niri quickshell; };
         git = ./modules/git/home.nix;
         glow = ./modules/glow/home.nix;
         gnupg = ./modules/gnupg/home.nix;
@@ -122,7 +122,7 @@
         home-manager = ./modules/home-manager/home.nix;
         homebrew = ./modules/homebrew/home.nix;
         identity = ./modules/identity/home.nix;
-        inkscape = ./modules/inkscape/home.nix;
+        inkscape = moduleFrom ./modules/inkscape/home.nix { inherit (self.homeModules) niri; };
         jq = ./modules/jq/home.nix;
         keys = ./modules/keys/home.nix;
         kitty = ./modules/kitty/home.nix;

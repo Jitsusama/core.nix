@@ -11,6 +11,11 @@
 #
 # Inkscape comes with Apply Transforms, which bakes an object's transforms
 # into its paths.
+#
+# Its drawing window opens across the screen's whole width, with the gaps
+# every window has, rather than over the whole screen as it asks to; its
+# splash and dialogs still float.
+{ niri }:
 {
   config,
   lib,
@@ -79,9 +84,22 @@ let
   };
 in
 {
-  imports = [ ../theme/home.nix ];
+  imports = [
+    ../theme/home.nix
+    niri
+  ];
 
   home.packages = [ inkscape ];
+
+  # A drawing's window is titled after it, "<file> - Inkscape", from the
+  # moment it opens; the splash is titled with the version instead.
+  xdg.configFile."niri/config.kdl".text = lib.mkAfter ''
+    window-rule {
+        match app-id="^org\\.inkscape\\.Inkscape$" title=" - Inkscape$"
+        open-maximized true
+        open-maximized-to-edges false
+    }
+  '';
 
   home.file."${profile}/ui/user.css".text = stylesheet;
   home.file."${profile}/templates/default.svg".text = template;
