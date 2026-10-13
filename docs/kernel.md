@@ -150,11 +150,15 @@ and nobody needs to reload it. Measured on the XPS 14:
 - **vfat and its two code pages, built in.** Mounting the EFI system
   partition took 0.19 to 2.03 s over four boots, and 5 to 44 ms with the
   modules already loaded. Everything after `local-fs.target` waits for it.
-- **The NixOS firewall's netfilter set, built in.** `nf_tables`,
-  `nft_compat`, conntrack, x_tables and its conntrack, pkttype, port and
-  rpfilter matches. The firewall took 0.8 to 3.5 s at boot, loading them as
-  its rules asked, and 0.4 s to reload with them loaded. The network waits
-  for it.
+- **The firewall's netfilter set, built in.** `nf_tables`, conntrack,
+  `nft_ct` and the fib lookups the reverse-path filter makes. On iptables,
+  the firewall took 0.8 to 3.5 s at boot loading its set as its rules asked,
+  and 0.4 s to reload with it loaded. On nftables, its first start on a
+  running machine loaded these five modules and took 117 ms, against 82 ms
+  with them loaded. The network waits for it.
+- **iptables' matches, modules.** Nothing at boot loads them now the
+  firewall, libvirt and Podman are on nftables. What still speaks iptables,
+  such as k3s's network policies, loads them through `nft_compat`.
 - **btrfs, dm-crypt and NVMe, modules.** They load in the initrd while the
   disk's PIN is typed, so the boot doesn't wait for them, and btrfs's 116 ms
   start-up, raid6's benchmark included, would only delay the PIN prompt.

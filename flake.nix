@@ -196,6 +196,7 @@
         memory = ./modules/memory/nixos.nix;
         mpv = ./modules/mpv/nixos.nix;
         networkmanager = ./modules/networkmanager/nixos.nix;
+        nftables = ./modules/nftables/nixos.nix;
         niri = ./modules/niri/nixos.nix;
         nix-daemon = ./modules/nix-daemon/nixos.nix;
         nixpkgs = ./modules/nixpkgs/system.nix;

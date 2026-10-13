@@ -57,6 +57,7 @@ quietly stopped holding.
 | `yubikey-on-every-workstation`      | Linux and Mac workstations both have the YubiKey's tools  |
 | `ergodox-on-every-workstation`      | every workstation can flash the ErgoDox, a Mac as much as Linux |
 | `zsh-is-the-login-shell`            | an account on NixOS logs in to zsh, as one on a Mac does  |
+| `one-ruleset-for-every-program`     | the firewall, libvirt and Podman share nftables, and a reload flushes none of them |
 | `disks-go-by-their-name`            | a disk's partitions and open volume carry its name        |
 | `booted-generation-stays-installed` | a switch never removes the generation the machine booted  |
 | `session-memory-is-protected`       | every slice above session.slice carries a hard memory floor |
