@@ -327,6 +327,22 @@ fn a_listing_is_kept_for_the_next_guard() {
 }
 
 #[test]
+fn a_listing_kept_by_names_is_listed_again() {
+    // As the guard kept them before it held references by place.
+    let store = Store::new();
+    store.dead("aaa-young", 3600.0, 4096);
+    let old = format!(
+        r#"{{"listed_at":{},"dead":[{{"path":"/nix/store/x","registered":1.0,"size":1,"references":[]}}]}}"#,
+        now()
+    );
+    fs::write(store.root.join("state/garbage.json"), old).unwrap();
+    let mut guard = store.guard(store.config("0%", "0%"));
+    store.step_until(&mut guard, |store| {
+        store.log().iter().any(|line| line.starts_with("list"))
+    });
+}
+
+#[test]
 fn a_listing_that_failed_under_pressure_is_tried_again_within_minutes() {
     let store = Store::new();
     store.dead("aaa-old", 10.0 * DAY, 4096);

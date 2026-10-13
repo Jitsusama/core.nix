@@ -1,4 +1,4 @@
-use disk_guard::garbage::{Batch, Dead, batches, delete, list, parse};
+use disk_guard::garbage::{Batch, Dead, Listing, delete, list, parse};
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
@@ -57,6 +57,36 @@ fn fake_nix(dir: &Path, count: usize) -> std::path::PathBuf {
         ),
     );
     dir.join("nix")
+}
+
+#[test]
+fn a_reference_into_a_later_chunk_is_held_by_place() {
+    let dir = tempfile::tempdir().unwrap();
+    let nix = fake_nix(dir.path(), 0);
+    script(
+        &dir.path().join("nix-store"),
+        "[ \"$*\" = '--gc --print-dead' ] || exit 9\n\
+         i=0; while [ $i -lt 1500 ]; do echo /nix/store/p$i; i=$((i+1)); done\n",
+    );
+    // The first path refers to the last, a chunk later, and to a live one;
+    // the second went before it was described.
+    script(
+        &nix,
+        "[ \"$1 $2\" = '--extra-experimental-features nix-command' ] || exit 9\nshift 2\n\
+         [ \"$1 $2 $3\" = 'path-info --json --offline' ] || exit 9\nshift 3\n\
+         printf '{'; sep=''\n\
+         for p in \"$@\"; do refs='[]'\n\
+           if [ \"$p\" = /nix/store/p1 ]; then printf '%s\"%s\":null' \"$sep\" \"$p\"; sep=,; continue; fi\n\
+           [ \"$p\" = /nix/store/p0 ] && refs='[\"/nix/store/p1499\",\"/nix/store/p1\",\"/nix/store/live\"]'\n\
+           printf '%s\"%s\":{\"narSize\":1,\"registrationTime\":5,\"references\":%s}' \"$sep\" \"$p\" \"$refs\"\n\
+           sep=,\n\
+         done\n\
+         printf '}'\n",
+    );
+    let dead = list(&nix, false).unwrap();
+    assert_eq!(dead.len(), 1499);
+    assert_eq!(dead[1498].path, "/nix/store/p1499");
+    assert_eq!(dead[0].refers, [1498]);
 }
 
 #[test]
@@ -199,6 +229,41 @@ fn dead(name: &str, days: f64, size: u64, references: &[&str]) -> Dead {
 
 fn store(name: &str) -> String {
     format!("/nix/store/{name}")
+}
+
+/// The batches a listing of `all` makes, all of it still there.
+fn batches(all: &[Dead], now: f64, keep: f64, budget: u64, most: usize) -> Vec<Batch> {
+    Listing::new(0.0, all.to_vec()).batches(|_| true, now, keep, budget, most)
+}
+
+#[test]
+fn a_listing_holds_each_path_s_references_among_the_dead_by_place() {
+    // Only a dead reference can hold a path back, and a place costs far
+    // less than a name: a store's listing holds 80,000 paths.
+    let listing = Listing::new(
+        5.0,
+        vec![
+            dead("app", 1.0, 1, &["lib", "live-glibc", "app"]),
+            dead("lib", 2.0, 1, &["live-glibc"]),
+        ],
+    );
+    assert_eq!(listing.listed_at, 5.0);
+    assert_eq!(listing.dead[0].refers, [1]);
+    assert!(listing.dead[1].refers.is_empty());
+    assert_eq!(listing.dead[1].path, store("lib"));
+}
+
+#[test]
+fn what_is_gone_is_left_out_and_holds_nothing_back() {
+    // A new app's referrer went since the listing, so the old library is
+    // dated by itself again.
+    let listing = Listing::new(
+        0.0,
+        vec![dead("app", 1.0, 1, &["lib"]), dead("lib", 30.0, 1, &[])],
+    );
+    let made = listing.batches(|dead| !dead.path.ends_with("app"), NOW, KEEP, u64::MAX, 100);
+    assert_eq!(names(&made), [(vec!["lib".to_owned()], false)]);
+    assert_eq!(made[0].newest, NOW - 30.0 * DAY);
 }
 
 /// Each batch's paths by name, and whether healthy keeps it.

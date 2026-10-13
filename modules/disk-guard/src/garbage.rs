@@ -12,7 +12,7 @@ use crate::commands::{self, Job, Ran};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::cmp::Reverse;
-use std::collections::{BTreeSet, BinaryHeap, HashMap};
+use std::collections::{BinaryHeap, HashMap};
 use std::ffi::OsStr;
 use std::path::Path;
 use std::time::Duration;
@@ -35,14 +35,72 @@ pub struct Dead {
 }
 
 /// The dead paths as last listed, kept across restarts since listing them
-/// takes about a minute of the disk's time.
+/// takes about a minute of the disk's time. A store's listing can hold
+/// 80,000 paths with a score of references each, so each path holds only
+/// the references that can hold it back, the dead ones, by their place in
+/// the listing: as names, every reference live or dead, one held 200 MiB.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Listing {
     /// When the listing began, in wall seconds: garbage made since isn't
     /// in it.
     pub listed_at: f64,
-    pub dead: Vec<Dead>,
+    pub dead: Vec<Listed>,
+}
+
+/// A dead path as a listing holds it.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Listed {
+    pub path: String,
+    /// When it was registered, in wall seconds.
+    pub registered: f64,
+    /// Its size unpacked, in bytes.
+    pub size: u64,
+    /// The other dead paths it refers to, by their place in the listing,
+    /// each once.
+    pub refers: Vec<u32>,
+}
+
+impl Listing {
+    /// The listing of `dead`, begun at `listed_at`.
+    pub fn new(listed_at: f64, dead: Vec<Dead>) -> Listing {
+        let index: HashMap<&str, u32> = dead
+            .iter()
+            .enumerate()
+            .map(|(at, path)| (path.path.as_str(), at as u32))
+            .collect();
+        let refers: Vec<Vec<u32>> = dead
+            .iter()
+            .enumerate()
+            .map(|(at, path)| among(&index, at as u32, &path.references))
+            .collect();
+        let dead = dead
+            .into_iter()
+            .zip(refers)
+            .map(|(path, refers)| Listed {
+                path: path.path,
+                registered: path.registered,
+                size: path.size,
+                refers,
+            })
+            .collect();
+        Listing { listed_at, dead }
+    }
+}
+
+/// Of `references`, those `index` places among the dead, but for `at`
+/// itself, each once.
+fn among(index: &HashMap<&str, u32>, at: u32, references: &[String]) -> Vec<u32> {
+    let mut places: Vec<u32> = references
+        .iter()
+        .filter_map(|reference| index.get(reference.as_str()).copied())
+        .filter(|&place| place != at)
+        .collect();
+    places.sort_unstable();
+    places.dedup();
+    places.shrink_to_fit();
+    places
 }
 
 /// How long one step of `nix store gc --max` may take, when there is no
@@ -118,7 +176,7 @@ const OUTPUT_LIMIT: usize = 256 << 20;
 /// and what each weighs and refers to, through `nix path-info`. With
 /// `idle`, at idle priority. A path that died since is found at the next
 /// listing; one that came alive is refused by Nix when it's deleted.
-pub fn list(nix: &Path, idle: bool) -> Result<Vec<Dead>, String> {
+pub fn list(nix: &Path, idle: bool) -> Result<Vec<Listed>, String> {
     let store = nix.with_file_name("nix-store");
     let listed = ran(
         &[store.as_os_str(), "--gc".as_ref(), "--print-dead".as_ref()],
@@ -138,7 +196,14 @@ pub fn list(nix: &Path, idle: bool) -> Result<Vec<Dead>, String> {
                 .is_some_and(|name| !name.as_encoded_bytes().starts_with(b"."))
         })
         .collect();
-    let mut dead = Vec::with_capacity(paths.len());
+    // Each chunk's references are placed as they're read, among all the
+    // dead the listing named, so no chunk's names are held past it.
+    let index: HashMap<&str, u32> = paths
+        .iter()
+        .enumerate()
+        .map(|(at, path)| (*path, at as u32))
+        .collect();
+    let mut described: Vec<Option<Listed>> = vec![None; paths.len()];
     for chunk in paths.chunks(CHUNK) {
         let mut argv: Vec<&OsStr> = vec![nix.as_os_str()];
         argv.extend(NIX_COMMAND.map(OsStr::new));
@@ -147,9 +212,41 @@ pub fn list(nix: &Path, idle: bool) -> Result<Vec<Dead>, String> {
         // to ask one: unasked, Nix looks up a path it can't find there.
         argv.extend(["path-info", "--json", "--offline"].map(OsStr::new));
         argv.extend(chunk.iter().map(OsStr::new));
-        dead.extend(parse(&ran(&argv, DESCRIBE_TIMEOUT, idle)?)?);
+        for path in parse(&ran(&argv, DESCRIBE_TIMEOUT, idle)?)? {
+            let Some(&at) = index.get(path.path.as_str()) else {
+                continue;
+            };
+            described[at as usize] = Some(Listed {
+                refers: among(&index, at, &path.references),
+                path: path.path,
+                registered: path.registered,
+                size: path.size,
+            });
+        }
     }
-    Ok(dead)
+    // What Nix no longer knows is gone already, so the rest close up
+    // around it, and a reference to it holds nothing back.
+    let mut placed: Vec<Option<u32>> = Vec::with_capacity(described.len());
+    let mut next = 0;
+    for path in &described {
+        placed.push(path.as_ref().map(|_| {
+            next += 1;
+            next - 1
+        }));
+    }
+    Ok(described
+        .into_iter()
+        .flatten()
+        .map(|mut path| {
+            path.refers = path
+                .refers
+                .iter()
+                .filter_map(|&at| placed[at as usize])
+                .collect();
+            path.refers.shrink_to_fit();
+            path
+        })
+        .collect())
 }
 
 /// How long deleting one batch may take.
@@ -243,36 +340,97 @@ fn name(argv: &[&OsStr]) -> String {
     program.to_string_lossy().into_owned()
 }
 
-/// The garbage in the order it goes, in batches of at most `most` paths
-/// that close once they hold `BATCH_BYTES`:
-/// first what is older than `keep`, oldest first; then the young, largest
-/// first, each after the garbage still referring to it, since Nix
-/// refuses it before those. A batch is kept while healthy once the young
-/// garbage left fits in `budget` bytes.
-pub fn batches(dead: &[Dead], now: f64, keep: f64, budget: u64, most: usize) -> Vec<Batch> {
-    let index: HashMap<&str, usize> = dead
-        .iter()
-        .enumerate()
-        .map(|(at, path)| (path.path.as_str(), at))
-        .collect();
-    // Each path's dead references, without itself or repeats.
-    let refers: Vec<BTreeSet<usize>> = dead
-        .iter()
-        .enumerate()
-        .map(|(at, path)| {
-            path.references
-                .iter()
-                .filter_map(|reference| index.get(reference.as_str()).copied())
-                .filter(|&reference| reference != at)
-                .collect()
-        })
-        .collect();
-    let referrers = |refers: &[BTreeSet<usize>]| {
-        let mut count = vec![0usize; dead.len()];
-        for references in refers {
-            for &reference in references {
-                count[reference] += 1;
+impl Listing {
+    /// The garbage `there` says is still there, in the order it goes, in
+    /// batches of at most `most` paths that close once they hold
+    /// `BATCH_BYTES`: first what is older than `keep`, oldest first; then
+    /// the young, largest first, each after the garbage still referring to
+    /// it, since Nix refuses it before those. A batch is kept while healthy
+    /// once the young garbage left fits in `budget` bytes. What's gone holds
+    /// nothing back.
+    pub fn batches(
+        &self,
+        there: impl Fn(&Listed) -> bool,
+        now: f64,
+        keep: f64,
+        budget: u64,
+        most: usize,
+    ) -> Vec<Batch> {
+        let mut local: Vec<Option<usize>> = vec![None; self.dead.len()];
+        let mut dead: Vec<&Listed> = Vec::new();
+        for (at, path) in self.dead.iter().enumerate() {
+            if there(path) {
+                local[at] = Some(dead.len());
+                dead.push(path);
             }
+        }
+        let mut refers = Edges {
+            starts: Vec::with_capacity(dead.len() + 1),
+            to: Vec::new(),
+        };
+        refers.starts.push(0);
+        for path in &dead {
+            refers.to.extend(
+                path.refers
+                    .iter()
+                    .filter_map(|&at| local.get(at as usize).copied().flatten()),
+            );
+            refers.starts.push(refers.to.len());
+        }
+        order(&dead, &refers, now, keep, budget, most)
+    }
+}
+
+/// Each path's edges to others, by place, kept flat: a store's worth is a
+/// few allocations rather than one for each of its 80,000 paths, which the
+/// allocator would keep long after.
+struct Edges {
+    /// Where each path's edges begin in `to`, and where the last's end.
+    starts: Vec<usize>,
+    to: Vec<usize>,
+}
+
+impl Edges {
+    fn of(&self, at: usize) -> &[usize] {
+        &self.to[self.starts[at]..self.starts[at + 1]]
+    }
+
+    /// The same edges the other way, each path's in the order the paths
+    /// they come from are placed.
+    fn reversed(&self) -> Edges {
+        let paths = self.starts.len() - 1;
+        let mut starts = vec![0usize; paths + 1];
+        for &to in &self.to {
+            starts[to + 1] += 1;
+        }
+        for at in 0..paths {
+            starts[at + 1] += starts[at];
+        }
+        let mut filled = starts.clone();
+        let mut to = vec![0usize; self.to.len()];
+        for from in 0..paths {
+            for &edge in self.of(from) {
+                to[filled[edge]] = from;
+                filled[edge] += 1;
+            }
+        }
+        Edges { starts, to }
+    }
+}
+
+/// The batches of `dead`, whose dead references `refers` holds by place.
+fn order(
+    dead: &[&Listed],
+    refers: &Edges,
+    now: f64,
+    keep: f64,
+    budget: u64,
+    most: usize,
+) -> Vec<Batch> {
+    let referrers = |refers: &Edges| {
+        let mut count = vec![0usize; dead.len()];
+        for &reference in &refers.to {
+            count[reference] += 1;
         }
         count
     };
@@ -282,13 +440,13 @@ pub fn batches(dead: &[Dead], now: f64, keep: f64, budget: u64, most: usize) -> 
     // loop but through a path itself.
     let mut newest: Vec<f64> = dead.iter().map(|path| path.registered).collect();
     let mut walked = vec![0usize; dead.len()];
-    let mut waiting = referrers(&refers);
+    let mut waiting = referrers(refers);
     let mut ready: Vec<usize> = (0..dead.len()).filter(|&at| waiting[at] == 0).collect();
     let mut seen = 0;
     while let Some(at) = ready.pop() {
         walked[at] = seen;
         seen += 1;
-        for &reference in &refers[at] {
+        for &reference in refers.of(at) {
             newest[reference] = newest[reference].max(newest[at]);
             waiting[reference] -= 1;
             if waiting[reference] == 0 {
@@ -314,12 +472,7 @@ pub fn batches(dead: &[Dead], now: f64, keep: f64, budget: u64, most: usize) -> 
     // referrers first, as it can't go before them: a disk
     // image goes with the small link a test run left to it.
     let young = |at: usize| newest[at] > cutoff;
-    let mut referred_by = vec![Vec::new(); dead.len()];
-    for (at, references) in refers.iter().enumerate() {
-        for &reference in references {
-            referred_by[reference].push(at);
-        }
-    }
+    let referred_by = refers.reversed();
     let mut left: u64 = (0..dead.len())
         .filter(|&at| young(at))
         .map(|at| dead[at].size)
@@ -344,7 +497,7 @@ pub fn batches(dead: &[Dead], now: f64, keep: f64, budget: u64, most: usize) -> 
                 continue;
             }
             todo.push((at, true));
-            for &referrer in &referred_by[at] {
+            for &referrer in referred_by.of(at) {
                 if !gone[referrer] && young(referrer) {
                     todo.push((referrer, false));
                 }
