@@ -29,6 +29,8 @@ in
   users.users = lib.mapAttrs (_: _: {
     extraGroups = [ "wifi" ];
   }) config.home-manager.users;
+  # Each of them has the sign-in window too.
+  home-manager.sharedModules = [ ./home.nix ];
 
   # systemd keeps the socket while wifid starts again, so whoever's talking
   # to it waits a moment rather than finding nothing there.

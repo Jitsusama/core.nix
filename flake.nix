@@ -148,6 +148,7 @@
         tree-sitter = ./modules/tree-sitter/home.nix;
         tuple = moduleFrom ./modules/tuple/home.nix { inherit (self.homeModules) niri quickshell; };
         wezterm = moduleFrom ./modules/wezterm/home.nix { inherit wallpapers; };
+        wifid = ./modules/wifid/home.nix;
         yq = ./modules/yq/home.nix;
         zathura = ./modules/zathura/home.nix;
         zellij = ./modules/zellij/home.nix;
@@ -247,6 +248,11 @@
       # program's directory, or `nix develop` then cargo there.
       devShells = forEachSystem (pkgs: {
         default = pkgs.mkShell {
+          # wifid's sign-in window builds against GTK and WebKit, which
+          # only Linux has.
+          inputsFrom = pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [
+            (pkgs.callPackage ./modules/wifid/sign-in/package.nix { })
+          ];
           packages = [
             pkgs.cargo
             pkgs.clippy
