@@ -52,7 +52,7 @@ Provider {
         run: () => Wifi.turn(!provider.on)
     })
 
-    things: present ? [radio] : []
+    things: !present ? [] : SignIn.network !== "" ? [signIn, radio] : [radio]
 
     // While a network wants a sign-in, it's what's next.
     readonly property var signIn: thing({

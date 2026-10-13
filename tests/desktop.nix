@@ -21,6 +21,40 @@ let
   account = "jitsusama";
   secret = "correct-horse";
 
+  # Lantern's front desk, as a hotel's: every page is sent there until
+  # someone signs in, which its one button does.
+  frontDesk = pkgs.writeText "front-desk.py" ''
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+
+    PAGE = b"""<!doctype html><title>Lantern</title>
+    <form method="post" action="/sign-in"><button autofocus>Sign in</button></form>"""
+    signed_in = False
+
+    class Desk(BaseHTTPRequestHandler):
+        def answer(self, code, headers={}, body=b""):
+            self.send_response(code)
+            for name, value in headers.items():
+                self.send_header(name, value)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def do_GET(self):
+            if self.path == "/sign-in":
+                return self.answer(200, {"Content-Type": "text/html"}, PAGE)
+            if signed_in:
+                return self.answer(204)
+            self.answer(302, {"Location": "http://front-desk.lantern/sign-in"})
+
+        def do_POST(self):
+            global signed_in
+            self.rfile.read(int(self.headers.get("Content-Length", 0)))
+            signed_in = True
+            self.answer(200, {"Content-Type": "text/html"}, b"<p>Welcome to Lantern.</p>")
+
+    HTTPServer(("10.42.0.1", 80), Desk).serve_forever()
+  '';
+
   # Text views and file lists draw on the theme's dark background, which
   # nothing else on the screen uses, so a window that hasn't drawn can't pass
   # for one that has.
@@ -171,7 +205,8 @@ pkgs.testers.runNixOSTest {
           ''}";
         };
       };
-      # The access point hands out addresses, as a real network does.
+      # The access point hands out addresses, as a real network does, and
+      # says every name is its own, as a network wanting a sign-in does.
       systemd.services.lantern-addresses = {
         after = [ "lantern.service" ];
         requires = [ "air.service" ];
@@ -179,9 +214,19 @@ pkgs.testers.runNixOSTest {
         serviceConfig = {
           NetworkNamespacePath = "/run/netns/air";
           ExecStart = lib.concatStringsSep " " [
-            "${lib.getExe pkgs.dnsmasq} --keep-in-foreground --port=0 --dhcp-leasefile=/run/lantern.leases"
+            "${lib.getExe pkgs.dnsmasq} --keep-in-foreground --dhcp-leasefile=/run/lantern.leases"
             "--interface=wlan0 --bind-dynamic --dhcp-range=10.42.0.10,10.42.0.50,1h"
+            "--no-resolv --no-hosts --address=/#/10.42.0.1"
           ];
+        };
+      };
+      systemd.services.lantern-front-desk = {
+        after = [ "air.service" ];
+        requires = [ "air.service" ];
+        wantedBy = [ "multi-user.target" ];
+        serviceConfig = {
+          NetworkNamespacePath = "/run/netns/air";
+          ExecStart = "${lib.getExe pkgs.python3} ${frontDesk}";
         };
       };
       boot.extraModprobeConfig = ''
@@ -1078,6 +1123,26 @@ pkgs.testers.runNixOSTest {
           machine.succeed("networkctl status wlan1 | grep -q 10.42.0.")
           # Once it's joined, the launcher's done.
           machine.wait_until_fails(in_session("niri msg layers | grep -q launcher"), timeout=10)
+          # Lantern wants a sign-in, so Sign In to it comes first at home, and
+          # Return opens the window on its front desk.
+          described = "varlinkctl --json=short call /run/wifid/io.jitsusama.Wifi"
+          described += " io.jitsusama.Wifi.Describe '{}'"
+          machine.wait_until_succeeds(
+              f"{described} | grep -qF '\"reach\":\"signIn\"'", timeout=60
+          )
+          as_account("qs ipc call launcher toggle")
+          launcher_ready()
+          photograph("launcher-sign-in")
+          type_in("sign in", selecting="Sign In to Lantern")
+          machine.send_key("ret")
+          window = "niri msg --json windows | grep -qF '\"app_id\":\"io.jitsusama.WifiSignIn\"'"
+          machine.wait_until_succeeds(in_session(window), timeout=60)
+          photograph("sign-in", timeout=20)
+          # Its one button signs in, and the window closes as Lantern lets
+          # the machine through.
+          machine.send_key("ret")
+          machine.wait_until_fails(in_session(window), timeout=60)
+          machine.succeed(f"{described} | grep -qF '\"reach\":\"online\"'")
           # Turning Wi-Fi off is an action like any.
           as_account("qs ipc call launcher toggle")
           launcher_ready()
