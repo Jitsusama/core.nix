@@ -22,6 +22,7 @@ mod discover;
 mod entries;
 mod finished;
 mod garbage;
+mod generations;
 #[cfg(target_os = "linux")]
 mod host;
 mod journal;

@@ -172,7 +172,7 @@ pub fn delete(nix: &Path, paths: &[String], idle: bool) -> Result<(), String> {
 }
 
 /// What a command printed, or why it failed, in its own last words.
-fn ran(argv: &[&OsStr], timeout: Duration, idle: bool) -> Result<String, String> {
+pub(crate) fn ran(argv: &[&OsStr], timeout: Duration, idle: bool) -> Result<String, String> {
     match output(argv, timeout, idle)? {
         (true, stdout) => Ok(stdout),
         (false, stderr) => Err(failed(argv, &stderr)),
