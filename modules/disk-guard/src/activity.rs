@@ -55,8 +55,9 @@ const BUILD_TOOLS: &[&str] = &[
     "sccache",
 ];
 
-/// The variables that point a build at a target.
-const BUILD_VARIABLES: [&str; 2] = ["CARGO_TARGET_DIR", "CARGO_BUILD_BUILD_DIR"];
+/// The variables that point a build at what it writes and reads: its
+/// target, and the cargo home its downloads are kept in.
+const BUILD_VARIABLES: [&str; 3] = ["CARGO_TARGET_DIR", "CARGO_BUILD_BUILD_DIR", "CARGO_HOME"];
 
 /// A program's name, through Nix's wrappers: a binary wrapped as
 /// `.name-wrapped`, and a script, known only by the name it was called by.

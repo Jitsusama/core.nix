@@ -157,6 +157,20 @@ fn build_variables_make_a_build_busy_and_a_shell_occupied() {
 }
 
 #[test]
+fn a_cargo_home_is_used_by_whatever_names_it() {
+    // A dev shell between builds reads nothing there, but its next build
+    // would fetch everything again.
+    let home = Path::new("/home/u/.dev/cargo/abc-dev-shell");
+    let named = |process| carries(process, "CARGO_HOME", "/home/u/.dev/cargo/abc-dev-shell");
+    assert_eq!(
+        judge(&[named(shell(10))], ME, home, None),
+        Use::Occupied(10)
+    );
+    let rustc = process(11, "/nix/store/abc-rustc/bin/rustc");
+    assert_eq!(judge(&[named(rustc)], ME, home, None), Use::Busy(11));
+}
+
+#[test]
 fn a_relative_build_variable_is_read_from_the_cwd() {
     let inside = carries(sits(shell(10), CHECKOUT), "CARGO_TARGET_DIR", "target");
     let elsewhere = carries(sits(shell(11), CHECKOUT), "CARGO_TARGET_DIR", "../other");
