@@ -131,6 +131,11 @@ pub fn spare(power: Power, saver: bool, awake: &Awake, now: f64, pressure: Press
         .spans()
         .last()
         .is_some_and(|(start, _)| now - start >= SETTLING);
-    let calm = pressure.io.some < STALL_CEILING && pressure.memory.some < STALL_CEILING;
-    powered && !saver && settled && calm
+    powered && !saver && settled && calm(pressure)
+}
+
+/// Whether tasks stall on the disk and on memory little enough for work
+/// that can wait.
+pub fn calm(pressure: Pressure) -> bool {
+    pressure.io.some < STALL_CEILING && pressure.memory.some < STALL_CEILING
 }

@@ -405,8 +405,19 @@ impl Guard {
             _ => (Band::Healthy, Goal::Upkeep),
         };
         let started = Instant::now();
+        let gentle = band < Band::Urgent;
+        let pressure = self.processes.join("pressure");
         let mut reclaim = Journaled {
-            inner: Reclaim::new(here, scan),
+            inner: Yielding {
+                inner: Reclaim::new(here, scan),
+                busy: move || {
+                    gentle
+                        && !crate::decide::calm(
+                            crate::linux::pressure(&pressure).unwrap_or_default(),
+                        )
+                },
+                yielded: false,
+            },
             journal: &mut self.journal,
             roots: here
                 .iter()
@@ -424,13 +435,14 @@ impl Guard {
             goal,
             &mut self.memory.learned,
         );
+        let yielded = reclaim.inner.yielded;
         if goal == Goal::Reach {
             let seconds = started.elapsed().as_secs_f64();
             self.memory.pass_seconds = Some(match self.memory.pass_seconds {
                 Some(before) => before + PASS_WEIGHT * (seconds - before),
                 None => seconds,
             });
-        } else {
+        } else if !yielded {
             self.memory.upkept = Some(tick.wall);
         }
         // Whatever came of it, so a failing command waits its window too.
@@ -614,6 +626,26 @@ fn paths(source: &Source) -> Vec<&Path> {
         | Source::Producer { path, .. }
         | Source::Podman { path, .. } => vec![path.as_path()],
         Source::Finished { .. } => Vec::new(),
+    }
+}
+
+/// A reclaimer for a pass that can wait, which gives way once the disk or
+/// memory gets busy, keeping all that's left for a calmer moment. Asked
+/// between candidates, so a delete under way finishes. Urgent and
+/// critical passes never give way.
+struct Yielding<R, B> {
+    inner: R,
+    busy: B,
+    yielded: bool,
+}
+
+impl<R: Reclaimer, B: FnMut() -> bool> Reclaimer for Yielding<R, B> {
+    fn reclaim(&mut self, candidate: &Candidate) -> Outcome {
+        if self.yielded || (self.busy)() {
+            self.yielded = true;
+            return Outcome::Kept("the machine got busy; left for a calmer moment".to_owned());
+        }
+        self.inner.reclaim(candidate)
     }
 }
 

@@ -318,6 +318,62 @@ fn a_producer_that_ran_is_not_run_again_within_the_hour_even_by_the_next_guard()
     assert_eq!(ran["outcome"], "reclaimed");
 }
 
+#[test]
+fn a_routine_pass_gives_way_when_the_disk_gets_busy_and_comes_back_later() {
+    let home = Home::new();
+    let old = home.trashed("old.txt", "2001-09-09T01:46:40");
+    let older = home.trashed("older.txt", "2001-09-08T01:46:40");
+    let busy = home.root.join("proc/pressure");
+    fs::create_dir_all(&busy).unwrap();
+    fs::write(
+        busy.join("io"),
+        "some avg10=50.00 avg60=0.00 avg300=0.00 total=0\n\
+         full avg10=0.00 avg60=0.00 avg300=0.00 total=0\n",
+    )
+    .unwrap();
+    let mut guard = home.guard(home.config("0%", "0%"));
+    guard.step(&tick(), &CALM).unwrap();
+    assert!(old.exists() && older.exists(), "given way");
+    let kept: Vec<_> = home
+        .journal()
+        .into_iter()
+        .filter(|line| line["event"] == "action")
+        .collect();
+    assert_eq!(kept.len(), 2, "{kept:?}");
+    assert!(kept.iter().all(|line| line["outcome"] == "kept"
+        && line["reason"] == "the machine got busy; left for a calmer moment"));
+    fs::remove_dir_all(&busy).unwrap();
+    guard.step(&tick(), &CALM).unwrap();
+    assert!(
+        !old.exists() && !older.exists(),
+        "upkeep that gave way isn't done"
+    );
+}
+
+#[test]
+fn an_urgent_pass_never_gives_way() {
+    let home = Home::new();
+    let old = home.trashed("old.txt", "2001-09-09T01:46:40");
+    let busy = home.root.join("proc/pressure");
+    fs::create_dir_all(&busy).unwrap();
+    fs::write(
+        busy.join("memory"),
+        "some avg10=90.00 avg60=0.00 avg300=0.00 total=0\n",
+    )
+    .unwrap();
+    let mut config = home.config("100%", "100%");
+    config.bands.urgent = Size::Percent(100.0);
+    let mut guard = home.guard(config);
+    guard.step(&tick(), &CALM).unwrap();
+    assert!(!old.exists());
+    let pass = home
+        .journal()
+        .into_iter()
+        .find(|line| line["event"] == "pass")
+        .unwrap();
+    assert_eq!(pass["band"], "urgent");
+}
+
 fn tick_at(monotonic: f64) -> Tick {
     Tick {
         monotonic,
