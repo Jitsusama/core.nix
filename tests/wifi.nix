@@ -536,6 +536,10 @@ pkgs.testers.runNixOSTest {
         machine.succeed("resolvectl dns wlan2 | grep -q '192.0.2.53$'")
         machine.succeed("systemctl restart wifid")
         says("Roadside Inn on wlan2 wants a sign-in at http://front-desk.inn/sign-in")
+        # The sign-in window looks names up the same way, through wifid.
+        found = ask("Lookup", {"card": "wlan2", "name": "front-desk.inn"})
+        assert found == {"addresses": ["10.43.0.1"]}, found
+        refused("Lookup", {"card": "wlan9", "name": "front-desk.inn"}, "NotJoined")
         machine.succeed("resolvectl revert wlan2")
 
     with subtest("forgetting Lantern takes it from everywhere, and the card stays on the Inn"):

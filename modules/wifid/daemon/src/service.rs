@@ -10,6 +10,7 @@
 
 use std::env;
 use std::io;
+use std::net::IpAddr;
 use std::os::fd::{FromRawFd, OwnedFd};
 use std::process;
 
@@ -48,6 +49,11 @@ pub enum Ask {
     Leave {
         name: String,
         done: oneshot::Sender<Result<(), Refused>>,
+    },
+    Lookup {
+        card: String,
+        name: String,
+        done: oneshot::Sender<Result<Vec<IpAddr>, Refused>>,
     },
     Save {
         saving: Saving,
@@ -90,6 +96,12 @@ pub enum Refused {
     NotJoined,
     /// wifid tried and couldn't, for this reason.
     Failed { reason: String },
+}
+
+/// A name's addresses.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Type)]
+pub struct Found {
+    pub addresses: Vec<String>,
 }
 
 /// A network to save as the shell asks, with anything left out as it was.
@@ -251,6 +263,19 @@ impl Wifi {
             address,
         };
         self.ask(|done| Ask::Save { saving, done }).await
+    }
+
+    /// The addresses a card's network says a name has, asked of the servers
+    /// the network handed out, through the card, whatever a VPN has put in
+    /// their place: the sign-in window reaches a network's sign-in page so.
+    async fn lookup(&self, card: String, name: String) -> Result<Found, Refused> {
+        let (done, answer) = oneshot::channel();
+        let asked = Ask::Lookup { card, name, done };
+        self.asks.send(asked).await.map_err(|_| stopping())?;
+        let found = answer.await.map_err(|_| stopping())??;
+        Ok(Found {
+            addresses: found.iter().map(IpAddr::to_string).collect(),
+        })
     }
 
     /// Takes every card on the network off it. They join nothing more
@@ -541,6 +566,33 @@ mod tests {
                 priority: None,
                 address: Some(Address::Card),
             }
+        );
+    }
+
+    #[tokio::test]
+    async fn looking_a_name_up_asks_wifid_through_which_card() {
+        let (wifi, _, _, mut taken) = asking();
+        let main_loop = tokio::spawn(async move {
+            let Some(Ask::Lookup { card, name, done }) = taken.recv().await else {
+                panic!("wasn't asked to look a name up");
+            };
+            let found = vec!["10.43.0.1".parse().unwrap(), "fd00::1".parse().unwrap()];
+            done.send(Ok(found)).unwrap();
+            (card, name)
+        });
+
+        let answer = wifi.lookup("wlan2".into(), "front-desk.inn".into()).await;
+        drop(wifi);
+
+        assert_eq!(
+            answer,
+            Ok(Found {
+                addresses: vec!["10.43.0.1".into(), "fd00::1".into()]
+            })
+        );
+        assert_eq!(
+            main_loop.await.unwrap(),
+            ("wlan2".into(), "front-desk.inn".into())
         );
     }
 

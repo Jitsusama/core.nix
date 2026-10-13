@@ -38,6 +38,7 @@ use std::error::Error;
 use std::fs::{self, OpenOptions};
 use std::future;
 use std::io::{self, Read, Write};
+use std::net::IpAddr;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::sync::Arc;
@@ -257,6 +258,13 @@ async fn run() -> Result<(), Box<dyn Error>> {
                         }
                         joining = wifid.join(name, password, progress, &air).await;
                     }
+                    // A server slow to answer mustn't hold anything else up.
+                    Ask::Lookup { card, name, done } => {
+                        let servers = networks.servers(&card);
+                        tokio::spawn(async move {
+                            let _ = done.send(look_up(&card, servers, &name).await);
+                        });
+                    }
                     ask => wifid.answer(ask).await,
                 },
                 Ok(()) = watched.changed(), if joining.is_some() => {
@@ -351,6 +359,16 @@ impl Networks {
         true
     }
 
+    /// The DNS servers the network of the card of that name handed out,
+    /// unless wifid follows no such card.
+    fn servers(&self, card: &str) -> Option<Vec<IpAddr>> {
+        let links = self.followed.values().map(|followed| followed.borrow());
+        links
+            .filter(|link| link.name == card)
+            .map(|link| link.dns.clone())
+            .next()
+    }
+
     /// Follows these, every Wi-Fi card there is, and stops following any
     /// other, whose task ends with it. Gives the names of the cards new to
     /// wifid.
@@ -372,6 +390,23 @@ impl Networks {
         }
         new
     }
+}
+
+/// A name's addresses from the first of the network's servers to answer.
+async fn look_up(
+    card: &str,
+    servers: Option<Vec<IpAddr>>,
+    name: &str,
+) -> Result<Vec<IpAddr>, Refused> {
+    let servers = servers.ok_or(Refused::NotJoined)?;
+    let mut reason = format!("{card}'s network handed out no DNS servers");
+    for server in servers {
+        match lookup::addresses(card, server, name).await {
+            Ok(found) => return Ok(found),
+            Err(error) => reason = error.to_string(),
+        }
+    }
+    Err(Refused::Failed { reason })
 }
 
 /// Waits until then, or forever.
@@ -1159,7 +1194,9 @@ impl Wifid<'_> {
     /// networkd and wpa_supplicant have every network as it now stands.
     async fn answer(&self, ask: Ask) {
         let (changed, done) = match ask {
-            Ask::Join { .. } => unreachable!("the main loop follows each join itself"),
+            Ask::Join { .. } | Ask::Lookup { .. } => {
+                unreachable!("the main loop answers joins and lookups itself")
+            }
             Ask::Scan { done } => {
                 let _ = done.send(self.scan().await);
                 return;
