@@ -22,6 +22,7 @@ mod desktop;
 mod discover;
 mod entries;
 mod finished;
+mod freezer;
 mod garbage;
 mod generations;
 #[cfg(target_os = "linux")]

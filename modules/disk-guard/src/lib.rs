@@ -19,6 +19,8 @@ pub mod dedupe;
 pub mod desktop;
 pub mod discover;
 pub mod finished;
+#[cfg(target_os = "linux")]
+pub mod freezer;
 pub mod garbage;
 pub mod generations;
 #[cfg(target_os = "linux")]
