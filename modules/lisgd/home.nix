@@ -5,51 +5,74 @@
 # the touchscreen beside niri rather than taking it. It runs while the
 # desktop does and the touchscreen is there (nixos.nix names it), and stops
 # when either goes.
-{ lib, pkgs, ... }:
+#
+# The swipes are jitsusama.swipes, which the launcher's shortcuts list beside
+# the chords, so what's shown is what lisgd was given.
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 let
+  inherit (config.jitsusama) swipes;
   niri = "${lib.getExe pkgs.niri} msg action";
 
-  # How many fingers, the way they move as lisgd spells it (from left to
-  # right is LR, from down to up is DU), and niri's action.
-  swipes = [
+  # The way the fingers move, as lisgd spells it: from down to up is DU.
+  ways = {
+    up = "DU";
+    down = "UD";
+    left = "RL";
+    right = "LR";
+  };
+  # From any edge, of any length, once the fingers lift.
+  gesture = swipe: [
+    "-g"
+    "${toString swipe.fingers},${ways.${swipe.way}},*,*,R,${niri} ${swipe.action}"
+  ];
+in
+{
+  imports = [ ../keys/home.nix ];
+
+  jitsusama.swipes = [
     {
       fingers = 3;
-      way = "RL";
+      way = "left";
+      does = "Focus the column to the right";
       action = "focus-column-right";
     }
     {
       fingers = 3;
-      way = "LR";
+      way = "right";
+      does = "Focus the column to the left";
       action = "focus-column-left";
     }
     {
       fingers = 3;
-      way = "DU";
+      way = "up";
+      does = "Go to the workspace below";
       action = "focus-workspace-down";
     }
     {
       fingers = 3;
-      way = "UD";
+      way = "down";
+      does = "Go to the workspace above";
       action = "focus-workspace-up";
     }
     {
       fingers = 4;
-      way = "DU";
+      way = "up";
+      does = "Show every workspace";
       action = "open-overview";
     }
     {
       fingers = 4;
-      way = "UD";
+      way = "down";
+      does = "Stop showing every workspace";
       action = "close-overview";
     }
   ];
-  # From any edge, of any length, once the fingers lift.
-  gesture = swipe: [
-    "-g"
-    "${toString swipe.fingers},${swipe.way},*,*,R,${niri} ${swipe.action}"
-  ];
-in
-{
+
   systemd.user.services.lisgd = {
     Unit = {
       Description = "Swipes on the touchscreen, as niri's actions";

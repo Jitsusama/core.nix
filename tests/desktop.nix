@@ -972,6 +972,14 @@ pkgs.testers.runNixOSTest {
           machine.screenshot("launcher-shortcuts")
           for _ in "paste":
               machine.send_key("backspace")
+          # The touchscreen's swipes are among them, found by "swipe", each
+          # drawn as its fingers and then its way.
+          swipe = "swipe workspace below"
+          type_in(swipe, selecting="Go to the workspace below")
+          t.assertTrue(showing()["selected"]["chord"].startswith("3 "))
+          machine.screenshot("launcher-swipes")
+          for _ in swipe:
+              machine.send_key("backspace")
           type_in("open a terminal")
           machine.send_key("ret")
 

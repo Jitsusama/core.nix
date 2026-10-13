@@ -6,7 +6,9 @@
 # written to ~/.config/jitsusama/keys.json, with what each chord does in
 # plain words, so the launcher can find an action by its name and show its
 # chord beside it, and so a "what's here" view is drawn from the real
-# configuration rather than a copy (docs/design.md, The Keyboard).
+# configuration rather than a copy (docs/design.md, The Keyboard). Beside
+# them are the touchscreen's swipes, which aren't chords but are shortcuts
+# to the same actions, so the launcher lists them with the desktop's.
 { config, lib, ... }:
 let
   cfg = config.jitsusama.keys;
@@ -59,6 +61,37 @@ let
         };
       };
     }
+  );
+
+  swipe = lib.types.submodule {
+    options = {
+      fingers = lib.mkOption {
+        type = lib.types.ints.between 1 5;
+        description = "How many fingers swipe.";
+      };
+      way = lib.mkOption {
+        type = lib.types.enum [
+          "up"
+          "down"
+          "left"
+          "right"
+        ];
+        description = "Which way the fingers move.";
+      };
+      does = lib.mkOption {
+        type = lib.types.str;
+        description = "What the swipe does, in plain words, as the launcher finds it.";
+      };
+      action = lib.mkOption {
+        type = lib.types.str;
+        description = "niri's action, as `niri msg action` takes it: focus-workspace-down.";
+      };
+    };
+  };
+
+  # Every swipe claimed twice.
+  swipeRepeats = lib.filter (binds: lib.length binds > 1) (
+    lib.attrValues (lib.groupBy (s: "${toString s.fingers} ${s.way}") config.jitsusama.swipes)
   );
 
   # Each program spells chords its own way, so every chord is brought to one
@@ -159,6 +192,12 @@ in
     }
   ) layers;
 
+  options.jitsusama.swipes = lib.mkOption {
+    type = lib.types.listOf swipe;
+    default = [ ];
+    description = "The touchscreen's swipes. The module that reads the touchscreen adds its own.";
+  };
+
   config = {
     xdg.configFile."jitsusama/keys.json".text = builtins.toJSON (
       map (layer: {
@@ -194,6 +233,20 @@ in
             repeat:
             "  ${repeat.keys} in ${repeat.layer}: ${lib.concatMapStringsSep ", " (b: b.does) repeat.binds}"
           ) repeats}
+        '';
+      }
+      {
+        assertion = swipeRepeats == [ ];
+        message = ''
+          The same swipe is claimed twice:
+          ${lib.concatMapStringsSep "\n" (
+            binds:
+            let
+              s = lib.head binds;
+              does = lib.concatMapStringsSep ", " (b: b.does) binds;
+            in
+            "  ${toString s.fingers} fingers ${s.way}: ${does}"
+          ) swipeRepeats}
         '';
       }
     ];

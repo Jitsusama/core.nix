@@ -234,10 +234,11 @@ let
 
   # Every layer's shortcuts, top to bottom, for the launcher's collection of
   # them: what each does, its chord, and for the desktop's, the command that
-  # does the same and the glyph its action wears.
+  # does the same and the glyph its action wears. The touchscreen's swipes
+  # come after the desktop's chords, since they do what its chords do.
   shortcutLayers =
-    map
-      (layer: {
+    let
+      keyed = layer: {
         name = layer;
         glyph = layerGlyphs.${layer};
         binds = map (b: {
@@ -245,13 +246,56 @@ let
           chord = chordFaces b.keys;
           glyph = if layer == "desktop" then actionGlyph b.run else "";
         }) config.jitsusama.keys.${layer};
-      })
-      [
-        "desktop"
-        "terminal"
-        "multiplexer"
-        "program"
-      ];
+      };
+    in
+    [
+      (keyed "desktop")
+      touchscreen
+    ]
+    ++ map keyed [
+      "terminal"
+      "multiplexer"
+      "program"
+    ];
+
+  # Each swipe drawn as a chord is: how many fingers, then which way, the
+  # niri action it runs and the glyph that action wears.
+  touchscreen = {
+    name = "touchscreen";
+    glyph = "";
+    binds = map (
+      swipe:
+      let
+        run = [
+          "niri"
+          "msg"
+          "action"
+          swipe.action
+        ];
+      in
+      {
+        inherit (swipe) does;
+        inherit run;
+        chord = [
+          {
+            text = toString swipe.fingers;
+            wide = false;
+          }
+          {
+            text = swipeGlyphs.${swipe.way};
+            wide = true;
+          }
+        ];
+        glyph = actionGlyph run;
+      }
+    ) config.jitsusama.swipes;
+  };
+  swipeGlyphs = {
+    up = nerd "f0740";
+    down = nerd "f073d";
+    left = nerd "f073e";
+    right = nerd "f073f";
+  };
 
   # The glyph an action wears in the launcher, by what it runs.
   actionGlyph =
