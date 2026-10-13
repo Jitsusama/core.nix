@@ -216,8 +216,8 @@ fn old_garbage_goes_oldest_first_in_batches() {
 
 #[test]
 fn garbage_is_as_young_as_the_newest_garbage_referring_to_it() {
-    // Deleting a path deletes all that refer to it, so an old library a
-    // new build uses is as young as the build.
+    // A path goes only with or after all that refer to it, so an old
+    // library a new build uses is as young as the build.
     let all = [
         dead("lib", 30.0, 1, &[]),
         dead("app", 1.0, 1, &["lib", "live-glibc"]),
@@ -229,6 +229,91 @@ fn garbage_is_as_young_as_the_newest_garbage_referring_to_it() {
         "kept while healthy, the referrer first"
     );
     assert_eq!(batches[0].newest, NOW - DAY);
+}
+
+#[test]
+fn old_garbage_goes_after_the_garbage_referring_to_it() {
+    // Nix refuses to delete a path while a referrer it wasn't given is
+    // still there, and a path's date is its newest referrer's, so the two
+    // share it: the referrer goes first whatever the names say.
+    let all = [
+        dead("a-lib", 30.0, 1, &[]),
+        dead("z-app", 20.0, 1, &["a-lib"]),
+    ];
+    assert_eq!(
+        names(&batches(&all, NOW, KEEP, 0, 1)),
+        [
+            (vec!["z-app".to_owned()], false),
+            (vec!["a-lib".to_owned()], false)
+        ]
+    );
+}
+
+/// A generator of seeded draws, so a failing case can be run again.
+struct Draw(u64);
+
+impl Draw {
+    fn below(&mut self, n: u64) -> u64 {
+        self.0 ^= self.0 << 13;
+        self.0 ^= self.0 >> 7;
+        self.0 ^= self.0 << 17;
+        self.0 % n
+    }
+}
+
+#[test]
+fn property_every_batch_holds_or_follows_the_garbage_referring_to_it() {
+    for seed in 1..=2000u64 {
+        let mut draw = Draw(seed.wrapping_mul(0x9e37_79b9_7f4a_7c15) | 1);
+        let count = 1 + draw.below(40) as usize;
+        // Few distinct days, so dates tie as one build's paths do.
+        let all: Vec<Dead> = (0..count)
+            .map(|at| {
+                let references: Vec<String> = (0..draw.below(4))
+                    .map(|_| draw.below(count as u64) as usize)
+                    .filter(|&reference| reference > at)
+                    .map(|reference| format!("p{:02}", (reference * 37) % 100))
+                    .collect();
+                let references: Vec<&str> = references.iter().map(String::as_str).collect();
+                dead(
+                    &format!("p{:02}", (at * 37) % 100),
+                    draw.below(6) as f64,
+                    1 + draw.below(5),
+                    &references,
+                )
+            })
+            .collect();
+        let budget = draw.below(60);
+        let most = 1 + draw.below(5) as usize;
+        let made = batches(&all, NOW, KEEP, budget, most);
+        let batch_of = |path: &str| {
+            made.iter()
+                .position(|batch| batch.paths.iter().any(|p| p == path))
+                .unwrap_or_else(|| panic!("seed {seed}: {path} is in no batch"))
+        };
+        let placed: usize = made.iter().map(|batch| batch.paths.len()).sum();
+        assert_eq!(placed, all.len(), "seed {seed}: every path once");
+        for referrer in &all {
+            for reference in &referrer.references {
+                if reference == &referrer.path || !all.iter().any(|d| &d.path == reference) {
+                    continue;
+                }
+                let (from, to) = (batch_of(&referrer.path), batch_of(reference));
+                assert!(
+                    from <= to,
+                    "seed {seed}: {reference} in batch {to} before its referrer {} in {from}",
+                    referrer.path
+                );
+            }
+        }
+        let kept = made.iter().position(|batch| batch.kept);
+        if let Some(first) = kept {
+            assert!(
+                made[first..].iter().all(|batch| batch.kept),
+                "seed {seed}: nothing deletable after a kept batch"
+            );
+        }
+    }
 }
 
 #[test]
