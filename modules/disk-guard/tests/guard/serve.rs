@@ -121,10 +121,13 @@ fn guard(root: &Path) -> Guard {
 }
 
 /// A guard whose disk is under pressure below `pressure` free.
+/// A guard whose every band starts at `pressure`. Its disk is the real
+/// one, which other work fills as the test runs, so at 100% the disk is
+/// critical and has no band past it for a forecast to start a pass for.
 fn guard_at(root: &Path, pressure: &str) -> Guard {
     let config = Config::parse(&format!(
         r#"{{ "version": 1, "scope": "user", "status_file": true,
-             "bands": {{ "pressure": "{pressure}", "urgent": "0%", "critical": "0%", "target": "{pressure}" }},
+             "bands": {{ "pressure": "{pressure}", "urgent": "{pressure}", "critical": "{pressure}", "target": "{pressure}" }},
              "nix": {{ "bin": "{0}/no-nix/nix", "store": "{0}/no-nix/store" }},
              "sources": {{ "trash": {{ "kind": "trash", "path": "{0}" }} }} }}"#,
         root.display()

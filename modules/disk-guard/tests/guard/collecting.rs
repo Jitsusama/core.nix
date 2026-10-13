@@ -515,10 +515,8 @@ fn a_user_daemon_with_no_system_daemon_collects_garbage_itself_from_urgent() {
     let mut guard = store.guard(user_config(&store, "100%"));
     guard.step(&tick(), &CALM).unwrap();
     let log = store.log();
-    assert!(
-        log.iter().any(|line| line == "gc --max 8589934592 0"),
-        "{log:?}"
-    );
+    let gc = format!("gc --max 8589934592 {}", crate::commands::guards_policy());
+    assert!(log.contains(&gc), "{log:?}");
 }
 
 #[test]
@@ -704,8 +702,9 @@ fn urgent_without_a_listing_collects_by_nix_store_gc_at_once() {
     let mut guard = store.guard(store.config("100%", "100%"));
     guard.step(&tick(), &CALM).unwrap();
     let log = store.log();
+    let gc = format!("gc --max 8589934592 {}", crate::commands::guards_policy());
     assert!(
-        log.iter().any(|line| line == "gc --max 8589934592 0"),
+        log.contains(&gc),
         "a step of 8 GiB, at the guard's priority: {log:?}"
     );
 }

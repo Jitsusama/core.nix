@@ -3,6 +3,16 @@ use std::ffi::OsString;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
+/// The scheduling policy the guard runs under here, which a command not
+/// started idle keeps: not always the default, since a Nix build runs at
+/// the policy its daemon is given, batch on some machines.
+pub(crate) fn guards_policy() -> u32 {
+    // SAFETY: sched_getscheduler only reads the calling thread's policy.
+    let policy = unsafe { libc::sched_getscheduler(0) };
+    assert!(policy >= 0, "{}", std::io::Error::last_os_error());
+    policy as u32
+}
+
 fn job(words: &[&str]) -> Job {
     Job {
         argv: words.iter().map(OsString::from).collect(),
@@ -31,7 +41,7 @@ fn policy(job: &Job) -> u32 {
 #[test]
 fn an_idle_command_runs_at_idle_priority_and_any_other_as_the_guard_does() {
     let mut job = job(&["cat", "/proc/self/stat"]);
-    assert_eq!(policy(&job), libc::SCHED_OTHER as u32);
+    assert_eq!(policy(&job), guards_policy());
     job.idle = true;
     assert_eq!(policy(&job), libc::SCHED_IDLE as u32);
 }

@@ -446,7 +446,7 @@ fn a_command_runs_at_idle_priority_unless_the_pass_is_urgent() {
     );
     assert_eq!(
         producer_policy("100%", 100.0),
-        libc::SCHED_OTHER.to_string(),
+        crate::commands::guards_policy().to_string(),
         "urgent"
     );
 }
