@@ -1,12 +1,13 @@
 # Joins Wi-Fi networks in a virtual machine the way a laptop meets them, with
-# networkd and wpa_supplicant as the laptop role brings them. Two stand-in
-# access points live in a network namespace of their own, so their traffic
-# crosses the stand-in air rather than taking a shortcut through the
-# machine. A joined network gets its address and DNS server; a resolver for a
-# private domain, set up the way a development DNS server is, keeps
-# answering through every join; and a routing rule another program made, as
-# a VPN's client does, survives joining, reconfiguring and networkd
-# restarting.
+# wifid, networkd and wpa_supplicant as the laptop role brings them. Two
+# stand-in access points live in a network namespace of their own, so their
+# traffic crosses the stand-in air rather than taking a shortcut through the
+# machine. One network is declared in Nix and one saved as the launcher
+# saves it. A joined network gets its address and DNS server and sees an
+# address of the card's own for it; a resolver for a private domain, set up
+# the way a development DNS server is, keeps answering through every join;
+# and a routing rule another program made, as a VPN's client does, survives
+# joining, reconfiguring and networkd restarting.
 { self, pkgs }:
 let
   inherit (pkgs) lib;
@@ -67,10 +68,7 @@ pkgs.testers.runNixOSTest {
   nodes.machine =
     { pkgs, ... }:
     {
-      imports = [
-        self.nixosModules.systemd-networkd
-        self.nixosModules.wpa_supplicant
-      ];
+      imports = [ self.nixosModules.wifid ];
 
       # Three stand-in radios: two access points and the laptop's card.
       boot.kernelModules = [ "mac80211_hwsim" ];
@@ -141,8 +139,8 @@ pkgs.testers.runNixOSTest {
         ];
       };
 
-      # Roadside Inn has a saved network's file of its own, so joining it
-      # moves the card onto a different .network file.
+      # Roadside Inn is declared in Nix, whole, the way a machine's own
+      # networks are.
       systemd.network.networks."50-wifi-roadside-inn" = {
         matchConfig.SSID = ''"Roadside Inn"'';
         networkConfig = {
@@ -150,7 +148,13 @@ pkgs.testers.runNixOSTest {
           LLMNR = "no";
           MulticastDNS = "no";
         };
+        extraConfig = ''
+          [X-WiFi]
+          Security=open
+        '';
       };
+
+      environment.etc."lantern-password".text = "glowing in the dark\n";
 
       environment.systemPackages = [
         pkgs.iw
@@ -159,25 +163,18 @@ pkgs.testers.runNixOSTest {
     };
 
   testScript = ''
-    import json
-
-    wpa = "busctl --json=short call fi.w1.wpa_supplicant1"
-
-    def path(reply):
-        """The object a wpa_supplicant call made, from busctl's reply."""
-        return json.loads(reply)["data"][0]
-
-    def joins(ssid, *secret):
-        """Joins a network the way wifid does, over wpa_supplicant's D-Bus."""
-        settings = ["ssid", "s", f"'{ssid}'", "scan_ssid", "i", "1"]
-        settings += ["psk", "s", f"'{secret[0]}'"] if secret else ["key_mgmt", "s", "NONE"]
-        machine.succeed(f"{wpa} {card} fi.w1.wpa_supplicant1.Interface RemoveAllNetworks")
-        added = machine.succeed(
-            f"{wpa} {card} fi.w1.wpa_supplicant1.Interface AddNetwork 'a{{sv}}' "
-            f"{len(settings) // 3} {' '.join(settings)}"
-        )
-        network = path(added)
-        machine.succeed(f"{wpa} {card} fi.w1.wpa_supplicant1.Interface SelectNetwork o {network}")
+    # Lantern as the launcher saves it: only what's its own.
+    lantern = [
+        "[Match]",
+        "SSID=Lantern",
+        "",
+        "[X-WiFi]",
+        "Security=personal",
+        "Secret=/etc/lantern-password",
+        "Priority=10",
+    ]
+    saved = "/var/lib/wifid/networks/lantern.network"
+    given = "/run/systemd/network/50-wifi-lantern.network"
 
     def holds_address(prefix):
         machine.wait_until_succeeds(
@@ -185,6 +182,16 @@ pkgs.testers.runNixOSTest {
         )
         machine.wait_until_succeeds(
             "networkctl status wlan2 | grep -q 'State: routable'", timeout=30
+        )
+
+    def on_file(file):
+        machine.wait_until_succeeds(
+            f"networkctl status wlan2 | grep -q 'Network File: {file}'", timeout=30
+        )
+
+    def joined(ssid):
+        machine.wait_until_succeeds(
+            f"wpa_cli -i wlan2 status | grep -qx 'ssid={ssid}'", timeout=60
         )
 
     def answers(name, address):
@@ -198,32 +205,47 @@ pkgs.testers.runNixOSTest {
                 f"ip {family} rule show | grep -q 'not from all fwmark 0x100cf lookup 65743'"
             )
 
+    def shown():
+        """The address the card is showing the network it's on."""
+        return machine.succeed("cat /sys/class/net/wlan2/address").strip()
+
     machine.wait_for_unit("multi-user.target")
     machine.wait_for_unit("networks.service")
     machine.wait_for_unit("private-dns.service")
-    machine.wait_for_unit("wpa_supplicant.service")
+    card = machine.succeed("cat /sys/class/net/wlan2/phy80211/macaddress").strip()
 
-    with subtest("wpa_supplicant starts with no card, and takes one over D-Bus"):
+    with subtest("wifid gives wpa_supplicant the card, which joins Nix's network"):
         # Moving the access points' radios makes udev restart wpa_supplicant,
         # which drops any card it had; wifid adds them again when it does.
         machine.succeed("udevadm settle")
-        machine.wait_for_unit("wpa_supplicant.service")
-        machine.fail("ls /run/wpa_supplicant/control/wlan2")
-        created = machine.succeed(
-            f"{wpa} /fi/w1/wpa_supplicant1 fi.w1.wpa_supplicant1 CreateInterface 'a{{sv}}' 2 "
-            "Ifname s wlan2 ConfigFile s /etc/wpa_supplicant/interface.conf"
-        )
-        card = path(created)
-        machine.succeed("wpa_cli -i wlan2 ping | grep -qx PONG")
+        machine.wait_for_unit("wifid.service")
+        joined("Roadside Inn")
+        holds_address("10.43.0.")
+        on_file("/etc/systemd/network/50-wifi-roadside-inn.network")
+        answers("front-desk.inn", "10.43.0.1")
 
-    with subtest("a network joined gets an address and its own DNS server"):
-        joins("Lantern", "glowing in the dark")
+    with subtest("the network sees an address the card chose for it"):
+        inn_address = shown()
+        assert inn_address != card, inn_address
+        assert int(inn_address[:2], 16) & 0b11 == 0b10, inn_address
+
+    with subtest("a network saved from the launcher is laid over the defaults and joined first"):
+        lines = " ".join(f"'{line}'" for line in lantern)
+        machine.succeed(f"printf '%s\\n' {lines} > {saved}")
+        machine.succeed("systemctl restart wifid")
+        joined("Lantern")
         holds_address("10.42.0.")
+        on_file(given)
+        written = machine.succeed(f"cat {given}")
+        for line in ("Type=wlan", "SSID=Lantern", "IPv6PrivacyExtensions=yes", "[X-WiFi]"):
+            assert line in written, written
         answers("router.lantern", "10.42.0.1")
         # networkd knows the network by name, which a saved network's file
         # is matched on.
         machine.succeed("networkctl status wlan2 | grep -q 'Wi-Fi access point: Lantern '")
         answers("probe.corp.internal", "10.99.0.7")
+        lantern_address = shown()
+        assert lantern_address not in (inn_address, card), lantern_address
 
     with subtest("a stranger's network gets no LLMNR or mDNS"):
         status = machine.succeed("resolvectl status wlan2")
@@ -238,20 +260,34 @@ pkgs.testers.runNixOSTest {
         holds_address("10.42.0.")
         rules_stand()
 
-    with subtest("it survives joining a network with a file of its own"):
-        joins("Roadside Inn")
+    with subtest("it survives moving to another network when one goes away"):
+        machine.systemctl("stop lantern")
+        joined("Roadside Inn")
         holds_address("10.43.0.")
-        machine.wait_until_succeeds(
-            "networkctl status wlan2 | grep -q 'Network File: .*50-wifi-roadside-inn'", timeout=30
-        )
+        on_file("/etc/systemd/network/50-wifi-roadside-inn.network")
         rules_stand()
         answers("front-desk.inn", "10.43.0.1")
         answers("probe.corp.internal", "10.99.0.7")
+
+    with subtest("a network sees the same address every time"):
+        assert shown() == inn_address, shown()
 
     with subtest("and networkd restarting"):
         machine.succeed("systemctl restart systemd-networkd")
         holds_address("10.43.0.")
         rules_stand()
         answers("probe.corp.internal", "10.99.0.7")
+
+    with subtest("wifid adds the card again when wpa_supplicant restarts"):
+        machine.succeed("systemctl restart wpa_supplicant")
+        machine.wait_until_succeeds("wpa_cli -i wlan2 ping | grep -qx PONG", timeout=30)
+        joined("Roadside Inn")
+        holds_address("10.43.0.")
+
+    with subtest("networkd's file for a network no longer saved is taken away"):
+        machine.succeed(f"rm {saved}")
+        machine.succeed("systemctl restart wifid")
+        machine.wait_for_unit("wifid.service")
+        machine.wait_until_succeeds(f"! test -e {given}", timeout=30)
   '';
 }

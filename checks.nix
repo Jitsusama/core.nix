@@ -142,8 +142,9 @@ let
     vm-keyring-opens-without-asking = import ./tests/gnome-keyring.nix { inherit self pkgs; };
     vm-speakers-are-tuned = import ./tests/speakers.nix { inherit pkgs; };
     vm-desktop-works = import ./tests/desktop.nix { inherit self pkgs; };
-    # Joining Wi-Fi is the kernel, wpa_supplicant and networkd together, and
-    # what it leaves of other programs' routing only shows once it has.
+    # Joining Wi-Fi is the kernel, wifid, wpa_supplicant and networkd
+    # together, and what it leaves of other programs' routing only shows
+    # once it has.
     vm-wifi-joins = import ./tests/wifi.nix { inherit self pkgs; };
   };
 in

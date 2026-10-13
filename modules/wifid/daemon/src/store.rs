@@ -6,6 +6,7 @@
 
 use std::fs;
 use std::io;
+use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
 use crate::network::Network;
@@ -202,10 +203,13 @@ fn read(file: &Path) -> io::Result<Document> {
 }
 
 /// Writes the file whole or not at all, so networkd never reads half of one.
+/// networkd doesn't run as root, so the file is made readable by everyone
+/// whatever wifid's umask, which keeps everything else it writes to itself.
 fn replace(file: &Path, text: &str) -> io::Result<()> {
     let name = file.file_name().unwrap_or_default().to_string_lossy();
     let partial = file.with_file_name(format!(".{name}.partial"));
     fs::write(&partial, text)?;
+    fs::set_permissions(&partial, fs::Permissions::from_mode(0o644))?;
     fs::rename(&partial, file)
 }
 

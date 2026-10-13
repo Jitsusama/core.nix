@@ -1,5 +1,10 @@
 //! How wifid asks wpa_supplicant to join a network.
 
+use std::collections::HashMap;
+
+use zbus::proxy;
+use zbus::zvariant::{self, OwnedObjectPath};
+
 use crate::network::{Address, Network, Security};
 
 /// A value for one of a network's fields, in the type wpa_supplicant's
@@ -116,6 +121,63 @@ fn hex(digit: u8) -> u8 {
         b'0'..=b'9' => digit - b'0',
         _ => (digit | 0x20) - b'a' + 10,
     }
+}
+
+/// A network's fields as AddNetwork takes them over D-Bus.
+pub fn dictionary(
+    fields: Vec<(&'static str, Value)>,
+) -> HashMap<&'static str, zvariant::Value<'static>> {
+    let value = |value| match value {
+        Value::Bytes(bytes) => zvariant::Value::from(bytes),
+        Value::Text(text) => zvariant::Value::from(text),
+        Value::Number(number) => zvariant::Value::from(number),
+    };
+    fields
+        .into_iter()
+        .map(|(key, field)| (key, value(field)))
+        .collect()
+}
+
+/// wpa_supplicant itself, which adds and takes away cards.
+#[proxy(
+    interface = "fi.w1.wpa_supplicant1",
+    default_service = "fi.w1.wpa_supplicant1",
+    default_path = "/fi/w1/wpa_supplicant1"
+)]
+pub trait Supplicant {
+    fn create_interface(
+        &self,
+        args: HashMap<&str, zvariant::Value<'_>>,
+    ) -> zbus::Result<OwnedObjectPath>;
+
+    fn get_interface(&self, ifname: &str) -> zbus::Result<OwnedObjectPath>;
+}
+
+/// One card, as wpa_supplicant drives it.
+#[proxy(
+    interface = "fi.w1.wpa_supplicant1.Interface",
+    default_service = "fi.w1.wpa_supplicant1"
+)]
+pub trait Interface {
+    fn add_network(
+        &self,
+        args: HashMap<&str, zvariant::Value<'_>>,
+    ) -> zbus::Result<OwnedObjectPath>;
+
+    fn remove_all_networks(&self) -> zbus::Result<()>;
+
+    #[zbus(property)]
+    fn state(&self) -> zbus::Result<String>;
+}
+
+/// A network wpa_supplicant has been given for one card.
+#[proxy(
+    interface = "fi.w1.wpa_supplicant1.Network",
+    default_service = "fi.w1.wpa_supplicant1"
+)]
+pub trait Joinable {
+    #[zbus(property)]
+    fn set_enabled(&self, enabled: bool) -> zbus::Result<()>;
 }
 
 #[cfg(test)]
