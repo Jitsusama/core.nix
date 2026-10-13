@@ -46,10 +46,12 @@ fn each_line_is_one_json_record() {
             band: Band::Pressure,
             end: "reached".to_owned(),
             freed: 1 << 30,
+            seconds: 42.5,
         })
         .unwrap();
     let read = lines(&path);
     assert_eq!(read.len(), 3);
+    assert_eq!(read[2]["seconds"], 42.5);
     assert_eq!(read[0]["event"], "action");
     assert_eq!(read[0]["path"], "/home/u/src/app/target");
     assert_eq!(read[0]["band"], "pressure");

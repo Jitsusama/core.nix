@@ -236,6 +236,17 @@ fn the_journal_is_read_oldest_first_and_since_when_asked() {
     assert!(out.contains("reclaimed"), "{out}");
     let (_, out, _) = machine.run("journal --since 1h --json");
     assert_eq!(out.lines().count(), 1, "{out}");
+    // A pass says how it ended and how long it took.
+    let pass = format!(
+        r#"{{"event":"pass","at":{},"band":"urgent","end":"reached","freed":1073741824,"seconds":60.0}}"#,
+        now - 30.0
+    );
+    fs::write(machine.env.state.join("journal.jsonl"), format!("{pass}\n")).unwrap();
+    let (_, said, _) = machine.run("journal");
+    assert!(
+        said.contains("pass reached, freed 1.0 GiB in 60 s"),
+        "{said}"
+    );
     assert!(out.contains("/new"));
     serde_json::from_str::<serde_json::Value>(out.trim()).unwrap();
 }

@@ -597,9 +597,13 @@ fn journal(env: &Env, since: Option<Span>, json: bool, out: &mut dyn Write) -> D
                     said
                 }
                 Some("pass") => format!(
-                    "pass {}, freed {}",
+                    "pass {}, freed {}{}",
                     entry["end"].as_str().unwrap_or("?"),
                     size(entry["freed"].as_u64().unwrap_or(0)),
+                    // A journal from before passes were timed says nothing.
+                    entry["seconds"]
+                        .as_f64()
+                        .map_or_else(String::new, |seconds| format!(" in {}", span(seconds))),
                 ),
                 _ => line.to_owned(),
             };

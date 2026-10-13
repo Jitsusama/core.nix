@@ -1409,6 +1409,7 @@ impl Guard {
             band: report.band,
             end: end.clone(),
             freed: report.freed,
+            seconds: started.elapsed().as_secs_f64(),
         })?;
         self.last = Some(LastPass {
             at: tick.wall,
