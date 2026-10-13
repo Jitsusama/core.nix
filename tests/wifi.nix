@@ -673,5 +673,34 @@ pkgs.testers.runNixOSTest {
         status, stages, said = joining({"name": "Roadside Inn"})
         assert status == 0, said
         joined("Roadside Inn")
+
+    with subtest("a network saved from the shell without joining it is kept, sealed"):
+        since = journal_now()
+        hall = {
+            "name": "Hidden Hall",
+            "security": "personal",
+            "password": "under the stairs",
+            "hidden": True,
+            "priority": 5,
+            "address": "card",
+        }
+        ask("Save", hall)
+        assert saved_as("Hidden Hall") == [
+            {
+                "name": "Hidden Hall",
+                "security": "personal",
+                "declared": False,
+                "trusted": False,
+                "priority": 5,
+                "hidden": True,
+            }
+        ], saved_as("Hidden Hall")
+        held = machine.succeed("cat /var/lib/wifid/networks/hidden-hall.cred")
+        assert held and "stairs" not in held, held
+        held = machine.succeed("wpa_cli -i wlan2 list_networks")
+        assert "Hidden Hall" in held, held
+        stayed_on(since)
+        refused("Save", {"name": "Roadside Inn", "security": "open"}, "Declared")
+        refused("Save", {"name": "Nameless", "security": "personal"}, "NeedsPassword")
   '';
 }

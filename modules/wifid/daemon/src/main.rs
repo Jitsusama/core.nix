@@ -395,6 +395,28 @@ struct Joining {
     deadline: Instant,
 }
 
+/// What's asked of a network to keep: anything not given stays as it was,
+/// or as a new network starts.
+struct Wanted {
+    name: String,
+    security: Option<Security>,
+    password: Option<String>,
+    hidden: Option<bool>,
+    priority: Option<i32>,
+    address: Option<Address>,
+}
+
+/// How wifid joins a network said to be joined so.
+fn joined_by(security: state::Security) -> Result<Security, Refused> {
+    match security {
+        state::Security::Open => Ok(Security::Open),
+        state::Security::Personal => Ok(Security::Personal),
+        state::Security::Enterprise => Err(Refused::Failed {
+            reason: "wifid can't join with an account yet".into(),
+        }),
+    }
+}
+
 /// The access points every card hears, kept as wpa_supplicant last
 /// described each.
 struct Air {
@@ -933,58 +955,25 @@ impl Wifid<'_> {
             .store
             .networks()
             .map_err(|error| failed(error.to_string()))?;
-        let saved = listing
-            .saved
-            .into_iter()
-            .find(|saved| saved.network.name == name);
-        let heard = self.state.borrow().described().nearby;
-        let heard = heard.into_iter().find(|nearby| nearby.name == name);
-        let new = saved.is_none();
-        let mut network = match (&saved, heard) {
-            (Some(saved), _) => saved.network.clone(),
-            (None, Some(heard)) => Network {
+        let saved = listing.saved.iter().any(|saved| saved.network.name == name);
+        // A network not saved is joined the way the air says it's joined.
+        let security = if saved {
+            None
+        } else {
+            let heard = self.state.borrow().described().nearby;
+            let heard = heard.into_iter().find(|nearby| nearby.name == name);
+            Some(joined_by(heard.ok_or(Refused::NotNearby)?.security)?)
+        };
+        let new = self
+            .keep(Wanted {
                 name: name.to_string(),
-                security: match heard.security {
-                    state::Security::Open => Security::Open,
-                    state::Security::Personal => Security::Personal,
-                    state::Security::Enterprise => {
-                        return Err(failed("wifid can't join with an account yet".into()));
-                    }
-                },
-                secret: None,
-                priority: 0,
-                hidden: false,
-                address: Address::Network,
-                trusted: false,
-            },
-            (None, None) => return Err(Refused::NotNearby),
-        };
-        let declared = saved.as_ref().is_some_and(|saved| saved.declared);
-        let given = match (network.security, password) {
-            (Security::Personal, Some(_)) if declared => return Err(Refused::Declared),
-            (Security::Personal, Some(password)) => Some(password),
-            (Security::Personal, None) if network.secret.is_none() => {
-                return Err(Refused::NeedsPassword);
-            }
-            // An open network has no use for a password it's given.
-            _ => None,
-        };
-        if let Some(password) = &given {
-            supplicant::psk(password).map_err(|unjoinable| failed(unjoinable.0.into()))?;
-            let file = self.store.password_file(name).map_err(refused)?;
-            let sealed_as = file.file_stem().unwrap_or_default().to_string_lossy();
-            let sealed = self.credentials.seal(&sealed_as, password).await;
-            let sealed =
-                sealed.map_err(|error| failed(format!("can't seal the password: {error}")))?;
-            self.store
-                .keep_password(&file, &sealed)
-                .map_err(|error| failed(error.to_string()))?;
-            network.secret = Some(file);
-        }
-        if new || given.is_some() {
-            self.store.save(&network).map_err(refused)?;
-        }
-        self.given_everything().await?;
+                security,
+                password,
+                hidden: None,
+                priority: None,
+                address: None,
+            })
+            .await?;
 
         let card = self.card_for(name, air).await?;
         change(self.state, |state| state.troubled(&card.name, None));
@@ -1007,6 +996,78 @@ impl Wifid<'_> {
         selected.map_err(|error| failed(format!("wpa_supplicant didn't join it: {error}")))?;
         println!("<6>joining {name} on {}, as asked", card.name);
         Ok((card.name, new))
+    }
+
+    /// Keeps the network as asked, sealing a password it's given beside its
+    /// file, and gives networkd and every card the networks as they now
+    /// stand. Anything not asked for stays as it was, or as a new network
+    /// starts. Says whether the network is new.
+    async fn keep(&self, wanted: Wanted) -> Result<bool, Refused> {
+        let failed = |reason: String| Refused::Failed { reason };
+        let listing = self
+            .store
+            .networks()
+            .map_err(|error| failed(error.to_string()))?;
+        let saved = listing
+            .saved
+            .into_iter()
+            .find(|saved| saved.network.name == wanted.name);
+        let declared = saved.as_ref().is_some_and(|saved| saved.declared);
+        let new = saved.is_none();
+        let mut network = match saved {
+            Some(saved) => saved.network,
+            None => Network {
+                name: wanted.name.clone(),
+                security: wanted.security.ok_or(Refused::NotNearby)?,
+                secret: None,
+                priority: 0,
+                hidden: false,
+                address: Address::Network,
+                trusted: false,
+            },
+        };
+        if let Some(security) = wanted.security {
+            network.security = security;
+        }
+        // An open network has no use for a password it's given.
+        let password = wanted
+            .password
+            .filter(|_| network.security == Security::Personal);
+        let changing = wanted.security.is_some()
+            || password.is_some()
+            || wanted.hidden.is_some()
+            || wanted.priority.is_some()
+            || wanted.address.is_some();
+        if declared && changing {
+            return Err(Refused::Declared);
+        }
+        network.hidden = wanted.hidden.unwrap_or(network.hidden);
+        network.priority = wanted.priority.unwrap_or(network.priority);
+        network.address = wanted.address.unwrap_or(network.address);
+        match (network.security, password) {
+            (Security::Personal, Some(password)) => {
+                supplicant::psk(&password).map_err(|unjoinable| failed(unjoinable.0.into()))?;
+                let file = self.store.password_file(&network.name).map_err(refused)?;
+                let sealed_as = file.file_stem().unwrap_or_default().to_string_lossy();
+                let sealed = self.credentials.seal(&sealed_as, &password).await;
+                let sealed =
+                    sealed.map_err(|error| failed(format!("can't seal the password: {error}")))?;
+                self.store
+                    .keep_password(&file, &sealed)
+                    .map_err(|error| failed(error.to_string()))?;
+                network.secret = Some(file);
+            }
+            (Security::Personal, None) if network.secret.is_none() => {
+                return Err(Refused::NeedsPassword);
+            }
+            (Security::Open, _) => network.secret = None,
+            _ => {}
+        }
+        if new || changing {
+            self.store.save(&network).map_err(refused)?;
+        }
+        self.given_everything().await?;
+        Ok(new)
     }
 
     /// The card hearing the network most strongly, or the first there is
@@ -1105,6 +1166,28 @@ impl Wifid<'_> {
             }
             Ask::Leave { name, done } => {
                 let _ = done.send(self.leave(&name).await);
+                return;
+            }
+            Ask::Save { saving, done } => {
+                let kept = match joined_by(saving.security) {
+                    Ok(security) => {
+                        let wanted = Wanted {
+                            name: saving.name,
+                            security: Some(security),
+                            password: saving.password,
+                            hidden: saving.hidden,
+                            priority: saving.priority,
+                            address: saving.address.map(|address| match address {
+                                service::Address::Network => Address::Network,
+                                service::Address::Card => Address::Card,
+                                service::Address::Random => Address::Random,
+                            }),
+                        };
+                        self.keep(wanted).await.map(|_| ())
+                    }
+                    Err(refused) => Err(refused),
+                };
+                let _ = done.send(kept);
                 return;
             }
             Ask::Radio { on, done } => {

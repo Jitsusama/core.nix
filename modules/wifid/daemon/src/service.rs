@@ -49,6 +49,10 @@ pub enum Ask {
         name: String,
         done: oneshot::Sender<Result<(), Refused>>,
     },
+    Save {
+        saving: Saving,
+        done: oneshot::Sender<Result<(), Refused>>,
+    },
     Radio {
         on: bool,
         done: oneshot::Sender<Result<(), Refused>>,
@@ -88,6 +92,30 @@ pub enum Refused {
     Failed { reason: String },
 }
 
+/// A network to save as the shell asks, with anything left out as it was.
+#[derive(Debug, PartialEq)]
+pub struct Saving {
+    pub name: String,
+    pub security: Security,
+    pub password: Option<String>,
+    pub hidden: Option<bool>,
+    pub priority: Option<i32>,
+    pub address: Option<Address>,
+}
+
+/// The address a network sees of the card.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize, CustomType)]
+#[serde(rename_all = "camelCase")]
+#[zlink(rename_all = "camelCase")]
+pub enum Address {
+    /// One of the card's own for that network, the same each time.
+    Network,
+    /// The card's own, as it came.
+    Card,
+    /// A new one each time the card joins it.
+    Random,
+}
+
 /// How far joining has got.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Type)]
 pub struct Joining {
@@ -122,7 +150,7 @@ impl Stage {
 
 #[service(
     interface = "io.jitsusama.Wifi",
-    types = [Card, Nearby, Reach, Saved, Security, Stage, Trouble],
+    types = [Address, Card, Nearby, Reach, Saved, Security, Stage, Trouble],
     vendor = "jitsusama",
     product = "wifid",
     version = env!("CARGO_PKG_VERSION"),
@@ -199,6 +227,30 @@ impl Wifi {
     /// Has every card look for networks now. Describe says what they hear.
     async fn scan(&self) -> Result<(), Refused> {
         self.ask(|done| Ask::Scan { done }).await
+    }
+
+    /// Saves a network without joining it, as one that hides its name or one
+    /// brought from another machine, or changes one saved from the launcher.
+    /// A new one is shown, of priority 0, and sees an address of the card's
+    /// own for it, unless asked otherwise.
+    async fn save(
+        &self,
+        name: String,
+        security: Security,
+        password: Option<String>,
+        hidden: Option<bool>,
+        priority: Option<i32>,
+        address: Option<Address>,
+    ) -> Result<(), Refused> {
+        let saving = Saving {
+            name,
+            security,
+            password,
+            hidden,
+            priority,
+            address,
+        };
+        self.ask(|done| Ask::Save { saving, done }).await
     }
 
     /// Takes every card on the network off it. They join nothing more
@@ -453,6 +505,43 @@ mod tests {
 
         assert_eq!(answer, Ok(()));
         main_loop.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn saving_asks_wifid_to_keep_what_was_given() {
+        let (wifi, _, _, mut taken) = asking();
+        let main_loop = tokio::spawn(async move {
+            let Some(Ask::Save { saving, done }) = taken.recv().await else {
+                panic!("wasn't asked to save");
+            };
+            done.send(Ok(())).unwrap();
+            saving
+        });
+
+        let answer = wifi
+            .save(
+                "Hidden Hall".into(),
+                Security::Personal,
+                Some("under the stairs".into()),
+                Some(true),
+                None,
+                Some(Address::Card),
+            )
+            .await;
+        drop(wifi);
+
+        assert_eq!(answer, Ok(()));
+        assert_eq!(
+            main_loop.await.unwrap(),
+            Saving {
+                name: "Hidden Hall".into(),
+                security: Security::Personal,
+                password: Some("under the stairs".into()),
+                hidden: Some(true),
+                priority: None,
+                address: Some(Address::Card),
+            }
+        );
     }
 
     #[tokio::test]
