@@ -711,6 +711,17 @@ fn a_healthy_disk_gets_its_upkeep_and_then_rests() {
 }
 
 #[test]
+fn a_preview_leaves_a_damaged_memory_as_it_found_it() {
+    let home = Home::new();
+    fs::write(home.root.join("state/memory.json"), "{ \"learned\": ").unwrap();
+    let mut guard = home.guard(home.config("0%", "0%"));
+    guard.preview(&tick(), Some(Band::Pressure), None).unwrap();
+    let kept = fs::read_to_string(home.root.join("state/memory.json")).unwrap();
+    assert_eq!(kept, "{ \"learned\": ");
+    assert!(!home.root.join("state/memory.json.damaged").exists());
+}
+
+#[test]
 fn a_damaged_memory_is_set_aside_and_begun_afresh() {
     let home = Home::new();
     fs::write(home.root.join("state/memory.json"), "{ \"learned\": ").unwrap();

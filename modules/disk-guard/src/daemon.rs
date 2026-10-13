@@ -199,6 +199,8 @@ pub struct Guard {
     writers: Writers,
     /// What the last survey couldn't read, and why it went unvouched.
     unread: (usize, Option<String>),
+    /// Whether the memory read was damaged, and is still to be set aside.
+    damaged: bool,
 }
 
 /// Where a listing on its own thread sends the dead paths, or why not.
@@ -261,11 +263,13 @@ impl Guard {
     pub fn new(config: Config, places: &Places) -> io::Result<Guard> {
         let state = &places.state;
         let memory_path = state.join("memory.json");
+        let mut damaged = false;
         let memory = match state::load(&memory_path) {
             Ok(memory) => memory.unwrap_or_default(),
+            // Begun afresh, and set aside at the first save for whoever
+            // wants to know why, so a plan that never saves changes nothing.
             Err(error) if error.kind() == io::ErrorKind::InvalidData => {
-                // Kept aside for whoever wants to know why, and begun afresh.
-                fs::rename(&memory_path, state.join("memory.json.damaged"))?;
+                damaged = true;
                 Memory::default()
             }
             Err(error) => return Err(error),
@@ -329,6 +333,7 @@ impl Guard {
             freeze: None,
             writers: Writers::default(),
             unread: (0, None),
+            damaged,
         })
     }
 
@@ -614,6 +619,11 @@ impl Guard {
         self.runaways(tick)?;
         let passed = passed || frozen != self.memory.frozen.len();
         if passed || self.saved_at.is_none_or(|at| tick.wall - at >= SAVE_EVERY) {
+            if self.damaged {
+                let aside = self.memory_path.with_file_name("memory.json.damaged");
+                fs::rename(&self.memory_path, aside)?;
+                self.damaged = false;
+            }
             state::save(&self.memory_path, &self.memory)?;
             let uses = self
                 .uses
