@@ -9,6 +9,7 @@
   pkgs,
   nixpkgs,
   nix-darwin,
+  rust-overlay,
   formatting,
 }:
 let
@@ -1852,6 +1853,27 @@ in
             touch $out
           '';
         });
+
+    # The macOS guard builds from the same crate and CI has no Mac, so clippy
+    # reads the crate, its scenarios included, as macOS would compile it.
+    disk-guard-compiles-for-macos =
+      let
+        toolchain = (pkgs.extend rust-overlay.overlays.default).rust-bin.stable.latest.minimal.override {
+          targets = [ "aarch64-apple-darwin" ];
+          extensions = [ "clippy" ];
+        };
+      in
+      (pkgs.callPackage ./modules/disk-guard/package.nix { }).overrideAttrs {
+        pname = "disk-guard-compiles-for-macos";
+        buildPhase = ''
+          export PATH=${toolchain}/bin:$PATH
+          cargo clippy --target aarch64-apple-darwin --all-targets --offline -- -D warnings
+        '';
+        doCheck = false;
+        installPhase = ''
+          touch $out
+        '';
+      };
 
     # CI runs the virtual machine tests by name, one to a runner, so one it
     # doesn't name would never run there.
