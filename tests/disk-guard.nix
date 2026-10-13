@@ -119,14 +119,17 @@ pkgs.testers.runNixOSTest {
     { nodes, ... }:
     let
       # The machine's guard as its module renders it, with its store under
-      # pressure from the start and nothing else to look after.
+      # pressure from the start and only Nix's build directories beside it,
+      # which it removes itself under the unit's own sandbox.
       systemConfig = pkgs.writeText "disk-guard-system-test.json" (
         builtins.toJSON (
           nodes.machine.jitsusama.disk-guard.settings
           // {
             version = 1;
             scope = "system";
-            sources = { };
+            sources = {
+              inherit (nodes.machine.jitsusama.disk-guard.settings.sources) nix-builds;
+            };
             bands = {
               pressure = "100%";
               urgent = "0%";
@@ -327,7 +330,10 @@ pkgs.testers.runNixOSTest {
           as_joel(f"systemctl --user kill {unit}; systemctl --user stop again.scope || true")
           as_joel("rm -f ~/again")
 
-      with subtest("with its store pressed the machine expires generations and collects"):
+      with subtest("with its store pressed the machine expires generations, collects and clears a dead build"):
+          # Left by a build process that's gone, as a crashed one leaves it.
+          dead_build = "/nix/var/nix/builds/nix-4000000-1"
+          machine.succeed(f"mkdir -p -m 0700 {dead_build} && head -c 1M /dev/zero > {dead_build}/out")
           paths = []
           for n in range(1, 9):
               machine.succeed(f"mkdir -p /root/gen-{n} && echo {n} > /root/gen-{n}/n")
@@ -342,6 +348,7 @@ pkgs.testers.runNixOSTest {
               "systemctl restart disk-guard",
           )
           gone(junk)
+          gone(dead_build)
           for n in range(1, 4):
               gone(f"/nix/var/nix/profiles/test-{n}-link")
               gone(paths[n - 1])
