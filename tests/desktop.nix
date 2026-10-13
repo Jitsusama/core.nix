@@ -276,13 +276,19 @@ pkgs.testers.runNixOSTest {
           }
         '';
         # What Quickshell hears from Pipewire about nodes and defaults, so a
-        # change it missed can be told from one it was never sent.
+        # change it missed can be told from one it was never sent. A node's
+        # mute reaches it only as a note that its parameters changed, which
+        # it answers by reading them again, at debug level, so a mute it
+        # never heard of can be told from one it read and dropped.
         systemd.user.services.quickshell.Service.Environment = [
           "QT_LOGGING_RULES=${
-            lib.concatMapStringsSep ";" (part: "quickshell.service.pipewire.${part}.info=true") [
-              "node"
-              "defaults"
-            ]
+            lib.concatStringsSep ";" (
+              map (part: "quickshell.service.pipewire.${part}.info=true") [
+                "node"
+                "defaults"
+              ]
+              ++ [ "quickshell.service.pipewire.node.debug=true" ]
+            )
           }"
         ];
       };
@@ -1301,8 +1307,10 @@ pkgs.testers.runNixOSTest {
               with told("drawn margin"):
                   as_account("wpctl set-mute @DEFAULT_AUDIO_SOURCE@ 1")
           except AssertionError:
-              # Which source Pipewire calls the default, and whether it's muted.
+              # Which source Pipewire calls the default, whether it's muted,
+              # and what Pipewire holds for it, beside what Quickshell heard.
               print(as_account("wpctl status; wpctl get-volume @DEFAULT_AUDIO_SOURCE@"))
+              print(as_account("pw-dump stand-in-microphone"))
               raise
           machine.wait_until_fails(in_session("niri msg layers | grep -q microphone"), timeout=10)
           with told("keys margin"):
