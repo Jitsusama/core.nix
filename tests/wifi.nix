@@ -149,7 +149,16 @@ pkgs.testers.runNixOSTest {
   nodes.machine =
     { pkgs, ... }:
     {
-      imports = [ self.nixosModules.wifid ];
+      imports = [
+        self.nixosModules.home-manager
+        self.nixosModules.wifid
+      ];
+
+      # An account home-manager keeps, which may ask wifid anything, and one
+      # it doesn't, which may not.
+      users.users.guest.isNormalUser = true;
+      home-manager.users.guest.home.stateVersion = "26.05";
+      users.users.stranger.isNormalUser = true;
 
       security.pki.certificateFiles = [ "${certificates}/authority.pem" ];
       # Google's HTTPS page is out of reach here, so the check asks the
@@ -263,6 +272,8 @@ pkgs.testers.runNixOSTest {
     };
 
   testScript = ''
+    import json
+
     # Lantern as the launcher saves it: only what's its own, with its
     # password sealed to this machine.
     lantern = [
@@ -318,6 +329,15 @@ pkgs.testers.runNixOSTest {
         """The address the card is showing the network it's on."""
         return machine.succeed("cat /sys/class/net/wlan2/address").strip()
 
+    wifi = "/run/wifid/io.jitsusama.Wifi"
+
+    def ask(method, user="guest"):
+        """Asks wifid something as the account would, and reads the answer."""
+        answer = machine.succeed(
+            f"runuser -u {user} -- varlinkctl call {wifi} io.jitsusama.Wifi.{method} '{{}}'"
+        )
+        return json.loads(answer or "{}")
+
     def journal_now():
         """Where the journal is, to read on from."""
         return machine.succeed(
@@ -345,6 +365,25 @@ pkgs.testers.runNixOSTest {
 
     with subtest("wifid finds the Inn wants a sign-in, and where"):
         says("Roadside Inn on wlan2 wants a sign-in at http://front-desk.inn/sign-in")
+
+    with subtest("and tells the shell, which only an account of the machine's may ask"):
+        machine.succeed(f"varlinkctl introspect {wifi} io.jitsusama.Wifi > /tmp/wifi.varlink")
+        machine.succeed("varlinkctl validate-idl /tmp/wifi.varlink")
+        machine.succeed("varlinkctl list-registry | grep -q io.jitsusama.Wifi")
+        described = ask("Describe")
+        assert described["cards"] == [
+            {
+                "name": "wlan2",
+                "network": "Roadside Inn",
+                "reach": "signIn",
+                "signIn": "http://front-desk.inn/sign-in",
+            }
+        ], described
+        inn = [network for network in described["saved"] if network["name"] == "Roadside Inn"]
+        assert inn[0]["declared"] and inn[0]["security"] == "open", described
+        machine.fail(
+            f"runuser -u stranger -- varlinkctl call {wifi} io.jitsusama.Wifi.Describe '{{}}'"
+        )
 
     with subtest("the network sees an address the card chose for it"):
         inn_address = shown()
@@ -459,9 +498,19 @@ pkgs.testers.runNixOSTest {
         machine.wait_for_unit("wifid.service")
         machine.wait_until_succeeds(f"! test -e {given}", timeout=30)
 
-    with subtest("signing in at the Inn is noticed"):
+    with subtest("signing in at the Inn is noticed when asked, and the shell told"):
+        machine.succeed(
+            f"runuser -u guest -- varlinkctl -E --json=short call {wifi}"
+            " io.jitsusama.Wifi.Describe '{}' > /tmp/described 2>&1 &"
+        )
+        machine.wait_until_succeeds("grep -q signIn /tmp/described", timeout=10)
         machine.succeed("curl -sf --interface wlan2 http://front-desk.inn/sign-in")
-        says("Roadside Inn on wlan2 reaches beyond itself", timeout=45)
+        ask("Check")
+        # Well before the half-minute the Inn would otherwise wait.
+        says("Roadside Inn on wlan2 reaches beyond itself", timeout=15)
+        machine.wait_until_succeeds(
+            "tail -n1 /tmp/described | grep -qF '\"reach\":\"online\"'", timeout=10
+        )
 
     with subtest("a network letting only the plain check through reaches no further"):
         machine.succeed("systemctl restart wifid")

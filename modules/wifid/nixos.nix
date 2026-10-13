@@ -3,6 +3,11 @@
 # the pages wifid.conf names. It runs as root only to reach wpa_supplicant
 # and networkd, with no capabilities, and writes nowhere but its own state
 # and networkd's runtime files.
+#
+# It answers over varlink, as io.jitsusama.Wifi, on a socket systemd holds
+# for it, which the shell and varlinkctl talk to. Every account home-manager
+# keeps is in its group, wifi, and nobody else can reach it, since through
+# it a network can be joined, trusted or forgotten.
 {
   config,
   lib,
@@ -20,12 +25,35 @@ in
 
   environment.etc."wifid/wifid.conf".source = ./wifid.conf;
 
+  users.groups.wifi = { };
+  users.users = lib.mapAttrs (_: _: {
+    extraGroups = [ "wifi" ];
+  }) config.home-manager.users;
+
+  # systemd keeps the socket while wifid starts again, so whoever's talking
+  # to it waits a moment rather than finding nothing there.
+  systemd.sockets.wifid = {
+    description = "Where the shell talks to wifid";
+    wantedBy = [ "sockets.target" ];
+    listenStreams = [ "/run/wifid/io.jitsusama.Wifi" ];
+    socketConfig = {
+      # Where varlinkctl list-registry finds it, beside systemd's own.
+      Symlinks = [ "/run/varlink/registry/io.jitsusama.Wifi" ];
+      FileDescriptorName = "varlink";
+      SocketGroup = "wifi";
+      SocketMode = "0660";
+      DirectoryMode = "0755";
+    };
+  };
+
   systemd.services.wifid = {
     description = "Wi-Fi networks, joined and checked for a sign-in";
     # It reads wifid.conf once, as it starts.
     restartTriggers = [ config.environment.etc."wifid/wifid.conf".source ];
     wants = [ "wpa_supplicant.service" ];
+    requires = [ "wifid.socket" ];
     after = [
+      "wifid.socket"
       "wpa_supplicant.service"
       "systemd-networkd.service"
     ];

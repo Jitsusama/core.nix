@@ -10,7 +10,11 @@
 //! Once a card's network reaches beyond itself, as networkd sees it, wifid
 //! checks whether it really does or wants a sign-in first. It checks again
 //! whenever the card moves to another network or is handed other DNS
-//! servers, as the machine wakes, and on a timer the verdict sets.
+//! servers, as the machine wakes, when asked, and on a timer the verdict
+//! sets.
+//!
+//! It answers the shell over varlink, as io.jitsusama.Wifi (service.rs),
+//! with what it knows of each card and every saved network.
 
 mod address;
 mod card;
@@ -20,6 +24,8 @@ mod lookup;
 mod network;
 mod page;
 mod secret;
+mod service;
+mod state;
 mod store;
 mod supplicant;
 mod syntax;
@@ -40,12 +46,15 @@ use zbus::fdo::DBusProxy;
 use zbus::proxy::CacheProperties;
 use zbus::zvariant::{self, ObjectPath, OwnedObjectPath};
 use zbus::{Connection, MatchRule, MessageStream, proxy};
+use zlink::Server;
 
 use address::AddressKey;
 use card::Card;
 use check::{Checker, Settings, Verdict};
 use link::Link;
 use secret::Credentials;
+use service::Wifi;
+use state::State;
 use store::{Saved, Store};
 use supplicant::{InterfaceProxy, JoinableProxy, SupplicantProxy};
 
@@ -112,12 +121,14 @@ async fn run() -> Result<(), Box<dyn Error>> {
     let owners = DBusProxy::new(&bus).await?;
     let mut changes = owners.receive_name_owner_changed().await?;
     let supplicant = SupplicantProxy::new(&bus).await?;
+    let state = watch::Sender::new(State::default());
     let wifid = Wifid {
         bus: &bus,
         supplicant: &supplicant,
         store: &store,
         key: &key,
         credentials: &credentials,
+        state: &state,
     };
     wifid.add_cards().await;
 
@@ -137,55 +148,79 @@ async fn run() -> Result<(), Box<dyn Error>> {
             settings: settings(),
             tls: trusted(),
         }),
-        woken: watch::Sender::new(0),
+        asked: watch::Sender::new(0),
+        state: state.clone(),
         followed: HashMap::new(),
+    };
+    let wifi = Wifi {
+        state: state.subscribe(),
+        asked: networks.asked.clone(),
     };
     // Every card there is now was given wpa_supplicant above.
     networks.follow_all(all_links(&bus).await);
-    loop {
-        tokio::select! {
-            Some(change) = changes.next() => {
-                let Ok(args) = change.args() else { continue };
-                if args.new_owner().is_none() {
-                    continue;
-                }
-                match args.name().as_str() {
-                    "fi.w1.wpa_supplicant1" => wifid.add_cards().await,
-                    "org.freedesktop.network1" => {
-                        for card in networks.follow_all(all_links(&bus).await) {
-                            wifid.add_card_named(&card).await;
-                        }
+    let following = async {
+        loop {
+            tokio::select! {
+                Some(change) = changes.next() => {
+                    let Ok(args) = change.args() else { continue };
+                    if args.new_owner().is_none() {
+                        continue;
                     }
-                    _ => {}
-                }
-            }
-            Some(Ok(message)) = links.next() => {
-                let header = message.header();
-                let Some(path) = header.path() else { continue };
-                match one_link(&bus, path).await {
-                    Some(link) => {
-                        let card = link.name.clone();
-                        if networks.follow(link) {
-                            wifid.add_card_named(&card).await;
+                    match args.name().as_str() {
+                        "fi.w1.wpa_supplicant1" => wifid.add_cards().await,
+                        "org.freedesktop.network1" => {
+                            for card in networks.follow_all(all_links(&bus).await) {
+                                wifid.add_card_named(&card).await;
+                            }
                         }
-                    }
-                    // Not a card, or one going: whichever, networkd's
-                    // own list says which cards are left.
-                    None => {
-                        for card in networks.follow_all(all_links(&bus).await) {
-                            wifid.add_card_named(&card).await;
-                        }
+                        _ => {}
                     }
                 }
-            }
-            Some(sleep) = sleeps.next() => {
-                if sleep.args().is_ok_and(|args| !args.start) {
-                    networks.woken.send_modify(|wakes| *wakes += 1);
+                Some(Ok(message)) = links.next() => {
+                    let header = message.header();
+                    let Some(path) = header.path() else { continue };
+                    match one_link(&bus, path).await {
+                        Some(link) => {
+                            let card = link.name.clone();
+                            if networks.follow(link) {
+                                wifid.add_card_named(&card).await;
+                            }
+                        }
+                        // Not a card, or one going: whichever, networkd's
+                        // own list says which cards are left.
+                        None => {
+                            for card in networks.follow_all(all_links(&bus).await) {
+                                wifid.add_card_named(&card).await;
+                            }
+                        }
+                    }
                 }
+                Some(sleep) = sleeps.next() => {
+                    if sleep.args().is_ok_and(|args| !args.start) {
+                        networks.asked.send_modify(|asked| *asked += 1);
+                    }
+                }
+                else => return Ok(()),
             }
-            else => return Ok(()),
         }
+    };
+    tokio::select! {
+        result = following => result,
+        result = answer(wifi) => result,
     }
+}
+
+/// Answers on the socket systemd holds, for as long as wifid runs. Run by
+/// hand, with no socket, it answers nobody.
+async fn answer(wifi: Wifi) -> Result<(), Box<dyn Error>> {
+    let Some(listener) = service::listener()? else {
+        eprintln!("<4>systemd passed no socket, so nobody can ask wifid anything");
+        return future::pending().await;
+    };
+    // Ending wifid has systemd start it again, which leaves every card on
+    // its network and gives the shell its answers back.
+    Server::new(listener, wifi).run().await?;
+    Err("stopped answering on the socket".into())
 }
 
 /// The pages wifid.conf names; Google's, said in the journal, when it
@@ -217,8 +252,10 @@ fn trusted() -> Option<Arc<rustls::ClientConfig>> {
 /// Every Wi-Fi card's network, each followed by a task of its own.
 struct Networks {
     checker: Arc<Checker>,
-    /// Counts the machine's wakes, which every task checks at.
-    woken: watch::Sender<u64>,
+    /// Counted up as the machine wakes and when someone asks, for every
+    /// task to check its network again.
+    asked: watch::Sender<u64>,
+    state: watch::Sender<State>,
     followed: HashMap<i32, watch::Sender<Link>>,
 }
 
@@ -226,6 +263,7 @@ impl Networks {
     /// Hands the link to its card's task, starting one for a card new to
     /// wifid, and says whether it was.
     fn follow(&mut self, link: Link) -> bool {
+        change(&self.state, |state| state.follow(&link));
         if let Some(followed) = self.followed.get(&link.index) {
             followed.send_replace(link);
             return false;
@@ -233,7 +271,8 @@ impl Networks {
         let index = link.index;
         let (followed, link) = watch::channel(link);
         let checker = Arc::clone(&self.checker);
-        tokio::spawn(check_network(link, self.woken.subscribe(), checker));
+        let (asked, state) = (self.asked.subscribe(), self.state.clone());
+        tokio::spawn(check_network(link, asked, checker, state));
         self.followed.insert(index, followed);
         true
     }
@@ -242,8 +281,9 @@ impl Networks {
     /// other, whose task ends with it. Gives the names of the cards new to
     /// wifid.
     fn follow_all(&mut self, links: Vec<Link>) -> Vec<String> {
-        self.followed
-            .retain(|index, _| links.iter().any(|link| link.index == *index));
+        let there: Vec<i32> = links.iter().map(|link| link.index).collect();
+        self.followed.retain(|index, _| there.contains(index));
+        change(&self.state, |state| state.keep_only(&there));
         let mut new = Vec::new();
         for link in links {
             let card = link.name.clone();
@@ -255,13 +295,23 @@ impl Networks {
     }
 }
 
+/// Tells everyone listening what changed, if anything did.
+fn change(state: &watch::Sender<State>, change: impl FnOnce(&mut State)) {
+    state.send_if_modified(|state| {
+        let before = state.clone();
+        change(state);
+        *state != before
+    });
+}
+
 /// Checks a card's network whenever it newly reaches beyond itself, then
-/// again when the last verdict says to or the machine wakes. A verdict is
-/// said in the journal when it's news.
+/// again when the last verdict says to, the machine wakes or someone asks.
+/// A verdict is said in the journal when it's news.
 async fn check_network(
     mut link: watch::Receiver<Link>,
-    mut woken: watch::Receiver<u64>,
+    mut asked: watch::Receiver<u64>,
     checker: Arc<Checker>,
+    state: watch::Sender<State>,
 ) {
     let mut checked = None;
     let mut said = None;
@@ -272,12 +322,14 @@ async fn check_network(
             let standing = (now.ssid.clone(), now.dns.clone(), now.portal.clone());
             let reached = checked.as_ref() != Some(&standing);
             if reached || due.is_some_and(|due| Instant::now() >= due) {
+                change(&state, |state| state.checking(now.index));
                 let (verdict, after) = checker
                     .check(&now.name, &now.dns, now.portal.as_deref(), reached)
                     .await;
                 if reached || said.as_ref() != Some(&verdict) {
                     say(&now, &verdict);
                 }
+                change(&state, |state| state.judged(now.index, &verdict));
                 said = Some(verdict);
                 checked = Some(standing);
                 due = Some(Instant::now() + after);
@@ -293,7 +345,7 @@ async fn check_network(
         };
         tokio::select! {
             changed = link.changed() => if changed.is_err() { return },
-            Ok(()) = woken.changed() => due = due.map(|_| Instant::now()),
+            Ok(()) = asked.changed() => due = due.map(|_| Instant::now()),
             () = timer => {}
         }
     }
@@ -380,6 +432,7 @@ struct Wifid<'a> {
     store: &'a Store,
     key: &'a AddressKey,
     credentials: &'a Credentials,
+    state: &'a watch::Sender<State>,
 }
 
 impl Wifid<'_> {
@@ -405,6 +458,7 @@ impl Wifid<'_> {
                 for (file, reason) in listing.unreadable {
                     eprintln!("<4>{}: {reason}", file.display());
                 }
+                change(self.state, |state| state.saved(&listing.saved));
                 listing.saved
             }
             Err(error) => return eprintln!("<3>can't read the saved networks: {error}"),
