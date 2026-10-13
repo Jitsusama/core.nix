@@ -383,6 +383,7 @@ in
           "volume"
           "notices"
           "quiet"
+          "disk"
           "awake"
           "wide"
           "microphone"
@@ -607,6 +608,32 @@ in
       cp ${singleton "Niri.qml" "property var casts: ({})"} Niri.qml
       cp ${singleton "Notices.qml" "property var history: []"} Notices.qml
       cp ${options} Options.qml
+      export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+      timeout 60 ${lib.getExe' pkgs.quickshell "qs"} -p shell.qml
+      touch $out
+    '';
+
+  # The disk piece reads the guards' status files as tests/disk.qml writes
+  # them, through Quickshell itself, with niri stood in for.
+  the-disk-piece-reads-the-guards =
+    let
+      niri = pkgs.writeText "Niri.qml" ''
+        pragma Singleton
+        import Quickshell
+        import QtQuick
+        Singleton {
+            property var spawned: []
+            function spawn(command) { spawned = command; }
+        }
+      '';
+    in
+    pkgs.runCommandLocal "the-disk-piece-reads-the-guards" { } ''
+      mkdir runtime && chmod 700 runtime
+      cp ${./modules/quickshell/pieces/Piece.qml} Piece.qml
+      cp ${./modules/quickshell/pieces/Disk.qml} Disk.qml
+      cp ${./tests/disk.qml} shell.qml
+      cp ${niri} Niri.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
       timeout 60 ${lib.getExe' pkgs.quickshell "qs"} -p shell.qml
