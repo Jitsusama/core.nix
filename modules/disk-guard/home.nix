@@ -157,6 +157,26 @@ in
           }
         );
         sccache = lib.mkDefault (cache 60 "${cacheHome}/sccache");
+        # Xcode's builds, which it makes again as a target is.
+        derived-data = lib.mkIf isDarwin (
+          lib.mkDefault (cache 50 "${home}/Library/Developer/Xcode/DerivedData")
+        );
+        # Homebrew's downloads and the versions it upgraded past, which it
+        # prunes itself, weekly and from pressure on.
+        homebrew = lib.mkIf (osConfig.homebrew.enable or false) (
+          lib.mkDefault {
+            kind = "producer";
+            command = [
+              "${osConfig.homebrew.prefix}/bin/brew"
+              "cleanup"
+              "--prune=all"
+            ];
+            path = "${home}/Library/Caches/Homebrew";
+            every = "7d";
+            from = "pressure";
+            timeout = "10m";
+          }
+        );
         github = lib.mkIf config.programs.gh.enable (
           lib.mkDefault {
             kind = "finished";

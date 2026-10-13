@@ -1003,9 +1003,15 @@ in
       agent = (account macWorkstation).launchd.agents.disk-guard;
       system = macWorkstation.config.jitsusama.disk-guard.settings;
       user = (account macWorkstation).jitsusama.disk-guard.settings;
+      # Homebrew comes with the graphical role.
+      brewing =
+        (account (bareDarwin [
+          self.darwinModules.workstation
+          self.darwinModules.graphical
+        ])).jitsusama.disk-guard.settings.sources;
     in
     holds "the-mac-guards-its-disk"
-      "A Mac's guards don't run under launchd, or their config names Linux's paths or systemd-run."
+      "A Mac's guards don't run under launchd, their config names Linux's paths or systemd-run, or a Mac's own sources are missing."
       (
         builtins.elemAt daemon.ProgramArguments 1 == "system"
         && daemon.KeepAlive
@@ -1015,6 +1021,9 @@ in
         && system.dedupe.systemd_run == null
         && system.sources.tmp.path == "/private/tmp"
         && user.sources.trash.path == "/Users/someone/.Trash"
+        && user.sources.derived-data.kind == "cache"
+        && !(user.sources ? homebrew)
+        && builtins.elemAt brewing.homebrew.command 1 == "cleanup"
         && !((account macWorkstation).systemd.user.services ? disk-guard)
       );
 
