@@ -18,11 +18,21 @@ impl Fill {
     /// The time over which the rate follows a change, in seconds.
     const SMOOTHING: f64 = 120.0;
 
-    /// Takes a reading of free space at a monotonic time.
+    /// The least time a rate is measured over. A busy disk's free space
+    /// jumps by what a writer flushes, so two readings moments apart, as
+    /// steps come right after a pass, measure the flush, not the fill.
+    const SHORTEST: f64 = 1.0;
+
+    /// Takes a reading of free space at a monotonic time. One too soon
+    /// after the last counted is passed over, and the next is measured
+    /// from the last.
     pub fn observe(&mut self, now: f64, free: u64) {
-        if let Some((then, was)) = self.last
-            && now > then
+        if let Some((then, _)) = self.last
+            && now - then < Self::SHORTEST
         {
+            return;
+        }
+        if let Some((then, was)) = self.last {
             let seconds = now - then;
             let sample = (was as f64 - free as f64) / seconds;
             let weight = 1.0 - (-seconds / Self::SMOOTHING).exp();
