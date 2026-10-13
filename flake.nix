@@ -241,8 +241,10 @@
       };
 
       formatter = forEachSystem (pkgs: (treefmt pkgs).config.build.wrapper);
-      # The tools for working on core's own programs, so nothing but Nix has
-      # to be installed first. direnv enters it in a program's directory.
+      # The tools for working on core's own programs, the disk guard and
+      # wifid among them, with the toolchain their packages build with, so
+      # nothing but Nix has to be installed first. direnv enters it in a
+      # program's directory, or `nix develop` then cargo there.
       devShells = forEachSystem (pkgs: {
         default = pkgs.mkShell {
           packages = [
@@ -254,21 +256,6 @@
           ];
         };
       });
-
-      # Where core.nix's own programs are worked on, with the toolchain
-      # their packages build with: `nix develop`, then cargo in the
-      # program's directory.
-      devShells.x86_64-linux.default =
-        let
-          pkgs = nixpkgs.legacyPackages.x86_64-linux;
-        in
-        pkgs.mkShell {
-          inputsFrom = [ (pkgs.callPackage ./modules/wifid/package.nix { }) ];
-          packages = [
-            pkgs.clippy
-            pkgs.rustfmt
-          ];
-        };
 
       checks = forEachSystem (
         pkgs:
