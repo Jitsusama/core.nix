@@ -714,7 +714,7 @@ by them isn't done.
 | The boot menu                             | lanzaboote, systemd-boot | the firmware's |        |        |           |         |          |
 | The boot splash and unlock prompts        | Plymouth                 | both           |        |        |           |         |          |
 | The console and emergency shell           | the console font         | console        |        |        |           |         |          |
-| The greeter                               | Quickshell, greetd       | both           |        |        |           |         |          |
+| The greeter                               | Quickshell, greetd       | both           | the time, the date, who's signing in, the session it starts | a refused password, what PAM says | Tab to the next account | the lock screen's | the boot's timings; the time stays |
 | The compositor                            | niri                     | none           |        |        |           |         |          |
 | The wallpaper                             | Quickshell, niri         | none           |        |        |           |         |          |
 | The overview's status and the margin mark | Quickshell               | both           | the time, the date, the battery with its time and watts, the network, the volume | the battery running low, offline, muted | step 2's doors | step 2 | volume, network, battery, date; the time stays |
