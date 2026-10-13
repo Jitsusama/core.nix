@@ -76,7 +76,11 @@ fn ask(
             Err(error) => return Some(Err(error.into())),
         };
         if let Some(error) = answer["error"].as_str() {
-            return Some(Err(io::Error::other(format!("wifid refused: {error}"))));
+            let refused = match answer["parameters"]["reason"].as_str() {
+                Some(reason) => format!("wifid refused: {error}: {reason}"),
+                None => format!("wifid refused: {error}"),
+            };
+            return Some(Err(io::Error::other(refused)));
         }
         Some(Ok(answer["parameters"].take()))
     }))
@@ -171,6 +175,19 @@ mod tests {
         assert_eq!(
             wifid.join().unwrap(),
             json!({"method": "io.jitsusama.Wifi.Describe", "more": true})
+        );
+    }
+
+    #[test]
+    fn a_failure_says_wifid_s_reason() {
+        let failed = json!({"error": "io.jitsusama.Wifi.Failed", "parameters": {"reason": "10.42.0.1 didn't answer"}});
+        let (_dir, socket, _wifid) = wifid(vec![failed]);
+
+        let refused = lookup(&socket, "wlan2", "front-desk.inn").unwrap_err();
+
+        assert!(
+            refused.to_string().contains("10.42.0.1 didn't answer"),
+            "{refused}"
         );
     }
 

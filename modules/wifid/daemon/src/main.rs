@@ -264,7 +264,11 @@ async fn run() -> Result<(), Box<dyn Error>> {
                     Ask::Lookup { card, name, done } => {
                         let servers = networks.servers(&card);
                         tokio::spawn(async move {
-                            let _ = done.send(look_up(&card, servers, &name).await);
+                            let found = look_up(&card, servers, &name).await;
+                            if let Err(refused) = &found {
+                                eprintln!("<4>can't look {name} up through {card}: {refused:?}");
+                            }
+                            let _ = done.send(found);
                         });
                     }
                     ask => wifid.answer(ask).await,
