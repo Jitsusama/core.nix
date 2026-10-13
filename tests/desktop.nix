@@ -25,6 +25,20 @@ let
   # for one that has.
   text = pkgs.writeText "text" "A text view.";
 
+  # Asks through SSH_ASKPASS as ssh-tpm-agent and ssh do: the kind, as
+  # SSH_ASKPASS_PROMPT, or "secret" for none, then the prompt, with \n for
+  # its line breaks. What comes back and how it exits land beside each other
+  # in the runtime folder, the exit last.
+  asking = pkgs.writeShellScript "asking" ''
+    kind=$1
+    out=$XDG_RUNTIME_DIR/asked-$kind
+    rm -f "$out".*
+    if [ "$kind" = secret ]; then unset SSH_ASKPASS_PROMPT; else export SSH_ASKPASS_PROMPT=$kind; fi
+    "$SSH_ASKPASS" "$(printf '%b' "$2")" > "$out.answer"
+    echo $? > "$out.part"
+    mv "$out.part" "$out.exit"
+  '';
+
   # What the shell has reported (modules/quickshell/Report.qml): waits until
   # it reports something starting with a prefix after a point in its
   # journal, or since the boot with no point given, then prints every
@@ -243,6 +257,16 @@ pkgs.testers.runNixOSTest {
       home-manager.users.${account} = {
         home.stateVersion = "26.05";
         jitsusama.quickshell.reports = true;
+        # No key repeats. A key the test presses is let go when the host gets
+        # round to it, which on a busy host is past the delay a held key
+        # repeats after, so a letter typed once arrived twice.
+        xdg.configFile."niri/keyboard.kdl".text = lib.mkForce ''
+          input {
+              keyboard {
+                  repeat-rate 0
+              }
+          }
+        '';
         # What Quickshell hears from Pipewire about nodes and defaults, so a
         # change it missed can be told from one it was never sent.
         systemd.user.services.quickshell.Service.Environment = [
@@ -1610,8 +1634,20 @@ pkgs.testers.runNixOSTest {
               return colours > 1000
 
           retry(pictured, timeout_seconds=30)
-          machine.send_chars("${secret}\n")
-          machine.wait_until_succeeds(in_session("qs ipc call lock isLocked | grep -q false"), timeout=30)
+          with told("released lock"):
+              machine.send_chars("${secret}\n")
+          as_account("qs ipc call lock isLocked | grep -q false")
+
+      # What locks before the machine sleeps returns only once niri has drawn
+      # the lock on every screen, so nothing else shows on waking.
+      with subtest("lock-screen returns once the lock is drawn"):
+          marker = "$XDG_RUNTIME_DIR/quickshell-locked"
+          as_account(f"grep -qx unlocked {marker}")
+          as_account("lock-screen")
+          as_account(f"grep -qx locked {marker}")
+          with told("released lock"):
+              machine.send_chars("${secret}\n")
+          as_account(f"grep -qx unlocked {marker}")
 
       with subtest("polkit's prompt lets the account start a system service"):
           with told("keys polkit"):
@@ -1619,6 +1655,51 @@ pkgs.testers.runNixOSTest {
           photograph("polkit")
           machine.send_chars("${secret}\n")
           machine.wait_for_file("/run/polkit-allowed", timeout=30)
+
+      # ssh-tpm-agent asks before a key confirmed on use signs, and for a
+      # key's PIN, and ssh for a security key's touch, all through the
+      # shell's askpass, which answers as OpenSSH's contract says.
+      with subtest("the askpass asks for a yes, a PIN and a touch"):
+          # Started by the account's systemd, as ssh-tpm-agent is, so it has
+          # what the agent has.
+          def ask(kind, prompt):
+              as_account(f"systemd-run --user --collect --quiet -- ${asking} {kind} '{prompt}'")
+
+          def answered(kind, code, answer=""):
+              exit = f"$XDG_RUNTIME_DIR/asked-{kind}.exit"
+              machine.wait_until_succeeds(in_session(f"test -e {exit}"), timeout=30)
+              t.assertEqual(as_account(f"cat {exit}").strip(), str(code))
+              t.assertEqual(as_account(f"cat $XDG_RUNTIME_DIR/asked-{kind}.answer"), answer)
+
+          signing = (
+              "Allow use of key joel-signing?\\nKey fingerprint SHA256:abc."
+              "\\nRequested by ssh-keygen (1234) \u2190 tpm-sign \u2190 git \u2190 zsh"
+          )
+          with told("keys askpass"):
+              ask("confirm", signing)
+          photograph("askpass")
+          machine.send_key("ret")
+          answered("confirm", 0)
+
+          with told("keys askpass"):
+              ask("confirm", signing)
+          with told("gone askpass"):
+              machine.send_key("esc")
+          answered("confirm", 1)
+
+          with told("keys askpass"):
+              ask("secret", "Enter PIN for ED25519-SK key /home/${account}/.ssh/id_ed25519_sk: ")
+          photograph("askpass-pin")
+          machine.send_chars("2468\n")
+          answered("secret", 0, "2468\n")
+
+          # A touch takes no keys, and goes once ssh stops waiting on it.
+          with told("drawn askpass"):
+              ask("none", "Confirm user presence for key ED25519-SK SHA256:abc")
+          with told("gone askpass"):
+              as_account("pkill -TERM -f '^[^ ]*bash [^ ]*ssh-askpass Confirm'")
+          answered("none", 1)
+          as_account("! ls $XDG_RUNTIME_DIR | grep -q '^askpass'")
 
       # Chrome and Slack ask the desktop portal, and websites hear it from them.
       with subtest("the desktop says it prefers dark"):

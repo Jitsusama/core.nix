@@ -8,6 +8,7 @@ ShellRoot {
     Wallpaper {}
     Notifications {}
     Polkit {}
+    Askpass {}
     Volume {}
     Volume {
         input: true

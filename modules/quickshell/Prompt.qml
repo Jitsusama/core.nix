@@ -55,6 +55,11 @@ Item {
         input.text = "";
     }
 
+    // Takes the keys back from whatever else in its window had them.
+    function take() {
+        input.forceActiveFocus();
+    }
+
     implicitWidth: 480
     implicitHeight: Theme.space.xxxl
 

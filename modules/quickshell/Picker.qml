@@ -359,32 +359,17 @@ Singleton {
                         width: parent.width
                         height: Theme.space.xxl + Theme.space.s
 
-                        Row {
+                        KeyHints {
                             id: hints
                             anchors.right: parent.right
                             anchors.rightMargin: Theme.space.l
                             anchors.verticalCenter: parent.verticalCenter
-                            spacing: Theme.space.xl
-
-                            Repeater {
-                                model: root.lettered
-                                    ? [["a\u2013z", "row, then column"], ["\u232b", "undo"],
-                                        ["Esc", "clear"], ["\u21b5", "take"]]
-                                    : [["a\u2013z", "cells"],
-                                        ["\u2190 \u2192 \u2191 \u2193", "move"],
-                                        ["\u21e7", "size"], ["Esc", "back"], ["\u21b5", "take"]]
-
-                                Text {
-                                    required property var modelData
-
-                                    text: `<font color="${Theme.text}">${modelData[0]}</font> `
-                                        + modelData[1]
-                                    textFormat: Text.StyledText
-                                    color: Theme.muted
-                                    font.family: Theme.mono.family
-                                    font.pointSize: Theme.mono.large
-                                }
-                            }
+                            keys: root.lettered
+                                ? [["\u21b5", "take"], ["a\u2013z", "row, then column"],
+                                    ["\u232b", "undo"], ["Esc", "clear"]]
+                                : [["\u21b5", "take"], ["a\u2013z", "cells"],
+                                    ["\u2190 \u2192 \u2191 \u2193", "move"],
+                                    ["\u21e7", "size"], ["Esc", "back"]]
                         }
                     }
                 }
