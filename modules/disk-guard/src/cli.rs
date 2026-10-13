@@ -279,9 +279,6 @@ type Done = Result<i32, (i32, String)>;
 /// How often a daemon steps.
 const STEP_EVERY: Duration = Duration::from_secs(5);
 
-/// How often each account may ask the system daemon.
-const ASK_EVERY: Duration = Duration::from_millis(500);
-
 /// Runs a daemon until it's told to stop.
 fn daemon(
     env: &Env,
@@ -334,7 +331,13 @@ fn daemon(
             }
             let store = crate::pool::pool(&config.nix.store).ok();
             hearing = Some(
-                answering(&env.system_socket, &env.processes, ASK_EVERY, store).map_err(failed)?,
+                answering(
+                    &env.system_socket,
+                    &env.processes,
+                    crate::socket::ASK_EVERY,
+                    store,
+                )
+                .map_err(failed)?,
             );
             Places {
                 state: state.clone(),

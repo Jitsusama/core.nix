@@ -39,6 +39,8 @@ struct Voucher {
     roots: Vec<PathBuf>,
     /// The last answer, or the failure to get one, and when.
     heard: Option<(Instant, Result<Answer, String>)>,
+    /// The processes it was asked about, by pid and start.
+    asked_about: Vec<(u32, u64)>,
 }
 
 /// How long to wait for the system daemon, which scans every process to
@@ -63,13 +65,15 @@ impl Scan {
 
     /// Asks the system daemon at `socket` about the processes this account
     /// can't read, for what they touch beneath `roots`. Its answer is kept
-    /// as long as a scan is, even across a move: a process started since
-    /// has a pid and start it didn't vouch for, and stays unknown.
+    /// as long as a scan is, even across a move, unless a process it wasn't
+    /// asked about has started since: one it couldn't vouch for stays
+    /// unknown without its being asked again.
     pub fn vouched_by(mut self, socket: &Path, roots: &[PathBuf]) -> Self {
         self.voucher = Some(Voucher {
             socket: socket.to_owned(),
             roots: roots.to_vec(),
             heard: None,
+            asked_about: Vec::new(),
         });
         self
     }
@@ -87,11 +91,21 @@ impl Scan {
         let Some(voucher) = &mut self.voucher else {
             return local;
         };
-        if local.iter().all(|process| process.readable) {
+        let unread: Vec<(u32, u64)> = local
+            .iter()
+            .filter(|process| !process.readable)
+            .map(|process| (process.pid, process.start_ticks))
+            .collect();
+        if unread.is_empty() {
             return local;
         }
         let current = match &voucher.heard {
-            Some((at, Ok(_))) => at.elapsed() < fresh,
+            Some((at, Ok(_))) => {
+                at.elapsed() < fresh
+                    && unread
+                        .iter()
+                        .all(|process| voucher.asked_about.contains(process))
+            }
             Some((at, Err(_))) => at.elapsed() < ASK_AGAIN,
             None => false,
         };
@@ -99,12 +113,22 @@ impl Scan {
             let request = socket::Request::Processes {
                 roots: voucher.roots.clone(),
             };
-            let heard = match socket::ask(&voucher.socket, &request, ASK_TIMEOUT) {
+            let ask = || match socket::ask(&voucher.socket, &request, ASK_TIMEOUT) {
                 Ok(socket::Reply::Answer(answer)) => Ok(answer),
                 Ok(other) => Err(format!("the system daemon answered {other:?}")),
                 Err(error) => Err(error.to_string()),
             };
+            // Another of the account's askers, a plan beside the daemon,
+            // may have just asked: the daemon allows one ask in a moment.
+            let heard = match ask() {
+                Err(why) if why == socket::TOO_SOON => {
+                    std::thread::sleep(socket::ASK_EVERY);
+                    ask()
+                }
+                heard => heard,
+            };
             voucher.heard = Some((Instant::now(), heard));
+            voucher.asked_about = unread;
         }
         match &voucher.heard {
             Some((_, Ok(answer))) => vouch::merge(local, answer),

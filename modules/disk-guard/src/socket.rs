@@ -16,6 +16,13 @@ use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
+/// How often each account may ask the system daemon each kind of request.
+pub const ASK_EVERY: Duration = Duration::from_millis(500);
+
+/// The refusal of an ask that came too soon after the last, which an
+/// asker meets by asking again once `ASK_EVERY` has passed.
+pub const TOO_SOON: &str = "too soon: ask at most twice a second";
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
 pub enum Request {
@@ -139,7 +146,7 @@ impl Server {
             .get(&turn)
             .is_some_and(|at| now.duration_since(*at) < self.every)
         {
-            return Err("too soon: ask at most once a second".to_owned());
+            return Err(TOO_SOON.to_owned());
         }
         self.asked.insert(turn, now);
         Ok((uid, request))
