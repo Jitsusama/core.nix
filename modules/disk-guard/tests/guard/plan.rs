@@ -234,3 +234,13 @@ fn a_plan_stops_once_its_predicted_free_covers_the_shortfall() {
     assert_eq!(steps.len(), 6);
     assert_eq!(steps[0].predicted, GIB / 2);
 }
+
+#[test]
+fn an_oversized_log_is_trimmed_as_waste_in_every_band() {
+    let log = [candidate("app.log", Class::Log, 0.0)];
+    for band in [Band::Healthy, Band::Pressure, Band::Urgent, Band::Critical] {
+        let steps = plan(&log, band, None, |_| 1.0);
+        assert_eq!(steps.len(), 1, "{band:?}");
+        assert_eq!(steps[0].group, Group::Waste, "{band:?}");
+    }
+}

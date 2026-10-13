@@ -1,7 +1,6 @@
 //! What the sources offer: every candidate, with how it's reclaimed and
 //! the filesystem it lies on, so a pass runs on one filesystem with only
-//! what lies there. Logs, podman and producers offer nothing here; they
-//! run as upkeep.
+//! what lies there.
 
 use crate::activity::{self, Process, Use};
 use crate::anchor::Dir;
@@ -11,7 +10,7 @@ use crate::discover::{self, Checkout, Kind};
 use crate::plan::{Candidate, Class};
 use crate::snapshots::Boot;
 use crate::{
-    age, caches, coredumps, nix_builds, scratch, snapshots, temp, trash, trees, workspaces,
+    age, caches, coredumps, logs, nix_builds, scratch, snapshots, temp, trash, trees, workspaces,
 };
 use std::fs;
 use std::os::unix::fs::MetadataExt;
@@ -31,6 +30,8 @@ pub enum Action {
     Trash { trash: PathBuf },
     /// A quest workspace, whose repositories prune its worktrees after.
     Workspace { root: PathBuf },
+    /// A log, trimmed in place to its last part.
+    Trim { root: PathBuf },
 }
 
 impl Action {
@@ -40,7 +41,8 @@ impl Action {
             Action::Target { root }
             | Action::Variant { root }
             | Action::Entry { root }
-            | Action::Workspace { root } => root,
+            | Action::Workspace { root }
+            | Action::Trim { root } => root,
             Action::Trash { trash } => trash,
         }
     }
@@ -233,10 +235,29 @@ pub fn survey(config: &Config, world: &mut World) -> Vec<Offer> {
                     }
                 }
             }
-            Source::Logs { .. }
-            | Source::Podman { .. }
-            | Source::Producer { .. }
-            | Source::Finished { .. } => {}
+            Source::Logs { path } => {
+                let Some(device) = device(path) else { continue };
+                for log in logs::oversized(path, logs::LIMIT) {
+                    let Ok(meta) = fs::symlink_metadata(&log) else {
+                        continue;
+                    };
+                    let candidate = Candidate {
+                        path: log,
+                        class: Class::Log,
+                        idle: 0.0,
+                        size: meta.len().saturating_sub(logs::KEEP),
+                        occupied: false,
+                        spent: false,
+                        checkout: None,
+                    };
+                    offers.push(Offer {
+                        candidate,
+                        action: Action::Trim { root: path.clone() },
+                        device,
+                    });
+                }
+            }
+            Source::Podman { .. } | Source::Producer { .. } | Source::Finished { .. } => {}
         }
     }
     offers

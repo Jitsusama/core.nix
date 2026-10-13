@@ -3,6 +3,7 @@ use disk_guard::activity::Process;
 use disk_guard::band::Band;
 use disk_guard::clock::Awake;
 use disk_guard::config::Config;
+use disk_guard::logs::{KEEP, LIMIT};
 use disk_guard::plan::Class;
 use disk_guard::snapshots::Boot;
 use disk_guard::survey::{Action, Offer, World, survey};
@@ -327,4 +328,35 @@ fn orphaned_snapshots_and_finished_workspaces_are_offered() {
             root: workspaces.clone()
         }
     );
+}
+
+#[test]
+fn logs_past_their_limit_are_offered_to_be_trimmed() {
+    let home = tempfile::tempdir().unwrap();
+    let home = real(home.path());
+    let logs = dir(&home.join("logs"));
+    let sized = |name: &str, len: u64| {
+        let path = logs.join(name);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        // Sparse, so the test writes nothing.
+        fs::File::create(&path).unwrap().set_len(len).unwrap();
+        path
+    };
+    let big = sized("dev/run.log", LIMIT + 1);
+    sized("small.log", LIMIT);
+    sized("big.txt", LIMIT + 1);
+    let config = config(&format!(
+        r#""logs": {{ "kind": "logs", "path": "{}" }}"#,
+        logs.display()
+    ));
+    let found = offers(&config, &[], &|_| false);
+    assert_eq!(found.len(), 1, "{found:?}");
+    let offered = find(&found, &big);
+    assert_eq!(offered.candidate.class, Class::Log);
+    assert_eq!(
+        offered.candidate.size,
+        LIMIT + 1 - KEEP,
+        "what trimming drops"
+    );
+    assert_eq!(offered.action, Action::Trim { root: logs.clone() });
 }

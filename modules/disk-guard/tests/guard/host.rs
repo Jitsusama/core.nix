@@ -292,6 +292,31 @@ fn a_workspace_goes_and_its_worktrees_are_pruned() {
 }
 
 #[test]
+fn a_log_is_trimmed_to_its_last_part_in_place() {
+    use disk_guard::logs::KEEP;
+    use std::io::Write;
+    let proc = tempfile::tempdir().unwrap();
+    let root = tempfile::tempdir().unwrap();
+    let root = fs::canonicalize(root.path()).unwrap();
+    let log = root.join("dev/run.log");
+    fs::create_dir_all(log.parent().unwrap()).unwrap();
+    let mut writer = std::io::BufWriter::new(fs::File::create(&log).unwrap());
+    let lines = (KEEP + (1 << 20)) / 16;
+    for n in 0..lines {
+        writeln!(writer, "line {n:010}").unwrap();
+    }
+    drop(writer);
+    let offers = [offer(&log, Class::Log, Action::Trim { root: root.clone() })];
+    let mut scan = empty_scan(proc.path());
+    let mut reclaim = Reclaim::new(&offers, &mut scan);
+    assert_eq!(reclaim.reclaim(&offers[0].candidate), Outcome::Reclaimed);
+    let kept = fs::read_to_string(&log).unwrap();
+    assert!(kept.len() as u64 <= KEEP, "{}", kept.len());
+    assert!(kept.starts_with("line "), "from a whole line");
+    assert!(kept.ends_with(&format!("line {:010}\n", lines - 1)));
+}
+
+#[test]
 fn a_candidate_no_offer_names_fails_untouched() {
     let proc = tempfile::tempdir().unwrap();
     let root = tempfile::tempdir().unwrap();

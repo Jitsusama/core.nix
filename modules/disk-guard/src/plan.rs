@@ -47,6 +47,8 @@ pub enum Class {
     Garbage,
     /// A producer's own collection.
     Producer,
+    /// A log past its limit, trimmed to its last part.
+    Log,
 }
 
 impl Class {
@@ -67,6 +69,7 @@ impl Class {
             Class::Replaced => "replaced",
             Class::Garbage => "garbage",
             Class::Producer => "producer",
+            Class::Log => "log",
         }
     }
 }
@@ -161,6 +164,8 @@ pub fn group(candidate: &Candidate, band: Band) -> Option<Group> {
         // Their own policies decide how much each takes.
         Class::Garbage => (Group::Garbage, [AT_ONCE; 4]),
         Class::Producer => (Group::Producers, [AT_ONCE; 4]),
+        // What's trimmed is history nobody reads; the rest stays.
+        Class::Log => (Group::Waste, [AT_ONCE; 4]),
     };
     let window = windows[band as usize]?;
     (candidate.idle >= window).then_some(group)

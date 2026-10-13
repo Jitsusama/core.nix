@@ -9,7 +9,7 @@ use crate::plan::Candidate;
 use crate::reclaim::{self, Looker};
 use crate::survey::{Action, Offer};
 use crate::vouch::{self, Answer};
-use crate::{socket, workspaces};
+use crate::{logs, socket, workspaces};
 use std::collections::HashMap;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -215,6 +215,17 @@ impl Reclaimer for Reclaim<'_> {
             }
             Action::Entry { .. } => reclaim::entry(&root, root_path, candidate, self.scan),
             Action::Trash { .. } => reclaim::trashed(&root, root_path, candidate),
+            Action::Trim { .. } => {
+                let Ok(relative) = candidate.path.strip_prefix(root_path) else {
+                    return Outcome::Failed(format!("outside its root {}", root_path.display()));
+                };
+                // Its writer carries on appending to what's kept, so its use
+                // judges nothing.
+                match logs::trim(&root, relative, logs::KEEP) {
+                    Ok(_) => Outcome::Reclaimed,
+                    Err(error) => Outcome::Failed(format!("trimming it: {error}")),
+                }
+            }
             Action::Workspace { .. } => {
                 // Read before it goes: its .git files name the repositories.
                 let linked = workspaces::linked(&candidate.path);
