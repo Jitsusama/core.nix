@@ -6,8 +6,7 @@
 # programs Joel views, draws, reads, watches, listens and pairs with:
 # swayimg, which opens pictures and drawings, zathura, which opens
 # documents, GIMP, Inkscape, mpv, which opens video, the camera, Spotify and
-# Tuple. A touchscreen's swipes move through the desktop as the touchpad's
-# do. The compositor and sound get the CPU and memory before anything Joel
+# Tuple. The compositor and sound get the CPU and memory before anything Joel
 # starts.
 { nixosModules, homeModules }:
 {
@@ -18,7 +17,6 @@
     nixosModules.fonts
     nixosModules.gnome-keyring
     nixosModules.greetd
-    nixosModules.lisgd
     nixosModules.mpv
     nixosModules.niri
     nixosModules.onepassword
@@ -36,7 +34,6 @@
     homeModules.inkscape
     homeModules.niri
     homeModules.kitty
-    homeModules.lisgd
     homeModules.mpv
     homeModules.quickshell
     homeModules.spotify

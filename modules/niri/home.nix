@@ -99,6 +99,50 @@ in
 
   config.jitsusama.niri.binds = import ./binds.nix { inherit lib; };
 
+  # The touchscreen's swipes, which niri does itself (nixos.nix's patch), as
+  # the touchpad's: three fingers move the columns and the workspaces the way
+  # the content moves under them, four up open the overview and four down
+  # close it. Each with the action that does what its swipe ends in, for the
+  # launcher's shortcuts to list and run.
+  config.jitsusama.swipes = [
+    {
+      fingers = 3;
+      way = "left";
+      does = "Focus the column to the right";
+      action = "focus-column-right";
+    }
+    {
+      fingers = 3;
+      way = "right";
+      does = "Focus the column to the left";
+      action = "focus-column-left";
+    }
+    {
+      fingers = 3;
+      way = "up";
+      does = "Go to the workspace below";
+      action = "focus-workspace-down";
+    }
+    {
+      fingers = 3;
+      way = "down";
+      does = "Go to the workspace above";
+      action = "focus-workspace-up";
+    }
+    {
+      fingers = 4;
+      way = "up";
+      does = "Show every workspace";
+      action = "open-overview";
+    }
+    {
+      fingers = 4;
+      way = "down";
+      does = "Stop showing every workspace";
+      action = "close-overview";
+    }
+  ];
+
   # Also links it as ~/.icons/default and names it to GTK, for programs that
   # look there rather than at niri's variables. Home Manager offers this on
   # Linux only, and niri runs nowhere else.
