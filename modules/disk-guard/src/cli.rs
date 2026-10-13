@@ -334,12 +334,14 @@ fn daemon(
         .sources
         .values()
         .any(|source| matches!(source, crate::config::Source::Cargo { .. }));
+    let freezes = config.freeze;
     let mut guard = Guard::new(config, &places).map_err(failed)?;
     if let Some(hearing) = hearing {
         guard.hear(hearing);
     }
-    // Only the account's guard freezes, in its own manager.
-    if scope == Scope::User {
+    // Only the account's guard freezes, in its own manager, unless its
+    // config says never.
+    if scope == Scope::User && freezes {
         guard.freeze_with(Box::new(crate::freezer::Session::default()));
     }
     // Without a watch nothing dates an older build, so it stays.

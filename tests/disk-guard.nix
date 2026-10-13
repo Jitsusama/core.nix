@@ -283,6 +283,50 @@ pkgs.testers.runNixOSTest {
           machine.succeed("ls /srv/small/fill-*")
           as_joel("! ls -a /srv/small/tiny | grep -q disk-guard-trash")
 
+      status = "/run/user/1000/disk-guard/status.json"
+
+      # A writer of about 4 MiB a second in a scope of its own, as an app
+      # the desktop starts is: what su starts sits in a session, and nothing
+      # in a session is ever frozen.
+      def run_away(name):
+          writes = "exec 3>>~/" + name + "; while :; do printf '%1048576s' x >&3; sleep 0.25; done"
+          as_joel(
+              f"setsid -f systemd-run --user --scope --quiet --unit={name} bash -c "
+              + shlex.quote(writes)
+              + " > /dev/null 2>&1"
+          )
+
+      def frozen_unit():
+          machine.wait_until_succeeds(f"jq -e '.frozen | length == 1' {status}", timeout=120)
+          return machine.succeed(f"jq -r '.frozen[0].unit' {status}").strip()
+
+      def freezer_state(unit):
+          return as_joel(f"systemctl --user show -P FreezerState {unit}").strip()
+
+      with subtest("a runaway writer at critical is frozen, and stays thawed once thawed by hand"):
+          fill_to(0.03)
+          run_away("runaway")
+          unit = frozen_unit()
+          t.assertEqual(freezer_state(unit), "frozen")
+          t.assertIn("Thawed " + unit, as_joel("/run/current-system/sw/bin/disk-guard thaw"))
+          machine.wait_until_succeeds(f"jq -e '.frozen | length == 0' {status}", timeout=60)
+          machine.sleep(20)
+          t.assertEqual(freezer_state(unit), "running")
+          as_joel(f"systemctl --user kill {unit}; systemctl --user stop runaway.scope || true")
+          as_joel("rm -f ~/runaway ~/fill-*")
+          wait_for_band("/home", "healthy")
+
+      with subtest("a frozen writer thaws by itself once its disk has room"):
+          fill_to(0.03)
+          run_away("again")
+          unit = frozen_unit()
+          t.assertEqual(freezer_state(unit), "frozen")
+          as_joel("rm ~/fill-*")
+          machine.wait_until_succeeds(f"jq -e '.frozen | length == 0' {status}", timeout=120)
+          t.assertEqual(freezer_state(unit), "running")
+          as_joel(f"systemctl --user kill {unit}; systemctl --user stop again.scope || true")
+          as_joel("rm -f ~/again")
+
       with subtest("with its store pressed the machine expires generations and collects"):
           paths = []
           for n in range(1, 9):

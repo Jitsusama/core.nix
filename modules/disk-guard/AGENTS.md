@@ -16,8 +16,8 @@ every home, and `disk-guard user` in each account, which owns the home.
 - **Order.** Below healthy a pass takes, in turn: waste (orphaned targets,
   oversized logs, Nix's leftover build directories), Nix generations and
   garbage, idle build variants and cold scratch, producers' own collection,
-  caches cheapest to refill first, idle targets and installs, and last what
-  is occupied. While healthy, routine upkeep runs at most every six hours,
+  caches cheapest to refill first, idle targets and installs, older builds a
+  newer one of their crate replaced, and last what is occupied. While healthy, routine upkeep runs at most every six hours,
   only in a spare moment: on mains or a battery over half, ten minutes after
   boot or resume, with nothing stalling on the disk or memory.
 - **Windows.** How long a thing has to sit idle before it goes narrows with
@@ -34,6 +34,18 @@ every home, and `disk-guard user` in each account, which owns the home.
   target is renamed into a trash beside it, judged again, then emptied; a
   disk too full to rename deletes in place. Each step is in the journal, and
   a guard starting after a crash empties what was begun.
+- **Replaced builds.** The account's guard marks every target's `deps` with
+  fanotify and keeps when each artifact was last opened in `uses.json`, since
+  under noatime nothing on disk says. From pressure, a build of a crate with a
+  newer one beside it goes once nothing has opened it for a day and an hour,
+  with cargo's locks held; a `deps` never watched dates nothing.
+- **Freezing.** At critical with nothing left to take, the account's guard
+  freezes the process that wrote more than half of the last minute's writes,
+  at a mebibyte a second or more, with a file open on that disk: it and its
+  descendants move into a scope of their own, which is frozen. Never the guard,
+  nothing in a session, nothing of another account's. It thaws once the disk
+  is above urgent, or by `disk-guard thaw`, after which it's never frozen
+  again.
 - **Nix.** The system daemon lists the dead paths in a spare moment and
   deletes them oldest first, keeping three days' within a budget of 10% of
   the filesystem. It expires generations, never the current, running or
@@ -57,6 +69,8 @@ every home, and `disk-guard user` in each account, which owns the home.
 | `src/daemon.rs`, `serve.rs` | a daemon's step and its loop                           |
 | `src/socket.rs`, `vouch.rs` | what the two daemons say to each other                 |
 | `src/garbage.rs`, `generations.rs`, `dedupe.rs` | Nix's garbage, generations and linking |
+| `src/replaced.rs`, `opens.rs` | older builds, and the watch that dates them      |
+| `src/writers.rs`, `freezer.rs` | who writes most, and freezing them through systemd |
 | `tests/guard/`            | the scenarios, one file per module                       |
 
 ## Working on It
