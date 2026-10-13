@@ -38,10 +38,20 @@ local function counted()
 end
 
 -- swayimg makes its window's picture at the screen's scale when told the
--- scale, but if that's before niri first sizes the window, it never tells
--- niri the window's size back, and the window is drawn twice as large as
--- meant. Giving it its own size again once it's open says it.
-swayimg.on_initialized(function()
+-- scale, but doesn't tell niri the window's size back then, so a scale that
+-- comes after niri sizes the window leaves it drawn twice as large as meant.
+-- Giving swayimg its own size again as the size changes says it. Only as it
+-- changes: giving it any sooner draws, and a window drawn before it has
+-- answered niri's first configure breaks the protocol, and niri closes it.
+-- Giving it is itself a change of size, which is let pass, or a scale that
+-- rounds would shrink the window a pixel at a time.
+local giving = false
+swayimg.on_window_resize(function()
+  if giving then
+    giving = false
+    return
+  end
+  giving = true
   local size = swayimg.get_window_size()
   swayimg.set_window_size(size.width, size.height)
 end)
