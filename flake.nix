@@ -108,6 +108,7 @@
         curl = ./modules/curl/home.nix;
         dig = ./modules/dig/home.nix;
         direnv = ./modules/direnv/home.nix;
+        disk-guard = ./modules/disk-guard/home.nix;
         ergodox = moduleFrom ./modules/ergodox/home.nix { inherit qmk lufa printf; };
         fd = ./modules/fd/home.nix;
         fontconfig = ./modules/fontconfig/home.nix;
@@ -180,6 +181,7 @@
         btrfs = ./modules/btrfs/nixos.nix;
         camera = ./modules/camera/nixos.nix;
         coredump = ./modules/coredump/nixos.nix;
+        disk-guard = ./modules/disk-guard/nixos.nix;
         disko = moduleFrom ./modules/disko/nixos.nix { inherit disko; };
         ergodox = ./modules/ergodox/nixos.nix;
         firmware-settings = ./modules/firmware-settings/nixos.nix;

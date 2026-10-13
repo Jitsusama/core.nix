@@ -948,6 +948,21 @@ in
       "The Nix daemon never collects garbage during a build: min-free is ${toString min-free}, max-free ${toString max-free}."
       (min-free > 0 && max-free > min-free);
 
+  # The disk guard's own memory ceiling never stops it, and the account's
+  # guard yields to whatever the account runs. Past the ceiling the kernel
+  # kills in the unit, and systemd's default then stops the whole unit, a
+  # guard that was only waiting on a command among it.
+  disk-guard-stays-in-the-background =
+    let
+      system = workstation.config.systemd.services.disk-guard.serviceConfig;
+      user = (account workstation).systemd.user.services.disk-guard.Service;
+    in
+    holds "disk-guard-stays-in-the-background"
+      "A command overrunning the disk guard's memory would stop the guard, or the account's guard runs outside background.slice."
+      (
+        system.OOMPolicy == "continue" && user.OOMPolicy == "continue" && user.Slice == "background.slice"
+      );
+
   # greetd waits for the GPU the hardware names rather than for the boot to go
   # idle, and the card gets the device unit it waits on. Without the udev tag
   # the unit never appears, and the login waits out the device timeout.
@@ -1779,6 +1794,34 @@ in
         done
         touch $out
       '';
+
+    # The disk guard reads the configs a workstation and its account get:
+    # each is refused at build by the guard's own check-config, which builds
+    # the guard and runs its scenarios on the way.
+    disk-guard-accepts-its-configuration =
+      pkgs.runCommandLocal "disk-guard-accepts-its-configuration"
+        {
+          system = workstation.config.environment.etc."disk-guard/config.json".source;
+          user = (account workstation).xdg.configFile."disk-guard/config.json".source;
+        }
+        ''
+          touch $out
+        '';
+
+    # clippy finds nothing in the guard, its scenarios included.
+    disk-guard-passes-clippy =
+      (pkgs.callPackage ./modules/disk-guard/package.nix { }).overrideAttrs
+        (old: {
+          pname = "disk-guard-passes-clippy";
+          nativeBuildInputs = old.nativeBuildInputs ++ [ pkgs.clippy ];
+          buildPhase = ''
+            cargo clippy --all-targets --offline -- -D warnings
+          '';
+          doCheck = false;
+          installPhase = ''
+            touch $out
+          '';
+        });
 
     # CI runs the virtual machine tests by name, one to a runner, so one it
     # doesn't name would never run there.
