@@ -338,6 +338,7 @@ in
           "wide"
           "microphone"
           "capslock"
+          "layer"
           "call"
           "sharing"
           "recording"

@@ -393,6 +393,7 @@ it. Owners go by layer:
 | Network, Bluetooth, audio devices                                      | the margin mark, only when something's wrong       | the overview's status        |
 | Volume, brightness                                                     | an overlay while it changes                        | the overview's status        |
 | Do not disturb, caffeinate, recording, sharing, mic muted, caps lock   | the margin mark, while true                        | the same mark, in the status |
+| Keyboard layer                                                         | the margin mark, while locked; nothing while a key holds it | the layer, in the status |
 | Music playing                                                          | the margin mark while it plays; a notice for a moment when the track changes or a media key is pressed | the same mark, in the status |
 | In a call                                                              | the margin mark, while in one                      | the same mark, in the status |
 | Notifications waiting                                                  | the margin mark, as a count                        | the overview's status        |
