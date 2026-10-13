@@ -14,10 +14,12 @@
 mod socks;
 mod wifi;
 
+use std::cell::Cell;
 use std::fs::File;
 use std::io::{self, Read};
 use std::net::{Ipv4Addr, SocketAddr, TcpListener, TcpStream};
 use std::path::Path;
+use std::rc::Rc;
 use std::thread;
 use std::time::Duration;
 
@@ -32,6 +34,9 @@ use socks::{Credentials, Target};
 
 /// How long a connection has to be made before it's given up.
 const PATIENCE: Duration = Duration::from_secs(10);
+
+/// How many times a page that didn't load is tried again.
+const RETRIES: u32 = 5;
 
 fn main() -> glib::ExitCode {
     // bubblewrap refuses to start WebKit's sandbox for a process holding
@@ -135,6 +140,19 @@ fn open(app: &gtk::Application) {
         });
     });
 
+    // A page that doesn't load is tried again a few times, a moment apart,
+    // since a network that's just been joined can drop the first try.
+    let tries = Rc::new(Cell::new(0));
+    view.connect_load_failed(move |view, _, address, error| {
+        eprintln!("can't load {address}: {error}");
+        if tries.get() < RETRIES {
+            tries.set(tries.get() + 1);
+            let view = view.clone();
+            glib::timeout_add_local_once(Duration::from_secs(2), move || view.reload());
+        }
+        false
+    });
+
     let (signed_in, done) = async_channel::bounded(1);
     let following = portal.clone();
     thread::spawn(move || {
@@ -184,7 +202,10 @@ fn proxy(card: &str) -> io::Result<String> {
     );
     let card = card.to_string();
     thread::spawn(move || {
-        socks::serve(listener, credentials, move |target| connect(&card, target))
+        socks::serve(listener, credentials, move |target| {
+            connect(&card, target)
+                .inspect_err(|error| eprintln!("can't reach {target:?} through {card}: {error}"))
+        })
     });
     Ok(address)
 }
