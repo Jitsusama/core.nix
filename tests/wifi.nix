@@ -6,7 +6,9 @@
 # saves it. A joined network gets its address and DNS server and sees an
 # address of the card's own for it. wifid finds which network wants a
 # sign-in, asking the network's own DNS server even while a VPN's servers
-# stand in for it. A resolver for a private domain, set up the way a
+# stand in for it, and notices a guest signing in, a session the network
+# said would end ending, and a network letting only the plain check
+# through. A resolver for a private domain, set up the way a
 # development DNS server is, keeps answering through every join; and a
 # routing rule another program made, as a VPN's client does, survives
 # joining, reconfiguring and networkd restarting.
@@ -59,7 +61,11 @@ let
     interface=wlan1
     dhcp-range=wlan0,10.42.0.10,10.42.0.50,1h
     dhcp-range=wlan1,10.43.0.10,10.43.0.50,1h
+    # Lantern says where to ask it about the session it gives, as RFC 8910
+    # lets a network.
+    dhcp-option=tag:wlan0,114,"https://api.lantern/captive"
     address=/router.lantern/10.42.0.1
+    address=/api.lantern/10.42.0.1
     address=/front-desk.inn/10.43.0.1
     no-resolv
     # The check page is on each network's own router, so a check finds the
@@ -69,26 +75,70 @@ let
   '';
 
   checkPageAddresses = pkgs.writeText "check-page" ''
-    10.42.0.1 connectivitycheck.gstatic.com
-    10.43.0.1 connectivitycheck.gstatic.com
+    10.42.0.1 connectivitycheck.gstatic.com secure-check.test
+    10.43.0.1 connectivitycheck.gstatic.com secure-check.test
   '';
 
-  # Lantern reaches beyond itself, so its check page answers as Google's
-  # does; the Inn sends every guest to its front desk first.
+  # A certificate authority the machine trusts, standing in for the real
+  # ones, and a certificate from it for Lantern's HTTPS pages.
+  certificates = pkgs.runCommand "stand-in-certificates" { nativeBuildInputs = [ pkgs.openssl ]; } ''
+    mkdir $out
+    cd $out
+    key="-newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes"
+    openssl req -x509 $key -days 3650 -subj /CN=Stand-in -keyout authority.key -out authority.pem \
+      -addext basicConstraints=critical,CA:TRUE -addext keyUsage=critical,keyCertSign
+    openssl req $key -subj /CN=api.lantern -keyout page.key -out page.csr
+    printf '%s\n' subjectAltName=DNS:api.lantern,DNS:secure-check.test \
+      extendedKeyUsage=serverAuth > page.ext
+    openssl x509 -req -in page.csr -CA authority.pem -CAkey authority.key -CAcreateserial \
+      -days 3650 -extfile page.ext -out page.pem
+  '';
+
+  # Lantern reaches beyond itself, so its check pages answer as Google's
+  # do, over HTTP and HTTPS, and its API gives a session a few seconds
+  # long. The Inn sends every guest to its front desk until they've signed
+  # in there, and answers nothing over HTTPS, as a network letting only the
+  # plain check through would.
   checkPage = pkgs.writeText "check-page.py" ''
-    from http.server import BaseHTTPRequestHandler, HTTPServer
+    import json, ssl, threading, time
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    LANTERN = "10.42.0.1"
+    signed_in = set()
+    session = []
 
     class Page(BaseHTTPRequestHandler):
-        def do_GET(self):
-            if self.connection.getsockname()[0] == "10.42.0.1":
-                self.send_response(204)
-            else:
-                self.send_response(302)
-                self.send_header("Location", "http://front-desk.inn/sign-in")
-            self.send_header("Content-Length", "0")
+        def answer(self, code, headers={}, body=b""):
+            self.send_response(code)
+            for name, value in headers.items():
+                self.send_header(name, value)
+            self.send_header("Content-Length", str(len(body)))
             self.end_headers()
+            self.wfile.write(body)
 
-    HTTPServer(("", 80), Page).serve_forever()
+        def do_GET(self):
+            network = self.connection.getsockname()[0]
+            if self.path == "/sign-in":
+                signed_in.add(network)
+                return self.answer(200, body=b"Welcome")
+            if self.path == "/captive":
+                session[:] = session or [time.monotonic()]
+                left = 15 - (time.monotonic() - session[0])
+                said = {"captive": False, "seconds-remaining": int(left)}
+                if left <= 0:
+                    said = {"captive": True, "user-portal-url": "https://router.lantern/renew"}
+                kind = {"Content-Type": "application/captive+json"}
+                return self.answer(200, kind, json.dumps(said).encode())
+            if network == LANTERN or network in signed_in:
+                return self.answer(204)
+            self.answer(302, {"Location": "http://front-desk.inn/sign-in"})
+
+    secure = ThreadingHTTPServer((LANTERN, 443), Page)
+    tls = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    tls.load_cert_chain("${certificates}/page.pem", "${certificates}/page.key")
+    secure.socket = tls.wrap_socket(secure.socket, server_side=True)
+    threading.Thread(target=secure.serve_forever, daemon=True).start()
+    ThreadingHTTPServer(("", 80), Page).serve_forever()
   '';
 in
 pkgs.testers.runNixOSTest {
@@ -98,6 +148,16 @@ pkgs.testers.runNixOSTest {
     { pkgs, ... }:
     {
       imports = [ self.nixosModules.wifid ];
+
+      security.pki.certificateFiles = [ "${certificates}/authority.pem" ];
+      # Google's HTTPS page is out of reach here, so the check asks the
+      # networks' own.
+      environment.etc."wifid/wifid.conf".source = lib.mkForce (
+        pkgs.writeText "wifid.conf" ''
+          [Check]
+          SecurePage=https://secure-check.test/generate_204
+        ''
+      );
 
       # Three stand-in radios: two access points and the laptop's card.
       boot.kernelModules = [ "mac80211_hwsim" ];
@@ -194,6 +254,7 @@ pkgs.testers.runNixOSTest {
       environment.systemPackages = [
         pkgs.iw
         pkgs.dig
+        pkgs.curl
       ];
     };
 
@@ -241,12 +302,12 @@ pkgs.testers.runNixOSTest {
                 f"ip {family} rule show | grep -q 'not from all fwmark 0x100cf lookup 65743'"
             )
 
-    def says(line):
+    def says(line, timeout=30):
         """Waits for wifid, as it runs now, to say line in the journal."""
         machine.wait_until_succeeds(
             "journalctl -o cat _PID=$(systemctl show -P MainPID wifid)"
             f" | grep -qxF '{line}'",
-            timeout=30,
+            timeout=timeout,
         )
 
     def shown():
@@ -301,6 +362,9 @@ pkgs.testers.runNixOSTest {
     with subtest("and finds Lantern reaches beyond itself"):
         says("Lantern on wlan2 reaches beyond itself")
 
+    with subtest("and asks Lantern again as the session it gave ends"):
+        says("Lantern on wlan2 wants a sign-in at https://router.lantern/renew", timeout=45)
+
     with subtest("a stranger's network gets no LLMNR or mDNS"):
         status = machine.succeed("resolvectl status wlan2")
         assert "-LLMNR" in status and "-mDNS" in status, status
@@ -351,5 +415,13 @@ pkgs.testers.runNixOSTest {
         machine.succeed("systemctl restart wifid")
         machine.wait_for_unit("wifid.service")
         machine.wait_until_succeeds(f"! test -e {given}", timeout=30)
+
+    with subtest("signing in at the Inn is noticed"):
+        machine.succeed("curl -sf --interface wlan2 http://front-desk.inn/sign-in")
+        says("Roadside Inn on wlan2 reaches beyond itself", timeout=45)
+
+    with subtest("a network letting only the plain check through reaches no further"):
+        machine.succeed("systemctl restart wifid")
+        says("Roadside Inn on wlan2 reaches no further")
   '';
 }

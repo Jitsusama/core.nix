@@ -6,9 +6,9 @@
 //! comes or goes, so wifid adds the cards again each time it does.
 //!
 //! Once a card's network reaches beyond itself, as networkd sees it, wifid
-//! checks whether it really does or wants a sign-in first, and checks again
+//! checks whether it really does or wants a sign-in first. It checks again
 //! whenever the card moves to another network or is handed other DNS
-//! servers.
+//! servers, as the machine wakes, and on a timer the verdict sets.
 
 mod address;
 mod card;
@@ -16,6 +16,7 @@ mod check;
 mod link;
 mod lookup;
 mod network;
+mod page;
 mod secret;
 mod store;
 mod supplicant;
@@ -24,18 +25,22 @@ mod syntax;
 use std::collections::HashMap;
 use std::error::Error;
 use std::fs;
-use std::net::IpAddr;
+use std::future;
+use std::io;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
+use std::sync::Arc;
 
 use futures_util::StreamExt;
+use tokio::sync::watch;
+use tokio::time::{Instant, sleep_until};
 use zbus::fdo::DBusProxy;
 use zbus::zvariant::{self, ObjectPath};
-use zbus::{Connection, MatchRule, MessageStream};
+use zbus::{Connection, MatchRule, MessageStream, proxy};
 
 use address::AddressKey;
 use card::Card;
-use check::Verdict;
+use check::{Checker, Settings, Verdict};
 use link::Link;
 use secret::Credentials;
 use store::{Saved, Store};
@@ -46,6 +51,23 @@ const STATE: &str = "/var/lib/wifid";
 
 /// What every card wpa_supplicant is given starts from.
 const CARD_SETTINGS: &str = "/etc/wpa_supplicant/interface.conf";
+
+/// Which pages the check asks.
+const SETTINGS: &str = "/etc/wifid/wifid.conf";
+
+/// The certificate authorities the machine trusts.
+const CERTIFICATES: &str = "/etc/ssl/certs/ca-certificates.crt";
+
+/// logind, which says when the machine sleeps and wakes.
+#[proxy(
+    interface = "org.freedesktop.login1.Manager",
+    default_service = "org.freedesktop.login1",
+    default_path = "/org/freedesktop/login1"
+)]
+trait Login {
+    #[zbus(signal)]
+    fn prepare_for_sleep(&self, start: bool) -> zbus::Result<()>;
+}
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> ExitCode {
@@ -93,9 +115,20 @@ async fn run() -> Result<(), Box<dyn Error>> {
         .path_namespace("/org/freedesktop/network1/link")?
         .build();
     let mut links = MessageStream::for_match_rule(rule, &bus, None).await?;
-    let mut checked = HashMap::new();
+    let mut sleeps = LoginProxy::new(&bus)
+        .await?
+        .receive_prepare_for_sleep()
+        .await?;
+    let mut networks = Networks {
+        checker: Arc::new(Checker {
+            settings: settings(),
+            tls: trusted(),
+        }),
+        woken: watch::Sender::new(0),
+        followed: HashMap::new(),
+    };
     for link in all_links(&bus).await {
-        consider(link, &mut checked);
+        networks.follow(link);
     }
     loop {
         tokio::select! {
@@ -108,7 +141,7 @@ async fn run() -> Result<(), Box<dyn Error>> {
                     "fi.w1.wpa_supplicant1" => wifid.add_cards().await,
                     "org.freedesktop.network1" => {
                         for link in all_links(&bus).await {
-                            consider(link, &mut checked);
+                            networks.follow(link);
                         }
                     }
                     _ => {}
@@ -118,7 +151,12 @@ async fn run() -> Result<(), Box<dyn Error>> {
                 let header = message.header();
                 let Some(path) = header.path() else { continue };
                 if let Some(link) = one_link(&bus, path).await {
-                    consider(link, &mut checked);
+                    networks.follow(link);
+                }
+            }
+            Some(sleep) = sleeps.next() => {
+                if sleep.args().is_ok_and(|args| !args.start) {
+                    networks.woken.send_modify(|wakes| *wakes += 1);
                 }
             }
             else => return Ok(()),
@@ -126,33 +164,108 @@ async fn run() -> Result<(), Box<dyn Error>> {
     }
 }
 
-/// What a network was last checked as: its name and DNS servers.
-type Checked = (Option<String>, Vec<IpAddr>);
-
-/// Checks the link's network when it reaches beyond itself and wasn't
-/// checked as it stands, without holding up anything else.
-fn consider(link: Link, checked: &mut HashMap<i32, Checked>) {
-    if !link.routable {
-        checked.remove(&link.index);
-        return;
-    }
-    let standing = (link.ssid.clone(), link.dns.clone());
-    if checked.get(&link.index) == Some(&standing) {
-        return;
-    }
-    checked.insert(link.index, standing);
-    tokio::spawn(async move {
-        let verdict = check::check(&link.name, &link.dns).await;
-        let network = link.ssid.as_deref().unwrap_or("The network");
-        let card = &link.name;
-        match verdict {
-            Verdict::Online => println!("<6>{network} on {card} reaches beyond itself"),
-            Verdict::SignIn { page } => {
-                println!("<5>{network} on {card} wants a sign-in at {page}")
+/// The pages wifid.conf names; Google's, said in the journal, when it
+/// can't be read.
+fn settings() -> Settings {
+    let read = fs::read_to_string(SETTINGS).map_err(|error| error.to_string());
+    match read.and_then(|text| Settings::read(&text)) {
+        Ok(settings) => settings,
+        Err(reason) => {
+            let missing = fs::exists(SETTINGS).is_ok_and(|exists| !exists);
+            if !missing {
+                eprintln!("<4>{SETTINGS}: {reason}; asking Google's pages instead");
             }
-            Verdict::Limited => println!("<4>{network} on {card} reaches no further"),
+            Settings::default()
         }
-    });
+    }
+}
+
+/// What TLS trusts; nothing, said in the journal, when the certificates
+/// can't be read, which leaves only the plain check.
+fn trusted() -> Option<Arc<rustls::ClientConfig>> {
+    page::trusting(Path::new(CERTIFICATES))
+        .inspect_err(|error: &io::Error| {
+            eprintln!("<4>{CERTIFICATES}: {error}; only the plain check will run")
+        })
+        .ok()
+}
+
+/// Every Wi-Fi card's network, each followed by a task of its own.
+struct Networks {
+    checker: Arc<Checker>,
+    /// Counts the machine's wakes, which every task checks at.
+    woken: watch::Sender<u64>,
+    followed: HashMap<i32, watch::Sender<Link>>,
+}
+
+impl Networks {
+    /// Hands the link to its card's task, starting one for a card new to
+    /// wifid.
+    fn follow(&mut self, link: Link) {
+        if let Some(followed) = self.followed.get(&link.index) {
+            followed.send_replace(link);
+            return;
+        }
+        let index = link.index;
+        let (followed, link) = watch::channel(link);
+        let checker = Arc::clone(&self.checker);
+        tokio::spawn(check_network(link, self.woken.subscribe(), checker));
+        self.followed.insert(index, followed);
+    }
+}
+
+/// Checks a card's network whenever it newly reaches beyond itself, then
+/// again when the last verdict says to or the machine wakes. A verdict is
+/// said in the journal when it's news.
+async fn check_network(
+    mut link: watch::Receiver<Link>,
+    mut woken: watch::Receiver<u64>,
+    checker: Arc<Checker>,
+) {
+    let mut checked = None;
+    let mut said = None;
+    let mut due = None;
+    loop {
+        let now = link.borrow_and_update().clone();
+        if now.routable {
+            let standing = (now.ssid.clone(), now.dns.clone(), now.portal.clone());
+            let reached = checked.as_ref() != Some(&standing);
+            if reached || due.is_some_and(|due| Instant::now() >= due) {
+                let (verdict, after) = checker
+                    .check(&now.name, &now.dns, now.portal.as_deref(), reached)
+                    .await;
+                if reached || said.as_ref() != Some(&verdict) {
+                    say(&now, &verdict);
+                }
+                said = Some(verdict);
+                checked = Some(standing);
+                due = Some(Instant::now() + after);
+            }
+        } else {
+            (checked, said, due) = (None, None, None);
+        }
+        let timer = async {
+            match due {
+                Some(due) => sleep_until(due).await,
+                None => future::pending().await,
+            }
+        };
+        tokio::select! {
+            changed = link.changed() => if changed.is_err() { return },
+            Ok(()) = woken.changed() => due = due.map(|_| Instant::now()),
+            () = timer => {}
+        }
+    }
+}
+
+fn say(link: &Link, verdict: &Verdict) {
+    let network = link.ssid.as_deref().unwrap_or("The network");
+    let card = &link.name;
+    match verdict {
+        Verdict::Online => println!("<6>{network} on {card} reaches beyond itself"),
+        Verdict::SignIn { page } => println!("<5>{network} on {card} wants a sign-in at {page}"),
+        Verdict::Limited => println!("<4>{network} on {card} reaches no further"),
+    }
 }
 
 /// Every Wi-Fi card's link, as networkd describes them.

@@ -1,8 +1,14 @@
 # wifid joins Wi-Fi networks through wpa_supplicant and gives networkd a file
-# for each one the launcher saves. It runs as root only to reach
-# wpa_supplicant and networkd, with no capabilities, and writes nowhere but
-# its own state and networkd's runtime files.
-{ lib, pkgs, ... }:
+# for each one the launcher saves, and checks each network it reaches with
+# the pages wifid.conf names. It runs as root only to reach wpa_supplicant
+# and networkd, with no capabilities, and writes nowhere but its own state
+# and networkd's runtime files.
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 let
   wifid = pkgs.callPackage ./package.nix { };
 in
@@ -12,8 +18,12 @@ in
     ../wpa_supplicant/nixos.nix
   ];
 
+  environment.etc."wifid/wifid.conf".source = ./wifid.conf;
+
   systemd.services.wifid = {
     description = "Wi-Fi networks, joined and checked for a sign-in";
+    # It reads wifid.conf once, as it starts.
+    restartTriggers = [ config.environment.etc."wifid/wifid.conf".source ];
     wants = [ "wpa_supplicant.service" ];
     after = [
       "wpa_supplicant.service"
