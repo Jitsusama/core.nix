@@ -58,19 +58,16 @@ in
   NLS_CODEPAGE_437 = yes;
   NLS_ISO8859_1 = yes;
 
-  # What the NixOS firewall's rules need, which it otherwise loads one
-  # module at a time while the network waits for it. The rpfilter matches
-  # sit inside the legacy iptables menus, so those come too.
-  NETFILTER_XTABLES = yes;
+  # What the firewall's nftables rules need, which it otherwise loads one
+  # module at a time while the network waits for it: connection tracking
+  # for its states, and the routing lookup its reverse-path filter makes.
+  # iptables' matches stay modules, for whatever still speaks iptables.
   NF_TABLES = yes;
-  NFT_COMPAT = yes;
   NF_CONNTRACK = yes;
-  NETFILTER_XT_MATCH_CONNTRACK = yes;
-  NETFILTER_XT_MATCH_PKTTYPE = yes;
-  IP_NF_IPTABLES = yes;
-  IP6_NF_IPTABLES = yes;
-  IP_NF_MATCH_RPFILTER = yes;
-  IP6_NF_MATCH_RPFILTER = yes;
+  NFT_CT = yes;
+  NFT_FIB_INET = yes;
+  NFT_FIB_IPV4 = yes;
+  NFT_FIB_IPV6 = yes;
 
   # Don't count every allocation by the line that made it. nixpkgs counts
   # from boot, and the counting's own tables then hold about 210 MiB and add a
