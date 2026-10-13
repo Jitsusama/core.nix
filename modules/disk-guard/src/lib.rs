@@ -32,6 +32,8 @@ pub mod moments;
 pub mod nix_builds;
 #[cfg(target_os = "linux")]
 pub mod notices;
+#[cfg(target_os = "linux")]
+pub mod opens;
 pub mod pass;
 pub mod plan;
 pub mod pool;

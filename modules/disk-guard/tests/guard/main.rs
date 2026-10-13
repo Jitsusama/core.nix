@@ -34,6 +34,7 @@ mod logs;
 mod nix_builds;
 #[cfg(target_os = "linux")]
 mod notices;
+mod opens;
 mod pass;
 mod plan;
 mod pool;
