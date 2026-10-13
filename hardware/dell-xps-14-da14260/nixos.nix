@@ -53,6 +53,7 @@ let
 in
 {
   imports = [
+    ../../modules/firmware-settings/nixos.nix
     ../../modules/gpu/nixos.nix
     ../../modules/kernel/nixos.nix
     ../../modules/keyboard/nixos.nix
@@ -162,6 +163,19 @@ in
 
   # Dell publishes this laptop's BIOS and firmware updates through LVFS.
   services.fwupd.enable = true;
+
+  # The battery stops charging at 80% and starts again below 75%: a lithium
+  # cell ages fastest held near full, and with the starting point that close
+  # it leaves the charger near 80% however briefly it was plugged in. The
+  # limits hold only in the custom mode, and the firmware won't change them
+  # until it's in it. With a BIOS password set, the firmware refuses them
+  # through the kernel's charge_types and thresholds, which can't send the
+  # password, so they're set here with it.
+  jitsusama.firmware.settings = {
+    PrimaryBattChargeCfg = "Custom";
+    CustomChargeStart = "75";
+    CustomChargeStop = "80";
+  };
 
   # The BE211's Wi-Fi 7 receive path drops links to the slowest rate, so it
   # runs as Wi-Fi 6, as Omarchy runs it. Remove this once a Wi-Fi 7 link holds
