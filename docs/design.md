@@ -485,8 +485,8 @@ works the same way everywhere.
   launcher is open.
 - **Signing in is one door.** A network that wants a sign-in turns the
   network's piece to a warning saying so, one notice says it once for that
-  network, and Sign In to it comes first at home. Each opens the sign-in;
-  nothing opens it by itself.
+  network, and Sign In to it comes after the focused window at home. Each
+  opens the sign-in window; nothing opens it by itself.
 - **Awake on purpose.** Keep Awake, in the launcher, stops the machine
   sleeping so work left running goes on, and with power it keeps running
   with the lid shut. Without power the lid is let go, since a laptop shut in

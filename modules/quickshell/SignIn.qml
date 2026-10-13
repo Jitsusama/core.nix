@@ -2,8 +2,9 @@
 // launcher's row and the network piece all open, and only when Joel asks,
 // never by itself. One notice goes out for each network found wanting a
 // sign-in, and another only once it has stopped wanting one and wants it
-// again, as when a day's pass runs out. Until the sign-in window comes,
-// the door opens the network's own page in the browser.
+// again, as when a day's pass runs out. The door is wifid's sign-in window,
+// which reaches the page through the card whatever a VPN is doing, and
+// closes once the network lets the machine through.
 pragma Singleton
 import Quickshell
 import Quickshell.Io
@@ -18,7 +19,7 @@ Singleton {
 
     function open(): void {
         if (page !== "")
-            Niri.spawn(["xdg-open", page]);
+            Niri.spawn(["wifid-sign-in"]);
     }
 
     // The networks told of, which want a sign-in still.
