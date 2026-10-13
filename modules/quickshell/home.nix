@@ -73,6 +73,8 @@ let
     "Lifted.qml"
     "OpenBelow.qml"
     "Niri.qml"
+    "Wifi.qml"
+    "SignIn.qml"
     "Floating.qml"
     "Fuzzy.js"
     "Picks.qml"

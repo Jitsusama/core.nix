@@ -103,6 +103,9 @@ pkgs.testers.runNixOSTest {
         # The workstation role's, which sets how the account's manager watches
         # pressure.
         self.nixosModules.memory
+        # The laptop role's Wi-Fi, which the shell's network piece and Wi-Fi
+        # collection read.
+        self.nixosModules.wifid
       ];
 
       # The VM has neither a backlight nor a sound card, so it gets one of each
@@ -120,22 +123,65 @@ pkgs.testers.runNixOSTest {
         # The kernel's own stand-in battery, which UPower reports as a laptop's.
         "test_power"
         # Two stand-in Wi-Fi radios: hostapd makes the first an access point
-        # and NetworkManager joins it from the second, as the laptop's would.
+        # and wifid joins it from the second, as the laptop's would.
         "mac80211_hwsim"
       ];
-      services.hostapd = {
-        enable = true;
-        radios.wlan0 = {
-          band = "2g";
-          channel = 6;
-          countryCode = "CA";
-          networks.wlan0 = {
-            ssid = "Lantern";
-            authentication = {
-              mode = "wpa2-sha1";
-              wpaPassword = "glowing in the dark";
-            };
-          };
+      # The access point's radio moves to a namespace of its own before
+      # anything joins, so wlan1 is the machine's only card and the join
+      # crosses the stand-in air.
+      systemd.services.air = {
+        after = [ "systemd-modules-load.service" ];
+        before = [ "wpa_supplicant.service" ];
+        wantedBy = [ "multi-user.target" ];
+        path = [
+          pkgs.coreutils
+          pkgs.iproute2
+          pkgs.iw
+        ];
+        serviceConfig = {
+          Type = "oneshot";
+          RemainAfterExit = true;
+        };
+        script = ''
+          until [ -e /sys/class/net/wlan1/phy80211/name ]; do sleep 0.1; done
+          ip netns add air
+          iw phy "$(cat /sys/class/net/wlan0/phy80211/name)" set netns name air
+          ip -n air link set lo up
+          ip -n air address add 10.42.0.1/24 dev wlan0
+        '';
+      };
+      systemd.services.lantern = {
+        after = [ "air.service" ];
+        requires = [ "air.service" ];
+        wantedBy = [ "multi-user.target" ];
+        serviceConfig = {
+          NetworkNamespacePath = "/run/netns/air";
+          ExecStart = "${lib.getExe' pkgs.hostapd "hostapd"} ${pkgs.writeText "lantern.conf" ''
+            interface=wlan0
+            driver=nl80211
+            hw_mode=g
+            channel=6
+            country_code=CA
+            ieee80211d=1
+            ssid=Lantern
+            wpa=2
+            wpa_key_mgmt=WPA-PSK
+            rsn_pairwise=CCMP
+            wpa_passphrase=glowing in the dark
+          ''}";
+        };
+      };
+      # The access point hands out addresses, as a real network does.
+      systemd.services.lantern-addresses = {
+        after = [ "lantern.service" ];
+        requires = [ "air.service" ];
+        wantedBy = [ "multi-user.target" ];
+        serviceConfig = {
+          NetworkNamespacePath = "/run/netns/air";
+          ExecStart = lib.concatStringsSep " " [
+            "${lib.getExe pkgs.dnsmasq} --keep-in-foreground --port=0 --dhcp-leasefile=/run/lantern.leases"
+            "--interface=wlan0 --bind-dynamic --dhcp-range=10.42.0.10,10.42.0.50,1h"
+          ];
         };
       };
       boot.extraModprobeConfig = ''
@@ -151,33 +197,9 @@ pkgs.testers.runNixOSTest {
       };
       jitsusama.camera.device = "/dev/video9";
 
-      networking.networkmanager.unmanaged = [ "wlan0" ];
-      # The access point hands out addresses, as a real network does, since
-      # NetworkManager counts a network joined only once it has one.
-      networking.interfaces.wlan0.ipv4.addresses = [
-        {
-          address = "10.42.0.1";
-          prefixLength = 24;
-        }
-      ];
-      services.dnsmasq = {
-        enable = true;
-        resolveLocalQueries = false;
-        settings = {
-          port = 0;
-          interface = "wlan0";
-          bind-dynamic = true;
-          dhcp-range = "10.42.0.10,10.42.0.50,1h";
-        };
-      };
-      networking.firewall.interfaces.wlan0.allowedUDPPorts = [ 67 ];
-      # A VM turns off wpa_supplicant, which NetworkManager joins networks
-      # through, since it usually has no radio; this one has two.
-      networking.wireless.enable = lib.mkOverride 0 true;
-      # The overview's status reads the battery from UPower and the network from
-      # NetworkManager, which the laptop role brings.
+      # The overview's status reads the battery from UPower, which the laptop
+      # role brings.
       services.upower.enable = true;
-      networking.networkmanager.enable = true;
       services.pipewire.extraConfig.pipewire."90-stand-in-speakers"."context.objects" = [
         {
           factory = "adapter";
@@ -253,13 +275,9 @@ pkgs.testers.runNixOSTest {
       users.users.${account} = {
         isNormalUser = true;
         uid = 1000;
-        # Polkit asks a member of wheel for their own password. It lets the
-        # signed-in account change networks as an active local session, which
-        # the shell nested in Cage isn't seen as, so NetworkManager's group
-        # gives the account the same.
+        # Polkit asks a member of wheel for their own password.
         extraGroups = [
           "wheel"
-          "networkmanager"
           # The camera's, given to a seat's active session on the laptop.
           "video"
         ];
@@ -1032,9 +1050,11 @@ pkgs.testers.runNixOSTest {
               machine.wait_until_fails(in_session("niri msg layers | grep -q launcher"), timeout=10)
 
       with subtest("a Wi-Fi network is joined from the launcher, a new one asking its password"):
-          machine.wait_for_unit("hostapd.service")
+          machine.wait_for_unit("lantern.service")
+          machine.wait_for_unit("wifid.service")
+          wifi = "varlinkctl call /run/wifid/io.jitsusama.Wifi io.jitsusama.Wifi"
           machine.wait_until_succeeds(
-              "nmcli -t -f SSID device wifi list ifname wlan1 | grep -qx Lantern", timeout=60
+              f"{wifi}.Scan '{{}}' && {wifi}.Describe '{{}}' | grep -q '\"Lantern\"'", timeout=60
           )
           as_account("qs ipc call launcher collection wifi")
           launcher_ready()
@@ -1047,22 +1067,15 @@ pkgs.testers.runNixOSTest {
           machine.screenshot("launcher-wifi-password")
           with told("refused wifi Lantern", timeout=60):
               machine.send_key("ret")
-          # NetworkManager's own word may land in its journal just after.
-          machine.wait_until_succeeds(
-              "journalctl -u NetworkManager"
-              " | grep -q \"Activation: failed for connection 'Lantern'\"",
-              timeout=10,
-          )
+          machine.succeed("journalctl -u wifid | grep -q \"couldn't join Lantern: WrongPassword\"")
           photograph("launcher-wifi-refused")
           machine.succeed(in_session("niri msg layers | grep -q launcher"))
           type_in("glowing in the dark")
           machine.send_key("ret")
-          # Joined means an address too, which is when NetworkManager says so.
-          machine.wait_until_succeeds(
-              "nmcli -g GENERAL.CONNECTION,GENERAL.STATE device show wlan1"
-              " | tr '\\n' ' ' | grep -q '^Lantern 100 '",
-              timeout=60,
-          )
+          # Joined means an address too, and wifid says so once it's checked
+          # how far the network reaches.
+          machine.wait_until_succeeds("journalctl -u wifid | grep -q 'joined Lantern on wlan1'", timeout=60)
+          machine.succeed("networkctl status wlan1 | grep -q 10.42.0.")
           # Once it's joined, the launcher's done.
           machine.wait_until_fails(in_session("niri msg layers | grep -q launcher"), timeout=10)
           # Turning Wi-Fi off is an action like any.
@@ -1070,8 +1083,8 @@ pkgs.testers.runNixOSTest {
           launcher_ready()
           type_in("wifi off")
           machine.send_key("ret")
-          machine.wait_until_succeeds("nmcli radio wifi | grep -qx disabled", timeout=15)
-          machine.succeed("nmcli radio wifi on")
+          machine.wait_until_succeeds("rfkill list wifi | grep -q 'Soft blocked: yes'", timeout=15)
+          machine.succeed("rfkill unblock wifi")
 
       with subtest("a notice that came and went is found again in the launcher"):
           # One its sender says not to keep isn't, though it's the newest match.

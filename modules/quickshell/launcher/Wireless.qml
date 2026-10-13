@@ -1,51 +1,45 @@
-// Wi-Fi, a collection: the networks in reach, the one joined first, then
+// Wi-Fi, a collection: the networks in the air, the one joined first, then
 // those saved, then the rest by signal, each glyph saying how strong it is
-// and whether it's locked, the footer giving the signal and how it's
-// secured. Return leaves the one joined or joins another, and the launcher
-// stays, saying it's joining, until the network takes it or says why not;
-// a locked network met for the first time, or one whose password has
-// changed, asks for its password in the field beside the padlock. Turning
-// Wi-Fi off and on is an action in the main search. Everything comes from
-// NetworkManager over D-Bus through Quickshell, so no process is asked, and
-// the radio scans only while the launcher is open.
+// and whether it's locked, the footer how it's joined. Return leaves the one
+// joined or joins another, and the launcher stays, saying how far the join
+// has got, until the network takes the card or says why not; a locked
+// network met for the first time, or one whose password didn't work, asks
+// for its password in the field beside the padlock. Turning Wi-Fi off and
+// on is an action in the main search. Everything comes from wifid over its
+// socket (Wifi.qml), and the cards look for networks only while the
+// launcher is open.
 import qs
 import Quickshell
-import Quickshell.Networking
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
 
 Provider {
     id: provider
 
-    // The radio NetworkManager looks after, the one joined to a network if
-    // there are several: one it leaves alone, such as an access point's,
-    // can't join anything.
-    readonly property var device: {
-        const radios = Networking.devices.values
-            .filter(device => device.type === DeviceType.Wifi && device.nmManaged);
-        return radios.find(device => device.connected) ?? radios[0] ?? null;
-    }
-    readonly property bool on: device !== null && Networking.wifiEnabled
+    // A machine without wifid, or without a card, has no Wi-Fi to show.
+    readonly property bool present: Wifi.described && Wifi.cards.length > 0
+    readonly property bool on: present && Wifi.radio
 
-    collection: device === null ? null : {
+    collection: !present ? null : {
         noun: "networks",
         title: "Wi-Fi",
         glyph: glyph(0xf05a9),
         ask: "which network?",
-        empty: "Listening for networks\u2026"
+        empty: on ? "Listening for networks\u2026" : "Wi-Fi is off"
     }
 
     function glyph(code) {
         return String.fromCodePoint(code);
     }
 
-    // Looking for networks costs the radio's power, so it looks only while
-    // the launcher is there to show them.
-    Binding {
-        target: provider.device
-        property: "scannerEnabled"
-        value: provider.launcher !== null && provider.launcher.open
-        when: provider.device !== null
+    // Looking for networks costs the radio's power, so the cards look only
+    // while the launcher is there to show what they hear.
+    Timer {
+        interval: 10000
+        repeat: true
+        triggeredOnStart: true
+        running: provider.on && provider.launcher !== null && provider.launcher.open
+        onTriggered: Wifi.scan()
     }
 
     readonly property var radio: thing({
@@ -55,86 +49,101 @@ Provider {
         keywords: "wifi wireless radio network airplane",
         glyph: glyph(on ? 0xf05aa : 0xf05a9),
         hue: "machine",
-        run: () => Networking.wifiEnabled = !provider.on
+        run: () => Wifi.turn(!provider.on)
     })
 
-    things: device === null ? [] : [radio]
+    things: present ? [radio] : []
 
-    // How a network is locked, in the words its settings use, and whether
-    // a password typed here opens it: one needing a certificate or a WEP
-    // key is set up in nmtui instead.
+    // While a network wants a sign-in, it's what's next.
+    readonly property var signIn: thing({
+        key: "wifi:sign-in",
+        verb: "sign in",
+        name: `Sign In to ${SignIn.network}`,
+        keywords: "wifi portal captive login hotel",
+        glyph: glyph(0xf05a9),
+        hue: "machine",
+        run: () => SignIn.open()
+    })
+
+    function home() {
+        return SignIn.network !== "" ? [signIn] : [];
+    }
+
+    // How a network is joined, in words, and whether a password typed here
+    // opens it: one asking for an account can't be joined from here yet.
     function security(network) {
         switch (network.security) {
-        case WifiSecurityType.Open:
+        case "open":
             return { words: "open", locked: false };
-        case WifiSecurityType.Owe:
-            return { words: "open, encrypted", locked: false };
-        case WifiSecurityType.WpaPsk:
-            return { words: "WPA", locked: true, password: true };
-        case WifiSecurityType.Wpa2Psk:
-            return { words: "WPA2", locked: true, password: true };
-        case WifiSecurityType.Sae:
-            return { words: "WPA3", locked: true, password: true };
-        case WifiSecurityType.WpaEap:
-            return { words: "WPA Enterprise", locked: true };
-        case WifiSecurityType.Wpa2Eap:
-            return { words: "WPA2 Enterprise", locked: true };
-        case WifiSecurityType.Wpa3SuiteB192:
-            return { words: "WPA3 Enterprise", locked: true };
-        case WifiSecurityType.Leap:
-            return { words: "LEAP", locked: true };
-        case WifiSecurityType.StaticWep:
-        case WifiSecurityType.DynamicWep:
-            return { words: "WEP", locked: true };
+        case "personal":
+            return { words: "a password", locked: true, password: true };
         default:
-            return { words: "secured somehow", locked: true };
+            return { words: "an account", locked: true };
         }
     }
 
-    // Signal in four steps, from the icon font's own: with and without a
-    // lock, and an outline for none at all.
-    function bars(strength) {
-        return Math.min(4, Math.ceil(strength * 4));
-    }
-
-    function strengthGlyph(strength, locked) {
+    // Signal in four bars, from the icon font's own: with and without a
+    // lock, and an outline for none heard.
+    function strengthGlyph(bars, locked) {
         const codes = locked ? [0xf092c, 0xf0921, 0xf0924, 0xf0927, 0xf092a]
             : [0xf092f, 0xf091f, 0xf0922, 0xf0925, 0xf0928];
-        return glyph(codes[bars(strength)]);
+        return glyph(codes[Math.max(0, Math.min(4, bars))]);
     }
 
-    // The one joined, then those saved, then by signal, a step at a time so
-    // a scan's small changes don't reorder them, then by name.
+    // Every network in the air, and the one joined even when it hides its
+    // name, each with what the rows need to know of it.
     readonly property var networks: {
         if (!on)
             return [];
+        const heard = Wifi.nearby.map(network => described(network.name, network.security,
+            network.strength));
+        for (const card of Wifi.cards) {
+            const kept = Wifi.isSaved(card.network ?? "");
+            if (card.network && !heard.some(network => network.name === card.network))
+                heard.push(described(card.network, kept ? kept.security : "open", 0));
+        }
         const rank = network => network.connected ? 0 : network.known ? 1 : 2;
-        return device.networks.values.filter(network => network.name !== "").sort((a, b) =>
-            rank(a) - rank(b) || bars(b.signalStrength) - bars(a.signalStrength)
+        return heard.sort((a, b) => rank(a) - rank(b) || b.strength - a.strength
             || a.name.localeCompare(b.name));
     }
 
-    // The network being joined, and what it said if it wouldn't be.
-    property var joining: null
+    function described(name, security, strength) {
+        const kept = Wifi.isSaved(name);
+        return {
+            name: name,
+            security: security,
+            strength: strength,
+            known: kept !== null,
+            declared: kept !== null && kept.declared,
+            trusted: kept !== null && kept.trusted,
+            connected: Wifi.isJoined(name)
+        };
+    }
+
+    // What the last join said if it couldn't, and of which network.
+    property string troubled: ""
     property string trouble: ""
 
-    function join(network) {
+    function join(network, password) {
+        troubled = "";
         trouble = "";
-        joining = network;
-        network.connect();
+        Wifi.join(network.name, password);
     }
 
-    function joinWith(network, password) {
-        trouble = "";
-        joining = network;
-        network.connectWithPsk(password);
-    }
+    // How far a join has got, in the footer's words.
+    readonly property var stages: ({
+        joining: "joining",
+        gettingAddress: "getting an address from",
+        checking: "seeing how far it reaches:"
+    })
 
     // What the footer says while a network is joined, or wouldn't be.
     function said(network, otherwise) {
-        if (joining !== network)
-            return otherwise;
-        return trouble !== "" ? trouble : `joining ${network.name}\u2026`;
+        if (Wifi.joining && Wifi.joining.name === network.name)
+            return `${stages[Wifi.joining.stage] ?? "joining"} ${network.name}\u2026`;
+        if (troubled === network.name && trouble !== "")
+            return trouble;
+        return otherwise;
     }
 
     // The field asking for a network's password, the padlock beside it.
@@ -147,9 +156,9 @@ Provider {
             chip: network.name,
             ask: "password",
             secret: true,
-            network: network,
+            network: network.name,
             state: () => provider.said(network, why),
-            given: password => provider.joinWith(network, password),
+            given: password => provider.join(network, password),
             note: locked.words
         });
     }
@@ -160,26 +169,26 @@ Provider {
         // Met for the first time behind a password, it asks for one.
         const asks = !joined && !network.known && locked.password === true;
         const elsewhere = !joined && !network.known && locked.locked && !locked.password;
-        const note = `${Math.round(network.signalStrength * 100)}% signal · ${locked.words}`;
+        const signal = network.strength > 0 ? `${network.strength} of 4 bars · ` : "";
+        const note = `${signal}${locked.words}`;
         return member({
             key: `wifi:${network.name}`,
-            verb: joined ? "leave" : elsewhere ? "set up" : "join",
+            verb: joined ? "leave" : elsewhere ? "" : "join",
             name: network.name,
-            glyph: strengthGlyph(network.signalStrength, locked.locked),
+            glyph: strengthGlyph(network.strength, locked.locked),
             hue: "machine",
             side: joined ? "connected" : network.known ? "saved" : "",
-            note: elsewhere ? `${note} · set up in nmtui` : note,
-            network: network,
+            note: elsewhere ? `${note} · not joinable from here yet` : note,
+            network: network.name,
             state: () => provider.said(network, note),
             // Joining keeps the launcher, which says how it went.
-            stays: !joined && !elsewhere,
-            later: elsewhere,
+            stays: !joined,
             secret: asks,
             ask: asks ? "password" : "",
             chip: network.name,
-            given: asks ? password => provider.joinWith(network, password) : null,
-            run: joined ? () => network.disconnect()
-                : elsewhere ? () => Niri.spawn(["kitty", "nmtui", "connect"])
+            given: asks ? password => provider.join(network, password) : null,
+            run: joined ? () => Wifi.leave(network.name)
+                : elsewhere ? () => {}
                 : () => provider.join(network),
             verbs: () => provider.verbs(network, locked)
         });
@@ -196,21 +205,22 @@ Provider {
                 name: "Leave it",
                 glyph: glyph(0xf05aa),
                 hue: "action",
-                run: () => network.disconnect()
+                run: () => Wifi.leave(network.name)
             }));
-        else
+        else if (network.known || !locked.locked || locked.password)
             rows.push(thing({
                 key: "verb:wifi-join",
                 verb: "join",
                 name: "Join it",
                 glyph: glyph(0xf05a9),
                 hue: "action",
-                network: network,
+                network: network.name,
                 stays: true,
                 state: () => provider.said(network, ""),
                 run: () => provider.join(network)
             }));
-        if (locked.password === true)
+        // Nix keeps the passwords of the networks it declares.
+        if (locked.password === true && !network.declared)
             rows.push(Object.assign(asking(network, ""), {
                 key: "verb:wifi-password",
                 name: "Join it with a new password",
@@ -218,50 +228,61 @@ Provider {
                 hue: "action",
                 chip: "password"
             }));
-        if (network.known)
+        if (network.known && !network.declared) {
+            rows.push(thing({
+                key: "verb:wifi-trust",
+                name: network.trusted ? "Stop trusting it" : "Trust it",
+                note: network.trusted ? "this machine stops finding others on it, and they it"
+                    : "this machine finds others on it, and they it",
+                glyph: glyph(0xf0483),
+                hue: "action",
+                run: () => Wifi.trust(network.name, !network.trusted)
+            }));
             rows.push(thing({
                 key: "verb:wifi-forget",
                 name: "Forget it",
                 glyph: glyph(0xf16c5),
                 hue: "action",
-                run: () => network.forget()
+                run: () => Wifi.forget(network.name)
             }));
+        }
         return rows;
     }
 
-    // How the network being joined went: once joined, the launcher's done,
-    // if it's still on that network; a password refused, or a saved one
-    // that's changed, asks for it; anything else says what happened.
+    // How the join went: once the card is on the network, the launcher's
+    // done, if it's still showing it; a password that didn't work, or none
+    // given where one's needed, asks for it; anything else says what
+    // happened.
     Connections {
-        target: provider.joining
+        target: Wifi
 
-        function onConnectedChanged() {
-            const network = provider.joining;
-            if (!network || !network.connected)
+        function onJoinEnded(name, stage, refused) {
+            const launcher = provider.launcher;
+            const at = launcher.selected ?? launcher.asking;
+            const showing = launcher.open && at && at.network === name;
+            if (refused === "") {
+                if (showing)
+                    launcher.open = false;
                 return;
-            provider.joining = null;
-            const launcher = provider.launcher;
-            const at = launcher.selected ?? launcher.asking;
-            if (launcher.open && at && at.network === network)
-                launcher.open = false;
-        }
-
-        function onConnectionFailed(reason) {
-            const network = provider.joining;
-            const launcher = provider.launcher;
-            Report.say(`refused wifi ${network ? network.name : ""}`);
-            const at = launcher.selected ?? launcher.asking;
-            if (reason === ConnectionFailReason.NoSecrets && provider.security(network).password) {
-                provider.trouble = network.known && !(at && at.secret)
-                    ? "its password has changed" : "that password didn't work";
-                if (launcher.open && at && at.network === network && !launcher.asking)
+            }
+            Report.say(`refused wifi ${name}`);
+            const network = provider.networks.find(network => network.name === name)
+                ?? provider.described(name, "personal", 0);
+            provider.troubled = name;
+            if (refused === "WrongPassword" || refused === "NeedsPassword") {
+                provider.trouble = refused === "NeedsPassword" ? "it asks for a password"
+                    : network.known && !(at && at.secret) ? "its password has changed"
+                    : "that password didn't work";
+                if (showing && !launcher.asking)
                     launcher.ask(provider.asking(network, ""));
                 return;
             }
-            provider.trouble = reason === ConnectionFailReason.WifiAuthTimeout
-                ? "it didn't answer in time"
-                : reason === ConnectionFailReason.WifiNetworkLost ? "it's out of reach"
-                : "it didn't let this machine join";
+            provider.trouble = {
+                TimedOut: "it didn't answer in time",
+                NotNearby: "it's out of reach",
+                TurnedAway: "it didn't let this machine join",
+                Declared: "Nix keeps its password"
+            }[refused] ?? "it couldn't be joined";
         }
     }
 
