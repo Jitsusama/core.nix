@@ -478,11 +478,15 @@ works the same way everywhere.
   row at home says how many until they're opened. Return on one goes to the
   program that sent it, its window when one is open.
 - **Joining waits to say how it went.** Return on a Wi-Fi network joins it
-  and the launcher stays, its footer saying it's joining, until the network
-  takes it or says why not. A locked network met for the first time, or
-  one whose password changed, asks for the password in the field, the
-  padlock beside the dots. The radio looks for networks only while the
+  and the launcher stays, its footer saying how far the join has got, until
+  the network takes it or says why not. A locked network met for the first
+  time, or one whose password changed, asks for the password in the field,
+  the padlock beside the dots. The radio looks for networks only while the
   launcher is open.
+- **Signing in is one door.** A network that wants a sign-in turns the
+  network's piece to a warning saying so, one notice says it once for that
+  network, and Sign In to it comes first at home. Each opens the sign-in;
+  nothing opens it by itself.
 - **Awake on purpose.** Keep Awake, in the launcher, stops the machine
   sleeping so work left running goes on, and with power it keeps running
   with the lid shut. Without power the lid is let go, since a laptop shut in
@@ -717,7 +721,7 @@ by them isn't done.
 | The greeter                               | Quickshell, greetd       | both           | the time, the date, who's signing in, the session it starts | a refused password, what PAM says | Tab to the next account | the lock screen's | the boot's timings; the time stays |
 | The compositor                            | niri                     | none           |        |        |           |         |          |
 | The wallpaper                             | Quickshell, niri         | none           |        |        |           |         |          |
-| The overview's status and the margin mark | Quickshell               | both           | the time, the date, the battery with its time and watts, the network, the volume | the battery running low, offline, muted | step 2's doors | step 2 | volume, network, battery, date; the time stays |
+| The overview's status and the margin mark | Quickshell               | both           | the time, the date, the battery with its time and watts, the network, the volume | the battery running low, offline, a network wanting a sign-in, muted | step 2's doors | step 2 | volume, network, battery, date; the time stays |
 | The launcher and palette                  | Quickshell               | monospace      |        |        |           |         |          |
 | Notifications                             | Quickshell               | both           |        |        |           |         |          |
 | Menus and overlays                        | Quickshell               | both           |        |        |           |         |          |
