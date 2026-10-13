@@ -19,7 +19,7 @@ use tokio::sync::{mpsc, oneshot, watch};
 use zlink::tokio::unix::Listener;
 use zlink::{Reply, introspect, service};
 
-use crate::state::{Card, Described, Reach, Saved, Security, State};
+use crate::state::{Card, Described, Nearby, Reach, Saved, Security, State};
 
 pub struct Wifi {
     pub state: watch::Receiver<State>,
@@ -34,6 +34,9 @@ pub struct Wifi {
 /// how it went.
 #[derive(Debug)]
 pub enum Ask {
+    Scan {
+        done: oneshot::Sender<Result<(), Refused>>,
+    },
     Forget {
         name: String,
         done: oneshot::Sender<Result<(), Refused>>,
@@ -59,7 +62,7 @@ pub enum Refused {
 
 #[service(
     interface = "io.jitsusama.Wifi",
-    types = [Card, Reach, Saved, Security],
+    types = [Card, Nearby, Reach, Saved, Security],
     vendor = "jitsusama",
     product = "wifid",
     version = env!("CARGO_PKG_VERSION"),
@@ -91,6 +94,11 @@ impl Wifi {
     /// once it has.
     async fn check(&self) {
         self.asked.send_modify(|asked| *asked += 1);
+    }
+
+    /// Has every card look for networks now. Describe says what they hear.
+    async fn scan(&self) -> Result<(), Refused> {
+        self.ask(|done| Ask::Scan { done }).await
     }
 
     /// Forgets a network saved from the launcher, with its password.
@@ -218,6 +226,23 @@ mod tests {
 
         assert!(checks.has_changed().unwrap());
         assert_eq!(*checks.borrow_and_update(), 1);
+    }
+
+    #[tokio::test]
+    async fn scanning_asks_wifid_to_have_every_card_look() {
+        let (wifi, _, _, mut taken) = asking();
+        let main_loop = tokio::spawn(async move {
+            let Some(Ask::Scan { done }) = taken.recv().await else {
+                panic!("wasn't asked to scan");
+            };
+            done.send(Ok(())).unwrap();
+        });
+
+        let answer = wifi.scan().await;
+        drop(wifi);
+
+        assert_eq!(answer, Ok(()));
+        main_loop.await.unwrap();
     }
 
     #[tokio::test]

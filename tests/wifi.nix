@@ -401,6 +401,21 @@ pkgs.testers.runNixOSTest {
             f"runuser -u stranger -- varlinkctl call {wifi} io.jitsusama.Wifi.Describe '{{}}'"
         )
 
+    with subtest("and what's in the air, looking again when asked"):
+        nearby = {network["name"]: network for network in ask("Describe")["nearby"]}
+        assert nearby["Roadside Inn"]["security"] == "open", nearby
+        assert nearby["Lantern"]["security"] == "personal", nearby
+        assert all(1 <= network["strength"] <= 4 for network in nearby.values()), nearby
+        # On a network this strong, the card looks again only hourly by
+        # itself, so a scan finishing now is the one asked for.
+        machine.succeed(
+            "busctl monitor --match \"type='signal',member='ScanDone'\" > /tmp/scans 2>&1 &"
+        )
+        machine.wait_until_succeeds("grep -q Monitoring /tmp/scans", timeout=10)
+        ask("Scan")
+        machine.wait_until_succeeds("grep -q ScanDone /tmp/scans", timeout=30)
+        machine.succeed("pkill -f 'busctl monitor'")
+
     with subtest("the network sees an address the card chose for it"):
         inn_address = shown()
         assert inn_address != card, inn_address

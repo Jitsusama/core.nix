@@ -209,6 +209,9 @@ pub trait Supplicant {
     ) -> zbus::Result<OwnedObjectPath>;
 
     fn get_interface(&self, ifname: &str) -> zbus::Result<OwnedObjectPath>;
+
+    #[zbus(property)]
+    fn interfaces(&self) -> zbus::Result<Vec<OwnedObjectPath>>;
 }
 
 /// One card, as wpa_supplicant drives it.
@@ -224,8 +227,14 @@ pub trait Interface {
 
     fn remove_network(&self, path: &ObjectPath<'_>) -> zbus::Result<()>;
 
+    fn scan(&self, args: HashMap<&str, zvariant::Value<'_>>) -> zbus::Result<()>;
+
     #[zbus(property)]
     fn networks(&self) -> zbus::Result<Vec<OwnedObjectPath>>;
+
+    /// The access points it hears.
+    #[zbus(property, name = "BSSs")]
+    fn access_points(&self) -> zbus::Result<Vec<OwnedObjectPath>>;
 
     #[zbus(property)]
     fn state(&self) -> zbus::Result<String>;

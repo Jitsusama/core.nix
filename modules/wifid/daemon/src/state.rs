@@ -1,5 +1,6 @@
 //! What wifid knows that the shell shows: each card, the network it's on and
-//! how far that reaches, and every saved network. It's kept whole, so the
+//! how far that reaches, every saved network, and the networks in the air.
+//! It's kept whole, so the
 //! shell is sent all of it each time any of it changes and never has to
 //! piece it together.
 
@@ -8,6 +9,7 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 use zlink::introspect::{CustomType, Type};
 
+use crate::air::Heard;
 use crate::check::Verdict;
 use crate::link::Link;
 use crate::network::Security as Kind;
@@ -18,13 +20,18 @@ pub struct State {
     /// By link index, which stays the same while the card is there.
     cards: BTreeMap<i32, Card>,
     saved: Vec<Saved>,
+    /// By the access point's path in wpa_supplicant, which names its card.
+    heard: BTreeMap<String, Heard>,
 }
 
-/// Every card and every saved network, as the shell is sent them.
+/// Every card, every saved network and the networks in the air, as the
+/// shell is sent them.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Type)]
 pub struct Described {
     pub cards: Vec<Card>,
     pub saved: Vec<Saved>,
+    /// The strongest first.
+    pub nearby: Vec<Nearby>,
 }
 
 /// A Wi-Fi card.
@@ -74,6 +81,17 @@ pub struct Saved {
     pub hidden: bool,
 }
 
+/// A network in the air, as its strongest access point is heard.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, CustomType)]
+#[serde(rename_all = "camelCase")]
+#[zlink(rename_all = "camelCase")]
+pub struct Nearby {
+    pub name: String,
+    pub security: Security,
+    /// Bars of signal, from 1 to 4.
+    pub strength: u8,
+}
+
 /// How a network is joined.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize, CustomType)]
 #[serde(rename_all = "camelCase")]
@@ -83,6 +101,8 @@ pub enum Security {
     Open,
     /// With a password.
     Personal,
+    /// With an account, as at work.
+    Enterprise,
 }
 
 impl State {
@@ -152,11 +172,58 @@ impl State {
         }
     }
 
+    /// Takes in what wpa_supplicant says of an access point, or that it's
+    /// no longer heard.
+    pub fn heard(&mut self, path: &str, heard: Option<Heard>) {
+        match heard {
+            Some(heard) => self.heard.insert(path.into(), heard),
+            None => self.heard.remove(path),
+        };
+    }
+
+    /// Forgets every access point whose path starts so, as every one a card
+    /// heard when it goes.
+    pub fn unheard_under(&mut self, path: &str) {
+        self.heard.retain(|heard, _| !heard.starts_with(path));
+    }
+
     pub fn described(&self) -> Described {
         Described {
             cards: self.cards.values().cloned().collect(),
             saved: self.saved.clone(),
+            nearby: self.nearby(),
         }
+    }
+
+    fn nearby(&self) -> Vec<Nearby> {
+        let mut strongest: BTreeMap<&str, &Heard> = BTreeMap::new();
+        for heard in self.heard.values() {
+            let kept = strongest.entry(&heard.name).or_insert(heard);
+            if heard.signal > kept.signal {
+                *kept = heard;
+            }
+        }
+        let mut nearby: Vec<Nearby> = strongest
+            .into_values()
+            .map(|heard| Nearby {
+                name: heard.name.clone(),
+                security: heard.security,
+                strength: bars(heard.signal),
+            })
+            .collect();
+        // Already in order of name, which a stable sort keeps among equals.
+        nearby.sort_by_key(|network| std::cmp::Reverse(network.strength));
+        nearby
+    }
+}
+
+/// The bars a signal is drawn with: one more for every 10 dB above -80.
+fn bars(signal: i16) -> u8 {
+    match signal {
+        -60.. => 4,
+        -70.. => 3,
+        -80.. => 2,
+        _ => 1,
     }
 }
 
@@ -176,6 +243,21 @@ mod tests {
             dns: Vec::new(),
             portal: None,
         }
+    }
+
+    fn heard(name: &str, signal: i16) -> Option<Heard> {
+        Some(Heard {
+            name: name.into(),
+            security: Security::Personal,
+            signal,
+        })
+    }
+
+    fn nearby(state: &State) -> Vec<(String, u8)> {
+        let nearby = state.described().nearby.into_iter();
+        nearby
+            .map(|network| (network.name, network.strength))
+            .collect()
     }
 
     fn card(state: &State) -> Card {
@@ -351,5 +433,76 @@ mod tests {
                 },
             ]
         );
+    }
+
+    #[test]
+    fn a_network_in_the_air_is_shown_once_by_its_strongest_access_point() {
+        let mut state = State::default();
+
+        state.heard("/Interfaces/0/BSSs/1", heard("Lantern", -82));
+        state.heard("/Interfaces/0/BSSs/2", heard("Lantern", -52));
+        state.heard("/Interfaces/1/BSSs/3", heard("Lantern", -71));
+
+        assert_eq!(
+            state.described().nearby,
+            [Nearby {
+                name: "Lantern".into(),
+                security: Security::Personal,
+                strength: 4,
+            }]
+        );
+    }
+
+    #[test]
+    fn networks_in_the_air_are_shown_strongest_first_then_by_name() {
+        let mut state = State::default();
+
+        state.heard("/Interfaces/0/BSSs/1", heard("Faint", -90));
+        state.heard("/Interfaces/0/BSSs/2", heard("Lantern", -66));
+        state.heard("/Interfaces/0/BSSs/3", heard("Inn", -64));
+        state.heard("/Interfaces/0/BSSs/4", heard("Far", -79));
+
+        assert_eq!(
+            nearby(&state),
+            [
+                ("Inn".into(), 3),
+                ("Lantern".into(), 3),
+                ("Far".into(), 2),
+                ("Faint".into(), 1),
+            ]
+        );
+    }
+
+    #[test]
+    fn signal_wandering_within_a_bar_changes_nothing_shown() {
+        let mut state = State::default();
+        state.heard("/Interfaces/0/BSSs/1", heard("Lantern", -62));
+        let before = state.described();
+
+        state.heard("/Interfaces/0/BSSs/1", heard("Lantern", -68));
+
+        assert_eq!(state.described(), before);
+    }
+
+    #[test]
+    fn an_access_point_no_longer_heard_is_no_longer_shown() {
+        let mut state = State::default();
+        state.heard("/Interfaces/0/BSSs/1", heard("Lantern", -52));
+        state.heard("/Interfaces/0/BSSs/2", heard("Lantern", -82));
+
+        state.heard("/Interfaces/0/BSSs/1", None);
+
+        assert_eq!(nearby(&state), [("Lantern".into(), 1)]);
+    }
+
+    #[test]
+    fn a_card_going_takes_what_it_heard_with_it() {
+        let mut state = State::default();
+        state.heard("/Interfaces/1/BSSs/1", heard("Lantern", -52));
+        state.heard("/Interfaces/10/BSSs/2", heard("Inn", -52));
+
+        state.unheard_under("/Interfaces/1/");
+
+        assert_eq!(nearby(&state), [("Inn".into(), 4)]);
     }
 }

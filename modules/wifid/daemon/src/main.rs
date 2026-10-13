@@ -14,9 +14,11 @@
 //! sets.
 //!
 //! It answers the shell over varlink, as io.jitsusama.Wifi (service.rs),
-//! with what it knows of each card and every saved network.
+//! with what it knows of each card, every saved network and the networks in
+//! the air, which wpa_supplicant says as it hears them.
 
 mod address;
+mod air;
 mod card;
 mod check;
 mod link;
@@ -42,13 +44,15 @@ use std::sync::Arc;
 use futures_util::StreamExt;
 use tokio::sync::{mpsc, watch};
 use tokio::time::{Instant, sleep_until};
-use zbus::fdo::DBusProxy;
+use zbus::fdo::{DBusProxy, PropertiesProxy};
+use zbus::names::InterfaceName;
 use zbus::proxy::CacheProperties;
-use zbus::zvariant::{self, ObjectPath, OwnedObjectPath};
+use zbus::zvariant::{self, ObjectPath, OwnedObjectPath, OwnedValue};
 use zbus::{Connection, MatchRule, MessageStream, proxy};
 use zlink::Server;
 
 use address::AddressKey;
+use air::AccessPoint;
 use card::Card;
 use check::{Checker, Settings, Verdict};
 use link::Link;
@@ -132,6 +136,19 @@ async fn run() -> Result<(), Box<dyn Error>> {
     };
     wifid.add_cards().await;
 
+    // Followed before the access points are first read, so none heard
+    // meanwhile is missed.
+    let rule = MatchRule::builder()
+        .msg_type(zbus::message::Type::Signal)
+        .path_namespace("/fi/w1/wpa_supplicant1")?
+        .build();
+    let mut heard = MessageStream::for_match_rule(rule, &bus, None).await?;
+    let mut air = Air {
+        points: HashMap::new(),
+        state: state.clone(),
+    };
+    air.hear_all(&bus, &supplicant).await;
+
     let rule = MatchRule::builder()
         .msg_type(zbus::message::Type::Signal)
         .interface("org.freedesktop.DBus.Properties")?
@@ -169,7 +186,12 @@ async fn run() -> Result<(), Box<dyn Error>> {
                         continue;
                     }
                     match args.name().as_str() {
-                        "fi.w1.wpa_supplicant1" => wifid.add_cards().await,
+                        // It starts again hearing nothing, and says each
+                        // access point as it hears it.
+                        "fi.w1.wpa_supplicant1" => {
+                            air.gone_under("");
+                            wifid.add_cards().await;
+                        }
                         "org.freedesktop.network1" => {
                             for card in networks.follow_all(all_links(&bus).await) {
                                 wifid.add_card_named(&card).await;
@@ -197,6 +219,7 @@ async fn run() -> Result<(), Box<dyn Error>> {
                         }
                     }
                 }
+                Some(Ok(message)) = heard.next() => air.take_in(&message),
                 Some(ask) = taken.recv() => wifid.answer(ask).await,
                 Some(sleep) = sleeps.next() => {
                     if sleep.args().is_ok_and(|args| !args.start) {
@@ -296,6 +319,124 @@ impl Networks {
         }
         new
     }
+}
+
+/// The access points every card hears, kept as wpa_supplicant last
+/// described each.
+struct Air {
+    /// By the access point's path.
+    points: HashMap<String, AccessPoint>,
+    state: watch::Sender<State>,
+}
+
+impl Air {
+    /// Reads every access point wpa_supplicant already hears, as it does
+    /// when wifid starts while it runs.
+    async fn hear_all(&mut self, bus: &Connection, supplicant: &SupplicantProxy<'_>) {
+        let cards = match supplicant.interfaces().await {
+            Ok(cards) => cards,
+            Err(error) => return eprintln!("<4>wpa_supplicant didn't list its cards: {error}"),
+        };
+        for card in cards {
+            let points = match interface(bus, card).await {
+                Ok(interface) => interface.access_points().await,
+                Err(error) => Err(error),
+            };
+            for point in points.into_iter().flatten() {
+                // One gone since it was listed needs no saying.
+                if let Ok(properties) = described(bus, &point).await {
+                    self.heard(point.as_str(), properties);
+                }
+            }
+        }
+    }
+
+    /// Takes in a signal of wpa_supplicant's: an access point heard, heard
+    /// differently or no longer heard, or a card going.
+    fn take_in(&mut self, message: &zbus::Message) {
+        let header = message.header();
+        let (Some(path), Some(member)) = (header.path(), header.member()) else {
+            return;
+        };
+        let body = message.body();
+        match member.as_str() {
+            "BSSAdded" => {
+                if let Ok((point, properties)) = body.deserialize::<(OwnedObjectPath, _)>() {
+                    self.heard(point.as_str(), properties);
+                }
+            }
+            "BSSRemoved" => {
+                if let Ok(point) = body.deserialize::<OwnedObjectPath>() {
+                    self.points.remove(point.as_str());
+                    change(&self.state, |state| state.heard(point.as_str(), None));
+                }
+            }
+            "InterfaceRemoved" => {
+                if let Ok(card) = body.deserialize::<OwnedObjectPath>() {
+                    self.gone_under(&format!("{}/", card.as_str()));
+                }
+            }
+            // Each object also says its changes under its own interface, in
+            // a shape of its own, which this passes over.
+            "PropertiesChanged"
+                if header
+                    .interface()
+                    .is_some_and(|interface| interface == "org.freedesktop.DBus.Properties") =>
+            {
+                let changed =
+                    body.deserialize::<(String, HashMap<String, OwnedValue>, Vec<String>)>();
+                let Ok((interface, changed, _)) = changed else {
+                    return;
+                };
+                let Some(point) = self.points.get_mut(path.as_str()) else {
+                    return;
+                };
+                if interface == "fi.w1.wpa_supplicant1.BSS" {
+                    point.changed(changed);
+                    let heard = point.heard();
+                    change(&self.state, |state| state.heard(path.as_str(), heard));
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn heard(&mut self, path: &str, properties: HashMap<String, OwnedValue>) {
+        let point = AccessPoint::new(properties);
+        let heard = point.heard();
+        self.points.insert(path.into(), point);
+        change(&self.state, |state| state.heard(path, heard));
+    }
+
+    /// Forgets every access point whose path starts so.
+    fn gone_under(&mut self, path: &str) {
+        self.points.retain(|point, _| !point.starts_with(path));
+        change(&self.state, |state| state.unheard_under(path));
+    }
+}
+
+/// Everything wpa_supplicant says of an access point.
+async fn described(
+    bus: &Connection,
+    point: &OwnedObjectPath,
+) -> zbus::Result<HashMap<String, OwnedValue>> {
+    let properties = PropertiesProxy::builder(bus)
+        .destination("fi.w1.wpa_supplicant1")?
+        .path(point.clone())?
+        .cache_properties(CacheProperties::No)
+        .build()
+        .await?;
+    let bss = InterfaceName::from_static_str_unchecked("fi.w1.wpa_supplicant1.BSS");
+    Ok(properties.get_all(bss).await?)
+}
+
+/// One card, as wpa_supplicant drives it.
+async fn interface(bus: &Connection, card: OwnedObjectPath) -> zbus::Result<InterfaceProxy<'_>> {
+    InterfaceProxy::builder(bus)
+        .path(card)?
+        .cache_properties(CacheProperties::No)
+        .build()
+        .await
 }
 
 /// Tells everyone listening what changed, if anything did.
@@ -485,11 +626,7 @@ impl Wifid<'_> {
                 supplicant.create_interface(args).await?
             }
         };
-        let interface = InterfaceProxy::builder(bus)
-            .path(path)?
-            .cache_properties(CacheProperties::No)
-            .build()
-            .await?;
+        let interface = interface(bus, path).await?;
         let mut added: Vec<&str> = Vec::new();
         let mut wanted = Vec::new();
         for saved in networks {
@@ -557,6 +694,10 @@ impl Wifid<'_> {
     /// networkd and wpa_supplicant have every network as it now stands.
     async fn answer(&self, ask: Ask) {
         let (changed, done) = match ask {
+            Ask::Scan { done } => {
+                let _ = done.send(self.scan().await);
+                return;
+            }
             Ask::Forget { name, done } => (self.store.forget(&name).map(|_| ()), done),
             Ask::Trust {
                 name,
@@ -574,6 +715,26 @@ impl Wifid<'_> {
         };
         // Whoever asked may have stopped waiting, which changes nothing.
         let _ = done.send(answer);
+    }
+
+    /// Has every card wpa_supplicant drives look for networks now.
+    async fn scan(&self) -> Result<(), Refused> {
+        let failed = |error: zbus::Error| Refused::Failed {
+            reason: format!("wpa_supplicant didn't list its cards: {error}"),
+        };
+        for card in self.supplicant.interfaces().await.map_err(failed)? {
+            let looking = HashMap::from([("Type", zvariant::Value::from("active"))]);
+            let asked = match interface(self.bus, card.clone()).await {
+                Ok(interface) => interface.scan(looking).await,
+                Err(error) => Err(error),
+            };
+            // A card already looking, or turned off, is refused, which
+            // needs no more than a line for whoever is debugging.
+            if let Err(error) = asked {
+                println!("<7>{} didn't look for networks: {error}", card.as_str());
+            }
+        }
+        Ok(())
     }
 
     /// Has networkd read its files again and gives wpa_supplicant every
