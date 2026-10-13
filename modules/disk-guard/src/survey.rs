@@ -47,6 +47,9 @@ pub enum Action {
         nix: PathBuf,
         paths: Vec<String>,
     },
+    /// The system daemon's garbage on the filesystem mounted at `root`,
+    /// asked of it at `socket` in the pass's band.
+    Ask { root: PathBuf, socket: PathBuf },
 }
 
 impl Action {
@@ -59,7 +62,8 @@ impl Action {
             | Action::Workspace { root }
             | Action::Trim { root }
             | Action::Run { root, .. }
-            | Action::Collect { root, .. } => root,
+            | Action::Collect { root, .. }
+            | Action::Ask { root, .. } => root,
             Action::Trash { trash } => trash,
         }
     }

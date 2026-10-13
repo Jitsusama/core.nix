@@ -3,7 +3,7 @@
 
 use crate::activity::{self, Process, Use};
 use crate::anchor::Dir;
-use crate::band::Space;
+use crate::band::{Band, Space};
 use crate::commands::{self, Job, Output, Ran};
 use crate::pass::{Disk, Outcome, Reclaimer};
 use crate::plan::Candidate;
@@ -177,7 +177,12 @@ pub struct Reclaim<'a> {
     scan: &'a mut Scan,
     notes: Vec<String>,
     gentle: bool,
+    band: Band,
 }
+
+/// How long the system daemon may take over the garbage a user daemon asks
+/// it to collect: a pass of many batches, each measured.
+const COLLECT_TIMEOUT: Duration = Duration::from_secs(30 * 60);
 
 impl<'a> Reclaim<'a> {
     pub fn new(offers: &[Offer], scan: &'a mut Scan) -> Self {
@@ -190,7 +195,14 @@ impl<'a> Reclaim<'a> {
             scan,
             notes: Vec::new(),
             gentle: false,
+            band: Band::Healthy,
         }
+    }
+
+    /// For a pass in `band`, which what it asks of the system daemon says.
+    pub fn during(mut self, band: Band) -> Self {
+        self.band = band;
+        self
     }
 
     /// For a pass that can wait: the commands it runs do so at idle
@@ -230,6 +242,18 @@ impl Reclaimer for Reclaim<'_> {
             Action::Trash { .. } => reclaim::trashed(&root, root_path, candidate),
             Action::Run { argv, timeout, .. } => run(argv, *timeout, self.gentle),
             // Nix judges liveness itself, under its own lock.
+            // What it freed is measured, like any command's.
+            Action::Ask { socket, .. } => {
+                let collect = socket::Request::Collect {
+                    path: root_path.to_owned(),
+                    band: self.band,
+                };
+                match socket::ask(socket, &collect, COLLECT_TIMEOUT) {
+                    Ok(socket::Reply::Collected(_)) => Outcome::Reclaimed,
+                    Ok(other) => Outcome::Failed(format!("the system daemon answered {other:?}")),
+                    Err(error) => Outcome::Failed(format!("asking the system daemon: {error}")),
+                }
+            }
             Action::Collect { nix, paths, .. } => match garbage::delete(nix, paths, self.gentle) {
                 Ok(()) => Outcome::Reclaimed,
                 Err(why) => Outcome::Failed(why),

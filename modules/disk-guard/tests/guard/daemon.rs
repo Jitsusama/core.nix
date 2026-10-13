@@ -3,6 +3,7 @@ use disk_guard::clock::Tick;
 use disk_guard::config::Config;
 use disk_guard::daemon::{Guard, Places, Senses};
 use disk_guard::moments::{Power, Pressure};
+use disk_guard::socket::{Reply, Request};
 use disk_guard::units::Size;
 use rustix::fs::{AtFlags, CWD, Timespec, Timestamps, utimensat};
 use std::fs;
@@ -154,6 +155,67 @@ impl Home {
     }
 }
 
+/// A system daemon at `socket` that vouches for process 300, says it
+/// collects on every filesystem watched when `collects`, and collects
+/// whenever asked, telling what it heard.
+fn fake_system(socket: &Path, collects: bool) -> std::sync::mpsc::Receiver<Request> {
+    let mut server = disk_guard::socket::Server::bind(socket, std::time::Duration::ZERO).unwrap();
+    let (telling, heard) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        loop {
+            server
+                .serve(&mut |_, request, responder| {
+                    let reply = match &request {
+                        Request::Processes { .. } => Reply::Answer(disk_guard::vouch::Answer {
+                            vouched: vec![(300, 77)],
+                            touching: vec![],
+                        }),
+                        Request::Watching { paths } if collects => Reply::Collects(paths.clone()),
+                        Request::Watching { .. } => Reply::Collects(Vec::new()),
+                        Request::Collect { .. } => Reply::Collected("reached".to_owned()),
+                    };
+                    let _ = telling.send(request);
+                    responder.send(&reply);
+                })
+                .unwrap();
+        }
+    });
+    heard
+}
+
+#[test]
+fn a_user_daemon_asks_the_system_for_the_store_garbage_in_its_turn() {
+    let home = Home::new();
+    home.cold_scratch("run-1");
+    let socket = home.root.join("system.socket");
+    let heard = fake_system(&socket, true);
+    let places = Places {
+        system: Some(socket),
+        ..home.places()
+    };
+    let mut healthy = Guard::new(home.config("0%", "0%"), &places).unwrap();
+    healthy.step(&tick(), &CALM).unwrap();
+    let asked: Vec<Request> = heard.try_iter().collect();
+    let [Request::Watching { paths }] = asked.as_slice() else {
+        panic!("a heartbeat, and nothing collected while healthy: {asked:?}");
+    };
+    let mount = paths[0].clone();
+    assert!(home.root.starts_with(&mount), "{mount:?}");
+    let mut pressed = Guard::new(home.config("100%", "100%"), &places).unwrap();
+    pressed.step(&tick(), &CALM).unwrap();
+    let asked: Vec<Request> = heard.try_iter().collect();
+    let collect = Request::Collect {
+        path: mount,
+        band: Band::Pressure,
+    };
+    assert!(asked.contains(&collect), "{asked:?}");
+    let garbage = home
+        .journal()
+        .into_iter()
+        .any(|line| line["kind"] == "garbage" && line["outcome"] == "reclaimed");
+    assert!(garbage, "{:?}", home.journal());
+}
+
 #[test]
 fn the_system_daemon_vouches_for_what_this_account_cant_read() {
     let home = Home::new();
@@ -164,19 +226,7 @@ fn the_system_daemon_vouches_for_what_this_account_cant_read() {
     assert!(cold.exists(), "kept while process 300 can't be judged");
 
     let socket = home.root.join("system.socket");
-    let mut server = disk_guard::socket::Server::bind(&socket, std::time::Duration::ZERO).unwrap();
-    std::thread::spawn(move || {
-        server
-            .serve(&mut |_, _, responder| {
-                responder.send(&disk_guard::socket::Reply::Answer(
-                    disk_guard::vouch::Answer {
-                        vouched: vec![(300, 77)],
-                        touching: vec![],
-                    },
-                ))
-            })
-            .unwrap();
-    });
+    let _heard = fake_system(&socket, false);
     let places = Places {
         system: Some(socket),
         ..home.places()

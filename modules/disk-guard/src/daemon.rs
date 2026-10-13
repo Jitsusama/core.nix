@@ -14,14 +14,14 @@ use crate::journal::{self, Journal, Journaled, Line};
 use crate::moments::{Power, Pressure};
 use crate::pass::{Disk, End, Goal, Learned, Outcome, Reclaimer, pass};
 use crate::plan::{Candidate, Class};
-use crate::socket::{Reply, Responder};
+use crate::socket::{Reply, Request, Responder};
 use crate::state::{self, Memory};
 use crate::survey::{Action, Offer, World, named, survey};
 use crate::units::Size;
 use serde::Serialize;
 use std::cell::Cell;
-use std::collections::BTreeMap;
 use std::collections::HashMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::OsString;
 use std::fs;
 use std::io;
@@ -84,6 +84,9 @@ const LISTING_PRESSED: f64 = 3600.0;
 const LISTING_RETRY: f64 = 3600.0;
 /// The most paths deleted in one go, so one refused path costs little.
 const MOST_PER_BATCH: usize = 300;
+/// How long a user daemon waits for the system daemon to hear its
+/// heartbeat.
+const HEARTBEAT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(2);
 /// How long a user daemon's word holds a filesystem's passes for it.
 const SPOKEN_FOR: std::time::Duration = std::time::Duration::from_secs(60);
 
@@ -127,6 +130,9 @@ pub struct Guard {
     listing_out: Option<(f64, Listening)>,
     /// What a system daemon hears from user daemons.
     hearing: Option<Hearing>,
+    /// For a user daemon, the filesystems the system daemon collects
+    /// garbage on, by device, as it last said.
+    collected_on: BTreeSet<u64>,
 }
 
 /// Where a listing on its own thread sends the dead paths, or why not.
@@ -238,6 +244,7 @@ impl Guard {
             listing_path,
             listing_out: None,
             hearing: None,
+            collected_on: BTreeSet::new(),
         })
     }
 
@@ -250,6 +257,7 @@ impl Guard {
         }
         self.memory.awake.observe(tick);
         self.watch();
+        self.heartbeat();
         self.heard_garbage(tick.wall)?;
         let spare = spare(
             senses.power,
@@ -338,6 +346,65 @@ impl Guard {
             })?;
         }
         Ok(())
+    }
+
+    /// Tells the system daemon which filesystems this user daemon watches,
+    /// learning those it collects garbage on, whose passes this one then
+    /// drives. A system daemon that doesn't answer collects on none, and
+    /// passes alone a minute later.
+    fn heartbeat(&mut self) {
+        let Some(socket) = &self.system else {
+            return;
+        };
+        let paths: Vec<PathBuf> = self.watched.values().map(|w| w.path.clone()).collect();
+        if paths.is_empty() {
+            self.collected_on.clear();
+            return;
+        }
+        let watching = Request::Watching { paths };
+        self.collected_on = match crate::socket::ask(socket, &watching, HEARTBEAT_TIMEOUT) {
+            Ok(Reply::Collects(held)) => held
+                .iter()
+                .filter_map(|path| fs::metadata(path).ok())
+                .map(|meta| meta.dev())
+                .collect(),
+            _ => BTreeSet::new(),
+        };
+    }
+
+    /// What a user daemon offers of the system daemon's garbage: on each
+    /// filesystem it collects on, a collect asked of it, in garbage's turn
+    /// from pressure on and measured like any command. Routine upkeep of
+    /// garbage is the system daemon's own.
+    fn asked_offers(&self) -> Vec<Offer> {
+        let Some(socket) = &self.system else {
+            return Vec::new();
+        };
+        self.collected_on
+            .iter()
+            .filter_map(|&device| {
+                let mount = &self.watched.get(&device)?.path;
+                Some(Offer {
+                    candidate: Candidate {
+                        path: named(mount, GARBAGE),
+                        class: Class::Garbage {
+                            kept: true,
+                            order: 0,
+                        },
+                        idle: 0.0,
+                        size: 0,
+                        occupied: false,
+                        spent: false,
+                        checkout: None,
+                    },
+                    action: Action::Ask {
+                        root: mount.clone(),
+                        socket: socket.clone(),
+                    },
+                    device,
+                })
+            })
+            .collect()
     }
 
     /// Hears user daemons from now on.
@@ -655,6 +722,7 @@ impl Guard {
             },
         );
         offers.extend(self.garbage_offers(tick));
+        offers.extend(self.asked_offers());
         Ok((scan, offers))
     }
 
@@ -676,7 +744,7 @@ impl Guard {
         let started = Instant::now();
         let gentle = band < Band::Urgent;
         let pressure = self.processes.join("pressure");
-        let reclaimer = Reclaim::new(here, scan);
+        let reclaimer = Reclaim::new(here, scan).during(band);
         let mut reclaim = Journaled {
             inner: Yielding {
                 inner: if gentle {
