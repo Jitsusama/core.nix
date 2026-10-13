@@ -93,7 +93,7 @@ fn git_top(dir: &Path) -> Option<PathBuf> {
 /// each target and install, where the files are many and nothing more is
 /// to be found. A target is one cargo marked, or one named `target` beside
 /// a manifest before cargo has marked it; a `target` with no manifest
-/// beside it holds targets, one per project of a monorepo checkout.
+/// beside it holds targets, one per project of a checkout holding many.
 pub fn walk(root: &Path, depth: Option<usize>) -> io::Result<Vec<Found>> {
     let root = fs::canonicalize(root)?;
     let device = fs::metadata(&root)?.dev();

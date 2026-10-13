@@ -107,7 +107,7 @@ fn only_the_outermost_target_counts() {
 
 #[test]
 fn a_target_without_a_manifest_beside_it_holds_targets() {
-    // As a monorepo checkout keeps one per project: tree/target/<project>.
+    // As a checkout of many projects keeps one each: tree/target/<project>.
     let root = tempfile::tempdir().unwrap();
     let tree = real(root.path()).join("tree");
     let top = checkout(&tree, "src", "a");
