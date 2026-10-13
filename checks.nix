@@ -142,6 +142,9 @@ let
     vm-keyring-opens-without-asking = import ./tests/gnome-keyring.nix { inherit self pkgs; };
     vm-speakers-are-tuned = import ./tests/speakers.nix { inherit pkgs; };
     vm-desktop-works = import ./tests/desktop.nix { inherit self pkgs; };
+    # Joining Wi-Fi is the kernel, wpa_supplicant and networkd together, and
+    # what it leaves of other programs' routing only shows once it has.
+    vm-wifi-joins = import ./tests/wifi.nix { inherit self pkgs; };
   };
 in
 {
@@ -852,6 +855,31 @@ in
         lib.elem "virbr0" virtualisation.libvirtd.allowedBridges
         && lib.elem "multi-user.target" network.wantedBy
         && lib.hasInfix "net-start default" network.script
+      );
+
+  # A development DNS server answers for its own domains through a file in
+  # resolved.conf.d, so resolved's global settings stay as they ship: a
+  # server, domain, DNSSEC or DNS over TLS set there would reach it as well.
+  # What a network needs goes in its own .network file. The machine checked
+  # has networkd without the laptop role, whose keyboard and power modules
+  # leave resolved alone, so it holds whichever networking the role takes.
+  resolved-is-set-per-network =
+    let
+      laptop = bareNixos [
+        self.nixosModules.workstation
+        self.nixosModules.graphical
+        self.nixosModules.systemd-networkd
+      ];
+      resolve = laptop.config.services.resolved.settings.Resolve;
+    in
+    holds "resolved-is-set-per-network"
+      "A machine with networkd sets resolved's global servers, domains, DNSSEC or DNS over TLS."
+      (
+        laptop.config.services.resolved.enable
+        && resolve.DNS == [ ]
+        && resolve.Domains == [ ]
+        && resolve.DNSSEC == false
+        && resolve.DNSOverTLS == false
       );
 
   greetd-waits-for-the-gpu =

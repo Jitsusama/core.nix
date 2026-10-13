@@ -68,6 +68,7 @@ quietly stopped holding.
 | `icon-marks-past-the-basic-plane` | an icon mark past U+FFFF reaches the shell whole |
 | `nix-builds-yield-to-the-user` | Nix's builds run at a lower weight than the user's programs |
 | `nix-collects-before-the-disk-fills` | Nix collects garbage during a build that fills the disk |
+| `resolved-is-set-per-network` | a laptop leaves resolved's global DNS settings as they ship |
 
 ### The Shell's Logic
 
@@ -142,6 +143,7 @@ a running system shows.
 | `vm-keyring-opens-without-asking` | the keyring opens with its TPM-sealed password, unasked |
 | `vm-speakers-are-tuned`           | the XPS 14's speakers hear the tuning, headphones don't |
 | `vm-desktop-works`                | it boots clean; the desktop shows, opens, locks and asks |
+| `vm-wifi-joins`                   | Wi-Fi joins, resolves, and leaves others' routing rules  |
 
 The install test builds a disk image with disko and boots it with a software
 TPM, then follows [the install guide][3] step by step: the keys are made and

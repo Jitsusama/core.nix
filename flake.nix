@@ -206,7 +206,9 @@
         quickshell = ./modules/quickshell/nixos.nix;
         slices = ./modules/slices/nixos.nix;
         swayimg = ./modules/swayimg/nixos.nix;
+        systemd-networkd = ./modules/systemd-networkd/nixos.nix;
         tpm = ./modules/tpm/nixos.nix;
+        wpa_supplicant = ./modules/wpa_supplicant/nixos.nix;
         yubikey = ./modules/yubikey/system.nix;
         zathura = ./modules/zathura/nixos.nix;
         zsh = ./modules/zsh/nixos.nix;
