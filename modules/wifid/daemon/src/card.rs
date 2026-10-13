@@ -5,7 +5,7 @@ use std::io;
 use std::path::Path;
 
 /// A Wi-Fi card, by the name of its link.
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Card {
     pub name: String,
     /// The address its maker gave it, which the card's link shows only

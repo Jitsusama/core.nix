@@ -1,5 +1,6 @@
 //! What wifid knows that the shell shows: each card, the network it's on and
-//! how far that reaches, and every saved network. It's kept whole, so the
+//! how far that reaches, every saved network, and the networks in the air.
+//! It's kept whole, so the
 //! shell is sent all of it each time any of it changes and never has to
 //! piece it together.
 
@@ -8,6 +9,7 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 use zlink::introspect::{CustomType, Type};
 
+use crate::air::Heard;
 use crate::check::Verdict;
 use crate::link::Link;
 use crate::network::Security as Kind;
@@ -18,13 +20,29 @@ pub struct State {
     /// By link index, which stays the same while the card is there.
     cards: BTreeMap<i32, Card>,
     saved: Vec<Saved>,
+    /// By the access point's path in wpa_supplicant, which names its card.
+    heard: BTreeMap<String, Heard>,
+    radio_off: bool,
+    wired: bool,
+    /// How many times each card, by name, has begun joining a network,
+    /// and which of those its trouble came in, since wpa_supplicant can say
+    /// how one attempt went after the next has been asked for.
+    attempts: BTreeMap<String, u64>,
+    troubled_in: BTreeMap<String, u64>,
 }
 
-/// Every card and every saved network, as the shell is sent them.
+/// Every card, every saved network and the networks in the air, as the
+/// shell is sent them.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Type)]
 pub struct Described {
     pub cards: Vec<Card>,
     pub saved: Vec<Saved>,
+    /// The strongest first.
+    pub nearby: Vec<Nearby>,
+    /// Whether Wi-Fi's radios are on.
+    pub radio: bool,
+    /// Whether a cable reaches beyond the machine.
+    pub wired: bool,
 }
 
 /// A Wi-Fi card.
@@ -40,6 +58,41 @@ pub struct Card {
     pub reach: Option<Reach>,
     /// Where to sign in, while the network wants it.
     pub sign_in: Option<String>,
+    /// What went wrong the last time it tried a network, until one gives it
+    /// an address.
+    pub trouble: Option<Trouble>,
+}
+
+/// What went wrong joining a network.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize, CustomType)]
+#[serde(rename_all = "camelCase")]
+#[zlink(rename_all = "camelCase")]
+pub enum Trouble {
+    /// The password didn't work, which on a network joined before means it
+    /// has changed.
+    WrongPassword,
+    /// The access point turned the card away.
+    TurnedAway,
+    /// The network's server couldn't prove it's the network's, so it was
+    /// given no password.
+    ServerUnproven,
+}
+
+/// How far a card has got joining a network.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Progress {
+    /// It's finding the network and agreeing how to join it.
+    Joining,
+    /// It's on the network and waiting for an address.
+    GettingAddress,
+    /// It has an address, and wifid is finding out how far it reaches.
+    Checking,
+    /// It's on the network, which reaches so far.
+    Reached(Reach),
+    /// It couldn't join it.
+    Troubled(Trouble),
+    /// The card has gone.
+    Gone,
 }
 
 /// How far a network reaches.
@@ -74,6 +127,17 @@ pub struct Saved {
     pub hidden: bool,
 }
 
+/// A network in the air, as its strongest access point is heard.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, CustomType)]
+#[serde(rename_all = "camelCase")]
+#[zlink(rename_all = "camelCase")]
+pub struct Nearby {
+    pub name: String,
+    pub security: Security,
+    /// Bars of signal, from 1 to 4.
+    pub strength: u8,
+}
+
 /// How a network is joined.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize, CustomType)]
 #[serde(rename_all = "camelCase")]
@@ -83,6 +147,8 @@ pub enum Security {
     Open,
     /// With a password.
     Personal,
+    /// With an account, as at work.
+    Enterprise,
 }
 
 impl State {
@@ -94,6 +160,7 @@ impl State {
             network: None,
             reach: None,
             sign_in: None,
+            trouble: None,
         });
         if card.network != link.ssid || !link.routable {
             (card.reach, card.sign_in) = (None, None);
@@ -112,6 +179,10 @@ impl State {
     pub fn checking(&mut self, index: i32) {
         if let Some(card) = self.cards.get_mut(&index) {
             card.reach.get_or_insert(Reach::Checking);
+            // Only an address says a join got through: networkd names the
+            // network as the card associates, before a wrong password
+            // is found out.
+            card.trouble = None;
         }
     }
 
@@ -143,6 +214,7 @@ impl State {
                 security: match network.security {
                     Kind::Open => Security::Open,
                     Kind::Personal => Security::Personal,
+                    Kind::Enterprise => Security::Enterprise,
                 },
                 declared: *declared,
                 trusted: network.trusted,
@@ -152,11 +224,121 @@ impl State {
         }
     }
 
+    /// Takes in whether Wi-Fi's radios are on.
+    pub fn radio(&mut self, on: bool) {
+        self.radio_off = !on;
+    }
+
+    /// Takes in whether a cable reaches beyond the machine.
+    pub fn wired(&mut self, wired: bool) {
+        self.wired = wired;
+    }
+
+    /// Says what went wrong on the card of that name, or clears it.
+    pub fn troubled(&mut self, card: &str, trouble: Option<Trouble>) {
+        let attempt = self.attempts(card);
+        let name = card;
+        if let Some(card) = self.cards.values_mut().find(|shown| shown.name == card) {
+            // wpa_supplicant says the join failed after saying the server
+            // couldn't prove itself, and the first is the one that says why.
+            let unproven = card.trouble == Some(Trouble::ServerUnproven);
+            if unproven && trouble == Some(Trouble::WrongPassword) {
+                return;
+            }
+            card.trouble = trouble;
+            match trouble {
+                Some(_) => self.troubled_in.insert(name.to_string(), attempt),
+                None => self.troubled_in.remove(name),
+            };
+        }
+    }
+
+    /// Takes in that the card of that name has begun joining a network.
+    pub fn attempting(&mut self, card: &str) {
+        *self.attempts.entry(card.to_string()).or_default() += 1;
+    }
+
+    /// How many times the card of that name has begun joining a network.
+    pub fn attempts(&self, card: &str) -> u64 {
+        self.attempts.get(card).copied().unwrap_or_default()
+    }
+
+    /// How far the card of that name has got joining the network.
+    pub fn progress(&self, card: &str, network: &str, since: u64) -> Progress {
+        // Only what went wrong in an attempt begun since the join began is
+        // the join's.
+        let own = self
+            .troubled_in
+            .get(card)
+            .is_some_and(|attempt| *attempt > since);
+        let Some(card) = self.cards.values().find(|shown| shown.name == card) else {
+            return Progress::Gone;
+        };
+        let trouble = card.trouble.filter(|_| own);
+        let on = card.network.as_deref() == Some(network);
+        match (on, card.reach, trouble) {
+            (true, Some(Reach::Checking), _) => Progress::Checking,
+            (true, Some(reach), _) => Progress::Reached(reach),
+            (_, _, Some(trouble)) => Progress::Troubled(trouble),
+            (true, None, None) => Progress::GettingAddress,
+            (false, _, None) => Progress::Joining,
+        }
+    }
+
+    /// Takes in what wpa_supplicant says of an access point, or that it's
+    /// no longer heard.
+    pub fn heard(&mut self, path: &str, heard: Option<Heard>) {
+        match heard {
+            Some(heard) => self.heard.insert(path.into(), heard),
+            None => self.heard.remove(path),
+        };
+    }
+
+    /// Forgets every access point whose path starts so, as every one a card
+    /// heard when it goes.
+    pub fn unheard_under(&mut self, path: &str) {
+        self.heard.retain(|heard, _| !heard.starts_with(path));
+    }
+
     pub fn described(&self) -> Described {
         Described {
             cards: self.cards.values().cloned().collect(),
             saved: self.saved.clone(),
+            nearby: self.nearby(),
+            radio: !self.radio_off,
+            wired: self.wired,
         }
+    }
+
+    fn nearby(&self) -> Vec<Nearby> {
+        let mut strongest: BTreeMap<&str, &Heard> = BTreeMap::new();
+        for heard in self.heard.values() {
+            let kept = strongest.entry(&heard.name).or_insert(heard);
+            if heard.signal > kept.signal {
+                *kept = heard;
+            }
+        }
+        let mut nearby: Vec<Nearby> = strongest
+            .into_values()
+            .map(|heard| Nearby {
+                name: heard.name.clone(),
+                security: heard.security,
+                strength: bars(heard.signal),
+            })
+            .collect();
+        // Already in order of name, which a stable sort keeps among equals.
+        nearby.sort_by_key(|network| std::cmp::Reverse(network.strength));
+        nearby
+    }
+}
+
+/// The bars a signal is drawn with: one more for every 10 dB above -80.
+fn bars(signal: i16) -> u8 {
+    match signal {
+        -60.. => 4,
+        -70.. => 3,
+        -80.. => 2,
+        _ => 1,
     }
 }
 
@@ -178,6 +360,21 @@ mod tests {
         }
     }
 
+    fn heard(name: &str, signal: i16) -> Option<Heard> {
+        Some(Heard {
+            name: name.into(),
+            security: Security::Personal,
+            signal,
+        })
+    }
+
+    fn nearby(state: &State) -> Vec<(String, u8)> {
+        let nearby = state.described().nearby.into_iter();
+        nearby
+            .map(|network| (network.name, network.strength))
+            .collect()
+    }
+
     fn card(state: &State) -> Card {
         state.described().cards.remove(0)
     }
@@ -192,6 +389,7 @@ mod tests {
                 hidden: false,
                 address: Address::Network,
                 trusted: false,
+                account: None,
             },
             file: PathBuf::from(format!("/{name}.network")),
             declared,
@@ -220,10 +418,171 @@ mod tests {
                 network: Some("Roadside Inn".into()),
                 reach: Some(Reach::Checking),
                 sign_in: None,
+                trouble: None,
             }
         );
         assert_eq!(judged.reach, Some(Reach::SignIn));
         assert_eq!(judged.sign_in.as_deref(), Some("http://front-desk.inn/"));
+    }
+
+    #[test]
+    fn a_card_joining_a_network_goes_from_finding_it_to_how_far_it_reaches() {
+        let mut state = State::default();
+        state.follow(&Link {
+            ssid: None,
+            routable: false,
+            ..inn(2)
+        });
+        let joining = state.progress("wlan2", "Roadside Inn", 0);
+        state.follow(&Link {
+            routable: false,
+            ..inn(2)
+        });
+        let addressing = state.progress("wlan2", "Roadside Inn", 0);
+        state.follow(&inn(2));
+        state.checking(2);
+        let checking = state.progress("wlan2", "Roadside Inn", 0);
+        state.judged(2, &Verdict::Online);
+        let reached = state.progress("wlan2", "Roadside Inn", 0);
+
+        assert_eq!(
+            [joining, addressing, checking, reached],
+            [
+                Progress::Joining,
+                Progress::GettingAddress,
+                Progress::Checking,
+                Progress::Reached(Reach::Online),
+            ]
+        );
+    }
+
+    #[test]
+    fn wifi_is_shown_on_until_its_radios_are_turned_off() {
+        let mut state = State::default();
+        let at_first = state.described().radio;
+
+        state.radio(false);
+
+        assert!(at_first);
+        assert!(!state.described().radio);
+    }
+
+    #[test]
+    fn a_cable_is_shown_while_it_reaches_beyond_the_machine() {
+        let mut state = State::default();
+
+        state.wired(true);
+
+        assert!(state.described().wired);
+    }
+
+    #[test]
+    fn a_card_still_on_another_network_is_still_joining() {
+        let mut state = State::default();
+        state.follow(&inn(2));
+        state.judged(2, &Verdict::Online);
+
+        let progress = state.progress("wlan2", "Lantern", 0);
+
+        assert_eq!(progress, Progress::Joining);
+    }
+
+    #[test]
+    fn a_card_that_couldn_t_join_says_why() {
+        let mut state = State::default();
+        state.follow(&Link {
+            ssid: None,
+            routable: false,
+            ..inn(2)
+        });
+        state.attempting("wlan2");
+
+        state.troubled("wlan2", Some(Trouble::WrongPassword));
+
+        assert_eq!(card(&state).trouble, Some(Trouble::WrongPassword));
+        assert_eq!(
+            state.progress("wlan2", "Lantern", 0),
+            Progress::Troubled(Trouble::WrongPassword)
+        );
+    }
+
+    #[test]
+    fn trouble_is_forgotten_once_a_network_gives_the_card_an_address() {
+        let mut state = State::default();
+        state.follow(&Link {
+            ssid: None,
+            routable: false,
+            ..inn(2)
+        });
+        state.troubled("wlan2", Some(Trouble::TurnedAway));
+
+        state.follow(&inn(2));
+        let associated = card(&state).trouble;
+        state.checking(2);
+
+        assert_eq!(associated, Some(Trouble::TurnedAway));
+        assert_eq!(card(&state).trouble, None);
+    }
+
+    #[test]
+    fn a_wrong_password_found_out_on_the_network_is_still_trouble() {
+        let mut state = State::default();
+        state.follow(&Link {
+            ssid: Some("Lantern".into()),
+            routable: false,
+            ..inn(2)
+        });
+        state.attempting("wlan2");
+
+        state.troubled("wlan2", Some(Trouble::WrongPassword));
+
+        assert_eq!(
+            state.progress("wlan2", "Lantern", 0),
+            Progress::Troubled(Trouble::WrongPassword)
+        );
+    }
+
+    #[test]
+    fn trouble_said_late_of_an_attempt_before_the_join_isn_t_the_join_s() {
+        let mut state = State::default();
+        state.follow(&Link {
+            ssid: None,
+            routable: false,
+            ..inn(2)
+        });
+        state.attempting("wlan2");
+        let since = state.attempts("wlan2");
+
+        state.troubled("wlan2", Some(Trouble::WrongPassword));
+        let late = state.progress("wlan2", "Lantern", since);
+        state.attempting("wlan2");
+        state.troubled("wlan2", Some(Trouble::WrongPassword));
+        let own = state.progress("wlan2", "Lantern", since);
+
+        assert_eq!(late, Progress::Joining);
+        assert_eq!(own, Progress::Troubled(Trouble::WrongPassword));
+    }
+
+    #[test]
+    fn a_server_that_couldn_t_prove_itself_isn_t_taken_for_a_wrong_password() {
+        let mut state = State::default();
+        state.follow(&Link {
+            ssid: None,
+            routable: false,
+            ..inn(2)
+        });
+
+        state.troubled("wlan2", Some(Trouble::ServerUnproven));
+        state.troubled("wlan2", Some(Trouble::WrongPassword));
+
+        assert_eq!(card(&state).trouble, Some(Trouble::ServerUnproven));
+    }
+
+    #[test]
+    fn a_card_that_has_gone_joins_nothing() {
+        let state = State::default();
+
+        assert_eq!(state.progress("wlan2", "Lantern", 0), Progress::Gone);
     }
 
     #[test]
@@ -351,5 +710,76 @@ mod tests {
                 },
             ]
         );
+    }
+
+    #[test]
+    fn a_network_in_the_air_is_shown_once_by_its_strongest_access_point() {
+        let mut state = State::default();
+
+        state.heard("/Interfaces/0/BSSs/1", heard("Lantern", -82));
+        state.heard("/Interfaces/0/BSSs/2", heard("Lantern", -52));
+        state.heard("/Interfaces/1/BSSs/3", heard("Lantern", -71));
+
+        assert_eq!(
+            state.described().nearby,
+            [Nearby {
+                name: "Lantern".into(),
+                security: Security::Personal,
+                strength: 4,
+            }]
+        );
+    }
+
+    #[test]
+    fn networks_in_the_air_are_shown_strongest_first_then_by_name() {
+        let mut state = State::default();
+
+        state.heard("/Interfaces/0/BSSs/1", heard("Faint", -90));
+        state.heard("/Interfaces/0/BSSs/2", heard("Lantern", -66));
+        state.heard("/Interfaces/0/BSSs/3", heard("Inn", -64));
+        state.heard("/Interfaces/0/BSSs/4", heard("Far", -79));
+
+        assert_eq!(
+            nearby(&state),
+            [
+                ("Inn".into(), 3),
+                ("Lantern".into(), 3),
+                ("Far".into(), 2),
+                ("Faint".into(), 1),
+            ]
+        );
+    }
+
+    #[test]
+    fn signal_wandering_within_a_bar_changes_nothing_shown() {
+        let mut state = State::default();
+        state.heard("/Interfaces/0/BSSs/1", heard("Lantern", -62));
+        let before = state.described();
+
+        state.heard("/Interfaces/0/BSSs/1", heard("Lantern", -68));
+
+        assert_eq!(state.described(), before);
+    }
+
+    #[test]
+    fn an_access_point_no_longer_heard_is_no_longer_shown() {
+        let mut state = State::default();
+        state.heard("/Interfaces/0/BSSs/1", heard("Lantern", -52));
+        state.heard("/Interfaces/0/BSSs/2", heard("Lantern", -82));
+
+        state.heard("/Interfaces/0/BSSs/1", None);
+
+        assert_eq!(nearby(&state), [("Lantern".into(), 1)]);
+    }
+
+    #[test]
+    fn a_card_going_takes_what_it_heard_with_it() {
+        let mut state = State::default();
+        state.heard("/Interfaces/1/BSSs/1", heard("Lantern", -52));
+        state.heard("/Interfaces/10/BSSs/2", heard("Inn", -52));
+
+        state.unheard_under("/Interfaces/1/");
+
+        assert_eq!(nearby(&state), [("Inn".into(), 4)]);
     }
 }

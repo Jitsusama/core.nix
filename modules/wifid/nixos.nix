@@ -29,6 +29,8 @@ in
   users.users = lib.mapAttrs (_: _: {
     extraGroups = [ "wifi" ];
   }) config.home-manager.users;
+  # Each of them has the sign-in window too.
+  home-manager.sharedModules = [ ./home.nix ];
 
   # systemd keeps the socket while wifid starts again, so whoever's talking
   # to it waits a moment rather than finding nothing there.
@@ -79,7 +81,12 @@ in
       NoNewPrivileges = true;
       LockPersonality = true;
       MemoryDenyWriteExecute = true;
+      # The radios' switches are the one device wifid needs, to say whether
+      # Wi-Fi is on and turn it off and on for the shell. A machine without
+      # them still starts wifid, which then shows Wi-Fi on.
       PrivateDevices = true;
+      BindPaths = [ "-/dev/rfkill" ];
+      DeviceAllow = [ "/dev/rfkill rw" ];
       PrivateTmp = true;
       ProtectClock = true;
       ProtectControlGroups = true;

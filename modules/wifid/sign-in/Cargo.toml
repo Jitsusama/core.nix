@@ -1,0 +1,18 @@
+[package]
+name = "wifid-sign-in"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+async-channel = "2.5"
+# webkit6 needs GTK's Accessible, which gtk4 keeps behind 4.10's feature.
+gtk4 = { version = "0.11", features = ["v4_10"] }
+libc = "0.2"
+serde_json = "1.0"
+socket2 = { version = "0.6", features = ["all"] }
+webkit6 = { version = "0.6", features = ["v2_52"] }
+
+[dev-dependencies]
+tempfile = "3.27"
