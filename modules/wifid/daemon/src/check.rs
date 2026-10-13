@@ -50,7 +50,8 @@ impl Checker {
         let asked = |page: &Page| {
             let page = page.clone();
             async move {
-                match page::fetch(card, dns, &page, "*/*", tls).await {
+                let fetched = twice(|| page::fetch(card, dns, &page, "*/*", tls), AGAIN);
+                match fetched.await {
                     Ok(answer) => verdict(&answer, &page),
                     Err(_) => Verdict::Limited,
                 }
@@ -73,6 +74,26 @@ impl Checker {
         let verdict = judge(&self.settings.page, session.as_ref(), plain, secure);
         let after = recheck_after(&verdict, session.as_ref());
         (verdict, after)
+    }
+}
+
+/// How long a check waits before asking again for a page it couldn't
+/// reach at all.
+const AGAIN: Duration = Duration::from_secs(1);
+
+/// Asks once, and again a moment later if that couldn't be done at all:
+/// a page out of reach for an instant, as a card's first moments on a
+/// network can leave it, says nothing of how far the network reaches.
+async fn twice<T, E, F>(mut ask: impl FnMut() -> F, pause: Duration) -> Result<T, E>
+where
+    F: Future<Output = Result<T, E>>,
+{
+    match ask().await {
+        Ok(answer) => Ok(answer),
+        Err(_) => {
+            tokio::time::sleep(pause).await;
+            ask().await
+        }
     }
 }
 
@@ -233,9 +254,53 @@ pub fn recheck_after(verdict: &Verdict, session: Option<&Session>) -> Duration {
 
 #[cfg(test)]
 mod tests {
+    use std::cell::Cell;
+
     use serde_json::json;
 
     use super::*;
+
+    #[tokio::test]
+    async fn a_page_out_of_reach_is_asked_again() {
+        let asked = Cell::new(0);
+
+        let answer: Result<&str, &str> = twice(
+            || {
+                asked.set(asked.get() + 1);
+                let now = asked.get();
+                async move { if now == 1 { Err("refused") } else { Ok("204") } }
+            },
+            Duration::ZERO,
+        )
+        .await;
+
+        assert_eq!(answer, Ok("204"));
+        assert_eq!(asked.get(), 2);
+    }
+
+    #[tokio::test]
+    async fn a_page_reached_is_asked_once() {
+        let asked = Cell::new(0);
+
+        let answer: Result<&str, &str> = twice(
+            || {
+                asked.set(asked.get() + 1);
+                async { Ok("302") }
+            },
+            Duration::ZERO,
+        )
+        .await;
+
+        assert_eq!(answer, Ok("302"));
+        assert_eq!(asked.get(), 1);
+    }
+
+    #[tokio::test]
+    async fn a_page_out_of_reach_twice_says_why() {
+        let answer: Result<(), &str> = twice(|| async { Err("refused") }, Duration::ZERO).await;
+
+        assert_eq!(answer, Err("refused"));
+    }
 
     fn check_page() -> Page {
         Settings::default().page
