@@ -27,46 +27,34 @@ QtObject {
                 failures.push(`${what} gave ${said(got)}, not ${said(wanted)}`);
         };
 
-        // The arrows keep the half they point at, until it's too small.
-        expect("left", Picking.halved(whole, "left"), box(0, 0, 720, 900));
-        expect("right", Picking.halved(whole, "right"), box(720, 0, 720, 900));
-        expect("up", Picking.halved(whole, "up"), box(0, 0, 1440, 450));
-        expect("down", Picking.halved(whole, "down"), box(0, 450, 1440, 450));
-        expect("right of an odd width", Picking.halved(box(10, 0, 101, 50), "right"),
-            box(61, 0, 50, 50));
-        expect("down at the least", Picking.halved(box(0, 0, 50, 16), "down"), box(0, 0, 50, 16));
-        expect("left near the least", Picking.halved(box(0, 0, 20, 50), "left"),
-            box(0, 0, 16, 50));
+        // It starts as the middle quarter.
+        expect("the start", Picking.start(whole), box(360, 225, 720, 450));
+        expect("the start of an odd screen", Picking.start({ width: 1281, height: 801 }),
+            box(320, 200, 641, 401));
 
-        // Shift moves it by its size, and stops at the screen's edge.
-        expect("shift right", Picking.moved(box(0, 0, 720, 450), "right", screen),
-            box(720, 0, 720, 450));
-        expect("shift right past the edge", Picking.moved(box(900, 0, 400, 100), "right", screen),
-            box(1040, 0, 400, 100));
-        expect("shift up at the top", Picking.moved(box(0, 0, 720, 450), "up", screen),
-            box(0, 0, 720, 450));
-        expect("shift down", Picking.moved(box(0, 100, 720, 300), "down", screen),
-            box(0, 400, 720, 300));
+        // The arrows move it a step, and stop at the screen's edge.
+        const middle = box(100, 100, 200, 200);
+        expect("left", Picking.moved(middle, "left", 16, screen), box(84, 100, 200, 200));
+        expect("right", Picking.moved(middle, "right", 16, screen), box(116, 100, 200, 200));
+        expect("up", Picking.moved(middle, "up", 16, screen), box(100, 84, 200, 200));
+        expect("down", Picking.moved(middle, "down", 16, screen), box(100, 116, 200, 200));
+        expect("left at the edge", Picking.moved(box(8, 0, 200, 200), "left", 16, screen),
+            box(0, 0, 200, 200));
+        expect("right at the edge", Picking.moved(box(1230, 0, 200, 200), "right", 16, screen),
+            box(1240, 0, 200, 200));
+        expect("down at the edge", Picking.moved(box(0, 690, 200, 200), "down", 16, screen),
+            box(0, 700, 200, 200));
 
-        // Ctrl pushes an edge out, to the screen's edge and no further.
-        expect("ctrl left", Picking.pushed(box(100, 100, 200, 200), "left", 16, screen),
-            box(84, 100, 216, 200));
-        expect("ctrl left at the edge", Picking.pushed(box(8, 100, 200, 200), "left", 16, screen),
-            box(0, 100, 208, 200));
-        expect("ctrl right", Picking.pushed(box(100, 100, 200, 200), "right", 16, screen),
-            box(100, 100, 216, 200));
-        expect("ctrl down at the edge",
-            Picking.pushed(box(100, 800, 200, 90), "down", 16, screen), box(100, 800, 200, 100));
-
-        // Ctrl and Shift pull the edge the arrow faces, the way it points.
-        expect("ctrl shift left", Picking.pulled(box(100, 100, 200, 200), "left", 16),
-            box(100, 100, 184, 200));
-        expect("ctrl shift right", Picking.pulled(box(100, 100, 200, 200), "right", 16),
-            box(116, 100, 184, 200));
-        expect("ctrl shift up", Picking.pulled(box(100, 100, 200, 200), "up", 16),
-            box(100, 100, 200, 184));
-        expect("ctrl shift down at the least", Picking.pulled(box(100, 100, 200, 20), "down", 16),
-            box(100, 104, 200, 16));
+        // Shift sizes it from its bottom right corner, within the screen and
+        // no smaller than the least.
+        expect("shift right", Picking.sized(middle, "right", 16, screen), box(100, 100, 216, 200));
+        expect("shift left", Picking.sized(middle, "left", 16, screen), box(100, 100, 184, 200));
+        expect("shift down", Picking.sized(middle, "down", 16, screen), box(100, 100, 200, 216));
+        expect("shift up", Picking.sized(middle, "up", 16, screen), box(100, 100, 200, 184));
+        expect("shift right at the edge",
+            Picking.sized(box(1300, 0, 130, 50), "right", 16, screen), box(1300, 0, 140, 50));
+        expect("shift up at the least", Picking.sized(box(0, 0, 50, 20), "up", 16, screen),
+            box(0, 0, 50, 16));
 
         // Letters name cells, row then column, alphabetically.
         const cells = Picking.grid(whole);

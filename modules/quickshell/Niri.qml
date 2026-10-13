@@ -47,6 +47,8 @@ Singleton {
     signal windowOpenedOrChanged(var window)
     signal windowClosed(var id)
     signal layoutsChanged
+    // niri took a screenshot, saved here unless it was only copied.
+    signal screenshotCaptured(var path)
 
     // The workspace a window is on, or the focused one.
     function workspace(id: var): var {
@@ -138,10 +140,13 @@ Singleton {
             const all = Object.assign({}, casts);
             delete all[event.CastStopped.stream_id];
             casts = all;
+        } else if (event.ScreenshotCaptured) {
+            screenshotCaptured(event.ScreenshotCaptured.path ?? null);
         } else if (event.WorkspaceActiveWindowChanged) {
             const change = event.WorkspaceActiveWindowChanged;
             if (workspaces[change.workspace_id])
                 workspaces[change.workspace_id].active_window_id = change.active_window_id;
+            revision++;
         }
     }
 

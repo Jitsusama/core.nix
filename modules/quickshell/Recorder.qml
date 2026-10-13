@@ -8,8 +8,9 @@ pragma Singleton
 // (pieces/Recording.qml).
 //
 // A region's picture is taken here too, since niri's own picker takes only
-// the pointer. It's saved where niri saves its screenshots, and copied, as
-// niri's are.
+// the pointer. It's saved where niri saves its screenshots, named as niri
+// names them, by when it was taken, and copied as theirs are, and says so in
+// the notice niri gives its own, so every screenshot ends the same way.
 //
 // wf-recorder does the recording through niri, which tells the shell when
 // it starts and stops, so nothing here keeps any state of its own. It
@@ -55,27 +56,48 @@ Singleton {
         record(workspace === null ? [] : ["--output", workspace.output]);
     }
 
-    function region(): void {
+    // Escape in the picker calls back, if given.
+    function region(back: var): void {
         if (stopped())
             return;
         Picker.pick("Record a region", Theme.glyph.recording, geometry => {
             what = "a region";
             record(["--geometry", geometry]);
-        });
+        }, back ?? null);
     }
 
-    function screenshot(): void {
+    // niri gives its own pictures their notice.
+    Connections {
+        target: Niri
+
+        function onScreenshotCaptured(path: var): void {
+            Report.say(`captured ${path}`);
+        }
+    }
+
+    function screenshot(back: var): void {
         const script = [
             'folder=$HOME/Pictures/Screenshots',
             'mkdir -p "$folder" || exit',
-            'file=$folder/"Screenshot from $(date "+%Y-%m-%d %H-%M-%S").png"',
-            'grim -g "$1" "$file" || exit',
+            // The picture is made under a hidden name, then linked to its own,
+            // so what watches the folder sees it only whole. A link fails
+            // where the name is taken, so a second picture in the same second
+            // is numbered, not written over.
+            'name=$folder/$(date "+%Y-%m-%d %H-%M-%S")',
+            'part=$folder/.screenshot-$$.png',
+            'grim -g "$1" "$part" || { rm -f "$part"; exit 1; }',
+            'file=$name.png n=1',
+            'until ln "$part" "$file" 2> /dev/null; do',
+            '    [ -e "$file" ] || { rm -f "$part"; exit 1; }',
+            '    n=$((n + 1)) file="$name $n.png"',
+            'done',
+            'rm -f "$part"',
             'wl-copy --type image/png < "$file"',
-            'notify-send --app-name=Screenshot --transient \\',
-            '    "Screenshot copied" "Pictures/Screenshots/${file##*/}"'
+            'notify-send --app-name=niri --transient --icon="file://$file" \\',
+            '    "Screenshot captured" "You can paste the image from the clipboard."'
         ].join("\n");
-        Picker.pick("Screenshot a region", String.fromCodePoint(0xf0e51),
-            geometry => Niri.spawn(["sh", "-c", script, "screenshot", geometry]));
+        Picker.pick("A picture of a region", String.fromCodePoint(0xf0100),
+            geometry => Niri.spawn(["sh", "-c", script, "screenshot", geometry]), back ?? null);
     }
 
     function stopped(): bool {
@@ -124,7 +146,7 @@ Singleton {
         }
 
         function region(): void {
-            root.region();
+            root.region(null);
         }
 
         function stop(): void {
@@ -136,7 +158,7 @@ Singleton {
         target: "screenshot"
 
         function region(): void {
-            root.screenshot();
+            root.screenshot(null);
         }
     }
 }

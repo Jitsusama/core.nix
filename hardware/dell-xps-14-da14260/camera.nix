@@ -51,6 +51,11 @@ let
   ];
 in
 {
+  imports = [ ../../modules/camera/nixos.nix ];
+
+  # Pictures and videos are taken from the loopback, which the file names.
+  jitsusama.camera.device = device;
+
   hardware.ipu7 = {
     enable = true;
     platform = "ipu75xa";

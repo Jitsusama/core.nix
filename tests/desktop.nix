@@ -85,9 +85,13 @@ pkgs.testers.runNixOSTest {
       # the laptop's.
       boot.extraModulePackages = [
         (config.boot.kernelPackages.callPackage ./stand-in-backlight { })
+        config.boot.kernelPackages.v4l2loopback
       ];
       boot.kernelModules = [
         "stand-in-backlight"
+        # A stand-in camera, a loopback as the laptop's is, fed a test
+        # picture as the laptop's relay feeds it the sensor's.
+        "v4l2loopback"
         # The kernel's own stand-in battery, which UPower reports as a laptop's.
         "test_power"
         # Two stand-in Wi-Fi radios: hostapd makes the first an access point
@@ -109,6 +113,19 @@ pkgs.testers.runNixOSTest {
           };
         };
       };
+      boot.extraModprobeConfig = ''
+        options v4l2loopback video_nr=9 exclusive_caps=1 card_label=Camera
+      '';
+      systemd.services.stand-in-camera = {
+        wantedBy = [ "multi-user.target" ];
+        after = [ "systemd-modules-load.service" ];
+        serviceConfig.ExecStart = lib.concatStringsSep " " [
+          "${lib.getExe pkgs.ffmpeg-headless} -loglevel error -re"
+          "-f lavfi -i testsrc2=size=640x480:rate=15 -pix_fmt yuyv422 -f v4l2 /dev/video9"
+        ];
+      };
+      jitsusama.camera.device = "/dev/video9";
+
       networking.networkmanager.unmanaged = [ "wlan0" ];
       # The access point hands out addresses, as a real network does, since
       # NetworkManager counts a network joined only once it has one.
@@ -171,12 +188,17 @@ pkgs.testers.runNixOSTest {
       # A microphone of the class a real one has, which Quickshell needs to see
       # its audio: a loopback whose far side is a source, as Pipewire's guide
       # makes one, since a null sink's ports face the wrong way for that class.
+      # It hears what the speakers play, so it gives something to record, as a
+      # real one always does: unlinked, it would give nothing, and a recording
+      # with sound waits for its first sound before it writes anything.
       services.pipewire.extraConfig.pipewire."91-stand-in-microphone"."context.modules" = [
         {
           name = "libpipewire-module-loopback";
           args = {
             "capture.props" = {
               "node.name" = "stand-in-microphone-input";
+              "stream.capture.sink" = true;
+              "target.object" = "stand-in-speakers";
               # Two channels, as a laptop's microphones are: Quickshell reads no
               # volume from a loopback whose map and volumes differ in size.
               "audio.position" = [
@@ -213,12 +235,24 @@ pkgs.testers.runNixOSTest {
         extraGroups = [
           "wheel"
           "networkmanager"
+          # The camera's, given to a seat's active session on the laptop.
+          "video"
         ];
         initialPassword = secret;
       };
       home-manager.users.${account} = {
         home.stateVersion = "26.05";
         jitsusama.quickshell.reports = true;
+        # What Quickshell hears from Pipewire about nodes and defaults, so a
+        # change it missed can be told from one it was never sent.
+        systemd.user.services.quickshell.Service.Environment = [
+          "QT_LOGGING_RULES=${
+            lib.concatMapStringsSep ";" (part: "quickshell.service.pipewire.${part}.info=true") [
+              "node"
+              "defaults"
+            ]
+          }"
+        ];
       };
       environment.systemPackages = [
         reports
@@ -578,7 +612,11 @@ pkgs.testers.runNixOSTest {
           toggle = "niri msg action spawn -- wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle"
           meter_shows("microphone", "SOURCE", toggle)
           machine.wait_until_fails(in_session("niri msg layers | grep -q microphone"), timeout=10)
+          # Unmuted again, which the margin hears, so it's empty for what's next.
+          since = mark()
           as_account("wpctl set-mute @DEFAULT_AUDIO_SOURCE@ 0")
+          print(as_account("wpctl get-volume @DEFAULT_AUDIO_SOURCE@"))
+          reported("holds margin", lambda rest: "muted" not in rest.split(), since)
 
       # niri runs the brightness keys' command inside Joel's session, which is
       # the one logind lets change a backlight, so the test has niri run it too.
@@ -1179,8 +1217,13 @@ pkgs.testers.runNixOSTest {
           machine.wait_until_fails(in_session(margin), timeout=10)
 
       with subtest("the microphone muted shows in the margin, and Return unmutes it"):
-          with told("drawn margin"):
-              as_account("wpctl set-mute @DEFAULT_AUDIO_SOURCE@ 1")
+          try:
+              with told("drawn margin"):
+                  as_account("wpctl set-mute @DEFAULT_AUDIO_SOURCE@ 1")
+          except AssertionError:
+              # Which source Pipewire calls the default, and whether it's muted.
+              print(as_account("wpctl status; wpctl get-volume @DEFAULT_AUDIO_SOURCE@"))
+              raise
           machine.wait_until_fails(in_session("niri msg layers | grep -q microphone"), timeout=10)
           with told("keys margin"):
               machine.send_key("meta_l-o")
@@ -1315,63 +1358,226 @@ pkgs.testers.runNixOSTest {
           machine.send_key("caps_lock")
           machine.wait_until_fails(in_session(margin), timeout=10)
 
-      # Print opens the shell's picker, which the keys drive. Letters name
-      # the grid's cells, row then column, so aa to jp spans the screen
-      # whatever it opened on; then the arrows halve it and Ctrl pushes an
-      # edge out a step, and Return takes its picture.
-      with subtest("Print picks a region by the keys, and takes its picture"):
-          pictures = "/home/${account}/Pictures/Screenshots"
-          # The picker covers the screen niri gives it, whatever cage leaves.
-          logical = json.loads(as_account("niri msg --json focused-output"))["logical"]
-          wide, high = logical["width"], logical["height"]
-          half = (wide // 2 + 16, high // 2)
+      # Print opens the launcher's Capture collection, where a picture of the
+      # screen, a window or a region is chosen by the keys, and niri says
+      # when it's taken.
+      pictures = "/home/${account}/Pictures/Screenshots"
 
-          # Return at once takes the box it opened on, the screen or the
-          # focused window, which has to be there from its first frame.
-          def sized(geometry):
-              width, height = geometry.split(" ")[1].split("x")
-              return int(width) > 0 and int(height) > 0
+      # Print opens Capture, its rows ready for the keys.
+      def capture():
+          machine.send_key("sysrq")
+          launcher_until(
+              lambda shown: shown["keys"]
+              and shown["held"] == ["captures"]
+              and shown["selected"] is not None
+          )
 
-          with told("keys picker"):
-              machine.send_key("sysrq")
+      # Waits for niri to say it took a picture, after what's done inside this.
+      @contextlib.contextmanager
+      def captured():
           since = mark()
-          machine.send_key("ret")
-          reported("picked ", sized, since, 30)
-          machine.wait_until_succeeds(f"ls {pictures}/*.png", timeout=15)
-          machine.succeed(f"rm {pictures}/*.png")
+          yield
+          reported("captured ", lambda path: path.startswith(f"{pictures}/"), since)
 
-          with told("keys picker"):
-              machine.send_key("sysrq")
-          machine.send_chars("aajp")
-          for key in ("left", "up", "ctrl-right"):
-              machine.send_key(key)
-          photograph("picker")
-          with told(f"picked 0,0 {half[0]}x{half[1]}"):
-              machine.send_key("ret")
-          machine.wait_until_succeeds(f"ls {pictures}/*.png", timeout=15)
-          # A PNG says its width and height in its header, from byte 16.
+      # A PNG says its width and height in its header, from byte 16.
+      def newest_size():
           newest = f"ls -t {pictures}/*.png | head -1"
           size = machine.succeed(f"{newest} | xargs -d '\\n' od -An -tu1 -j16 -N8")
           b = [int(n) for n in size.split()]
-          t.assertEqual((b[2] * 256 + b[3], b[6] * 256 + b[7]), half)
+          return (b[2] * 256 + b[3], b[6] * 256 + b[7])
 
-          # One cell's letters and another's make the box between them, and
-          # the grid shows while they're typed.
+      with subtest("Print opens Capture, where Return takes the whole screen"):
+          capture()
+          screen = showing()["selected"]
+          t.assertEqual(screen["name"], "The whole screen")
+          t.assertEqual(screen["chord"], "\u21e7 Print", "the whole screen's row shows its chord")
+          photograph("capture")
+          with told("shows card Screenshot captured"), captured():
+              machine.send_key("ret")
+
+      with subtest("Capture takes a window found by its title, on any workspace"):
+          as_account("niri msg action spawn -- kitty --title Seashells")
+          machine.wait_until_succeeds(
+              in_session("niri msg --json windows | grep -qF '\"title\":\"Seashells\"'"), timeout=60
+          )
+          # The window the keys were in, though niri says none has focus
+          # while the launcher has the keys.
+          capture()
+          type_in("this window", selecting="This window \u00b7 Seashells")
+          t.assertEqual(showing()["selected"]["chord"], "Ctrl Print")
+          with captured():
+              machine.send_key("ret")
+          windows = json.loads(as_account("niri msg --json windows"))
+          shell = next(w for w in windows if w["title"] == "Seashells")
+          t.assertEqual(newest_size(), tuple(shell["layout"]["window_size"]))
+          # Moved to a workspace of its own and left there.
+          as_account("niri msg action move-window-to-workspace-down")
+          as_account("niri msg action focus-workspace-up")
+          capture()
+          type_in("seashells", selecting="Seashells")
+          with captured():
+              machine.send_key("ret")
+          windows = json.loads(as_account("niri msg --json windows"))
+          shell = next(w for w in windows if w["title"] == "Seashells")
+          t.assertEqual(newest_size(), tuple(shell["layout"]["window_size"]))
+          as_account(f"niri msg action close-window --id {shell['id']}")
+
+      with subtest("A region is picked by the keys, and Escape goes back to Capture"):
+          # The picker covers the screen niri gives it, whatever cage leaves.
+          logical = json.loads(as_account("niri msg --json focused-output"))["logical"]
+          wide, high = logical["width"], logical["height"]
+          # It opens on the middle quarter; an arrow moves it a step, and
+          # Shift and an arrow size it from its bottom right corner.
+          width, height = round(wide / 2), round(high / 2)
+          x, y = round((wide - width) / 2), round((high - height) / 2)
+          before = int(machine.succeed(f"ls {pictures}/*.png | wc -l"))
+
+          # Return at once takes the box it opened on, which has to be there
+          # from its first frame, though the window learns its size later.
+          capture()
+          type_in("region", selecting="A region")
           with told("keys picker"):
-              machine.send_key("sysrq")
+              machine.send_key("ret")
+          with told(f"picked {x},{y} {width}x{height}"):
+              machine.send_key("ret")
+          machine.wait_until_succeeds(
+              f"ls {pictures}/*.png | wc -l | grep -qx {before + 1}", timeout=15
+          )
+          t.assertEqual(newest_size(), (width, height))
+
+          capture()
+          type_in("region", selecting="A region")
+          with told("keys picker"):
+              machine.send_key("ret")
+          for key in ("left", "up", "shift-right", "shift-right"):
+              machine.send_key(key)
+          photograph("picker")
+          with told(f"picked {x - 16},{y - 16} {width + 32}x{height}"):
+              machine.send_key("ret")
+          machine.wait_until_succeeds(
+              f"ls {pictures}/*.png | wc -l | grep -qx {before + 2}", timeout=15
+          )
+          t.assertEqual(newest_size(), (width + 32, height))
+
+          # One cell's letters and another's make the box between them.
+          capture()
+          type_in("region", selecting="A region")
+          with told("keys picker"):
+              machine.send_key("ret")
           machine.send_chars("aab")
           photograph("picker-cells")
           rows = round(16 * high / wide)
           with told(f"picked 0,0 {round(2 * wide / 16)}x{round(2 * high / rows)}"):
               machine.send_chars("b\n")
 
-          # Escape leaves the grid first, then the picker, taking nothing.
+          # Escape clears the letters typed first, then goes back to Capture,
+          # taking nothing.
+          capture()
+          type_in("region", selecting="A region")
           with told("keys picker"):
-              machine.send_key("sysrq")
+              machine.send_key("ret")
           machine.send_chars("c")
           machine.send_key("esc")
           with told("gone picker"):
               machine.send_key("esc")
+          launcher_until(lambda shown: shown["keys"] and shown["held"] == ["captures"])
+          machine.send_key("esc")
+          launcher_until(lambda shown: not shown["open"])
+
+      with subtest("the camera takes a picture and a video by the keys"):
+          camera = "niri msg --json windows | grep -qF '\"app_id\":\"camera\"'"
+          capture()
+          type_in("picture from the camera", selecting="camera")
+          machine.send_key("ret")
+          machine.wait_until_succeeds(in_session(camera), timeout=60)
+          # Return before the camera wakes takes the picture once it has.
+          with told("shows card Picture copied", timeout=60):
+              machine.send_key("ret")
+          photograph("camera")
+          # Two at once are both kept, under names of their own.
+          since = mark()
+          machine.send_key("ret")
+          machine.send_key("ret")
+          pictures_taken = []
+          reported(
+              "shows card Picture copied",
+              lambda rest: pictures_taken.append(rest) is None and len(pictures_taken) == 2,
+              since,
+              timeout=60,
+          )
+          # What ffprobe says of each file there, which it reads one at a time.
+          def probe(entries, files):
+              ffprobe = "${pkgs.ffmpeg-headless}/bin/ffprobe -v error -of csv=p=0"
+              each = f'for f in {files}; do {ffprobe} -show_entries {entries} "$f" || exit; done'
+              return machine.succeed(each)
+
+          sizes = probe("stream=width,height", "/home/${account}/Pictures/Camera/*.jpg")
+          t.assertEqual(sizes.split(), ["640,480"] * 3)
+
+          videos = "/home/${account}/Videos/Camera"
+          kept = in_session("cat ~/.local/state/quickshell/by-shell/*/notices.json")
+
+          # The videos there are, and once the newest has grown, recording.
+          def recording(count, last):
+              failed = re.search(
+                  r'"summary":"The video could not be recorded",[^}]*', machine.succeed(kept)
+              )
+              if failed is not None:
+                  # What the recording said, and who had the camera then.
+                  print(machine.execute("cat /run/user/1000/camera-recording.log")[1])
+                  holders = (
+                      "for p in /proc/[0-9]*; do"
+                      " ls -l $p/fd 2>/dev/null | grep -q video9 && echo open $p $(cat $p/comm);"
+                      " grep -qs video9 $p/maps && echo mapped $p $(cat $p/comm); done; true"
+                  )
+                  print(machine.succeed(holders))
+                  raise AssertionError(failed.group(0))
+              grown = (
+                  f"[ $(ls {videos}/*.mp4 | wc -l) = {count} ]"
+                  f' && [ $(stat -c %s "$(ls -t {videos}/*.mp4 | head -1)") -gt 50000 ]'
+              )
+              status, _ = machine.execute(grown)
+              if last and status != 0:
+                  print(machine.execute("ps -eww -o pid,args | grep -aE 'ffmpeg|mpv|sh -c'")[1])
+                  print(as_account("pw-top -b -n 2 || true"))
+                  print(machine.execute(f"ls -la /run/user/1000 {videos}")[1])
+                  print(machine.execute("cat /run/user/1000/camera-recording.log")[1])
+                  print(as_account("journalctl --user --no-pager -n 60 -o cat"))
+              assert not last or status == 0, f"video {count} never grew"
+              return status == 0
+
+          # Tab makes Return record, and Return again stops it.
+          machine.send_key("tab")
+          machine.send_key("ret")
+          retry(lambda last: recording(1, last), timeout_seconds=60)
+          with told("shows card Video saved", timeout=60):
+              machine.send_key("ret")
+          # Escape while recording saves the video, then closes.
+          machine.wait_until_succeeds(in_session(camera), timeout=10)
+          machine.send_key("ret")
+          retry(lambda last: recording(2, last), timeout_seconds=60)
+          with told("shows card Video saved", timeout=60):
+              machine.send_key("esc")
+          machine.wait_until_fails(in_session(camera), timeout=30)
+          streams = probe("stream=codec_name", f"{videos}/*.mp4")
+          t.assertEqual(streams.split(), ["h264", "aac"] * 2)
+
+          # A picture is kept as others see Joel, not mirrored as the viewfinder
+          # shows him: it matches what the camera gives better than its mirror.
+          ffmpeg = "${pkgs.ffmpeg-headless}/bin/ffmpeg"
+          machine.succeed(f"{ffmpeg} -v error -f v4l2 -i /dev/video9 -frames:v 1 -y /tmp/given.png")
+          picture = machine.succeed("ls /home/${account}/Pictures/Camera/*.jpg | head -1").strip()
+
+          def likeness(turn):
+              compared = f"[1]{turn}format=yuv420p[given];[0]format=yuv420p[kept];[kept][given]psnr"
+              said = machine.succeed(
+                  f'{ffmpeg} -i "{picture}" -i /tmp/given.png -lavfi "{compared}" -f null - 2>&1'
+              )
+              found = re.search(r"average:([0-9.]+)", said)
+              assert found is not None, said
+              return float(found.group(1))
+
+          t.assertGreater(likeness(""), likeness("hflip,") + 3)
 
       # Super+Shift+N puts the cards away, and each is still there unread.
       with subtest("Super+Shift+N puts the notices away"):

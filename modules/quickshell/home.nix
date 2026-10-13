@@ -279,6 +279,7 @@ let
     # A collection's own glyph, as its row in the launcher wears.
     else if program == "qs" && lib.elem "collection" run then
       {
+        capture = nerd "f0100";
         clipboard = nerd "f0a38";
         emoji = nerd "f01f5";
         notices = nerd "f009c";
@@ -382,6 +383,7 @@ let
     sound = ./launcher/Sound.qml;
     bluetooth = ./launcher/Accessories.qml;
     displays = ./launcher/Displays.qml;
+    capture = ./launcher/Capture.qml;
   };
 
   # The program that hears every copy, for the clipboard collection.
@@ -429,6 +431,7 @@ in
   imports = [
     ../theme/home.nix
     ../keys/home.nix
+    ../camera/home.nix
   ];
 
   options.jitsusama.quickshell.overview.pieces = lib.mkOption {
@@ -624,6 +627,14 @@ in
         order = 104;
         source = "bluetooth";
         weight = 0.9;
+      };
+      # Pictures and videos of the screen, a window, a region or from the
+      # camera, which Print opens; the camera's are there when it has one.
+      capture = {
+        order = 101;
+        source = "capture";
+        weight = 0.9;
+        camera = config.jitsusama.camera.device != null;
       };
       # Each display's scale, refresh rate, size and rotation, for the
       # session.

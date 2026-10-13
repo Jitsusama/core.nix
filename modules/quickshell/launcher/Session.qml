@@ -1,4 +1,4 @@
-// Locking, keeping awake, holding notices, recording a region, the power
+// Locking, keeping awake, holding notices, stopping a recording, the power
 // profile and ending the session. These live here rather than on a key, so no chord ends the
 // session by accident. While the machine is kept awake or notices are held,
 // undoing it leads the home screen, since a mode should never hold unseen.
@@ -59,21 +59,20 @@ Provider {
         run: () => PowerProfiles.profile = choice.profile
     }))
 
-    // Recording a region picked with the pointer (Recorder.qml); the
-    // screen is Alt+Print's. While anything records, this stops it, and
-    // leads the home screen.
+    // Starting a recording is Capture's (Capture.qml). While anything
+    // records, stopping it leads the home screen, so it never runs unseen.
     readonly property var recording: thing({
         key: "session:recording",
-        verb: Recorder.recording ? "stop it" : "pick one",
-        name: Recorder.recording ? "Stop Recording" : "Record a Region",
-        keywords: "record recording video screencast capture area region",
-        side: Recorder.recording ? `recording ${Recorder.what}` : "",
+        verb: "stop it",
+        name: "Stop Recording",
+        keywords: "record recording video screencast capture",
+        side: `recording ${Recorder.what}`,
         glyph: Theme.glyph.recording,
         hue: "machine",
-        run: () => Recorder.recording ? Recorder.stop() : Recorder.region()
+        run: () => Recorder.stop()
     })
 
-    things: [awake, quiet, recording].concat(profiles, [
+    things: [awake, quiet].concat(Recorder.recording ? [recording] : [], profiles, [
         { name: "Lock", glyph: 0xf023, run: () => provider.launcher.lock.lock() },
         { name: "Suspend", glyph: 0xf04b2, run: () => Niri.spawn(["systemctl", "suspend"]) },
         {

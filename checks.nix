@@ -429,8 +429,8 @@ in
       touch $out
     '';
 
-  # The region picker's keys halve, move, push and pull its box, and letters
-  # name the grid's cells, as tests/picking.qml says, in Qt's own engine.
+  # The region picker's keys start, move and size its box, and letters name
+  # the grid's cells, as tests/picking.qml says, in Qt's own engine.
   the-picker-picks-what-the-keys-say =
     let
       qt = pkgs.qt6.qtdeclarative;
@@ -443,6 +443,17 @@ in
       QML_IMPORT_PATH=${qt}/lib/qt-6/qml ${qt}/bin/qml picking.qml
       touch $out
     '';
+
+  # The camera's viewfinder script names nothing it never set, which Lua
+  # would otherwise read as nothing and carry on.
+  the-camera-script-names-what-it-sets =
+    pkgs.runCommandLocal "the-camera-script-names-what-it-sets"
+      { nativeBuildInputs = [ pkgs.lua54Packages.luacheck ]; }
+      ''
+        luacheck --std lua54 --globals mp --no-max-line-length --no-color \
+          ${./modules/camera/camera.lua}
+        touch $out
+      '';
 
   # Do not disturb holds notices while the screen is shared and lets them go
   # after, as tests/quiet.qml drives it through Quickshell itself, with

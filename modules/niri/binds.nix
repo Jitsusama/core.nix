@@ -543,13 +543,16 @@ in
     action = ''spawn "qs" "ipc" "call" "quiet" "toggle";'';
   }
 
-  # Screenshots: pick a region, the whole screen, or one window. A region is
-  # picked by the keys in Quickshell (Picker.qml), since niri's own picker
-  # takes only the pointer.
+  # Print means capturing something: it opens the launcher's Capture
+  # collection, where the whole screen comes first, so Print then Return
+  # takes it, and a window, a region, a recording or the camera is found by
+  # typing (Quickshell's launcher/Capture.qml). A region is picked by the
+  # keys (Picker.qml), since niri's own picker takes only the pointer. The
+  # chords after it are shortcuts to Capture's rows, shown beside them.
   {
     chord = "Print";
-    does = "Take a screenshot of a region";
-    action = ''spawn "qs" "ipc" "call" "screenshot" "region";'';
+    does = "Capture the screen, a window, a region or the camera";
+    action = ''spawn "qs" "ipc" "call" "launcher" "collection" "capture";'';
   }
   {
     chord = "Shift+Print";

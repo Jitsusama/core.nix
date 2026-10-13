@@ -2,77 +2,53 @@
 // drawing so each move is tested as it is (tests/picking.qml). A box is
 // { x, y, width, height } in a screen's logical pixels, and a screen is
 // { width, height }. Every move keeps the box on the screen and at least
-// `least` across, so no key can lose it.
+// `least` across, so no key can lose it. The keys work as they do on text:
+// letters, here a cell's, then the arrows to move and Shift to extend.
 .pragma library
 
 const least = 16;
 
-// The arrows halve the box, keeping the half they point at.
-function halved(box, side) {
-    const across = side === "left" || side === "right";
-    const whole = across ? box.width : box.height;
-    const kept = Math.max(least, Math.floor(whole / 2));
-    if (kept >= whole)
-        return box;
-    const near = side === "left" || side === "up";
-    const start = near ? 0 : whole - kept;
-    return across
-        ? { x: box.x + start, y: box.y, width: kept, height: box.height }
-        : { x: box.x, y: box.y + start, width: box.width, height: kept };
+// Where the box starts: the middle quarter of the screen, so the first key
+// moves or sizes something already there.
+function start(screen) {
+    const width = Math.round(screen.width / 2), height = Math.round(screen.height / 2);
+    return {
+        x: Math.round((screen.width - width) / 2),
+        y: Math.round((screen.height - height) / 2),
+        width, height
+    };
 }
 
-// Shift and an arrow move it by its own size, stopping at the edge.
-function moved(box, side, screen) {
+// An arrow moves the box a step, stopping at the screen's edge.
+function moved(box, side, step, screen) {
     const clamp = (at, size, room) => Math.min(Math.max(0, at), room - size);
     const { x, y, width, height } = box;
     switch (side) {
     case "left":
-        return { x: clamp(x - width, width, screen.width), y, width, height };
+        return { x: clamp(x - step, width, screen.width), y, width, height };
     case "right":
-        return { x: clamp(x + width, width, screen.width), y, width, height };
+        return { x: clamp(x + step, width, screen.width), y, width, height };
     case "up":
-        return { x, y: clamp(y - height, height, screen.height), width, height };
+        return { x, y: clamp(y - step, height, screen.height), width, height };
     default:
-        return { x, y: clamp(y + height, height, screen.height), width, height };
+        return { x, y: clamp(y + step, height, screen.height), width, height };
     }
 }
 
-// Ctrl and an arrow push that edge out by a step, to the screen's edge.
-function pushed(box, side, step, screen) {
-    const right = box.x + box.width, bottom = box.y + box.height;
-    switch (side) {
-    case "left": {
-        const x = Math.max(0, box.x - step);
-        return { x, y: box.y, width: right - x, height: box.height };
-    }
-    case "right": {
-        const width = Math.min(screen.width, right + step) - box.x;
-        return { x: box.x, y: box.y, width, height: box.height };
-    }
-    case "up": {
-        const y = Math.max(0, box.y - step);
-        return { x: box.x, y, width: box.width, height: bottom - y };
-    }
-    default: {
-        const height = Math.min(screen.height, bottom + step) - box.y;
-        return { x: box.x, y: box.y, width: box.width, height };
-    }
-    }
-}
-
-// Ctrl, Shift and an arrow pull that edge in by a step, the way it points,
-// as the edge the arrow faces would move.
-function pulled(box, side, step) {
-    const width = Math.max(least, box.width - step), height = Math.max(least, box.height - step);
+// Shift and an arrow size it from its bottom right corner, as Shift extends
+// a selection of text: right and down grow it, left and up shrink it, to the
+// screen's edge and no smaller than the least.
+function sized(box, side, step, screen) {
+    const { x, y, width, height } = box;
     switch (side) {
     case "left":
-        return { x: box.x, y: box.y, width, height: box.height };
+        return { x, y, width: Math.max(least, width - step), height };
     case "right":
-        return { x: box.x + box.width - width, y: box.y, width, height: box.height };
+        return { x, y, width: Math.min(screen.width - x, width + step), height };
     case "up":
-        return { x: box.x, y: box.y, width: box.width, height };
+        return { x, y, width, height: Math.max(least, height - step) };
     default:
-        return { x: box.x, y: box.y + box.height - height, width: box.width, height };
+        return { x, y, width, height: Math.min(screen.height - y, height + step) };
     }
 }
 
