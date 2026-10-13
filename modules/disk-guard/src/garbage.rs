@@ -1,10 +1,12 @@
 //! Nix garbage, as a rebuild cache with a budget: which dead store paths
 //! go, in what order, and in which batches.
 //!
-//! `nix store delete` deletes a path together with every dead path that
-//! refers to it, so a path is dated by the newest registration among it
-//! and all its dead referrers. Under that date, all garbage older than any
-//! moment is closed under referrers, and deleting it takes nothing newer.
+//! `nix store delete` refuses a path while anything still refers to it
+//! that it wasn't given too, calling it alive, so a path goes only with
+//! or after all its dead referrers, and is dated by the newest
+//! registration among it and them. Under that date, all garbage older
+//! than any moment is closed under referrers, and deleting it needs
+//! nothing newer.
 
 use crate::commands::{self, Job, Ran};
 use serde::{Deserialize, Serialize};
@@ -123,9 +125,18 @@ pub fn list(nix: &Path, idle: bool) -> Result<Vec<Dead>, String> {
         LIST_TIMEOUT,
         idle,
     )?;
+    // Nix's own temporary files in the store's directory, such as its
+    // .tmp-link-s, are listed too and gone a moment later, and asking
+    // about one fails the whole listing; no store path's name has a dot
+    // first.
     let paths: Vec<&str> = listed
         .lines()
         .filter(|line| line.starts_with('/'))
+        .filter(|line| {
+            Path::new(line)
+                .file_name()
+                .is_some_and(|name| !name.as_encoded_bytes().starts_with(b"."))
+        })
         .collect();
     let mut dead = Vec::with_capacity(paths.len());
     for chunk in paths.chunks(CHUNK) {
@@ -148,7 +159,7 @@ const DELETE_TIMEOUT: Duration = Duration::from_secs(10 * 60);
 const REVIVALS: usize = 16;
 
 /// Deletes the batch's `paths` that still exist through `nix store
-/// delete`, with each one's dead referrers. Nix refuses a path a root
+/// delete`, whose dead referrers are among them or gone. Nix refuses a path a root
 /// reaches again since the listing, having deleted those before it, so
 /// it's dropped and the rest tried again.
 pub fn delete(nix: &Path, paths: &[String], idle: bool) -> Result<(), String> {
@@ -235,8 +246,8 @@ fn name(argv: &[&OsStr]) -> String {
 /// The garbage in the order it goes, in batches of at most `most` paths
 /// that close once they hold `BATCH_BYTES`:
 /// first what is older than `keep`, oldest first; then the young, largest
-/// first, each after the garbage still referring to it, since Nix deletes
-/// those with it anyway. A batch is kept while healthy once the young
+/// first, each after the garbage still referring to it, since Nix
+/// refuses it before those. A batch is kept while healthy once the young
 /// garbage left fits in `budget` bytes.
 pub fn batches(dead: &[Dead], now: f64, keep: f64, budget: u64, most: usize) -> Vec<Batch> {
     let index: HashMap<&str, usize> = dead
@@ -267,12 +278,16 @@ pub fn batches(dead: &[Dead], now: f64, keep: f64, budget: u64, most: usize) -> 
     };
 
     // Dated by the newest referrer, visiting referrers before what they
-    // refer to. The store's references never loop but through a path
-    // itself.
+    // refer to, in the order `walked` keeps. The store's references never
+    // loop but through a path itself.
     let mut newest: Vec<f64> = dead.iter().map(|path| path.registered).collect();
+    let mut walked = vec![0usize; dead.len()];
     let mut waiting = referrers(&refers);
     let mut ready: Vec<usize> = (0..dead.len()).filter(|&at| waiting[at] == 0).collect();
+    let mut seen = 0;
     while let Some(at) = ready.pop() {
+        walked[at] = seen;
+        seen += 1;
         for &reference in &refers[at] {
             newest[reference] = newest[reference].max(newest[at]);
             waiting[reference] -= 1;
@@ -282,18 +297,21 @@ pub fn batches(dead: &[Dead], now: f64, keep: f64, budget: u64, most: usize) -> 
         }
     }
 
+    // A path shares its date with the referrer it took it from, and Nix
+    // refuses a path while a referrer it wasn't given is still there, so
+    // a tie goes in the order walked, referrers first.
     let cutoff = now - keep;
     let mut old: Vec<usize> = (0..dead.len()).filter(|&at| newest[at] <= cutoff).collect();
     old.sort_by(|&a, &b| {
         newest[a]
             .total_cmp(&newest[b])
-            .then(dead[a].path.cmp(&dead[b].path))
+            .then(walked[a].cmp(&walked[b]))
     });
     let mut order: Vec<(usize, bool)> = old.into_iter().map(|at| (at, false)).collect();
 
     // A referrer of young garbage is young too, so the young stand alone.
     // The largest goes first, with whatever garbage still refers to it,
-    // referrers first, as deleting it would take them anyway: a disk
+    // referrers first, as it can't go before them: a disk
     // image goes with the small link a test run left to it.
     let young = |at: usize| newest[at] > cutoff;
     let mut referred_by = vec![Vec::new(); dead.len()];

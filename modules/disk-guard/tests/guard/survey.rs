@@ -199,6 +199,42 @@ fn targets_and_installs_are_offered_under_their_roots() {
 }
 
 #[test]
+fn a_target_holding_only_what_reclaiming_keeps_is_not_offered() {
+    // Reclaiming empties a target in place and keeps its benchmarks, so
+    // offering it again would free nothing, pass after pass.
+    let home = tempfile::tempdir().unwrap();
+    let home = real(home.path());
+    let roots = dir(&home.join("src"));
+    let emptied = checkout(&roots, "emptied", ".");
+    file(&emptied.join("Cargo.toml"), "");
+    let emptied_target = dir(&emptied.join("target"));
+    let benched = checkout(&roots, "benched", ".");
+    file(&benched.join("Cargo.toml"), "");
+    let benched_target = benched.join("target");
+    file(
+        &benched_target.join("criterion/report/index.html"),
+        "a report",
+    );
+    let built = checkout(&roots, "built", ".");
+    file(&built.join("Cargo.toml"), "");
+    let built_target = built.join("target");
+    file(&built_target.join("debug/app"), "a binary");
+    let config = config(&format!(
+        r#""cargo": {{ "kind": "cargo", "roots": ["{}"] }}"#,
+        roots.display()
+    ));
+    let found = offers(&config, &[], &|_| true);
+    find(&found, &built_target);
+    for target in [&emptied_target, &benched_target] {
+        assert!(
+            found.iter().all(|offer| offer.candidate.path != *target),
+            "{} is offered",
+            target.display()
+        );
+    }
+}
+
+#[test]
 fn a_tree_a_build_runs_in_is_never_offered() {
     let home = tempfile::tempdir().unwrap();
     let home = real(home.path());

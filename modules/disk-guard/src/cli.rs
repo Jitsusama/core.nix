@@ -591,6 +591,11 @@ fn journal(env: &Env, since: Option<Span>, json: bool, out: &mut dyn Write) -> D
                 writeln!(out, "{line}").map_err(failed)?;
                 continue;
             }
+            // What a reclaim began with is for a guard restarting after a
+            // crash; the action after it says what happened.
+            if entry["event"] == "begin" {
+                continue;
+            }
             let when = format!("{} ago", span(now - at));
             let band = entry["band"].as_str().unwrap_or("?");
             let said = match entry["event"].as_str() {

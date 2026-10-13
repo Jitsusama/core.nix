@@ -24,7 +24,7 @@ pub trait Looker {
 
 /// What survives a target's removal: benchmark baselines, which nothing
 /// regenerates.
-const KEEP: [&str; 1] = ["criterion"];
+pub(crate) const KEEP: [&str; 1] = ["criterion"];
 
 /// Why a use keeps the target, if it does. A tree someone sits in goes only
 /// when the plan took it as occupied.

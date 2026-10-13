@@ -392,11 +392,24 @@ fn trees_under(
             world.kept.push((tree.path.clone(), used));
             continue;
         }
+        // A target is emptied in place, keeping its benchmarks, so what's
+        // left once it's been reclaimed would free nothing.
+        let frees = match kind {
+            Kind::Target => crate::reclaim::KEEP
+                .iter()
+                .fold(size(&tree.path), |left, kept| {
+                    left.saturating_sub(whole(&tree.path.join(kept)))
+                }),
+            Kind::Install => size(&tree.path),
+        };
+        if kind == Kind::Target && frees == 0 {
+            continue;
+        }
         let finished = checkout.is_some_and(|dir| (world.finished)(dir));
         let seen = trees::Seen {
             used,
             finished,
-            size: size(&tree.path),
+            size: frees,
             last_used: trees::last_used(&tree),
         };
         let Some(candidate) = trees::candidate(&tree, &seen, world.awake, world.now) else {
@@ -500,5 +513,15 @@ fn size(path: &Path) -> u64 {
         Ok(meta) if meta.is_dir() => Dir::open(path).and_then(|dir| dir.size()).unwrap_or(0),
         Ok(meta) => meta.blocks() * 512,
         Err(_) => 0,
+    }
+}
+
+/// What an entry takes beneath the directory holding it: itself too, as a
+/// directory's own blocks count among its parent's, where a filesystem
+/// gives a directory any.
+fn whole(path: &Path) -> u64 {
+    match fs::symlink_metadata(path) {
+        Ok(meta) if meta.is_dir() => meta.blocks() * 512 + size(path),
+        _ => size(path),
     }
 }
