@@ -73,12 +73,16 @@ Singleton {
         call("Radio", { on: on });
     }
 
-    // Joins a network, with its password when it asks one. A join already
-    // under way gives way to this one, as wifid gives it way.
-    function join(name: string, password: var): void {
+    // A join already under way gives way to a new one, as wifid gives it
+    // way.
+    // Joins a network, with its password when it asks one, and the account
+    // ({ method, identity, serverDomain }) where it asks for one.
+    function join(name: string, password: var, account: var): void {
         const parameters = { name: name };
         if (password !== undefined && password !== null)
             parameters.password = password;
+        if (account !== undefined && account !== null)
+            parameters.account = account;
         joining = { name: name, stage: "joining" };
         joinCall = message("Join", parameters, true);
         if (joins.connected)
