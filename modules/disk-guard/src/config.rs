@@ -313,21 +313,9 @@ pub struct Garbage {
     /// How much young garbage may stay before the largest goes.
     #[serde(default = "Garbage::budget")]
     pub budget: Size,
-    /// The `nix` that collects it; `nix-store` is beside it.
-    #[serde(default = "Garbage::nix")]
-    pub nix: PathBuf,
-    /// Where the store lies, whose filesystem collecting frees.
-    #[serde(default = "Garbage::store")]
-    pub store: PathBuf,
 }
 
 impl Garbage {
-    fn store() -> PathBuf {
-        PathBuf::from("/nix/store")
-    }
-    fn nix() -> PathBuf {
-        PathBuf::from("/run/current-system/sw/bin/nix")
-    }
     fn keep() -> Span {
         Span(Duration::from_secs(3 * 86400))
     }
@@ -341,8 +329,46 @@ impl Default for Garbage {
         Garbage {
             keep: Garbage::keep(),
             budget: Garbage::budget(),
-            nix: Garbage::nix(),
-            store: Garbage::store(),
+        }
+    }
+}
+
+/// Where Nix is, for either daemon: what collects garbage and expires
+/// generations, the store that frees, and the profiles whose generations
+/// this daemon looks after.
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Nix {
+    /// The `nix` that collects; `nix-store` and `nix-env` are beside it.
+    #[serde(default = "Nix::bin")]
+    pub bin: PathBuf,
+    /// Where the store lies, whose filesystem collecting frees.
+    #[serde(default = "Nix::store")]
+    pub store: PathBuf,
+    /// The directory of profiles whose generations expire: the machine's
+    /// for the system daemon unless told, and an account's only if told.
+    #[serde(default)]
+    pub profiles: Option<PathBuf>,
+    #[serde(default)]
+    pub generations: Generations,
+}
+
+impl Nix {
+    fn bin() -> PathBuf {
+        PathBuf::from("/run/current-system/sw/bin/nix")
+    }
+    fn store() -> PathBuf {
+        PathBuf::from("/nix/store")
+    }
+}
+
+impl Default for Nix {
+    fn default() -> Nix {
+        Nix {
+            bin: Nix::bin(),
+            store: Nix::store(),
+            profiles: None,
+            generations: Generations::default(),
         }
     }
 }
@@ -403,12 +429,9 @@ impl Default for Dedupe {
 #[derive(Clone, Debug, PartialEq)]
 pub struct System {
     pub garbage: Garbage,
-    pub generations: Generations,
     pub dedupe: Dedupe,
     /// Where the boot partition is mounted, whose entries keep generations.
     pub boot: PathBuf,
-    /// Where the machine's Nix profiles live.
-    pub profiles: PathBuf,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -420,6 +443,7 @@ pub struct Config {
     /// Whether a runaway writer may be frozen at critical.
     pub freeze: bool,
     pub sources: BTreeMap<String, Source>,
+    pub nix: Nix,
     pub system: Option<System>,
 }
 
@@ -437,11 +461,11 @@ struct Rendered {
     #[serde(default = "yes")]
     freeze: bool,
     sources: BTreeMap<String, Source>,
+    #[serde(default)]
+    nix: Nix,
     garbage: Option<Garbage>,
-    generations: Option<Generations>,
     dedupe: Option<Dedupe>,
     boot: Option<PathBuf>,
-    profiles: Option<PathBuf>,
 }
 
 fn yes() -> bool {
@@ -474,10 +498,8 @@ impl Config {
             Scope::User => {
                 let sections = [
                     ("garbage", rendered.garbage.is_some()),
-                    ("generations", rendered.generations.is_some()),
                     ("dedupe", rendered.dedupe.is_some()),
                     ("boot", rendered.boot.is_some()),
-                    ("profiles", rendered.profiles.is_some()),
                 ];
                 if let Some((section, _)) = sections.iter().find(|(_, set)| *set) {
                     return Err(format!("{section} belongs to the system daemon"));
@@ -486,24 +508,25 @@ impl Config {
             }
             Scope::System => {
                 let boot = rendered.boot.ok_or("the system daemon needs boot")?;
-                let profiles = rendered
-                    .profiles
-                    .unwrap_or_else(|| PathBuf::from("/nix/var/nix/profiles"));
-                let garbage = rendered.garbage.unwrap_or_default();
-                for path in [&boot, &profiles, &garbage.nix, &garbage.store] {
-                    if !plain_absolute(path) {
-                        return Err(format!("{} is not a plain absolute path", path.display()));
-                    }
+                if !plain_absolute(&boot) {
+                    return Err(format!("{} is not a plain absolute path", boot.display()));
                 }
                 Some(System {
-                    garbage,
-                    generations: rendered.generations.unwrap_or_default(),
+                    garbage: rendered.garbage.unwrap_or_default(),
                     dedupe: rendered.dedupe.unwrap_or_default(),
                     boot,
-                    profiles,
                 })
             }
         };
+        let mut nix = rendered.nix;
+        if rendered.scope == Scope::System && nix.profiles.is_none() {
+            nix.profiles = Some(PathBuf::from("/nix/var/nix/profiles"));
+        }
+        for path in [&nix.bin, &nix.store].into_iter().chain(&nix.profiles) {
+            if !plain_absolute(path) {
+                return Err(format!("{} is not a plain absolute path", path.display()));
+            }
+        }
         Ok(Config {
             scope: rendered.scope,
             bands: rendered.bands,
@@ -511,6 +534,7 @@ impl Config {
             status_file: rendered.status_file,
             freeze: rendered.freeze,
             sources: rendered.sources,
+            nix,
             system,
         })
     }

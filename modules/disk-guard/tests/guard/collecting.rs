@@ -120,8 +120,9 @@ impl Store {
             r#"{{ "version": 1, "scope": "system", "status_file": true,
                  "bands": {{ "pressure": "{pressure}", "urgent": "{urgent}", "critical": "0%",
                             "target": "{pressure}" }},
-                 "garbage": {{ "nix": "{0}/bin/nix", "store": "{0}/store", "keep": "3d",
-                              "budget": "10%" }},
+                 "nix": {{ "bin": "{0}/bin/nix", "store": "{0}/store",
+                          "profiles": "{0}/profiles" }},
+                 "garbage": {{ "keep": "3d", "budget": "10%" }},
                  "boot": "{0}/boot",
                  "sources": {{}} }}"#,
             self.root.display()

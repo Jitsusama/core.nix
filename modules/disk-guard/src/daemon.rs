@@ -486,7 +486,7 @@ impl Guard {
         if self.listing_out.is_some() {
             return;
         }
-        let Some((garbage, device)) = self.store() else {
+        let Some((_, device)) = self.store() else {
             return;
         };
         let pressed = self
@@ -504,7 +504,7 @@ impl Guard {
         if !due {
             return;
         }
-        let nix = garbage.nix.clone();
+        let nix = self.config.nix.bin.clone();
         let (tell, out) = mpsc::channel();
         let listing = std::thread::Builder::new()
             .name(GARBAGE.to_owned())
@@ -522,7 +522,7 @@ impl Guard {
     /// The garbage config and the store's device, for a system daemon.
     fn store(&self) -> Option<(&crate::config::Garbage, u64)> {
         let garbage = &self.config.system.as_ref()?.garbage;
-        let meta = fs::metadata(&garbage.store).ok()?;
+        let meta = fs::metadata(&self.config.nix.store).ok()?;
         Some((garbage, meta.dev()))
     }
 
@@ -532,7 +532,7 @@ impl Guard {
         let Some((garbage, _)) = self.store() else {
             return Vec::new();
         };
-        let Ok(space) = crate::linux::space(&garbage.store) else {
+        let Ok(space) = crate::linux::space(&self.config.nix.store) else {
             return Vec::new();
         };
         let there: Vec<Dead> = listing
@@ -555,11 +555,11 @@ impl Guard {
     /// order; or with no listing yet, from urgent on, hourly steps of
     /// `nix store gc`, which collects in no order of its own.
     fn garbage_offers(&self, tick: &Tick) -> Vec<Offer> {
-        let Some((garbage, device)) = self.store() else {
+        let Some((_, device)) = self.store() else {
             return Vec::new();
         };
-        let store = &garbage.store;
-        let nix = garbage.nix.to_string_lossy().into_owned();
+        let store = &self.config.nix.store;
+        let nix = self.config.nix.bin.to_string_lossy().into_owned();
         let candidate = |path, class, idle, size| Candidate {
             path,
             class,
@@ -606,7 +606,7 @@ impl Guard {
                 ),
                 action: Action::Collect {
                     root: store.clone(),
-                    nix: garbage.nix.clone(),
+                    nix: self.config.nix.bin.clone(),
                     paths: batch.paths,
                 },
                 device,
@@ -622,7 +622,7 @@ impl Guard {
             .config
             .system
             .as_ref()
-            .map(|system| system.garbage.store.as_path());
+            .map(|_| self.config.nix.store.as_path());
         for path in self.config.sources.values().flat_map(paths).chain(store) {
             let Ok(meta) = fs::metadata(path) else {
                 continue;

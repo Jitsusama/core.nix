@@ -106,7 +106,6 @@ fn a_system_config_carries_its_own_sections() {
     let config = Config::parse(
         r#"{"version": 1, "scope": "system",
             "garbage": {"keep": "3d", "budget": "10%"},
-            "generations": {"keep": 5, "young": "7d"},
             "dedupe": {"every": "7d"},
             "freeze": true,
             "boot": "/boot",
@@ -116,19 +115,57 @@ fn a_system_config_carries_its_own_sections() {
     assert_eq!(config.scope, Scope::System);
     let system = config.system.unwrap();
     assert_eq!(system.garbage.budget, Size::Percent(10.0));
+    assert_eq!(system.boot, PathBuf::from("/boot"));
     assert_eq!(
-        system.garbage.nix,
+        config.nix.profiles,
+        Some(PathBuf::from("/nix/var/nix/profiles")),
+        "the machine's profiles unless told"
+    );
+}
+
+#[test]
+fn either_daemon_says_where_nix_is_and_which_generations_stay() {
+    let user = Config::parse(&with(
+        USER,
+        r#""notify": true"#,
+        r#""notify": true, "nix": {"bin": "/n/bin/nix",
+            "profiles": "/home/u/.local/state/nix/profiles", "generations": {"keep": 3}}"#,
+    ))
+    .unwrap();
+    assert_eq!(user.nix.bin, PathBuf::from("/n/bin/nix"));
+    assert_eq!(user.nix.store, PathBuf::from("/nix/store"));
+    assert_eq!(
+        user.nix.profiles,
+        Some(PathBuf::from("/home/u/.local/state/nix/profiles"))
+    );
+    assert_eq!(user.nix.generations.keep, 3);
+    assert_eq!(
+        user.nix.generations.young,
+        Span(Duration::from_secs(7 * 86400))
+    );
+    let bare = Config::parse(USER).unwrap();
+    assert_eq!(
+        bare.nix.bin,
         PathBuf::from("/run/current-system/sw/bin/nix"),
         "the system's own nix unless told"
     );
-    assert_eq!(system.garbage.store, PathBuf::from("/nix/store"));
-    let relative = Config::parse(
-        r#"{"version": 1, "scope": "system", "garbage": {"nix": "bin/nix"},
-            "boot": "/boot", "sources": {}}"#,
+    assert_eq!(
+        bare.nix.profiles, None,
+        "an account's profiles only when told"
     );
-    assert!(relative.unwrap_err().contains("bin/nix"));
-    assert_eq!(system.generations.keep, 5);
-    assert_eq!(system.boot, PathBuf::from("/boot"));
+    for (field, path) in [
+        ("bin", "bin/nix"),
+        ("store", "/nix/../store"),
+        ("profiles", "p"),
+    ] {
+        let text = with(
+            USER,
+            r#""notify": true"#,
+            &format!(r#""notify": true, "nix": {{"{field}": "{path}"}}"#),
+        );
+        let error = Config::parse(&text).unwrap_err();
+        assert!(error.contains(path), "{error:?}");
+    }
 }
 
 #[test]

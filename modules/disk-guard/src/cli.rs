@@ -310,11 +310,7 @@ fn daemon(
             if let Some(dir) = env.system_socket.parent() {
                 fs::create_dir_all(dir).map_err(failed)?;
             }
-            let store = config.system.as_ref().and_then(|system| {
-                fs::metadata(&system.garbage.store)
-                    .ok()
-                    .map(|meta| meta.dev())
-            });
+            let store = fs::metadata(&config.nix.store).ok().map(|meta| meta.dev());
             hearing = Some(
                 answering(&env.system_socket, &env.processes, ASK_EVERY, store).map_err(failed)?,
             );
