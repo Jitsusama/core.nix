@@ -65,6 +65,19 @@ const BTRFS_IOC_START_SYNC: libc::c_ulong = 0x8008_9418;
 /// `BTRFS_IOC_WAIT_SYNC`, `_IOW(0x94, 22, __u64)`: waits for that commit.
 const BTRFS_IOC_WAIT_SYNC: libc::c_ulong = 0x4008_9416;
 
+/// Hands the allocator's free memory back to the system. A pass builds and
+/// drops tens of thousands of small things, the names of a store's garbage
+/// among them, and glibc keeps that memory for the daemon's whole life
+/// otherwise: 22 MiB of batching 80,000 dead paths, held between passes
+/// hours apart.
+pub fn give_back() {
+    #[cfg(target_env = "gnu")]
+    // SAFETY: malloc_trim only returns free pages; nothing in use moves.
+    unsafe {
+        libc::malloc_trim(0);
+    }
+}
+
 /// Waits until what was deleted on `path`'s filesystem shows as free.
 /// Btrfs frees extents only when its transaction commits, about 30 s
 /// later, so it's asked to commit. That took 6 to 10 ms on a laptop's NVMe

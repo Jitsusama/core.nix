@@ -41,6 +41,9 @@ pub fn settle(_path: &Path) -> io::Result<()> {
     Ok(())
 }
 
+/// Nothing to hand back: macOS's allocator returns what's idle itself.
+pub fn give_back() {}
+
 /// One reading of a clock, in seconds.
 fn clock(id: libc::clockid_t) -> io::Result<f64> {
     let mut time = libc::timespec {

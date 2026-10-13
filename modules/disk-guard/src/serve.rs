@@ -154,6 +154,8 @@ pub fn steps(
         if let Err(error) = stepped {
             let _ = writeln!(err, "disk-guard: {error}");
         }
+        // What the step built and dropped isn't kept while it waits.
+        crate::sys::give_back();
         if wait(every) {
             return;
         }

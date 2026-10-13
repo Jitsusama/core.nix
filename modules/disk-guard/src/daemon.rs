@@ -10,7 +10,7 @@ use crate::decide::{Decision, Fill, Situation, decide, powered, spare};
 use crate::dedupe::{self, Deduped};
 use crate::discover;
 use crate::finished::{self, Answers, Predicate};
-use crate::garbage::{self, BATCH_BYTES, Batch, Dead, GC_TIMEOUT, Listing};
+use crate::garbage::{self, BATCH_BYTES, Batch, GC_TIMEOUT, Listed, Listing};
 use crate::generations::{self, Boot};
 use crate::host::{FRESH, Filesystem, Reclaim, Scan};
 use crate::journal::{self, Journal, Journaled, Line};
@@ -228,7 +228,7 @@ pub enum Explained {
 }
 
 /// Where a listing on its own thread sends the dead paths, or why not.
-type Listening = Receiver<Result<Vec<Dead>, String>>;
+type Listening = Receiver<Result<Vec<Listed>, String>>;
 
 /// What a system daemon hears from user daemons through its socket.
 pub struct Hearing {
@@ -1040,15 +1040,9 @@ impl Guard {
         let Ok(space) = crate::sys::space(&self.config.nix.store) else {
             return Vec::new();
         };
-        let there: Vec<Dead> = listing
-            .dead
-            .iter()
-            .filter(|dead| Path::new(&dead.path).symlink_metadata().is_ok())
-            .cloned()
-            .collect();
         let keep = garbage.keep.0.as_secs_f64();
-        garbage::batches(
-            &there,
+        listing.batches(
+            |dead| Path::new(&dead.path).symlink_metadata().is_ok(),
             now,
             keep,
             garbage.budget.of(space.total),
