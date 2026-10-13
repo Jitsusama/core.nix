@@ -573,6 +573,18 @@ fn plan(
             .map_err(failed)?;
         }
     }
+    let (unread, why) = guard.unread();
+    if unread > 0 {
+        let why = why.map_or_else(String::new, |why| {
+            format!(" and the system daemon couldn't be asked about them ({why})")
+        });
+        writeln!(
+            out,
+            "{unread} processes couldn't be read{why}, so a tree one of them might use isn't \
+             shown."
+        )
+        .map_err(failed)?;
+    }
     writeln!(
         out,
         "Nothing was taken. Whether each is in use is judged when a pass tries it."

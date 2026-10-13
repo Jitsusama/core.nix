@@ -197,6 +197,8 @@ pub struct Guard {
     /// process has written lately.
     freeze: Option<Box<dyn crate::freezer::Freeze>>,
     writers: Writers,
+    /// What the last survey couldn't read, and why it went unvouched.
+    unread: (usize, Option<String>),
 }
 
 /// Where a listing on its own thread sends the dead paths, or why not.
@@ -326,7 +328,15 @@ impl Guard {
             marked_at: None,
             freeze: None,
             writers: Writers::default(),
+            unread: (0, None),
         })
+    }
+
+    /// How many processes the last survey couldn't read, even vouched for,
+    /// and why the system daemon couldn't be asked, if it couldn't: a tree
+    /// one of them might use is kept, so a plan doesn't show it.
+    pub fn unread(&self) -> (usize, Option<String>) {
+        self.unread.clone()
     }
 
     /// Freezes a runaway writer through `freeze`, when nothing else is
@@ -1167,6 +1177,10 @@ impl Guard {
             scan = scan.vouched_by(socket, &roots);
         }
         let processes = scan.processes()?.to_vec();
+        self.unread = (
+            processes.iter().filter(|process| !process.readable).count(),
+            scan.unheard().map(str::to_owned),
+        );
         let boot = crate::linux::boot(Path::new("/proc/stat"))?;
         // A copy, so a long survey never holds up what hears the opens.
         let uses = self

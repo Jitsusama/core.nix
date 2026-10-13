@@ -505,6 +505,38 @@ fn a_pass_that_falls_short_rests_before_the_next_and_longer_each_time() {
 }
 
 #[test]
+fn a_preview_says_how_many_processes_it_could_not_judge_and_why() {
+    let home = Home::new();
+    home.cold_scratch("run-1");
+    let mut guard = home.guard(home.config("0%", "100%"));
+    guard.preview(&tick(), Some(Band::Pressure), None).unwrap();
+    assert_eq!(guard.unread(), (0, None));
+    home.hidden(300, 77);
+    // And one of the account's, read whole.
+    let proc = home.root.join("proc");
+    let me = unsafe { libc::geteuid() };
+    crate::procs::text(&proc, "400/stat", &crate::procs::stat(400, "zsh", 0, 90));
+    crate::procs::text(
+        &proc,
+        "400/status",
+        &format!("Name:\tzsh\nUid:\t{me}\t{me}\t{me}\t{me}\n"),
+    );
+    crate::procs::text(&proc, "400/cmdline", "zsh");
+    crate::procs::text(&proc, "400/maps", "");
+    crate::procs::link(&proc, "400/cwd", "/");
+    fs::create_dir_all(proc.join("400/fd")).unwrap();
+    let places = Places {
+        system: Some(home.root.join("no-system.sock")),
+        ..home.places()
+    };
+    let mut guard = Guard::new(home.config("0%", "100%"), &places).unwrap();
+    guard.preview(&tick(), Some(Band::Pressure), None).unwrap();
+    let (unread, why) = guard.unread();
+    assert_eq!(unread, 1);
+    assert!(why.is_some(), "the system daemon didn't answer");
+}
+
+#[test]
 fn a_preview_says_what_a_pass_would_take_and_takes_nothing() {
     let home = Home::new();
     let first = home.cold_scratch("run-1");
