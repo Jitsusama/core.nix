@@ -40,6 +40,7 @@ mod notices;
 mod opens;
 mod pass;
 mod plan;
+mod pmset;
 mod pool;
 mod procargs;
 #[cfg(target_os = "linux")]

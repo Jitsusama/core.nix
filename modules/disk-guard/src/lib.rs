@@ -38,6 +38,7 @@ pub mod notices;
 pub mod opens;
 pub mod pass;
 pub mod plan;
+pub mod pmset;
 pub mod pool;
 pub mod procargs;
 pub mod reclaim;
