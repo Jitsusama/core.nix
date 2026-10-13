@@ -22,6 +22,7 @@ mod desktop;
 mod discover;
 mod entries;
 mod finished;
+#[cfg(target_os = "linux")]
 mod freezer;
 mod garbage;
 mod generations;
@@ -35,6 +36,7 @@ mod logs;
 mod nix_builds;
 #[cfg(target_os = "linux")]
 mod notices;
+#[cfg(target_os = "linux")]
 mod opens;
 mod pass;
 mod plan;
@@ -59,4 +61,5 @@ mod units;
 mod variants;
 mod vouch;
 mod workspaces;
+#[cfg(target_os = "linux")]
 mod writers;

@@ -55,6 +55,7 @@ const GRACE: Duration = Duration::from_millis(200);
 /// disk. Best effort: a command the kernel won't lower still runs, at the
 /// guard's own priority, and its timeout bounds it either way. Done in the
 /// child alone, since an account can't raise a thread back from idle.
+#[cfg(target_os = "linux")]
 fn idle() {
     const IOPRIO_WHO_PROCESS: libc::c_int = 1;
     const IOPRIO_CLASS_IDLE: libc::c_int = 3;
@@ -69,6 +70,16 @@ fn idle() {
             0,
             IOPRIO_CLASS_IDLE << IOPRIO_CLASS_SHIFT,
         );
+    }
+}
+
+/// Puts the calling process in the background band, where macOS throttles
+/// both its processor and its disk, best effort as on Linux.
+#[cfg(target_os = "macos")]
+fn idle() {
+    // SAFETY: it acts on the calling process alone, with valid arguments.
+    unsafe {
+        libc::setpriority(libc::PRIO_DARWIN_PROCESS, 0, libc::PRIO_DARWIN_BG);
     }
 }
 

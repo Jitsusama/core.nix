@@ -6,7 +6,9 @@
 //! can send the guard somewhere else. A Btrfs subvolume reads as another
 //! device, so it's never crossed either.
 
-use rustix::fs::{AtFlags, FileType, Mode, OFlags, RenameFlags, ResolveFlags};
+#[cfg(target_os = "linux")]
+use rustix::fs::ResolveFlags;
+use rustix::fs::{AtFlags, Dev, FileType, Mode, OFlags, RawMode, RenameFlags};
 use rustix::io::Errno;
 use std::collections::HashSet;
 use std::ffi::{OsStr, OsString};
@@ -17,7 +19,7 @@ use std::path::{Component, Path};
 
 pub struct Dir {
     fd: OwnedFd,
-    dev: u64,
+    dev: Dev,
 }
 
 /// What a detach moved aside: a trash directory inside the directory it
@@ -28,7 +30,7 @@ pub struct Detached<'a> {
     name: OsString,
     /// Directories whose owner was given write permission so they could
     /// move, with the modes they had, for a restore to give back.
-    modes: Vec<(OsString, u32)>,
+    modes: Vec<(OsString, RawMode)>,
 }
 
 /// The name every trash starts with, so one left by a crash is found and
@@ -157,6 +159,14 @@ impl Dir {
 
     /// Opens a directory beneath this one, or this one again for the empty
     /// path, as the parent of an entry lying directly in it is.
+    #[cfg(not(target_os = "linux"))]
+    pub fn child(&self, relative: &Path) -> io::Result<Dir> {
+        self.child_stepwise(relative)
+    }
+
+    /// Opens a directory beneath this one, or this one again for the empty
+    /// path, as the parent of an entry lying directly in it is.
+    #[cfg(target_os = "linux")]
     pub fn child(&self, relative: &Path) -> io::Result<Dir> {
         if relative.is_absolute() {
             return Err(io::Error::new(io::ErrorKind::InvalidInput, "not beneath"));
@@ -394,7 +404,7 @@ impl Dir {
         &self,
         name: &OsStr,
         into: &Dir,
-        modes: &mut Vec<(OsString, u32)>,
+        modes: &mut Vec<(OsString, RawMode)>,
     ) -> io::Result<()> {
         match rename(self, name, into, name) {
             Err(error) if error.kind() == io::ErrorKind::PermissionDenied => {
@@ -411,10 +421,23 @@ impl Dir {
         }
     }
 
+    /// Sets a directory entry's mode, never through a symlink.
+    #[cfg(not(target_os = "linux"))]
+    fn set_mode(&self, name: &OsStr, mode: RawMode) -> io::Result<()> {
+        let mode = Mode::from_raw_mode(mode);
+        Ok(rustix::fs::chmodat(
+            &self.fd,
+            name,
+            mode,
+            AtFlags::SYMLINK_NOFOLLOW,
+        )?)
+    }
+
     /// Sets a directory entry's mode, never through a symlink: Linux has no
     /// fchmodat that refuses symlinks on every kernel, so the entry is
     /// opened as a path, which opens nothing, and changed through that.
-    fn set_mode(&self, name: &OsStr, mode: u32) -> io::Result<()> {
+    #[cfg(target_os = "linux")]
+    fn set_mode(&self, name: &OsStr, mode: RawMode) -> io::Result<()> {
         let flags = OFlags::PATH | DIRECTORY.difference(OFlags::RDONLY);
         let path = rustix::fs::openat(&self.fd, name, flags, Mode::empty())?;
         let link = format!("/proc/self/fd/{}", std::os::fd::AsRawFd::as_raw_fd(&path));

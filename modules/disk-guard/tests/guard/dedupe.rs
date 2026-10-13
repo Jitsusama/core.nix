@@ -3,7 +3,6 @@
 
 use crate::garbage::script;
 use disk_guard::dedupe::{Deduped, due, freed, optimise};
-use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
@@ -65,6 +64,7 @@ fn fakes(dir: &Path, optimise: &str) -> (PathBuf, PathBuf) {
 }
 
 #[test]
+#[cfg(target_os = "linux")]
 fn a_run_is_confined_to_a_scope_of_its_own() {
     let dir = tempfile::tempdir().unwrap();
     let policy = dir.path().join("policy");
@@ -80,11 +80,11 @@ fn a_run_is_confined_to_a_scope_of_its_own() {
     assert_eq!(optimise(&run, &nix, &stop), Ok(Some(2 * GIB)));
     let idle = libc::SCHED_IDLE.to_string();
     assert_eq!(
-        fs::read_to_string(&policy).unwrap().trim(),
+        std::fs::read_to_string(&policy).unwrap().trim(),
         idle,
         "at idle priority"
     );
-    let asked = fs::read_to_string(dir.path().join("log")).unwrap();
+    let asked = std::fs::read_to_string(dir.path().join("log")).unwrap();
     assert_eq!(
         asked.trim(),
         format!(

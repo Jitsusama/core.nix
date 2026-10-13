@@ -6,6 +6,7 @@ use std::time::{Duration, Instant};
 /// The scheduling policy the guard runs under here, which a command not
 /// started idle keeps: not always the default, since a Nix build runs at
 /// the policy its daemon is given, batch on some machines.
+#[cfg(target_os = "linux")]
 pub(crate) fn guards_policy() -> u32 {
     // SAFETY: sched_getscheduler only reads the calling thread's policy.
     let policy = unsafe { libc::sched_getscheduler(0) };
@@ -25,6 +26,7 @@ fn job(words: &[&str]) -> Job {
 }
 
 /// The scheduling policy a command ran under, from its own stat line.
+#[cfg(target_os = "linux")]
 fn policy(job: &Job) -> u32 {
     let output = finished(run(job).unwrap());
     let stat = String::from_utf8(output.stdout).unwrap();
@@ -39,6 +41,7 @@ fn policy(job: &Job) -> u32 {
 }
 
 #[test]
+#[cfg(target_os = "linux")]
 fn an_idle_command_runs_at_idle_priority_and_any_other_as_the_guard_does() {
     let mut job = job(&["cat", "/proc/self/stat"]);
     assert_eq!(policy(&job), guards_policy());
