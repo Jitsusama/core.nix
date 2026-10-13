@@ -17,6 +17,11 @@ use tokio::time::timeout;
 /// How long a server has to answer before it's taken not to.
 const PATIENCE: Duration = Duration::from_secs(3);
 
+/// How long a query waits for its answer before it's sent again, since a
+/// query or answer lost over the air is never answered, and DNS over UDP
+/// leaves sending again to whoever asks.
+const AGAIN: Duration = Duration::from_millis(700);
+
 /// The name's addresses, asked of server through card alone: IPv4 ones
 /// where there are any, else IPv6 ones.
 pub async fn addresses(card: &str, server: IpAddr, name: &str) -> io::Result<Vec<IpAddr>> {
@@ -31,24 +36,46 @@ pub async fn addresses(card: &str, server: IpAddr, name: &str) -> io::Result<Vec
         // A number nobody off the network can guess, so nobody can answer
         // in its place.
         let id = RandomState::new().hash_one(name) as u16;
-        socket.send(&query(id, name, kind)).await?;
-        let mut reply = [0; 1500];
-        let answered = async {
-            loop {
-                let length = socket.recv(&mut reply).await?;
-                if let Some(addresses) = answers(&reply[..length], id) {
-                    return io::Result::Ok(addresses);
-                }
-            }
-        };
-        let addresses = timeout(PATIENCE, answered).await.map_err(|_| {
+        let answered = asked(&socket, &query(id, name, kind), id, AGAIN, PATIENCE).await?;
+        let addresses = answered.ok_or_else(|| {
             io::Error::new(io::ErrorKind::TimedOut, format!("{server} didn't answer"))
-        })??;
+        })?;
         if !addresses.is_empty() {
             return Ok(addresses);
         }
     }
     Ok(Vec::new())
+}
+
+/// Sends the query and waits for its answer, sending it again each time
+/// `again` passes without one, until `patience` is up.
+async fn asked(
+    socket: &UdpSocket,
+    query: &[u8],
+    id: u16,
+    again: Duration,
+    patience: Duration,
+) -> io::Result<Option<Vec<IpAddr>>> {
+    let mut reply = [0; 1500];
+    let answered = async {
+        let mut resend = tokio::time::interval(again);
+        loop {
+            tokio::select! {
+                _ = resend.tick() => {
+                    socket.send(query).await?;
+                }
+                length = socket.recv(&mut reply) => {
+                    if let Some(addresses) = answers(&reply[..length?], id) {
+                        return io::Result::Ok(addresses);
+                    }
+                }
+            }
+        }
+    };
+    match timeout(patience, answered).await {
+        Ok(addresses) => addresses.map(Some),
+        Err(_) => Ok(None),
+    }
 }
 
 /// The kinds of address a query can ask for.
@@ -169,6 +196,55 @@ impl<'a> Reader<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A server on loopback that ignores the first query it's sent and
+    /// answers every one after, as a network losing a packet does.
+    async fn forgetful() -> (UdpSocket, UdpSocket) {
+        let server = UdpSocket::bind("127.0.0.1:0").await.unwrap();
+        let client = UdpSocket::bind("127.0.0.1:0").await.unwrap();
+        client.connect(server.local_addr().unwrap()).await.unwrap();
+        (server, client)
+    }
+
+    #[tokio::test]
+    async fn a_query_lost_on_the_way_is_sent_again() {
+        let (server, client) = forgetful().await;
+        let answering = tokio::spawn(async move {
+            let mut asked = [0; 512];
+            let (_, _) = server.recv_from(&mut asked).await.unwrap();
+            let (_, from) = server.recv_from(&mut asked).await.unwrap();
+            server.send_to(&answer([0x81, 0x80]), from).await.unwrap();
+        });
+        let query = query(0x1234, "check.example", Kind::V4);
+
+        let found = asked(
+            &client,
+            &query,
+            0x1234,
+            Duration::from_millis(50),
+            Duration::from_secs(2),
+        );
+        let found = found.await.unwrap();
+        answering.abort();
+
+        assert_eq!(found.map(|found| found.len()), Some(2));
+    }
+
+    #[tokio::test]
+    async fn a_server_that_never_answers_gives_nothing_once_patience_is_up() {
+        let (_server, client) = forgetful().await;
+        let query = query(0x1234, "check.example", Kind::V4);
+
+        let found = asked(
+            &client,
+            &query,
+            0x1234,
+            Duration::from_millis(20),
+            Duration::from_millis(100),
+        );
+
+        assert_eq!(found.await.unwrap(), None);
+    }
 
     #[test]
     fn a_query_asks_for_the_name_s_addresses_of_one_kind() {

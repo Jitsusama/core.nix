@@ -21,6 +21,54 @@ let
   account = "jitsusama";
   secret = "correct-horse";
 
+  # A certificate authority the machine trusts, and the Office's server's
+  # certificate from it, naming radius.office.test.
+  certificates = pkgs.runCommand "stand-in-certificates" { nativeBuildInputs = [ pkgs.openssl ]; } ''
+    mkdir $out
+    cd $out
+    key="-newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes"
+    openssl req -x509 $key -days 3650 -subj /CN=Stand-in -keyout authority.key -out authority.pem \
+      -addext basicConstraints=critical,CA:TRUE -addext keyUsage=critical,keyCertSign
+    openssl req $key -subj /CN=radius.office.test -keyout radius.key -out radius.csr
+    printf '%s\n' subjectAltName=DNS:radius.office.test extendedKeyUsage=serverAuth > radius.ext
+    openssl x509 -req -in radius.csr -CA authority.pem -CAkey authority.key -CAcreateserial \
+      -days 3650 -extfile radius.ext -out radius.pem
+  '';
+
+  # Lantern's front desk, as a hotel's: every page is sent there until
+  # someone signs in, which its one button does.
+  frontDesk = pkgs.writeText "front-desk.py" ''
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+
+    PAGE = b"""<!doctype html><title>Lantern</title>
+    <form method="post" action="/sign-in"><button autofocus>Sign in</button></form>"""
+    signed_in = False
+
+    class Desk(BaseHTTPRequestHandler):
+        def answer(self, code, headers={}, body=b""):
+            self.send_response(code)
+            for name, value in headers.items():
+                self.send_header(name, value)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def do_GET(self):
+            if self.path == "/sign-in":
+                return self.answer(200, {"Content-Type": "text/html"}, PAGE)
+            if signed_in:
+                return self.answer(204)
+            self.answer(302, {"Location": "http://front-desk.lantern/sign-in"})
+
+        def do_POST(self):
+            global signed_in
+            self.rfile.read(int(self.headers.get("Content-Length", 0)))
+            signed_in = True
+            self.answer(200, {"Content-Type": "text/html"}, b"<p>Welcome to Lantern.</p>")
+
+    HTTPServer(("10.42.0.1", 80), Desk).serve_forever()
+  '';
+
   # Text views and file lists draw on the theme's dark background, which
   # nothing else on the screen uses, so a window that hasn't drawn can't pass
   # for one that has.
@@ -177,6 +225,9 @@ pkgs.testers.runNixOSTest {
         # The workstation role's, which sets how the account's manager watches
         # pressure.
         self.nixosModules.memory
+        # The laptop role's Wi-Fi, which the shell's network piece and Wi-Fi
+        # collection read.
+        self.nixosModules.wifid
       ];
 
       # The VM has neither a backlight nor a sound card, so it gets one of each
@@ -193,29 +244,122 @@ pkgs.testers.runNixOSTest {
         "v4l2loopback"
         # The kernel's own stand-in battery, which UPower reports as a laptop's.
         "test_power"
-        # Two stand-in Wi-Fi radios: hostapd makes the first an access point
-        # and NetworkManager joins it from the second, as the laptop's would.
+        # Three stand-in Wi-Fi radios: hostapd makes the first and the last
+        # access points, and wifid joins them from the second, as the
+        # laptop's would.
         "mac80211_hwsim"
         # For a stand-in touchscreen.
         "uinput"
       ];
-      services.hostapd = {
-        enable = true;
-        radios.wlan0 = {
-          band = "2g";
-          channel = 6;
-          countryCode = "CA";
-          networks.wlan0 = {
-            ssid = "Lantern";
-            authentication = {
-              mode = "wpa2-sha1";
-              wpaPassword = "glowing in the dark";
-            };
-          };
+      # The access points' radios move to a namespace of their own before
+      # anything joins, so wlan1 is the machine's only card and each join
+      # crosses the stand-in air.
+      systemd.services.air = {
+        after = [ "systemd-modules-load.service" ];
+        before = [ "wpa_supplicant.service" ];
+        wantedBy = [ "multi-user.target" ];
+        path = [
+          pkgs.coreutils
+          pkgs.iproute2
+          pkgs.iw
+        ];
+        serviceConfig = {
+          Type = "oneshot";
+          RemainAfterExit = true;
+        };
+        script = ''
+          until [ -e /sys/class/net/wlan2/phy80211/name ]; do sleep 0.1; done
+          ip netns add air
+          for card in wlan0 wlan2; do
+            iw phy "$(cat /sys/class/net/$card/phy80211/name)" set netns name air
+          done
+          ip -n air link set lo up
+          ip -n air address add 10.42.0.1/24 dev wlan0
+          ip -n air address add 10.44.0.1/24 dev wlan2
+        '';
+      };
+      systemd.services.lantern = {
+        after = [ "air.service" ];
+        requires = [ "air.service" ];
+        wantedBy = [ "multi-user.target" ];
+        serviceConfig = {
+          NetworkNamespacePath = "/run/netns/air";
+          ExecStart = "${lib.getExe' pkgs.hostapd "hostapd"} ${pkgs.writeText "lantern.conf" ''
+            interface=wlan0
+            driver=nl80211
+            hw_mode=g
+            channel=6
+            country_code=CA
+            ieee80211d=1
+            ssid=Lantern
+            wpa=2
+            wpa_key_mgmt=WPA-PSK
+            rsn_pairwise=CCMP
+            wpa_passphrase=glowing in the dark
+          ''}";
+        };
+      };
+      # The Office asks for an account, as a workplace's network does, and
+      # its server proves itself with the certificate naming
+      # radius.office.test.
+      systemd.services.office = {
+        after = [ "air.service" ];
+        requires = [ "air.service" ];
+        wantedBy = [ "multi-user.target" ];
+        serviceConfig = {
+          NetworkNamespacePath = "/run/netns/air";
+          ExecStart = "${lib.getExe' pkgs.hostapd "hostapd"} ${pkgs.writeText "office.conf" ''
+            interface=wlan2
+            driver=nl80211
+            hw_mode=g
+            channel=1
+            country_code=CA
+            ieee80211d=1
+            ssid=Office
+            wpa=2
+            wpa_key_mgmt=WPA-EAP
+            rsn_pairwise=CCMP
+            ieee8021x=1
+            eap_server=1
+            eap_user_file=${pkgs.writeText "office-accounts" ''
+              * PEAP,TTLS
+              "joel" MSCHAPV2,TTLS-PAP,TTLS-MSCHAPV2 "hunter22" [2]
+            ''}
+            ca_cert=${certificates}/authority.pem
+            server_cert=${certificates}/radius.pem
+            private_key=${certificates}/radius.key
+          ''}";
+        };
+      };
+      security.pki.certificateFiles = [ "${certificates}/authority.pem" ];
+      # The access points hand out addresses, as a real network does, and
+      # say every name is Lantern's, as a network wanting a sign-in does.
+      systemd.services.lantern-addresses = {
+        after = [ "lantern.service" ];
+        requires = [ "air.service" ];
+        wantedBy = [ "multi-user.target" ];
+        serviceConfig = {
+          NetworkNamespacePath = "/run/netns/air";
+          ExecStart = lib.concatStringsSep " " [
+            "${lib.getExe pkgs.dnsmasq} --keep-in-foreground --dhcp-leasefile=/run/lantern.leases"
+            "--interface=wlan0 --bind-dynamic --dhcp-range=10.42.0.10,10.42.0.50,1h"
+            "--interface=wlan2 --dhcp-range=10.44.0.10,10.44.0.50,1h"
+            "--no-resolv --no-hosts --address=/#/10.42.0.1"
+          ];
+        };
+      };
+      systemd.services.lantern-front-desk = {
+        after = [ "air.service" ];
+        requires = [ "air.service" ];
+        wantedBy = [ "multi-user.target" ];
+        serviceConfig = {
+          NetworkNamespacePath = "/run/netns/air";
+          ExecStart = "${lib.getExe pkgs.python3} ${frontDesk}";
         };
       };
       boot.extraModprobeConfig = ''
         options v4l2loopback video_nr=9 exclusive_caps=1 card_label=Camera
+        options mac80211_hwsim radios=3
       '';
       systemd.services.stand-in-camera = {
         wantedBy = [ "multi-user.target" ];
@@ -227,33 +371,9 @@ pkgs.testers.runNixOSTest {
       };
       jitsusama.camera.device = "/dev/video9";
 
-      networking.networkmanager.unmanaged = [ "wlan0" ];
-      # The access point hands out addresses, as a real network does, since
-      # NetworkManager counts a network joined only once it has one.
-      networking.interfaces.wlan0.ipv4.addresses = [
-        {
-          address = "10.42.0.1";
-          prefixLength = 24;
-        }
-      ];
-      services.dnsmasq = {
-        enable = true;
-        resolveLocalQueries = false;
-        settings = {
-          port = 0;
-          interface = "wlan0";
-          bind-dynamic = true;
-          dhcp-range = "10.42.0.10,10.42.0.50,1h";
-        };
-      };
-      networking.firewall.interfaces.wlan0.allowedUDPPorts = [ 67 ];
-      # A VM turns off wpa_supplicant, which NetworkManager joins networks
-      # through, since it usually has no radio; this one has two.
-      networking.wireless.enable = lib.mkOverride 0 true;
-      # The overview's status reads the battery from UPower and the network from
-      # NetworkManager, which the laptop role brings.
+      # The overview's status reads the battery from UPower, which the laptop
+      # role brings.
       services.upower.enable = true;
-      networking.networkmanager.enable = true;
       services.pipewire.extraConfig.pipewire."90-stand-in-speakers"."context.objects" = [
         {
           factory = "adapter";
@@ -329,13 +449,9 @@ pkgs.testers.runNixOSTest {
       users.users.${account} = {
         isNormalUser = true;
         uid = 1000;
-        # Polkit asks a member of wheel for their own password. It lets the
-        # signed-in account change networks as an active local session, which
-        # the shell nested in Cage isn't seen as, so NetworkManager's group
-        # gives the account the same.
+        # Polkit asks a member of wheel for their own password.
         extraGroups = [
           "wheel"
-          "networkmanager"
           # The camera's, given to a seat's active session on the laptop.
           "video"
         ];
@@ -1142,9 +1258,11 @@ pkgs.testers.runNixOSTest {
               machine.wait_until_fails(in_session("niri msg layers | grep -q launcher"), timeout=10)
 
       with subtest("a Wi-Fi network is joined from the launcher, a new one asking its password"):
-          machine.wait_for_unit("hostapd.service")
+          machine.wait_for_unit("lantern.service")
+          machine.wait_for_unit("wifid.service")
+          wifi = "varlinkctl call /run/wifid/io.jitsusama.Wifi io.jitsusama.Wifi"
           machine.wait_until_succeeds(
-              "nmcli -t -f SSID device wifi list ifname wlan1 | grep -qx Lantern", timeout=60
+              f"{wifi}.Scan '{{}}' && {wifi}.Describe '{{}}' | grep -q '\"Lantern\"'", timeout=60
           )
           as_account("qs ipc call launcher collection wifi")
           launcher_ready()
@@ -1157,31 +1275,69 @@ pkgs.testers.runNixOSTest {
           machine.screenshot("launcher-wifi-password")
           with told("refused wifi Lantern", timeout=60):
               machine.send_key("ret")
-          # NetworkManager's own word may land in its journal just after.
-          machine.wait_until_succeeds(
-              "journalctl -u NetworkManager"
-              " | grep -q \"Activation: failed for connection 'Lantern'\"",
-              timeout=10,
-          )
+          machine.succeed("journalctl -u wifid | grep -q \"couldn't join Lantern: WrongPassword\"")
           photograph("launcher-wifi-refused")
           machine.succeed(in_session("niri msg layers | grep -q launcher"))
           type_in("glowing in the dark")
           machine.send_key("ret")
-          # Joined means an address too, which is when NetworkManager says so.
-          machine.wait_until_succeeds(
-              "nmcli -g GENERAL.CONNECTION,GENERAL.STATE device show wlan1"
-              " | tr '\\n' ' ' | grep -q '^Lantern 100 '",
-              timeout=60,
-          )
+          # Joined means an address too, and wifid says so once it's checked
+          # how far the network reaches.
+          machine.wait_until_succeeds("journalctl -u wifid | grep -q 'joined Lantern on wlan1'", timeout=60)
+          machine.succeed("networkctl status wlan1 | grep -q 10.42.0.")
           # Once it's joined, the launcher's done.
+          machine.wait_until_fails(in_session("niri msg layers | grep -q launcher"), timeout=10)
+          # Lantern wants a sign-in, so Sign In to it comes first at home, and
+          # Return opens the window on its front desk.
+          described = "varlinkctl --json=short call /run/wifid/io.jitsusama.Wifi"
+          described += " io.jitsusama.Wifi.Describe '{}'"
+          machine.wait_until_succeeds(
+              f"{described} | grep -qF '\"reach\":\"signIn\"'", timeout=60
+          )
+          as_account("qs ipc call launcher toggle")
+          launcher_ready()
+          photograph("launcher-sign-in")
+          type_in("sign in", selecting="Sign In to Lantern")
+          machine.send_key("ret")
+          window = "niri msg --json windows | grep -qF '\"app_id\":\"io.jitsusama.WifiSignIn\"'"
+          machine.wait_until_succeeds(in_session(window), timeout=60)
+          # Its button can only be pressed once the front desk has served
+          # the page, which a window that has to try again does later.
+          machine.wait_until_succeeds(
+              "journalctl -u lantern-front-desk | grep -q 'GET /sign-in'", timeout=60
+          )
+          photograph("sign-in", timeout=20)
+          # Its one button signs in, and the window closes as Lantern lets
+          # the machine through, its notice taken back with it.
+          with told("withdrew sign-in Lantern", timeout=60):
+              machine.send_key("ret")
+          machine.wait_until_fails(in_session(window), timeout=60)
+          machine.succeed(f"{described} | grep -qF '\"reach\":\"online\"'")
+          # The Office asks for an account: met for the first time, it asks
+          # the account's name, its server's domain and its password in
+          # turn, and joins.
+          machine.wait_until_succeeds(
+              f"{wifi}.Scan '{{}}' && {wifi}.Describe '{{}}' | grep -q '\"Office\"'", timeout=60
+          )
+          as_account("qs ipc call launcher collection wifi")
+          launcher_ready()
+          type_in("office", selecting="Office")
+          step_in("ret")
+          type_in("joel")
+          step_in("ret")
+          type_in("radius.office.test")
+          step_in("ret")
+          type_in("hunter22")
+          photograph("launcher-wifi-account")
+          machine.send_key("ret")
+          machine.wait_until_succeeds("journalctl -u wifid | grep -q 'joined Office on wlan1'", timeout=60)
           machine.wait_until_fails(in_session("niri msg layers | grep -q launcher"), timeout=10)
           # Turning Wi-Fi off is an action like any.
           as_account("qs ipc call launcher toggle")
           launcher_ready()
           type_in("wifi off")
           machine.send_key("ret")
-          machine.wait_until_succeeds("nmcli radio wifi | grep -qx disabled", timeout=15)
-          machine.succeed("nmcli radio wifi on")
+          machine.wait_until_succeeds("rfkill list wifi | grep -q 'Soft blocked: yes'", timeout=15)
+          machine.succeed("rfkill unblock wifi")
 
       with subtest("a notice that came and went is found again in the launcher"):
           # One its sender says not to keep isn't, though it's the newest match.

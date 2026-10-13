@@ -315,14 +315,6 @@ and is harmless, so nothing silences or patches it:
   gives the bus `system-path`'s `share/dbus-1` beside each package's own, so
   every service file is found twice, once through a link. Leaving
   `system-path` out would lose the services only it has.
-- **NetworkManager's "error setting IPv4 forwarding to '0'"** for
-  `p2p-dev-wlp0s20f3`. The Wi-Fi P2P device has no kernel interface, so
-  `nm_device_sysctl_ip_conf_set()` gives up without setting errno, and the
-  warning ends with whatever errno was left: "Success" at one boot,
-  "Resource temporarily unavailable" at the next. Forwarding stays off, as
-  it should. NetworkManager
-  1.58's fix is an early return at the top of `_dev_ipforwarding4_set()`:
-  `if (nm_device_get_ip_ifindex(self) <= 0) return;`.
 - **"Esys_NV_DefineSpace ErrorCode (0x0000014c)", four times.** That's
   `TPM_RC_NV_DEFINED`: systemd-tpm2-setup finds its NvPCR indexes already
   defined from an earlier boot and carries on.
