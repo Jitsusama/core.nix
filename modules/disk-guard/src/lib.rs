@@ -30,6 +30,8 @@ pub mod journal;
 pub mod linux;
 pub mod locks;
 pub mod logs;
+#[cfg(target_os = "macos")]
+pub mod macos;
 pub mod moments;
 pub mod nix_builds;
 #[cfg(target_os = "linux")]
