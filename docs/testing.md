@@ -72,6 +72,7 @@ written beside each in `tests/`.
 | ------------------------------------- | ------------------------------------------------------- |
 | `the-launcher-finds-what-is-meant`    | the right row comes first for each query, within budget |
 | `the-launcher-finds-emoji`            | emoji are found by name and meaning, best first         |
+| `the-launcher-finds-the-keyboards-keys` | a key is found by what it types, and shown where it is |
 | `the-launcher-answers-what-is-asked`  | sums, addresses, measures, zones and colours answer     |
 | `the-music-follows-the-player`        | the music is the player that started last, never playerctld's echo |
 | `a-claimed-chord-is-refused`        | a chord two layers claim, or one claims twice, is refused |

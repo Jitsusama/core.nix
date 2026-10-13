@@ -14,12 +14,13 @@ Everything about it is in [`modules/ergodox/`][module]:
 | `keymap/rules.mk`               | which QMK features are built in                                |
 | `keymap/host.c`                 | the commands the computer can send the board                   |
 | `firmware.nix`                  | the build: the firmware, its layout as JSON, its serial number |
+| `describe.py`                   | the layout described for the shell: caps, words and places     |
 | `unused-config-result.patch`    | a change to QMK, so GCC 16 builds it without warnings          |
 | `host-commands.patch`           | a change to ZSA's code, handing `host.c` the commands it takes |
 | `layers.nix`                    | the layers' names, in the keymap's order                       |
 | `ergodox.sh`                    | the `ergodox` command                                          |
 | `ergodox-watch.rs`              | the watcher that tells the shell which layer the board is on   |
-| `home.nix`                      | the home-manager module: the command and zapp                  |
+| `home.nix`                      | the home-manager module: the command, zapp and the shell's layout |
 | `nixos.nix`                     | the NixOS module: the board's devices open to whoever is at it, and the watcher |
 
 `flake.nix` offers the modules as `homeModules.ergodox` and
@@ -41,8 +42,24 @@ Three layers, as Oryx named them:
 
 `keymap.c` is the layout as Oryx wrote it, byte for byte, so QMK's
 [documentation][qmk] reads straight onto it. The build also reads it back
-into `layout.json` with QMK's own `qmk c2json`, which is what the shell draws
-the layers from.
+into `layout.json` with QMK's own `qmk c2json`, and `describe.py` turns
+that into `shell.json`: each key's cap, what it does in words, what holding
+it does and where it sits, by hand, row and finger. A keycode it has no
+words for stops the build, so a new key is never drawn blank.
+
+## In the Shell
+
+The home module puts `shell.json` at `~/.config/ergodox/layout.json`, where
+the shell reads it:
+
+- **Super+K** brings up the layout at the bottom of the screen, the layer
+  the board is on, and puts it away. It takes no keys, so typing carries on,
+  and it follows the board: hold a layer and it shows that one.
+- **The launcher's Keyboard collection** finds any key by its cap or what
+  it types ("backslash" finds Punk's, on the left hand's lower row), and
+  Return shows it on the layout, marked. Its actions show the layout, flash
+  the board, lock a layer or let one go, and set the lights.
+- **The margin** shows a layer that's locked, from the watcher below.
 
 ## Changing It
 

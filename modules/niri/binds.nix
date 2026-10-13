@@ -96,6 +96,13 @@ in
     # place of niri's own overlay of only its own.
     action = ''spawn "qs" "ipc" "call" "launcher" "collection" "shortcuts";'';
   }
+  # The keyboard's layout, for a glance while typing, where a keyboard's
+  # module describes one. K for keyboard.
+  {
+    chord = "Super+K";
+    does = "Show the keyboard's layout";
+    action = ''spawn "qs" "ipc" "call" "keyboard" "toggle";'';
+  }
 
   # Closing is destructive, so it takes Shift, as in i3.
   {
