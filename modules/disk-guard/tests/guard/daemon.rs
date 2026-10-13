@@ -954,6 +954,19 @@ fn a_writer_with_nothing_open_on_the_disk_or_writing_slowly_is_left_alone() {
 }
 
 #[test]
+fn the_status_names_who_writes_most_while_a_disk_is_short_freezing_or_not() {
+    let home = Home::new();
+    let mut guard = home.guard(home.critical(true));
+    running_away(&home, &mut guard, &app(uid()));
+    let writer = &home.status()["writer"];
+    assert_eq!(writer["name"], "dd", "{writer}");
+    assert_eq!(writer["pid"], 700);
+    let mut calm = home.guard(home.critical(false));
+    calm.step(&tick(), &CALM).unwrap();
+    assert_eq!(home.status()["writer"], serde_json::Value::Null);
+}
+
+#[test]
 fn nothing_in_a_session_is_ever_frozen() {
     let home = Home::new();
     let manager = Manager::default();

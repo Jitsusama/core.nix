@@ -245,6 +245,18 @@ pub struct Status {
     pub last: Option<LastPass>,
     /// The writers frozen now, for the desktop to offer to thaw.
     pub frozen: Vec<crate::writers::Frozen>,
+    /// Who wrote most of the last minute's writes, while a disk is below
+    /// healthy and one process did.
+    pub writer: Option<Writing>,
+}
+
+/// A process writing most of what's written, as the status file says it.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct Writing {
+    pub name: String,
+    pub pid: u32,
+    /// Bytes a second.
+    pub rate: f64,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -419,6 +431,25 @@ impl Guard {
     /// lets it go when somebody thawed it by hand. Only the account's own
     /// processes, outside its sessions, and never the guard.
     fn runaways(&mut self, tick: &Tick) -> io::Result<()> {
+        // Who writes is sampled while any disk is short, freezing or not,
+        // so the status and the notices can name what fills one.
+        let pressed = self
+            .watched
+            .values()
+            .any(|watched| watched.band > Band::Healthy);
+        let samples = if pressed {
+            // SAFETY: geteuid only reads the process's own credentials.
+            let me = unsafe { libc::geteuid() };
+            let samples: Vec<_> = writers::sample(&self.processes)
+                .into_iter()
+                .filter(|sample| sample.uid == me)
+                .collect();
+            self.writers.observe(samples.clone(), tick.wall);
+            Some(samples)
+        } else {
+            self.writers = Writers::default();
+            None
+        };
         let Some(freeze) = self.freeze.as_mut() else {
             return Ok(());
         };
@@ -462,21 +493,11 @@ impl Guard {
             }
         }
         self.memory.frozen = still;
-        if self
-            .watched
-            .values()
-            .all(|watched| watched.band == Band::Healthy)
-        {
-            self.writers = Writers::default();
+        let Some(samples) = samples else {
             return Ok(());
-        }
+        };
         // SAFETY: geteuid only reads the process's own credentials.
         let me = unsafe { libc::geteuid() };
-        let samples: Vec<_> = writers::sample(&self.processes)
-            .into_iter()
-            .filter(|sample| sample.uid == me)
-            .collect();
-        self.writers.observe(samples.clone(), tick.wall);
         // A process spared is spared while it lives; a pid reused is another.
         self.memory.spared.retain(|&(pid, start)| {
             samples
@@ -1502,6 +1523,14 @@ impl Guard {
             filesystems,
             last: self.last.clone(),
             frozen: self.memory.frozen.clone(),
+            writer: self
+                .writers
+                .dominant(WRITING_WINDOW, now)
+                .map(|writer| Writing {
+                    name: writer.name,
+                    pid: writer.pid,
+                    rate: writer.rate,
+                }),
         }
     }
 

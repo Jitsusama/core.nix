@@ -88,6 +88,16 @@ pub fn change(before: &Status, after: &Status) -> Option<Change> {
             ),
             failed => (short, format!("{free} free. It {failed}.")),
         };
+        // Left short, whoever is filling it is worth knowing.
+        let body = match &after.writer {
+            Some(writer) if last.end != "reached" => format!(
+                "{body} Most of the writing is {}'s (pid {}), at {} a second.",
+                writer.name,
+                writer.pid,
+                shown(writer.rate as u64)
+            ),
+            _ => body,
+        };
         return Some(Change::Show(Notice {
             summary,
             body,
