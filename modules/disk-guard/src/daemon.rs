@@ -672,7 +672,7 @@ impl Guard {
         );
         let mut due = Vec::new();
         for (&device, watched) in &mut self.watched {
-            let Ok(space) = crate::linux::space(&watched.path) else {
+            let Ok(space) = crate::sys::space(&watched.path) else {
                 watched.space = None;
                 continue;
             };
@@ -855,7 +855,7 @@ impl Guard {
             (Some((_, store)), Some(watched)) if store == device => watched.path.clone(),
             _ => return Err(format!("no garbage is collected on {}", path.display())),
         };
-        let space = crate::linux::space(&mount).map_err(|error| error.to_string())?;
+        let space = crate::sys::space(&mount).map_err(|error| error.to_string())?;
         let thresholds = Thresholds::new(&self.config.bands, space.total);
         let mut here = self.generation_offers(tick);
         here.extend(self.garbage_offers(tick));
@@ -1037,7 +1037,7 @@ impl Guard {
         let Some((garbage, _)) = self.store() else {
             return Vec::new();
         };
-        let Ok(space) = crate::linux::space(&self.config.nix.store) else {
+        let Ok(space) = crate::sys::space(&self.config.nix.store) else {
             return Vec::new();
         };
         let there: Vec<Dead> = listing
@@ -1294,7 +1294,7 @@ impl Guard {
             processes.iter().filter(|process| !process.readable).count(),
             scan.unheard().map(str::to_owned),
         );
-        let boot = crate::linux::boot(Path::new("/proc/stat"))?;
+        let boot = crate::sys::boot(Path::new("/proc/stat"))?;
         // A copy, so a long survey never holds up what hears the opens.
         let uses = self
             .uses
@@ -1364,9 +1364,7 @@ impl Guard {
                 },
                 busy: move || {
                     gentle
-                        && !crate::decide::calm(
-                            crate::linux::pressure(&pressure).unwrap_or_default(),
-                        )
+                        && !crate::decide::calm(crate::sys::pressure(&pressure).unwrap_or_default())
                 },
                 yielded: false,
             },
@@ -1445,7 +1443,7 @@ impl Guard {
         let (_, offers) = self.offers(tick)?;
         let mut previews = Vec::new();
         for (&device, watched) in &self.watched {
-            let Ok(space) = crate::linux::space(&watched.path) else {
+            let Ok(space) = crate::sys::space(&watched.path) else {
                 continue;
             };
             let thresholds = Thresholds::new(&self.config.bands, space.total);

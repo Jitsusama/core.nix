@@ -392,7 +392,7 @@ fn explain(env: &Env, path: &Path, config: Option<PathBuf>, out: &mut dyn Write)
         running: running(),
     };
     let mut guard = Guard::new(config, &places).map_err(failed)?;
-    let tick = crate::linux::tick().map_err(failed)?;
+    let tick = crate::sys::tick().map_err(failed)?;
     let explained = guard.explain(&tick, path).map_err(failed)?;
     let (_, unheard) = guard.unread();
     let used_as = |used: crate::activity::Use| match used {
@@ -645,7 +645,7 @@ fn plan(
         running: running(),
     };
     let mut guard = Guard::new(config, &places).map_err(failed)?;
-    let tick = crate::linux::tick().map_err(failed)?;
+    let tick = crate::sys::tick().map_err(failed)?;
     let previews = guard.preview(&tick, band, free).map_err(failed)?;
     for preview in previews {
         let band = serde_json::to_value(preview.band).ok();

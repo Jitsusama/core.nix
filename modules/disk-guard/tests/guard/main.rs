@@ -52,7 +52,6 @@ mod scratch;
 #[cfg(target_os = "linux")]
 mod serve;
 mod snapshots;
-#[cfg(target_os = "linux")]
 mod socket;
 mod state;
 mod survey;

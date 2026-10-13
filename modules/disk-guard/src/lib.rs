@@ -23,7 +23,7 @@ pub mod finished;
 pub mod freezer;
 pub mod garbage;
 pub mod generations;
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 pub mod host;
 pub mod journal;
 #[cfg(target_os = "linux")]
@@ -49,7 +49,12 @@ pub mod scratch;
 #[cfg(target_os = "linux")]
 pub mod serve;
 pub mod snapshots;
+/// What the machine says about itself, through whichever platform this is.
 #[cfg(target_os = "linux")]
+pub use linux as sys;
+#[cfg(target_os = "macos")]
+pub use macos as sys;
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 pub mod socket;
 pub mod state;
 pub mod survey;

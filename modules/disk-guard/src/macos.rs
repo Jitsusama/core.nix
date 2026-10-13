@@ -1,4 +1,6 @@
-//! What macOS says about the machine, through sysctl and libproc.
+//! What macOS says about the machine, through sysctl and libproc. Each
+//! function takes what Linux's does, so the daemon asks either the same
+//! way; the places Linux reads from mean nothing here.
 
 use crate::band::Space;
 use std::ffi::{CStr, OsStr, c_int};
@@ -16,7 +18,7 @@ const TICKS: f64 = 1e6;
 /// When the machine booted, in wall seconds, and how many ticks a second
 /// process start times count in. Starts are counted from the epoch, so
 /// boot is its zero.
-pub fn boot() -> io::Result<crate::snapshots::Boot> {
+pub fn boot(_proc_stat: &Path) -> io::Result<crate::snapshots::Boot> {
     Ok(crate::snapshots::Boot {
         wall: 0.0,
         ticks: TICKS,
@@ -71,12 +73,12 @@ pub fn tick() -> io::Result<crate::clock::Tick> {
 }
 
 /// macOS keeps no stall averages, so it reads as none.
-pub fn pressure() -> io::Result<crate::moments::Pressure> {
+pub fn pressure(_proc_pressure: &Path) -> io::Result<crate::moments::Pressure> {
     Ok(Default::default())
 }
 
 /// Where power comes from, as `pmset` says.
-pub fn power() -> io::Result<crate::moments::Power> {
+pub fn power(_supplies: &Path) -> io::Result<crate::moments::Power> {
     let output = std::process::Command::new("/usr/bin/pmset")
         .args(["-g", "batt"])
         .output()?;
@@ -87,7 +89,7 @@ pub fn power() -> io::Result<crate::moments::Power> {
 /// The processes waiting on the guard's locks. macOS lists no one's locks,
 /// so it's none: a build waiting on a directory the guard has just moved
 /// aside builds again in a new one.
-pub fn lock_waiters(_me: u32, _inodes: &[u64]) -> io::Result<Vec<i32>> {
+pub fn lock_waiters(_proc_locks: &Path, _me: u32, _inodes: &[u64]) -> io::Result<Vec<i32>> {
     Ok(Vec::new())
 }
 
@@ -283,7 +285,7 @@ fn pids() -> io::Result<Vec<libc::pid_t>> {
 /// Every process but the kernel's and zombies. A process that exits
 /// mid-scan is left out. One whose cwd, files or maps are hidden, as
 /// another account's are, reads as unreadable rather than as idle.
-pub fn processes() -> io::Result<Vec<crate::activity::Process>> {
+pub fn processes(_proc: &Path) -> io::Result<Vec<crate::activity::Process>> {
     let argmax: c_int = sysctl_value(c"kern.argmax")?;
     let mut args = vec![0u8; argmax.max(0) as usize];
     Ok(pids()?

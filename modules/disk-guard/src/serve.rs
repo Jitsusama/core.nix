@@ -58,7 +58,7 @@ pub fn answering(
             loop {
                 let served = server.serve(&mut |uid, request, responder| {
                     let reply = match request {
-                        Request::Processes { roots } => match crate::linux::processes(&proc) {
+                        Request::Processes { roots } => match crate::sys::processes(&proc) {
                             Ok(processes) => {
                                 Reply::Answer(vouch::answer(&processes, &roots, |path| {
                                     vouch::reached_by(path, uid)
@@ -140,7 +140,7 @@ pub fn steps(
 ) {
     let mut unheard = Unheard::default();
     loop {
-        let stepped = crate::linux::tick().and_then(|tick| {
+        let stepped = crate::sys::tick().and_then(|tick| {
             let before = guard.status(tick.wall);
             guard.step(&tick, &senses(desk.saving()))?;
             let change = crate::notices::change(&before, &guard.status(tick.wall));
@@ -214,11 +214,11 @@ pub trait Desk {
 /// is no stall.
 pub fn senses(saver: bool) -> Senses {
     Senses {
-        power: crate::linux::power(Path::new("/sys/class/power_supply")).unwrap_or(Power {
+        power: crate::sys::power(Path::new("/sys/class/power_supply")).unwrap_or(Power {
             mains: true,
             battery: None,
         }),
         saver,
-        pressure: crate::linux::pressure(Path::new("/proc/pressure")).unwrap_or_default(),
+        pressure: crate::sys::pressure(Path::new("/proc/pressure")).unwrap_or_default(),
     }
 }

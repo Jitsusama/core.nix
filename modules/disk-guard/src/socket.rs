@@ -154,6 +154,7 @@ impl Server {
 }
 
 /// The account on the other end of a socket, as the kernel says.
+#[cfg(target_os = "linux")]
 fn peer(stream: &UnixStream) -> io::Result<u32> {
     let mut credentials = libc::ucred {
         pid: 0,
@@ -176,6 +177,35 @@ fn peer(stream: &UnixStream) -> io::Result<u32> {
         return Err(io::Error::last_os_error());
     }
     Ok(credentials.uid)
+}
+
+/// The account on the other end of a socket, as macOS's kernel says.
+#[cfg(target_os = "macos")]
+fn peer(stream: &UnixStream) -> io::Result<u32> {
+    let mut credentials = std::mem::MaybeUninit::<libc::xucred>::zeroed();
+    let mut size = std::mem::size_of::<libc::xucred>() as libc::socklen_t;
+    // SAFETY: credentials is an xucred of the size given, which the kernel
+    // fills in for LOCAL_PEERCRED.
+    let done = unsafe {
+        libc::getsockopt(
+            stream.as_raw_fd(),
+            libc::SOL_LOCAL,
+            libc::LOCAL_PEERCRED,
+            credentials.as_mut_ptr().cast(),
+            &mut size,
+        )
+    };
+    if done != 0 {
+        return Err(io::Error::last_os_error());
+    }
+    // SAFETY: the kernel filled it in, as it answered 0.
+    let credentials = unsafe { credentials.assume_init() };
+    if credentials.cr_version != libc::XUCRED_VERSION {
+        return Err(io::Error::other(
+            "the kernel's credentials are of another version",
+        ));
+    }
+    Ok(credentials.cr_uid)
 }
 
 /// Asks the daemon listening at `path`, waiting at most `timeout` for each
