@@ -102,12 +102,14 @@ impl Store {
                  fi\n\
                  [ \"$*\" = '--gc --print-dead' ] || exit 9\n\
                  echo \"list {policy}\" >> {log}\n\
+                 [ -e {broken} ] && {{ echo 'error: a temporary file went' >&2; exit 1; }}\n\
                  for p in {store}/*; do [ -e \"$p/meta\" ] && echo \"$p\"; done\n\
                  exit 0\n",
                 log = log.display(),
                 store = root.join("store").display(),
                 linked = linked.display(),
                 slow = root.join("slow").display(),
+                broken = root.join("listing-broken").display(),
             ),
         );
         script(
@@ -322,6 +324,43 @@ fn a_listing_is_kept_for_the_next_guard() {
         .filter(|line| line.starts_with("list"))
         .count();
     assert_eq!(lists, 1, "a day old at most, so not listed again");
+}
+
+#[test]
+fn a_listing_that_failed_under_pressure_is_tried_again_within_minutes() {
+    let store = Store::new();
+    store.dead("aaa-old", 10.0 * DAY, 4096);
+    fs::write(store.root.join("listing-broken"), "").unwrap();
+    let mut guard = store.guard(store.config("100%", "0%"));
+    let lists = |store: &Store| {
+        store
+            .log()
+            .iter()
+            .filter(|line| line.starts_with("list"))
+            .count()
+    };
+    let later = |seconds: f64| Tick {
+        wall: now() + seconds,
+        ..tick()
+    };
+    let step_for = |guard: &mut Guard, at: &Tick| {
+        // Long enough for a listing begun to say so.
+        for _ in 0..10 {
+            guard.step(at, &CALM).unwrap();
+            std::thread::sleep(Duration::from_millis(30));
+        }
+    };
+    step_for(&mut guard, &tick());
+    assert_eq!(lists(&store), 1, "{:?}", store.log());
+    fs::remove_file(store.root.join("listing-broken")).unwrap();
+    step_for(&mut guard, &later(60.0));
+    assert_eq!(lists(&store), 1, "not at once: a listing costs the disk");
+    step_for(&mut guard, &later(6.0 * 60.0));
+    assert_eq!(lists(&store), 2, "{:?}", store.log());
+    assert!(
+        store.root.join("state/garbage.json").exists(),
+        "the second listing is kept"
+    );
 }
 
 #[test]

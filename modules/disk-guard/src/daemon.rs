@@ -115,10 +115,13 @@ type DedupeOut = (f64, Arc<AtomicBool>, Receiver<Result<Option<u64>, String>>);
 const GENERATIONS: &str = "generations";
 const YOUNG_GENERATIONS: &str = "generations:young";
 /// How old Nix's garbage listing may grow on a healthy disk, and under
-/// pressure; and how long a listing that failed waits for the next.
+/// pressure; and how long a listing that failed waits for the next, on a
+/// healthy disk and under pressure, where a listing is all garbage can be
+/// collected by.
 const LISTING_FRESH: f64 = 86400.0;
 const LISTING_PRESSED: f64 = 3600.0;
 const LISTING_RETRY: f64 = 3600.0;
+const LISTING_RETRY_PRESSED: f64 = 300.0;
 /// The most paths deleted in one go, so one refused path costs little.
 const MOST_PER_BATCH: usize = 300;
 /// How long a user daemon waits for the system daemon to hear its
@@ -911,8 +914,13 @@ impl Guard {
             .is_some_and(|watched| watched.band > Band::Healthy);
         let age = |at: Option<f64>| at.map_or(f64::INFINITY, |at| now - at);
         let listed = age(self.listing.as_ref().map(|listing| listing.listed_at));
+        let retry = if pressed {
+            LISTING_RETRY_PRESSED
+        } else {
+            LISTING_RETRY
+        };
         let due = self.relist
-            || age(self.listing_begun) >= LISTING_RETRY
+            || age(self.listing_begun) >= retry
                 && if pressed {
                     listed >= LISTING_PRESSED
                 } else {
