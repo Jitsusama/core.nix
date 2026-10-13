@@ -1016,7 +1016,7 @@ impl Guard {
             .name(DEDUPE.to_owned())
             .spawn(move || {
                 // A guard that stopped meanwhile has no one to hear it.
-                let _ = tell.send(dedupe::optimise(&systemd_run, &nix, &stopping));
+                let _ = tell.send(dedupe::optimise(systemd_run.as_deref(), &nix, &stopping));
             });
         match running {
             Ok(_) => self.dedupe_out = Some((tick.wall, stop, out)),

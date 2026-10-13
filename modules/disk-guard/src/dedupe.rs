@@ -78,26 +78,32 @@ pub fn due(last: Option<&Deduped>, now: f64, every: f64, total: u64) -> bool {
 }
 
 /// Links the store's identical files, confined by `systemd_run` to a
-/// scope, with `nix-store` from beside `nix`, until `stop` is set: what
-/// Nix said it freed, or nothing for a run stopped before it finished.
-pub fn optimise(systemd_run: &Path, nix: &Path, stop: &AtomicBool) -> Result<Option<u64>, String> {
-    let mut argv: Vec<OsString> = [
-        "--scope",
-        "--quiet",
-        "--collect",
-        "--description=disk-guard: linking the Nix store's identical files",
-    ]
-    .map(OsString::from)
-    .to_vec();
-    argv.insert(0, systemd_run.into());
-    for property in SCOPE {
-        argv.extend(["-p".into(), property.into()]);
+/// scope where there is one, with `nix-store` from beside `nix`, until
+/// `stop` is set: what Nix said it freed, or nothing for a run stopped
+/// before it finished.
+pub fn optimise(
+    systemd_run: Option<&Path>,
+    nix: &Path,
+    stop: &AtomicBool,
+) -> Result<Option<u64>, String> {
+    let mut argv: Vec<OsString> = Vec::new();
+    if let Some(systemd_run) = systemd_run {
+        argv.push(systemd_run.into());
+        argv.extend(
+            [
+                "--scope",
+                "--quiet",
+                "--collect",
+                "--description=disk-guard: linking the Nix store's identical files",
+            ]
+            .map(OsString::from),
+        );
+        for property in SCOPE {
+            argv.extend(["-p".into(), property.into()]);
+        }
+        argv.push("--".into());
     }
-    argv.extend([
-        "--".into(),
-        nix.with_file_name("nix-store").into(),
-        "--optimise".into(),
-    ]);
+    argv.extend([nix.with_file_name("nix-store").into(), "--optimise".into()]);
     let job = Job {
         argv,
         cwd: None,
@@ -107,7 +113,10 @@ pub fn optimise(systemd_run: &Path, nix: &Path, stop: &AtomicBool) -> Result<Opt
         idle: true,
     };
     match commands::stoppable(&job, stop, STOP_GRACE) {
-        Err(error) => Err(format!("starting systemd-run: {error}")),
+        Err(error) => Err(format!(
+            "starting {}: {error}",
+            Path::new(&job.argv[0]).display()
+        )),
         Ok(Ran::Stopped) => Ok(None),
         Ok(Ran::TimedOut) => Err(format!("nix-store --optimise ran past {TIMEOUT:?}")),
         Ok(Ran::Finished(output)) => {
