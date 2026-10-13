@@ -57,6 +57,7 @@ behind Intel's CVS bridge, and Intel's BE211 Wi-Fi 7.
 | Docks    | bolt, which authorizes Thunderbolt and USB4 devices                    |
 | Firmware | fwupd, for the BIOS and firmware Dell publishes through LVFS           |
 | Battery  | charges to 80% and again below 75%, in the BIOS; see below             |
+| BIOS     | the thermal mode and four other settings held where they were chosen   |
 | Wi-Fi    | runs as Wi-Fi 6; see below                                             |
 
 ### The CVS Patch
@@ -187,6 +188,15 @@ power-profiles-daemon leaves a battery in the custom mode alone.
 To charge to full once, `run0 firmware-settings set CustomChargeStop 100`,
 and `run0 firmware-settings apply` after to bring the limit back. Both ask
 for the admin password.
+
+The module holds five more settings that were chosen here, since a BIOS
+update or reset can change them without a word, as 1.11.0 turned the
+adapter warnings off. The thermal mode stays
+Performance, which the power limits were measured in; SAGV stays on, so the
+memory slows when idle, for the battery; the keyboard's light stays dim; the
+adapter warnings stay off, so a charger the BIOS thinks too weak doesn't
+hold the boot; and downgrades stay allowed, so a bad BIOS can be rolled back.
+Secure Boot's settings stay out: recovering those is the enrolment's job.
 
 ### Nothing to Add
 

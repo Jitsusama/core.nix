@@ -175,6 +175,19 @@ in
     PrimaryBattChargeCfg = "Custom";
     CustomChargeStart = "75";
     CustomChargeStop = "80";
+
+    # Settings chosen here that a BIOS update or reset would put back
+    # without a word, as 1.11.0 turned the adapter warnings back off.
+    # The power limits were measured in the Performance thermal mode.
+    ThermalManagement = "Performance";
+    # The memory's frequency drops when it's idle, which the battery
+    # needs more than the memory's latency needs it pinned.
+    IntelSagv = "Enabled";
+    KeyboardIllumination = "Dim";
+    # No pause at power-on over a charger it thinks too weak.
+    PowerWarn = "Disabled";
+    # A bad BIOS can be rolled back.
+    AllowBiosDowngrade = "Enabled";
   };
 
   # The BE211's Wi-Fi 7 receive path drops links to the slowest rate, so it
