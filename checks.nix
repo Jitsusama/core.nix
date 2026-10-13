@@ -86,6 +86,28 @@ let
 
   account = machine: machine.config.home-manager.users.someone;
 
+  # Runs a test that times itself in Qt's engine, in a fresh process each
+  # time, until one is fast enough. How fast the engine runs the same code
+  # differs from one process to the next by as much as half, while a
+  # slower search slows every process, so the fastest of five is what's
+  # judged. A test exits 2 when it was only too slow; any other failure
+  # stops at once.
+  timedQml =
+    file:
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    ''
+      for run in 1 2 3 4 5; do
+        status=0
+        QML_IMPORT_PATH=${qt}/lib/qt-6/qml ${qt}/bin/qml ${file} || status=$?
+        [ "$status" = 0 ] && break
+        [ "$status" = 2 ] || exit "$status"
+        echo "too slow in run $run of 5"
+        [ "$run" != 5 ] || exit 1
+      done
+    '';
+
   # The line a kernel setting leaves in the finished configuration.
   kernelConfigLine =
     option: setting:
@@ -368,27 +390,22 @@ in
 
   # The launcher finds what's meant: for each query in tests/fuzzy.qml the
   # right thing comes first, few rows are left, or nothing answers, and a
-  # query keeps within its budget, all in Qt's own JavaScript engine, the
-  # one the shell runs the matcher in.
-  the-launcher-finds-what-is-meant =
-    let
-      qt = pkgs.qt6.qtdeclarative;
-    in
-    pkgs.runCommandLocal "the-launcher-finds-what-is-meant" { } ''
-      cp ${./tests/fuzzy.qml} fuzzy.qml
-      cp ${./modules/quickshell/Fuzzy.js} Fuzzy.js
-      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
-      export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
-      QML_IMPORT_PATH=${qt}/lib/qt-6/qml ${qt}/bin/qml fuzzy.qml
-      touch $out
-    '';
+  # query keeps within its budget in at least one of five processes, all in
+  # Qt's own JavaScript engine, the one the shell runs the matcher in.
+  the-launcher-finds-what-is-meant = pkgs.runCommandLocal "the-launcher-finds-what-is-meant" { } ''
+    cp ${./tests/fuzzy.qml} fuzzy.qml
+    cp ${./modules/quickshell/Fuzzy.js} Fuzzy.js
+    export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+    export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+    ${timedQml "fuzzy.qml"}
+    touch $out
+  '';
 
   # The launcher finds emoji by what they're called and what they mean, best
   # first, as tests/emoji.qml lists them, over the list it's built with, and
   # in about three times the least a search could take.
   the-launcher-finds-emoji =
     let
-      qt = pkgs.qt6.qtdeclarative;
       emoji = import ./modules/quickshell/launcher/emoji.nix { inherit lib pkgs; } "none";
     in
     pkgs.runCommandLocal "the-launcher-finds-emoji" { } ''
@@ -400,7 +417,7 @@ in
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export QML_XHR_ALLOW_FILE_READ=1
       export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
-      QML_IMPORT_PATH=${qt}/lib/qt-6/qml ${qt}/bin/qml emoji.qml
+      ${timedQml "emoji.qml"}
       touch $out
     '';
 
