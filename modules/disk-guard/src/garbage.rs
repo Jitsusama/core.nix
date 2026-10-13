@@ -125,9 +125,18 @@ pub fn list(nix: &Path, idle: bool) -> Result<Vec<Dead>, String> {
         LIST_TIMEOUT,
         idle,
     )?;
+    // Nix's own temporary files in the store's directory, such as its
+    // .tmp-link-s, are listed too and gone a moment later, and asking
+    // about one fails the whole listing; no store path's name has a dot
+    // first.
     let paths: Vec<&str> = listed
         .lines()
         .filter(|line| line.starts_with('/'))
+        .filter(|line| {
+            Path::new(line)
+                .file_name()
+                .is_some_and(|name| !name.as_encoded_bytes().starts_with(b"."))
+        })
         .collect();
     let mut dead = Vec::with_capacity(paths.len());
     for chunk in paths.chunks(CHUNK) {

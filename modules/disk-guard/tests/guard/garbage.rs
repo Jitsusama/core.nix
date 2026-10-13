@@ -44,6 +44,9 @@ fn fake_nix(dir: &Path, count: usize) -> std::path::PathBuf {
             "[ \"$1 $2\" = '--extra-experimental-features nix-command' ] || exit 9\nshift 2\n\
              [ \"$1 $2 $3\" = 'path-info --json --offline' ] || exit 9\nshift 3\n\
              echo $# >> {}\n\
+             for p in \"$@\"; do case \"$p\" in */.*)\n\
+               echo \"error: getting status of \\\"$p\\\": No such file or directory\" >&2; exit 1;;\n\
+             esac; done\n\
              printf '{{'; sep=''\n\
              for p in \"$@\"; do\n\
                printf '%s\"%s\":{{\"narSize\":1,\"registrationTime\":5,\"references\":[]}}' \"$sep\" \"$p\"\n\
@@ -68,6 +71,24 @@ fn the_dead_are_listed_and_described_in_chunks_the_kernel_takes() {
     );
     let asked = fs::read_to_string(dir.path().join("asked")).unwrap();
     assert_eq!(asked, "1000\n1000\n500\n");
+}
+
+#[test]
+fn what_isnt_a_store_path_in_the_store_is_not_described() {
+    // Nix keeps temporary files in the store's directory, which the
+    // listing names among the dead and which are gone a moment later.
+    let dir = tempfile::tempdir().unwrap();
+    let nix = fake_nix(dir.path(), 0);
+    script(
+        &dir.path().join("nix-store"),
+        "[ \"$*\" = '--gc --print-dead' ] || exit 9\n\
+         echo /nix/store/p0\n\
+         echo /nix/store/.tmp-link-2410616-37796915\n\
+         echo /nix/store/p1\n",
+    );
+    let dead = list(&nix, false).unwrap();
+    let paths: Vec<&str> = dead.iter().map(|dead| dead.path.as_str()).collect();
+    assert_eq!(paths, ["/nix/store/p0", "/nix/store/p1"]);
 }
 
 /// A `nix` whose `store delete` deletes each path in turn, as Nix does,
