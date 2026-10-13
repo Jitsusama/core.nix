@@ -994,6 +994,30 @@ in
         system.OOMPolicy == "continue" && user.OOMPolicy == "continue" && user.Slice == "background.slice"
       );
 
+  # A Mac's guards run under launchd, the machine's as a daemon and the
+  # account's as an agent in the background, with a Mac's own paths and
+  # nothing to confine a linking run to, since a Mac has no scopes.
+  the-mac-guards-its-disk =
+    let
+      daemon = macWorkstation.config.launchd.daemons.disk-guard.serviceConfig;
+      agent = (account macWorkstation).launchd.agents.disk-guard;
+      system = macWorkstation.config.jitsusama.disk-guard.settings;
+      user = (account macWorkstation).jitsusama.disk-guard.settings;
+    in
+    holds "the-mac-guards-its-disk"
+      "A Mac's guards don't run under launchd, or their config names Linux's paths or systemd-run."
+      (
+        builtins.elemAt daemon.ProgramArguments 1 == "system"
+        && daemon.KeepAlive
+        && agent.enable
+        && builtins.elemAt agent.config.ProgramArguments 1 == "user"
+        && agent.config.ProcessType == "Background"
+        && system.dedupe.systemd_run == null
+        && system.sources.tmp.path == "/private/tmp"
+        && user.sources.trash.path == "/Users/someone/.Trash"
+        && !((account macWorkstation).systemd.user.services ? disk-guard)
+      );
+
   # greetd waits for the GPU the hardware names rather than for the boot to go
   # idle, and the card gets the device unit it waits on. Without the udev tag
   # the unit never appears, and the login waits out the device timeout.
