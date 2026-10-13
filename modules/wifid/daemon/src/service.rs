@@ -45,6 +45,14 @@ pub enum Ask {
     Scan {
         done: oneshot::Sender<Result<(), Refused>>,
     },
+    Leave {
+        name: String,
+        done: oneshot::Sender<Result<(), Refused>>,
+    },
+    Radio {
+        on: bool,
+        done: oneshot::Sender<Result<(), Refused>>,
+    },
     Forget {
         name: String,
         done: oneshot::Sender<Result<(), Refused>>,
@@ -74,6 +82,8 @@ pub enum Refused {
     TurnedAway,
     /// The card didn't join the network in time.
     TimedOut,
+    /// No card is on the network.
+    NotJoined,
     /// wifid tried and couldn't, for this reason.
     Failed { reason: String },
 }
@@ -189,6 +199,17 @@ impl Wifi {
     /// Has every card look for networks now. Describe says what they hear.
     async fn scan(&self) -> Result<(), Refused> {
         self.ask(|done| Ask::Scan { done }).await
+    }
+
+    /// Takes every card on the network off it. They join nothing more
+    /// until asked to.
+    async fn leave(&self, name: String) -> Result<(), Refused> {
+        self.ask(|done| Ask::Leave { name, done }).await
+    }
+
+    /// Turns Wi-Fi's radios on or off, every one at once.
+    async fn radio(&self, on: bool) -> Result<(), Refused> {
+        self.ask(|done| Ask::Radio { on, done }).await
     }
 
     /// Forgets a network saved from the launcher, with its password.
@@ -432,6 +453,42 @@ mod tests {
 
         assert_eq!(answer, Ok(()));
         main_loop.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn leaving_says_why_wifid_couldn_t() {
+        let (wifi, _, _, mut taken) = asking();
+        let main_loop = tokio::spawn(async move {
+            let Some(Ask::Leave { name, done }) = taken.recv().await else {
+                panic!("wasn't asked to leave");
+            };
+            done.send(Err(Refused::NotJoined)).unwrap();
+            name
+        });
+
+        let answer = wifi.leave("Lantern".into()).await;
+        drop(wifi);
+
+        assert_eq!(answer, Err(Refused::NotJoined));
+        assert_eq!(main_loop.await.unwrap(), "Lantern");
+    }
+
+    #[tokio::test]
+    async fn turning_wifi_off_asks_wifid_to() {
+        let (wifi, _, _, mut taken) = asking();
+        let main_loop = tokio::spawn(async move {
+            let Some(Ask::Radio { on, done }) = taken.recv().await else {
+                panic!("wasn't asked to turn the radios");
+            };
+            done.send(Ok(())).unwrap();
+            on
+        });
+
+        let answer = wifi.radio(false).await;
+        drop(wifi);
+
+        assert_eq!(answer, Ok(()));
+        assert!(!main_loop.await.unwrap());
     }
 
     #[tokio::test]

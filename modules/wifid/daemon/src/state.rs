@@ -22,6 +22,8 @@ pub struct State {
     saved: Vec<Saved>,
     /// By the access point's path in wpa_supplicant, which names its card.
     heard: BTreeMap<String, Heard>,
+    radio_off: bool,
+    wired: bool,
 }
 
 /// Every card, every saved network and the networks in the air, as the
@@ -32,6 +34,10 @@ pub struct Described {
     pub saved: Vec<Saved>,
     /// The strongest first.
     pub nearby: Vec<Nearby>,
+    /// Whether Wi-Fi's radios are on.
+    pub radio: bool,
+    /// Whether a cable reaches beyond the machine.
+    pub wired: bool,
 }
 
 /// A Wi-Fi card.
@@ -209,6 +215,16 @@ impl State {
         }
     }
 
+    /// Takes in whether Wi-Fi's radios are on.
+    pub fn radio(&mut self, on: bool) {
+        self.radio_off = !on;
+    }
+
+    /// Takes in whether a cable reaches beyond the machine.
+    pub fn wired(&mut self, wired: bool) {
+        self.wired = wired;
+    }
+
     /// Says what went wrong on the card of that name, or clears it.
     pub fn troubled(&mut self, card: &str, trouble: Option<Trouble>) {
         if let Some(card) = self.cards.values_mut().find(|shown| shown.name == card) {
@@ -251,6 +267,8 @@ impl State {
             cards: self.cards.values().cloned().collect(),
             saved: self.saved.clone(),
             nearby: self.nearby(),
+            radio: !self.radio_off,
+            wired: self.wired,
         }
     }
 
@@ -397,6 +415,26 @@ mod tests {
                 Progress::Reached(Reach::Online),
             ]
         );
+    }
+
+    #[test]
+    fn wifi_is_shown_on_until_its_radios_are_turned_off() {
+        let mut state = State::default();
+        let at_first = state.described().radio;
+
+        state.radio(false);
+
+        assert!(at_first);
+        assert!(!state.described().radio);
+    }
+
+    #[test]
+    fn a_cable_is_shown_while_it_reaches_beyond_the_machine() {
+        let mut state = State::default();
+
+        state.wired(true);
+
+        assert!(state.described().wired);
     }
 
     #[test]

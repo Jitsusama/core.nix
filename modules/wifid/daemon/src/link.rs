@@ -44,6 +44,14 @@ impl Link {
     }
 }
 
+/// Whether a cable reaches beyond the machine: a link of a real Ethernet
+/// card, not a container's or a bridge's, that's routable.
+pub fn wired(links: &[Value]) -> bool {
+    links.iter().any(|link| {
+        link["Type"] == "ether" && link["Kind"].is_null() && link["OperationalState"] == "routable"
+    })
+}
+
 fn text(value: &Value) -> Option<String> {
     value.as_str().map(str::to_string)
 }
@@ -90,6 +98,32 @@ mod tests {
     use serde_json::json;
 
     use super::*;
+
+    fn cable(state: &str) -> Value {
+        json!({"Index": 2, "Name": "eth0", "Type": "ether", "OperationalState": state})
+    }
+
+    #[test]
+    fn a_cable_reaching_beyond_the_machine_is_wired() {
+        let links = [card(), cable("routable")];
+
+        assert!(wired(&links));
+    }
+
+    #[test]
+    fn a_cable_plugged_into_nothing_isn_t() {
+        let links = [card(), cable("no-carrier")];
+
+        assert!(!wired(&links));
+    }
+
+    #[test]
+    fn a_container_s_link_isn_t_a_cable() {
+        let mut veth = cable("routable");
+        veth["Kind"] = json!("veth");
+
+        assert!(!wired(&[veth]));
+    }
 
     fn card() -> Value {
         json!({

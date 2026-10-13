@@ -25,6 +25,7 @@ mod link;
 mod lookup;
 mod network;
 mod page;
+mod rfkill;
 mod secret;
 mod service;
 mod state;
@@ -34,9 +35,9 @@ mod syntax;
 
 use std::collections::HashMap;
 use std::error::Error;
-use std::fs;
+use std::fs::{self, OpenOptions};
 use std::future;
-use std::io;
+use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::sync::Arc;
@@ -183,6 +184,8 @@ async fn run() -> Result<(), Box<dyn Error>> {
     networks.follow_all(all_links(&bus).await);
     let mut joining: Option<Joining> = None;
     let mut watched = state.subscribe();
+    let mut switched = switches();
+    let mut radios = rfkill::Switches::default();
     let following = async {
         loop {
             let deadline = joining.as_ref().map(|joining| joining.deadline);
@@ -227,6 +230,23 @@ async fn run() -> Result<(), Box<dyn Error>> {
                     }
                 }
                 Some(Ok(message)) = heard.next() => air.take_in(&bus, &message).await,
+                Some(event) = switched.recv() => {
+                    let was = radios.on();
+                    radios.take_in(event);
+                    change(&state, |state| state.radio(radios.on()));
+                    // The kernel takes every card's link down as its radio
+                    // goes off, and wpa_supplicant brings them back up only
+                    // when it can trace every Wi-Fi switch to its radio, so
+                    // networkd sets each up again however the radios came
+                    // back on.
+                    if !was && radios.on() {
+                        for card in &all_links(&bus).await.cards {
+                            if let Err(error) = reconfigure(&bus, card.index).await {
+                                eprintln!("<4>can't have networkd bring {} up: {error}", card.name);
+                            }
+                        }
+                    }
+                }
                 Some(ask) = taken.recv() => match ask {
                     Ask::Join { name, password, progress } => {
                         if let Some(before) = joining.take() {
@@ -334,7 +354,12 @@ impl Networks {
     /// Follows these, every Wi-Fi card there is, and stops following any
     /// other, whose task ends with it. Gives the names of the cards new to
     /// wifid.
-    fn follow_all(&mut self, links: Vec<Link>) -> Vec<String> {
+    fn follow_all(&mut self, links: Links) -> Vec<String> {
+        let Links {
+            cards: links,
+            wired,
+        } = links;
+        change(&self.state, |state| state.wired(wired));
         let there: Vec<i32> = links.iter().map(|link| link.index).collect();
         self.followed.retain(|index, _| there.contains(index));
         change(&self.state, |state| state.keep_only(&there));
@@ -538,6 +563,34 @@ async fn interface(bus: &Connection, card: OwnedObjectPath) -> zbus::Result<Inte
         .await
 }
 
+/// Turns every Wi-Fi radio on or off.
+fn radio(on: bool) -> Result<(), Refused> {
+    let turned = OpenOptions::new()
+        .write(true)
+        .open(rfkill::DEVICE)
+        .and_then(|mut device| device.write_all(&rfkill::turning(on)));
+    turned.map_err(|error| Refused::Failed {
+        reason: format!("{}: {error}", rfkill::DEVICE),
+    })
+}
+
+/// Every event of the radios' switches, read on a thread of its own, since
+/// the device is read by waiting on it. Without the device, Wi-Fi is shown
+/// on, as nothing could turn it off.
+fn switches() -> mpsc::UnboundedReceiver<rfkill::Event> {
+    let (sender, events) = mpsc::unbounded_channel();
+    std::thread::spawn(move || {
+        let mut device = match fs::File::open(rfkill::DEVICE) {
+            Ok(device) => device,
+            Err(error) => return eprintln!("<4>{}: {error}", rfkill::DEVICE),
+        };
+        let mut event = [0; 8];
+        // Each read gives one event, as much of it as was asked for.
+        while device.read_exact(&mut event).is_ok() && sender.send(event).is_ok() {}
+    });
+    events
+}
+
 /// What the shell is told of a change to the saved networks failing.
 fn refused(failure: store::Failure) -> Refused {
     match failure {
@@ -615,8 +668,14 @@ fn say(link: &Link, verdict: &Verdict) {
     }
 }
 
-/// Every Wi-Fi card's link, as networkd describes them.
-async fn all_links(bus: &Connection) -> Vec<Link> {
+/// What networkd describes: every Wi-Fi card's link, and whether a cable
+/// reaches beyond the machine.
+struct Links {
+    cards: Vec<Link>,
+    wired: bool,
+}
+
+async fn all_links(bus: &Connection) -> Links {
     let described = bus
         .call_method(
             Some("org.freedesktop.network1"),
@@ -627,10 +686,19 @@ async fn all_links(bus: &Connection) -> Vec<Link> {
         )
         .await;
     let Some(described) = json(described) else {
-        return Vec::new();
+        return Links {
+            cards: Vec::new(),
+            wired: false,
+        };
     };
-    let links = described["Interfaces"].as_array().into_iter().flatten();
-    links.filter_map(Link::described).collect()
+    let links = described["Interfaces"]
+        .as_array()
+        .map(Vec::as_slice)
+        .unwrap_or_default();
+    Links {
+        cards: links.iter().filter_map(Link::described).collect(),
+        wired: link::wired(links),
+    }
 }
 
 /// One link, as networkd describes it, if it's a Wi-Fi card's.
@@ -664,6 +732,19 @@ fn json(answer: zbus::Result<zbus::Message>) -> Option<serde_json::Value> {
             None
         }
     }
+}
+
+/// Has networkd set a link up again, as its files say.
+async fn reconfigure(bus: &Connection, index: i32) -> zbus::Result<()> {
+    bus.call_method(
+        Some("org.freedesktop.network1"),
+        "/org/freedesktop/network1",
+        Some("org.freedesktop.network1.Manager"),
+        "ReconfigureLink",
+        &(index,),
+    )
+    .await
+    .map(|_| ())
 }
 
 /// Asks networkd to read its files again, so it has wifid's.
@@ -1022,6 +1103,14 @@ impl Wifid<'_> {
                 let _ = done.send(self.scan().await);
                 return;
             }
+            Ask::Leave { name, done } => {
+                let _ = done.send(self.leave(&name).await);
+                return;
+            }
+            Ask::Radio { on, done } => {
+                let _ = done.send(radio(on));
+                return;
+            }
             Ask::Forget { name, done } => (self.store.forget(&name).map(|_| ()), done),
             Ask::Trust {
                 name,
@@ -1035,6 +1124,36 @@ impl Wifid<'_> {
         };
         // Whoever asked may have stopped waiting, which changes nothing.
         let _ = done.send(answer);
+    }
+
+    /// Takes every card on the network off it.
+    async fn leave(&self, name: &str) -> Result<(), Refused> {
+        let cards: Vec<String> = self
+            .state
+            .borrow()
+            .described()
+            .cards
+            .into_iter()
+            .filter(|card| card.network.as_deref() == Some(name))
+            .map(|card| card.name)
+            .collect();
+        if cards.is_empty() {
+            return Err(Refused::NotJoined);
+        }
+        for card in cards {
+            let left = match self.supplicant.get_interface(&card).await {
+                Ok(at) => match interface(self.bus, at).await {
+                    Ok(interface) => interface.disconnect().await,
+                    Err(error) => Err(error),
+                },
+                Err(error) => Err(error),
+            };
+            left.map_err(|error| Refused::Failed {
+                reason: format!("{card} didn't leave {name}: {error}"),
+            })?;
+            println!("<6>{card} left {name}, as asked");
+        }
+        Ok(())
     }
 
     /// Has every card wpa_supplicant drives look for networks now.

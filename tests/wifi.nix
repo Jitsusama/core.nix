@@ -624,5 +624,54 @@ pkgs.testers.runNixOSTest {
         status, stages, said = joining({"name": "Roadside Inn"})
         assert status == 0 and stages[-1] == "limited", said
         joined("Roadside Inn")
+
+    def on_network(name):
+        """Whether wifid tells the shell a card is on the network."""
+        return any(card["network"] == name for card in ask("Describe")["cards"])
+
+    with subtest("leaving the Inn from the shell keeps the card off it until it's joined"):
+        ask("Leave", {"name": "Roadside Inn"})
+        machine.wait_until_succeeds(
+            "wpa_cli -i wlan2 status | grep -qx wpa_state=DISCONNECTED", timeout=30
+        )
+        retry(lambda _: not on_network("Roadside Inn"), timeout_seconds=30)
+        refused("Leave", {"name": "Roadside Inn"}, "NotJoined")
+        machine.sleep(10)
+        machine.succeed("wpa_cli -i wlan2 status | grep -qx wpa_state=DISCONNECTED")
+        status, stages, said = joining({"name": "Roadside Inn"})
+        assert status == 0, said
+        joined("Roadside Inn")
+
+    with subtest("the shell is told whether a cable reaches beyond the machine"):
+        # The test's own network and QEMU's are both cables here.
+        links = machine.succeed("networkctl list --no-legend")
+        cables = [line.split()[1] for line in links.splitlines() if line.split()[2] == "ether"]
+        assert "routable" in links and cables, links
+        retry(lambda _: ask("Describe")["wired"] is True, timeout_seconds=30)
+        for cable in cables:
+            machine.succeed(f"ip link set {cable} down")
+        retry(lambda _: ask("Describe")["wired"] is False, timeout_seconds=30)
+        for cable in cables:
+            machine.succeed(f"ip link set {cable} up")
+        retry(lambda _: ask("Describe")["wired"] is True, timeout_seconds=60)
+
+    with subtest("turning Wi-Fi off from the shell switches the radios off, and on again"):
+        assert ask("Describe")["radio"], ask("Describe")
+        # Off its network first, so nothing but wifid has networkd set the
+        # card's link up again once the radios are back.
+        ask("Leave", {"name": "Roadside Inn"})
+        machine.wait_until_succeeds(
+            "wpa_cli -i wlan2 status | grep -qx wpa_state=DISCONNECTED", timeout=30
+        )
+        ask("Radio", {"on": False})
+        machine.wait_until_succeeds("rfkill list wifi | grep -q 'Soft blocked: yes'", timeout=10)
+        retry(lambda _: ask("Describe")["radio"] is False, timeout_seconds=30)
+        ask("Radio", {"on": True})
+        machine.wait_until_succeeds("! rfkill list wifi | grep -q 'Soft blocked: yes'", timeout=10)
+        retry(lambda _: ask("Describe")["radio"] is True, timeout_seconds=30)
+        retry(lambda _: ",UP" in machine.succeed("ip link show wlan2"), timeout_seconds=30)
+        status, stages, said = joining({"name": "Roadside Inn"})
+        assert status == 0, said
+        joined("Roadside Inn")
   '';
 }

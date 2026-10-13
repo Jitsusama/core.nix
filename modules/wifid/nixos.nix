@@ -79,7 +79,12 @@ in
       NoNewPrivileges = true;
       LockPersonality = true;
       MemoryDenyWriteExecute = true;
+      # The radios' switches are the one device wifid needs, to say whether
+      # Wi-Fi is on and turn it off and on for the shell. A machine without
+      # them still starts wifid, which then shows Wi-Fi on.
       PrivateDevices = true;
+      BindPaths = [ "-/dev/rfkill" ];
+      DeviceAllow = [ "/dev/rfkill rw" ];
       PrivateTmp = true;
       ProtectClock = true;
       ProtectControlGroups = true;

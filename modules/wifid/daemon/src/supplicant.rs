@@ -229,6 +229,9 @@ pub trait Interface {
 
     fn scan(&self, args: HashMap<&str, zvariant::Value<'_>>) -> zbus::Result<()>;
 
+    /// Leaves the network it's on, and joins none until asked.
+    fn disconnect(&self) -> zbus::Result<()>;
+
     /// Joins this network now, turning every other the card holds off.
     fn select_network(&self, path: &ObjectPath<'_>) -> zbus::Result<()>;
 
