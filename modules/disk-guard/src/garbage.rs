@@ -131,7 +131,10 @@ pub fn list(nix: &Path, idle: bool) -> Result<Vec<Dead>, String> {
     for chunk in paths.chunks(CHUNK) {
         let mut argv: Vec<&OsStr> = vec![nix.as_os_str()];
         argv.extend(NIX_COMMAND.map(OsStr::new));
-        argv.extend(["path-info", "--json"].map(OsStr::new));
+        // A dead path is only ever in the local store, so nothing a
+        // substituter says is wanted, and the system unit has no network
+        // to ask one: unasked, Nix looks up a path it can't find there.
+        argv.extend(["path-info", "--json", "--offline"].map(OsStr::new));
         argv.extend(chunk.iter().map(OsStr::new));
         dead.extend(parse(&ran(&argv, DESCRIBE_TIMEOUT, idle)?)?);
     }
