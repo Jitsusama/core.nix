@@ -43,8 +43,12 @@ pub enum Class {
     NixBuild,
     /// An older build of a crate a newer one replaced.
     Replaced,
-    /// Nix's garbage, as the garbage policy takes it.
-    Garbage,
+    /// A batch of Nix's garbage, in the place the garbage policy gave it,
+    /// and whether a healthy disk keeps it, being young and in budget.
+    Garbage {
+        kept: bool,
+        order: u16,
+    },
     /// A producer's own collection, run every so long, or from a band on.
     Producer {
         every: Option<f64>,
@@ -64,7 +68,7 @@ impl Class {
     pub fn command(self) -> bool {
         matches!(
             self,
-            Class::Producer { .. } | Class::Podman { .. } | Class::Garbage
+            Class::Producer { .. } | Class::Podman { .. } | Class::Garbage { .. }
         )
     }
 
@@ -83,7 +87,7 @@ impl Class {
             Class::Coredump => "coredump",
             Class::NixBuild => "nix-build",
             Class::Replaced => "replaced",
-            Class::Garbage => "garbage",
+            Class::Garbage { .. } => "garbage",
             Class::Producer { .. } => "producer",
             Class::Log => "log",
             Class::Podman { .. } => "podman",
@@ -179,7 +183,9 @@ pub fn group(candidate: &Candidate, band: Band) -> Option<Group> {
             [NEVER, Some(DAY + HOUR), Some(DAY + HOUR), Some(DAY + HOUR)],
         ),
         // Their own policies decide how much each takes.
-        Class::Garbage => (Group::Garbage, [AT_ONCE; 4]),
+        // What's young and within budget waits for pressure.
+        Class::Garbage { kept: true, .. } => (Group::Garbage, [NEVER, AT_ONCE, AT_ONCE, AT_ONCE]),
+        Class::Garbage { kept: false, .. } => (Group::Garbage, [AT_ONCE; 4]),
         Class::Producer { every, from } => {
             // From its band on as often as an hour allows, so a band that
             // keeps returning doesn't run a long collection every pass.
@@ -235,6 +241,8 @@ pub fn plan(
         Class::Cache { rank, .. } => u16::from(rank),
         // After every cache: images are the slowest to fetch again.
         Class::Podman { .. } => u16::MAX,
+        // The garbage policy's own order: by age, then by size.
+        Class::Garbage { order, .. } => order,
         _ => 0,
     };
     steps.sort_by(|a, b| {

@@ -208,7 +208,14 @@ fn the_plan_goes_cheapest_loss_first() {
             2.0 * HOUR,
         ),
         candidate("variant", Class::Variant, 3.0 * HOUR),
-        candidate("garbage", Class::Garbage, 0.0),
+        candidate(
+            "garbage",
+            Class::Garbage {
+                kept: true,
+                order: 0,
+            },
+            0.0,
+        ),
         candidate("snapshot", Class::Snapshot, 0.0),
     ];
     let order = taken(&candidates, Band::Critical);
@@ -298,6 +305,23 @@ fn podman_prunes_after_the_caches_from_urgent_and_its_unused_images_at_critical(
     ];
     assert!(taken(&recent, Band::Critical).is_empty(), "at most hourly");
     assert!(dangling.command() && unused.command());
+}
+
+#[test]
+fn garbage_goes_in_its_own_order_and_healthy_keeps_what_its_budget_allows() {
+    let garbage = |kept, order| Class::Garbage { kept, order };
+    // Idle says nothing of garbage's order: the policy already set it.
+    let candidates = [
+        candidate("second", garbage(false, 1), 9.0 * HOUR),
+        candidate("kept", garbage(true, 2), 10.0 * HOUR),
+        candidate("first", garbage(false, 0), 1.0 * HOUR),
+    ];
+    assert_eq!(taken(&candidates, Band::Healthy), ["first", "second"]);
+    assert_eq!(
+        taken(&candidates, Band::Pressure),
+        ["first", "second", "kept"]
+    );
+    assert!(garbage(true, 0).command(), "measured alone");
 }
 
 #[test]
