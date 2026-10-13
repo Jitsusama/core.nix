@@ -61,6 +61,16 @@ const BUILD_TOOLS: &[&str] = &[
 pub(crate) const BUILD_VARIABLES: [&str; 3] =
     ["CARGO_TARGET_DIR", "CARGO_BUILD_BUILD_DIR", "CARGO_HOME"];
 
+/// Whether the guard keeps a variable of a process's environment: those
+/// that point a build somewhere, and the temporary directory it uses, which
+/// are all it keeps.
+pub(crate) fn kept(name: &[u8]) -> bool {
+    name == b"TMPDIR"
+        || BUILD_VARIABLES
+            .iter()
+            .any(|variable| name == variable.as_bytes())
+}
+
 /// A program's name, through Nix's wrappers: a binary wrapped as
 /// `.name-wrapped`, and a script, known only by the name it was called by.
 fn names(process: &Process) -> impl Iterator<Item = String> + '_ {
