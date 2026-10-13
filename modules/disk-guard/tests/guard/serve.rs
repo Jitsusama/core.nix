@@ -1,7 +1,8 @@
 use crate::procs::{link, stat, text};
 use disk_guard::config::Config;
 use disk_guard::daemon::{Guard, Places};
-use disk_guard::serve::{answering, hold, senses, steps, stopping};
+use disk_guard::notices::Change;
+use disk_guard::serve::{Desk, answering, hold, senses, steps, stopping};
 use disk_guard::socket::{Request, ask};
 use std::fs;
 use std::path::Path;
@@ -53,9 +54,14 @@ fn the_system_daemon_answers_for_what_the_asker_owns() {
 }
 
 fn guard(root: &Path) -> Guard {
+    guard_at(root, "0%")
+}
+
+/// A guard whose disk is under pressure below `pressure` free.
+fn guard_at(root: &Path, pressure: &str) -> Guard {
     let config = Config::parse(&format!(
         r#"{{ "version": 1, "scope": "user", "status_file": true,
-             "bands": {{ "pressure": "0%", "urgent": "0%", "critical": "0%", "target": "0%" }},
+             "bands": {{ "pressure": "{pressure}", "urgent": "0%", "critical": "0%", "target": "{pressure}" }},
              "sources": {{ "trash": {{ "kind": "trash", "path": "{}" }} }} }}"#,
         root.display()
     ))
@@ -86,11 +92,88 @@ fn the_loop_steps_until_told_to_stop_waiting_between() {
             waits.push(wait);
             waits.len() == 3
         },
+        &mut Fake::default(),
         &mut err,
     );
     assert_eq!(waits, [Duration::from_secs(5); 3]);
     assert!(dir.path().join("status.json").exists(), "it stepped");
     assert!(err.is_empty(), "{}", String::from_utf8_lossy(&err));
+}
+
+/// A desktop that saves power as told and keeps what it's told.
+#[derive(Default)]
+struct Fake {
+    saving: bool,
+    asked: usize,
+    told: Vec<Change>,
+    refuse: bool,
+}
+
+impl Desk for Fake {
+    fn saving(&mut self) -> bool {
+        self.asked += 1;
+        self.saving
+    }
+
+    fn tell(&mut self, change: &Change) -> Result<(), String> {
+        if self.refuse {
+            return Err("no one listens".to_owned());
+        }
+        self.told.push(change.clone());
+        Ok(())
+    }
+}
+
+/// Steps `guard` `count` times with `desk`, giving what was said.
+fn stepped(guard: &mut Guard, count: usize, desk: &mut Fake) -> String {
+    let mut waits = 0;
+    let mut err = Vec::new();
+    steps(
+        guard,
+        Duration::from_secs(5),
+        |_| {
+            waits += 1;
+            waits == count
+        },
+        desk,
+        &mut err,
+    );
+    String::from_utf8(err).unwrap()
+}
+
+#[test]
+fn the_desktop_is_told_once_when_a_disk_comes_under_pressure() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut guard = guard_at(dir.path(), "100%");
+    let mut desk = Fake::default();
+    let said = stepped(&mut guard, 3, &mut desk);
+    assert_eq!(desk.asked, 3, "the power profile is read each step");
+    let summaries: Vec<_> = desk
+        .told
+        .iter()
+        .map(|change| match change {
+            Change::Show(notice) => notice.summary.clone(),
+            Change::Withdraw => "withdrawn".to_owned(),
+        })
+        .collect();
+    // The first pass finds nothing in the empty trash, so it ends short.
+    assert_eq!(summaries.len(), 1, "{summaries:?} {said}");
+    assert!(summaries[0].ends_with("short of room"), "{summaries:?}");
+}
+
+#[test]
+fn a_healthy_disk_tells_the_desktop_nothing_and_a_deaf_one_is_told_of() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut desk = Fake::default();
+    assert_eq!(stepped(&mut guard(dir.path()), 2, &mut desk), "");
+    assert!(desk.told.is_empty());
+    let other = tempfile::tempdir().unwrap();
+    let mut deaf = Fake {
+        refuse: true,
+        ..Fake::default()
+    };
+    let said = stepped(&mut guard_at(other.path(), "100%"), 2, &mut deaf);
+    assert_eq!(said, "disk-guard: telling the desktop: no one listens\n");
 }
 
 #[test]
@@ -108,6 +191,7 @@ fn a_step_that_fails_is_told_of_and_the_loop_goes_on() {
             waits += 1;
             waits == 2
         },
+        &mut Fake::default(),
         &mut err,
     );
     assert_eq!(waits, 2);
@@ -130,6 +214,7 @@ fn waiting_ends_early_for_a_signal_to_stop() {
 
 #[test]
 fn this_machine_can_be_sensed() {
-    let senses = senses();
+    let senses = senses(true);
+    assert!(senses.saver);
     assert!(senses.pressure.io.some >= 0.0);
 }

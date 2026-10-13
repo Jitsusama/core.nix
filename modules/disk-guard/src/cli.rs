@@ -6,7 +6,7 @@ use crate::band::Band;
 use crate::config::{Config, Scope};
 use crate::daemon::{Guard, Places};
 use crate::serve::{answering, hold, steps, stopping};
-use crate::units::{Size, Span};
+use crate::units::{Size, Span, shown as size};
 use serde_json::Value;
 use std::ffi::OsString;
 use std::fs;
@@ -318,8 +318,10 @@ fn daemon(
             }
         }
     };
+    // Only the user daemon has a session to show a notice in.
+    let mut desk = crate::desktop::Buses::new(config.notify && scope == Scope::User);
     let mut guard = Guard::new(config, &places).map_err(failed)?;
-    steps(&mut guard, STEP_EVERY, &mut wait, err);
+    steps(&mut guard, STEP_EVERY, &mut wait, &mut desk, err);
     Ok(FINE)
 }
 
@@ -337,20 +339,6 @@ fn wall() -> f64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0.0, |since| since.as_secs_f64())
-}
-
-/// A size as people read one.
-fn size(bytes: u64) -> String {
-    let bytes = bytes as f64;
-    let (scale, unit) = [(40, "TiB"), (30, "GiB"), (20, "MiB"), (10, "KiB")]
-        .into_iter()
-        .find(|(shift, _)| bytes >= (1u64 << shift) as f64)
-        .unwrap_or((0, "B"));
-    if scale == 0 {
-        format!("{bytes} B")
-    } else {
-        format!("{:.1} {unit}", bytes / (1u64 << scale) as f64)
-    }
 }
 
 /// A length of time as people read one.

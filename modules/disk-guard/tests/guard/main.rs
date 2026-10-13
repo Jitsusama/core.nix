@@ -14,6 +14,8 @@ mod coredumps;
 #[cfg(target_os = "linux")]
 mod daemon;
 mod decide;
+#[cfg(target_os = "linux")]
+mod desktop;
 mod discover;
 mod entries;
 mod finished;
@@ -25,6 +27,8 @@ mod linux;
 mod locks;
 mod logs;
 mod nix_builds;
+#[cfg(target_os = "linux")]
+mod notices;
 mod pass;
 mod plan;
 #[cfg(target_os = "linux")]

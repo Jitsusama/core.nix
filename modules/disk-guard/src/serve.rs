@@ -4,6 +4,7 @@
 
 use crate::daemon::{Guard, Senses};
 use crate::moments::Power;
+use crate::notices::Change;
 use crate::socket::{Request, Server};
 use crate::vouch;
 use std::fs::{File, OpenOptions};
@@ -65,10 +66,21 @@ pub fn steps(
     guard: &mut Guard,
     every: Duration,
     mut wait: impl FnMut(Duration) -> bool,
+    desk: &mut dyn Desk,
     err: &mut dyn Write,
 ) {
     loop {
-        let stepped = crate::linux::tick().and_then(|tick| guard.step(&tick, &senses()));
+        let stepped = crate::linux::tick().and_then(|tick| {
+            let before = guard.status(tick.wall);
+            guard.step(&tick, &senses(desk.saving()))?;
+            let change = crate::notices::change(&before, &guard.status(tick.wall));
+            if let Some(change) = change
+                && let Err(why) = desk.tell(&change)
+            {
+                let _ = writeln!(err, "disk-guard: telling the desktop: {why}");
+            }
+            Ok(())
+        });
         if let Err(error) = stepped {
             let _ = writeln!(err, "disk-guard: {error}");
         }
@@ -119,16 +131,24 @@ pub fn stopping(signals: &[i32]) -> io::Result<impl FnMut(Duration) -> bool + us
     })
 }
 
-/// What the machine is doing. What can't be read is taken as least in
-/// the way: a machine with no supplies to read runs on mains, and no
-/// stall to read is no stall.
-pub fn senses() -> Senses {
+/// The desktop a daemon answers to: whether its person asked to save
+/// power, and where its notice goes.
+pub trait Desk {
+    fn saving(&mut self) -> bool;
+    fn tell(&mut self, change: &Change) -> Result<(), String>;
+}
+
+/// What the machine is doing, with `saver` saying whether its person
+/// asked to save power. What can't be read is taken as least in the way:
+/// a machine with no supplies to read runs on mains, and no stall to read
+/// is no stall.
+pub fn senses(saver: bool) -> Senses {
     Senses {
         power: crate::linux::power(Path::new("/sys/class/power_supply")).unwrap_or(Power {
             mains: true,
             battery: None,
         }),
-        saver: false,
+        saver,
         pressure: crate::linux::pressure(Path::new("/proc/pressure")).unwrap_or_default(),
     }
 }

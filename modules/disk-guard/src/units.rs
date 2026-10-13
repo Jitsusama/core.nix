@@ -44,6 +44,20 @@ impl Span {
     }
 }
 
+/// A number of bytes as people read one: `140.0 GiB`.
+pub fn shown(bytes: u64) -> String {
+    let bytes = bytes as f64;
+    let (scale, unit) = [(40, "TiB"), (30, "GiB"), (20, "MiB"), (10, "KiB")]
+        .into_iter()
+        .find(|(shift, _)| bytes >= (1u64 << shift) as f64)
+        .unwrap_or((0, "B"));
+    if scale == 0 {
+        format!("{bytes} B")
+    } else {
+        format!("{:.1} {unit}", bytes / (1u64 << scale) as f64)
+    }
+}
+
 /// How much space: a number of bytes, or a share of the filesystem it is
 /// measured on.
 #[derive(Clone, Copy, Debug, PartialEq)]

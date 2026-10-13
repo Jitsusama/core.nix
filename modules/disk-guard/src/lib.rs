@@ -14,6 +14,8 @@ pub mod coredumps;
 #[cfg(target_os = "linux")]
 pub mod daemon;
 pub mod decide;
+#[cfg(target_os = "linux")]
+pub mod desktop;
 pub mod discover;
 pub mod finished;
 #[cfg(target_os = "linux")]
@@ -25,6 +27,8 @@ pub mod locks;
 pub mod logs;
 pub mod moments;
 pub mod nix_builds;
+#[cfg(target_os = "linux")]
+pub mod notices;
 pub mod pass;
 pub mod plan;
 pub mod reclaim;
