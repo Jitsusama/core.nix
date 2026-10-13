@@ -1,4 +1,4 @@
-use disk_guard::pool::pool;
+use disk_guard::pool::{apfs_container, pool};
 use std::fs;
 use std::os::unix::fs::MetadataExt;
 use std::path::Path;
@@ -67,4 +67,24 @@ fn the_subvolumes_of_one_btrfs_pool_are_one_filesystem() {
         device(&sub),
         "no device number is a pool's"
     );
+}
+
+#[test]
+fn the_volumes_of_one_apfs_container_share_its_pool() {
+    let data = apfs_container("apfs", "/dev/disk3s5").unwrap();
+    // The sealed system volume mounts a snapshot of its own slice.
+    assert_eq!(apfs_container("apfs", "/dev/disk3s1s1"), Some(data));
+    assert_eq!(apfs_container("apfs", "/dev/disk3s2"), Some(data));
+    let other = apfs_container("apfs", "/dev/disk10s1").unwrap();
+    assert_ne!(other, data);
+    assert_ne!(data & 1 << 63, 0, "no device number is a pool's");
+}
+
+#[test]
+fn what_isnt_an_apfs_volume_has_no_container() {
+    assert_eq!(apfs_container("hfs", "/dev/disk4s2"), None);
+    assert_eq!(apfs_container("apfs", "/dev/disk4"), None);
+    assert_eq!(apfs_container("apfs", "disk3s5"), None);
+    assert_eq!(apfs_container("autofs", "map auto_home"), None);
+    assert_eq!(apfs_container("apfs", "/dev/diskXs1"), None);
 }

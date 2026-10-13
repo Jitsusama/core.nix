@@ -63,7 +63,9 @@
           "nixpkgs"
         ],
         "pre-commit": [],
-        "rust-overlay": "rust-overlay"
+        "rust-overlay": [
+          "rust-overlay"
+        ]
       },
       "locked": {
         "lastModified": 1791455435,
@@ -194,6 +196,7 @@
         "nixpkgs": "nixpkgs",
         "printf": "printf",
         "qmk": "qmk",
+        "rust-overlay": "rust-overlay",
         "spicetify-nix": "spicetify-nix",
         "treefmt-nix": "treefmt-nix",
         "wallpapers": "wallpapers"
@@ -202,7 +205,6 @@
     "rust-overlay": {
       "inputs": {
         "nixpkgs": [
-          "lanzaboote",
           "nixpkgs"
         ]
       },

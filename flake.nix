@@ -30,8 +30,15 @@
       # release carries both.
       url = "github:nix-community/lanzaboote/5bc59941ad05cfa434501ab20770bc6c6e824d4a";
       inputs.nixpkgs.follows = "nixpkgs";
+      inputs.rust-overlay.follows = "rust-overlay";
       # Only lanzaboote's own CI uses it.
       inputs.pre-commit.follows = "";
+    };
+    # Rust's standard library for other platforms, so a check can compile
+    # the disk guard for macOS where no Mac runs.
+    rust-overlay = {
+      url = "github:oxalica/rust-overlay";
+      inputs.nixpkgs.follows = "nixpkgs";
     };
     disko = {
       url = "github:nix-community/disko/v1.13.0";
@@ -73,6 +80,7 @@
       nix-darwin,
       treefmt-nix,
       lanzaboote,
+      rust-overlay,
       disko,
       wallpapers,
       neovim-pi,
@@ -270,6 +278,7 @@
             pkgs
             nixpkgs
             nix-darwin
+            rust-overlay
             ;
           formatting = (treefmt pkgs).config.build.check self;
         }

@@ -30,6 +30,8 @@ pub mod journal;
 pub mod linux;
 pub mod locks;
 pub mod logs;
+#[cfg(target_os = "macos")]
+pub mod macos;
 pub mod moments;
 pub mod nix_builds;
 #[cfg(target_os = "linux")]
@@ -38,7 +40,9 @@ pub mod notices;
 pub mod opens;
 pub mod pass;
 pub mod plan;
+pub mod pmset;
 pub mod pool;
+pub mod procargs;
 pub mod reclaim;
 pub mod replaced;
 pub mod scratch;

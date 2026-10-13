@@ -1,9 +1,16 @@
 use disk_guard::anchor::Dir;
 use std::fs;
+use std::io;
 use std::os::unix::fs::{PermissionsExt, symlink};
 use std::path::Path;
 
 const MIB: u64 = 1 << 20;
+
+type Child = fn(&Dir, &Path) -> io::Result<Dir>;
+
+/// Both ways of opening beneath: the kernel's own resolution, and the
+/// one a component at a time that platforms without `openat2` use.
+const BOTH: [(&str, Child); 2] = [("openat2", Dir::child), ("stepwise", Dir::child_stepwise)];
 
 fn sandbox() -> crate::sandbox::Sandbox {
     crate::sandbox::Sandbox::new()
@@ -29,8 +36,11 @@ fn a_root_opens_real_directories_beneath_it() {
     let root = sandbox();
     fs::create_dir_all(root.path().join("a/b")).unwrap();
     let dir = Dir::open(root.path()).unwrap();
-    assert!(dir.child(Path::new("a/b")).is_ok());
-    assert!(dir.child(Path::new("a/missing")).is_err());
+    for (how, child) in BOTH {
+        assert!(child(&dir, Path::new("a/b")).is_ok(), "{how}");
+        assert!(child(&dir, Path::new("./a/b/")).is_ok(), "{how}");
+        assert!(child(&dir, Path::new("a/missing")).is_err(), "{how}");
+    }
 }
 
 #[test]
@@ -38,8 +48,10 @@ fn the_empty_path_beneath_a_root_is_the_root() {
     let root = sandbox();
     fs::create_dir_all(root.path().join("a")).unwrap();
     let dir = Dir::open(root.path()).unwrap();
-    let itself = dir.child(Path::new("")).unwrap();
-    assert!(itself.child(Path::new("a")).is_ok());
+    for (how, child) in BOTH {
+        let itself = child(&dir, Path::new("")).unwrap();
+        assert!(child(&itself, Path::new("a")).is_ok(), "{how}");
+    }
 }
 
 #[test]
@@ -48,9 +60,14 @@ fn nothing_beneath_a_root_is_reached_through_a_symlink() {
     let elsewhere = sandbox();
     fs::create_dir_all(elsewhere.path().join("b")).unwrap();
     symlink(elsewhere.path(), root.path().join("a")).unwrap();
+    fs::create_dir_all(root.path().join("c")).unwrap();
+    symlink(elsewhere.path(), root.path().join("c/d")).unwrap();
     let dir = Dir::open(root.path()).unwrap();
-    assert!(dir.child(Path::new("a")).is_err());
-    assert!(dir.child(Path::new("a/b")).is_err());
+    for (how, child) in BOTH {
+        assert!(child(&dir, Path::new("a")).is_err(), "{how}");
+        assert!(child(&dir, Path::new("a/b")).is_err(), "{how}");
+        assert!(child(&dir, Path::new("c/d/b")).is_err(), "{how}");
+    }
 }
 
 #[test]
@@ -58,9 +75,11 @@ fn nothing_above_a_root_is_reached() {
     let root = sandbox();
     fs::create_dir_all(root.path().join("a")).unwrap();
     let dir = Dir::open(&root.path().join("a")).unwrap();
-    assert!(dir.child(Path::new("..")).is_err());
-    assert!(dir.child(Path::new("../a")).is_err());
-    assert!(dir.child(root.path()).is_err());
+    for (how, child) in BOTH {
+        assert!(child(&dir, Path::new("..")).is_err(), "{how}");
+        assert!(child(&dir, Path::new("../a")).is_err(), "{how}");
+        assert!(child(&dir, root.path()).is_err(), "{how}");
+    }
 }
 
 #[test]
@@ -68,12 +87,28 @@ fn a_file_is_not_a_directory() {
     let root = sandbox();
     fs::write(root.path().join("f"), "x").unwrap();
     assert!(Dir::open(&root.path().join("f")).is_err());
-    assert!(
-        Dir::open(root.path())
-            .unwrap()
-            .child(Path::new("f"))
-            .is_err()
-    );
+    let dir = Dir::open(root.path()).unwrap();
+    for (how, child) in BOTH {
+        assert!(child(&dir, Path::new("f")).is_err(), "{how}");
+    }
+}
+
+#[test]
+fn nothing_on_another_filesystem_is_reached_beneath_a_root() {
+    let root = sandbox();
+    if !crate::pool::on_btrfs(root.path()) {
+        eprintln!("skipped: {} isn't on Btrfs", root.path().display());
+        return;
+    }
+    fs::create_dir_all(root.path().join("a")).unwrap();
+    crate::pool::subvolume(&root.path().join("a"), "held");
+    fs::create_dir_all(root.path().join("a/held/inside")).unwrap();
+    let dir = Dir::open(root.path()).unwrap();
+    for (how, child) in BOTH {
+        assert!(child(&dir, Path::new("a")).is_ok(), "{how}");
+        assert!(child(&dir, Path::new("a/held")).is_err(), "{how}");
+        assert!(child(&dir, Path::new("a/held/inside")).is_err(), "{how}");
+    }
 }
 
 #[test]
