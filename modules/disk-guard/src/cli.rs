@@ -82,28 +82,49 @@ const USAGE: &str = "usage: disk-guard user|system [--config FILE] [--state DIR]
        disk-guard thaw";
 
 impl Env {
-    /// The places the XDG base directories and the account give.
+    /// The places the XDG base directories, the account and this platform
+    /// give.
     pub fn from_environment() -> Env {
         let var = |name: &str| {
             std::env::var_os(name)
                 .filter(|value| !value.is_empty())
                 .map(PathBuf::from)
         };
+        // SAFETY: geteuid only reads the process's own credentials.
+        let uid = unsafe { libc::geteuid() };
+        Env::for_os(std::env::consts::OS, var, uid)
+    }
+
+    /// The places on `os`, as Rust names it, given the environment `var`
+    /// reads and the account `uid`. A Mac keeps a daemon's state in
+    /// /var/db and what lasts a boot in /var/run, and has no runtime
+    /// directory for an account: its own temporary directory, which
+    /// launchd gives an agent, lasts until the next boot too.
+    pub fn for_os(os: &str, var: impl Fn(&str) -> Option<PathBuf>, uid: u32) -> Env {
         let home = var("HOME").unwrap_or_else(|| PathBuf::from("/"));
         let config = var("XDG_CONFIG_HOME").unwrap_or_else(|| home.join(".config"));
         let state = var("XDG_STATE_HOME").unwrap_or_else(|| home.join(".local/state"));
-        // SAFETY: geteuid only reads the process's own credentials.
-        let uid = unsafe { libc::geteuid() };
-        let runtime =
-            var("XDG_RUNTIME_DIR").unwrap_or_else(|| PathBuf::from(format!("/run/user/{uid}")));
+        let mac = os == "macos";
+        let runtime = var("XDG_RUNTIME_DIR").unwrap_or_else(|| {
+            if mac {
+                var("TMPDIR").unwrap_or_else(|| home.join("Library/Caches"))
+            } else {
+                PathBuf::from(format!("/run/user/{uid}"))
+            }
+        });
+        let (system_state, system_run) = if mac {
+            ("/var/db/disk-guard", "/var/run/disk-guard")
+        } else {
+            ("/var/lib/disk-guard", "/run/disk-guard")
+        };
         Env {
             config: config.join("disk-guard/config.json"),
             state: state.join("disk-guard"),
             status: runtime.join("disk-guard/status.json"),
             system_config: PathBuf::from("/etc/disk-guard/config.json"),
-            system_state: PathBuf::from("/var/lib/disk-guard"),
-            system_status: PathBuf::from("/run/disk-guard/status.json"),
-            system_socket: PathBuf::from("/run/disk-guard/socket"),
+            system_state: PathBuf::from(system_state),
+            system_status: Path::new(system_run).join("status.json"),
+            system_socket: Path::new(system_run).join("socket"),
             processes: PathBuf::from("/proc"),
         }
     }
