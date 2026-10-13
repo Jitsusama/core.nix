@@ -46,9 +46,13 @@ let
     interface=wlan0
     ssid=Lantern
     channel=6
+    # WPA2 and WPA3 both, as a home network's often is; the card takes
+    # WPA3, by hash-to-element.
     wpa=2
-    wpa_key_mgmt=WPA-PSK
+    wpa_key_mgmt=WPA-PSK SAE
     rsn_pairwise=CCMP
+    ieee80211w=1
+    sae_pwe=2
     wpa_passphrase=glowing in the dark
   '';
 
@@ -650,6 +654,8 @@ pkgs.testers.runNixOSTest {
         # Lantern's session ran out long ago, so it wants a sign-in again.
         assert stages[0] == "joining" and stages[-1] == "signIn", said
         joined("Lantern")
+        # By WPA3, which the card prefers where the network offers both.
+        machine.succeed("wpa_cli -i wlan2 status | grep -qx key_mgmt=SAE")
         holds_address("10.42.0.")
         lantern = saved_as("Lantern")
         assert lantern and not lantern[0]["declared"], lantern
