@@ -114,13 +114,59 @@ pub fn list(nix: &Path, idle: bool) -> Result<Vec<Dead>, String> {
     Ok(dead)
 }
 
+/// How long deleting one batch may take.
+const DELETE_TIMEOUT: Duration = Duration::from_secs(10 * 60);
+/// How many paths may come alive since the listing before it's taken as
+/// too stale to go on with.
+const REVIVALS: usize = 16;
+
+/// Deletes the batch's `paths` that still exist through `nix store
+/// delete`, with each one's dead referrers. Nix refuses a path a root
+/// reaches again since the listing, having deleted those before it, so
+/// it's dropped and the rest tried again.
+pub fn delete(nix: &Path, paths: &[String], idle: bool) -> Result<(), String> {
+    let mut alive: Vec<String> = Vec::new();
+    loop {
+        let left: Vec<&String> = paths
+            .iter()
+            .filter(|path| !alive.contains(path))
+            .filter(|path| Path::new(path).symlink_metadata().is_ok())
+            .collect();
+        if left.is_empty() {
+            return Ok(());
+        }
+        let mut argv: Vec<&OsStr> = vec![nix.as_os_str(), "store".as_ref(), "delete".as_ref()];
+        argv.extend(left.iter().map(|path| OsStr::new(path.as_str())));
+        let (ok, said) = output(&argv, DELETE_TIMEOUT, idle)?;
+        if ok {
+            return Ok(());
+        }
+        let revived = said
+            .split("Cannot delete path '")
+            .nth(1)
+            .and_then(|rest| rest.split_once("' since it is still alive"))
+            .map(|(path, _)| path.to_owned())
+            .filter(|path| left.contains(&path));
+        match revived {
+            Some(path) if alive.len() < REVIVALS => alive.push(path),
+            Some(_) => return Err(format!("{REVIVALS} paths came alive since the listing")),
+            None => return Err(failed(&argv, &said)),
+        }
+    }
+}
+
 /// What a command printed, or why it failed, in its own last words.
 fn ran(argv: &[&OsStr], timeout: Duration, idle: bool) -> Result<String, String> {
-    let name = Path::new(argv[0])
-        .file_name()
-        .unwrap_or_default()
-        .to_string_lossy()
-        .into_owned();
+    match output(argv, timeout, idle)? {
+        (true, stdout) => Ok(stdout),
+        (false, stderr) => Err(failed(argv, &stderr)),
+    }
+}
+
+/// Whether a command succeeded, with what it printed if so and what it
+/// said on its error stream if not.
+fn output(argv: &[&OsStr], timeout: Duration, idle: bool) -> Result<(bool, String), String> {
+    let name = name(argv);
     let job = Job {
         argv: argv.iter().map(|&arg| arg.to_owned()).collect(),
         cwd: None,
@@ -133,18 +179,28 @@ fn ran(argv: &[&OsStr], timeout: Duration, idle: bool) -> Result<String, String>
         Ran::TimedOut => Err(format!("{name} ran past {timeout:?}")),
         Ran::Finished(output) if output.truncated => Err(format!("{name} said more than it may")),
         Ran::Finished(output) if output.status == Some(0) => {
-            String::from_utf8(output.stdout).map_err(|_| format!("{name} printed what isn't text"))
+            let stdout = String::from_utf8(output.stdout);
+            Ok((
+                true,
+                stdout.map_err(|_| format!("{name} printed what isn't text"))?,
+            ))
         }
-        Ran::Finished(output) => {
-            let said = String::from_utf8_lossy(&output.stderr);
-            let last = said
-                .lines()
-                .rev()
-                .find(|line| !line.trim().is_empty())
-                .unwrap_or("");
-            Err(format!("{name} failed: {last}"))
-        }
+        Ran::Finished(output) => Ok((false, String::from_utf8_lossy(&output.stderr).into_owned())),
     }
+}
+
+fn failed(argv: &[&OsStr], said: &str) -> String {
+    let last = said
+        .lines()
+        .rev()
+        .find(|line| !line.trim().is_empty())
+        .unwrap_or("");
+    format!("{} failed: {last}", name(argv))
+}
+
+fn name(argv: &[&OsStr]) -> String {
+    let program = Path::new(argv[0]).file_name().unwrap_or_default();
+    program.to_string_lossy().into_owned()
 }
 
 /// The garbage in the order it goes, in batches of at most `most` paths

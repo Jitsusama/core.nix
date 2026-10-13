@@ -1,4 +1,4 @@
-use disk_guard::garbage::{Batch, Dead, batches, list, parse};
+use disk_guard::garbage::{Batch, Dead, batches, delete, list, parse};
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
@@ -49,6 +49,83 @@ fn the_dead_are_listed_and_described_in_chunks_the_kernel_takes() {
     );
     let asked = fs::read_to_string(dir.path().join("asked")).unwrap();
     assert_eq!(asked, "1000\n1000\n500\n");
+}
+
+/// A `nix` whose `store delete` deletes each path in turn, as Nix does,
+/// until one marked alive, which it refuses in Nix's words; it notes
+/// each time it's run.
+fn deleting_nix(dir: &Path) -> std::path::PathBuf {
+    script(
+        &dir.join("nix"),
+        &format!(
+            "[ \"$1 $2\" = 'store delete' ] || exit 9\nshift 2\n\
+             echo \"$*\" >> {}\n\
+             for p in \"$@\"; do\n\
+               [ -e \"$p\" ] || {{ echo \"error: path '$p' is not valid\" >&2; exit 1; }}\n\
+               if [ -e \"$p.alive\" ]; then\n\
+                 echo \"error: Cannot delete path '$p' since it is still alive. To find out \
+                 why, use: nix-store --query --roots and nix-store --query --referrers\" >&2\n\
+                 exit 1\n\
+               fi\n\
+               rm -r \"$p\"\n\
+             done\n",
+            dir.join("runs").display()
+        ),
+    );
+    dir.join("nix")
+}
+
+#[test]
+fn a_batch_is_deleted_without_what_came_alive_or_is_already_gone() {
+    let dir = tempfile::tempdir().unwrap();
+    let nix = deleting_nix(dir.path());
+    let path = |name: &str| dir.path().join(name).to_str().unwrap().to_owned();
+    for name in ["a", "live", "b"] {
+        fs::create_dir(path(name)).unwrap();
+    }
+    fs::write(path("live.alive"), "").unwrap();
+    let batch = [path("gone"), path("a"), path("live"), path("b")];
+    delete(&nix, &batch, false).unwrap();
+    assert!(!Path::new(&path("a")).exists() && !Path::new(&path("b")).exists());
+    assert!(Path::new(&path("live")).exists(), "alive, so kept");
+    let runs = fs::read_to_string(dir.path().join("runs")).unwrap();
+    assert_eq!(
+        runs,
+        format!(
+            "{a} {live} {b}\n{b}\n",
+            a = path("a"),
+            live = path("live"),
+            b = path("b")
+        )
+    );
+}
+
+#[test]
+fn a_delete_that_fails_otherwise_says_why() {
+    let dir = tempfile::tempdir().unwrap();
+    script(
+        &dir.path().join("nix"),
+        "echo 'error: unexpected end-of-file' >&2; exit 1\n",
+    );
+    let real = dir.path().join("x");
+    fs::create_dir(&real).unwrap();
+    let failed = delete(
+        &dir.path().join("nix"),
+        &[real.to_str().unwrap().to_owned()],
+        false,
+    );
+    assert_eq!(
+        failed.unwrap_err(),
+        "nix failed: error: unexpected end-of-file"
+    );
+    assert_eq!(
+        delete(
+            &dir.path().join("nix"),
+            &["/nowhere/at/all".to_owned()],
+            false
+        ),
+        Ok(())
+    );
 }
 
 #[test]
