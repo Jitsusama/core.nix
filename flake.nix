@@ -108,6 +108,7 @@
         curl = ./modules/curl/home.nix;
         dig = ./modules/dig/home.nix;
         direnv = ./modules/direnv/home.nix;
+        disk-guard = ./modules/disk-guard/home.nix;
         ergodox = moduleFrom ./modules/ergodox/home.nix { inherit qmk lufa printf; };
         fd = ./modules/fd/home.nix;
         fontconfig = ./modules/fontconfig/home.nix;
@@ -180,6 +181,7 @@
         btrfs = ./modules/btrfs/nixos.nix;
         camera = ./modules/camera/nixos.nix;
         coredump = ./modules/coredump/nixos.nix;
+        disk-guard = ./modules/disk-guard/nixos.nix;
         disko = moduleFrom ./modules/disko/nixos.nix { inherit disko; };
         ergodox = ./modules/ergodox/nixos.nix;
         firmware-settings = ./modules/firmware-settings/nixos.nix;
@@ -239,21 +241,21 @@
       };
 
       formatter = forEachSystem (pkgs: (treefmt pkgs).config.build.wrapper);
-
-      # Where core.nix's own programs are worked on, with the toolchain
-      # their packages build with: `nix develop`, then cargo in the
-      # program's directory.
-      devShells.x86_64-linux.default =
-        let
-          pkgs = nixpkgs.legacyPackages.x86_64-linux;
-        in
-        pkgs.mkShell {
-          inputsFrom = [ (pkgs.callPackage ./modules/wifid/package.nix { }) ];
+      # The tools for working on core's own programs, the disk guard and
+      # wifid among them, with the toolchain their packages build with, so
+      # nothing but Nix has to be installed first. direnv enters it in a
+      # program's directory, or `nix develop` then cargo there.
+      devShells = forEachSystem (pkgs: {
+        default = pkgs.mkShell {
           packages = [
+            pkgs.cargo
             pkgs.clippy
+            pkgs.rust-analyzer
+            pkgs.rustc
             pkgs.rustfmt
           ];
         };
+      });
 
       checks = forEachSystem (
         pkgs:

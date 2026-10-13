@@ -1,0 +1,1286 @@
+//! The guard's loop, one step at a time: read the clocks, band and
+//! forecast every filesystem a source lies on, and run a pass on each one
+//! that needs it, journalling what it did and keeping what it learned.
+
+use crate::anchor::Dir;
+use crate::band::{Band, Space, Thresholds};
+use crate::clock::Tick;
+use crate::config::{Config, Source};
+use crate::decide::{Decision, Fill, Situation, decide, powered, spare};
+use crate::dedupe::{self, Deduped};
+use crate::finished::{self, Answers, Predicate};
+use crate::garbage::{self, BATCH_BYTES, Batch, Dead, GC_TIMEOUT, Listing};
+use crate::generations::{self, Boot};
+use crate::host::{FRESH, Filesystem, Reclaim, Scan};
+use crate::journal::{self, Journal, Journaled, Line};
+use crate::moments::{Power, Pressure};
+use crate::pass::{Disk, End, Goal, Learned, Outcome, Reclaimer, pass};
+use crate::plan::{Candidate, Class};
+use crate::pool::pool;
+use crate::socket::{Reply, Request, Responder};
+use crate::state::{self, Memory};
+use crate::survey::{Action, Offer, World, named, survey};
+use crate::units::Size;
+use serde::Serialize;
+use std::cell::Cell;
+use std::collections::HashMap;
+use std::collections::{BTreeMap, BTreeSet};
+use std::ffi::OsString;
+use std::fs;
+use std::io;
+use std::path::{Path, PathBuf};
+use std::rc::Rc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc::{self, Receiver, TryRecvError};
+use std::sync::{Arc, Mutex};
+use std::time::Instant;
+
+/// What the machine is doing, read by the caller each step.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Senses {
+    pub power: Power,
+    /// Whether the power profile is saving power.
+    pub saver: bool,
+    pub pressure: Pressure,
+}
+
+/// A filesystem a source lies on, as last seen.
+struct Watched {
+    path: PathBuf,
+    band: Band,
+    fill: Fill,
+    space: Option<Space>,
+    /// After a pass that fell short: no other until this monotonic time,
+    /// unless the band gets worse than it was.
+    rest: Option<Rest>,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct Rest {
+    until: f64,
+    seconds: f64,
+    band: Band,
+}
+
+/// How long a filesystem rests after a pass that fell short, at first and
+/// at most: what was kept is in use or can't be judged, and looking again
+/// at once would only find the same and spend a scan saying so.
+const FIRST_REST: f64 = 60.0;
+const LONGEST_REST: f64 = 900.0;
+
+/// How long a pass is assumed to take before one has been timed.
+const FIRST_PASS_SECONDS: f64 = 60.0;
+/// The weight each timed pass carries against those before it.
+const PASS_WEIGHT: f64 = 0.3;
+/// How often what was learned is saved when no pass has run.
+const SAVE_EVERY: f64 = 300.0;
+/// How often the status file is written when nothing in it has changed,
+/// so its heartbeat says the guard is alive.
+const HEARTBEAT_EVERY: f64 = 30.0;
+
+/// What the garbage's commands and candidates are named for.
+const GARBAGE: &str = "garbage";
+/// What linking the store's identical files is journaled and run as.
+const DEDUPE: &str = "dedupe";
+/// How long after a failed run linking the store's files the next waits.
+const DEDUPE_RETRY: f64 = 86400.0;
+
+type DedupeOut = (f64, Arc<AtomicBool>, Receiver<Result<Option<u64>, String>>);
+
+/// The candidates a profile's generations are offered as.
+const GENERATIONS: &str = "generations";
+const YOUNG_GENERATIONS: &str = "generations:young";
+/// How old Nix's garbage listing may grow on a healthy disk, and under
+/// pressure; and how long a listing that failed waits for the next.
+const LISTING_FRESH: f64 = 86400.0;
+const LISTING_PRESSED: f64 = 3600.0;
+const LISTING_RETRY: f64 = 3600.0;
+/// The most paths deleted in one go, so one refused path costs little.
+const MOST_PER_BATCH: usize = 300;
+/// How long a user daemon waits for the system daemon to hear its
+/// heartbeat.
+const HEARTBEAT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(2);
+/// How long a user daemon's word holds a filesystem's passes for it.
+const SPOKEN_FOR: std::time::Duration = std::time::Duration::from_secs(60);
+
+/// Where a guard keeps and reads things.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Places {
+    /// Its memory and journal.
+    pub state: PathBuf,
+    /// Its status file, when the config asks for one.
+    pub status: Option<PathBuf>,
+    /// Where processes are read from: `/proc`.
+    pub processes: PathBuf,
+    /// The system daemon's socket, for a user daemon to ask about the
+    /// processes it can't read.
+    pub system: Option<PathBuf>,
+    /// Links to the systems running and booted, whose generations stay.
+    pub running: Vec<PathBuf>,
+}
+
+pub struct Guard {
+    config: Config,
+    processes: PathBuf,
+    system: Option<PathBuf>,
+    memory_path: PathBuf,
+    memory: Memory,
+    journal: Journal,
+    status_path: Option<PathBuf>,
+    predicates: Vec<Predicate>,
+    answers: Answers,
+    watched: BTreeMap<u64, Watched>,
+    last: Option<LastPass>,
+    saved_at: Option<f64>,
+    written: Option<(f64, Status)>,
+    /// Whether what an earlier run left moved aside has been seen to.
+    resumed: bool,
+    /// Nix's garbage as last listed, for the system daemon, and where it's
+    /// kept for the next guard.
+    listing: Option<Listing>,
+    listing_path: PathBuf,
+    /// When a listing last began, so one that failed waits.
+    listing_begun: Option<f64>,
+    /// A listing under way on its own thread, and when it began.
+    listing_out: Option<(f64, Listening)>,
+    /// What a system daemon hears from user daemons.
+    hearing: Option<Hearing>,
+    /// For a user daemon, the filesystems the system daemon collects
+    /// garbage on, by device, as it last said.
+    collected_on: BTreeSet<u64>,
+    /// Links to the systems running and booted.
+    running: Vec<PathBuf>,
+    /// For a user daemon, whether the system daemon answered its last
+    /// heartbeat.
+    system_heard: bool,
+    /// Whether garbage is to be listed again at once, generations having
+    /// expired since the listing began.
+    relist: bool,
+    /// A run linking the store's identical files: when it began, what
+    /// stops it, and where it tells how it ended.
+    dedupe_out: Option<DedupeOut>,
+    /// When the last such run failed.
+    dedupe_failed: Option<f64>,
+}
+
+/// Where a listing on its own thread sends the dead paths, or why not.
+type Listening = Receiver<Result<Vec<Dead>, String>>;
+
+/// What a system daemon hears from user daemons through its socket.
+pub struct Hearing {
+    /// When a user daemon last spoke for each filesystem, by device.
+    pub spoken: Arc<Mutex<HashMap<u64, Instant>>>,
+    /// The collects asked for: a path on the filesystem, the band to take
+    /// its garbage as, and the connection to answer on.
+    pub collects: Receiver<(PathBuf, Band, Responder)>,
+}
+
+/// What the status file says, for the desktop's disk piece and
+/// `disk-guard status`.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct Status {
+    pub version: u32,
+    /// When the guard last wrote this, in wall seconds.
+    pub heartbeat: f64,
+    pub filesystems: Vec<FilesystemStatus>,
+    pub last: Option<LastPass>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct FilesystemStatus {
+    pub path: PathBuf,
+    pub band: Band,
+    pub free: u64,
+    pub total: u64,
+    /// Seconds until the next band at the present fill, if it's filling.
+    pub forecast: Option<f64>,
+}
+
+/// What a pass on one filesystem would take, in order, done nowhere.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Preview {
+    pub path: PathBuf,
+    pub band: Band,
+    pub free: u64,
+    pub total: u64,
+    pub target: u64,
+    pub end: String,
+    pub taken: Vec<crate::plan::Candidate>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct LastPass {
+    pub at: f64,
+    pub path: PathBuf,
+    pub band: Band,
+    pub end: String,
+    pub freed: u64,
+}
+
+impl Guard {
+    pub fn new(config: Config, places: &Places) -> io::Result<Guard> {
+        let state = &places.state;
+        let memory_path = state.join("memory.json");
+        let memory = match state::load(&memory_path) {
+            Ok(memory) => memory.unwrap_or_default(),
+            Err(error) if error.kind() == io::ErrorKind::InvalidData => {
+                // Kept aside for whoever wants to know why, and begun afresh.
+                fs::rename(&memory_path, state.join("memory.json.damaged"))?;
+                Memory::default()
+            }
+            Err(error) => return Err(error),
+        };
+        let predicates = config
+            .sources
+            .values()
+            .filter_map(|source| match source {
+                Source::Finished {
+                    remote,
+                    command,
+                    timeout,
+                } => Some(Predicate {
+                    remote: regex_lite::Regex::new(remote).ok()?,
+                    command: command.iter().map(OsString::from).collect(),
+                    timeout: timeout.0,
+                }),
+                _ => None,
+            })
+            .collect();
+        let status_path = places.status.clone().filter(|_| config.status_file);
+        let listing_path = state.join("garbage.json");
+        // One that can't be read is listed afresh.
+        let listing: Option<Listing> = fs::read(&listing_path)
+            .ok()
+            .and_then(|bytes| serde_json::from_slice(&bytes).ok());
+        Ok(Guard {
+            config,
+            processes: places.processes.clone(),
+            system: places.system.clone(),
+            memory_path,
+            memory,
+            journal: Journal::new(&state.join("journal.jsonl"), journal::LIMIT),
+            status_path,
+            predicates,
+            answers: Answers::default(),
+            watched: BTreeMap::new(),
+            last: None,
+            saved_at: None,
+            written: None,
+            resumed: false,
+            listing_begun: listing.as_ref().map(|listing| listing.listed_at),
+            listing,
+            listing_path,
+            listing_out: None,
+            hearing: None,
+            collected_on: BTreeSet::new(),
+            running: places.running.clone(),
+            system_heard: false,
+            relist: false,
+            dedupe_out: None,
+            dedupe_failed: None,
+        })
+    }
+
+    pub fn step(&mut self, tick: &Tick, senses: &Senses) -> io::Result<()> {
+        // Once: what it resumes it journals as ended, so looking again
+        // would only re-read the journal every step to find nothing.
+        if !self.resumed {
+            self.resumed = true;
+            self.resume(tick)?;
+        }
+        self.memory.awake.observe(tick);
+        self.watch();
+        self.heartbeat();
+        self.heard_garbage(tick.wall)?;
+        let spare = spare(
+            senses.power,
+            senses.saver,
+            &self.memory.awake,
+            tick.wall,
+            senses.pressure,
+        );
+        let mut due = Vec::new();
+        for (&device, watched) in &mut self.watched {
+            let Ok(space) = crate::linux::space(&watched.path) else {
+                watched.space = None;
+                continue;
+            };
+            let thresholds = Thresholds::new(&self.config.bands, space.total);
+            watched.band = thresholds.band(&space, watched.band);
+            watched.fill.observe(tick.monotonic, space.free);
+            watched.space = Some(space);
+            if watched.band == Band::Healthy {
+                watched.rest = None;
+            }
+            let decision = decide(&Situation {
+                band: watched.band,
+                free: space.free,
+                thresholds,
+                fill: &watched.fill,
+                pass_seconds: self.memory.pass_seconds.unwrap_or(FIRST_PASS_SECONDS),
+                upkept: self.memory.upkept,
+                now: tick.wall,
+                spare,
+            });
+            let resting = watched.rest.is_some_and(|rest| {
+                tick.monotonic < rest.until
+                    && matches!(decision, Decision::Reach(band) if band <= rest.band)
+            });
+            // A user daemon on this filesystem asks for the garbage in its
+            // turn; the system's own upkeep goes on.
+            let driven =
+                matches!(decision, Decision::Reach(_)) && spoken_for(&self.hearing, device);
+            if decision != Decision::Rest && !resting && !driven {
+                due.push((device, decision, thresholds));
+            }
+        }
+        self.list_garbage(tick.wall, spare);
+        self.dedupe(tick, spare, powered(senses.power, senses.saver))?;
+        self.collects(tick);
+        let passed = !due.is_empty();
+        if passed {
+            self.passes(tick, &due)?;
+        }
+        if passed || self.saved_at.is_none_or(|at| tick.wall - at >= SAVE_EVERY) {
+            state::save(&self.memory_path, &self.memory)?;
+            self.saved_at = Some(tick.wall);
+        }
+        self.write_status(tick.wall)
+    }
+
+    /// Empties what a run that died mid reclaim left moved aside: the trash
+    /// in each directory it began and never ended. Never put back, since
+    /// its paths have been missing since, and outputs restored beside a
+    /// build that has moved on could pass for fresh.
+    fn resume(&mut self, tick: &Tick) -> io::Result<()> {
+        for (path, root) in self.journal.unfinished()? {
+            let emptied = (|| -> io::Result<()> {
+                let relative = path
+                    .strip_prefix(&root)
+                    .map_err(|_| io::Error::other("outside its root"))?;
+                let dir = match Dir::open(&root).and_then(|root| root.child(relative)) {
+                    Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(()),
+                    opened => opened?,
+                };
+                for left in dir.leftovers()? {
+                    left.empty()?;
+                }
+                Ok(())
+            })();
+            self.journal.write(&Line::Action {
+                at: tick.wall,
+                band: Band::Healthy,
+                path,
+                kind: "resumed".to_owned(),
+                size: 0,
+                outcome: match emptied {
+                    Ok(()) => Outcome::Reclaimed,
+                    Err(error) => Outcome::Failed(format!("emptying what was left: {error}")),
+                },
+            })?;
+        }
+        Ok(())
+    }
+
+    /// Tells the system daemon which filesystems this user daemon watches,
+    /// learning those it collects garbage on, whose passes this one then
+    /// drives. A system daemon that doesn't answer collects on none, and
+    /// passes alone a minute later.
+    fn heartbeat(&mut self) {
+        let Some(socket) = &self.system else {
+            self.system_heard = false;
+            return;
+        };
+        let paths: Vec<PathBuf> = self.watched.values().map(|w| w.path.clone()).collect();
+        if paths.is_empty() {
+            self.collected_on.clear();
+            return;
+        }
+        let watching = Request::Watching { paths };
+        let heard = crate::socket::ask(socket, &watching, HEARTBEAT_TIMEOUT);
+        self.system_heard = heard.is_ok();
+        self.collected_on = match heard {
+            Ok(Reply::Collects(held)) => held.iter().filter_map(|path| pool(path).ok()).collect(),
+            _ => BTreeSet::new(),
+        };
+    }
+
+    /// What a user daemon offers of the system daemon's garbage: on each
+    /// filesystem it collects on, a collect asked of it, in garbage's turn
+    /// from pressure on and measured like any command. Routine upkeep of
+    /// garbage is the system daemon's own.
+    fn asked_offers(&self) -> Vec<Offer> {
+        let Some(socket) = &self.system else {
+            return Vec::new();
+        };
+        self.collected_on
+            .iter()
+            .filter_map(|&device| {
+                let mount = &self.watched.get(&device)?.path;
+                Some(Offer {
+                    candidate: Candidate {
+                        path: named(mount, GARBAGE),
+                        class: Class::Garbage {
+                            kept: true,
+                            order: 0,
+                        },
+                        idle: 0.0,
+                        size: 0,
+                        occupied: false,
+                        spent: false,
+                        checkout: None,
+                    },
+                    action: Action::Ask {
+                        root: mount.clone(),
+                        socket: socket.clone(),
+                    },
+                    device,
+                })
+            })
+            .collect()
+    }
+
+    /// Hears user daemons from now on.
+    pub fn hear(&mut self, hearing: Hearing) {
+        self.hearing = Some(hearing);
+    }
+
+    /// Answers each collect asked for since the last step.
+    fn collects(&mut self, tick: &Tick) {
+        let asked: Vec<_> = match &self.hearing {
+            Some(hearing) => hearing.collects.try_iter().collect(),
+            None => return,
+        };
+        for (path, band, responder) in asked {
+            let reply = match self.collect(tick, &path, band) {
+                Ok(end) => Reply::Collected(ending(&end)),
+                Err(why) => Reply::Error(why),
+            };
+            responder.send(&reply);
+        }
+    }
+
+    /// A pass of only the system's share of the store on the filesystem
+    /// holding `path`, its generations and its garbage, in `band`, for the
+    /// user daemon driving its order.
+    fn collect(&mut self, tick: &Tick, path: &Path, band: Band) -> Result<End, String> {
+        let device = pool(path).map_err(|error| format!("{}: {error}", path.display()))?;
+        let mount = match (self.store(), self.watched.get(&device)) {
+            (Some((_, store)), Some(watched)) if store == device => watched.path.clone(),
+            _ => return Err(format!("no garbage is collected on {}", path.display())),
+        };
+        let space = crate::linux::space(&mount).map_err(|error| error.to_string())?;
+        let thresholds = Thresholds::new(&self.config.bands, space.total);
+        let mut here = self.generation_offers(tick);
+        here.extend(self.garbage_offers(tick));
+        // Neither takes a process to judge, so the scan is never read.
+        let me = std::process::id();
+        let mut scan = Scan::new(&self.processes, Path::new("/proc/locks"), me, FRESH);
+        let decision = Decision::Reach(band);
+        self.pass_on(tick, mount, &here, decision, thresholds, &mut scan)
+            .map_err(|error| error.to_string())
+    }
+
+    /// Takes a listing of Nix's garbage that has finished, keeping it for
+    /// the next guard, and makes upkeep due when routine would take some.
+    fn heard_garbage(&mut self, now: f64) -> io::Result<()> {
+        let Some((begun, out)) = &self.listing_out else {
+            return Ok(());
+        };
+        let heard = match out.try_recv() {
+            Err(TryRecvError::Empty) => return Ok(()),
+            Ok(heard) => heard,
+            Err(TryRecvError::Disconnected) => Err("the listing stopped".to_owned()),
+        };
+        let begun = *begun;
+        self.listing_out = None;
+        match heard {
+            Ok(dead) => {
+                let listing = Listing {
+                    listed_at: begun,
+                    dead,
+                };
+                state::save(&self.listing_path, &listing)?;
+                if self.batches(&listing, now).iter().any(|batch| !batch.kept) {
+                    self.memory.upkept = None;
+                }
+                self.listing = Some(listing);
+            }
+            // Tried again in an hour; until then the listing before stands.
+            Err(why) => eprintln!("disk-guard: listing Nix's garbage: {why}"),
+        }
+        Ok(())
+    }
+
+    /// Begins listing Nix's garbage on its own thread when it's due: daily
+    /// at a spare moment, at idle priority; and at once when the store's
+    /// filesystem is under pressure and the listing is an hour old.
+    fn list_garbage(&mut self, now: f64, spare: bool) {
+        if self.listing_out.is_some() {
+            return;
+        }
+        let Some((_, device)) = self.store() else {
+            return;
+        };
+        let pressed = self
+            .watched
+            .get(&device)
+            .is_some_and(|watched| watched.band > Band::Healthy);
+        let age = |at: Option<f64>| at.map_or(f64::INFINITY, |at| now - at);
+        let listed = age(self.listing.as_ref().map(|listing| listing.listed_at));
+        let due = self.relist
+            || age(self.listing_begun) >= LISTING_RETRY
+                && if pressed {
+                    listed >= LISTING_PRESSED
+                } else {
+                    spare && listed >= LISTING_FRESH
+                };
+        if !due {
+            return;
+        }
+        let nix = self.config.nix.bin.clone();
+        let (tell, out) = mpsc::channel();
+        let listing = std::thread::Builder::new()
+            .name(GARBAGE.to_owned())
+            .spawn(move || {
+                // A guard that stopped meanwhile has no one to hear it.
+                let _ = tell.send(garbage::list(&nix, !pressed));
+            });
+        self.listing_begun = Some(now);
+        self.relist = false;
+        match listing {
+            Ok(_) => self.listing_out = Some((now, out)),
+            Err(error) => eprintln!("disk-guard: listing Nix's garbage: {error}"),
+        }
+    }
+
+    /// Links the store's identical files on a thread, in a spare moment
+    /// while it's healthy and a run is due, and stops a run once the store
+    /// leaves healthy or the power stops being spare. Not once the disk
+    /// stalls: its own reads stall it. Each run is journaled, and only one
+    /// that finished counts as done.
+    fn dedupe(&mut self, tick: &Tick, spare: bool, powered: bool) -> io::Result<()> {
+        let Some(system) = &self.config.system else {
+            return Ok(());
+        };
+        let store = self.config.nix.store.clone();
+        let Some(watched) = pool(&store)
+            .ok()
+            .and_then(|device| self.watched.get(&device))
+        else {
+            return Ok(());
+        };
+        let (band, space) = (watched.band, watched.space);
+        if let Some((begun, stop, out)) = &self.dedupe_out {
+            if band > Band::Healthy || !powered {
+                stop.store(true, Ordering::Relaxed);
+            }
+            let ended = match out.try_recv() {
+                Err(TryRecvError::Empty) => return Ok(()),
+                Err(TryRecvError::Disconnected) => Err("its thread ended unheard".to_owned()),
+                Ok(ended) => ended,
+            };
+            let begun = *begun;
+            self.dedupe_out = None;
+            let (outcome, size) = match ended {
+                Ok(Some(freed)) => {
+                    self.memory.deduped = Some(Deduped { at: begun, freed });
+                    self.saved_at = None;
+                    (Outcome::Reclaimed, freed)
+                }
+                Ok(None) => (Outcome::Kept("stopped as the moment ended".to_owned()), 0),
+                Err(why) => {
+                    self.dedupe_failed = Some(tick.wall);
+                    (Outcome::Failed(why), 0)
+                }
+            };
+            return self.journal.write(&Line::Action {
+                at: tick.wall,
+                band,
+                path: store,
+                kind: DEDUPE.to_owned(),
+                size,
+                outcome,
+            });
+        }
+        let failed_lately = self
+            .dedupe_failed
+            .is_some_and(|at| tick.wall - at < DEDUPE_RETRY);
+        let Some(space) = space else {
+            return Ok(());
+        };
+        let every = system.dedupe.every.0.as_secs_f64();
+        let due = dedupe::due(self.memory.deduped.as_ref(), tick.wall, every, space.total);
+        if band > Band::Healthy || !spare || failed_lately || !due {
+            return Ok(());
+        }
+        let (systemd_run, nix) = (
+            system.dedupe.systemd_run.clone(),
+            self.config.nix.bin.clone(),
+        );
+        let stop = Arc::new(AtomicBool::new(false));
+        let stopping = Arc::clone(&stop);
+        let (tell, out) = mpsc::channel();
+        let running = std::thread::Builder::new()
+            .name(DEDUPE.to_owned())
+            .spawn(move || {
+                // A guard that stopped meanwhile has no one to hear it.
+                let _ = tell.send(dedupe::optimise(&systemd_run, &nix, &stopping));
+            });
+        match running {
+            Ok(_) => self.dedupe_out = Some((tick.wall, stop, out)),
+            Err(error) => eprintln!("disk-guard: linking the store's files: {error}"),
+        }
+        Ok(())
+    }
+
+    /// The garbage config and the store's device, for a system daemon.
+    fn store(&self) -> Option<(&crate::config::Garbage, u64)> {
+        let garbage = &self.config.system.as_ref()?.garbage;
+        Some((garbage, pool(&self.config.nix.store).ok()?))
+    }
+
+    /// The listing's garbage that is still there, in the batches and the
+    /// order it goes in.
+    fn batches(&self, listing: &Listing, now: f64) -> Vec<Batch> {
+        let Some((garbage, _)) = self.store() else {
+            return Vec::new();
+        };
+        let Ok(space) = crate::linux::space(&self.config.nix.store) else {
+            return Vec::new();
+        };
+        let there: Vec<Dead> = listing
+            .dead
+            .iter()
+            .filter(|dead| Path::new(&dead.path).symlink_metadata().is_ok())
+            .cloned()
+            .collect();
+        let keep = garbage.keep.0.as_secs_f64();
+        garbage::batches(
+            &there,
+            now,
+            keep,
+            garbage.budget.of(space.total),
+            MOST_PER_BATCH,
+        )
+    }
+
+    /// What Nix's garbage offers: the listing's batches in the policy's
+    /// order; or with no listing yet, from urgent on, hourly steps of
+    /// `nix store gc`, which collects in no order of its own.
+    fn garbage_offers(&self, tick: &Tick) -> Vec<Offer> {
+        let Some((_, device)) = self.store() else {
+            // A user daemon no system daemon answers collects alone, as any
+            // of Nix's clients may: the nix-daemon refuses only to ignore
+            // liveness.
+            let alone = self.config.system.is_none() && !self.system_heard;
+            return match pool(&self.config.nix.store) {
+                Ok(device) if alone => vec![self.gc_offer(tick, device)],
+                _ => Vec::new(),
+            };
+        };
+        let store = &self.config.nix.store;
+        let candidate = |path, class, idle, size| Candidate {
+            path,
+            class,
+            idle,
+            size,
+            occupied: false,
+            spent: false,
+            checkout: None,
+        };
+        let Some(listing) = &self.listing else {
+            return vec![self.gc_offer(tick, device)];
+        };
+        self.batches(listing, tick.wall)
+            .into_iter()
+            .enumerate()
+            .map(|(order, batch)| Offer {
+                candidate: candidate(
+                    named(store, &format!("{GARBAGE}-{order}")),
+                    Class::Garbage {
+                        kept: batch.kept,
+                        order: u16::try_from(order).unwrap_or(u16::MAX),
+                    },
+                    (tick.wall - batch.newest).max(0.0),
+                    batch.size,
+                ),
+                action: Action::Collect {
+                    root: store.clone(),
+                    nix: self.config.nix.bin.clone(),
+                    paths: batch.paths,
+                },
+                device,
+            })
+            .collect()
+    }
+
+    /// Hourly steps of `nix store gc` from urgent on, which collects in
+    /// no order of its own: for want of a listing, or of a system daemon.
+    fn gc_offer(&self, tick: &Tick, device: u64) -> Offer {
+        let store = &self.config.nix.store;
+        let ran = self.memory.ran.get(GARBAGE).map_or(f64::INFINITY, |&at| {
+            self.memory.awake.since(at.min(tick.wall), tick.wall)
+        });
+        let max = BATCH_BYTES.to_string();
+        let nix = self.config.nix.bin.to_string_lossy();
+        Offer {
+            candidate: Candidate {
+                path: named(store, GARBAGE),
+                class: Class::Producer {
+                    every: None,
+                    from: Some(Band::Urgent),
+                },
+                idle: ran,
+                size: 0,
+                occupied: false,
+                spent: false,
+                checkout: None,
+            },
+            action: Action::Run {
+                root: store.clone(),
+                source: GARBAGE.to_owned(),
+                argv: std::iter::once(&*nix)
+                    .chain(crate::garbage::NIX_COMMAND)
+                    .chain(["store", "gc", "--max", &max])
+                    .map(str::to_owned)
+                    .collect(),
+                timeout: GC_TIMEOUT,
+            },
+            device,
+        }
+    }
+
+    /// A profile's generations that may go, each profile offering those
+    /// routine takes and, apart, those only pressure takes, in garbage's
+    /// group ahead of it and measured as commands, though what they free
+    /// shows only as garbage. The system profile's are judged against
+    /// the boot partition's entries; no other profile boots.
+    fn generation_offers(&self, tick: &Tick) -> Vec<Offer> {
+        let nix = &self.config.nix;
+        let Some(dir) = &nix.profiles else {
+            return Vec::new();
+        };
+        let (Ok(device), Ok(profiles)) = (pool(&nix.store), generations::profiles(dir)) else {
+            return Vec::new();
+        };
+        let in_use: Vec<PathBuf> = self
+            .running
+            .iter()
+            .filter_map(|link| fs::read_link(link).ok())
+            .collect();
+        let mut offers = Vec::new();
+        for profile in profiles {
+            let boot = match &self.config.system {
+                Some(system) if profile.path == dir.join("system") => {
+                    match generations::entries(&system.boot) {
+                        Ok(numbers) => Boot::Entries(numbers),
+                        Err(_) => Boot::Unreadable,
+                    }
+                }
+                _ => Boot::NotBooted,
+            };
+            let (routine, young) = generations::expired(
+                &profile,
+                &in_use,
+                &boot,
+                usize::try_from(nix.generations.keep).unwrap_or(usize::MAX),
+                nix.generations.young.0.as_secs_f64(),
+                tick.wall,
+            );
+            let Some(root) = profile.path.parent() else {
+                continue;
+            };
+            for (numbers, kept, name) in [
+                (routine, false, GENERATIONS),
+                (young, true, YOUNG_GENERATIONS),
+            ] {
+                if numbers.is_empty() {
+                    continue;
+                }
+                offers.push(Offer {
+                    candidate: Candidate {
+                        path: named(&profile.path, name),
+                        class: Class::Generations { kept },
+                        idle: 0.0,
+                        size: 0,
+                        occupied: false,
+                        spent: false,
+                        checkout: None,
+                    },
+                    action: Action::Expire {
+                        root: root.to_owned(),
+                        nix: nix.bin.clone(),
+                        profile: profile.path.clone(),
+                        numbers,
+                    },
+                    device,
+                });
+            }
+        }
+        offers
+    }
+
+    /// Notes every filesystem a source or the store lies on, keeping what
+    /// was seen of those already watched. A user daemon watches the store
+    /// when it looks after an account's generations, which free it.
+    fn watch(&mut self) {
+        let mut seen = BTreeMap::new();
+        let store = (self.config.system.is_some() || self.config.nix.profiles.is_some())
+            .then_some(self.config.nix.store.as_path());
+        for path in self.config.sources.values().flat_map(paths).chain(store) {
+            let (Ok(meta), Ok(device)) = (fs::metadata(path), pool(path)) else {
+                continue;
+            };
+            if !meta.is_dir() || seen.contains_key(&device) {
+                continue;
+            }
+            let watched = self.watched.remove(&device).unwrap_or_else(|| Watched {
+                path: mounted(path, device),
+                band: Band::Healthy,
+                fill: Fill::default(),
+                space: None,
+                rest: None,
+            });
+            seen.insert(device, watched);
+        }
+        self.watched = seen;
+    }
+
+    /// Surveys once and runs each filesystem's pass over what lies on it.
+    fn passes(&mut self, tick: &Tick, due: &[(u64, Decision, Thresholds)]) -> io::Result<()> {
+        let (mut scan, offers) = self.offers(tick)?;
+        for &(device, decision, thresholds) in due {
+            let Some(path) = self
+                .watched
+                .get(&device)
+                .map(|watched| watched.path.clone())
+            else {
+                continue;
+            };
+            let here: Vec<Offer> = offers
+                .iter()
+                .filter(|offer| offer.device == device)
+                .cloned()
+                .collect();
+            let end = self.pass_on(tick, path, &here, decision, thresholds, &mut scan)?;
+            let Decision::Reach(band) = decision else {
+                continue;
+            };
+            if let Some(watched) = self.watched.get_mut(&device) {
+                watched.rest = (end != End::Reached).then(|| {
+                    let seconds = watched
+                        .rest
+                        .map_or(FIRST_REST, |rest| (rest.seconds * 2.0).min(LONGEST_REST));
+                    Rest {
+                        until: tick.monotonic + seconds,
+                        seconds,
+                        band,
+                    }
+                });
+            }
+        }
+        Ok(())
+    }
+
+    /// Every process, scanned for the pass to judge by, and what every
+    /// source offers.
+    fn offers(&mut self, tick: &Tick) -> io::Result<(Scan, Vec<Offer>)> {
+        let me = std::process::id();
+        let mut scan = Scan::new(&self.processes, Path::new("/proc/locks"), me, FRESH);
+        if let Some(socket) = &self.system {
+            let roots: Vec<PathBuf> = self
+                .config
+                .sources
+                .values()
+                .flat_map(paths)
+                .map(Path::to_owned)
+                .collect();
+            scan = scan.vouched_by(socket, &roots);
+        }
+        let processes = scan.processes()?.to_vec();
+        let boot = crate::linux::boot(Path::new("/proc/stat"))?;
+        let (predicates, answers) = (&self.predicates, &mut self.answers);
+        let mut finished = |dir: &Path| {
+            let Some(checkout) = finished::read(dir) else {
+                return false;
+            };
+            let Some(predicate) = finished::predicate_for(predicates, &checkout.remote) else {
+                return false;
+            };
+            answers.finished(dir, &checkout.head, tick.wall, || {
+                finished::ask(predicate, dir, &checkout)
+            })
+        };
+        let mut offers = survey(
+            &self.config,
+            &mut World {
+                processes: &processes,
+                me,
+                // SAFETY: geteuid only reads the process's own credentials.
+                uid: unsafe { libc::geteuid() },
+                boot,
+                awake: &self.memory.awake,
+                now: tick.wall,
+                finished: &mut finished,
+                ran: &self.memory.ran,
+            },
+        );
+        offers.extend(self.generation_offers(tick));
+        offers.extend(self.garbage_offers(tick));
+        offers.extend(self.asked_offers());
+        Ok((scan, offers))
+    }
+
+    /// Runs one filesystem's pass over what lies there and journals it.
+    fn pass_on(
+        &mut self,
+        tick: &Tick,
+        path: PathBuf,
+        here: &[Offer],
+        decision: Decision,
+        thresholds: Thresholds,
+        scan: &mut Scan,
+    ) -> io::Result<End> {
+        let candidates: Vec<_> = here.iter().map(|offer| offer.candidate.clone()).collect();
+        let (band, goal) = match decision {
+            Decision::Reach(band) => (band, Goal::Reach),
+            _ => (Band::Healthy, Goal::Upkeep),
+        };
+        let started = Instant::now();
+        let gentle = band < Band::Urgent;
+        let pressure = self.processes.join("pressure");
+        let reclaimer = Reclaim::new(here, scan).during(band);
+        let mut reclaim = Journaled {
+            inner: Yielding {
+                inner: if gentle {
+                    reclaimer.gently()
+                } else {
+                    reclaimer
+                },
+                busy: move || {
+                    gentle
+                        && !crate::decide::calm(
+                            crate::linux::pressure(&pressure).unwrap_or_default(),
+                        )
+                },
+                yielded: false,
+            },
+            journal: &mut self.journal,
+            roots: here
+                .iter()
+                .map(|offer| (offer.candidate.path.clone(), offer.action.root().to_owned()))
+                .collect(),
+            at: tick.wall,
+            band,
+        };
+        let report = pass(
+            &mut Filesystem::new(&path),
+            &mut reclaim,
+            &candidates,
+            &thresholds,
+            band,
+            goal,
+            &mut self.memory.learned,
+        );
+        let yielded = reclaim.inner.yielded;
+        if goal == Goal::Reach {
+            let seconds = started.elapsed().as_secs_f64();
+            self.memory.pass_seconds = Some(match self.memory.pass_seconds {
+                Some(before) => before + PASS_WEIGHT * (seconds - before),
+                None => seconds,
+            });
+        } else if !yielded {
+            self.memory.upkept = Some(tick.wall);
+        }
+        // Whatever came of it, so a failing command waits its window too.
+        for (taken, outcome) in &report.actions {
+            let offered = here.iter().find(|offer| &offer.candidate.path == taken);
+            match offered.map(|offer| &offer.action) {
+                Some(Action::Run { source, .. }) => {
+                    self.memory.ran.insert(source.clone(), tick.wall);
+                }
+                // What they kept is garbage now, which no listing holds.
+                Some(Action::Expire { .. }) if *outcome == Outcome::Reclaimed => {
+                    self.relist = true;
+                }
+                _ => {}
+            }
+        }
+        let end = ending(&report.end);
+        self.journal.write(&Line::Pass {
+            at: tick.wall,
+            band: report.band,
+            end: end.clone(),
+            freed: report.freed,
+        })?;
+        self.last = Some(LastPass {
+            at: tick.wall,
+            path,
+            band: report.band,
+            end,
+            freed: report.freed,
+        });
+        Ok(report.end)
+    }
+
+    /// What a pass would take now on each filesystem, in `band` and with
+    /// `free` bytes free when given, taking nothing. It runs the pass
+    /// itself against a disk that frees what learning predicts, so it
+    /// shows the order a pass goes in and where it would stop; whether
+    /// each would be found in use is only known when it's tried.
+    pub fn preview(
+        &mut self,
+        tick: &Tick,
+        band: Option<Band>,
+        free: Option<Size>,
+    ) -> io::Result<Vec<Preview>> {
+        self.memory.awake.observe(tick);
+        self.watch();
+        let (_, offers) = self.offers(tick)?;
+        let mut previews = Vec::new();
+        for (&device, watched) in &self.watched {
+            let Ok(space) = crate::linux::space(&watched.path) else {
+                continue;
+            };
+            let thresholds = Thresholds::new(&self.config.bands, space.total);
+            // A band asked for alone is pretended by free space just short
+            // of it, so a plan for urgent shows what urgent would take.
+            let short_of = match band {
+                Some(Band::Pressure) => Some(thresholds.pressure),
+                Some(Band::Urgent) => Some(thresholds.urgent),
+                Some(Band::Critical) => Some(thresholds.critical),
+                Some(Band::Healthy) | None => None,
+            };
+            let pretended = match (free, short_of) {
+                (Some(free), _) => free.of(space.total),
+                (None, Some(start)) => space.free.min(start.saturating_sub(1)),
+                (None, None) => space.free,
+            };
+            let space = Space {
+                free: pretended,
+                ..space
+            };
+            let band = band.unwrap_or_else(|| thresholds.band(&space, Band::Healthy));
+            let goal = if band == Band::Healthy {
+                Goal::Upkeep
+            } else {
+                Goal::Reach
+            };
+            let candidates: Vec<_> = offers
+                .iter()
+                .filter(|offer| offer.device == device)
+                .map(|offer| offer.candidate.clone())
+                .collect();
+            let freed = Rc::new(Cell::new(space.free));
+            let mut learned = self.memory.learned.clone();
+            let report = pass(
+                &mut Pretend {
+                    space,
+                    free: freed.clone(),
+                },
+                &mut Pretending {
+                    learned: self.memory.learned.clone(),
+                    free: freed,
+                    total: space.total,
+                },
+                &candidates,
+                &thresholds,
+                band,
+                goal,
+                &mut learned,
+            );
+            let taken = report
+                .actions
+                .iter()
+                .filter_map(|(path, _)| candidates.iter().find(|c| &c.path == path).cloned())
+                .collect();
+            previews.push(Preview {
+                path: watched.path.clone(),
+                band,
+                free: space.free,
+                total: space.total,
+                target: thresholds.target,
+                end: ending(&report.end),
+                taken,
+            });
+        }
+        Ok(previews)
+    }
+
+    pub fn status(&self, now: f64) -> Status {
+        let bands = &self.config.bands;
+        let filesystems = self
+            .watched
+            .values()
+            .filter_map(|watched| {
+                let space = watched.space?;
+                let thresholds = Thresholds::new(bands, space.total);
+                let next = match watched.band {
+                    Band::Healthy => Some(thresholds.pressure),
+                    Band::Pressure => Some(thresholds.urgent),
+                    Band::Urgent => Some(thresholds.critical),
+                    Band::Critical => None,
+                };
+                Some(FilesystemStatus {
+                    path: watched.path.clone(),
+                    band: watched.band,
+                    free: space.free,
+                    total: space.total,
+                    forecast: next.and_then(|start| watched.fill.until(space.free, start)),
+                })
+            })
+            .collect();
+        Status {
+            version: state::VERSION,
+            heartbeat: now,
+            filesystems,
+            last: self.last.clone(),
+        }
+    }
+
+    fn write_status(&mut self, now: f64) -> io::Result<()> {
+        let Some(path) = self.status_path.clone() else {
+            return Ok(());
+        };
+        let status = self.status(now);
+        let unchanged = self.written.as_ref().is_some_and(|(at, written)| {
+            now - at < HEARTBEAT_EVERY
+                && Status {
+                    heartbeat: now,
+                    ..written.clone()
+                } == status
+        });
+        if unchanged {
+            return Ok(());
+        }
+        if let Some(dir) = path.parent() {
+            fs::create_dir_all(dir)?;
+        }
+        state::save(&path, &status)?;
+        self.written = Some((now, status));
+        Ok(())
+    }
+}
+
+/// The paths a source lies under, which say what filesystems it's on.
+fn paths(source: &Source) -> Vec<&Path> {
+    match source {
+        Source::Cargo { roots, .. } | Source::Installs { roots, .. } => {
+            roots.iter().map(PathBuf::as_path).collect()
+        }
+        Source::Cache { path, .. }
+        | Source::Scratch { path, .. }
+        | Source::Snapshots { path, .. }
+        | Source::Workspaces { path, .. }
+        | Source::Temp { path }
+        | Source::Trash { path }
+        | Source::Logs { path }
+        | Source::Coredumps { path }
+        | Source::NixBuilds { path }
+        | Source::Producer { path, .. }
+        | Source::Podman { path, .. } => vec![path.as_path()],
+        Source::Finished { .. } => Vec::new(),
+    }
+}
+
+/// Whether a user daemon spoke for the filesystem within the minute, so it
+/// drives that filesystem's passes.
+fn spoken_for(hearing: &Option<Hearing>, device: u64) -> bool {
+    hearing.as_ref().is_some_and(|hearing| {
+        let spoken = hearing
+            .spoken
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        spoken
+            .get(&device)
+            .is_some_and(|at| at.elapsed() < SPOKEN_FOR)
+    })
+}
+
+/// A reclaimer for a pass that can wait, which gives way once the disk or
+/// memory gets busy, keeping all that's left for a calmer moment. Asked
+/// between candidates, so a delete under way finishes. Urgent and
+/// critical passes never give way.
+struct Yielding<R, B> {
+    inner: R,
+    busy: B,
+    yielded: bool,
+}
+
+impl<R: Reclaimer, B: FnMut() -> bool> Reclaimer for Yielding<R, B> {
+    fn reclaim(&mut self, candidate: &Candidate) -> Outcome {
+        if self.yielded || (self.busy)() {
+            self.yielded = true;
+            return Outcome::Kept("the machine got busy; left for a calmer moment".to_owned());
+        }
+        self.inner.reclaim(candidate)
+    }
+}
+
+/// Where the filesystem holding `path`, the pool `device`, is mounted:
+/// the highest directory above it still on that pool, which is how a
+/// person knows the disk, so a Btrfs pool is named by its topmost mount
+/// rather than by whichever subvolume a source lies in. Failing that,
+/// `path` itself.
+fn mounted(path: &Path, device: u64) -> PathBuf {
+    let Ok(mut top) = fs::canonicalize(path) else {
+        return path.to_owned();
+    };
+    while let Some(above) = top.parent()
+        && pool(above).is_ok_and(|above| above == device)
+    {
+        top = above.to_owned();
+    }
+    top
+}
+
+/// How a pass ended, in the journal's words.
+fn ending(end: &End) -> String {
+    match end {
+        End::Reached => "reached".to_owned(),
+        End::Exhausted => "exhausted".to_owned(),
+        End::Stalled => "stalled".to_owned(),
+        End::Failed(why) => format!("failed: {why}"),
+    }
+}
+
+/// A disk for a preview, whose free space is what was pretended plus
+/// what the pretend reclaimer has freed.
+struct Pretend {
+    space: Space,
+    free: Rc<Cell<u64>>,
+}
+
+impl Disk for Pretend {
+    fn space(&mut self) -> io::Result<Space> {
+        Ok(Space {
+            free: self.free.get(),
+            ..self.space
+        })
+    }
+
+    fn settle(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+
+    fn now(&self) -> f64 {
+        0.0
+    }
+}
+
+/// Frees what learning predicts each candidate would, taking nothing.
+struct Pretending {
+    learned: Learned,
+    free: Rc<Cell<u64>>,
+    total: u64,
+}
+
+impl Reclaimer for Pretending {
+    fn reclaim(&mut self, candidate: &Candidate) -> Outcome {
+        let freed = (candidate.size as f64 * self.learned.ratio(candidate.class)) as u64;
+        self.free
+            .set(self.free.get().saturating_add(freed).min(self.total));
+        Outcome::Reclaimed
+    }
+}

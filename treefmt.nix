@@ -8,6 +8,10 @@
     actionlint.enable = true;
     deadnix.enable = true;
     nixfmt.enable = true;
+    rustfmt = {
+      enable = true;
+      edition = "2024";
+    };
     statix.enable = true;
     stylua = {
       enable = true;

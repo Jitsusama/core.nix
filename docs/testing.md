@@ -70,6 +70,7 @@ quietly stopped holding.
 | `nix-builds-yield-to-the-user` | Nix's builds run at a lower weight than the user's programs |
 | `nix-collects-before-the-disk-fills` | Nix collects garbage during a build that fills the disk |
 | `resolved-is-set-per-network` | a laptop leaves resolved's global DNS settings as they ship |
+| `disk-guard-stays-in-the-background` | the disk guard yields to the account, and a command overrunning its memory never stops it |
 
 ### The Shell's Logic
 
@@ -132,6 +133,8 @@ kernel guide][2] says what that catches.
 | `the-ergodox-watch-tells-the-layer` | the layer watcher finds the board and says only what it's told |
 | `btrfs-reclaims-its-chunks`       | tmpfiles turns Btrfs's reclaim on for data and metadata   |
 | `the-firmware-takes-what-is-declared` | `firmware-settings` names what differs, writes it with the password, then wipes it |
+| `disk-guard-accepts-its-configuration` | the disk guard passes its scenarios and accepts the configs a workstation and its account get |
+| `disk-guard-passes-clippy`        | clippy finds nothing in the disk guard or its scenarios   |
 
 ### Virtual Machines
 
@@ -146,6 +149,7 @@ a running system shows.
 | `vm-speakers-are-tuned`           | the XPS 14's speakers hear the tuning, headphones don't |
 | `vm-desktop-works`                | it boots clean; the desktop shows, opens, locks and asks |
 | `vm-wifi-joins`                   | wifid joins, finds sign-ins, keeps others' routing rules |
+| `vm-disk-guard-keeps-the-disk`    | the guards answer each band, sparing what's in use       |
 
 The install test builds a disk image with disko and boots it with a software
 TPM, then follows [the install guide][3] step by step: the keys are made and
