@@ -12,9 +12,11 @@ use crate::snapshots::Boot;
 use crate::{
     age, caches, coredumps, logs, nix_builds, scratch, snapshots, temp, trash, trees, workspaces,
 };
+use std::collections::BTreeMap;
 use std::fs;
 use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 /// How a candidate is reclaimed, under the root it was found beneath,
 /// which every delete is anchored to.
@@ -32,6 +34,13 @@ pub enum Action {
     Workspace { root: PathBuf },
     /// A log, trimmed in place to its last part.
     Trim { root: PathBuf },
+    /// A source's command, run where it frees space.
+    Run {
+        root: PathBuf,
+        source: String,
+        argv: Vec<String>,
+        timeout: Duration,
+    },
 }
 
 impl Action {
@@ -42,7 +51,8 @@ impl Action {
             | Action::Variant { root }
             | Action::Entry { root }
             | Action::Workspace { root }
-            | Action::Trim { root } => root,
+            | Action::Trim { root }
+            | Action::Run { root, .. } => root,
             Action::Trash { trash } => trash,
         }
     }
@@ -69,6 +79,8 @@ pub struct World<'a> {
     pub now: f64,
     /// Whether a checkout's work is finished, as its predicate says.
     pub finished: &'a mut dyn FnMut(&Path) -> bool,
+    /// When each source's command last ran, in wall seconds, by name.
+    pub ran: &'a BTreeMap<String, f64>,
 }
 
 /// How deep and how widely a workspace's writes are read.
@@ -78,7 +90,7 @@ const WRITE_BUDGET: usize = 50_000;
 /// Every candidate the sources offer now.
 pub fn survey(config: &Config, world: &mut World) -> Vec<Offer> {
     let mut offers = Vec::new();
-    for source in config.sources.values() {
+    for (name, source) in &config.sources {
         match source {
             Source::Cargo { roots, depth } => {
                 for root in roots {
@@ -257,7 +269,46 @@ pub fn survey(config: &Config, world: &mut World) -> Vec<Offer> {
                     });
                 }
             }
-            Source::Podman { .. } | Source::Producer { .. } | Source::Finished { .. } => {}
+            Source::Producer {
+                command,
+                path,
+                every,
+                from,
+                timeout,
+            } => {
+                let Some(device) = device(path) else { continue };
+                let idle = world.ran.get(name).map_or(f64::INFINITY, |&at| {
+                    world.awake.since(at.min(world.now), world.now)
+                });
+                // Named for where it runs and which source it is, since it
+                // is no file of its own.
+                let mut named = path.clone().into_os_string();
+                named.push("#");
+                named.push(name);
+                offers.push(Offer {
+                    candidate: Candidate {
+                        path: PathBuf::from(named),
+                        class: Class::Producer {
+                            every: every.map(|span| span.0.as_secs_f64()),
+                            from: *from,
+                        },
+                        idle,
+                        // What it frees is measured once it has run.
+                        size: 0,
+                        occupied: false,
+                        spent: false,
+                        checkout: None,
+                    },
+                    action: Action::Run {
+                        root: path.clone(),
+                        source: name.clone(),
+                        argv: command.clone(),
+                        timeout: timeout.0,
+                    },
+                    device,
+                });
+            }
+            Source::Podman { .. } | Source::Finished { .. } => {}
         }
     }
     offers

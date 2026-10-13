@@ -271,6 +271,53 @@ fn what_a_guard_left_moved_aside_is_emptied_when_the_next_starts() {
     );
 }
 
+#[test]
+fn a_producer_that_ran_is_not_run_again_within_the_hour_even_by_the_next_guard() {
+    use disk_guard::config::Source;
+    use disk_guard::units::Span;
+    let home = Home::new();
+    let marker = home.root.join("ran");
+    let mut config = home.config("100%", "100%");
+    config.sources.insert(
+        "gc".to_owned(),
+        Source::Producer {
+            command: vec![
+                "/bin/sh".to_owned(),
+                "-c".to_owned(),
+                format!("echo ran >> {}", marker.display()),
+            ],
+            path: home.root.clone(),
+            every: None,
+            from: Some(Band::Pressure),
+            timeout: Span(std::time::Duration::from_secs(10)),
+        },
+    );
+    let runs = || fs::read_to_string(&marker).map_or(0, |text| text.lines().count());
+    let passes = || {
+        home.journal()
+            .iter()
+            .filter(|line| line["event"] == "pass")
+            .count()
+    };
+    let mut guard = home.guard(config.clone());
+    guard.step(&tick_at(3600.0), &CALM).unwrap();
+    assert_eq!((runs(), passes()), (1, 1));
+    // Past the rest that pass earned, and within the hour.
+    guard.step(&tick_at(3661.0), &CALM).unwrap();
+    assert_eq!((runs(), passes()), (1, 2));
+    drop(guard);
+    let mut guard = home.guard(config);
+    guard.step(&tick_at(3700.0), &CALM).unwrap();
+    assert_eq!((runs(), passes()), (1, 3), "remembered across guards");
+    let ran = home
+        .journal()
+        .into_iter()
+        .find(|line| line["kind"] == "producer")
+        .unwrap();
+    assert_eq!(ran["path"], format!("{}#gc", home.root.display()));
+    assert_eq!(ran["outcome"], "reclaimed");
+}
+
 fn tick_at(monotonic: f64) -> Tick {
     Tick {
         monotonic,

@@ -121,6 +121,8 @@ pub enum Source {
     /// A producer's own collection, run from a band or on a schedule.
     Producer {
         command: Vec<String>,
+        /// Where it frees space, whose filesystem's passes run it.
+        path: PathBuf,
         #[serde(default)]
         every: Option<Span>,
         #[serde(default)]
@@ -195,9 +197,10 @@ impl Source {
             | Source::Trash { path }
             | Source::Logs { path }
             | Source::Coredumps { path }
-            | Source::NixBuilds { path } => vec![path],
+            | Source::NixBuilds { path }
+            | Source::Producer { path, .. } => vec![path],
             Source::Podman { command } => vec![command],
-            Source::Producer { .. } | Source::Finished { .. } => vec![],
+            Source::Finished { .. } => vec![],
         }
     }
 

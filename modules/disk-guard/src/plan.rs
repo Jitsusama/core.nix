@@ -45,8 +45,11 @@ pub enum Class {
     Replaced,
     /// Nix's garbage, as the garbage policy takes it.
     Garbage,
-    /// A producer's own collection.
-    Producer,
+    /// A producer's own collection, run every so long, or from a band on.
+    Producer {
+        every: Option<f64>,
+        from: Option<Band>,
+    },
     /// A log past its limit, trimmed to its last part.
     Log,
 }
@@ -54,7 +57,7 @@ pub enum Class {
 impl Class {
     /// Whether it's a command, whose yield is known only by measuring.
     pub fn command(self) -> bool {
-        matches!(self, Class::Producer | Class::Garbage)
+        matches!(self, Class::Producer { .. } | Class::Garbage)
     }
 
     /// The kind's name, which what it frees is learned under.
@@ -73,7 +76,7 @@ impl Class {
             Class::NixBuild => "nix-build",
             Class::Replaced => "replaced",
             Class::Garbage => "garbage",
-            Class::Producer => "producer",
+            Class::Producer { .. } => "producer",
             Class::Log => "log",
         }
     }
@@ -168,7 +171,23 @@ pub fn group(candidate: &Candidate, band: Band) -> Option<Group> {
         ),
         // Their own policies decide how much each takes.
         Class::Garbage => (Group::Garbage, [AT_ONCE; 4]),
-        Class::Producer => (Group::Producers, [AT_ONCE; 4]),
+        Class::Producer { every, from } => {
+            // From its band on as often as an hour allows, so a band that
+            // keeps returning doesn't run a long collection every pass.
+            let window = |band: Band| match from {
+                Some(from) if band >= from => Some(every.map_or(HOUR, |every| every.min(HOUR))),
+                _ => every,
+            };
+            (
+                Group::Producers,
+                [
+                    window(Band::Healthy),
+                    window(Band::Pressure),
+                    window(Band::Urgent),
+                    window(Band::Critical),
+                ],
+            )
+        }
         // What's trimmed is history nobody reads; the rest stays.
         Class::Log => (Group::Waste, [AT_ONCE; 4]),
     };

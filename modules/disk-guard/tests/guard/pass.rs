@@ -8,6 +8,11 @@ use std::path::{Path, PathBuf};
 const GIB: u64 = 1 << 30;
 const HOUR: f64 = 3600.0;
 
+const PRODUCER: Class = Class::Producer {
+    every: None,
+    from: Some(Band::Healthy),
+};
+
 /// A 100 GiB disk whose frees show only once settled, as Btrfs's do, and
 /// which another writer may fill as the pass goes.
 struct FakeDisk {
@@ -178,7 +183,7 @@ fn a_pass_reclaims_down_to_the_target_and_stops() {
 fn a_command_is_measured_before_anything_more_is_taken() {
     let producer = Candidate {
         path: PathBuf::from("/home/u/src#gc"),
-        class: Class::Producer,
+        class: PRODUCER,
         idle: f64::INFINITY,
         size: 0,
         occupied: false,
@@ -202,7 +207,7 @@ fn a_command_is_measured_before_anything_more_is_taken() {
 fn a_command_is_measured_alone_so_what_it_frees_is_no_one_elses() {
     let producer = Candidate {
         path: PathBuf::from("/home/u/src#gc"),
-        class: Class::Producer,
+        class: PRODUCER,
         idle: f64::INFINITY,
         size: 0,
         occupied: false,

@@ -4,6 +4,7 @@
 use crate::activity::{self, Process, Use};
 use crate::anchor::Dir;
 use crate::band::Space;
+use crate::commands::{self, Job, Output, Ran};
 use crate::pass::{Disk, Outcome, Reclaimer};
 use crate::plan::Candidate;
 use crate::reclaim::{self, Looker};
@@ -215,6 +216,7 @@ impl Reclaimer for Reclaim<'_> {
             }
             Action::Entry { .. } => reclaim::entry(&root, root_path, candidate, self.scan),
             Action::Trash { .. } => reclaim::trashed(&root, root_path, candidate),
+            Action::Run { argv, timeout, .. } => run(argv, *timeout),
             Action::Trim { .. } => {
                 let Ok(relative) = candidate.path.strip_prefix(root_path) else {
                     return Outcome::Failed(format!("outside its root {}", root_path.display()));
@@ -241,5 +243,40 @@ impl Reclaimer for Reclaim<'_> {
                 outcome
             }
         }
+    }
+}
+
+/// How much of a command's output is kept, of which its last line of
+/// errors is told.
+const OUTPUT_LIMIT: usize = 64 << 10;
+
+/// Runs a source's command; anything but a clean exit is a failure, told
+/// with the last thing it said on its errors.
+fn run(argv: &[String], timeout: Duration) -> Outcome {
+    let job = Job {
+        argv: argv.iter().map(Into::into).collect(),
+        cwd: None,
+        env: Vec::new(),
+        timeout,
+        limit: OUTPUT_LIMIT,
+    };
+    match commands::run(&job) {
+        Ok(Ran::Finished(Output {
+            status: Some(0), ..
+        })) => Outcome::Reclaimed,
+        Ok(Ran::Finished(output)) => {
+            let said = String::from_utf8_lossy(&output.stderr);
+            let said = said.lines().rev().find(|line| !line.trim().is_empty());
+            let how = match output.status {
+                Some(code) => format!("it exited {code}"),
+                None => "a signal ended it".to_owned(),
+            };
+            Outcome::Failed(match said {
+                Some(said) => format!("{how}: {}", said.trim()),
+                None => how,
+            })
+        }
+        Ok(Ran::TimedOut) => Outcome::Failed(format!("it ran past its {timeout:?} and was killed")),
+        Err(error) => Outcome::Failed(format!("starting it: {error}")),
     }
 }

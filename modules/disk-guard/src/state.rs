@@ -29,6 +29,9 @@ pub struct Memory {
     /// averaged over recent passes.
     #[serde(default)]
     pub pass_seconds: Option<f64>,
+    /// When each source's command last ran, in wall seconds, by name.
+    #[serde(default)]
+    pub ran: std::collections::BTreeMap<String, f64>,
     /// What a newer guard wrote that this one doesn't know.
     #[serde(flatten)]
     pub rest: serde_json::Map<String, serde_json::Value>,
@@ -42,6 +45,7 @@ impl Default for Memory {
             learned: Learned::default(),
             upkept: None,
             pass_seconds: None,
+            ran: std::collections::BTreeMap::new(),
             rest: serde_json::Map::new(),
         }
     }

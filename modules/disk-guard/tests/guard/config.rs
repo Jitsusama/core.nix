@@ -19,7 +19,7 @@ const USER: &str = r#"{
     "scratch": { "kind": "scratch", "path": "/home/u/.dev/cargo", "healthy": "30d" },
     "snapshots": { "kind": "snapshots", "path": "/home/u/snapshots",
                    "pattern": "^[a-z]+_\\d+_(?P<pid>\\d+)$", "command": "snapd" },
-    "gc": { "kind": "producer", "command": ["/bin/gc", "now"],
+    "gc": { "kind": "producer", "command": ["/bin/gc", "now"], "path": "/home/u/src",
             "every": "6h", "from": "healthy", "timeout": "5m" },
     "merged": { "kind": "finished", "remote": "^https://example\\.com/",
                 "command": ["/bin/merged"], "timeout": "20s" }
@@ -63,7 +63,13 @@ fn a_user_config_is_read() {
         }
     );
     match &config.sources["gc"] {
-        Source::Producer { every, timeout, .. } => {
+        Source::Producer {
+            every,
+            timeout,
+            path,
+            ..
+        } => {
+            assert_eq!(path, &PathBuf::from("/home/u/src"));
             assert_eq!(*every, Some(Span(Duration::from_secs(6 * 3600))));
             assert_eq!(*timeout, Span(Duration::from_secs(300)));
         }

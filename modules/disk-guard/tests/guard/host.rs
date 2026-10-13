@@ -316,6 +316,52 @@ fn a_log_is_trimmed_to_its_last_part_in_place() {
     assert!(kept.ends_with(&format!("line {:010}\n", lines - 1)));
 }
 
+fn run(argv: &[&str], timeout: Duration) -> (Offer, Outcome, Duration) {
+    let proc = tempfile::tempdir().unwrap();
+    let root = tempfile::tempdir().unwrap();
+    let offers = [offer(
+        &root.path().join("#gc"),
+        Class::Producer {
+            every: None,
+            from: Some(disk_guard::band::Band::Pressure),
+        },
+        Action::Run {
+            root: root.path().to_owned(),
+            source: "gc".to_owned(),
+            argv: argv.iter().map(|arg| arg.to_string()).collect(),
+            timeout,
+        },
+    )];
+    let mut scan = empty_scan(proc.path());
+    let mut reclaim = Reclaim::new(&offers, &mut scan);
+    let started = std::time::Instant::now();
+    let outcome = reclaim.reclaim(&offers[0].candidate);
+    let [offered] = offers;
+    (offered, outcome, started.elapsed())
+}
+
+#[test]
+fn a_producer_is_run_and_its_failure_told() {
+    let second = Duration::from_secs(1);
+    let (_, outcome, _) = run(&["/bin/sh", "-c", "exit 0"], 10 * second);
+    assert_eq!(outcome, Outcome::Reclaimed);
+    let (_, outcome, _) = run(&["/bin/sh", "-c", "echo no room >&2; exit 3"], 10 * second);
+    assert_eq!(outcome, Outcome::Failed("it exited 3: no room".to_owned()));
+}
+
+#[test]
+fn a_hung_producer_is_given_up_on_at_its_timeout() {
+    let (_, outcome, took) = run(
+        &["/bin/sh", "-c", "exec sleep 30"],
+        Duration::from_millis(200),
+    );
+    assert_eq!(
+        outcome,
+        Outcome::Failed("it ran past its 200ms and was killed".to_owned())
+    );
+    assert!(took < Duration::from_secs(5), "{took:?}");
+}
+
 #[test]
 fn a_candidate_no_offer_names_fails_untouched() {
     let proc = tempfile::tempdir().unwrap();

@@ -199,7 +199,14 @@ fn the_plan_goes_cheapest_loss_first() {
             },
             0.0,
         ),
-        candidate("producer", Class::Producer, 0.0),
+        candidate(
+            "producer",
+            Class::Producer {
+                every: None,
+                from: Some(Band::Pressure),
+            },
+            2.0 * HOUR,
+        ),
         candidate("variant", Class::Variant, 3.0 * HOUR),
         candidate("garbage", Class::Garbage, 0.0),
         candidate("snapshot", Class::Snapshot, 0.0),
@@ -233,6 +240,33 @@ fn a_plan_stops_once_its_predicted_free_covers_the_shortfall() {
     });
     assert_eq!(steps.len(), 6);
     assert_eq!(steps[0].predicted, GIB / 2);
+}
+
+#[test]
+fn a_producer_runs_on_its_schedule_and_from_its_band_at_most_hourly() {
+    let runs = |every: Option<f64>, from: Option<Band>, idle: f64, band: Band| {
+        let producer = [candidate("gc", Class::Producer { every, from }, idle)];
+        !plan(&producer, band, None, |_| 1.0).is_empty()
+    };
+    let six = Some(6.0 * HOUR);
+    assert!(runs(six, None, 7.0 * HOUR, Band::Healthy), "due");
+    assert!(!runs(six, None, 5.0 * HOUR, Band::Healthy), "not yet due");
+    assert!(
+        !runs(six, None, 5.0 * HOUR, Band::Critical),
+        "no band of its own"
+    );
+    let pressure = Some(Band::Pressure);
+    assert!(!runs(None, pressure, f64::INFINITY, Band::Healthy));
+    assert!(runs(None, pressure, 2.0 * HOUR, Band::Pressure));
+    assert!(
+        !runs(None, pressure, 0.5 * HOUR, Band::Pressure),
+        "ran within the hour"
+    );
+    assert!(runs(None, pressure, 2.0 * HOUR, Band::Critical));
+    assert!(
+        runs(six, pressure, 7.0 * HOUR, Band::Healthy),
+        "either says when"
+    );
 }
 
 #[test]

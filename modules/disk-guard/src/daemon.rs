@@ -14,7 +14,7 @@ use crate::moments::{Power, Pressure};
 use crate::pass::{Disk, End, Goal, Learned, Outcome, Reclaimer, pass};
 use crate::plan::Candidate;
 use crate::state::{self, Memory};
-use crate::survey::{Offer, World, survey};
+use crate::survey::{Action, Offer, World, survey};
 use crate::units::Size;
 use serde::Serialize;
 use std::cell::Cell;
@@ -383,6 +383,7 @@ impl Guard {
                 awake: &self.memory.awake,
                 now: tick.wall,
                 finished: &mut finished,
+                ran: &self.memory.ran,
             },
         );
         Ok((scan, offers))
@@ -431,6 +432,13 @@ impl Guard {
             });
         } else {
             self.memory.upkept = Some(tick.wall);
+        }
+        // Whatever came of it, so a failing command waits its window too.
+        for (taken, _) in &report.actions {
+            let offered = here.iter().find(|offer| &offer.candidate.path == taken);
+            if let Some(Action::Run { source, .. }) = offered.map(|offer| &offer.action) {
+                self.memory.ran.insert(source.clone(), tick.wall);
+            }
         }
         let end = ending(&report.end);
         self.journal.write(&Line::Pass {
@@ -602,8 +610,9 @@ fn paths(source: &Source) -> Vec<&Path> {
         | Source::Trash { path }
         | Source::Logs { path }
         | Source::Coredumps { path }
-        | Source::NixBuilds { path } => vec![path.as_path()],
-        Source::Podman { .. } | Source::Producer { .. } | Source::Finished { .. } => Vec::new(),
+        | Source::NixBuilds { path }
+        | Source::Producer { path, .. } => vec![path.as_path()],
+        Source::Podman { .. } | Source::Finished { .. } => Vec::new(),
     }
 }
 

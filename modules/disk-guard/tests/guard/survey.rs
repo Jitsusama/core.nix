@@ -7,10 +7,12 @@ use disk_guard::logs::{KEEP, LIMIT};
 use disk_guard::plan::Class;
 use disk_guard::snapshots::Boot;
 use disk_guard::survey::{Action, Offer, World, survey};
+use std::collections::BTreeMap;
 use std::ffi::OsString;
 use std::fs;
 use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 const BOOT: Boot = Boot {
     wall: 0.0,
@@ -32,6 +34,15 @@ fn config(sources: &str) -> Config {
 }
 
 fn offers(config: &Config, processes: &[Process], finished: &dyn Fn(&Path) -> bool) -> Vec<Offer> {
+    offers_after(config, processes, finished, &BTreeMap::new())
+}
+
+fn offers_after(
+    config: &Config,
+    processes: &[Process],
+    finished: &dyn Fn(&Path) -> bool,
+    ran: &BTreeMap<String, f64>,
+) -> Vec<Offer> {
     let awake = Awake::default();
     let mut finished = |dir: &Path| finished(dir);
     let mut world = World {
@@ -42,6 +53,7 @@ fn offers(config: &Config, processes: &[Process], finished: &dyn Fn(&Path) -> bo
         awake: &awake,
         now: now(),
         finished: &mut finished,
+        ran,
     };
     let mut found = survey(config, &mut world);
     found.sort_by(|a, b| a.candidate.path.cmp(&b.candidate.path));
@@ -327,6 +339,49 @@ fn orphaned_snapshots_and_finished_workspaces_are_offered() {
         Action::Workspace {
             root: workspaces.clone()
         }
+    );
+}
+
+#[test]
+fn producers_are_offered_where_they_free_idle_since_they_last_ran() {
+    let home = tempfile::tempdir().unwrap();
+    let home = real(home.path());
+    let trees = dir(&home.join("trees"));
+    let config = config(&format!(
+        r#""tec": {{ "kind": "producer", "command": ["/bin/tec", "cache", "gc"],
+                    "path": "{0}", "every": "6h", "timeout": "5m" }},
+           "fresh": {{ "kind": "producer", "command": ["/bin/fresh"],
+                      "path": "{0}", "from": "urgent", "timeout": "1m" }}"#,
+        trees.display()
+    ));
+    let ran = [("fresh".to_owned(), now() - 100.0)].into();
+    let found = offers_after(&config, &[], &|_| false, &ran);
+    assert_eq!(found.len(), 2);
+    let tec = find(&found, &PathBuf::from(format!("{}#tec", trees.display())));
+    assert_eq!(
+        tec.candidate.class,
+        Class::Producer {
+            every: Some(6.0 * 3600.0),
+            from: None
+        }
+    );
+    assert_eq!(tec.candidate.idle, f64::INFINITY, "never ran");
+    assert_eq!(tec.candidate.size, 0, "what it frees is measured");
+    assert_eq!(
+        tec.action,
+        Action::Run {
+            root: trees.clone(),
+            source: "tec".to_owned(),
+            argv: vec!["/bin/tec".into(), "cache".into(), "gc".into()],
+            timeout: Duration::from_secs(300),
+        }
+    );
+    assert_eq!(tec.device, fs::metadata(&trees).unwrap().dev());
+    let fresh = find(&found, &PathBuf::from(format!("{}#fresh", trees.display())));
+    assert!(
+        (fresh.candidate.idle - 100.0).abs() < 5.0,
+        "{}",
+        fresh.candidate.idle
     );
 }
 
