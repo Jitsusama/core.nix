@@ -1,5 +1,6 @@
-use disk_guard::commands::{Job, Ran, run};
+use disk_guard::commands::{Job, Ran, run, stoppable};
 use std::ffi::OsString;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 fn job(words: &[&str]) -> Job {
@@ -38,8 +39,58 @@ fn an_idle_command_runs_at_idle_priority_and_any_other_as_the_guard_does() {
 fn finished(ran: Ran) -> disk_guard::commands::Output {
     match ran {
         Ran::Finished(output) => output,
-        Ran::TimedOut => panic!("timed out"),
+        other => panic!("{other:?}"),
     }
+}
+
+/// Runs `job` until `stop` is asked after `after`, with `grace` to end.
+fn stopped_after(job: &Job, after: Duration, grace: Duration) -> (Ran, Duration) {
+    let stop = AtomicBool::new(false);
+    std::thread::scope(|scope| {
+        scope.spawn(|| {
+            std::thread::sleep(after);
+            stop.store(true, Ordering::Relaxed);
+        });
+        let started = Instant::now();
+        let ran = stoppable(job, &stop, grace).unwrap();
+        (ran, started.elapsed())
+    })
+}
+
+#[test]
+fn a_stopped_command_is_asked_to_end_and_given_its_grace() {
+    let dir = tempfile::tempdir().unwrap();
+    let said = dir.path().join("said");
+    let script = format!(
+        "trap 'sleep 0.3; echo ended > {}; exit 0' TERM; sleep 30 & wait",
+        said.display()
+    );
+    let (ran, took) = stopped_after(
+        &job(&["sh", "-c", &script]),
+        Duration::from_millis(200),
+        Duration::from_secs(5),
+    );
+    assert!(matches!(ran, Ran::Stopped), "{ran:?}");
+    assert!(took < Duration::from_secs(3), "{took:?}");
+    assert_eq!(std::fs::read_to_string(&said).unwrap(), "ended\n");
+}
+
+#[test]
+fn a_stopped_command_that_wont_end_is_killed_after_its_grace() {
+    let (ran, took) = stopped_after(
+        &job(&["sh", "-c", "trap '' TERM; sleep 30 & wait; sleep 30"]),
+        Duration::from_millis(100),
+        Duration::from_millis(300),
+    );
+    assert!(matches!(ran, Ran::Stopped), "{ran:?}");
+    assert!(took < Duration::from_secs(3), "{took:?}");
+}
+
+#[test]
+fn a_command_never_stopped_finishes_as_any_other() {
+    let stop = AtomicBool::new(false);
+    let ran = stoppable(&job(&["echo", "done"]), &stop, Duration::from_secs(1)).unwrap();
+    assert_eq!(finished(ran).stdout, b"done\n");
 }
 
 #[test]

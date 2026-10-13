@@ -327,7 +327,9 @@ fn run(argv: &[String], timeout: Duration, idle: bool) -> Outcome {
                 None => how,
             })
         }
-        Ok(Ran::TimedOut) => Outcome::Failed(format!("it ran past its {timeout:?} and was killed")),
+        Ok(Ran::TimedOut | Ran::Stopped) => {
+            Outcome::Failed(format!("it ran past its {timeout:?} and was killed"))
+        }
         Err(error) => Outcome::Failed(format!("starting it: {error}")),
     }
 }

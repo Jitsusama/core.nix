@@ -11,6 +11,7 @@ use std::os::fd::AsRawFd;
 use std::os::unix::process::CommandExt;
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 pub struct Job {
@@ -39,6 +40,8 @@ pub struct Output {
 pub enum Ran {
     Finished(Output),
     TimedOut,
+    /// Asked to stop before it finished, and ended or killed.
+    Stopped,
 }
 
 /// How often a command is looked at while its output is quiet.
@@ -69,7 +72,17 @@ fn idle() {
     }
 }
 
+/// Runs `job` as `run` does, until `stop` is set: then its group is asked
+/// to end, and killed if it hasn't within `grace`.
+pub fn stoppable(job: &Job, stop: &AtomicBool, grace: Duration) -> io::Result<Ran> {
+    running(job, Some((stop, grace)))
+}
+
 pub fn run(job: &Job) -> io::Result<Ran> {
+    running(job, None)
+}
+
+fn running(job: &Job, stop: Option<(&AtomicBool, Duration)>) -> io::Result<Ran> {
     let Some((program, args)) = job.argv.split_first() else {
         return Err(io::Error::new(io::ErrorKind::InvalidInput, "no program"));
     };
@@ -112,12 +125,29 @@ pub fn run(job: &Job) -> io::Result<Ran> {
     ];
     let mut exited = None;
     let mut truncated = false;
+    // When it was asked to end, and so must have by.
+    let mut ending: Option<Instant> = None;
     loop {
         let now = Instant::now();
         if exited.is_none()
             && let Some(status) = child.try_wait()?
         {
             exited = Some((status, now));
+        }
+        if let Some((stop, grace)) = stop {
+            match (ending, exited) {
+                (None, None) if stop.load(Ordering::Relaxed) => {
+                    signal(&child, libc::SIGTERM);
+                    ending = Some(now + grace);
+                }
+                (Some(by), None) if now >= by => {
+                    kill(child)?;
+                    return Ok(Ran::Stopped);
+                }
+                // Whatever it said on the way out, it didn't finish.
+                (Some(_), Some(_)) => return Ok(Ran::Stopped),
+                _ => {}
+            }
         }
         let open = streams.iter().any(|stream| stream.reader.is_some());
         match exited {
@@ -149,11 +179,16 @@ fn finish(status: std::process::ExitStatus, streams: [Stream; 2], truncated: boo
 }
 
 fn kill(mut child: Child) -> io::Result<Ran> {
-    // The group is the child's pid; whatever it started is in it unless it
-    // left on purpose.
-    unsafe { libc::kill(-(child.id() as libc::pid_t), libc::SIGKILL) };
+    signal(&child, libc::SIGKILL);
     child.wait()?;
     Ok(Ran::TimedOut)
+}
+
+/// Signals the child's whole group, which is its pid; whatever it started
+/// is in it unless it left on purpose.
+fn signal(child: &Child, signal: libc::c_int) {
+    // SAFETY: a plain system call; the group is the child's own.
+    unsafe { libc::kill(-(child.id() as libc::pid_t), signal) };
 }
 
 trait ReadFd: Read + AsRawFd {}

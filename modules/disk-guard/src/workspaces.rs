@@ -184,7 +184,7 @@ pub fn prune(common: &Path) -> std::io::Result<()> {
             "git worktree prune failed: {}",
             String::from_utf8_lossy(&output.stderr).trim()
         ))),
-        crate::commands::Ran::TimedOut => {
+        crate::commands::Ran::TimedOut | crate::commands::Ran::Stopped => {
             Err(std::io::Error::other("git worktree prune timed out"))
         }
     }
