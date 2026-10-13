@@ -723,7 +723,8 @@ by them isn't done.
 | The lock screen, polkit and PIN prompts   | Quickshell               | both           |        |        |           |         |          |
 | GTK and Qt apps, file and print dialogs   | gtk, qt                  | proportional   |        |        |           |         |          |
 | The browser                               | chrome                   | proportional   |        |        |           |         |          |
-| Images and drawings                       | gimp, inkscape, Quickshell | proportional | nothing | nothing | nothing | the launcher's row: edit the newest screenshot in GIMP, at home below the window in front for two minutes after it's taken |          |
+| Images and drawings                       | swayimg, gimp, inkscape, Quickshell | proportional | nothing | nothing | nothing | the launcher's rows: edit the newest screenshot in GIMP, at home below the window in front for two minutes after it's taken; look through the screenshots in swayimg's gallery; in swayimg, e edits, y copies, Delete trashes, q closes | swayimg's name and place go two seconds after each picture opens |
+| Documents                                 | zathura                  | proportional   | nothing | nothing | nothing | zathura's own keys | its bar and command line show only while they're asked for |
 | Music                                     | spotify, Quickshell      | both           | nothing | a note in the margin while any player plays; for a moment, the track as a notice | the mark's panel: the track, artist, album and player; pause, next, previous, the player's window, and pausing a second player | Play or pause the music, Play the next track, Play the previous track, on the media keys | the mark carries no words; a title wraps to two lines, then gives way |
 | Pairing                                   | tuple, Quickshell, niri  | both           | nothing | a phone in the margin while in a call, and wanting Joel while one rings; for a moment, who joined or left, and that he's the only one left; a ring, and a missed call kept | the mark's panel: how long, and who with or who's sharing; leave, share the screen, mute him in Tuple, copy the room's link; while ringing, show the call | the launcher's rows: show a ringing call, first at home; open the room and copy its link; join a copied call's link, first at home once copied; leave, share, mute; a tuple: link from the browser joins its room | the mark carries no words; its panel says how long and who with |
 | Chat, passwords, calls                    | their own settings       | proportional   |        |        |           |         |          |
@@ -756,6 +757,20 @@ as an exception with the reason.
 ## Decisions
 
 What each studio round settled, newest first, with the reason.
+
+- **A quick look at a picture or a document** (2026-10-12). Opening a
+  picture or a document is most often a glance, so each opens in a viewer
+  that's quick and shows nothing but it: swayimg for pictures and drawings,
+  zathura for documents, since no one program does both well. A picture
+  floats in the middle of the screen at four fifths of its size, a look
+  rather than a place to work, with its name and place in the folder for
+  two seconds and the accent only on the gallery's selected picture, and
+  e takes it to GIMP, or a drawing to Inkscape, and closes the look. A
+  document tiles, since reading sits beside work, with its pages recoloured
+  into the theme, hue kept, and Ctrl+R to see them as printed. SVG opens
+  in swayimg rather than Inkscape for the same reason a PNG doesn't open in
+  GIMP. Both programs go on past a setting they can't take, saying so only
+  as they start, so each has a check that runs it.
 
 - **A screenshot to mark up** (2026-10-12). A screenshot is most often
   taken to point at something in it, so the launcher offers the newest to

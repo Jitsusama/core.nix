@@ -10,8 +10,9 @@
 # people coming and going in it are said and Joel can leave from the last
 # one's notice, a ringing call wants him and one not answered is kept as
 # missed, a copied call's link can be joined until something else is
-# copied, the clipboard takes and gives text, and GTK programs and
-# monospaced text are in the theme. niri says which surfaces it drew,
+# copied, the clipboard takes and gives text, a picture opens floating in
+# swayimg and a key takes it to GIMP, a document opens in zathura beside
+# the rest, and GTK programs and monospaced text are in the theme. niri says which surfaces it drew,
 # photographs show their colours, to the test and to a person looking, and
 # the portal and fontconfig answer for the settings. Quickshell has to
 # start without a single QML error.
@@ -38,6 +39,13 @@ let
     echo $? > "$out.part"
     mv "$out.part" "$out.exit"
   '';
+
+  # A picture and a document to open, as a download would be.
+  picture = "${pkgs.nixos-icons}/share/icons/hicolor/256x256/apps/nix-snowflake.png";
+  page = import ./page.nix {
+    inherit (pkgs) lib;
+    inherit pkgs;
+  };
 
   # What the shell has reported (modules/quickshell/Report.qml): waits until
   # it reports something starting with a prefix after a point in its
@@ -926,6 +934,54 @@ pkgs.testers.runNixOSTest {
           machine.succeed("pkill -KILL -u ${account} -f '[g]imp'")
           machine.wait_until_fails("pgrep -u ${account} -f '[g]imp'", timeout=30)
           machine.succeed(f"rm {pictures}/*.png")
+
+      # Opens a file as a click on it would, and waits for the program meant
+      # for it to take the focus. A program's first start here, drawn in
+      # software, has taken 17 seconds on a busy host. If none does, it says
+      # what would open the file, what opening it said, and what's open.
+      def opens_in(path, kind, app_id):
+          as_account(f"niri msg action spawn -- sh -c 'xdg-open {path} > /tmp/opened 2>&1'")
+          try:
+              machine.wait_until_succeeds(
+                  in_session(f"niri msg --json focused-window | grep -q '\"app_id\":\"{app_id}\"'"),
+                  timeout=60,
+              )
+          except Exception:
+              print(as_account(f"xdg-mime query default {kind}; cat /tmp/opened; niri msg windows"))
+              raise
+
+      with subtest("a picture opens floating in swayimg, and e takes it to GIMP"):
+          # Beside the screenshots, never among them, since the region
+          # screenshot's subtest waits for a picture there of its own.
+          looked = "/home/${account}/snowflake.png"
+          as_account(f"cp ${picture} {looked}")
+          opens_in(looked, "image/png", "swayimg")
+          swayimg = window_titled("Swayimg: snowflake.png")
+          assert swayimg["is_floating"], swayimg
+          # Four fifths of the screen, centred, at the size niri gave it,
+          # less the gaps and border niri takes out of it. Without swayimg's
+          # size given again, it's twice that, off the screen.
+          left, top, width, height = drawn_at(swayimg)
+          wide = json.loads(as_account("niri msg --json focused-output"))["logical"]["width"]
+          assert abs(width - wide * 0.8) <= wide * 0.02, swayimg
+          assert abs(left + width / 2 - wide / 2) <= wide * 0.02, swayimg
+          machine.screenshot("swayimg")
+          machine.send_key("e")
+          machine.wait_until_succeeds(f"pgrep -u ${account} -f '[g]imp.*{looked}'", timeout=30)
+          machine.wait_until_fails("pgrep -u ${account} -x swayimg", timeout=10)
+          # As in the screenshot's subtest: GIMP goes before it draws.
+          machine.succeed("pkill -KILL -u ${account} -f '[g]imp'")
+          machine.wait_until_fails("pgrep -u ${account} -f '[g]imp'", timeout=30)
+          machine.succeed(f"rm {looked}")
+
+      with subtest("a document opens in zathura, beside the rest, and q closes it"):
+          opens_in("${page}", "application/pdf", "org.pwmt.zathura")
+          windows = json.loads(as_account("niri msg --json windows"))
+          zathura = next(window for window in windows if window["app_id"] == "org.pwmt.zathura")
+          assert not zathura["is_floating"], zathura
+          machine.screenshot("zathura")
+          machine.send_key("q")
+          machine.wait_until_fails("pgrep -u ${account} -f '[z]athura'", timeout=10)
 
       with subtest("the launcher's Sound moves sound to another output, and back"):
           for output in ["stand-in-headphones", "stand-in-speakers"]:
