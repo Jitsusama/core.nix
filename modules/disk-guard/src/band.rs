@@ -50,13 +50,21 @@ impl Thresholds {
     /// flap in and out of it with every write.
     const MARGIN_PERCENT: f64 = 1.0;
 
+    /// The bands in bytes on a filesystem of `total` bytes. A config can
+    /// mix bytes and shares, whose order shows only here, so bands out of
+    /// order fold into the one before, and the target lies at least where
+    /// pressure is left: a pass that reached a target under it would leave
+    /// the disk under pressure, and run again every step.
     pub fn new(bands: &crate::config::Bands, total: u64) -> Thresholds {
+        let margin = crate::units::Size::Percent(Self::MARGIN_PERCENT).of(total);
+        let pressure = bands.pressure.of(total);
+        let urgent = bands.urgent.of(total).min(pressure);
         Thresholds {
-            pressure: bands.pressure.of(total),
-            urgent: bands.urgent.of(total),
-            critical: bands.critical.of(total),
-            target: bands.target.of(total),
-            margin: crate::units::Size::Percent(Self::MARGIN_PERCENT).of(total),
+            pressure,
+            urgent,
+            critical: bands.critical.of(total).min(urgent),
+            target: bands.target.of(total).max(pressure.saturating_add(margin)),
+            margin,
         }
     }
 

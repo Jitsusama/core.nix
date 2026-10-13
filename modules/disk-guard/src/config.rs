@@ -43,6 +43,45 @@ impl Bands {
     fn critical() -> Size {
         Size::Percent(3.0)
     }
+    /// Refuses bands out of order where their units let it show: each
+    /// band under the one before, and the target over pressure. Bytes
+    /// against a share are ordered on each filesystem, where the band
+    /// thresholds fold them.
+    fn check(&self) -> Result<(), String> {
+        // Whether `a` is surely more than `b`.
+        let over = |a: Size, b: Size| match (a, b) {
+            (Size::Bytes(a), Size::Bytes(b)) => a > b,
+            (Size::Percent(a), Size::Percent(b)) => a > b,
+            _ => false,
+        };
+        let written = |size: Size| match size {
+            Size::Bytes(bytes) => bytes.to_string(),
+            Size::Percent(share) => format!("{share}%"),
+        };
+        if over(self.urgent, self.pressure) {
+            return Err(format!(
+                "urgent {} is over pressure {}",
+                written(self.urgent),
+                written(self.pressure)
+            ));
+        }
+        if over(self.critical, self.urgent) {
+            return Err(format!(
+                "critical {} is over urgent {}",
+                written(self.critical),
+                written(self.urgent)
+            ));
+        }
+        if over(self.pressure, self.target) {
+            return Err(format!(
+                "target {} is under pressure {}",
+                written(self.target),
+                written(self.pressure)
+            ));
+        }
+        Ok(())
+    }
+
     fn target() -> Size {
         Size::Percent(20.0)
     }
@@ -404,6 +443,7 @@ impl Config {
                 rendered.version
             ));
         }
+        rendered.bands.check()?;
         for (name, source) in &rendered.sources {
             if !source.owned_by(rendered.scope) {
                 return Err(format!(

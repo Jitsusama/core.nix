@@ -174,6 +174,14 @@ fn refusals_say_why() {
             "neither",
         ),
         (
+            with(USER, r#""target": "20%""#, r#""target": "10%""#),
+            "target 10% is under pressure 15%",
+        ),
+        (
+            with(USER, r#""critical": "3%""#, r#""critical": "9%""#),
+            "critical 9% is over urgent 8%",
+        ),
+        (
             r#"{"version": 1, "scope": "system", "sources": {}}"#.to_string(),
             "needs boot",
         ),

@@ -35,6 +35,26 @@ fn bytes_resolve_as_they_are() {
 }
 
 #[test]
+fn bands_out_of_order_fold_and_the_target_lies_past_pressure() {
+    // Bytes against shares can only be ordered on a filesystem: 500 bytes
+    // of urgency over a 15% pressure line, and a target under it.
+    let bands = Bands {
+        urgent: Size::Bytes(500),
+        critical: Size::Bytes(600),
+        target: Size::Bytes(10),
+        ..Bands::default()
+    };
+    let t = Thresholds::new(&bands, TOTAL);
+    assert_eq!((t.pressure, t.urgent, t.critical), (150, 150, 150));
+    assert_eq!(
+        t.target,
+        150 + t.margin,
+        "a pass that reaches it leaves pressure"
+    );
+    assert_eq!(t.band(&space(t.target), Band::Pressure), Band::Healthy);
+}
+
+#[test]
 fn free_space_names_the_band() {
     let t = thresholds();
     assert_eq!(t.band(&space(500), Band::Healthy), Band::Healthy);
