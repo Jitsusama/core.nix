@@ -205,7 +205,11 @@ QtObject {
         // typed a letter at a time, as a person types it, each searching
         // the whole list, though the launcher narrows the last results as a
         // query grows; over a list three times the size too. The fastest of
-        // five batches counts.
+        // five batches counts. How fast the engine runs the matcher differs
+        // from one process to the next by as much as half, which no batch
+        // within one can even out, so a matcher too slow exits 2 and the
+        // check runs it again in a fresh process (checks.nix); a ranking
+        // that's wrong exits 1 and is never run again.
         const most = 6.5;
         const many = things.concat(
             names.map(n => Fuzzy.prepare(n + " again")),
@@ -220,6 +224,7 @@ QtObject {
                     work(query);
             return (Date.now() - started) / (rounds * typed.length);
         };
+        const slow = [];
         for (const list of [things, many]) {
             let each = Infinity;
             let floor = Infinity;
@@ -238,16 +243,17 @@ QtObject {
             console.warn(`${typed.length} queries over ${list.length} things: `
                 + `${each.toFixed(3)} ms each, ${times.toFixed(1)} times the least a search could take`);
             if (times > most)
-                failures.push(`a query over ${list.length} things took ${times.toFixed(1)} times `
+                slow.push(`a query over ${list.length} things took ${times.toFixed(1)} times `
                     + `the least a search could, more than ${most}`);
         }
 
         // Said as warnings, since Qt keeps ordinary logging quiet.
-        for (const failure of failures)
+        for (const failure of failures.concat(slow))
             console.warn(failure);
         const asked = Object.keys(firsts).length + nothing.length + Object.keys(atMost).length + 2;
         console.warn(failures.length > 0 ? `${failures.length} of ${asked} went wrong`
+            : slow.length > 0 ? `${slow.length} of ${asked} too slow in this process`
             : `all ${asked} held`);
-        Qt.exit(failures.length > 0 ? 1 : 0);
+        Qt.exit(failures.length > 0 ? 1 : slow.length > 0 ? 2 : 0);
     }
 }

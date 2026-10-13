@@ -258,13 +258,19 @@ local runtime = os.getenv('XDG_RUNTIME_DIR') or '/tmp'
 local shots = 0
 
 -- Saves the frame on screen, turned back, then copies it and says where it
--- went.
-local function take()
-  local folder = home .. '/Pictures/Camera'
-  local file = string.format('%s/%s', folder, stamp())
-  shots = shots + 1
-  local frame = string.format('%s/camera-%s-%d.png', runtime, mp.get_property('pid'), shots)
-  mp.command_native({ 'screenshot-to-file', frame, 'video' })
+-- went. The camera counts as awake once mpv knows the picture's size, which
+-- can come before there's a frame to save, so a frame that isn't saved is
+-- asked for again a moment later, for two seconds at most, and then saved
+-- as it is, for the notice to say why it failed.
+local function save(frame, file, tries)
+  -- A screenshot that saved returns nothing; one that didn't, an error.
+  local _, failed = mp.command_native({ 'screenshot-to-file', frame, 'video' })
+  if failed and tries < 40 then
+    mp.add_timeout(0.05, function()
+      save(frame, file, tries + 1)
+    end)
+    return
+  end
   flash = true
   draw()
   mp.add_timeout(0.12, function()
@@ -296,6 +302,13 @@ local function take()
     frame,
     file
   )
+end
+
+local function take()
+  local file = string.format('%s/Pictures/Camera/%s', home, stamp())
+  shots = shots + 1
+  local frame = string.format('%s/camera-%s-%d.png', runtime, mp.get_property('pid'), shots)
+  save(frame, file, 0)
 end
 
 -- What the viewfinder plays, and what to do once it has let the last one go.
