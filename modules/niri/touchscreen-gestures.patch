@@ -1,0 +1,331 @@
+Touchscreen gestures for niri 26.04, from niri-wm/niri#3180: three fingers
+move the view and the workspaces, four open and close the overview, as the
+touchpad's do. Beyond #3180, they move as a screen's should: the content
+follows the fingers, as far as they move, however many there are. And a
+third finger cancels the touches the client already had, and the client
+sees nothing more until every finger has lifted, so a swipe never reaches
+it as a tap or as touches left unfinished.
+
+diff -ru a/src/input/mod.rs b/src/input/mod.rs
+--- a/src/input/mod.rs	2026-10-13 10:28:14.103548802 -0400
++++ b/src/input/mod.rs	2026-10-13 10:28:14.105548783 -0400
+@@ -4065,6 +4065,26 @@
+         };
+         let slot = evt.slot();
+ 
++        // Track touch point for multi-finger gesture detection.
++        let was_single = self.niri.touch_gesture_points.len() == 1;
++        self.niri.touch_gesture_points.insert(Some(slot), pos);
++
++        // When second finger arrives, start cumulative tracking for gesture recognition.
++        // Actual gestures (workspace/view/scroll) require 3+ fingers and are processed
++        // in on_touch_motion once the third finger arrives and moves.
++        if was_single && self.niri.touch_gesture_points.len() == 2 {
++            self.niri.touch_gesture_cumulative = Some((0., 0.));
++        }
++
++        // A third finger makes a gesture. The client already has the first
++        // two, so their touches are cancelled rather than left to end as a
++        // tap, and nothing more reaches it until every finger has lifted.
++        if self.niri.touch_gesture_points.len() > 2 && !self.niri.touch_gesture_swallowing {
++            self.niri.touch_gesture_swallowing = true;
++            handle.cancel(self);
++        }
++        let tracking_gesture = self.niri.touch_gesture_swallowing;
++
+         let serial = SERIAL_COUNTER.next_serial();
+ 
+         let under = self.niri.contents_under(pos);
+@@ -4173,16 +4193,19 @@
+             self.niri.focus_layer_surface_if_on_demand(under.layer);
+         };
+ 
+-        handle.down(
+-            self,
+-            under.surface,
+-            &DownEvent {
+-                slot,
+-                location: pos,
+-                serial,
+-                time: evt.time_msec(),
+-            },
+-        );
++        // Only forward to client if not tracking a multi-finger gesture.
++        if !tracking_gesture {
++            handle.down(
++                self,
++                under.surface,
++                &DownEvent {
++                    slot,
++                    location: pos,
++                    serial,
++                    time: evt.time_msec(),
++                },
++            );
++        }
+ 
+         // We're using touch, hide the pointer.
+         self.niri.pointer_visibility = PointerVisibility::Disabled;
+@@ -4193,6 +4216,30 @@
+         };
+         let slot = evt.slot();
+ 
++        // A finger of a gesture lifts unseen by the client, which had its
++        // touches cancelled when the gesture began.
++        let tracking_gesture = self.niri.touch_gesture_swallowing;
++
++        // Remove touch point from gesture tracking.
++        self.niri.touch_gesture_points.remove(&Some(slot));
++        if self.niri.touch_gesture_points.is_empty() {
++            self.niri.touch_gesture_swallowing = false;
++        }
++
++        // End gesture when fewer than 2 fingers remain.
++        if self.niri.touch_gesture_points.len() < 2 {
++            self.niri.touch_gesture_cumulative = None;
++
++            // End any ongoing gesture animations.
++            if let Some(output) = self.niri.layout.workspace_switch_gesture_end(Some(false)) {
++                self.niri.queue_redraw(&output);
++            }
++            if let Some(output) = self.niri.layout.view_offset_gesture_end(Some(false)) {
++                self.niri.queue_redraw(&output);
++            }
++            self.niri.layout.overview_gesture_end();
++        }
++
+         if let Some(capture) = self.niri.screenshot_ui.pointer_up(Some(slot)) {
+             if capture {
+                 self.confirm_screenshot(true);
+@@ -4201,15 +4248,18 @@
+             }
+         }
+ 
+-        let serial = SERIAL_COUNTER.next_serial();
+-        handle.up(
+-            self,
+-            &UpEvent {
+-                slot,
+-                serial,
+-                time: evt.time_msec(),
+-            },
+-        )
++        // Only forward to client if not tracking a multi-finger gesture.
++        if !tracking_gesture {
++            let serial = SERIAL_COUNTER.next_serial();
++            handle.up(
++                self,
++                &UpEvent {
++                    slot,
++                    serial,
++                    time: evt.time_msec(),
++                },
++            )
++        }
+     }
+     fn on_touch_motion<I: InputBackend>(&mut self, evt: I::TouchMotionEvent) {
+         let Some(handle) = self.niri.seat.get_touch() else {
+@@ -4220,6 +4270,117 @@
+         };
+         let slot = evt.slot();
+ 
++        // Track touch gesture with 2+ fingers.
++        let mut gesture_handled = false;
++        if let Some(old_pos) = self.niri.touch_gesture_points.get(&Some(slot)).copied() {
++            // Every finger moves the gesture, so each moves it by its share,
++            // and the view follows the fingers rather than outrunning them.
++            let fingers = self.niri.touch_gesture_points.len() as f64;
++            let delta_x = (pos.x - old_pos.x) / fingers;
++            let delta_y = (pos.y - old_pos.y) / fingers;
++
++            // Update stored position.
++            self.niri.touch_gesture_points.insert(Some(slot), pos);
++
++            // Process gesture if we're tracking (3+ fingers).
++            if self.niri.touch_gesture_points.len() >= 3 {
++                let timestamp = Duration::from_micros(evt.time());
++                gesture_handled = true;
++
++                // Check if we're still in recognition phase.
++                if let Some((cx, cy)) = &mut self.niri.touch_gesture_cumulative {
++                    *cx += delta_x;
++                    *cy += delta_y;
++
++                    // Check if gesture moved far enough to decide direction.
++                    // Threshold matches touchpad gestures (16px from GNOME Shell).
++                    let (cx, cy) = (*cx, *cy);
++                    if cx * cx + cy * cy >= 16. * 16. {
++                        self.niri.touch_gesture_cumulative = None;
++
++                        let finger_count = self.niri.touch_gesture_points.len();
++
++                        if finger_count >= 4 {
++                            // 4+ finger gesture: toggle overview.
++                            self.niri.layout.overview_gesture_begin();
++                        } else if let Some((output, _pos_within_output)) =
++                            self.niri.output_under(pos)
++                        {
++                            let output = output.clone();
++                            // 3 finger gesture: workspace switch or view offset.
++                            let is_overview_open = self.niri.layout.is_overview_open();
++
++                            if cx.abs() > cy.abs() {
++                                // Horizontal gesture: view offset (scroll within workspace).
++                                let output_ws = if is_overview_open {
++                                    self.niri.workspace_under(true, pos)
++                                } else {
++                                    self.niri
++                                        .layout
++                                        .monitor_for_output(&output)
++                                        .map(|mon| (output.clone(), mon.active_workspace_ref()))
++                                };
++
++                                if let Some((output, ws)) = output_ws {
++                                    let ws_idx =
++                                        self.niri.layout.find_workspace_by_id(ws.id()).unwrap().0;
++                                    // Not as a touchpad's: a screen's moves
++                                    // the view as far as the fingers move.
++                                    self.niri.layout.view_offset_gesture_begin(
++                                        &output,
++                                        Some(ws_idx),
++                                        false,
++                                    );
++                                }
++                            } else {
++                                // Vertical gesture: workspace switch.
++                                self.niri
++                                    .layout
++                                    .workspace_switch_gesture_begin(&output, false);
++                            }
++                        }
++                    }
++                }
++
++                // On a screen the content follows the fingers, so the deltas
++                // are the other way round from a touchpad's.
++                let (gesture_delta_x, gesture_delta_y) = (-delta_x, -delta_y);
++
++                // Continue ongoing gesture animations.
++                // Swipe down → previous workspace, swipe up → next workspace.
++                if self
++                    .niri
++                    .layout
++                    .workspace_switch_gesture_update(gesture_delta_y, timestamp, false)
++                    .is_some()
++                {
++                    self.niri.queue_redraw_all();
++                }
++
++                // Swipe right → scroll left (prev window), swipe left → scroll right (next window).
++                if self
++                    .niri
++                    .layout
++                    .view_offset_gesture_update(gesture_delta_x, timestamp, false)
++                    .is_some()
++                {
++                    self.niri.queue_redraw_all();
++                }
++
++                // Update overview gesture (uses vertical delta like touchpad).
++                // Overview always uses uninverted delta, matching touchpad behavior.
++                if let Some(redraw) = self
++                    .niri
++                    .layout
++                    .overview_gesture_update(-delta_y, timestamp)
++                {
++                    if redraw {
++                        self.niri.queue_redraw_all();
++                    }
++                }
++            }
++        }
++
+         if let Some(output) = self.niri.screenshot_ui.selection_output().cloned() {
+             let geom = self.niri.global_space.output_geometry(&output).unwrap();
+             let mut point = (pos - geom.loc.to_f64())
+@@ -4236,16 +4397,19 @@
+             self.niri.queue_redraw(&output);
+         }
+ 
+-        let under = self.niri.contents_under(pos);
+-        handle.motion(
+-            self,
+-            under.surface,
+-            &TouchMotionEvent {
+-                slot,
+-                location: pos,
+-                time: evt.time_msec(),
+-            },
+-        );
++        // Only forward to client if not handling a multi-finger gesture.
++        if !gesture_handled && !self.niri.touch_gesture_swallowing {
++            let under = self.niri.contents_under(pos);
++            handle.motion(
++                self,
++                under.surface,
++                &TouchMotionEvent {
++                    slot,
++                    location: pos,
++                    time: evt.time_msec(),
++                },
++            );
++        }
+ 
+         // Inform the layout of an ongoing DnD operation.
+         let is_dnd_grab = handle
+@@ -4268,6 +4432,17 @@
+         let Some(handle) = self.niri.seat.get_touch() else {
+             return;
+         };
++
++        // Clear all touch gesture state.
++        self.niri.touch_gesture_points.clear();
++        self.niri.touch_gesture_cumulative = None;
++        self.niri.touch_gesture_swallowing = false;
++
++        // Cancel any ongoing gesture animations.
++        self.niri.layout.workspace_switch_gesture_end(Some(false));
++        self.niri.layout.view_offset_gesture_end(Some(false));
++        self.niri.layout.overview_gesture_end();
++
+         handle.cancel(self);
+     }
+ 
+diff -ru a/src/niri.rs b/src/niri.rs
+--- a/src/niri.rs	2026-10-13 10:28:14.111548722 -0400
++++ b/src/niri.rs	2026-10-13 10:28:14.112548712 -0400
+@@ -19,7 +19,7 @@
+     WorkspaceReference, Xkb,
+ };
+ use smithay::backend::allocator::Fourcc;
+-use smithay::backend::input::Keycode;
++use smithay::backend::input::{Keycode, TouchSlot};
+ use smithay::backend::renderer::damage::OutputDamageTracker;
+ use smithay::backend::renderer::element::memory::MemoryRenderBufferRenderElement;
+ use smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement;
+@@ -370,6 +370,15 @@
+     pub pointer_inside_hot_corner: bool,
+     pub tablet_cursor_location: Option<Point<f64, Logical>>,
+     pub gesture_swipe_3f_cumulative: Option<(f64, f64)>,
++    /// Active touch points for multi-finger gesture detection.
++    pub touch_gesture_points: HashMap<Option<TouchSlot>, Point<f64, Logical>>,
++    /// Cumulative delta when tracking a 2+ finger touch gesture.
++    /// Set to Some((0, 0)) when gesture recognition starts (2nd finger down),
++    /// cleared when gesture completes or is cancelled.
++    pub touch_gesture_cumulative: Option<(f64, f64)>,
++    /// Whether a touch gesture took the touches from the client, which then
++    /// sees none until every finger has lifted.
++    pub touch_gesture_swallowing: bool,
+     pub overview_scroll_swipe_gesture: ScrollSwipeGesture,
+     pub vertical_wheel_tracker: ScrollTracker,
+     pub horizontal_wheel_tracker: ScrollTracker,
+@@ -2581,6 +2590,9 @@
+             pointer_inside_hot_corner: false,
+             tablet_cursor_location: None,
+             gesture_swipe_3f_cumulative: None,
++            touch_gesture_points: HashMap::new(),
++            touch_gesture_cumulative: None,
++            touch_gesture_swallowing: false,
+             overview_scroll_swipe_gesture: ScrollSwipeGesture::new(),
+             vertical_wheel_tracker: ScrollTracker::new(120),
+             horizontal_wheel_tracker: ScrollTracker::new(120),

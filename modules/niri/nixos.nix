@@ -2,11 +2,19 @@
 # the system: its session, its portals, Wayland for Chromium and Electron
 # programs, Xwayland for the X11 programs left, the tool its brightness keys
 # call, and the clipboard's. Its media keys go to the shell (Quickshell's
-# Music.qml).
+# Music.qml). Its touchscreen takes the touchpad's gestures too.
 { pkgs, ... }:
 {
   programs.niri = {
     enable = true;
+    # niri 26.04 has no touchscreen gestures, and a reader beside it can't
+    # keep a swipe's touches from the window under it, which took them as a
+    # tap. The patch (touchscreen-gestures.patch says what it holds) lets
+    # niri swipe the way its touchpad does and cancels the window's touches
+    # once a swipe begins.
+    package = pkgs.niri.overrideAttrs (old: {
+      patches = (old.patches or [ ]) ++ [ ./touchscreen-gestures.patch ];
+    });
     # The GTK file chooser, rather than installing Nautilus to provide one.
     useNautilus = false;
   };

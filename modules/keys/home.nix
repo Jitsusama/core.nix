@@ -195,7 +195,7 @@ in
   options.jitsusama.swipes = lib.mkOption {
     type = lib.types.listOf swipe;
     default = [ ];
-    description = "The touchscreen's swipes. The module that reads the touchscreen adds its own.";
+    description = "The touchscreen's swipes. niri's module names the ones niri does.";
   };
 
   config = {
