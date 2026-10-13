@@ -15,7 +15,15 @@ fn one_daemon_holds_its_state_at_a_time() {
     assert!(first.is_some());
     assert!(hold(dir.path()).unwrap().is_none(), "held by the first");
     drop(first);
-    assert!(hold(dir.path()).unwrap().is_some(), "free once it's gone");
+    // A child another test forked meanwhile shares the lock until it execs.
+    let freed = (0..100).any(|_| {
+        let held = hold(dir.path()).unwrap().is_some();
+        if !held {
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        held
+    });
+    assert!(freed, "free once it's gone");
 }
 
 /// A readable process sitting in `cwd`, in a fake `/proc`.
