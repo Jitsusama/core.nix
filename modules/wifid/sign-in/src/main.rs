@@ -34,6 +34,21 @@ use socks::{Credentials, Target};
 const PATIENCE: Duration = Duration::from_secs(10);
 
 fn main() -> glib::ExitCode {
+    // bubblewrap refuses to start WebKit's sandbox for a process holding
+    // capabilities, and WebKit then gives up. A session can hand its
+    // programs some, as a compositor run from a system service does, and
+    // the window needs none, so nothing it starts inherits any.
+    // SAFETY: PR_CAP_AMBIENT_CLEAR_ALL takes no pointers, needs no
+    // privilege, and touches only this process's ambient set.
+    unsafe {
+        libc::prctl(
+            libc::PR_CAP_AMBIENT,
+            libc::PR_CAP_AMBIENT_CLEAR_ALL,
+            0,
+            0,
+            0,
+        )
+    };
     let app = gtk::Application::builder()
         .application_id("io.jitsusama.WifiSignIn")
         .build();
