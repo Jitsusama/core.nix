@@ -1,4 +1,8 @@
 use crate::discover::file;
+use disk_guard::anchor::Dir;
+use disk_guard::pass::Outcome;
+use disk_guard::plan::{Candidate, Class};
+use disk_guard::reclaim;
 use disk_guard::replaced::{Build, Uses, replaced};
 use rustix::fs::{AtFlags, CWD, Timespec, Timestamps, utimensat};
 use std::fs;
@@ -132,6 +136,66 @@ fn uses_of_what_is_gone_are_forgotten() {
     uses.forget_gone();
     assert_eq!(uses.watched.keys().collect::<Vec<_>>(), vec![&deps]);
     assert_eq!(uses.opened.keys().collect::<Vec<_>>(), vec![&kept]);
+}
+
+fn names(dir: &Path) -> Vec<String> {
+    let mut names: Vec<String> = fs::read_dir(dir)
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+        .collect();
+    names.sort();
+    names
+}
+
+fn older(target: &Path) -> Candidate {
+    Candidate {
+        path: target.join(format!("debug/deps/alpha-{OLD}")),
+        class: Class::Replaced,
+        idle: 0.0,
+        size: 15,
+        occupied: false,
+        spent: false,
+        checkout: None,
+    }
+}
+
+#[test]
+fn reclaiming_a_build_takes_its_artifacts_and_fingerprint_alone() {
+    let root = tempfile::tempdir().unwrap();
+    let target = target(root.path());
+    let anchor = Dir::open(root.path()).unwrap();
+    let outcome = reclaim::build(&anchor, root.path(), &target, &older(&target));
+    assert_eq!(outcome, Outcome::Reclaimed);
+    assert_eq!(
+        names(&target.join("debug/deps")),
+        [
+            "alpha-4444444444444444",
+            "alpha-4444444444444444.d",
+            &format!("libalpha-{NEW}.rlib"),
+            &format!("libalpha-{NEW}.rmeta"),
+            "libbeta-3333333333333333.rlib",
+        ]
+    );
+    assert!(names(&target.join("debug/.fingerprint")).is_empty());
+    // The cross target's build of it is another candidate.
+    assert_eq!(
+        names(&target.join("x86_64-unknown-linux-gnu/release/deps")).len(),
+        8
+    );
+}
+
+#[test]
+fn a_build_whose_target_cargo_holds_is_kept() {
+    use rustix::fs::{FlockOperation, flock};
+    let root = tempfile::tempdir().unwrap();
+    let target = target(root.path());
+    file(&target.join("debug/.cargo-lock"), "");
+    let lock = fs::File::open(target.join("debug/.cargo-lock")).unwrap();
+    flock(&lock, FlockOperation::LockShared).unwrap();
+    let anchor = Dir::open(root.path()).unwrap();
+    let outcome = reclaim::build(&anchor, root.path(), &target, &older(&target));
+    assert!(matches!(outcome, Outcome::Kept(_)), "{outcome:?}");
+    assert_eq!(names(&target.join("debug/deps")).len(), 8);
 }
 
 #[test]

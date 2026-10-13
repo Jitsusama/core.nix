@@ -8,15 +8,18 @@ use crate::clock::Tick;
 use crate::config::{Config, Source};
 use crate::decide::{Decision, Fill, Situation, decide, powered, spare};
 use crate::dedupe::{self, Deduped};
+use crate::discover;
 use crate::finished::{self, Answers, Predicate};
 use crate::garbage::{self, BATCH_BYTES, Batch, Dead, GC_TIMEOUT, Listing};
 use crate::generations::{self, Boot};
 use crate::host::{FRESH, Filesystem, Reclaim, Scan};
 use crate::journal::{self, Journal, Journaled, Line};
 use crate::moments::{Power, Pressure};
+use crate::opens::Seen;
 use crate::pass::{Disk, End, Goal, Learned, Outcome, Reclaimer, pass};
 use crate::plan::{Candidate, Class};
 use crate::pool::pool;
+use crate::replaced::Uses;
 use crate::socket::{Reply, Request, Responder};
 use crate::state::{self, Memory};
 use crate::survey::{Action, Offer, World, named, survey};
@@ -33,7 +36,7 @@ use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, TryRecvError};
 use std::sync::{Arc, Mutex};
-use std::time::Instant;
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 /// What the machine is doing, read by the caller each step.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -74,6 +77,10 @@ const FIRST_PASS_SECONDS: f64 = 60.0;
 const PASS_WEIGHT: f64 = 0.3;
 /// How often what was learned is saved when no pass has run.
 const SAVE_EVERY: f64 = 300.0;
+
+/// How often the targets are walked for a `deps` to watch: one built since
+/// goes unheard until then, and is dated from when it's first watched.
+const MARK_EVERY: f64 = 3600.0;
 /// How often the status file is written when nothing in it has changed,
 /// so its heartbeat says the guard is alive.
 const HEARTBEAT_EVERY: f64 = 30.0;
@@ -161,6 +168,14 @@ pub struct Guard {
     dedupe_out: Option<DedupeOut>,
     /// When the last such run failed.
     dedupe_failed: Option<f64>,
+    /// When each build's artifacts were last opened, shared with whatever
+    /// hears the opens, and where it's kept for the next guard.
+    uses: Arc<Mutex<Uses>>,
+    uses_path: PathBuf,
+    /// What hears the opens, once the guard listens, and when it last
+    /// marked what's built.
+    opens: Option<Arc<crate::opens::Watch>>,
+    marked_at: Option<f64>,
 }
 
 /// Where a listing on its own thread sends the dead paths, or why not.
@@ -252,6 +267,10 @@ impl Guard {
         let listing: Option<Listing> = fs::read(&listing_path)
             .ok()
             .and_then(|bytes| serde_json::from_slice(&bytes).ok());
+        // What can't be read starts afresh: an unwatched deps dates nothing.
+        let uses_path = state.join("uses.json");
+        let mut uses: Uses = state::load(&uses_path).ok().flatten().unwrap_or_default();
+        uses.forget_gone();
         Ok(Guard {
             config,
             processes: places.processes.clone(),
@@ -278,7 +297,81 @@ impl Guard {
             relist: false,
             dedupe_out: None,
             dedupe_failed: None,
+            uses: Arc::new(Mutex::new(uses)),
+            uses_path,
+            opens: None,
+            marked_at: None,
         })
+    }
+
+    /// Hears from `watch` who opens the artifacts of the targets it finds,
+    /// on a thread of its own, so a busy build's thousands of opens never
+    /// wait on a step. The thread ends with the guard.
+    pub fn listen(&mut self, watch: Arc<crate::opens::Watch>) {
+        let uses = Arc::downgrade(&self.uses);
+        let heard = Arc::clone(&watch);
+        let spawned = std::thread::Builder::new()
+            .name("opens".to_owned())
+            .spawn(move || {
+                loop {
+                    let seen = heard.wait(Duration::from_secs(1));
+                    let Some(uses) = uses.upgrade() else { return };
+                    let Ok(seen) = seen else { return };
+                    if seen.is_empty() {
+                        continue;
+                    }
+                    let now = SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .map_or(0.0, |since| since.as_secs_f64());
+                    let mut uses = uses.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+                    for seen in seen {
+                        match seen {
+                            Seen::Opened(path) => uses.opened(&path, now),
+                            Seen::Lost => uses.lost(now),
+                        }
+                    }
+                }
+            });
+        if spawned.is_ok() {
+            self.opens = Some(watch);
+        }
+    }
+
+    /// Marks every `deps` of the targets the cargo sources hold, at first
+    /// and hourly after, so a build made since is heard too. A `deps` that
+    /// was made anew loses its mark with the old one and gets one again.
+    fn mark(&mut self, tick: &Tick) {
+        let Some(watch) = &self.opens else { return };
+        if self.marked_at.is_some_and(|at| tick.wall - at < MARK_EVERY) {
+            return;
+        }
+        self.marked_at = Some(tick.wall);
+        let mut marked = Vec::new();
+        for source in self.config.sources.values() {
+            let Source::Cargo { roots, depth } = source else {
+                continue;
+            };
+            for root in roots {
+                let found = discover::walk(root, depth.map(|depth| depth as usize));
+                for tree in found.unwrap_or_default() {
+                    if tree.kind != discover::Kind::Target {
+                        continue;
+                    }
+                    for deps in crate::replaced::deps_dirs(&tree.path) {
+                        if watch.watch(&deps).is_ok() {
+                            marked.push(deps);
+                        }
+                    }
+                }
+            }
+        }
+        let mut uses = self
+            .uses
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        for deps in marked {
+            uses.watching(&deps, tick.wall);
+        }
     }
 
     pub fn step(&mut self, tick: &Tick, senses: &Senses) -> io::Result<()> {
@@ -290,6 +383,7 @@ impl Guard {
         }
         self.memory.awake.observe(tick);
         self.watch();
+        self.mark(tick);
         self.heartbeat();
         self.heard_garbage(tick.wall)?;
         let spare = spare(
@@ -343,6 +437,12 @@ impl Guard {
         }
         if passed || self.saved_at.is_none_or(|at| tick.wall - at >= SAVE_EVERY) {
             state::save(&self.memory_path, &self.memory)?;
+            let uses = self
+                .uses
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .clone();
+            state::save(&self.uses_path, &uses)?;
             self.saved_at = Some(tick.wall);
         }
         self.write_status(tick.wall)
@@ -900,6 +1000,12 @@ impl Guard {
         }
         let processes = scan.processes()?.to_vec();
         let boot = crate::linux::boot(Path::new("/proc/stat"))?;
+        // A copy, so a long survey never holds up what hears the opens.
+        let uses = self
+            .uses
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone();
         let (predicates, answers) = (&self.predicates, &mut self.answers);
         let mut finished = |dir: &Path| {
             let Some(checkout) = finished::read(dir) else {
@@ -924,6 +1030,7 @@ impl Guard {
                 now: tick.wall,
                 finished: &mut finished,
                 ran: &self.memory.ran,
+                uses: &uses,
             },
         );
         offers.extend(self.generation_offers(tick));

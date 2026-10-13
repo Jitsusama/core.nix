@@ -227,6 +227,12 @@ pkgs.testers.runNixOSTest {
           )
           wait_for_band("/home", "healthy")
 
+      with subtest("the account's guard watches who opens each target's builds"):
+          uses = "/home/joel/.local/state/disk-guard/uses.json"
+          machine.wait_until_succeeds(
+              f"jq -e '.watched | has(\"/home/joel/src/fresh/target/debug/deps\")' {uses}"
+          )
+
       with subtest("at pressure an idle target goes, and a fresh one and a cache stay"):
           # The idle target alone leaves the pass short of its target, so only
           # the fresh one's window keeps it.

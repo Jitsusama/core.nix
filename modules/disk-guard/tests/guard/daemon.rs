@@ -3,6 +3,7 @@ use disk_guard::clock::Tick;
 use disk_guard::config::Config;
 use disk_guard::daemon::{Guard, Places, Senses};
 use disk_guard::moments::{Power, Pressure};
+use disk_guard::replaced::Uses;
 use disk_guard::socket::{Reply, Request};
 use disk_guard::units::Size;
 use rustix::fs::{AtFlags, CWD, Timespec, Timestamps, utimensat};
@@ -704,4 +705,102 @@ fn upkeep_waits_for_a_machine_that_can_spare_it() {
     assert!(expired.exists());
     guard.step(&tick(), &CALM).unwrap();
     assert!(!expired.exists());
+}
+
+const OLD: &str = "1111111111111111";
+const NEW: &str = "2222222222222222";
+
+impl Home {
+    /// A cargo source over `src`, whose app's target holds an older
+    /// build of it, last written five days ago, beside the newest.
+    fn replaced_build(&self, pressure: &str) -> (Config, PathBuf) {
+        let app = self.root.join("src/app");
+        fs::create_dir_all(app.join("src")).unwrap();
+        fs::write(app.join("Cargo.toml"), "[package]\nname = \"app\"\n").unwrap();
+        let deps = app.join("target/debug/deps");
+        fs::create_dir_all(&deps).unwrap();
+        fs::write(
+            app.join("target/CACHEDIR.TAG"),
+            "Signature: 8a477f597d28d172789f06886806bc55\n# created by cargo\n",
+        )
+        .unwrap();
+        for digest in [OLD, NEW] {
+            fs::write(deps.join(format!("libapp-{digest}.rlib")), "x".repeat(4096)).unwrap();
+        }
+        touch(
+            &deps.join(format!("libapp-{OLD}.rlib")),
+            wall() as i64 - 5 * 86_400,
+        );
+        let config = Config::parse(&format!(
+            r#"{{ "version": 1, "scope": "user", "status_file": true, "notify": false,
+                 "bands": {{ "pressure": "{pressure}", "urgent": "0%", "critical": "0%", "target": "{pressure}" }},
+                 "nix": {{ "bin": "{0}/no-nix/nix", "store": "{0}/no-nix/store" }},
+                 "sources": {{ "src": {{ "kind": "cargo", "roots": ["{0}/src"] }} }} }}"#,
+            self.root.display()
+        ))
+        .unwrap();
+        (config, deps)
+    }
+}
+
+#[test]
+fn a_replaced_build_unopened_for_days_goes_at_pressure_and_the_newest_stays() {
+    let home = Home::new();
+    let (config, deps) = home.replaced_build("100%");
+    // Watched for three days, and nothing opened it.
+    let mut uses = Uses::default();
+    uses.watching(&deps, wall() - 3.0 * 86_400.0);
+    disk_guard::state::save(&home.root.join("state/uses.json"), &uses).unwrap();
+    let mut guard = home.guard(config);
+    guard.step(&tick(), &CALM).unwrap();
+    assert!(!deps.join(format!("libapp-{OLD}.rlib")).exists());
+    assert!(deps.join(format!("libapp-{NEW}.rlib")).exists());
+    let taken = deps.join(format!("app-{OLD}"));
+    assert!(
+        home.journal()
+            .iter()
+            .any(|line| line["path"] == taken.to_string_lossy().as_ref()),
+        "{:?}",
+        home.journal()
+    );
+}
+
+#[test]
+fn the_opens_a_watch_hears_are_kept_for_the_next_guard() {
+    let Ok(watch) = disk_guard::opens::Watch::new() else {
+        eprintln!("no fanotify here, so nothing to check");
+        return;
+    };
+    let home = Home::new();
+    let (config, deps) = home.replaced_build("0%");
+    let mut guard = home.guard(config);
+    guard.listen(std::sync::Arc::new(watch));
+    guard.step(&tick(), &CALM).unwrap();
+    let rlib = deps.join(format!("libapp-{OLD}.rlib"));
+    std::process::Command::new("cat")
+        .arg(&rlib)
+        .output()
+        .unwrap();
+    // Each step late enough after the last that the guard saves.
+    let mut steps = 0.0;
+    let mut later = || {
+        steps += 1.0;
+        Tick {
+            wall: wall() + 400.0 * steps,
+            ..tick()
+        }
+    };
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    let kept = loop {
+        guard.step(&later(), &CALM).unwrap();
+        let kept: Uses = disk_guard::state::load(&home.root.join("state/uses.json"))
+            .unwrap()
+            .unwrap_or_default();
+        if kept.opened.contains_key(&rlib) || std::time::Instant::now() > deadline {
+            break kept;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    };
+    assert!(kept.watched.contains_key(&deps), "{kept:?}");
+    assert!(kept.opened.contains_key(&rlib), "{kept:?}");
 }

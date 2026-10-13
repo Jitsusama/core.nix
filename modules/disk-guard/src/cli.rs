@@ -326,9 +326,25 @@ fn daemon(
     };
     // Only the user daemon has a session to show a notice in.
     let mut desk = crate::desktop::Buses::new(config.notify && scope == Scope::User);
+    let builds = config
+        .sources
+        .values()
+        .any(|source| matches!(source, crate::config::Source::Cargo { .. }));
     let mut guard = Guard::new(config, &places).map_err(failed)?;
     if let Some(hearing) = hearing {
         guard.hear(hearing);
+    }
+    // Without a watch nothing dates an older build, so it stays.
+    if builds {
+        match crate::opens::Watch::new() {
+            Ok(watch) => guard.listen(std::sync::Arc::new(watch)),
+            Err(error) => {
+                let _ = writeln!(
+                    err,
+                    "disk-guard: no watch on builds, so older ones stay: {error}"
+                );
+            }
+        }
     }
     steps(&mut guard, STEP_EVERY, &mut wait, &mut desk, err);
     Ok(FINE)

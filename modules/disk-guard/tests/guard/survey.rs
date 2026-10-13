@@ -5,6 +5,7 @@ use disk_guard::clock::Awake;
 use disk_guard::config::Config;
 use disk_guard::logs::{KEEP, LIMIT};
 use disk_guard::plan::Class;
+use disk_guard::replaced::Uses;
 use disk_guard::snapshots::Boot;
 use disk_guard::survey::{Action, Offer, World, survey};
 use std::collections::BTreeMap;
@@ -42,6 +43,16 @@ fn offers_after(
     finished: &dyn Fn(&Path) -> bool,
     ran: &BTreeMap<String, f64>,
 ) -> Vec<Offer> {
+    offers_using(config, processes, finished, ran, &Uses::default())
+}
+
+fn offers_using(
+    config: &Config,
+    processes: &[Process],
+    finished: &dyn Fn(&Path) -> bool,
+    ran: &BTreeMap<String, f64>,
+    uses: &Uses,
+) -> Vec<Offer> {
     let awake = Awake::default();
     let mut finished = |dir: &Path| finished(dir);
     let mut world = World {
@@ -53,6 +64,7 @@ fn offers_after(
         now: now(),
         finished: &mut finished,
         ran,
+        uses,
     };
     let mut found = survey(config, &mut world);
     found.sort_by(|a, b| a.candidate.path.cmp(&b.candidate.path));
@@ -86,6 +98,68 @@ fn src(root: &Path) -> (PathBuf, PathBuf, PathBuf) {
     file(&app.join("package-lock.json"), "{}");
     let modules = dir(&app.join("node_modules/left-pad"));
     (app, target, modules.parent().unwrap().to_owned())
+}
+
+fn written_ago(path: &Path, seconds: f64) {
+    use rustix::fs::{AtFlags, CWD, Timespec, Timestamps, utimensat};
+    let at = Timespec {
+        tv_sec: (now() - seconds) as i64,
+        tv_nsec: 0,
+    };
+    let times = Timestamps {
+        last_access: at,
+        last_modification: at,
+    };
+    utimensat(CWD, path, &times, AtFlags::SYMLINK_NOFOLLOW).unwrap();
+}
+
+const DAY: f64 = 86_400.0;
+
+#[test]
+fn an_older_build_is_offered_once_its_deps_is_watched() {
+    let home = tempfile::tempdir().unwrap();
+    let home = real(home.path());
+    let roots = dir(&home.join("src"));
+    let (_, target, _) = src(&roots);
+    let deps = target.join("debug/deps");
+    for (name, ago) in [
+        ("libapp-1111111111111111.rlib", 5.0 * DAY),
+        ("libapp-1111111111111111.rmeta", 5.0 * DAY),
+        ("libapp-0123456789abcdef.rlib", 0.0),
+    ] {
+        file(&deps.join(name), "built");
+        written_ago(&deps.join(name), ago);
+    }
+    let config = config(&format!(
+        r#""cargo": {{ "kind": "cargo", "roots": ["{}"] }}"#,
+        roots.display()
+    ));
+    let replaced = deps.join("app-1111111111111111");
+    let none = offers(&config, &[], &|_| false);
+    assert!(
+        none.iter().all(|offer| offer.candidate.path != replaced),
+        "nothing watched it, so nothing knows it's unused"
+    );
+    let mut uses = Uses::default();
+    uses.watching(&deps, now() - 3.0 * DAY);
+    let found = offers_using(&config, &[], &|_| false, &BTreeMap::new(), &uses);
+    let older = find(&found, &replaced);
+    assert_eq!(older.candidate.class, Class::Replaced);
+    assert!(
+        (older.candidate.idle - 3.0 * DAY).abs() < 60.0,
+        "{}",
+        older.candidate.idle
+    );
+    assert_eq!(older.candidate.size, 10);
+    assert_eq!(
+        older.action,
+        Action::Build {
+            root: roots.clone(),
+            target: target.clone()
+        }
+    );
+    let newest = deps.join("app-0123456789abcdef");
+    assert!(found.iter().all(|offer| offer.candidate.path != newest));
 }
 
 #[test]
