@@ -252,6 +252,31 @@ fn the_journal_is_read_oldest_first_and_since_when_asked() {
 }
 
 #[test]
+fn the_journal_leaves_out_what_a_reclaim_began_with_but_keeps_it_as_json() {
+    let machine = Machine::new();
+    let now = wall();
+    let begin = format!(
+        r#"{{"event":"begin","at":{},"path":"/src/app/target","root":"/src"}}"#,
+        now - 60.0
+    );
+    let action = format!(
+        r#"{{"event":"action","at":{},"band":"pressure","path":"/src/app/target","kind":"target","size":1048576,"outcome":"reclaimed"}}"#,
+        now - 60.0
+    );
+    fs::write(
+        machine.env.state.join("journal.jsonl"),
+        format!("{begin}\n{action}\n"),
+    )
+    .unwrap();
+    let (code, out, _) = machine.run("journal");
+    assert_eq!(code, 0);
+    assert_eq!(out.lines().count(), 1, "{out}");
+    assert!(out.contains("reclaimed") && !out.contains("begin"), "{out}");
+    let (_, json, _) = machine.run("journal --json");
+    assert_eq!(json.lines().count(), 2, "{json}");
+}
+
+#[test]
 fn a_daemon_refuses_another_scopes_config_and_a_second_of_itself() {
     let machine = Machine::new();
     let system = machine.root.join("system.json");
