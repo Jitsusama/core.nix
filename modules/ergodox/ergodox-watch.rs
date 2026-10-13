@@ -70,7 +70,11 @@ fn told(report: &[u8], names: &[String]) -> Option<String> {
         .get(usize::from(*layer))
         .cloned()
         .unwrap_or_else(|| layer.to_string());
-    Some(if *locked == 1 { format!("{name} locked\n") } else { format!("{name}\n") })
+    Some(if *locked == 1 {
+        format!("{name} locked\n")
+    } else {
+        format!("{name}\n")
+    })
 }
 
 /// What's been said. Every text is one line, written over the last and then
@@ -175,7 +179,8 @@ mod tests {
     use super::*;
 
     fn root(name: &str) -> PathBuf {
-        let root = std::env::temp_dir().join(format!("ergodox-watch-{name}-{}", std::process::id()));
+        let root =
+            std::env::temp_dir().join(format!("ergodox-watch-{name}-{}", std::process::id()));
         let _ = fs::remove_dir_all(&root);
         root
     }
@@ -183,7 +188,11 @@ mod tests {
     fn node(root: &Path, name: &str, id: &str, descriptor: &[u8]) {
         let device = root.join("sys/class/hidraw").join(name).join("device");
         fs::create_dir_all(&device).unwrap();
-        fs::write(device.join("uevent"), format!("DRIVER=hid-generic\nHID_ID={id}\n")).unwrap();
+        fs::write(
+            device.join("uevent"),
+            format!("DRIVER=hid-generic\nHID_ID={id}\n"),
+        )
+        .unwrap();
         fs::write(device.join("report_descriptor"), descriptor).unwrap();
     }
 
@@ -194,9 +203,24 @@ mod tests {
     #[test]
     fn the_channel_is_zsas_and_opens_on_oryxs_usage_page() {
         let root = root("channel");
-        node(&root, "hidraw0", "0003:0000046D:0000C52B", &[0x06, 0x60, 0xff, 0x09]);
-        node(&root, "hidraw1", "0003:00003297:00004976", &[0x05, 0x01, 0x09, 0x06]);
-        node(&root, "hidraw2", "0003:00003297:00004976", &[0x06, 0x60, 0xff, 0x09]);
+        node(
+            &root,
+            "hidraw0",
+            "0003:0000046D:0000C52B",
+            &[0x06, 0x60, 0xff, 0x09],
+        );
+        node(
+            &root,
+            "hidraw1",
+            "0003:00003297:00004976",
+            &[0x05, 0x01, 0x09, 0x06],
+        );
+        node(
+            &root,
+            "hidraw2",
+            "0003:00003297:00004976",
+            &[0x06, 0x60, 0xff, 0x09],
+        );
         assert_eq!(
             channel(&root.join("sys"), Path::new("/dev")),
             Some(PathBuf::from("/dev/hidraw2"))
@@ -221,7 +245,10 @@ mod tests {
 
     #[test]
     fn a_watch_report_says_the_layer_and_whether_it_is_locked() {
-        assert_eq!(told(&[0x81, 2, 1], &names()).as_deref(), Some("Numb locked\n"));
+        assert_eq!(
+            told(&[0x81, 2, 1], &names()).as_deref(),
+            Some("Numb locked\n")
+        );
         assert_eq!(told(&[0x81, 1, 0], &names()).as_deref(), Some("Punk\n"));
         assert_eq!(told(&[0x81, 4, 0], &names()).as_deref(), Some("4\n"));
     }
@@ -239,7 +266,12 @@ mod tests {
         let root = root("said");
         fs::create_dir_all(&root).unwrap();
         let path = root.join("layer");
-        let file = OpenOptions::new().write(true).create(true).truncate(false).open(&path).unwrap();
+        let file = OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .open(&path)
+            .unwrap();
         let mut said = Said { file, last: None };
         said.say("Numb locked\n");
         said.say("Punk\n");
