@@ -789,6 +789,32 @@ pkgs.testers.runNixOSTest {
 
           retry(moved, timeout_seconds=10)
 
+      # Stepping back out of a collection finds the launcher as it was left,
+      # on the row that was selected, not back at the top.
+      with subtest("the launcher remembers where it was when stepping back"):
+          as_account("qs ipc call launcher toggle")
+          launcher_ready()
+
+          def selected():
+              return (showing()["selected"] or {}).get("name", "")
+
+          # Down past the first row to a collection's.
+          while True:
+              before = selected()
+              machine.send_key("down")
+              launcher_until(lambda shown: (shown["selected"] or {}).get("name", "") != before)
+              if showing()["selected"]["verb"] == "open":
+                  break
+          chosen = selected()
+          step_in()
+          machine.send_key("down")
+          machine.send_key("left")
+          launcher_until(
+              lambda shown: shown["held"] == [] and (shown["selected"] or {}).get("name") == chosen
+          )
+          machine.send_key("esc")
+          launcher_until(lambda shown: not shown["open"])
+
       with subtest("the launcher answers what's asked, and copies the answer"):
 
           def answer(typed):
