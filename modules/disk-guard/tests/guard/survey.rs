@@ -10,7 +10,6 @@ use disk_guard::survey::{Action, Offer, World, survey};
 use std::collections::BTreeMap;
 use std::ffi::OsString;
 use std::fs;
-use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
@@ -111,7 +110,7 @@ fn targets_and_installs_are_offered_under_their_roots() {
             root: roots.clone()
         }
     );
-    assert_eq!(built.device, fs::metadata(&roots).unwrap().dev());
+    assert_eq!(built.device, disk_guard::pool::pool(&roots).unwrap());
     let installed = find(&found, &modules);
     assert_eq!(installed.candidate.class, Class::Install);
     assert_eq!(
@@ -376,7 +375,7 @@ fn producers_are_offered_where_they_free_idle_since_they_last_ran() {
             timeout: Duration::from_secs(300),
         }
     );
-    assert_eq!(tec.device, fs::metadata(&trees).unwrap().dev());
+    assert_eq!(tec.device, disk_guard::pool::pool(&trees).unwrap());
     let fresh = find(&found, &PathBuf::from(format!("{}#fresh", trees.display())));
     assert!(
         (fresh.candidate.idle - 100.0).abs() < 5.0,

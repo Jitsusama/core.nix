@@ -68,11 +68,10 @@ fn the_system_daemon_answers_for_what_the_asker_owns() {
 #[test]
 fn the_system_daemon_hears_who_watches_its_store_and_passes_on_collects() {
     use disk_guard::band::Band;
-    use std::os::unix::fs::MetadataExt;
     let dir = tempfile::tempdir().unwrap();
     let root = fs::canonicalize(dir.path()).unwrap();
     let socket = root.join("socket");
-    let device = fs::metadata(&root).unwrap().dev();
+    let device = disk_guard::pool::pool(&root).unwrap();
     let hearing = answering(&socket, &root, Duration::ZERO, Some(device)).unwrap();
     let watching = Request::Watching {
         paths: vec![root.clone(), "/proc".into()],
@@ -88,7 +87,7 @@ fn the_system_daemon_hears_who_watches_its_store_and_passes_on_collects() {
             .spoken
             .lock()
             .unwrap()
-            .contains_key(&fs::metadata("/proc").unwrap().dev())
+            .contains_key(&disk_guard::pool::pool(Path::new("/proc")).unwrap())
     );
     let asking = socket.clone();
     let asked = root.clone();

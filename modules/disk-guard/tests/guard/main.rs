@@ -35,6 +35,7 @@ mod nix_builds;
 mod notices;
 mod pass;
 mod plan;
+mod pool;
 #[cfg(target_os = "linux")]
 mod procs;
 mod reclaim;

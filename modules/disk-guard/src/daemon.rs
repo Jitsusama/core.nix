@@ -14,6 +14,7 @@ use crate::journal::{self, Journal, Journaled, Line};
 use crate::moments::{Power, Pressure};
 use crate::pass::{Disk, End, Goal, Learned, Outcome, Reclaimer, pass};
 use crate::plan::{Candidate, Class};
+use crate::pool::pool;
 use crate::socket::{Reply, Request, Responder};
 use crate::state::{self, Memory};
 use crate::survey::{Action, Offer, World, named, survey};
@@ -25,7 +26,6 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::OsString;
 use std::fs;
 use std::io;
-use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::mpsc::{self, Receiver, TryRecvError};
@@ -363,11 +363,7 @@ impl Guard {
         }
         let watching = Request::Watching { paths };
         self.collected_on = match crate::socket::ask(socket, &watching, HEARTBEAT_TIMEOUT) {
-            Ok(Reply::Collects(held)) => held
-                .iter()
-                .filter_map(|path| fs::metadata(path).ok())
-                .map(|meta| meta.dev())
-                .collect(),
+            Ok(Reply::Collects(held)) => held.iter().filter_map(|path| pool(path).ok()).collect(),
             _ => BTreeSet::new(),
         };
     }
@@ -430,9 +426,7 @@ impl Guard {
     /// A pass of only the garbage on the filesystem holding `path`, in
     /// `band`, for the user daemon driving its order.
     fn collect(&mut self, tick: &Tick, path: &Path, band: Band) -> Result<End, String> {
-        let device = fs::metadata(path)
-            .map_err(|error| format!("{}: {error}", path.display()))?
-            .dev();
+        let device = pool(path).map_err(|error| format!("{}: {error}", path.display()))?;
         let mount = match (self.store(), self.watched.get(&device)) {
             (Some((_, store)), Some(watched)) if store == device => watched.path.clone(),
             _ => return Err(format!("no garbage is collected on {}", path.display())),
@@ -522,8 +516,7 @@ impl Guard {
     /// The garbage config and the store's device, for a system daemon.
     fn store(&self) -> Option<(&crate::config::Garbage, u64)> {
         let garbage = &self.config.system.as_ref()?.garbage;
-        let meta = fs::metadata(&self.config.nix.store).ok()?;
-        Some((garbage, meta.dev()))
+        Some((garbage, pool(&self.config.nix.store).ok()?))
     }
 
     /// The listing's garbage that is still there, in the batches and the
@@ -624,20 +617,20 @@ impl Guard {
             .as_ref()
             .map(|_| self.config.nix.store.as_path());
         for path in self.config.sources.values().flat_map(paths).chain(store) {
-            let Ok(meta) = fs::metadata(path) else {
+            let (Ok(meta), Ok(device)) = (fs::metadata(path), pool(path)) else {
                 continue;
             };
-            if !meta.is_dir() || seen.contains_key(&meta.dev()) {
+            if !meta.is_dir() || seen.contains_key(&device) {
                 continue;
             }
-            let watched = self.watched.remove(&meta.dev()).unwrap_or_else(|| Watched {
-                path: mounted(path, meta.dev()),
+            let watched = self.watched.remove(&device).unwrap_or_else(|| Watched {
+                path: mounted(path, device),
                 band: Band::Healthy,
                 fill: Fill::default(),
                 space: None,
                 rest: None,
             });
-            seen.insert(meta.dev(), watched);
+            seen.insert(device, watched);
         }
         self.watched = seen;
     }
@@ -1005,16 +998,17 @@ impl<R: Reclaimer, B: FnMut() -> bool> Reclaimer for Yielding<R, B> {
     }
 }
 
-/// Where the filesystem holding `path`, on `device`, is mounted: the
-/// highest directory above it still on that device, which is how a
-/// person knows the disk. A Btrfs subvolume counts as its own, as the
-/// kernel reports it. Failing that, `path` itself.
+/// Where the filesystem holding `path`, the pool `device`, is mounted:
+/// the highest directory above it still on that pool, which is how a
+/// person knows the disk, so a Btrfs pool is named by its topmost mount
+/// rather than by whichever subvolume a source lies in. Failing that,
+/// `path` itself.
 fn mounted(path: &Path, device: u64) -> PathBuf {
     let Ok(mut top) = fs::canonicalize(path) else {
         return path.to_owned();
     };
     while let Some(above) = top.parent()
-        && fs::metadata(above).is_ok_and(|meta| meta.dev() == device)
+        && pool(above).is_ok_and(|above| above == device)
     {
         top = above.to_owned();
     }

@@ -581,6 +581,7 @@ fn a_disk_in_a_band_is_answered_by_a_pass() {
 
 #[test]
 fn a_filesystem_is_named_by_where_it_is_mounted() {
+    use disk_guard::pool::pool;
     use std::os::unix::fs::MetadataExt;
     let named = |home: &Home| {
         home.cold_scratch("run-1");
@@ -590,6 +591,7 @@ fn a_filesystem_is_named_by_where_it_is_mounted() {
         PathBuf::from(home.status()["filesystems"][0]["path"].as_str().unwrap())
     };
     let device = |path: &Path| fs::metadata(path).unwrap().dev();
+    let pooled = |path: &Path| pool(path).unwrap();
     let home = Home::new();
     let mount = named(&home);
     assert!(
@@ -597,12 +599,12 @@ fn a_filesystem_is_named_by_where_it_is_mounted() {
         "{mount:?} holds {:?}",
         home.root
     );
-    assert_eq!(device(&mount), device(&home.root));
+    assert_eq!(pooled(&mount), pooled(&home.root));
     if let Some(above) = mount.parent() {
         assert_ne!(
-            device(above),
-            device(&mount),
-            "{mount:?} is the top of its device"
+            pooled(above),
+            pooled(&mount),
+            "{mount:?} is the top of its filesystem"
         );
     }
     // A mount whose parent lies on another device, which a temporary
@@ -612,6 +614,25 @@ fn a_filesystem_is_named_by_where_it_is_mounted() {
         let home = Home::within(tempfile::tempdir_in(shm).unwrap());
         assert_eq!(named(&home), shm);
     }
+}
+
+/// Btrfs numbers each subvolume as a device of its own, but they share
+/// the pool's space, so sources in two of them are on one filesystem.
+#[test]
+fn the_subvolumes_of_one_pool_are_watched_as_one_filesystem() {
+    let home = Home::new();
+    if !crate::pool::on_btrfs(&home.root) {
+        eprintln!("skipped: {} isn't on Btrfs", home.root.display());
+        return;
+    }
+    crate::pool::subvolume(&home.root, "scratch");
+    home.cold_scratch("run-1");
+    home.trashed("old", "2001-01-01T00:00:00");
+    home.guard(home.config("0%", "0%"))
+        .step(&tick(), &CALM)
+        .unwrap();
+    let filesystems = &home.status()["filesystems"];
+    assert_eq!(filesystems.as_array().unwrap().len(), 1, "{filesystems}");
 }
 
 #[test]

@@ -10,7 +10,6 @@ use disk_guard::socket::Responder;
 use std::collections::HashMap;
 use std::fs;
 use std::io::Read;
-use std::os::unix::fs::MetadataExt;
 use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, mpsc};
@@ -150,7 +149,7 @@ impl Store {
         guard: &mut Guard,
         ago: Duration,
     ) -> mpsc::Sender<(PathBuf, Band, Responder)> {
-        let device = fs::metadata(self.root.join("store")).unwrap().dev();
+        let device = disk_guard::pool::pool(&self.root.join("store")).unwrap();
         let spoken = HashMap::from([(device, Instant::now().checked_sub(ago).unwrap())]);
         let (asking, collects) = mpsc::channel();
         guard.hear(Hearing {

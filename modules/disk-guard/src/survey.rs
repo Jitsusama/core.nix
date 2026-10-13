@@ -439,11 +439,10 @@ fn since_ran(world: &World, source: &str) -> f64 {
     })
 }
 
+/// The filesystem a source's directory is on, as its space is shared.
 fn device(path: &Path) -> Option<u64> {
-    fs::metadata(path)
-        .ok()
-        .filter(|meta| meta.is_dir())
-        .map(|meta| meta.dev())
+    fs::metadata(path).ok().filter(|meta| meta.is_dir())?;
+    crate::pool::pool(path).ok()
 }
 
 /// What an entry holds: a directory's allocated size beneath it, a file's

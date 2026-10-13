@@ -2,6 +2,7 @@
 
 use crate::band::{BtrfsSpace, Space};
 use std::os::fd::AsRawFd;
+use std::os::unix::fs::MetadataExt;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, mpsc};
@@ -444,18 +445,23 @@ fn mapped_path(line: &str) -> Option<PathBuf> {
     path.starts_with('/').then(|| PathBuf::from(path))
 }
 
+/// Which filesystem `path` is on, as its free space is shared: on Btrfs
+/// the pool, whose subvolumes each have a device number of their own,
+/// and elsewhere the device. A pool's number has its top bit set, which
+/// no device number has, so the two never meet.
+pub fn pool(path: &Path) -> io::Result<u64> {
+    let device = fs::metadata(path)?.dev();
+    if rustix::fs::statfs(path)?.f_type as u64 != BTRFS_SUPER_MAGIC {
+        return Ok(device);
+    }
+    let id = btrfs_id(path)?;
+    let halves = [&id[..8], &id[8..]].map(|half| u64::from_le_bytes(half.try_into().unwrap()));
+    Ok((halves[0] ^ halves[1]) | 1 << 63)
+}
+
 /// A Btrfs filesystem's id, as its sysfs directory is named.
 fn btrfs_fsid(path: &Path) -> io::Result<PathBuf> {
-    let flags = rustix::fs::OFlags::RDONLY | rustix::fs::OFlags::CLOEXEC;
-    let fd = rustix::fs::open(path, flags, rustix::fs::Mode::empty())?;
-    // struct btrfs_ioctl_fs_info_args is 1024 bytes: max_id and
-    // num_devices, then the 16-byte fsid.
-    let mut args = [0u8; 1024];
-    // SAFETY: args is as large as the kernel writes, and outlives the call.
-    if unsafe { libc::ioctl(fd.as_raw_fd(), BTRFS_IOC_FS_INFO as _, args.as_mut_ptr()) } != 0 {
-        return Err(io::Error::last_os_error());
-    }
-    let hex: String = args[16..32]
+    let hex: String = btrfs_id(path)?
         .iter()
         .map(|byte| format!("{byte:02x}"))
         .collect();
@@ -468,6 +474,20 @@ fn btrfs_fsid(path: &Path) -> io::Result<PathBuf> {
         &hex[20..32]
     );
     Ok(PathBuf::from(fsid))
+}
+
+/// A Btrfs filesystem's 16-byte id, the same from every subvolume.
+fn btrfs_id(path: &Path) -> io::Result<[u8; 16]> {
+    let flags = rustix::fs::OFlags::RDONLY | rustix::fs::OFlags::CLOEXEC;
+    let fd = rustix::fs::open(path, flags, rustix::fs::Mode::empty())?;
+    // struct btrfs_ioctl_fs_info_args is 1024 bytes: max_id and
+    // num_devices, then the 16-byte fsid.
+    let mut args = [0u8; 1024];
+    // SAFETY: args is as large as the kernel writes, and outlives the call.
+    if unsafe { libc::ioctl(fd.as_raw_fd(), BTRFS_IOC_FS_INFO as _, args.as_mut_ptr()) } != 0 {
+        return Err(io::Error::last_os_error());
+    }
+    Ok(args[16..32].try_into().unwrap())
 }
 use std::ffi::OsString;
 use std::fs;

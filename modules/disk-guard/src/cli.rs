@@ -11,7 +11,7 @@ use serde_json::Value;
 use std::ffi::OsString;
 use std::fs;
 use std::io::{self, Write};
-use std::os::unix::fs::{DirBuilderExt, MetadataExt};
+use std::os::unix::fs::DirBuilderExt;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
@@ -310,7 +310,7 @@ fn daemon(
             if let Some(dir) = env.system_socket.parent() {
                 fs::create_dir_all(dir).map_err(failed)?;
             }
-            let store = fs::metadata(&config.nix.store).ok().map(|meta| meta.dev());
+            let store = crate::pool::pool(&config.nix.store).ok();
             hearing = Some(
                 answering(&env.system_socket, &env.processes, ASK_EVERY, store).map_err(failed)?,
             );

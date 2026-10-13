@@ -33,6 +33,7 @@ pub mod nix_builds;
 pub mod notices;
 pub mod pass;
 pub mod plan;
+pub mod pool;
 pub mod reclaim;
 pub mod scratch;
 #[cfg(target_os = "linux")]

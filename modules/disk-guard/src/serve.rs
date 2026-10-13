@@ -8,10 +8,9 @@ use crate::notices::Change;
 use crate::socket::{Reply, Request, Server};
 use crate::vouch;
 use std::collections::HashMap;
-use std::fs;
 use std::fs::{File, OpenOptions};
 use std::io::{self, Write};
-use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
+use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, mpsc};
 use std::time::Duration;
@@ -52,7 +51,7 @@ pub fn answering(
         spoken: Arc::clone(&spoken),
         collects,
     };
-    let device = |path: &Path| fs::metadata(path).ok().map(|meta| meta.dev());
+    let device = |path: &Path| crate::pool::pool(path).ok();
     std::thread::Builder::new()
         .name("answering".to_owned())
         .spawn(move || {
