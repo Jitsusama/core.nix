@@ -68,6 +68,11 @@ pub struct Buses {
     notifier: Option<Notifier>,
 }
 
+/// What the desktop is to its daemon, telling only when `notify`.
+pub fn desk(notify: bool) -> Buses {
+    Buses::new(notify)
+}
+
 impl Buses {
     pub fn new(notify: bool) -> Buses {
         Buses {

@@ -5,7 +5,7 @@ pub mod age;
 pub mod anchor;
 pub mod band;
 pub mod caches;
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 pub mod cli;
 pub mod clock;
 pub mod commands;
@@ -16,6 +16,9 @@ pub mod daemon;
 pub mod decide;
 pub mod dedupe;
 #[cfg(target_os = "linux")]
+pub mod desktop;
+#[cfg(target_os = "macos")]
+#[path = "notifier.rs"]
 pub mod desktop;
 pub mod discover;
 pub mod finished;

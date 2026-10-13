@@ -349,7 +349,7 @@ fn daemon(
         }
     };
     // Only the user daemon has a session to show a notice in.
-    let mut desk = crate::desktop::Buses::new(config.notify && scope == Scope::User);
+    let mut desk = crate::desktop::desk(config.notify && scope == Scope::User);
     let builds = config
         .sources
         .values()
@@ -360,10 +360,13 @@ fn daemon(
         guard.hear(hearing);
     }
     // Only the account's guard freezes, in its own manager, unless its
-    // config says never.
+    // config says never. A Mac has no manager to freeze in yet.
+    #[cfg(target_os = "linux")]
     if scope == Scope::User && freezes {
         guard.freeze_with(Box::new(crate::freezer::Session::default()));
     }
+    #[cfg(not(target_os = "linux"))]
+    let _ = freezes;
     // Without a watch nothing dates an older build, so it stays.
     if builds {
         match crate::opens::Watch::new() {
@@ -451,6 +454,7 @@ fn explain(env: &Env, path: &Path, config: Option<PathBuf>, out: &mut dyn Write)
 
 /// Thaws whatever the account's guard froze, through the account's own
 /// service manager. The guard sees it thawed and never freezes it again.
+#[cfg(target_os = "linux")]
 fn thaw(out: &mut dyn Write) -> Done {
     let failed = |error: zbus::Error| (NO_DAEMON, format!("asking the service manager: {error}"));
     let builder = zbus::blocking::connection::Builder::session().map_err(failed)?;
@@ -462,6 +466,13 @@ fn thaw(out: &mut dyn Write) -> Done {
     for unit in thawed {
         let _ = writeln!(out, "Thawed {unit}.");
     }
+    Ok(FINE)
+}
+
+/// A Mac's guard freezes nothing, so nothing is frozen.
+#[cfg(not(target_os = "linux"))]
+fn thaw(out: &mut dyn Write) -> Done {
+    let _ = writeln!(out, "Nothing is frozen.");
     Ok(FINE)
 }
 
