@@ -1300,6 +1300,11 @@ pkgs.testers.runNixOSTest {
           machine.send_key("ret")
           window = "niri msg --json windows | grep -qF '\"app_id\":\"io.jitsusama.WifiSignIn\"'"
           machine.wait_until_succeeds(in_session(window), timeout=60)
+          # Its button can only be pressed once the front desk has served
+          # the page, which a window that has to try again does later.
+          machine.wait_until_succeeds(
+              "journalctl -u lantern-front-desk | grep -q 'GET /sign-in'", timeout=60
+          )
           photograph("sign-in", timeout=20)
           # Its one button signs in, and the window closes as Lantern lets
           # the machine through, its notice taken back with it.
