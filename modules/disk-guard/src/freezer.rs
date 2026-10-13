@@ -5,6 +5,7 @@
 //! stops the scope's processes where they stand, and thawing lets them
 //! carry on as if nothing happened, which killing never could.
 
+pub use crate::freeze::{Freeze, unit_for};
 use std::time::{Duration, Instant};
 use zbus::blocking::Connection;
 use zbus::zvariant::{OwnedObjectPath, OwnedValue, Value};
@@ -16,11 +17,6 @@ const UNIT: &str = "org.freedesktop.systemd1.Unit";
 
 /// The scopes the guard makes, which are the only ones it ever thaws.
 pub const PATTERN: &str = "disk-guard-freeze-*.scope";
-
-/// The scope a writer is frozen in, named for it.
-pub fn unit_for(pid: u32) -> String {
-    format!("disk-guard-freeze-{pid}.scope")
-}
 
 /// How long a new scope may take to start before it's frozen.
 const STARTING: Duration = Duration::from_secs(2);
@@ -47,14 +43,6 @@ pub fn thaw_all(freezer: &Freezer) -> zbus::Result<Vec<String>> {
         freezer.thaw(unit)?;
     }
     Ok(units)
-}
-
-/// What the daemon freezes and thaws through: a service manager, or a
-/// stand-in for one.
-pub trait Freeze {
-    fn freeze(&mut self, unit: &str, pids: &[u32], description: &str) -> Result<(), String>;
-    fn thaw(&mut self, unit: &str) -> Result<(), String>;
-    fn frozen(&mut self, unit: &str) -> Result<bool, String>;
 }
 
 impl Freeze for Freezer {

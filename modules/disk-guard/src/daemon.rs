@@ -200,7 +200,7 @@ pub struct Guard {
     marked_at: Option<f64>,
     /// What freezes a runaway writer, once given one, and what each
     /// process has written lately.
-    freeze: Option<Box<dyn crate::freezer::Freeze>>,
+    freeze: Option<Box<dyn crate::freeze::Freeze>>,
     writers: Writers,
     /// What the last survey couldn't read, and why it went unvouched.
     unread: (usize, Option<String>),
@@ -434,7 +434,7 @@ impl Guard {
 
     /// Freezes a runaway writer through `freeze`, when nothing else is
     /// left to take; without one, nothing is ever frozen.
-    pub fn freeze_with(&mut self, freeze: Box<dyn crate::freezer::Freeze>) {
+    pub fn freeze_with(&mut self, freeze: Box<dyn crate::freeze::Freeze>) {
         self.freeze = Some(freeze);
     }
 
@@ -549,7 +549,7 @@ impl Guard {
         else {
             return Ok(());
         };
-        let unit = crate::freezer::unit_for(writer.pid);
+        let unit = crate::freeze::unit_for(writer.pid);
         let pids = writers::descendants(&samples, writer.pid);
         let description = format!(
             "{} (pid {}), frozen by disk-guard for filling {}",

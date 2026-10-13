@@ -11,7 +11,7 @@ pub mod clock;
 pub mod commands;
 pub mod config;
 pub mod coredumps;
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 pub mod daemon;
 pub mod decide;
 pub mod dedupe;
@@ -19,6 +19,7 @@ pub mod dedupe;
 pub mod desktop;
 pub mod discover;
 pub mod finished;
+pub mod freeze;
 #[cfg(target_os = "linux")]
 pub mod freezer;
 pub mod garbage;
@@ -37,6 +38,9 @@ pub mod nix_builds;
 #[cfg(target_os = "linux")]
 pub mod notices;
 #[cfg(target_os = "linux")]
+pub mod opens;
+#[cfg(target_os = "macos")]
+#[path = "unwatched.rs"]
 pub mod opens;
 pub mod pass;
 pub mod plan;
