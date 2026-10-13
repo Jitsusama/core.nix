@@ -168,6 +168,7 @@ let
     # together, and what it leaves of other programs' routing only shows
     # once it has.
     vm-wifi-joins = import ./tests/wifi.nix { inherit self pkgs; };
+    vm-disk-guard-keeps-the-disk = import ./tests/disk-guard.nix { inherit self pkgs; };
   };
 in
 {

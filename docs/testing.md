@@ -149,6 +149,7 @@ a running system shows.
 | `vm-speakers-are-tuned`           | the XPS 14's speakers hear the tuning, headphones don't |
 | `vm-desktop-works`                | it boots clean; the desktop shows, opens, locks and asks |
 | `vm-wifi-joins`                   | wifid joins, finds sign-ins, keeps others' routing rules |
+| `vm-disk-guard-keeps-the-disk`    | the guards answer each band, sparing what's in use       |
 
 The install test builds a disk image with disko and boots it with a software
 TPM, then follows [the install guide][3] step by step: the keys are made and
