@@ -11,7 +11,9 @@
 # through. A resolver for a private domain, set up the way a
 # development DNS server is, keeps answering through every join; and a
 # routing rule another program made, as a VPN's client does, survives
-# joining, reconfiguring and networkd restarting.
+# joining, reconfiguring and networkd restarting. Nothing that should leave
+# the card on its network takes it off: not wifid starting again, nor a
+# saved file it can't read, nor another card plugged in and pulled out.
 { self, pkgs }:
 let
   inherit (pkgs) lib;
@@ -159,14 +161,14 @@ pkgs.testers.runNixOSTest {
         ''
       );
 
-      # Three stand-in radios: two access points and the laptop's card.
+      # Four stand-in radios: two access points, the laptop's card, and a
+      # USB card in a drawer.
       boot.kernelModules = [ "mac80211_hwsim" ];
-      boot.extraModprobeConfig = "options mac80211_hwsim radios=3";
-      # A VM turns off wpa_supplicant, since it usually has no radio.
-      networking.wireless.enable = lib.mkOverride 0 true;
+      boot.extraModprobeConfig = "options mac80211_hwsim radios=4";
 
-      # The first two radios move to the access points' namespace before
-      # anything joins, leaving wlan2 as the laptop's only card.
+      # The first two radios move to the access points' namespace and the
+      # last to the drawer's before anything joins, leaving wlan2 as the
+      # laptop's only card.
       systemd.services.air = {
         after = [ "systemd-modules-load.service" ];
         before = [ "wpa_supplicant.service" ];
@@ -181,11 +183,13 @@ pkgs.testers.runNixOSTest {
           RemainAfterExit = true;
         };
         script = ''
-          until [ -e /sys/class/net/wlan1/phy80211/name ]; do sleep 0.1; done
+          until [ -e /sys/class/net/wlan3/phy80211/name ]; do sleep 0.1; done
           ip netns add air
           for card in wlan0 wlan1; do
             iw phy "$(cat /sys/class/net/$card/phy80211/name)" set netns name air
           done
+          ip netns add drawer
+          iw phy "$(cat /sys/class/net/wlan3/phy80211/name)" set netns name drawer
           ip -n air link set lo up
           ip -n air address add 10.42.0.1/24 dev wlan0
           ip -n air address add 10.43.0.1/24 dev wlan1
@@ -314,15 +318,25 @@ pkgs.testers.runNixOSTest {
         """The address the card is showing the network it's on."""
         return machine.succeed("cat /sys/class/net/wlan2/address").strip()
 
+    def journal_now():
+        """Where the journal is, to read on from."""
+        return machine.succeed(
+            "journalctl -n1 --show-cursor -o cat | sed -n 's/^-- cursor: //p'"
+        ).strip()
+
+    def stayed_on(since):
+        """Checks wpa_supplicant hasn't taken wlan2 off its network since."""
+        machine.fail(
+            f"journalctl -o cat -u wpa_supplicant --after-cursor='{since}'"
+            " | grep 'wlan2: CTRL-EVENT-DISCONNECTED'"
+        )
+
     machine.wait_for_unit("multi-user.target")
     machine.wait_for_unit("networks.service")
     machine.wait_for_unit("private-dns.service")
     card = machine.succeed("cat /sys/class/net/wlan2/phy80211/macaddress").strip()
 
     with subtest("wifid gives wpa_supplicant the card, which joins Nix's network"):
-        # Moving the access points' radios makes udev restart wpa_supplicant,
-        # which drops any card it had; wifid adds them again when it does.
-        machine.succeed("udevadm settle")
         machine.wait_for_unit("wifid.service")
         joined("Roadside Inn")
         holds_address("10.43.0.")
@@ -337,7 +351,7 @@ pkgs.testers.runNixOSTest {
         assert inn_address != card, inn_address
         assert int(inn_address[:2], 16) & 0b11 == 0b10, inn_address
 
-    with subtest("a network saved from the launcher is laid over the defaults and joined first"):
+    with subtest("a network saved from the launcher is laid over the defaults and chosen first"):
         lines = " ".join(f"'{line}'" for line in lantern)
         machine.succeed(f"printf '%s\\n' {lines} > {saved}")
         machine.succeed(
@@ -345,6 +359,11 @@ pkgs.testers.runNixOSTest {
             " - /var/lib/wifid/networks/lantern.cred"
         )
         machine.succeed("systemctl restart wifid")
+        # The card stays where it is until it next chooses, as the
+        # launcher's join will have it do.
+        machine.wait_until_succeeds(f"test -e {given}", timeout=30)
+        joined("Roadside Inn")
+        machine.succeed("wpa_cli -i wlan2 reassociate")
         joined("Lantern")
         holds_address("10.42.0.")
         on_file(given)
@@ -389,6 +408,30 @@ pkgs.testers.runNixOSTest {
 
     with subtest("a network sees the same address every time"):
         assert shown() == inn_address, shown()
+
+    with subtest("wifid starting again leaves the card on its network"):
+        garbled = "/var/lib/wifid/networks/garbled.network"
+        machine.succeed(f"printf '[\\377]' > {garbled}")
+        since = journal_now()
+        machine.succeed("systemctl restart wifid")
+        says(f"{garbled}: stream did not contain valid UTF-8")
+        says("Roadside Inn on wlan2 wants a sign-in at http://front-desk.inn/sign-in")
+        stayed_on(since)
+        machine.succeed(f"rm {garbled}")
+
+    with subtest("another card coming and going leaves the first on its network"):
+        supplicant = machine.succeed("systemctl show -P MainPID wpa_supplicant")
+        since = journal_now()
+        radio = machine.succeed(
+            "ip netns exec drawer iw dev wlan3 info | sed -n 's/^.*wiphy /phy/p'"
+        ).strip()
+        machine.succeed(f"ip netns exec drawer iw phy {radio} set netns 1")
+        machine.wait_until_succeeds("wpa_cli -i wlan3 ping | grep -qx PONG", timeout=30)
+        machine.succeed(f"iw phy {radio} set netns name drawer")
+        machine.wait_until_succeeds("! test -e /sys/class/net/wlan3", timeout=30)
+        assert machine.succeed("systemctl show -P MainPID wpa_supplicant") == supplicant
+        stayed_on(since)
+        joined("Roadside Inn")
 
     with subtest("and networkd restarting"):
         machine.succeed("systemctl restart systemd-networkd")

@@ -34,9 +34,17 @@ impl AddressKey {
         }
     }
 
-    fn make(file: &Path) -> io::Result<Self> {
+    /// A key kept nowhere, for when the file can't give one: every network
+    /// sees an address of its own until wifid starts again, if not the one
+    /// it saw before.
+    pub fn for_now() -> io::Result<Self> {
         let mut key = [0; 32];
         File::open("/dev/urandom")?.read_exact(&mut key)?;
+        Ok(Self(key))
+    }
+
+    fn make(file: &Path) -> io::Result<Self> {
+        let Self(key) = Self::for_now()?;
         let partial = file.with_extension("partial");
         OpenOptions::new()
             .write(true)
@@ -47,6 +55,17 @@ impl AddressKey {
             .write_all(&key)?;
         fs::rename(partial, file)?;
         Ok(Self(key))
+    }
+
+    /// A mark of these bytes, in hex, that only this machine could make.
+    pub fn mark(&self, what: &[u8]) -> String {
+        let mut hash = <Hmac<Sha256>>::new_from_slice(&self.0).expect("any key fits an HMAC");
+        // Set apart from what an address is made from, a card's address
+        // and a name.
+        hash.update(b"mark\0");
+        hash.update(what);
+        let digest = hash.finalize().into_bytes();
+        digest.iter().map(|byte| format!("{byte:02x}")).collect()
     }
 
     /// The address this card shows the network of that name.
@@ -62,6 +81,13 @@ impl AddressKey {
         // rather than the one its maker gave it.
         address[0] = (address[0] & !0b01) | 0b10;
         address
+    }
+}
+
+#[cfg(test)]
+impl From<[u8; 32]> for AddressKey {
+    fn from(key: [u8; 32]) -> Self {
+        Self(key)
     }
 }
 
@@ -144,6 +170,27 @@ mod tests {
             ours.address(CARD, "Lantern"),
             theirs.address(CARD, "Lantern")
         );
+    }
+
+    #[test]
+    fn a_key_kept_nowhere_is_new_each_time() {
+        let one = AddressKey::for_now().unwrap();
+        let other = AddressKey::for_now().unwrap();
+
+        assert_ne!(one.address(CARD, "Lantern"), other.address(CARD, "Lantern"));
+    }
+
+    #[test]
+    fn a_mark_is_the_same_for_the_same_bytes_and_this_machine_s_alone() {
+        let ours = AddressKey([7; 32]);
+        let theirs = AddressKey([8; 32]);
+
+        let mark = ours.mark(b"Lantern");
+
+        assert_eq!(mark, ours.mark(b"Lantern"));
+        assert_ne!(mark, ours.mark(b"Lanterns"));
+        assert_ne!(mark, theirs.mark(b"Lantern"));
+        assert_eq!(mark.len(), 64);
     }
 
     #[test]

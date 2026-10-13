@@ -26,7 +26,11 @@ impl Link {
     /// card joining networks.
     pub fn described(link: &Value) -> Option<Link> {
         let joining = link["Type"] == "wlan" && link["WirelessLanInterfaceTypeString"] == "station";
-        if !joining {
+        // A card udev is still naming may yet change its name, and one in
+        // linger is already gone.
+        let settled =
+            !["pending", "linger"].contains(&link["AdministrativeState"].as_str().unwrap_or(""));
+        if !joining || !settled {
             return None;
         }
         Some(Link {
@@ -191,5 +195,16 @@ mod tests {
 
         assert_eq!(Link::described(&cable), None);
         assert_eq!(Link::described(&access_point), None);
+    }
+
+    #[test]
+    fn a_card_still_being_named_or_going_away_is_passed_over_too() {
+        let mut arriving = card();
+        arriving["AdministrativeState"] = json!("pending");
+        let mut leaving = card();
+        leaving["AdministrativeState"] = json!("linger");
+
+        assert_eq!(Link::described(&arriving), None);
+        assert_eq!(Link::described(&leaving), None);
     }
 }

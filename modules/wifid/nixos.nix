@@ -30,9 +30,17 @@ in
       "systemd-networkd.service"
     ];
     wantedBy = [ "multi-user.target" ];
+    # Without wifid no card joins anything, so it never stays down: it
+    # comes back however it ended, the bus going away included, waiting a
+    # little longer each time up to a minute, and is never given up on.
+    # Starting again leaves every card on its network.
+    startLimitIntervalSec = 0;
     serviceConfig = {
       ExecStart = lib.getExe wifid;
-      Restart = "on-failure";
+      Restart = "always";
+      RestartSec = "1s";
+      RestartSteps = 6;
+      RestartMaxDelaySec = "1min";
       StateDirectory = "wifid";
       StateDirectoryMode = "0700";
       UMask = "0077";

@@ -2,8 +2,10 @@
 //!
 //! It starts by giving networkd a file for every network the launcher
 //! saved, then gives wpa_supplicant every saved network on every card and
-//! lets it choose which to join. wpa_supplicant starts again whenever a card
-//! comes or goes, so wifid adds the cards again each time it does.
+//! lets it choose which to join. It gives a card networkd finds later the
+//! same, and every card again whenever wpa_supplicant starts again. A card
+//! that already holds a network as wanted keeps it, so wifid starting
+//! again never takes a card off the network it's on.
 //!
 //! Once a card's network reaches beyond itself, as networkd sees it, wifid
 //! checks whether it really does or wants a sign-in first. It checks again
@@ -35,7 +37,8 @@ use futures_util::StreamExt;
 use tokio::sync::watch;
 use tokio::time::{Instant, sleep_until};
 use zbus::fdo::DBusProxy;
-use zbus::zvariant::{self, ObjectPath};
+use zbus::proxy::CacheProperties;
+use zbus::zvariant::{self, ObjectPath, OwnedObjectPath};
 use zbus::{Connection, MatchRule, MessageStream, proxy};
 
 use address::AddressKey;
@@ -89,12 +92,22 @@ async fn run() -> Result<(), Box<dyn Error>> {
     };
     fs::create_dir_all(&store.saved)?;
     fs::create_dir_all(&store.runtime)?;
-    store.give_networkd_all()?;
-    let key = AddressKey::kept_in(&Path::new(STATE).join("address-key"))?;
+    // Nothing wifid can do without stops it: a network it can't give
+    // networkd a file for still joins, under the Wi-Fi defaults.
+    if let Err(error) = store.give_networkd_all() {
+        eprintln!("<3>can't give networkd the saved networks' files: {error}");
+    }
+    let key = AddressKey::kept_in(&Path::new(STATE).join("address-key")).or_else(|error| {
+        eprintln!("<3>{error}; every network sees a new address until wifid starts again");
+        AddressKey::for_now()
+    })?;
     let credentials = Credentials::system();
 
     let bus = Connection::system().await?;
-    reload_networkd(&bus).await?;
+    // networkd reads the files anyway when it next starts.
+    if let Err(error) = reload_networkd(&bus).await {
+        eprintln!("<4>can't ask networkd to read its files again: {error}");
+    }
 
     let owners = DBusProxy::new(&bus).await?;
     let mut changes = owners.receive_name_owner_changed().await?;
@@ -127,9 +140,8 @@ async fn run() -> Result<(), Box<dyn Error>> {
         woken: watch::Sender::new(0),
         followed: HashMap::new(),
     };
-    for link in all_links(&bus).await {
-        networks.follow(link);
-    }
+    // Every card there is now was given wpa_supplicant above.
+    networks.follow_all(all_links(&bus).await);
     loop {
         tokio::select! {
             Some(change) = changes.next() => {
@@ -140,8 +152,8 @@ async fn run() -> Result<(), Box<dyn Error>> {
                 match args.name().as_str() {
                     "fi.w1.wpa_supplicant1" => wifid.add_cards().await,
                     "org.freedesktop.network1" => {
-                        for link in all_links(&bus).await {
-                            networks.follow(link);
+                        for card in networks.follow_all(all_links(&bus).await) {
+                            wifid.add_card_named(&card).await;
                         }
                     }
                     _ => {}
@@ -150,8 +162,20 @@ async fn run() -> Result<(), Box<dyn Error>> {
             Some(Ok(message)) = links.next() => {
                 let header = message.header();
                 let Some(path) = header.path() else { continue };
-                if let Some(link) = one_link(&bus, path).await {
-                    networks.follow(link);
+                match one_link(&bus, path).await {
+                    Some(link) => {
+                        let card = link.name.clone();
+                        if networks.follow(link) {
+                            wifid.add_card_named(&card).await;
+                        }
+                    }
+                    // Not a card, or one going: whichever, networkd's
+                    // own list says which cards are left.
+                    None => {
+                        for card in networks.follow_all(all_links(&bus).await) {
+                            wifid.add_card_named(&card).await;
+                        }
+                    }
                 }
             }
             Some(sleep) = sleeps.next() => {
@@ -200,17 +224,34 @@ struct Networks {
 
 impl Networks {
     /// Hands the link to its card's task, starting one for a card new to
-    /// wifid.
-    fn follow(&mut self, link: Link) {
+    /// wifid, and says whether it was.
+    fn follow(&mut self, link: Link) -> bool {
         if let Some(followed) = self.followed.get(&link.index) {
             followed.send_replace(link);
-            return;
+            return false;
         }
         let index = link.index;
         let (followed, link) = watch::channel(link);
         let checker = Arc::clone(&self.checker);
         tokio::spawn(check_network(link, self.woken.subscribe(), checker));
         self.followed.insert(index, followed);
+        true
+    }
+
+    /// Follows these, every Wi-Fi card there is, and stops following any
+    /// other, whose task ends with it. Gives the names of the cards new to
+    /// wifid.
+    fn follow_all(&mut self, links: Vec<Link>) -> Vec<String> {
+        self.followed
+            .retain(|index, _| links.iter().any(|link| link.index == *index));
+        let mut new = Vec::new();
+        for link in links {
+            let card = link.name.clone();
+            if self.follow(link) {
+                new.push(card);
+            }
+        }
+        new
     }
 }
 
@@ -287,6 +328,7 @@ async fn all_links(bus: &Connection) -> Vec<Link> {
 }
 
 /// One link, as networkd describes it, if it's a Wi-Fi card's.
+/// A link that has gone can't be described, which needs no saying.
 async fn one_link(bus: &Connection, path: &ObjectPath<'_>) -> Option<Link> {
     let described = bus
         .call_method(
@@ -296,8 +338,9 @@ async fn one_link(bus: &Connection, path: &ObjectPath<'_>) -> Option<Link> {
             "Describe",
             &(),
         )
-        .await;
-    Link::described(&json(described)?)
+        .await
+        .ok()?;
+    Link::described(&json(Ok(described))?)
 }
 
 /// The JSON a Describe call answered with; none, said in the journal,
@@ -344,6 +387,15 @@ impl Wifid<'_> {
     /// or network that can't be added is said in the journal and passed over,
     /// so one bad file never keeps the machine off every network.
     async fn add_cards(&self) {
+        self.add(|_| true).await
+    }
+
+    /// Gives wpa_supplicant the card of that name, as add_cards does.
+    async fn add_card_named(&self, name: &str) {
+        self.add(|card| card.name == name).await
+    }
+
+    async fn add(&self, wanted: impl Fn(&Card) -> bool) {
         let cards = match card::all(Path::new("/sys")) {
             Ok(cards) => cards,
             Err(error) => return eprintln!("<3>can't list the Wi-Fi cards: {error}"),
@@ -357,7 +409,7 @@ impl Wifid<'_> {
             }
             Err(error) => return eprintln!("<3>can't read the saved networks: {error}"),
         };
-        for card in cards {
+        for card in cards.into_iter().filter(wanted) {
             if let Err(error) = self.add_card(&card, &networks).await {
                 eprintln!("<3>can't add {}: {error}", card.name);
             }
@@ -376,9 +428,13 @@ impl Wifid<'_> {
                 supplicant.create_interface(args).await?
             }
         };
-        let interface = InterfaceProxy::builder(bus).path(path)?.build().await?;
-        interface.remove_all_networks().await?;
+        let interface = InterfaceProxy::builder(bus)
+            .path(path)?
+            .cache_properties(CacheProperties::No)
+            .build()
+            .await?;
         let mut added: Vec<&str> = Vec::new();
+        let mut wanted = Vec::new();
         for saved in networks {
             let name = saved.network.name.as_str();
             // Nix's networks come first, and win over the launcher's of the
@@ -402,17 +458,49 @@ impl Wifid<'_> {
                     continue;
                 }
             };
-            let path = interface
-                .add_network(supplicant::dictionary(fields))
-                .await?;
-            JoinableProxy::builder(bus)
-                .path(path)?
-                .build()
-                .await?
-                .set_enabled(true)
-                .await?;
+            wanted.push(supplicant::marked(fields, self.key));
             added.push(name);
         }
+
+        let mut held = Vec::new();
+        for network in interface.networks().await? {
+            let fields = self.joinable(&network).await?.properties().await?;
+            let mark = fields
+                .get("id_str")
+                .and_then(|field| <&str>::try_from(field).ok());
+            let mark = mark.and_then(supplicant::unquoted).map(str::to_string);
+            held.push((network, mark));
+        }
+        let marks: Vec<String> = wanted.iter().map(|(mark, _)| mark.clone()).collect();
+        let (gone, new) = supplicant::changes(&held, &marks);
+        for network in &gone {
+            interface.remove_network(&network.as_ref()).await?;
+        }
+        let mut joinable: Vec<OwnedObjectPath> = held
+            .iter()
+            .map(|(network, _)| network.clone())
+            .filter(|network| !gone.contains(&network))
+            .collect();
+        for (_, fields) in new.into_iter().map(|i| std::mem::take(&mut wanted[i])) {
+            joinable.push(
+                interface
+                    .add_network(supplicant::dictionary(fields))
+                    .await?,
+            );
+        }
+        // Turning on one already on changes nothing. One left off, as a
+        // join from the launcher leaves the others for a moment, is on again.
+        for network in joinable {
+            self.joinable(&network).await?.set_enabled(true).await?;
+        }
         Ok(())
+    }
+
+    async fn joinable(&self, network: &OwnedObjectPath) -> zbus::Result<JoinableProxy<'_>> {
+        JoinableProxy::builder(self.bus)
+            .path(network.clone())?
+            .cache_properties(CacheProperties::No)
+            .build()
+            .await
     }
 }

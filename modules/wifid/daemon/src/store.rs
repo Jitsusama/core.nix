@@ -65,9 +65,9 @@ impl Store {
         let mut listing = Listing::default();
         for (directory, declared) in [(&self.declared, true), (&self.saved, false)] {
             for file in network_files(directory)? {
-                let text = fs::read_to_string(&file)?;
-                let network = Document::parse(&text)
-                    .map_err(|malformed| malformed.to_string())
+                let network = fs::read_to_string(&file)
+                    .map_err(|error| error.to_string())
+                    .and_then(|text| Document::parse(&text).map_err(|m| m.to_string()))
                     .and_then(|document| Network::read(&document).map_err(|u| u.0));
                 match network {
                     Ok(Some(network)) => listing.saved.push(Saved {
@@ -116,7 +116,9 @@ impl Store {
             .map(|f| self.given_to_networkd(f))
             .collect();
         for file in network_files(&self.runtime)? {
-            if !given.contains(&file) && fs::read_to_string(&file)?.starts_with(WRITTEN) {
+            // A file that isn't text isn't one wifid wrote.
+            let ours = fs::read_to_string(&file).is_ok_and(|text| text.starts_with(WRITTEN));
+            if ours && !given.contains(&file) {
                 fs::remove_file(file)?;
             }
         }
@@ -205,7 +207,13 @@ fn read(file: &Path) -> io::Result<Document> {
 /// Writes the file whole or not at all, so networkd never reads half of one.
 /// networkd doesn't run as root, so the file is made readable by everyone
 /// whatever wifid's umask, which keeps everything else it writes to itself.
+/// A file that already says this, readable, is left as it is, so networkd
+/// doesn't take an unchanged file for a new one.
 fn replace(file: &Path, text: &str) -> io::Result<()> {
+    let readable = |file| fs::metadata(file).is_ok_and(|m| m.permissions().mode() & 0o777 == 0o644);
+    if readable(file) && fs::read(file).is_ok_and(|held| held == text.as_bytes()) {
+        return Ok(());
+    }
     let name = file.file_name().unwrap_or_default().to_string_lossy();
     let partial = file.with_file_name(format!(".{name}.partial"));
     fs::write(&partial, text)?;
@@ -234,6 +242,7 @@ fn slug(name: &str) -> String {
 #[cfg(test)]
 mod tests {
     use std::fs;
+    use std::os::unix::fs::MetadataExt;
 
     use tempfile::TempDir;
 
@@ -397,6 +406,31 @@ mod tests {
     }
 
     #[test]
+    fn a_file_networkd_already_has_as_written_is_left_as_it_is() {
+        let (_root, store) = store();
+        store.save(&lantern()).unwrap();
+        let given = store.runtime.join("50-wifi-lantern.network");
+        let before = fs::metadata(&given).unwrap().ino();
+
+        store.give_networkd_all().unwrap();
+
+        assert_eq!(fs::metadata(&given).unwrap().ino(), before);
+    }
+
+    #[test]
+    fn a_file_in_networkd_s_directory_that_isnt_text_is_left_alone() {
+        let (_root, store) = store();
+        store.save(&lantern()).unwrap();
+        let foreign = store.runtime.join("60-other.network");
+        fs::write(&foreign, [0xff, 0xfe]).unwrap();
+
+        store.give_networkd_all().unwrap();
+
+        assert!(foreign.exists());
+        assert!(store.runtime.join("50-wifi-lantern.network").exists());
+    }
+
+    #[test]
     fn a_network_forgotten_is_gone_from_both_places() {
         let (_root, store) = store();
         store.save(&lantern()).unwrap();
@@ -447,6 +481,27 @@ mod tests {
                     "SSID=Hilton* is a pattern, not one network's name".to_string()
                 ),
             ]
+        );
+    }
+
+    #[test]
+    fn a_file_that_isnt_text_is_named_and_the_rest_still_listed() {
+        let (_root, store) = store();
+        let garbled = store.saved.join("garbled.network");
+        fs::write(&garbled, [b'[', 0xff, b']']).unwrap();
+        store.save(&lantern()).unwrap();
+
+        let listing = store.networks().unwrap();
+
+        let names: Vec<&str> = listing
+            .saved
+            .iter()
+            .map(|s| s.network.name.as_str())
+            .collect();
+        assert_eq!(names, vec!["Lantern"]);
+        assert_eq!(
+            listing.unreadable,
+            vec![(garbled, "stream did not contain valid UTF-8".to_string())]
         );
     }
 

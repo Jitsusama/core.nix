@@ -3,8 +3,9 @@
 use std::collections::HashMap;
 
 use zbus::proxy;
-use zbus::zvariant::{self, OwnedObjectPath};
+use zbus::zvariant::{self, ObjectPath, OwnedObjectPath, OwnedValue};
 
+use crate::address::AddressKey;
 use crate::network::{Address, Network, Security};
 
 /// A value for one of a network's fields, in the type wpa_supplicant's
@@ -138,6 +139,63 @@ pub fn dictionary(
         .collect()
 }
 
+/// A mark of the fields, and the fields with it added as the network's
+/// id_str. It's made under
+/// the machine's key, so it says nothing of the password. wifid knows by
+/// it, next time it starts, whether a network a card holds is still as
+/// wanted.
+pub fn marked(
+    fields: Vec<(&'static str, Value)>,
+    key: &AddressKey,
+) -> (String, Vec<(&'static str, Value)>) {
+    let mut given = Vec::new();
+    for (name, value) in &fields {
+        let (kind, bytes) = match value {
+            Value::Bytes(bytes) => (b'b', bytes.clone()),
+            Value::Text(text) => (b't', text.as_bytes().to_vec()),
+            Value::Number(number) => (b'n', number.to_string().into_bytes()),
+        };
+        // Each part led by its length, so no two lists of fields read alike.
+        for part in [name.as_bytes(), &[kind], &bytes] {
+            given.extend_from_slice(&(part.len() as u32).to_be_bytes());
+            given.extend_from_slice(part);
+        }
+    }
+    let mark = key.mark(&given);
+    let mut fields = fields;
+    fields.push(("id_str", Value::Text(mark.clone())));
+    (mark, fields)
+}
+
+/// A text field as wpa_supplicant gives it back, quoted.
+pub fn unquoted(field: &str) -> Option<&str> {
+    field.strip_prefix('"')?.strip_suffix('"')
+}
+
+/// What to change so a card holds just the networks of these marks, from
+/// the marks of those it holds: the ones to take away, and which of the
+/// wanted to add. Anything it holds as wanted stays, and with it the
+/// connection.
+pub fn changes<'a, P>(
+    held: &'a [(P, Option<String>)],
+    wanted: &[String],
+) -> (Vec<&'a P>, Vec<usize>) {
+    let mut kept: Vec<&str> = Vec::new();
+    let mut gone = Vec::new();
+    for (network, mark) in held {
+        match mark.as_deref() {
+            Some(mark) if wanted.iter().any(|w| w == mark) && !kept.contains(&mark) => {
+                kept.push(mark)
+            }
+            _ => gone.push(network),
+        }
+    }
+    let new = (0..wanted.len())
+        .filter(|&i| !kept.contains(&wanted[i].as_str()))
+        .collect();
+    (gone, new)
+}
+
 /// wpa_supplicant itself, which adds and takes away cards.
 #[proxy(
     interface = "fi.w1.wpa_supplicant1",
@@ -164,7 +222,10 @@ pub trait Interface {
         args: HashMap<&str, zvariant::Value<'_>>,
     ) -> zbus::Result<OwnedObjectPath>;
 
-    fn remove_all_networks(&self) -> zbus::Result<()>;
+    fn remove_network(&self, path: &ObjectPath<'_>) -> zbus::Result<()>;
+
+    #[zbus(property)]
+    fn networks(&self) -> zbus::Result<Vec<OwnedObjectPath>>;
 
     #[zbus(property)]
     fn state(&self) -> zbus::Result<String>;
@@ -178,11 +239,16 @@ pub trait Interface {
 pub trait Joinable {
     #[zbus(property)]
     fn set_enabled(&self, enabled: bool) -> zbus::Result<()>;
+
+    /// Every field but the keys, each as text.
+    #[zbus(property)]
+    fn properties(&self) -> zbus::Result<HashMap<String, OwnedValue>>;
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::address::AddressKey;
     use crate::network::{Address, Security};
 
     const SHOWN: [u8; 6] = [0x5a, 0x01, 0x02, 0xa0, 0xb0, 0xff];
@@ -197,6 +263,92 @@ mod tests {
             address: Address::Network,
             trusted: false,
         }
+    }
+
+    fn marked_inn(key: &AddressKey, priority: i32) -> (String, Vec<(&'static str, Value)>) {
+        let network = Network { priority, ..inn() };
+        marked(properties(&network, None, SHOWN).unwrap(), key)
+    }
+
+    fn mark_of((mark, fields): (String, Vec<(&'static str, Value)>)) -> String {
+        assert_eq!(fields.last(), Some(&("id_str", Value::Text(mark.clone()))));
+        mark
+    }
+
+    #[test]
+    fn a_network_is_marked_with_everything_it_was_given() {
+        let key = AddressKey::from([7; 32]);
+
+        let first = marked_inn(&key, 0);
+        let again = marked_inn(&key, 0);
+
+        assert_eq!(first, again);
+        assert_eq!(
+            first.1.len(),
+            properties(&inn(), None, SHOWN).unwrap().len() + 1
+        );
+        let mark = mark_of(first);
+        assert_eq!(mark.len(), 64);
+        assert!(mark.bytes().all(|byte| byte.is_ascii_hexdigit()), "{mark}");
+    }
+
+    #[test]
+    fn the_mark_changes_when_anything_the_network_is_given_does() {
+        let key = AddressKey::from([7; 32]);
+        let lantern = Network {
+            name: "Lantern".to_string(),
+            security: Security::Personal,
+            ..inn()
+        };
+        let with = |password| marked(properties(&lantern, Some(password), SHOWN).unwrap(), &key);
+
+        let first = mark_of(with("glowing in the dark"));
+        let new_password = mark_of(with("dark in the glowing"));
+        let inn = mark_of(marked_inn(&key, 0));
+        let new_priority = mark_of(marked_inn(&key, 5));
+        let other_machine = mark_of(marked_inn(&AddressKey::from([8; 32]), 0));
+
+        assert_ne!(first, new_password);
+        assert_ne!(inn, new_priority);
+        assert_ne!(inn, other_machine);
+    }
+
+    #[test]
+    fn the_mark_is_read_back_as_wpa_supplicant_quotes_it() {
+        assert_eq!(unquoted("\"0a1b\""), Some("0a1b"));
+        assert_eq!(unquoted("0a1b"), None);
+        assert_eq!(unquoted("\""), None);
+    }
+
+    #[test]
+    fn networks_a_card_already_holds_as_wanted_are_left_alone() {
+        let held = [("/0", Some("a".to_string())), ("/1", Some("b".to_string()))];
+        let wanted = ["b".to_string(), "a".to_string()];
+
+        let (gone, new) = changes(&held, &wanted);
+
+        assert_eq!(gone, Vec::<&&str>::new());
+        assert_eq!(new, Vec::<usize>::new());
+    }
+
+    #[test]
+    fn networks_changed_or_no_longer_wanted_are_taken_away_and_the_rest_added() {
+        let held = [
+            ("/0", Some("kept".to_string())),
+            ("/1", Some("changed".to_string())),
+            ("/2", None),
+            ("/3", Some("kept".to_string())),
+        ];
+        let wanted = [
+            "kept".to_string(),
+            "new".to_string(),
+            "changed now".to_string(),
+        ];
+
+        let (gone, new) = changes(&held, &wanted);
+
+        assert_eq!(gone, vec![&"/1", &"/2", &"/3"]);
+        assert_eq!(new, vec![1, 2]);
     }
 
     #[test]
