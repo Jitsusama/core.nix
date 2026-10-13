@@ -8,6 +8,7 @@ use crate::clock::Awake;
 use crate::config::{CacheProtocol, Config, Source};
 use crate::discover::{self, Checkout, Kind};
 use crate::plan::{Candidate, Class};
+use crate::replaced::Uses;
 use crate::snapshots::Boot;
 use crate::{
     age, caches, coredumps, logs, nix_builds, scratch, snapshots, temp, trash, trees, workspaces,
@@ -26,6 +27,9 @@ pub enum Action {
     Target { root: PathBuf },
     /// An incremental variant inside a target, with rustc's locks held.
     Variant { root: PathBuf },
+    /// An older build of a crate inside `target`, with cargo's locks held:
+    /// its libraries, dep-info and fingerprint.
+    Build { root: PathBuf, target: PathBuf },
     /// One entry, judged, moved aside, judged again and removed.
     Entry { root: PathBuf },
     /// An item of a desktop trash and its info file.
@@ -66,6 +70,7 @@ impl Action {
         match self {
             Action::Target { root }
             | Action::Variant { root }
+            | Action::Build { root, .. }
             | Action::Entry { root }
             | Action::Workspace { root }
             | Action::Trim { root }
@@ -101,6 +106,12 @@ pub struct World<'a> {
     pub finished: &'a mut dyn FnMut(&Path) -> bool,
     /// When each source's command last ran, in wall seconds, by name.
     pub ran: &'a BTreeMap<String, f64>,
+    /// When each build's artifacts were last opened, as far as the watch
+    /// on their `deps` has seen.
+    pub uses: &'a Uses,
+    /// The trees found and kept for their use without being offered, as
+    /// the survey goes, so a plan or explanation can say why.
+    pub kept: Vec<(PathBuf, Use)>,
 }
 
 /// How deep and how widely a workspace's writes are read.
@@ -378,6 +389,7 @@ fn trees_under(
         // The candidate refuses these too; deciding first spares sizing a
         // tree a build is writing to.
         if matches!(used, Use::Busy(_) | Use::Unknown(_)) {
+            world.kept.push((tree.path.clone(), used));
             continue;
         }
         let finished = checkout.is_some_and(|dir| (world.finished)(dir));
@@ -421,6 +433,33 @@ fn trees_under(
                     candidate,
                     action: Action::Variant {
                         root: root.to_owned(),
+                    },
+                    device,
+                });
+            }
+            // Each older build of a crate, dated by its last open; where
+            // nothing watches, nothing can say it's unused.
+            for build in crate::replaced::replaced(&tree.path) {
+                let Some(last_used) = world.uses.last_used(&build) else {
+                    continue;
+                };
+                let candidate = Candidate {
+                    path: build.deps.join(format!("{}-{}", build.name, build.digest)),
+                    class: Class::Replaced,
+                    idle: world
+                        .awake
+                        .since(last_used.min(world.now), world.now)
+                        .max(0.0),
+                    size: build.size,
+                    occupied: false,
+                    spent: false,
+                    checkout: checkout.map(Path::to_owned),
+                };
+                offers.push(Offer {
+                    candidate,
+                    action: Action::Build {
+                        root: root.to_owned(),
+                        target: tree.path.clone(),
                     },
                     device,
                 });

@@ -22,6 +22,7 @@ mod desktop;
 mod discover;
 mod entries;
 mod finished;
+mod freezer;
 mod garbage;
 mod generations;
 #[cfg(target_os = "linux")]
@@ -34,12 +35,14 @@ mod logs;
 mod nix_builds;
 #[cfg(target_os = "linux")]
 mod notices;
+mod opens;
 mod pass;
 mod plan;
 mod pool;
 #[cfg(target_os = "linux")]
 mod procs;
 mod reclaim;
+mod replaced;
 mod sandbox;
 mod scratch;
 #[cfg(target_os = "linux")]
@@ -56,3 +59,4 @@ mod units;
 mod variants;
 mod vouch;
 mod workspaces;
+mod writers;

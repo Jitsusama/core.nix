@@ -19,6 +19,8 @@ pub mod dedupe;
 pub mod desktop;
 pub mod discover;
 pub mod finished;
+#[cfg(target_os = "linux")]
+pub mod freezer;
 pub mod garbage;
 pub mod generations;
 #[cfg(target_os = "linux")]
@@ -32,10 +34,13 @@ pub mod moments;
 pub mod nix_builds;
 #[cfg(target_os = "linux")]
 pub mod notices;
+#[cfg(target_os = "linux")]
+pub mod opens;
 pub mod pass;
 pub mod plan;
 pub mod pool;
 pub mod reclaim;
+pub mod replaced;
 pub mod scratch;
 #[cfg(target_os = "linux")]
 pub mod serve;
@@ -50,3 +55,4 @@ pub mod trees;
 pub mod units;
 pub mod vouch;
 pub mod workspaces;
+pub mod writers;

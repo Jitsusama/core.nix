@@ -164,3 +164,25 @@ fn a_finished_head_is_remembered_and_an_unfinished_one_asked_again_hourly() {
     assert!(!answers.finished(dir, "def", 900_000.0, || answer(false)));
     assert_eq!(asked, 3);
 }
+
+#[test]
+fn the_answers_for_a_checkout_that_went_are_forgotten() {
+    let root = tempfile::tempdir().unwrap();
+    let here = root.path().join("here");
+    std::fs::create_dir(&here).unwrap();
+    let gone = root.path().join("gone");
+    let mut answers = Answers::default();
+    answers.finished(&here, "abc", 0.0, || true);
+    answers.finished(&gone, "abc", 0.0, || true);
+    answers.forget_gone();
+    let mut asked = Vec::new();
+    answers.finished(&here, "abc", 1.0, || {
+        asked.push("here");
+        true
+    });
+    answers.finished(&gone, "abc", 1.0, || {
+        asked.push("gone");
+        true
+    });
+    assert_eq!(asked, ["gone"]);
+}

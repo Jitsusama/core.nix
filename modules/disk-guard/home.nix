@@ -2,9 +2,11 @@
 # from filling, taking what regenerates, cheapest first, and never what a
 # build or a person is using. It owns everything in the home: build targets
 # and dependency installs, caches, temporary leftovers, the trash, finished
-# quests' workspaces, and the account's own Nix generations. Below healthy it
-# says what it did in one notice, replaced in place, and it writes a status
-# file for the shell. AGENTS.md beside this says how it decides.
+# quests' workspaces, the older builds a newer one replaced, and the account's
+# own Nix generations. At critical with nothing left to take it freezes the
+# writer filling the disk until there's room. Below healthy it says what it
+# did in one notice, replaced in place, and it writes a status file for the
+# shell. AGENTS.md beside this says how it decides.
 #
 # jitsusama.disk-guard.settings is the guard's own config, rendered as it is,
 # and the build refuses one check-config refuses. Each source core gives is a

@@ -33,6 +33,24 @@ pub enum Change {
 /// below healthy that finished, else the worst band a disk entered, else
 /// the notice withdrawn once no disk is below healthy.
 pub fn change(before: &Status, after: &Status) -> Option<Change> {
+    // A writer frozen stops somebody's work, so it's told before anything.
+    if let Some(frozen) = after
+        .frozen
+        .iter()
+        .find(|frozen| !before.frozen.iter().any(|was| was.unit == frozen.unit))
+    {
+        return Some(Change::Show(Notice {
+            summary: format!(
+                "Froze {}, which was filling {}",
+                frozen.name,
+                frozen.path.display()
+            ),
+            body: "Nothing else was safe to take. It goes on by itself once there's room, or now \
+                   with disk-guard thaw."
+                .to_owned(),
+            urgency: Urgency::Critical,
+        }));
+    }
     if let Some(last) = &after.last
         && after.last != before.last
         && last.band > Band::Healthy
@@ -69,6 +87,16 @@ pub fn change(before: &Status, after: &Status) -> Option<Change> {
                 ),
             ),
             failed => (short, format!("{free} free. It {failed}.")),
+        };
+        // Left short, whoever is filling it is worth knowing.
+        let body = match &after.writer {
+            Some(writer) if last.end != "reached" => format!(
+                "{body} Most of the writing is {}'s (pid {}), at {} a second.",
+                writer.name,
+                writer.pid,
+                shown(writer.rate as u64)
+            ),
+            _ => body,
         };
         return Some(Change::Show(Notice {
             summary,

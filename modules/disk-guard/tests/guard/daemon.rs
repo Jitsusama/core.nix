@@ -1,8 +1,9 @@
 use disk_guard::band::Band;
 use disk_guard::clock::Tick;
 use disk_guard::config::Config;
-use disk_guard::daemon::{Guard, Places, Senses};
+use disk_guard::daemon::{Explained, Guard, Places, Senses};
 use disk_guard::moments::{Power, Pressure};
+use disk_guard::replaced::Uses;
 use disk_guard::socket::{Reply, Request};
 use disk_guard::units::Size;
 use rustix::fs::{AtFlags, CWD, Timespec, Timestamps, utimensat};
@@ -504,6 +505,38 @@ fn a_pass_that_falls_short_rests_before_the_next_and_longer_each_time() {
 }
 
 #[test]
+fn a_preview_says_how_many_processes_it_could_not_judge_and_why() {
+    let home = Home::new();
+    home.cold_scratch("run-1");
+    let mut guard = home.guard(home.config("0%", "100%"));
+    guard.preview(&tick(), Some(Band::Pressure), None).unwrap();
+    assert_eq!(guard.unread(), (0, None));
+    home.hidden(300, 77);
+    // And one of the account's, read whole.
+    let proc = home.root.join("proc");
+    let me = unsafe { libc::geteuid() };
+    crate::procs::text(&proc, "400/stat", &crate::procs::stat(400, "zsh", 0, 90));
+    crate::procs::text(
+        &proc,
+        "400/status",
+        &format!("Name:\tzsh\nUid:\t{me}\t{me}\t{me}\t{me}\n"),
+    );
+    crate::procs::text(&proc, "400/cmdline", "zsh");
+    crate::procs::text(&proc, "400/maps", "");
+    crate::procs::link(&proc, "400/cwd", "/");
+    fs::create_dir_all(proc.join("400/fd")).unwrap();
+    let places = Places {
+        system: Some(home.root.join("no-system.sock")),
+        ..home.places()
+    };
+    let mut guard = Guard::new(home.config("0%", "100%"), &places).unwrap();
+    guard.preview(&tick(), Some(Band::Pressure), None).unwrap();
+    let (unread, why) = guard.unread();
+    assert_eq!(unread, 1);
+    assert!(why.is_some(), "the system daemon didn't answer");
+}
+
+#[test]
 fn a_preview_says_what_a_pass_would_take_and_takes_nothing() {
     let home = Home::new();
     let first = home.cold_scratch("run-1");
@@ -678,6 +711,103 @@ fn a_healthy_disk_gets_its_upkeep_and_then_rests() {
 }
 
 #[test]
+fn a_tree_kept_for_its_use_is_explained_as_kept_and_why() {
+    let home = Home::new();
+    let (config, deps) = home.replaced_build("0%");
+    let target = deps.parent().unwrap().parent().unwrap().to_owned();
+    // cargo, building in the checkout.
+    let proc = home.root.join("proc");
+    let me = unsafe { libc::geteuid() };
+    crate::procs::text(&proc, "400/stat", &crate::procs::stat(400, "cargo", 0, 90));
+    crate::procs::text(
+        &proc,
+        "400/status",
+        &format!("Name:\tcargo\nUid:\t{me}\t{me}\t{me}\t{me}\n"),
+    );
+    crate::procs::text(&proc, "400/cmdline", "cargo\0build\0");
+    crate::procs::text(&proc, "400/maps", "");
+    crate::procs::link(&proc, "400/cwd", target.join("debug").to_str().unwrap());
+    crate::procs::link(&proc, "400/exe", "/bin/cargo");
+    fs::create_dir_all(proc.join("400/fd")).unwrap();
+    let mut guard = home.guard(config);
+    let inside = deps.join(format!("libapp-{OLD}.rlib"));
+    let explained = guard.explain(&tick(), &inside).unwrap();
+    assert_eq!(
+        explained,
+        Explained::Kept {
+            path: target,
+            used: disk_guard::activity::Use::Busy(400)
+        }
+    );
+}
+
+#[test]
+fn a_predicates_answer_is_kept_for_the_next_guard() {
+    use crate::finished::git;
+    let home = Home::new();
+    let (_, deps) = home.replaced_build("0%");
+    let app = home.root.join("src/app");
+    git(&app, &["init", "-q", "-b", "work"]);
+    git(
+        &app,
+        &["remote", "add", "origin", "https://example.com/app.git"],
+    );
+    git(&app, &["add", "Cargo.toml"]);
+    git(&app, &["commit", "-q", "-m", "one"]);
+    let asked = home.root.join("asked");
+    let predicate = home.root.join("merged");
+    fs::write(
+        &predicate,
+        format!(
+            "#!/bin/sh\necho asked >> {}\necho '{{\"finished\": true}}'\n",
+            asked.display()
+        ),
+    )
+    .unwrap();
+    use std::os::unix::fs::PermissionsExt;
+    fs::set_permissions(&predicate, fs::Permissions::from_mode(0o755)).unwrap();
+    let config = || {
+        Config::parse(&format!(
+            r#"{{ "version": 1, "scope": "user", "notify": false,
+                 "bands": {{ "pressure": "0%", "urgent": "0%", "critical": "0%", "target": "0%" }},
+                 "nix": {{ "bin": "{0}/no-nix/nix", "store": "{0}/no-nix/store" }},
+                 "sources": {{
+                   "src": {{ "kind": "cargo", "roots": ["{0}/src"] }},
+                   "merged": {{ "kind": "finished", "remote": "^https://example\\.com/",
+                                "command": ["{1}"], "timeout": "5s" }} }} }}"#,
+            home.root.display(),
+            predicate.display()
+        ))
+        .unwrap()
+    };
+    let _ = deps;
+    let mut first = home.guard(config());
+    first.step(&tick(), &CALM).unwrap();
+    let times = || {
+        fs::read_to_string(&asked)
+            .unwrap_or_default()
+            .lines()
+            .count()
+    };
+    assert_eq!(times(), 1, "routine upkeep asks once");
+    drop(first);
+    let mut second = home.guard(config());
+    second.preview(&tick(), Some(Band::Pressure), None).unwrap();
+    assert_eq!(times(), 1, "a finished head is known still");
+}
+
+#[test]
+fn a_preview_leaves_a_damaged_memory_as_it_found_it() {
+    let home = Home::new();
+    fs::write(home.root.join("state/memory.json"), "{ \"learned\": ").unwrap();
+    let mut guard = home.guard(home.config("0%", "0%"));
+    guard.preview(&tick(), Some(Band::Pressure), None).unwrap();
+    let kept = fs::read_to_string(home.root.join("state/memory.json")).unwrap();
+    assert_eq!(kept, "{ \"learned\": ");
+    assert!(!home.root.join("state/memory.json.damaged").exists());
+}
+
+#[test]
 fn a_damaged_memory_is_set_aside_and_begun_afresh() {
     let home = Home::new();
     fs::write(home.root.join("state/memory.json"), "{ \"learned\": ").unwrap();
@@ -704,4 +834,355 @@ fn upkeep_waits_for_a_machine_that_can_spare_it() {
     assert!(expired.exists());
     guard.step(&tick(), &CALM).unwrap();
     assert!(!expired.exists());
+}
+
+/// A service manager that freezes nothing, saying what it was asked.
+#[derive(Clone, Default)]
+struct Manager {
+    calls: std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+    /// Whether what it froze stays frozen, until somebody thaws it.
+    thawed: std::sync::Arc<std::sync::atomic::AtomicBool>,
+}
+
+impl Manager {
+    fn calls(&self) -> Vec<String> {
+        self.calls.lock().unwrap().clone()
+    }
+}
+
+impl disk_guard::freezer::Freeze for Manager {
+    fn freeze(&mut self, unit: &str, pids: &[u32], _: &str) -> Result<(), String> {
+        self.calls
+            .lock()
+            .unwrap()
+            .push(format!("freeze {unit} {pids:?}"));
+        Ok(())
+    }
+
+    fn thaw(&mut self, unit: &str) -> Result<(), String> {
+        self.calls.lock().unwrap().push(format!("thaw {unit}"));
+        Ok(())
+    }
+
+    fn frozen(&mut self, _: &str) -> Result<bool, String> {
+        Ok(!self.thawed.load(std::sync::atomic::Ordering::Relaxed))
+    }
+}
+
+impl Home {
+    /// A config whose disk is critical, or healthy, with an empty scratch
+    /// source on it, so a pass finds nothing to take.
+    fn critical(&self, critical: bool) -> Config {
+        let share = if critical { "100%" } else { "0%" };
+        fs::create_dir_all(self.root.join("scratch")).unwrap();
+        Config::parse(&format!(
+            r#"{{ "version": 1, "scope": "user", "status_file": true, "notify": false,
+                 "bands": {{ "pressure": "{share}", "urgent": "{share}", "critical": "{share}", "target": "{share}" }},
+                 "nix": {{ "bin": "{0}/no-nix/nix", "store": "{0}/no-nix/store" }},
+                 "sources": {{ "scratch": {{ "kind": "scratch", "path": "{0}/scratch" }} }} }}"#,
+            self.root.display()
+        ))
+        .unwrap()
+    }
+
+    /// A process of the account's in `cgroup`, with a child, writing a
+    /// file on the guarded disk, having written `written` bytes so far.
+    fn writer(&self, pid: u32, cgroup: &str, written: u64) {
+        let proc = self.root.join("proc");
+        let me = unsafe { libc::geteuid() };
+        for (pid, parent, name) in [(pid, 1, "dd"), (pid + 1, pid, "dd-helper")] {
+            let at = |file: &str| format!("{pid}/{file}");
+            let mut fields = vec!["0".to_string(); 49];
+            fields[0] = "S".into();
+            fields[1] = parent.to_string();
+            fields[19] = "500".into();
+            crate::procs::text(
+                &proc,
+                &at("stat"),
+                &format!("{pid} ({name}) {}\n", fields.join(" ")),
+            );
+            crate::procs::text(
+                &proc,
+                &at("status"),
+                &format!("Name:\t{name}\nUid:\t{me}\t{me}\t{me}\t{me}\n"),
+            );
+            crate::procs::text(&proc, &at("cmdline"), name);
+            crate::procs::text(&proc, &at("cgroup"), &format!("0::{cgroup}\n"));
+            // The child writes nothing itself.
+            let mine = if parent == 1 { written } else { 0 };
+            crate::procs::text(&proc, &at("io"), &format!("write_bytes: {mine}\n"));
+        }
+        let out = self.root.join("filling");
+        fs::write(&out, "x").unwrap();
+        let fd = proc.join(format!("{pid}/fd/3"));
+        if fd.symlink_metadata().is_err() {
+            crate::procs::link(&proc, &format!("{pid}/fd/3"), out.to_str().unwrap());
+        }
+    }
+
+    fn memory(&self) -> serde_json::Value {
+        serde_json::from_str(&fs::read_to_string(self.root.join("state/memory.json")).unwrap())
+            .unwrap()
+    }
+}
+
+fn uid() -> u32 {
+    unsafe { libc::geteuid() }
+}
+
+fn app(uid: u32) -> String {
+    format!("/user.slice/user-{uid}.slice/user@{uid}.service/app.slice/app-kitty.scope")
+}
+
+const GIB: u64 = 1 << 30;
+
+/// Steps `guard` as a runaway writer fills its disk: a step with nothing
+/// to take, then one 30 seconds later after 2 GiB more.
+fn running_away(home: &Home, guard: &mut Guard, cgroup: &str) {
+    home.writer(700, cgroup, 0);
+    guard.step(&tick(), &CALM).unwrap();
+    home.writer(700, cgroup, 2 * GIB);
+    let later = Tick {
+        wall: wall() + 30.0,
+        monotonic: 3630.0,
+        ..tick()
+    };
+    guard.step(&later, &CALM).unwrap();
+}
+
+#[test]
+fn at_critical_with_nothing_left_the_runaway_writer_is_frozen_with_its_children() {
+    let home = Home::new();
+    let manager = Manager::default();
+    let mut guard = home.guard(home.critical(true));
+    guard.freeze_with(Box::new(manager.clone()));
+    running_away(&home, &mut guard, &app(uid()));
+    assert_eq!(
+        manager.calls(),
+        ["freeze disk-guard-freeze-700.scope [700, 701]"]
+    );
+    let frozen = &home.status()["frozen"];
+    assert_eq!(frozen[0]["name"], "dd", "{frozen}");
+    assert_eq!(frozen[0]["unit"], "disk-guard-freeze-700.scope");
+    assert!(
+        home.journal().iter().any(|line| line["kind"] == "freeze"),
+        "{:?}",
+        home.journal()
+    );
+}
+
+#[test]
+fn a_writer_with_nothing_open_on_the_disk_or_writing_slowly_is_left_alone() {
+    let home = Home::new();
+    let manager = Manager::default();
+    let mut guard = home.guard(home.critical(true));
+    guard.freeze_with(Box::new(manager.clone()));
+    home.writer(700, &app(uid()), 0);
+    // Its only file is on another filesystem.
+    fs::remove_file(home.root.join("proc/700/fd/3")).unwrap();
+    crate::procs::link(&home.root.join("proc"), "700/fd/3", "/dev/null");
+    running_away(&home, &mut guard, &app(uid()));
+    assert!(
+        manager.calls().is_empty(),
+        "another disk's: {:?}",
+        manager.calls()
+    );
+
+    let home = Home::new();
+    let mut guard = home.guard(home.critical(true));
+    guard.freeze_with(Box::new(manager.clone()));
+    home.writer(700, &app(uid()), 0);
+    guard.step(&tick(), &CALM).unwrap();
+    // 300 KiB in 30 seconds is nothing that fills a disk.
+    home.writer(700, &app(uid()), 300 << 10);
+    let later = Tick {
+        wall: wall() + 30.0,
+        monotonic: 3630.0,
+        ..tick()
+    };
+    guard.step(&later, &CALM).unwrap();
+    assert!(
+        manager.calls().is_empty(),
+        "a slow one: {:?}",
+        manager.calls()
+    );
+}
+
+#[test]
+fn the_status_names_who_writes_most_while_a_disk_is_short_freezing_or_not() {
+    let home = Home::new();
+    let mut guard = home.guard(home.critical(true));
+    running_away(&home, &mut guard, &app(uid()));
+    let writer = &home.status()["writer"];
+    assert_eq!(writer["name"], "dd", "{writer}");
+    assert_eq!(writer["pid"], 700);
+    let mut calm = home.guard(home.critical(false));
+    calm.step(&tick(), &CALM).unwrap();
+    assert_eq!(home.status()["writer"], serde_json::Value::Null);
+}
+
+#[test]
+fn nothing_in_a_session_is_ever_frozen() {
+    let home = Home::new();
+    let manager = Manager::default();
+    let mut guard = home.guard(home.critical(true));
+    guard.freeze_with(Box::new(manager.clone()));
+    let session = format!(
+        "/user.slice/user-{0}.slice/user@{0}.service/session.slice/foot.service",
+        uid()
+    );
+    running_away(&home, &mut guard, &session);
+    assert!(manager.calls().is_empty(), "{:?}", manager.calls());
+}
+
+#[test]
+fn a_frozen_writer_is_thawed_once_the_disk_has_room() {
+    let home = Home::new();
+    let manager = Manager::default();
+    let mut guard = home.guard(home.critical(true));
+    guard.freeze_with(Box::new(manager.clone()));
+    running_away(&home, &mut guard, &app(uid()));
+    drop(guard);
+    // The next guard, the disk now healthy, remembers what it froze.
+    let mut guard = home.guard(home.critical(false));
+    guard.freeze_with(Box::new(manager.clone()));
+    guard.step(&tick(), &CALM).unwrap();
+    assert_eq!(
+        manager.calls().last().unwrap(),
+        "thaw disk-guard-freeze-700.scope"
+    );
+    assert_eq!(home.memory()["frozen"], serde_json::json!([]));
+}
+
+#[test]
+fn a_writer_thawed_by_hand_is_never_frozen_again() {
+    let home = Home::new();
+    let manager = Manager::default();
+    let mut guard = home.guard(home.critical(true));
+    guard.freeze_with(Box::new(manager.clone()));
+    running_away(&home, &mut guard, &app(uid()));
+    manager
+        .thawed
+        .store(true, std::sync::atomic::Ordering::Relaxed);
+    for (i, written) in [(1.0, 4 * GIB), (2.0, 6 * GIB), (3.0, 8 * GIB)] {
+        home.writer(700, &app(uid()), written);
+        let later = Tick {
+            wall: wall() + 30.0 + 30.0 * i,
+            monotonic: 3630.0 + 30.0 * i,
+            ..tick()
+        };
+        guard.step(&later, &CALM).unwrap();
+    }
+    assert_eq!(
+        manager.calls(),
+        ["freeze disk-guard-freeze-700.scope [700, 701]"]
+    );
+    assert_eq!(home.status()["frozen"], serde_json::json!([]));
+    // Once it's gone, there's nobody left to spare.
+    fs::remove_dir_all(home.root.join("proc/700")).unwrap();
+    let gone = Tick {
+        wall: wall() + 1_000.0,
+        monotonic: 4_600.0,
+        ..tick()
+    };
+    guard.step(&gone, &CALM).unwrap();
+    assert_eq!(home.memory()["spared"], serde_json::json!([]));
+}
+
+const OLD: &str = "1111111111111111";
+const NEW: &str = "2222222222222222";
+
+impl Home {
+    /// A cargo source over `src`, whose app's target holds an older
+    /// build of it, last written five days ago, beside the newest.
+    fn replaced_build(&self, pressure: &str) -> (Config, PathBuf) {
+        let app = self.root.join("src/app");
+        fs::create_dir_all(app.join("src")).unwrap();
+        fs::write(app.join("Cargo.toml"), "[package]\nname = \"app\"\n").unwrap();
+        let deps = app.join("target/debug/deps");
+        fs::create_dir_all(&deps).unwrap();
+        fs::write(
+            app.join("target/CACHEDIR.TAG"),
+            "Signature: 8a477f597d28d172789f06886806bc55\n# created by cargo\n",
+        )
+        .unwrap();
+        for digest in [OLD, NEW] {
+            fs::write(deps.join(format!("libapp-{digest}.rlib")), "x".repeat(4096)).unwrap();
+        }
+        touch(
+            &deps.join(format!("libapp-{OLD}.rlib")),
+            wall() as i64 - 5 * 86_400,
+        );
+        let config = Config::parse(&format!(
+            r#"{{ "version": 1, "scope": "user", "status_file": true, "notify": false,
+                 "bands": {{ "pressure": "{pressure}", "urgent": "0%", "critical": "0%", "target": "{pressure}" }},
+                 "nix": {{ "bin": "{0}/no-nix/nix", "store": "{0}/no-nix/store" }},
+                 "sources": {{ "src": {{ "kind": "cargo", "roots": ["{0}/src"] }} }} }}"#,
+            self.root.display()
+        ))
+        .unwrap();
+        (config, deps)
+    }
+}
+
+#[test]
+fn a_replaced_build_unopened_for_days_goes_at_pressure_and_the_newest_stays() {
+    let home = Home::new();
+    let (config, deps) = home.replaced_build("100%");
+    // Watched for three days, and nothing opened it.
+    let mut uses = Uses::default();
+    uses.watching(&deps, wall() - 3.0 * 86_400.0);
+    disk_guard::state::save(&home.root.join("state/uses.json"), &uses).unwrap();
+    let mut guard = home.guard(config);
+    guard.step(&tick(), &CALM).unwrap();
+    assert!(!deps.join(format!("libapp-{OLD}.rlib")).exists());
+    assert!(deps.join(format!("libapp-{NEW}.rlib")).exists());
+    let taken = deps.join(format!("app-{OLD}"));
+    assert!(
+        home.journal()
+            .iter()
+            .any(|line| line["path"] == taken.to_string_lossy().as_ref()),
+        "{:?}",
+        home.journal()
+    );
+}
+
+#[test]
+fn the_opens_a_watch_hears_are_kept_for_the_next_guard() {
+    let Ok(watch) = disk_guard::opens::Watch::new() else {
+        eprintln!("no fanotify here, so nothing to check");
+        return;
+    };
+    let home = Home::new();
+    let (config, deps) = home.replaced_build("0%");
+    let mut guard = home.guard(config);
+    guard.listen(std::sync::Arc::new(watch));
+    guard.step(&tick(), &CALM).unwrap();
+    let rlib = deps.join(format!("libapp-{OLD}.rlib"));
+    std::process::Command::new("cat")
+        .arg(&rlib)
+        .output()
+        .unwrap();
+    // Each step late enough after the last that the guard saves.
+    let mut steps = 0.0;
+    let mut later = || {
+        steps += 1.0;
+        Tick {
+            wall: wall() + 400.0 * steps,
+            ..tick()
+        }
+    };
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    let kept = loop {
+        guard.step(&later(), &CALM).unwrap();
+        let kept: Uses = disk_guard::state::load(&home.root.join("state/uses.json"))
+            .unwrap()
+            .unwrap_or_default();
+        if kept.opened.contains_key(&rlib) || std::time::Instant::now() > deadline {
+            break kept;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    };
+    assert!(kept.watched.contains_key(&deps), "{kept:?}");
+    assert!(kept.opened.contains_key(&rlib), "{kept:?}");
 }

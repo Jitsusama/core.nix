@@ -238,6 +238,7 @@ impl Reclaimer for Reclaim<'_> {
             Action::Variant { .. } => {
                 reclaim::variant(&root, root_path, candidate, SystemTime::now())
             }
+            Action::Build { target, .. } => reclaim::build(&root, root_path, target, candidate),
             Action::Entry { .. } => reclaim::entry(&root, root_path, candidate, self.scan),
             Action::Trash { .. } => reclaim::trashed(&root, root_path, candidate),
             Action::Run { argv, timeout, .. } => run(argv, *timeout, self.gentle),

@@ -8,19 +8,23 @@ use crate::clock::Tick;
 use crate::config::{Config, Source};
 use crate::decide::{Decision, Fill, Situation, decide, powered, spare};
 use crate::dedupe::{self, Deduped};
+use crate::discover;
 use crate::finished::{self, Answers, Predicate};
 use crate::garbage::{self, BATCH_BYTES, Batch, Dead, GC_TIMEOUT, Listing};
 use crate::generations::{self, Boot};
 use crate::host::{FRESH, Filesystem, Reclaim, Scan};
 use crate::journal::{self, Journal, Journaled, Line};
 use crate::moments::{Power, Pressure};
+use crate::opens::Seen;
 use crate::pass::{Disk, End, Goal, Learned, Outcome, Reclaimer, pass};
 use crate::plan::{Candidate, Class};
 use crate::pool::pool;
+use crate::replaced::Uses;
 use crate::socket::{Reply, Request, Responder};
 use crate::state::{self, Memory};
 use crate::survey::{Action, Offer, World, named, survey};
 use crate::units::Size;
+use crate::writers::{self, Frozen, Writers};
 use serde::Serialize;
 use std::cell::Cell;
 use std::collections::HashMap;
@@ -33,7 +37,7 @@ use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, TryRecvError};
 use std::sync::{Arc, Mutex};
-use std::time::Instant;
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 /// What the machine is doing, read by the caller each step.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -74,6 +78,26 @@ const FIRST_PASS_SECONDS: f64 = 60.0;
 const PASS_WEIGHT: f64 = 0.3;
 /// How often what was learned is saved when no pass has run.
 const SAVE_EVERY: f64 = 300.0;
+
+/// How often the targets are walked for a `deps` to watch: one built since
+/// goes unheard until then, and is dated from when it's first watched.
+const MARK_EVERY: f64 = 3600.0;
+
+/// How far back writes are weighed when choosing what to freeze.
+const WRITING_WINDOW: f64 = 60.0;
+
+/// The least a writer must write, in bytes a second, to be what fills a
+/// disk at critical: anything slower isn't worth stopping.
+const RUNAWAY: f64 = 1024.0 * 1024.0;
+
+/// Whether process `pid` has a file open on the filesystem `device`.
+fn writes_on(processes: &Path, pid: u32, device: u64) -> bool {
+    let Ok(fds) = fs::read_dir(processes.join(pid.to_string()).join("fd")) else {
+        return false;
+    };
+    fds.filter_map(Result::ok)
+        .any(|fd| pool(&fd.path()).is_ok_and(|pool| pool == device))
+}
 /// How often the status file is written when nothing in it has changed,
 /// so its heartbeat says the guard is alive.
 const HEARTBEAT_EVERY: f64 = 30.0;
@@ -129,6 +153,8 @@ pub struct Guard {
     status_path: Option<PathBuf>,
     predicates: Vec<Predicate>,
     answers: Answers,
+    /// Where the answers are kept for the next guard.
+    answers_path: PathBuf,
     watched: BTreeMap<u64, Watched>,
     last: Option<LastPass>,
     saved_at: Option<f64>,
@@ -161,6 +187,41 @@ pub struct Guard {
     dedupe_out: Option<DedupeOut>,
     /// When the last such run failed.
     dedupe_failed: Option<f64>,
+    /// When each build's artifacts were last opened, shared with whatever
+    /// hears the opens, and where it's kept for the next guard.
+    uses: Arc<Mutex<Uses>>,
+    uses_path: PathBuf,
+    /// What hears the opens, once the guard listens, and when it last
+    /// marked what's built.
+    opens: Option<Arc<crate::opens::Watch>>,
+    marked_at: Option<f64>,
+    /// What freezes a runaway writer, once given one, and what each
+    /// process has written lately.
+    freeze: Option<Box<dyn crate::freezer::Freeze>>,
+    writers: Writers,
+    /// What the last survey couldn't read, and why it went unvouched.
+    unread: (usize, Option<String>),
+    /// Whether the memory read was damaged, and is still to be set aside.
+    damaged: bool,
+    /// The trees the last survey kept for their use without offering.
+    kept: Vec<(PathBuf, crate::activity::Use)>,
+}
+
+/// Why a path stays or would go.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Explained {
+    /// A source offers it, or what holds it, in use this way now.
+    Offered {
+        candidate: Candidate,
+        used: crate::activity::Use,
+    },
+    /// A source found the tree holding it, which is kept for its use.
+    Kept {
+        path: PathBuf,
+        used: crate::activity::Use,
+    },
+    /// No source finds it or anything holding it.
+    Nothing,
 }
 
 /// Where a listing on its own thread sends the dead paths, or why not.
@@ -184,6 +245,20 @@ pub struct Status {
     pub heartbeat: f64,
     pub filesystems: Vec<FilesystemStatus>,
     pub last: Option<LastPass>,
+    /// The writers frozen now, for the desktop to offer to thaw.
+    pub frozen: Vec<crate::writers::Frozen>,
+    /// Who wrote most of the last minute's writes, while a disk is below
+    /// healthy and one process did.
+    pub writer: Option<Writing>,
+}
+
+/// A process writing most of what's written, as the status file says it.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct Writing {
+    pub name: String,
+    pub pid: u32,
+    /// Bytes a second.
+    pub rate: f64,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -221,11 +296,13 @@ impl Guard {
     pub fn new(config: Config, places: &Places) -> io::Result<Guard> {
         let state = &places.state;
         let memory_path = state.join("memory.json");
+        let mut damaged = false;
         let memory = match state::load(&memory_path) {
             Ok(memory) => memory.unwrap_or_default(),
+            // Begun afresh, and set aside at the first save for whoever
+            // wants to know why, so a plan that never saves changes nothing.
             Err(error) if error.kind() == io::ErrorKind::InvalidData => {
-                // Kept aside for whoever wants to know why, and begun afresh.
-                fs::rename(&memory_path, state.join("memory.json.damaged"))?;
+                damaged = true;
                 Memory::default()
             }
             Err(error) => return Err(error),
@@ -252,6 +329,16 @@ impl Guard {
         let listing: Option<Listing> = fs::read(&listing_path)
             .ok()
             .and_then(|bytes| serde_json::from_slice(&bytes).ok());
+        // What can't be read starts afresh: an unwatched deps dates nothing.
+        let answers_path = state.join("finished.json");
+        let mut answers: Answers = state::load(&answers_path)
+            .ok()
+            .flatten()
+            .unwrap_or_default();
+        answers.forget_gone();
+        let uses_path = state.join("uses.json");
+        let mut uses: Uses = state::load(&uses_path).ok().flatten().unwrap_or_default();
+        uses.forget_gone();
         Ok(Guard {
             config,
             processes: places.processes.clone(),
@@ -261,7 +348,8 @@ impl Guard {
             journal: Journal::new(&state.join("journal.jsonl"), journal::LIMIT),
             status_path,
             predicates,
-            answers: Answers::default(),
+            answers,
+            answers_path,
             watched: BTreeMap::new(),
             last: None,
             saved_at: None,
@@ -278,7 +366,286 @@ impl Guard {
             relist: false,
             dedupe_out: None,
             dedupe_failed: None,
+            uses: Arc::new(Mutex::new(uses)),
+            uses_path,
+            opens: None,
+            marked_at: None,
+            freeze: None,
+            writers: Writers::default(),
+            unread: (0, None),
+            damaged,
+            kept: Vec::new(),
         })
+    }
+
+    /// The candidate a source offers at `path`, or the nearest one holding
+    /// it, and how it's in use now. Nothing is taken.
+    pub fn explain(&mut self, tick: &Tick, path: &Path) -> io::Result<Explained> {
+        self.memory.awake.observe(tick);
+        self.watch();
+        let (mut scan, offers) = self.offers(tick)?;
+        let holds = |held: &Path| path.starts_with(held);
+        let offered = offers
+            .into_iter()
+            .map(|offer| offer.candidate)
+            .filter(|candidate| holds(&candidate.path))
+            .max_by_key(|candidate| candidate.path.as_os_str().len());
+        let kept = self
+            .kept
+            .iter()
+            .filter(|(tree, _)| holds(tree))
+            .max_by_key(|(tree, _)| tree.as_os_str().len())
+            .cloned();
+        // The nearest of either is what decides it.
+        let deeper = |kept: &PathBuf, candidate: &Candidate| {
+            kept.as_os_str().len() > candidate.path.as_os_str().len()
+        };
+        Ok(match (offered, kept) {
+            (Some(candidate), Some((tree, _))) if !deeper(&tree, &candidate) => {
+                let used = crate::reclaim::Looker::judge(
+                    &mut scan,
+                    &candidate.path,
+                    candidate.checkout.as_deref(),
+                )?;
+                Explained::Offered { candidate, used }
+            }
+            (_, Some((path, used))) => Explained::Kept { path, used },
+            (Some(candidate), None) => {
+                let used = crate::reclaim::Looker::judge(
+                    &mut scan,
+                    &candidate.path,
+                    candidate.checkout.as_deref(),
+                )?;
+                Explained::Offered { candidate, used }
+            }
+            (None, None) => Explained::Nothing,
+        })
+    }
+
+    /// How many processes the last survey couldn't read, even vouched for,
+    /// and why the system daemon couldn't be asked, if it couldn't: a tree
+    /// one of them might use is kept, so a plan doesn't show it.
+    pub fn unread(&self) -> (usize, Option<String>) {
+        self.unread.clone()
+    }
+
+    /// Freezes a runaway writer through `freeze`, when nothing else is
+    /// left to take; without one, nothing is ever frozen.
+    pub fn freeze_with(&mut self, freeze: Box<dyn crate::freezer::Freeze>) {
+        self.freeze = Some(freeze);
+    }
+
+    /// Freezes what's filling a disk that's critical with nothing left to
+    /// take, and thaws what was frozen once its disk has room again, or
+    /// lets it go when somebody thawed it by hand. Only the account's own
+    /// processes, outside its sessions, and never the guard.
+    fn runaways(&mut self, tick: &Tick) -> io::Result<()> {
+        // Who writes is sampled while any disk is short, freezing or not,
+        // so the status and the notices can name what fills one.
+        let pressed = self
+            .watched
+            .values()
+            .any(|watched| watched.band > Band::Healthy);
+        let samples = if pressed {
+            // SAFETY: geteuid only reads the process's own credentials.
+            let me = unsafe { libc::geteuid() };
+            let samples: Vec<_> = writers::sample(&self.processes)
+                .into_iter()
+                .filter(|sample| sample.uid == me)
+                .collect();
+            self.writers.observe(samples.clone(), tick.wall);
+            Some(samples)
+        } else {
+            self.writers = Writers::default();
+            None
+        };
+        let Some(freeze) = self.freeze.as_mut() else {
+            return Ok(());
+        };
+        let band_of = |path: &Path| {
+            self.watched
+                .values()
+                .find(|watched| watched.path == path)
+                .map(|watched| watched.band)
+        };
+        // First what's frozen: thawed with room, let go when thawed already.
+        let mut still = Vec::new();
+        for frozen in std::mem::take(&mut self.memory.frozen) {
+            let roomy = band_of(&frozen.path).is_none_or(|band| band < Band::Urgent);
+            let (kept, outcome) = if roomy {
+                match freeze.thaw(&frozen.unit) {
+                    Ok(()) => (false, Outcome::Reclaimed),
+                    Err(why) => (true, Outcome::Failed(why)),
+                }
+            } else {
+                match freeze.frozen(&frozen.unit) {
+                    Ok(true) => (true, Outcome::Reclaimed),
+                    // Thawed by somebody else, or gone: theirs to decide.
+                    _ => {
+                        self.memory.spared.push((frozen.pid, frozen.start));
+                        (false, Outcome::Kept("thawed already".to_owned()))
+                    }
+                }
+            };
+            if !kept || roomy {
+                self.journal.write(&Line::Action {
+                    at: tick.wall,
+                    band: band_of(&frozen.path).unwrap_or(Band::Healthy),
+                    path: named(&frozen.path, &format!("{}:{}", frozen.name, frozen.pid)),
+                    kind: "thaw".to_owned(),
+                    size: 0,
+                    outcome,
+                })?;
+            }
+            if kept {
+                still.push(frozen);
+            }
+        }
+        self.memory.frozen = still;
+        let Some(samples) = samples else {
+            return Ok(());
+        };
+        // SAFETY: geteuid only reads the process's own credentials.
+        let me = unsafe { libc::geteuid() };
+        // A process spared is spared while it lives; a pid reused is another.
+        self.memory.spared.retain(|&(pid, start)| {
+            samples
+                .iter()
+                .any(|sample| sample.pid == pid && sample.start == start)
+        });
+        let Some(writer) = self.writers.dominant(WRITING_WINDOW, tick.wall) else {
+            return Ok(());
+        };
+        let freezable = writer.rate >= RUNAWAY
+            && writer.pid != std::process::id()
+            && !self.memory.spared.contains(&(writer.pid, writer.start))
+            && !self
+                .memory
+                .frozen
+                .iter()
+                .any(|frozen| frozen.pid == writer.pid)
+            && writer.cgroup.as_deref().is_some_and(|cgroup| {
+                cgroup.starts_with(&format!("/user.slice/user-{me}.slice/user@{me}.service/"))
+                    && !cgroup.contains("/session.slice/")
+                    && !cgroup.contains("disk-guard")
+            });
+        if !freezable {
+            return Ok(());
+        }
+        // A disk at critical whose last pass found nothing left, and that
+        // the writer has a file open on.
+        let Some((path, band)) = self
+            .watched
+            .iter()
+            .filter(|(_, watched)| {
+                watched.band == Band::Critical
+                    && watched.rest.is_some_and(|rest| rest.band == Band::Critical)
+            })
+            .find(|(device, _)| writes_on(&self.processes, writer.pid, **device))
+            .map(|(_, watched)| (watched.path.clone(), watched.band))
+        else {
+            return Ok(());
+        };
+        let unit = crate::freezer::unit_for(writer.pid);
+        let pids = writers::descendants(&samples, writer.pid);
+        let description = format!(
+            "{} (pid {}), frozen by disk-guard for filling {}",
+            writer.name,
+            writer.pid,
+            path.display()
+        );
+        let outcome = match freeze.freeze(&unit, &pids, &description) {
+            Ok(()) => {
+                self.memory.frozen.push(Frozen {
+                    unit,
+                    pid: writer.pid,
+                    start: writer.start,
+                    name: writer.name.clone(),
+                    path: path.clone(),
+                    at: tick.wall,
+                });
+                Outcome::Reclaimed
+            }
+            Err(why) => Outcome::Failed(why),
+        };
+        self.journal.write(&Line::Action {
+            at: tick.wall,
+            band,
+            path: named(&path, &format!("{}:{}", writer.name, writer.pid)),
+            kind: "freeze".to_owned(),
+            size: writer.written,
+            outcome,
+        })
+    }
+
+    /// Hears from `watch` who opens the artifacts of the targets it finds,
+    /// on a thread of its own, so a busy build's thousands of opens never
+    /// wait on a step. The thread ends with the guard.
+    pub fn listen(&mut self, watch: Arc<crate::opens::Watch>) {
+        let uses = Arc::downgrade(&self.uses);
+        let heard = Arc::clone(&watch);
+        let spawned = std::thread::Builder::new()
+            .name("opens".to_owned())
+            .spawn(move || {
+                loop {
+                    let seen = heard.wait(Duration::from_secs(1));
+                    let Some(uses) = uses.upgrade() else { return };
+                    let Ok(seen) = seen else { return };
+                    if seen.is_empty() {
+                        continue;
+                    }
+                    let now = SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .map_or(0.0, |since| since.as_secs_f64());
+                    let mut uses = uses.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+                    for seen in seen {
+                        match seen {
+                            Seen::Opened(path) => uses.opened(&path, now),
+                            Seen::Lost => uses.lost(now),
+                        }
+                    }
+                }
+            });
+        if spawned.is_ok() {
+            self.opens = Some(watch);
+        }
+    }
+
+    /// Marks every `deps` of the targets the cargo sources hold, at first
+    /// and hourly after, so a build made since is heard too. A `deps` that
+    /// was made anew loses its mark with the old one and gets one again.
+    fn mark(&mut self, tick: &Tick) {
+        let Some(watch) = &self.opens else { return };
+        if self.marked_at.is_some_and(|at| tick.wall - at < MARK_EVERY) {
+            return;
+        }
+        self.marked_at = Some(tick.wall);
+        let mut marked = Vec::new();
+        for source in self.config.sources.values() {
+            let Source::Cargo { roots, depth } = source else {
+                continue;
+            };
+            for root in roots {
+                let found = discover::walk(root, depth.map(|depth| depth as usize));
+                for tree in found.unwrap_or_default() {
+                    if tree.kind != discover::Kind::Target {
+                        continue;
+                    }
+                    for deps in crate::replaced::deps_dirs(&tree.path) {
+                        if watch.watch(&deps).is_ok() {
+                            marked.push(deps);
+                        }
+                    }
+                }
+            }
+        }
+        let mut uses = self
+            .uses
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        for deps in marked {
+            uses.watching(&deps, tick.wall);
+        }
     }
 
     pub fn step(&mut self, tick: &Tick, senses: &Senses) -> io::Result<()> {
@@ -290,6 +657,7 @@ impl Guard {
         }
         self.memory.awake.observe(tick);
         self.watch();
+        self.mark(tick);
         self.heartbeat();
         self.heard_garbage(tick.wall)?;
         let spare = spare(
@@ -341,8 +709,23 @@ impl Guard {
         if passed {
             self.passes(tick, &due)?;
         }
+        let frozen = self.memory.frozen.len();
+        self.runaways(tick)?;
+        let passed = passed || frozen != self.memory.frozen.len();
         if passed || self.saved_at.is_none_or(|at| tick.wall - at >= SAVE_EVERY) {
+            if self.damaged {
+                let aside = self.memory_path.with_file_name("memory.json.damaged");
+                fs::rename(&self.memory_path, aside)?;
+                self.damaged = false;
+            }
             state::save(&self.memory_path, &self.memory)?;
+            let uses = self
+                .uses
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .clone();
+            state::save(&self.uses_path, &uses)?;
+            state::save(&self.answers_path, &self.answers)?;
             self.saved_at = Some(tick.wall);
         }
         self.write_status(tick.wall)
@@ -899,7 +1282,17 @@ impl Guard {
             scan = scan.vouched_by(socket, &roots);
         }
         let processes = scan.processes()?.to_vec();
+        self.unread = (
+            processes.iter().filter(|process| !process.readable).count(),
+            scan.unheard().map(str::to_owned),
+        );
         let boot = crate::linux::boot(Path::new("/proc/stat"))?;
+        // A copy, so a long survey never holds up what hears the opens.
+        let uses = self
+            .uses
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone();
         let (predicates, answers) = (&self.predicates, &mut self.answers);
         let mut finished = |dir: &Path| {
             let Some(checkout) = finished::read(dir) else {
@@ -912,20 +1305,23 @@ impl Guard {
                 finished::ask(predicate, dir, &checkout)
             })
         };
-        let mut offers = survey(
-            &self.config,
-            &mut World {
-                processes: &processes,
-                me,
-                // SAFETY: geteuid only reads the process's own credentials.
-                uid: unsafe { libc::geteuid() },
-                boot,
-                awake: &self.memory.awake,
-                now: tick.wall,
-                finished: &mut finished,
-                ran: &self.memory.ran,
-            },
-        );
+        let mut world = World {
+            processes: &processes,
+            me,
+            // SAFETY: geteuid only reads the process's own credentials.
+            uid: unsafe { libc::geteuid() },
+            boot,
+            awake: &self.memory.awake,
+            now: tick.wall,
+            finished: &mut finished,
+            ran: &self.memory.ran,
+            uses: &uses,
+            kept: Vec::new(),
+        };
+        let mut offers = survey(&self.config, &mut world);
+        let kept = std::mem::take(&mut world.kept);
+        drop(world);
+        self.kept = kept;
         offers.extend(self.generation_offers(tick));
         offers.extend(self.garbage_offers(tick));
         offers.extend(self.asked_offers());
@@ -1013,6 +1409,7 @@ impl Guard {
             band: report.band,
             end: end.clone(),
             freed: report.freed,
+            seconds: started.elapsed().as_secs_f64(),
         })?;
         self.last = Some(LastPass {
             at: tick.wall,
@@ -1136,6 +1533,15 @@ impl Guard {
             heartbeat: now,
             filesystems,
             last: self.last.clone(),
+            frozen: self.memory.frozen.clone(),
+            writer: self
+                .writers
+                .dominant(WRITING_WINDOW, now)
+                .map(|writer| Writing {
+                    name: writer.name,
+                    pid: writer.pid,
+                    rate: writer.rate,
+                }),
         }
     }
 

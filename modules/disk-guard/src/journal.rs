@@ -32,12 +32,13 @@ pub enum Line {
         path: PathBuf,
         root: PathBuf,
     },
-    /// A pass, and how it ended.
+    /// A pass, how it ended, and how long it took.
     Pass {
         at: f64,
         band: Band,
         end: String,
         freed: u64,
+        seconds: f64,
     },
 }
 
@@ -67,7 +68,11 @@ impl Line {
                 band,
                 end,
                 freed,
-            } => json!({ "event": "pass", "at": at, "band": band, "end": end, "freed": freed }),
+                seconds,
+            } => json!({
+                "event": "pass", "at": at, "band": band, "end": end, "freed": freed,
+                "seconds": seconds,
+            }),
             Line::Begin { at, path, root } => {
                 json!({ "event": "begin", "at": at, "path": path, "root": root })
             }

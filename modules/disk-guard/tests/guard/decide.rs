@@ -51,6 +51,19 @@ fn a_steady_fill_is_measured_as_its_rate() {
 }
 
 #[test]
+fn readings_moments_apart_are_too_close_to_measure_a_rate_by() {
+    let mut fill = Fill::default();
+    fill.observe(0.0, 500 * GIB);
+    // 64 MiB in 10 ms, as a busy disk can show, is no 6 GiB a second.
+    fill.observe(0.01, 500 * GIB - (64 << 20));
+    assert_eq!(fill.rate(), None);
+    // The reading a step later is measured from the first.
+    fill.observe(5.0, 500 * GIB - (500 << 20));
+    let rate = fill.rate().unwrap();
+    assert!((rate - 100.0 * (1 << 20) as f64).abs() < 1.0, "{rate}");
+}
+
+#[test]
 fn freeing_space_forecasts_nothing() {
     let (fill, free) = filling(200 * GIB, -100e6, 600);
     assert_eq!(fill.until(free, 150 * GIB), None);

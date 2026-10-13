@@ -111,6 +111,77 @@ pub fn target(
 /// Then each session goes and then its lock, the order rustc's own
 /// collection uses, and the directory goes only if nothing is left in it,
 /// so a session rustc started meanwhile survives.
+/// Reclaims an older build of a crate inside `target`: its libraries and
+/// dep-info in `deps`, and the fingerprint beside them, so cargo builds it
+/// afresh if it's ever wanted again. Cargo's locks on the target are held
+/// throughout, so no build reads or writes it meanwhile; one holding them
+/// keeps it.
+pub fn build(root: &Dir, root_path: &Path, target: &Path, candidate: &Candidate) -> Outcome {
+    let (Ok(target_relative), Ok(relative)) = (
+        target.strip_prefix(root_path),
+        candidate.path.strip_prefix(target),
+    ) else {
+        return Outcome::Failed(format!("outside its root {}", root_path.display()));
+    };
+    let (Some(deps), Some(profile), Some(stem)) = (
+        relative.parent(),
+        relative.parent().and_then(Path::parent),
+        relative.file_name().and_then(|stem| stem.to_str()),
+    ) else {
+        return Outcome::Failed("not a build's name".to_owned());
+    };
+    let Some((name, digest)) = stem.rsplit_once('-') else {
+        return Outcome::Failed("not a build's name".to_owned());
+    };
+    let target_dir = match root.child(target_relative) {
+        Ok(dir) => dir,
+        Err(error) => return Outcome::Failed(format!("opening its target: {error}")),
+    };
+    let held = match hold_cargo(&target_dir) {
+        Ok(Hold::Held(held)) => held,
+        Ok(Hold::Busy(lock)) => return Outcome::Kept(format!("cargo holds {}", lock.display())),
+        Err(error) => return Outcome::Failed(format!("taking its locks: {error}")),
+    };
+    let ours = |file: &[u8]| {
+        let file = String::from_utf8_lossy(file);
+        file == format!("{name}-{digest}.d")
+            || ["rlib", "rmeta", "so", "a", "dylib"]
+                .iter()
+                .any(|suffix| file == format!("lib{name}-{digest}.{suffix}"))
+    };
+    let removed = target_dir.child(deps).and_then(|deps| {
+        for file in deps.names()?.iter().filter(|file| ours(file)) {
+            deps.remove_entry(OsStr::from_bytes(file))?;
+        }
+        Ok(())
+    });
+    if let Err(error) = removed {
+        return Outcome::Failed(format!("removing its artifacts: {error}"));
+    }
+    // Its package's name may differ from the crate's; the digest doesn't.
+    let suffix = format!("-{digest}");
+    let fingerprints = target_dir.child(&profile.join(".fingerprint"));
+    if let Ok(fingerprints) = fingerprints {
+        let names = fingerprints.names().unwrap_or_default();
+        for fingerprint in names
+            .iter()
+            .filter(|name| name.ends_with(suffix.as_bytes()))
+        {
+            let fingerprint = OsStr::from_bytes(fingerprint);
+            let emptied = match fingerprints.entry(fingerprint) {
+                Ok(Some(dir)) => remove_in_place(&dir, &[]),
+                Ok(None) => Ok(()),
+                Err(error) => Err(error),
+            };
+            if let Err(error) = emptied.and_then(|()| fingerprints.remove_if_empty(fingerprint)) {
+                return Outcome::Failed(format!("removing its fingerprint: {error}"));
+            }
+        }
+    }
+    drop(held);
+    Outcome::Reclaimed
+}
+
 pub fn variant(root: &Dir, root_path: &Path, candidate: &Candidate, now: SystemTime) -> Outcome {
     let Ok(relative) = candidate.path.strip_prefix(root_path) else {
         return Outcome::Failed(format!("outside its root {}", root_path.display()));

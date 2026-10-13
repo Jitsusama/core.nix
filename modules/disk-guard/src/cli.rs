@@ -4,7 +4,7 @@
 
 use crate::band::Band;
 use crate::config::{Config, Scope};
-use crate::daemon::{Guard, Places};
+use crate::daemon::{Explained, Guard, Places};
 use crate::serve::{answering, hold, steps, stopping};
 use crate::units::{Size, Span, shown as size};
 use serde_json::Value;
@@ -40,6 +40,11 @@ pub enum Command {
     CheckConfig {
         file: PathBuf,
     },
+    Thaw,
+    Explain {
+        path: PathBuf,
+        config: Option<PathBuf>,
+    },
 }
 
 /// Where the commands find things, worked out once from the environment.
@@ -72,7 +77,9 @@ const USAGE: &str = "usage: disk-guard user|system [--config FILE] [--state DIR]
        disk-guard status [--json]
        disk-guard plan [--config FILE] [--band BAND] [--pretend-free SIZE]
        disk-guard journal [--since SPAN] [--json]
-       disk-guard check-config FILE";
+       disk-guard check-config FILE
+       disk-guard explain PATH [--config FILE]
+       disk-guard thaw";
 
 impl Env {
     /// The places the XDG base directories and the account give.
@@ -150,6 +157,18 @@ pub fn parse(args: &[OsString]) -> Result<Command, String> {
             }
             _ => return Err(format!("check-config takes one file\n{USAGE}")),
         },
+        Some("thaw") => Command::Thaw,
+        Some("explain") => {
+            let config = options.path("--config")?;
+            match options.positional.as_slice() {
+                [path] => {
+                    let path = PathBuf::from(path);
+                    options.positional.clear();
+                    Command::Explain { path, config }
+                }
+                _ => return Err(format!("explain takes one path\n{USAGE}")),
+            }
+        }
         _ => return Err(format!("{name:?} is not a command\n{USAGE}")),
     };
     options.finished()?;
@@ -243,6 +262,8 @@ pub fn run(command: Command, env: &Env, out: &mut dyn Write, err: &mut dyn Write
         } => plan(env, config, band, pretend_free, out),
         Command::User { config, state } => daemon(env, Scope::User, config, state, err),
         Command::System { config, state } => daemon(env, Scope::System, config, state, err),
+        Command::Thaw => thaw(out),
+        Command::Explain { path, config } => explain(env, &path, config, out),
     };
     match done {
         Ok(code) => code,
@@ -326,11 +347,110 @@ fn daemon(
     };
     // Only the user daemon has a session to show a notice in.
     let mut desk = crate::desktop::Buses::new(config.notify && scope == Scope::User);
+    let builds = config
+        .sources
+        .values()
+        .any(|source| matches!(source, crate::config::Source::Cargo { .. }));
+    let freezes = config.freeze;
     let mut guard = Guard::new(config, &places).map_err(failed)?;
     if let Some(hearing) = hearing {
         guard.hear(hearing);
     }
+    // Only the account's guard freezes, in its own manager, unless its
+    // config says never.
+    if scope == Scope::User && freezes {
+        guard.freeze_with(Box::new(crate::freezer::Session::default()));
+    }
+    // Without a watch nothing dates an older build, so it stays.
+    if builds {
+        match crate::opens::Watch::new() {
+            Ok(watch) => guard.listen(std::sync::Arc::new(watch)),
+            Err(error) => {
+                let _ = writeln!(
+                    err,
+                    "disk-guard: no watch on builds, so older ones stay: {error}"
+                );
+            }
+        }
+    }
     steps(&mut guard, STEP_EVERY, &mut wait, &mut desk, err);
+    Ok(FINE)
+}
+
+/// Says why `path` stays or would go: the candidate a source offers there
+/// or holding it, how it's in use now, and what each band would do.
+fn explain(env: &Env, path: &Path, config: Option<PathBuf>, out: &mut dyn Write) -> Done {
+    let config = read_config(config.as_deref().unwrap_or(&env.config))?;
+    let places = Places {
+        state: env.state.clone(),
+        status: None,
+        processes: env.processes.clone(),
+        system: Some(env.system_socket.clone()),
+        running: running(),
+    };
+    let mut guard = Guard::new(config, &places).map_err(failed)?;
+    let tick = crate::linux::tick().map_err(failed)?;
+    let used_as = |used: crate::activity::Use| match used {
+        crate::activity::Use::Free => "by nothing".to_owned(),
+        crate::activity::Use::Busy(pid) => format!("busy: process {pid} works in it"),
+        crate::activity::Use::Occupied(pid) => format!("process {pid} sits in its tree"),
+        crate::activity::Use::Unknown(pid) => format!("maybe: process {pid} can't be read"),
+    };
+    let (candidate, used) = match guard.explain(&tick, path).map_err(failed)? {
+        Explained::Offered { candidate, used } => (candidate, used),
+        Explained::Kept { path, used } => {
+            writeln!(out, "{}: kept while it's used", path.display()).map_err(failed)?;
+            writeln!(out, "  in use: {}", used_as(used)).map_err(failed)?;
+            return Ok(FINE);
+        }
+        Explained::Nothing => {
+            writeln!(
+                out,
+                "No source offers {} or anything holding it, so the guard leaves it be.",
+                path.display()
+            )
+            .map_err(failed)?;
+            return Ok(FINE);
+        }
+    };
+    writeln!(
+        out,
+        "{}: {}, {}, idle {}",
+        candidate.path.display(),
+        candidate.class.kind(),
+        size(candidate.size),
+        span(candidate.idle)
+    )
+    .map_err(failed)?;
+    writeln!(out, "  in use: {}", used_as(used)).map_err(failed)?;
+    let (_, windows) = crate::plan::windows(&candidate);
+    for (band, window) in ["healthy", "pressure", "urgent", "critical"]
+        .iter()
+        .zip(windows)
+    {
+        let when = match window {
+            None => "never".to_owned(),
+            Some(window) if window <= 0.0 => "at once".to_owned(),
+            Some(window) => format!("after {} idle", span(window)),
+        };
+        writeln!(out, "  {band}: {when}").map_err(failed)?;
+    }
+    Ok(FINE)
+}
+
+/// Thaws whatever the account's guard froze, through the account's own
+/// service manager. The guard sees it thawed and never freezes it again.
+fn thaw(out: &mut dyn Write) -> Done {
+    let failed = |error: zbus::Error| (NO_DAEMON, format!("asking the service manager: {error}"));
+    let builder = zbus::blocking::connection::Builder::session().map_err(failed)?;
+    let freezer = crate::freezer::Freezer::new(crate::desktop::patient(builder).map_err(failed)?);
+    let thawed = crate::freezer::thaw_all(&freezer).map_err(failed)?;
+    if thawed.is_empty() {
+        let _ = writeln!(out, "Nothing is frozen.");
+    }
+    for unit in thawed {
+        let _ = writeln!(out, "Thawed {unit}.");
+    }
     Ok(FINE)
 }
 
@@ -477,9 +597,13 @@ fn journal(env: &Env, since: Option<Span>, json: bool, out: &mut dyn Write) -> D
                     said
                 }
                 Some("pass") => format!(
-                    "pass {}, freed {}",
+                    "pass {}, freed {}{}",
                     entry["end"].as_str().unwrap_or("?"),
                     size(entry["freed"].as_u64().unwrap_or(0)),
+                    // A journal from before passes were timed says nothing.
+                    entry["seconds"]
+                        .as_f64()
+                        .map_or_else(String::new, |seconds| format!(" in {}", span(seconds))),
                 ),
                 _ => line.to_owned(),
             };
@@ -530,6 +654,18 @@ fn plan(
             )
             .map_err(failed)?;
         }
+    }
+    let (unread, why) = guard.unread();
+    if unread > 0 {
+        let why = why.map_or_else(String::new, |why| {
+            format!(" and the system daemon couldn't be asked about them ({why})")
+        });
+        writeln!(
+            out,
+            "{unread} processes couldn't be read{why}, so a tree one of them might use isn't \
+             shown."
+        )
+        .map_err(failed)?;
     }
     writeln!(
         out,
