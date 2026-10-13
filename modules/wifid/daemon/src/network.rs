@@ -20,6 +20,25 @@
 //! | `Hidden`   | yes when it doesn't announce itself | no      |
 //! | `Address`  | network, card or random             | network |
 //!
+//! A network asking for an account says whose, and which server it proves
+//! itself to, since a look-alike access point would gladly take the
+//! password otherwise:
+//!
+//! | Key                 | Values                               | Default |
+//! | ------------------- | ------------------------------------ | ------- |
+//! | `Security`          | enterprise                           |         |
+//! | `Method`            | peap or ttls                         |         |
+//! | `Identity`          | the account's name                   |         |
+//! | `AnonymousIdentity` | the name said outside the tunnel     | none    |
+//! | `ServerDomain`      | the domain the server's certificate  |         |
+//! |                     | must name                            |         |
+//! | `Authority`         | the authorities' certificates file   | the     |
+//! |                     |                                      | system's|
+//! | `Inner`             | mschapv2 or pap                      | mschapv2|
+//! |                     |                                      | for peap|
+//! |                     |                                      | pap for |
+//! |                     |                                      | ttls    |
+//!
 //! A network is trusted when its own file turns on `MulticastDNS`.
 
 use std::path::PathBuf;
@@ -35,6 +54,8 @@ pub struct Network {
     pub hidden: bool,
     pub address: Address,
     pub trusted: bool,
+    /// Whose account an enterprise network is joined with, and how.
+    pub account: Option<Account>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -43,6 +64,37 @@ pub enum Security {
     /// WPA2 or WPA3 with a password: wpa_supplicant takes whichever the
     /// access point offers.
     Personal,
+    /// WPA2 or WPA3 with an account, the password sent inside TLS to a
+    /// server that proves it's the network's.
+    Enterprise,
+}
+
+/// An account an enterprise network is joined with.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Account {
+    pub method: Method,
+    pub identity: String,
+    pub anonymous_identity: Option<String>,
+    /// The domain the server's certificate must name.
+    pub server_domain: String,
+    /// The authorities the server's certificate must come from; the
+    /// machine's when none.
+    pub authority: Option<PathBuf>,
+    pub inner: Inner,
+}
+
+/// The tunnel the password goes through.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Method {
+    Peap,
+    Ttls,
+}
+
+/// How the password is sent inside the tunnel.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Inner {
+    Mschapv2,
+    Pap,
 }
 
 /// The MAC address the card shows the network.
@@ -75,9 +127,14 @@ impl Network {
         let name = file
             .value("Match", "SSID")
             .ok_or_else(|| Unreadable("it names no network in [Match] SSID=".to_string()))?;
+        let security = wifi("Security").map_or(Ok(Security::Open), Security::parse)?;
+        let account = match security {
+            Security::Enterprise => Some(Account::read(file)?),
+            _ => None,
+        };
         Ok(Some(Network {
             name: unquoted(name)?,
-            security: wifi("Security").map_or(Ok(Security::Open), Security::parse)?,
+            security,
             secret: wifi("Secret").map(PathBuf::from),
             priority: wifi("Priority").map_or(Ok(0), |p| {
                 p.parse()
@@ -90,7 +147,78 @@ impl Network {
             trusted: file
                 .value("Network", "MulticastDNS")
                 .is_some_and(|value| boolean(value) == Ok(true)),
+            account,
         }))
+    }
+}
+
+/// The keys an account is kept under.
+const ACCOUNT: [&str; 6] = [
+    "Method",
+    "Identity",
+    "AnonymousIdentity",
+    "ServerDomain",
+    "Authority",
+    "Inner",
+];
+
+impl Account {
+    fn read(file: &Document) -> Result<Account, Unreadable> {
+        let wifi = |key| file.value(SECTION, key);
+        let needed = |key| {
+            wifi(key).ok_or_else(|| Unreadable(format!("an enterprise network needs {key}=")))
+        };
+        let method = match needed("Method")? {
+            "peap" => Method::Peap,
+            "ttls" => Method::Ttls,
+            other => {
+                return Err(Unreadable(format!(
+                    "Method={other} is neither peap nor ttls"
+                )));
+            }
+        };
+        let inner = match wifi("Inner") {
+            None if method == Method::Peap => Inner::Mschapv2,
+            None => Inner::Pap,
+            Some("mschapv2") => Inner::Mschapv2,
+            Some("pap") => Inner::Pap,
+            Some(other) => {
+                return Err(Unreadable(format!(
+                    "Inner={other} is neither mschapv2 nor pap"
+                )));
+            }
+        };
+        Ok(Account {
+            method,
+            identity: needed("Identity")?.to_string(),
+            anonymous_identity: wifi("AnonymousIdentity").map(str::to_string),
+            server_domain: needed("ServerDomain")?.to_string(),
+            authority: wifi("Authority").map(PathBuf::from),
+            inner,
+        })
+    }
+
+    fn write_into(&self, file: &mut Document) {
+        let method = match self.method {
+            Method::Peap => "peap",
+            Method::Ttls => "ttls",
+        };
+        let inner = match self.inner {
+            Inner::Mschapv2 => "mschapv2",
+            Inner::Pap => "pap",
+        };
+        file.set(SECTION, "Method", method);
+        file.set(SECTION, "Identity", &self.identity);
+        match &self.anonymous_identity {
+            Some(name) => file.set(SECTION, "AnonymousIdentity", name),
+            None => file.remove(SECTION, "AnonymousIdentity"),
+        }
+        file.set(SECTION, "ServerDomain", &self.server_domain);
+        match &self.authority {
+            Some(authority) => file.set(SECTION, "Authority", &authority.to_string_lossy()),
+            None => file.remove(SECTION, "Authority"),
+        }
+        file.set(SECTION, "Inner", inner);
     }
 }
 
@@ -107,6 +235,14 @@ impl Network {
         file.set(SECTION, "Priority", &self.priority.to_string());
         file.set(SECTION, "Hidden", if self.hidden { "yes" } else { "no" });
         file.set(SECTION, "Address", self.address.name());
+        match &self.account {
+            Some(account) => account.write_into(file),
+            None => {
+                for key in ACCOUNT {
+                    file.remove(SECTION, key);
+                }
+            }
+        }
         // The defaults leave multicast DNS off on every network, so trust
         // is the network's own file turning it on.
         if self.trusted {
@@ -167,6 +303,7 @@ impl Security {
         match self {
             Security::Open => "open",
             Security::Personal => "personal",
+            Security::Enterprise => "enterprise",
         }
     }
 
@@ -174,8 +311,9 @@ impl Security {
         match value {
             "open" => Ok(Security::Open),
             "personal" => Ok(Security::Personal),
+            "enterprise" => Ok(Security::Enterprise),
             _ => Err(Unreadable(format!(
-                "Security={value} is none of open or personal"
+                "Security={value} is none of open, personal or enterprise"
             ))),
         }
     }
@@ -237,6 +375,7 @@ mod tests {
                 hidden: true,
                 address: Address::Card,
                 trusted: false,
+                account: None,
             }))
         );
     }
@@ -263,6 +402,7 @@ mod tests {
             hidden: false,
             address: Address::Network,
             trusted: false,
+            account: None,
         }
     }
 
@@ -293,6 +433,87 @@ mod tests {
         written.write_into(&mut file);
 
         assert_eq!(Network::read(&file), Ok(Some(written)));
+    }
+
+    fn office() -> Account {
+        Account {
+            method: Method::Peap,
+            identity: "joel".into(),
+            anonymous_identity: Some("anonymous".into()),
+            server_domain: "radius.office.test".into(),
+            authority: Some(PathBuf::from("/etc/office/authority.pem")),
+            inner: Inner::Mschapv2,
+        }
+    }
+
+    #[test]
+    fn an_enterprise_network_says_whose_account_and_which_server() {
+        let network = read(concat!(
+            "[Match]\nSSID=Office\n\n",
+            "[X-WiFi]\nSecurity=enterprise\nSecret=/run/keys/office\n",
+            "Method=peap\nIdentity=joel\nAnonymousIdentity=anonymous\n",
+            "ServerDomain=radius.office.test\nAuthority=/etc/office/authority.pem\n",
+        ));
+
+        let network = network.unwrap().unwrap();
+
+        assert_eq!(network.security, Security::Enterprise);
+        assert_eq!(network.account, Some(office()));
+    }
+
+    #[test]
+    fn the_password_goes_through_the_tunnel_as_each_method_usually_sends_it() {
+        let account = |method| {
+            let text = format!(
+                "[Match]\nSSID=Office\n\n[X-WiFi]\nSecurity=enterprise\nMethod={method}\n\
+                 Identity=joel\nServerDomain=radius.office.test\n"
+            );
+            read(&text).unwrap().unwrap().account.unwrap()
+        };
+
+        assert_eq!(account("peap").inner, Inner::Mschapv2);
+        assert_eq!(account("ttls").inner, Inner::Pap);
+        assert_eq!(account("ttls").authority, None);
+    }
+
+    #[test]
+    fn an_enterprise_network_naming_no_server_to_prove_itself_is_unreadable() {
+        let network = read(concat!(
+            "[Match]\nSSID=Office\n\n",
+            "[X-WiFi]\nSecurity=enterprise\nMethod=peap\nIdentity=joel\n",
+        ));
+
+        assert!(network.is_err(), "{network:?}");
+    }
+
+    #[test]
+    fn an_enterprise_network_written_reads_back_the_same() {
+        let mut file = Document::default();
+        let written = Network {
+            security: Security::Enterprise,
+            account: Some(office()),
+            ..network("Office")
+        };
+
+        written.write_into(&mut file);
+
+        assert_eq!(Network::read(&file), Ok(Some(written)));
+    }
+
+    #[test]
+    fn a_network_no_longer_enterprise_keeps_no_account() {
+        let mut file = Document::default();
+        let enterprise = Network {
+            security: Security::Enterprise,
+            account: Some(office()),
+            ..network("Office")
+        };
+        enterprise.write_into(&mut file);
+
+        network("Office").write_into(&mut file);
+
+        assert_eq!(file.value("X-WiFi", "Identity"), None);
+        assert_eq!(file.value("X-WiFi", "ServerDomain"), None);
     }
 
     #[test]

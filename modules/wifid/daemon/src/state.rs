@@ -24,6 +24,11 @@ pub struct State {
     heard: BTreeMap<String, Heard>,
     radio_off: bool,
     wired: bool,
+    /// How many times each card, by name, has begun joining a network,
+    /// and which of those its trouble came in, since wpa_supplicant can say
+    /// how one attempt went after the next has been asked for.
+    attempts: BTreeMap<String, u64>,
+    troubled_in: BTreeMap<String, u64>,
 }
 
 /// Every card, every saved network and the networks in the air, as the
@@ -68,6 +73,9 @@ pub enum Trouble {
     WrongPassword,
     /// The access point turned the card away.
     TurnedAway,
+    /// The network's server couldn't prove it's the network's, so it was
+    /// given no password.
+    ServerUnproven,
 }
 
 /// How far a card has got joining a network.
@@ -206,6 +214,7 @@ impl State {
                 security: match network.security {
                     Kind::Open => Security::Open,
                     Kind::Personal => Security::Personal,
+                    Kind::Enterprise => Security::Enterprise,
                 },
                 declared: *declared,
                 trusted: network.trusted,
@@ -227,18 +236,47 @@ impl State {
 
     /// Says what went wrong on the card of that name, or clears it.
     pub fn troubled(&mut self, card: &str, trouble: Option<Trouble>) {
+        let attempt = self.attempts(card);
+        let name = card;
         if let Some(card) = self.cards.values_mut().find(|shown| shown.name == card) {
+            // wpa_supplicant says the join failed after saying the server
+            // couldn't prove itself, and the first is the one that says why.
+            let unproven = card.trouble == Some(Trouble::ServerUnproven);
+            if unproven && trouble == Some(Trouble::WrongPassword) {
+                return;
+            }
             card.trouble = trouble;
+            match trouble {
+                Some(_) => self.troubled_in.insert(name.to_string(), attempt),
+                None => self.troubled_in.remove(name),
+            };
         }
     }
 
+    /// Takes in that the card of that name has begun joining a network.
+    pub fn attempting(&mut self, card: &str) {
+        *self.attempts.entry(card.to_string()).or_default() += 1;
+    }
+
+    /// How many times the card of that name has begun joining a network.
+    pub fn attempts(&self, card: &str) -> u64 {
+        self.attempts.get(card).copied().unwrap_or_default()
+    }
+
     /// How far the card of that name has got joining the network.
-    pub fn progress(&self, card: &str, network: &str) -> Progress {
+    pub fn progress(&self, card: &str, network: &str, since: u64) -> Progress {
+        // Only what went wrong in an attempt begun since the join began is
+        // the join's.
+        let own = self
+            .troubled_in
+            .get(card)
+            .is_some_and(|attempt| *attempt > since);
         let Some(card) = self.cards.values().find(|shown| shown.name == card) else {
             return Progress::Gone;
         };
+        let trouble = card.trouble.filter(|_| own);
         let on = card.network.as_deref() == Some(network);
-        match (on, card.reach, card.trouble) {
+        match (on, card.reach, trouble) {
             (true, Some(Reach::Checking), _) => Progress::Checking,
             (true, Some(reach), _) => Progress::Reached(reach),
             (_, _, Some(trouble)) => Progress::Troubled(trouble),
@@ -351,6 +389,7 @@ mod tests {
                 hidden: false,
                 address: Address::Network,
                 trusted: false,
+                account: None,
             },
             file: PathBuf::from(format!("/{name}.network")),
             declared,
@@ -394,17 +433,17 @@ mod tests {
             routable: false,
             ..inn(2)
         });
-        let joining = state.progress("wlan2", "Roadside Inn");
+        let joining = state.progress("wlan2", "Roadside Inn", 0);
         state.follow(&Link {
             routable: false,
             ..inn(2)
         });
-        let addressing = state.progress("wlan2", "Roadside Inn");
+        let addressing = state.progress("wlan2", "Roadside Inn", 0);
         state.follow(&inn(2));
         state.checking(2);
-        let checking = state.progress("wlan2", "Roadside Inn");
+        let checking = state.progress("wlan2", "Roadside Inn", 0);
         state.judged(2, &Verdict::Online);
-        let reached = state.progress("wlan2", "Roadside Inn");
+        let reached = state.progress("wlan2", "Roadside Inn", 0);
 
         assert_eq!(
             [joining, addressing, checking, reached],
@@ -443,7 +482,7 @@ mod tests {
         state.follow(&inn(2));
         state.judged(2, &Verdict::Online);
 
-        let progress = state.progress("wlan2", "Lantern");
+        let progress = state.progress("wlan2", "Lantern", 0);
 
         assert_eq!(progress, Progress::Joining);
     }
@@ -456,12 +495,13 @@ mod tests {
             routable: false,
             ..inn(2)
         });
+        state.attempting("wlan2");
 
         state.troubled("wlan2", Some(Trouble::WrongPassword));
 
         assert_eq!(card(&state).trouble, Some(Trouble::WrongPassword));
         assert_eq!(
-            state.progress("wlan2", "Lantern"),
+            state.progress("wlan2", "Lantern", 0),
             Progress::Troubled(Trouble::WrongPassword)
         );
     }
@@ -492,20 +532,57 @@ mod tests {
             routable: false,
             ..inn(2)
         });
+        state.attempting("wlan2");
 
         state.troubled("wlan2", Some(Trouble::WrongPassword));
 
         assert_eq!(
-            state.progress("wlan2", "Lantern"),
+            state.progress("wlan2", "Lantern", 0),
             Progress::Troubled(Trouble::WrongPassword)
         );
+    }
+
+    #[test]
+    fn trouble_said_late_of_an_attempt_before_the_join_isn_t_the_join_s() {
+        let mut state = State::default();
+        state.follow(&Link {
+            ssid: None,
+            routable: false,
+            ..inn(2)
+        });
+        state.attempting("wlan2");
+        let since = state.attempts("wlan2");
+
+        state.troubled("wlan2", Some(Trouble::WrongPassword));
+        let late = state.progress("wlan2", "Lantern", since);
+        state.attempting("wlan2");
+        state.troubled("wlan2", Some(Trouble::WrongPassword));
+        let own = state.progress("wlan2", "Lantern", since);
+
+        assert_eq!(late, Progress::Joining);
+        assert_eq!(own, Progress::Troubled(Trouble::WrongPassword));
+    }
+
+    #[test]
+    fn a_server_that_couldn_t_prove_itself_isn_t_taken_for_a_wrong_password() {
+        let mut state = State::default();
+        state.follow(&Link {
+            ssid: None,
+            routable: false,
+            ..inn(2)
+        });
+
+        state.troubled("wlan2", Some(Trouble::ServerUnproven));
+        state.troubled("wlan2", Some(Trouble::WrongPassword));
+
+        assert_eq!(card(&state).trouble, Some(Trouble::ServerUnproven));
     }
 
     #[test]
     fn a_card_that_has_gone_joins_nothing() {
         let state = State::default();
 
-        assert_eq!(state.progress("wlan2", "Lantern"), Progress::Gone);
+        assert_eq!(state.progress("wlan2", "Lantern", 0), Progress::Gone);
     }
 
     #[test]

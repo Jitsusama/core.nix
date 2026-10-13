@@ -58,7 +58,7 @@ use air::AccessPoint;
 use card::Card;
 use check::{Checker, Settings, Verdict};
 use link::Link;
-use network::{Address, Network, Security};
+use network::{Account, Address, Inner, Method, Network, Security};
 use secret::Credentials;
 use service::{Ask, Refused, Stage, Wifi};
 use state::{Progress, Reach, State, Trouble};
@@ -152,6 +152,7 @@ async fn run() -> Result<(), Box<dyn Error>> {
     let mut air = Air {
         points: HashMap::new(),
         state: state.clone(),
+        cards: HashMap::new(),
     };
     air.hear_all(&bus, &supplicant).await;
 
@@ -249,14 +250,15 @@ async fn run() -> Result<(), Box<dyn Error>> {
                     }
                 }
                 Some(ask) = taken.recv() => match ask {
-                    Ask::Join { name, password, progress } => {
+                    Ask::Join { name, password, account, progress } => {
                         if let Some(before) = joining.take() {
                             let instead = Refused::Failed {
                                 reason: format!("joining {name} instead"),
                             };
                             wifid.settle(before, Err(instead)).await;
                         }
-                        joining = wifid.join(name, password, progress, &air).await;
+                        let account = account.map(given);
+                        joining = wifid.join(name, password, account, progress, &air).await;
                     }
                     // A server slow to answer mustn't hold anything else up.
                     Ask::Lookup { card, name, done } => {
@@ -428,6 +430,9 @@ struct Joining {
     progress: mpsc::Sender<Result<Stage, Refused>>,
     said: Option<Stage>,
     deadline: Instant,
+    /// How many attempts the card had made as the join began, so trouble
+    /// from those is never taken for its own.
+    since: u64,
 }
 
 /// What's asked of a network to keep: anything not given stays as it was,
@@ -439,16 +444,37 @@ struct Wanted {
     hidden: Option<bool>,
     priority: Option<i32>,
     address: Option<Address>,
+    account: Option<Account>,
 }
 
 /// How wifid joins a network said to be joined so.
-fn joined_by(security: state::Security) -> Result<Security, Refused> {
+fn joined_by(security: state::Security) -> Security {
     match security {
-        state::Security::Open => Ok(Security::Open),
-        state::Security::Personal => Ok(Security::Personal),
-        state::Security::Enterprise => Err(Refused::Failed {
-            reason: "wifid can't join with an account yet".into(),
-        }),
+        state::Security::Open => Security::Open,
+        state::Security::Personal => Security::Personal,
+        state::Security::Enterprise => Security::Enterprise,
+    }
+}
+
+/// An account as the shell gives it: the machine's authorities prove the
+/// server, and the password goes through the tunnel as the method usually
+/// sends it unless the shell says otherwise.
+fn given(account: service::Account) -> Account {
+    let method = match account.method {
+        service::Method::Peap => Method::Peap,
+        service::Method::Ttls => Method::Ttls,
+    };
+    let inner = match (account.inner, method) {
+        (Some(service::Inner::Mschapv2), _) | (None, Method::Peap) => Inner::Mschapv2,
+        (Some(service::Inner::Pap), _) | (None, Method::Ttls) => Inner::Pap,
+    };
+    Account {
+        method,
+        identity: account.identity,
+        anonymous_identity: account.anonymous_identity,
+        server_domain: account.server_domain,
+        authority: None,
+        inner,
     }
 }
 
@@ -458,6 +484,9 @@ struct Air {
     /// By the access point's path.
     points: HashMap<String, AccessPoint>,
     state: watch::Sender<State>,
+    /// Each card's name, and how far wpa_supplicant last said it had got
+    /// joining a network, by its path.
+    cards: HashMap<String, (String, String)>,
 }
 
 impl Air {
@@ -520,6 +549,20 @@ impl Air {
                 }
             }
             "PskMismatch" => self.troubled(bus, path, Trouble::WrongPassword).await,
+            // How an enterprise network's join went: the server proving
+            // itself, then the account taken or not.
+            "EAP" => {
+                let Ok((status, parameter)) = body.deserialize::<(String, String)>() else {
+                    return;
+                };
+                let trouble = match (status.as_str(), parameter.as_str()) {
+                    ("remote certificate verification", "success") => return,
+                    ("remote certificate verification", _) => Trouble::ServerUnproven,
+                    ("completion", "failure") => Trouble::WrongPassword,
+                    _ => return,
+                };
+                self.troubled(bus, path, trouble).await;
+            }
             // Each object also says its changes under its own interface, in
             // a shape of its own, which this passes over.
             "PropertiesChanged"
@@ -542,6 +585,23 @@ impl Air {
                         change(&self.state, |state| state.heard(path.as_str(), heard));
                     }
                     "fi.w1.wpa_supplicant1.Interface" => {
+                        // An attempt at a network begins as the card starts
+                        // authenticating with it, or associating where it
+                        // skips that.
+                        let step = changed.get("State").map(|step| &**step);
+                        if let Some(zvariant::Value::Str(step)) = step {
+                            let step = step.to_string();
+                            if let Some(card) = self.named(bus, path).await {
+                                let before = self.cards.get(path.as_str());
+                                let before = before.map(|(_, step)| step.as_str()).unwrap_or("");
+                                let begins = step == "authenticating"
+                                    || (step == "associating" && before != "authenticating");
+                                if begins {
+                                    change(&self.state, |state| state.attempting(&card));
+                                }
+                                self.cards.insert(path.to_string(), (card, step));
+                            }
+                        }
                         let steps = [
                             ("AuthStatusCode", Step::Authentication),
                             ("AssocStatusCode", Step::Association),
@@ -571,15 +631,24 @@ impl Air {
     }
 
     /// Says what went wrong on the card wpa_supplicant has at this path.
-    async fn troubled(&self, bus: &Connection, card: &ObjectPath<'_>, trouble: Trouble) {
+    async fn troubled(&mut self, bus: &Connection, card: &ObjectPath<'_>, trouble: Trouble) {
+        if let Some(name) = self.named(bus, card).await {
+            change(&self.state, |state| state.troubled(&name, Some(trouble)));
+        }
+    }
+
+    /// The name of the card wpa_supplicant has at this path.
+    async fn named(&self, bus: &Connection, card: &ObjectPath<'_>) -> Option<String> {
+        if let Some((name, _)) = self.cards.get(card.as_str()) {
+            return Some(name.clone());
+        }
         let named = match interface(bus, card.to_owned().into()).await {
             Ok(interface) => interface.ifname().await,
             Err(error) => Err(error),
         };
-        match named {
-            Ok(name) => change(&self.state, |state| state.troubled(&name, Some(trouble))),
-            Err(error) => eprintln!("<4>can't tell which card {card} is: {error}"),
-        }
+        named
+            .inspect_err(|error| eprintln!("<4>can't tell which card {card} is: {error}"))
+            .ok()
     }
 
     fn heard(&mut self, path: &str, properties: HashMap<String, OwnedValue>) {
@@ -955,11 +1024,12 @@ impl Wifid<'_> {
         &self,
         name: String,
         password: Option<String>,
+        account: Option<Account>,
         progress: mpsc::Sender<Result<Stage, Refused>>,
         air: &Air,
     ) -> Option<Joining> {
-        match self.start(&name, password, air).await {
-            Ok((card, new)) => {
+        match self.start(&name, password, account, air).await {
+            Ok((card, new, since)) => {
                 let joining = Joining {
                     name,
                     card,
@@ -967,6 +1037,7 @@ impl Wifid<'_> {
                     progress,
                     said: None,
                     deadline: Instant::now() + JOINING,
+                    since,
                 };
                 self.advance(joining).await
             }
@@ -983,8 +1054,9 @@ impl Wifid<'_> {
         &self,
         name: &str,
         password: Option<String>,
+        account: Option<Account>,
         air: &Air,
-    ) -> Result<(String, bool), Refused> {
+    ) -> Result<(String, bool, u64), Refused> {
         let failed = |reason: String| Refused::Failed { reason };
         let listing = self
             .store
@@ -997,7 +1069,7 @@ impl Wifid<'_> {
         } else {
             let heard = self.state.borrow().described().nearby;
             let heard = heard.into_iter().find(|nearby| nearby.name == name);
-            Some(joined_by(heard.ok_or(Refused::NotNearby)?.security)?)
+            Some(joined_by(heard.ok_or(Refused::NotNearby)?.security))
         };
         let new = self
             .keep(Wanted {
@@ -1007,10 +1079,12 @@ impl Wifid<'_> {
                 hidden: None,
                 priority: None,
                 address: None,
+                account,
             })
             .await?;
 
         let card = self.card_for(name, air).await?;
+        let since = self.state.borrow().attempts(&card.name);
         change(self.state, |state| state.troubled(&card.name, None));
         let networks = self
             .store
@@ -1030,7 +1104,7 @@ impl Wifid<'_> {
         };
         selected.map_err(|error| failed(format!("wpa_supplicant didn't join it: {error}")))?;
         println!("<6>joining {name} on {}, as asked", card.name);
-        Ok((card.name, new))
+        Ok((card.name, new, since))
     }
 
     /// Keeps the network as asked, sealing a password it's given beside its
@@ -1059,17 +1133,23 @@ impl Wifid<'_> {
                 hidden: false,
                 address: Address::Network,
                 trusted: false,
+                account: None,
             },
         };
         if let Some(security) = wanted.security {
             network.security = security;
         }
-        // An open network has no use for a password it's given.
+        // An open network has no use for a password it's given, nor any but
+        // an enterprise network for an account.
         let password = wanted
             .password
-            .filter(|_| network.security == Security::Personal);
+            .filter(|_| network.security != Security::Open);
+        let account = wanted
+            .account
+            .filter(|_| network.security == Security::Enterprise);
         let changing = wanted.security.is_some()
             || password.is_some()
+            || account.is_some()
             || wanted.hidden.is_some()
             || wanted.priority.is_some()
             || wanted.address.is_some();
@@ -1079,9 +1159,20 @@ impl Wifid<'_> {
         network.hidden = wanted.hidden.unwrap_or(network.hidden);
         network.priority = wanted.priority.unwrap_or(network.priority);
         network.address = wanted.address.unwrap_or(network.address);
+        if network.security == Security::Enterprise {
+            network.account = account.or(network.account);
+            if network.account.is_none() {
+                return Err(Refused::NeedsAccount);
+            }
+        } else {
+            network.account = None;
+        }
         match (network.security, password) {
-            (Security::Personal, Some(password)) => {
-                supplicant::psk(&password).map_err(|unjoinable| failed(unjoinable.0.into()))?;
+            (Security::Personal | Security::Enterprise, Some(password)) => {
+                // Only WPA2's and WPA3's passwords have a shape to keep to.
+                if network.security == Security::Personal {
+                    supplicant::psk(&password).map_err(|unjoinable| failed(unjoinable.0.into()))?;
+                }
                 let file = self.store.password_file(&network.name).map_err(refused)?;
                 let sealed_as = file.file_stem().unwrap_or_default().to_string_lossy();
                 let sealed = self.credentials.seal(&sealed_as, &password).await;
@@ -1092,7 +1183,7 @@ impl Wifid<'_> {
                     .map_err(|error| failed(error.to_string()))?;
                 network.secret = Some(file);
             }
-            (Security::Personal, None) if network.secret.is_none() => {
+            (Security::Personal | Security::Enterprise, None) if network.secret.is_none() => {
                 return Err(Refused::NeedsPassword);
             }
             (Security::Open, _) => network.secret = None,
@@ -1129,7 +1220,7 @@ impl Wifid<'_> {
     /// Says how far the join has got, if that's news, and settles it once
     /// the card is done. Gives back a join still going.
     async fn advance(&self, mut joining: Joining) -> Option<Joining> {
-        let progress = self.state.borrow().progress(&joining.card, &joining.name);
+        let progress = (self.state.borrow()).progress(&joining.card, &joining.name, joining.since);
         let stage = match progress {
             Progress::Joining => Stage::Joining,
             Progress::GettingAddress => Stage::GettingAddress,
@@ -1143,6 +1234,10 @@ impl Wifid<'_> {
             }
             Progress::Troubled(Trouble::TurnedAway) => {
                 self.settle(joining, Err(Refused::TurnedAway)).await;
+                return None;
+            }
+            Progress::Troubled(Trouble::ServerUnproven) => {
+                self.settle(joining, Err(Refused::ServerUnproven)).await;
                 return None;
             }
             Progress::Gone => {
@@ -1206,25 +1301,20 @@ impl Wifid<'_> {
                 return;
             }
             Ask::Save { saving, done } => {
-                let kept = match joined_by(saving.security) {
-                    Ok(security) => {
-                        let wanted = Wanted {
-                            name: saving.name,
-                            security: Some(security),
-                            password: saving.password,
-                            hidden: saving.hidden,
-                            priority: saving.priority,
-                            address: saving.address.map(|address| match address {
-                                service::Address::Network => Address::Network,
-                                service::Address::Card => Address::Card,
-                                service::Address::Random => Address::Random,
-                            }),
-                        };
-                        self.keep(wanted).await.map(|_| ())
-                    }
-                    Err(refused) => Err(refused),
+                let wanted = Wanted {
+                    name: saving.name,
+                    security: Some(joined_by(saving.security)),
+                    password: saving.password,
+                    hidden: saving.hidden,
+                    priority: saving.priority,
+                    address: saving.address.map(|address| match address {
+                        service::Address::Network => Address::Network,
+                        service::Address::Card => Address::Card,
+                        service::Address::Random => Address::Random,
+                    }),
+                    account: saving.account.map(given),
                 };
-                let _ = done.send(kept);
+                let _ = done.send(self.keep(wanted).await.map(|_| ()));
                 return;
             }
             Ask::Radio { on, done } => {

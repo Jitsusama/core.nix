@@ -333,6 +333,7 @@ mod tests {
             hidden: false,
             address: Address::Network,
             trusted: true,
+            account: None,
         }
     }
 

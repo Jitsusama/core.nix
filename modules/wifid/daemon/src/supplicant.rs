@@ -6,7 +6,7 @@ use zbus::proxy;
 use zbus::zvariant::{self, ObjectPath, OwnedObjectPath, OwnedValue};
 
 use crate::address::AddressKey;
-use crate::network::{Address, Network, Security};
+use crate::network::{Address, Inner, Method, Network, Security};
 
 /// A value for one of a network's fields, in the type wpa_supplicant's
 /// AddNetwork reads it as.
@@ -31,6 +31,10 @@ pub enum Trouble {
     /// code it gave.
     Refused(i32),
 }
+
+/// The certificate authorities the machine trusts, which prove an
+/// enterprise network's server unless it names its own.
+const AUTHORITIES: &str = "/etc/ssl/certs/ca-certificates.crt";
 
 /// The 802.11 status an access point answers a wrong WPA3 password with.
 const CHALLENGE_FAILED: i32 = 15;
@@ -82,6 +86,40 @@ pub fn properties(
             fields.push(("key_mgmt", Value::Text(key_mgmt)));
             let password = password.ok_or(Unjoinable("the network's password is missing"))?;
             fields.push(("psk", psk(password)?));
+        }
+        Security::Enterprise => {
+            let account = network.account.as_ref();
+            let account = account.ok_or(Unjoinable("the network's account is missing"))?;
+            let password = password.ok_or(Unjoinable("the network's password is missing"))?;
+            let text = |value: &str| Value::Text(value.to_string());
+            fields.push(("key_mgmt", text("WPA-EAP WPA-EAP-SHA256")));
+            let method = match account.method {
+                Method::Peap => "PEAP",
+                Method::Ttls => "TTLS",
+            };
+            fields.push(("eap", text(method)));
+            fields.push(("identity", text(&account.identity)));
+            if let Some(name) = &account.anonymous_identity {
+                fields.push(("anonymous_identity", text(name)));
+            }
+            fields.push(("password", text(password)));
+            // The server proves itself with a certificate from these
+            // authorities that names this domain, so an access point
+            // only pretending to be the network never sees the password.
+            let authorities = account
+                .authority
+                .as_ref()
+                .map(|file| file.to_string_lossy());
+            fields.push((
+                "ca_cert",
+                text(authorities.as_deref().unwrap_or(AUTHORITIES)),
+            ));
+            fields.push(("domain_suffix_match", text(&account.server_domain)));
+            let inner = match account.inner {
+                Inner::Mschapv2 => "auth=MSCHAPV2",
+                Inner::Pap => "auth=PAP",
+            };
+            fields.push(("phase2", text(inner)));
         }
     }
     if network.hidden {
@@ -265,8 +303,11 @@ pub trait Joinable {
 
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
+
     use super::*;
     use crate::address::AddressKey;
+    use crate::network::Account;
     use crate::network::{Address, Security};
 
     const SHOWN: [u8; 6] = [0x5a, 0x01, 0x02, 0xa0, 0xb0, 0xff];
@@ -280,6 +321,7 @@ mod tests {
             hidden: false,
             address: Address::Network,
             trusted: false,
+            account: None,
         }
     }
 
@@ -472,6 +514,74 @@ mod tests {
         assert_eq!(full, Some(Trouble::Refused(17)));
         assert_eq!(negotiating, Some(Trouble::Refused(76)));
         assert_eq!(joined, None);
+    }
+
+    fn office(authority: Option<&str>) -> Network {
+        Network {
+            name: "Office".to_string(),
+            security: Security::Enterprise,
+            account: Some(Account {
+                method: Method::Peap,
+                identity: "joel".into(),
+                anonymous_identity: Some("anonymous".into()),
+                server_domain: "radius.office.test".into(),
+                authority: authority.map(PathBuf::from),
+                inner: Inner::Mschapv2,
+            }),
+            ..inn()
+        }
+    }
+
+    fn field<'a>(fields: &'a [(&'static str, Value)], name: &str) -> Option<&'a Value> {
+        fields
+            .iter()
+            .find(|(key, _)| *key == name)
+            .map(|(_, value)| value)
+    }
+
+    fn text(value: &str) -> Option<Value> {
+        Some(Value::Text(value.to_string()))
+    }
+
+    #[test]
+    fn an_enterprise_network_is_joined_by_its_account_proving_the_server_by_its_domain() {
+        let office = office(Some("/etc/office/authority.pem"));
+
+        let fields = properties(&office, Some("hunter22"), [2, 0, 0, 0, 0, 1]).unwrap();
+
+        for (name, value) in [
+            ("key_mgmt", "WPA-EAP WPA-EAP-SHA256"),
+            ("eap", "PEAP"),
+            ("identity", "joel"),
+            ("anonymous_identity", "anonymous"),
+            ("password", "hunter22"),
+            ("ca_cert", "/etc/office/authority.pem"),
+            ("domain_suffix_match", "radius.office.test"),
+            ("phase2", "auth=MSCHAPV2"),
+        ] {
+            assert_eq!(field(&fields, name), text(value).as_ref(), "{name}");
+        }
+    }
+
+    #[test]
+    fn an_enterprise_network_s_server_is_proved_by_the_machine_s_authorities_by_default() {
+        let fields = properties(&office(None), Some("hunter22"), [2, 0, 0, 0, 0, 1]).unwrap();
+
+        assert_eq!(
+            field(&fields, "ca_cert"),
+            text("/etc/ssl/certs/ca-certificates.crt").as_ref()
+        );
+    }
+
+    #[test]
+    fn an_enterprise_network_without_its_account_or_password_is_unjoinable() {
+        let no_account = Network {
+            account: None,
+            ..office(None)
+        };
+
+        assert!(properties(&no_account, Some("hunter22"), [2, 0, 0, 0, 0, 1]).is_err());
+        assert!(properties(&office(None), None, [2, 0, 0, 0, 0, 1]).is_err());
     }
 
     #[test]

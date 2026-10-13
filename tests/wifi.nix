@@ -64,8 +64,10 @@ let
     dhcp-leasefile=/run/networks.leases
     interface=wlan0
     interface=wlan1
+    interface=wlan4
     dhcp-range=wlan0,10.42.0.10,10.42.0.50,1h
     dhcp-range=wlan1,10.43.0.10,10.43.0.50,1h
+    dhcp-range=wlan4,10.44.0.10,10.44.0.50,1h
     # Lantern says where to ask it about the session it gives, as RFC 8910
     # lets a network.
     dhcp-option=tag:wlan0,114,"https://api.lantern/captive"
@@ -97,6 +99,30 @@ let
       extendedKeyUsage=serverAuth > page.ext
     openssl x509 -req -in page.csr -CA authority.pem -CAkey authority.key -CAcreateserial \
       -days 3650 -extfile page.ext -out page.pem
+    openssl req $key -subj /CN=radius.office.test -keyout radius.key -out radius.csr
+    printf '%s\n' subjectAltName=DNS:radius.office.test extendedKeyUsage=serverAuth > radius.ext
+    openssl x509 -req -in radius.csr -CA authority.pem -CAkey authority.key -CAcreateserial \
+      -days 3650 -extfile radius.ext -out radius.pem
+  '';
+
+  # The Office asks for an account, as a workplace's network does, and its
+  # server proves itself with a certificate naming radius.office.test.
+  office = accessPoint "office" ''
+    interface=wlan4
+    ssid=Office
+    channel=1
+    wpa=2
+    wpa_key_mgmt=WPA-EAP
+    rsn_pairwise=CCMP
+    ieee8021x=1
+    eap_server=1
+    eap_user_file=${pkgs.writeText "office-accounts" ''
+      * PEAP,TTLS
+      "joel" MSCHAPV2,TTLS-PAP,TTLS-MSCHAPV2 "hunter22" [2]
+    ''}
+    ca_cert=${certificates}/authority.pem
+    server_cert=${certificates}/radius.pem
+    private_key=${certificates}/radius.key
   '';
 
   # Lantern reaches beyond itself, so its check pages answer as Google's
@@ -173,14 +199,14 @@ pkgs.testers.runNixOSTest {
         ''
       );
 
-      # Four stand-in radios: two access points, the laptop's card, and a
-      # USB card in a drawer.
+      # Five stand-in radios: two access points, the laptop's card, a USB
+      # card in a drawer, and the Office's access point.
       boot.kernelModules = [ "mac80211_hwsim" ];
-      boot.extraModprobeConfig = "options mac80211_hwsim radios=4";
+      boot.extraModprobeConfig = "options mac80211_hwsim radios=5";
 
-      # The first two radios move to the access points' namespace and the
-      # last to the drawer's before anything joins, leaving wlan2 as the
-      # laptop's only card.
+      # The first two radios and the last move to the access points'
+      # namespace and the fourth to the drawer's before anything joins,
+      # leaving wlan2 as the laptop's only card.
       systemd.services.air = {
         after = [ "systemd-modules-load.service" ];
         before = [ "wpa_supplicant.service" ];
@@ -195,9 +221,9 @@ pkgs.testers.runNixOSTest {
           RemainAfterExit = true;
         };
         script = ''
-          until [ -e /sys/class/net/wlan3/phy80211/name ]; do sleep 0.1; done
+          until [ -e /sys/class/net/wlan4/phy80211/name ]; do sleep 0.1; done
           ip netns add air
-          for card in wlan0 wlan1; do
+          for card in wlan0 wlan1 wlan4; do
             iw phy "$(cat /sys/class/net/$card/phy80211/name)" set netns name air
           done
           ip netns add drawer
@@ -205,6 +231,7 @@ pkgs.testers.runNixOSTest {
           ip -n air link set lo up
           ip -n air address add 10.42.0.1/24 dev wlan0
           ip -n air address add 10.43.0.1/24 dev wlan1
+          ip -n air address add 10.44.0.1/24 dev wlan4
         '';
       };
       systemd.services.lantern = inAir // {
@@ -217,10 +244,16 @@ pkgs.testers.runNixOSTest {
           ExecStart = "${lib.getExe' pkgs.hostapd "hostapd"} ${inn}";
         };
       };
+      systemd.services.office = inAir // {
+        serviceConfig = inAir.serviceConfig // {
+          ExecStart = "${lib.getExe' pkgs.hostapd "hostapd"} ${office}";
+        };
+      };
       systemd.services.networks = inAir // {
         after = inAir.after ++ [
           "lantern.service"
           "inn.service"
+          "office.service"
         ];
         before = [ "wifid.service" ];
         serviceConfig = inAir.serviceConfig // {
@@ -589,7 +622,8 @@ pkgs.testers.runNixOSTest {
 
     def joining(parameters):
         """Joins as the launcher does, giving each step wifid said, or why not."""
-        call = calling("Join", parameters).replace("call", "call --more --json=short", 1)
+        # With more, and no timeout of varlinkctl's own: wifid's is the join's.
+        call = calling("Join", parameters).replace("call", "call -E --json=short", 1)
         status, said = machine.execute(f"{call} 2>&1")
         # An error's parameters are printed too, and have no stage.
         replies = [json.loads(line) for line in said.splitlines() if line.startswith("{")]
@@ -627,6 +661,30 @@ pkgs.testers.runNixOSTest {
     with subtest("joining the Inn again moves the card, and says how far the Inn reaches"):
         status, stages, said = joining({"name": "Roadside Inn"})
         assert status == 0 and stages[-1] == "limited", said
+        joined("Roadside Inn")
+
+    with subtest("the Office is joined with an account, its server first proving itself"):
+        retry(lambda _: hears("Office"), timeout_seconds=60)
+        nearby = {network["name"]: network for network in ask("Describe")["nearby"]}
+        assert nearby["Office"]["security"] == "enterprise", nearby
+        refused("Join", {"name": "Office", "password": "hunter22"}, "NeedsAccount")
+        # A server naming another domain is never given the password.
+        elsewhere = {"method": "peap", "identity": "joel", "serverDomain": "elsewhere.test"}
+        status, _, said = joining({"name": "Office", "password": "hunter22", "account": elsewhere})
+        assert status != 0 and "failed: io.jitsusama.Wifi.ServerUnproven" in said, said
+        joel = {"method": "peap", "identity": "joel", "serverDomain": "radius.office.test"}
+        status, _, said = joining({"name": "Office", "password": "not it", "account": joel})
+        assert status != 0 and "failed: io.jitsusama.Wifi.WrongPassword" in said, said
+        assert saved_as("Office") == [], saved_as("Office")
+        status, stages, said = joining({"name": "Office", "password": "hunter22", "account": joel})
+        assert status == 0, said
+        joined("Office")
+        holds_address("10.44.0.")
+        kept = machine.succeed("cat /var/lib/wifid/networks/office.network")
+        assert "ServerDomain=radius.office.test" in kept and "hunter22" not in kept, kept
+        # The steps after this start on the Inn.
+        status, _, said = joining({"name": "Roadside Inn"})
+        assert status == 0, said
         joined("Roadside Inn")
 
     def on_network(name):
@@ -688,7 +746,7 @@ pkgs.testers.runNixOSTest {
             "priority": 5,
             "address": "card",
         }
-        ask("Save", hall)
+        ask("Save", {"network": hall})
         assert saved_as("Hidden Hall") == [
             {
                 "name": "Hidden Hall",
@@ -704,7 +762,10 @@ pkgs.testers.runNixOSTest {
         held = machine.succeed("wpa_cli -i wlan2 list_networks")
         assert "Hidden Hall" in held, held
         stayed_on(since)
-        refused("Save", {"name": "Roadside Inn", "security": "open"}, "Declared")
-        refused("Save", {"name": "Nameless", "security": "personal"}, "NeedsPassword")
+        inn = {"name": "Roadside Inn", "security": "open"}
+        refused("Save", {"network": inn}, "Declared")
+        nameless = {"name": "Nameless", "security": "personal"}
+        refused("Save", {"network": nameless}, "NeedsPassword")
+
   '';
 }

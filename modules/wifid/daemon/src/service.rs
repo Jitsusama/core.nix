@@ -41,6 +41,7 @@ pub enum Ask {
     Join {
         name: String,
         password: Option<String>,
+        account: Option<Account>,
         progress: mpsc::Sender<Result<Stage, Refused>>,
     },
     Scan {
@@ -90,6 +91,11 @@ pub enum Refused {
     WrongPassword,
     /// The access point turned the card away.
     TurnedAway,
+    /// The network's server couldn't prove it's the network's, so it was
+    /// given no password.
+    ServerUnproven,
+    /// The network asks for an account, and none was given.
+    NeedsAccount,
     /// The card didn't join the network in time.
     TimedOut,
     /// No card is on the network.
@@ -105,7 +111,9 @@ pub struct Found {
 }
 
 /// A network to save as the shell asks, with anything left out as it was.
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, CustomType)]
+#[serde(rename_all = "camelCase")]
+#[zlink(rename_all = "camelCase")]
 pub struct Saving {
     pub name: String,
     pub security: Security,
@@ -113,6 +121,42 @@ pub struct Saving {
     pub hidden: Option<bool>,
     pub priority: Option<i32>,
     pub address: Option<Address>,
+    pub account: Option<Account>,
+}
+
+/// An account an enterprise network is joined with. Its server proves
+/// itself with a certificate the machine's authorities issued that names
+/// the server's domain.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, CustomType)]
+#[serde(rename_all = "camelCase")]
+#[zlink(rename_all = "camelCase")]
+pub struct Account {
+    pub method: Method,
+    pub identity: String,
+    /// The name said outside the tunnel, where anyone can hear it.
+    pub anonymous_identity: Option<String>,
+    pub server_domain: String,
+    /// How the password is sent inside the tunnel: MSCHAPv2 for PEAP and
+    /// PAP for TTLS, unless given.
+    pub inner: Option<Inner>,
+}
+
+/// The tunnel an enterprise network's password goes through.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize, CustomType)]
+#[serde(rename_all = "camelCase")]
+#[zlink(rename_all = "camelCase")]
+pub enum Method {
+    Peap,
+    Ttls,
+}
+
+/// How the password is sent inside the tunnel.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize, CustomType)]
+#[serde(rename_all = "camelCase")]
+#[zlink(rename_all = "camelCase")]
+pub enum Inner {
+    Mschapv2,
+    Pap,
 }
 
 /// The address a network sees of the card.
@@ -162,7 +206,7 @@ impl Stage {
 
 #[service(
     interface = "io.jitsusama.Wifi",
-    types = [Address, Card, Nearby, Reach, Saved, Security, Stage, Trouble],
+    types = [Account, Address, Card, Inner, Method, Nearby, Reach, Saved, Saving, Security, Stage, Trouble],
     vendor = "jitsusama",
     product = "wifid",
     version = env!("CARGO_PKG_VERSION"),
@@ -175,18 +219,26 @@ impl Wifi {
     async fn describe(&self, more: bool) -> impl Stream<Item = Reply<Described>> + Unpin {
         let mut state = self.state.clone();
         let now = state.borrow_and_update().described();
-        let replies = stream::unfold((state, Some(now)), move |(mut state, next)| async move {
-            let described = match next {
-                Some(described) => described,
-                None if more => {
-                    state.changed().await.ok()?;
-                    state.borrow_and_update().described()
-                }
-                None => return None,
-            };
-            let reply = Reply::new(Some(described)).set_continues(Some(more));
-            Some((reply, (state, None)))
-        });
+        // What was sent last, so a change wifid makes that the shell can't
+        // see, as a signal wandering within a bar, sends nothing.
+        let replies = stream::unfold(
+            (state, Some(now), None),
+            move |(mut state, next, sent): (_, _, Option<Described>)| async move {
+                let described = match next {
+                    Some(described) => described,
+                    None if more => loop {
+                        state.changed().await.ok()?;
+                        let described = state.borrow_and_update().described();
+                        if sent.as_ref() != Some(&described) {
+                            break described;
+                        }
+                    },
+                    None => return None,
+                };
+                let reply = Reply::new(Some(described.clone())).set_continues(Some(more));
+                Some((reply, (state, None, Some(described))))
+            },
+        );
         Box::pin(replies)
     }
 
@@ -196,21 +248,23 @@ impl Wifi {
         self.asked.send_modify(|asked| *asked += 1);
     }
 
-    /// Joins a network, saving it first when it's new or given a password.
-    /// Called with more, it says each step as the card takes it. Either way
-    /// it ends with how far the network reaches, or why the card couldn't
-    /// join it.
+    /// Joins a network, saving it first when it's new or given a password,
+    /// or an account where it asks for one. Called with more, it says each
+    /// step as the card takes it. Either way it ends with how far the
+    /// network reaches, or why the card couldn't join it.
     #[zlink(more)]
     async fn join(
         &self,
         more: bool,
         name: String,
         password: Option<String>,
+        account: Option<Account>,
     ) -> impl Stream<Item = Result<Reply<Joining>, Refused>> + Unpin {
         let (progress, steps) = mpsc::channel(8);
         let join = Ask::Join {
             name,
             password,
+            account,
             progress,
         };
         let asked = self.asks.send(join).await.is_ok();
@@ -245,24 +299,12 @@ impl Wifi {
     /// brought from another machine, or changes one saved from the launcher.
     /// A new one is shown, of priority 0, and sees an address of the card's
     /// own for it, unless asked otherwise.
-    async fn save(
-        &self,
-        name: String,
-        security: Security,
-        password: Option<String>,
-        hidden: Option<bool>,
-        priority: Option<i32>,
-        address: Option<Address>,
-    ) -> Result<(), Refused> {
-        let saving = Saving {
-            name,
-            security,
-            password,
-            hidden,
-            priority,
-            address,
-        };
-        self.ask(|done| Ask::Save { saving, done }).await
+    async fn save(&self, network: Saving) -> Result<(), Refused> {
+        self.ask(|done| Ask::Save {
+            saving: network,
+            done,
+        })
+        .await
     }
 
     /// The addresses a card's network says a name has, asked of the servers
@@ -410,6 +452,21 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn describing_with_more_says_nothing_of_a_change_it_doesn_t_show() {
+        let (wifi, state, _) = wifi();
+        state.send_modify(|state| state.follow(&inn()));
+
+        let mut replies = wifi.describe(true).await;
+        let first = replies.next().await.unwrap();
+        // A card beginning to join changes wifid's state, not what it shows.
+        state.send_modify(|state| state.attempting("wlan2"));
+        let unshown = replies.next().now_or_never();
+
+        assert_eq!(first.parameters().unwrap().cards[0].name, "wlan2");
+        assert!(unshown.is_none(), "answered again with nothing to show");
+    }
+
+    #[tokio::test]
     async fn checking_asks_for_every_card_s_network_to_be_checked_again() {
         let (wifi, _, mut checks) = wifi();
 
@@ -433,6 +490,7 @@ mod tests {
                 name,
                 password,
                 progress,
+                ..
             }) = taken.recv().await
             else {
                 panic!("wasn't asked to join");
@@ -443,7 +501,9 @@ mod tests {
             (name, password)
         });
 
-        let replies = wifi.join(more, "Lantern".into(), Some("pass".into())).await;
+        let replies = wifi
+            .join(more, "Lantern".into(), Some("pass".into()), None)
+            .await;
         drop(wifi);
         let replies = replies.collect().await;
 
@@ -535,6 +595,15 @@ mod tests {
     #[tokio::test]
     async fn saving_asks_wifid_to_keep_what_was_given() {
         let (wifi, _, _, mut taken) = asking();
+        let hall = Saving {
+            name: "Hidden Hall".into(),
+            security: Security::Personal,
+            password: Some("under the stairs".into()),
+            hidden: Some(true),
+            priority: None,
+            address: Some(Address::Card),
+            account: None,
+        };
         let main_loop = tokio::spawn(async move {
             let Some(Ask::Save { saving, done }) = taken.recv().await else {
                 panic!("wasn't asked to save");
@@ -543,30 +612,41 @@ mod tests {
             saving
         });
 
-        let answer = wifi
-            .save(
-                "Hidden Hall".into(),
-                Security::Personal,
-                Some("under the stairs".into()),
-                Some(true),
-                None,
-                Some(Address::Card),
-            )
-            .await;
+        let answer = wifi.save(hall.clone()).await;
         drop(wifi);
 
         assert_eq!(answer, Ok(()));
-        assert_eq!(
-            main_loop.await.unwrap(),
-            Saving {
-                name: "Hidden Hall".into(),
-                security: Security::Personal,
-                password: Some("under the stairs".into()),
-                hidden: Some(true),
-                priority: None,
-                address: Some(Address::Card),
-            }
-        );
+        assert_eq!(main_loop.await.unwrap(), hall);
+    }
+
+    #[tokio::test]
+    async fn joining_with_an_account_hands_it_to_wifid() {
+        let (wifi, _, _, mut taken) = asking();
+        let account = Account {
+            method: Method::Peap,
+            identity: "joel".into(),
+            anonymous_identity: None,
+            server_domain: "radius.office.test".into(),
+            inner: None,
+        };
+        let main_loop = tokio::spawn(async move {
+            let Some(Ask::Join { account, .. }) = taken.recv().await else {
+                panic!("wasn't asked to join");
+            };
+            account
+        });
+
+        let replies = wifi
+            .join(
+                false,
+                "Office".into(),
+                Some("hunter22".into()),
+                Some(account.clone()),
+            )
+            .await;
+        drop((wifi, replies));
+
+        assert_eq!(main_loop.await.unwrap(), Some(account));
     }
 
     #[tokio::test]

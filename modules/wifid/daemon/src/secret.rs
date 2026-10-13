@@ -124,6 +124,7 @@ mod tests {
             hidden: false,
             address: Address::Network,
             trusted: false,
+            account: None,
         }
     }
 
