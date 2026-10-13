@@ -1,6 +1,82 @@
 use disk_guard::band::Band;
-use disk_guard::plan::{Candidate, Class, Group, plan};
+use disk_guard::plan::{Candidate, Class, Group, plan, windows};
 use std::path::PathBuf;
+
+/// A small seeded generator, so a failing case can be named and replayed.
+struct Draw(u64);
+
+impl Draw {
+    fn next(&mut self) -> u64 {
+        self.0 ^= self.0 << 13;
+        self.0 ^= self.0 >> 7;
+        self.0 ^= self.0 << 17;
+        self.0
+    }
+
+    fn below(&mut self, n: u64) -> u64 {
+        self.next() % n
+    }
+
+    fn band(&mut self) -> Band {
+        [Band::Healthy, Band::Pressure, Band::Urgent, Band::Critical][self.below(4) as usize]
+    }
+
+    fn class(&mut self) -> Class {
+        let bool = |draw: &mut Draw| draw.below(2) == 0;
+        match self.below(17) {
+            0 => Class::Target,
+            1 => Class::Install,
+            2 => Class::Variant,
+            3 => Class::Scratch {
+                healthy: bool(self).then_some(30.0 * DAY),
+            },
+            4 => Class::Snapshot,
+            5 => Class::Workspace,
+            6 => Class::Temp,
+            7 => Class::Trash,
+            8 => Class::Cache {
+                rank: self.below(40) as u8,
+                from: self.band(),
+            },
+            9 => Class::Coredump,
+            10 => Class::NixBuild,
+            11 => Class::Replaced,
+            12 => Class::Garbage {
+                kept: bool(self),
+                order: self.below(20) as u16,
+            },
+            13 => Class::Generations { kept: bool(self) },
+            14 => Class::Producer {
+                every: bool(self).then_some(6.0 * HOUR),
+                from: bool(self).then(|| self.band()),
+            },
+            15 => Class::Log,
+            _ => Class::Podman { unused: bool(self) },
+        }
+    }
+
+    fn candidate(&mut self, n: usize) -> Candidate {
+        Candidate {
+            path: PathBuf::from(format!("/home/u/{n}")),
+            class: self.class(),
+            // From fresh to a fortnight, often at a window's very edge.
+            idle: [
+                0.0,
+                HOUR,
+                2.0 * HOUR,
+                6.0 * HOUR,
+                DAY,
+                DAY + HOUR,
+                7.0 * DAY,
+            ][self.below(7) as usize]
+                + self.below(2) as f64 * self.below(14 * DAY as u64) as f64,
+            size: self.below(4 * GIB),
+            occupied: self.below(4) == 0,
+            spent: self.below(4) == 0,
+            checkout: None,
+        }
+    }
+}
 
 const HOUR: f64 = 3600.0;
 const DAY: f64 = 86400.0;
@@ -331,5 +407,66 @@ fn an_oversized_log_is_trimmed_as_waste_in_every_band() {
         let steps = plan(&log, band, None, |_| 1.0);
         assert_eq!(steps.len(), 1, "{band:?}");
         assert_eq!(steps[0].group, Group::Waste, "{band:?}");
+    }
+}
+
+/// Whether a band's window has passed for a candidate, read from the table
+/// alone.
+fn due(candidate: &Candidate, band: Band) -> bool {
+    windows(candidate).1[band as usize].is_some_and(|window| candidate.idle >= window)
+}
+
+#[test]
+fn property_a_plan_takes_only_what_is_due_cheapest_first_and_stops_once_covered() {
+    for case in 1..=3000_u64 {
+        let mut draw = Draw(case.wrapping_mul(0x9E37_79B9_7F4A_7C15) | 1);
+        let band = draw.band();
+        let candidates: Vec<Candidate> = (0..draw.below(40) as usize)
+            .map(|n| draw.candidate(n))
+            .collect();
+        let ratio = |class: Class| if class == Class::Target { 0.5 } else { 1.0 };
+        let all = plan(&candidates, band, None, ratio);
+        let mut indices: Vec<usize> = all.iter().map(|step| step.index).collect();
+        indices.sort_unstable();
+        indices.dedup();
+        assert_eq!(indices.len(), all.len(), "case {case}: a candidate twice");
+        let wanted: Vec<usize> = (0..candidates.len())
+            .filter(|&index| due(&candidates[index], band))
+            .collect();
+        assert_eq!(indices, wanted, "case {case}: what's due in {band:?}");
+        for step in &all {
+            assert_eq!(
+                step.group,
+                windows(&candidates[step.index]).0,
+                "case {case}"
+            );
+        }
+        assert!(
+            all.windows(2).all(|pair| pair[0].group <= pair[1].group),
+            "case {case}: cheapest loss first"
+        );
+        let shortfall = draw.below(16 * GIB);
+        let bounded = plan(&candidates, band, Some(shortfall), ratio);
+        assert_eq!(bounded, all[..bounded.len()], "case {case}: a prefix");
+        let predicted = |steps: &[_]| -> u64 {
+            steps
+                .iter()
+                .map(|step: &disk_guard::plan::Step| step.predicted)
+                .sum()
+        };
+        if let Some((_, before)) = bounded.split_last() {
+            assert!(
+                predicted(before) < shortfall,
+                "case {case}: went on past covering the shortfall"
+            );
+        }
+        if predicted(&all) >= shortfall {
+            assert!(
+                predicted(&bounded) >= shortfall,
+                "case {case}: stopped short"
+            );
+        } else {
+            assert_eq!(bounded.len(), all.len(), "case {case}: took all it could");
+        }
     }
 }
