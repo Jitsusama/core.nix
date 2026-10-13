@@ -97,6 +97,13 @@ in
       name = "cs35l56-spkid-lock";
       patch = ./cs35l56-spkid-lock.patch;
     }
+    {
+      # The USB-C controller lists a charger's offers with an empty one
+      # first, so the kernel reads each one a place late and reports the
+      # wrong voltage. Written here; the patch says why.
+      name = "ucsi-leading-empty-pdo";
+      patch = ./ucsi-leading-empty-pdo.patch;
+    }
   ];
 
   # The disk, and the USB and Thunderbolt ports a dock's keyboard arrives
