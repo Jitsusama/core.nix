@@ -49,7 +49,8 @@
         ClientIdentifier = "mac";
         SendHostname = false;
         UseHostname = false;
-        # A cable beats Wi-Fi, as it does under NetworkManager.
+        # A cable beats Wi-Fi: Ethernet's routes weigh 100 to these 600, as
+        # NetworkManager weighed them.
         RouteMetric = 600;
       };
       dhcpV6Config = {
