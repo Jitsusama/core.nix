@@ -39,6 +39,16 @@ type Listed = (
     OwnedObjectPath,
 );
 
+/// Thaws every scope the guard made, saying which, in order.
+pub fn thaw_all(freezer: &Freezer) -> zbus::Result<Vec<String>> {
+    let mut units = freezer.ours()?;
+    units.sort();
+    for unit in &units {
+        freezer.thaw(unit)?;
+    }
+    Ok(units)
+}
+
 /// What the daemon freezes and thaws through: a service manager, or a
 /// stand-in for one.
 pub trait Freeze {

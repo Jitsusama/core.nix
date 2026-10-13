@@ -55,6 +55,7 @@ fn the_commands_that_answer_read_their_options() {
             file: PathBuf::from("/c.json")
         }
     );
+    assert_eq!(parse(&words("thaw")).unwrap(), Command::Thaw);
 }
 
 #[test]

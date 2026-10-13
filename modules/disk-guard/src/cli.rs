@@ -40,6 +40,7 @@ pub enum Command {
     CheckConfig {
         file: PathBuf,
     },
+    Thaw,
 }
 
 /// Where the commands find things, worked out once from the environment.
@@ -72,7 +73,8 @@ const USAGE: &str = "usage: disk-guard user|system [--config FILE] [--state DIR]
        disk-guard status [--json]
        disk-guard plan [--config FILE] [--band BAND] [--pretend-free SIZE]
        disk-guard journal [--since SPAN] [--json]
-       disk-guard check-config FILE";
+       disk-guard check-config FILE
+       disk-guard thaw";
 
 impl Env {
     /// The places the XDG base directories and the account give.
@@ -150,6 +152,7 @@ pub fn parse(args: &[OsString]) -> Result<Command, String> {
             }
             _ => return Err(format!("check-config takes one file\n{USAGE}")),
         },
+        Some("thaw") => Command::Thaw,
         _ => return Err(format!("{name:?} is not a command\n{USAGE}")),
     };
     options.finished()?;
@@ -243,6 +246,7 @@ pub fn run(command: Command, env: &Env, out: &mut dyn Write, err: &mut dyn Write
         } => plan(env, config, band, pretend_free, out),
         Command::User { config, state } => daemon(env, Scope::User, config, state, err),
         Command::System { config, state } => daemon(env, Scope::System, config, state, err),
+        Command::Thaw => thaw(out),
     };
     match done {
         Ok(code) => code,
@@ -334,6 +338,10 @@ fn daemon(
     if let Some(hearing) = hearing {
         guard.hear(hearing);
     }
+    // Only the account's guard freezes, in its own manager.
+    if scope == Scope::User {
+        guard.freeze_with(Box::new(crate::freezer::Session::default()));
+    }
     // Without a watch nothing dates an older build, so it stays.
     if builds {
         match crate::opens::Watch::new() {
@@ -347,6 +355,22 @@ fn daemon(
         }
     }
     steps(&mut guard, STEP_EVERY, &mut wait, &mut desk, err);
+    Ok(FINE)
+}
+
+/// Thaws whatever the account's guard froze, through the account's own
+/// service manager. The guard sees it thawed and never freezes it again.
+fn thaw(out: &mut dyn Write) -> Done {
+    let failed = |error: zbus::Error| (NO_DAEMON, format!("asking the service manager: {error}"));
+    let builder = zbus::blocking::connection::Builder::session().map_err(failed)?;
+    let freezer = crate::freezer::Freezer::new(crate::desktop::patient(builder).map_err(failed)?);
+    let thawed = crate::freezer::thaw_all(&freezer).map_err(failed)?;
+    if thawed.is_empty() {
+        let _ = writeln!(out, "Nothing is frozen.");
+    }
+    for unit in thawed {
+        let _ = writeln!(out, "Thawed {unit}.");
+    }
     Ok(FINE)
 }
 

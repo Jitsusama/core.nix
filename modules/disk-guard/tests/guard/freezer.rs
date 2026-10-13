@@ -1,5 +1,5 @@
 use disk_guard::desktop::patient;
-use disk_guard::freezer::Freezer;
+use disk_guard::freezer::{Freezer, thaw_all};
 use std::collections::BTreeMap;
 use std::os::unix::net::UnixStream;
 use std::sync::{Arc, Mutex};
@@ -176,6 +176,17 @@ fn a_writer_and_its_descendants_are_frozen_in_a_scope_of_their_own() {
     );
     assert!(freezer.frozen(UNIT).unwrap());
     assert_eq!(freezer.ours().unwrap(), [UNIT]);
+}
+
+#[test]
+fn thawing_all_thaws_every_scope_the_guard_made_and_says_which() {
+    let other = "disk-guard-freeze-20.scope";
+    let (freezer, told) = freezer(&[UNIT, other]);
+    freezer.freeze(UNIT, &[10], "dd, filling /").unwrap();
+    freezer.freeze(other, &[20], "cp, filling /").unwrap();
+    assert_eq!(thaw_all(&freezer).unwrap(), [UNIT, other]);
+    assert!(told.calls().contains(&format!("thaw {UNIT}")));
+    assert!(told.calls().contains(&format!("thaw {other}")));
 }
 
 #[test]
