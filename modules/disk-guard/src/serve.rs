@@ -58,7 +58,7 @@ pub fn answering(
             loop {
                 let served = server.serve(&mut |uid, request, responder| {
                     let reply = match request {
-                        Request::Processes { roots } => match crate::linux::processes(&proc) {
+                        Request::Processes { roots } => match crate::sys::processes(&proc) {
                             Ok(processes) => {
                                 Reply::Answer(vouch::answer(&processes, &roots, |path| {
                                     vouch::reached_by(path, uid)
@@ -140,7 +140,7 @@ pub fn steps(
 ) {
     let mut unheard = Unheard::default();
     loop {
-        let stepped = crate::linux::tick().and_then(|tick| {
+        let stepped = crate::sys::tick().and_then(|tick| {
             let before = guard.status(tick.wall);
             guard.step(&tick, &senses(desk.saving()))?;
             let change = crate::notices::change(&before, &guard.status(tick.wall));
@@ -165,20 +165,9 @@ pub fn steps(
 /// A signal during a step waits for the step to finish, so a pass is
 /// never cut off halfway by a stop. Call it before starting any thread,
 /// or a thread that doesn't block them takes them and dies.
+#[cfg(target_os = "linux")]
 pub fn stopping(signals: &[i32]) -> io::Result<impl FnMut(Duration) -> bool + use<>> {
-    // SAFETY: set is a sigset_t the calls fill in and then only read.
-    let set = unsafe {
-        let mut set: libc::sigset_t = std::mem::zeroed();
-        libc::sigemptyset(&mut set);
-        for &signal in signals {
-            libc::sigaddset(&mut set, signal);
-        }
-        let blocked = libc::pthread_sigmask(libc::SIG_BLOCK, &set, std::ptr::null_mut());
-        if blocked != 0 {
-            return Err(io::Error::from_raw_os_error(blocked));
-        }
-        set
-    };
+    let set = block(signals)?;
     Ok(move |wait: Duration| {
         let deadline = std::time::Instant::now() + wait;
         loop {
@@ -201,6 +190,127 @@ pub fn stopping(signals: &[i32]) -> io::Result<impl FnMut(Duration) -> bool + us
     })
 }
 
+/// The same on macOS, which has no sigtimedwait: a kqueue records each
+/// signal sent, blocked or not, and waits with a timeout, and sigwait then
+/// takes the signal, which is pending by then. One that came before the
+/// queue could hear it is pending already.
+#[cfg(target_os = "macos")]
+pub fn stopping(signals: &[i32]) -> io::Result<impl FnMut(Duration) -> bool + use<>> {
+    use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
+    let set = block(signals)?;
+    // SAFETY: kqueue takes nothing and returns a new descriptor.
+    let queue = unsafe { libc::kqueue() };
+    if queue < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    // SAFETY: queue is a new descriptor nothing else owns.
+    let queue = unsafe { OwnedFd::from_raw_fd(queue) };
+    let heard: Vec<libc::kevent> = signals
+        .iter()
+        .map(|&signal| libc::kevent {
+            ident: signal as libc::uintptr_t,
+            filter: libc::EVFILT_SIGNAL,
+            flags: libc::EV_ADD,
+            fflags: 0,
+            data: 0,
+            udata: std::ptr::null_mut(),
+        })
+        .collect();
+    // SAFETY: heard is a list of that many kevents, and no events are
+    // asked for back.
+    let added = unsafe {
+        libc::kevent(
+            queue.as_raw_fd(),
+            heard.as_ptr(),
+            heard.len() as libc::c_int,
+            std::ptr::null_mut(),
+            0,
+            std::ptr::null(),
+        )
+    };
+    if added < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    let signals = signals.to_vec();
+    Ok(move |wait: Duration| {
+        if take_pending(&set, &signals) {
+            return true;
+        }
+        let deadline = std::time::Instant::now() + wait;
+        loop {
+            let left = deadline.saturating_duration_since(std::time::Instant::now());
+            let timeout = libc::timespec {
+                tv_sec: left.as_secs() as libc::time_t,
+                tv_nsec: left.subsec_nanos() as libc::c_long,
+            };
+            let mut event = std::mem::MaybeUninit::<libc::kevent>::zeroed();
+            // SAFETY: event has room for the one event asked for, and
+            // timeout is valid for the call.
+            let got = unsafe {
+                libc::kevent(
+                    queue.as_raw_fd(),
+                    std::ptr::null(),
+                    0,
+                    event.as_mut_ptr(),
+                    1,
+                    &timeout,
+                )
+            };
+            if got > 0 {
+                // Sent, so it's pending now: taken, so the next wait
+                // doesn't hear it again.
+                take_pending(&set, &signals);
+                return true;
+            }
+            if got == 0 || left.is_zero() {
+                return false;
+            }
+            if io::Error::last_os_error().raw_os_error() != Some(libc::EINTR) {
+                return false;
+            }
+        }
+    })
+}
+
+/// Takes one of `signals` if one is pending here, saying whether it did.
+#[cfg(target_os = "macos")]
+fn take_pending(set: &libc::sigset_t, signals: &[i32]) -> bool {
+    // SAFETY: waiting is a sigset_t sigpending fills in; both sets are
+    // then only read, and sigwait returns at once for a pending signal.
+    unsafe {
+        let mut waiting: libc::sigset_t = std::mem::zeroed();
+        if libc::sigpending(&mut waiting) != 0 {
+            return false;
+        }
+        if !signals
+            .iter()
+            .any(|&signal| libc::sigismember(&waiting, signal) == 1)
+        {
+            return false;
+        }
+        let mut taken = 0;
+        libc::sigwait(set, &mut taken) == 0
+    }
+}
+
+/// Blocks `signals` in this thread and every thread it starts after, so
+/// that only the wait takes them.
+fn block(signals: &[i32]) -> io::Result<libc::sigset_t> {
+    // SAFETY: set is a sigset_t the calls fill in and then only read.
+    unsafe {
+        let mut set: libc::sigset_t = std::mem::zeroed();
+        libc::sigemptyset(&mut set);
+        for &signal in signals {
+            libc::sigaddset(&mut set, signal);
+        }
+        let blocked = libc::pthread_sigmask(libc::SIG_BLOCK, &set, std::ptr::null_mut());
+        if blocked != 0 {
+            return Err(io::Error::from_raw_os_error(blocked));
+        }
+        Ok(set)
+    }
+}
+
 /// The desktop a daemon answers to: whether its person asked to save
 /// power, and where its notice goes.
 pub trait Desk {
@@ -214,11 +324,11 @@ pub trait Desk {
 /// is no stall.
 pub fn senses(saver: bool) -> Senses {
     Senses {
-        power: crate::linux::power(Path::new("/sys/class/power_supply")).unwrap_or(Power {
+        power: crate::sys::power(Path::new("/sys/class/power_supply")).unwrap_or(Power {
             mains: true,
             battery: None,
         }),
         saver,
-        pressure: crate::linux::pressure(Path::new("/proc/pressure")).unwrap_or_default(),
+        pressure: crate::sys::pressure(Path::new("/proc/pressure")).unwrap_or_default(),
     }
 }

@@ -204,6 +204,64 @@ fn status_tells_of_each_guard_that_wrote_one() {
 }
 
 #[test]
+fn each_platform_keeps_the_guard_where_it_keeps_such_things() {
+    use std::path::PathBuf;
+    let environment = |pairs: &'static [(&str, &str)]| {
+        move |name: &str| {
+            pairs
+                .iter()
+                .find(|(key, _)| *key == name)
+                .map(|(_, value)| PathBuf::from(value))
+        }
+    };
+    let linux = Env::for_os("linux", environment(&[("HOME", "/home/u")]), 1000);
+    assert_eq!(
+        linux.config,
+        Path::new("/home/u/.config/disk-guard/config.json")
+    );
+    assert_eq!(linux.state, Path::new("/home/u/.local/state/disk-guard"));
+    assert_eq!(
+        linux.status,
+        Path::new("/run/user/1000/disk-guard/status.json")
+    );
+    assert_eq!(linux.system_state, Path::new("/var/lib/disk-guard"));
+    assert_eq!(linux.system_socket, Path::new("/run/disk-guard/socket"));
+    assert_eq!(linux.processes, Path::new("/proc"));
+
+    let mac = Env::for_os(
+        "macos",
+        environment(&[("HOME", "/Users/u"), ("TMPDIR", "/var/folders/xy/T/")]),
+        501,
+    );
+    assert_eq!(
+        mac.config,
+        Path::new("/Users/u/.config/disk-guard/config.json")
+    );
+    assert_eq!(
+        mac.status,
+        Path::new("/var/folders/xy/T/disk-guard/status.json")
+    );
+    assert_eq!(mac.system_config, Path::new("/etc/disk-guard/config.json"));
+    assert_eq!(mac.system_state, Path::new("/var/db/disk-guard"));
+    assert_eq!(
+        mac.system_status,
+        Path::new("/var/run/disk-guard/status.json")
+    );
+    assert_eq!(mac.system_socket, Path::new("/var/run/disk-guard/socket"));
+    let bare = Env::for_os("macos", environment(&[("HOME", "/Users/u")]), 501);
+    assert_eq!(
+        bare.status,
+        Path::new("/Users/u/Library/Caches/disk-guard/status.json")
+    );
+    let set = Env::for_os(
+        "macos",
+        environment(&[("HOME", "/Users/u"), ("XDG_RUNTIME_DIR", "/run/u")]),
+        501,
+    );
+    assert_eq!(set.status, Path::new("/run/u/disk-guard/status.json"));
+}
+
+#[test]
 fn the_journal_is_read_oldest_first_and_since_when_asked() {
     let machine = Machine::new();
     let now = wall();

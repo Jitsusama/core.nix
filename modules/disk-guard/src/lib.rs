@@ -5,25 +5,29 @@ pub mod age;
 pub mod anchor;
 pub mod band;
 pub mod caches;
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 pub mod cli;
 pub mod clock;
 pub mod commands;
 pub mod config;
 pub mod coredumps;
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 pub mod daemon;
 pub mod decide;
 pub mod dedupe;
 #[cfg(target_os = "linux")]
 pub mod desktop;
+#[cfg(target_os = "macos")]
+#[path = "notifier.rs"]
+pub mod desktop;
 pub mod discover;
 pub mod finished;
+pub mod freeze;
 #[cfg(target_os = "linux")]
 pub mod freezer;
 pub mod garbage;
 pub mod generations;
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 pub mod host;
 pub mod journal;
 #[cfg(target_os = "linux")]
@@ -34,9 +38,12 @@ pub mod logs;
 pub mod macos;
 pub mod moments;
 pub mod nix_builds;
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 pub mod notices;
 #[cfg(target_os = "linux")]
+pub mod opens;
+#[cfg(target_os = "macos")]
+#[path = "unwatched.rs"]
 pub mod opens;
 pub mod pass;
 pub mod plan;
@@ -46,10 +53,15 @@ pub mod procargs;
 pub mod reclaim;
 pub mod replaced;
 pub mod scratch;
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 pub mod serve;
 pub mod snapshots;
+/// What the machine says about itself, through whichever platform this is.
 #[cfg(target_os = "linux")]
+pub use linux as sys;
+#[cfg(target_os = "macos")]
+pub use macos as sys;
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 pub mod socket;
 pub mod state;
 pub mod survey;

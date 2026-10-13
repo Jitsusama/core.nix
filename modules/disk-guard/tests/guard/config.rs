@@ -118,8 +118,17 @@ fn a_system_config_carries_its_own_sections() {
     assert_eq!(system.boot, PathBuf::from("/boot"));
     assert_eq!(
         system.dedupe.systemd_run,
-        PathBuf::from("/run/current-system/systemd/bin/systemd-run"),
+        Some(PathBuf::from("/run/current-system/systemd/bin/systemd-run")),
         "NixOS's own unless told"
+    );
+    let alone = Config::parse(
+        r#"{"version": 1, "scope": "system", "boot": "/var/empty",
+            "dedupe": {"systemd_run": null}, "sources": {}}"#,
+    );
+    assert_eq!(
+        alone.unwrap().system.unwrap().dedupe.systemd_run,
+        None,
+        "nothing to confine a run, as on a Mac"
     );
     let relative = Config::parse(
         r#"{"version": 1, "scope": "system", "boot": "/boot",

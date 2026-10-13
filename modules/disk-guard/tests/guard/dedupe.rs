@@ -77,7 +77,7 @@ fn a_run_is_confined_to_a_scope_of_its_own() {
         ),
     );
     let stop = AtomicBool::new(false);
-    assert_eq!(optimise(&run, &nix, &stop), Ok(Some(2 * GIB)));
+    assert_eq!(optimise(Some(&run), &nix, &stop), Ok(Some(2 * GIB)));
     let idle = libc::SCHED_IDLE.to_string();
     assert_eq!(
         std::fs::read_to_string(&policy).unwrap().trim(),
@@ -107,7 +107,7 @@ fn a_stopped_run_frees_nothing_it_knows_of() {
             std::thread::sleep(Duration::from_millis(200));
             stop.store(true, Ordering::Relaxed);
         });
-        optimise(&run, &nix, &stop)
+        optimise(Some(&run), &nix, &stop)
     });
     assert_eq!(stopped, Ok(None));
     assert!(started.elapsed() < Duration::from_secs(10));
@@ -118,6 +118,19 @@ fn a_failed_run_says_why() {
     let dir = tempfile::tempdir().unwrap();
     let (run, nix) = fakes(dir.path(), "echo 'error: database is locked' >&2; exit 1\n");
     let stop = AtomicBool::new(false);
-    let failed = optimise(&run, &nix, &stop).unwrap_err();
+    let failed = optimise(Some(&run), &nix, &stop).unwrap_err();
     assert!(failed.contains("database is locked"), "{failed}");
+}
+
+#[test]
+fn a_run_with_nothing_to_confine_it_runs_alone() {
+    // As on a Mac, which has no scopes.
+    let dir = tempfile::tempdir().unwrap();
+    let (_, nix) = fakes(
+        dir.path(),
+        "echo '1.0 GiB freed by hard-linking 3 files' >&2\n",
+    );
+    let stop = AtomicBool::new(false);
+    assert_eq!(optimise(None, &nix, &stop), Ok(Some(GIB)));
+    assert!(!dir.path().join("log").exists(), "systemd-run wasn't asked");
 }

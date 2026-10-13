@@ -82,28 +82,49 @@ const USAGE: &str = "usage: disk-guard user|system [--config FILE] [--state DIR]
        disk-guard thaw";
 
 impl Env {
-    /// The places the XDG base directories and the account give.
+    /// The places the XDG base directories, the account and this platform
+    /// give.
     pub fn from_environment() -> Env {
         let var = |name: &str| {
             std::env::var_os(name)
                 .filter(|value| !value.is_empty())
                 .map(PathBuf::from)
         };
+        // SAFETY: geteuid only reads the process's own credentials.
+        let uid = unsafe { libc::geteuid() };
+        Env::for_os(std::env::consts::OS, var, uid)
+    }
+
+    /// The places on `os`, as Rust names it, given the environment `var`
+    /// reads and the account `uid`. A Mac keeps a daemon's state in
+    /// /var/db and what lasts a boot in /var/run, and has no runtime
+    /// directory for an account: its own temporary directory, which
+    /// launchd gives an agent, lasts until the next boot too.
+    pub fn for_os(os: &str, var: impl Fn(&str) -> Option<PathBuf>, uid: u32) -> Env {
         let home = var("HOME").unwrap_or_else(|| PathBuf::from("/"));
         let config = var("XDG_CONFIG_HOME").unwrap_or_else(|| home.join(".config"));
         let state = var("XDG_STATE_HOME").unwrap_or_else(|| home.join(".local/state"));
-        // SAFETY: geteuid only reads the process's own credentials.
-        let uid = unsafe { libc::geteuid() };
-        let runtime =
-            var("XDG_RUNTIME_DIR").unwrap_or_else(|| PathBuf::from(format!("/run/user/{uid}")));
+        let mac = os == "macos";
+        let runtime = var("XDG_RUNTIME_DIR").unwrap_or_else(|| {
+            if mac {
+                var("TMPDIR").unwrap_or_else(|| home.join("Library/Caches"))
+            } else {
+                PathBuf::from(format!("/run/user/{uid}"))
+            }
+        });
+        let (system_state, system_run) = if mac {
+            ("/var/db/disk-guard", "/var/run/disk-guard")
+        } else {
+            ("/var/lib/disk-guard", "/run/disk-guard")
+        };
         Env {
             config: config.join("disk-guard/config.json"),
             state: state.join("disk-guard"),
             status: runtime.join("disk-guard/status.json"),
             system_config: PathBuf::from("/etc/disk-guard/config.json"),
-            system_state: PathBuf::from("/var/lib/disk-guard"),
-            system_status: PathBuf::from("/run/disk-guard/status.json"),
-            system_socket: PathBuf::from("/run/disk-guard/socket"),
+            system_state: PathBuf::from(system_state),
+            system_status: Path::new(system_run).join("status.json"),
+            system_socket: Path::new(system_run).join("socket"),
             processes: PathBuf::from("/proc"),
         }
     }
@@ -349,7 +370,7 @@ fn daemon(
         }
     };
     // Only the user daemon has a session to show a notice in.
-    let mut desk = crate::desktop::Buses::new(config.notify && scope == Scope::User);
+    let mut desk = crate::desktop::desk(config.notify && scope == Scope::User);
     let builds = config
         .sources
         .values()
@@ -360,10 +381,13 @@ fn daemon(
         guard.hear(hearing);
     }
     // Only the account's guard freezes, in its own manager, unless its
-    // config says never.
+    // config says never. A Mac has no manager to freeze in yet.
+    #[cfg(target_os = "linux")]
     if scope == Scope::User && freezes {
         guard.freeze_with(Box::new(crate::freezer::Session::default()));
     }
+    #[cfg(not(target_os = "linux"))]
+    let _ = freezes;
     // Without a watch nothing dates an older build, so it stays.
     if builds {
         match crate::opens::Watch::new() {
@@ -392,7 +416,7 @@ fn explain(env: &Env, path: &Path, config: Option<PathBuf>, out: &mut dyn Write)
         running: running(),
     };
     let mut guard = Guard::new(config, &places).map_err(failed)?;
-    let tick = crate::linux::tick().map_err(failed)?;
+    let tick = crate::sys::tick().map_err(failed)?;
     let explained = guard.explain(&tick, path).map_err(failed)?;
     let (_, unheard) = guard.unread();
     let used_as = |used: crate::activity::Use| match used {
@@ -451,6 +475,7 @@ fn explain(env: &Env, path: &Path, config: Option<PathBuf>, out: &mut dyn Write)
 
 /// Thaws whatever the account's guard froze, through the account's own
 /// service manager. The guard sees it thawed and never freezes it again.
+#[cfg(target_os = "linux")]
 fn thaw(out: &mut dyn Write) -> Done {
     let failed = |error: zbus::Error| (NO_DAEMON, format!("asking the service manager: {error}"));
     let builder = zbus::blocking::connection::Builder::session().map_err(failed)?;
@@ -462,6 +487,13 @@ fn thaw(out: &mut dyn Write) -> Done {
     for unit in thawed {
         let _ = writeln!(out, "Thawed {unit}.");
     }
+    Ok(FINE)
+}
+
+/// A Mac's guard freezes nothing, so nothing is frozen.
+#[cfg(not(target_os = "linux"))]
+fn thaw(out: &mut dyn Write) -> Done {
+    let _ = writeln!(out, "Nothing is frozen.");
     Ok(FINE)
 }
 
@@ -645,7 +677,7 @@ fn plan(
         running: running(),
     };
     let mut guard = Guard::new(config, &places).map_err(failed)?;
-    let tick = crate::linux::tick().map_err(failed)?;
+    let tick = crate::sys::tick().map_err(failed)?;
     let previews = guard.preview(&tick, band, free).map_err(failed)?;
     for preview in previews {
         let band = serde_json::to_value(preview.band).ok();

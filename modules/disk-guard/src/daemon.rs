@@ -200,7 +200,7 @@ pub struct Guard {
     marked_at: Option<f64>,
     /// What freezes a runaway writer, once given one, and what each
     /// process has written lately.
-    freeze: Option<Box<dyn crate::freezer::Freeze>>,
+    freeze: Option<Box<dyn crate::freeze::Freeze>>,
     writers: Writers,
     /// What the last survey couldn't read, and why it went unvouched.
     unread: (usize, Option<String>),
@@ -434,7 +434,7 @@ impl Guard {
 
     /// Freezes a runaway writer through `freeze`, when nothing else is
     /// left to take; without one, nothing is ever frozen.
-    pub fn freeze_with(&mut self, freeze: Box<dyn crate::freezer::Freeze>) {
+    pub fn freeze_with(&mut self, freeze: Box<dyn crate::freeze::Freeze>) {
         self.freeze = Some(freeze);
     }
 
@@ -549,7 +549,7 @@ impl Guard {
         else {
             return Ok(());
         };
-        let unit = crate::freezer::unit_for(writer.pid);
+        let unit = crate::freeze::unit_for(writer.pid);
         let pids = writers::descendants(&samples, writer.pid);
         let description = format!(
             "{} (pid {}), frozen by disk-guard for filling {}",
@@ -672,7 +672,7 @@ impl Guard {
         );
         let mut due = Vec::new();
         for (&device, watched) in &mut self.watched {
-            let Ok(space) = crate::linux::space(&watched.path) else {
+            let Ok(space) = crate::sys::space(&watched.path) else {
                 watched.space = None;
                 continue;
             };
@@ -855,7 +855,7 @@ impl Guard {
             (Some((_, store)), Some(watched)) if store == device => watched.path.clone(),
             _ => return Err(format!("no garbage is collected on {}", path.display())),
         };
-        let space = crate::linux::space(&mount).map_err(|error| error.to_string())?;
+        let space = crate::sys::space(&mount).map_err(|error| error.to_string())?;
         let thresholds = Thresholds::new(&self.config.bands, space.total);
         let mut here = self.generation_offers(tick);
         here.extend(self.garbage_offers(tick));
@@ -1016,7 +1016,7 @@ impl Guard {
             .name(DEDUPE.to_owned())
             .spawn(move || {
                 // A guard that stopped meanwhile has no one to hear it.
-                let _ = tell.send(dedupe::optimise(&systemd_run, &nix, &stopping));
+                let _ = tell.send(dedupe::optimise(systemd_run.as_deref(), &nix, &stopping));
             });
         match running {
             Ok(_) => self.dedupe_out = Some((tick.wall, stop, out)),
@@ -1037,7 +1037,7 @@ impl Guard {
         let Some((garbage, _)) = self.store() else {
             return Vec::new();
         };
-        let Ok(space) = crate::linux::space(&self.config.nix.store) else {
+        let Ok(space) = crate::sys::space(&self.config.nix.store) else {
             return Vec::new();
         };
         let there: Vec<Dead> = listing
@@ -1294,7 +1294,7 @@ impl Guard {
             processes.iter().filter(|process| !process.readable).count(),
             scan.unheard().map(str::to_owned),
         );
-        let boot = crate::linux::boot(Path::new("/proc/stat"))?;
+        let boot = crate::sys::boot(Path::new("/proc/stat"))?;
         // A copy, so a long survey never holds up what hears the opens.
         let uses = self
             .uses
@@ -1364,9 +1364,7 @@ impl Guard {
                 },
                 busy: move || {
                     gentle
-                        && !crate::decide::calm(
-                            crate::linux::pressure(&pressure).unwrap_or_default(),
-                        )
+                        && !crate::decide::calm(crate::sys::pressure(&pressure).unwrap_or_default())
                 },
                 yielded: false,
             },
@@ -1445,7 +1443,7 @@ impl Guard {
         let (_, offers) = self.offers(tick)?;
         let mut previews = Vec::new();
         for (&device, watched) in &self.watched {
-            let Ok(space) = crate::linux::space(&watched.path) else {
+            let Ok(space) = crate::sys::space(&watched.path) else {
                 continue;
             };
             let thresholds = Thresholds::new(&self.config.bands, space.total);

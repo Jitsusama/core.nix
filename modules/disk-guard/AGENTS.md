@@ -4,7 +4,8 @@ A Rust daemon that keeps a machine's disks from filling, taking only what
 regenerates, cheapest first, and never what a build or a person is using. It
 runs twice: `disk-guard system`, a root service that owns what lies outside
 every home, and `disk-guard user` in each account, which owns the home.
-[`nixos.nix`][1] and [`home.nix`][2] render each one's config and run it.
+[`nixos.nix`][1] and [`darwin.nix`][3] render the machine's config and run
+it under systemd or launchd, and [`home.nix`][2] the account's.
 
 ## How It Decides
 
@@ -54,6 +55,11 @@ every home, and `disk-guard user` in each account, which owns the home.
   stopping when the moment ends. An account's guard on the same filesystem
   asks it to collect rather than collecting itself; with no system daemon
   answering, it collects with `nix store gc --max` from urgent.
+- **A Mac.** The same daemons run under launchd, asking macOS through
+  `crate::sys`, which is `linux.rs` or `macos.rs`. Nothing hears who opens a
+  file there without Apple's entitlement, so no older build is dated or
+  offered; nothing freezes a writer yet; there's no scope for a linking run;
+  and Time Machine's local snapshots are thinned from urgent on.
 
 ## Where Things Live
 
@@ -65,12 +71,14 @@ every home, and `disk-guard user` in each account, which owns the home.
 | `src/survey.rs`           | each source's candidates                                 |
 | `src/anchor.rs`           | removal that never leaves its root                       |
 | `src/activity.rs`, `locks.rs` | whether something is in use                          |
-| `src/host.rs`, `linux.rs` | the machine the guard runs on                            |
+| `src/host.rs`, `linux.rs`, `macos.rs` | the machine the guard runs on, through `crate::sys` |
+| `src/procargs.rs`, `pmset.rs` | what macOS says, parsed where Linux's tests reach it |
 | `src/daemon.rs`, `serve.rs` | a daemon's step and its loop                           |
 | `src/socket.rs`, `vouch.rs` | what the two daemons say to each other                 |
 | `src/garbage.rs`, `generations.rs`, `dedupe.rs` | Nix's garbage, generations and linking |
-| `src/replaced.rs`, `opens.rs` | older builds, and the watch that dates them      |
-| `src/writers.rs`, `freezer.rs` | who writes most, and freezing them through systemd |
+| `src/replaced.rs`, `opens.rs`, `unwatched.rs` | older builds, and the watch that dates them, or a Mac's lack of one |
+| `src/writers.rs`, `freeze.rs`, `freezer.rs` | who writes most, and freezing them through systemd |
+| `src/desktop.rs`, `notifier.rs` | notices and power saving over D-Bus, or on a Mac |
 | `tests/guard/`            | the scenarios, one file per module                       |
 
 ## Working on It
@@ -87,7 +95,10 @@ root formats the Rust as it formats everything else.
 - A scenario never reaches the machine's own Nix, systemd or desktop. Any
   config a test steps a daemon with names a fake or missing `nix.bin` and
   `nix.store`, and a system config a fake `dedupe.systemd_run`: the defaults
-  name the real ones, and once ran a real `nix store gc` from a test. After
+  name the real ones, and once ran a real `nix store gc` from a test. A
+  stub never falls back to a program by bare name either, since `PATH`
+  finds the real one: a stub of an unconfined run once ran the real
+  `systemd-run`. After
   adding anything that runs a program by default, point the default at a
   script that logs its calls and run every scenario: nothing may call it.
 - A test that waits on a thread to show nothing happened gives it time to,
@@ -99,3 +110,4 @@ root formats the Rust as it formats everything else.
 
 [1]: nixos.nix
 [2]: home.nix
+[3]: darwin.nix

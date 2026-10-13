@@ -71,6 +71,7 @@ quietly stopped holding.
 | `nix-collects-before-the-disk-fills` | Nix collects garbage during a build that fills the disk |
 | `resolved-is-set-per-network` | a laptop leaves resolved's global DNS settings as they ship |
 | `disk-guard-stays-in-the-background` | the disk guard yields to the account, and a command overrunning its memory never stops it |
+| `the-mac-guards-its-disk` | a Mac's guards run under launchd, with a Mac's paths and nothing to confine a run |
 
 ### The Shell's Logic
 

@@ -168,6 +168,7 @@
       };
 
       darwinModules = {
+        disk-guard = ./modules/disk-guard/darwin.nix;
         fonts = ./modules/fonts/system.nix;
         home-manager = moduleFrom ./modules/home-manager/darwin.nix { inherit home-manager; };
         homebrew = ./modules/homebrew/darwin.nix;

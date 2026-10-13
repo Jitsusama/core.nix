@@ -411,7 +411,7 @@ pub struct Dedupe {
     pub every: Span,
     /// What confines a run to a scope of its own.
     #[serde(default = "Dedupe::systemd_run")]
-    pub systemd_run: PathBuf,
+    pub systemd_run: Option<PathBuf>,
 }
 
 impl Dedupe {
@@ -419,8 +419,8 @@ impl Dedupe {
         Span(Duration::from_secs(7 * 86400))
     }
 
-    fn systemd_run() -> PathBuf {
-        PathBuf::from("/run/current-system/systemd/bin/systemd-run")
+    fn systemd_run() -> Option<PathBuf> {
+        Some(PathBuf::from("/run/current-system/systemd/bin/systemd-run"))
     }
 }
 
@@ -517,7 +517,7 @@ impl Config {
             Scope::System => {
                 let boot = rendered.boot.ok_or("the system daemon needs boot")?;
                 let dedupe = rendered.dedupe.unwrap_or_default();
-                for path in [&boot, &dedupe.systemd_run] {
+                for path in std::iter::once(&boot).chain(&dedupe.systemd_run) {
                     if !plain_absolute(path) {
                         return Err(format!("{} is not a plain absolute path", path.display()));
                     }

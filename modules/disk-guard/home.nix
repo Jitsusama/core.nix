@@ -78,6 +78,11 @@ let
   };
 
   podman = osConfig.virtualisation.podman or { };
+  inherit (pkgs.stdenv.hostPlatform) isDarwin isLinux;
+
+  # Predicates and worktree pruning ask git, which the guard finds on PATH
+  # as the account's own programs do.
+  path = lib.makeBinPath [ config.programs.git.package ];
 
   rendered = settings // {
     version = 1;
@@ -127,17 +132,18 @@ in
           path = harness.workspaces;
           inherit (harness) quests;
         };
+        # A Mac's /tmp and /var/tmp are links into /private.
         tmp = lib.mkDefault {
           kind = "temp";
-          path = "/tmp";
+          path = if isDarwin then "/private/tmp" else "/tmp";
         };
         var-tmp = lib.mkDefault {
           kind = "temp";
-          path = "/var/tmp";
+          path = if isDarwin then "/private/var/tmp" else "/var/tmp";
         };
         trash = lib.mkDefault {
           kind = "trash";
-          path = "${dataHome}/Trash";
+          path = if isDarwin then "${home}/.Trash" else "${dataHome}/Trash";
         };
         npm = lib.mkDefault (cache 10 "${home}/.npm/_cacache");
         pnpm = lib.mkDefault (cache 10 "${dataHome}/pnpm/store");
@@ -151,6 +157,26 @@ in
           }
         );
         sccache = lib.mkDefault (cache 60 "${cacheHome}/sccache");
+        # Xcode's builds, which it makes again as a target is.
+        derived-data = lib.mkIf isDarwin (
+          lib.mkDefault (cache 50 "${home}/Library/Developer/Xcode/DerivedData")
+        );
+        # Homebrew's downloads and the versions it upgraded past, which it
+        # prunes itself, weekly and from pressure on.
+        homebrew = lib.mkIf (osConfig.homebrew.enable or false) (
+          lib.mkDefault {
+            kind = "producer";
+            command = [
+              "${osConfig.homebrew.prefix}/bin/brew"
+              "cleanup"
+              "--prune=all"
+            ];
+            path = "${home}/Library/Caches/Homebrew";
+            every = "7d";
+            from = "pressure";
+            timeout = "10m";
+          }
+        );
         github = lib.mkIf config.programs.gh.enable (
           lib.mkDefault {
             kind = "finished";
@@ -172,13 +198,34 @@ in
     home.packages = [ package ];
     xdg.configFile."disk-guard/config.json".source = configFile;
 
-    systemd.user.services.disk-guard = {
+    launchd.agents.disk-guard = lib.mkIf isDarwin {
+      enable = true;
+      config = {
+        ProgramArguments = [
+          (lib.getExe package)
+          "user"
+          "--config"
+          "${configFile}"
+        ];
+        EnvironmentVariables.PATH = path;
+        RunAtLoad = true;
+        # Started again whenever it stops, but not more than every 30 s.
+        KeepAlive = true;
+        ThrottleInterval = 30;
+        # Whatever the account runs comes first, as background.slice does
+        # on Linux.
+        ProcessType = "Background";
+        # Where a Mac keeps an account's logs, there before the guard is.
+        StandardOutPath = "${home}/Library/Logs/disk-guard.log";
+        StandardErrorPath = "${home}/Library/Logs/disk-guard.log";
+      };
+    };
+
+    systemd.user.services.disk-guard = lib.mkIf isLinux {
       Unit.Description = "Keeps the account's disks from filling";
       Service = {
         ExecStart = "${lib.getExe package} user --config ${configFile}";
-        # Predicates and worktree pruning ask git, which the guard finds on
-        # PATH as the account's own programs do.
-        Environment = [ "PATH=${lib.makeBinPath [ config.programs.git.package ]}" ];
+        Environment = [ "PATH=${path}" ];
         # Whatever the account runs comes first: the guard's own passes
         # yield, and its notices wait for nothing.
         Slice = "background.slice";

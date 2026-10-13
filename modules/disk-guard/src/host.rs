@@ -143,7 +143,7 @@ impl Scan {
         };
         if stale {
             let taken = Instant::now();
-            let local = crate::linux::processes(&self.proc)?;
+            let local = crate::sys::processes(&self.proc)?;
             self.seen = Some((taken, self.vouched(local)));
         }
         Ok(self.seen.as_ref().map_or(&[], |(_, processes)| processes))
@@ -161,7 +161,7 @@ impl Looker for Scan {
     }
 
     fn waiters(&mut self, inodes: &[u64]) -> io::Result<Vec<i32>> {
-        crate::linux::lock_waiters(&self.locks, self.me, inodes)
+        crate::sys::lock_waiters(&self.locks, self.me, inodes)
     }
 }
 
@@ -182,11 +182,11 @@ impl Filesystem {
 
 impl Disk for Filesystem {
     fn space(&mut self) -> io::Result<Space> {
-        crate::linux::space(&self.path)
+        crate::sys::space(&self.path)
     }
 
     fn settle(&mut self) -> io::Result<()> {
-        crate::linux::settle(&self.path)
+        crate::sys::settle(&self.path)
     }
 
     fn now(&self) -> f64 {
