@@ -279,9 +279,6 @@ type Done = Result<i32, (i32, String)>;
 /// How often a daemon steps.
 const STEP_EVERY: Duration = Duration::from_secs(5);
 
-/// How often each account may ask the system daemon.
-const ASK_EVERY: Duration = Duration::from_millis(500);
-
 /// Runs a daemon until it's told to stop.
 fn daemon(
     env: &Env,
@@ -334,7 +331,13 @@ fn daemon(
             }
             let store = crate::pool::pool(&config.nix.store).ok();
             hearing = Some(
-                answering(&env.system_socket, &env.processes, ASK_EVERY, store).map_err(failed)?,
+                answering(
+                    &env.system_socket,
+                    &env.processes,
+                    crate::socket::ASK_EVERY,
+                    store,
+                )
+                .map_err(failed)?,
             );
             Places {
                 state: state.clone(),
@@ -390,13 +393,21 @@ fn explain(env: &Env, path: &Path, config: Option<PathBuf>, out: &mut dyn Write)
     };
     let mut guard = Guard::new(config, &places).map_err(failed)?;
     let tick = crate::linux::tick().map_err(failed)?;
+    let explained = guard.explain(&tick, path).map_err(failed)?;
+    let (_, unheard) = guard.unread();
     let used_as = |used: crate::activity::Use| match used {
         crate::activity::Use::Free => "by nothing".to_owned(),
         crate::activity::Use::Busy(pid) => format!("busy: process {pid} works in it"),
         crate::activity::Use::Occupied(pid) => format!("process {pid} sits in its tree"),
-        crate::activity::Use::Unknown(pid) => format!("maybe: process {pid} can't be read"),
+        crate::activity::Use::Unknown(pid) => match &unheard {
+            Some(why) => format!(
+                "maybe: process {pid} can't be read, and the system daemon couldn't be asked \
+                 ({why})"
+            ),
+            None => format!("maybe: process {pid} can't be read"),
+        },
     };
-    let (candidate, used) = match guard.explain(&tick, path).map_err(failed)? {
+    let (candidate, used) = match explained {
         Explained::Offered { candidate, used } => (candidate, used),
         Explained::Kept { path, used } => {
             writeln!(out, "{}: kept while it's used", path.display()).map_err(failed)?;

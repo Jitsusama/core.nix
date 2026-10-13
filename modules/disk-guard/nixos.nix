@@ -128,7 +128,10 @@ in
         LockPersonality = true;
         NoNewPrivileges = true;
         RestrictRealtime = true;
-        RestrictSUIDSGID = true;
+        # Not RestrictSUIDSGID: its filter can't read openat2's mode, so it
+        # refuses every openat2 as unimplemented, and the guard opens
+        # everything it removes with openat2 so nothing on the way can lead
+        # it out of its root. It never makes a set-id file to restrict.
         RestrictAddressFamilies = [ "AF_UNIX" ];
         SystemCallArchitectures = "native";
       };

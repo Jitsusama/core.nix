@@ -88,17 +88,30 @@ fn vouching(
     touching: Vec<disk_guard::activity::Process>,
     answers: usize,
 ) -> std::sync::mpsc::Receiver<()> {
-    let mut server = disk_guard::socket::Server::bind(socket, Duration::ZERO).unwrap();
+    vouching_each(socket, vec![touching; answers], Duration::ZERO)
+}
+
+/// A system daemon answering each ask with the next of `answers`, letting
+/// an account ask once `every`, and counting the asks it answers.
+fn vouching_each(
+    socket: &Path,
+    answers: Vec<Vec<disk_guard::activity::Process>>,
+    every: Duration,
+) -> std::sync::mpsc::Receiver<()> {
+    let mut server = disk_guard::socket::Server::bind(socket, every).unwrap();
     let (sender, asked) = std::sync::mpsc::channel();
     std::thread::spawn(move || {
-        for _ in 0..answers {
+        let mut answers = answers.into_iter();
+        // A refused ask takes a connection without an answer.
+        while answers.len() > 0 {
             server
                 .serve(&mut |_, _, responder| {
+                    let touching = answers.next().unwrap();
                     sender.send(()).unwrap();
                     responder.send(&disk_guard::socket::Reply::Answer(
                         disk_guard::vouch::Answer {
                             vouched: touching.iter().map(|p| (p.pid, p.start_ticks)).collect(),
-                            touching: touching.clone(),
+                            touching,
                         },
                     ))
                 })
@@ -148,16 +161,76 @@ fn the_systems_word_is_kept_as_long_as_a_scan_is_fresh() {
     let mut scan = vouched_scan(proc.path(), &socket, Duration::from_secs(3600));
     assert_eq!(scan.judge(Path::new(TARGET), None).unwrap(), Use::Busy(300));
     scan.moved();
-    hidden(proc.path(), 301, 90);
     assert_eq!(scan.judge(Path::new(TARGET), None).unwrap(), Use::Busy(300));
     assert_eq!(asked.try_iter().count(), 1, "asked once");
     let mut fresh = vouched_scan(proc.path(), &socket, Duration::ZERO);
     fs::remove_dir_all(proc.path().join("300")).unwrap();
+    hidden(proc.path(), 301, 90);
     assert_eq!(
         fresh.judge(Path::new(TARGET), None).unwrap(),
         Use::Unknown(301),
-        "a process started since the answer"
+        "a process the system didn't vouch for"
     );
+}
+
+#[test]
+fn a_process_started_since_the_answer_has_the_system_asked_again() {
+    let proc = tempfile::tempdir().unwrap();
+    hidden(proc.path(), 300, 77);
+    let socket = proc.path().join("socket");
+    let asked = vouching_each(
+        &socket,
+        vec![
+            vec![building(300, 77)],
+            vec![building(300, 77), building(301, 90)],
+        ],
+        Duration::ZERO,
+    );
+    let mut scan = vouched_scan(proc.path(), &socket, Duration::from_secs(3600));
+    assert_eq!(scan.judge(Path::new(TARGET), None).unwrap(), Use::Busy(300));
+    fs::remove_dir_all(proc.path().join("300")).unwrap();
+    hidden(proc.path(), 301, 90);
+    scan.moved();
+    assert_eq!(scan.judge(Path::new(TARGET), None).unwrap(), Use::Busy(301));
+    assert_eq!(asked.try_iter().count(), 2);
+}
+
+#[test]
+fn a_process_the_system_cant_vouch_for_has_it_asked_only_once() {
+    let proc = tempfile::tempdir().unwrap();
+    hidden(proc.path(), 300, 77);
+    hidden(proc.path(), 302, 95);
+    let socket = proc.path().join("socket");
+    let asked = vouching(&socket, vec![building(300, 77)], 2);
+    let mut scan = vouched_scan(proc.path(), &socket, Duration::from_secs(3600));
+    assert_eq!(scan.judge(Path::new(TARGET), None).unwrap(), Use::Busy(300));
+    scan.moved();
+    assert_eq!(scan.judge(Path::new(TARGET), None).unwrap(), Use::Busy(300));
+    assert_eq!(asked.try_iter().count(), 1, "asked once");
+}
+
+#[test]
+fn an_ask_refused_as_too_soon_is_asked_again_once_allowed() {
+    let proc = tempfile::tempdir().unwrap();
+    hidden(proc.path(), 300, 77);
+    let socket = proc.path().join("socket");
+    let asked = vouching_each(
+        &socket,
+        vec![vec![building(300, 77)], vec![building(300, 77)]],
+        Duration::from_millis(500),
+    );
+    // Another asker of the same account, as a plan beside the daemon is.
+    let mut first = vouched_scan(proc.path(), &socket, Duration::ZERO);
+    assert_eq!(
+        first.judge(Path::new(TARGET), None).unwrap(),
+        Use::Busy(300)
+    );
+    let mut second = vouched_scan(proc.path(), &socket, Duration::ZERO);
+    assert_eq!(
+        second.judge(Path::new(TARGET), None).unwrap(),
+        Use::Busy(300)
+    );
+    assert_eq!(asked.try_iter().count(), 2);
 }
 
 #[test]
