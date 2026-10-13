@@ -88,6 +88,22 @@ fn an_older_build_of_a_crate_is_replaced_and_the_newest_stays() {
     );
 }
 
+#[test]
+fn a_target_in_a_layout_it_doesnt_know_replaces_nothing() {
+    // Cargo's per-unit build layout, still behind a nightly flag, where
+    // each build has its own directory and its own deps. Nothing there
+    // says one replaced another, so two builds of a crate in different
+    // directories are never judged against each other.
+    let root = tempfile::tempdir().unwrap();
+    let target = root.path().join("target");
+    for digest in [OLD, NEW] {
+        let deps = target.join(format!("debug/build/alpha/{digest}/deps"));
+        artifact(&deps, &format!("libalpha-{digest}.rlib"), 1_000);
+        artifact(&deps, &format!("libalpha-{digest}.rmeta"), 1_000);
+    }
+    assert_eq!(replaced(&target), vec![]);
+}
+
 fn build(deps: &Path, written: f64) -> Build {
     Build {
         deps: deps.to_owned(),
