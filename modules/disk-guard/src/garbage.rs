@@ -47,6 +47,12 @@ pub struct Listing {
 /// listing to delete from.
 pub const GC_TIMEOUT: Duration = Duration::from_secs(10 * 60);
 
+/// What the `nix` command needs to be told before any of the commands the
+/// guard runs, which stock Nix still calls experimental and refuses
+/// unless the machine's own settings allow them. Where they're stable the
+/// words are taken without a complaint.
+pub const NIX_COMMAND: [&str; 2] = ["--extra-experimental-features", "nix-command"];
+
 /// Dead paths to delete together, in the order given.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Batch {
@@ -123,7 +129,9 @@ pub fn list(nix: &Path, idle: bool) -> Result<Vec<Dead>, String> {
         .collect();
     let mut dead = Vec::with_capacity(paths.len());
     for chunk in paths.chunks(CHUNK) {
-        let mut argv: Vec<&OsStr> = vec![nix.as_os_str(), "path-info".as_ref(), "--json".as_ref()];
+        let mut argv: Vec<&OsStr> = vec![nix.as_os_str()];
+        argv.extend(NIX_COMMAND.map(OsStr::new));
+        argv.extend(["path-info", "--json"].map(OsStr::new));
         argv.extend(chunk.iter().map(OsStr::new));
         dead.extend(parse(&ran(&argv, DESCRIBE_TIMEOUT, idle)?)?);
     }
@@ -151,7 +159,9 @@ pub fn delete(nix: &Path, paths: &[String], idle: bool) -> Result<(), String> {
         if left.is_empty() {
             return Ok(());
         }
-        let mut argv: Vec<&OsStr> = vec![nix.as_os_str(), "store".as_ref(), "delete".as_ref()];
+        let mut argv: Vec<&OsStr> = vec![nix.as_os_str()];
+        argv.extend(NIX_COMMAND.map(OsStr::new));
+        argv.extend(["store", "delete"].map(OsStr::new));
         argv.extend(left.iter().map(|path| OsStr::new(path.as_str())));
         let (ok, said) = output(&argv, DELETE_TIMEOUT, idle)?;
         if ok {

@@ -740,9 +740,11 @@ impl Guard {
             action: Action::Run {
                 root: store.clone(),
                 source: GARBAGE.to_owned(),
-                argv: [&nix, "store", "gc", "--max", &max]
-                    .map(|word| word.to_string())
-                    .to_vec(),
+                argv: std::iter::once(&*nix)
+                    .chain(crate::garbage::NIX_COMMAND)
+                    .chain(["store", "gc", "--max", &max])
+                    .map(str::to_owned)
+                    .collect(),
                 timeout: GC_TIMEOUT,
             },
             device,

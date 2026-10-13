@@ -113,7 +113,8 @@ impl Store {
         script(
             "nix",
             format!(
-                "case \"$1 $2\" in\n\
+                "[ \"$1 $2\" = '--extra-experimental-features nix-command' ] || exit 9\nshift 2\n\
+                 case \"$1 $2\" in\n\
                  'path-info --json') shift 2; printf '{{'; sep=''\n\
                    for p in \"$@\"; do read t s < \"$p/meta\"\n\
                      printf '%s\"%s\":{{\"narSize\":%s,\"registrationTime\":%s,\"references\":[]}}' \
