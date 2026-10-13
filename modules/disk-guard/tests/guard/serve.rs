@@ -2,7 +2,7 @@ use crate::procs::{link, stat, text};
 use disk_guard::config::Config;
 use disk_guard::daemon::{Guard, Places};
 use disk_guard::notices::Change;
-use disk_guard::serve::{Desk, answering, hold, senses, steps, stopping};
+use disk_guard::serve::{Desk, Unheard, answering, hold, senses, steps, stopping};
 use disk_guard::socket::{Reply, Request, ask};
 use std::fs;
 use std::path::Path;
@@ -227,6 +227,26 @@ fn the_desktop_is_told_once_when_a_disk_comes_under_pressure() {
     // The first pass finds nothing in the empty trash, so it ends short.
     assert_eq!(summaries.len(), 1, "{summaries:?} {said}");
     assert!(summaries[0].ends_with("short of room"), "{summaries:?}");
+}
+
+#[test]
+fn a_desktop_refusing_the_same_way_is_told_of_once_until_it_hears_again() {
+    let mut unheard = Unheard::default();
+    let refused = |why: &str| Err(why.to_owned());
+    assert_eq!(
+        unheard.said(refused("no one listens")).as_deref(),
+        Some("no one listens")
+    );
+    assert_eq!(unheard.said(refused("no one listens")), None);
+    assert_eq!(
+        unheard.said(refused("it broke")).as_deref(),
+        Some("it broke")
+    );
+    assert_eq!(unheard.said(Ok(())), None);
+    assert_eq!(
+        unheard.said(refused("it broke")).as_deref(),
+        Some("it broke")
+    );
 }
 
 #[test]

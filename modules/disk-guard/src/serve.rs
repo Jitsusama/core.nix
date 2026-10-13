@@ -109,6 +109,24 @@ pub fn answering(
     Ok(hearing)
 }
 
+/// Why the desktop last refused a notice, so a refusal said once isn't
+/// said again on every pass: a session with no notification server would
+/// otherwise fill its journal with it.
+#[derive(Debug, Default)]
+pub struct Unheard {
+    last: Option<String>,
+}
+
+impl Unheard {
+    /// What to say of how the desktop took a notice, if anything.
+    pub fn said(&mut self, told: Result<(), String>) -> Option<String> {
+        let why = told.err();
+        let changed = why != self.last;
+        self.last = why.clone();
+        why.filter(|_| changed)
+    }
+}
+
 /// Steps `guard` until `wait`, given how long to wait, says to stop. A
 /// step that fails is told of on `err` and the next goes on, since what
 /// failed (a filesystem gone, a full disk refusing the status file) may
@@ -120,13 +138,14 @@ pub fn steps(
     desk: &mut dyn Desk,
     err: &mut dyn Write,
 ) {
+    let mut unheard = Unheard::default();
     loop {
         let stepped = crate::linux::tick().and_then(|tick| {
             let before = guard.status(tick.wall);
             guard.step(&tick, &senses(desk.saving()))?;
             let change = crate::notices::change(&before, &guard.status(tick.wall));
             if let Some(change) = change
-                && let Err(why) = desk.tell(&change)
+                && let Some(why) = unheard.said(desk.tell(&change))
             {
                 let _ = writeln!(err, "disk-guard: telling the desktop: {why}");
             }
