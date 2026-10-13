@@ -225,6 +225,54 @@ fn a_directory_that_took_the_name_meanwhile_keeps_its_own_mode() {
 }
 
 #[test]
+fn restoring_never_overwrites_a_file_that_took_the_name() {
+    let root = sandbox();
+    let target = target(root.path());
+    let dir = Dir::open(&target).unwrap();
+    let detached = dir.detach(&["criterion"]).unwrap();
+    let trash = target.join(detached.name());
+    fs::write(target.join("CACHEDIR.TAG"), "theirs").unwrap();
+    assert!(detached.restore().is_err());
+    assert_eq!(
+        fs::read_to_string(target.join("CACHEDIR.TAG")).unwrap(),
+        "theirs"
+    );
+    assert_eq!(listing(&trash), ["CACHEDIR.TAG"], "ours stays in the trash");
+    assert_eq!(
+        listing(&target),
+        ["CACHEDIR.TAG", "criterion", "debug", "trash"]
+    );
+}
+
+#[test]
+fn emptying_never_enters_a_subvolume_or_mount_and_leaves_it_whole() {
+    let root = sandbox();
+    let target = target(root.path());
+    if !crate::pool::on_btrfs(&target) {
+        eprintln!("skipped: {} isn't on Btrfs", target.display());
+        return;
+    }
+    crate::pool::subvolume(&target.join("debug"), "held");
+    fs::write(target.join("debug/held/precious"), "keep").unwrap();
+    let dir = Dir::open(&target).unwrap();
+    let detached = dir.detach(&["criterion"]).unwrap();
+    let trash = target.join(detached.name());
+    let emptied = detached.empty();
+    assert!(
+        emptied
+            .as_ref()
+            .is_err_and(|error| error.to_string().contains("another filesystem")),
+        "{emptied:?}"
+    );
+    assert_eq!(
+        fs::read_to_string(trash.join("debug/held/precious")).unwrap(),
+        "keep"
+    );
+    assert!(!trash.join("CACHEDIR.TAG").exists(), "the rest goes");
+    fs::remove_dir_all(&trash).unwrap();
+}
+
+#[test]
 fn a_trash_left_behind_is_found_and_never_moved_into_another() {
     let root = sandbox();
     let target = target(root.path());
