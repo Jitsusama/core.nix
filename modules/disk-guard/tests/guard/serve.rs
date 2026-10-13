@@ -49,7 +49,7 @@ fn the_system_daemon_answers_for_what_the_asker_owns() {
     // Beneath what's asked about, but root's.
     sitting(&proc, 701, Path::new("/proc"));
     let socket = root.join("socket");
-    answering(&socket, &proc, Duration::ZERO).unwrap();
+    answering(&socket, &proc, Duration::ZERO, None).unwrap();
     let request = Request::Processes {
         roots: vec![root.join("src"), "/proc".into()],
     };
@@ -63,6 +63,58 @@ fn the_system_daemon_answers_for_what_the_asker_owns() {
     assert_eq!(told.touching[0].cwd.as_deref(), Some(mine.as_path()));
     let again = answer(&request);
     assert_eq!(again.vouched.len(), 2, "it goes on answering");
+}
+
+#[test]
+fn the_system_daemon_hears_who_watches_its_store_and_passes_on_collects() {
+    use disk_guard::band::Band;
+    use std::os::unix::fs::MetadataExt;
+    let dir = tempfile::tempdir().unwrap();
+    let root = fs::canonicalize(dir.path()).unwrap();
+    let socket = root.join("socket");
+    let device = fs::metadata(&root).unwrap().dev();
+    let hearing = answering(&socket, &root, Duration::ZERO, Some(device)).unwrap();
+    let watching = Request::Watching {
+        paths: vec![root.clone(), "/proc".into()],
+    };
+    assert_eq!(
+        ask(&socket, &watching, Duration::from_secs(5)).unwrap(),
+        Reply::Collects(vec![root.clone()]),
+        "/proc holds no store"
+    );
+    assert!(hearing.spoken.lock().unwrap().contains_key(&device));
+    assert!(
+        !hearing
+            .spoken
+            .lock()
+            .unwrap()
+            .contains_key(&fs::metadata("/proc").unwrap().dev())
+    );
+    let asking = socket.clone();
+    let asked = root.clone();
+    let collected = std::thread::spawn(move || {
+        let collect = Request::Collect {
+            path: asked,
+            band: Band::Urgent,
+        };
+        ask(&asking, &collect, Duration::from_secs(10))
+    });
+    let (path, band, responder) = hearing
+        .collects
+        .recv_timeout(Duration::from_secs(5))
+        .unwrap();
+    assert_eq!((path, band), (root.clone(), Band::Urgent));
+    responder.send(&Reply::Collected("reached".to_owned()));
+    assert_eq!(
+        collected.join().unwrap().unwrap(),
+        Reply::Collected("reached".to_owned())
+    );
+    let elsewhere = Request::Collect {
+        path: "/proc".into(),
+        band: Band::Urgent,
+    };
+    let refused = ask(&socket, &elsewhere, Duration::from_secs(5)).unwrap_err();
+    assert!(refused.to_string().contains("no garbage"), "{refused}");
 }
 
 fn guard(root: &Path) -> Guard {

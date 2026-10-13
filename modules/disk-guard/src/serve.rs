@@ -1,16 +1,19 @@
 //! Running the daemons: one per scope, stepping until told to stop, and
 //! the system daemon answering over its socket for the processes a user
-//! daemon can't read.
+//! daemon can't read, and hearing user daemons that drive its passes.
 
-use crate::daemon::{Guard, Senses};
+use crate::daemon::{Guard, Hearing, Senses};
 use crate::moments::Power;
 use crate::notices::Change;
 use crate::socket::{Reply, Request, Server};
 use crate::vouch;
+use std::collections::HashMap;
+use std::fs;
 use std::fs::{File, OpenOptions};
 use std::io::{self, Write};
-use std::os::unix::fs::OpenOptionsExt;
+use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex, mpsc};
 use std::time::Duration;
 
 /// Takes the lock that keeps one daemon to a state directory, or None
@@ -30,12 +33,26 @@ pub fn hold(state: &Path) -> io::Result<Option<File>> {
     }
 }
 
-/// Answers on `socket`, from a thread of its own, which processes read
-/// from `proc` touch what each asker owns, each account at most once
-/// `every`.
-pub fn answering(socket: &Path, proc: &Path, every: Duration) -> io::Result<()> {
+/// Answers on `socket`, from a thread of its own, each account asking each
+/// kind of request at most once `every`: which processes read from `proc`
+/// touch what the asker owns; which of the filesystems a user daemon
+/// watches hold the store, on device `store`, noting that it spoke for
+/// them; and a collect there, handed to the guard through what it hears.
+pub fn answering(
+    socket: &Path,
+    proc: &Path,
+    every: Duration,
+    store: Option<u64>,
+) -> io::Result<Hearing> {
     let mut server = Server::bind(socket, every)?;
     let proc: PathBuf = proc.to_owned();
+    let spoken = Arc::new(Mutex::new(HashMap::new()));
+    let (passing, collects) = mpsc::channel();
+    let hearing = Hearing {
+        spoken: Arc::clone(&spoken),
+        collects,
+    };
+    let device = |path: &Path| fs::metadata(path).ok().map(|meta| meta.dev());
     std::thread::Builder::new()
         .name("answering".to_owned())
         .spawn(move || {
@@ -50,7 +67,36 @@ pub fn answering(socket: &Path, proc: &Path, every: Duration) -> io::Result<()> 
                             }
                             Err(error) => Reply::Error(error.to_string()),
                         },
-                        _ => Reply::Error("not asked of this daemon yet".to_owned()),
+                        Request::Watching { paths } => {
+                            let held: Vec<PathBuf> = paths
+                                .into_iter()
+                                .filter(|path| store.is_some() && device(path) == store)
+                                .collect();
+                            if let (Some(store), false) = (store, held.is_empty()) {
+                                let mut spoken = spoken
+                                    .lock()
+                                    .unwrap_or_else(|poisoned| poisoned.into_inner());
+                                spoken.insert(store, std::time::Instant::now());
+                            }
+                            Reply::Collects(held)
+                        }
+                        Request::Collect { path, band } => {
+                            if store.is_none() || device(&path) != store {
+                                Reply::Error(format!(
+                                    "no garbage is collected on {}",
+                                    path.display()
+                                ))
+                            } else {
+                                // Answered by the guard once its pass ends.
+                                if let Err(mpsc::SendError((_, _, responder))) =
+                                    passing.send((path, band, responder))
+                                {
+                                    responder
+                                        .send(&Reply::Error("the guard has stopped".to_owned()));
+                                }
+                                return;
+                            }
+                        }
                     };
                     responder.send(&reply);
                 });
@@ -61,7 +107,7 @@ pub fn answering(socket: &Path, proc: &Path, every: Duration) -> io::Result<()> 
                 }
             }
         })?;
-    Ok(())
+    Ok(hearing)
 }
 
 /// Steps `guard` until `wait`, given how long to wait, says to stop. A

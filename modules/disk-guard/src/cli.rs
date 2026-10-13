@@ -11,7 +11,7 @@ use serde_json::Value;
 use std::ffi::OsString;
 use std::fs;
 use std::io::{self, Write};
-use std::os::unix::fs::DirBuilderExt;
+use std::os::unix::fs::{DirBuilderExt, MetadataExt};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
@@ -298,6 +298,7 @@ fn daemon(
             format!("a {name} daemon already runs with {}", state.display()),
         ));
     };
+    let mut hearing = None;
     let places = match scope {
         Scope::User => Places {
             state: state.clone(),
@@ -309,7 +310,14 @@ fn daemon(
             if let Some(dir) = env.system_socket.parent() {
                 fs::create_dir_all(dir).map_err(failed)?;
             }
-            answering(&env.system_socket, &env.processes, ASK_EVERY).map_err(failed)?;
+            let store = config.system.as_ref().and_then(|system| {
+                fs::metadata(&system.garbage.store)
+                    .ok()
+                    .map(|meta| meta.dev())
+            });
+            hearing = Some(
+                answering(&env.system_socket, &env.processes, ASK_EVERY, store).map_err(failed)?,
+            );
             Places {
                 state: state.clone(),
                 status: Some(env.system_status.clone()),
@@ -321,6 +329,9 @@ fn daemon(
     // Only the user daemon has a session to show a notice in.
     let mut desk = crate::desktop::Buses::new(config.notify && scope == Scope::User);
     let mut guard = Guard::new(config, &places).map_err(failed)?;
+    if let Some(hearing) = hearing {
+        guard.hear(hearing);
+    }
     steps(&mut guard, STEP_EVERY, &mut wait, &mut desk, err);
     Ok(FINE)
 }

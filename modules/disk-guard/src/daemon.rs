@@ -14,12 +14,14 @@ use crate::journal::{self, Journal, Journaled, Line};
 use crate::moments::{Power, Pressure};
 use crate::pass::{Disk, End, Goal, Learned, Outcome, Reclaimer, pass};
 use crate::plan::{Candidate, Class};
+use crate::socket::{Reply, Responder};
 use crate::state::{self, Memory};
 use crate::survey::{Action, Offer, World, named, survey};
 use crate::units::Size;
 use serde::Serialize;
 use std::cell::Cell;
 use std::collections::BTreeMap;
+use std::collections::HashMap;
 use std::ffi::OsString;
 use std::fs;
 use std::io;
@@ -27,6 +29,7 @@ use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::mpsc::{self, Receiver, TryRecvError};
+use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 /// What the machine is doing, read by the caller each step.
@@ -81,6 +84,8 @@ const LISTING_PRESSED: f64 = 3600.0;
 const LISTING_RETRY: f64 = 3600.0;
 /// The most paths deleted in one go, so one refused path costs little.
 const MOST_PER_BATCH: usize = 300;
+/// How long a user daemon's word holds a filesystem's passes for it.
+const SPOKEN_FOR: std::time::Duration = std::time::Duration::from_secs(60);
 
 /// Where a guard keeps and reads things.
 #[derive(Clone, Debug, PartialEq)]
@@ -120,10 +125,21 @@ pub struct Guard {
     listing_begun: Option<f64>,
     /// A listing under way on its own thread, and when it began.
     listing_out: Option<(f64, Listening)>,
+    /// What a system daemon hears from user daemons.
+    hearing: Option<Hearing>,
 }
 
 /// Where a listing on its own thread sends the dead paths, or why not.
 type Listening = Receiver<Result<Vec<Dead>, String>>;
+
+/// What a system daemon hears from user daemons through its socket.
+pub struct Hearing {
+    /// When a user daemon last spoke for each filesystem, by device.
+    pub spoken: Arc<Mutex<HashMap<u64, Instant>>>,
+    /// The collects asked for: a path on the filesystem, the band to take
+    /// its garbage as, and the connection to answer on.
+    pub collects: Receiver<(PathBuf, Band, Responder)>,
+}
 
 /// What the status file says, for the desktop's disk piece and
 /// `disk-guard status`.
@@ -221,6 +237,7 @@ impl Guard {
             listing,
             listing_path,
             listing_out: None,
+            hearing: None,
         })
     }
 
@@ -268,11 +285,16 @@ impl Guard {
                 tick.monotonic < rest.until
                     && matches!(decision, Decision::Reach(band) if band <= rest.band)
             });
-            if decision != Decision::Rest && !resting {
+            // A user daemon on this filesystem asks for the garbage in its
+            // turn; the system's own upkeep goes on.
+            let driven =
+                matches!(decision, Decision::Reach(_)) && spoken_for(&self.hearing, device);
+            if decision != Decision::Rest && !resting && !driven {
                 due.push((device, decision, thresholds));
             }
         }
         self.list_garbage(tick.wall, spare);
+        self.collects(tick);
         let passed = !due.is_empty();
         if passed {
             self.passes(tick, &due)?;
@@ -316,6 +338,47 @@ impl Guard {
             })?;
         }
         Ok(())
+    }
+
+    /// Hears user daemons from now on.
+    pub fn hear(&mut self, hearing: Hearing) {
+        self.hearing = Some(hearing);
+    }
+
+    /// Answers each collect asked for since the last step.
+    fn collects(&mut self, tick: &Tick) {
+        let asked: Vec<_> = match &self.hearing {
+            Some(hearing) => hearing.collects.try_iter().collect(),
+            None => return,
+        };
+        for (path, band, responder) in asked {
+            let reply = match self.collect(tick, &path, band) {
+                Ok(end) => Reply::Collected(ending(&end)),
+                Err(why) => Reply::Error(why),
+            };
+            responder.send(&reply);
+        }
+    }
+
+    /// A pass of only the garbage on the filesystem holding `path`, in
+    /// `band`, for the user daemon driving its order.
+    fn collect(&mut self, tick: &Tick, path: &Path, band: Band) -> Result<End, String> {
+        let device = fs::metadata(path)
+            .map_err(|error| format!("{}: {error}", path.display()))?
+            .dev();
+        let mount = match (self.store(), self.watched.get(&device)) {
+            (Some((_, store)), Some(watched)) if store == device => watched.path.clone(),
+            _ => return Err(format!("no garbage is collected on {}", path.display())),
+        };
+        let space = crate::linux::space(&mount).map_err(|error| error.to_string())?;
+        let thresholds = Thresholds::new(&self.config.bands, space.total);
+        let here = self.garbage_offers(tick);
+        // Garbage takes no process to judge, so the scan is never read.
+        let me = std::process::id();
+        let mut scan = Scan::new(&self.processes, Path::new("/proc/locks"), me, FRESH);
+        let decision = Decision::Reach(band);
+        self.pass_on(tick, mount, &here, decision, thresholds, &mut scan)
+            .map_err(|error| error.to_string())
     }
 
     /// Takes a listing of Nix's garbage that has finished, keeping it for
@@ -838,6 +901,20 @@ fn paths(source: &Source) -> Vec<&Path> {
         | Source::Podman { path, .. } => vec![path.as_path()],
         Source::Finished { .. } => Vec::new(),
     }
+}
+
+/// Whether a user daemon spoke for the filesystem within the minute, so it
+/// drives that filesystem's passes.
+fn spoken_for(hearing: &Option<Hearing>, device: u64) -> bool {
+    hearing.as_ref().is_some_and(|hearing| {
+        let spoken = hearing
+            .spoken
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        spoken
+            .get(&device)
+            .is_some_and(|at| at.elapsed() < SPOKEN_FOR)
+    })
 }
 
 /// A reclaimer for a pass that can wait, which gives way once the disk or

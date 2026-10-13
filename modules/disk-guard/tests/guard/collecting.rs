@@ -1,12 +1,19 @@
 //! The system daemon collecting Nix's garbage, against a fake store and a
 //! fake nix that does to it what Nix would.
 
+use disk_guard::band::Band;
 use disk_guard::clock::Tick;
 use disk_guard::config::Config;
-use disk_guard::daemon::{Guard, Places, Senses};
+use disk_guard::daemon::{Guard, Hearing, Places, Senses};
 use disk_guard::moments::{Power, Pressure};
+use disk_guard::socket::Responder;
+use std::collections::HashMap;
 use std::fs;
+use std::io::Read;
+use std::os::unix::fs::MetadataExt;
+use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
+use std::sync::{Arc, Mutex, mpsc};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 const CALM: Senses = Senses {
@@ -135,6 +142,27 @@ impl Store {
         .unwrap()
     }
 
+    /// Has `guard` hear that a user daemon spoke for the store's filesystem
+    /// `ago` since, giving where to ask it to collect.
+    fn spoken_for(
+        &self,
+        guard: &mut Guard,
+        ago: Duration,
+    ) -> mpsc::Sender<(PathBuf, Band, Responder)> {
+        let device = fs::metadata(self.root.join("store")).unwrap().dev();
+        let spoken = HashMap::from([(device, Instant::now().checked_sub(ago).unwrap())]);
+        let (asking, collects) = mpsc::channel();
+        guard.hear(Hearing {
+            spoken: Arc::new(Mutex::new(spoken)),
+            collects,
+        });
+        asking
+    }
+
+    fn gc_ran(&self) -> bool {
+        self.log().iter().any(|line| line.starts_with("gc "))
+    }
+
     fn log(&self) -> Vec<String> {
         let log = fs::read_to_string(self.root.join("log")).unwrap_or_default();
         log.lines().map(str::to_owned).collect()
@@ -192,6 +220,45 @@ fn a_listing_is_kept_for_the_next_guard() {
         .filter(|line| line.starts_with("list"))
         .count();
     assert_eq!(lists, 1, "a day old at most, so not listed again");
+}
+
+#[test]
+fn a_filesystem_a_user_daemon_speaks_for_is_collected_when_it_asks() {
+    let store = Store::new();
+    let old = store.dead("aaa-old", 10.0 * DAY, 4096);
+    let mut guard = store.guard(store.config("100%", "100%"));
+    let asking = store.spoken_for(&mut guard, Duration::ZERO);
+    store.step_until(&mut guard, |store| {
+        store.root.join("state/garbage.json").exists()
+    });
+    assert!(
+        old.exists(),
+        "the user daemon drives the order: {:?}",
+        store.log()
+    );
+    assert!(!store.gc_ran());
+    let (mut ours, theirs) = UnixStream::pair().unwrap();
+    asking
+        .send((
+            store.root.join("store"),
+            Band::Urgent,
+            Responder::new(theirs),
+        ))
+        .unwrap();
+    guard.step(&tick(), &CALM).unwrap();
+    assert!(!old.exists(), "{:?}", store.log());
+    let mut reply = String::new();
+    ours.read_to_string(&mut reply).unwrap();
+    assert!(reply.contains("collected"), "{reply}");
+}
+
+#[test]
+fn a_user_daemon_quiet_for_a_minute_leaves_the_system_to_pass_alone() {
+    let store = Store::new();
+    let mut guard = store.guard(store.config("100%", "100%"));
+    let _asking = store.spoken_for(&mut guard, Duration::from_secs(61));
+    guard.step(&tick(), &CALM).unwrap();
+    assert!(store.gc_ran(), "{:?}", store.log());
 }
 
 #[test]
