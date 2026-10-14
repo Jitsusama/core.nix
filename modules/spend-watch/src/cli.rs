@@ -138,7 +138,7 @@ fn command(args: Vec<String>) -> Result<String, String> {
             crate::findings::sort(&mut raised);
             let detected = began.elapsed();
             let status = crate::status::status(&picture, &raised);
-            let collection = crate::status::collection(&picture, &raised, &config);
+            let collection = crate::collection::collection(&picture, &raised, &config);
             let written = began.elapsed();
             eprintln!(
                 "read {:.0} ms, detected {:.0} ms, drawn {:.0} ms",

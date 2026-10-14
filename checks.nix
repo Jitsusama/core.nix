@@ -663,7 +663,7 @@ in
     '';
 
   # The AI spend piece and the launcher's collection of it read what
-  # spend-watch writes, from a day of a session's turns, and the states
+  # spend-watch writes, from a day of a session's turns on two models, and the states
   # tests/spend.qml writes by hand, through Quickshell itself, with niri, do
   # not disturb and the shortcuts stood in for.
   the-shell-reads-the-spend-watch =
@@ -685,7 +685,7 @@ in
         property var actions: [{ opens: "spend", chord: [{ text: "Super" }, { text: "U" }] }]
       '';
       turn =
-        ''{"type":"message","timestamp":"%s","message":{"role":"assistant","model":"opus",''
+        ''{"type":"message","timestamp":"%s","message":{"role":"assistant","model":"%s",''
         + ''"usage":{"input":10,"output":100,"cacheRead":1000,"cacheWrite":100,''
         + ''"cost":{"total":1.5}}}}\n'';
     in
@@ -697,7 +697,8 @@ in
       printf '{"type":"session","version":3,"id":"s1","timestamp":"%s","cwd":"/src/thing"}\n' \
         "$(at 90000)" > $log
       for hours in $(seq 24 -1 0); do
-        printf '${turn}' "$(at $((hours * 3600)))" >> $log
+        printf '${turn}' "$(at $((hours * 3600)))" opus >> $log
+        printf '${turn}' "$(at $((hours * 3600 + 60)))" sonnet >> $log
       done
       cat > config.json <<EOF
       {"sessions": "$PWD/sessions", "runs": "$PWD/runs.db", "registry": "$PWD/registry",
@@ -719,6 +720,33 @@ in
       cp ${shortcuts} Shortcuts.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+      timeout 60 ${lib.getExe' pkgs.quickshell "qs"} -p shell.qml
+      touch $out
+    '';
+
+  # A palette's row and its field keep their words apart and inside their
+  # edges however long they run, ending what doesn't fit in an ellipsis, as
+  # tests/rows.qml draws them through Quickshell in the theme's own face and
+  # sizes, at a panel's width.
+  palette-rows-keep-their-words-apart =
+    let
+      machine = graphical.config;
+      lights = pkgs.writeText "Lights.qml" ''
+        pragma Singleton
+        import Quickshell
+        import QtQuick
+        Singleton { property bool caps: false }
+      '';
+    in
+    pkgs.runCommandLocal "palette-rows-keep-their-words-apart" { } ''
+      cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
+      cp ${./modules/quickshell/Choice.qml} Choice.qml
+      cp ${./modules/quickshell/Prompt.qml} Prompt.qml
+      cp ${lights} Lights.qml
+      cp ${./tests/rows.qml} shell.qml
+      export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
+      mkdir -m 700 $XDG_RUNTIME_DIR
+      export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = machine.fonts.packages; }}
       timeout 60 ${lib.getExe' pkgs.quickshell "qs"} -p shell.qml
       touch $out
     '';

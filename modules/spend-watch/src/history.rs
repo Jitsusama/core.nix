@@ -12,11 +12,14 @@ use std::path::Path;
 use std::time::Duration;
 
 /// Bumped whenever a table's shape or meaning changes.
-pub const SCHEMA: i64 = 2;
+pub const SCHEMA: i64 = 3;
 
 /// What brings each older shape up to the next, where only columns were
 /// added: `UPGRADES[n - 1]` takes shape n to n + 1.
-const UPGRADES: [&str; 1] = ["ALTER TABLE caps ADD COLUMN resets REAL;"];
+const UPGRADES: [&str; 2] = [
+    "ALTER TABLE caps ADD COLUMN resets REAL;",
+    "ALTER TABLE health ADD COLUMN since REAL;",
+];
 
 const TABLES: &str = "
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -66,7 +69,8 @@ CREATE TABLE cap_events (
     feed TEXT NOT NULL, name TEXT NOT NULL, at REAL NOT NULL, kind TEXT NOT NULL,
     before REAL, after REAL, spent REAL NOT NULL, PRIMARY KEY (feed, name, at, kind));
 CREATE TABLE health (feed TEXT NOT NULL, source TEXT NOT NULL, state TEXT NOT NULL,
-    message TEXT NOT NULL, sign_in TEXT, at REAL NOT NULL, PRIMARY KEY (feed, source));
+    message TEXT NOT NULL, sign_in TEXT, at REAL NOT NULL,
+    since REAL, PRIMARY KEY (feed, source));
 CREATE TABLE actions (feed TEXT NOT NULL, id TEXT NOT NULL, name TEXT NOT NULL,
     run TEXT NOT NULL, fits TEXT NOT NULL, PRIMARY KEY (feed, id));
 CREATE TABLE reads (feed TEXT NOT NULL, source TEXT NOT NULL, at REAL NOT NULL,
@@ -354,17 +358,23 @@ mod tests {
     }
 
     // The first shape, as a machine has it: its caps gain the column a
-    // reset is kept in, and its bill stays where it is.
+    // reset is kept in, its sources the one for how long they've stood,
+    // and its bill stays where it is.
     #[test]
     fn the_first_shape_is_brought_up_to_date_where_it_stands() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("history.db");
         {
             let db = Connection::open(&path).unwrap();
-            db.execute_batch(&TABLES.replace("\n    resets REAL,", ""))
-                .unwrap();
+            db.execute_batch(
+                &TABLES
+                    .replace("\n    resets REAL,", "")
+                    .replace("\n    since REAL,", ""),
+            )
+            .unwrap();
             db.execute_batch(
                 "INSERT INTO meta VALUES ('schema', '1');
+                 INSERT INTO health VALUES ('proxy', 'meter', 'fine', '', NULL, 1.0);
                  INSERT INTO caps VALUES ('proxy', 'weekly', 1.0, 'weekly cap', 15000, 168,
                      3948.29, 0.9, 4000, 'ok', NULL, 0);",
             )
@@ -377,6 +387,11 @@ mod tests {
             (caps.len(), caps[0].spent, caps[0].resets),
             (1, 3948.29, None)
         );
+        let since: Option<f64> = history
+            .db
+            .query_row("SELECT since FROM health", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(since, None);
         assert!(!dir.path().join("history.db.schema-1").exists());
     }
 

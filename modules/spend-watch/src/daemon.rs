@@ -340,7 +340,7 @@ pub fn pass(
     writer.write(
         &config.runtime()?,
         &shown,
-        &status::collection(&picture, &findings, config),
+        &crate::collection::collection(&picture, &findings, config),
     )?;
     // Telling is best effort: the shell has its figures whether or not a
     // notice could be given, as with no notification server yet at login.

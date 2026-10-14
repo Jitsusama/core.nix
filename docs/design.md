@@ -733,7 +733,7 @@ by them isn't done.
 | Documents                                 | zathura                  | proportional   | nothing | nothing | nothing | zathura's own keys | its bar and command line show only while they're asked for |
 | Music                                     | spotify, Quickshell      | both           | nothing | a note in the margin while any player plays; for a moment, the track as a notice | the mark's panel: the track, artist, album and player; pause, next, previous, the player's window, and pausing a second player | Play or pause the music, Play the next track, Play the previous track, on the media keys | the mark carries no words; a title wraps to two lines, then gives way |
 | Pairing                                   | tuple, Quickshell, niri  | both           | nothing | a phone in the margin while in a call, and wanting Joel while one rings; for a moment, who joined or left, and that he's the only one left; a ring, and a missed call kept | the mark's panel: how long, and who with or who's sharing; leave, share the screen, mute him in Tuple, copy the room's link; while ringing, show the call | the launcher's rows: show a ringing call, first at home; open the room and copy its link; join a copied call's link, first at home once copied; leave, share, mute; a tuple: link from the browser joins its room | the mark carries no words; its panel says how long and who with |
-| AI spend                                  | spend-watch, Quickshell  | both           | the overview's row, "ai": today's spend against usual ("$214 today · usual") | the margin's pull while a finding wants a look: a cap near, over or refused, an override ending, a cap lowered or lapsed, a burn, a source signed out, or the watch stopped; a notice once for each, at most three a week beside a cap's, and one line each morning | the mark's panel: how it stands, the day's likely end, the week, and how the figures were got; go to the session, ask for more, sign in, it's expected, read the week's report, show where it went | the launcher's rows: "spend", "cap" and a report by its words ("spend last week by quest"), Return copying it as markdown and the right arrow stepping into its rows; Super+U opens the collection: now, then the findings, then the reports | the row gives way before the network; the mark carries only its badge; while sharing, every amount gives way and the words stay |
+| AI spend                                  | spend-watch, Quickshell  | both           | the overview's row, "ai": today's spend against usual ("$214 today · usual") | the margin's pull while a finding wants a look: a cap near, over or refused, an override ending, a cap lowered or lapsed, a burn, a source signed out, or the watch stopped; a notice once for each, at most three a week beside a cap's, and one line each morning | the mark's panel: how it stands, the day's likely end, the week, and how the figures were got; go to the session, ask for more, sign in, it's expected, read the week's report, show where it went | the launcher's rows: "spend", "cap" and a report by its words ("spend last week by quest"), Return copying it as markdown and the right arrow stepping into its rows; Super+U opens the collection: what wants a look first, then today, the week, each cap, the next seven days and earlier, each a figure of a few words with the rest in the footer and its parts a step in (a period's cuts and their rows, a cap's changes and its sign-in), then what was found | the row gives way before the network; the mark carries only its badge; while sharing, every amount gives way and the words stay; a source that can't be read says nothing for its first fifteen minutes, as a machine waking finds its network, and no more than a note unless only a sign-in fixes it |
 | Chat, passwords, calls                    | their own settings       | proportional   |        |        |           |         |          |
 | The terminal                              | kitty                    | monospace      |        |        |           |         |          |
 | The prompt                                | prompt                   | monospace      |        |        |           |         |          |
@@ -764,6 +764,19 @@ as an exception with the reason.
 ## Decisions
 
 What each studio round settled, newest first, with the reason.
+
+- **The AI spend collection, laid out as the others** (2026-10-14, after
+  its first boot). The first collection drew whole sentences beside its
+  rows, which ran over the names, said the week three ways, and listed
+  every report and every source's error at the top, so it read as a mess
+  and a boot without network sent three notices. Now each row is a name
+  and a figure of a few words, its detail in the footer and its parts a
+  step in, each fact once: a cap's dollars in its footer, the basis only
+  when it's weaker than a bill. A finding that wants a look leads, since
+  the cursor starts there. The glyph says the kind of row: the dollar for
+  how things stand, a trend line for what was found, a tick for what's
+  expected, the chart for a report and the door for a sign-in. A source
+  down a moment is nothing, since boots and wakes outpace the network.
 
 - **What AI use costs** (2026-10-14, chosen without a round, to be seen).
   The question is asked at a glance and answered when something's wrong,

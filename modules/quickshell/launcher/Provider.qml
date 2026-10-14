@@ -14,7 +14,8 @@
 // what Return and Shift+Return run (run, below), whether running it waits
 // for the launcher to be gone (later) or happens while it still holds the
 // keys (now, for the clipboard), where it is (context), and what else can
-// be done to it (verbs, a function giving rows of the same shape). A verb
+// be done to it (verbs, a function giving rows of the same shape), nested
+// when those rows are things with verbs of their own, a level down. A verb
 // that needs a target asks for one (ask) from the rows `targets` gives,
 // each with a `note` for the footer, and is named on Return by `verb`.
 // One that needs words instead, such as a password, asks for them (ask)

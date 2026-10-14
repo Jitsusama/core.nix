@@ -39,8 +39,8 @@ Rectangle {
     Text {
         id: nameText
         x: Theme.space.l + Theme.space.xxl
-        width: Math.min(implicitWidth, right.x - x - Theme.space.xxl
-            - (row.count === "" ? 0 : countText.implicitWidth + Theme.space.m))
+        width: Math.max(0, Math.min(implicitWidth, right.x - x - Theme.space.xxl
+            - (row.count === "" ? 0 : countText.implicitWidth + Theme.space.m)))
         anchors.verticalCenter: parent.verticalCenter
         text: row.name
         textFormat: row.selected || row.quiet ? Text.PlainText : Text.StyledText
@@ -86,6 +86,11 @@ Rectangle {
                     // + keeps the same distance from both its keys.
                     leftPadding: index === 0 ? 0 : plus.width
                     rightPadding: modelData.wide ? Theme.space.xs : 0
+                    // What a row is never takes more than its share of the
+                    // row, so however long it runs it can't reach the name.
+                    width: row.chord.length > 0 ? implicitWidth
+                        : Math.min(implicitWidth, row.width * 0.45)
+                    elide: Text.ElideRight
                     text: modelData.text
                     color: Theme.muted
                     font.family: Theme.mono.family

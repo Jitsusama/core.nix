@@ -88,7 +88,9 @@ Something the person can do, offered beside the finding it `fits`: `cap`,
 How one source is: `fine`, `stalled`, `signed-out`, `optional` (a source
 not signed in for, which is no fault) or `error`, with a `message` and the
 `signIn` action that mends it. A source that's down says so here and the
-figures fall back a step; nothing else stops.
+figures fall back a step; nothing else stops. One down for less than a
+quarter of an hour isn't told, so a feed should say each read's state as
+it is, without holding back a failure it expects to pass.
 
 ### read
 

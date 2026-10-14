@@ -7,7 +7,7 @@
 use crate::config::Config;
 use crate::findings::{Action, Finding, Severity};
 use crate::history::History;
-use crate::money::{dollars, percent, whole};
+use crate::money::{dollars, grouped, percent, whole};
 use crate::picture::Picture;
 use crate::stats;
 use crate::time::{DAY, HOUR, Zone};
@@ -34,6 +34,7 @@ fn finding(
         dollars: 0.0,
         surprise: 1.0,
         badge: String::new(),
+        note: String::new(),
         session: None,
         quest: None,
         action: None,
@@ -72,6 +73,7 @@ pub fn said(picture: &Picture) -> Vec<Finding> {
                 format!("the provider says: {plain}"),
                 "Said by the provider's own meter.".into(),
             );
+            f.note = "said by the provider's meter".into();
             f.surprise = 0.5;
             f
         })
@@ -174,6 +176,7 @@ pub fn caps(picture: &Picture) -> Vec<Finding> {
                 .and_then(|clock| clock.frees_at)
                 .map(|at| format!("back {}", picture.zone.clock(at, now)))
                 .unwrap_or_else(|| percent(share));
+            f.note = format!("{} of {}", whole(view.spent), whole(allowance));
             f.dollars = view.spent - allowance;
             f.surprise = 3.0;
             f.cap = true;
@@ -192,11 +195,7 @@ pub fn caps(picture: &Picture) -> Vec<Finding> {
                     } else {
                         Severity::Warning
                     },
-                    format!(
-                        "{} chance of the {} within a day",
-                        percent(chance),
-                        cap.label
-                    ),
+                    format!("may reach the {} within a day", cap.label),
                     format!(
                         "{} of {} spent{}; by the forecast's paths.",
                         whole(view.spent),
@@ -210,7 +209,8 @@ pub fn caps(picture: &Picture) -> Vec<Finding> {
                         }
                     ),
                 );
-                f.badge = percent(share);
+                f.badge = format!("{} chance", percent(chance));
+                f.note = format!("{} of {} spent", whole(view.spent), whole(allowance));
                 f.dollars = allowance - view.spent;
                 f.surprise = 2.0;
                 f.cap = true;
@@ -221,10 +221,11 @@ pub fn caps(picture: &Picture) -> Vec<Finding> {
                     key("near"),
                     "caps",
                     Severity::Warning,
-                    format!("{} of the {}", percent(share), cap.label),
+                    format!("near the {}", cap.label),
                     format!("{} of {}{counted}.", whole(view.spent), whole(allowance)),
                 );
                 f.badge = percent(share);
+                f.note = format!("{} of {}", whole(view.spent), whole(allowance));
                 f.dollars = allowance - view.spent;
                 f.cap = true;
                 f.action = ask.clone();
@@ -239,7 +240,6 @@ pub fn caps(picture: &Picture) -> Vec<Finding> {
                 let lead = picture.lead;
                 if days_left > 0.0 && days_left <= lead.0 as f64 && after >= 0.5 {
                     let day = Zone::day_name(picture.zone.day(ends_at - 1.0));
-                    let weekday = &day[..3];
                     let mut f = finding(
                         key("ending"),
                         "caps",
@@ -248,15 +248,21 @@ pub fn caps(picture: &Picture) -> Vec<Finding> {
                         } else {
                             Severity::Warning
                         },
-                        format!("the {} override ends {day}", whole(allowance)),
+                        format!("the {} override is ending", cap.label),
                         format!(
-                            "At this pace, a {} chance the spend is over the {} that follows \
-                             the moment it ends.",
+                            "The {} override ends {day}. At this pace, a {} chance the spend \
+                             is over the {} that follows the moment it does.",
+                            whole(allowance),
                             percent(after),
                             whole(fallback)
                         ),
                     );
-                    f.badge = format!("ends {weekday}");
+                    f.badge = format!("ends {day}");
+                    f.note = format!(
+                        "{} likely over the {} after",
+                        percent(after),
+                        whole(fallback)
+                    );
                     f.dollars = view.spent;
                     f.surprise = 2.5;
                     f.cap = true;
@@ -306,7 +312,13 @@ pub fn caps(picture: &Picture) -> Vec<Finding> {
                 event.before.map_or("no limit".into(), whole)
             ),
         );
-        f.badge = event.after.map_or(String::new(), whole);
+        // The title says what it is now; the side, when.
+        f.badge = format!("at {}", picture.zone.clock(event.at, now));
+        f.note = format!(
+            "from {}, with {} spent",
+            event.before.map_or("no limit".into(), whole),
+            whole(event.spent)
+        );
         f.dollars = event.spent;
         f.surprise = 3.0;
         f.cap = true;
@@ -343,7 +355,12 @@ pub fn refusals(picture: &Picture) -> Vec<Finding> {
             picture.zone.clock(last.0, picture.now)
         ),
     );
-    f.badge = "refused".into();
+    f.badge = format!("last {}", picture.zone.clock(last.0, picture.now));
+    f.note = format!(
+        "{} refused since {}; your spend still shows",
+        recent.len(),
+        picture.zone.clock(recent[0].0, picture.now)
+    );
     f.surprise = 3.0;
     f.cap = true;
     f.action = offered(picture, "cap");
@@ -444,9 +461,16 @@ pub fn burn(picture: &Picture, history: &History, config: &Config) -> Result<Vec
         }
     }
     let today = zone.day(now);
+    // Only the days since the logs began, since a day before them scores
+    // nothing for want of spend rather than for spending as usual, and two
+    // weeks of those would make a day of logs a burn.
+    let began = by_minute
+        .keys()
+        .next()
+        .map_or(today, |minute| zone.day(*minute as f64 * 60.0));
     let past: Vec<f64> = daily_max
         .iter()
-        .filter(|(day, _)| **day < today)
+        .filter(|(day, _)| **day >= began && **day < today)
         .map(|(_, max)| *max)
         .collect();
     if past.len() < 14 {
@@ -513,12 +537,24 @@ pub fn burn(picture: &Picture, history: &History, config: &Config) -> Result<Vec
         ),
     );
     f.badge = format!("{}/h", whole(spent_hour));
+    f.note = format!("against a usual {}/h", whole(picture.expected_rate()));
     f.dollars = spent_hour;
     f.surprise = -(rate.log10());
     f.session = Some(top.clone());
     f.quest = quest;
     f.action = Some(go_to(&top));
     Ok(vec![f])
+}
+
+/// Why context was rebuilt, in the few words a footer has.
+fn cause_short(cause: &str) -> &'static str {
+    match cause {
+        "gap" => "after pauses",
+        "compaction" => "after compactions",
+        "fresh" => "for new sessions",
+        "model" => "after changing model",
+        _ => "for no reason found",
+    }
 }
 
 pub fn waste(picture: &Picture, config: &Config) -> Vec<Finding> {
@@ -536,8 +572,8 @@ pub fn waste(picture: &Picture, config: &Config) -> Vec<Finding> {
         return Vec::new();
     };
     let mut detail = format!(
-        "{} of this week's {} went on rebuilding context a session already had, the most of it \
-         ({}) {}.",
+        "{} of the last 7 days' {} went on rebuilding context a session already had, the most \
+         of it ({}) {}.",
         dollars(rebuilt),
         dollars(waste.spent * ratio),
         dollars(amount * ratio),
@@ -547,8 +583,14 @@ pub fn waste(picture: &Picture, config: &Config) -> Vec<Finding> {
         "waste:week".into(),
         "waste",
         Severity::Note,
-        format!("{} of context rebuilt this week", whole(rebuilt)),
+        "context rebuilt in 7 days".into(),
         String::new(),
+    );
+    f.badge = whole(rebuilt);
+    f.note = format!(
+        "{} of all spent, most {}",
+        percent(rebuilt / (waste.spent * ratio).max(rebuilt)),
+        cause_short(cause)
     );
     if let Some((session, worst)) = &waste.worst
         && worst * ratio >= config.detectors.floor
@@ -572,52 +614,88 @@ pub fn peers(picture: &Picture, config: &Config) -> Vec<Finding> {
     } else {
         1.0
     };
-    let recent: Vec<crate::waste::Work> = picture.work.clone();
-    crate::waste::outliers(
-        &recent,
+    let recent = &picture.work;
+    let found = crate::waste::outliers(
+        recent,
         config.detectors.false_discovery,
         config.detectors.floor / ratio.max(0.01),
-    )
-    .into_iter()
-    .take(3)
-    .map(|outlier| {
-        let work = &outlier.work;
-        let mut f = finding(
-            format!("peer:{}", work.session),
-            "peers",
-            Severity::Note,
-            match work
-                .quest
-                .as_deref()
-                .map(|quest| picture.title(picture.root(quest)))
-            {
-                Some(title) => {
-                    format!(
-                        "a session of {title} at {:.1} times the usual per turn",
-                        outlier.times
-                    )
-                }
-                None => format!("a session at {:.1} times the usual per turn", outlier.times),
-            },
-            format!(
-                "{} over {} turns; {} of its input from cache against {} usual. Held to a {} \
-                     false discovery rate across {} sessions.",
-                dollars(work.dollars * ratio),
-                work.turns,
-                percent(work.cached),
-                percent(outlier.usual_cached),
-                percent(config.detectors.false_discovery),
-                recent.len()
-            ),
-        );
-        f.dollars = outlier.excess * ratio;
-        f.surprise = -outlier.p.max(1e-12).log10();
-        f.session = Some(work.session.clone());
-        f.quest = work.quest.clone();
-        f.action = Some(go_to(&work.session));
-        f
-    })
-    .collect()
+    );
+    // A quest's sessions are one piece of work, so however many of them
+    // stand out it's one finding; a session no quest holds stands alone.
+    let mut groups: Vec<(String, Option<&str>, Vec<&crate::waste::Outlier>)> = Vec::new();
+    for outlier in &found {
+        let root = outlier
+            .work
+            .quest
+            .as_deref()
+            .map(|quest| picture.root(quest));
+        let key = match root {
+            Some(root) => format!("peer:quest:{root}"),
+            None => format!("peer:{}", outlier.work.session),
+        };
+        match groups.iter_mut().find(|(held, _, _)| *held == key) {
+            Some((_, _, members)) => members.push(outlier),
+            None => groups.push((key, root, vec![outlier])),
+        }
+    }
+    groups
+        .into_iter()
+        .take(3)
+        .filter_map(|(key, root, members)| {
+            let worst = *members.iter().max_by(|a, b| a.times.total_cmp(&b.times))?;
+            let spent: f64 = members.iter().map(|o| o.work.dollars).sum::<f64>() * ratio;
+            let turns: f64 = members.iter().map(|o| o.work.turns).sum();
+            let sessions = match members.len() {
+                1 => "one session".to_owned(),
+                n => format!("{n} sessions"),
+            };
+            let mut f = finding(
+                key,
+                "peers",
+                Severity::Note,
+                match root {
+                    Some(root) => format!("heavy turns in {}", picture.title(root)),
+                    None => "heavy turns in a session".into(),
+                },
+                format!(
+                    "{} at up to {:.1} times the usual per turn, {} over {} turns; the worst \
+                     took {} of its input from cache against {} usual. Held to a {} false \
+                     discovery rate across {} sessions.",
+                    capitalized(&sessions),
+                    worst.times,
+                    dollars(spent),
+                    grouped(turns as u64),
+                    percent(worst.work.cached),
+                    percent(worst.usual_cached),
+                    percent(config.detectors.false_discovery),
+                    recent.len()
+                ),
+            );
+            f.badge = format!("{:.1}\u{d7} usual", worst.times);
+            f.note = format!(
+                "{sessions}, {} over {} turns",
+                whole(spent),
+                grouped(turns as u64)
+            );
+            f.dollars = members.iter().map(|o| o.excess).sum::<f64>() * ratio;
+            f.surprise = members
+                .iter()
+                .map(|o| -o.p.max(1e-12).log10())
+                .fold(0.0, f64::max);
+            f.session = Some(worst.work.session.clone());
+            f.quest = root.map(str::to_owned);
+            f.action = Some(go_to(&worst.work.session));
+            Some(f)
+        })
+        .collect()
+}
+
+fn capitalized(text: &str) -> String {
+    let mut chars = text.chars();
+    match chars.next() {
+        Some(first) => first.to_uppercase().chain(chars).collect(),
+        None => String::new(),
+    }
 }
 
 /// A quest spending while it doesn't move: real money over the last week
@@ -643,18 +721,16 @@ pub fn stalled(picture: &Picture, config: &Config) -> Vec<Finding> {
                 format!("stalled:{}", quest.id),
                 "outcomes",
                 Severity::Note,
+                format!("still spending on {}", quest.title),
                 format!(
-                    "{} spent on {} while it hasn't moved",
-                    whole(spent),
-                    quest.title
-                ),
-                format!(
-                    "{} this week; its record last changed {quiet_days} days ago, with {} pull \
-                     requests.",
+                    "{} in the last 7 days; its record last changed {quiet_days} days ago, with \
+                     {} pull requests.",
                     dollars(spent),
                     quest.prs
                 ),
             );
+            f.badge = whole(spent);
+            f.note = format!("in 7 days; unchanged for {quiet_days} days");
             f.dollars = spent;
             f.quest = Some(quest.id.clone());
             out.push(f);
@@ -710,9 +786,9 @@ pub fn regimes(picture: &Picture) -> Vec<Finding> {
         "regimes",
         Severity::Note,
         format!(
-            "since {} a usual day is {}",
-            Zone::day_name(day),
-            whole(after)
+            "a usual day is {} since {}",
+            if after > before { "up" } else { "down" },
+            Zone::day_name(day)
         ),
         format!(
             "{} from {}; found by online changepoints on daily spend.",
@@ -720,6 +796,8 @@ pub fn regimes(picture: &Picture) -> Vec<Finding> {
             whole(before)
         ),
     );
+    f.badge = whole(after);
+    f.note = format!("from {} before", whole(before));
     f.dollars = (after - before).abs() * 7.0;
     f.surprise = 2.0;
     vec![f]
@@ -804,6 +882,8 @@ pub fn mix(picture: &Picture, config: &Config) -> Vec<Finding> {
             percent(usual_share)
         ),
     );
+    f.badge = percent(top.1 / spent);
+    f.note = format!("against {} on most days", percent(usual_share));
     f.dollars = spent;
     f.surprise = 2.0;
     vec![f]
@@ -855,13 +935,11 @@ pub fn novelty(
             } else {
                 name.clone()
             };
-            // Something new that's spent little is only noted: a model
-            // tried once isn't worth a look in the margin.
-            let severity = if spent >= config.detectors.floor {
-                Severity::Warning
-            } else {
-                Severity::Note
-            };
+            // Something new that's spent little isn't worth a look: a
+            // model tried once for a few dollars.
+            if spent < config.detectors.floor {
+                continue;
+            }
             // A credential's key is its digest, never the credential.
             let named = if what == "credential" {
                 digest(&name)
@@ -871,14 +949,16 @@ pub fn novelty(
             let mut f = finding(
                 format!("new:{column}:{named}"),
                 "novelty",
-                severity,
-                format!("a new {what} spending under your name: {shown}"),
+                Severity::Warning,
+                format!("a new {what}: {shown}"),
                 format!(
                     "{} in the last day; not billed in the thirty days before. Expected, or worth \
                      a look?",
                     dollars(spent)
                 ),
             );
+            f.badge = whole(spent);
+            f.note = "in a day, after none in the thirty before".into();
             f.dollars = spent;
             f.surprise = 2.0;
             out.push(f);
@@ -907,11 +987,18 @@ pub fn novelty(
             Severity::Warning,
             "pi spending somewhere this machine doesn't know".into(),
             format!(
-                "{} this week from sessions with no log here, {} of pi's spend against {} usual.",
+                "{} in the last 7 days from sessions with no log here, {} of pi's spend against \
+                 {} usual.",
                 dollars(week),
                 percent(week_share),
                 percent(month_share)
             ),
+        );
+        f.badge = whole(week);
+        f.note = format!(
+            "{} of pi's spend against {} usual",
+            percent(week_share),
+            percent(month_share)
         );
         f.dollars = week;
         f.surprise = 2.0;
@@ -950,31 +1037,47 @@ pub fn spikes(picture: &Picture) -> Vec<Finding> {
         } else {
             Severity::Note
         },
-        format!("on course for {} today", whole(median)),
+        "on course for the costliest day in eight weeks".into(),
         format!(
-            "The most of any day in eight weeks was {}.",
+            "On course for {} today; the most of any day in eight weeks was {}.",
+            whole(median),
             whole(costliest)
         ),
     );
+    f.badge = whole(median);
+    f.note = format!("the most before was {}", whole(costliest));
     f.dollars = median - costliest;
     f.surprise = 1.5;
     vec![f]
 }
 
-/// A feed's source that can't give its figures. Optional sources aren't
-/// findings; signing in follows the sign-in door.
+/// How long a source stands unreadable before it's a finding: past the
+/// minute or two a machine waking or booting spends before its network.
+const OUTAGE: f64 = 15.0 * 60.0;
+
+/// A feed's source that can't give its figures, once it's stood so a
+/// while. One that fails is a note, since other sources carry the figures
+/// meanwhile; one that wants a sign-in is a warning, since only the
+/// person can fix it, and signing in follows the sign-in door. Optional
+/// sources aren't findings.
 pub fn health(picture: &Picture) -> Vec<Finding> {
     let mut out = Vec::new();
     for source in &picture.sources {
         let (severity, title) = match source.state.as_str() {
             "signed-out" => (
                 Severity::Warning,
-                format!("{} wants a sign-in", source.name),
+                format!("the {} wants a sign-in", source.name),
             ),
-            "error" => (Severity::Warning, format!("{} can't be read", source.name)),
-            "stalled" => (Severity::Note, format!("{} has gone quiet", source.name)),
+            "error" => (Severity::Note, format!("the {} can't be read", source.name)),
+            "stalled" => (
+                Severity::Note,
+                format!("the {} has gone quiet", source.name),
+            ),
             _ => continue,
         };
+        if picture.now - source.since < OUTAGE {
+            continue;
+        }
         let mut f = finding(
             format!("health:{}:{}", source.feed, source.name),
             "health",
@@ -1002,6 +1105,17 @@ pub fn health(picture: &Picture) -> Vec<Finding> {
                 name: a.name.clone(),
                 run: a.run.clone(),
             });
+        f.badge = format!("since {}", picture.zone.clock(source.since, picture.now));
+        // What failed, without the error underneath it, which the detail
+        // keeps; or, when the feed says no more than the title does, what
+        // it means for the figures.
+        f.note = source
+            .message
+            .split(": ")
+            .next()
+            .filter(|said| !said.is_empty() && !said.eq_ignore_ascii_case(&f.title))
+            .unwrap_or("other sources fill in")
+            .to_owned();
         f.surprise = 0.5;
         out.push(f);
     }
@@ -1095,6 +1209,21 @@ mod tests {
         assert_eq!(found[0].session.as_deref(), Some("hot"));
     }
 
+    // A day of logs at a steady three dollars an hour knows no usual hour
+    // yet, so it's no burn at any hour of the next day.
+    #[test]
+    fn a_day_of_logs_is_no_burn() {
+        let history = History::memory();
+        let start = NOW - 2.0 * DAY;
+        for half in 0..96 {
+            turn(&history, "s", start + half as f64 * 1800.0, 1.5);
+        }
+        for hour in 0..24 {
+            let now = start + DAY + hour as f64 * 3600.0;
+            assert!(burns_at(&history, now).is_empty(), "a burn at {hour}");
+        }
+    }
+
     // A burn from six to seven in the evening, when a usual hour allows a
     // dollar, still scores high at half past eight; but nothing is burning.
     #[test]
@@ -1122,8 +1251,41 @@ mod tests {
         crate::feed::store(history, "proxy", &record, NOW).unwrap();
     }
 
-    // A model new this day is a warning past the floor and a note below it;
-    // one billed the month before is nothing new.
+    fn health_at(history: &History, source: &str, state: &str, message: &str, at: f64) {
+        let line = serde_json::json!({
+            "v": 1, "kind": "health", "source": source, "state": state, "message": message,
+        });
+        let record = crate::feed::parse(&line.to_string()).unwrap();
+        crate::feed::store(history, "proxy", &record, at).unwrap();
+    }
+
+    // A machine booting before its network finds every source unreadable
+    // for a moment, which is nothing to say. One unreadable a quarter of
+    // an hour is a note, saying since when, and never a notice.
+    #[test]
+    fn a_source_down_a_moment_is_nothing() {
+        let history = History::memory();
+        let failed = "the meter couldn't be reached: io: failed to lookup address information";
+        health_at(&history, "meter", "error", failed, NOW - 60.0);
+        health_at(&history, "meter", "error", failed, NOW);
+        let config = config();
+        assert!(health(&Picture::read(&history, &config, NOW).unwrap()).is_empty());
+        let later = NOW + 15.0 * 60.0;
+        health_at(&history, "meter", "error", failed, later);
+        let found = health(&Picture::read(&history, &config, later).unwrap());
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert_eq!(found[0].severity, Severity::Note);
+        assert_eq!(found[0].title, "the meter can't be read");
+        assert_eq!(found[0].badge, "since 14:29");
+        assert_eq!(found[0].note, "the meter couldn't be reached");
+        // Fine for a moment between starts the count again.
+        health_at(&history, "meter", "fine", "live", later + 30.0);
+        health_at(&history, "meter", "error", failed, later + 60.0);
+        assert!(health(&Picture::read(&history, &config, later + 60.0).unwrap()).is_empty());
+    }
+
+    // Something new is a warning past the floor; below it, it's too
+    // little to mention. One billed the month before is nothing new.
     #[test]
     fn something_new_is_weighed_by_what_it_spent() {
         let history = History::memory();
@@ -1136,7 +1298,7 @@ mod tests {
         let found = novelty(&picture, &history, &config).unwrap();
         let severity = |key: &str| found.iter().find(|f| f.key == key).map(|f| f.severity);
         assert_eq!(severity("new:model:big"), Some(Severity::Warning));
-        assert_eq!(severity("new:model:small"), Some(Severity::Note));
+        assert_eq!(severity("new:model:small"), None);
         assert_eq!(severity("new:model:old"), None);
     }
 }

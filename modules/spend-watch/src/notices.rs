@@ -403,6 +403,7 @@ mod tests {
             dollars: 1.0,
             surprise: 1.0,
             badge: String::new(),
+            note: String::new(),
             session: None,
             quest: None,
             action: None,

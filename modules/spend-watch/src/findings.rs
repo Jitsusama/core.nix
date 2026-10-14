@@ -59,6 +59,10 @@ pub struct Finding {
     pub surprise: f64,
     /// The margin's short form: "$180/h", "91%".
     pub badge: String,
+    /// Why, in a few words, for the launcher's footer: "usual $40/h for
+    /// this hour". The detail says it whole.
+    #[serde(default)]
+    pub note: String,
     pub session: Option<String>,
     pub quest: Option<String>,
     pub action: Option<Action>,
@@ -128,8 +132,11 @@ pub fn settle(history: &History, raised: Vec<Finding>, now: f64) -> Result<Vec<F
         )
         .map_err(fail)?;
     }
+    // A source is read again or it isn't, with no noise to settle, so its
+    // finding clears on the first pass that doesn't raise it.
     db.execute(
-        "UPDATE findings SET cleared = ?1 WHERE cleared IS NULL AND updated < ?2",
+        "UPDATE findings SET cleared = ?1 WHERE cleared IS NULL
+         AND (updated < ?2 OR (detector = 'health' AND updated < ?1))",
         params![now, now - SETTLE],
     )
     .map_err(fail)?;
@@ -225,6 +232,7 @@ mod tests {
             dollars,
             surprise: 2.0,
             badge: String::new(),
+            note: String::new(),
             session: None,
             quest: None,
             action: None,
@@ -232,6 +240,17 @@ mod tests {
             started: 0.0,
             marked: false,
         }
+    }
+
+    // A source that can be read again is said to be fine at once: its
+    // finding doesn't wait out the hour a burn's does.
+    #[test]
+    fn a_source_back_clears_at_once() {
+        let history = History::memory();
+        let mut down = finding("health:proxy:meter", Severity::Note, 0.0);
+        down.detector = "health".into();
+        settle(&history, vec![down], 0.0).unwrap();
+        assert!(settle(&history, vec![], 30.0).unwrap().is_empty());
     }
 
     #[test]
