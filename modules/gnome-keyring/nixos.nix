@@ -71,11 +71,13 @@ in
   services.gnome.gnome-keyring.enable = true;
   environment.systemPackages = [ (lib.hiPrio activation) ];
 
-  # It starts with the session but doesn't hold it back: a slow TPM can take
-  # over a second to unseal the password, and niri needs no secrets.
+  # It starts with the account's manager, beside the session rather than
+  # ahead of it: a slow TPM can take seconds to unseal the password, and niri
+  # needs no secrets. A target waits for every unit it wants, so the session's
+  # own targets mustn't want it.
   systemd.user.services.gnome-keyring = {
     description = "GNOME Keyring, unlocked with its password from the TPM";
-    wantedBy = [ "graphical-session-pre.target" ];
+    wantedBy = [ "default.target" ];
     serviceConfig = {
       # Ready once it holds the Secret Service's name, which it takes only
       # after unlocking, so nothing in the session reaches a locked keyring.

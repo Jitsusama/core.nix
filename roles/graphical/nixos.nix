@@ -1,14 +1,14 @@
 # A NixOS machine with a screen in front of Joel: fonts, sound, Bluetooth for
 # headphones and mice, a keyring the TPM unlocks, 1Password, and niri, started
-# at boot by greetd. Every account gets niri's configuration, kitty, Quickshell
-# for the launcher, notifications and lock screen, which swayidle locks, a
-# backlight that follows the light, and GTK programs and the monospace default
-# in the theme. It also gets the
-# programs Joel views, draws, reads, watches, listens and pairs with:
-# swayimg, which opens pictures and drawings, zathura, which opens
-# documents, GIMP, Inkscape, mpv, which opens video, the camera, Spotify and
-# Tuple. The compositor and sound get the CPU and memory before anything Joel
-# starts.
+# at boot by greetd, with the console in the theme of the account it signs
+# in. Every account gets niri's configuration, kitty, Quickshell for the
+# launcher, notifications and lock screen, which swayidle locks, a backlight
+# that follows the light, and GTK programs and the monospace default in the
+# theme. It also gets the programs Joel views, draws, reads, watches,
+# listens and pairs with: swayimg, which opens pictures and drawings,
+# zathura, which opens documents, GIMP, Inkscape, mpv, which opens video,
+# the camera, Spotify and Tuple. The compositor and sound get the CPU and
+# memory before anything Joel starts.
 { nixosModules, homeModules }:
 {
   imports = [
@@ -16,6 +16,7 @@
     nixosModules.base
     nixosModules.bluetooth
     nixosModules.camera
+    nixosModules.console
     nixosModules.fonts
     nixosModules.gnome-keyring
     nixosModules.greetd

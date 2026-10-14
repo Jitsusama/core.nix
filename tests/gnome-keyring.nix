@@ -43,9 +43,10 @@ pkgs.testers.runNixOSTest {
         )
         return machine.succeed("su - joel -c " + shlex.quote(environment + command))
 
-    # The compositor doesn't wait for the keyring, which comes up beside it.
+    # The account's manager starts its default target as the account signs
+    # in, which brings the keyring up beside the compositor.
     def log_in():
-        as_joel("systemctl --user start compositor.service")
+        as_joel("systemctl --user start default.target compositor.service")
         keyring_is_up()
 
     def keyring_is_up():
@@ -74,6 +75,13 @@ pkgs.testers.runNixOSTest {
     machine.wait_for_unit("multi-user.target")
     machine.succeed("loginctl enable-linger joel")
     machine.wait_for_unit("user@1000.service")
+
+    # A target waits for every unit it wants, so the keyring wanted by one
+    # of the session's would hold the compositor back while the TPM unseals.
+    with subtest("the session doesn't wait for the keyring"):
+        for target in ["graphical-session-pre.target", "graphical-session.target"]:
+            after = as_joel(f"systemctl --user show -p After --value {target}")
+            t.assertNotIn("gnome-keyring.service", after.split(), f"{target} waits for it")
 
     with subtest("the keyring's password is sealed to the TPM at the first login"):
         log_in()

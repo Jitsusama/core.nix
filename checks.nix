@@ -847,6 +847,39 @@ in
         && lib.hasInfix "ctrl+shift+c in terminal: Copy, Copy again" refusals
       );
 
+  # The console wears the theme of the account the machine signs in, in the
+  # console's order, and follows it when the theme changes. A machine that
+  # names no account keeps the kernel's colours.
+  the-console-wears-the-theme =
+    let
+      wearing =
+        theme:
+        (bareNixos [
+          self.nixosModules.workstation
+          self.nixosModules.graphical
+          {
+            jitsusama.login.account = "someone";
+            home-manager.users.someone.jitsusama.theme.name = theme;
+          }
+        ]).config.console.colors;
+      file = theme: builtins.fromTOML (builtins.readFile ./modules/theme/${theme}.toml);
+      pigment =
+        theme: role:
+        lib.toLower (lib.removePrefix "#" (file theme).palette.${(file theme).terminal.${role}});
+      follows =
+        theme:
+        let
+          colours = map lib.toLower (wearing theme);
+        in
+        lib.length colours == 16
+        && lib.elemAt colours 0 == pigment theme "black"
+        && lib.elemAt colours 1 == pigment theme "red"
+        && lib.elemAt colours 15 == pigment theme "bright_white";
+    in
+    holds "the-console-wears-the-theme"
+      "The console's colours aren't the account's theme, in the console's order."
+      (follows "osaka-jade" && follows "flexoki-light" && graphical.config.console.colors == [ ]);
+
   # Picking another theme changes everything the account draws: the desktop
   # rendered in Flexoki Light keeps none of Osaka Jade's colours anywhere in
   # its files, so no surface was left behind in the old one.

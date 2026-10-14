@@ -116,6 +116,11 @@ in
     "uas"
     "sd_mod"
   ];
+  # The GPU's driver, with the firmware it asks for, so it takes the screen
+  # from the firmware's framebuffer before the disk's PIN is asked for rather
+  # than just after, which blanked the screen, and the greeter, which waits
+  # for the GPU, starts as soon as the disk is open.
+  boot.initrd.kernelModules = [ "xe" ];
   boot.kernelModules = [
     "kvm-intel"
     # thermald looks once, as it starts, for the power limits the CPU's own

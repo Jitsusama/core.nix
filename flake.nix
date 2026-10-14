@@ -193,6 +193,7 @@
         bluetooth = ./modules/bluetooth/nixos.nix;
         btrfs = ./modules/btrfs/nixos.nix;
         camera = ./modules/camera/nixos.nix;
+        console = ./modules/console/nixos.nix;
         coredump = ./modules/coredump/nixos.nix;
         disk-guard = ./modules/disk-guard/nixos.nix;
         disko = moduleFrom ./modules/disko/nixos.nix { inherit disko; };
