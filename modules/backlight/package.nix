@@ -13,7 +13,7 @@ rustPlatform.buildRustPackage {
   };
   cargoLock.lockFile = ./Cargo.lock;
   meta = {
-    description = "Sets the screen's brightness for the light, and learns from the brightness picked";
+    description = "Sets the screen's brightness for the light, learning from what's picked";
     license = lib.licenses.mit;
     mainProgram = "backlight";
     platforms = lib.platforms.linux;
