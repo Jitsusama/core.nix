@@ -26,6 +26,7 @@
     homeModules.telnet
     homeModules.tree
     homeModules.tree-sitter
+    homeModules.vivid
     homeModules.yq
   ];
 }
