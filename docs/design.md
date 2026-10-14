@@ -716,7 +716,7 @@ by them isn't done.
 | Surface                                   | Module                   | Faces          | Tier 1 | Tier 2 | Behind it | Palette | Collapse |
 | ----------------------------------------- | ------------------------ | -------------- | ------ | ------ | --------- | ------- | -------- |
 | The boot menu                             | lanzaboote, systemd-boot | the firmware's |        |        |           |         |          |
-| The boot splash and unlock prompts        | Plymouth                 | both           |        |        |           |         |          |
+| The boot splash and unlock prompts        | Plymouth                 | both           | the machine's name, what's happening (the disk is locked, starting, restarting, shutting down), the prompt and what it wants: PIN, passphrase or recovery key | a refused one, framed in the alert colour, saying try again; a message the boot sends | Escape, Plymouth's log of the boot | nothing | nothing gives way; drawn at one or two to one by the screen's height, so the type stays sharp |
 | The console and emergency shell           | the console font         | console        |        |        |           |         |          |
 | The greeter                               | Quickshell, greetd       | both           | the time, the date, who's signing in, the session it starts | a refused password, what PAM says | Tab to the next account | the lock screen's | the boot's timings; the time stays |
 | The compositor                            | niri                     | none           |        |        |           |         |          |
