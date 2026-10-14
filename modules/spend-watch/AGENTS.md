@@ -44,6 +44,13 @@ feed speaks.
   its network comes; then a note, or a warning when only a sign-in mends
   it. It clears on the first pass that finds it back. The history keeps
   since when each source has been as it is, so a restart doesn't reset it.
+- **History.** A shape that only grows is brought up to date where it
+  stands; one that doesn't read is set aside under a name nothing holds
+  yet and built again, and each feed is told what's kept of its bill, none
+  of it then, so it tells the bill again. One a newer spend-watch keeps,
+  as when an older system boots again, is never touched: the watch holds,
+  says so in the margin and the collection, and carries on once it's a
+  shape it reads, or the newer one replaces it.
 - **Strings.** Each finding carries a title for its row, a badge of a few
   words beside it, a note for the launcher's footer and a detail for what's
   copied and told. `src/collection.rs` lays them out as the launcher's

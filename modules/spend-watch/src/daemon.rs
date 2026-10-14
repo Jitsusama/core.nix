@@ -56,7 +56,7 @@ struct Feed {
 }
 
 impl Feed {
-    fn start(&mut self, wake: &Sender<Wake>, pace: Pace) {
+    fn start(&mut self, wake: &Sender<Wake>, pace: Pace, kept: Option<String>) {
         // An attempt that can't even spawn counts as a quick stop.
         self.started = Instant::now();
         let mut command = Command::new(&self.config.command[0]);
@@ -94,6 +94,9 @@ impl Feed {
                     });
                 }
                 self.say(&feed::pace_line(pace));
+                if let Some(kept) = kept {
+                    self.say(&kept);
+                }
             }
             Err(error) => {
                 eprintln!(
@@ -418,9 +421,39 @@ fn weekly(
     status::write_atomic(&path, &text)
 }
 
+/// While a newer spend-watch keeps the history, as when an older system
+/// is booted again, says so where the shell looks and leaves it be,
+/// looking again at each heartbeat: the newer one replaces this when it's
+/// run, or the history is put back to a shape this one reads. Stopping
+/// instead would only be started again every few seconds by systemd.
+fn hold(config: &Config) -> Result<(), String> {
+    let path = config.history();
+    let mut writer = Writer::new();
+    let mut told = false;
+    while let Some(shape) = History::newer(&path) {
+        if !told {
+            eprintln!(
+                "{} is kept by a newer spend-watch, at shape {shape} where this one \
+                 reads up to {}, so it's left as it is until that one runs",
+                path.display(),
+                crate::history::SCHEMA
+            );
+            told = true;
+        }
+        writer.write(
+            &config.runtime()?,
+            &status::held(time::now()),
+            &crate::collection::held(shape),
+        )?;
+        std::thread::sleep(HEARTBEAT);
+    }
+    Ok(())
+}
+
 pub fn run(config: Config) -> Result<(), String> {
     let _lock = lock(&config.state)?;
     config.runtime()?;
+    hold(&config)?;
     let history = History::open(&config.history())?;
     let (wake, woken): (Sender<Wake>, Receiver<Wake>) = mpsc::channel();
     listen(&config.socket(), wake.clone())?;
@@ -485,7 +518,11 @@ pub fn run(config: Config) -> Result<(), String> {
         }
         for feed in &mut feeds {
             if feed.child.is_none() && Instant::now() >= feed.next {
-                feed.start(&wake, pace);
+                // Without it, a feed carries on from where it says it read.
+                let kept = feed::kept_line(&history, &feed.config.name)
+                    .map_err(|error| eprintln!("feed {}: {error}", feed.config.name))
+                    .ok();
+                feed.start(&wake, pace, kept);
             }
         }
         if last_harness.elapsed() >= HARNESS {

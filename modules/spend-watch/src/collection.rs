@@ -702,11 +702,63 @@ pub fn collection(
     }
 }
 
+/// The collection while a newer spend-watch keeps the history: one row
+/// saying so, the same while the screen is shared, since it holds no
+/// amount, and no reports to step into, since none were read, but the
+/// summary that answers "spend" at home, which says so too.
+pub fn held(shape: i64) -> Collection {
+    let mut made = line("held", "Watch on hold", "newer history");
+    made.note = "a newer spend-watch keeps it; run that one".into();
+    made.copy = format!(
+        "spend-watch is on hold: a newer one keeps its history, at shape {shape} \
+         where this one reads up to {}",
+        crate::history::SCHEMA
+    );
+    made.role = "warning".into();
+    let summary = Shown {
+        id: "summary".into(),
+        title: "AI spend".into(),
+        headline: "On hold: a newer spend-watch keeps the history".into(),
+        rows: Vec::new(),
+        markdown: format!("{}\n", made.copy),
+        words: String::new(),
+    };
+    Collection {
+        v: VERSION,
+        now: Vec::new(),
+        findings: vec![made.clone()],
+        more: Vec::new(),
+        quiet: vec![made],
+        reports: BTreeMap::from([("summary".to_owned(), summary)]),
+        periods: Vec::new(),
+        cuts: Vec::new(),
+        examples: Vec::new(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::history::History;
     use crate::time::HOUR;
+
+    #[test]
+    fn a_held_watch_says_why_and_nothing_else() {
+        let held = held(crate::history::SCHEMA + 1);
+        assert_eq!(held.findings.len(), 1);
+        assert_eq!(held.quiet, held.findings);
+        let row = &held.findings[0];
+        assert_eq!(
+            (row.role.as_str(), row.name.as_str()),
+            ("warning", "Watch on hold")
+        );
+        assert!(row.note.len() <= 45, "{}", row.note);
+        assert!(row.copy.contains("a newer one"), "{}", row.copy);
+        assert!(held.now.is_empty());
+        let ids: Vec<_> = held.reports.keys().collect();
+        assert_eq!(ids, ["summary"]);
+        assert!(!held.reports["summary"].headline.contains('$'));
+    }
 
     fn config() -> crate::config::Config {
         serde_json::from_value(serde_json::json!({
