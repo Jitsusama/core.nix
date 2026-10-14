@@ -55,8 +55,9 @@ let
     executable = drawn roles.program;
     unimportant = drawn roles.muted;
   };
+  file = pkgs.writeText "theme.yml" (builtins.toJSON theme);
   colours = pkgs.runCommand "ls-colors.zsh" { nativeBuildInputs = [ pkgs.vivid ]; } ''
-    echo "export LS_COLORS='$(vivid generate ${pkgs.writeText "theme.yml" (builtins.toJSON theme)})'" > $out
+    echo "export LS_COLORS='$(vivid generate ${file})'" > $out
   '';
 in
 {
