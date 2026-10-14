@@ -6,6 +6,7 @@
     homeModules.zsh
     homeModules.git
     homeModules.bat
+    homeModules.delta
     homeModules.broot
     homeModules.direnv
     homeModules.fzf

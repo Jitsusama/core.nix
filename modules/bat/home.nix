@@ -48,13 +48,16 @@ let
       (scope "Tag" [ "entity.name.tag" ] terminal.magenta)
       # Nix names every binding an attribute, so they stay plain text.
       (scope "Attribute" [ "entity.other.attribute-name" "variable.parameter" ] roles.text)
+      # A man page's options, what a reader scans it for.
+      (scope "Option" [ "entity.name.command-line-option" ] terminal.cyan)
       (scope "Operator" [ "keyword.operator" "punctuation" ] roles.muted)
       (scope "Heading" [ "markup.heading" "entity.name.section" ] roles.strong)
       (scope "Link" [ "markup.underline.link" ] terminal.cyan)
       (scope "Inserted" [ "markup.inserted" ] roles.success)
       (scope "Deleted" [ "markup.deleted" ] roles.alert)
       (scope "Changed" [ "markup.changed" ] roles.warning)
-      (scope "Invalid" [ "invalid" ] roles.alert)
+      # Nothing is marked invalid: delta colours a diff's lines out of their
+      # file, where a parser takes a stray brace for an error.
     ];
   };
 in
@@ -80,4 +83,12 @@ in
   };
 
   programs.zsh.shellAliases.cat = "bat";
+
+  # Man pages read through bat too, as plain text it colours: col strips the
+  # overstrikes man uses for bold, and MANROFFOPT keeps them from being
+  # written as escapes that col can't strip.
+  home.sessionVariables = {
+    MANPAGER = "sh -c 'col -bx | ${lib.getExe config.programs.bat.package} --language=man --plain'";
+    MANROFFOPT = "-c";
+  };
 }
