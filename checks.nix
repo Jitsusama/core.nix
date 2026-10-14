@@ -173,6 +173,9 @@ let
     # What an account's services make of the network coming late, changing
     # and networkd restarting shows only with both managers running.
     vm-network-revives-units = import ./tests/network-revive.nix { inherit self pkgs; };
+    # Which server timesyncd asks first shows only on a network that names
+    # one of its own.
+    vm-clock-keeps-time = import ./tests/clock.nix { inherit self pkgs; };
     # The greeter is all that stands between a logout and the desktop.
     vm-greeter-signs-in = import ./tests/greeter.nix { inherit self pkgs; };
     vm-boot-asks-in-the-theme = import ./tests/plymouth.nix { inherit self pkgs; };
