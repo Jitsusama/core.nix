@@ -1,7 +1,8 @@
-// Shows the screen's brightness for a moment whenever it changes, from the
-// keys or from anything else, as the same bar the volume uses. The kernel
-// sends a udev event every time a backlight's brightness is written, so this
-// listens for those rather than asking every so often.
+// Shows the screen's brightness for a moment whenever Joel picks one, as the
+// same bar the volume uses. The backlight daemon (modules/backlight) tells a
+// pick from its own changes for the light, and writes each pick to a file
+// this watches, so the bar shows for the keys and never while the screen
+// follows the room.
 import Quickshell
 import Quickshell.Io
 import QtQuick
@@ -9,42 +10,24 @@ import QtQuick
 Scope {
     id: root
 
-    // The sysfs directory of the backlight that changed last.
-    property string backlight: ""
     property real level: 0
     property bool shown: false
 
-    Process {
-        running: true
-        command: ["udevadm", "monitor", "--udev", "--subsystem-match=backlight"]
-
-        stdout: SplitParser {
-            // An event reads like this, after a header:
-            // UDEV  [160084.525157] change   /devices/…/intel_backlight (backlight)
-            onRead: line => {
-                const event = line.match(/ change +(\S+) \(backlight\)$/);
-                if (!event)
-                    return;
-                root.backlight = "/sys" + event[1];
-                brightness.reload();
-                maximum.reload();
-                root.level = parseInt(brightness.text()) / parseInt(maximum.text());
-                root.shown = true;
-                hide.restart();
-            }
+    FileView {
+        path: Quickshell.env("XDG_RUNTIME_DIR") + "/backlight-chosen"
+        watchChanges: true
+        blockLoading: true
+        printErrors: false
+        // The pick already made when the shell starts isn't news.
+        onFileChanged: {
+            reload();
+            const level = parseFloat(text());
+            if (isNaN(level))
+                return;
+            root.level = level;
+            root.shown = true;
+            hide.restart();
         }
-    }
-
-    FileView {
-        id: brightness
-        path: root.backlight ? root.backlight + "/brightness" : ""
-        blockLoading: true
-    }
-
-    FileView {
-        id: maximum
-        path: root.backlight ? root.backlight + "/max_brightness" : ""
-        blockLoading: true
     }
 
     Timer {

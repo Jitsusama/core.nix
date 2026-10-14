@@ -253,6 +253,13 @@ pkgs.testers.runNixOSTest {
         self.nixosModules.wifid
       ];
 
+      # The VM has no light sensor, so iio-sensor-proxy makes one up, which
+      # udev never starts it for.
+      systemd.services.iio-sensor-proxy = {
+        environment.FAKE_LIGHT_SENSOR = "1";
+        wantedBy = [ "multi-user.target" ];
+      };
+
       # The VM has neither a backlight nor a sound card, so it gets one of each
       # that drives nothing, which the kernel and PipeWire report as they do
       # the laptop's.
@@ -888,6 +895,31 @@ pkgs.testers.runNixOSTest {
           machine.succeed("grep -qx 80 /sys/class/backlight/stand-in/brightness")
           photograph("brightness")
           machine.wait_until_fails(in_session("niri msg layers | grep -q brightness"), timeout=10)
+
+      # The VM's light sensor is iio-sensor-proxy's fake, which reads 0 lux and
+      # one more every second from each start. Joel picks a dim screen in the
+      # dim light; as the light grows the screen follows it, and the bar, which
+      # is for his picks, stays away.
+      with subtest("the screen follows the light, and the bar shows only for picks"):
+
+          def light_heard():
+              found = "journalctl --user --unit=backlight --output=cat | grep -c '^hears ' || true"
+              return int(as_account(found))
+
+          def brightness():
+              return int(machine.succeed("cat /sys/class/backlight/stand-in/brightness"))
+
+          claims = light_heard()
+          machine.succeed("systemctl restart iio-sensor-proxy")
+          retry(lambda _: light_heard() > claims, timeout_seconds=30)
+          with told("drawn brightness"):
+              as_account("niri msg action spawn -- brightnessctl --class=backlight set 10%")
+          machine.wait_until_fails(in_session("niri msg layers | grep -q brightness"), timeout=10)
+          since = mark()
+          retry(lambda _: brightness() > 15, timeout_seconds=30)
+          after = f"--after-cursor={shlex.quote(since)}"
+          shell = as_account(f"journalctl --user --unit=quickshell --no-pager --output=cat {after}")
+          t.assertNotIn("drawn brightness", shell, "the bar showed for the light")
 
       with subtest("the charge shows when power goes and comes back, then goes"):
           # The kernel's stand-in has two supplies, mains and USB, and UPower

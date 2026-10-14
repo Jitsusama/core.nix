@@ -566,6 +566,8 @@ in
     ../theme/home.nix
     ../keys/home.nix
     ../camera/home.nix
+    # The brightness bar shows the picks the backlight daemon tells it of.
+    ../backlight/home.nix
   ];
 
   options.jitsusama.quickshell.overview.pieces = lib.mkOption {

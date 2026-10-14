@@ -1872,6 +1872,21 @@ in
           touch $out
         '';
 
+    # clippy finds nothing in the backlight daemon, its tests included.
+    backlight-passes-clippy =
+      (pkgs.callPackage ./modules/backlight/package.nix { }).overrideAttrs
+        (old: {
+          pname = "backlight-passes-clippy";
+          nativeBuildInputs = old.nativeBuildInputs ++ [ pkgs.clippy ];
+          buildPhase = ''
+            cargo clippy --all-targets --offline -- -D warnings
+          '';
+          doCheck = false;
+          installPhase = ''
+            touch $out
+          '';
+        });
+
     # clippy finds nothing in the guard, its scenarios included.
     disk-guard-passes-clippy =
       (pkgs.callPackage ./modules/disk-guard/package.nix { }).overrideAttrs

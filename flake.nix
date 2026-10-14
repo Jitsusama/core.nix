@@ -107,6 +107,7 @@
     in
     {
       homeModules = {
+        backlight = ./modules/backlight/home.nix;
         bat = ./modules/bat/home.nix;
         broot = ./modules/broot/home.nix;
         btop = ./modules/btop/home.nix;
@@ -187,6 +188,7 @@
       };
 
       nixosModules = {
+        backlight = ./modules/backlight/nixos.nix;
         bluetooth = ./modules/bluetooth/nixos.nix;
         btrfs = ./modules/btrfs/nixos.nix;
         camera = ./modules/camera/nixos.nix;
