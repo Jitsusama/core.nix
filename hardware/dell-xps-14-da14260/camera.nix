@@ -27,6 +27,66 @@ let
   });
   icamerasrc = pkgs.gst_all_1.icamerasrc-ipu75xa.override { ipu7x-camera-hal = hal; };
 
+  # Intel's IPU drivers, which hardware.ipu7 builds the ISP's module from. That
+  # module shares structs with the kernel's own IPU driver and is written for a
+  # kernel patched to match it, so the kernel patch and the module come from
+  # this one revision.
+  drivers = pkgs.fetchFromGitHub {
+    owner = "intel";
+    repo = "ipu7-drivers";
+    rev = "495acc90feb09d8008c0a6228fb8bb4c6415ca62";
+    hash = "sha256-a2hIJ4wMCHQeDb4gp+5pjLizJ/CCfA0JivVDWeqB4vY=";
+  };
+
+  # The kernel's IPU driver, patched as the ISP's module needs.
+  ipuPatches = [
+    {
+      # The ISP's module locks a mutex and sets a callback at the end of the
+      # kernel's device struct, which the kernel's driver doesn't have: it
+      # writes past the end of what the kernel allocated, into whatever lies
+      # next. From Intel's drivers, whose IoT release adds it to the kernel
+      # for the module; it also has the MMU wait for the firmware's running
+      # tasks before dropping their mappings.
+      name = "ipu7-fw-task-lock";
+      patch = "${drivers}/patch/v7.0.0_iot/0001-ipu7-Wait-ipu-fw-requests-to-clear.patch";
+    }
+    {
+      # Without it one failed wake leaves the ISP failed until the next boot,
+      # and unbinding the driver oopses holding the device's lock, so suspend
+      # and reboot hang. Written here; the patch says why.
+      name = "ipu7-survives-resume";
+      patch = ./ipu7-survives-resume.patch;
+    }
+  ];
+
+  # The ISP's module, built against the kernel's own headers rather than
+  # Intel's copies of them, so a struct can't be laid out differently on each
+  # side again: a field the kernel lacks fails the build instead. Every header
+  # the kernel also has is replaced, patched as the kernel is, and the build
+  # stops if the bus header, the one that drifted, wasn't among them.
+  psys = final: prev: {
+    ipu7-drivers = prev.ipu7-drivers.overrideAttrs (old: {
+      src = drivers;
+      patches = old.patches or [ ] ++ [
+        # Without it a resume that couldn't wake the ISP leaves its firmware
+        # unstarted on every open, and the camera dark, until the next boot.
+        # Written here; the patch says why.
+        ./ipu7-psys-authenticates.patch
+      ];
+      postPatch = old.postPatch or "" + ''
+        mkdir kernel
+        tar -xf ${final.kernel.src} -C kernel --strip-components=1 \
+          --wildcards '*/drivers/staging/media/ipu7/*'
+        ${lib.concatMapStrings (p: "patch -d kernel -p1 < ${p.patch}\n") ipuPatches}
+        for header in drivers/media/pci/intel/ipu7/*.h drivers/media/pci/intel/ipu7/abi/*.h; do
+          ours=kernel/drivers/staging/media/ipu7/''${header#drivers/media/pci/intel/ipu7/}
+          if [ -e "$ours" ]; then cp "$ours" "$header"; fi
+        done
+        cmp kernel/drivers/staging/media/ipu7/ipu7-bus.h drivers/media/pci/intel/ipu7/ipu7-bus.h
+      '';
+    });
+  };
+
   plugins = lib.makeSearchPathOutput "lib" "lib/gstreamer-1.0" [
     pkgs.gst_all_1.gstreamer.out
     pkgs.gst_all_1.gst-plugins-base
@@ -51,7 +111,10 @@ let
   ];
 in
 {
-  imports = [ ../../modules/camera/nixos.nix ];
+  imports = [
+    ../../modules/camera/nixos.nix
+    ../../modules/kernel/nixos.nix
+  ];
 
   # Pictures and videos are taken from the loopback, which the file names.
   jitsusama.camera.device = device;
@@ -64,6 +127,29 @@ in
   # measured at a few frames a second, so the camera service below runs the
   # relay instead.
   services.v4l2-relayd.instances.ipu7.enable = false;
+
+  boot.kernelPatches = ipuPatches ++ [
+    {
+      # The camera's privacy light stays off while it streams, since the
+      # bridge's firmware lights it only when it owns it. From the media list,
+      # and tested by Intel on this bridge.
+      name = "cvs-privacy-led";
+      patch = pkgs.fetchpatch {
+        name = "cvs-privacy-led.patch";
+        url = "https://patchwork.linuxtv.org/project/linux-media/patch/20261008-cvs-privacy-led-v1-1-b78d5c512cba@gmail.com/mbox/";
+        hash = "sha256-wr8GO6xBzuoLJe3zJP00f9AkC6YiNh4G0B+4bewhFbM=";
+      };
+    }
+    {
+      # The bridge's firmware sometimes answers a handover of the camera's
+      # link late, and the kernel took one late answer as a failure it never
+      # clears, so the camera gave black frames until the next boot. Written
+      # here; the patch says why.
+      name = "cvs-link-owner-wait";
+      patch = ./cvs-link-owner-wait.patch;
+    }
+  ];
+  jitsusama.kernel.packageOverlays = [ psys ];
 
   boot.extraModulePackages = [ config.boot.kernelPackages.v4l2loopback ];
   # The bridge carries the sensor's I2C over USB, so its drivers have to be up

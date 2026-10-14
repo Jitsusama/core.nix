@@ -1,0 +1,78 @@
+media: pci: intel: ipu7: psys: Authenticate on a wake that finds it undone
+
+The IPU authenticates the firmware at probe and at system resume,
+waking the PSYS to do it, and the PSYS skips starting its firmware on
+a wake that finds it unauthenticated. A system resume that couldn't
+wake the PSYS authenticates nothing, and every wake after it skips
+too, so the camera stays dark until the next boot. Authenticate on any
+wake outside system sleep that finds it undone, once probe has mapped
+the firmware, and call a failure -EAGAIN so the next wake tries again.
+
+Needs ipu_buttress_authenticate() exported from the IPU driver.
+
+--- a/drivers/media/pci/intel/ipu7/psys/ipu-psys.c
++++ b/drivers/media/pci/intel/ipu7/psys/ipu-psys.c
+@@ -1182,9 +1182,29 @@
+ 	if (ret)
+ 		return ret;
+ 
++	/*
++	 * The IPU authenticates the firmware at probe and at system resume,
++	 * waking this device to do it, so neither wake has it done yet. But
++	 * a system resume that couldn't wake this device authenticated
++	 * nothing, and nothing would try again: every open after it would
++	 * leave the firmware unstarted, and the camera dark until the next
++	 * boot. So any other wake that finds it undone authenticates it
++	 * here, once probe has mapped the firmware, with the MMU set up as
++	 * probe has it. A failure is left for the next wake to try again.
++	 */
+ 	if (!ipu_buttress_auth_done(adev->isp)) {
+-		dev_dbg(dev, "%s: not yet authenticated, skipping\n", __func__);
+-		return 0;
++		if (READ_ONCE(psys->system_sleep) || !adev->fw_sgt.nents) {
++			dev_dbg(dev, "%s: not yet authenticated, skipping\n",
++				__func__);
++			return 0;
++		}
++
++		ret = ipu_buttress_authenticate(adev->isp);
++		if (ret) {
++			dev_warn(dev, "FW authentication failed (%d)\n", ret);
++			ipu7_mmu_hw_cleanup(adev->mmu);
++			return -EAGAIN;
++		}
+ 	}
+ 
+ 	ipu7_psys_setup_hw(psys);
+@@ -1244,6 +1264,10 @@
+  */
+ static int psys_resume(struct device *dev)
+ {
++	struct ipu7_psys *psys = dev_get_drvdata(dev);
++
++	WRITE_ONCE(psys->system_sleep, false);
++
+ 	return 0;
+ }
+ 
+@@ -1258,6 +1282,9 @@
+ 		ret = -EBUSY;
+ 	spin_unlock_irqrestore(&psys->ready_lock, flags);
+ 
++	if (!ret)
++		WRITE_ONCE(psys->system_sleep, true);
++
+ 	return ret;
+ }
+ 
+--- a/drivers/media/pci/intel/ipu7/psys/ipu7-psys.h
++++ b/drivers/media/pci/intel/ipu7/psys/ipu7-psys.h
+@@ -115,6 +115,8 @@
+ 	struct mutex mutex;	/* Psys various */
+ 	int ready; /* psys fw status */
+ 	spinlock_t ready_lock;	/* protect psys firmware state */
++	/* Between system suspend and resume, when the IPU authenticates. */
++	bool system_sleep;
+ 
+ 	struct list_head fhs;
+ 
