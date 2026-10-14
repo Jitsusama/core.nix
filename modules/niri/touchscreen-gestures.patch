@@ -4,12 +4,15 @@ touchpad's do. Beyond #3180, they move as a screen's should: the content
 follows the fingers, as far as they move, however many there are. And a
 third finger cancels the touches the client already had, and the client
 sees nothing more until every finger has lifted, so a swipe never reaches
-it as a tap or as touches left unfinished.
+it as a tap or as touches left unfinished. Nor does niri take one for a
+tap: a lone finger focuses the window under it once it lifts or moves, not
+as it lands, a cancelled touch in the overview is no tap, and a gesture's
+end draws what it settles to.
 
 diff -ru a/src/input/mod.rs b/src/input/mod.rs
---- a/src/input/mod.rs	2026-10-13 10:28:14.103548802 -0400
-+++ b/src/input/mod.rs	2026-10-13 10:28:14.105548783 -0400
-@@ -4065,6 +4065,26 @@
+--- a/src/input/mod.rs	2026-10-13 21:09:30.449910452 -0400
++++ b/src/input/mod.rs	2026-10-13 21:09:30.449910452 -0400
+@@ -4065,6 +4065,27 @@
          };
          let slot = evt.slot();
  
@@ -29,6 +32,7 @@ diff -ru a/src/input/mod.rs b/src/input/mod.rs
 +        // tap, and nothing more reaches it until every finger has lifted.
 +        if self.niri.touch_gesture_points.len() > 2 && !self.niri.touch_gesture_swallowing {
 +            self.niri.touch_gesture_swallowing = true;
++            self.niri.touch_activating = None;
 +            handle.cancel(self);
 +        }
 +        let tracking_gesture = self.niri.touch_gesture_swallowing;
@@ -36,7 +40,33 @@ diff -ru a/src/input/mod.rs b/src/input/mod.rs
          let serial = SERIAL_COUNTER.next_serial();
  
          let under = self.niri.contents_under(pos);
-@@ -4173,16 +4193,19 @@
+@@ -4105,7 +4126,7 @@
+                     self.niri.cancel_mru();
+                 }
+             }
+-        } else if !handle.is_grabbed() {
++        } else if !handle.is_grabbed() && !tracking_gesture {
+             let mods = self.niri.seat.get_keyboard().unwrap().modifier_state();
+             let mods = modifiers_from_state(mods);
+             let mod_down = mods.contains(mod_key.to_modifiers());
+@@ -4146,7 +4167,15 @@
+                 );
+                 handle.set_grab(self, grab, serial);
+             } else if let Some((window, _)) = under.window {
+-                self.niri.layout.activate_window(&window);
++                // A lone finger may be the first of a swipe, so the window
++                // under it is focused once it lifts or moves, not as it lands.
++                if mod_down {
++                    self.niri.layout.activate_window(&window);
++                } else if self.niri.touch_gesture_points.len() == 1 {
++                    self.niri.touch_activating = Some((slot, window.clone(), pos));
++                } else if self.niri.touch_activating.is_none() {
++                    self.niri.layout.activate_window(&window);
++                }
+ 
+                 // Check if we need to start a touch move grab.
+                 if mod_down {
+@@ -4173,16 +4202,19 @@
              self.niri.focus_layer_surface_if_on_demand(under.layer);
          };
  
@@ -66,13 +96,21 @@ diff -ru a/src/input/mod.rs b/src/input/mod.rs
  
          // We're using touch, hide the pointer.
          self.niri.pointer_visibility = PointerVisibility::Disabled;
-@@ -4193,6 +4216,30 @@
+@@ -4193,6 +4225,42 @@
          };
          let slot = evt.slot();
  
 +        // A finger of a gesture lifts unseen by the client, which had its
 +        // touches cancelled when the gesture began.
 +        let tracking_gesture = self.niri.touch_gesture_swallowing;
++
++        // A finger that lifts without making a swipe was a tap.
++        if !tracking_gesture {
++            if let Some((_, window, _)) = self.niri.touch_activating.take() {
++                self.niri.layout.activate_window(&window);
++                self.niri.queue_redraw_all();
++            }
++        }
 +
 +        // Remove touch point from gesture tracking.
 +        self.niri.touch_gesture_points.remove(&Some(slot));
@@ -91,13 +129,17 @@ diff -ru a/src/input/mod.rs b/src/input/mod.rs
 +            if let Some(output) = self.niri.layout.view_offset_gesture_end(Some(false)) {
 +                self.niri.queue_redraw(&output);
 +            }
-+            self.niri.layout.overview_gesture_end();
++            // The overview animates to open or shut from here, which only a
++            // redraw starts, as the touchpad's does.
++            if self.niri.layout.overview_gesture_end() {
++                self.niri.queue_redraw_all();
++            }
 +        }
 +
          if let Some(capture) = self.niri.screenshot_ui.pointer_up(Some(slot)) {
              if capture {
                  self.confirm_screenshot(true);
-@@ -4201,15 +4248,18 @@
+@@ -4201,15 +4269,18 @@
              }
          }
  
@@ -125,10 +167,22 @@ diff -ru a/src/input/mod.rs b/src/input/mod.rs
      }
      fn on_touch_motion<I: InputBackend>(&mut self, evt: I::TouchMotionEvent) {
          let Some(handle) = self.niri.seat.get_touch() else {
-@@ -4220,6 +4270,117 @@
+@@ -4220,6 +4291,129 @@
          };
          let slot = evt.slot();
  
++        // A lone finger that moves as far as a swipe must go before it's
++        // recognised is a drag, not a swipe's first finger.
++        if let Some((at, window, landed)) = &self.niri.touch_activating {
++            let (dx, dy) = (pos.x - landed.x, pos.y - landed.y);
++            if *at == slot && dx * dx + dy * dy >= 16. * 16. {
++                let window = window.clone();
++                self.niri.touch_activating = None;
++                self.niri.layout.activate_window(&window);
++                self.niri.queue_redraw_all();
++            }
++        }
++
 +        // Track touch gesture with 2+ fingers.
 +        let mut gesture_handled = false;
 +        if let Some(old_pos) = self.niri.touch_gesture_points.get(&Some(slot)).copied() {
@@ -243,7 +297,7 @@ diff -ru a/src/input/mod.rs b/src/input/mod.rs
          if let Some(output) = self.niri.screenshot_ui.selection_output().cloned() {
              let geom = self.niri.global_space.output_geometry(&output).unwrap();
              let mut point = (pos - geom.loc.to_f64())
-@@ -4236,16 +4397,19 @@
+@@ -4236,16 +4430,19 @@
              self.niri.queue_redraw(&output);
          }
  
@@ -273,7 +327,7 @@ diff -ru a/src/input/mod.rs b/src/input/mod.rs
  
          // Inform the layout of an ongoing DnD operation.
          let is_dnd_grab = handle
-@@ -4268,6 +4432,17 @@
+@@ -4268,6 +4465,22 @@
          let Some(handle) = self.niri.seat.get_touch() else {
              return;
          };
@@ -282,18 +336,63 @@ diff -ru a/src/input/mod.rs b/src/input/mod.rs
 +        self.niri.touch_gesture_points.clear();
 +        self.niri.touch_gesture_cumulative = None;
 +        self.niri.touch_gesture_swallowing = false;
++        self.niri.touch_activating = None;
 +
-+        // Cancel any ongoing gesture animations.
-+        self.niri.layout.workspace_switch_gesture_end(Some(false));
-+        self.niri.layout.view_offset_gesture_end(Some(false));
-+        self.niri.layout.overview_gesture_end();
++        // Cancel any ongoing gesture animations, each settling from where it
++        // was, which only a redraw starts.
++        let switching = self.niri.layout.workspace_switch_gesture_end(Some(false));
++        let scrolling = self.niri.layout.view_offset_gesture_end(Some(false));
++        let overview = self.niri.layout.overview_gesture_end();
++        if switching.is_some() || scrolling.is_some() || overview {
++            self.niri.queue_redraw_all();
++        }
 +
          handle.cancel(self);
      }
  
+diff -ru a/src/input/touch_overview_grab.rs b/src/input/touch_overview_grab.rs
+--- a/src/input/touch_overview_grab.rs	2026-10-13 21:09:30.454910452 -0400
++++ b/src/input/touch_overview_grab.rs	2026-10-13 21:09:30.456910452 -0400
+@@ -31,6 +31,9 @@
+ #[derive(Debug, Clone, Copy)]
+ enum GestureState {
+     Recognizing,
++    // Cancelled while still recognizing, as the first finger of a swipe is:
++    // no tap.
++    Cancelled,
+     ViewOffset,
+     WorkspaceSwitch,
+     InteractiveMove,
+@@ -98,6 +101,7 @@
+                     layout.activate_window(window);
+                 }
+             }
++            GestureState::Cancelled => {}
+             GestureState::ViewOffset => {
+                 layout.view_offset_gesture_end(Some(false));
+             }
+@@ -216,7 +220,7 @@
+         self.last_location = event.location;
+ 
+         let ongoing = match self.gesture {
+-            GestureState::Recognizing => unreachable!(),
++            GestureState::Recognizing | GestureState::Cancelled => unreachable!(),
+             GestureState::ViewOffset => layout
+                 .view_offset_gesture_update(-delta.x, timestamp, false)
+                 .is_some(),
+@@ -251,6 +255,9 @@
+     }
+ 
+     fn cancel(&mut self, data: &mut State, handle: &mut TouchInnerHandle<'_, State>, seq: Serial) {
++        if matches!(self.gesture, GestureState::Recognizing) {
++            self.gesture = GestureState::Cancelled;
++        }
+         handle.cancel(data, seq);
+         handle.unset_grab(self, data);
+     }
 diff -ru a/src/niri.rs b/src/niri.rs
---- a/src/niri.rs	2026-10-13 10:28:14.111548722 -0400
-+++ b/src/niri.rs	2026-10-13 10:28:14.112548712 -0400
+--- a/src/niri.rs	2026-10-13 21:09:30.461910452 -0400
++++ b/src/niri.rs	2026-10-13 21:09:30.462910451 -0400
 @@ -19,7 +19,7 @@
      WorkspaceReference, Xkb,
  };
@@ -303,7 +402,7 @@ diff -ru a/src/niri.rs b/src/niri.rs
  use smithay::backend::renderer::damage::OutputDamageTracker;
  use smithay::backend::renderer::element::memory::MemoryRenderBufferRenderElement;
  use smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement;
-@@ -370,6 +370,15 @@
+@@ -370,6 +370,19 @@
      pub pointer_inside_hot_corner: bool,
      pub tablet_cursor_location: Option<Point<f64, Logical>>,
      pub gesture_swipe_3f_cumulative: Option<(f64, f64)>,
@@ -316,16 +415,21 @@ diff -ru a/src/niri.rs b/src/niri.rs
 +    /// Whether a touch gesture took the touches from the client, which then
 +    /// sees none until every finger has lifted.
 +    pub touch_gesture_swallowing: bool,
++    /// The window under a lone finger, focused once the finger lifts or has
++    /// moved, since it may yet be the first of a swipe: its slot, the window
++    /// and where the finger landed.
++    pub touch_activating: Option<(TouchSlot, Window, Point<f64, Logical>)>,
      pub overview_scroll_swipe_gesture: ScrollSwipeGesture,
      pub vertical_wheel_tracker: ScrollTracker,
      pub horizontal_wheel_tracker: ScrollTracker,
-@@ -2581,6 +2590,9 @@
+@@ -2581,6 +2594,10 @@
              pointer_inside_hot_corner: false,
              tablet_cursor_location: None,
              gesture_swipe_3f_cumulative: None,
 +            touch_gesture_points: HashMap::new(),
 +            touch_gesture_cumulative: None,
 +            touch_gesture_swallowing: false,
++            touch_activating: None,
              overview_scroll_swipe_gesture: ScrollSwipeGesture::new(),
              vertical_wheel_tracker: ScrollTracker::new(120),
              horizontal_wheel_tracker: ScrollTracker::new(120),

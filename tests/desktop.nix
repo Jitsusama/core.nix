@@ -91,7 +91,8 @@ let
   # A stand-in touchscreen, as wide as the screen, which swipes with as many
   # fingers as it's told, one way, or taps: each line written to
   # /run/touchscreen is how many and which way (RL is from right to left), or
-  # tap. Writing waits until it's read, so a swipe has started once it
+  # tap, then how far across an up or down swipe goes, as a fraction of the
+  # screen. Writing waits until it's read, so a swipe has started once it
   # returns.
   touchscreen =
     pkgs.writers.writePython3 "touchscreen"
@@ -147,13 +148,16 @@ let
             device.syn()
 
 
-        def swipe(fingers, way):
+        def swipe(fingers, way, across):
             dx, dy = ways[way]
             steps = 10
             for step in range(steps + 1):
+                along = 14 * step - 7 * steps
                 for finger in range(fingers):
-                    x = width // 2 + dx * width * (14 * step - 7 * steps) // (20 * steps) + 40 * finger * abs(dy)
-                    y = height // 2 + dy * height * (14 * step - 7 * steps) // (20 * steps) + 40 * finger * abs(dx)
+                    x = int(width * across) + dx * width * along // (20 * steps)
+                    x += 40 * finger * abs(dy)
+                    y = height // 2 + dy * height * along // (20 * steps)
+                    y += 40 * finger * abs(dx)
                     device.write(e.EV_ABS, e.ABS_MT_SLOT, finger)
                     if step == 0:
                         device.write(e.EV_ABS, e.ABS_MT_TRACKING_ID, finger + 1)
@@ -174,11 +178,11 @@ let
         while True:
             with open(fifo) as asked:
                 for line in asked:
-                    fingers, way = line.split()
+                    fingers, way, across = line.split()
                     if way == "tap":
                         tap()
                     else:
-                        swipe(int(fingers), way)
+                        swipe(int(fingers), way, float(across))
       '';
 
   # A picture and a document to open, as a download would be.
@@ -631,11 +635,10 @@ pkgs.testers.runNixOSTest {
           yield
           reported(what, lambda rest: rest == "", since, timeout)
 
-      # A photograph of the screen once it holds still, for a person to look
-      # at: niri composes a frame a moment after the shell hands it over, and
-      # surfaces move as they come, so two pictures in a row have to match.
-      # One that never holds still is kept as it is.
-      def photograph(name, timeout=10):
+      # Whether the screen holds still, two pictures in a row the same, before
+      # the time is up: niri composes a frame a moment after it's asked to,
+      # and windows and surfaces move as they come.
+      def held_still(timeout=10):
           deadline = time.monotonic() + timeout
           with tempfile.TemporaryDirectory() as folder:
               shot = os.path.join(folder, "shot.ppm")
@@ -645,8 +648,14 @@ pkgs.testers.runNixOSTest {
                   with open(shot, "rb") as taken:
                       now = taken.read()
                   if now == last:
-                      break
+                      return True
                   last = now
+          return False
+
+      # A photograph of the screen once it holds still, for a person to look
+      # at. One that never holds still is kept as it is.
+      def photograph(name, timeout=10):
+          held_still(timeout)
           machine.screenshot(name)
 
       # What the launcher shows, from its showing call: whether it holds the
@@ -2142,9 +2151,9 @@ pkgs.testers.runNixOSTest {
           assert turn in ("Normal", "Flipped180"), f"no swipes for a screen turned {turn}"
           over = {"DU": "UD", "UD": "DU"} if turn == "Flipped180" else {}
 
-          def swiped(fingers, way, until):
+          def swiped(fingers, way, until, across=0.5):
               drawn = over.get(way, way)
-              machine.succeed(f"echo '{fingers} {drawn}' > /run/touchscreen")
+              machine.succeed(f"echo '{fingers} {drawn} {across}' > /run/touchscreen")
               try:
                   retry(lambda _: until(), timeout_seconds=10)
               except Exception:
@@ -2162,21 +2171,64 @@ pkgs.testers.runNixOSTest {
           swiped(4, "UD", lambda: not overview_open())
 
           # A second window opens in a column to the right; the view follows
-          # the fingers back to the first and on to the second again.
+          # the fingers back to the first and on to the second again. Earlier
+          # windows share this workspace, so the two go to the empty one at
+          # the end, where nothing else is beside them.
           def focused():
               return json.loads(as_account("niri msg --json focused-window"))["id"]
 
           left = focused()
+          workspaces = json.loads(as_account("niri msg --json workspaces"))
+          last = max(w["idx"] for w in workspaces)
+          as_account(f"niri msg action move-column-to-workspace {last}")
+          first = focused_workspace()
           as_account(
               "systemd-run --user --collect --quiet --unit=wev-right -- "
               "${pkgs.wev}/bin/wev"
           )
           retry(lambda _: focused() != left, timeout_seconds=30)
           right = focused()
+          t.assertTrue(held_still(), "the view never settled")
           swiped(3, "LR", lambda: focused() == left)
           swiped(3, "RL", lambda: focused() == right)
           t.assertEqual(touches("up"), 1, "a swipe reached the window as a tap")
+
+          # Side by side, with the right one focused: a swipe over the left
+          # one leaves the focus where it was, as a tap would not, and so does
+          # opening and shutting the overview over it. The left one hears the
+          # swipe's first two fingers land, which is how the test knows they
+          # landed on it.
+          as_account("niri msg action focus-column-left")
+          as_account("niri msg action set-column-width 50%")
+          as_account("niri msg action focus-column-right")
+          as_account("niri msg action set-column-width 50%")
+          t.assertTrue(held_still(), "the view never settled")
+          landed = touches("down")
+          swiped(3, "DU", lambda: focused_workspace() == first + 1, across=0.25)
+          t.assertEqual(touches("down"), landed + 2, "the swipe missed the window beside")
+          swiped(3, "UD", lambda: focused_workspace() == first, across=0.25)
+          t.assertEqual(focused(), right, "a swipe focused the window under it")
+          swiped(4, "DU", overview_open, across=0.25)
+          swiped(4, "UD", lambda: not overview_open(), across=0.25)
+          t.assertEqual(focused(), right, "the overview took a swipe for a tap")
           as_account("systemctl --user stop wev wev-right")
+
+          # kitty scrolls by touch: a finger dragged down its whole window
+          # brings back what had scrolled off the top, and the last line goes.
+          as_account(
+              "systemd-run --user --collect --quiet --unit=touched -- "
+              "kitty --title touched sh -c 'seq 1 3000; exec sleep infinity'"
+          )
+          def touched_focused(_):
+              windows = json.loads(as_account("niri msg --json windows"))
+              return any(w["title"] == "touched" and w["is_focused"] for w in windows)
+
+          retry(touched_focused, timeout_seconds=60)
+          as_account("niri msg action set-column-width 100%")
+          kitty = f"kitty @ --to unix:@kitty-{window_titled('touched')['pid']} get-text"
+          retry(lambda _: "3000" in as_account(kitty).split(), timeout_seconds=30)
+          swiped(1, "UD", lambda: "3000" not in as_account(kitty).split())
+          as_account("systemctl --user stop touched")
           machine.succeed("systemctl stop touchscreen")
 
       # With no agent BlueZ refuses every pairing, even one asked for here.
