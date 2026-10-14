@@ -444,7 +444,25 @@ let
     displays = ./launcher/Displays.qml;
     capture = ./launcher/Capture.qml;
     spend = ./launcher/Spend.qml;
+    byhand = ./launcher/ByHand.qml;
   };
+
+  # Slack's theme in the ten colours its importer reads: the sidebar, a
+  # row under the pointer, the chosen row and its text, a hovered row, the
+  # sidebar's text, someone present, a mention's badge, and the top bar and
+  # its text. Its frame sits a step deeper than its rows, as GTK's does.
+  slackTheme = lib.concatMapStringsSep "," (role: roles.${role}) [
+    "deepest"
+    "raised"
+    "selection"
+    "strong"
+    "raised"
+    "text"
+    "success"
+    "alert"
+    "deepest"
+    "text"
+  ];
 
   # The program that hears every copy, for the clipboard collection.
   clipboardHistory = pkgs.callPackage ./clipboard/package.nix { };
@@ -723,6 +741,19 @@ in
       colours = {
         order = 78;
         source = "colours";
+      };
+      byhand = {
+        order = 79;
+        source = "byhand";
+        programs = [
+          {
+            name = "Slack's Theme";
+            app = "slack";
+            keywords = "slack theme colours sidebar";
+            side = "paste in Appearance, Import theme";
+            copy = slackTheme;
+          }
+        ];
       };
       currency = {
         order = 80;
