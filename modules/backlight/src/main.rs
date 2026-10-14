@@ -1,10 +1,11 @@
 //! backlight: sets the screen's brightness for the light in the room, and
 //! learns from the brightness Joel picks.
 //!
-//! iio-sensor-proxy reads the light sensor and says over D-Bus whenever the
-//! light changes. The curve says how bright the screen should be in that
-//! light (curve.rs), and once the light holds (steer.rs) the brightness moves
-//! there through logind, which lets the session set its own backlight.
+//! The light comes from the ambient light sensor's buffer, which wakes the
+//! daemon only when the light changes (light.rs). The curve says how bright
+//! the screen should be in that light (curve.rs), and once the light holds
+//! (steer.rs) the brightness moves there through logind, which lets the
+//! session set its own backlight.
 //!
 //! Whatever else writes the brightness, which is Joel with the keys, teaches
 //! the curve: that brightness, in this light, is the one he wants. The first
@@ -18,6 +19,7 @@
 //! What it learns is kept in $XDG_STATE_HOME/backlight/learned.
 
 mod curve;
+mod light;
 mod screen;
 mod steer;
 
@@ -29,33 +31,15 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::time::{Duration, Instant};
 
-use futures_util::StreamExt;
-use tokio::sync::mpsc;
-use zbus::fdo::DBusProxy;
 use zbus::{Connection, proxy};
 
 use curve::Curve;
+use light::{Readings, Sensor};
 use screen::Screen;
 use steer::{Ramp, Steer};
 
 /// How often a move steps while it's under way.
 const STEP: Duration = Duration::from_millis(16);
-
-/// iio-sensor-proxy, which reads the light sensor for whoever claims it.
-#[proxy(
-    interface = "net.hadess.SensorProxy",
-    default_service = "net.hadess.SensorProxy",
-    default_path = "/net/hadess/SensorProxy"
-)]
-trait Sensors {
-    fn claim_light(&self) -> zbus::Result<()>;
-
-    #[zbus(property)]
-    fn has_ambient_light(&self) -> zbus::Result<bool>;
-
-    #[zbus(property)]
-    fn light_level(&self) -> zbus::Result<f64>;
-}
 
 /// The session this daemon runs in, which logind lets set its backlight.
 #[proxy(
@@ -78,25 +62,35 @@ async fn main() -> ExitCode {
     }
 }
 
-/// A stream read on a task of its own, so zbus always has room for what it
-/// hears. zbus stops reading the bus while any stream it feeds is full, and
-/// so stops handing back replies, so a loop waiting on a reply while its own
-/// streams go unread would wait forever.
-fn drained<S>(stream: S) -> mpsc::UnboundedReceiver<S::Item>
-where
-    S: futures_util::Stream + Send + 'static,
-    S::Item: Send + 'static,
-{
-    let (sending, drained) = mpsc::unbounded_channel();
-    tokio::spawn(async move {
-        let mut stream = std::pin::pin!(stream);
-        while let Some(item) = stream.next().await {
-            if sending.send(item).is_err() {
-                return;
-            }
+/// The light sensor's readings and the light now, or none when there's no
+/// sensor to hear, which leaves the daemon telling the shell of picks.
+fn listen() -> Option<(Readings, f64)> {
+    let sensor = match Sensor::find(Path::new("/sys/bus/iio/devices"), Path::new("/dev")) {
+        Ok(Some(sensor)) => sensor,
+        Ok(None) => {
+            eprintln!("<5>no light sensor to follow");
+            return None;
         }
-    });
-    drained
+        Err(error) => {
+            eprintln!("<4>can't look for a light sensor: {error}");
+            return None;
+        }
+    };
+    match sensor.open() {
+        Ok(opened) => Some(opened),
+        Err(error) => {
+            eprintln!("<4>can't hear {}: {error}", sensor.name());
+            None
+        }
+    }
+}
+
+/// Waits for the light to change, or forever when there's no sensor.
+async fn light(readings: &mut Option<Readings>) -> io::Result<f64> {
+    match readings {
+        Some(readings) => readings.changed().await,
+        None => std::future::pending().await,
+    }
 }
 
 /// A folder from an XDG variable, or its fallback under the home folder.
@@ -153,18 +147,6 @@ async fn run() -> Result<(), Box<dyn Error>> {
 
     let bus = Connection::system().await?;
     let session = SessionProxy::new(&bus).await?;
-    let sensors = SensorsProxy::new(&bus).await?;
-    let owners = DBusProxy::new(&bus).await?;
-    // Followed before the light is first claimed, so a sensor proxy starting
-    // meanwhile isn't missed.
-    let mut arrivals = drained(
-        owners
-            .receive_name_owner_changed_with_args(&[(0, "net.hadess.SensorProxy")])
-            .await?,
-    );
-    let mut levels = drained(sensors.receive_light_level_changed().await);
-    let mut presence = drained(sensors.receive_has_ambient_light_changed().await);
-
     let mut watch = screen.watch()?;
     let seen = screen.brightness()?;
     let mut backlight = Backlight {
@@ -180,7 +162,11 @@ async fn run() -> Result<(), Box<dyn Error>> {
         seen,
         wrote: None,
     };
-    backlight.claim(&sensors).await;
+    let (mut readings, now) = listen().unzip();
+    if let Some(lux) = now {
+        eprintln!("<6>hears {lux:.0} lux");
+        backlight.heard(lux);
+    }
 
     loop {
         let wake = backlight.wake();
@@ -192,17 +178,7 @@ async fn run() -> Result<(), Box<dyn Error>> {
                 changed?;
                 backlight.screen_changed()?;
             }
-            Some(change) = levels.recv() => {
-                if let Ok(lux) = change.get().await {
-                    backlight.heard(lux);
-                }
-            }
-            Some(_) = presence.recv() => backlight.claim(&sensors).await,
-            Some(arrival) = arrivals.recv() => {
-                if arrival.args().is_ok_and(|args| args.new_owner().is_some()) {
-                    backlight.claim(&sensors).await;
-                }
-            }
+            lux = light(&mut readings) => backlight.heard(lux?),
             () = until(wake) => backlight.step().await,
         }
     }
@@ -235,26 +211,6 @@ struct Backlight<'a> {
 }
 
 impl Backlight<'_> {
-    /// Claims the light sensor, so its proxy reads it and says when the
-    /// light changes, and hears the light it reads now.
-    async fn claim(&mut self, sensors: &SensorsProxy<'_>) {
-        if let Err(error) = sensors.claim_light().await {
-            eprintln!("<5>no light sensor to follow yet: {error}");
-            return;
-        }
-        if !sensors.has_ambient_light().await.unwrap_or(false) {
-            eprintln!("<5>no light sensor to follow yet");
-            return;
-        }
-        match sensors.light_level().await {
-            Ok(lux) => {
-                eprintln!("<6>hears {lux:.0} lux");
-                self.heard(lux);
-            }
-            Err(error) => eprintln!("<4>can't read the light: {error}"),
-        }
-    }
-
     /// The light changed. The first light heard teaches the curve the
     /// brightness the screen already has.
     fn heard(&mut self, lux: f64) {
