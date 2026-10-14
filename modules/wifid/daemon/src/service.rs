@@ -242,6 +242,23 @@ impl Wifi {
         Box::pin(replies)
     }
 
+    /// Answers once the machine is as online as it's going to get for now:
+    /// a card or cable reaches beyond the machine, Wi-Fi is off, or every
+    /// card has looked and heard no saved network it can join. The boot
+    /// waits on this rather than on a timeout.
+    #[zlink(more)]
+    async fn settled(&self, _more: bool) -> impl Stream<Item = Reply<()>> + Unpin {
+        // Waiting in a stream rather than in the call leaves wifid free to
+        // answer every other call meanwhile.
+        let mut state = self.state.clone();
+        let settled = async move {
+            // Once wifid stops, nothing will settle, and nothing need wait.
+            let _ = state.wait_for(State::settled).await;
+            Reply::new(None).set_continues(Some(false))
+        };
+        Box::pin(stream::once(settled))
+    }
+
     /// Checks every card's network again now. Describe says what it found
     /// once it has.
     async fn check(&self) {
@@ -383,6 +400,8 @@ pub fn listener() -> io::Result<Option<Listener>> {
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+
     use futures_util::{FutureExt, StreamExt};
 
     use super::*;
@@ -464,6 +483,48 @@ mod tests {
 
         assert_eq!(first.parameters().unwrap().cards[0].name, "wlan2");
         assert!(unshown.is_none(), "answered again with nothing to show");
+    }
+
+    #[tokio::test]
+    async fn settling_answers_once_a_card_reaches_beyond_its_network() {
+        let (wifi, state, _) = wifi();
+        state.send_modify(|state| state.follow(&inn()));
+
+        let mut settling = wifi.settled(false).await;
+        let before = settling.next().now_or_never();
+        state.send_modify(|state| state.checking(2));
+        let after = tokio::time::timeout(Duration::from_secs(3), settling.next()).await;
+
+        assert!(before.is_none(), "settled before the card reached beyond");
+        let reply = after
+            .expect("never settled")
+            .expect("ended without answering");
+        assert_eq!(reply.continues(), Some(false));
+        assert!(settling.next().await.is_none());
+    }
+
+    #[tokio::test]
+    async fn settling_answers_at_once_when_already_settled() {
+        let (wifi, state, _) = wifi();
+        state.send_modify(|state| state.wired(true));
+
+        let settled = wifi.settled(false).await.next().now_or_never();
+
+        assert!(matches!(settled, Some(Some(_))), "{settled:?}");
+    }
+
+    #[tokio::test]
+    async fn settling_answers_once_wifid_stops() {
+        let (wifi, state, _) = wifi();
+
+        drop(state);
+        let mut settling = wifi.settled(false).await;
+        let settled = tokio::time::timeout(Duration::from_secs(3), settling.next()).await;
+
+        assert!(
+            matches!(settled, Ok(Some(_))),
+            "still waiting on a wifid that stopped"
+        );
     }
 
     #[tokio::test]

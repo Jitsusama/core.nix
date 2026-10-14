@@ -2,8 +2,10 @@
 # wifid, networkd and wpa_supplicant as the laptop role brings them. Two
 # stand-in access points live in a network namespace of their own, so their
 # traffic crosses the stand-in air rather than taking a shortcut through the
-# machine. One network is declared in Nix and one saved as the launcher
-# saves it. A joined network gets its address and DNS server and sees an
+# machine. One network is declared in Nix, eight more out of range with
+# passwords systemd sealed, and one saved as the launcher saved it before
+# wifid had a vault, which wifid moves into it; after that, no card wifid
+# is given reaches systemd for a password. A joined network gets its address and DNS server and sees an
 # address of the card's own for it. wifid finds which network wants a
 # sign-in, asking the network's own DNS server even while a VPN's servers
 # stand in for it, and notices a guest signing in, a session the network
@@ -13,13 +15,17 @@
 # routing rule another program made, as a VPN's client does, survives
 # joining, reconfiguring and networkd restarting. Nothing that should leave
 # the card on its network takes it off: not wifid starting again, nor a
-# saved file it can't read, nor another card plugged in and pulled out.
+# saved file it can't read, nor another card plugged in and pulled out,
+# which looks for networks from made-up addresses with its link up. The
+# boot waits on wifid to say there's no more to wait for.
 # The shell, as an account of the machine's and no other, is told all of
 # it over varlink as it changes, and can have wifid check again, trust a
 # network or forget one, though never one Nix declares.
 { self, pkgs }:
 let
   inherit (pkgs) lib;
+
+  lighthouses = map (n: "lighthouse-${toString n}") (lib.range 1 8);
 
   # The access points' side, run inside their namespace.
   inAir = {
@@ -290,18 +296,64 @@ pkgs.testers.runNixOSTest {
       };
 
       # Roadside Inn is declared in Nix, whole, the way a machine's own
-      # networks are.
-      systemd.network.networks."50-wifi-roadside-inn" = {
-        matchConfig.SSID = ''"Roadside Inn"'';
-        networkConfig = {
-          DHCP = "yes";
-          LLMNR = "no";
-          MulticastDNS = "no";
+      # networks are. Eight lighthouses more, out of range, each with a
+      # password systemd sealed to the machine as it boots, the way a
+      # machine's own secrets are kept.
+      systemd.network.networks = {
+        "50-wifi-roadside-inn" = {
+          matchConfig.SSID = ''"Roadside Inn"'';
+          networkConfig = {
+            DHCP = "yes";
+            LLMNR = "no";
+            MulticastDNS = "no";
+          };
+          extraConfig = ''
+            [X-WiFi]
+            Security=open
+          '';
         };
-        extraConfig = ''
-          [X-WiFi]
-          Security=open
-        '';
+      }
+      // lib.listToAttrs (
+        map (
+          lighthouse:
+          lib.nameValuePair "50-wifi-${lighthouse}" {
+            matchConfig.SSID = ''"${lighthouse}"'';
+            extraConfig = ''
+              [X-WiFi]
+              Security=personal
+              Secret=/var/lib/lighthouses/${lighthouse}.cred
+            '';
+          }
+        ) lighthouses
+      );
+
+      # The network is waited for only by what wants it online, as a VPN's
+      # client does at boot.
+      systemd.services.needs-network = {
+        wantedBy = [ "multi-user.target" ];
+        wants = [ "network-online.target" ];
+        after = [ "network-online.target" ];
+        serviceConfig = {
+          Type = "oneshot";
+          RemainAfterExit = true;
+          ExecStart = "${pkgs.coreutils}/bin/true";
+        };
+      };
+
+      # The lighthouses' passwords, which wifid opens through systemd once,
+      # however many cards it has.
+      systemd.services.lighthouses = {
+        wantedBy = [ "wifid.service" ];
+        before = [ "wifid.service" ];
+        serviceConfig = {
+          Type = "oneshot";
+          RemainAfterExit = true;
+          StateDirectory = "lighthouses";
+        };
+        script = lib.concatMapStrings (lighthouse: ''
+          printf 'keeper of the light' | ${pkgs.systemd}/bin/systemd-creds encrypt \
+            --name=${lighthouse} - /var/lib/lighthouses/${lighthouse}.cred
+        '') lighthouses;
       };
 
       environment.systemPackages = [
@@ -313,9 +365,10 @@ pkgs.testers.runNixOSTest {
 
   testScript = ''
     import json
+    import shlex
 
-    # Lantern as the launcher saves it: only what's its own, with its
-    # password sealed to this machine.
+    # Lantern as the launcher saved it before wifid had a vault: only
+    # what's its own, with its password sealed to this machine by systemd.
     lantern = [
         "[Match]",
         "SSID=Lantern",
@@ -361,7 +414,7 @@ pkgs.testers.runNixOSTest {
         """Waits for wifid, as it runs now, to say line in the journal."""
         machine.wait_until_succeeds(
             "journalctl -o cat _PID=$(systemctl show -P MainPID wifid)"
-            f" | grep -qxF '{line}'",
+            f" | grep -qxF {shlex.quote(line)}",
             timeout=timeout,
         )
 
@@ -408,6 +461,20 @@ pkgs.testers.runNixOSTest {
     machine.wait_for_unit("networks.service")
     machine.wait_for_unit("private-dns.service")
     card = machine.succeed("cat /sys/class/net/wlan2/phy80211/macaddress").strip()
+
+    with subtest("the boot waits on wifid for the network, not on networkd"):
+        machine.wait_for_unit("needs-network.service")
+        machine.succeed("systemctl is-active wifid-online.service")
+        waited = int(machine.succeed(
+            "systemctl show -P ActiveEnterTimestampMonotonic wifid-online.service"
+        ))
+        started = int(machine.succeed(
+            "systemctl show -P ExecMainStartTimestampMonotonic needs-network.service"
+        ))
+        assert 0 < waited <= started, (waited, started)
+        wanted = machine.succeed("systemctl show -P Wants network-online.target").split()
+        assert "wifid-online.service" in wanted, wanted
+        assert "systemd-networkd-wait-online.service" not in wanted, wanted
 
     with subtest("wifid gives wpa_supplicant the card, which joins Nix's network"):
         machine.wait_for_unit("wifid.service")
@@ -467,6 +534,13 @@ pkgs.testers.runNixOSTest {
             " - /var/lib/wifid/networks/lantern.cred"
         )
         machine.succeed("systemctl restart wifid")
+        # Moved into the vault as wifid starts, and opened from it after.
+        says("moved 1 saved password into wifid's vault")
+        machine.succeed("! test -e /var/lib/wifid/networks/lantern.cred")
+        held = machine.succeed("cat /var/lib/wifid/networks/lantern.sealed")
+        assert held and "glowing" not in held, held
+        machine.succeed(f"grep -qx 'Secret=/var/lib/wifid/networks/lantern.sealed' {saved}")
+        machine.succeed("test -s /var/lib/wifid/vault.cred")
         # The card stays where it is until it next chooses, as the
         # launcher's join will have it do.
         machine.wait_until_succeeds(f"test -e {given}", timeout=30)
@@ -476,7 +550,8 @@ pkgs.testers.runNixOSTest {
         holds_address("10.42.0.")
         on_file(given)
         written = machine.succeed(f"cat {given}")
-        for line in ("Type=wlan", "SSID=Lantern", "IPv6PrivacyExtensions=yes", "[X-WiFi]"):
+        # Moving its password wrote the file again, with its name quoted.
+        for line in ("Type=wlan", 'SSID="Lantern"', "IPv6PrivacyExtensions=yes", "[X-WiFi]"):
             assert line in written, written
         answers("router.lantern", "10.42.0.1")
         # networkd knows the network by name, which a saved network's file
@@ -488,6 +563,12 @@ pkgs.testers.runNixOSTest {
 
     with subtest("and finds Lantern reaches beyond itself"):
         says("Lantern on wlan2 reaches beyond itself")
+
+    with subtest("and keeps the channel it joined Lantern on, and nothing of where"):
+        seen = json.loads(machine.succeed("cat /var/lib/wifid/seen"))
+        assert seen.get("Lantern") == [2437], seen
+        assert "02:00" not in json.dumps(seen), seen
+        machine.succeed("test \"$(stat -c %a /var/lib/wifid/seen)\" = 600")
 
     with subtest("and asks Lantern again as the session it gave ends"):
         says("Lantern on wlan2 wants a sign-in at https://router.lantern/renew", timeout=45)
@@ -549,6 +630,33 @@ pkgs.testers.runNixOSTest {
         ).strip()
         machine.succeed(f"ip netns exec drawer iw phy {radio} set netns 1")
         machine.wait_until_succeeds("wpa_cli -i wlan3 ping | grep -qx PONG", timeout=30)
+        # It's given every network, their passwords opened without systemd.
+        retry(
+            lambda _: "lighthouse-8" in machine.succeed("wpa_cli -i wlan3 list_networks"),
+            timeout_seconds=30,
+        )
+        machine.fail(f"journalctl -o cat --after-cursor='{since}' | grep systemd-creds@")
+        # It looks for networks from addresses its driver makes up, so its
+        # link stays up as it looks, as it wouldn't were its own changed.
+        held = machine.succeed(
+            "busctl call fi.w1.wpa_supplicant1 /fi/w1/wpa_supplicant1"
+            " fi.w1.wpa_supplicant1 GetInterface s wlan3"
+        ).split('"')[1]
+        machine.wait_until_succeeds(
+            f"busctl get-property fi.w1.wpa_supplicant1 {held}"
+            " fi.w1.wpa_supplicant1.Interface MACAddressRandomizationMask | grep -q scan",
+            timeout=30,
+        )
+        machine.wait_until_succeeds(
+            "wpa_cli -i wlan3 status | grep -qx wpa_state=COMPLETED", timeout=30
+        )
+        # Joining takes the link down once, to give the card the address it
+        # has for the Inn; looking first takes it down no more.
+        drops = machine.succeed(
+            f"journalctl -o cat --after-cursor='{since}' -u systemd-networkd"
+            " | grep -c 'wlan3: Link DOWN' || true"
+        )
+        assert int(drops) <= 1, drops
         machine.succeed(f"iw phy {radio} set netns name drawer")
         machine.wait_until_succeeds("! test -e /sys/class/net/wlan3", timeout=30)
         assert machine.succeed("systemctl show -P MainPID wpa_supplicant") == supplicant
@@ -582,7 +690,7 @@ pkgs.testers.runNixOSTest {
     with subtest("forgetting Lantern takes it from everywhere, and the card stays on the Inn"):
         since = journal_now()
         ask("Forget", {"name": "Lantern"})
-        for gone in (saved, given, "/var/lib/wifid/networks/lantern.cred"):
+        for gone in (saved, given, "/var/lib/wifid/networks/lantern.sealed"):
             machine.succeed(f"! test -e {gone}")
         held = machine.succeed("wpa_cli -i wlan2 list_networks")
         assert "Roadside Inn" in held and "Lantern" not in held, held
@@ -634,7 +742,7 @@ pkgs.testers.runNixOSTest {
         stages = [reply["stage"] for reply in replies if "stage" in reply]
         return status, stages, said
 
-    sealed = "/var/lib/wifid/networks/lantern.cred"
+    sealed = "/var/lib/wifid/networks/lantern.sealed"
 
     with subtest("joining Lantern from the launcher with the wrong password saves nothing"):
         machine.systemctl("start lantern")
@@ -649,6 +757,7 @@ pkgs.testers.runNixOSTest {
         joined("Roadside Inn")
 
     with subtest("and with the right one, it's saved sealed and said joined step by step"):
+        since = journal_now()
         status, stages, said = joining({"name": "Lantern", "password": "glowing in the dark"})
         assert status == 0, said
         # Lantern's session ran out long ago, so it wants a sign-in again.
@@ -663,6 +772,9 @@ pkgs.testers.runNixOSTest {
         assert "glowing" not in held, held
         held = machine.succeed("wpa_cli -i wlan2 list_networks")
         assert "[DISABLED]" not in held, held
+        # Sealed and opened by the vault, so nothing asked systemd's
+        # credential service, which takes the TPM seconds a password.
+        machine.fail(f"journalctl -o cat --after-cursor='{since}' | grep systemd-creds@")
 
     with subtest("joining the Inn again moves the card, and says how far the Inn reaches"):
         status, stages, said = joining({"name": "Roadside Inn"})
@@ -719,6 +831,32 @@ pkgs.testers.runNixOSTest {
         for cable in cables:
             machine.succeed(f"ip link set {cable} down")
         retry(lambda _: ask("Describe")["wired"] is False, timeout_seconds=30)
+
+    with subtest("wifid says it's settled once the card's online, or Wi-Fi's off"):
+        settled = calling("Settled", {}).replace("call", "call --timeout=5", 1)
+        machine.succeed(settled)
+        ask("Leave", {"name": "Roadside Inn"})
+        retry(lambda _: not on_network("Roadside Inn"), timeout_seconds=30)
+        # The Inn is still heard, so the card has more to join, and wifid
+        # answers everything else while the wait goes on.
+        machine.succeed(
+            "systemd-run --unit=settling --uid=guest --property=RemainAfterExit=yes"
+            " $(command -v varlinkctl) call --timeout=5 /run/wifid/io.jitsusama.Wifi"
+            " io.jitsusama.Wifi.Settled '{}'"
+        )
+        assert ask("Describe")["cards"], ask("Describe")
+        machine.wait_until_succeeds("systemctl is-failed -q settling", timeout=15)
+        machine.succeed("journalctl -u settling -o cat | grep -q 'Timer expired'")
+        machine.succeed("systemctl reset-failed settling")
+        ask("Radio", {"on": False})
+        machine.succeed(settled)
+        ask("Radio", {"on": True})
+        retry(lambda _: ",UP" in machine.succeed("ip link show wlan2"), timeout_seconds=30)
+        status, stages, said = joining({"name": "Roadside Inn"})
+        assert status == 0, said
+        machine.succeed(settled)
+
+    with subtest("and the cables come back"):
         for cable in cables:
             machine.succeed(f"ip link set {cable} up")
         retry(lambda _: ask("Describe")["wired"] is True, timeout_seconds=60)
@@ -763,7 +901,7 @@ pkgs.testers.runNixOSTest {
                 "hidden": True,
             }
         ], saved_as("Hidden Hall")
-        held = machine.succeed("cat /var/lib/wifid/networks/hidden-hall.cred")
+        held = machine.succeed("cat /var/lib/wifid/networks/hidden-hall.sealed")
         assert held and "stairs" not in held, held
         held = machine.succeed("wpa_cli -i wlan2 list_networks")
         assert "Hidden Hall" in held, held

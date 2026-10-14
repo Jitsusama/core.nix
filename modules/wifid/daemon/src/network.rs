@@ -8,14 +8,15 @@
 //!
 //! [X-WiFi]
 //! Security=personal
-//! Secret=/var/lib/wifid/networks/roadside-inn.cred
+//! Secret=/var/lib/wifid/networks/roadside-inn.sealed
 //! ```
 //!
 //! | Key        | Values                              | Default |
 //! | ---------- | ----------------------------------- | ------- |
 //! | `Security` | open or personal                    | open    |
-//! | `Secret`   | the file holding the password, or a | none    |
-//! |            | .cred file of it sealed by systemd  |         |
+//! | `Secret`   | the file holding the password, a    | none    |
+//! |            | .cred file of it sealed by systemd, |         |
+//! |            | or a .sealed one the launcher kept  |         |
 //! | `Priority` | a number, highest joined first      | 0       |
 //! | `Hidden`   | yes when it doesn't announce itself | no      |
 //! | `Address`  | network, card or random             | network |

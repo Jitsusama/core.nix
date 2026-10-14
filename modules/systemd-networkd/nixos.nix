@@ -17,10 +17,14 @@
   systemd.network.config.networkConfig.ManageForeignRoutingPolicyRules = false;
 
   # Waiting for every link would stall boot on a laptop with no network, and
-  # waiting for none would start what needs the network too early.
+  # waiting for none would start what needs the network too early. From
+  # cold, a laptop's Wi-Fi was online fifteen seconds after this began, so
+  # ten seconds gave up on a network that came. Thirty is what
+  # NetworkManager's nm-online waited. wifid turns this off for a wait of
+  # its own, which knows when a card has nothing to join.
   systemd.network.wait-online = {
     anyInterface = true;
-    timeout = 10;
+    timeout = 30;
   };
 
   systemd.network.networks = {

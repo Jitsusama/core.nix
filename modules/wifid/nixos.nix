@@ -108,5 +108,36 @@ in
     };
   };
 
+  # The boot waits for the network only while there's one to wait for:
+  # wifid answers Settled once a card or cable reaches beyond the machine,
+  # Wi-Fi is off, or every card has looked and heard no saved network it
+  # can join. networkd's own wait can't tell a card still joining from one
+  # with nothing to join, so it's turned off. Thirty seconds is a backstop.
+  systemd.network.wait-online.enable = false;
+  systemd.services.wifid-online = {
+    description = "Wait for Wi-Fi to join what it can";
+    wantedBy = [ "network-online.target" ];
+    before = [
+      "network-online.target"
+      "shutdown.target"
+    ];
+    requires = [ "wifid.socket" ];
+    after = [ "wifid.socket" ];
+    conflicts = [ "shutdown.target" ];
+    unitConfig.DefaultDependencies = false;
+    serviceConfig = {
+      Type = "oneshot";
+      RemainAfterExit = true;
+      ExecStart = lib.escapeShellArgs [
+        "${config.systemd.package}/bin/varlinkctl"
+        "call"
+        "--timeout=30"
+        "/run/wifid/io.jitsusama.Wifi"
+        "io.jitsusama.Wifi.Settled"
+        "{}"
+      ];
+    };
+  };
+
   systemd.tmpfiles.rules = [ "d /run/systemd/network 0755 root root -" ];
 }
