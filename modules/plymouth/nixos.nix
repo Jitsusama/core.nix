@@ -256,5 +256,11 @@ in
         DeviceScale=1
       '';
     };
+    # Plymouth's last frame stays on the screen until niri draws over it,
+    # rather than clearing to the console for the half second between.
+    systemd.services.plymouth-quit.serviceConfig.ExecStart = [
+      ""
+      "-${config.boot.plymouth.package}/bin/plymouth quit --retain-splash"
+    ];
   };
 }
