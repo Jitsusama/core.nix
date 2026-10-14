@@ -60,9 +60,24 @@ let
 
   # libadwaita and adw-gtk3 both draw from these names, and a user stylesheet
   # outranks the theme's own definitions.
-  stylesheet = lib.concatLines (
-    lib.mapAttrsToList (name: color: "@define-color ${name} ${color};") palette
-  );
+  stylesheet =
+    lib.concatLines (lib.mapAttrsToList (name: color: "@define-color ${name} ${color};") palette)
+    + lib.optionalString (appearance == "dark") knobs;
+
+  # A slider's and a switch's knob, which both themes mix from white rather
+  # than the palette: the theme's text, its strongest under the pointer and
+  # muted when it can't be moved. A scale with marks draws its knob as a
+  # picture of a pin, which a colour would only box in, so it keeps its own.
+  # On a light theme white is the paper's, so those keep theirs.
+  knobs =
+    let
+      scale = "scale:not(.marks-before):not(.marks-after)";
+    in
+    ''
+      ${scale} slider, switch slider { background-color: ${roles.text}; }
+      ${scale} slider:hover, switch:hover slider { background-color: ${roles.strong}; }
+      ${scale} slider:disabled, switch:disabled slider { background-color: ${roles.muted}; }
+    '';
 in
 {
   imports = [ ../theme/home.nix ];
@@ -83,9 +98,13 @@ in
     gtk3.extraCss = stylesheet;
     gtk4.extraCss = ''
       ${stylesheet}
-      /* Floating windows' corners; tiled ones are square already. */
+      /* Floating windows' corners; tiled ones are square already. GTK 4
+         programs without libadwaita draw with adw-gtk3's, which sets the
+         accent to GNOME's blue itself rather than from its name. */
       :root {
         --window-radius: ${toString shape.radius}px;
+        --accent-bg-color: @accent_bg_color;
+        --accent-fg-color: @accent_fg_color;
       }
     '';
   };
