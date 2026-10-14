@@ -1,0 +1,232 @@
+# The boot's screen, laid out as the lock screen lays itself out
+# (../quickshell/Lock.qml): the picture, the machine's name where the lock
+# screen has the time, what's happening under it where the lock screen has
+# the day, and the prompt's panel in the same place. Everything but a
+# message is drawn when the theme is built (./nixos.nix), at one and two
+# device pixels to a logical one, so this only places pictures.
+
+# Plymouth draws at the screen's own pixels here, so the scale is chosen by
+# the screen's height: a panel with more rows than a 16:10 laptop's at one
+# to one takes the pictures drawn at two.
+width = Window.GetWidth();
+height = Window.GetHeight();
+if (height >= 1600)
+  scale = 2;
+else
+  scale = 1;
+
+fun drawn(name)
+  {
+    return Image(name + "-" + scale + ".png");
+  }
+
+fun placed(image, x, y, z)
+  {
+    local.sprite = Sprite(image);
+    sprite.SetPosition(Math.Int(x), Math.Int(y), z);
+    return sprite;
+  }
+
+# The space every lifted picture leaves round its words for their shadows.
+pad = @pad@ * scale;
+middle = width / 2;
+
+Window.SetBackgroundTopColor(@deepest@);
+Window.SetBackgroundBottomColor(@deepest@);
+
+# The picture covers the screen, centred, and fades in over the firmware's
+# black as the lock screen's does.
+picture.shown = 0;
+picture.image = Image("picture.png");
+if (picture.image)
+  {
+    cover = Math.Max(width / picture.image.GetWidth(), height / picture.image.GetHeight());
+    picture.scaled = picture.image.Scale(Math.Int(picture.image.GetWidth() * cover + 0.5),
+                                         Math.Int(picture.image.GetHeight() * cover + 0.5));
+    picture.sprite = placed(picture.scaled, (width - picture.scaled.GetWidth()) / 2,
+                            (height - picture.scaled.GetHeight()) / 2, 0);
+    picture.sprite.SetOpacity(0);
+  }
+
+# The column, from the bottom up, as Lock.qml stacks it: a line for what
+# the boot says, the prompt's panel, then the name over what's happening,
+# each a step of space apart.
+apart = @apart@ * scale;
+bottom = height - Math.Int(height / 12);
+said.top = bottom - @said@ * scale;
+panel.top = said.top - apart - @panelHeight@ * scale;
+head.bottom = panel.top - apart;
+
+name.image = drawn("name");
+under.images["starting"] = drawn("starting");
+under.images["locked"] = drawn("locked");
+under.images["restarting"] = drawn("restarting");
+under.images["stopping"] = drawn("stopping");
+under.height = under.images["starting"].GetHeight() - 2 * pad;
+under.top = head.bottom - under.height;
+name.top = under.top - (name.image.GetHeight() - 2 * pad);
+name.sprite = placed(name.image, middle - name.image.GetWidth() / 2, name.top - pad, 10);
+
+fun says(what)
+  {
+    if (global.under.showing == what)
+      return;
+    global.under.showing = what;
+    local.image = global.under.images[what];
+    if (global.under.sprite)
+      global.under.sprite.SetImage(image);
+    else
+      global.under.sprite = Sprite(image);
+    global.under.sprite.SetPosition(Math.Int(global.middle - image.GetWidth() / 2),
+                                    Math.Int(global.under.top - global.pad), 10);
+  }
+
+mode = Plymouth.GetMode();
+if (mode == "shutdown")
+  says("stopping");
+else if (mode == "reboot")
+  says("restarting");
+else
+  says("starting");
+
+# What the boot is, small at the bottom left.
+about.image = drawn("about");
+about.sprite = placed(about.image, @aboutLeft@ * scale - pad,
+                      height - @aboutBottom@ * scale - about.image.GetHeight() + pad, 10);
+
+# The prompt's panel and what's inside it, hidden until something asks.
+panel.calm = drawn("panel");
+panel.urgent = drawn("panel-urgent");
+panel.reach = @reach@ * scale;
+panel.left = middle - @panelWidth@ * scale / 2;
+panel.sprite = placed(panel.calm, panel.left - panel.reach, panel.top - panel.reach, 20);
+centre = panel.top + @panelHeight@ * scale / 2;
+
+lock.image = drawn("lock");
+lock.x = panel.left + @glyphLeft@ * scale;
+lock.sprite = placed(lock.image, lock.x, centre - lock.image.GetHeight() / 2, 21);
+typed = lock.x + lock.image.GetWidth() + @glyphGap@ * scale;
+
+hints["pin"] = drawn("hint-pin");
+hints["passphrase"] = drawn("hint-passphrase");
+hints["recovery"] = drawn("hint-recovery");
+hints["again"] = drawn("hint-again");
+hint.sprite = placed(hints["pin"], typed + @hintGap@ * scale,
+                     centre - hints["pin"].GetHeight() / 2, 21);
+
+dot = drawn("dot");
+step = dot.GetWidth() + @dotSpacing@ * scale;
+caret.image = drawn("caret");
+caret.sprite = placed(caret.image, typed, centre - caret.image.GetHeight() / 2, 22);
+
+fun asking(shown)
+  {
+    global.panel.sprite.SetOpacity(shown);
+    global.lock.sprite.SetOpacity(shown);
+    global.hint.sprite.SetOpacity(shown);
+    global.caret.sprite.SetOpacity(shown);
+    for (index = 0; global.dots[index]; index++)
+      global.dots[index].SetOpacity(0);
+  }
+asking(0);
+
+# Whether a secret has been sent, so that being asked again means it was
+# wrong, as the lock screen says when PAM refuses one.
+sent = 0;
+wrong = 0;
+
+fun holds(text, part)
+  {
+    for (index = 0; text.CharAt(index + part.Length() - 1) != ""; index++)
+      if (text.SubString(index, index + part.Length()) == part)
+        return 1;
+    return 0;
+  }
+
+fun password_callback(prompt, bullets)
+  {
+    if (global.sent && bullets == 0)
+      global.wrong = 1;
+    if (bullets > 0)
+      global.wrong = 0;
+    global.sent = 0;
+    global.typing = bullets;
+    says("locked");
+    asking(1);
+
+    if (global.wrong)
+      global.panel.sprite.SetImage(global.panel.urgent);
+    else
+      global.panel.sprite.SetImage(global.panel.calm);
+
+    if (global.wrong)
+      local.which = "again";
+    else if (holds(prompt, "PIN"))
+      local.which = "pin";
+    else if (holds(prompt, "ecovery"))
+      local.which = "recovery";
+    else
+      local.which = "passphrase";
+    global.hint.sprite.SetImage(global.hints[which]);
+    if (bullets > 0)
+      global.hint.sprite.SetOpacity(0);
+
+    for (index = 0; global.dots[index] || index < bullets; index++)
+      {
+        if (!global.dots[index])
+          global.dots[index] = placed(global.dot, global.typed + index * global.step,
+                                      global.centre - global.dot.GetHeight() / 2, 21);
+        if (index < bullets)
+          global.dots[index].SetOpacity(1);
+        else
+          global.dots[index].SetOpacity(0);
+      }
+    global.caret.sprite.SetX(Math.Int(global.typed + bullets * global.step));
+  }
+
+fun normal_callback()
+  {
+    if (global.under.showing == "locked")
+      {
+        global.sent = 1;
+        says("starting");
+      }
+    asking(0);
+  }
+
+Plymouth.SetDisplayPasswordFunction(password_callback);
+Plymouth.SetDisplayNormalFunction(normal_callback);
+
+# What the boot says, such as a disk being checked, on the line below the
+# panel, which nothing else uses.
+fun message_callback(text)
+  {
+    local.image = Image.Text(text, @textColour@, 1, "@sansFamily@ " + @sansLarge@ * scale);
+    local.line = @said@ * global.scale;
+    global.said.sprite = placed(image, global.middle - image.GetWidth() / 2,
+                                global.said.top + (line - image.GetHeight()) / 2, 10);
+  }
+
+fun hide_message_callback(text)
+  {
+    global.said.sprite = NULL;
+  }
+
+Plymouth.SetDisplayMessageFunction(message_callback);
+Plymouth.SetHideMessageFunction(hide_message_callback);
+
+# The fade, eased out over the lock screen's long motion; Plymouth calls
+# this fifty times a second.
+frames = @fadeFrames@;
+frame = 0;
+
+fun refresh_callback()
+  {
+    if (!global.picture.sprite || global.frame > global.frames)
+      return;
+    local.t = global.frame / global.frames;
+    global.picture.sprite.SetOpacity(1 - (1 - t) * (1 - t) * (1 - t));
+    global.frame++;
+  }
+
+Plymouth.SetRefreshFunction(refresh_callback);
