@@ -98,6 +98,12 @@ pub struct Cap {
     /// that there's none.
     #[serde(default)]
     pub ends_known: bool,
+    /// When the spend next goes back to nothing, for a cap counted over
+    /// periods of `window_hours` (a calendar day) rather than a rolling
+    /// window. A period's spend doesn't roll out an hour at a time; it all
+    /// goes at once, then.
+    #[serde(default)]
+    pub resets: Option<String>,
     pub at: String,
 }
 
@@ -246,7 +252,12 @@ fn check(record: &Record) -> Result<(), String> {
             }
         }
         Record::Cap(cap) => {
-            instant(&cap.at, "at")?;
+            let at = instant(&cap.at, "at")?;
+            if let Some(resets) = &cap.resets
+                && instant(resets, "resets")? <= at
+            {
+                return Err(format!("resets {resets} isn't after the cap was read"));
+            }
             if let Some(ends) = &cap.ends
                 && crate::time::parse_day(ends).is_none()
             {
@@ -373,7 +384,7 @@ fn store_cap(history: &History, feed: &str, cap: &Cap) -> Result<(), String> {
         .optional()
         .map_err(fail)?;
     db.execute(
-        "INSERT OR REPLACE INTO caps VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12)",
+        "INSERT OR REPLACE INTO caps VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13)",
         params![
             feed,
             cap.name,
@@ -387,6 +398,7 @@ fn store_cap(history: &History, feed: &str, cap: &Cap) -> Result<(), String> {
             cap.state.name(),
             cap.ends,
             cap.ends_known,
+            cap.resets.as_deref().and_then(crate::time::parse),
         ],
     )
     .map_err(fail)?;
@@ -478,6 +490,35 @@ mod tests {
                 .unwrap_err()
                 .contains("more than nothing")
         );
+    }
+
+    // A day's cap that resets at the next midnight is kept with its reset;
+    // one claiming to reset before it was read can't be judged.
+    #[test]
+    fn a_period_s_reset_is_kept_after_it_was_read() {
+        let day = |resets: &str| {
+            serde_json::json!({
+                "v": 1, "kind": "cap", "name": "premium", "label": "premium day",
+                "allowance": 1000, "windowHours": 24, "spent": 421.43, "warn": 0.5,
+                "state": "ok", "resets": resets, "at": "2026-10-14T05:40:00Z",
+            })
+            .to_string()
+        };
+        assert!(
+            parse(&day("2026-10-14T05:00:00Z"))
+                .unwrap_err()
+                .contains("isn't after")
+        );
+        let history = History::memory();
+        store(
+            &history,
+            "proxy",
+            &parse(&day("2026-10-15T04:00:00Z")).unwrap(),
+            0.0,
+        )
+        .unwrap();
+        let kept = crate::caps::latest(&history).unwrap();
+        assert_eq!(kept[0].resets, crate::time::parse("2026-10-15T04:00:00Z"));
     }
 
     #[test]

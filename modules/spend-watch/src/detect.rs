@@ -136,28 +136,36 @@ pub fn caps(picture: &Picture) -> Vec<Finding> {
         };
         let share = view.spent / allowance;
         let over = view.spent >= allowance || cap.state == "refused";
+        // Where the spend is counted: a rolling window, or a period that
+        // resets whatever is spent.
+        let counted = match view.resets {
+            Some(at) => format!(", resetting at {}", picture.zone.clock(at, now)),
+            None => format!(" in the last {} hours", cap.window_hours),
+        };
         if over {
-            let frees = view
-                .clock
-                .as_ref()
-                .and_then(|clock| clock.frees_at)
-                .map(|at| {
-                    format!(
-                        " It's back under by {} if nothing more is spent.",
-                        picture.zone.clock(at, now)
-                    )
-                })
-                .unwrap_or_default();
+            let frees = match view.resets {
+                Some(_) => String::new(),
+                None => view
+                    .clock
+                    .as_ref()
+                    .and_then(|clock| clock.frees_at)
+                    .map(|at| {
+                        format!(
+                            " It's back under by {} if nothing more is spent.",
+                            picture.zone.clock(at, now)
+                        )
+                    })
+                    .unwrap_or_default(),
+            };
             let mut f = finding(
                 key("over"),
                 "caps",
                 Severity::Alert,
                 format!("over the {}", cap.label),
                 format!(
-                    "{} of {} in the last {} hours.{frees}",
+                    "{} of {}{counted}.{frees}",
                     whole(view.spent),
                     whole(allowance),
-                    cap.window_hours
                 ),
             );
             f.badge = view
@@ -190,10 +198,16 @@ pub fn caps(picture: &Picture) -> Vec<Finding> {
                         cap.label
                     ),
                     format!(
-                        "{} of {} spent, {} rolling out in the next day; by the forecast's paths.",
+                        "{} of {} spent{}; by the forecast's paths.",
                         whole(view.spent),
                         whole(allowance),
-                        whole(clock.freeing_in_day)
+                        match view.resets {
+                            Some(_) => counted.clone(),
+                            None => format!(
+                                ", {} rolling out in the next day",
+                                whole(clock.freeing_in_day)
+                            ),
+                        }
                     ),
                 );
                 f.badge = percent(share);
@@ -208,12 +222,7 @@ pub fn caps(picture: &Picture) -> Vec<Finding> {
                     "caps",
                     Severity::Warning,
                     format!("{} of the {}", percent(share), cap.label),
-                    format!(
-                        "{} of {} in the last {} hours.",
-                        whole(view.spent),
-                        whole(allowance),
-                        cap.window_hours
-                    ),
+                    format!("{} of {}{counted}.", whole(view.spent), whole(allowance)),
                 );
                 f.badge = percent(share);
                 f.dollars = allowance - view.spent;

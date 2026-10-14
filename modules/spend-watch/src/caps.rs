@@ -1,9 +1,10 @@
-//! Caps: a provider's limit on spend over a rolling window, as feeds give
-//! them (or one set for a machine with no feed), with their history of
-//! changes and a clock in chances: from the forecast's simulated paths,
-//! how likely the window's spend is to reach the warning and the cap
-//! within a day and before an override ends, and, while over, when the
-//! oldest hours rolling out of the window bring it back under.
+//! Caps: a provider's limit on spend over a rolling window, or over set
+//! periods that reset, as feeds give them (or one set for a machine with no
+//! feed), with their history of changes and a clock in chances: from the
+//! forecast's simulated paths, how likely the window's spend is to reach
+//! the warning and the cap within a day and before an override ends, and,
+//! while over, when the oldest hours rolling out of the window, or the
+//! period resetting, bring it back under.
 
 use crate::forecast::{Paths, Shape};
 use crate::history::History;
@@ -22,6 +23,8 @@ pub struct Cap {
     pub state: String,
     pub ends: Option<i64>,
     pub ends_known: bool,
+    /// When a cap counted over periods next resets; none for a rolling one.
+    pub resets: Option<f64>,
     pub at: f64,
 }
 
@@ -46,7 +49,7 @@ pub fn latest(history: &History) -> Result<Vec<Cap>, String> {
         .db
         .prepare(
             "SELECT feed, name, label, allowance, window_hours, spent, warn, fallback, state,
-             ends, ends_known, at FROM caps c WHERE at = (SELECT MAX(at) FROM caps d
+             ends, ends_known, at, resets FROM caps c WHERE at = (SELECT MAX(at) FROM caps d
              WHERE d.feed = c.feed AND d.name = c.name) ORDER BY feed, name",
         )
         .map_err(fail)?;
@@ -67,6 +70,7 @@ pub fn latest(history: &History) -> Result<Vec<Cap>, String> {
                     .and_then(|day| crate::time::parse_day(&day)),
                 ends_known: row.get(10)?,
                 at: row.get(11)?,
+                resets: row.get(12)?,
             })
         })
         .map_err(fail)?;
@@ -108,7 +112,7 @@ pub struct Clock {
     pub over_after_end: Option<f64>,
     /// While over: when it's back under with nothing more spent.
     pub frees_at: Option<f64>,
-    /// What rolls out of the window in the next day.
+    /// What rolls out of the window, or goes with a reset, in the next day.
     pub freeing_in_day: f64,
 }
 
@@ -127,8 +131,68 @@ fn hourly(path: &[f64], shape: &Shape, zone: &Zone, now: f64, hours: usize) -> V
         .collect()
 }
 
-/// `past` is the window's hours oldest first, ending now, so `past[k]` is
-/// what rolls out k hours from now.
+/// How a cap's spend leaves it: an hour at a time as a rolling window
+/// passes, or all at once when a period resets.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Window<'a> {
+    /// The window's hours oldest first, ending now, so `past[k]` is what
+    /// rolls out k hours from now.
+    Rolling(&'a [f64]),
+    /// The next reset, and every `hours` after it.
+    Resets { at: f64, hours: usize },
+}
+
+impl Window<'_> {
+    /// The spend counted k hours from now, from what's counted now and
+    /// `since[j]`, what's simulated over the next j hours.
+    fn counted(&self, spent: f64, since: &[f64], k: usize, now: f64) -> f64 {
+        match *self {
+            Window::Rolling(past) => {
+                let rolled: f64 = past.iter().take(k).sum();
+                spent - rolled + since[k] - since[k.saturating_sub(past.len())]
+            }
+            Window::Resets { at, hours } => {
+                // The reset falls in the hour `first` hours from now, and
+                // that hour's spend counts toward the period it starts.
+                let first = ((at - now) / HOUR).floor().max(0.0) as usize;
+                if k <= first {
+                    spent + since[k]
+                } else {
+                    let hours = hours.max(1);
+                    let last = first + (k - 1 - first) / hours * hours;
+                    since[k] - since[last]
+                }
+            }
+        }
+    }
+
+    /// While over, when it's back under with nothing more spent.
+    fn frees(&self, spent: f64, allowance: f64, now: f64) -> f64 {
+        match *self {
+            Window::Rolling(past) => {
+                let mut left = spent;
+                for (k, hour) in past.iter().enumerate() {
+                    left -= hour;
+                    if left < allowance {
+                        return now + (k + 1) as f64 * HOUR;
+                    }
+                }
+                now + past.len() as f64 * HOUR
+            }
+            Window::Resets { at, .. } => at,
+        }
+    }
+
+    /// What leaves the window in the next day with nothing more spent.
+    fn freeing_in_day(&self, spent: f64, now: f64) -> f64 {
+        match *self {
+            Window::Rolling(past) => past.iter().take(24).sum(),
+            Window::Resets { at, .. } if at - now <= 24.0 * HOUR => spent,
+            Window::Resets { .. } => 0.0,
+        }
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 pub fn clock(
     spent: f64,
@@ -136,7 +200,7 @@ pub fn clock(
     warn: f64,
     fallback: Option<f64>,
     ends_at: Option<f64>,
-    past: &[f64],
+    window: Window,
     paths: &Paths,
     shape: &Shape,
     zone: &Zone,
@@ -147,21 +211,17 @@ pub fn clock(
     let end_hour = ends_at
         .map(|end| ((end - now) / HOUR).ceil().max(0.0) as usize)
         .filter(|end| end.max(&1) <= &horizon);
-    let window_hours = past.len();
-    let rolled = |k: usize| past.iter().take(k).sum::<f64>();
     let (mut warned, mut capped, mut before_end, mut over_after) = (0, 0, 0, 0);
     for path in paths {
         let coming = hourly(path, shape, zone, now, horizon);
-        // What's simulated from now, so far, and what's left the window
-        // again by the k-th hour.
+        // What's simulated from now, by the k-th hour.
         let mut since = vec![0.0; horizon + 1];
         for k in 1..=horizon {
             since[k] = since[k - 1] + coming[k - 1];
         }
         let (mut w, mut c, mut b) = (false, false, false);
         for k in 1..=horizon {
-            let running = since[k] - since[k.saturating_sub(window_hours)];
-            let window = spent - rolled(k) + running;
+            let window = window.counted(spent, &since, k, now);
             if k <= 24 {
                 w |= window >= allowance * warn;
                 c |= window >= allowance;
@@ -182,18 +242,14 @@ pub fn clock(
         before_end += usize::from(b);
     }
     let n = paths.len().max(1) as f64;
-    let frees_at = (spent >= allowance).then(|| {
-        (1..=past.len())
-            .find(|&k| spent - rolled(k) < allowance)
-            .map_or(now + past.len() as f64 * HOUR, |k| now + k as f64 * HOUR)
-    });
+    let frees_at = (spent >= allowance).then(|| window.frees(spent, allowance, now));
     Clock {
         warn_within_day: warned as f64 / n,
         cap_within_day: capped as f64 / n,
         cap_before_end: end_hour.map(|_| before_end as f64 / n),
         over_after_end: end_hour.and(fallback).map(|_| over_after as f64 / n),
         frees_at,
-        freeing_in_day: rolled(24),
+        freeing_in_day: window.freeing_in_day(spent, now),
     }
 }
 
@@ -220,7 +276,7 @@ mod tests {
             0.9,
             None,
             None,
-            &past,
+            Window::Rolling(&past),
             &vec![vec![0.0; 7]; 10],
             &even(),
             &zone,
@@ -245,7 +301,7 @@ mod tests {
             0.9,
             None,
             None,
-            &past,
+            Window::Rolling(&past),
             &paths,
             &even(),
             &zone,
@@ -270,7 +326,7 @@ mod tests {
             0.9,
             Some(4000.0),
             Some(now + 48.0 * HOUR),
-            &past,
+            Window::Rolling(&past),
             &paths,
             &even(),
             &zone,
@@ -295,7 +351,7 @@ mod tests {
                 0.9,
                 Some(500.0),
                 Some(now + ends * HOUR),
-                &past,
+                Window::Rolling(&past),
                 &paths,
                 &even(),
                 &zone,
@@ -308,5 +364,73 @@ mod tests {
         let ten_days = judged(240.0);
         assert_eq!(ten_days.cap_before_end, None);
         assert_eq!(ten_days.over_after_end, None);
+    }
+
+    // A day's cap that resets at midnight, two hours off, with $850 of
+    // $1,000 spent and $40 an hour to come: it warns before the reset and
+    // never reaches the cap after, where a rolling day would by 04:00.
+    #[test]
+    fn a_period_s_spend_goes_all_at_once_when_it_resets() {
+        let zone = Zone::utc();
+        let now = 1_791_936_000.0 + 22.0 * HOUR;
+        let paths = vec![vec![960.0; 8]; 10];
+        let period = |spent: f64| {
+            let window = Window::Resets {
+                at: now + 2.0 * HOUR,
+                hours: 24,
+            };
+            clock(
+                spent,
+                1000.0,
+                0.9,
+                None,
+                None,
+                window,
+                &paths,
+                &even(),
+                &zone,
+                now,
+            )
+        };
+        let under = period(850.0);
+        assert_eq!((under.warn_within_day, under.cap_within_day), (1.0, 0.0));
+        assert_eq!((under.frees_at, under.freeing_in_day), (None, 850.0));
+        let rolling = clock(
+            850.0,
+            1000.0,
+            0.9,
+            None,
+            None,
+            Window::Rolling(&[0.0; 24]),
+            &paths,
+            &even(),
+            &zone,
+            now,
+        );
+        assert_eq!(rolling.cap_within_day, 1.0);
+        // Over it, it's back under when it resets, whatever has been spent.
+        let over = period(1100.0);
+        assert_eq!(over.frees_at, Some(now + 2.0 * HOUR));
+    }
+
+    // A reset an hour off, then one a day after: $50 an hour counts
+    // toward each day from its own start.
+    #[test]
+    fn every_period_after_the_first_resets_too() {
+        let now = 1_791_936_000.0;
+        let window = Window::Resets {
+            at: now + HOUR,
+            hours: 24,
+        };
+        let mut since = vec![0.0];
+        for k in 1..=60 {
+            since.push(50.0 * k as f64);
+        }
+        let counted = |k: usize| window.counted(0.0, &since, k, now);
+        assert_eq!(counted(1), 50.0);
+        assert_eq!(counted(2), 50.0);
+        assert_eq!(counted(21), 1000.0);
+        assert_eq!(counted(25), 1200.0);
+        assert_eq!(counted(26), 50.0);
     }
 }

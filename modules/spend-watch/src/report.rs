@@ -405,17 +405,24 @@ pub fn cap_line(picture: &Picture, view: &crate::picture::CapView) -> String {
         whole(allowance),
         percent(view.spent / allowance)
     );
+    if let Some(at) = view.resets {
+        line.push_str(&format!(
+            " It resets at {}.",
+            picture.zone.clock(at, picture.now)
+        ));
+    }
     if let Some(clock) = &view.clock {
-        if let Some(at) = clock.frees_at {
-            line.push_str(&format!(
+        match (clock.frees_at, view.resets) {
+            // Back under when it resets, which is said already.
+            (Some(_), Some(_)) => {}
+            (Some(at), None) => line.push_str(&format!(
                 " Back under by {}.",
                 picture.zone.clock(at, picture.now)
-            ));
-        } else {
-            line.push_str(&format!(
+            )),
+            (None, _) => line.push_str(&format!(
                 " A {} chance of reaching it within a day.",
                 percent(clock.cap_within_day)
-            ));
+            )),
         }
         if let (Some(ends), Some(after)) = (cap.ends, clock.over_after_end) {
             line.push_str(&format!(

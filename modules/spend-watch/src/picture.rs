@@ -52,6 +52,8 @@ pub struct CapView {
     pub clock: Option<Clock>,
     /// The day an override ends, when known, as the instant it does.
     pub ends_at: Option<f64>,
+    /// When a period's cap next resets.
+    pub resets: Option<f64>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -443,13 +445,26 @@ fn counted(cap: &Cap, hours: &BTreeMap<i64, f64>) -> f64 {
         return 1.0;
     }
     let last = crate::time::hour_of(cap.at);
-    let first = last - cap.window_hours as i64 + 1;
+    // A period's cap counts from the period's start, not a window back.
+    let first = match cap.resets {
+        Some(resets) => crate::time::hour_of(resets - cap.window_hours as f64 * HOUR),
+        None => last - cap.window_hours as i64 + 1,
+    };
     let billed: f64 = hours.range(first..=last).map(|(_, d)| d).sum();
     if billed <= 0.0 {
         1.0
     } else {
         (cap.spent / billed).clamp(0.0, 2.0)
     }
+}
+
+/// A period's cap resets on its own, whether or not its feed says so again:
+/// the first reset after now, from the one after it was read.
+fn next_reset(cap: &Cap, now: f64) -> Option<f64> {
+    let first = cap.resets?;
+    let length = cap.window_hours as f64 * HOUR;
+    let passed = ((now - first) / length).floor().max(-1.0) + 1.0;
+    Some(first + passed * length)
 }
 
 fn standing(zone: &Zone, hours: &BTreeMap<i64, f64>, now: f64, so_far: f64) -> Standing {
@@ -532,6 +547,7 @@ fn cap_views(
             state: "ok".into(),
             ends: None,
             ends_known: true,
+            resets: None,
             at: now,
         });
     }
@@ -542,16 +558,31 @@ fn cap_views(
         // What's been billed since the feed's figure, hours wholly after it:
         // none when the figure came this hour.
         let after = crate::time::hour_of(cap.at) + 1;
+        let billed = |from: i64| share * hours.range(from..=now_hour).map(|(_, d)| d).sum::<f64>();
         let since: f64 = if cap.feed.is_empty() || after > now_hour {
             0.0
         } else {
-            share * hours.range(after..=now_hour).map(|(_, d)| d).sum::<f64>()
+            billed(after)
         };
-        let spent = cap.spent + since;
+        let resets = next_reset(&cap, now);
+        let spent = match resets {
+            // Read in a period that's since reset: what's billed since.
+            Some(next) if cap.at < next - window as f64 * HOUR => {
+                billed(crate::time::hour_of(next - window as f64 * HOUR))
+            }
+            _ => cap.spent + since,
+        };
         // What rolls out next: the window's oldest hours first.
         let past: Vec<f64> = (now_hour - window + 1..=now_hour)
             .map(|hour| share * hours.get(&hour).copied().unwrap_or(0.0))
             .collect();
+        let leaving = match resets {
+            Some(at) => caps::Window::Resets {
+                at,
+                hours: window as usize,
+            },
+            None => caps::Window::Rolling(&past),
+        };
         let scaled: Paths;
         let paths = if share == 1.0 {
             paths
@@ -570,7 +601,7 @@ fn cap_views(
                 cap.warn,
                 cap.fallback,
                 ends_at,
-                &past,
+                leaving,
                 paths,
                 shape,
                 zone,
@@ -582,7 +613,7 @@ fn cap_views(
                 cap.warn,
                 cap.fallback,
                 ends_at,
-                &past,
+                leaving,
                 &vec![vec![0.0; 7]],
                 shape,
                 zone,
@@ -595,6 +626,7 @@ fn cap_views(
             spent,
             clock,
             ends_at,
+            resets,
         });
     }
     Ok(out)
@@ -617,8 +649,25 @@ mod tests {
             state: "ok".into(),
             ends: None,
             ends_known: false,
+            resets: None,
             at: 100.0 * HOUR + 1.0,
         }
+    }
+
+    // Read at 04:00 with the day resetting at 10:00: it counts from that
+    // day's start, and resets every day after.
+    #[test]
+    fn a_period_s_cap_counts_from_its_start_and_resets_on_its_own() {
+        let mut day = cap("proxy", 300.0);
+        day.at = 100.0 * HOUR;
+        day.resets = Some(106.0 * HOUR);
+        let hours: BTreeMap<i64, f64> = (77..=100).map(|hour| (hour, 50.0)).collect();
+        // The 19 hours from 82 to 100 billed $950.
+        assert_eq!(counted(&day, &hours), 300.0 / 950.0);
+        assert_eq!(next_reset(&day, 101.0 * HOUR), Some(106.0 * HOUR));
+        assert_eq!(next_reset(&day, 106.0 * HOUR), Some(130.0 * HOUR));
+        assert_eq!(next_reset(&day, 131.0 * HOUR), Some(154.0 * HOUR));
+        assert_eq!(next_reset(&cap("proxy", 0.0), 101.0 * HOUR), None);
     }
 
     // $50 an hour billed for the day: a premium day that counted none of it

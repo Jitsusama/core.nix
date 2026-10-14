@@ -657,4 +657,47 @@ mod tests {
         assert_eq!(picture.caps.len(), 1);
         assert_eq!(picture.caps[0].spent, 600.0);
     }
+
+    fn premium_day(spent: f64, at: &str, resets: &str) -> History {
+        let history = History::memory();
+        let line = serde_json::json!({
+            "v": 1, "kind": "cap", "name": "premium", "label": "premium day",
+            "allowance": 1000, "windowHours": 24, "spent": spent, "warn": 0.5,
+            "state": "refused", "resets": resets, "at": at,
+        });
+        let record = crate::feed::parse(&line.to_string()).unwrap();
+        crate::feed::store(&history, "proxy", &record, 0.0).unwrap();
+        history
+    }
+
+    // Over a day's cap, it's back when the day resets, not when spend
+    // rolls out of the last 24 hours.
+    #[test]
+    fn a_day_s_cap_is_back_when_the_day_resets() {
+        let now = crate::time::parse("2026-10-14T12:30:00Z").unwrap();
+        let history = premium_day(1100.0, "2026-10-14T12:29:00Z", "2026-10-15T04:00:00Z");
+        let config = config();
+        let picture = Picture::read(&history, &config, now).unwrap();
+        let found = crate::detect::caps(&picture);
+        let over = found.iter().find(|f| f.key.ends_with(":over")).unwrap();
+        assert_eq!(
+            over.detail,
+            "$1,100 of $1,000, resetting at 04:00 tomorrow."
+        );
+        assert_eq!(over.badge, "back 04:00 tomorrow");
+    }
+
+    // Read in a day that's since reset: none of it counts, and the next
+    // reset is the one after.
+    #[test]
+    fn a_day_s_cap_read_yesterday_has_reset() {
+        let now = crate::time::parse("2026-10-14T12:30:00Z").unwrap();
+        let history = premium_day(1100.0, "2026-10-13T12:00:00Z", "2026-10-14T04:00:00Z");
+        let picture = Picture::read(&history, &config(), now).unwrap();
+        assert_eq!(picture.caps[0].spent, 0.0);
+        assert_eq!(
+            picture.caps[0].resets,
+            crate::time::parse("2026-10-15T04:00:00Z")
+        );
+    }
 }
