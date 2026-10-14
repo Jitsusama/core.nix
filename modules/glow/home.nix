@@ -123,5 +123,10 @@ in
   imports = [ ../theme/home.nix ];
 
   home.packages = [ pkgs.glow ];
-  home.file.${file}.text = settings;
+  home.file.${file} = {
+    text = settings;
+    # glow writes its own defaults there the first time it runs, which would
+    # otherwise stop Home Manager from putting these in their place.
+    force = true;
+  };
 }
