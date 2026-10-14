@@ -219,6 +219,7 @@
         onepassword = ./modules/onepassword/nixos.nix;
         perf = ./modules/perf/nixos.nix;
         pipewire = ./modules/pipewire/nixos.nix;
+        plymouth = moduleFrom ./modules/plymouth/nixos.nix { inherit wallpapers; };
         podman = ./modules/podman/nixos.nix;
         power-profiles-daemon = ./modules/power-profiles-daemon/nixos.nix;
         quickshell = ./modules/quickshell/nixos.nix;

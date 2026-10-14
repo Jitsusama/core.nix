@@ -175,6 +175,7 @@ let
     vm-network-revives-units = import ./tests/network-revive.nix { inherit self pkgs; };
     # The greeter is all that stands between a logout and the desktop.
     vm-greeter-signs-in = import ./tests/greeter.nix { inherit self pkgs; };
+    vm-boot-asks-in-the-theme = import ./tests/plymouth.nix { inherit self pkgs; };
   };
 in
 {
