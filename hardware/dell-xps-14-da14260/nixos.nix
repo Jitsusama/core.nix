@@ -121,6 +121,9 @@ in
   # than just after, which blanked the screen, and the greeter, which waits
   # for the GPU, starts as soon as the disk is open.
   boot.initrd.kernelModules = [ "xe" ];
+  # The boot menu in the firmware's text mode 1, picked by eye on the panel
+  # as the most readable of the modes its r key steps through.
+  boot.loader.systemd-boot.consoleMode = "1";
   boot.kernelModules = [
     "kvm-intel"
     # thermald looks once, as it starts, for the power limits the CPU's own
