@@ -388,6 +388,7 @@ in
           "network"
           "battery"
           "volume"
+          "spend"
           "notices"
           "quiet"
           "disk"
@@ -641,6 +642,67 @@ in
       cp ${./modules/quickshell/pieces/Disk.qml} Disk.qml
       cp ${./tests/disk.qml} shell.qml
       cp ${niri} Niri.qml
+      export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+      timeout 60 ${lib.getExe' pkgs.quickshell "qs"} -p shell.qml
+      touch $out
+    '';
+
+  # The AI spend piece and the launcher's collection of it read what
+  # spend-watch writes, from a day of a session's turns, and the states
+  # tests/spend.qml writes by hand, through Quickshell itself, with niri, do
+  # not disturb and the shortcuts stood in for.
+  the-shell-reads-the-spend-watch =
+    let
+      watch = pkgs.callPackage ./modules/spend-watch/package.nix { };
+      singleton =
+        name: body:
+        pkgs.writeText name ''
+          pragma Singleton
+          import Quickshell
+          import QtQuick
+          Singleton { ${body} }
+        '';
+      niri = singleton "Niri.qml" ''
+        property var spawned: []
+        function spawn(command) { spawned = command; }
+      '';
+      shortcuts = singleton "Shortcuts.qml" ''
+        property var actions: [{ opens: "spend", chord: [{ text: "Super" }, { text: "U" }] }]
+      '';
+      turn =
+        ''{"type":"message","timestamp":"%s","message":{"role":"assistant","model":"opus",''
+        + ''"usage":{"input":10,"output":100,"cacheRead":1000,"cacheWrite":100,''
+        + ''"cost":{"total":1.5}}}}\n'';
+    in
+    pkgs.runCommandLocal "the-shell-reads-the-spend-watch" { } ''
+      mkdir -p runtime/written sessions/thing state launcher && chmod 700 runtime
+      log=sessions/thing/session.jsonl
+      now=$(date -u +%s)
+      at() { date -u -d @$((now - $1)) +%FT%TZ; }
+      printf '{"type":"session","version":3,"id":"s1","timestamp":"%s","cwd":"/src/thing"}\n' \
+        "$(at 90000)" > $log
+      for hours in $(seq 24 -1 0); do
+        printf '${turn}' "$(at $((hours * 3600)))" >> $log
+      done
+      cat > config.json <<EOF
+      {"sessions": "$PWD/sessions", "runs": "$PWD/runs.db", "registry": "$PWD/registry",
+       "quests": "$PWD/quests", "state": "$PWD/state", "runtime": "$PWD/runtime/written",
+       "zone": "UTC", "notices": {"enable": false}}
+      EOF
+      ${lib.getExe watch} --config config.json import
+      ${lib.getExe watch} --config config.json show > runtime/written/status.json
+      ${lib.getExe watch} --config config.json show collection > runtime/written/collection.json
+      cp ${./modules/quickshell/pieces/Piece.qml} Piece.qml
+      cp ${./modules/quickshell/pieces/Spend.qml} Spend.qml
+      cp ${./modules/quickshell/Fuzzy.js} Fuzzy.js
+      cp ${./modules/quickshell/launcher/Provider.qml} launcher/Provider.qml
+      cp ${./modules/quickshell/launcher/Asking.js} launcher/Asking.js
+      cp ${./modules/quickshell/launcher/Spend.qml} launcher/Spend.qml
+      cp ${./tests/spend.qml} shell.qml
+      cp ${niri} Niri.qml
+      cp ${singleton "Quiet.qml" "property bool sharing: false"} Quiet.qml
+      cp ${shortcuts} Shortcuts.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
       timeout 60 ${lib.getExe' pkgs.quickshell "qs"} -p shell.qml
@@ -1029,6 +1091,20 @@ in
       "A command overrunning the disk guard's memory would stop the guard, or the account's guard runs outside background.slice."
       (
         system.OOMPolicy == "continue" && user.OOMPolicy == "continue" && user.Slice == "background.slice"
+      );
+
+  # spend-watch only watches, so it yields to whatever the account runs, and
+  # comes back when it fails.
+  spend-watch-stays-in-the-background =
+    let
+      service = (account workstation).systemd.user.services.spend-watch.Service;
+    in
+    holds "spend-watch-stays-in-the-background"
+      "spend-watch runs outside background.slice, isn't restarted when it fails, or takes its status with it when it stops."
+      (
+        service.Slice == "background.slice"
+        && service.Restart == "on-failure"
+        && service.RuntimeDirectoryPreserve == "yes"
       );
 
   # A Mac's guards run under launchd, the machine's as a daemon and the
@@ -1929,6 +2005,67 @@ in
       (pkgs.callPackage ./modules/disk-guard/package.nix { }).overrideAttrs
         (old: {
           pname = "disk-guard-passes-clippy";
+          nativeBuildInputs = old.nativeBuildInputs ++ [ pkgs.clippy ];
+          buildPhase = ''
+            cargo clippy --all-targets --offline -- -D warnings
+          '';
+          doCheck = false;
+          installPhase = ''
+            touch $out
+          '';
+        });
+
+    # spend-watch reads the config an account gets: it's refused at build by
+    # the watch's own check-config, which builds it and runs its tests on the
+    # way, and the service starts the watch with that file.
+    spend-watch-accepts-its-configuration =
+      let
+        home = account workstation;
+        file = home.xdg.configFile."spend-watch/config.json".source;
+        # Every option set, so each shape the module renders is one the
+        # daemon reads: a feed, a cap of the account's own, a zone.
+        fed = account (bareNixos [
+          self.nixosModules.workstation
+          {
+            home-manager.users.someone.jitsusama.spend-watch = {
+              feeds.provider = {
+                label = "the provider";
+                command = [
+                  "provider-feed"
+                  "run"
+                ];
+                environment.REGION = "north";
+              };
+              cap.allowance = 4000;
+              zone = "America/Toronto";
+              premium = [ "big-model" ];
+              detectors.quiet = [ "mix" ];
+            };
+          }
+        ]);
+      in
+      pkgs.runCommandLocal "spend-watch-accepts-its-configuration"
+        {
+          inherit file;
+          fed = fed.xdg.configFile."spend-watch/config.json".source;
+          service = home.systemd.user.services.spend-watch.Service.ExecStart;
+        }
+        ''
+          case "$service" in
+            *"--config $file run") ;;
+            *)
+              echo "The service doesn't start spend-watch with the account's config: $service"
+              exit 1
+              ;;
+          esac
+          touch $out
+        '';
+
+    # clippy finds nothing in spend-watch, its tests included.
+    spend-watch-passes-clippy =
+      (pkgs.callPackage ./modules/spend-watch/package.nix { }).overrideAttrs
+        (old: {
+          pname = "spend-watch-passes-clippy";
           nativeBuildInputs = old.nativeBuildInputs ++ [ pkgs.clippy ];
           buildPhase = ''
             cargo clippy --all-targets --offline -- -D warnings
