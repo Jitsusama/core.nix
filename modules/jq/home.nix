@@ -7,12 +7,10 @@ let
   # jq takes a colour as the escape's own numbers.
   sgr =
     colour:
-    "38;2;"
-    + lib.concatMapStringsSep ";" (at: toString (lib.fromHexString (builtins.substring at 2 colour))) [
-      1
-      3
-      5
-    ];
+    let
+      channel = at: toString (lib.fromHexString (builtins.substring at 2 colour));
+    in
+    "38;2;${channel 1};${channel 3};${channel 5}";
 in
 {
   imports = [ ../theme/home.nix ];

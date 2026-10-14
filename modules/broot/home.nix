@@ -7,8 +7,7 @@
 let
   inherit (config.jitsusama.theme) roles;
   mix = import ../theme/mix.nix { inherit lib; };
-  channel = colour: index: toString (lib.fromHexString (builtins.substring (1 + index * 2) 2 colour));
-  rgb = colour: "rgb(${channel colour 0}, ${channel colour 1}, ${channel colour 2})";
+  rgb = import ../theme/rgb.nix { inherit lib; };
   # broot writes a style as its foreground, its background and then any
   # attributes, None leaving the terminal's own.
   style =
