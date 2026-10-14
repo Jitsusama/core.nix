@@ -198,9 +198,11 @@ Item {
         }
 
         // A hint stands just clear of the caret; a ghost runs on from what's
-        // typed as one word.
+        // typed as one word, and ends in an ellipsis where the field does.
         Text {
             x: input.text === "" ? Theme.space.xs : input.contentWidth
+            width: Math.max(0, input.width - x)
+            elide: Text.ElideRight
             anchors.verticalCenter: parent.verticalCenter
             text: input.text === "" ? prompt.hint : prompt.ghost
             visible: text !== "" && (input.text === "" || !prompt.secret)

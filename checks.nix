@@ -709,6 +709,33 @@ in
       touch $out
     '';
 
+  # A palette's row and its field keep their words apart and inside their
+  # edges however long they run, ending what doesn't fit in an ellipsis, as
+  # tests/rows.qml draws them through Quickshell in the theme's own face and
+  # sizes, at a panel's width.
+  palette-rows-keep-their-words-apart =
+    let
+      machine = graphical.config;
+      lights = pkgs.writeText "Lights.qml" ''
+        pragma Singleton
+        import Quickshell
+        import QtQuick
+        Singleton { property bool caps: false }
+      '';
+    in
+    pkgs.runCommandLocal "palette-rows-keep-their-words-apart" { } ''
+      cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
+      cp ${./modules/quickshell/Choice.qml} Choice.qml
+      cp ${./modules/quickshell/Prompt.qml} Prompt.qml
+      cp ${lights} Lights.qml
+      cp ${./tests/rows.qml} shell.qml
+      export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
+      mkdir -m 700 $XDG_RUNTIME_DIR
+      export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = machine.fonts.packages; }}
+      timeout 60 ${lib.getExe' pkgs.quickshell "qs"} -p shell.qml
+      touch $out
+    '';
+
   # The launcher's Keyboard collection finds the ErgoDox's keys and actions
   # and shows what it finds on the layout, as tests/keyboard.qml drives it
   # through Quickshell itself, over the firmware's own description of the
