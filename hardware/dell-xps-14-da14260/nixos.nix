@@ -151,7 +151,8 @@ in
     SUBSYSTEM=="sound", KERNEL=="controlC0", ACTION=="add", ATTRS{id}=="sofsoundwire", ATTR{[sound/ctl-led]mic/card0/attach}="cs42l45 FU 113 Channel Switch"
   '';
 
-  # The ambient light and presence sensors, behind the Integrated Sensor Hub.
+  # The presence sensor, behind the Integrated Sensor Hub. Its light sensors
+  # are the backlight module's, which hears them itself.
   hardware.sensor.iio.enable = true;
 
   # Intel's thermal daemon, which sets the chip's power limits from the

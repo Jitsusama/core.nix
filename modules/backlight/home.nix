@@ -1,7 +1,8 @@
 # The screen's brightness, set for the light in the room by backlight, a
 # daemon of core's own (src/main.rs), which learns from the brightness Joel
-# picks with the keys. It reads the light through iio-sensor-proxy
-# (nixos.nix) and does nothing on a machine without a sensor or a backlight.
+# picks with the keys. It hears the light from the light sensor's buffer,
+# which udev sets up (nixos.nix), and on a machine without a sensor it only
+# tells the shell of picks; without a backlight it does nothing.
 # Learning starts from jitsusama.backlight.standard; what it learns stays in
 # the account's state, and each pick is told to the shell's brightness bar
 # through $XDG_RUNTIME_DIR/backlight-chosen.

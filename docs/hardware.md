@@ -53,7 +53,7 @@ behind Intel's CVS bridge, and Intel's BE211 Wi-Fi 7.
 | Audio    | the firmware Sound Open Firmware runs on the DSP                       |
 | Speakers | Omarchy's tuning, as a smart filter; see below                         |
 | Camera   | Intel's camera software, with the CVS bridge in its graph; see below   |
-| Sensors  | ambient light through `iio-sensor-proxy`; see below                    |
+| Sensors  | the light sensor's buffer, for the backlight; see below                |
 | Docks    | bolt, which authorizes Thunderbolt and USB4 devices                    |
 | Firmware | fwupd, for the BIOS and firmware Dell publishes through LVFS           |
 | Battery  | charges to 80% and again below 75%, in the BIOS; see below             |
@@ -294,6 +294,15 @@ culprit: the profiler is out of the build, and a panic reboots after ten
 seconds instead of freezing the laptop. If it happens again, the record is in
 `/var/lib/systemd/pstore`, and the next step is a kernel built with KASAN,
 which names both the code that freed the memory and the code that used it.
+
+### The Light Sensor
+
+The sensor hub shows its ambient light sensor twice, as two `als` devices
+reading the same light. `iio-sensor-proxy` gives a buffer half a second to fill
+after turning it off and on again, which the hub never manages, so the proxy
+read the first device on a timer. The backlight module turns both buffers on
+through udev, keeps the proxy off them, and reads the first itself: the hub
+sends a sample only when the light changes by 1%, checking ten times a second.
 
 ### What's Left
 
