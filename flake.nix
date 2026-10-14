@@ -115,6 +115,7 @@
         cargo = ./modules/cargo/home.nix;
         claude = ./modules/claude/home.nix;
         curl = ./modules/curl/home.nix;
+        delta = ./modules/delta/home.nix;
         dig = ./modules/dig/home.nix;
         direnv = ./modules/direnv/home.nix;
         disk-guard = ./modules/disk-guard/home.nix;
