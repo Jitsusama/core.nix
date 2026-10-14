@@ -297,8 +297,11 @@ Scope {
     // with verbs of their own, as at the top; or a row that says its verbs
     // are things too (nested), as a report's rows are, so stepping goes on
     // down as far as it holds anything.
-    readonly property bool collecting: held.length > 0
-        && (!!held[held.length - 1].row.from || !!held[held.length - 1].row.nested)
+    readonly property bool collecting: held.length > 0 && collects(held[held.length - 1])
+
+    function collects(step) {
+        return !!step.row.from || !!step.row.nested;
+    }
 
     // Steps into a row: a thing's verbs, or a verb's targets. Says whether
     // there was anywhere to go.
@@ -357,10 +360,10 @@ Scope {
         let rows = source.everything();
         for (const step of held.slice(from + 1)) {
             const thing = rows.find(row => row.key === step.row.key);
-            // Asked as enter asks: a collection's things for their verbs,
-            // anything else for its targets.
+            // Asked as enter asks: a collection's things, or a nested row's,
+            // for their verbs, anything else for its targets.
             const into = !thing ? null
-                : steps[steps.length - 1].row.from ? (thing.verbs ? thing.verbs() : null)
+                : collects(steps[steps.length - 1]) ? (thing.verbs ? thing.verbs() : null)
                 : thing.targets ? thing.targets() : null;
             if (!into)
                 return;
