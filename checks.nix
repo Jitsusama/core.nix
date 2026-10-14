@@ -649,7 +649,7 @@ in
     '';
 
   # The AI spend piece and the launcher's collection of it read what
-  # spend-watch writes, from a day of a session's turns, and the states
+  # spend-watch writes, from a day of a session's turns on two models, and the states
   # tests/spend.qml writes by hand, through Quickshell itself, with niri, do
   # not disturb and the shortcuts stood in for.
   the-shell-reads-the-spend-watch =
@@ -671,7 +671,7 @@ in
         property var actions: [{ opens: "spend", chord: [{ text: "Super" }, { text: "U" }] }]
       '';
       turn =
-        ''{"type":"message","timestamp":"%s","message":{"role":"assistant","model":"opus",''
+        ''{"type":"message","timestamp":"%s","message":{"role":"assistant","model":"%s",''
         + ''"usage":{"input":10,"output":100,"cacheRead":1000,"cacheWrite":100,''
         + ''"cost":{"total":1.5}}}}\n'';
     in
@@ -683,7 +683,8 @@ in
       printf '{"type":"session","version":3,"id":"s1","timestamp":"%s","cwd":"/src/thing"}\n' \
         "$(at 90000)" > $log
       for hours in $(seq 24 -1 0); do
-        printf '${turn}' "$(at $((hours * 3600)))" >> $log
+        printf '${turn}' "$(at $((hours * 3600)))" opus >> $log
+        printf '${turn}' "$(at $((hours * 3600 + 60)))" sonnet >> $log
       done
       cat > config.json <<EOF
       {"sessions": "$PWD/sessions", "runs": "$PWD/runs.db", "registry": "$PWD/registry",

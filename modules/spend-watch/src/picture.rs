@@ -64,6 +64,8 @@ pub struct SourceState {
     pub message: String,
     pub sign_in: Option<String>,
     pub at: f64,
+    /// When it came to stand as it does.
+    pub since: f64,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -193,8 +195,8 @@ impl Picture {
             let mut statement = history
                 .db
                 .prepare(
-                    "SELECT feed, source, state, message, sign_in, at FROM health
-                     ORDER BY feed, source",
+                    "SELECT feed, source, state, message, sign_in, at, coalesce(since, at)
+                     FROM health ORDER BY feed, source",
                 )
                 .map_err(fail)?;
             statement
@@ -206,6 +208,7 @@ impl Picture {
                         message: row.get(3)?,
                         sign_in: row.get(4)?,
                         at: row.get(5)?,
+                        since: row.get(6)?,
                     })
                 })
                 .map_err(fail)?

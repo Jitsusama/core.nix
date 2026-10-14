@@ -178,6 +178,10 @@ pub struct Report {
     pub source: String,
     pub rows: Vec<Row>,
     pub notes: Vec<String>,
+    /// How many rows were left out past the top, and their dollars
+    /// together, which a note says too.
+    #[serde(skip)]
+    pub rest: Option<(usize, f64)>,
 }
 
 /// What an agent's work is called in a report.
@@ -294,6 +298,7 @@ pub fn cut(picture: &Picture, period: Period, cut: Cut, top: usize) -> Report {
     }
     let mut rows: Vec<Row> = rows.into_iter().map(|(_, row)| row).collect();
     let mut notes = Vec::new();
+    let mut left_out = None;
     if rows.len() > top {
         let rest: Vec<Row> = rows.split_off(top);
         let spent: f64 = rest.iter().map(|row| row.dollars).sum();
@@ -302,6 +307,7 @@ pub fn cut(picture: &Picture, period: Period, cut: Cut, top: usize) -> Report {
             rest.len(),
             dollars(spent)
         ));
+        left_out = Some((rest.len(), spent));
     }
     Report {
         title: format!("Spend {} by {}", period.name(), cut.id()),
@@ -311,6 +317,7 @@ pub fn cut(picture: &Picture, period: Period, cut: Cut, top: usize) -> Report {
         total,
         shown: crate::money::maybe_about(dollars(total), series::estimated(&pieces)),
         source: source_line(&pieces),
+        rest: left_out,
         rows,
         notes,
     }
@@ -359,7 +366,8 @@ pub fn summary(picture: &Picture, findings: &[Finding]) -> Report {
     let waste = &picture.waste;
     if waste.spent > 0.0 {
         notes.push(format!(
-            "This week's cache writes: {} of {} at list prices, {} of it rebuilding context.",
+            "Cache writes in the last 7 days: {} of {} at list prices, {} of it rebuilding \
+             context.",
             dollars(waste.cache_write),
             dollars(waste.spent),
             dollars(waste.rebuilt)
@@ -388,6 +396,7 @@ pub fn summary(picture: &Picture, findings: &[Finding]) -> Report {
         total: picture.week.dollars,
         shown: crate::money::maybe_about(dollars(picture.week.dollars), picture.week.estimated),
         source: source_line(&week),
+        rest: None,
         rows,
         notes,
     }
@@ -438,7 +447,7 @@ pub fn cap_line(picture: &Picture, view: &crate::picture::CapView) -> String {
     line
 }
 
-/// Where money bought nothing this week.
+/// Where money bought nothing in the last seven days.
 pub fn waste(picture: &Picture) -> Report {
     let waste = &picture.waste;
     let rows = waste
@@ -472,13 +481,14 @@ pub fn waste(picture: &Picture) -> Report {
     }
     let today = picture.zone.day(picture.now);
     Report {
-        title: "Context rebuilt this week".into(),
+        title: "Context rebuilt in 7 days".into(),
         period: "waste".into(),
         from: Zone::iso_day(today - 6),
         to: Zone::iso_day(today),
         total: waste.rebuilt,
         shown: dollars(waste.rebuilt),
         source: "pi's logs at list prices".into(),
+        rest: None,
         rows,
         notes,
     }
@@ -543,6 +553,7 @@ pub fn quests(picture: &Picture, period: Period) -> Report {
         total,
         shown: dollars(total),
         source: source_line(&pieces),
+        rest: None,
         rows,
         notes,
     }
@@ -574,10 +585,10 @@ pub fn outliers(picture: &Picture, false_discovery: f64, floor: f64) -> Report {
                 dollars: outlier.excess,
                 share: 0.0,
                 shown: format!(
-                    "{:.1} times the usual per turn over {} turns, {} beyond the usual",
+                    "{} beyond the usual: {:.1}\u{d7} per turn, {} turns",
+                    dollars(outlier.excess),
                     outlier.times,
-                    outlier.work.turns,
-                    dollars(outlier.excess)
+                    outlier.work.turns
                 ),
                 estimated: true,
             }
@@ -592,6 +603,7 @@ pub fn outliers(picture: &Picture, false_discovery: f64, floor: f64) -> Report {
         total: found.iter().map(|o| o.excess).sum(),
         shown: dollars(found.iter().map(|o| o.excess).sum()),
         source: "pi's logs at list prices".into(),
+        rest: None,
         rows,
         notes: vec![format!(
             "{} sessions compared, each shrunk toward the usual by its turns, held to a {} false \
@@ -650,6 +662,7 @@ pub fn caps(picture: &Picture) -> Report {
         total: 0.0,
         shown: String::new(),
         source: String::new(),
+        rest: None,
         rows,
         notes,
     }
@@ -703,6 +716,7 @@ pub fn forecast(picture: &Picture) -> Report {
         total: picture.week_ahead().map_or(0.0, |w| w.1),
         shown: picture.week_ahead().map_or(String::new(), |w| whole(w.1)),
         source: "forecast".into(),
+        rest: None,
         rows,
         notes,
     }

@@ -39,6 +39,16 @@ feed speaks.
   shrinkage and Benjamini-Hochberg at 5%. Changes of regime come from
   Bayesian online changepoints, confirmed after a week. `src/detect.rs`
   holds them all, and `spend-watch backtest` replays them on the history.
+- **Sources.** A feed's source that can't be read is nothing for its first
+  fifteen minutes, since a machine booting or waking fails every read until
+  its network comes; then a note, or a warning when only a sign-in mends
+  it. It clears on the first pass that finds it back. The history keeps
+  since when each source has been as it is, so a restart doesn't reset it.
+- **Strings.** Each finding carries a title for its row, a badge of a few
+  words beside it, a note for the launcher's footer and a detail for what's
+  copied and told. `src/collection.rs` lays them out as the launcher's
+  other collections are: what wants a look first, then how things stand,
+  each a figure with its parts a step in, then what was found.
 - **Telling.** Notes stay in the collection. Warnings and alerts are told
   once as a notice, at most three a week outside a cap's, and withdrawn when
   they no longer hold or are marked expected. No notice holds an amount, and

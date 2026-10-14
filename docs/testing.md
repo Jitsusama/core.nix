@@ -87,7 +87,8 @@ written beside each in `tests/`.
 | `the-launcher-answers-what-is-asked`  | sums, addresses, measures, zones and colours answer     |
 | `the-music-follows-the-player`        | the music is the player that started last, never playerctld's echo |
 | `the-disk-piece-reads-the-guards`     | the disk piece says the worst disk as the guards wrote it, and a guard gone quiet |
-| `the-shell-reads-the-spend-watch`     | the AI spend piece and collection draw what the watch wrote, hide amounts while sharing, and answer reports by their words |
+| `the-shell-reads-the-spend-watch`     | the AI spend piece and collection draw what the watch wrote, put what wants a look first, step into each figure's parts, hide amounts while sharing, and answer reports by their words |
+| `palette-rows-keep-their-words-apart` | a palette's row and field keep their words apart and inside them, however long, ending what doesn't fit in an ellipsis |
 | `a-claimed-chord-is-refused`        | a chord two layers claim, or one claims twice, is refused |
 | `a-theme-changes-everything`        | another theme leaves none of the first's colours behind   |
 | `nothing-names-its-own-look`        | no module but the theme's names a colour or a face        |

@@ -26,6 +26,7 @@
 pub mod backtest;
 pub mod caps;
 pub mod cli;
+pub mod collection;
 pub mod config;
 pub mod daemon;
 pub mod detect;

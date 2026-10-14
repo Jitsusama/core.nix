@@ -230,5 +230,6 @@ pub fn backtest(history: &History, picture: &Picture, config: &Config) -> Result
         source: String::new(),
         rows,
         notes,
+        rest: None,
     })
 }

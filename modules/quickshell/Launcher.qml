@@ -294,8 +294,11 @@ Scope {
     readonly property var offered: held.length > 0 ? held[held.length - 1].rows : []
 
     // Whether the step held last is a collection, whose members are things
-    // with verbs of their own, as at the top.
-    readonly property bool collecting: held.length > 0 && !!held[held.length - 1].row.from
+    // with verbs of their own, as at the top; or a row that says its verbs
+    // are things too (nested), as a report's rows are, so stepping goes on
+    // down as far as it holds anything.
+    readonly property bool collecting: held.length > 0
+        && (!!held[held.length - 1].row.from || !!held[held.length - 1].row.nested)
 
     // Steps into a row: a thing's verbs, or a verb's targets. Says whether
     // there was anywhere to go.

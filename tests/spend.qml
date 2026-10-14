@@ -9,9 +9,12 @@
 // amounts go; a watch that stopped writing is a warning with a way to start
 // it; a file of another version is no piece, and nor is one taken away
 // again. The collection answers "spend", "cap" and a report by its words,
-// leaves alone what isn't one, shows no amount while the screen is shared,
-// and a finding goes to its session and steps into marking it expected. It
-// exits 0 once every case holds, and otherwise 1, saying which didn't.
+// leaves alone what isn't one, steps from a period into its cuts and from a
+// cut into its rows, each with its footer, shows no amount while the screen
+// is shared, draws nothing from a file of another version, and puts a
+// finding that wants a look first, going to its session and stepping into
+// marking it expected. It exits 0 once every case holds, and otherwise 1,
+// saying which didn't.
 import qs
 import Quickshell
 import Quickshell.Io
@@ -69,10 +72,12 @@ ShellRoot {
         status: null,
         holds: piece => !piece.present && !piece.active
     }, {
+        // A day of logs and no feed: list prices are all there is, and a
+        // day has no usual or forecast yet, so there's nothing to add.
         what: "what the watch wrote",
         status: root.written,
         holds: piece => piece.present && !piece.silent && /today/.test(piece.value)
-            && piece.title === "AI spend" && piece.context !== ""
+            && piece.title === "AI spend" && piece.context === ""
             && piece.actions.some(action => action.name === "Show where it went"
                 && action.chord.map(key => key.text).join("+") === "Super+U")
             && piece.actions.some(action => action.name === "Read this week's report")
@@ -254,11 +259,31 @@ ShellRoot {
                 expect(`not a report: ${typed}`, spend.answer(typed) === null,
                     JSON.stringify(spend.answer(typed)));
             const all = spend.everything();
-            expect("everything", all.length > 10 && all[0].name === "Today"
-                && all.some(row => row.name === "Spend this week by model"),
-                all.map(row => row.name).join(", "));
-            const found = spend.search("waste").rows;
-            expect("a search", found.length > 0, "nothing for waste");
+            // A day of history has no forecast yet, so no next seven days.
+            expect("everything", all.length >= 3 && all[0].name === "Today"
+                && all.every(row => row.side.length <= 32),
+                all.map(row => `${row.name}: ${row.side}`).join(", "));
+            expect("how today stands, at home", spend.counted() === all[0].side,
+                spend.counted());
+
+            // A period steps into its cuts, and a cut into its rows, each
+            // saying more in the footer and copying its report.
+            const thisWeek = all.find(row => row.name === "This week");
+            expect("a period with its cuts",
+                thisWeek && thisWeek.nested && thisWeek.ask === "which?",
+                JSON.stringify(thisWeek));
+            const cuts = thisWeek.verbs();
+            const byModel = cuts.find(row => row.name === "By model");
+            expect("a cut", byModel && byModel.note !== "" && byModel.nested,
+                cuts.map(row => row.name).join(", "));
+            const models = byModel.verbs();
+            expect("its rows", models.length === 2 && models.every(row => !row.verbs),
+                models.map(row => row.name).join(", "));
+            expect("copying its report", byModel.verb === "copy", byModel.verb);
+            const found = spend.search("week").rows;
+            expect("a search", found.length > 0 && found[0].name === "This week",
+                found.map(row => row.name).join(", "));
+            expect("an older file draws nothing", spend.parsed('{"v":1}') === null, "drawn");
 
             // While sharing, no row and no answer holds an amount.
             Quiet.sharing = true;
@@ -278,12 +303,13 @@ ShellRoot {
             shown.findings = [{
                 key: "finding:burn:s1", name: "A burn in Aquifer", side: "alert",
                 copy: "A burn in Aquifer.", role: "alert",
-                run: ["spend-watch", "go", "s1"],
+                run: ["spend-watch", "go", "s1"], verb: "go",
                 expect: ["spend-watch", "findings", "expect", "burn:s1"]
             }];
             spend.said = shown;
-            const burn = spend.everything().find(row => row.name === "A burn in Aquifer");
-            expect("a finding", burn && burn.verb === "go" && burn.hue === "alert", "missing");
+            const burn = spend.everything()[0];
+            expect("a finding first", burn.name === "A burn in Aquifer" && burn.verb === "go"
+                && burn.hue === "alert", burn.name);
             burn.run();
             expect("going to its session", Niri.spawned.join(" ") === "spend-watch go s1",
                 Niri.spawned.join(" "));
@@ -292,7 +318,6 @@ ShellRoot {
             expect("marking it expected",
                 Niri.spawned.join(" ") === "spend-watch findings expect burn:s1",
                 Niri.spawned.join(" "));
-            expect("its count", spend.counted() === "1 finding", spend.counted());
             Qt.callLater(() => Qt.exit(0));
         } catch (error) {
             console.warn(`FAIL ${error.message}`);

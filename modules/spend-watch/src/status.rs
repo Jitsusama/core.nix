@@ -1,14 +1,15 @@
 //! What the shell draws, written to the runtime directory: `status.json`,
 //! small, for the overview's row and the margin, with a heartbeat so the
-//! shell knows the watch still runs; and `collection.json`, larger, for
-//! the launcher, written only when it changes. Every string is ready to
-//! draw, each with a quiet form for while the screen is shared, so the
-//! shell does no arithmetic and formats no money.
+//! shell knows the watch still runs; and `collection.json` (the
+//! collection module), larger, for the launcher, written only when it
+//! changes. Every string is ready to draw, each with a quiet form for
+//! while the screen is shared, so the shell does no arithmetic and formats
+//! no money.
 
+use crate::collection::Collection;
 use crate::findings::{Finding, Severity};
-use crate::money::{dollars, maybe_about, percent, whole};
+use crate::money::{dollars, maybe_about, whole};
 use crate::picture::{Figure, Picture};
-use crate::report::{self, Cut, Format, Period};
 use crate::series::Source;
 use serde::Serialize;
 use std::path::Path;
@@ -21,6 +22,7 @@ pub struct Said {
     pub value: String,
     pub badge: String,
     pub hint: String,
+    /// The margin's footer: one short phrase, so it never runs out of room.
     pub context: String,
 }
 
@@ -62,11 +64,11 @@ fn asking(findings: &[Finding]) -> Vec<&Finding> {
 }
 
 /// Words fit to show while the screen is shared: none that hold an amount.
-fn unpriced(text: &str) -> Option<String> {
+pub(crate) fn unpriced(text: &str) -> Option<String> {
     (!text.contains('$')).then(|| text.to_owned())
 }
 
-fn action_kind(action: &crate::findings::Action) -> &'static str {
+pub(crate) fn action_kind(action: &crate::findings::Action) -> &'static str {
     match action.run.get(1).map(String::as_str) {
         Some("go") => "go",
         _ if action.name.to_lowercase().contains("sign in") => "sign-in",
@@ -89,48 +91,34 @@ pub fn status(picture: &Picture, findings: &[Finding]) -> Status {
     } else {
         format!("today · {word}")
     };
-    let mut context = Vec::new();
-    let mut quiet_context = Vec::new();
-    if let Some(top) = top {
-        context.push(top.detail.clone());
-        quiet_context.extend(unpriced(&top.title));
-    }
-    if let Some((low, mid, high)) = picture.today_ahead() {
-        context.push(format!(
-            "today should end near {} ({} to {})",
-            whole(mid),
-            whole(low),
-            whole(high)
-        ));
-    }
-    for view in &picture.caps {
-        if let Some(allowance) = view.cap.allowance {
-            let share = view.spent / allowance;
-            context.push(format!(
-                "{} of the {} {}",
-                percent(share),
-                whole(allowance),
-                view.cap.label
-            ));
-            quiet_context.push(format!("{} of the {}", percent(share), view.cap.label));
-        }
-    }
-    context.push(format!("{} this week", figure_text(&picture.week)));
-    match crate::series::weakest(&picture.pieces_today) {
-        Some(Source::List) => {
-            let line = if picture.fed {
-                "at pi's list prices: no bill read lately"
-            } else {
-                "at pi's list prices, from its logs"
-            };
-            context.push(line.into());
-            quiet_context.push(line.into());
-        }
-        Some(Source::Estimated) => {
-            context.push("estimated from pi's logs where the bill hasn't come".into())
-        }
-        _ => {}
-    }
+    // What the margin says under its actions: why the finding holds, else
+    // that a feed's bill has stopped coming so the figures are only list
+    // prices, else where today is headed. Without a feed, list prices are
+    // all there is, so saying so would say nothing. Everything else has
+    // its home in the collection.
+    let degraded = match crate::series::weakest(&picture.pieces_today) {
+        Some(Source::List) if picture.fed => "at list prices: no bill read lately",
+        _ => "",
+    };
+    let (context, quiet_context) = match top {
+        Some(finding) => (
+            finding.note.clone(),
+            unpriced(&finding.note).unwrap_or_default(),
+        ),
+        None if !degraded.is_empty() => (degraded.to_owned(), degraded.to_owned()),
+        None => match picture.today_ahead() {
+            Some((low, mid, high)) => (
+                format!(
+                    "today should end near {} ({} to {})",
+                    whole(mid),
+                    whole(low),
+                    whole(high)
+                ),
+                degraded.to_owned(),
+            ),
+            None => (degraded.to_owned(), degraded.to_owned()),
+        },
+    };
     let hint = top.map_or_else(|| value.clone(), |finding| capitalized(&finding.title));
     let quiet_hint = match top {
         Some(finding) => unpriced(&finding.title)
@@ -197,7 +185,7 @@ pub fn status(picture: &Picture, findings: &[Finding]) -> Status {
             value,
             badge: top.map_or_else(String::new, |finding| finding.badge.clone()),
             hint,
-            context: context.join("; "),
+            context,
         },
         quiet: Said {
             value: quiet_value,
@@ -207,323 +195,13 @@ pub fn status(picture: &Picture, findings: &[Finding]) -> Status {
                 .filter(|badge| !badge.contains('$'))
                 .unwrap_or_default(),
             hint: quiet_hint,
-            context: quiet_context.join("; "),
+            context: quiet_context,
         },
         actions,
     }
 }
 
-/// One row of the collection, as the launcher draws it.
-#[derive(Debug, Clone, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Line {
-    pub key: String,
-    pub name: String,
-    pub side: String,
-    /// What Return copies.
-    pub copy: String,
-    /// The theme's role for its glyph: text, warning or alert.
-    pub role: String,
-    /// What it runs instead of copying, when it has something to do.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub run: Option<Vec<String>>,
-    /// What marks a finding expected, so it never asks again.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub expect: Option<Vec<String>>,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Shown {
-    pub id: String,
-    pub title: String,
-    pub headline: String,
-    pub rows: Vec<Line>,
-    /// The whole report, for Return to copy.
-    pub markdown: String,
-    /// What else finds it in the collection: its period's and cut's words,
-    /// or what it's about, beside its title.
-    pub words: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Words {
-    pub id: String,
-    pub words: Vec<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Collection {
-    pub v: u32,
-    /// How things stand, then what's been found.
-    pub now: Vec<Line>,
-    pub findings: Vec<Line>,
-    /// What the collection shows while the screen is shared: how today
-    /// stands, each cap's share and each finding, with no amount in any.
-    pub quiet: Vec<Line>,
-    /// Each report by its id, "<period>/<cut>" or a focused one's name.
-    pub reports: std::collections::BTreeMap<String, Shown>,
-    pub periods: Vec<Words>,
-    pub cuts: Vec<Words>,
-    pub examples: Vec<String>,
-}
-
-fn line(key: &str, name: String, side: String) -> Line {
-    Line {
-        key: key.into(),
-        copy: format!("{name}: {side}"),
-        name,
-        side,
-        role: "text".into(),
-        run: None,
-        expect: None,
-    }
-}
-
-fn shown(id: String, words: &str, report: &report::Report) -> Shown {
-    let rows = report
-        .rows
-        .iter()
-        .enumerate()
-        .map(|(index, row)| {
-            let side = if row.share > 0.0 {
-                format!("{} · {}", row.shown, percent(row.share))
-            } else {
-                row.shown.clone()
-            };
-            line(&format!("{id}/{index}"), row.name.clone(), side)
-        })
-        .collect();
-    Shown {
-        id,
-        title: report.title.clone(),
-        headline: if report.shown.is_empty() {
-            report.notes.first().cloned().unwrap_or_default()
-        } else {
-            format!("{}, {}", report.shown, report.source)
-        },
-        rows,
-        markdown: report::render(report, Format::Markdown),
-        words: words.to_owned(),
-    }
-}
-
-pub fn collection(
-    picture: &Picture,
-    findings: &[Finding],
-    config: &crate::config::Config,
-) -> Collection {
-    let mut now = Vec::new();
-    let standing = if picture.standing.word.is_empty() {
-        String::new()
-    } else {
-        format!(" · {}", picture.standing.word)
-    };
-    now.push(line(
-        "now:today",
-        "Today".into(),
-        format!("{}{standing}", figure_text(&picture.today)),
-    ));
-    if let Some((low, mid, high)) = picture.today_ahead() {
-        now.push(line(
-            "now:today-ahead",
-            "Today should end near".into(),
-            format!("{} ({} to {})", whole(mid), whole(low), whole(high)),
-        ));
-    }
-    now.push(line(
-        "now:yesterday",
-        "Yesterday".into(),
-        figure_text(&picture.yesterday),
-    ));
-    now.push(line(
-        "now:week",
-        "The last 7 days".into(),
-        figure_text(&picture.week),
-    ));
-    if let Some((low, mid, high)) = picture.week_ahead() {
-        now.push(line(
-            "now:week-ahead",
-            "The next 7 days".into(),
-            format!("{} ({} to {})", whole(mid), whole(low), whole(high)),
-        ));
-    }
-    now.push(line(
-        "now:month",
-        "The last 30 days".into(),
-        figure_text(&picture.month),
-    ));
-    for view in &picture.caps {
-        let mut row = line(
-            &format!("now:cap:{}", view.cap.name),
-            view.cap.label.clone(),
-            report::cap_line(picture, view),
-        );
-        row.name = capitalized(&view.cap.label);
-        row.copy = row.side.clone();
-        now.push(row);
-    }
-    for source in &picture.sources {
-        if source.state != "fine" && source.state != "optional" {
-            let mut row = line(
-                &format!("now:source:{}", source.name),
-                capitalized(&source.name),
-                format!("{}: {}", source.state, source.message),
-            );
-            row.role = "warning".into();
-            now.push(row);
-        }
-    }
-    let mut quiet = vec![line(
-        "quiet:today",
-        "Today".into(),
-        if picture.standing.word.is_empty() {
-            "amounts hidden while sharing".into()
-        } else {
-            picture.standing.word.clone()
-        },
-    )];
-    for view in &picture.caps {
-        if let Some(allowance) = view.cap.allowance {
-            quiet.push(line(
-                &format!("quiet:cap:{}", view.cap.name),
-                capitalized(&view.cap.label),
-                format!("{} spent", percent(view.spent / allowance)),
-            ));
-        }
-    }
-    for finding in findings {
-        let name = unpriced(&capitalized(&finding.title))
-            .unwrap_or_else(|| "Something wants a look".into());
-        quiet.push(Line {
-            key: format!("quiet:finding:{}", finding.key),
-            copy: name.clone(),
-            name,
-            side: if finding.marked {
-                "expected".into()
-            } else {
-                finding.severity.name().into()
-            },
-            role: "text".into(),
-            run: finding.action.as_ref().map(|action| action.run.clone()),
-            expect: None,
-        });
-    }
-    let findings = findings
-        .iter()
-        .map(|finding| Line {
-            key: format!("finding:{}", finding.key),
-            name: capitalized(&finding.title),
-            side: if finding.marked {
-                "expected".into()
-            } else {
-                finding.severity.name().into()
-            },
-            copy: format!("{}. {}", capitalized(&finding.title), finding.detail),
-            role: match (finding.marked, finding.severity) {
-                (false, Severity::Alert) => "alert".into(),
-                (false, Severity::Warning) => "warning".into(),
-                _ => "text".into(),
-            },
-            run: finding.action.as_ref().map(|action| action.run.clone()),
-            expect: (!finding.marked).then(|| {
-                ["spend-watch", "findings", "expect", &finding.key]
-                    .map(String::from)
-                    .to_vec()
-            }),
-        })
-        .collect();
-    let mut reports = std::collections::BTreeMap::new();
-    for period in Period::ALL {
-        for cut in Cut::ALL {
-            let id = format!("{}/{}", period.id(), cut.id());
-            let words = format!("{} by {}", period.words().join(" "), cut.words().join(" "));
-            reports.insert(
-                id.clone(),
-                shown(id, &words, &report::cut(picture, period, cut, 12)),
-            );
-        }
-    }
-    let summary = report::summary(picture, &[]);
-    reports.insert(
-        "summary".into(),
-        shown("summary".into(), "today summary", &summary),
-    );
-    reports.insert(
-        "waste".into(),
-        shown(
-            "waste".into(),
-            "waste cache context rebuilt",
-            &report::waste(picture),
-        ),
-    );
-    reports.insert(
-        "caps".into(),
-        shown("caps".into(), "cap caps limit", &report::caps(picture)),
-    );
-    reports.insert(
-        "forecast".into(),
-        shown(
-            "forecast".into(),
-            "forecast ahead",
-            &report::forecast(picture),
-        ),
-    );
-    reports.insert(
-        "quests".into(),
-        shown(
-            "quests".into(),
-            "quests outcomes pull requests",
-            &report::quests(picture, Period::Days30),
-        ),
-    );
-    reports.insert(
-        "outliers".into(),
-        shown(
-            "outliers".into(),
-            "outliers costly sessions",
-            &report::outliers(
-                picture,
-                config.detectors.false_discovery,
-                config.detectors.floor,
-            ),
-        ),
-    );
-    Collection {
-        v: VERSION,
-        now,
-        findings,
-        quiet,
-        reports,
-        periods: Period::ALL
-            .iter()
-            .map(|period| Words {
-                id: period.id().into(),
-                words: period.words().iter().map(|w| (*w).to_owned()).collect(),
-            })
-            .collect(),
-        cuts: Cut::ALL
-            .iter()
-            .map(|cut| Words {
-                id: cut.id().into(),
-                words: cut.words().iter().map(|w| (*w).to_owned()).collect(),
-            })
-            .collect(),
-        examples: [
-            "spend last week by quest",
-            "spend today by model",
-            "spend this month by agent",
-            "spend waste",
-            "spend caps",
-        ]
-        .map(str::to_owned)
-        .to_vec(),
-    }
-}
-
-fn capitalized(text: &str) -> String {
+pub(crate) fn capitalized(text: &str) -> String {
     let mut chars = text.chars();
     match chars.next() {
         Some(first) => first.to_uppercase().chain(chars).collect(),
@@ -599,7 +277,8 @@ mod tests {
     }
 
     // Over a cap and refused: the open status says how much, and the quiet
-    // one, drawn while the screen is shared, says nothing of it.
+    // one, drawn while the screen is shared, says nothing of it. The
+    // margin's footer is one short phrase either way.
     #[test]
     fn a_shared_screen_shows_no_amount() {
         let history = History::memory();
@@ -618,26 +297,12 @@ mod tests {
         let status = status(&picture, &found);
         assert!(status.wants, "{status:?}");
         assert_eq!(status.role, "alert");
-        assert!(status.open.context.contains('$'), "{status:?}");
+        assert_eq!(status.open.context, "$4,100 of $4,000");
         let quiet = &status.quiet;
         for said in [&quiet.value, &quiet.badge, &quiet.hint, &quiet.context] {
             assert!(!said.contains('$'), "{said}");
         }
         assert!(!quiet.hint.is_empty());
-        // The collection's quiet lines likewise, while its others say it.
-        let collected = collection(&picture, &found, &config);
-        assert!(
-            collected
-                .findings
-                .iter()
-                .any(|line| line.copy.contains('$'))
-        );
-        assert!(collected.quiet.len() >= 2, "{:?}", collected.quiet);
-        for line in &collected.quiet {
-            for said in [&line.name, &line.side, &line.copy] {
-                assert!(!said.contains('$'), "{said}");
-            }
-        }
     }
 
     // A cap a feed read this very hour, as the meter's premium day is on

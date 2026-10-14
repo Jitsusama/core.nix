@@ -339,8 +339,15 @@ pub fn store(history: &History, feed: &str, record: &Record, now: f64) -> Result
             .map_err(fail)?;
         }
         Record::Health(health) => {
+            // Since when it's stood so: kept while the state holds, so a
+            // source down for a moment can be told from one that's down.
             db.execute(
-                "INSERT OR REPLACE INTO health VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                "INSERT INTO health VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6)
+                 ON CONFLICT (feed, source) DO UPDATE SET
+                     since = CASE WHEN health.state = excluded.state
+                         THEN coalesce(health.since, health.at) ELSE excluded.at END,
+                     state = excluded.state, message = excluded.message,
+                     sign_in = excluded.sign_in, at = excluded.at",
                 params![
                     feed,
                     health.source,
