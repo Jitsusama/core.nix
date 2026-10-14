@@ -145,6 +145,7 @@
         opencode = ./modules/opencode/home.nix;
         openssl = ./modules/openssl/home.nix;
         podman = ./modules/podman/home.nix;
+        qt = ./modules/qt/home.nix;
         quickshell = moduleFrom ./modules/quickshell/home.nix { inherit wallpapers; };
         ripgrep = ./modules/ripgrep/home.nix;
         signing = ./modules/signing/home.nix;

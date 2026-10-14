@@ -1102,6 +1102,11 @@ pkgs.testers.runNixOSTest {
           # A theme's colour is found by its role, as the theme exports it.
           theme = json.loads(as_account("cat ~/.config/jitsusama/theme.json"))
           copied("colour accent", theme["roles"]["accent"].lower())
+          # Slack takes its theme only by hand, so the launcher copies it,
+          # in the theme's own roles.
+          slack = ["deepest", "raised", "selection", "strong", "raised", "text"]
+          slack += ["success", "alert", "deepest", "text"]
+          copied("slack theme", ",".join(theme["roles"][role] for role in slack))
           answer("#f53")
           machine.screenshot("launcher-colour")
           machine.send_key("esc")
