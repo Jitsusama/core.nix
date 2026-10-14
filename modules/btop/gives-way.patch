@@ -1,0 +1,82 @@
+--- a/src/btop.cpp
++++ b/src/btop.cpp
+@@ -591,7 +591,7 @@
+ 				}
+ 			#endif
+ 				//? MEM
+-				if (v_contains(conf.boxes, "mem")) {
++				if (v_contains(conf.boxes, "mem") and Mem::shown) {
+ 					try {
+ 						if (Global::debug) debug_timer("mem", collect_begin);
+ 
+@@ -611,7 +611,7 @@
+ 				}
+ 
+ 				//? NET
+-				if (v_contains(conf.boxes, "net")) {
++				if (v_contains(conf.boxes, "net") and Net::shown) {
+ 					try {
+ 						if (Global::debug) debug_timer("net", collect_begin);
+ 
+--- a/src/btop_draw.cpp
++++ b/src/btop_draw.cpp
+@@ -2217,7 +2217,7 @@
+ 	void calcSizes() {
+ 		atomic_wait(Runner::active);
+ 		Config::unlock();
+-		auto boxes = Config::getS("shown_boxes");
++		auto boxes = Term::fitting(Config::getS("shown_boxes"));
+ 		auto cpu_bottom = Config::getB("cpu_bottom");
+ 		auto mem_below_net = Config::getB("mem_below_net");
+ 		auto proc_left = Config::getB("proc_left");
+--- a/src/btop_tools.cpp
++++ b/src/btop_tools.cpp
+@@ -116,7 +116,7 @@
+ 		return false;
+ 	}
+ 
+-	auto get_min_size(const string& boxes) -> array<int, 2> {
++	static auto needed(const string& boxes) -> array<int, 2> {
+         bool cpu = boxes.find("cpu") != string::npos;
+         bool mem = boxes.find("mem") != string::npos;
+         bool net = boxes.find("net") != string::npos;
+@@ -147,6 +147,25 @@
+ 		return { width, height };
+ 	}
+ 
++	auto fitting(const string& boxes) -> string {
++		string fit = boxes;
++		for (const string_view dropped : {"net", "mem"}) {
++			if (const auto [width, height] = needed(fit); Term::width >= width and Term::height >= height) break;
++			string kept;
++			for (const auto& box : Tools::ssplit(fit)) {
++				if (box == dropped) continue;
++				if (not kept.empty()) kept += ' ';
++				kept += box;
++			}
++			fit = kept;
++		}
++		return fit;
++	}
++
++	auto get_min_size(const string& boxes) -> array<int, 2> {
++		return needed(fitting(boxes));
++	}
++
+ 	bool init() {
+ 		if (not initialized) {
+ 			initialized = (bool)isatty(STDIN_FILENO);
+--- a/src/btop_tools.hpp
++++ b/src/btop_tools.hpp
+@@ -146,7 +146,10 @@
+ 	//* Returns true if terminal has been resized and updates width and height
+ 	bool refresh(bool only_check=false);
+ 
+-	//* Returns an array with the lowest possible width, height with current box config
++	//* Returns <boxes> without the network box, then the memory box, while the terminal is too small for them
++	auto fitting(const string& boxes) -> string;
++
++	//* Returns an array with the lowest possible width, height with current box config, once fitted
+ 	auto get_min_size(const string& boxes) -> array<int, 2>;
+ 
+ 	//* Check for a valid tty, save terminal options and set new options
