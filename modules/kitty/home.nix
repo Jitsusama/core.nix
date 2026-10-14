@@ -2,7 +2,8 @@
 # from jitsusama.theme, how it looks: the theme's terminal colours, and its
 # roles for the frame around them, so kitty matches the rest of the desktop.
 # keys.conf, written here from jitsusama.kitty.keys, holds its shortcuts,
-# which also go into the keyboard map (modules/keys).
+# which also go into the keyboard map (modules/keys). Its kitty scrolls by
+# touch too, which upstream's doesn't on Wayland (touch-scrolling.patch).
 {
   config,
   lib,
@@ -59,7 +60,11 @@ in
 
   config.jitsusama.keys.terminal = map (key: { inherit (key) chord does; }) keys;
 
-  config.home.packages = [ pkgs.kitty ];
+  config.home.packages = [
+    (pkgs.kitty.overrideAttrs (old: {
+      patches = (old.patches or [ ]) ++ [ ./touch-scrolling.patch ];
+    }))
+  ];
 
   config.xdg.configFile."kitty/kitty.conf".text = builtins.readFile ./kitty.conf;
 

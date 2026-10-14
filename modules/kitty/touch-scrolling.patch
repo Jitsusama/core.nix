@@ -1,0 +1,152 @@
+Touchscreen scrolling for kitty 0.49 on Wayland, which binds no wl_touch, so
+a finger on the screen did nothing. The first finger down, dragged past a
+few pixels, scrolls the kitty window under it the way a touchpad does, with
+kitty's own momentum once it lifts; a cancelled touch, as when niri takes
+three fingers for a swipe, stops it dead; a tap does nothing. Upstream asked
+for this in GLFW: https://github.com/kovidgoyal/kitty/issues/5432
+
+diff -ru a/glfw/wl_init.c b/glfw/wl_init.c
+--- a/glfw/wl_init.c	2026-10-13 21:20:26.690860608 -0400
++++ b/glfw/wl_init.c	2026-10-13 21:20:26.693860607 -0400
+@@ -313,6 +313,106 @@
+ #endif
+ };
+ 
++// A touchscreen scrolls the way a touchpad does: the first finger down,
++// dragged past a few pixels, moves the content with it, and lifting it hands
++// the scroll on to momentum. Other fingers are left alone, a cancelled touch
++// stops the scroll dead, and a tap does nothing.
++#define TOUCH_DRAG_THRESHOLD 8.0
++
++static struct {
++    bool down, scrolling;
++    int32_t id;
++    GLFWid window_id;
++    double start_x, start_y, last_x, last_y;
++} touch_drag;
++
++static void
++touch_drag_scroll(_GLFWwindow *window, double dx, double dy, bool stopped) {
++    const double scale = _glfwWaylandWindowScale(window);
++    GLFWScrollEvent ev = {
++        .offset_type = GLFW_SCROLL_OFFEST_HIGHRES,
++        .keyboard_modifiers = _glfw.wl.xkb.states.modifiers,
++        .unscaled = {.x = dx, .y = dy},
++        .x_offset = scale * dx,
++        .y_offset = scale * dy,
++    };
++    glfw_handle_scroll_event_for_momentum(window, &ev, stopped, true);
++}
++
++static void
++touchHandleDown(void *data UNUSED, struct wl_touch *touch UNUSED, uint32_t serial, uint32_t time UNUSED, struct wl_surface *surface, int32_t id, wl_fixed_t sx, wl_fixed_t sy) {
++    _glfw.wl.serial = serial;
++    _glfw.wl.input_serial = serial;
++    if (touch_drag.down) return;
++    _GLFWwindow *window = get_window_from_surface(surface);
++    if (!window || surface != window->wl.surface) return;
++    // A finger on the screen stops a fling, as it would on a phone.
++    glfw_cancel_momentum_scroll();
++    touch_drag.down = true;
++    touch_drag.scrolling = false;
++    touch_drag.id = id;
++    touch_drag.window_id = window->id;
++    touch_drag.start_x = touch_drag.last_x = wl_fixed_to_double(sx);
++    touch_drag.start_y = touch_drag.last_y = wl_fixed_to_double(sy);
++}
++
++static void
++touchHandleMotion(void *data UNUSED, struct wl_touch *touch UNUSED, uint32_t time UNUSED, int32_t id, wl_fixed_t sx, wl_fixed_t sy) {
++    if (!touch_drag.down || id != touch_drag.id) return;
++    _GLFWwindow *window = _glfwWindowForId(touch_drag.window_id);
++    if (!window) return;
++    const double at_x = wl_fixed_to_double(sx), at_y = wl_fixed_to_double(sy);
++    if (!touch_drag.scrolling) {
++        const double dx = at_x - touch_drag.start_x, dy = at_y - touch_drag.start_y;
++        if (dx * dx + dy * dy < TOUCH_DRAG_THRESHOLD * TOUCH_DRAG_THRESHOLD) return;
++        touch_drag.scrolling = true;
++        // kitty scrolls whichever of its windows is under the pointer, so
++        // the pointer goes where the finger landed.
++        window->wl.allCursorPosX = window->wl.cursorPosX = touch_drag.start_x;
++        window->wl.allCursorPosY = window->wl.cursorPosY = touch_drag.start_y;
++        _glfwInputCursorPos(window, touch_drag.start_x, touch_drag.start_y);
++    }
++    touch_drag_scroll(window, at_x - touch_drag.last_x, at_y - touch_drag.last_y, false);
++    touch_drag.last_x = at_x;
++    touch_drag.last_y = at_y;
++}
++
++static void
++touchHandleUp(void *data UNUSED, struct wl_touch *touch UNUSED, uint32_t serial, uint32_t time UNUSED, int32_t id) {
++    _glfw.wl.serial = serial;
++    if (!touch_drag.down || id != touch_drag.id) return;
++    _GLFWwindow *window = _glfwWindowForId(touch_drag.window_id);
++    if (window && touch_drag.scrolling) touch_drag_scroll(window, 0, 0, true);
++    touch_drag.down = false;
++    touch_drag.scrolling = false;
++}
++
++static void
++touchHandleCancel(void *data UNUSED, struct wl_touch *touch UNUSED) {
++    if (touch_drag.down && touch_drag.scrolling) glfw_cancel_momentum_scroll();
++    touch_drag.down = false;
++    touch_drag.scrolling = false;
++}
++
++static void
++touchHandleFrame(void *data UNUSED, struct wl_touch *touch UNUSED) {}
++
++static void
++touchHandleShape(void *data UNUSED, struct wl_touch *touch UNUSED, int32_t id UNUSED, wl_fixed_t major UNUSED, wl_fixed_t minor UNUSED) {}
++
++static void
++touchHandleOrientation(void *data UNUSED, struct wl_touch *touch UNUSED, int32_t id UNUSED, wl_fixed_t orientation UNUSED) {}
++
++static const struct wl_touch_listener touchListener = {
++    .down = touchHandleDown,
++    .up = touchHandleUp,
++    .motion = touchHandleMotion,
++    .frame = touchHandleFrame,
++    .cancel = touchHandleCancel,
++    .shape = touchHandleShape,
++    .orientation = touchHandleOrientation,
++};
++
+ static void
+ keyboardHandleKeymap(void *data UNUSED, struct wl_keyboard *keyboard UNUSED, uint32_t format, int fd, uint32_t size) {
+     char *mapStr;
+@@ -526,6 +626,15 @@
+         _glfw.wl.keyboardFocusId = 0;
+         stop_key_repeat_timer();
+     }
++
++    if ((caps & WL_SEAT_CAPABILITY_TOUCH) && !_glfw.wl.touch) {
++        _glfw.wl.touch = wl_seat_get_touch(seat);
++        wl_touch_add_listener(_glfw.wl.touch, &touchListener, NULL);
++    } else if (!(caps & WL_SEAT_CAPABILITY_TOUCH) && _glfw.wl.touch) {
++        wl_touch_destroy(_glfw.wl.touch);
++        _glfw.wl.touch = NULL;
++        touchHandleCancel(NULL, NULL);
++    }
+ }
+ 
+ static void
+@@ -900,6 +1009,7 @@
+     if (_glfw.wl.virtual_keyboard_manager) zwp_virtual_keyboard_manager_v1_destroy(_glfw.wl.virtual_keyboard_manager);
+     if (_glfw.wl.pointer) wl_pointer_destroy(_glfw.wl.pointer);
+     if (_glfw.wl.keyboard) wl_keyboard_destroy(_glfw.wl.keyboard);
++    if (_glfw.wl.touch) wl_touch_destroy(_glfw.wl.touch);
+     if (_glfw.wl.seat) wl_seat_destroy(_glfw.wl.seat);
+     if (_glfw.wl.relativePointerManager) zwp_relative_pointer_manager_v1_destroy(_glfw.wl.relativePointerManager);
+     if (_glfw.wl.pointerConstraints) zwp_pointer_constraints_v1_destroy(_glfw.wl.pointerConstraints);
+diff -ru a/glfw/wl_platform.h b/glfw/wl_platform.h
+--- a/glfw/wl_platform.h	2026-10-13 21:20:26.696860607 -0400
++++ b/glfw/wl_platform.h	2026-10-13 21:20:26.699860607 -0400
+@@ -342,6 +342,7 @@
+     struct wl_seat *seat;
+     struct wl_pointer *pointer;
+     struct wl_keyboard *keyboard;
++    struct wl_touch *touch;
+     struct wl_data_device_manager *dataDeviceManager;
+     struct wl_data_device *dataDevice;
+     struct xdg_wm_base *wmBase;
