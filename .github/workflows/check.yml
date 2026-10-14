@@ -45,6 +45,7 @@ jobs:
           - vm-wifi-joins
           - vm-disk-guard-keeps-the-disk
           - vm-network-revives-units
+          - vm-clock-keeps-time
           - vm-greeter-signs-in
           - vm-boot-asks-in-the-theme
     steps:
