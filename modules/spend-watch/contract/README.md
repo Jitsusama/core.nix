@@ -29,13 +29,13 @@ to the feeds that read it.
   suspended machine's feed is frozen with it, so nothing needs saying. A
   feed reads every pace it doesn't know as `idle`.
 - `{"v": 1, "kept": {"billed": {"warehouse": "2026-10-14T13:00:00Z"},
-  "caps": "2026-10-14T16:04:29Z"}}`: what the watch keeps of this feed's,
-  written once as it starts, after the pace: for each source, when the
-  newest hour of its bill starts, and when its newest cap reading was
-  taken. A source left out, or `caps` null, has nothing kept. A feed that
-  keeps how far it has read starts again no later than this, so a history
-  built afresh is told the bill again, and one that keeps nothing reads
-  from its own start.
+  "caps": {"weekly": "2026-10-14T16:04:29Z"}}}`: what the watch keeps of
+  this feed's, written once as it starts, after the pace: for each source,
+  when the newest hour of its bill starts, and for each cap, when its
+  newest reading was taken. A source or cap left out has nothing kept. A
+  feed that keeps how far it has read starts again no later than this, so
+  a history built afresh is told the bill again, and one that keeps
+  nothing reads from its own start.
 - `{"v": 1, "refresh": true}`: the person asked for the latest figures now.
   `spend-watch refresh` answers once every running feed has written a line
   since, or after ten seconds, so a feed should read at once and say what it

@@ -207,38 +207,37 @@ pub fn pace_line(pace: Pace) -> String {
 }
 
 /// What the watch keeps of a feed's own, said as it starts: for each
-/// source, when the newest hour of its bill starts, and when the newest
-/// cap reading was taken. A feed that keeps how far it has read starts
+/// source, when the newest hour of its bill starts, and for each cap, when
+/// its newest reading was taken, since one a feed reads more often mustn't
+/// hide a gap in another's. A feed that keeps how far it has read starts
 /// again no later than this, so a history built afresh, or one set aside,
 /// is told the bill again rather than only what comes next.
 pub fn kept_line(history: &History, feed: &str) -> Result<String, String> {
     let fail = |error: rusqlite::Error| error.to_string();
-    let mut billed = serde_json::Map::new();
-    let mut newest = history
-        .db
-        .prepare("SELECT source, MAX(hour) FROM billed WHERE feed = ?1 GROUP BY source")
-        .map_err(fail)?;
-    let rows = newest
-        .query_map([feed], |row| {
-            Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
-        })
-        .map_err(fail)?;
-    for row in rows {
-        let (source, hour) = row.map_err(fail)?;
-        let start = crate::time::hour_start(hour);
-        billed.insert(source, crate::time::rfc3339(start).into());
-    }
-    let caps: Option<f64> = history
-        .db
-        .query_row("SELECT MAX(at) FROM caps WHERE feed = ?1", [feed], |row| {
-            row.get(0)
-        })
-        .map_err(fail)?;
-    Ok(serde_json::json!({
-        "v": VERSION,
-        "kept": { "billed": billed, "caps": caps.map(crate::time::rfc3339) },
-    })
-    .to_string())
+    // Each name's newest instant, as `instant` makes it from the column.
+    let newest = |sql: &str, instant: fn(f64) -> f64| {
+        let mut statement = history.db.prepare(sql).map_err(fail)?;
+        let rows = statement
+            .query_map([feed], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, f64>(1)?))
+            })
+            .map_err(fail)?;
+        let mut kept = serde_json::Map::new();
+        for row in rows {
+            let (name, at) = row.map_err(fail)?;
+            kept.insert(name, crate::time::rfc3339(instant(at)).into());
+        }
+        Ok::<_, String>(kept)
+    };
+    let billed = newest(
+        "SELECT source, MAX(hour) FROM billed WHERE feed = ?1 GROUP BY source",
+        |hour| crate::time::hour_start(hour as i64),
+    )?;
+    let caps = newest(
+        "SELECT name, MAX(at) FROM caps WHERE feed = ?1 GROUP BY name",
+        |at| at,
+    )?;
+    Ok(serde_json::json!({ "v": VERSION, "kept": { "billed": billed, "caps": caps } }).to_string())
 }
 
 pub fn refresh_line() -> String {
@@ -664,7 +663,7 @@ mod tests {
         };
         assert_eq!(
             said("proxy"),
-            serde_json::json!({ "v": 1, "kept": { "billed": {}, "caps": null } })
+            serde_json::json!({ "v": 1, "kept": { "billed": {}, "caps": {} } })
         );
         for (source, hour) in [
             ("warehouse", "2026-10-14T12:00:00Z"),
@@ -677,12 +676,20 @@ mod tests {
             });
             store(&history, "proxy", &parse(&line.to_string()).unwrap(), 1.0).unwrap();
         }
-        let cap = serde_json::json!({
-            "v": 1, "kind": "cap", "name": "weekly", "label": "weekly cap",
-            "allowance": 15000, "windowHours": 168, "spent": 4262, "warn": 0.9,
-            "state": "ok", "at": "2026-10-14T16:04:29Z",
-        });
-        store(&history, "proxy", &parse(&cap.to_string()).unwrap(), 1.0).unwrap();
+        // Each cap by its own newest, since one a feed reads more often
+        // mustn't hide a gap in another's.
+        for (name, at) in [
+            ("weekly", "2026-10-14T15:04:12Z"),
+            ("weekly", "2026-10-14T16:04:29Z"),
+            ("premium", "2026-10-14T16:50:00Z"),
+        ] {
+            let cap = serde_json::json!({
+                "v": 1, "kind": "cap", "name": name, "label": name,
+                "allowance": 15000, "windowHours": 168, "spent": 4262, "warn": 0.9,
+                "state": "ok", "at": at,
+            });
+            store(&history, "proxy", &parse(&cap.to_string()).unwrap(), 1.0).unwrap();
+        }
         assert_eq!(
             said("proxy"),
             serde_json::json!({ "v": 1, "kept": {
@@ -690,7 +697,10 @@ mod tests {
                     "meter": "2026-10-14T16:00:00Z",
                     "warehouse": "2026-10-14T13:00:00Z",
                 },
-                "caps": "2026-10-14T16:04:29Z",
+                "caps": {
+                    "premium": "2026-10-14T16:50:00Z",
+                    "weekly": "2026-10-14T16:04:29Z",
+                },
             } })
         );
         assert_eq!(said("other")["kept"]["billed"], serde_json::json!({}));
