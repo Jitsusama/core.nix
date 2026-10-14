@@ -1,0 +1,90 @@
+media: i2c: cvs: Wait for the link owner to answer
+
+Runtime PM hands the CSI-2 link between the host and the CVS firmware
+by setting req and reading resp once, 100 ms later. A firmware that
+answers late fails the handover with -EINVAL, and runtime PM keeps any
+error but -EAGAIN and -EBUSY: the CVS then refuses every wake, and so
+does the IPU that takes it as a supplier, so the camera gives black
+frames until the next boot. On a Dell XPS 14 DA14260 it happened once
+in ten resumes, with nothing logged.
+
+Intel's own driver reads resp up to 21 times, 100 ms apart. Read it
+every 10 ms for up to 2 s after the first 100 ms, say when it answered
+late, and report a firmware that never answers as -EBUSY, with a
+warning, so the next wake tries again.
+
+--- a/drivers/media/i2c/cvs/core.c
++++ b/drivers/media/i2c/cvs/core.c
+@@ -11,7 +11,9 @@
+ #include <linux/i2c.h>
+ #include <linux/init.h>
+ #include <linux/interrupt.h>
++#include <linux/iopoll.h>
+ #include <linux/jiffies.h>
++#include <linux/ktime.h>
+ #include <linux/module.h>
+ #include <linux/pci.h>
+ #include <linux/platform_device.h>
+@@ -29,6 +31,13 @@
+ #define CMD_TIMEOUT (5 * HZ)
+ #define FW_READY_DELAY_MS 100
+ 
++/*
++ * How long the firmware has to answer a change of link owner, and how often
++ * its answer is read: Intel's own driver gives it 21 reads 100 ms apart.
++ */
++#define OWNER_POLL_US (10 * USEC_PER_MSEC)
++#define OWNER_TIMEOUT_US (2 * USEC_PER_SEC)
++
+ #define PCI_DEVICE_ID_INTEL_IPU7		0x645d	/* MTL / LNL */
+ #define PCI_DEVICE_ID_INTEL_IPU7P5		0xb05d	/* ARL / PTL */
+ 
+@@ -506,13 +515,44 @@
+ 		status = ctx->wq_resp.resp.state &
+ 			  ICVS_DEV_STATE_ERROR ? -EINVAL : 0;
+ 		break;
+-	case ICVS_HOST_SENSOR_OWNER:
++	case ICVS_HOST_SENSOR_OWNER: {
++		ktime_t start;
++		s64 waited;
++		int val;
++
++		/*
++		 * The firmware raises resp to the owner it hands the link to,
++		 * and it doesn't always do so within FW_READY_DELAY_MS. Read it
++		 * until it does rather than once, and call a firmware that never
++		 * answers busy, not broken: runtime PM keeps any other error, so
++		 * one late answer would leave the camera and the IPU behind it
++		 * failed until the next boot. A read the GPIO bridge fails is
++		 * tried again with the rest.
++		 */
+ 		gpiod_set_value_cansleep(ctx->req, cmd->param.param);
+ 		fsleep(FW_READY_DELAY_MS * USEC_PER_MSEC);
+-		ret = gpiod_get_value_cansleep(ctx->resp);
+-		status = cmd->param.param == ret ? 0 : -EINVAL;
+-		ret = 0; /* success */
++		start = ktime_get();
++		ret = read_poll_timeout(gpiod_get_value_cansleep, val,
++					val == cmd->param.param,
++					OWNER_POLL_US, OWNER_TIMEOUT_US, false,
++					ctx->resp);
++		waited = ktime_ms_delta(ktime_get(), start);
++		if (ret) {
++			dev_warn(cvs_dev(ctx),
++				 "link owner %u unanswered after %lld ms (resp %d)\n",
++				 cmd->param.param, FW_READY_DELAY_MS + waited, val);
++			status = -EBUSY;
++		} else {
++			/* A first read takes a millisecond; a second, ten more. */
++			if (waited >= OWNER_POLL_US / USEC_PER_MSEC)
++				dev_info(cvs_dev(ctx),
++					 "link owner %u answered after %lld ms\n",
++					 cmd->param.param, FW_READY_DELAY_MS + waited);
++			status = 0;
++		}
++		ret = 0;
+ 		break;
++	}
+ 	case ICVS_HOST_SET_MIPI_CONFIG:
+ 		cmd->cmd_id = cpu_to_be16(ICVS_HOST_SET_MIPI_CONFIG);
+ 		ret = cvs_config_mipi(ctx, cmd, len);

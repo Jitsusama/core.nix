@@ -1,0 +1,46 @@
+usb: typec: ucsi: Try a timed-out init again
+
+On a Dell XPS 14 DA14260 the PPM now and then stops answering partway
+through init at boot, and ucsi_init_work() gives up on anything but
+-EPROBE_DEFER, so the machine has no Type-C ports or charger reports
+until the next boot. Binding the driver again recovers it. A failed
+ucsi_init() has already unregistered the ports and reset the PPM, which
+is what binding again starts with, so start it again, up to three times
+a second apart. Its last step fails without unwinding, so an init that
+left its connectors registered isn't started again.
+
+--- a/drivers/usb/typec/ucsi/ucsi.c
++++ b/drivers/usb/typec/ucsi/ucsi.c
+@@ -2230,6 +2230,9 @@
+ }
+ EXPORT_SYMBOL_GPL(ucsi_resume);
+ 
++/* Fresh inits to try after one times out, a second apart. */
++#define UCSI_INIT_TIMEOUT_RETRIES	3
++
+ static void ucsi_init_work(struct work_struct *work)
+ {
+ 	struct ucsi *ucsi = container_of(work, struct ucsi, work.work);
+@@ -2239,6 +2242,22 @@
+ 	if (ret)
+ 		dev_err_probe(ucsi->dev, ret, "PPM init failed\n");
+ 
++	/*
++	 * A PPM that stops answering partway through init has been seen to
++	 * answer a fresh init: ucsi_init() unregistered the ports and reset
++	 * the PPM on the way out, so starting it again is the same as
++	 * binding the driver again. Without this a timeout leaves the
++	 * machine with no Type-C ports until the next boot. Its last step
++	 * fails without unwinding, leaving the connectors registered, so
++	 * only an init that left none behind is started again.
++	 */
++	if (ret == -ETIMEDOUT && !ucsi->connector &&
++	    ucsi->work_count++ < UCSI_INIT_TIMEOUT_RETRIES) {
++		dev_warn(ucsi->dev, "PPM init timed out, trying again\n");
++		queue_delayed_work(system_long_wq, &ucsi->work, HZ);
++		return;
++	}
++
+ 	if (ret == -EPROBE_DEFER) {
+ 		if (ucsi->work_count++ > UCSI_ROLE_SWITCH_WAIT_COUNT) {
+ 			dev_err(ucsi->dev, "PPM init failed, stop trying\n");
