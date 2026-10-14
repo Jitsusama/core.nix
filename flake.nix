@@ -160,6 +160,7 @@
         tree = ./modules/tree/home.nix;
         tree-sitter = ./modules/tree-sitter/home.nix;
         tuple = moduleFrom ./modules/tuple/home.nix { inherit (self.homeModules) niri quickshell; };
+        vivid = ./modules/vivid/home.nix;
         wezterm = moduleFrom ./modules/wezterm/home.nix { inherit wallpapers; };
         wifid = ./modules/wifid/home.nix;
         yq = ./modules/yq/home.nix;
