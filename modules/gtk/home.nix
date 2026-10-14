@@ -30,9 +30,17 @@ let
     window_fg_color = roles.text;
     view_bg_color = roles.sunken;
     view_fg_color = roles.text;
-    headerbar_bg_color = roles.background;
+    # A window's frame sits a step deeper than its content, focused or not.
+    # Chrome draws its tab strip in this and the current tab in the
+    # window's colour, which is how the current tab stands out.
+    headerbar_bg_color = roles.deepest;
+    headerbar_backdrop_color = roles.deepest;
     headerbar_fg_color = roles.text;
     sidebar_bg_color = roles.sunken;
+    # Cards, such as a calculator's display or a settings group, raised
+    # from the window rather than libadwaita's white wash over it.
+    card_bg_color = roles.raised;
+    card_fg_color = roles.text;
     sidebar_fg_color = roles.text;
     dialog_bg_color = roles.background;
     dialog_fg_color = roles.text;
