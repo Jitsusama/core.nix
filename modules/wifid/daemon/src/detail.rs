@@ -157,12 +157,15 @@ impl Polled {
 const INVALID: i32 = 9999;
 
 /// A network in detail, from the access points heard, by their paths in
-/// wpa_supplicant, and what each card on it last polled, by its name.
+/// wpa_supplicant, the paths of those the cards on it are joined to, and
+/// what each of those cards last polled, by its name.
 pub fn detail<'a>(
     name: &str,
     heard: impl IntoIterator<Item = (&'a str, &'a Heard)>,
+    on: impl IntoIterator<Item = &'a str>,
     polled: impl IntoIterator<Item = (&'a str, &'a Polled)>,
 ) -> Detail {
+    let on: Vec<&str> = on.into_iter().collect();
     let polled: Vec<(&str, &Polled)> = polled.into_iter().collect();
     let mut of: Vec<(&str, &Heard)> = heard
         .into_iter()
@@ -174,7 +177,7 @@ pub fn detail<'a>(
     });
     let mut points: Vec<Point> = Vec::new();
     for (path, heard) in &of {
-        let joined = polled.iter().any(|(_, polled)| polled.point == *path);
+        let joined = on.contains(path) || polled.iter().any(|(_, polled)| polled.point == *path);
         // Two cards hearing one access point hear it as two; the stronger
         // comes first, so it's the one kept.
         match points.iter_mut().find(|point| point.bssid == heard.bssid) {
@@ -422,7 +425,7 @@ mod tests {
     fn a_network_is_detailed_by_its_own_access_points_strongest_first() {
         let hotel = hotel();
 
-        let detail = detail("Hilton", of(&hotel), []);
+        let detail = detail("Hilton", of(&hotel), [], []);
 
         let points: Vec<_> = detail
             .points
@@ -443,7 +446,7 @@ mod tests {
     fn each_access_point_says_where_it_is_and_how_fast_it_would_be() {
         let hotel = hotel();
 
-        let detail = detail("Hilton", of(&hotel), []);
+        let detail = detail("Hilton", of(&hotel), [], []);
 
         let five = &detail.points[0];
         assert_eq!((five.band, five.channel, five.width), (Band::Ghz5, 40, 40));
@@ -461,7 +464,7 @@ mod tests {
     fn the_access_points_are_counted_in_each_band_heard() {
         let hotel = hotel();
 
-        let detail = detail("Hilton", of(&hotel), []);
+        let detail = detail("Hilton", of(&hotel), [], []);
 
         let counted = [(Band::Ghz2, 2), (Band::Ghz5, 1)];
         let counted = counted.map(|(band, points)| Count { band, points });
@@ -475,7 +478,7 @@ mod tests {
         again.signal = -70;
         hotel.push(("/fi/w1/wpa_supplicant1/Interfaces/1/BSSs/0".into(), again));
 
-        let detail = detail("Hilton", of(&hotel), []);
+        let detail = detail("Hilton", of(&hotel), [], []);
 
         assert_eq!(detail.points.len(), 3);
         assert_eq!(detail.points[0].signal, -56);
@@ -485,7 +488,7 @@ mod tests {
     fn the_fastest_is_the_best_guess_with_why_against_the_next() {
         let hotel = hotel();
 
-        let detail = detail("Hilton", of(&hotel), []);
+        let detail = detail("Hilton", of(&hotel), [], []);
 
         let best = detail.best.unwrap();
         assert_eq!(best.bssid, "e6:55:b8:57:49:e0");
@@ -502,9 +505,24 @@ mod tests {
         let hotel = hotel();
         let on = polled(1);
 
-        let detail = detail("Hilton", of(&hotel), [("wlan0", &on)]);
+        let detail = detail("Hilton", of(&hotel), [], [("wlan0", &on)]);
 
         assert!(detail.points[0].joined);
+        assert_eq!(
+            detail.best.unwrap().reason,
+            "the one joined, the fastest of 3"
+        );
+    }
+
+    #[test]
+    fn an_access_point_a_card_is_on_is_marked_joined_before_its_link_is_read() {
+        let hotel = hotel();
+        let on = &hotel[1].0;
+
+        let detail = detail("Hilton", of(&hotel), [on.as_str()], []);
+
+        assert!(detail.points[0].joined);
+        assert_eq!(detail.joined, []);
         assert_eq!(
             detail.best.unwrap().reason,
             "the one joined, the fastest of 3"
@@ -516,7 +534,7 @@ mod tests {
         let hotel = hotel();
         let on = polled(0);
 
-        let detail = detail("Hilton", of(&hotel), [("wlan0", &on)]);
+        let detail = detail("Hilton", of(&hotel), [], [("wlan0", &on)]);
 
         assert_eq!(
             detail.best.unwrap().reason,
@@ -529,7 +547,7 @@ mod tests {
     fn a_network_heard_from_one_access_point_has_only_that_one() {
         let hotel = hotel();
 
-        let detail = detail("Next Door", of(&hotel), []);
+        let detail = detail("Next Door", of(&hotel), [], []);
 
         assert_eq!(detail.best.unwrap().reason, "the only one heard");
     }
@@ -538,7 +556,7 @@ mod tests {
     fn a_network_not_heard_has_nothing_in_detail() {
         let hotel = hotel();
 
-        let detail = detail("Elsewhere", of(&hotel), []);
+        let detail = detail("Elsewhere", of(&hotel), [], []);
 
         assert_eq!((detail.points.len(), detail.best), (0, None));
     }
@@ -548,7 +566,7 @@ mod tests {
         let hotel = hotel();
         let on = polled(1);
 
-        let detail = detail("Hilton", of(&hotel), [("wlan0", &on)]);
+        let detail = detail("Hilton", of(&hotel), [], [("wlan0", &on)]);
 
         let joined = &detail.joined[0];
         assert_eq!(joined.card, "wlan0");
@@ -565,7 +583,7 @@ mod tests {
         let mut on = polled(1);
         on.noise = Some(-95);
 
-        let detail = detail("Hilton", of(&hotel), [("wlan0", &on)]);
+        let detail = detail("Hilton", of(&hotel), [], [("wlan0", &on)]);
 
         assert_eq!(detail.joined[0].margin, Some(36));
     }

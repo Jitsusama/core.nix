@@ -36,6 +36,9 @@ pub struct State {
     /// What each card's driver last read of its link, by the card's name,
     /// while the shell asks for a network in detail.
     polled: BTreeMap<String, Polled>,
+    /// The access point each card is joined to, by the card's name, as a
+    /// path in wpa_supplicant.
+    at: BTreeMap<String, String>,
 }
 
 /// Every card, every saved network and the networks in the air, as the
@@ -181,6 +184,7 @@ impl State {
         self.cards.retain(|index, _| indexes.contains(index));
         let names: Vec<&String> = self.cards.values().map(|card| &card.name).collect();
         self.looked.retain(|card| names.contains(&card));
+        self.at.retain(|card, _| names.contains(&card));
     }
 
     /// Says wifid is finding out how far a card's network reaches, unless
@@ -346,6 +350,15 @@ impl State {
         };
     }
 
+    /// Takes in the access point a card is joined to, or that it's joined
+    /// to none.
+    pub fn at(&mut self, card: &str, point: Option<String>) {
+        match point {
+            Some(point) => self.at.insert(card.into(), point),
+            None => self.at.remove(card),
+        };
+    }
+
     /// Lets go of every card's reading, as nobody asks any more.
     pub fn unpolled(&mut self) {
         self.polled.clear();
@@ -368,11 +381,13 @@ impl State {
             .cards
             .values()
             .filter(|card| card.network.as_deref() == Some(name));
+        let at = on.clone().filter_map(|card| self.at.get(&card.name));
+        let at = at.map(String::as_str);
         let polled = on.filter_map(|card| {
             let polled = self.polled.get(&card.name)?;
             Some((card.name.as_str(), polled))
         });
-        detail::detail(name, heard, polled)
+        detail::detail(name, heard, at, polled)
     }
 
     pub fn described(&self) -> Described {
@@ -998,6 +1013,42 @@ mod tests {
 
         assert_eq!(detail.joined[0].card, "wlan2");
         assert!(detail.points[0].joined);
+    }
+
+    #[test]
+    fn a_network_in_detail_marks_the_access_point_a_card_is_on_before_its_link_is_read() {
+        let mut state = State::default();
+        state.follow(&inn(2));
+        state.heard("/Interfaces/0/BSSs/1", heard("Roadside Inn", -52));
+
+        state.at("wlan2", Some("/Interfaces/0/BSSs/1".into()));
+        let detail = state.detail("Roadside Inn");
+
+        assert!(detail.points[0].joined);
+        assert_eq!(detail.joined, []);
+    }
+
+    #[test]
+    fn an_access_point_a_card_has_left_is_no_longer_marked() {
+        let mut state = State::default();
+        state.follow(&inn(2));
+        state.heard("/Interfaces/0/BSSs/1", heard("Roadside Inn", -52));
+        state.at("wlan2", Some("/Interfaces/0/BSSs/1".into()));
+
+        state.at("wlan2", None);
+
+        assert!(!state.detail("Roadside Inn").points[0].joined);
+    }
+
+    #[test]
+    fn a_card_that_goes_takes_its_access_point_with_it() {
+        let mut state = State::default();
+        state.follow(&inn(2));
+        state.at("wlan2", Some("/Interfaces/0/BSSs/1".into()));
+
+        state.keep_only(&[]);
+
+        assert_eq!(state, State::default());
     }
 
     #[test]

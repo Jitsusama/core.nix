@@ -547,6 +547,9 @@ pkgs.testers.runNixOSTest {
         # And once nobody asks, the card stops reading it.
         unpolled = lambda _: not ask("Detail", {"name": "Roadside Inn"})["joined"]
         retry(unpolled, timeout_seconds=30)
+        # Though it still says which access point the card is joined to.
+        once = ask("Detail", {"name": "Roadside Inn"})["points"][0]
+        assert once["joined"], once
         # Lantern's beacon says how it's protected.
         guarded = ask("Detail", {"name": "Lantern"})["points"][0]["protection"]
         assert guarded["standard"] == "WPA2/WPA3", guarded

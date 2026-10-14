@@ -677,6 +677,13 @@ impl Air<'_> {
                                 self.cards.insert(path.to_string(), (card, step));
                             }
                         }
+                        let point = changed.get("CurrentBSS").map(|point| &**point);
+                        if let Some(zvariant::Value::ObjectPath(point)) = point {
+                            let point = joined_to(point);
+                            if let Some(card) = self.named(bus, path).await {
+                                change(&self.state, |state| state.at(&card, point));
+                            }
+                        }
                         let steps = [
                             ("AuthStatusCode", Step::Authentication),
                             ("AssocStatusCode", Step::Association),
@@ -780,6 +787,12 @@ async fn interface(bus: &Connection, card: OwnedObjectPath) -> zbus::Result<Inte
         .cache_properties(CacheProperties::No)
         .build()
         .await
+}
+
+/// The access point a card is joined to, from wpa_supplicant's path for
+/// it, which is the root while it's joined to none.
+fn joined_to(point: &ObjectPath<'_>) -> Option<String> {
+    (point.as_str() != "/").then(|| point.to_string())
 }
 
 /// Turns every Wi-Fi radio on or off.
@@ -1108,6 +1121,11 @@ impl Wifid<'_> {
             }
         };
         let interface = interface(self.bus, path).await?;
+        // A card kept on its network as wifid restarts says nothing of the
+        // access point it's at until it moves, so it's asked.
+        let point = interface.current_access_point().await.ok();
+        let point = point.and_then(|point| joined_to(&point));
+        change(self.state, |state| state.at(&card.name, point));
         // The driver makes up each address, so the card's own link stays up
         // as it looks, as it wouldn't were its address changed for a look.
         let masks = HashMap::from([("scan", LOOKING_MASK.to_vec())]);
