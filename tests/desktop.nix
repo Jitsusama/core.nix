@@ -2142,6 +2142,38 @@ pkgs.testers.runNixOSTest {
           as_account("systemctl --user start quickshell")
           machine.wait_until_succeeds(in_session("qs ipc show | grep -q askpass"), timeout=60)
 
+      # A switch restarts the shell, and can come while Joel is away and the
+      # screens are locked. niri holds a lock whose shell died, so the shell
+      # it starts again has to take that lock back, or nothing is left to
+      # type the password into.
+      with subtest("the lock holds when the shell restarts, and only for its niri"):
+          locked = "$XDG_RUNTIME_DIR/quickshell-locked"
+          holder = "$XDG_RUNTIME_DIR/quickshell-lock-holder"
+          as_account("lock-screen")
+          since = mark()
+          as_account("systemctl --user restart quickshell")
+          for word in ("secured lock", "keys lock"):
+              reported(word, lambda rest: rest == "", since, timeout=60)
+          as_account("qs ipc call lock isLocked | grep -qx true")
+          as_account(f"grep -qx locked {locked}")
+          with told("released lock"):
+              machine.send_chars("${secret}\n")
+          as_account(f"grep -qx unlocked {locked}")
+
+          def started_unlocked():
+              as_account("systemctl --user restart quickshell")
+              machine.wait_until_succeeds(in_session("qs ipc show | grep -q askpass"), timeout=60)
+              as_account("qs ipc call lock isLocked | grep -qx false")
+              as_account(f"grep -qx unlocked {locked}")
+
+          # Let go, the lock isn't taken again.
+          started_unlocked()
+          # The runtime directory outlives a session while the account
+          # lingers, so a lock a crashed niri held is left to that niri.
+          as_account(f"echo $XDG_RUNTIME_DIR/niri.wayland-1.1.sock > {holder}")
+          as_account(f"echo locked > {locked}")
+          started_unlocked()
+
       # Chrome and Slack ask the desktop portal, and websites hear it from them.
       with subtest("the desktop says it prefers dark"):
           reply = as_account(
