@@ -1,7 +1,12 @@
 # btop in the theme's colours, slot for slot as Omarchy's template gives them,
-# with the theme's roles for its frame, the terminal's colours for its boxes
-# and meters, and the theme's shades for its graphs:
+# with the theme's roles for its frame, the terminal's colours for its
+# meters, and the theme's shades for its graphs:
 # https://github.com/omacom/omarchy/blob/a466dcc04f937a41c820aaa990a31f36ecaed543/default/themed/btop.theme.tpl
+#
+# Its boxes are drawn as the drawer is, in a hairline of the rule colour with
+# their titles in the strongest text, the accent kept for the letters that
+# are keys, and the chosen row in the strongest text as the launcher's is.
+# It leaves out the clock and the battery, which the shell already shows.
 { config, lib, ... }:
 let
   inherit (config.jitsusama.theme) roles terminal shades;
@@ -10,18 +15,18 @@ let
   slots = {
     main_bg = roles.background;
     main_fg = roles.text;
-    title = roles.text;
+    title = roles.strong;
     hi_fg = roles.accent;
     selected_bg = roles.selection;
-    selected_fg = roles.accent;
+    selected_fg = roles.strong;
     inactive_fg = roles.muted;
     graph_text = shade 6;
     meter_bg = roles.selection;
     proc_misc = shade 6;
-    cpu_box = terminal.magenta;
-    mem_box = terminal.green;
-    net_box = terminal.red;
-    proc_box = roles.accent;
+    cpu_box = roles.rule;
+    mem_box = roles.rule;
+    net_box = roles.rule;
+    proc_box = roles.rule;
     div_line = roles.rule;
     temp_start = terminal.green;
     temp_mid = terminal.yellow;
@@ -73,6 +78,8 @@ in
       color_theme = "theme";
       # The terminal's background shows through instead.
       theme_background = false;
+      clock_format = "";
+      show_battery = false;
     };
   };
 }
