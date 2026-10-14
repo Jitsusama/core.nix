@@ -2,11 +2,11 @@
 
 A feed brings in what a provider bills, for a machine whose provider can say.
 spend-watch starts each feed named in `jitsusama.spend-watch.feeds`, reads
-JSON lines from its stdout, writes pace lines on its stdin, and restarts it
-when it stops: after 5 seconds, doubling to 5 minutes while it keeps stopping
-within a minute. What the feed writes on stderr goes to the journal. A feed
-that doesn't read its stdin loses the lines it couldn't take rather than
-stopping the daemon.
+JSON lines from its stdout, writes what it keeps and the pace on its stdin,
+and restarts it when it stops: after 5 seconds, doubling to 5 minutes while
+it keeps stopping within a minute. What the feed writes on stderr goes to
+the journal. A feed that doesn't read its stdin loses the lines it couldn't
+take rather than stopping the daemon.
 
 Nothing a feed is started with may hold a secret: its command and
 environment are in the Nix store, which anyone on the machine reads. A feed
@@ -20,11 +20,22 @@ reads a feed's output and says which lines don't hold.
 
 ## What spend-watch Writes
 
+A feed passes over a line it doesn't know, so one added later is news only
+to the feeds that read it.
+
 - `{"v": 1, "pace": "active"}`: pi's logs grew in the last ten minutes, so
   the bill is worth reading often; `idle` when they haven't. One is written
   when the feed starts and on every change. `asleep` is reserved: a
   suspended machine's feed is frozen with it, so nothing needs saying. A
   feed reads every pace it doesn't know as `idle`.
+- `{"v": 1, "kept": {"billed": {"warehouse": "2026-10-14T13:00:00Z"},
+  "caps": {"weekly": "2026-10-14T16:04:29Z"}}}`: what the watch keeps of
+  this feed's, written once as it starts, after the pace: for each source,
+  when the newest hour of its bill starts, and for each cap, when its
+  newest reading was taken. A source or cap left out has nothing kept. A
+  feed that keeps how far it has read starts again no later than this, so
+  a history built afresh is told the bill again, and one that keeps
+  nothing reads from its own start.
 - `{"v": 1, "refresh": true}`: the person asked for the latest figures now.
   `spend-watch refresh` answers once every running feed has written a line
   since, or after ten seconds, so a feed should read at once and say what it

@@ -1,8 +1,10 @@
 //! The history: everything read, kept for good in SQLite, and rebuildable
-//! from its sources, so it needs no backup. A shape that only grows is
-//! brought up to date where it stands, since a feed that keeps how far it
-//! read wouldn't say its bill again; one that changes otherwise is set
-//! aside and the sources read again.
+//! from its sources, so it needs no backup: each feed is told what's kept
+//! of its bill as it starts (`feed::kept_line`), so one built afresh is
+//! told it again. A shape that only grows is brought up to date where it
+//! stands, which costs no backfill; one that doesn't read is set aside and
+//! the sources read again; and one a newer spend-watch keeps is left as it
+//! is, since that one still reads all of it.
 //!
 //! The daemon writes it and the command line reads it, both at once, so it
 //! runs in WAL mode with a patient lock.
@@ -138,11 +140,20 @@ fn sql(error: rusqlite::Error) -> String {
 }
 
 impl History {
-    /// Opens the history, setting aside one of an older shape so it's
-    /// built again from the sources.
+    /// Opens the history, setting aside one that doesn't read so it's
+    /// built again from the sources. One a newer spend-watch keeps is left
+    /// as it is and refused: an older system booted again shouldn't cost
+    /// the bill the newer one was told.
     pub fn open(path: &Path) -> Result<History, String> {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+        }
+        if let Some(shape) = History::newer(path) {
+            return Err(format!(
+                "{} is kept by a newer spend-watch, at shape {shape} where this one \
+                 reads up to {SCHEMA}, so it's left as it is",
+                path.display()
+            ));
         }
         let existing = path.exists();
         let history = History::connect(path)?;
@@ -164,7 +175,7 @@ impl History {
         }
         drop(history);
         if existing {
-            let aside = path.with_extension(format!("db.schema-{}", schema.unwrap_or(0)));
+            let aside = History::aside(path, schema.unwrap_or(0));
             for suffix in ["", "-wal", "-shm"] {
                 let from = format!("{}{suffix}", path.display());
                 let to = format!("{}{suffix}", aside.display());
@@ -181,6 +192,39 @@ impl History {
             )
             .map_err(sql)?;
         Ok(history)
+    }
+
+    /// The shape of the history at `path`, when a newer spend-watch keeps
+    /// it, read without writing anything.
+    pub fn newer(path: &Path) -> Option<i64> {
+        let flags = rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY;
+        let db = Connection::open_with_flags(path, flags).ok()?;
+        db.busy_timeout(Duration::from_secs(10)).ok()?;
+        let shape: i64 = db
+            .query_row("SELECT value FROM meta WHERE key = 'schema'", [], |row| {
+                row.get::<_, String>(0)
+            })
+            .ok()?
+            .parse()
+            .ok()?;
+        (shape > SCHEMA).then_some(shape)
+    }
+
+    /// Where a history of `shape` is set aside: a name nothing holds yet,
+    /// since one set aside before may be all that's left of its bill.
+    fn aside(path: &Path, shape: i64) -> std::path::PathBuf {
+        let named = |count: u32| {
+            let tail = if count == 1 {
+                String::new()
+            } else {
+                format!(".{count}")
+            };
+            path.with_extension(format!("db.schema-{shape}{tail}"))
+        };
+        (1..)
+            .map(named)
+            .find(|aside| !aside.exists())
+            .expect("a free name")
     }
 
     /// Brings a history of an older shape up to this one, all at once or
@@ -397,6 +441,69 @@ mod tests {
         assert_eq!(history.meta("schema"), Some(SCHEMA.to_string()));
         assert_eq!(history.meta("kept"), None);
         assert!(dir.path().join("history.db.schema-0").exists());
+    }
+
+    // A machine booted into an older system runs an older watch on the
+    // history a newer one kept, whose feeds won't say their bill again.
+    #[test]
+    fn a_newer_shape_is_left_as_it_is() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("history.db");
+        let newer = (SCHEMA + 1).to_string();
+        {
+            let history = History::open(&path).unwrap();
+            history.set_meta("schema", &newer).unwrap();
+            history.set_meta("kept", "yes").unwrap();
+        }
+        let before = std::fs::read(&path).unwrap();
+        assert_eq!(History::newer(&path), Some(SCHEMA + 1));
+        let refused = History::open(&path).err().unwrap();
+        assert!(refused.contains("a newer spend-watch"), "{refused}");
+        assert_eq!(std::fs::read(&path).unwrap(), before);
+        // SQLite's own files beside it are the history's, not a copy.
+        let names: Vec<_> = std::fs::read_dir(dir.path())
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name().into_string().unwrap())
+            .filter(|name| !name.starts_with("history.db") || name.contains("schema"))
+            .collect();
+        assert_eq!(names, Vec::<String>::new());
+        let db = Connection::open(&path).unwrap();
+        let kept: String = db
+            .query_row("SELECT value FROM meta WHERE key = 'kept'", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(kept, "yes");
+    }
+
+    #[test]
+    fn a_shape_this_one_reads_is_not_newer() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("history.db");
+        assert_eq!(History::newer(&path), None);
+        History::open(&path).unwrap();
+        assert_eq!(History::newer(&path), None);
+    }
+
+    #[test]
+    fn a_history_set_aside_never_replaces_one_set_aside_before() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("history.db");
+        for kept in ["first", "second"] {
+            let history = History::open(&path).unwrap();
+            history.set_meta("schema", "0").unwrap();
+            history.set_meta("kept", kept).unwrap();
+        }
+        History::open(&path).unwrap();
+        let kept = |name: &str| {
+            let db = Connection::open(dir.path().join(name)).unwrap();
+            db.query_row("SELECT value FROM meta WHERE key = 'kept'", [], |row| {
+                row.get::<_, String>(0)
+            })
+            .unwrap()
+        };
+        assert_eq!(kept("history.db.schema-0"), "first");
+        assert_eq!(kept("history.db.schema-0.2"), "second");
     }
 
     // The first shape, as a machine has it: its caps gain the column a

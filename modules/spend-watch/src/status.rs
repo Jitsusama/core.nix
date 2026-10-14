@@ -201,6 +201,29 @@ pub fn status(picture: &Picture, findings: &[Finding]) -> Status {
     }
 }
 
+/// What the shell shows while a newer spend-watch keeps the history and
+/// this one leaves it be: nothing is watched, so it wants a look, but
+/// there's nothing to sign in to or mark, only the newer one to run.
+pub fn held(now: f64) -> Status {
+    let said = Said {
+        value: "on hold".into(),
+        badge: String::new(),
+        hint: "A newer spend-watch keeps the history".into(),
+        context: "run the newer spend-watch".into(),
+    };
+    Status {
+        v: VERSION,
+        heartbeat: now,
+        active: true,
+        role: "warning".into(),
+        wants: false,
+        title: "AI spend".into(),
+        open: said.clone(),
+        quiet: said,
+        actions: Vec::new(),
+    }
+}
+
 pub(crate) fn capitalized(text: &str) -> String {
     let mut chars = text.chars();
     match chars.next() {
@@ -303,6 +326,22 @@ mod tests {
             assert!(!said.contains('$'), "{said}");
         }
         assert!(!quiet.hint.is_empty());
+    }
+
+    // Held, nothing is watched: the margin shows it as it shows a cap
+    // near, and its footer says what mends it.
+    #[test]
+    fn a_held_watch_wants_a_look_and_beats() {
+        let held = held(1_791_988_200.0);
+        assert!(held.active && !held.wants, "{held:?}");
+        assert_eq!(
+            (held.role.as_str(), held.heartbeat),
+            ("warning", 1_791_988_200.0)
+        );
+        assert_eq!(held.open, held.quiet);
+        // Beside the margin's one hint, its footer holds about 28.
+        assert!(held.open.context.len() <= 28, "{}", held.open.context);
+        assert!(held.actions.is_empty());
     }
 
     // A cap a feed read this very hour, as the meter's premium day is on
