@@ -1398,6 +1398,27 @@ pkgs.testers.runNixOSTest {
           machine.send_key("ret")
           machine.wait_until_succeeds("journalctl -u wifid | grep -q 'joined Office on wlan1'", timeout=60)
           machine.wait_until_fails(in_session("niri msg layers | grep -q launcher"), timeout=10)
+          # Stepped into, a network says after what can be done to it what's
+          # heard of it, a row each, the selected row's footer saying more:
+          # the card's link to it once the card has read it, and its access
+          # points a step further in.
+          as_account("qs ipc call launcher collection wifi")
+          launcher_ready()
+          type_in("office", selecting="Office")
+          step_in()
+          type_in("out", selecting="Mb/s in")
+          launcher_until(lambda shown: "over the noise" in shown["footer"])
+          for _ in "out":
+              machine.send_key("backspace")
+          launcher_until(lambda shown: shown["typed"] == "")
+          photograph("launcher-wifi-detail")
+          type_in("access", selecting="1 access point")
+          step_in()
+          launcher_until(lambda shown: shown["footer"].startswith("02:00:00:00:02:00 \u00b7 "))
+          assert showing()["selected"]["name"].startswith("2.4 GHz ch 1\u00a0"), showing()
+          photograph("launcher-wifi-points")
+          machine.send_key("esc")
+          machine.wait_until_fails(in_session("niri msg layers | grep -q launcher"), timeout=10)
           # Turning Wi-Fi off is an action like any.
           as_account("qs ipc call launcher toggle")
           launcher_ready()

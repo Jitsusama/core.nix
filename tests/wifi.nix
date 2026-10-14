@@ -521,6 +521,45 @@ pkgs.testers.runNixOSTest {
         machine.wait_until_succeeds("grep -q ScanDone /tmp/scans", timeout=30)
         machine.succeed("pkill -f 'busctl monitor'")
 
+    with subtest("and one network in detail, with the link of the card on it as it changes"):
+        # Asked for as it changes, wifid answers again as the card reads
+        # its link, every two seconds, until the call ends.
+        streaming = calling("Detail", {"name": "Roadside Inn"}).replace(
+            "varlinkctl call", "varlinkctl call --more --json=short"
+        )
+        machine.succeed(f"timeout 7 {streaming} > /tmp/detail || [ $? -eq 124 ]")
+        answered = machine.succeed("cat /tmp/detail").splitlines()
+        answered = [line for line in answered if line]
+        detailed = json.loads(answered[-1])
+        heard = detailed["points"][0]
+        unread = machine.succeed("journalctl -u wifid -o cat | grep \"link: \" || true")
+        assert detailed["joined"], (answered, unread)
+        assert len(detailed["points"]) == 1, detailed
+        where_heard = (heard["band"], heard["channel"], heard["frequency"])
+        assert where_heard == ("ghz2", 11, 2462), heard
+        assert (heard["width"], heard["protection"], heard["joined"]) == (20, None, True), heard
+        assert heard["estimate"] > 0, heard
+        assert detailed["bands"] == [{"band": "ghz2", "points": 1}], detailed
+        assert detailed["best"]["bssid"] == heard["bssid"], detailed
+        reading = detailed["joined"][0]
+        assert (reading["card"], reading["bssid"]) == ("wlan2", heard["bssid"]), reading
+        assert reading["signal"] < 0 and reading["frequency"] == 2462, reading
+        # And once nobody asks, the card stops reading it.
+        unpolled = lambda _: not ask("Detail", {"name": "Roadside Inn"})["joined"]
+        retry(unpolled, timeout_seconds=30)
+        # Though it still says which access point the card is joined to.
+        once = ask("Detail", {"name": "Roadside Inn"})["points"][0]
+        assert once["joined"], once
+        # As it does after a restart, which leaves the card where it is.
+        machine.succeed("systemctl restart wifid")
+        points = lambda: ask("Detail", {"name": "Roadside Inn"})["points"]
+        retry(lambda _: any(point["joined"] for point in points()), timeout_seconds=30)
+        # Lantern's beacon says how it's protected.
+        guarded = ask("Detail", {"name": "Lantern"})["points"][0]["protection"]
+        assert guarded["standard"] == "WPA2/WPA3", guarded
+        assert guarded["ways"] == ["wpa-psk", "sae"], guarded
+        assert guarded["management"] == "optional", guarded
+
     with subtest("the network sees an address the card chose for it"):
         inn_address = shown()
         assert inn_address != card, inn_address

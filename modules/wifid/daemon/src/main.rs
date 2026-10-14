@@ -21,10 +21,12 @@ mod address;
 mod air;
 mod card;
 mod check;
+mod detail;
 mod link;
 mod lookup;
 mod network;
 mod page;
+mod radio;
 mod rfkill;
 mod secret;
 mod seen;
@@ -48,7 +50,7 @@ use std::sync::Arc;
 
 use futures_util::StreamExt;
 use tokio::sync::{mpsc, watch};
-use tokio::time::{Duration, Instant, sleep_until};
+use tokio::time::{Duration, Instant, MissedTickBehavior, sleep_until};
 use zbus::fdo::{DBusProxy, PropertiesProxy};
 use zbus::names::InterfaceName;
 use zbus::proxy::CacheProperties;
@@ -60,6 +62,7 @@ use address::AddressKey;
 use air::AccessPoint;
 use card::Card;
 use check::{Checker, Settings, Verdict};
+use detail::Polled;
 use link::Link;
 use network::{Account, Address, Inner, Method, Network, Security};
 use secret::{Credentials, Secrets};
@@ -213,10 +216,12 @@ async fn run() -> Result<(), Box<dyn Error>> {
         followed: HashMap::new(),
     };
     let (asks, mut taken) = mpsc::channel(1);
+    let watching = watch::Sender::new(0);
     let wifi = Wifi {
         state: state.subscribe(),
         asked: networks.asked.clone(),
         asks,
+        watching: watching.clone(),
     };
     // Every card there is now was given wpa_supplicant above.
     networks.follow_all(all_links(&bus).await);
@@ -224,6 +229,9 @@ async fn run() -> Result<(), Box<dyn Error>> {
     let mut watched = state.subscribe();
     let mut switched = switches();
     let mut radios = rfkill::Switches::default();
+    let mut asking = watching.subscribe();
+    let mut polling = tokio::time::interval(POLLING);
+    polling.set_missed_tick_behavior(MissedTickBehavior::Skip);
     let following = async {
         loop {
             let deadline = joining.as_ref().map(|joining| joining.deadline);
@@ -317,6 +325,16 @@ async fn run() -> Result<(), Box<dyn Error>> {
                 () = until(deadline), if joining.is_some() => {
                     if let Some(late) = joining.take() {
                         wifid.settle(late, Err(Refused::TimedOut)).await;
+                    }
+                }
+                _ = polling.tick(), if *asking.borrow() > 0 => {
+                    poll(&bus, &supplicant, &state).await;
+                }
+                Ok(()) = asking.changed() => {
+                    if *asking.borrow_and_update() == 0 {
+                        change(&state, State::unpolled);
+                    } else {
+                        polling.reset_immediately();
                     }
                 }
                 Some(sleep) = sleeps.recv() => {
@@ -659,6 +677,13 @@ impl Air<'_> {
                                 self.cards.insert(path.to_string(), (card, step));
                             }
                         }
+                        let point = changed.get("CurrentBSS").map(|point| &**point);
+                        if let Some(zvariant::Value::ObjectPath(point)) = point {
+                            let point = joined_to(point);
+                            if let Some(card) = self.named(bus, path).await {
+                                change(&self.state, |state| state.at(&card, point));
+                            }
+                        }
                         let steps = [
                             ("AuthStatusCode", Step::Authentication),
                             ("AssocStatusCode", Step::Association),
@@ -764,6 +789,12 @@ async fn interface(bus: &Connection, card: OwnedObjectPath) -> zbus::Result<Inte
         .await
 }
 
+/// The access point a card is joined to, from wpa_supplicant's path for
+/// it, which is the root while it's joined to none.
+fn joined_to(point: &ObjectPath<'_>) -> Option<String> {
+    (point.as_str() != "/").then(|| point.to_string())
+}
+
 /// Turns every Wi-Fi radio on or off.
 fn radio(on: bool) -> Result<(), Refused> {
     let turned = OpenOptions::new()
@@ -800,6 +831,41 @@ fn refused(failure: store::Failure) -> Refused {
         store::Failure::Io(error) => Refused::Failed {
             reason: error.to_string(),
         },
+    }
+}
+
+/// How often a card on a network reads its link while someone asks for a
+/// network in detail.
+const POLLING: Duration = Duration::from_secs(2);
+
+/// Reads the link of each card on a network. A card wpa_supplicant can't
+/// answer for in a second is left unread rather than holding wifid up.
+async fn poll(bus: &Connection, supplicant: &SupplicantProxy<'_>, state: &watch::Sender<State>) {
+    let cards = state.borrow().on_networks();
+    for card in cards {
+        let reading = async {
+            let interface = interface(bus, supplicant.get_interface(&card).await?).await?;
+            let point = interface.current_access_point().await?;
+            let said = interface.signal_poll().await?;
+            let said = match &*said {
+                zvariant::Value::Value(inside) => inside.try_to_owned()?,
+                _ => said,
+            };
+            let said: HashMap<String, OwnedValue> = said.try_into()?;
+            zbus::Result::Ok(Polled::read(point.to_string(), &said))
+        };
+        let polled = match tokio::time::timeout(Duration::from_secs(1), reading).await {
+            Ok(Ok(polled)) => Some(polled),
+            Ok(Err(error)) => {
+                eprintln!("<7>can't read {card}'s link: {error}");
+                None
+            }
+            Err(_) => {
+                eprintln!("<7>can't read {card}'s link: wpa_supplicant didn't answer in time");
+                None
+            }
+        };
+        change(state, |state| state.polled(&card, polled));
     }
 }
 
@@ -1055,6 +1121,11 @@ impl Wifid<'_> {
             }
         };
         let interface = interface(self.bus, path).await?;
+        // A card kept on its network as wifid restarts says nothing of the
+        // access point it's at until it moves, so it's asked.
+        let point = interface.current_access_point().await.ok();
+        let point = point.and_then(|point| joined_to(&point));
+        change(self.state, |state| state.at(&card.name, point));
         // The driver makes up each address, so the card's own link stays up
         // as it looks, as it wouldn't were its address changed for a look.
         let masks = HashMap::from([("scan", LOOKING_MASK.to_vec())]);

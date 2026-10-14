@@ -343,11 +343,32 @@ Scope {
     }
 
     // A collection whose things changed while it's open is searched again,
-    // the selection kept on the row it was on.
+    // the selection kept on the row it was on, and so is anything stepped
+    // into below it, each step's rows asked for again, since they can say
+    // how a thing stands, as a Wi-Fi network's say its access points.
     function refreshed(source) {
-        if (!open || asking || held.length === 0 || held[held.length - 1].row.from !== source)
+        if (!open || asking)
+            return;
+        const from = held.findIndex(step => step.row.from === source);
+        if (from < 0)
             return;
         const key = selected ? selected.key : null;
+        const steps = held.slice(0, from + 1);
+        let rows = source.everything();
+        for (const step of held.slice(from + 1)) {
+            const thing = rows.find(row => row.key === step.row.key);
+            // Asked as enter asks: a collection's things for their verbs,
+            // anything else for its targets.
+            const into = !thing ? null
+                : steps[steps.length - 1].row.from ? (thing.verbs ? thing.verbs() : null)
+                : thing.targets ? thing.targets() : null;
+            if (!into)
+                return;
+            steps.push(Object.assign({}, step, { row: thing, rows: into }));
+            rows = into;
+        }
+        if (held.length > from + 1)
+            held = steps;
         search(typed);
         const at = matches.findIndex(row => row.key === key);
         if (at > 0)
@@ -619,7 +640,8 @@ Scope {
                 verb: row.verb ?? "",
                 chord: (row.chord ?? []).map(key => key.text).join(" "),
                 settled: row !== root.headline || !root.answer.asking
-            }
+            },
+            footer: note.text
         });
     }
 
@@ -832,6 +854,7 @@ Scope {
                         visible: choice !== null
 
                         Text {
+                            id: note
                             x: Theme.space.l
                             anchors.verticalCenter: parent.verticalCenter
                             width: keys.x - x - Theme.space.xl

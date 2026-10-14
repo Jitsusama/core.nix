@@ -22,6 +22,8 @@ use zlink::introspect::{CustomType, Type};
 use zlink::tokio::unix::Listener;
 use zlink::{Reply, introspect, service};
 
+use crate::detail::{Best, Count, Detail, Joined, Point};
+use crate::radio::{Band, Load, Management, Protection};
 use crate::state::{Card, Described, Nearby, Reach, Saved, Security, State, Trouble};
 
 pub struct Wifi {
@@ -30,6 +32,9 @@ pub struct Wifi {
     pub asked: watch::Sender<u64>,
     /// Where wifid's main loop takes what only it can do.
     pub asks: mpsc::Sender<Ask>,
+    /// How many are asking for a network in detail as it changes, while
+    /// which the cards on networks read their links.
+    pub watching: watch::Sender<u32>,
 }
 
 /// A change to the saved networks, which wifid's main loop makes, since
@@ -206,7 +211,10 @@ impl Stage {
 
 #[service(
     interface = "io.jitsusama.Wifi",
-    types = [Account, Address, Card, Inner, Method, Nearby, Reach, Saved, Saving, Security, Stage, Trouble],
+    types = [
+        Account, Address, Band, Best, Card, Count, Inner, Joined, Load, Management, Method, Nearby,
+        Point, Protection, Reach, Saved, Saving, Security, Stage, Trouble
+    ],
     vendor = "jitsusama",
     product = "wifid",
     version = env!("CARGO_PKG_VERSION"),
@@ -237,6 +245,50 @@ impl Wifi {
                 };
                 let reply = Reply::new(Some(described.clone())).set_continues(Some(more));
                 Some((reply, (state, None, Some(described))))
+            },
+        );
+        Box::pin(replies)
+    }
+
+    /// One network in the air in detail: each of its access points, how
+    /// many in each band, what each card on it reads of its link, and the
+    /// access point wifid would pick, with why. Called with more, it
+    /// answers again each time any of it changes, and the cards on
+    /// networks read their links every two seconds until the call ends.
+    #[zlink(more)]
+    async fn detail(&self, more: bool, name: String) -> impl Stream<Item = Reply<Detail>> + Unpin {
+        // Kept in the stream, so the count goes down as the call ends.
+        let watching = more.then(|| Watching::new(&self.watching));
+        let mut state = self.state.clone();
+        let now = state.borrow_and_update().detail(&name);
+        let replies = stream::unfold(
+            (state, Some(now), None, watching),
+            move |(mut state, next, sent, watching): (_, _, Option<Detail>, _)| {
+                let name = name.clone();
+                async move {
+                    let detail = match next {
+                        Some(detail) => detail,
+                        // zlink learns a caller has gone only as it next
+                        // answers them, so the detail is said again now and
+                        // then unchanged, and the cards stop reading their
+                        // links soon after the launcher closes.
+                        None if more => loop {
+                            tokio::select! {
+                                changed = state.changed() => changed.ok()?,
+                                () = tokio::time::sleep(AGAIN) => {
+                                    break state.borrow_and_update().detail(&name);
+                                }
+                            }
+                            let detail = state.borrow_and_update().detail(&name);
+                            if sent.as_ref() != Some(&detail) {
+                                break detail;
+                            }
+                        },
+                        None => return None,
+                    };
+                    let reply = Reply::new(Some(detail.clone())).set_continues(Some(more));
+                    Some((reply, (state, None, Some(detail), watching)))
+                }
             },
         );
         Box::pin(replies)
@@ -377,6 +429,27 @@ impl Wifi {
     }
 }
 
+/// How long a network in detail goes unsaid while nothing of it changes.
+const AGAIN: tokio::time::Duration = tokio::time::Duration::from_secs(5);
+
+/// One caller asking for a network in detail as it changes, counted for as
+/// long as it's kept.
+struct Watching(watch::Sender<u32>);
+
+impl Watching {
+    fn new(watching: &watch::Sender<u32>) -> Watching {
+        watching.send_modify(|watching| *watching += 1);
+        Watching(watching.clone())
+    }
+}
+
+impl Drop for Watching {
+    fn drop(&mut self) {
+        self.0
+            .send_modify(|watching| *watching = watching.saturating_sub(1));
+    }
+}
+
 fn stopping() -> Refused {
     Refused::Failed {
         reason: "wifid is stopping".into(),
@@ -425,6 +498,7 @@ mod tests {
             state: shown,
             asked,
             asks,
+            watching: watch::Sender::new(0),
         };
         (wifi, state, checks, taken)
     }
@@ -511,6 +585,80 @@ mod tests {
         let settled = wifi.settled(false).await.next().now_or_never();
 
         assert!(matches!(settled, Some(Some(_))), "{settled:?}");
+    }
+
+    fn inn_heard() -> Option<crate::air::Heard> {
+        Some(crate::air::Heard {
+            name: "Roadside Inn".into(),
+            security: Security::Open,
+            signal: -52,
+            bssid: "02:00:00:00:01:00".into(),
+            frequency: 2462,
+            age: 0,
+            radio: crate::radio::Radio::default(),
+        })
+    }
+
+    #[tokio::test]
+    async fn a_network_in_detail_is_answered_once_as_it_is() {
+        let (wifi, state, _) = wifi();
+        state.send_modify(|state| state.heard("/BSSs/0", inn_heard()));
+
+        let mut replies = wifi.detail(false, "Roadside Inn".into()).await;
+        let reply = replies.next().await.unwrap();
+
+        assert_eq!(reply.continues(), Some(false));
+        assert_eq!(
+            reply.parameters().unwrap().points[0].bssid,
+            "02:00:00:00:01:00"
+        );
+        assert!(replies.next().await.is_none());
+    }
+
+    #[tokio::test]
+    async fn a_network_in_detail_with_more_is_answered_again_as_it_changes() {
+        let (wifi, state, _) = wifi();
+
+        let mut replies = wifi.detail(true, "Roadside Inn".into()).await;
+        let first = replies.next().await.unwrap();
+        state.send_modify(|state| state.heard("/BSSs/0", inn_heard()));
+        let second = replies.next().await.unwrap();
+        state.send_modify(|state| state.follow(&inn()));
+        let unchanged = replies.next().now_or_never();
+
+        assert_eq!(first.parameters().unwrap().points, []);
+        assert_eq!(second.continues(), Some(true));
+        assert_eq!(second.parameters().unwrap().points.len(), 1);
+        assert!(
+            unchanged.is_none(),
+            "answered again with its detail the same"
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_network_in_detail_with_more_is_answered_again_now_and_then_unchanged() {
+        let (wifi, _state, _) = wifi();
+        let mut replies = wifi.detail(true, "Roadside Inn".into()).await;
+        replies.next().await.unwrap();
+
+        let again = tokio::time::timeout(Duration::from_secs(6), replies.next()).await;
+
+        let again = again.expect("not answered again unchanged").unwrap();
+        assert_eq!(again.continues(), Some(true));
+    }
+
+    #[tokio::test]
+    async fn asking_for_detail_as_it_changes_has_the_cards_read_their_links_until_done() {
+        let (wifi, _state, _) = wifi();
+        let watching = wifi.watching.subscribe();
+
+        let once = wifi.detail(false, "Roadside Inn".into()).await;
+        let unwatched = *watching.borrow();
+        let replies = wifi.detail(true, "Roadside Inn".into()).await;
+        let watched = *watching.borrow();
+        drop((once, replies));
+
+        assert_eq!((unwatched, watched, *watching.borrow()), (0, 1, 0));
     }
 
     #[tokio::test]

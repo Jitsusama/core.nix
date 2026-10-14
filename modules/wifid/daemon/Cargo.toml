@@ -28,3 +28,5 @@ zlink = { version = "0.7", default-features = false, features = ["service", "tok
 
 [dev-dependencies]
 tempfile = "3.27"
+# For tests that let time pass at once.
+tokio = { version = "1.53", features = ["test-util"] }
