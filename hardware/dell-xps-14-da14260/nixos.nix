@@ -104,6 +104,14 @@ in
       name = "ucsi-leading-empty-pdo";
       patch = ./ucsi-leading-empty-pdo.patch;
     }
+    {
+      # Now and then the USB-C controller stops answering while the kernel
+      # starts it at boot, and the kernel gives up, leaving no USB-C ports
+      # or charger reports until the next boot. Written here; the patch says
+      # why.
+      name = "ucsi-retry-timed-out-init";
+      patch = ./ucsi-retry-timed-out-init.patch;
+    }
   ];
 
   # The disk, and the USB and Thunderbolt ports a dock's keyboard arrives
