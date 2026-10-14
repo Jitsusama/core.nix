@@ -21,7 +21,9 @@ let
     shape
     appearance
     icons
+    floating
     ;
+  rgba = import ../theme/rgba.nix { inherit lib; };
 
   # Each surface's background and text, and the colours of buttons and
   # messages that mean something, with the theme's text for drawing on them.
@@ -44,7 +46,10 @@ let
     sidebar_fg_color = roles.text;
     dialog_bg_color = roles.background;
     dialog_fg_color = roles.text;
-    popover_bg_color = roles.background;
+    # Menus and popovers float over the window in the colour its frame is
+    # drawn in, as the shell's floating panels start from it, rather than
+    # in the window's own colour with only a hairline between them.
+    popover_bg_color = roles.deepest;
     popover_fg_color = roles.text;
     accent_bg_color = roles.accent;
     accent_fg_color = roles.on_accent;
@@ -62,7 +67,23 @@ let
   # outranks the theme's own definitions.
   stylesheet =
     lib.concatLines (lib.mapAttrsToList (name: color: "@define-color ${name} ${color};") palette)
+    + tooltips
     + lib.optionalString (appearance == "dark") knobs;
+
+  # A tooltip drawn as the shell's floating panels are, the frame's colour
+  # seen a little through with a hairline round it and the theme's text,
+  # rather than both themes' black wash, white words and their shadow. GTK 3
+  # colours the words of a tooltip's every part, Chromium's included.
+  tooltips = ''
+    tooltip.background, tooltip.background.chromium {
+      background-color: ${rgba roles.deepest (toString floating.opacity)};
+      border: ${toString shape.border}px solid ${roles.rule};
+      border-radius: ${toString shape.radius}px;
+      color: ${roles.text};
+      text-shadow: none;
+    }
+    tooltip * { color: ${roles.text}; }
+  '';
 
   # A slider's and a switch's knob, which both themes mix from white rather
   # than the palette: the theme's text, its strongest under the pointer and
