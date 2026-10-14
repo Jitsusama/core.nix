@@ -2,12 +2,14 @@
 // PAM through the quickshell service the system defines. Lock it with
 // `qs ipc call lock lock`, as swayidle does when Joel steps away or the lid
 // closes, and ask with `qs ipc call lock isLocked`. If Quickshell dies while
-// locked, niri keeps the screens locked. The field is the prompt kind
-// (docs/design.md, Shape and Kinds): the padlock beside the dots, the accent
-// frame, and the alert frame after a wrong password. Behind them is the
-// theme's lock picture, shown whole: the time is lifted off it by the
-// theme's text shadows, and both sit low, under the picture's sky. It fades
-// in once read, so locking never waits on it.
+// locked, niri keeps the screens locked, and the shell started again takes
+// the lock back, so the password still has somewhere to go: a switch
+// restarts the shell, and can come while Joel is away. The field is the
+// prompt kind (docs/design.md, Shape and Kinds): the padlock beside the
+// dots, the accent frame, and the alert frame after a wrong password.
+// Behind them is the theme's lock picture, shown whole: the time is lifted
+// off it by the theme's text shadows, and both sit low, under the picture's
+// sky. It fades in once read, so locking never waits on it.
 //
 // The password answers PAM's first question. A question after it, such as a
 // security key's PIN, is asked in the field, and what PAM says besides, such
@@ -17,7 +19,11 @@
 // Once niri says every screen shows the lock, the lock writes "locked" to
 // $XDG_RUNTIME_DIR/quickshell-locked, and "unlocked" once it's let go, so
 // what locks before the machine sleeps can wait until nothing else is on
-// screen (modules/swayidle).
+// screen (modules/swayidle). It writes niri's socket, which names niri's
+// process, to $XDG_RUNTIME_DIR/quickshell-lock-holder first, and empties it
+// first when let go: that's how a new shell knows the lock is its niri's,
+// since the directory outlives a session while the account lingers, and a
+// lock a crashed niri held mustn't lock the next one.
 import Quickshell
 import Quickshell.Io
 import Quickshell.Services.Pam
@@ -63,15 +69,38 @@ Scope {
         blockWrites: true
     }
 
-    // Said at the start too, since a lock left by a shell that died is
-    // niri's to hold, and this one's isn't drawn until niri says so.
-    Component.onCompleted: marker.setText(sessionLock.secure ? "locked\n" : "unlocked\n")
+    FileView {
+        id: holder
+        path: `${Quickshell.env("XDG_RUNTIME_DIR")}/quickshell-lock-holder`
+        printErrors: false
+        // Read before anything is drawn, to know whether to lock.
+        blockLoading: true
+        blockWrites: true
+    }
+
+    readonly property string niri: Quickshell.env("NIRI_SOCKET") ?? ""
+
+    // A shell started while its niri holds the lock locks again, and niri
+    // hands it the screens at once. Otherwise it says it's unlocked, since a
+    // marker left by a shell that died says nothing about this one.
+    Component.onCompleted: {
+        if (niri !== "" && holder.text().trim() === niri)
+            lock();
+        else
+            marker.setText("unlocked\n");
+    }
 
     Connections {
         target: sessionLock
 
         function onSecureChanged() {
-            marker.setText(sessionLock.secure ? "locked\n" : "unlocked\n");
+            if (sessionLock.secure) {
+                holder.setText(`${root.niri}\n`);
+                marker.setText("locked\n");
+            } else {
+                holder.setText("");
+                marker.setText("unlocked\n");
+            }
             Report.say(`${sessionLock.secure ? "secured" : "released"} lock`);
         }
     }
