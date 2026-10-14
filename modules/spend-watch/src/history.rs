@@ -12,16 +12,56 @@ use std::path::Path;
 use std::time::Duration;
 
 /// Bumped whenever a table's shape or meaning changes.
-pub const SCHEMA: i64 = 3;
+pub const SCHEMA: i64 = 4;
 
-/// What brings each older shape up to the next, where only columns were
+/// Each hour's turns summed by what the picture splits them by, kept as
+/// they're added and forgotten. Every pass reads every hour, and summing
+/// the turns again each time cost most of a pass once they were counted
+/// in hundreds of thousands; these are a fiftieth as many.
+macro_rules! hours {
+    () => {
+        "
+CREATE TABLE turn_hours (
+    hour INTEGER NOT NULL, session TEXT NOT NULL, quest TEXT, model TEXT NOT NULL,
+    kind TEXT NOT NULL, turns INTEGER NOT NULL, cost REAL NOT NULL);
+CREATE INDEX turn_hours_key ON turn_hours (hour, session, quest, model, kind);
+CREATE TRIGGER turn_hours_add AFTER INSERT ON turns BEGIN
+    INSERT INTO turn_hours SELECT NEW.hour, NEW.session, NEW.quest, NEW.model, NEW.kind, 0, 0
+        WHERE NOT EXISTS (SELECT 1 FROM turn_hours WHERE hour = NEW.hour
+            AND session = NEW.session AND quest IS NEW.quest AND model = NEW.model
+            AND kind = NEW.kind);
+    UPDATE turn_hours SET turns = turns + 1, cost = cost + NEW.cost
+        WHERE hour = NEW.hour AND session = NEW.session AND quest IS NEW.quest
+            AND model = NEW.model AND kind = NEW.kind;
+END;
+CREATE TRIGGER turn_hours_take AFTER DELETE ON turns BEGIN
+    UPDATE turn_hours SET turns = turns - 1, cost = cost - OLD.cost
+        WHERE hour = OLD.hour AND session = OLD.session AND quest IS OLD.quest
+            AND model = OLD.model AND kind = OLD.kind;
+    DELETE FROM turn_hours WHERE turns = 0 AND hour = OLD.hour AND session = OLD.session
+        AND quest IS OLD.quest AND model = OLD.model AND kind = OLD.kind;
+END;
+CREATE TRIGGER turns_stay BEFORE UPDATE ON turns BEGIN
+    SELECT RAISE(ABORT, 'a turn is added or forgotten, never changed');
+END;
+"
+    };
+}
+
+/// What brings each older shape up to the next, where only something was
 /// added: `UPGRADES[n - 1]` takes shape n to n + 1.
-const UPGRADES: [&str; 2] = [
+const UPGRADES: [&str; 3] = [
     "ALTER TABLE caps ADD COLUMN resets REAL;",
     "ALTER TABLE health ADD COLUMN since REAL;",
+    concat!(
+        hours!(),
+        "INSERT INTO turn_hours SELECT hour, session, quest, model, kind, COUNT(*), SUM(cost)
+         FROM turns GROUP BY hour, session, quest, model, kind;"
+    ),
 ];
 
-const TABLES: &str = "
+const TABLES: &str = concat!(
+    "
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 CREATE TABLE files (
     path TEXT PRIMARY KEY, identity TEXT NOT NULL, offset INTEGER NOT NULL,
@@ -85,7 +125,9 @@ CREATE TABLE findings (
 CREATE TABLE marks (key TEXT PRIMARY KEY, mark TEXT NOT NULL, at REAL NOT NULL);
 CREATE TABLE notices (key TEXT NOT NULL, at REAL NOT NULL, cap INTEGER NOT NULL,
     id INTEGER NOT NULL, withdrawn REAL);
-";
+",
+    hours!()
+);
 
 pub struct History {
     pub db: Connection,
@@ -368,6 +410,7 @@ mod tests {
             let db = Connection::open(&path).unwrap();
             db.execute_batch(
                 &TABLES
+                    .replace(hours!(), "")
                     .replace("\n    resets REAL,", "")
                     .replace("\n    since REAL,", ""),
             )
@@ -393,6 +436,122 @@ mod tests {
             .unwrap();
         assert_eq!(since, None);
         assert!(!dir.path().join("history.db.schema-1").exists());
+    }
+
+    fn turn(history: &History, session: &str, hour: i64, quest: Option<&str>, cost: f64) {
+        history
+            .db
+            .execute(
+                "INSERT INTO turns VALUES (?1, ?2, ?3, 'opus', 'anthropic', 'agent', ?4,
+                 0, 0, 0, 0, 0, ?5, 0, 0, NULL, 0, 0, NULL)",
+                params![session, (hour * 3600) as f64, hour, quest, cost],
+            )
+            .unwrap();
+    }
+
+    /// The hours as kept, against the turns summed afresh.
+    fn hours_hold(history: &History) {
+        let read = |sql: &str| -> Vec<(i64, String, Option<String>, i64, f64)> {
+            let mut statement = history.db.prepare(sql).unwrap();
+            statement
+                .query_map([], |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get(3)?,
+                        row.get(4)?,
+                    ))
+                })
+                .unwrap()
+                .map(Result::unwrap)
+                .collect()
+        };
+        let kept = read(
+            "SELECT hour, session, quest, turns, cost FROM turn_hours
+             ORDER BY hour, session, quest",
+        );
+        let summed = read(
+            "SELECT hour, session, quest, COUNT(*), SUM(cost) FROM turns
+             GROUP BY hour, session, quest, model, kind ORDER BY hour, session, quest",
+        );
+        assert_eq!(kept.len(), summed.len(), "{kept:?} against {summed:?}");
+        for (kept, summed) in kept.iter().zip(&summed) {
+            assert_eq!(
+                (&kept.0, &kept.1, &kept.2, kept.3),
+                (&summed.0, &summed.1, &summed.2, summed.3)
+            );
+            assert!(
+                (kept.4 - summed.4).abs() < 1e-9,
+                "{kept:?} against {summed:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn each_hour_s_turns_are_kept_summed() {
+        let history = History::memory();
+        turn(&history, "a", 10, Some("q"), 1.25);
+        turn(&history, "a", 10, Some("q"), 0.5);
+        turn(&history, "a", 10, None, 2.0);
+        turn(&history, "a", 10, None, 0.25);
+        turn(&history, "b", 10, None, 3.0);
+        turn(&history, "a", 11, Some("q"), 4.0);
+        hours_hold(&history);
+        let groups: i64 = history
+            .db
+            .query_row("SELECT COUNT(*) FROM turn_hours", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(groups, 4);
+        // Forgetting part of an hour leaves the rest of it.
+        history
+            .db
+            .execute("DELETE FROM turns WHERE cost = 0.5", [])
+            .unwrap();
+        hours_hold(&history);
+        // A log read again from its start forgets its session's turns.
+        history
+            .db
+            .execute("DELETE FROM turns WHERE session = 'a'", [])
+            .unwrap();
+        hours_hold(&history);
+        turn(&history, "a", 10, None, 0.75);
+        hours_hold(&history);
+        assert!(
+            history
+                .db
+                .execute("UPDATE turns SET cost = 9 WHERE session = 'b'", [])
+                .is_err()
+        );
+    }
+
+    // A history of the third shape has its turns summed as it's brought up
+    // to date, so its picture reads as it did.
+    #[test]
+    fn the_third_shape_gains_its_hours() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("history.db");
+        {
+            let history = History {
+                db: Connection::open(&path).unwrap(),
+            };
+            history
+                .db
+                .execute_batch(&TABLES.replace(hours!(), ""))
+                .unwrap();
+            history
+                .db
+                .execute_batch("INSERT INTO meta VALUES ('schema', '3');")
+                .unwrap();
+            turn(&history, "a", 10, Some("q"), 1.5);
+            turn(&history, "a", 10, Some("q"), 2.5);
+            turn(&history, "b", 12, None, 1.0);
+        }
+        let history = History::open(&path).unwrap();
+        assert_eq!(history.meta("schema"), Some(SCHEMA.to_string()));
+        hours_hold(&history);
+        turn(&history, "b", 12, None, 1.0);
+        hours_hold(&history);
     }
 
     #[test]

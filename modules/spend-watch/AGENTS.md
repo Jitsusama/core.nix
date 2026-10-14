@@ -54,7 +54,9 @@ feed speaks.
   they no longer hold or are marked expected. No notice holds an amount, and
   while the screen is shared the shell shows the quiet strings. Nothing is
   ever sent anywhere else.
-- **Pace.** A pass costs about half a second on months of logs. It runs at
+- **Pace.** A pass costs about half a second on four months of heavy use
+  (700,000 turns), because the history keeps each hour's turns summed as
+  they're added, and a pass reads those rather than the turns. It runs at
   most every 30 seconds while the logs grow and every five minutes while
   they don't; the heartbeat alone is written every 30 seconds, so the shell
   can tell a stopped daemon from a quiet one.

@@ -129,8 +129,8 @@ impl Inputs {
         {
             let mut statement = db
                 .prepare(
-                    "SELECT hour, session, quest, model, kind, SUM(cost) FROM turns
-                     WHERE hour >= ?1 AND hour < ?2 GROUP BY hour, session, quest, model, kind",
+                    "SELECT hour, session, quest, model, kind, cost FROM turn_hours
+                     WHERE hour >= ?1 AND hour < ?2 ORDER BY hour, session, quest, model, kind",
                 )
                 .map_err(fail)?;
             let rows = statement
