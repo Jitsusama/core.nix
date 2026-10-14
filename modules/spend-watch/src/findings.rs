@@ -2,7 +2,8 @@
 //! Each has a key naming its cause, so one cause is one finding however
 //! many passes see it; it clears only once a pass no longer raises it and
 //! an hour has passed since it last did, so a figure hovering at a
-//! threshold doesn't come and go. Marked expected, it stays in the
+//! threshold doesn't come and go. A source's health and a cap's change
+//! are facts rather than figures, so theirs clear at once. Marked expected, it stays in the
 //! collection but never asks for the person again.
 
 use crate::history::History;
@@ -132,11 +133,13 @@ pub fn settle(history: &History, raised: Vec<Finding>, now: f64) -> Result<Vec<F
         )
         .map_err(fail)?;
     }
-    // A source is read again or it isn't, with no noise to settle, so its
-    // finding clears on the first pass that doesn't raise it.
+    // A source is read again or it isn't, and a cap's allowance has changed
+    // or it hasn't, with no noise to settle, so their findings clear on the
+    // first pass that doesn't raise them.
     db.execute(
         "UPDATE findings SET cleared = ?1 WHERE cleared IS NULL
-         AND (updated < ?2 OR (detector = 'health' AND updated < ?1))",
+         AND (updated < ?2 OR ((detector = 'health' OR key LIKE 'cap-event:%')
+              AND updated < ?1))",
         params![now, now - SETTLE],
     )
     .map_err(fail)?;
@@ -251,6 +254,22 @@ mod tests {
         down.detector = "health".into();
         settle(&history, vec![down], 0.0).unwrap();
         assert!(settle(&history, vec![], 30.0).unwrap().is_empty());
+    }
+
+    // A cap's change is as plain: once the cap is back, the fall is past,
+    // and an alert left standing an hour would say it still mattered.
+    #[test]
+    fn a_cap_s_change_clears_at_once() {
+        let history = History::memory();
+        let mut fell = finding("cap-event:proxy:premium:lowered:0", Severity::Alert, 0.0);
+        fell.detector = "caps".into();
+        let mut near = finding("cap:proxy:weekly:warn", Severity::Warning, 0.0);
+        near.detector = "caps".into();
+        settle(&history, vec![fell, near], 0.0).unwrap();
+        let left = settle(&history, vec![], 30.0).unwrap();
+        let keys: Vec<&str> = left.iter().map(|found| found.key.as_str()).collect();
+        // A cap's forecast hovers like any other, so it still settles.
+        assert_eq!(keys, ["cap:proxy:weekly:warn"]);
     }
 
     #[test]
