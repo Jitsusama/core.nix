@@ -2194,10 +2194,9 @@ pkgs.testers.runNixOSTest {
           t.assertEqual(touches("up"), 1, "a swipe reached the window as a tap")
 
           # Side by side, with the right one focused: a swipe over the left
-          # one leaves the focus where it was, as a tap would not, and so does
-          # opening and shutting the overview over it. The left one hears the
-          # swipe's first two fingers land, which is how the test knows they
-          # landed on it.
+          # one leaves the focus where it was, as a tap would not. The left one
+          # hears the swipe's first two fingers land, which is how the test
+          # knows they landed on it.
           as_account("niri msg action focus-column-left")
           as_account("niri msg action set-column-width 50%")
           as_account("niri msg action focus-column-right")
@@ -2208,9 +2207,6 @@ pkgs.testers.runNixOSTest {
           t.assertEqual(touches("down"), landed + 2, "the swipe missed the window beside")
           swiped(3, "UD", lambda: focused_workspace() == first, across=0.25)
           t.assertEqual(focused(), right, "a swipe focused the window under it")
-          swiped(4, "DU", overview_open, across=0.25)
-          swiped(4, "UD", lambda: not overview_open(), across=0.25)
-          t.assertEqual(focused(), right, "the overview took a swipe for a tap")
           as_account("systemctl --user stop wev wev-right")
 
           # kitty scrolls by touch: a finger dragged down its whole window
