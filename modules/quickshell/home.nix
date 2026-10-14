@@ -395,6 +395,7 @@ let
     volume = ./pieces/Volume.qml;
     awake = ./pieces/Awake.qml;
     disk = ./pieces/Disk.qml;
+    spend = ./pieces/Spend.qml;
     notices = ./pieces/Waiting.qml;
     quiet = ./pieces/DoNotDisturb.qml;
     microphone = ./pieces/Microphone.qml;
@@ -442,6 +443,7 @@ let
     bluetooth = ./launcher/Accessories.qml;
     displays = ./launcher/Displays.qml;
     capture = ./launcher/Capture.qml;
+    spend = ./launcher/Spend.qml;
   };
 
   # The program that hears every copy, for the clipboard collection.
@@ -794,6 +796,13 @@ in
         order = 115;
         source = "notices";
       };
+      # What AI use cost, where spend-watch runs (modules/spend-watch), and
+      # nothing elsewhere; it answers "spend" and its reports.
+      spend = {
+        order = 108;
+        source = "spend";
+        weight = 0.9;
+      };
       # Opened by its own chord, not shown in a search.
       shortcuts = {
         order = 120;
@@ -850,6 +859,16 @@ in
         label = "awake";
         tier = "when";
         mark = "awake";
+      };
+      # What AI use cost today against usual, where spend-watch runs
+      # (modules/spend-watch), and a pull in the margin while something
+      # wants a look. It gives way before the network.
+      spend = {
+        order = 52;
+        source = "spend";
+        label = "ai";
+        collapse = 5;
+        mark = "spend";
       };
       # What's on only now and then, each also a pull in the margin while
       # it's true (Margin.qml), in the order the overview gives them.

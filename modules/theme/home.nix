@@ -374,6 +374,11 @@ let
       console = "D";
       means = "a disk is short of room, a writer was frozen, or nothing watches it";
     };
+    spend = {
+      glyph = nerd "f01c1";
+      console = "$";
+      means = "AI spend wants a look: a cap near or reached, a burn, or nothing watching it";
+    };
     more = {
       glyph = "…";
       console = "~";

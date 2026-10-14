@@ -1,0 +1,4 @@
+{"v":1,"kind":"health","source":"meter","state":"error","message":"the meter refused the key: 401"}
+{"v":1,"kind":"health","source":"warehouse","state":"signed-out","message":"not signed in to the warehouse","signIn":"sign-in"}
+{"v":1,"kind":"health","source":"overrides","state":"optional","message":"needs Drive access to read an override's end"}
+{"v":1,"kind":"action","id":"sign-in","name":"Sign in to the warehouse","run":["kitty","--hold","sign-in"],"fits":["sign-in"]}

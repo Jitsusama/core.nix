@@ -77,6 +77,12 @@ in
     does = "Find a notice that came earlier";
     action = ''spawn "qs" "ipc" "call" "launcher" "collection" "notices";'';
   }
+  # What AI use cost (modules/spend-watch). U for usage.
+  {
+    chord = "Super+U";
+    does = "Find what AI use cost";
+    action = ''spawn "qs" "ipc" "call" "launcher" "collection" "spend";'';
+  }
   # The cards on screen put away, as a click on each would: each stays
   # unread where Super+N finds it.
   {

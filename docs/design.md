@@ -399,6 +399,7 @@ it. Owners go by layer:
 | In a call                                                              | the margin mark, while in one                      | the same mark, in the status |
 | Notifications waiting                                                  | the margin mark, as a count                        | the overview's status        |
 | Disk space                                                             | the margin mark, only while a disk is short of room, a writer is frozen or nothing watches it; a notice when the guard acts | the same mark, in the status |
+| AI spend and its caps                                                  | the margin mark, only while a finding wants a look or nothing watches it; a notice once when one starts to; a line each morning | the overview's status, as the "ai" row |
 | Directory, repository, branch, git state                               | the program running the window                     | nobody                       |
 | Window titles                                                          | a terminal's unseen tabs; the window switcher      | the window switcher          |
 
@@ -732,6 +733,7 @@ by them isn't done.
 | Documents                                 | zathura                  | proportional   | nothing | nothing | nothing | zathura's own keys | its bar and command line show only while they're asked for |
 | Music                                     | spotify, Quickshell      | both           | nothing | a note in the margin while any player plays; for a moment, the track as a notice | the mark's panel: the track, artist, album and player; pause, next, previous, the player's window, and pausing a second player | Play or pause the music, Play the next track, Play the previous track, on the media keys | the mark carries no words; a title wraps to two lines, then gives way |
 | Pairing                                   | tuple, Quickshell, niri  | both           | nothing | a phone in the margin while in a call, and wanting Joel while one rings; for a moment, who joined or left, and that he's the only one left; a ring, and a missed call kept | the mark's panel: how long, and who with or who's sharing; leave, share the screen, mute him in Tuple, copy the room's link; while ringing, show the call | the launcher's rows: show a ringing call, first at home; open the room and copy its link; join a copied call's link, first at home once copied; leave, share, mute; a tuple: link from the browser joins its room | the mark carries no words; its panel says how long and who with |
+| AI spend                                  | spend-watch, Quickshell  | both           | the overview's row, "ai": today's spend against usual ("$214 today · usual") | the margin's pull while a finding wants a look: a cap near, over or refused, an override ending, a cap lowered or lapsed, a burn, a source signed out, or the watch stopped; a notice once for each, at most three a week beside a cap's, and one line each morning | the mark's panel: how it stands, the day's likely end, the week, and how the figures were got; go to the session, ask for more, sign in, it's expected, read the week's report, show where it went | the launcher's rows: "spend", "cap" and a report by its words ("spend last week by quest"), Return copying it as markdown and the right arrow stepping into its rows; Super+U opens the collection: now, then the findings, then the reports | the row gives way before the network; the mark carries only its badge; while sharing, every amount gives way and the words stay |
 | Chat, passwords, calls                    | their own settings       | proportional   |        |        |           |         |          |
 | The terminal                              | kitty                    | monospace      |        |        |           |         |          |
 | The prompt                                | prompt                   | monospace      |        |        |           |         |          |
@@ -762,6 +764,18 @@ as an exception with the reason.
 ## Decisions
 
 What each studio round settled, newest first, with the reason.
+
+- **What AI use costs** (2026-10-14, chosen without a round, to be seen).
+  The question is asked at a glance and answered when something's wrong,
+  so today's spend is one row of the overview, against what a usual day
+  had spent by this hour, and reaches the margin only when a finding wants
+  a look: a cap close or reached, a raise about to end, a burn. The daemon
+  works out every string, the shell draws them, and while the screen is
+  shared it draws a second set with no amounts. The glyph is a dollar sign
+  (md-currency-usd), plain where a console draws it. The chord is Super+U,
+  for usage, since $ is a layer away on the ErgoDox. No sparkline:
+  a row's words say whether today is usual, and the collection holds the
+  days for whoever wants them.
 
 - **A quick look at a picture or a document** (2026-10-12). Opening a
   picture or a document is most often a glance, so each opens in a viewer

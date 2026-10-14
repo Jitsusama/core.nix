@@ -1,0 +1,13 @@
+{"v":1,"kind":"health","source":"meter","state":"fine","message":"live"}
+{"v":1,"kind":"health","source":"warehouse","state":"fine","message":"through 05:00"}
+{"v":1,"kind":"health","source":"overrides","state":"fine","message":"read with Drive access"}
+{"v":1,"kind":"action","id":"sign-in","name":"Sign in to the warehouse","run":["kitty","--hold","sign-in"],"fits":["sign-in"]}
+{"v":1,"kind":"action","id":"ask-for-more","name":"Ask for more","run":["xdg-open","https://chat.example/caps"],"fits":["cap"]}
+{"v":1,"kind":"billed","source":"warehouse","hour":"2026-10-14T04:00:00Z","tool":"pi","model":"claude-opus-5-5","vendor":"anthropic","session":"01a1388b-888f-72a1-a589-2c5012ec655c","agent":"interactive","token":"t1","tokens":{"input":1200,"cached":2400000,"cacheWrite":80000,"output":9000},"dollars":24.31}
+{"v":1,"kind":"billed","source":"warehouse","hour":"2026-10-14T04:00:00Z","tool":"river","model":"claude-opus-5-5","vendor":"anthropic","dollars":1.02}
+{"v":1,"kind":"settled","source":"warehouse","through":"2026-10-14T05:00:00Z"}
+{"v":1,"kind":"billed","source":"meter","hour":"2026-10-14T05:00:00Z","tool":"all","model":"claude-opus-5-5","vendor":"anthropic","tokens":{"input":900,"cached":1800000,"cacheWrite":60000,"output":7000},"dollars":29.83,"provisional":true}
+{"v":1,"kind":"cap","name":"weekly","label":"weekly cap","allowance":15000,"windowHours":168,"spent":3853.1,"warn":0.9,"fallback":4000,"state":"ok","ends":"2026-10-20","endsKnown":true,"at":"2026-10-14T05:02:53Z"}
+{"v":1,"kind":"cap","name":"premium","label":"premium day","allowance":1000,"windowHours":24,"spent":421.43,"warn":0.5,"state":"ok","at":"2026-10-14T05:40:00Z"}
+{"v":1,"kind":"said","severity":"info","text":"Consider labelling heavy days"}
+{"v":1,"kind":"read","source":"warehouse","bytes":106000000,"millis":1400,"job":"job_1"}
