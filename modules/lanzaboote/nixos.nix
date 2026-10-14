@@ -52,6 +52,9 @@ in
   # five seconds in the menu. Holding a key, such as Space, at power-on
   # brings the menu up, for an older generation.
   boot.loader.timeout = 0;
+  # The signed kernel keeps the command line it was signed with under Secure
+  # Boot, so the menu's editor could only offer an edit that does nothing.
+  boot.loader.systemd-boot.editor = false;
   # The TPM and the PIN are asked for by the systemd initrd.
   boot.initrd.systemd.enable = true;
 
