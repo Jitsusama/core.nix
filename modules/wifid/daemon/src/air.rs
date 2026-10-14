@@ -67,6 +67,14 @@ impl AccessPoint {
         })
     }
 
+    /// The channel it's heard on, by frequency in MHz.
+    pub fn frequency(&self) -> Option<u32> {
+        match self.value("Frequency")? {
+            Value::U16(frequency) => Some(u32::from(*frequency)),
+            _ => None,
+        }
+    }
+
     fn value(&self, property: &str) -> Option<&Value<'static>> {
         self.properties.get(property).map(|value| &**value)
     }
@@ -205,6 +213,23 @@ mod tests {
         let heard = both.heard().unwrap();
 
         assert_eq!(heard.security, Security::Personal);
+    }
+
+    #[test]
+    fn an_access_point_is_heard_on_a_channel() {
+        let mut lantern = access_point(b"Lantern", &["wpa-psk"], true, -58);
+        let on = HashMap::from([("Frequency".into(), owned(Value::from(5180u16)))]);
+
+        lantern.changed(on);
+
+        assert_eq!(lantern.frequency(), Some(5180));
+    }
+
+    #[test]
+    fn an_access_point_described_without_its_channel_is_heard_on_none() {
+        let lantern = access_point(b"Lantern", &["wpa-psk"], true, -58);
+
+        assert_eq!(lantern.frequency(), None);
     }
 
     #[test]

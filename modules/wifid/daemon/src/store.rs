@@ -34,8 +34,8 @@ pub struct Saved {
 
 #[derive(Debug)]
 pub enum Failure {
-    /// Nix declares the network in this file, so only a rebuild changes it.
-    Declared(PathBuf),
+    /// Nix declares the network, so only a rebuild changes it.
+    Declared,
     NotSaved,
     Io(io::Error),
 }
@@ -87,7 +87,7 @@ impl Store {
     /// its file.
     pub fn save(&self, network: &Network) -> Result<(), Failure> {
         let (file, mut own) = match self.find(&network.name)? {
-            Some(saved) if saved.declared => return Err(Failure::Declared(saved.file)),
+            Some(saved) if saved.declared => return Err(Failure::Declared),
             Some(saved) => {
                 let own = read(&saved.file)?;
                 (saved.file, own)
@@ -133,20 +133,13 @@ impl Store {
     pub fn forget(&self, name: &str) -> Result<Network, Failure> {
         let saved = self.launchers(name)?;
         fs::remove_file(&saved.file)?;
-        // A file networkd was never given, or a password already gone, is
-        // as forgotten as can be.
-        let mut gone = vec![self.given_to_networkd(&saved.file)];
-        let secret = saved.network.secret.as_ref();
-        gone.extend(
-            secret
-                .filter(|secret| secret.parent() == Some(&self.saved))
-                .cloned(),
-        );
-        for file in gone {
-            match fs::remove_file(file) {
-                Err(error) if error.kind() != io::ErrorKind::NotFound => return Err(error.into()),
-                _ => {}
-            }
+        // A file networkd was never given is as forgotten as can be.
+        match fs::remove_file(self.given_to_networkd(&saved.file)) {
+            Err(error) if error.kind() != io::ErrorKind::NotFound => return Err(error.into()),
+            _ => {}
+        }
+        if let Some(secret) = &saved.network.secret {
+            self.let_go_of_password(secret)?;
         }
         Ok(saved.network)
     }
@@ -159,18 +152,19 @@ impl Store {
     }
 
     /// Where the launcher keeps a network's sealed password: beside its
-    /// file and named for it, since systemd opens the password only under
+    /// file and named for it, since the vault opens the password only under
     /// the name it was sealed with. Refuses a network Nix declares.
     pub fn password_file(&self, name: &str) -> Result<PathBuf, Failure> {
         let file = match self.find(name)? {
-            Some(saved) if saved.declared => return Err(Failure::Declared(saved.file)),
+            Some(saved) if saved.declared => return Err(Failure::Declared),
             Some(saved) => saved.file,
             None => self.new_file(name),
         };
-        Ok(file.with_extension("cred"))
+        Ok(file.with_extension("sealed"))
     }
 
-    /// Keeps a sealed password, readable by wifid alone, whole or not at all.
+    /// Keeps a sealed password, readable by wifid alone, whole or not at
+    /// all, and on the disk by the time this returns.
     pub fn keep_password(&self, file: &Path, sealed: &str) -> io::Result<()> {
         let name = file.file_name().unwrap_or_default().to_string_lossy();
         let partial = file.with_file_name(format!(".{name}.partial"));
@@ -184,7 +178,21 @@ impl Store {
         // A partial file left by a wifid that stopped part-way keeps the
         // mode it was made with, which mode() above doesn't change.
         fs::set_permissions(&partial, fs::Permissions::from_mode(0o600))?;
-        fs::rename(&partial, file)
+        written.sync_all()?;
+        fs::rename(&partial, file)?;
+        sync_folder(file)
+    }
+
+    /// Takes away a password the launcher kept, once no network names it.
+    /// One anywhere else is Nix's, or its secrets manager's, and stays.
+    pub fn let_go_of_password(&self, file: &Path) -> io::Result<()> {
+        if file.parent() != Some(&self.saved) {
+            return Ok(());
+        }
+        match fs::remove_file(file) {
+            Err(error) if error.kind() != io::ErrorKind::NotFound => Err(error),
+            _ => Ok(()),
+        }
     }
 
     /// The network of that name the launcher saved, refusing one Nix
@@ -192,7 +200,7 @@ impl Store {
     fn launchers(&self, name: &str) -> Result<Saved, Failure> {
         let saved = self.find(name)?.ok_or(Failure::NotSaved)?;
         if saved.declared {
-            return Err(Failure::Declared(saved.file));
+            return Err(Failure::Declared);
         }
         Ok(saved)
     }
@@ -275,7 +283,19 @@ fn replace(file: &Path, text: &str) -> io::Result<()> {
     let partial = file.with_file_name(format!(".{name}.partial"));
     fs::write(&partial, text)?;
     fs::set_permissions(&partial, fs::Permissions::from_mode(0o644))?;
-    fs::rename(&partial, file)
+    // On the disk before it takes the old one's place, so a power cut
+    // leaves one or the other whole.
+    fs::File::open(&partial)?.sync_all()?;
+    fs::rename(&partial, file)?;
+    sync_folder(file)
+}
+
+/// Puts what's been renamed into the file's folder on the disk.
+fn sync_folder(file: &Path) -> io::Result<()> {
+    let folder = file
+        .parent()
+        .filter(|folder| !folder.as_os_str().is_empty());
+    fs::File::open(folder.unwrap_or(Path::new(".")))?.sync_all()
 }
 
 /// A file name for a network: its name in lower case, with a dash for
@@ -366,7 +386,7 @@ mod tests {
             })
             .unwrap();
 
-        assert_eq!(file, store.saved.join("lantern.cred"));
+        assert_eq!(file, store.saved.join("lantern.sealed"));
         assert_eq!(fs::read_to_string(&file).unwrap(), "sealed");
         assert_eq!(
             fs::metadata(&file).unwrap().permissions().mode() & 0o777,
@@ -387,7 +407,38 @@ mod tests {
 
         let file = store.password_file("Lantern").unwrap();
 
-        assert_eq!(file, store.saved.join("lantern-2.cred"));
+        assert_eq!(file, store.saved.join("lantern-2.sealed"));
+    }
+
+    #[test]
+    fn a_password_no_network_names_is_let_go_of() {
+        let (_root, store) = store();
+        let file = store.password_file("Lantern").unwrap();
+        store.keep_password(&file, "sealed").unwrap();
+
+        store.let_go_of_password(&file).unwrap();
+
+        assert!(!file.exists());
+    }
+
+    #[test]
+    fn a_password_kept_anywhere_else_is_left_alone() {
+        let (root, store) = store();
+        let elsewhere = root.path().join("lantern");
+        fs::write(&elsewhere, "glowing in the dark").unwrap();
+
+        store.let_go_of_password(&elsewhere).unwrap();
+
+        assert!(elsewhere.exists());
+    }
+
+    #[test]
+    fn a_password_already_gone_is_let_go_of_quietly() {
+        let (_root, store) = store();
+
+        let let_go = store.let_go_of_password(&store.saved.join("lantern.cred"));
+
+        assert!(let_go.is_ok(), "{let_go:?}");
     }
 
     #[test]
@@ -412,7 +463,7 @@ mod tests {
 
         let file = store.password_file("Lantern");
 
-        assert!(matches!(file, Err(Failure::Declared(_))), "{file:?}");
+        assert!(matches!(file, Err(Failure::Declared)), "{file:?}");
     }
 
     #[test]
@@ -495,7 +546,7 @@ mod tests {
 
         let refused = store.save(&lantern());
 
-        assert!(matches!(refused, Err(Failure::Declared(file)) if file == declared));
+        assert!(matches!(refused, Err(Failure::Declared)), "{refused:?}");
         assert!(!store.saved.join("lantern.network").exists());
     }
 
@@ -570,7 +621,7 @@ mod tests {
 
         let refused = store.forget("Roadside Inn");
 
-        assert!(matches!(refused, Err(Failure::Declared(file)) if file == inn));
+        assert!(matches!(refused, Err(Failure::Declared)), "{refused:?}");
         assert!(inn.exists());
     }
 
@@ -654,7 +705,7 @@ mod tests {
 
         let refused = store.trust("Roadside Inn", true);
 
-        assert!(matches!(refused, Err(Failure::Declared(file)) if file == inn));
+        assert!(matches!(refused, Err(Failure::Declared)), "{refused:?}");
     }
 
     #[test]

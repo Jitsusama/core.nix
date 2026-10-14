@@ -21,9 +21,10 @@
   environment.etc."wpa_supplicant/interface.conf".text = ''
     ctrl_interface=DIR=/run/wpa_supplicant/control GROUP=wpa_supplicant
     update_config=0
-    # A card scans and asks for network details from a random address, and
-    # joins each network from the one wifid gives it.
-    preassoc_mac_addr=1
+    # A card asks for network details from a random address, and joins each
+    # network from the one wifid gives it. wifid has the driver look for
+    # networks from random addresses too, which, unlike preassoc_mac_addr,
+    # leaves the card's own address and so its link alone.
     gas_rand_mac_addr=1
     # No Wi-Fi Direct: it would add a second interface beside every card.
     p2p_disabled=1

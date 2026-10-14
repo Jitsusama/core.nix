@@ -4,7 +4,7 @@
 //! shell is sent all of it each time any of it changes and never has to
 //! piece it together.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 use zlink::introspect::{CustomType, Type};
@@ -29,6 +29,9 @@ pub struct State {
     /// how one attempt went after the next has been asked for.
     attempts: BTreeMap<String, u64>,
     troubled_in: BTreeMap<String, u64>,
+    /// The cards, by name, that have looked for networks since wifid was
+    /// given them.
+    looked: BTreeSet<String>,
 }
 
 /// Every card, every saved network and the networks in the air, as the
@@ -172,6 +175,8 @@ impl State {
     /// Forgets every card but these, which are all there are.
     pub fn keep_only(&mut self, indexes: &[i32]) {
         self.cards.retain(|index, _| indexes.contains(index));
+        let names: Vec<&String> = self.cards.values().map(|card| &card.name).collect();
+        self.looked.retain(|card| names.contains(&card));
     }
 
     /// Says wifid is finding out how far a card's network reaches, unless
@@ -227,6 +232,10 @@ impl State {
     /// Takes in whether Wi-Fi's radios are on.
     pub fn radio(&mut self, on: bool) {
         self.radio_off = !on;
+        // What a card heard before is no guide to what it'll hear now.
+        if !on {
+            self.looked.clear();
+        }
     }
 
     /// Takes in whether a cable reaches beyond the machine.
@@ -298,6 +307,30 @@ impl State {
     /// heard when it goes.
     pub fn unheard_under(&mut self, path: &str) {
         self.heard.retain(|heard, _| !heard.starts_with(path));
+    }
+
+    /// Takes in that the card of that name has looked for networks.
+    pub fn looked(&mut self, card: &str) {
+        self.looked.insert(card.to_string());
+    }
+
+    /// Whether the machine is as online as it's going to get for now: a
+    /// card or cable reaches beyond the machine, Wi-Fi is off, or every
+    /// card has looked and heard no saved network it hasn't failed to join.
+    pub fn settled(&self) -> bool {
+        let reaching = self.cards.values().any(|card| card.reach.is_some());
+        if self.wired || self.radio_off || reaching {
+            return true;
+        }
+        // A card can appear a moment after wifid starts, as its driver
+        // loads, so having none settles nothing.
+        let cards = self.cards.values();
+        let looked =
+            !self.cards.is_empty() && cards.clone().all(|card| self.looked.contains(&card.name));
+        let saved = |heard: &Heard| self.saved.iter().any(|saved| saved.name == heard.name);
+        let joinable = self.heard.values().any(saved);
+        let failed = cards.into_iter().all(|card| card.trouble.is_some());
+        looked && (!joinable || failed)
     }
 
     pub fn described(&self) -> Described {
@@ -770,6 +803,123 @@ mod tests {
         state.heard("/Interfaces/0/BSSs/1", None);
 
         assert_eq!(nearby(&state), [("Lantern".into(), 1)]);
+    }
+
+    fn on_nothing(index: i32) -> Link {
+        Link {
+            ssid: None,
+            routable: false,
+            ..inn(index)
+        }
+    }
+
+    #[test]
+    fn a_card_reaching_beyond_its_network_is_settled() {
+        let mut state = State::default();
+        state.follow(&inn(2));
+
+        state.checking(2);
+
+        assert!(state.settled());
+    }
+
+    #[test]
+    fn a_card_that_looked_and_heard_no_saved_network_is_settled() {
+        let mut state = State::default();
+        state.saved(&[saved("Lantern", false, 0)]);
+        state.follow(&on_nothing(2));
+        state.heard("/Interfaces/0/BSSs/1", heard("Somebody Else's", -52));
+
+        state.looked("wlan2");
+
+        assert!(state.settled());
+    }
+
+    #[test]
+    fn wifi_turned_off_is_settled() {
+        let mut state = State::default();
+        state.follow(&on_nothing(2));
+
+        state.radio(false);
+
+        assert!(state.settled());
+    }
+
+    #[test]
+    fn a_cable_reaching_beyond_the_machine_is_settled() {
+        let mut state = State::default();
+
+        state.wired(true);
+
+        assert!(state.settled());
+    }
+
+    #[test]
+    fn nothing_is_settled_before_a_card_appears() {
+        let state = State::default();
+
+        assert!(!state.settled());
+    }
+
+    #[test]
+    fn a_card_yet_to_look_isn_t_settled() {
+        let mut state = State::default();
+        state.follow(&on_nothing(2));
+        state.follow(&on_nothing(3));
+
+        state.looked("wlan2");
+
+        assert!(!state.settled());
+    }
+
+    #[test]
+    fn a_look_before_wifi_was_turned_off_doesn_t_count_once_it_s_on() {
+        let mut state = State::default();
+        state.follow(&on_nothing(2));
+        state.looked("wlan2");
+        state.radio(false);
+
+        state.radio(true);
+
+        assert!(!state.settled());
+    }
+
+    #[test]
+    fn a_card_that_went_takes_its_look_with_it() {
+        let mut state = State::default();
+        state.follow(&on_nothing(2));
+        state.looked("wlan2");
+        state.keep_only(&[]);
+
+        state.follow(&on_nothing(2));
+
+        assert!(!state.settled());
+    }
+
+    #[test]
+    fn a_card_hearing_a_saved_network_isn_t_settled_until_it_s_on_it() {
+        let mut state = State::default();
+        state.saved(&[saved("Lantern", false, 0)]);
+        state.follow(&on_nothing(2));
+        state.heard("/Interfaces/0/BSSs/1", heard("Lantern", -52));
+
+        state.looked("wlan2");
+
+        assert!(!state.settled());
+    }
+
+    #[test]
+    fn a_card_that_couldn_t_join_the_saved_network_it_heard_is_settled() {
+        let mut state = State::default();
+        state.saved(&[saved("Lantern", false, 0)]);
+        state.follow(&on_nothing(2));
+        state.heard("/Interfaces/0/BSSs/1", heard("Lantern", -52));
+        state.looked("wlan2");
+        state.attempting("wlan2");
+
+        state.troubled("wlan2", Some(Trouble::WrongPassword));
+
+        assert!(state.settled());
     }
 
     #[test]

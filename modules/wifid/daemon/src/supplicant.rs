@@ -285,6 +285,15 @@ pub trait Interface {
 
     #[zbus(property)]
     fn state(&self) -> zbus::Result<String>;
+
+    /// Has the card look for networks from an address made up for each
+    /// look, keeping only the bits of its own each mask has.
+    #[zbus(property, name = "MACAddressRandomizationMask")]
+    fn set_looking_masks(&self, masks: HashMap<&str, Vec<u8>>) -> zbus::Result<()>;
+
+    /// The access point the card is with, or `/` for none.
+    #[zbus(property, name = "CurrentBSS")]
+    fn current_access_point(&self) -> zbus::Result<OwnedObjectPath>;
 }
 
 /// A network wpa_supplicant has been given for one card.
