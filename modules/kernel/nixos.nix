@@ -29,9 +29,24 @@
     '';
   };
 
-  config.boot.kernelPackages = pkgs.linuxPackagesFor (
-    import ./package.nix pkgs { inherit (config.jitsusama.kernel) cpu profile; }
-  );
+  options.jitsusama.kernel.packageOverlays = lib.mkOption {
+    type = lib.types.listOf (lib.types.functionTo (lib.types.functionTo lib.types.attrs));
+    default = [ ];
+    example = lib.literalExpression ''
+      [ (final: prev: { ipu7-drivers = prev.ipu7-drivers.overrideAttrs { patches = [ ./fix.patch ]; }; }) ]
+    '';
+    description = ''
+      Overlays on the kernel's package set, in order, for a hardware module
+      that has to change an out-of-tree module NixOS adds by itself, such as
+      one it builds to match a patched kernel.
+    '';
+  };
+
+  config.boot.kernelPackages =
+    (pkgs.linuxPackagesFor (
+      import ./package.nix pkgs { inherit (config.jitsusama.kernel) cpu profile; }
+    )).extend
+      (lib.composeManyExtensions config.jitsusama.kernel.packageOverlays);
 
   # Every device's DMA goes through the IOMMU, so Wi-Fi, Bluetooth or GPU
   # firmware can reach only the memory its driver gave it. Without this, an
