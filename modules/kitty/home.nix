@@ -23,6 +23,15 @@ let
   points = pixels: toString (pixels * 3 / 4);
 
   keys = config.jitsusama.kitty.keys;
+
+  # The hints kitten in the theme: each label is keys to type, so it takes
+  # the accent, and what it points at reads in the strongest text.
+  hints = lib.concatStringsSep " " [
+    "kitten hints"
+    "--hints-foreground-color=${roles.on_accent}"
+    "--hints-background-color=${roles.accent}"
+    "--hints-text-color=${roles.strong}"
+  ];
 in
 {
   imports = [
@@ -86,11 +95,15 @@ in
     cursor_text_color ${terminal.cursor_text}
 
     active_border_color ${roles.accent}
+    # The tab in view is drawn in the page's own colour against a darker
+    # strip, as Chrome marks its current tab, the rest muted on the strip.
     tab_bar_background ${roles.deepest}
-    active_tab_background ${roles.accent}
-    active_tab_foreground ${roles.on_accent}
-    inactive_tab_background ${roles.sunken}
+    active_tab_background ${roles.background}
+    active_tab_foreground ${roles.strong}
+    inactive_tab_background ${roles.deepest}
     inactive_tab_foreground ${roles.muted}
+
+    action_alias hints ${hints}
 
     color0 ${terminal.black}
     color1 ${terminal.red}

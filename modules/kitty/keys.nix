@@ -116,16 +116,16 @@ in
     action = "show_last_command_output";
   }
   # WezTerm's quick select: pick a word, path or hash from the screen, or a
-  # link.
+  # link. hints is the hints kitten in the theme, which theme.conf names.
   {
     chord = "ctrl+shift+space";
     does = "Pick a word from the screen";
-    action = "kitten hints --type word --program @";
+    action = "hints --type word --program @";
   }
   {
     chord = "ctrl+shift+e";
     does = "Open a link on the screen";
-    action = "kitten hints --type url";
+    action = "hints --type url";
   }
   {
     chord = "ctrl+shift+p";
