@@ -11,6 +11,7 @@ use zlink::introspect::{CustomType, Type};
 
 use crate::air::Heard;
 use crate::check::Verdict;
+use crate::detail::{self, Detail, Polled};
 use crate::link::Link;
 use crate::network::Security as Kind;
 use crate::store;
@@ -32,6 +33,9 @@ pub struct State {
     /// The cards, by name, that have looked for networks since wifid was
     /// given them.
     looked: BTreeSet<String>,
+    /// What each card's driver last read of its link, by the card's name,
+    /// while the shell asks for a network in detail.
+    polled: BTreeMap<String, Polled>,
 }
 
 /// Every card, every saved network and the networks in the air, as the
@@ -333,6 +337,44 @@ impl State {
         looked && (!joinable || failed)
     }
 
+    /// Takes in what a card's driver read of its link, or that nobody asks
+    /// any more.
+    pub fn polled(&mut self, card: &str, polled: Option<Polled>) {
+        match polled {
+            Some(polled) => self.polled.insert(card.into(), polled),
+            None => self.polled.remove(card),
+        };
+    }
+
+    /// Lets go of every card's reading, as nobody asks any more.
+    pub fn unpolled(&mut self) {
+        self.polled.clear();
+    }
+
+    /// The cards on a network, by name, which are those worth polling.
+    pub fn on_networks(&self) -> Vec<String> {
+        let on = self.cards.values().filter(|card| card.network.is_some());
+        on.map(|card| card.name.clone()).collect()
+    }
+
+    /// A network in the air in detail, with what each card on it read of
+    /// its link last.
+    pub fn detail(&self, name: &str) -> Detail {
+        let heard = self
+            .heard
+            .iter()
+            .map(|(path, heard)| (path.as_str(), heard));
+        let on = self
+            .cards
+            .values()
+            .filter(|card| card.network.as_deref() == Some(name));
+        let polled = on.filter_map(|card| {
+            let polled = self.polled.get(&card.name)?;
+            Some((card.name.as_str(), polled))
+        });
+        detail::detail(name, heard, polled)
+    }
+
     pub fn described(&self) -> Described {
         Described {
             cards: self.cards.values().cloned().collect(),
@@ -398,6 +440,10 @@ mod tests {
             name: name.into(),
             security: Security::Personal,
             signal,
+            bssid: "02:00:00:00:01:00".into(),
+            frequency: 2437,
+            age: 0,
+            radio: crate::radio::Radio::default(),
         })
     }
 
@@ -931,5 +977,72 @@ mod tests {
         state.unheard_under("/Interfaces/1/");
 
         assert_eq!(nearby(&state), [("Inn".into(), 4)]);
+    }
+
+    fn polled(point: &str) -> Polled {
+        Polled {
+            point: point.into(),
+            signal: Some(-52),
+            ..Polled::default()
+        }
+    }
+
+    #[test]
+    fn a_network_in_detail_has_what_the_card_on_it_read_of_its_link() {
+        let mut state = State::default();
+        state.follow(&inn(2));
+        state.heard("/Interfaces/0/BSSs/1", heard("Roadside Inn", -52));
+
+        state.polled("wlan2", Some(polled("/Interfaces/0/BSSs/1")));
+        let detail = state.detail("Roadside Inn");
+
+        assert_eq!(detail.joined[0].card, "wlan2");
+        assert!(detail.points[0].joined);
+    }
+
+    #[test]
+    fn a_card_s_reading_is_kept_out_of_a_network_it_isn_t_on() {
+        let mut state = State::default();
+        state.follow(&inn(2));
+        state.heard("/Interfaces/0/BSSs/2", heard("Lantern", -52));
+
+        state.polled("wlan2", Some(polled("/Interfaces/0/BSSs/1")));
+        let detail = state.detail("Lantern");
+
+        assert_eq!(detail.joined, []);
+        assert_eq!(detail.points.len(), 1);
+    }
+
+    #[test]
+    fn a_reading_nobody_asks_for_any_more_is_let_go() {
+        let mut state = State::default();
+        state.follow(&inn(2));
+        state.polled("wlan2", Some(polled("/Interfaces/0/BSSs/1")));
+
+        state.polled("wlan2", None);
+
+        assert_eq!(state.detail("Roadside Inn").joined, []);
+    }
+
+    #[test]
+    fn every_reading_is_let_go_once_nobody_asks() {
+        let mut state = State::default();
+        state.follow(&inn(2));
+        state.polled("wlan2", Some(polled("/Interfaces/0/BSSs/1")));
+
+        state.unpolled();
+
+        let mut unasked = State::default();
+        unasked.follow(&inn(2));
+        assert_eq!(state, unasked);
+    }
+
+    #[test]
+    fn the_cards_worth_polling_are_those_on_a_network() {
+        let mut state = State::default();
+        state.follow(&inn(2));
+        state.follow(&on_nothing(3));
+
+        assert_eq!(state.on_networks(), ["wlan2"]);
     }
 }

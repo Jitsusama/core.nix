@@ -9,6 +9,9 @@
 // the order jitsusama.quickshell.launcher.providers lists them (rendered
 // into Providers.qml), so a kind of thing is added or removed in one line.
 //
+// A row can say more of itself while it's selected, in lines of detail
+// between the rows and the footer, as a Wi-Fi network does its access points.
+//
 // The right arrow at the end of the line steps into the selected row: what
 // can be done to it, its verbs, searched the same way, and for a verb that
 // needs one, its target. What's held shows as chips in the field; the left
@@ -615,7 +618,8 @@ Scope {
                 name: row.name,
                 verb: row.verb ?? "",
                 chord: (row.chord ?? []).map(key => key.text).join(" "),
-                settled: row !== root.headline || !root.answer.asking
+                settled: row !== root.headline || !root.answer.asking,
+                detail: row.detail ? row.detail() : []
             }
         });
     }
@@ -810,6 +814,40 @@ Scope {
                                 count: entry.modelData.count ?? ""
                                 onClicked: root.run(entry.modelData, false)
                                 onPointed: at => root.pointed(entry.index, at)
+                            }
+                        }
+                    }
+
+                    // The selected row's detail: its first line says the
+                    // most, the rest line up beneath it in the mono face.
+                    Column {
+                        id: detail
+
+                        readonly property var lines: root.selected && root.selected.detail
+                            ? root.selected.detail() : []
+
+                        width: parent.width
+                        visible: lines.length > 0
+                        topPadding: Theme.space.m
+                        bottomPadding: Theme.space.s
+                        spacing: Theme.space.xs
+
+                        Repeater {
+                            model: detail.lines
+
+                            Text {
+                                required property string modelData
+                                required property int index
+
+                                x: Theme.space.l
+                                width: detail.width - 2 * Theme.space.l
+                                elide: Text.ElideRight
+                                text: modelData
+                                color: index === 0 ? Theme.text : Theme.muted
+                                font.family: Theme.mono.family
+                                // Small, to fit an access point's every
+                                // column on one line.
+                                font.pointSize: Theme.mono.small
                             }
                         }
                     }

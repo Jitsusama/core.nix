@@ -6,6 +6,7 @@ use std::collections::HashMap;
 
 use zbus::zvariant::{OwnedValue, Value};
 
+use crate::radio::Radio;
 use crate::state::Security;
 
 /// One access point, with everything wpa_supplicant has said of it.
@@ -21,6 +22,13 @@ pub struct Heard {
     pub security: Security,
     /// How strongly it's heard, in dBm.
     pub signal: i16,
+    /// Its own address, as 02:00:00:00:01:00.
+    pub bssid: String,
+    /// Its channel, by frequency in MHz; 0 where wpa_supplicant doesn't say.
+    pub frequency: u32,
+    /// How many seconds ago it was last heard.
+    pub age: u32,
+    pub radio: Radio,
 }
 
 impl AccessPoint {
@@ -60,10 +68,21 @@ impl AccessPoint {
         } else {
             return None;
         };
+        let frequency = self.frequency().unwrap_or_default();
+        let bssid = self.bytes("BSSID").unwrap_or_default();
+        let bssid = bssid.iter().map(|byte| format!("{byte:02x}"));
+        let age = match self.value("Age") {
+            Some(Value::U32(age)) => *age,
+            _ => 0,
+        };
         Some(Heard {
             name,
             security,
             signal,
+            bssid: bssid.collect::<Vec<_>>().join(":"),
+            frequency,
+            age,
+            radio: Radio::read(&self.bytes("IEs").unwrap_or_default(), frequency),
         })
     }
 
@@ -169,14 +188,34 @@ mod tests {
 
         let heard = lantern.heard();
 
+        let heard = heard.unwrap();
         assert_eq!(
-            heard,
-            Some(Heard {
-                name: "Lantern".into(),
-                security: Security::Personal,
-                signal: -58,
-            })
+            (heard.name.as_str(), heard.security, heard.signal),
+            ("Lantern", Security::Personal, -58)
         );
+    }
+
+    #[test]
+    fn an_access_point_is_heard_with_its_address_age_and_radio() {
+        let mut lantern = access_point(b"Lantern", &["wpa-psk"], true, -58);
+        // A BSS Load element: 3 on it, its channel busy half the time.
+        let said = HashMap::from([
+            ("BSSID".into(), owned(Value::from(vec![2u8, 0, 0, 0, 1, 0]))),
+            ("Frequency".into(), owned(Value::from(2437u16))),
+            ("Age".into(), owned(Value::from(4u32))),
+            (
+                "IEs".into(),
+                owned(Value::from(vec![11u8, 5, 3, 0, 128, 0, 0])),
+            ),
+        ]);
+
+        lantern.changed(said);
+        let heard = lantern.heard().unwrap();
+
+        assert_eq!(heard.bssid, "02:00:00:00:01:00");
+        assert_eq!((heard.frequency, heard.age), (2437, 4));
+        let load = heard.radio.load.unwrap();
+        assert_eq!((load.stations, load.busy), (3, 50));
     }
 
     #[test]

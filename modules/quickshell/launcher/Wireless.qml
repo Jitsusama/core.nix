@@ -6,7 +6,9 @@
 // network met for the first time, or one whose password didn't work, asks
 // for its password in the field beside the padlock, and one asking for an
 // account asks its name, its server's domain and its password in turn, the
-// server proving it's that domain's before it's told. Turning Wi-Fi off and
+// server proving it's that domain's before it's told. The network selected
+// says beneath it, in detail, every access point heard of it, the card's
+// link to it, and the one wifid would pick, with why. Turning Wi-Fi off and
 // on is an action in the main search. Everything comes from wifid over its
 // socket (Wifi.qml), and the cards look for networks only while the
 // launcher is open.
@@ -241,12 +243,94 @@ Provider {
             given: asks ? password => provider.join(network, password)
                 : opening ? opening.given : null,
             run: joined ? () => Wifi.leave(network.name) : () => provider.join(network),
-            verbs: () => provider.verbs(network, locked)
+            verbs: () => provider.verbs(network, locked),
+            detail: () => provider.detailOf(network.name)
         });
     }
 
     readonly property var all: networks.map(network => made(network))
     onAllChanged: changed()
+
+    // The network selected, asked about in detail for as long as it is.
+    readonly property string looking: {
+        const launcher = provider.launcher;
+        const row = launcher && launcher.open ? launcher.selected : null;
+        return row && row.detail ? row.network : "";
+    }
+    onLookingChanged: Wifi.watch(looking)
+
+    readonly property var ghz: ({ ghz2: "2.4 GHz", ghz5: "5 GHz", ghz6: "6 GHz" })
+
+    // A network in detail, lined up in the mono face: how many access
+    // points are heard in which bands, how it's protected, the link of each
+    // card on it, the one wifid would pick and why, then each access point,
+    // strongest first.
+    function detailOf(name) {
+        const detail = Wifi.detail;
+        if (!detail || detail.name !== name || detail.points.length === 0)
+            return [];
+        const bands = detail.bands.map(count => `${count.points} on ${ghz[count.band]}`);
+        const heard = detail.points.length === 1 ? "1 access point"
+            : `${detail.points.length} access points`;
+        const lines = [`${heard}: ${bands.join(", ")}`, guarding(detail.points[0].protection)];
+        for (const link of detail.joined)
+            lines.push(linkLine(link));
+        if (detail.best && detail.points.length > 1)
+            lines.push(`best ${detail.best.bssid}: ${detail.best.reason}`);
+        for (const point of detail.points)
+            lines.push(pointLine(point, detail.best));
+        return lines;
+    }
+
+    // How it's protected: the standard, how a card proves it may join,
+    // the cipher, and whether management frames are protected too.
+    function guarding(protection) {
+        if (!protection)
+            return "open: nothing it sends is encrypted";
+        const frames = {
+            off: "management frames unprotected",
+            optional: "management frames protected if the card can",
+            required: "management frames always protected"
+        }[protection.management];
+        const ways = protection.ways.join(" or ");
+        return `${protection.standard}: ${ways}, ${protection.ciphers.join("/")}, ${frames}`;
+    }
+
+    // A card's link, as its driver last read it.
+    function linkLine(link) {
+        const parts = [];
+        if (link.signal !== null)
+            parts.push(`${link.signal} dBm`
+                + (link.average !== null ? `, ${link.average} on average` : ""));
+        if (link.margin !== null)
+            parts.push(`${link.margin} dB above the noise`);
+        if (link.receive !== null)
+            parts.push(link.send !== null && link.send !== link.receive
+                ? `${link.receive} Mb/s in, ${link.send} out` : `${link.receive} Mb/s`);
+        if (link.mcs !== null)
+            parts.push(`MCS ${link.mcs}` + (link.streams ? ` \u00d7${link.streams}` : ""));
+        return `${link.card}: ${parts.join(", ")}`;
+    }
+
+    // One access point, in columns: a mark for the one joined or the one
+    // picked, its address, signal, band and channel, width, generation and
+    // streams, how busy, about how fast, and when heard if a while ago.
+    function pointLine(point, best) {
+        const mark = point.joined ? "\u25cf" : best && best.bssid === point.bssid ? "\u2605" : " ";
+        const generation = point.generation ? `Wi-Fi ${point.generation}` : "older";
+        const columns = [
+            `${mark} ${point.bssid}`,
+            `${point.signal} dBm`.padStart(8),
+            `${ghz[point.band]} ch ${point.channel}`.padEnd(14),
+            `${point.width} MHz`.padStart(7),
+            `${generation} \u00d7${point.streams}`.padEnd(10),
+            (point.load ? `${point.load.busy}% busy` : "").padStart(9),
+            `~${point.estimate} Mb/s`.padStart(10)
+        ];
+        if (point.age >= 10)
+            columns.push(`${point.age} s ago`);
+        return columns.join("  ");
+    }
 
     function verbs(network, locked) {
         const rows = [];
