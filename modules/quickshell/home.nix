@@ -1186,6 +1186,10 @@ in
       };
       Service = {
         ExecStart = lib.getExe' pkgs.quickshell "quickshell";
+        # GTK's platform theme, which other Qt programs take, changes the
+        # shell's default font and slows its start, and it draws from the
+        # theme itself.
+        UnsetEnvironment = [ "QT_QPA_PLATFORMTHEME" ];
         Restart = "on-failure";
         RestartSec = 1;
       };

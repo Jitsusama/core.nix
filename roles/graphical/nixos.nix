@@ -41,6 +41,7 @@
     homeModules.niri
     homeModules.kitty
     homeModules.mpv
+    homeModules.qt
     homeModules.quickshell
     homeModules.spotify
     homeModules.swayidle

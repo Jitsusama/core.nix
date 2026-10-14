@@ -110,8 +110,9 @@ which `home.nix` renders from the theme. A prompt a program starts as a program
 of its own, such as the PIN prompt ssh-tpm-agent asks through `SSH_ASKPASS`, is
 a small program that asks the shell, so it looks like the rest. GTK programs,
 the file chooser among them, take the theme's colours from a stylesheet
-`modules/gtk/home.nix` writes, and `modules/fontconfig/home.nix` makes the
-theme's font the one any program gets when it asks for monospace.
+`modules/gtk/home.nix` writes, and Qt programs take the same through Qt's GTK 3
+platform theme, which `modules/qt/home.nix` names. `modules/fontconfig/home.nix`
+makes the theme's font the one any program gets when it asks for monospace.
 
 ## Projects Bring Their Own Toolchains
 
