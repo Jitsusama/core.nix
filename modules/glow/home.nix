@@ -1,6 +1,7 @@
 # glow, markdown read in the terminal, styled from the theme: headings in
 # the strongest text, the rest quiet, and code in the terminal's colours as
-# bat draws it.
+# bat draws it. gh and any other program drawn with glamour take the same
+# style.
 { config, pkgs, ... }:
 let
   inherit (config.jitsusama.theme) roles terminal;
@@ -105,10 +106,12 @@ let
     definition_description.block_prefix = "\n→ ";
   };
 
+  styleFile = pkgs.writeText "glow-style.json" (builtins.toJSON style);
+
   # glow's own settings, with the style it's drawn in added.
   settings = ''
     ${builtins.readFile ./glow.yml}
-    style: ${pkgs.writeText "glow-style.json" (builtins.toJSON style)}
+    style: ${styleFile}
   '';
 
   # glow reads its settings from the Mac's preferences there and from the
@@ -123,6 +126,9 @@ in
   imports = [ ../theme/home.nix ];
 
   home.packages = [ pkgs.glow ];
+  # glamour reads its style from here wherever a program leaves it to,
+  # as gh does for pull requests, issues and releases.
+  home.sessionVariables.GLAMOUR_STYLE = styleFile;
   home.file.${file} = {
     text = settings;
     # glow writes its own defaults there the first time it runs, which would
