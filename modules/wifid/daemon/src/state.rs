@@ -181,10 +181,17 @@ impl State {
 
     /// Forgets every card but these, which are all there are.
     pub fn keep_only(&mut self, indexes: &[i32]) {
+        let gone = self
+            .cards
+            .iter()
+            .filter(|(index, _)| !indexes.contains(index));
+        let gone: Vec<String> = gone.map(|(_, card)| card.name.clone()).collect();
         self.cards.retain(|index, _| indexes.contains(index));
         let names: Vec<&String> = self.cards.values().map(|card| &card.name).collect();
         self.looked.retain(|card| names.contains(&card));
-        self.at.retain(|card, _| names.contains(&card));
+        // Only a card that goes takes its access point, since wifid hands
+        // cards over, and asks where each is, before it follows any.
+        self.at.retain(|card, _| !gone.contains(card));
     }
 
     /// Says wifid is finding out how far a card's network reaches, unless
@@ -1038,6 +1045,18 @@ mod tests {
         state.at("wlan2", None);
 
         assert!(!state.detail("Roadside Inn").points[0].joined);
+    }
+
+    #[test]
+    fn a_card_s_access_point_taken_in_before_the_card_is_followed_is_kept() {
+        let mut state = State::default();
+        state.at("wlan2", Some("/Interfaces/0/BSSs/1".into()));
+
+        state.keep_only(&[2]);
+        state.follow(&inn(2));
+        state.heard("/Interfaces/0/BSSs/1", heard("Roadside Inn", -52));
+
+        assert!(state.detail("Roadside Inn").points[0].joined);
     }
 
     #[test]

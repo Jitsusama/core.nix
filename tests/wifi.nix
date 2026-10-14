@@ -550,6 +550,10 @@ pkgs.testers.runNixOSTest {
         # Though it still says which access point the card is joined to.
         once = ask("Detail", {"name": "Roadside Inn"})["points"][0]
         assert once["joined"], once
+        # As it does after a restart, which leaves the card where it is.
+        machine.succeed("systemctl restart wifid")
+        points = lambda: ask("Detail", {"name": "Roadside Inn"})["points"]
+        retry(lambda _: any(point["joined"] for point in points()), timeout_seconds=30)
         # Lantern's beacon says how it's protected.
         guarded = ask("Detail", {"name": "Lantern"})["points"][0]["protection"]
         assert guarded["standard"] == "WPA2/WPA3", guarded
