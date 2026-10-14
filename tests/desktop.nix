@@ -1573,8 +1573,11 @@ pkgs.testers.runNixOSTest {
           type_in("keep awake")
           machine.screenshot("launcher-keep-awake")
           machine.send_key("ret")
-          machine.wait_until_succeeds(f"{held} | grep -q sleep:idle", timeout=10)
+          machine.wait_until_succeeds(f"{held} | grep -qw idle", timeout=10)
           machine.wait_until_succeeds(f"{held} | grep -q handle-lid-switch", timeout=10)
+          # Kept awake, a suspend asked for by the power key or the launcher
+          # still goes through, and so does the lid's on battery.
+          machine.fail(f"{held} | grep -q sleep")
           # The overview's status says so while it holds, and so does home.
           with told("drawn status"):
               as_account("niri msg action open-overview")
@@ -1583,7 +1586,7 @@ pkgs.testers.runNixOSTest {
           # Without power the lid is let go, and taken again when it's back.
           power("off")
           machine.wait_until_fails(f"{held} | grep -q handle-lid-switch", timeout=10)
-          machine.succeed(f"{held} | grep -q sleep:idle")
+          machine.succeed(f"{held} | grep -qw idle")
           power("on")
           machine.wait_until_succeeds(f"{held} | grep -q handle-lid-switch", timeout=10)
           as_account("qs ipc call launcher toggle")

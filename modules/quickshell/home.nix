@@ -1184,11 +1184,14 @@ in
     };
 
     # Keeping awake, from the launcher (Caffeinate.qml): one service holds
-    # logind's lock against sleep and the other its lock against the lid,
-    # which the shell takes only while there's power. Each leaves a file in
-    # the runtime directory while it runs, for the shell to watch.
+    # logind's lock against going idle and the other its lock against the
+    # lid, which the shell takes only while there's power. Neither holds the
+    # lock against sleep, which would refuse a suspend Joel asks for himself
+    # with the power key or the launcher, and the lid's suspend on battery.
+    # Each leaves a file in the runtime directory while it runs, for the
+    # shell to watch.
     systemd.user.services.caffeinate = holding {
-      what = "sleep:idle";
+      what = "idle";
       flag = "caffeinated";
       Description = "Keeps the machine from sleeping while work runs";
       PartOf = [ "graphical-session.target" ];

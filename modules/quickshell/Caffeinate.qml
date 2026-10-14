@@ -1,8 +1,10 @@
 pragma Singleton
 // Keeping the machine awake, so work left running goes on: two user services
-// hold logind's locks, one against sleeping and one against the lid, and each
-// leaves a file in the runtime directory while it runs, which is how the
-// shell knows without asking anything. The lid is held only while there's
+// hold logind's locks, one against going idle and one against the lid, and
+// each leaves a file in the runtime directory while it runs, which is how the
+// shell knows without asking anything. Neither holds the lock against sleep,
+// so a suspend Joel asks for with the power key or the launcher still goes
+// through. The lid is held only while there's
 // power, since a machine shut in a bag on its battery would cook: when the
 // power goes the lid is let go, and taken again when it comes back.
 import Quickshell
