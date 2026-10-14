@@ -7,7 +7,17 @@
 # their titles in the strongest text, the accent kept for the letters that
 # are keys, and the chosen row in the strongest text as the launcher's is.
 # It leaves out the clock and the battery, which the shell already shows.
-{ config, lib, ... }:
+#
+# In a window too small for every box, such as half of a laptop's screen, it
+# gives way rather than refusing to draw: the network box goes, then the
+# memory box, keeping the processor and the processes, and they come back
+# when the window grows (gives-way.patch).
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 let
   inherit (config.jitsusama.theme) roles terminal shades;
   shade = builtins.elemAt shades;
@@ -71,6 +81,9 @@ in
 
   programs.btop = {
     enable = true;
+    package = pkgs.btop.overrideAttrs (old: {
+      patches = (old.patches or [ ]) ++ [ ./gives-way.patch ];
+    });
     themes.theme = lib.concatLines (
       lib.mapAttrsToList (slot: color: ''theme[${slot}]="${color}"'') slots
     );
