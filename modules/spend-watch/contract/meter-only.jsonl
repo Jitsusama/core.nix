@@ -4,5 +4,5 @@
 {"v":1,"kind":"action","id":"sign-in","name":"Sign in to the warehouse","run":["kitty","--hold","sign-in"],"fits":["sign-in"]}
 {"v":1,"kind":"billed","source":"meter","hour":"2026-10-14T04:00:00Z","tool":"all","model":"claude-opus-5-5","vendor":"anthropic","dollars":31.4}
 {"v":1,"kind":"billed","source":"meter","hour":"2026-10-14T05:00:00Z","tool":"all","model":"claude-opus-5-5","vendor":"anthropic","dollars":12.2,"provisional":true}
-{"v":1,"kind":"cap","name":"premium","label":"premium day","allowance":1000,"windowHours":24,"spent":421.43,"warn":0.5,"state":"ok","at":"2026-10-14T05:40:00Z"}
+{"v":1,"kind":"cap","name":"premium","label":"premium day","allowance":1000,"windowHours":24,"spent":421.43,"warn":0.5,"state":"ok","resets":"2026-10-15T04:00:00Z","at":"2026-10-14T05:40:00Z"}
 {"v":1,"kind":"said","severity":"critical","text":"7d AI spend at 91% of $15,000 budget"}

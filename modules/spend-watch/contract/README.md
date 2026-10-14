@@ -72,6 +72,12 @@ fraction of the allowance, and `state`: `ok`, `notified` or `refused`.
 `endsKnown` says whether the feed could know the end at all. Every change in
 allowance or state is kept as the cap's history.
 
+A cap counts a rolling window of `windowHours` unless it gives `resets`, an
+instant after `at`: then it counts periods of `windowHours`, such as a
+calendar day, and its spend goes all at once when one ends. The watch keeps
+resetting it every `windowHours` after, so a feed need only say it again
+when the reset moves.
+
 ### action
 
 Something the person can do, offered beside the finding it `fits`: `cap`,
