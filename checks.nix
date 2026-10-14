@@ -361,6 +361,23 @@ in
         && lib.elem "QT_QPA_PLATFORMTHEME" (service.UnsetEnvironment or [ ])
       );
 
+  # Claude Code's theme is drawn from the machine's, every colour a hex one
+  # its format reads, and a diff's tint sits between the background and the
+  # colour it's a tint of.
+  claude-wears-the-theme =
+    let
+      home = account workstation;
+      theme = builtins.fromJSON home.home.file.".claude/themes/jitsusama.json".text;
+      colours = lib.attrValues theme.overrides;
+      mix = import ./modules/theme/mix.nix { inherit lib; };
+    in
+    holds "claude-wears-the-theme" "Claude Code's theme isn't the machine's, or mixes wrong." (
+      theme.overrides.text == home.jitsusama.theme.roles.text
+      && lib.all (colour: builtins.match "#[0-9a-fA-F]{6}" colour != null) colours
+      && mix 0.5 "#000000" "#ffffff" == "#808080"
+      && mix 0.25 "#ff0000" "#000000" == "#400000"
+    );
+
   # A machine shapes what the overview shows in a line a change: a piece
   # moved, cut, shown only while true, a threshold changed and the rest kept,
   # and a piece of its own linked beside the built-in ones.
