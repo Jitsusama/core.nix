@@ -45,18 +45,52 @@ pub fn logs(dir: &Path) -> Vec<PathBuf> {
     found
 }
 
+/// Reads every log's new lines. One that can't be read is said and passed
+/// over, so the logs after it are still read; it's tried again next pass.
 pub fn scan(history: &History, dir: &Path, refusals: &[String]) -> Result<Pass, String> {
     let mut total = Pass::default();
     for path in logs(dir) {
-        let one = scan_one(history, &path, refusals)?;
-        total.bytes += one.bytes;
-        total.turns += one.turns;
-        total.behind |= one.behind;
+        match scan_one(history, &path, refusals) {
+            Ok(one) => {
+                total.bytes += one.bytes;
+                total.turns += one.turns;
+                total.behind |= one.behind;
+            }
+            Err(error) => eprintln!("reading {}: {error}", path.display()),
+        }
     }
     Ok(total)
 }
 
 pub fn scan_one(history: &History, path: &Path, refusals: &[String]) -> Result<Pass, String> {
+    scan_slice(history, path, refusals, SLICE)
+}
+
+/// Where the line under way at `from` ends, just past its newline, if it
+/// has ended yet.
+fn line_end(file: &mut std::fs::File, from: u64, slice: u64) -> Result<Option<u64>, String> {
+    file.seek(SeekFrom::Start(from))
+        .map_err(|error| error.to_string())?;
+    let mut at = from;
+    let mut chunk = vec![0u8; slice.min(1 << 20) as usize];
+    loop {
+        let got = file.read(&mut chunk).map_err(|error| error.to_string())?;
+        if got == 0 {
+            return Ok(None);
+        }
+        if let Some(newline) = chunk[..got].iter().position(|&byte| byte == b'\n') {
+            return Ok(Some(at + newline as u64 + 1));
+        }
+        at += got as u64;
+    }
+}
+
+fn scan_slice(
+    history: &History,
+    path: &Path,
+    refusals: &[String],
+    slice: u64,
+) -> Result<Pass, String> {
     let Ok(metadata) = std::fs::metadata(path) else {
         return Ok(Pass::default());
     };
@@ -78,38 +112,50 @@ pub fn scan_one(history: &History, path: &Path, refusals: &[String]) -> Result<P
     if metadata.len() == offset {
         return Ok(Pass::default());
     }
-    let want = (metadata.len() - offset).min(SLICE);
+    let want = (metadata.len() - offset).min(slice);
     let mut file = std::fs::File::open(path).map_err(|error| error.to_string())?;
     file.seek(SeekFrom::Start(offset))
         .map_err(|error| error.to_string())?;
     let mut bytes = Vec::with_capacity(want as usize);
-    file.take(want)
+    (&mut file)
+        .take(want)
         .read_to_end(&mut bytes)
         .map_err(|error| error.to_string())?;
     let (events, used) = read(&bytes, &mut carry, refusals);
-    // A slice that ends inside one enormous line reads nothing; take more.
-    if used == 0 && want == SLICE {
-        return Err(format!("{name} has a line longer than {SLICE} bytes"));
-    }
-    history.begin()?;
-    let mut turns = 0;
-    for event in &events {
-        history.add_event(event)?;
-        turns += u64::from(matches!(event, crate::logs::Event::Turn(_)));
-    }
+    // A slice that ends inside one enormous line, a pasted image say,
+    // reads nothing: the line is stepped past, since no turn is that long,
+    // or waited for while it's still being written.
+    let used = if used == 0 && want == slice {
+        match line_end(&mut file, offset, slice)? {
+            Some(end) => {
+                eprintln!("{name}: passed over a line of {} bytes", end - offset);
+                (end - offset) as usize
+            }
+            None => return Ok(Pass::default()),
+        }
+    } else {
+        used
+    };
     let carried = serde_json::to_string(&carry).map_err(|error| error.to_string())?;
-    history.set_file(
-        &name,
-        &identity,
-        offset + used as u64,
-        &carried,
-        carry.session.as_deref(),
-    )?;
-    history.commit()?;
+    let turns = history.within(|| {
+        let mut turns = 0;
+        for event in &events {
+            history.add_event(event)?;
+            turns += u64::from(matches!(event, crate::logs::Event::Turn(_)));
+        }
+        history.set_file(
+            &name,
+            &identity,
+            offset + used as u64,
+            &carried,
+            carry.session.as_deref(),
+        )?;
+        Ok(turns)
+    })?;
     Ok(Pass {
         bytes: used as u64,
         turns,
-        behind: offset + (used as u64) < metadata.len() && want == SLICE,
+        behind: offset + (used as u64) < metadata.len() && want == slice,
     })
 }
 
@@ -163,5 +209,25 @@ mod tests {
         std::fs::write(&path, format!("{HEADER}\n{TURN}\n")).unwrap();
         scan(&history, dir.path(), &[]).unwrap();
         assert_eq!(turns(&history), 1);
+    }
+
+    // A line longer than a slice is stepped past, and the turns after it
+    // are read; one still being written is waited for.
+    #[test]
+    fn a_line_longer_than_a_slice_is_passed_over() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("2026_s1.jsonl");
+        let long = format!(r#"{{"type":"custom","data":"{}"}}"#, "x".repeat(2000));
+        std::fs::write(&path, format!("{HEADER}\n{TURN}\n{long}\n{TURN}\n{long}")).unwrap();
+        let history = History::memory();
+        let slice = 512;
+        for _ in 0..20 {
+            scan_slice(&history, &path, &[], slice).unwrap();
+        }
+        assert_eq!(turns(&history), 2);
+        assert_eq!(
+            scan_slice(&history, &path, &[], slice).unwrap(),
+            Pass::default()
+        );
     }
 }

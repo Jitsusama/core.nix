@@ -1100,8 +1100,12 @@ in
       service = (account workstation).systemd.user.services.spend-watch.Service;
     in
     holds "spend-watch-stays-in-the-background"
-      "spend-watch runs outside background.slice, or isn't restarted when it fails."
-      (service.Slice == "background.slice" && service.Restart == "on-failure");
+      "spend-watch runs outside background.slice, isn't restarted when it fails, or takes its status with it when it stops."
+      (
+        service.Slice == "background.slice"
+        && service.Restart == "on-failure"
+        && service.RuntimeDirectoryPreserve == "yes"
+      );
 
   # A Mac's guards run under launchd, the machine's as a daemon and the
   # account's as an agent in the background, with a Mac's own paths and
@@ -2018,10 +2022,32 @@ in
       let
         home = account workstation;
         file = home.xdg.configFile."spend-watch/config.json".source;
+        # Every option set, so each shape the module renders is one the
+        # daemon reads: a feed, a cap of the account's own, a zone.
+        fed = account (bareNixos [
+          self.nixosModules.workstation
+          {
+            home-manager.users.someone.jitsusama.spend-watch = {
+              feeds.provider = {
+                label = "the provider";
+                command = [
+                  "provider-feed"
+                  "run"
+                ];
+                environment.REGION = "north";
+              };
+              cap.allowance = 4000;
+              zone = "America/Toronto";
+              premium = [ "big-model" ];
+              detectors.quiet = [ "mix" ];
+            };
+          }
+        ]);
       in
       pkgs.runCommandLocal "spend-watch-accepts-its-configuration"
         {
           inherit file;
+          fed = fed.xdg.configFile."spend-watch/config.json".source;
           service = home.systemd.user.services.spend-watch.Service.ExecStart;
         }
         ''

@@ -72,7 +72,7 @@ quietly stopped holding.
 | `resolved-is-set-per-network` | a laptop leaves resolved's global DNS settings as they ship |
 | `disk-guard-stays-in-the-background` | the disk guard yields to the account, and a command overrunning its memory never stops it |
 | `the-mac-guards-its-disk` | a Mac's guards run under launchd, with a Mac's paths and nothing to confine a run |
-| `spend-watch-stays-in-the-background` | the AI spend watch yields to the account and comes back when it fails |
+| `spend-watch-stays-in-the-background` | the AI spend watch yields to the account, comes back when it fails, and leaves its status behind when it stops |
 
 ### The Shell's Logic
 
@@ -141,7 +141,7 @@ kernel guide][2] says what that catches.
 | `disk-guard-passes-clippy`        | clippy finds nothing in the disk guard or its scenarios   |
 | `disk-guard-compiles-for-macos`   | the disk guard and its scenarios compile for macOS, clean |
 | `network-revive-passes-clippy`    | clippy finds nothing in network-revive or its tests       |
-| `spend-watch-accepts-its-configuration` | spend-watch passes its tests and accepts the config an account gets |
+| `spend-watch-accepts-its-configuration` | spend-watch passes its tests and accepts the config an account gets, a feed and a cap among it |
 | `spend-watch-passes-clippy`       | clippy finds nothing in spend-watch or its tests          |
 
 ### Virtual Machines

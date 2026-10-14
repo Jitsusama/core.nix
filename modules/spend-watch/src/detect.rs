@@ -43,6 +43,41 @@ fn finding(
     }
 }
 
+/// A short, stable name for something too long or too private to be a
+/// key itself: a credential, a sentence a provider said. FNV-1a, 64 bits.
+fn digest(text: &str) -> String {
+    let hash = text.bytes().fold(0xcbf2_9ce4_8422_2325_u64, |hash, byte| {
+        (hash ^ u64::from(byte)).wrapping_mul(0x0100_0000_01b3)
+    });
+    format!("{hash:016x}")
+}
+
+/// What a provider said to the person in the last quarter hour: a warning
+/// when it was one of its own, a note otherwise. Its text is drawn as
+/// plain words, never markup.
+pub fn said(picture: &Picture) -> Vec<Finding> {
+    picture
+        .said
+        .iter()
+        .map(|(severity, text)| {
+            let plain: String = text.chars().filter(|c| !matches!(c, '<' | '>')).collect();
+            let severity = match severity.as_str() {
+                "critical" | "error" | "alert" | "warning" => Severity::Warning,
+                _ => Severity::Note,
+            };
+            let mut f = finding(
+                format!("said:{}", digest(text)),
+                "said",
+                severity,
+                format!("the provider says: {plain}"),
+                "Said by the provider's own meter.".into(),
+            );
+            f.surprise = 0.5;
+            f
+        })
+        .collect()
+}
+
 /// What a feed offers for a kind of problem, as the finding's action.
 fn offered(picture: &Picture, fits: &str) -> Option<Action> {
     picture
@@ -75,6 +110,7 @@ pub fn all(picture: &Picture, history: &History, config: &Config) -> Result<Vec<
     found.extend(novelty(picture, history, config)?);
     found.extend(spikes(picture));
     found.extend(health(picture));
+    found.extend(said(picture));
     let quiet: HashSet<&str> = config.detectors.quiet.iter().map(String::as_str).collect();
     for finding in &mut found {
         if quiet.contains(finding.detector.as_str()) && !finding.cap {
@@ -414,16 +450,26 @@ pub fn burn(picture: &Picture, history: &History, config: &Config) -> Result<Vec
     if score <= threshold {
         return Ok(Vec::new());
     }
+    // The score falls slowly once spending stops, so a burn is also the
+    // last hour past what it allows, from a session that spent it.
     let spent_hour: f64 = last_hour.iter().map(|(spent, _)| spent).sum();
+    let allowed_hour: f64 = (last - 59..=last).map(allowance).sum();
+    if spent_hour <= allowed_hour {
+        return Ok(Vec::new());
+    }
     let mut by_session: HashMap<&str, f64> = HashMap::new();
     for (spent, session) in &last_hour {
-        *by_session.entry(session.as_str()).or_default() += spent;
+        if !session.is_empty() && *spent > 0.0 {
+            *by_session.entry(session.as_str()).or_default() += spent;
+        }
     }
-    let top = by_session
+    let Some(top) = by_session
         .into_iter()
         .max_by(|a, b| a.1.total_cmp(&b.1))
         .map(|(s, _)| s.to_owned())
-        .unwrap_or_default();
+    else {
+        return Ok(Vec::new());
+    };
     let quest = history
         .db
         .query_row(
@@ -807,8 +853,14 @@ pub fn novelty(
             } else {
                 Severity::Note
             };
+            // A credential's key is its digest, never the credential.
+            let named = if what == "credential" {
+                digest(&name)
+            } else {
+                name.clone()
+            };
             let mut f = finding(
-                format!("new:{column}:{name}"),
+                format!("new:{column}:{named}"),
                 "novelty",
                 severity,
                 format!("a new {what} spending under your name: {shown}"),
@@ -945,4 +997,137 @@ pub fn health(picture: &Picture) -> Vec<Finding> {
         out.push(f);
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::logs::{Cost, Event, Kind, Tokens, Turn};
+
+    fn config() -> Config {
+        serde_json::from_value(serde_json::json!({
+            "sessions": "/none", "runs": "/none", "registry": "/none", "quests": "/none",
+            "state": "/none", "zone": "UTC",
+        }))
+        .unwrap()
+    }
+
+    fn turn(history: &History, session: &str, at: f64, dollars: f64) {
+        history
+            .add_event(&Event::Turn(Turn {
+                session: session.into(),
+                at,
+                model: "m".into(),
+                provider: "p".into(),
+                kind: Kind::Agent,
+                tokens: Tokens::default(),
+                cost: Cost {
+                    total: dollars,
+                    ..Cost::default()
+                },
+                quest: None,
+                gap: None,
+                rebuilt: 0.0,
+                rebuilt_cost: 0.0,
+                cause: None,
+            }))
+            .unwrap();
+    }
+
+    const NOW: f64 = 1_791_988_200.0; // 2026-10-14T14:30:00Z, a Wednesday
+
+    // Eight weeks of the same working days, a dollar every ten minutes
+    // from nine to five, in a session a day.
+    fn ordinary() -> History {
+        let history = History::memory();
+        let today = (NOW / DAY).floor() * DAY;
+        for back in 0..56 {
+            let day = today - back as f64 * DAY;
+            for minute in (9 * 60..17 * 60).step_by(10) {
+                let at = day + minute as f64 * 60.0;
+                if at < NOW - 3600.0 {
+                    turn(&history, &format!("s{back}"), at, 1.0);
+                }
+            }
+        }
+        history
+    }
+
+    fn burns_at(history: &History, now: f64) -> Vec<Finding> {
+        let config = config();
+        let picture = Picture::read(history, &config, now).unwrap();
+        burn(&picture, history, &config).unwrap()
+    }
+
+    fn burns(history: &History) -> Vec<Finding> {
+        burns_at(history, NOW)
+    }
+
+    #[test]
+    fn an_ordinary_hour_is_no_burn() {
+        let history = ordinary();
+        for minute in (0..60).step_by(10) {
+            turn(&history, "s0", NOW - 3600.0 + minute as f64 * 60.0, 1.0);
+        }
+        assert!(burns(&history).is_empty());
+    }
+
+    // Ten dollars a minute for the last hour is one burn, in the session
+    // that spent it.
+    #[test]
+    fn a_burning_hour_names_its_session() {
+        let history = ordinary();
+        for minute in 0..60 {
+            turn(&history, "hot", NOW - 3600.0 + minute as f64 * 60.0, 10.0);
+        }
+        let found = burns(&history);
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert_eq!(found[0].key, "burn:hot");
+        assert_eq!(found[0].session.as_deref(), Some("hot"));
+    }
+
+    // A burn from six to seven in the evening, when a usual hour allows a
+    // dollar, still scores high at half past eight; but nothing is burning.
+    #[test]
+    fn a_burn_that_stopped_clears() {
+        let history = ordinary();
+        let evening = (NOW / DAY).floor() * DAY + 20.5 * 3600.0;
+        for minute in 0..60 {
+            turn(
+                &history,
+                "hot",
+                evening - 9000.0 + minute as f64 * 60.0,
+                10.0,
+            );
+        }
+        assert!(burns_at(&history, evening).is_empty());
+    }
+
+    fn billed(history: &History, hour: &str, model: &str, dollars: f64) {
+        let line = serde_json::json!({
+            "v": 1, "kind": "billed", "source": "warehouse", "hour": hour, "tool": "pi",
+            "model": model, "vendor": "v", "dollars": dollars,
+            "tokens": {"input": 0, "cached": 0, "cacheWrite": 0, "output": 0},
+        });
+        let record = crate::feed::parse(&line.to_string()).unwrap();
+        crate::feed::store(history, "proxy", &record, NOW).unwrap();
+    }
+
+    // A model new this day is a warning past the floor and a note below it;
+    // one billed the month before is nothing new.
+    #[test]
+    fn something_new_is_weighed_by_what_it_spent() {
+        let history = History::memory();
+        billed(&history, "2026-10-04T12:00:00Z", "old", 50.0);
+        billed(&history, "2026-10-14T12:00:00Z", "old", 50.0);
+        billed(&history, "2026-10-14T12:00:00Z", "big", 30.0);
+        billed(&history, "2026-10-14T13:00:00Z", "small", 3.0);
+        let config = config();
+        let picture = Picture::read(&history, &config, NOW).unwrap();
+        let found = novelty(&picture, &history, &config).unwrap();
+        let severity = |key: &str| found.iter().find(|f| f.key == key).map(|f| f.severity);
+        assert_eq!(severity("new:model:big"), Some(Severity::Warning));
+        assert_eq!(severity("new:model:small"), Some(Severity::Note));
+        assert_eq!(severity("new:model:old"), None);
+    }
 }

@@ -104,7 +104,11 @@ in
               type = lib.types.nonEmptyListOf lib.types.str;
             };
             environment = lib.mkOption {
-              description = "Variables it's started with, beside the daemon's own.";
+              description = ''
+                Variables it's started with, beside the daemon's own. They're written
+                into the Nix store, which anyone on the machine can read, so never a
+                secret: a feed reads its credentials itself, from a command or a file.
+              '';
               type = lib.types.attrsOf lib.types.str;
               default = { };
             };
@@ -116,7 +120,7 @@ in
     paths = {
       sessions = path "pi's session logs." "${home}/.pi/agent/sessions";
       runs = path "The harness's record of subagent runs." "${harness.state}/observability/runs.db";
-      registry = path "The harness's open sessions, for going to one." "${harness.state}/quest-workflow/sessions";
+      registry = path "Open sessions, to go to one." "${harness.state}/quest-workflow/sessions";
       quests = path "The harness's quests." "${harness.data}/quest-workflow/quests";
       state = path "Where the history and the weekly reports are kept." "${stateHome}/spend-watch";
     };
@@ -153,7 +157,8 @@ in
       };
       falseDiscovery = lib.mkOption {
         description = "The false discovery rate held across everything compared at once.";
-        type = lib.types.numbers.between 0 1;
+        # Below one: at one, everything compared would count as found.
+        type = lib.types.addCheck (lib.types.numbers.between 0 1) (rate: rate < 1);
         default = 5.0e-2;
       };
       floor = lib.mkOption {
@@ -247,6 +252,9 @@ in
         # Whatever the account runs comes first; this only watches.
         Slice = "background.slice";
         RuntimeDirectory = "spend-watch";
+        # Kept when the watch stops, so the shell finds its last status and
+        # says nothing watches rather than showing nothing at all.
+        RuntimeDirectoryPreserve = "yes";
         Restart = "on-failure";
         RestartSec = "5s";
       };

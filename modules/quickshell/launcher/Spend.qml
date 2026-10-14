@@ -11,7 +11,9 @@
 // for the caps, and a report by its words, "spend last week by quest" or
 // "spend today by model", whose words the daemon gives with the reports. The
 // daemon works out every figure, so nothing here counts or formats; with no
-// file there's no collection, and nothing to answer.
+// file there's no collection, and nothing to answer. While the screen is
+// shared it lists the daemon's quiet lines, which hold no amounts, and no
+// report, and answers only that the amounts are hidden.
 import qs
 import Quickshell
 import Quickshell.Io
@@ -23,6 +25,7 @@ Provider {
 
     readonly property string runtime: Quickshell.env("XDG_RUNTIME_DIR")
     property var said: null
+    readonly property bool sharing: Quiet.sharing
     readonly property var reports: said?.reports ?? {}
 
     collection: said === null ? null : {
@@ -120,9 +123,12 @@ Provider {
     }
 
     readonly property var all: said === null ? []
+        : sharing ? (said.quiet ?? []).map(given => given.run ? finding(given) : line(given))
         : (said.now ?? []).map(given => line(given))
             .concat((said.findings ?? []).map(given => finding(given)))
             .concat(listed.map(id => report(reports[id])))
+
+    onSharingChanged: changed()
 
     function everything() {
         return all;
@@ -187,6 +193,13 @@ Provider {
         const shown = id === null ? null : reports[id] ?? null;
         if (shown === null)
             return null;
+        if (sharing)
+            return {
+                headline: "Amounts are hidden while the screen is shared",
+                copy: "",
+                rows: (said.quiet ?? []).map(given => line(given)),
+                note: "Ask again once sharing ends"
+            };
         if (id === "summary") {
             const lead = (said.now ?? [])[0];
             return {
@@ -214,17 +227,34 @@ Provider {
         }
     }
 
-    // The daemon writes the file anew only when something in it changed.
+    // The daemon writes the file anew only when something in it changed,
+    // which a watch can miss, and may start after the shell, so it's read
+    // again every little while too.
+    Timer {
+        interval: provider.settings.every ?? 30000
+        running: true
+        repeat: true
+        onTriggered: file.reload()
+    }
+
     FileView {
         id: file
         path: provider.settings.collection ?? `${provider.runtime}/spend-watch/collection.json`
         watchChanges: true
         printErrors: false
         onFileChanged: reload()
+        // What was read last, so a reading that changed nothing says nothing.
+        property string read: ""
         onLoaded: {
-            provider.said = provider.parsed(text());
+            if (text() === read)
+                return;
+            read = text();
+            provider.said = provider.parsed(read);
             provider.changed();
         }
-        onLoadFailed: provider.said = null
+        onLoadFailed: {
+            read = "";
+            provider.said = null;
+        }
     }
 }

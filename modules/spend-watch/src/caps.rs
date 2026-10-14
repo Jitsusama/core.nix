@@ -143,15 +143,24 @@ pub fn clock(
     now: f64,
 ) -> Clock {
     let horizon = 24 * paths.first().map_or(1, Vec::len);
-    let end_hour = ends_at.map(|end| ((end - now) / HOUR).ceil().max(0.0) as usize);
+    // An end past what the paths reach can't be judged by them.
+    let end_hour = ends_at
+        .map(|end| ((end - now) / HOUR).ceil().max(0.0) as usize)
+        .filter(|end| end.max(&1) <= &horizon);
+    let window_hours = past.len();
     let rolled = |k: usize| past.iter().take(k).sum::<f64>();
     let (mut warned, mut capped, mut before_end, mut over_after) = (0, 0, 0, 0);
     for path in paths {
         let coming = hourly(path, shape, zone, now, horizon);
-        let mut running = 0.0;
+        // What's simulated from now, so far, and what's left the window
+        // again by the k-th hour.
+        let mut since = vec![0.0; horizon + 1];
+        for k in 1..=horizon {
+            since[k] = since[k - 1] + coming[k - 1];
+        }
         let (mut w, mut c, mut b) = (false, false, false);
         for k in 1..=horizon {
-            running += coming[k - 1];
+            let running = since[k] - since[k.saturating_sub(window_hours)];
             let window = spent - rolled(k) + running;
             if k <= 24 {
                 w |= window >= allowance * warn;
@@ -253,9 +262,10 @@ mod tests {
         let now = 1_791_936_000.0;
         let past = vec![0.0; 168];
         let paths = vec![vec![500.0; 7]; 10];
-        // Ends in two days, at $5,000 against a $4,000 fallback.
+        // Ends in two days, $3,500 now and $1,000 more by then, against a
+        // $4,000 fallback.
         let clock = clock(
-            4000.0,
+            3500.0,
             15_000.0,
             0.9,
             Some(4000.0),
@@ -268,5 +278,35 @@ mod tests {
         );
         assert_eq!(clock.cap_before_end, Some(0.0));
         assert_eq!(clock.over_after_end, Some(1.0));
+    }
+
+    // A day's cap never holds more than a day of spend, however long the
+    // override runs; and one ending past the paths can't be judged.
+    #[test]
+    fn a_short_window_rolls_simulated_spend_out() {
+        let zone = Zone::utc();
+        let now = 1_791_936_000.0;
+        let past = vec![0.0; 24];
+        let paths = vec![vec![600.0; 7]; 10];
+        let judged = |ends: f64| {
+            clock(
+                0.0,
+                1000.0,
+                0.9,
+                Some(500.0),
+                Some(now + ends * HOUR),
+                &past,
+                &paths,
+                &even(),
+                &zone,
+                now,
+            )
+        };
+        let three_days = judged(72.0);
+        assert_eq!(three_days.cap_before_end, Some(0.0));
+        assert_eq!(three_days.over_after_end, Some(1.0));
+        let ten_days = judged(240.0);
+        assert_eq!(ten_days.cap_before_end, None);
+        assert_eq!(ten_days.over_after_end, None);
     }
 }

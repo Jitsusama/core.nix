@@ -84,17 +84,21 @@ fn unquote(value: &str) -> &str {
     value.trim_matches('"').trim_matches('\'')
 }
 
-pub fn read(dir: &Path) -> Vec<Quest> {
-    let Ok(entries) = std::fs::read_dir(dir) else {
-        return Vec::new();
-    };
+/// Every quest in the store: none where there's no store, and an error
+/// where there is one that can't be read, so what's kept isn't wiped.
+pub fn read(dir: &Path) -> Result<Vec<Quest>, String> {
+    if !dir.exists() {
+        return Ok(Vec::new());
+    }
+    let entries =
+        std::fs::read_dir(dir).map_err(|error| format!("reading {}: {error}", dir.display()))?;
     let mut quests: Vec<Quest> = entries
         .flatten()
         .filter_map(|entry| std::fs::read_to_string(entry.path().join("README.md")).ok())
         .filter_map(|text| parse(&text))
         .collect();
     quests.sort_by(|one, other| one.id.cmp(&other.id));
-    quests
+    Ok(quests)
 }
 
 pub fn store(history: &crate::history::History, quests: &[Quest]) -> Result<(), String> {

@@ -16,9 +16,10 @@ Piece {
 
     readonly property string runtime: Quickshell.env("XDG_RUNTIME_DIR")
     readonly property var said: file.said
-    // The daemon writes its heartbeat at least every 30 seconds while it runs.
+    // The daemon writes its heartbeat at least every 30 seconds while it
+    // runs, and counts them again from waking after a suspend.
     readonly property bool silent: said !== null
-        && clock.now - (said.heartbeat ?? 0) > (settings.silence ?? 120)
+        && clock.now - Math.max(said.heartbeat ?? 0, clock.woke) > (settings.silence ?? 120)
     // The chord that opens the collection, beside the action that does.
     readonly property var opening: Shortcuts.actions
         .find(action => action.opens === "spend") ?? { chord: [] }
@@ -74,11 +75,17 @@ Piece {
     Timer {
         id: clock
         property real now: Date.now() / 1000
+        // When the machine last woke: a tick far later than the one before
+        // it is a suspend, which stopped the daemon's clock too.
+        property real woke: 0
         interval: piece.settings.every ?? 5000
         running: true
         repeat: true
         onTriggered: {
+            const then = now;
             now = Date.now() / 1000;
+            if (now - then > 60)
+                woke = now;
             file.reload();
         }
     }

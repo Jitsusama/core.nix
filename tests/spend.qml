@@ -7,8 +7,9 @@
 // where it went; a cap near its end wants Joel, in the alert colour, with
 // its badge and the finding's action first; while the screen is shared the
 // amounts go; a watch that stopped writing is a warning with a way to start
-// it; and a file of another version is no piece. The collection answers
-// "spend", "cap" and a report by its words, leaves alone what isn't one,
+// it; a file of another version is no piece, and nor is one taken away
+// again. The collection answers "spend", "cap" and a report by its words,
+// leaves alone what isn't one, shows no amount while the screen is shared,
 // and a finding goes to its session and steps into marking it expected. It
 // exits 0 once every case holds, and otherwise 1, saying which didn't.
 import qs
@@ -105,6 +106,14 @@ ShellRoot {
         what: "a file of another version",
         status: JSON.stringify({ v: 2, open: {}, quiet: {} }),
         holds: piece => !piece.present
+    }, {
+        what: "what the watch wrote, again",
+        status: root.written,
+        holds: piece => piece.present && /today/.test(piece.value)
+    }, {
+        what: "the file taken away",
+        status: null,
+        holds: piece => !piece.present && !piece.active
     }]
 
     property int at: 0
@@ -143,10 +152,19 @@ ShellRoot {
         printErrors: false
     }
 
+    // Takes the status file away, as nothing having written one leaves it.
+    Process {
+        id: removing
+        command: ["rm", "-f", `${root.runtime}/status.json`]
+    }
+
     function begin() {
         const step = cases[at];
         Quiet.sharing = step.sharing ?? false;
-        file.setText(step.status ?? "");
+        if (step.status === null)
+            removing.running = true;
+        else
+            file.setText(step.status);
         left = 100;
         acted = false;
         waiting.start();
@@ -191,7 +209,8 @@ ShellRoot {
 
     function collect() {
         if (spend.collection !== null || spend.answer("spend") !== null) {
-            console.warn(`FAIL a collection with nothing written: ${JSON.stringify(spend.collection)}`);
+            const shown = JSON.stringify(spend.collection);
+            console.warn(`FAIL a collection with nothing written: ${shown}`);
             Qt.exit(1);
             return;
         }
@@ -240,6 +259,18 @@ ShellRoot {
                 all.map(row => row.name).join(", "));
             const found = spend.search("waste").rows;
             expect("a search", found.length > 0, "nothing for waste");
+
+            // While sharing, no row and no answer holds an amount.
+            Quiet.sharing = true;
+            const quiet = spend.everything();
+            expect("quiet rows", quiet.length > 0
+                && quiet.every(row => !`${row.name} ${row.side}`.includes("$")),
+                quiet.map(row => `${row.name}: ${row.side}`).join(", "));
+            const hidden = spend.answer("spend last week by quest");
+            expect("a quiet answer", hidden !== null && !hidden.headline.includes("$")
+                && hidden.rows.every(row => !`${row.name} ${row.side}`.includes("$")),
+                JSON.stringify(hidden));
+            Quiet.sharing = false;
 
             // A finding with an action goes to its session, and steps into
             // marking it expected.

@@ -454,11 +454,11 @@ fn counted(cap: &Cap, hours: &BTreeMap<i64, f64>) -> f64 {
 
 fn standing(zone: &Zone, hours: &BTreeMap<i64, f64>, now: f64, so_far: f64) -> Standing {
     let today = zone.day(now);
-    let into = now - zone.day_start(today);
     let weekend = |day: i64| Zone::weekday(day) >= 5;
+    // Each day to the same wall-clock time as now, daylight saving or not.
     let by_now = |day: i64| {
         let start = zone.day_start(day);
-        let end = start + into;
+        let end = zone.same_time(day, now);
         let (first, last) = (crate::time::hour_of(start), crate::time::hour_of(end));
         let mut sum = 0.0;
         for (&hour, &dollars) in hours.range(first..=last) {
@@ -470,9 +470,14 @@ fn standing(zone: &Zone, hours: &BTreeMap<i64, f64>, now: f64, so_far: f64) -> S
         }
         sum
     };
+    // Only days the history covers: one before it began isn't a $0 day.
+    let first = hours
+        .keys()
+        .next()
+        .map_or(today, |&hour| zone.day(crate::time::hour_start(hour)));
     let comparable: Vec<f64> = (1..=28)
         .map(|back| today - back)
-        .filter(|&day| weekend(day) == weekend(today))
+        .filter(|&day| day >= first && weekend(day) == weekend(today))
         .map(by_now)
         .collect();
     if comparable.iter().filter(|value| **value > 0.0).count() < 5 {

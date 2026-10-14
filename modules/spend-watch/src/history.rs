@@ -169,8 +169,28 @@ impl History {
             .map_err(sql)
     }
 
+    /// Begins a transaction, first rolling back one an earlier error left
+    /// open, so one failure can't wedge every write after it.
     pub fn begin(&self) -> Result<(), String> {
+        if !self.db.is_autocommit() {
+            self.db.execute_batch("ROLLBACK").map_err(sql)?;
+        }
         self.db.execute_batch("BEGIN").map_err(sql)
+    }
+
+    /// Runs what's given in one transaction: all of it kept, or none.
+    pub fn within<T>(&self, work: impl FnOnce() -> Result<T, String>) -> Result<T, String> {
+        self.begin()?;
+        match work() {
+            Ok(done) => {
+                self.commit()?;
+                Ok(done)
+            }
+            Err(error) => {
+                let _ = self.db.execute_batch("ROLLBACK");
+                Err(error)
+            }
+        }
     }
 
     pub fn commit(&self) -> Result<(), String> {

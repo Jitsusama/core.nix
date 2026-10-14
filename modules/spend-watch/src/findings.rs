@@ -133,6 +133,12 @@ pub fn settle(history: &History, raised: Vec<Finding>, now: f64) -> Result<Vec<F
         params![now, now - SETTLE],
     )
     .map_err(fail)?;
+    // A mark is for one episode: a cap near again next week asks again.
+    db.execute(
+        "DELETE FROM marks WHERE key IN (SELECT key FROM findings WHERE cleared IS NOT NULL)",
+        [],
+    )
+    .map_err(fail)?;
     standing(history)
 }
 
@@ -167,19 +173,24 @@ pub fn standing(history: &History) -> Result<Vec<Finding>, String> {
     Ok(out)
 }
 
-/// Marks a finding expected, by its key or the start of it.
+/// Marks a finding expected, by its key or the start of it: the whole key
+/// when one holds by that name, as the shell gives it, else the one key
+/// that starts so.
 pub fn mark(history: &History, key: &str, now: f64) -> Result<String, String> {
-    let found: Vec<String> = {
-        let mut statement = history
-            .db
-            .prepare("SELECT key FROM findings WHERE key LIKE ?1 || '%' AND cleared IS NULL")
-            .map_err(fail)?;
+    let holding = |query: &str| -> Result<Vec<String>, String> {
+        let mut statement = history.db.prepare(query).map_err(fail)?;
         statement
             .query_map([key], |row| row.get(0))
             .map_err(fail)?
             .collect::<Result<Vec<_>, _>>()
-            .map_err(fail)?
+            .map_err(fail)
     };
+    let mut found = holding("SELECT key FROM findings WHERE key = ?1 AND cleared IS NULL")?;
+    if found.is_empty() {
+        found = holding(
+            "SELECT key FROM findings WHERE substr(key, 1, length(?1)) = ?1 AND cleared IS NULL",
+        )?;
+    }
     match found.as_slice() {
         [one] => {
             history
@@ -272,5 +283,46 @@ mod tests {
                 .iter()
                 .any(|f| f.key == "note" && f.marked)
         );
+    }
+
+    // The shell marks by the whole key, which may start another's, and a
+    // key's _ is a character like any other.
+    #[test]
+    fn a_whole_key_is_marked_though_it_starts_another() {
+        let history = History::memory();
+        let held = vec![
+            finding("new:model:opus", Severity::Warning, 5.0),
+            finding("new:model:opus-4", Severity::Warning, 5.0),
+            finding("new:tool:a_b", Severity::Warning, 5.0),
+        ];
+        settle(&history, held, 0.0).unwrap();
+        assert_eq!(
+            mark(&history, "new:model:opus", 1.0).unwrap(),
+            "new:model:opus"
+        );
+        assert!(mark(&history, "new:tool:a%", 1.0).is_err());
+        assert!(mark(&history, "new:model:op", 1.0).is_err(), "two start so");
+    }
+
+    // Marking this week's near cap leaves next week's to ask.
+    #[test]
+    fn a_mark_lasts_one_episode() {
+        let history = History::memory();
+        settle(
+            &history,
+            vec![finding("cap:near", Severity::Warning, 5.0)],
+            0.0,
+        )
+        .unwrap();
+        mark(&history, "cap:near", 1.0).unwrap();
+        settle(&history, vec![], 2.0 * SETTLE).unwrap();
+        let back = settle(
+            &history,
+            vec![finding("cap:near", Severity::Warning, 5.0)],
+            7.0 * 86400.0,
+        )
+        .unwrap();
+        assert!(!back[0].marked);
+        assert_eq!(back[0].started, 7.0 * 86400.0);
     }
 }

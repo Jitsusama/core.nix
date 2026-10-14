@@ -89,6 +89,17 @@ impl Zone {
             .unwrap_or(day as f64 * DAY)
     }
 
+    /// The instant on a local day at the wall-clock time `like` shows, so
+    /// "by this hour" means the same hour across a change of clocks.
+    pub fn same_time(&self, day: i64, like: f64) -> f64 {
+        let zoned = self.zoned(like);
+        date_of(day)
+            .at(zoned.hour(), zoned.minute(), zoned.second(), 0)
+            .to_zoned(self.tz.clone())
+            .map(|zoned| zoned.timestamp().as_millisecond() as f64 / 1000.0)
+            .unwrap_or_else(|_| self.day_start(day) + (like - self.day_start(self.day(like))))
+    }
+
     /// The weekday of a local day, Monday 0.
     pub fn weekday(day: i64) -> usize {
         date_of(day).weekday().to_monday_zero_offset() as usize
@@ -194,5 +205,15 @@ mod tests {
         assert_eq!(toronto.clock(now + DAY, now), "12:00 tomorrow");
         assert_eq!(toronto.clock(now + 2.0 * DAY, now), "Fri 12:00");
         assert_eq!(toronto.clock(now - 23.0 * DAY, now), "Mon 21 Sep 12:00");
+    }
+
+    // Noon in Toronto after the clocks go back is noon before, an hour of
+    // UTC apart.
+    #[test]
+    fn the_same_time_holds_across_a_change_of_clocks() {
+        let toronto = Zone::named("America/Toronto").unwrap();
+        let after = parse("2026-11-02T17:00:00Z").unwrap();
+        let before = toronto.same_time(toronto.day(after) - 7, after);
+        assert_eq!(before, parse("2026-10-26T16:00:00Z").unwrap());
     }
 }

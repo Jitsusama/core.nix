@@ -38,6 +38,11 @@ const HEARTBEAT: Duration = Duration::from_secs(30);
 /// Activity in pi's logs within this long counts as working.
 const ACTIVE: f64 = 600.0;
 const HARNESS: Duration = Duration::from_secs(300);
+/// How long a refresh waits for each feed to say something back.
+const REFRESH: Duration = Duration::from_secs(10);
+/// How long the heartbeat goes on without a pass that worked: past this,
+/// the shell is let see a watch that isn't working as one that stopped.
+const FAILING: Duration = Duration::from_secs(2 * 300 + 60);
 
 struct Feed {
     config: FeedConfig,
@@ -45,12 +50,15 @@ struct Feed {
     stdin: Option<ChildStdin>,
     /// When it may start again, after stopping.
     next: Instant,
-    backoff: Duration,
+    /// The last wait before starting it again, if it has stopped before.
+    backoff: Option<Duration>,
     started: Instant,
 }
 
 impl Feed {
     fn start(&mut self, wake: &Sender<Wake>, pace: Pace) {
+        // An attempt that can't even spawn counts as a quick stop.
+        self.started = Instant::now();
         let mut command = Command::new(&self.config.command[0]);
         command
             .args(&self.config.command[1..])
@@ -62,8 +70,16 @@ impl Feed {
             Ok(mut child) => {
                 let stdout = child.stdout.take();
                 self.stdin = child.stdin.take();
+                // A feed that never reads mustn't stop the daemon at a full
+                // pipe: a line it can't take now is dropped.
+                if let Some(stdin) = &self.stdin {
+                    let _ = rustix::fs::fcntl_setfl(
+                        stdin,
+                        rustix::fs::fcntl_getfl(stdin).unwrap_or(rustix::fs::OFlags::empty())
+                            | rustix::fs::OFlags::NONBLOCK,
+                    );
+                }
                 self.child = Some(child);
-                self.started = Instant::now();
                 let name = self.config.name.clone();
                 let wake = wake.clone();
                 if let Some(stdout) = stdout {
@@ -90,30 +106,40 @@ impl Feed {
     }
 
     fn say(&mut self, line: &str) {
-        if let Some(stdin) = &mut self.stdin
-            && writeln!(stdin, "{line}")
-                .and_then(|()| stdin.flush())
-                .is_err()
-        {
-            self.stdin = None;
+        let Some(stdin) = &mut self.stdin else {
+            return;
+        };
+        match stdin.write_all(format!("{line}\n").as_bytes()) {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                eprintln!(
+                    "feed {}: isn't reading; a line was dropped",
+                    self.config.name
+                );
+            }
+            Err(_) => self.stdin = None,
         }
     }
 
-    /// Reaped, and due to start again after its backoff: doubled each time
-    /// it stops within a minute of starting, from five seconds to five
-    /// minutes.
+    /// Reaped, and due to start again after its backoff.
     fn stopped(&mut self) {
         if let Some(mut child) = self.child.take() {
             let _ = child.kill();
             let _ = child.wait();
         }
         self.stdin = None;
-        self.backoff = if self.started.elapsed() < Duration::from_secs(60) {
-            (self.backoff * 2).clamp(Duration::from_secs(5), Duration::from_secs(300))
-        } else {
-            Duration::from_secs(5)
-        };
-        self.next = Instant::now() + self.backoff;
+        let wait = backoff(self.backoff, self.started.elapsed());
+        self.backoff = Some(wait);
+        self.next = Instant::now() + wait;
+    }
+}
+
+/// How long to wait before starting a feed again: five seconds after one
+/// that ran a minute or more, else twice the last wait, to five minutes.
+fn backoff(last: Option<Duration>, ran: Duration) -> Duration {
+    match last {
+        Some(last) if ran < Duration::from_secs(60) => (last * 2).min(Duration::from_secs(300)),
+        _ => Duration::from_secs(5),
     }
 }
 
@@ -148,18 +174,28 @@ fn watch(sessions: PathBuf, wake: Sender<Wake>) {
             | WatchFlags::MOVED_TO
             | WatchFlags::CLOSE_WRITE;
         let mut watched: std::collections::HashSet<PathBuf> = std::collections::HashSet::new();
+        // A directory counts as watched only once inotify has it.
         let add = |watched: &mut std::collections::HashSet<PathBuf>| {
-            if watched.insert(sessions.clone()) {
-                let _ = inotify::add_watch(&fd, &sessions, flags);
-            }
-            for entry in std::fs::read_dir(&sessions).into_iter().flatten().flatten() {
-                let path = entry.path();
-                if path.is_dir() && watched.insert(path.clone()) {
-                    let _ = inotify::add_watch(&fd, &path, flags);
+            let paths = std::iter::once(sessions.clone()).chain(
+                std::fs::read_dir(&sessions)
+                    .into_iter()
+                    .flatten()
+                    .flatten()
+                    .map(|entry| entry.path())
+                    .filter(|path| path.is_dir()),
+            );
+            for path in paths {
+                if !watched.contains(&path) && inotify::add_watch(&fd, &path, flags).is_ok() {
+                    watched.insert(path);
                 }
             }
         };
         add(&mut watched);
+        // No sessions directory yet, as before pi's first run: polling
+        // notices it appear.
+        if !watched.contains(&sessions) {
+            return poll(sessions, wake);
+        }
         let mut buffer = [0u8; 8192];
         loop {
             match rustix::io::read(&fd, &mut buffer) {
@@ -261,15 +297,20 @@ pub fn ask(socket: &Path, what: &str) -> Result<String, String> {
 pub fn harness(history: &History, config: &Config) {
     match crate::runs::read(&config.runs) {
         Ok(runs) => {
-            if let Err(error) = crate::runs::store(history, &runs) {
+            // Replaced in one transaction, so a report never sees none.
+            if let Err(error) = history.within(|| crate::runs::store(history, &runs)) {
                 eprintln!("keeping runs: {error}");
             }
         }
         Err(error) => eprintln!("reading runs: {error}"),
     }
-    let quests = crate::quests::read(&config.quests);
-    if let Err(error) = crate::quests::store(history, &quests) {
-        eprintln!("keeping quests: {error}");
+    match crate::quests::read(&config.quests) {
+        Ok(quests) => {
+            if let Err(error) = history.within(|| crate::quests::store(history, &quests)) {
+                eprintln!("keeping quests: {error}");
+            }
+        }
+        Err(error) => eprintln!("{error}"),
     }
 }
 
@@ -291,29 +332,48 @@ pub fn pass(
     writer: &mut Writer,
     desk: &mut dyn Desk,
     now: f64,
-) -> Result<Picture, String> {
+) -> Result<status::Status, String> {
     let picture = Picture::read(history, config, now)?;
     let raised = crate::detect::all(&picture, history, config)?;
     let findings = crate::findings::settle(history, raised, now)?;
+    let shown = status::status(&picture, &findings);
     writer.write(
         &config.runtime()?,
-        &status::status(&picture, &findings),
+        &shown,
         &status::collection(&picture, &findings, config),
     )?;
-    if config.notices.enable {
-        let changes = notices::plan(history, &findings, config.notices.budget, now)?;
-        notices::apply(history, desk, changes, now)?;
-        if config.notices.daily
-            && let Some(line) = notices::daily(history, &picture, now)?
-            && desk.unlocked()
-        {
-            notices::apply(history, desk, vec![line], now)?;
-        }
+    // Telling is best effort: the shell has its figures whether or not a
+    // notice could be given, as with no notification server yet at login.
+    if config.notices.enable
+        && let Err(error) = tell(history, config, desk, &picture, &findings, now)
+    {
+        eprintln!("giving notices: {error}");
     }
-    if config.weekly_report {
-        weekly(config, &picture, &findings)?;
+    if config.weekly_report
+        && let Err(error) = weekly(config, &picture, &findings)
+    {
+        eprintln!("writing the weekly report: {error}");
     }
-    Ok(picture)
+    Ok(shown)
+}
+
+fn tell(
+    history: &History,
+    config: &Config,
+    desk: &mut dyn Desk,
+    picture: &Picture,
+    findings: &[crate::findings::Finding],
+    now: f64,
+) -> Result<(), String> {
+    let changes = notices::plan(history, findings, config.notices.budget, now)?;
+    notices::apply(history, desk, changes, now)?;
+    if config.notices.daily
+        && let Some(line) = notices::daily(history, picture, now)?
+        && desk.unlocked()
+    {
+        notices::apply(history, desk, vec![line], now)?;
+    }
+    Ok(())
 }
 
 /// Each Monday from six, last week's report, kept with the rest.
@@ -374,7 +434,11 @@ pub fn run(config: Config) -> Result<(), String> {
         });
     }
     harness(&history, &config);
-    catch_up(&history, &config)?;
+    // A log that can't be read is said and passed over, never a reason to
+    // stop: the loop tries again each pass.
+    if let Err(error) = catch_up(&history, &config) {
+        eprintln!("reading pi's logs: {error}");
+    }
     let mut writer = Writer::new();
     let mut desk = Buses::default();
     let mut feeds: Vec<Feed> = config
@@ -385,7 +449,7 @@ pub fn run(config: Config) -> Result<(), String> {
             child: None,
             stdin: None,
             next: Instant::now(),
-            backoff: Duration::from_secs(5),
+            backoff: None,
             started: Instant::now(),
         })
         .collect();
@@ -394,7 +458,12 @@ pub fn run(config: Config) -> Result<(), String> {
     let mut last_harness = Instant::now();
     let mut dirty = true;
     let mut waiting: Vec<Sender<String>> = Vec::new();
-    let mut last_status: Option<(status::Status, Instant)> = None;
+    // The feeds a refresh still waits to hear from, and until when.
+    let mut owed: Vec<String> = Vec::new();
+    let mut owed_until = Instant::now();
+    // The status last written, when its heartbeat was, and when a pass
+    // last worked.
+    let mut last_status: Option<(status::Status, Instant, Instant)> = None;
     loop {
         let now = time::now();
         // Working is pi's logs moving lately.
@@ -424,27 +493,27 @@ pub fn run(config: Config) -> Result<(), String> {
             last_harness = Instant::now();
             dirty = true;
         }
+        let answered = owed.is_empty() || Instant::now() >= owed_until;
         let due = (dirty && last_pass.elapsed() >= BUSY)
             || last_pass.elapsed() >= IDLE
-            || !waiting.is_empty();
+            || (!waiting.is_empty() && answered);
         if due {
             if let Err(error) = catch_up(&history, &config) {
                 eprintln!("reading pi's logs: {error}");
             }
             match pass(&history, &config, &mut writer, &mut desk, now) {
-                Ok(picture) => {
-                    let findings = crate::findings::standing(&history).unwrap_or_default();
-                    last_status = Some((status::status(&picture, &findings), Instant::now()));
-                }
+                Ok(shown) => last_status = Some((shown, Instant::now(), Instant::now())),
                 Err(error) => eprintln!("a pass failed: {error}"),
             }
             last_pass = Instant::now();
             dirty = false;
+            owed.clear();
             for reply in waiting.drain(..) {
                 let _ = reply.send("done".into());
             }
-        } else if let Some((status, at)) = &mut last_status
+        } else if let Some((status, at, worked)) = &mut last_status
             && at.elapsed() >= HEARTBEAT
+            && worked.elapsed() < FAILING
         {
             status.heartbeat = now;
             let text = serde_json::to_string(&*status).unwrap_or_default();
@@ -466,8 +535,14 @@ pub fn run(config: Config) -> Result<(), String> {
             .map(|feed| feed.next.saturating_duration_since(Instant::now()))
             .min()
             .unwrap_or(IDLE);
+        let until_answered = if waiting.is_empty() || owed.is_empty() {
+            IDLE
+        } else {
+            owed_until.saturating_duration_since(Instant::now())
+        };
         let timeout = until_pass
             .min(until_feed)
+            .min(until_answered)
             .min(HEARTBEAT)
             .max(Duration::from_millis(100));
         let first = match woken.recv_timeout(timeout) {
@@ -485,18 +560,21 @@ pub fn run(config: Config) -> Result<(), String> {
         let began = history.begin().is_ok();
         for wake in woke {
             match wake {
-                Wake::Line(name, line) => match feed::parse(&line) {
-                    Ok(record) => {
-                        if let Err(error) = feed::store(&history, &name, &record, stored_at) {
-                            eprintln!("feed {name}: keeping a record: {error}");
+                Wake::Line(name, line) => {
+                    owed.retain(|owing| *owing != name);
+                    match feed::parse(&line) {
+                        Ok(record) => {
+                            if let Err(error) = feed::store(&history, &name, &record, stored_at) {
+                                eprintln!("feed {name}: keeping a record: {error}");
+                            }
+                            lines += 1;
                         }
-                        lines += 1;
+                        Err(error) => eprintln!(
+                            "feed {name}: {error}: {}",
+                            line.chars().take(200).collect::<String>()
+                        ),
                     }
-                    Err(error) => eprintln!(
-                        "feed {name}: {error}: {}",
-                        line.chars().take(200).collect::<String>()
-                    ),
-                },
+                }
                 Wake::Ended(name) => {
                     if let Some(feed) = feeds.iter_mut().find(|feed| feed.config.name == name) {
                         eprintln!("feed {name} stopped; starting it again in a while");
@@ -506,9 +584,15 @@ pub fn run(config: Config) -> Result<(), String> {
                 Wake::Moved => dirty = true,
                 Wake::Asked(what, reply) => match what.as_str() {
                     "refresh" => {
+                        // Answered once each running feed has said
+                        // something back, or a little while has passed.
                         for feed in &mut feeds {
-                            feed.say(&feed::refresh_line());
+                            if feed.child.is_some() {
+                                feed.say(&feed::refresh_line());
+                                owed.push(feed.config.name.clone());
+                            }
                         }
+                        owed_until = Instant::now() + REFRESH;
                         waiting.push(reply);
                     }
                     "ping" => {
@@ -527,5 +611,24 @@ pub fn run(config: Config) -> Result<(), String> {
         if lines > 0 {
             dirty = true;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Five seconds first, as the contract says, doubling while a feed
+    // keeps stopping quickly, and five again after one that ran a while.
+    #[test]
+    fn a_feed_that_keeps_failing_waits_longer_each_time() {
+        let quick = Duration::from_secs(1);
+        let first = backoff(None, quick);
+        assert_eq!(first, Duration::from_secs(5));
+        let second = backoff(Some(first), quick);
+        assert_eq!(second, Duration::from_secs(10));
+        let most = Duration::from_secs(300);
+        assert_eq!(backoff(Some(most), quick), most);
+        assert_eq!(backoff(Some(second), Duration::from_secs(600)), first);
     }
 }

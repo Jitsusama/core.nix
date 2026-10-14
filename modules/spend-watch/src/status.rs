@@ -260,6 +260,9 @@ pub struct Collection {
     /// How things stand, then what's been found.
     pub now: Vec<Line>,
     pub findings: Vec<Line>,
+    /// What the collection shows while the screen is shared: how today
+    /// stands, each cap's share and each finding, with no amount in any.
+    pub quiet: Vec<Line>,
     /// Each report by its id, "<period>/<cut>" or a focused one's name.
     pub reports: std::collections::BTreeMap<String, Shown>,
     pub periods: Vec<Words>,
@@ -373,6 +376,41 @@ pub fn collection(
             now.push(row);
         }
     }
+    let mut quiet = vec![line(
+        "quiet:today",
+        "Today".into(),
+        if picture.standing.word.is_empty() {
+            "amounts hidden while sharing".into()
+        } else {
+            picture.standing.word.clone()
+        },
+    )];
+    for view in &picture.caps {
+        if let Some(allowance) = view.cap.allowance {
+            quiet.push(line(
+                &format!("quiet:cap:{}", view.cap.name),
+                capitalized(&view.cap.label),
+                format!("{} spent", percent(view.spent / allowance)),
+            ));
+        }
+    }
+    for finding in findings {
+        let name = unpriced(&capitalized(&finding.title))
+            .unwrap_or_else(|| "Something wants a look".into());
+        quiet.push(Line {
+            key: format!("quiet:finding:{}", finding.key),
+            copy: name.clone(),
+            name,
+            side: if finding.marked {
+                "expected".into()
+            } else {
+                finding.severity.name().into()
+            },
+            role: "text".into(),
+            run: finding.action.as_ref().map(|action| action.run.clone()),
+            expect: None,
+        });
+    }
     let findings = findings
         .iter()
         .map(|finding| Line {
@@ -457,6 +495,7 @@ pub fn collection(
         v: VERSION,
         now,
         findings,
+        quiet,
         reports,
         periods: Period::ALL
             .iter()
@@ -585,6 +624,20 @@ mod tests {
             assert!(!said.contains('$'), "{said}");
         }
         assert!(!quiet.hint.is_empty());
+        // The collection's quiet lines likewise, while its others say it.
+        let collected = collection(&picture, &found, &config);
+        assert!(
+            collected
+                .findings
+                .iter()
+                .any(|line| line.copy.contains('$'))
+        );
+        assert!(collected.quiet.len() >= 2, "{:?}", collected.quiet);
+        for line in &collected.quiet {
+            for said in [&line.name, &line.side, &line.copy] {
+                assert!(!said.contains('$'), "{said}");
+            }
+        }
     }
 
     // A cap a feed read this very hour, as the meter's premium day is on

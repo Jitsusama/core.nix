@@ -7,8 +7,9 @@
 //! nag. Once a day, at the first pass after four in the morning that finds
 //! the screen unlocked, one quiet line says how yesterday went.
 //!
-//! A notice's summary never holds an amount, since a critical one shows
-//! while the screen is shared; amounts are in its body.
+//! A notice's summary never holds an amount, and neither does a critical
+//! one's body, since a critical notice shows while the screen is shared;
+//! the rest keep their amounts in the body, which sharing holds back.
 
 use crate::findings::{Finding, Severity};
 use crate::history::History;
@@ -110,20 +111,24 @@ pub fn plan(
         }
     }
     let mut left = budget.saturating_sub(spent);
-    // Ever noticed, so a finding that holds on is told of once.
-    let told: Vec<String> = {
+    // When each key was last noticed, so a finding that holds on is told
+    // of once, and one that cleared and came back, starting anew, again.
+    let told: HashMap<String, f64> = {
         let mut statement = history
             .db
-            .prepare("SELECT key FROM notices")
+            .prepare("SELECT key, MAX(at) FROM notices GROUP BY key")
             .map_err(fail)?;
         statement
-            .query_map([], |row| row.get(0))
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
             .map_err(fail)?
-            .collect::<Result<Vec<_>, _>>()
+            .collect::<Result<HashMap<_, _>, _>>()
             .map_err(fail)?
     };
     for finding in findings {
-        if !asking.contains_key(finding.key.as_str()) || told.contains(&finding.key) {
+        let told_now = told
+            .get(&finding.key)
+            .is_some_and(|&at| at >= finding.started);
+        if !asking.contains_key(finding.key.as_str()) || told_now {
             continue;
         }
         if !finding.cap {
@@ -132,11 +137,17 @@ pub fn plan(
             }
             left -= 1;
         }
+        let critical = finding.cap && finding.severity == Severity::Alert;
+        let body = if critical && finding.detail.contains('$') {
+            "Super+U shows where it went.".to_owned()
+        } else {
+            finding.detail.clone()
+        };
         changes.push(Change::Show {
             key: finding.key.clone(),
             summary: summary(finding),
-            body: finding.detail.clone(),
-            critical: finding.cap && finding.severity == Severity::Alert,
+            body,
+            critical,
             cap: finding.cap,
         });
     }
@@ -456,6 +467,48 @@ mod tests {
         assert!(matches!(changes.as_slice(), [Change::Withdraw { .. }]));
         apply(&history, &mut desk, changes, 60.0).unwrap();
         assert!(desk.shown.is_empty());
+    }
+
+    // The same cap over in week one and again in week six is two
+    // episodes, each told of.
+    #[test]
+    fn a_finding_that_comes_back_is_told_again() {
+        let history = History::memory();
+        let mut desk = Fake { shown: Vec::new() };
+        let mut over = finding("cap:over", Severity::Alert, true);
+        apply(
+            &history,
+            &mut desk,
+            plan(&history, &[over.clone()], 3, 0.0).unwrap(),
+            0.0,
+        )
+        .unwrap();
+        apply(
+            &history,
+            &mut desk,
+            plan(&history, &[], 3, DAY).unwrap(),
+            DAY,
+        )
+        .unwrap();
+        assert!(desk.shown.is_empty());
+        over.started = 35.0 * DAY;
+        let changes = plan(&history, &[over], 3, 35.0 * DAY).unwrap();
+        assert!(
+            matches!(changes.as_slice(), [Change::Show { .. }]),
+            "{changes:?}"
+        );
+    }
+
+    #[test]
+    fn a_critical_body_holds_no_amount() {
+        let history = History::memory();
+        let mut over = finding("cap:over", Severity::Alert, true);
+        over.detail = "$4,100 of $4,000 in the last 168 hours.".into();
+        let changes = plan(&history, &[over], 3, 0.0).unwrap();
+        let [Change::Show { body, critical, .. }] = changes.as_slice() else {
+            panic!("{changes:?}")
+        };
+        assert!(*critical && !body.contains('$'), "{body}");
     }
 
     #[test]

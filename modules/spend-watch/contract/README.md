@@ -4,7 +4,13 @@ A feed brings in what a provider bills, for a machine whose provider can say.
 spend-watch starts each feed named in `jitsusama.spend-watch.feeds`, reads
 JSON lines from its stdout, writes pace lines on its stdin, and restarts it
 when it stops: after 5 seconds, doubling to 5 minutes while it keeps stopping
-within a minute. What the feed writes on stderr goes to the journal.
+within a minute. What the feed writes on stderr goes to the journal. A feed
+that doesn't read its stdin loses the lines it couldn't take rather than
+stopping the daemon.
+
+Nothing a feed is started with may hold a secret: its command and
+environment are in the Nix store, which anyone on the machine reads. A feed
+fetches its credentials itself.
 
 Every line either way is one JSON object with `"v": 1`. A line of another
 version, or one that doesn't read, is put in the journal and skipped, so a
@@ -20,6 +26,9 @@ reads a feed's output and says which lines don't hold.
   suspended machine's feed is frozen with it, so nothing needs saying. A
   feed reads every pace it doesn't know as `idle`.
 - `{"v": 1, "refresh": true}`: the person asked for the latest figures now.
+  `spend-watch refresh` answers once every running feed has written a line
+  since, or after ten seconds, so a feed should read at once and say what it
+  found, a `read` record at least.
 
 ## What a Feed Writes
 
@@ -41,6 +50,7 @@ hour again as often as it likes.
 - `session`, `agent`, `token`: optional. A session lets the hour be split
   by what it served; a token never seen before is a finding, so a feed
   whose provider mints credentials as a matter of course leaves it out.
+  A token is an opaque name for the credential, never the secret itself.
 - A key is the source, hour, tool, model, vendor, session, agent and
   token: a feed says each hour's figure for a key once, summed, since a
   second record for it replaces the first.
@@ -56,7 +66,7 @@ source has settled are its exact bill; hours it hasn't, it may still change.
 ### cap
 
 A limit and where spend stands against it, as of `at`: `name`, `label`,
-`allowance` in dollars (null for none), `windowHours`, `spent`, `warn` as a
+`allowance` in dollars, more than nothing (null for none), `windowHours`, `spent`, `warn` as a
 fraction of the allowance, and `state`: `ok`, `notified` or `refused`.
 `fallback` is the allowance that applies when a raised one ends, on `ends`;
 `endsKnown` says whether the feed could know the end at all. Every change in
@@ -82,4 +92,7 @@ watching is seen beside what it watches.
 ### said
 
 Something the provider said to the person, with its `severity`, shown
-among the findings.
+among the findings for a quarter of an hour after it's said: `critical`,
+`error`, `alert` and `warning` as a warning, anything else as a note.
+Its `text` is plain words; markup is drawn as written, angle brackets
+left out.

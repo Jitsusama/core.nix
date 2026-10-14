@@ -255,6 +255,12 @@ fn check(record: &Record) -> Result<(), String> {
             if cap.window_hours == 0 || !(0.0..=1.0).contains(&cap.warn) {
                 return Err("a cap's window is hours and its warning a fraction".into());
             }
+            // Each figure is a share of it; no allowance is null.
+            if cap.allowance.is_some_and(|allowance| allowance <= 0.0)
+                || cap.fallback.is_some_and(|fallback| fallback <= 0.0)
+            {
+                return Err("a cap's allowance and fallback are more than nothing".into());
+            }
         }
         Record::Action(action) => {
             if action.run.is_empty() {
@@ -458,6 +464,20 @@ mod tests {
             r#""tool":"all","model":"m","dollars":1}"#
         );
         assert!(parse(line).unwrap_err().contains("doesn't start an hour"));
+    }
+
+    #[test]
+    fn a_cap_of_nothing_is_refused() {
+        let line = serde_json::json!({
+            "v": 1, "kind": "cap", "name": "weekly", "label": "weekly cap",
+            "allowance": 0, "windowHours": 168, "spent": 1, "warn": 0.9,
+            "state": "refused", "at": "2026-10-14T05:00:00Z",
+        });
+        assert!(
+            parse(&line.to_string())
+                .unwrap_err()
+                .contains("more than nothing")
+        );
     }
 
     #[test]
