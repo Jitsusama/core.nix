@@ -11,6 +11,7 @@ use zlink::introspect::{CustomType, Type};
 
 use crate::air::Heard;
 use crate::radio::{self, Band, Load, Protection};
+use crate::state;
 
 /// A network in detail, as the shell is sent it.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Type)]
@@ -35,6 +36,8 @@ pub struct Point {
     pub bssid: String,
     /// In dBm.
     pub signal: i16,
+    /// The signal in bars, one to four, as a network's is shown.
+    pub bars: u8,
     pub band: Band,
     pub channel: u16,
     /// In MHz.
@@ -98,8 +101,9 @@ pub struct Best {
     pub bssid: String,
     /// About how fast a card would get on with it, in Mb/s.
     pub estimate: u32,
-    /// Why, in a few words.
-    pub reason: String,
+    /// Why, a few words each, the most telling first, against the one a
+    /// card is on; none when it's the only one heard.
+    pub reasons: Vec<String>,
 }
 
 /// What a card's driver last read of its link, as wpa_supplicant's
@@ -217,7 +221,7 @@ pub fn detail<'a>(
     let best = fastest(points.iter()).map(|best| Best {
         bssid: best.bssid.clone(),
         estimate: best.estimate,
-        reason: reason(best, &points),
+        reasons: reasons(best, &points),
     });
     Detail {
         name: name.into(),
@@ -233,6 +237,7 @@ fn point(heard: &Heard, joined: bool) -> Point {
     Point {
         bssid: heard.bssid.clone(),
         signal: heard.signal,
+        bars: state::bars(heard.signal),
         band: radio::band(at),
         channel: radio::channel(at),
         frequency: at,
@@ -255,14 +260,14 @@ fn fastest<'a>(points: impl Iterator<Item = &'a Point>) -> Option<&'a Point> {
     })
 }
 
-/// Why the best is best: against the one a card is on, or the next fastest
-/// when none is.
-fn reason(best: &Point, points: &[Point]) -> String {
+/// Why the best is best, a few words each, the most telling first: against
+/// the one a card is on, or the next fastest when none is.
+fn reasons(best: &Point, points: &[Point]) -> Vec<String> {
     if points.len() == 1 {
-        return "the only one heard".into();
+        return Vec::new();
     }
     if best.joined {
-        return format!("the one joined, the fastest of {}", points.len());
+        return vec![format!("the fastest of {}", points.len())];
     }
     let others = points.iter().filter(|point| point.bssid != best.bssid);
     let Some(other) = points
@@ -270,54 +275,44 @@ fn reason(best: &Point, points: &[Point]) -> String {
         .find(|point| point.joined)
         .or_else(|| fastest(others))
     else {
-        return String::new();
+        return Vec::new();
     };
     let mut why = Vec::new();
     if best.band != other.band {
         why.push(format!(
-            "on {} GHz rather than {}",
+            "on {} GHz, not {}",
             ghz(best.band),
             ghz(other.band)
         ));
     }
     if best.width > other.width {
-        why.push(format!(
-            "{} MHz wide rather than {}",
-            best.width, other.width
-        ));
+        why.push(format!("{} MHz wide, not {}", best.width, other.width));
     }
     if best.generation > other.generation {
         let was = other
             .generation
             .map_or("older".into(), |was| was.to_string());
         let generation = best.generation.unwrap_or_default();
-        why.push(format!("Wi-Fi {generation} rather than {was}"));
+        why.push(format!("Wi-Fi {generation}, not {was}"));
     }
     let streams = |point: &Point| point.streams.min(2);
     if streams(best) > streams(other) {
-        why.push(format!(
-            "{} streams rather than {}",
-            streams(best),
-            streams(other)
-        ));
+        why.push(format!("{} streams, not {}", streams(best), streams(other)));
     }
     // Signal wanders a few dB from one look to the next.
     let stronger = best.signal - other.signal;
     if stronger >= 3 {
-        why.push(format!("heard {stronger} dB stronger"));
+        why.push(format!("{stronger} dB stronger"));
     }
     if let (Some(best), Some(other)) = (best.load, other.load)
         && other.busy >= best.busy + 10
     {
-        why.push(format!(
-            "busy {}% of the time rather than {}%",
-            best.busy, other.busy
-        ));
+        why.push(format!("{}% busy, not {}%", best.busy, other.busy));
     }
     if why.is_empty() {
-        return "a little faster".into();
+        why.push("a little faster".into());
     }
-    why.join(", ")
+    why
 }
 
 fn ghz(band: Band) -> &'static str {
@@ -422,6 +417,16 @@ mod tests {
     }
 
     #[test]
+    fn each_access_point_has_bars_for_its_signal_as_a_network_does() {
+        let hotel = hotel();
+
+        let detail = detail("Hilton", of(&hotel), [], []);
+
+        let bars: Vec<_> = detail.points.iter().map(|point| point.bars).collect();
+        assert_eq!(bars, [4, 4, 3]);
+    }
+
+    #[test]
     fn a_network_is_detailed_by_its_own_access_points_strongest_first() {
         let hotel = hotel();
 
@@ -495,8 +500,8 @@ mod tests {
         assert_eq!(best.estimate, detail.points[0].estimate);
         // The next is the hall's on channel 6, the other's channel too busy.
         assert_eq!(
-            best.reason,
-            "on 5 GHz rather than 2.4, 40 MHz wide rather than 20, heard 9 dB stronger"
+            best.reasons,
+            ["on 5 GHz, not 2.4", "40 MHz wide, not 20", "9 dB stronger"]
         );
     }
 
@@ -508,10 +513,7 @@ mod tests {
         let detail = detail("Hilton", of(&hotel), [], [("wlan0", &on)]);
 
         assert!(detail.points[0].joined);
-        assert_eq!(
-            detail.best.unwrap().reason,
-            "the one joined, the fastest of 3"
-        );
+        assert_eq!(detail.best.unwrap().reasons, ["the fastest of 3"]);
     }
 
     #[test]
@@ -523,10 +525,7 @@ mod tests {
 
         assert!(detail.points[0].joined);
         assert_eq!(detail.joined, []);
-        assert_eq!(
-            detail.best.unwrap().reason,
-            "the one joined, the fastest of 3"
-        );
+        assert_eq!(detail.best.unwrap().reasons, ["the fastest of 3"]);
     }
 
     #[test]
@@ -537,9 +536,13 @@ mod tests {
         let detail = detail("Hilton", of(&hotel), [], [("wlan0", &on)]);
 
         assert_eq!(
-            detail.best.unwrap().reason,
-            "on 5 GHz rather than 2.4, 40 MHz wide rather than 20, heard 3 dB stronger, \
-             busy 13% of the time rather than 29%"
+            detail.best.unwrap().reasons,
+            [
+                "on 5 GHz, not 2.4",
+                "40 MHz wide, not 20",
+                "3 dB stronger",
+                "13% busy, not 29%"
+            ]
         );
     }
 
@@ -549,7 +552,7 @@ mod tests {
 
         let detail = detail("Next Door", of(&hotel), [], []);
 
-        assert_eq!(detail.best.unwrap().reason, "the only one heard");
+        assert_eq!(detail.best.unwrap().reasons, Vec::<String>::new());
     }
 
     #[test]

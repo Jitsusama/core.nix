@@ -430,7 +430,7 @@ impl State {
 }
 
 /// The bars a signal is drawn with: one more for every 10 dB above -80.
-fn bars(signal: i16) -> u8 {
+pub fn bars(signal: i16) -> u8 {
     match signal {
         -60.. => 4,
         -70.. => 3,

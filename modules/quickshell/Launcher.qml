@@ -9,9 +9,6 @@
 // the order jitsusama.quickshell.launcher.providers lists them (rendered
 // into Providers.qml), so a kind of thing is added or removed in one line.
 //
-// A row can say more of itself while it's selected, in lines of detail
-// between the rows and the footer, as a Wi-Fi network does its access points.
-//
 // The right arrow at the end of the line steps into the selected row: what
 // can be done to it, its verbs, searched the same way, and for a verb that
 // needs one, its target. What's held shows as chips in the field; the left
@@ -343,11 +340,32 @@ Scope {
     }
 
     // A collection whose things changed while it's open is searched again,
-    // the selection kept on the row it was on.
+    // the selection kept on the row it was on, and so is anything stepped
+    // into below it, each step's rows asked for again, since they can say
+    // how a thing stands, as a Wi-Fi network's say its access points.
     function refreshed(source) {
-        if (!open || asking || held.length === 0 || held[held.length - 1].row.from !== source)
+        if (!open || asking)
+            return;
+        const from = held.findIndex(step => step.row.from === source);
+        if (from < 0)
             return;
         const key = selected ? selected.key : null;
+        const steps = held.slice(0, from + 1);
+        let rows = source.everything();
+        for (const step of held.slice(from + 1)) {
+            const thing = rows.find(row => row.key === step.row.key);
+            // Asked as enter asks: a collection's things for their verbs,
+            // anything else for its targets.
+            const into = !thing ? null
+                : steps[steps.length - 1].row.from ? (thing.verbs ? thing.verbs() : null)
+                : thing.targets ? thing.targets() : null;
+            if (!into)
+                return;
+            steps.push(Object.assign({}, step, { row: thing, rows: into }));
+            rows = into;
+        }
+        if (held.length > from + 1)
+            held = steps;
         search(typed);
         const at = matches.findIndex(row => row.key === key);
         if (at > 0)
@@ -618,9 +636,9 @@ Scope {
                 name: row.name,
                 verb: row.verb ?? "",
                 chord: (row.chord ?? []).map(key => key.text).join(" "),
-                settled: row !== root.headline || !root.answer.asking,
-                detail: row.detail ? row.detail() : []
-            }
+                settled: row !== root.headline || !root.answer.asking
+            },
+            footer: note.text
         });
     }
 
@@ -818,40 +836,6 @@ Scope {
                         }
                     }
 
-                    // The selected row's detail: its first line says the
-                    // most, the rest line up beneath it in the mono face.
-                    Column {
-                        id: detail
-
-                        readonly property var lines: root.selected && root.selected.detail
-                            ? root.selected.detail() : []
-
-                        width: parent.width
-                        visible: lines.length > 0
-                        topPadding: Theme.space.m
-                        bottomPadding: Theme.space.s
-                        spacing: Theme.space.xs
-
-                        Repeater {
-                            model: detail.lines
-
-                            Text {
-                                required property string modelData
-                                required property int index
-
-                                x: Theme.space.l
-                                width: detail.width - 2 * Theme.space.l
-                                elide: Text.ElideRight
-                                text: modelData
-                                color: index === 0 ? Theme.text : Theme.muted
-                                font.family: Theme.mono.family
-                                // Small, to fit an access point's every
-                                // column on one line.
-                                font.pointSize: Theme.mono.small
-                            }
-                        }
-                    }
-
                     // What Return does here, Shift+Return where it can, and
                     // where the arrows step, with why the row is first when
                     // learning put it there, where a held thing is, or the
@@ -867,6 +851,7 @@ Scope {
                         visible: choice !== null
 
                         Text {
+                            id: note
                             x: Theme.space.l
                             anchors.verticalCenter: parent.verticalCenter
                             width: keys.x - x - Theme.space.xl
