@@ -608,6 +608,52 @@ in
         touch $out
       '';
 
+  # device-check names a device whose power change failed and one the machine
+  # expects that's gone, each once, as a warning and a notification, and
+  # again when it's fixed, and exits 0 whatever it finds. Files stand in for
+  # sysfs, and a script for notify-send.
+  devices-that-stop-working-are-named =
+    pkgs.runCommandLocal "devices-that-stop-working-are-named"
+      { nativeBuildInputs = [ (pkgs.callPackage ./modules/device-check/package.nix { }) ]; }
+      ''
+        root=$PWD/root
+        fail() { echo "$1"; cat out; exit 1; }
+        device() {
+          mkdir -p "$root/sys/devices/$1/power"
+          echo "$2" > "$root/sys/devices/$1/power/runtime_status"
+        }
+        device pci/0000:00:05.0 error
+        mkdir -p "$root/sys/bus/pci/drivers/intel-ipu7"
+        ln -s ../../../bus/pci/drivers/intel-ipu7 "$root/sys/devices/pci/0000:00:05.0/driver"
+        device "pci/0000:00:1f.3/sof_sdw/Jack Out" suspended
+        device pci/0000:00:14.0 active
+        mkdir -p "$root/sys/class/ieee80211/phy1"
+        printf 'Bluetooth=/sys/class/bluetooth/hci0\nWi-Fi=/sys/class/ieee80211/phy*\n' > expected
+        printf '#!/bin/sh\necho "$*" >> %s/notified\n' "$PWD" > notify
+        chmod +x notify
+        export DEVICE_CHECK_ROOT=$root DEVICE_CHECK_EXPECTED=$PWD/expected
+        export DEVICE_CHECK_STATE=$PWD/state DEVICE_CHECK_NOTIFY=$PWD/notify
+
+        device-check 2> out || fail "it failed with devices to name"
+        grep -qxF "<4>0000:00:05.0 (intel-ipu7) failed a power change and won't wake until the next boot" out ||
+          fail "it didn't warn of the failed device"
+        grep -qxF "<4>Bluetooth is missing" out || fail "it didn't warn of the missing device"
+        [ "$(wc -l < out)" = 2 ] || fail "it named more than what's wrong"
+        [ "$(grep -c '^-u critical -a Devices ' notified)" = 2 ] || fail "it didn't notify of both"
+
+        : > notified
+        device-check 2> out || fail "a second look failed"
+        [ ! -s out ] && [ ! -s notified ] || fail "it named the same findings again"
+
+        echo active > "$root/sys/devices/pci/0000:00:05.0/power/runtime_status"
+        mkdir -p "$root/sys/class/bluetooth/hci0"
+        device-check 2> out || fail "a look after the fix failed"
+        grep -qxF "<5>0000:00:05.0 (intel-ipu7) wakes again" out || fail "it didn't say the device wakes"
+        grep -qxF "<5>Bluetooth is back" out || fail "it didn't say the device is back"
+        [ "$(grep -c '^-u normal -a Devices ' notified)" = 2 ] || fail "it didn't notify of the fixes"
+        touch $out
+      '';
+
   # Do not disturb holds notices while the screen is shared and lets them go
   # after, as tests/quiet.qml drives it through Quickshell itself, with
   # niri's casts, the notices and the shell's options stood in for.

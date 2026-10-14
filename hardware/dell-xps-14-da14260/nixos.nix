@@ -53,6 +53,7 @@ let
 in
 {
   imports = [
+    ../../modules/device-check/nixos.nix
     ../../modules/firmware-settings/nixos.nix
     ../../modules/gpu/nixos.nix
     ../../modules/kernel/nixos.nix
@@ -63,6 +64,17 @@ in
 
   nixpkgs.hostPlatform = "x86_64-linux";
   jitsusama.kernel.cpu = "pantherlake";
+
+  # The devices this laptop always has. The USB-C controller, the speakers'
+  # amplifiers and the camera's ISP have each failed to come up here before.
+  # Wi-Fi's number moves if its driver starts again.
+  jitsusama.devices.expected = {
+    "The USB-C ports" = "/sys/class/typec/port0";
+    "Bluetooth" = "/sys/class/bluetooth/hci0";
+    "Wi-Fi" = "/sys/class/ieee80211/phy*";
+    "The speakers" = "/proc/asound/sofsoundwire";
+    "The camera's ISP" = "/sys/bus/auxiliary/devices/intel_ipu7.psys.*";
+  };
 
   # The keyboard is wired to the embedded controller, which presents it as a
   # PS/2 keyboard.
