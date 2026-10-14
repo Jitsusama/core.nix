@@ -272,7 +272,27 @@ pub fn caps(picture: &Picture) -> Vec<Finding> {
             }
         }
     }
+    // A fall is past once a later change takes the cap back to where it
+    // was, so it stops asking for a look; the return is told instead.
+    // No limit is at least any limit.
+    let at_least = |one: Option<f64>, other: Option<f64>| match (one, other) {
+        (None, _) => true,
+        (Some(_), None) => false,
+        (Some(one), Some(other)) => one >= other,
+    };
+    let back = |event: &crate::caps::Event| {
+        picture.events.iter().any(|later| {
+            later.feed == event.feed
+                && later.name == event.name
+                && later.at > event.at
+                && later.kind == "raised"
+                && at_least(later.after, event.before)
+        })
+    };
     for event in picture.events.iter().filter(|event| now - event.at < DAY) {
+        if matches!(event.kind.as_str(), "lowered" | "lapsed") && back(event) {
+            continue;
+        }
         let (severity, title) = match event.kind.as_str() {
             "lapsed" => (
                 Severity::Alert,
@@ -1184,6 +1204,52 @@ mod tests {
 
     fn burns(history: &History) -> Vec<Finding> {
         burns_at(history, NOW)
+    }
+
+    // The premium day as a feed reads it: its allowance at a moment.
+    fn premium(history: &History, at: f64, allowance: f64) {
+        let line = serde_json::json!({
+            "v": 1, "kind": "cap", "name": "premium", "label": "premium day",
+            "allowance": allowance, "windowHours": 24, "spent": 0, "warn": 0.8,
+            "state": "ok", "at": crate::time::rfc3339(at),
+        });
+        let record = crate::feed::parse(&line.to_string()).unwrap();
+        crate::feed::store(history, "proxy", &record, at).unwrap();
+    }
+
+    fn cap_titles(history: &History, now: f64) -> Vec<String> {
+        let picture = Picture::read(history, &config(), now).unwrap();
+        caps(&picture)
+            .into_iter()
+            .map(|found| found.title)
+            .collect()
+    }
+
+    // A fall is told once it has stood, and only while the cap stays down:
+    // once it's back, the fall is past and its return is the news.
+    #[test]
+    fn a_fall_is_told_while_the_cap_stays_down() {
+        let history = History::memory();
+        let fell = NOW - 3.0 * HOUR;
+        premium(&history, fell - 60.0, 1000.0);
+        premium(&history, fell, 300.0);
+        assert!(cap_titles(&history, fell + 60.0).is_empty());
+        assert_eq!(cap_titles(&history, fell + 900.0), ["the cap fell to $300"]);
+        premium(&history, NOW - HOUR, 1000.0);
+        assert_eq!(cap_titles(&history, NOW), ["the cap rose to $1,000"]);
+    }
+
+    // The meter's premium day said $300 for one reading and $1,000 again
+    // thirty seconds later; that's nothing to tell.
+    #[test]
+    fn a_cap_that_flickers_is_not_told() {
+        let history = History::memory();
+        let at = NOW - HOUR;
+        premium(&history, at - 240.0, 1000.0);
+        premium(&history, at, 300.0);
+        premium(&history, at + 30.0, 1000.0);
+        assert!(cap_titles(&history, at + 15.0).is_empty());
+        assert!(cap_titles(&history, NOW).is_empty());
     }
 
     #[test]

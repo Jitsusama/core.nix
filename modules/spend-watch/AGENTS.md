@@ -31,7 +31,12 @@ feed speaks.
 - **Caps.** A cap is a clock: simulated paths of the forecast give the
   chance of reaching it before the window rolls, and while over, when it
   comes back. Every change in allowance is history, and a cap lowered,
-  lapsed, or a raise about to end is an alert.
+  lapsed, or a raise about to end is an alert. A change is told once it
+  has stood ten minutes, or at once when the cap warns or refuses at it,
+  and a change back within that time takes both away, since a
+  provider's figure can flicker for one reading. A fall stops being an
+  alert once the cap is back, and its finding clears at once, as a
+  source's health does. `src/caps.rs` `held`.
 - **Detectors.** Each threshold is set for a stated false-alarm rate. A
   burn is a minute CUSUM against twice the usual rate for the hour,
   alarming past the quantile eight weeks of daily maxima crossed once a

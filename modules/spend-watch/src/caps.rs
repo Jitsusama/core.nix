@@ -253,9 +253,144 @@ pub fn clock(
     }
 }
 
+/// How long a change of allowance has to stand before it's told. A
+/// provider's figure can flicker for one reading and come back on the
+/// next; ten minutes is past a feed's slowest re-read of a moving figure,
+/// five minutes while pi is idle, so a flicker has come back by then.
+pub const HELD: f64 = 10.0 * 60.0;
+
+/// The changes worth telling, kept in order: a change of allowance only
+/// once it has stood for `HELD`, unless the cap warns or refuses at it,
+/// since then it's why pi is being warned or turned away; and neither a
+/// change nor any after it on the same cap when a later one took the cap
+/// back to where it was within that time. Changes of state pass as they
+/// are.
+pub fn held(events: Vec<Event>, now: f64) -> Vec<Event> {
+    let changes = |event: &Event| matches!(event.kind.as_str(), "lowered" | "raised" | "lapsed");
+    let pressing = |event: &Event| {
+        events.iter().any(|other| {
+            other.feed == event.feed
+                && other.name == event.name
+                && other.at == event.at
+                && matches!(other.kind.as_str(), "notified" | "refused")
+        })
+    };
+    let told: Vec<bool> = events
+        .iter()
+        .map(|event| !changes(event) || now - event.at >= HELD || pressing(event))
+        .collect();
+    let mut flickered = vec![false; events.len()];
+    for (first, event) in events.iter().enumerate() {
+        if !changes(event) || flickered[first] {
+            continue;
+        }
+        let back = events
+            .iter()
+            .enumerate()
+            .skip(first + 1)
+            .find(|(_, later)| {
+                later.feed == event.feed
+                    && later.name == event.name
+                    && changes(later)
+                    && later.at - event.at < HELD
+                    && later.after == event.before
+            });
+        if let Some((last, _)) = back {
+            for (index, later) in events.iter().enumerate().take(last + 1).skip(first) {
+                if later.feed == event.feed && later.name == event.name && changes(later) {
+                    flickered[index] = true;
+                }
+            }
+        }
+    }
+    events
+        .into_iter()
+        .zip(told.into_iter().zip(flickered))
+        .filter(|(_, (told, flickered))| *told && !flickered)
+        .map(|(event, _)| event)
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn change(name: &str, at: f64, kind: &str, before: f64, after: f64) -> Event {
+        Event {
+            feed: "proxy".into(),
+            name: name.into(),
+            at,
+            kind: kind.into(),
+            before: Some(before),
+            after: Some(after),
+            spent: 0.0,
+        }
+    }
+
+    fn kinds(events: &[Event]) -> Vec<(&str, &str)> {
+        events
+            .iter()
+            .map(|event| (event.name.as_str(), event.kind.as_str()))
+            .collect()
+    }
+
+    // The proxy's meter said a premium day of $300 for one reading and
+    // $1,000 again thirty seconds later, twice in an afternoon.
+    #[test]
+    fn a_cap_that_flickers_back_is_not_told() {
+        let at = 1_792_012_983.0;
+        let events = vec![
+            change("premium", at, "lowered", 1000.0, 300.0),
+            change("premium", at + 30.0, "raised", 300.0, 1000.0),
+            change("weekly", at + 60.0, "raised", 4000.0, 15000.0),
+        ];
+        assert_eq!(kinds(&held(events, at + HOUR)), [("weekly", "raised")]);
+        // Through a step on the way back, too.
+        let events = vec![
+            change("premium", at, "lowered", 1000.0, 300.0),
+            change("premium", at + 30.0, "raised", 300.0, 500.0),
+            change("premium", at + 60.0, "raised", 500.0, 1000.0),
+        ];
+        assert!(held(events, at + HOUR).is_empty());
+    }
+
+    #[test]
+    fn a_change_is_told_once_it_has_stood() {
+        let at = 1_792_012_983.0;
+        let fell = || vec![change("premium", at, "lowered", 1000.0, 300.0)];
+        assert!(held(fell(), at + 60.0).is_empty());
+        assert_eq!(kinds(&held(fell(), at + HELD)), [("premium", "lowered")]);
+        // A state is said as it changes, so it isn't held back.
+        let refusing = Event {
+            kind: "refused".into(),
+            ..change("weekly", at, "refused", 15000.0, 15000.0)
+        };
+        assert_eq!(
+            kinds(&held(vec![refusing.clone()], at)),
+            [("weekly", "refused")]
+        );
+        // A change the cap refuses at, as an override lapsing does, is
+        // told as it happens: it's why pi is being turned away.
+        let lapsed = change("weekly", at, "lapsed", 15000.0, 15000.0);
+        assert_eq!(
+            kinds(&held(vec![lapsed, refusing], at + 60.0)),
+            [("weekly", "lapsed"), ("weekly", "refused")]
+        );
+    }
+
+    // A fall that stood for hours happened, and so did its return.
+    #[test]
+    fn a_change_undone_after_it_stood_is_kept() {
+        let at = 1_792_000_000.0;
+        let events = vec![
+            change("premium", at, "lowered", 1000.0, 300.0),
+            change("premium", at + 3.0 * HOUR, "raised", 300.0, 1000.0),
+        ];
+        assert_eq!(
+            kinds(&held(events, at + 4.0 * HOUR)),
+            [("premium", "lowered"), ("premium", "raised")]
+        );
+    }
 
     fn even() -> Shape {
         Shape {

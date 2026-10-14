@@ -179,7 +179,7 @@ impl Picture {
         );
         let standing = standing(&zone, &hours, now, daily.last().copied().unwrap_or(0.0));
         let caps = cap_views(history, config, &zone, &hours, &paths, &shape, now)?;
-        let events = caps::events(history, now - 30.0 * DAY)?;
+        let events = caps::held(caps::events(history, now - 30.0 * DAY)?, now);
         let refusals = {
             let mut statement = history
                 .db
