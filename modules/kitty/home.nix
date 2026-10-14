@@ -105,6 +105,11 @@ in
 
     action_alias hints ${hints}
 
+    # A link under the pointer underlined in the theme's strongest text, as
+    # glow underlines one, rather than in kitty's own blue curl.
+    url_color ${roles.strong}
+    url_style straight
+
     color0 ${terminal.black}
     color1 ${terminal.red}
     color2 ${terminal.green}
