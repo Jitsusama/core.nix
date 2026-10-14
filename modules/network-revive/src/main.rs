@@ -16,8 +16,9 @@
 //!
 //! It says in the journal what it does: each unit it starts, each it
 //! reloads, and each it leaves down because the unit's check still fails.
-//! What it found each time it looked it says at debug level, which its unit
-//! keeps out of the journal.
+//! What it found each time it looked it says at debug level, and only when
+//! its configuration asks: journald drops a unit's debug lines only for the
+//! system's manager, which alone tells it the unit's LogLevelMax.
 
 mod config;
 mod network;
@@ -88,11 +89,16 @@ async fn follow(config: &Config) -> Result<(), Box<dyn Error>> {
                 let now = network::reach(&system).await;
                 // Nothing is known while networkd is away, so nothing has
                 // changed until it's back and says otherwise.
+                let debug = |line: &str| {
+                    if config.debug {
+                        println!("<7>{line}");
+                    }
+                };
                 match now {
-                    None => println!("<7>networkd isn't answering"),
-                    Some(_) if now == reach => println!("<7>the machine reaches what it did"),
+                    None => debug("networkd isn't answering"),
+                    Some(_) if now == reach => debug("the machine reaches what it did"),
                     Some(ref found) => {
-                        println!("<7>the machine reaches {found}");
+                        debug(&format!("the machine reaches {found}"));
                         reach = now;
                         looking = Box::pin(look(&units, &config.units, Why::Changed));
                     }

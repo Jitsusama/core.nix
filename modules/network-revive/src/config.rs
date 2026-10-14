@@ -9,6 +9,10 @@ use serde::Deserialize;
 #[serde(deny_unknown_fields)]
 pub struct Config {
     pub units: Vec<Unit>,
+    /// Whether it says what it found each time it looked, as a test needs
+    /// to know when it has.
+    #[serde(default)]
+    pub debug: bool,
 }
 
 /// A unit the network can let down.
@@ -54,7 +58,23 @@ mod tests {
             check: Some(vec!["-t".into()]),
             reload: true,
         };
-        assert_eq!(config, Config { units: vec![unit] });
+        assert_eq!(
+            config,
+            Config {
+                units: vec![unit],
+                debug: false,
+            }
+        );
+    }
+
+    #[test]
+    fn it_can_be_asked_to_say_what_it_finds() {
+        let text = r#"{"units": [], "debug": true}"#;
+
+        assert_eq!(
+            Config::parsed(text).ok().map(|config| config.debug),
+            Some(true)
+        );
     }
 
     #[test]

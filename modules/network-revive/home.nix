@@ -26,10 +26,22 @@ let
         inherit name;
         inherit (unit) check reload;
       }) cfg.units;
+      inherit (cfg) debug;
     }
   );
 in
 {
+  options.jitsusama.network-revive.debug = lib.mkOption {
+    description = ''
+      Whether it says in the journal, at debug level, what the machine
+      reaches each time it looks. A user unit's LogLevelMax doesn't keep
+      those lines out, since only the system's manager tells journald it, so
+      the daemon leaves them out itself unless this is on.
+    '';
+    type = lib.types.bool;
+    default = false;
+  };
+
   options.jitsusama.network-revive.units = lib.mkOption {
     description = "The account's services the network can let down, by their unit's name.";
     default = { };
@@ -74,9 +86,6 @@ in
         ExecStart = "${lib.getExe package} ${configFile}";
         # Whatever the account runs comes first; this only waits.
         Slice = "background.slice";
-        # What it finds each time the network changes is said at debug
-        # level, for a drop-in to let through when it's needed.
-        LogLevelMax = "info";
         Restart = "on-failure";
         RestartSec = "5s";
       };

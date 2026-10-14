@@ -88,7 +88,7 @@ pkgs.testers.runNixOSTest {
     home-manager.users.joel = {
       home.stateVersion = "26.05";
       # What it finds each time it looks, so the test can tell when it has.
-      systemd.user.services.network-revive.Service.LogLevelMax = lib.mkForce "debug";
+      jitsusama.network-revive.debug = true;
       jitsusama.network-revive.units = {
         "needs-network.service".check = [ "--check" ];
         "waits-long.service".check = [ "--check" ];
