@@ -138,6 +138,7 @@
         lsd = ./modules/lsd/home.nix;
         mpv = ./modules/mpv/home.nix;
         neovim = moduleFrom ./modules/neovim/home.nix { inherit neovim-pi; };
+        network-revive = ./modules/network-revive/home.nix;
         niri = ./modules/niri/home.nix;
         nixfmt = ./modules/nixfmt/home.nix;
         opencode = ./modules/opencode/home.nix;
@@ -207,6 +208,7 @@
         libvirt = ./modules/libvirt/nixos.nix;
         memory = ./modules/memory/nixos.nix;
         mpv = ./modules/mpv/nixos.nix;
+        network-revive = ./modules/network-revive/nixos.nix;
         nftables = ./modules/nftables/nixos.nix;
         niri = ./modules/niri/nixos.nix;
         nix-daemon = ./modules/nix-daemon/nixos.nix;

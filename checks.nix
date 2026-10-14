@@ -170,6 +170,9 @@ let
     # once it has.
     vm-wifi-joins = import ./tests/wifi.nix { inherit self pkgs; };
     vm-disk-guard-keeps-the-disk = import ./tests/disk-guard.nix { inherit self pkgs; };
+    # What an account's services make of the network coming late, changing
+    # and networkd restarting shows only with both managers running.
+    vm-network-revives-units = import ./tests/network-revive.nix { inherit self pkgs; };
     # The greeter is all that stands between a logout and the desktop.
     vm-greeter-signs-in = import ./tests/greeter.nix { inherit self pkgs; };
   };
@@ -1877,6 +1880,21 @@ in
       (pkgs.callPackage ./modules/disk-guard/package.nix { }).overrideAttrs
         (old: {
           pname = "disk-guard-passes-clippy";
+          nativeBuildInputs = old.nativeBuildInputs ++ [ pkgs.clippy ];
+          buildPhase = ''
+            cargo clippy --all-targets --offline -- -D warnings
+          '';
+          doCheck = false;
+          installPhase = ''
+            touch $out
+          '';
+        });
+
+    # clippy finds nothing in network-revive, its tests included.
+    network-revive-passes-clippy =
+      (pkgs.callPackage ./modules/network-revive/package.nix { }).overrideAttrs
+        (old: {
+          pname = "network-revive-passes-clippy";
           nativeBuildInputs = old.nativeBuildInputs ++ [ pkgs.clippy ];
           buildPhase = ''
             cargo clippy --all-targets --offline -- -D warnings

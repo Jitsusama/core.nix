@@ -138,6 +138,7 @@ kernel guide][2] says what that catches.
 | `disk-guard-accepts-its-configuration` | the disk guard passes its scenarios and accepts the configs a workstation and its account get |
 | `disk-guard-passes-clippy`        | clippy finds nothing in the disk guard or its scenarios   |
 | `disk-guard-compiles-for-macos`   | the disk guard and its scenarios compile for macOS, clean |
+| `network-revive-passes-clippy`    | clippy finds nothing in network-revive or its tests       |
 
 ### Virtual Machines
 
@@ -153,6 +154,7 @@ a running system shows.
 | `vm-desktop-works`                | it boots clean; the desktop shows, opens, locks and asks |
 | `vm-wifi-joins`                   | wifid joins, finds sign-ins, keeps others' routing rules |
 | `vm-disk-guard-keeps-the-disk`    | the guards answer each band, sparing what's in use       |
+| `vm-network-revives-units`        | what the network let down starts, and reloads on change  |
 
 The install test builds a disk image with disko and boots it with a software
 TPM, then follows [the install guide][3] step by step: the keys are made and
