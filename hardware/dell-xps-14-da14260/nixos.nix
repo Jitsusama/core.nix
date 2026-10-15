@@ -231,6 +231,21 @@ in
     PowerWarn = "Disabled";
     # A bad BIOS can be rolled back.
     AllowBiosDowngrade = "Enabled";
+
+    # None of Dell's ways in from outside: no network stack before the
+    # loader, so no HTTP(S) boot and no BIOSConnect recovery from Dell's
+    # servers, no SupportAssist taking the boot over after failed ones, no
+    # software handed to the operating system and no telemetry. A machine
+    # that won't boot starts from the USB stick instead, which needs only
+    # USB boot. The firmware measures these settings into PCR 1 alone, which
+    # no disk policy here binds, and BIOS recovery from the disk stays.
+    UefiNwStack = "Disabled";
+    HttpsBoot = "Disabled";
+    BIOSConnect = "Disabled";
+    SupportAssistOSRecovery = "Disabled";
+    AutoOSRecoveryThreshold = "OFF";
+    DcsdSwDvc = "Disabled";
+    TelemetryAccessLvl = "Disabled";
   };
 
   # The BE211's Wi-Fi 7 receive path drops links to the slowest rate, so it
