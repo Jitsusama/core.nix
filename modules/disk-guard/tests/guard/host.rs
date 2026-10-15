@@ -233,6 +233,60 @@ fn an_ask_refused_as_too_soon_is_asked_again_once_allowed() {
     assert_eq!(asked.try_iter().count(), 2);
 }
 
+/// A system daemon that finds `pid` gone by the time it scans, as a short
+/// build step is once it's been asked about, and so can't vouch for it.
+fn outlived(proc: &Path, socket: &Path, pid: u32, then: impl FnOnce(&Path) + Send + 'static) {
+    let mut server = disk_guard::socket::Server::bind(socket, Duration::ZERO).unwrap();
+    let dir = proc.join(pid.to_string());
+    std::thread::spawn(move || {
+        let mut then = Some(then);
+        server
+            .serve(&mut |_, _, responder| {
+                fs::remove_dir_all(&dir).unwrap();
+                (then.take().unwrap())(dir.parent().unwrap());
+                responder.send(&disk_guard::socket::Reply::Answer(
+                    disk_guard::vouch::Answer::default(),
+                ))
+            })
+            .unwrap();
+    });
+}
+
+#[test]
+fn a_process_gone_before_the_system_could_vouch_for_it_keeps_nothing() {
+    let proc = tempfile::tempdir().unwrap();
+    hidden(proc.path(), 300, 77);
+    let socket = proc.path().join("socket");
+    outlived(proc.path(), &socket, 300, |_| {});
+    let mut scan = vouched_scan(proc.path(), &socket, Duration::ZERO);
+    assert_eq!(scan.judge(Path::new(TARGET), None).unwrap(), Use::Free);
+}
+
+#[test]
+fn a_pid_taken_again_since_the_scan_is_another_process() {
+    let proc = tempfile::tempdir().unwrap();
+    hidden(proc.path(), 300, 77);
+    let socket = proc.path().join("socket");
+    // The process the scan read exits and another starts under its pid.
+    outlived(proc.path(), &socket, 300, |proc| hidden(proc, 300, 91));
+    let mut scan = vouched_scan(proc.path(), &socket, Duration::ZERO);
+    assert_eq!(scan.judge(Path::new(TARGET), None).unwrap(), Use::Free);
+}
+
+#[test]
+fn a_process_still_running_that_the_system_didnt_vouch_for_stays_unknown() {
+    let proc = tempfile::tempdir().unwrap();
+    hidden(proc.path(), 300, 77);
+    hidden(proc.path(), 301, 80);
+    let socket = proc.path().join("socket");
+    outlived(proc.path(), &socket, 300, |_| {});
+    let mut scan = vouched_scan(proc.path(), &socket, Duration::ZERO);
+    assert_eq!(
+        scan.judge(Path::new(TARGET), None).unwrap(),
+        Use::Unknown(301)
+    );
+}
+
 #[test]
 fn without_a_system_daemon_what_cant_be_read_stays_unknown() {
     let proc = tempfile::tempdir().unwrap();
