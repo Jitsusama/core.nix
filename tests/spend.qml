@@ -326,6 +326,11 @@ ShellRoot {
             const burn = spend.everything()[0];
             expect("a finding first", burn.name === "A burn in Aquifer" && burn.verb === "go"
                 && burn.hue === "alert", burn.name);
+            // The answer for "spend" leads with it too, as the collection
+            // does, before the rows of how things stand.
+            const answered = spend.answer("spend").rows;
+            expect("the answer's finding first", answered[0].name === "A burn in Aquifer",
+                answered.map(row => row.name).join(", "));
             burn.run();
             expect("going to its session", Niri.spawned.join(" ") === "spend-watch go s1",
                 Niri.spawned.join(" "));

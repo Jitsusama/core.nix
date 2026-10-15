@@ -661,8 +661,13 @@ pub fn collection(
         },
     );
     today.note = "amounts are hidden while the screen is shared".into();
+    // The first screen's rows, since nothing is behind a quiet one: a
+    // day's cap that matters is among the findings.
     let mut quiet = vec![today];
     for view in widest_first(&picture.caps) {
+        if view.cap.window_hours <= 24 {
+            continue;
+        }
         if let Some(allowance) = view.cap.allowance {
             quiet.push(line(
                 format!("quiet:cap:{}", view.cap.name),
@@ -955,6 +960,16 @@ mod tests {
         assert_eq!(weekly.rows[2].note, "with $14,200 spent");
         // The premium day leads what's behind today, before its cuts.
         assert_eq!(collected.now[0].rows[0].name, "Premium day");
+        // While sharing there's nothing behind a row, so the quiet lines
+        // are the first screen's, and a day's cap that matters is a
+        // finding among them.
+        let quiet: Vec<&str> = collected
+            .quiet
+            .iter()
+            .take_while(|line| !line.key.starts_with("quiet:finding:"))
+            .map(|line| line.name.as_str())
+            .collect();
+        assert_eq!(quiet, ["Today", "Weekly cap"]);
         // This week is the first period after yesterday.
         let earlier: Vec<&str> = collected.now[2]
             .rows
