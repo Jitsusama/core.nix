@@ -344,16 +344,6 @@ and is harmless, so nothing silences or patches it:
   gives the bus `system-path`'s `share/dbus-1` beside each package's own, so
   every service file is found twice, once through a link. Leaving
   `system-path` out would lose the services only it has.
-- **"Esys_NV_DefineSpace ErrorCode (0x0000014c)", four times.** That's
-  `TPM_RC_NV_DEFINED`: systemd-tpm2-setup finds its NvPCR indexes already
-  defined from an earlier boot and carries on.
-- **"Anchor secret file ... different from current anchor secret,
-  updating."** systemd-tpm2-setup leaves a copy of the NvPCR anchor on the
-  ESP for the initrd, but runs before `/boot` is mounted, so finds no ESP and
-  leaves none. The initrd then makes a new anchor at every boot, and the unit
-  replaces `/var`'s copy. Nothing here seals to an NvPCR: the disk's policy
-  is PCRs 0, 4 and 7. Ordering the unit after `/boot` would put its 0.7 s on
-  the way to `sysinit.target`.
 - **No "RAPL domain uncore" on BIOS 1.11.0.** 1.10.1 reported it. It only
   meters the uncore's energy; the power limits are unaffected.
 - **xe's "Selective fetch area calculation failed in pipe A"**, once. When
