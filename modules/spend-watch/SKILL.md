@@ -46,6 +46,11 @@ days. Cuts: quest, model, agent, repo, session, tool, day, source.
 
 - A figure reading "about" is estimated; a plain one is billed or at list
   prices, as the report's first line says.
+- By agent, "pi sessions" is the person's own; an agent nobody types into
+  is named with its kind, as "acp@team (swarm)" or "test-skeptic
+  (council)". A council's or judge's reviewers count toward the session
+  that asked for them and its quest, at the hours they worked; a swarm's
+  agents toward the quest whose workspace they work in.
 - A forecast's range is its 80% one, checked against the history by
   `spend-watch backtest`.
 - A finding marked expected (`spend-watch findings expect <key>`) stays in

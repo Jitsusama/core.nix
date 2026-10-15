@@ -1,8 +1,9 @@
 # spend-watch
 
 A Rust daemon that keeps the account told what its AI use costs. It reads
-pi's session logs as they grow, the harness's subagent runs and its quests,
-and the feeds a machine names for a provider's bill; keeps every dollar by
+pi's session logs as they grow, its agents' as well (a swarm's, a review
+council's), the harness's subagent runs and its quests, and the feeds a
+machine names for a provider's bill; keeps every dollar by
 hour in `history.db`; and writes `status.json` and `collection.json` for the
 shell, the overview's row, the margin and the collection on Super+U.
 [`home.nix`][1] renders its config and runs it; the [contract][2] says what a
@@ -18,7 +19,19 @@ feed speaks.
   `src/series.rs` holds the order.
 - **Tracing.** Every piece of spend carries its session, quest, repo, model,
   tool and agent kind, so every cut is a sum of the same pieces and every
-  report agrees with every other. A quest's spend rolls up to its root.
+  report agrees with every other. A quest's spend rolls up to its root. A
+  bill that doesn't say which session spent it is shared by the pieces on
+  its model, by their list prices, since models are priced apart.
+- **Agents.** The config names where agents' logs are kept, by patterns
+  whose each `*` is one name, so a large tree beside them is never walked,
+  and the kind of work each pattern's are. A run's agents (a council's
+  reviewers, a judge) are that run's work, under the session that started
+  it and in its quest, at the hours their logs have turns in, and the
+  run's own total counts only what no log of it covers, as a fleet's,
+  which keeps none. Any other agent is its kind's, named by its session's
+  name, and serves the quest whose workspace it works in until a quest
+  entry says otherwise. `src/ingest.rs` finds them; `src/series.rs` maps
+  them.
 - **Waste.** Each cache write gets a cause: a compaction, a pause longer
   than the cache lives, a fresh session, a model change. Rebuilt context is
   the money a session spent having again what it had.

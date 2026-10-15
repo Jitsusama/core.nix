@@ -7,7 +7,9 @@
 //! - a compaction entry with usage is a turn of its own kind;
 //! - a custom entry with usage is an extension's side call, named by its
 //!   type;
-//! - a quest-workflow entry says which quest the turns after it serve;
+//! - a quest-workflow entry says which quest the turns after it serve, and
+//!   before one, a session working in a quest's workspace serves that quest;
+//! - a session-info entry names the session, as an agent's names its agent;
 //! - a model change matters to why cache was written.
 //!
 //! A log is read from where the last read stopped, and only whole lines: a
@@ -31,7 +33,15 @@ const CACHE_LIFE: f64 = 300.0;
 const CACHE_LIFE_LONG: f64 = 3600.0;
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
 pub struct Carry {
+    /// The kind of work an agent's log is, by where it was found; none for
+    /// a person's own. Given afresh each read, so never kept.
+    #[serde(skip)]
+    pub kind: Option<String>,
+    /// Where quests' workspaces are, given afresh each read.
+    #[serde(skip)]
+    pub workspaces: Option<String>,
     pub session: Option<String>,
     pub cwd: Option<String>,
     pub quest: Option<String>,
@@ -134,6 +144,11 @@ pub enum Event {
         id: String,
         cwd: String,
         at: f64,
+        kind: Option<String>,
+    },
+    Named {
+        session: String,
+        name: String,
     },
     Turn(Turn),
     Refusal {
@@ -163,6 +178,14 @@ pub fn read(bytes: &[u8], carry: &mut Carry, refusals: &[String]) -> (Vec<Event>
         entry_events(&entry, carry, refusals, &mut events);
     }
     (events, used)
+}
+
+/// The quest whose workspace `cwd` is in: the directory under `workspaces`
+/// that it is or is inside, which the harness names by the quest's id.
+fn workspace_quest(workspaces: &str, cwd: &str) -> Option<String> {
+    let inside = cwd.strip_prefix(workspaces.trim_end_matches('/'))?;
+    let id = inside.strip_prefix('/')?.split('/').next()?;
+    (!id.is_empty()).then(|| id.to_owned())
 }
 
 fn number(value: &Value, key: &str) -> f64 {
@@ -213,11 +236,27 @@ fn entry_events(entry: &Value, carry: &mut Carry, refusals: &[String], events: &
                 .to_owned();
             carry.session = Some(id.clone());
             carry.cwd = Some(cwd.clone());
+            if carry.quest.is_none() {
+                carry.quest = carry
+                    .workspaces
+                    .as_deref()
+                    .and_then(|workspaces| workspace_quest(workspaces, &cwd));
+            }
             events.push(Event::Session {
                 id,
                 cwd,
                 at: at.unwrap_or(0.0),
+                kind: carry.kind.clone(),
             });
+        }
+        "session_info" => {
+            let name = entry.get("name").and_then(Value::as_str).unwrap_or("");
+            if let Some(session) = carry.session.clone().filter(|_| !name.is_empty()) {
+                events.push(Event::Named {
+                    session,
+                    name: name.to_owned(),
+                });
+            }
         }
         "model_change" => {
             if let Some(model) = entry.get("modelId").and_then(Value::as_str) {
@@ -552,6 +591,77 @@ mod tests {
         let turns = turns(&events);
         assert_eq!(turns[0].quest, None);
         assert_eq!(turns[1].quest.as_deref(), Some("QEST-1"));
+    }
+
+    // An agent working in a quest's workspace serves that quest, until a
+    // quest entry says otherwise; its session-info names it.
+    #[test]
+    fn an_agent_in_a_workspace_serves_its_quest() {
+        let header = concat!(
+            r#"{"type":"session","id":"a1","timestamp":"2026-10-14T10:00:00Z","#,
+            r#""cwd":"/w/QEST-2/hub/agents/acp@team/team"}"#
+        );
+        let named = r#"{"type":"session_info","name":"acp@team"}"#;
+        let quest = concat!(
+            r#"{"type":"custom","customType":"quest-workflow","#,
+            r#""timestamp":"2026-10-14T10:00:30Z","data":{"questId":"QEST-1"}}"#
+        );
+        let bytes = lines(&[
+            header,
+            named,
+            &turn("2026-10-14T10:00:10Z", 0, 1, 0),
+            quest,
+            &turn("2026-10-14T10:01:00Z", 0, 1, 0),
+        ]);
+        let mut carry = Carry {
+            kind: Some("swarm".into()),
+            workspaces: Some("/w/".into()),
+            ..Carry::default()
+        };
+        let (events, _) = read(&bytes, &mut carry, &refusals());
+        assert_eq!(
+            events[0],
+            Event::Session {
+                id: "a1".into(),
+                cwd: "/w/QEST-2/hub/agents/acp@team/team".into(),
+                at: crate::time::parse("2026-10-14T10:00:00Z").unwrap(),
+                kind: Some("swarm".into()),
+            }
+        );
+        assert_eq!(
+            events[1],
+            Event::Named {
+                session: "a1".into(),
+                name: "acp@team".into(),
+            }
+        );
+        let turns = turns(&events);
+        assert_eq!(turns[0].quest.as_deref(), Some("QEST-2"));
+        assert_eq!(turns[1].quest.as_deref(), Some("QEST-1"));
+    }
+
+    #[test]
+    fn a_workspace_s_quest_is_the_directory_under_it() {
+        assert_eq!(
+            workspace_quest("/w", "/w/QEST-2/a/b").as_deref(),
+            Some("QEST-2")
+        );
+        assert_eq!(
+            workspace_quest("/w/", "/w/QEST-2").as_deref(),
+            Some("QEST-2")
+        );
+        assert_eq!(workspace_quest("/w", "/work/QEST-2"), None);
+        assert_eq!(workspace_quest("/w", "/w"), None);
+        assert_eq!(workspace_quest("/w", "/elsewhere"), None);
+    }
+
+    // A carry kept before it had more to say still reads, so a log under
+    // way isn't read again from its start.
+    #[test]
+    fn an_older_carry_still_reads() {
+        let carry: Carry = serde_json::from_str(r#"{"session":"s1","quest":"QEST-1"}"#).unwrap();
+        assert_eq!(carry.session.as_deref(), Some("s1"));
+        assert_eq!(carry.quest.as_deref(), Some("QEST-1"));
     }
 
     #[test]
