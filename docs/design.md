@@ -510,26 +510,28 @@ comes along, and what to do.
 
 - **Who hears it is the modifier.** Super is the desktop (the compositor and
   the shell). Ctrl+Shift is the terminal. Inside the terminal each program has
-  its own (Neovim's Space leader, pi's chords). A chord a lower layer needs is
-  never taken by a higher one. Print and the media keys do their one job
-  bare, and each has another way in.
+  its own: Space starts Neovim's keys, and pi, where everything typed is the
+  message, keeps the plain Ctrl keys every text box has. Neovim and pi sit
+  side by side, never heard at once, so one may use a chord the other does. A
+  chord a lower layer needs is never taken by a higher one. Print and the
+  media keys do their one job bare, and each has another way in.
 - **What comes along is a second modifier.** Nothing moves only focus. Shift
   carries the thing at that level, Alt just the smaller thing inside it, and
   Ctrl reaches across to another screen.
 - **What to do is the same word in every layer:**
 
-  | Key          | Means                                    | Desktop        | Terminal        |
-  | ------------ | ---------------------------------------- | -------------- | --------------- |
-  | arrows       | that way                                 | windows        |                 |
-  | Tab          | the one used last, and held, the others  | windows        | the next tab    |
-  | Page Up Down | the level above                          | workspaces     | tabs            |
-  | 1 to 9       | that one, by number                      | workspaces     | tabs            |
-  | Return       | open a new one                           | a terminal     |                 |
-  | T            | tabs                                     | column as tabs | a new tab       |
-  | W            | close the one in focus                   | the window     | the tab         |
-  | Space        | find anything here                       | the launcher   | the scrollback  |
-  | ?            | what's here: every key, by what it does  | every layer's  | the terminal's  |
-  | Escape       | back out                                 | everywhere     | everywhere      |
+  | Key          | Means                                    | Desktop        | Terminal        | Neovim, after Space |
+  | ------------ | ---------------------------------------- | -------------- | --------------- | ------------------- |
+  | arrows       | that way                                 | windows        |                 | splits              |
+  | Tab          | the one used last, and held, the others  | windows        | the next tab    | the file used last  |
+  | Page Up Down | the level above                          | workspaces     | tabs            |                     |
+  | 1 to 9       | that one, by number                      | workspaces     | tabs            | tabs                |
+  | Return       | open a new one                           | a terminal     |                 | a terminal          |
+  | T            | tabs                                     | column as tabs | a new tab       | tabs                |
+  | W            | close the one in focus                   | the window     | the tab         | the split           |
+  | Space        | find anything here                       | the launcher   | the scrollback  | anything            |
+  | ?            | what's here: every key, by what it does  | every layer's  | the terminal's  | Neovim's            |
+  | Escape       | back out                                 | everywhere     | everywhere      | everywhere          |
 
 - **Friendly on every keyboard Joel types on.** The laptop reaches Page Up,
   Home and End through Fn, and the ErgoDox reaches the symbols and Print
@@ -543,18 +545,33 @@ comes along, and what to do.
   layer's actions and keys drawn from the real configuration, never a
   hand-kept copy.
 - **The map is generated.** The whole map is built from the compositor's
-  binds, the terminal's maps, Neovim's keymaps and pi's keybindings, and a
-  check reports any chord two layers both claim.
+  binds, the terminal's maps, Neovim's keys and pi's, and a check reports any
+  chord two layers both claim.
+
+In Neovim, Space and then a letter opens a group (b the open files, c code, f
+files, g git, s search, t tests, T tabs, u looks), and the group then Space
+finds among what it holds: Space b Space finds an open file, Space g b Space
+a branch. Inside a group the shared words keep their meaning, so Space b w
+closes the file, Space T Return opens a tab and Space g b Return makes a
+branch. A capital letter is that letter with Shift, and does more of the
+same, or more forcefully: Space b W closes the file without saving it. [ and
+] step to the one before and after (a problem, a git change, a test), and a
+key that only makes sense somewhere, in code a language server reads or a
+file git tracks, is there only then.
 
 Each program's shortcuts are data: a chord, what it does in plain words, and
 the program's action, in `jitsusama.niri.binds` and `jitsusama.kitty.keys`,
-rendered into each program's own file. They gather
-in `jitsusama.keys`, layer by layer from the desktop down, which refuses to
-build a machine where two layers claim one chord, or one layer claims a chord
-twice, and writes the whole map to `~/.config/jitsusama/keys.json` for the
-launcher and the "what's here" views. Super+Shift+/ opens the desktop's view:
-the launcher's collection of every layer's shortcuts, searched by what they
-do, each with its chord and, in the footer, the layer it belongs to.
+and in Neovim's and pi's own `keys.nix`, rendered into each program's own
+file. They gather in `jitsusama.keys`, layer by layer from the desktop down,
+which refuses to build a machine where two layers claim one chord, a
+sequence starts on a chord a layer above takes, or one layer claims a chord
+twice in the same place, and writes the whole map to
+`~/.config/jitsusama/keys.json` for the launcher and the "what's here" views.
+
+Any key is found by what it does. Super+Shift+/ opens the launcher's
+collection of every layer's shortcuts, Neovim's and pi's among them, each
+with its chord and where it works. Inside a layer its own "what's here"
+shows only its keys: Ctrl+Shift+/ in the terminal, Space ? in Neovim.
 
 Nothing the shell shows is reached only by pointing. Super+O brings out the
 margin's drawer with what's on, and Super+N gathers the notices, those still

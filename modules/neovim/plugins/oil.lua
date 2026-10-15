@@ -34,24 +34,3 @@ oil.setup({
     ['g\\'] = { 'actions.toggle_trash', mode = 'n' },
   },
 })
-
--- NEW KEYBINDING SYSTEM
-
--- DIRECT ACCESS: Most common operation (parent directory)
-vim.keymap.set('n', '-', '<CMD>Oil<CR>', { desc = 'Parent directory' })
-
--- FILES DOMAIN (<leader>f): File management operations
-vim.keymap.set('n', '<leader>fe', '<CMD>Oil<CR>', { desc = 'Files explorer' })
-
--- SYSTEM CONTROLS (<C-*>): Quick file explorer access
-vim.keymap.set('n', '<C-e>', '<CMD>Oil<CR>', { desc = 'Explorer' })
-
--- Register with which-key if available
-local wk_ok, which_key = pcall(require, 'which-key')
-if wk_ok then
-  which_key.add({
-    { '<leader>fe', desc = 'Files explorer' },
-    { '<C-e>', desc = 'Explorer' },
-    { '-', desc = 'Parent directory' },
-  })
-end

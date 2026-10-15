@@ -1,9 +1,5 @@
+-- conform.nvim formats the code, when Space c f asks (keys.nix).
 local conform = require('conform')
-
--- Helper function for setting keymaps
-local function map(mode, keys, func, desc)
-  vim.keymap.set(mode, keys, func, { desc = desc })
-end
 
 -- Configure conform.nvim for formatting
 conform.setup({
@@ -92,30 +88,6 @@ conform.setup({
   -- Notify on format errors
   notify_on_error = true,
 })
-
--- CODE DOMAIN: Formatting keybindings
-map({ 'n', 'v' }, '<leader>cf', function()
-  conform.format({
-    async = true,
-    lsp_fallback = true,
-  })
-end, 'Code format')
-
-map({ 'n', 'v' }, '<leader>cF', function()
-  conform.format({
-    formatters = { 'injected' },
-    timeout_ms = 3000,
-  })
-end, 'Code format (injected languages)')
-
--- Register with which-key
-local wk_ok, which_key = pcall(require, 'which-key')
-if wk_ok then
-  which_key.add({
-    { '<leader>cf', desc = 'Code format', mode = { 'n', 'v' } },
-    { '<leader>cF', desc = 'Code format (injected)', mode = { 'n', 'v' } },
-  })
-end
 
 -- Add command to check formatter info
 vim.api.nvim_create_user_command('ConformInfo', function()

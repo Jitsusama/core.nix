@@ -63,27 +63,18 @@ flash.setup({
   },
 })
 
--- NEW KEYBINDING SYSTEM: Flash uses g prefix for "go to" navigation
+-- Flash's jumps for g l and g w (keys.nix).
+local keys = require('keys')
 
--- Main Flash navigation
-vim.keymap.set({ 'n', 'x', 'o' }, 'gs', function()
-  flash.jump()
-end, { desc = 'Go search (Flash)' })
-
-vim.keymap.set({ 'n', 'x', 'o' }, 'gS', function()
-  flash.treesitter()
-end, { desc = 'Go structural (Flash)' })
-
--- Additional Flash modes
-vim.keymap.set('n', 'gl', function()
+keys.act('jump.line', function()
   flash.jump({
     search = { mode = 'search', max_length = 0 },
     label = { after = { 0, 0 } },
     pattern = '^',
   })
-end, { desc = 'Go to line (Flash)' })
+end)
 
-vim.keymap.set('n', 'gw', function()
+keys.act('jump.word', function()
   flash.jump({
     pattern = '.', -- any character
     search = {
@@ -92,15 +83,4 @@ vim.keymap.set('n', 'gw', function()
       end,
     },
   })
-end, { desc = 'Go to word (Flash)' })
-
--- Register with which-key if available
-local wk_ok, which_key = pcall(require, 'which-key')
-if wk_ok then
-  which_key.add({
-    { 'gs', desc = 'Go search (Flash)', mode = { 'n', 'x', 'o' } },
-    { 'gS', desc = 'Go structural (Flash)', mode = { 'n', 'x', 'o' } },
-    { 'gl', desc = 'Go to line (Flash)' },
-    { 'gw', desc = 'Go to word (Flash)' },
-  })
-end
+end)

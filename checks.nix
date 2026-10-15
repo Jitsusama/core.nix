@@ -1140,18 +1140,28 @@ in
   # A chord two layers both claim never reaches the lower one, so a machine
   # with one doesn't build. The clashes here are spelt the way each program
   # spells its chords, so the map has to see through the spelling: kitty's
-  # ctrl+shift+t is a program's Ctrl+Shift+T, and its super+return is niri's
-  # Super+Return. A layer claiming one chord twice is refused too.
+  # ctrl+shift+t is Neovim's Ctrl+Shift+T, and its super+return is niri's
+  # Super+Return. A sequence whose first key a layer above takes can never
+  # start, so it's refused too, as is a layer claiming one chord twice. Neovim
+  # and pi are never heard at once, so a chord both claim is no clash.
   a-claimed-chord-is-refused =
     let
       machine = bareNixos [
         self.nixosModules.workstation
         self.nixosModules.graphical
         {
-          home-manager.users.someone.jitsusama.keys.program = [
+          home-manager.users.someone.jitsusama.keys.neovim = [
             {
               chord = "Ctrl+Shift+T";
               does = "Reopen a closed buffer";
+            }
+            {
+              chord = "Ctrl+Shift+H g";
+              does = "Go to the help";
+            }
+            {
+              chord = "Ctrl+G";
+              does = "Say where the file is";
             }
           ];
           home-manager.users.someone.jitsusama.kitty.keys = lib.mkAfter [
@@ -1182,7 +1192,9 @@ in
       "A chord two layers claim, or one layer claims twice, wasn't refused."
       (
         fine
-        && lib.hasInfix "ctrl+shift+t: terminal (Open a tab here) takes it from program (Reopen a closed buffer)" refusals
+        && lib.hasInfix "ctrl+shift+t: terminal (Open a tab here) takes it from neovim (Reopen a closed buffer)" refusals
+        && lib.hasInfix "ctrl+shift+h: terminal (Pick a word from the screen) takes it from neovim (Go to the help)" refusals
+        && !lib.hasInfix "(Write the message in Neovim)" refusals
         && lib.hasInfix "super+enter: desktop (Open a terminal) takes it from terminal (Open a tab)" refusals
         && lib.hasInfix "ctrl+shift+c in terminal: Copy, Copy again" refusals
       );
@@ -2087,6 +2099,7 @@ in
           ln -s ${plugins} data/nvim/site/pack/hm
           cp ${files."nvim/init.lua".source} config/nvim/init.lua
           cp ${files."nvim/lua/theme.lua".source} config/nvim/lua/theme.lua
+          cp ${files."nvim/lua/keys.lua".source} config/nvim/lua/keys.lua
           cp ${files."nvim/colors/jitsusama.lua".source} config/nvim/colors/jitsusama.lua
           echo 'return {}' > probe.lua
           nvim --headless probe.lua -c "lua io.stdout:write(${report})" -c 'qa!' > answer 2> complaints
@@ -2097,6 +2110,80 @@ in
           if [ "$(cat answer)" != "jitsusama nil true objects" ]; then cat answer; exit 1; fi
           touch $out
         '';
+
+    # The account's Neovim binds every key in the map, and only those: each
+    # action a key names is one a file registered, each key is bound as it
+    # says, a scope's in a buffer it arrives in, and no key Neovim has that
+    # says what it does is missing from the map.
+    neovim-binds-every-key =
+      let
+        home = account workstation;
+        files = home.xdg.configFile;
+        plugins = home.xdg.dataFile."nvim/site/pack/hm".source;
+        probe = pkgs.writeText "probe.lua" ''
+          local keys = require('keys')
+          local wrong = {}
+          local function say(line)
+            table.insert(wrong, line)
+          end
+          for _, name in ipairs(keys.missing()) do
+            say('no action ' .. name)
+          end
+          -- Every scope arrives in this one buffer, as each would in its own.
+          for _, scope in ipairs({ 'code', 'git', 'status' }) do
+            keys.attach(scope, 0)
+          end
+          local ours = {}
+          for _, key in ipairs(keys.keys) do
+            for _, mode in ipairs(key.modes) do
+              local map = vim.fn.maparg(key.lhs, mode, false, true)
+              if map.desc ~= key.desc then
+                say(mode .. ' ' .. key.lhs .. ' is ' .. tostring(map.desc))
+              elseif (map.buffer == 1) ~= (key.scope ~= nil) then
+                say(mode .. ' ' .. key.lhs .. ' is in the wrong place')
+              else
+                ours[mode .. map.lhsraw] = true
+              end
+            end
+          end
+          for _, mode in ipairs({ 'n', 'x', 'o', 'i', 't' }) do
+            local maps = vim.list_extend(
+              vim.api.nvim_get_keymap(mode),
+              vim.api.nvim_buf_get_keymap(0, mode)
+            )
+            for _, map in ipairs(maps) do
+              local raw = vim.fn.maparg(map.lhs, mode, false, true).lhsraw
+              -- A key set once Neovim had started has no script, nor was it
+              -- set by the configuration.
+              local from = map.sid > 0
+                  and (vim.fn.getscriptinfo({ sid = map.sid })[1] or {}).name
+                or ""
+              if map.desc and not ours[mode .. raw] and from:find('/config/nvim/', 1, true) then
+                say('stray ' .. mode .. ' ' .. map.lhs .. ' ' .. map.desc)
+              end
+            end
+          end
+          io.stdout:write(#wrong == 0 and 'every key' or table.concat(wrong, '\n'))
+        '';
+      in
+      pkgs.runCommandLocal "neovim-binds-every-key" { nativeBuildInputs = [ home.home.path ]; } ''
+        export HOME=$PWD XDG_CONFIG_HOME=$PWD/config XDG_DATA_HOME=$PWD/data
+        export XDG_STATE_HOME=$PWD/state XDG_CACHE_HOME=$PWD/cache
+        mkdir -p config/nvim/lua config/nvim/colors data/nvim/site/pack
+        ln -s ${plugins} data/nvim/site/pack/hm
+        cp ${files."nvim/init.lua".source} config/nvim/init.lua
+        cp ${files."nvim/lua/theme.lua".source} config/nvim/lua/theme.lua
+        cp ${files."nvim/lua/keys.lua".source} config/nvim/lua/keys.lua
+        cp ${files."nvim/colors/jitsusama.lua".source} config/nvim/colors/jitsusama.lua
+        # Neovim says where each key was set only when it's verbose, which
+        # goes to a file rather than among the complaints.
+        nvim --headless --cmd 'set verbose=1 verbosefile=verbose' \
+          -c 'set verbose=0' -c 'luafile ${probe}' -c 'qa!' > answer 2> complaints
+        grep -v '\[INFO\]' complaints > errors || true
+        if [ -s errors ]; then cat errors; exit 1; fi
+        if [ "$(cat answer)" != "every key" ]; then cat answer; exit 1; fi
+        touch $out
+      '';
 
     # cargo builds a program with the config an account gets, and mold is the
     # linker that wrote it.

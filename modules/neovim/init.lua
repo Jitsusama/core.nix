@@ -208,76 +208,35 @@ vim.api.nvim_create_autocmd('TermOpen', {
   end,
 })
 
--- Window Navigation (Alt+Shift+Arrow)
-vim.keymap.set('n', '<M-S-Left>', '<C-w>h', { desc = 'Go to left window' })
-vim.keymap.set('t', '<M-S-Left>', '<C-\\><C-n><C-w>h', { desc = 'Go to left window from terminal' })
-vim.keymap.set('n', '<M-S-Right>', '<C-w>l', { desc = 'Go to right window' })
-vim.keymap.set(
-  't',
-  '<M-S-Right>',
-  '<C-\\><C-n><C-w>l',
-  { desc = 'Go to right window from terminal' }
-)
-vim.keymap.set('n', '<M-S-Up>', '<C-w>k', { desc = 'Go to upper window' })
-vim.keymap.set('t', '<M-S-Up>', '<C-\\><C-n><C-w>k', { desc = 'Go to upper window from terminal' })
-vim.keymap.set('n', '<M-S-Down>', '<C-w>j', { desc = 'Go to lower window' })
-vim.keymap.set(
-  't',
-  '<M-S-Down>',
-  '<C-\\><C-n><C-w>j',
-  { desc = 'Go to lower window from terminal' }
-)
+-- Every key is in keys.nix, which lua/keys.lua binds. The functions too
+-- long to say there are here, under the names it gives them; plugins'
+-- files register their own.
+local keys = require('keys')
 
--- Tab Navigation (Control+Arrow)
-vim.keymap.set('n', '<C-Left>', 'gT', { desc = 'Previous tab' })
-vim.keymap.set('t', '<C-Left>', '<C-\\><C-n>gT', { desc = 'Previous tab from terminal' })
-vim.keymap.set('n', '<C-Right>', 'gt', { desc = 'Next tab' })
-vim.keymap.set('t', '<C-Right>', '<C-\\><C-n>gt', { desc = 'Previous tab from terminal' })
+keys.act('split.close', function()
+  -- The last split can't close, so it's the file that goes.
+  if not pcall(vim.cmd, 'confirm close') then
+    Snacks.bufdelete()
+  end
+end)
 
--- Terminal mode mappings
-vim.keymap.set('t', '<S-Esc>', '<C-\\><C-n>', { desc = 'Exit terminal mode' })
+keys.act('file.last', function()
+  if not pcall(vim.cmd.buffer, '#') then
+    vim.notify('No file was open before this one', vim.log.levels.INFO)
+  end
+end)
 
--- Quickfix list toggle
-vim.keymap.set('n', '<C-q>', function()
-  local qf_open = false
+keys.act('quickfix.toggle', function()
   for _, win in pairs(vim.fn.getwininfo()) do
-    if win['quickfix'] == 1 then
-      qf_open = true
-      break
+    if win.quickfix == 1 then
+      vim.cmd('cclose')
+      return
     end
   end
-  if qf_open then
-    vim.cmd('cclose')
-  else
-    vim.cmd('copen')
-  end
-end, { desc = 'Toggle quickfix' })
+  vim.cmd('copen')
+end)
 
--- Window Resizing (Alt+Arrow for height only, width conflicts with Ghostty)
-vim.keymap.set('n', '<A-Up>', '<cmd>resize +2<cr>', { desc = 'Increase window height' })
-vim.keymap.set('n', '<A-Down>', '<cmd>resize -2<cr>', { desc = 'Decrease window height' })
-
--- Better arrow key movement (respects wrapped lines)
-vim.keymap.set(
-  { 'n', 'x' },
-  '<Down>',
-  "v:count == 0 ? 'gj' : 'j'",
-  { expr = true, silent = true, desc = 'Down (wrapped)' }
-)
-vim.keymap.set(
-  { 'n', 'x' },
-  '<Up>',
-  "v:count == 0 ? 'gk' : 'k'",
-  { expr = true, silent = true, desc = 'Up (wrapped)' }
-)
-
--- ===============================================
--- DOCUMENTED UI/SETTINGS DOMAIN (<leader>u)
--- Per KEYBINDINGS.md - UI appearance and editor settings
--- ===============================================
-
--- Toggle background between light and dark
-vim.keymap.set('n', '<leader>ub', function()
+keys.act('look.background', function()
   if vim.o.background == 'dark' then
     vim.o.background = 'light'
     vim.notify('Background: light', vim.log.levels.INFO)
@@ -285,10 +244,10 @@ vim.keymap.set('n', '<leader>ub', function()
     vim.o.background = 'dark'
     vim.notify('Background: dark', vim.log.levels.INFO)
   end
-end, { desc = 'UI background' })
+end)
 
--- Toggle line numbers (cycle through: none -> relative -> absolute)
-vim.keymap.set('n', '<leader>ul', function()
+-- Line numbers go from none, to counted from here, to counted from the top.
+keys.act('look.numbers', function()
   if not vim.wo.number and not vim.wo.relativenumber then
     -- Currently no numbers -> enable relative
     vim.wo.number = true
@@ -303,60 +262,18 @@ vim.keymap.set('n', '<leader>ul', function()
     vim.wo.number = false
     vim.notify('Line numbers: disabled', vim.log.levels.INFO)
   end
-end, { desc = 'UI line numbers' })
+end)
 
--- Toggle line wrapping
-vim.keymap.set('n', '<leader>uw', function()
+keys.act('look.wrap', function()
   vim.wo.wrap = not vim.wo.wrap
   if vim.wo.wrap then
     vim.notify('Line wrap: enabled', vim.log.levels.INFO)
   else
     vim.notify('Line wrap: disabled', vim.log.levels.INFO)
   end
-end, { desc = 'UI wrap' })
+end)
 
--- ===============================================
--- DOCUMENTED SEQUENTIAL NAVIGATION ([]/])
--- Per KEYBINDINGS.md - Core Neovim functionality
--- ===============================================
-
--- Buffer navigation [b]/]b
-vim.keymap.set('n', '[b', '<cmd>bprevious<cr>', { desc = 'Previous buffer' })
-vim.keymap.set('n', ']b', '<cmd>bnext<cr>', { desc = 'Next buffer' })
-
--- Tab navigation [T]/]T
-vim.keymap.set('n', '[T', '<cmd>tabprevious<cr>', { desc = 'Previous tab' })
-vim.keymap.set('n', ']T', '<cmd>tabnext<cr>', { desc = 'Next tab' })
-
--- Window navigation [w]/]w
-vim.keymap.set('n', '[w', '<C-w>W', { desc = 'Previous window' })
-vim.keymap.set('n', ']w', '<C-w>w', { desc = 'Next window' })
-
--- Quickfix navigation [q]/]q
-vim.keymap.set('n', '[q', function()
-  pcall(vim.cmd, 'cprevious')
-end, { desc = 'Previous quickfix' })
-
-vim.keymap.set('n', ']q', function()
-  pcall(vim.cmd, 'cnext')
-end, { desc = 'Next quickfix' })
-
--- Location list navigation [l]/]l
-vim.keymap.set('n', '[l', function()
-  pcall(vim.cmd, 'lprevious')
-end, { desc = 'Previous location' })
-
-vim.keymap.set('n', ']l', function()
-  pcall(vim.cmd, 'lnext')
-end, { desc = 'Next location' })
-
--- ===============================================
--- DOCUMENTED TAB DOMAIN (<leader>T)
--- Per KEYBINDINGS.md - Tab management operations
--- ===============================================
-
--- Tab picker (double-T pattern)
-vim.keymap.set('n', '<leader>TT', function()
+keys.act('tab.find', function()
   local tabs = {}
   for i = 1, vim.fn.tabpagenr('$') do
     local tabid = vim.fn.tabpagebuflist(i)[1]
@@ -382,42 +299,9 @@ vim.keymap.set('n', '<leader>TT', function()
       end
     end
   end)
-end, { desc = 'Tab picker' })
+end)
 
--- Tab operations
-vim.keymap.set('n', '<leader>Tn', '<cmd>tabnew<cr>', { desc = 'Tab new' })
-vim.keymap.set('n', '<leader>Tc', '<cmd>tabclose<cr>', { desc = 'Tab close' })
-vim.keymap.set('n', '<leader>To', '<cmd>tabonly<cr>', { desc = 'Tab only' })
-vim.keymap.set('n', '<leader>Tf', '<cmd>tabfirst<cr>', { desc = 'Tab first' })
-vim.keymap.set('n', '<leader>Tl', '<cmd>tablast<cr>', { desc = 'Tab last' })
-
--- ===============================================
--- DOCUMENTED WINDOW DOMAIN (<leader>w)
--- Per KEYBINDINGS.md - Window management operations
--- ===============================================
-
--- Window picker (double-w pattern)
-vim.keymap.set('n', '<leader>ww', function()
-  -- Simple window selection - cycle through windows
-  vim.cmd('wincmd w')
-end, { desc = 'Window picker' })
-
--- Window operations
-vim.keymap.set('n', '<leader>ws', '<cmd>split<cr>', { desc = 'Window split' })
-vim.keymap.set('n', '<leader>wv', '<cmd>vsplit<cr>', { desc = 'Window vertical' })
-vim.keymap.set('n', '<leader>wc', '<cmd>close<cr>', { desc = 'Window close' })
-vim.keymap.set('n', '<leader>wo', '<cmd>only<cr>', { desc = 'Window only' })
-vim.keymap.set('n', '<leader>w=', '<C-w>=', { desc = 'Window equalize' })
-
--- Window resizing
-vim.keymap.set('n', '<leader>w+', '<cmd>resize +2<cr>', { desc = 'Window height+' })
-vim.keymap.set('n', '<leader>w-', '<cmd>resize -2<cr>', { desc = 'Window height-' })
-vim.keymap.set('n', '<leader>w>', '<cmd>vertical resize +2<cr>', { desc = 'Window width+' })
-vim.keymap.set('n', '<leader>w<', '<cmd>vertical resize -2<cr>', { desc = 'Window width-' })
-
--- GitHub operations requiring system commands
--- PR operations that need system commands
-vim.keymap.set({ 'n', 'v' }, '<leader>ghpy', function()
+keys.act('github.copyPullRequest', function()
   local result = vim.fn.system('gh pr view --json url -q .url 2>/dev/null')
   if vim.v.shell_error == 0 then
     local url = result:gsub('\n', '')
@@ -426,40 +310,27 @@ vim.keymap.set({ 'n', 'v' }, '<leader>ghpy', function()
   else
     print('No PR found for current branch')
   end
-end, { desc = 'PR yank url' })
+end)
 
-vim.keymap.set({ 'n', 'v' }, '<leader>ghpo', function()
+keys.act('github.openPullRequest', function()
   vim.cmd('!gh pr view --web 2>/dev/null || echo "No PR found for current branch"')
-end, { desc = 'PR open browser' })
+end)
 
--- Repository operations that need system commands
-vim.keymap.set({ 'n', 'v' }, '<leader>ghry', function()
+keys.act('github.copyRepository', function()
   local url = vim.fn.system('gh repo view --json url -q .url'):gsub('\n', '')
   vim.fn.setreg('+', url)
   print('Copied repo URL: ' .. url)
-end, { desc = 'Repo yank url' })
+end)
 
--- Gist operations that need system commands
-vim.keymap.set('n', '<leader>ghgn', function()
+keys.act('github.gistFile', function()
   local filename = vim.fn.expand('%:t')
   if filename == '' then
     filename = 'untitled'
   end
   vim.cmd('write !gh gist create -f ' .. vim.fn.shellescape(filename))
-end, { desc = 'Gist new (from buffer)' })
+end)
 
-vim.keymap.set('v', '<leader>ghgn', function()
-  vim.cmd("'<,'>write !gh gist create")
-end, { desc = 'Gist new (from selection)' })
-
-vim.keymap.set('n', '<leader>Q', '<cmd>confirm qall<cr>', { desc = 'Quit all' })
-
-vim.keymap.set('n', '<leader>sc', function()
-  vim.cmd('nohlsearch')
-end, { desc = 'Search clear' })
-
--- Keep search/replace functionality
-vim.keymap.set('n', '<leader>sr', function()
+keys.act('search.replace', function()
   -- Simple search and replace using built-in substitution
   local search_term = vim.fn.input('Search for: ')
   if search_term ~= '' then
@@ -483,20 +354,9 @@ vim.keymap.set('n', '<leader>sr', function()
       )
     end
   end
-end, { desc = 'Search replace' })
+end)
 
--- ===============================================
--- DOCUMENTED ERROR DOMAIN (<leader>e) - Moved from trouble.lua
--- Per KEYBINDINGS.md - Non-trouble specific diagnostic operations
--- ===============================================
-
--- Error Details
-vim.keymap.set('n', '<leader>eh', function()
-  vim.diagnostic.open_float({ border = 'rounded' })
-end, { desc = 'Error hover details' })
-
--- Error Toggles
-vim.keymap.set('n', '<leader>etd', function()
+keys.act('errors.toggle', function()
   if vim.diagnostic.is_enabled() then
     vim.diagnostic.enable(false)
     vim.notify('Diagnostics disabled', vim.log.levels.INFO)
@@ -504,41 +364,54 @@ vim.keymap.set('n', '<leader>etd', function()
     vim.diagnostic.enable()
     vim.notify('Diagnostics enabled', vim.log.levels.INFO)
   end
-end, { desc = 'Error toggle diagnostics' })
+end)
 
-vim.keymap.set('n', '<leader>etv', function()
+keys.act('errors.toggleBeside', function()
   local current = vim.diagnostic.config().virtual_text
   vim.diagnostic.config({ virtual_text = not current })
   vim.notify('Virtual text ' .. (current and 'disabled' or 'enabled'), vim.log.levels.INFO)
-end, { desc = 'Error toggle virtual' })
+end)
 
-vim.keymap.set('n', '<leader>ets', function()
+keys.act('errors.toggleSigns', function()
   local current = vim.diagnostic.config().signs
   vim.diagnostic.config({ signs = not current })
   vim.notify('Diagnostic signs ' .. (current and 'disabled' or 'enabled'), vim.log.levels.INFO)
-end, { desc = 'Error toggle signs' })
+end)
 
--- Error Navigation (Sequential)
--- [d / ]d - Previous/next diagnostic
-vim.keymap.set('n', '[d', function()
-  vim.diagnostic.goto_prev({ float = { border = 'rounded' } })
-end, { desc = 'Previous diagnostic' })
+-- Each step to a problem shows it in full where it lands.
+local function show(diagnostic)
+  if diagnostic then
+    vim.diagnostic.open_float({ border = 'rounded' })
+  end
+end
 
-vim.keymap.set('n', ']d', function()
-  vim.diagnostic.goto_next({ float = { border = 'rounded' } })
-end, { desc = 'Next diagnostic' })
+-- The file's problems from the top down.
+local function problems()
+  local all = vim.diagnostic.get(0)
+  table.sort(all, function(a, b)
+    return a.lnum < b.lnum or (a.lnum == b.lnum and a.col < b.col)
+  end)
+  return all
+end
 
--- [D / ]D - First/last diagnostic in file
-vim.keymap.set('n', '[D', function()
-  vim.diagnostic.goto_prev({ float = { border = 'rounded' }, wrap = false })
-  -- Go to first diagnostic by going to start and finding first
-  vim.cmd('normal! gg')
-  vim.diagnostic.goto_next({ float = false, wrap = false })
-end, { desc = 'First diagnostic' })
+keys.act('errors.before', function()
+  vim.diagnostic.jump({ count = -1, on_jump = show })
+end)
 
-vim.keymap.set('n', ']D', function()
-  vim.diagnostic.goto_next({ float = { border = 'rounded' }, wrap = false })
-  -- Go to last diagnostic by going to end and finding last
-  vim.cmd('normal! G')
-  vim.diagnostic.goto_prev({ float = false, wrap = false })
-end, { desc = 'Last diagnostic' })
+keys.act('errors.after', function()
+  vim.diagnostic.jump({ count = 1, on_jump = show })
+end)
+
+keys.act('errors.first', function()
+  local all = problems()
+  if all[1] then
+    vim.diagnostic.jump({ diagnostic = all[1], on_jump = show })
+  end
+end)
+
+keys.act('errors.last', function()
+  local all = problems()
+  if all[#all] then
+    vim.diagnostic.jump({ diagnostic = all[#all], on_jump = show })
+  end
+end)

@@ -1,7 +1,8 @@
 # pi, the coding agent in the terminal: a theme drawn from the machine's, so
 # its messages, tools, diffs and code wear the same colours as everything
 # else. pi keeps which theme it uses in a settings file of its own, so this
-# only puts the theme where pi finds it, for Joel to pick in /settings.
+# only puts the theme where pi finds it, for Joel to pick in /settings. Its
+# keys come from keys.nix, written where pi reads them and into the key map.
 { config, lib, ... }:
 let
   inherit (config.jitsusama.theme) appearance roles syntax;
@@ -88,9 +89,29 @@ let
       infoBg = roles.raised;
     };
   };
+  keys = import ./keys.nix;
+
+  # Each action named in keys.nix, with every chord listed for it.
+  keybindings = lib.mapAttrs (_: map (key: key.chord)) (
+    lib.groupBy (key: key.action) (
+      lib.concatMap (key: map (action: key // { inherit action; }) key.actions) keys
+    )
+  );
 in
 {
-  imports = [ ../theme/home.nix ];
+  imports = [
+    ../theme/home.nix
+    ../keys/home.nix
+  ];
 
   home.file.".pi/agent/themes/jitsusama.json".text = builtins.toJSON theme;
+
+  home.file.".pi/agent/keybindings.json".text = builtins.toJSON (
+    { "$schema" = "https://pi.dev/schemas/keybindings.schema.json"; } // keybindings
+  );
+
+  jitsusama.keys.pi = map (key: {
+    inherit (key) chord does;
+    when = key.when or "";
+  }) keys;
 }

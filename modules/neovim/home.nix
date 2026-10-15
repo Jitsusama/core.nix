@@ -21,9 +21,176 @@ let
     version = neovim-pi.shortRev or "dev";
     src = neovim-pi;
   };
+
+  keys = map (
+    key:
+    {
+      modes = [ "n" ];
+      scope = null;
+    }
+    // key
+  ) (import ./keys.nix);
+
+  # A chord as the map spells it, in Neovim's own spelling: Space b w is
+  # <leader>bw, Ctrl+W Space is <C-w><Space>.
+  named = {
+    Space = "<Space>";
+    Tab = "<Tab>";
+    Return = "<CR>";
+    Escape = "<Esc>";
+    Left = "<Left>";
+    Right = "<Right>";
+    Up = "<Up>";
+    Down = "<Down>";
+    "<" = "<lt>";
+  };
+  held = {
+    Ctrl = "C";
+    Shift = "S";
+    Alt = "M";
+  };
+  spellStep =
+    index: step:
+    let
+      parts = lib.splitString "+" step;
+      key = lib.last parts;
+      # A named key held with others loses its brackets: <S-Esc>.
+      bare = lib.removePrefix "<" (lib.removeSuffix ">" (named.${key} or key));
+    in
+    if index == 0 && step == "Space" then
+      "<leader>"
+    else if lib.length parts == 1 then
+      named.${step} or step
+    else
+      "<${lib.concatMapStrings (modifier: "${held.${modifier}}-") (lib.init parts)}${
+        if lib.stringLength key == 1 then lib.toLower key else bare
+      }>";
+  spell = chord: lib.concatStrings (lib.imap0 spellStep (lib.splitString " " chord));
+
+  # Where a key works, for the map, when it's not everywhere.
+  scopes = {
+    code = "in code";
+    git = "in a file git tracks";
+    status = "in git's status";
+  };
+  modeWhere = {
+    x = "with text selected";
+    "x o" = "selecting, or after an operator";
+    t = "in a terminal";
+    i = "while typing";
+  };
+  where =
+    key:
+    lib.concatStringsSep ", " (
+      lib.filter (part: part != "") [
+        (if key.scope == null then "" else scopes.${key.scope})
+        (modeWhere.${lib.concatStringsSep " " key.modes} or "")
+      ]
+    );
+
+  # What Neovim binds each key to, for lua/keys.lua.
+  bound =
+    key:
+    {
+      inherit (key) modes;
+      lhs = spell key.chord;
+      desc = key.does;
+    }
+    // lib.optionalAttrs (key.scope != null) { inherit (key) scope; }
+    // lib.optionalAttrs (key ? lua) {
+      lua = lib.generators.mkLuaInline "function() ${key.lua} end";
+    }
+    // lib.getAttrs (lib.filter (field: key ? ${field}) [
+      "action"
+      "command"
+      "keys"
+      "expr"
+      "remap"
+    ]) key;
 in
 {
-  imports = [ ../theme/home.nix ];
+  imports = [
+    ../theme/home.nix
+    ../keys/home.nix
+  ];
+
+  # Every key, for the launcher to find by what it does.
+  jitsusama.keys.neovim = map (key: {
+    inherit (key) chord does;
+    when = where key;
+  }) keys;
+
+  # Every key bound, from keys.nix: the global ones as Neovim starts, and a
+  # scope's in a buffer when its plugin calls attach. A key whose action a
+  # plugin's file registers looks it up when it's pressed, so the files
+  # can load in any order.
+  xdg.configFile."nvim/lua/keys.lua".text = ''
+    -- Neovim's keys, written from keys.nix, which says what each is for.
+    local M = { actions = {} }
+
+    M.keys = ${lib.generators.toLua { } (map bound keys)}
+
+    -- A function for a key to run, by the name keys.nix gives it.
+    function M.act(name, fn)
+      M.actions[name] = fn
+    end
+
+    local function rhs(key)
+      if key.lua then
+        return key.lua
+      elseif key.action then
+        return function(...)
+          local fn = M.actions[key.action]
+          if fn == nil then
+            vim.notify('Nothing does ' .. key.action .. ' yet', vim.log.levels.ERROR)
+            return
+          end
+          return fn(...)
+        end
+      elseif key.command then
+        return '<cmd>' .. key.command .. '<cr>'
+      end
+      return key.keys
+    end
+
+    local function bind(key, buffer)
+      vim.keymap.set(key.modes, key.lhs, rhs(key), {
+        desc = key.desc,
+        buffer = buffer,
+        expr = key.expr,
+        remap = key.remap,
+        silent = key.command ~= nil,
+      })
+    end
+
+    -- A scope's keys, in the buffer it has arrived in.
+    function M.attach(scope, buffer)
+      for _, key in ipairs(M.keys) do
+        if key.scope == scope then
+          bind(key, buffer)
+        end
+      end
+    end
+
+    -- The names keys.nix gives that no file has registered.
+    function M.missing()
+      local names = {}
+      for _, key in ipairs(M.keys) do
+        if key.action and M.actions[key.action] == nil then
+          table.insert(names, key.action)
+        end
+      end
+      return names
+    end
+
+    for _, key in ipairs(M.keys) do
+      if key.scope == nil then
+        bind(key)
+      end
+    end
+
+    return M
+  '';
 
   # The theme's roles, for the colour scheme and the plugins that draw on the
   # terminal's own background (require('theme').background), with the
@@ -129,7 +296,7 @@ in
       # The Refactoring library based off the refactoring book by Martin Fowler.
       (configured vimPlugins.refactoring-nvim ./plugins/refactoring.lua)
       # GitHub extension for fugitive.
-      (configured vimPlugins.vim-rhubarb ./plugins/rhubarb.lua)
+      vimPlugins.vim-rhubarb
       # A collection of small QoL plugins.
       (configured vimPlugins.snacks-nvim ./plugins/snacks.lua)
       # SQLite LuaJIT binding with a very simple api.
@@ -141,7 +308,7 @@ in
       # Provides mappings to easily delete, change and add surroundings in pairs.
       vimPlugins.vim-surround
       # Simple text alignment plugin.
-      (configured vimPlugins.vim-easy-align ./plugins/easy-align.lua)
+      vimPlugins.vim-easy-align
       # Visualize undo history as a tree structure.
       (configured vimPlugins.undotree ./plugins/undotree.lua)
       # Highlight and search for todo comments like TODO, HACK, BUG in your code.

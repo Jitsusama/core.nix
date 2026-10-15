@@ -143,17 +143,17 @@ in
   }
 
   {
-    chord = "ctrl+equal";
+    chord = "ctrl+shift+equal";
     does = "Make the text larger";
     action = "change_font_size all +1.0";
   }
   {
-    chord = "ctrl+minus";
+    chord = "ctrl+shift+minus";
     does = "Make the text smaller";
     action = "change_font_size all -1.0";
   }
   {
-    chord = "ctrl+0";
+    chord = "ctrl+shift+0";
     does = "Put the text back to its size";
     action = "change_font_size all 0";
   }

@@ -1,6 +1,7 @@
 // Every shortcut, a collection: each layer's chords from jitsusama.keys, top
-// to bottom (the desktop, the terminal, the program inside it), found by what they do, each with its chord and the
-// layer it belongs to in the footer. The touchscreen's swipes follow the
+// to bottom (the desktop, the terminal, then Neovim and pi inside it), found
+// by what they do or by their program's name, each with its chord, and in
+// the footer the layer it belongs to and where in it the chord works. The touchscreen's swipes follow the
 // desktop's, from jitsusama.swipes, each drawn as its fingers and its way,
 // and found by "swipe" or "touch" as well. It's opened by its own chord, or by
 // finding "Show these shortcuts", rather than adding a row to every search,
@@ -26,12 +27,16 @@ Provider {
         desktop: "on the desktop",
         touchscreen: "on the touchscreen",
         terminal: "in the terminal",
-        program: "in the program"
+        neovim: "in Neovim",
+        pi: "in pi"
     })
 
     // The words that find a layer's shortcuts besides their names.
     readonly property var also: ({
-        touchscreen: "swipe touch touchscreen gesture fingers"
+        touchscreen: "swipe touch touchscreen gesture fingers",
+        terminal: "terminal kitty",
+        neovim: "neovim vim nvim editor",
+        pi: "pi agent"
     })
 
     readonly property var all: Shortcuts.layers.reduce((rows, layer) => rows.concat(
@@ -43,7 +48,7 @@ Provider {
             glyph: layer.glyph || bind.glyph,
             hue: layer.name === "desktop" || layer.name === "touchscreen" ? "action" : "program",
             chord: bind.chord,
-            note: places[layer.name],
+            note: bind.when ? `${places[layer.name]}, ${bind.when}` : places[layer.name],
             // Acts on the screen, so it waits for the launcher to be gone.
             later: true,
             run: () => {
