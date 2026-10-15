@@ -120,9 +120,11 @@ pub struct Shift {
 /// Each model whose last `SHIFT_DAYS` settled days, ending on the last day
 /// anything settled, all fall outside the tenth to ninetieth percentiles
 /// of the days before on the same side, agree with each other within a
-/// tenth, and move its ratio by a tenth or more. A price moves in a step
-/// and stays; spend some other machine made, with no log here, comes and
-/// goes by the day. `day` says which day an hour is in.
+/// tenth, and move its ratio by a tenth or more, from days before that
+/// held within a quarter of their median. A price moves in a step from
+/// one level to another and stays; spend some other machine made, with no
+/// log here, comes and goes by the day, and a ratio that wandered before
+/// was never one price. `day` says which day an hour is in.
 pub fn shifts(rows: &[(i64, String, f64, f64)], day: impl Fn(i64) -> i64) -> Vec<Shift> {
     let mut daily: BTreeMap<&str, BTreeMap<i64, (f64, f64)>> = BTreeMap::new();
     for (hour, model, list, billed) in rows {
@@ -169,6 +171,10 @@ pub fn shifts(rows: &[(i64, String, f64, f64)], day: impl Fn(i64) -> i64) -> Vec
             crate::stats::quantile_sorted(&each, 0.1),
             crate::stats::quantile_sorted(&each, 0.9),
         );
+        let middle = crate::stats::quantile_sorted(&each, 0.5);
+        if middle <= 0.0 || (high - low) / middle > 0.25 {
+            continue;
+        }
         let ratios: Vec<f64> = recent.iter().map(|day| day.2 / day.1).collect();
         let all_below = ratios.iter().all(|ratio| *ratio < low);
         let all_above = ratios.iter().all(|ratio| *ratio > high);
@@ -221,6 +227,11 @@ mod tests {
         let drift = [usual.clone(), vec![0.67, 0.67, 0.67]].concat();
         assert!(shifts(&days("opus", &drift)).is_empty());
         assert!(shifts(&days("opus", &[0.7, 0.5, 0.5, 0.5])).is_empty());
+        // A ratio that wandered from 80% to 190% of list was never one
+        // price, so three steady days below it aren't a new one.
+        let wandering: Vec<f64> = (0..20).map(|day| [0.85, 1.0, 1.3, 1.9][day % 4]).collect();
+        let settled = [wandering, vec![0.77, 0.74, 0.80]].concat();
+        assert!(shifts(&days("opus", &settled)).is_empty());
     }
 
     #[test]

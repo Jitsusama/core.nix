@@ -1084,7 +1084,9 @@ pub fn prices(picture: &Picture) -> Vec<Finding> {
                 format!("price:{}", shift.model),
                 "prices",
                 Severity::Note,
-                format!("{} billed at {} of list", shift.model, percent(shift.now)),
+                // Opened on its own words, since a title's first letter is
+                // capitalized and a model's name is written as it's named.
+                format!("a new price for {}", shift.model),
                 format!(
                     "{} has billed at {} of its list price since {}, against {} in the \
                      month before; estimates from the logs use the new price.",
@@ -1095,7 +1097,7 @@ pub fn prices(picture: &Picture) -> Vec<Finding> {
                 ),
             );
             f.badge = percent(shift.now);
-            f.note = format!("from {} before", percent(shift.before));
+            f.note = format!("of list, from {} before", percent(shift.before));
             f.dollars = (shift.now - shift.before).abs() * shift.list_a_day * 7.0;
             f.surprise = 1.0;
             f
@@ -1259,6 +1261,12 @@ mod tests {
         assert_eq!(
             (found[0].key.as_str(), found[0].badge.as_str()),
             ("price:m", "55%")
+        );
+        // A title opens on its own words, since what begins it is written
+        // with a capital and a model's name is written as it's named.
+        assert_eq!(
+            (found[0].title.as_str(), found[0].note.as_str()),
+            ("a new price for m", "of list, from 72% before")
         );
         assert_eq!(picture.ratios.of("m"), Some(0.55));
     }
