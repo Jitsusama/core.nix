@@ -135,5 +135,32 @@ pkgs.testers.runNixOSTest {
         machine.succeed("pkill -u greeter -f '[q]uickshell[^ ]* -p '")
         machine.wait_until_succeeds("pgrep -u greeter -x tuigreet", timeout=60)
         machine.succeed("! pgrep -u greeter -f '[b]in/niri -c'")
+
+    # systemd starts no mount while it's over its limit on changes to the
+    # mount table, which held the mounts the greeter waits for at boot. Each
+    # systemd-mount waits for its mount, so each is a change of its own, and
+    # systemd says at debug level when the limit is reached. Debug goes only
+    # to the journal, since the serial console slows systemd enough to spread
+    # the burst out, and the last mount's line in the journal means all that
+    # came before it is there too.
+    with subtest("a burst of mounts doesn't wait on systemd's limit"):
+        target = machine.succeed("systemd-analyze log-target").strip()
+        machine.succeed("systemd-analyze log-target journal")
+        machine.succeed("systemd-analyze log-level debug")
+        machine.succeed(
+            "for n in $(seq 12); do"
+            " timeout 30 systemd-mount --quiet --type=tmpfs tmpfs /mnt/burst$n || exit 1;"
+            " done"
+        )
+        machine.succeed("systemd-analyze log-level info")
+        machine.succeed(f"systemd-analyze log-target {shlex.quote(target)}")
+        machine.wait_until_succeeds(
+            "journalctl --boot _PID=1 --output=cat | grep -qxF 'Mounted /mnt/burst12.'",
+            timeout=30,
+        )
+        machine.fail(
+            "journalctl --boot _PID=1 --output=cat"
+            " | grep -F 'mount-monitor-dispatch) entered rate limit state'"
+        )
   '';
 }
