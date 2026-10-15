@@ -29,7 +29,16 @@ it under systemd or launchd, and [`home.nix`][2] the account's.
   with a file, map or working directory beneath it, or build variables
   naming it. Busy stays; a target only sat in waits for critical; a process
   it can't read keeps everything it might use, unless the system daemon
-  vouches for it.
+  vouches for it or it has exited since the scan, as most of a build's do
+  within a second.
+- **Pacing.** A pass reclaims a batch, lets it settle and measures it. A
+  group whose batches free under a tenth of what they predict, three times
+  running, is left for the next group; a batch predicting under a gigabyte
+  measures whatever is writing, so it neither counts nor teaches. A pass
+  under pressure gives way to a disk or memory that's stalling, for twenty
+  minutes at most; urgent and critical never do. A pass that falls short
+  rests before the next, doubling from a minute to fifteen under pressure,
+  five at urgent and one at critical.
 - **Removal.** Everything is reached through directories opened beneath the
   source's root, never through a symlink, another filesystem or `..`. A
   target is renamed into a trash beside it, judged again, then emptied; a
@@ -47,8 +56,9 @@ it under systemd or launchd, and [`home.nix`][2] the account's.
   nothing in a session, nothing of another account's. It thaws once the disk
   is above urgent, or by `disk-guard thaw`, after which it's never frozen
   again.
-- **Nix.** The system daemon lists the dead paths in a spare moment and
-  deletes them oldest first, keeping three days' within a budget of 10% of
+- **Nix.** The system daemon lists the dead paths every six hours in a spare
+  moment, or after a day whenever there's power, and deletes them oldest
+  first, keeping three days' within a budget of 10% of
   the filesystem. It expires generations, never the current, running or
   booted one, the newest five, or one with a boot entry. It links the
   store's identical files weekly in a scope of its own at idle priority,
