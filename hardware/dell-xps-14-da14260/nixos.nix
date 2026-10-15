@@ -213,9 +213,11 @@ in
     CustomChargeStop = "80";
 
     # Settings chosen here that a BIOS update or reset would put back
-    # without a word, as 1.11.0 turned the adapter warnings back off.
-    # The power limits were measured in the Performance thermal mode.
-    ThermalManagement = "Performance";
+    # without a word, as 1.11.0 turned the adapter warnings back off. The
+    # thermal mode isn't one of them: it's the platform profile the power
+    # profile follows (modules/power-profiles-daemon), so it's balanced's
+    # Optimized after a boot on battery, and the charger puts back the
+    # Performance the power limits were measured in.
     # The memory's frequency drops when it's idle, which the battery
     # needs more than the memory's latency needs it pinned.
     IntelSagv = "Enabled";
