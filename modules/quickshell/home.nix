@@ -256,7 +256,6 @@ let
     ]
     ++ map keyed [
       "terminal"
-      "multiplexer"
       "program"
     ];
 
@@ -351,12 +350,22 @@ let
   # Each with the launcher's collection it opens, if it opens one, so the
   # launcher steps into it rather than closing to open again, and its home
   # screen shows the chord beside the collection.
-  actions = map (b: {
-    inherit (b) does run;
-    glyph = actionGlyph b.run;
-    chord = map face' (lib.splitString "+" b.chord);
-    opens = if opensCollection b.run then lib.last b.run else "";
-  }) (lib.filter (b: b.run != [ ] && b.run != launcherToggle) config.jitsusama.keys.desktop);
+  # One row per thing done: where two chords do the same, as Super+L and
+  # the lock key do, the row shows the first.
+  actions =
+    map
+      (b: {
+        inherit (b) does run;
+        glyph = actionGlyph b.run;
+        chord = map face' (lib.splitString "+" b.chord);
+        opens = if opensCollection b.run then lib.last b.run else "";
+      })
+      (
+        firstOfEach (lib.filter (b: b.run != [ ] && b.run != launcherToggle) config.jitsusama.keys.desktop)
+      );
+  firstOfEach = lib.foldl' (
+    kept: b: if lib.any (k: k.run == b.run) kept then kept else kept ++ [ b ]
+  ) [ ];
   opensCollection =
     run:
     lib.length run == 6
@@ -381,7 +390,6 @@ let
   layerGlyphs = {
     desktop = "";
     terminal = nerd "f489";
-    multiplexer = nerd "f0bcc";
     program = nerd "f0614";
   };
 

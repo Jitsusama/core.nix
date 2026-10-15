@@ -80,13 +80,15 @@ let
   # niri's switcher between recent windows, which stays open while Super is
   # held: a tap goes back to the window before, as focus-window-previous
   # does, and held, the arrows choose another, Return takes it and Escape
-  # backs out. It takes these keys from its own section rather than binds,
+  # backs out. Tab is the one used last in every layer, as Cmd+Tab was on
+  # the Mac, and Grave keeps to the windows of the program in focus, as
+  # Cmd+` did. It takes these keys from its own section rather than binds,
   # and gives way to any normal bind on the same chord, so its defaults (the
-  # same keys on Mod and on Alt) are replaced, which keeps Super+Tab the
-  # overview's and Alt off the desktop.
+  # same keys on Mod and on Alt) are replaced, which keeps Alt off the
+  # desktop.
   switcher = [
     {
-      chord = "Super+Grave";
+      chord = "Super+Tab";
       does = "Go back to the window before, or hold Super to choose another";
       action = "next-window;";
       run = [
@@ -97,10 +99,22 @@ let
       ];
     }
     {
-      chord = "Super+Shift+Grave";
+      chord = "Super+Shift+Tab";
       does = "Choose a window, starting from the one used longest ago";
       action = "previous-window;";
       # The switcher's own, with nothing niri's command line can do alike.
+      run = [ ];
+    }
+    {
+      chord = "Super+Grave";
+      does = "Choose among this program's windows";
+      action = ''next-window filter="app-id";'';
+      run = [ ];
+    }
+    {
+      chord = "Super+Shift+Grave";
+      does = "Choose among this program's windows, from the one used longest ago";
+      action = ''previous-window filter="app-id";'';
       run = [ ];
     }
   ];

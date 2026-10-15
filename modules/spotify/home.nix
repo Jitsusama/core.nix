@@ -79,7 +79,7 @@ in
     settings = {
       # A notice for every new track is one Joel didn't ask for.
       enable_notify = false;
-      # Rounded, as zellij draws its panes.
+      # Rounded, as the theme's corners are.
       border_type = "Rounded";
     };
   };

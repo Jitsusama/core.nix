@@ -1140,7 +1140,7 @@ in
   # A chord two layers both claim never reaches the lower one, so a machine
   # with one doesn't build. The clashes here are spelt the way each program
   # spells its chords, so the map has to see through the spelling: kitty's
-  # ctrl+alt+n is zellij's Ctrl Alt n, and its super+return is niri's
+  # ctrl+shift+t is a program's Ctrl+Shift+T, and its super+return is niri's
   # Super+Return. A layer claiming one chord twice is refused too.
   a-claimed-chord-is-refused =
     let
@@ -1148,12 +1148,13 @@ in
         self.nixosModules.workstation
         self.nixosModules.graphical
         {
-          home-manager.users.someone.jitsusama.kitty.keys = lib.mkAfter [
+          home-manager.users.someone.jitsusama.keys.program = [
             {
-              chord = "ctrl+alt+n";
-              does = "Open a window";
-              action = "new_os_window";
+              chord = "Ctrl+Shift+T";
+              does = "Reopen a closed buffer";
             }
+          ];
+          home-manager.users.someone.jitsusama.kitty.keys = lib.mkAfter [
             {
               chord = "super+return";
               does = "Open a tab";
@@ -1181,7 +1182,7 @@ in
       "A chord two layers claim, or one layer claims twice, wasn't refused."
       (
         fine
-        && lib.hasInfix "ctrl+alt+n: terminal (Open a window) takes it from multiplexer (Open a pane)" refusals
+        && lib.hasInfix "ctrl+shift+t: terminal (Open a tab here) takes it from program (Reopen a closed buffer)" refusals
         && lib.hasInfix "super+enter: desktop (Open a terminal) takes it from terminal (Open a tab)" refusals
         && lib.hasInfix "ctrl+shift+c in terminal: Copy, Copy again" refusals
       );

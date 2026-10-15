@@ -167,7 +167,6 @@
         wifid = ./modules/wifid/home.nix;
         yq = ./modules/yq/home.nix;
         zathura = ./modules/zathura/home.nix;
-        zellij = ./modules/zellij/home.nix;
         zoxide = ./modules/zoxide/home.nix;
         zsh = ./modules/zsh/home.nix;
 
@@ -334,7 +333,6 @@
         self.homeModules.tree-sitter
         (import ./modules/wezterm/home.nix { inherit wallpapers; })
         self.homeModules.yq
-        self.homeModules.zellij
         self.homeModules.zoxide
         self.homeModules.zsh
         self.homeModules.prompt

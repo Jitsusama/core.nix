@@ -1,6 +1,5 @@
 // Every shortcut, a collection: each layer's chords from jitsusama.keys, top
-// to bottom (the desktop, the terminal, the multiplexer inside it, the
-// program inside that), found by what they do, each with its chord and the
+// to bottom (the desktop, the terminal, the program inside it), found by what they do, each with its chord and the
 // layer it belongs to in the footer. The touchscreen's swipes follow the
 // desktop's, from jitsusama.swipes, each drawn as its fingers and its way,
 // and found by "swipe" or "touch" as well. It's opened by its own chord, or by
@@ -27,7 +26,6 @@ Provider {
         desktop: "on the desktop",
         touchscreen: "on the touchscreen",
         terminal: "in the terminal",
-        multiplexer: "in the multiplexer",
         program: "in the program"
     })
 

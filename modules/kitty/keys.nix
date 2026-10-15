@@ -3,10 +3,13 @@
 # to the keyboard map, which refuses one the desktop above already takes
 # (modules/keys).
 #
-# They're WezTerm's defaults and nothing else: Ctrl+Shift for the terminal,
-# so the program inside keeps every plain Ctrl chord, and Ctrl with Tab,
-# Page Up and Down, equals, minus and 0 where every terminal and browser
-# puts them.
+# Ctrl+Shift is the terminal, so the program inside keeps every plain Ctrl
+# chord, and Ctrl with Tab, Page Up and Down, equals, minus and 0 is where
+# every terminal and browser puts them. The words are the ones every layer
+# speaks (docs/design.md, The Keyboard): T opens a tab, W closes, Space
+# finds, ? shows what's here. A new window is N rather than Return, which
+# with Ctrl and Shift would ask one little finger for two keys on the
+# ErgoDox.
 { lib }:
 let
   numbered = make: lib.genList (index: make (toString (index + 1))) 9;
@@ -101,7 +104,7 @@ in
     action = "scroll_end";
   }
   {
-    chord = "ctrl+shift+f";
+    chord = "ctrl+shift+space";
     does = "Search the scrollback";
     action = "search_scrollback";
   }
@@ -116,9 +119,10 @@ in
     action = "show_last_command_output";
   }
   # WezTerm's quick select: pick a word, path or hash from the screen, or a
-  # link. hints is the hints kitten in the theme, which theme.conf names.
+  # link. hints is the hints kitten in the theme, which theme.conf names,
+  # and H is for hints.
   {
-    chord = "ctrl+shift+space";
+    chord = "ctrl+shift+h";
     does = "Pick a word from the screen";
     action = "hints --type word --program @";
   }
@@ -128,7 +132,7 @@ in
     action = "hints --type url";
   }
   {
-    chord = "ctrl+shift+p";
+    chord = "ctrl+shift+slash";
     does = "Find a terminal action";
     action = "command_palette";
   }
