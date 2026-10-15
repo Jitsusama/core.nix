@@ -13,7 +13,7 @@ setopt err_return no_unset pipe_fail extended_glob
 local plugin=$1 gitstatusd=$2 engine=$3 work=$4
 typeset -g GITSTATUS_AUTO_INSTALL=0
 export GIT_CONFIG_NOSYSTEM=1 GIT_AUTHOR_NAME=a GIT_AUTHOR_EMAIL=a@b \
-  GIT_COMMITTER_NAME=a GIT_COMMITTER_EMAIL=a@b HOME=$work/home
+  GIT_COMMITTER_NAME=a GIT_COMMITTER_EMAIL=a@b HOME=$work/home XDG_CACHE_HOME=$work/cache
 mkdir -p $HOME
 git config --global init.defaultBranch main
 git config --global advice.detachedHead false
