@@ -357,7 +357,10 @@ and is harmless, so nothing silences or patches it:
 - **Bluetooth's "Received gp1 mailbox interrupt"**, four times as the
   controller loads its firmware. The driver reports every interrupt from that
   mailbox as an error and dumps its registers for debugging; the firmware
-  loads and the controller works.
+  loads and the controller works. On some boots, and on resuming from them,
+  that dump also logs "Controller device warning": a bit the controller's
+  own firmware sets in its boot stage register, which the driver reports and
+  does nothing with.
 - **"Returned feature report did not match the request"** from the
   touchpad, which answers one feature request with another report and works
   as it should.
