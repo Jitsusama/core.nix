@@ -32,8 +32,6 @@ in
   };
 
   config = {
-    programs.zsh.oh-my-zsh.plugins = [ "git" ];
-
     # Programs change their own settings with git config --global, so the file
     # git writes, ~/.gitconfig, stays a plain file, and it includes what's
     # declared here at its end, where git reads it over what they wrote. Nothing

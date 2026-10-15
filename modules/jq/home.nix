@@ -5,12 +5,7 @@
 let
   inherit (config.jitsusama.theme) roles terminal;
   # jq takes a colour as the escape's own numbers.
-  sgr =
-    colour:
-    let
-      channel = at: toString (lib.fromHexString (builtins.substring at 2 colour));
-    in
-    "38;2;${channel 1};${channel 3};${channel 5}";
+  sgr = import ../theme/sgr.nix { inherit lib; } "38";
 in
 {
   imports = [ ../theme/home.nix ];

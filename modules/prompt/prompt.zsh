@@ -25,6 +25,14 @@
 # from its own setup already.
 (( $+functions[_prompt_precmd] )) && return
 
+# A dumb terminal, as an editor's shell is, gets a plain $ and nothing to
+# redraw.
+if [[ $TERM == dumb ]]; then
+  unsetopt zle prompt_cr prompt_subst
+  PROMPT='$ ' RPROMPT=''
+  return
+fi
+
 zmodload zsh/datetime zsh/parameter zsh/system
 autoload -Uz add-zle-hook-widget
 setopt prompt_subst prompt_percent

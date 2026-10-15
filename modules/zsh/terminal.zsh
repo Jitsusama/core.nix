@@ -39,10 +39,6 @@ function _emit_working_directory() {
   printf '\033]7;file://%s%s\007' "$HOST" "$where"
 }
 
-# oh-my-zsh tells the terminal the folder too, the same way and slower, so
-# only the one above does.
-(( $+functions[omz_termsupport_cwd] )) && add-zsh-hook -d precmd omz_termsupport_cwd
-
 # Register hooks in execution order
 # precmd: runs before each prompt is displayed
 # CRITICAL: _emit_command_finished must be FIRST to capture exit code
