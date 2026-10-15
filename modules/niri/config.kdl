@@ -59,7 +59,8 @@ layout {
         proportion 0.66667
     }
 
-    // A thin border marks the focused window; no ring, no shadow.
+    // A thin border in the accent marks the focused window, and the same line
+    // in the edge colour the rest; no ring, no shadow.
     focus-ring {
         off
     }
@@ -67,6 +68,20 @@ layout {
 
 // Programs draw no title bars of their own; niri's border says enough.
 prefer-no-csd
+
+// The keys come first, so the pointer steps aside while they're in use and
+// comes back when the mouse moves.
+cursor {
+    hide-when-typing
+}
+
+// The overview has Super+Tab and the four-finger swipe, so a corner the
+// pointer happens into doesn't open it as well.
+gestures {
+    hot-corners {
+        off
+    }
+}
 
 // niri copies every screenshot to the clipboard and saves it here too.
 screenshot-path "~/Pictures/Screenshots/%Y-%m-%d %H-%M-%S.png"

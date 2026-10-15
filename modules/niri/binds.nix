@@ -150,11 +150,6 @@ in
     action = "focus-column-last;";
   }
   {
-    chord = "Super+Grave";
-    does = "Go back to the window before";
-    action = "focus-window-previous;";
-  }
-  {
     chord = "Super+Shift+Space";
     does = "Focus the floating windows, or the tiled ones";
     action = "switch-focus-between-floating-and-tiling;";
@@ -425,7 +420,7 @@ in
   }
   {
     chord = "Super+Shift+0";
-    does = "Share the column's height evenly again";
+    does = "Give the window back its share of the column's height";
     action = "reset-window-height;";
   }
   {

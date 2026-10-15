@@ -72,10 +72,38 @@ let
     overview-open-close = spring;
     window-open = timed motion.medium;
     window-close = timed motion.short;
-    screenshot-ui-open = timed motion.short;
+    screenshot-ui-open = timed motion.medium;
+    recent-windows-close = timed motion.short;
     config-notification-open-close = timed motion.medium;
     exit-confirmation-open-close = timed motion.medium;
   };
+  # niri's switcher between recent windows, which stays open while Super is
+  # held: a tap goes back to the window before, as focus-window-previous
+  # does, and held, the arrows choose another, Return takes it and Escape
+  # backs out. It takes these keys from its own section rather than binds,
+  # and gives way to any normal bind on the same chord, so its defaults (the
+  # same keys on Mod and on Alt) are replaced, which keeps Super+Tab the
+  # overview's and Alt off the desktop.
+  switcher = [
+    {
+      chord = "Super+Grave";
+      does = "Go back to the window before, or hold Super to choose another";
+      action = "next-window;";
+      run = [
+        "niri"
+        "msg"
+        "action"
+        "focus-window-previous"
+      ];
+    }
+    {
+      chord = "Super+Shift+Grave";
+      does = "Choose a window, starting from the one used longest ago";
+      action = "previous-window;";
+      # The switcher's own, with nothing niri's command line can do alike.
+      run = [ ];
+    }
+  ];
   cursor = {
     name = "Adwaita";
     package = pkgs.adwaita-icon-theme;
@@ -158,37 +186,39 @@ in
   # found by name does what its chord does: a spawn runs its program, and
   # anything else asks niri through its own command line, which fills in what
   # the config leaves to defaults. Nothing runs until the action is picked.
-  config.jitsusama.keys.desktop = map (
-    b:
-    let
-      words = map (found: if lib.head found != null then lib.head found else lib.elemAt found 1) (
-        lib.filter lib.isList (builtins.split ''"([^"]*)"|([^ ";]+)'' b.action)
-      );
-      name = lib.head words;
-      arguments = lib.tail words;
-    in
-    {
-      inherit (b) chord does;
-      run =
-        if name == "spawn" then
-          arguments
-        else if name == "spawn-sh" then
-          [
-            "sh"
-            "-c"
-          ]
-          ++ arguments
-        else
-          [
-            "niri"
-            "msg"
-            "action"
-            name
-            "--"
-          ]
-          ++ arguments;
-    }
-  ) binds;
+  config.jitsusama.keys.desktop =
+    map (
+      b:
+      let
+        words = map (found: if lib.head found != null then lib.head found else lib.elemAt found 1) (
+          lib.filter lib.isList (builtins.split ''"([^"]*)"|([^ ";]+)'' b.action)
+        );
+        name = lib.head words;
+        arguments = lib.tail words;
+      in
+      {
+        inherit (b) chord does;
+        run =
+          if name == "spawn" then
+            arguments
+          else if name == "spawn-sh" then
+            [
+              "sh"
+              "-c"
+            ]
+            ++ arguments
+          else
+            [
+              "niri"
+              "msg"
+              "action"
+              name
+              "--"
+            ]
+            ++ arguments;
+      }
+    ) binds
+    ++ map (s: { inherit (s) chord does run; }) switcher;
 
   config.xdg.configFile."niri/config.kdl".text = builtins.readFile ./config.kdl;
 
@@ -244,7 +274,18 @@ in
     }
     overview {
         backdrop-color "${roles.deepest}"
-        ${lib.optionalString pictured "workspace-shadow { off; }"}
+        workspace-shadow {
+            ${if pictured then "off" else ''color "${roles.shadow}50"''}
+        }
+    }
+    recent-windows {
+        highlight {
+            active-color "${roles.accent}"
+            urgent-color "${roles.alert}"
+            corner-radius ${toString shape.radius}
+        }
+        binds {
+    ${lib.concatMapStrings (s: "        ${s.chord} { ${s.action} }\n") switcher}    }
     }
     cursor {
         xcursor-theme "${cursor.name}"
