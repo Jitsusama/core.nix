@@ -90,6 +90,26 @@ in
   hardware.cpu.intel.updateMicrocode = true;
   hardware.enableRedistributableFirmware = true;
 
+  # linux-firmware 20260916's settings file for the Bluetooth chip ends in a
+  # stray newline, which the kernel reads as one record too many and rejects
+  # with "Malformed DDC record" at every boot. The records before it are sent
+  # first, so Bluetooth works either way. The file linux-firmware corrected
+  # two days later goes first, so it's the one found, until a release that
+  # has it.
+  hardware.firmware = lib.mkIf (lib.versionOlder pkgs.linux-firmware.version "20260917") (
+    lib.mkBefore [
+      (pkgs.runCommandLocal "ibt-00a0-01a1-pci-ddc" { } ''
+        install -D -m 444 ${
+          pkgs.fetchurl {
+            name = "ibt-00a0-01a1-pci.ddc";
+            url = "https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/plain/intel/ibt-00a0-01a1-pci.ddc?id=a98a6daa9f4dee2f662cc8a48610287189b23499";
+            hash = "sha256-ot+YgNGJUiDpv7uGsuI1hBnFaFa13MLWMAcTlp39B0Q=";
+          }
+        } $out/lib/firmware/intel/ibt-00a0-01a1-pci.ddc
+      '')
+    ]
+  );
+
   boot.kernelPatches = [
     {
       # Without it the camera's CVS bridge holds the pin all four amplifiers

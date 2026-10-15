@@ -364,9 +364,10 @@ and is harmless, so nothing silences or patches it:
   HDMI codec has four converters and the DSP's topology three outputs. The
   GPU drives four displays, the panel being one, so the three cover every
   external display.
-- **Bluetooth's "Received gp1 mailbox interrupt" and "Failed to send
-  Intel_Write_DDC (-95)".** The controller doesn't take the DDC parameters,
-  and works without them.
+- **Bluetooth's "Received gp1 mailbox interrupt"**, four times as the
+  controller loads its firmware. The driver reports every interrupt from that
+  mailbox as an error and dumps its registers for debugging; the firmware
+  loads and the controller works.
 - **"Returned feature report did not match the request"** from the
   touchpad, which answers one feature request with another report and works
   as it should.
@@ -441,6 +442,16 @@ upstream as it is and the override can then come out.
   +  ];
   ```
 
+- **Bluetooth's DDC file.** linux-firmware 20260916's
+  `intel/ibt-00a0-01a1-pci.ddc` ends in a stray newline. The kernel reads it
+  as a record 11 bytes long with 1 byte left: 7.2.9 sent it past the end of
+  the file, and the controller refused it with "Failed to send
+  Intel_Write_DDC (-95)"; 7.2.10 checks the length first and says "Malformed
+  DDC record (plen=11, remaining=1)". The two real records go first either
+  way, so the controller has its parameters. linux-firmware's
+  [a98a6daa9f4d][14] drops the byte two days after that release, so its file
+  goes ahead of the package's until nixpkgs has a newer one.
+
 ### Left Out on Purpose
 
 - **`fred=on`.** Omarchy sets it, but 7.2 turns FRED on by default wherever
@@ -474,3 +485,4 @@ upstream as it is and the override can then come out.
 [11]: ../hardware/dell-xps-14-da14260/camera.nix
 [12]: https://github.com/TsaiGaggery/hurrican_omarchy_enabling
 [13]: ../modules/firmware-settings/nixos.nix
+[14]: https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/commit/?id=a98a6daa9f4dee2f662cc8a48610287189b23499
