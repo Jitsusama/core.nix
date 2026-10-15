@@ -1,17 +1,27 @@
 # fzf, the fuzzy finder behind the shell's history and file searches, drawn
 # like the launcher: the current row in the selection colour and the
 # strongest text, the rest in text and muted, and the accent where the
-# keys go.
-{ config, ... }:
+# keys go. Its shell bindings are written when the account is built rather
+# than asked of fzf at each shell start, in the place home-manager would put
+# them, after zsh's own keys, so its Ctrl+R is the one kept.
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 let
   inherit (config.jitsusama.theme) roles;
+  bindings = pkgs.runCommandLocal "fzf.zsh" { } ''
+    ${lib.getExe config.programs.fzf.package} --zsh > $out
+  '';
 in
 {
   imports = [ ../theme/home.nix ];
 
   programs.fzf = {
     enable = true;
-    enableZshIntegration = true;
+    enableZshIntegration = false;
     defaultOptions = [
       "--height=40%"
       "--layout=reverse"
@@ -41,4 +51,8 @@ in
       scrollbar = roles.rule;
     };
   };
+
+  programs.zsh.initContent = lib.mkOrder 910 ''
+    [[ $options[zle] = on ]] && source ${bindings}
+  '';
 }
