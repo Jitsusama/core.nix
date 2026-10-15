@@ -180,6 +180,16 @@ pkgs.testers.runNixOSTest {
           machine.wait_for_unit("multi-user.target")
           print(machine.succeed("journalctl -b -o cat -u systemd-cryptsetup@system.service"))
 
+      with subtest("the NvPCRs' anchor holds across boots, without errors"):
+          # The boot before put the anchor's secret on the ESP, where this
+          # boot's initrd found it, so the copy in /var already matched.
+          setup = machine.succeed("journalctl -b -o cat -u systemd-tpm2-setup.service")
+          print(setup)
+          t.assertIn("NvPCRs initialized", setup)
+          machine.succeed("ls /boot/loader/credentials/nvpcr-anchor.*.cred")
+          t.assertNotIn("different from current anchor secret", setup)
+          t.assertNotIn("ERROR:esys", setup)
+
       with subtest("the TPM refuses once a measured PCR changes"):
           # A scratch volume bound to the same policy, since the system's own
           # is already open.

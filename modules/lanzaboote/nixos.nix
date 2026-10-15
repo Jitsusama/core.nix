@@ -123,5 +123,17 @@ in
   # refuse an option ROM.
   system.build.optionRomCheck = optionRomCheck;
 
+  # systemd-tpm2-setup keeps the secret that anchors the TPM's NvPCRs in
+  # /var and on the ESP, where the next boot's initrd finds it. Its unit
+  # isn't ordered after the ESP's mount, so a machine that mounts it late
+  # finds no ESP, and every boot makes a new secret and overwrites the last.
+  # It also asks the TPM to define each NvPCR at every boot and takes the
+  # refusal that it already exists as its answer, which tss2 logs as an
+  # error; systemd still reports its own failures without it.
+  systemd.services.systemd-tpm2-setup = {
+    unitConfig.RequiresMountsFor = [ config.boot.loader.efi.efiSysMountPoint ];
+    environment.TSS2_LOG = "esys+none";
+  };
+
   environment.systemPackages = [ pkgs.sbctl ];
 }
