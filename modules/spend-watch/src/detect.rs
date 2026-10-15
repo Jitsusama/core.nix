@@ -108,7 +108,6 @@ pub fn all(picture: &Picture, history: &History, config: &Config) -> Result<Vec<
     found.extend(peers(picture, config));
     found.extend(stalled(picture, config));
     found.extend(regimes(picture));
-    found.extend(mix(picture, config));
     found.extend(novelty(picture, history, config)?);
     found.extend(spikes(picture));
     found.extend(prices(picture));
@@ -845,104 +844,10 @@ pub fn regimes(picture: &Picture) -> Vec<Finding> {
     vec![f]
 }
 
-/// Today's split by model against its usual, by Jensen-Shannon divergence,
-/// judged against how far each of the last four weeks' days strayed.
-pub fn mix(picture: &Picture, config: &Config) -> Vec<Finding> {
-    let zone = &picture.zone;
-    let today = zone.day(picture.now);
-    let mut by_day: BTreeMap<i64, HashMap<String, f64>> = BTreeMap::new();
-    // Spend whose model nobody recorded isn't a model to lean on.
-    for piece in picture
-        .pieces_month
-        .iter()
-        .filter(|piece| !piece.model.is_empty())
-    {
-        let day = zone.day(crate::time::hour_start(piece.hour));
-        *by_day
-            .entry(day)
-            .or_default()
-            .entry(piece.model.clone())
-            .or_default() += piece.dollars;
-    }
-    let models: Vec<String> = {
-        let mut all: HashSet<String> = HashSet::new();
-        for day in by_day.values() {
-            all.extend(day.keys().cloned());
-        }
-        let mut all: Vec<String> = all.into_iter().collect();
-        all.sort();
-        all
-    };
-    let vector = |day: &HashMap<String, f64>| {
-        models
-            .iter()
-            .map(|m| day.get(m).copied().unwrap_or(0.0))
-            .collect::<Vec<_>>()
-    };
-    let usual: Vec<f64> = models
-        .iter()
-        .map(|m| {
-            by_day
-                .iter()
-                .filter(|(d, _)| **d < today)
-                .map(|(_, day)| day.get(m).copied().unwrap_or(0.0))
-                .sum()
-        })
-        .collect();
-    let Some(now) = by_day.get(&today) else {
-        return Vec::new();
-    };
-    let spent: f64 = now.values().sum();
-    if spent < config.detectors.floor.max(50.0) {
-        return Vec::new();
-    }
-    let strays: Vec<f64> = by_day
-        .iter()
-        .filter(|(d, day)| **d < today && day.values().sum::<f64>() >= 50.0)
-        .map(|(_, day)| stats::jensen_shannon(&vector(day), &usual))
-        .collect();
-    if strays.len() < 10 {
-        return Vec::new();
-    }
-    let divergence = stats::jensen_shannon(&vector(now), &usual);
-    if divergence <= stats::quantile(&strays, 0.99).max(0.1) {
-        return Vec::new();
-    }
-    let top = now
-        .iter()
-        .max_by(|a, b| a.1.total_cmp(b.1))
-        .map(|(m, d)| (m.clone(), *d))
-        .unwrap_or_default();
-    let total_usual: f64 = usual.iter().sum();
-    let usual_share = models
-        .iter()
-        .position(|m| *m == top.0)
-        .map_or(0.0, |i| usual[i] / total_usual.max(1e-9));
-    // A model that spent nothing on most days is new, which is novelty's to
-    // say, once.
-    if usual_share <= 0.0 {
-        return Vec::new();
-    }
-    let mut f = finding(
-        format!("mix:{today}"),
-        "mix",
-        Severity::Note,
-        format!("today leans on {}", top.0),
-        format!(
-            "{} of today's spend against {} usual.",
-            percent(top.1 / spent),
-            percent(usual_share)
-        ),
-    );
-    f.badge = percent(top.1 / spent);
-    f.note = format!("against {} on most days", percent(usual_share));
-    f.dollars = spent;
-    f.surprise = 2.0;
-    vec![f]
-}
-
 /// Something new spending under the account's name: a tool, model or
-/// credential billed in the last day that wasn't in the thirty before.
+/// credential billed in the last day that wasn't in the thirty before. A
+/// new model or tool is one someone chose, so it's listed; a credential
+/// nobody knew may be a leaked key, so it's told.
 pub fn novelty(
     picture: &Picture,
     history: &History,
@@ -1002,7 +907,11 @@ pub fn novelty(
             let mut f = finding(
                 format!("new:{column}:{named}"),
                 "novelty",
-                Severity::Warning,
+                if what == "credential" {
+                    Severity::Warning
+                } else {
+                    Severity::Note
+                },
                 format!("a new {what}: {shown}"),
                 format!(
                     "{} in the last day; not billed in the thirty days before. Expected, or worth \
@@ -1334,22 +1243,23 @@ mod tests {
         }
     }
 
-    // Spend whose model nobody recorded says nothing of the day's mix of
-    // models, however much of it there is.
+    // A day leaning on one model is a choice already made, not news: over
+    // 26 weeks each of 32 such notes was a switch to a newer model, for a
+    // week at a time, which a new model's note had said once.
     #[test]
-    fn the_mix_is_of_models_someone_named() {
-        assert!(mix_with("").is_empty());
-        // One that spent nothing on most days is new, which novelty says.
-        assert!(mix_with("z").is_empty());
-        // One that spends a little most days and most of today is told.
-        let found = mix_with("y");
-        assert_eq!(found.len(), 1);
-        assert_eq!(found[0].title, "today leans on y");
+    fn a_day_leaning_on_one_model_is_no_finding() {
+        let (history, picture) = leaning("y");
+        let found = all(&picture, &history, &config()).unwrap();
+        assert!(
+            !found.iter().any(|f| f.title.starts_with("today leans on")),
+            "{:?}",
+            found.iter().map(|f| &f.title).collect::<Vec<_>>()
+        );
     }
 
     // Twenty-eight days of model m from nine to five, with $5 of y each
     // morning, and today $900 of `model`.
-    fn mix_with(model: &str) -> Vec<Finding> {
+    fn leaning(model: &str) -> (History, Picture) {
         let history = History::memory();
         let today = (NOW / DAY).floor() * DAY;
         for back in 1..28 {
@@ -1376,7 +1286,7 @@ mod tests {
         let record = crate::feed::parse(&line.to_string()).unwrap();
         crate::feed::store(&history, "proxy", &record, NOW).unwrap();
         let picture = Picture::read(&history, &config(), NOW).unwrap();
-        mix(&picture, &config())
+        (history, picture)
     }
 
     // A model billed at a new share of its list price for three settled
@@ -1707,9 +1617,40 @@ mod tests {
         let picture = Picture::read(&history, &config, NOW).unwrap();
         let found = novelty(&picture, &history, &config).unwrap();
         let severity = |key: &str| found.iter().find(|f| f.key == key).map(|f| f.severity);
-        assert_eq!(severity("new:model:big"), Some(Severity::Warning));
+        assert_eq!(severity("new:model:big"), Some(Severity::Note));
         assert_eq!(severity("new:model:small"), None);
         assert_eq!(severity("new:model:old"), None);
+    }
+
+    // A new model or tool is one someone chose, so it's listed; a new
+    // credential spending under the account's name may be a leaked key, so
+    // it's told.
+    #[test]
+    fn a_new_credential_is_told_and_a_new_model_listed() {
+        let history = History::memory();
+        let by = |hour: &str, model: &str, token: &str, dollars: f64| {
+            let line = serde_json::json!({
+                "v": 1, "kind": "billed", "source": "warehouse", "hour": hour, "tool": "pi",
+                "model": model, "vendor": "v", "token": token, "dollars": dollars,
+                "tokens": {"input": 0, "cached": 0, "cacheWrite": 0, "output": 0},
+            });
+            let record = crate::feed::parse(&line.to_string()).unwrap();
+            crate::feed::store(&history, "proxy", &record, NOW).unwrap();
+        };
+        by("2026-10-04T12:00:00Z", "old", "mine", 50.0);
+        by("2026-10-14T12:00:00Z", "fresh", "mine", 30.0);
+        by("2026-10-14T12:00:00Z", "old", "stranger", 30.0);
+        let config = config();
+        let picture = Picture::read(&history, &config, NOW).unwrap();
+        let found = novelty(&picture, &history, &config).unwrap();
+        let severity = |prefix: &str| {
+            found
+                .iter()
+                .find(|f| f.key.starts_with(prefix))
+                .map(|f| f.severity)
+        };
+        assert_eq!(severity("new:model:fresh"), Some(Severity::Note));
+        assert_eq!(severity("new:token:"), Some(Severity::Warning));
     }
 
     // What's new is what the last day billed, up to the moment judged: a
