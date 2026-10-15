@@ -2038,10 +2038,10 @@ in
           touch $out
         '';
 
-    # Neovim starts with the configuration an account gets, in bamboo drawn on
-    # the terminal's own background, with Tree-sitter drawing a file in a
-    # language it has a parser for and its text objects mapped, and nothing it
-    # loads complains.
+    # Neovim starts with the configuration an account gets, in the theme's own
+    # colour scheme drawn on the terminal's own background, with Tree-sitter
+    # drawing a file in a language it has a parser for and its text objects
+    # mapped, and nothing it loads complains.
     neovim-starts-in-the-theme =
       let
         home = account workstation;
@@ -2064,17 +2064,18 @@ in
         ''
           export HOME=$PWD XDG_CONFIG_HOME=$PWD/config XDG_DATA_HOME=$PWD/data
           export XDG_STATE_HOME=$PWD/state XDG_CACHE_HOME=$PWD/cache
-          mkdir -p config/nvim/lua data/nvim/site/pack
+          mkdir -p config/nvim/lua config/nvim/colors data/nvim/site/pack
           ln -s ${plugins} data/nvim/site/pack/hm
           cp ${files."nvim/init.lua".source} config/nvim/init.lua
           cp ${files."nvim/lua/theme.lua".source} config/nvim/lua/theme.lua
+          cp ${files."nvim/colors/jitsusama.lua".source} config/nvim/colors/jitsusama.lua
           echo 'return {}' > probe.lua
           nvim --headless probe.lua -c "lua io.stdout:write(${report})" -c 'qa!' > answer 2> complaints
           # claudecode says it has stopped as Neovim quits, which is news, not a
           # complaint.
           grep -v '\[INFO\]' complaints > errors || true
           if [ -s errors ]; then cat errors; exit 1; fi
-          if [ "$(cat answer)" != "bamboo nil true objects" ]; then cat answer; exit 1; fi
+          if [ "$(cat answer)" != "jitsusama nil true objects" ]; then cat answer; exit 1; fi
           touch $out
         '';
 
