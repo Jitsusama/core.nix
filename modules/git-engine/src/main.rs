@@ -9,7 +9,9 @@
 //! unchanged: requests arrive on stdin as `id\x1fdir\x1fno-diff\x1e`, and
 //! each answer is `id\x1f1\x1f` and twenty-seven fields, or `id\x1f0` for a
 //! folder in no repository, ended by `\x1e`. It keeps what it has read of a
-//! repository between questions until the files it came from change.
+//! repository between questions until the files it came from change, and
+//! looks every half minute for packs that changed in a repository nobody
+//! is asking about, closing them so a repack's old packs free their space.
 //!
 //! `git-engine --once DIR` answers once, one field to a line, for trying it
 //! by hand.
@@ -35,6 +37,8 @@ use status::Limits;
 use std::collections::HashMap;
 use std::io::{BufRead, Write};
 use std::path::{Path, PathBuf};
+use std::sync::mpsc::{self, Receiver, RecvTimeoutError};
+use std::time::{Duration, Instant};
 
 fn limit(value: Option<&str>, default: Option<usize>) -> Option<usize> {
     match value.and_then(|v| v.parse::<i64>().ok()) {
@@ -144,21 +148,67 @@ impl Engine {
             }
         }
     }
+
+    /// Forgets each repository whose packs or commit-graph changed since
+    /// it read them, closing the files it held. A prompt reads them again
+    /// when it next asks; until then, a file git removed would otherwise
+    /// keep its space for as long as this engine runs.
+    fn let_go_of_changed(&mut self) {
+        self.repos.retain(|_, repo| !repo.holds_changed_files());
+    }
+}
+
+/// How often the engine looks for repositories whose files changed, so
+/// that one no prompt asks about again lets go of them all the same.
+const LOOK_EVERY: Duration = Duration::from_secs(30);
+
+/// Each request read from `input`, ended by `\x1e` and without it, on a
+/// thread of its own so the engine can do other work while none comes.
+/// The channel closes at the end of the input or one cut short; a read
+/// that fails is sent as the last thing on it.
+fn requests(mut input: impl BufRead + Send + 'static) -> Receiver<std::io::Result<Vec<u8>>> {
+    let (send, receive) = mpsc::channel();
+    std::thread::spawn(move || {
+        loop {
+            let mut request = Vec::new();
+            match input.read_until(0x1e, &mut request) {
+                Ok(0) => return,
+                Ok(_) => match request.strip_suffix(&[0x1e]) {
+                    Some(body) => {
+                        if send.send(Ok(body.to_vec())).is_err() {
+                            return;
+                        }
+                    }
+                    None => return,
+                },
+                Err(error) => {
+                    let _ = send.send(Err(error));
+                    return;
+                }
+            }
+        }
+    });
+    receive
 }
 
 fn serve(options: &Options) -> std::io::Result<()> {
     let mut engine = Engine::default();
-    let stdin = std::io::stdin();
-    let mut input = stdin.lock();
+    let incoming = requests(std::io::BufReader::new(std::io::stdin()));
     let stdout = std::io::stdout();
-    let mut request = Vec::new();
+    let mut looked = Instant::now();
     loop {
-        request.clear();
-        if input.read_until(0x1e, &mut request)? == 0 {
-            return Ok(());
+        let wait = LOOK_EVERY.saturating_sub(looked.elapsed());
+        let body = match incoming.recv_timeout(wait) {
+            Ok(body) => Some(body?),
+            Err(RecvTimeoutError::Timeout) => None,
+            Err(RecvTimeoutError::Disconnected) => return Ok(()),
+        };
+        if looked.elapsed() >= LOOK_EVERY {
+            engine.let_go_of_changed();
+            looked = Instant::now();
         }
-        let Some(body) = request.strip_suffix(&[0x1e]) else {
-            return Ok(());
+        let Some(body) = body else {
+            continue;
         };
         let mut parts = body.split(|&b| b == 0x1f);
         let id = parts.next().unwrap_or_default();
@@ -246,5 +296,44 @@ fn main() {
     }
     if serve(&options(&args)).is_err() {
         std::process::exit(1);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A repository with no commits yet, made afresh under `name`.
+    fn repository(name: &str) -> PathBuf {
+        let dir =
+            std::env::temp_dir().join(format!("git-engine-main-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join(".git/objects/pack")).unwrap();
+        std::fs::create_dir_all(dir.join(".git/refs/heads")).unwrap();
+        std::fs::write(dir.join(".git/HEAD"), "ref: refs/heads/main\n").unwrap();
+        dir
+    }
+
+    #[test]
+    fn lets_go_of_a_repository_whose_packs_changed() {
+        let dir = repository("repacked");
+        let mut engine = Engine::default();
+        engine.ask(&dir, &options(&[]), false);
+        assert_eq!(engine.repos.len(), 1);
+        // What a repack does: writes a pack and removes the old ones.
+        std::fs::write(dir.join(".git/objects/pack/pack-new.idx"), b"").unwrap();
+        engine.let_go_of_changed();
+        assert!(engine.repos.is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn keeps_a_repository_nothing_changed_in() {
+        let dir = repository("still");
+        let mut engine = Engine::default();
+        engine.ask(&dir, &options(&[]), false);
+        engine.let_go_of_changed();
+        assert_eq!(engine.repos.len(), 1);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
