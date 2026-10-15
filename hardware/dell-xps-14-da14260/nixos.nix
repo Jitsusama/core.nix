@@ -184,8 +184,13 @@ in
   hardware.sensor.iio.enable = true;
 
   # Intel's thermal daemon, which sets the chip's power limits from the
-  # laptop's own thermal tables as it heats.
+  # laptop's own thermal tables as it heats. Stopping it slept two seconds,
+  # at every shutdown and restart, where it now waits only for its own
+  # thread to end (thermald-joins-its-thread.patch).
   services.thermald.enable = true;
+  services.thermald.package = pkgs.thermald.overrideAttrs (old: {
+    patches = (old.patches or [ ]) ++ [ ./thermald-joins-its-thread.patch ];
+  });
 
   # The profiles' energy preferences, with performance's eased; see above.
   services.power-profiles-daemon.package = powerProfiles;
