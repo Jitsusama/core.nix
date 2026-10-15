@@ -25,7 +25,7 @@
 # from its own setup already.
 (( $+functions[_prompt_precmd] )) && return
 
-zmodload zsh/datetime zsh/parameter
+zmodload zsh/datetime zsh/parameter zsh/system
 autoload -Uz add-zle-hook-widget
 setopt prompt_subst prompt_percent
 
@@ -132,11 +132,95 @@ _prompt_where() {
   _prompt_state[gitdir]=$git
 }
 
-# The branch as HEAD names it, for where gitstatusd isn't.
+# The byte at a place in the block being read, as a number.
+_prompt_byte() {
+  local char=${block[$1]}
+  (( byte = #char ))
+}
+
+# One of git's varints from the block being read, moving past it.
+_prompt_varint() {
+  _prompt_byte $at
+  (( value = byte & 127, at++ ))
+  while (( byte & 128 )); do
+    _prompt_byte $at
+    (( value = ((value + 1) << 7) | (byte & 127), at++ ))
+  done
+}
+
+# What HEAD names in a repository that keeps its refs in reftable, as
+# World does: HEAD's file then says only refs/heads/.invalid. HEAD sorts
+# before every refs/ name, so each table's first block holds it if the
+# table does, and the newest table holding it says what it is.
+_prompt_reftable() {
+  emulate -L zsh -o no_multibyte -o extended_glob
+  local dir=$1/reftable table block key hex
+  local -i fd at end kind length value hash prefix byte size i
+  local -a tables
+  [[ -r $dir/tables.list ]] || return
+  tables=(${(f)"$(<$dir/tables.list)"})
+  for table in ${(Oa)tables}; do
+    [[ -r $dir/$table ]] || continue
+    # The header, then the first block, whose length the header gives.
+    exec {fd}<$dir/$table
+    block=""
+    sysread -s 24 -i $fd block
+    [[ ${block[1,4]} == REFT ]] || { exec {fd}<&-; continue }
+    size=0
+    for i in 6 7 8; do _prompt_byte $i; (( size = size << 8 | byte )); done
+    (( size < 24 || size > 65536 )) && size=4096
+    local rest=""
+    sysread -s $(( size - 24 )) -i $fd rest
+    exec {fd}<&-
+    block+=$rest
+    [[ ${block[25]} == r ]] || continue
+    _prompt_byte 5
+    (( hash = byte == 2 ? 32 : 20 ))
+    end=0
+    for i in 26 27 28; do _prompt_byte $i; (( end = end << 8 | byte )); done
+    (( end > ${#block} )) && end=${#block}
+    _prompt_byte $(( end - 1 )); (( i = byte << 8 ))
+    _prompt_byte $end; (( end -= 2 + 3 * (i | byte) ))
+    at=29 key=""
+    while (( at <= end )); do
+      _prompt_varint; prefix=value
+      _prompt_varint; (( length = value >> 3, kind = value & 7 ))
+      key=${key[1,prefix]}${block[at,at + length - 1]}
+      (( at += length ))
+      _prompt_varint
+      if [[ $key == HEAD ]]; then
+        REPLY=""
+        case $kind in
+          (1|2)
+            hex=""
+            for i in {0..3}; do
+              _prompt_byte $(( at + i ))
+              hex+=${(l:2::0:)$(( [##16] byte ))}
+            done
+            REPLY=${(L)hex[1,7]}
+            ;;
+          (3) _prompt_varint; REPLY="ref: ${block[at,at + value - 1]}" ;;
+        esac
+        [[ -n $REPLY ]] && return 0
+        break
+      fi
+      [[ $key > HEAD ]] && break
+      case $kind in
+        (1) (( at += hash )) ;;
+        (2) (( at += 2 * hash )) ;;
+        (3) _prompt_varint; (( at += value )) ;;
+      esac
+    done
+  done
+  return 1
+}
+
+# The branch as HEAD names it, for where gitstatusd isn't, or can't read.
 _prompt_head() {
   _prompt_state[branch]=""
   local dir=${_prompt_state[gitdir]}
   [[ -n $dir ]] && _prompt_line $dir/HEAD || return
+  [[ $REPLY == 'ref: refs/heads/.invalid' ]] && { _prompt_reftable $dir || return }
   if [[ $REPLY == ref:\ refs/heads/* ]]; then
     _prompt_state[branch]=${REPLY#ref: refs/heads/}
   else
@@ -416,7 +500,7 @@ preexec_functions+=(_prompt_preexec)
 add-zle-hook-widget line-finish _prompt_line_finish
 
 if [[ -r $_prompt_gitstatus ]]; then
-  zmodload zsh/zselect zsh/system
+  zmodload zsh/zselect
   # As many threads as gitstatus would choose, counted from the processors
   # the kernel lists rather than asked of getconf.
   [[ -n $GITSTATUS_NUM_THREADS ]] || () {

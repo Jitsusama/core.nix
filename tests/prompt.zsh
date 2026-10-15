@@ -2,7 +2,8 @@
 # everything else showing too, the folder Joel is in and the glyph stay,
 # room is left to type until there's nothing left to give, and the more mark
 # shows whenever something is hidden. Run as zsh -f -i -c 'source this
-# prompt.zsh folder', the folder being two below a repository's root.
+# prompt.zsh folder branch', the folder being two below the root of a
+# repository on that branch.
 setopt extended_glob
 source $1
 cd $2
@@ -27,7 +28,7 @@ branch=${_prompt_state[branch]}
 more=${_prompt_glyph[more]}
 [[ ${_prompt_state[op]} == rebase && ${_prompt_state[at]} == 2 ]] ||
   fail "The rebase under way wasn't read: ${(kv)_prompt_state}"
-[[ -n $branch ]] || fail "The branch wasn't read from HEAD."
+[[ $branch == $3 ]] || fail "HEAD was read as $branch, not $3."
 
 for COLUMNS in {120..16}; do
   _prompt_lay

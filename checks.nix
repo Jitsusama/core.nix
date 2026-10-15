@@ -400,9 +400,11 @@ in
         mkdir -p $HOME/zsh repo/a/b
         echo "source ${(account workstation).jitsusama.prompt.file}" > $HOME/zsh/.zshrc
         git -C repo init -q -b main
+        git init -q --ref-format=reftable -b main table
         touch repo/a/b/file
         # Typed ahead, each line a prompt; the two reads mark where to count.
-        printf 'cd repo\r: < /dev/null\rcd a/b\rtrue\rfalse\rcd ../..\r: < /dev/zero\rexit\r' > keys
+        printf '%s\r' 'cd repo' ': < /dev/null' 'cd a/b' true false 'cd ../../../table' true \
+          'cd ..' ': < /dev/zero' exit > keys
         ZDOTDIR=$HOME/zsh script -q -c \
           "stty cols 90 rows 30; strace -f -qq -o trace -e trace=process,openat zsh -i" \
           /dev/null < keys > /dev/null
@@ -417,6 +419,7 @@ in
           sort -u | tr '\n' ' ')
         [ "$ran" = "gitstatusd mkfifo zsh " ] || { echo "The shell ran: $ran" >&2; exit 1; }
         grep -q HEAD prompts || { echo "No prompt read the repository." >&2; exit 1; }
+        grep -q tables.list prompts || { echo "No prompt read the reftable." >&2; exit 1; }
         if grep -E 'clone|fork|execve' prompts; then
           echo "A prompt started a process." >&2
           exit 1
@@ -425,7 +428,9 @@ in
       '';
 
   # The prompt gives way as tests/prompt.zsh says, without gitstatusd, which
-  # needs job control a shell run this way hasn't got.
+  # needs job control a shell run this way hasn't got, in a repository that
+  # keeps its refs in files and in one that keeps them in reftable, as World
+  # does.
   the-prompt-gives-way =
     pkgs.runCommandLocal "the-prompt-gives-way"
       {
@@ -438,11 +443,16 @@ in
         export HOME=$TMPDIR/home
         mkdir -p $HOME repo/modules/btop
         grep -v '^typeset -g _prompt_gitstatus=' ${(account workstation).jitsusama.prompt.file} > prompt.zsh
-        git -C repo init -q -b jitsusama/prompt-collapse
-        mkdir repo/.git/rebase-merge
-        echo 2 > repo/.git/rebase-merge/msgnum
-        echo 5 > repo/.git/rebase-merge/end
-        zsh -f -i -c "source ${./tests/prompt.zsh} $PWD/prompt.zsh $PWD/repo/modules/btop"
+        for refs in files reftable; do
+          rm -rf repo
+          mkdir -p repo/modules/btop
+          git -C repo init -q --ref-format=$refs -b jitsusama/prompt-collapse
+          mkdir repo/.git/rebase-merge
+          echo 2 > repo/.git/rebase-merge/msgnum
+          echo 5 > repo/.git/rebase-merge/end
+          zsh -f -i -c \
+            "source ${./tests/prompt.zsh} $PWD/prompt.zsh $PWD/repo/modules/btop jitsusama/prompt-collapse"
+        done
         touch $out
       '';
 
