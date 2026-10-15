@@ -1,7 +1,11 @@
 # Every shortcut Joel has, gathered from each layer that takes keys: the
-# desktop first, then the terminal, then the program inside it. A layer above sees a key before the ones below, so a
+# desktop first, then the terminal, then the programs inside it, Neovim and
+# pi, side by side. A layer above sees a key before the ones below, so a
 # chord two layers both claim never reaches the lower one; the machine
-# refuses to build with one, naming the chord and both layers. The map is
+# refuses to build with one, naming the chord and both layers. The programs
+# never hear a key at the same time, so a chord both claim is no clash. A
+# chord can be a sequence, keys pressed one after another (Space b w), and
+# a sequence whose first key a layer above takes can never start. The map is
 # written to ~/.config/jitsusama/keys.json, with what each chord does in
 # plain words, so the launcher can find an action by its name and show its
 # chord beside it, and so a "what's here" view is drawn from the real
@@ -12,17 +16,25 @@
 let
   cfg = config.jitsusama.keys;
 
-  # Top to bottom: each layer sees a key before every layer after it.
+  # Top to bottom: each layer sees a key before every layer after it, but
+  # for the programs, which sit side by side.
   layers = {
     desktop = "the compositor and the shell around every window";
     terminal = "the terminal, inside a window";
-    program = "the program running in the terminal";
+    neovim = "Neovim, the editor in the terminal";
+    pi = "pi, the coding agent in the terminal";
   };
   order = [
     "desktop"
     "terminal"
-    "program"
+    "neovim"
+    "pi"
   ];
+  programs = [
+    "neovim"
+    "pi"
+  ];
+  beside = upper: lower: lib.elem upper programs && lib.elem lower programs;
 
   bind = lib.types.submodule (
     { config, ... }:
@@ -30,7 +42,20 @@ let
       options = {
         chord = lib.mkOption {
           type = lib.types.str;
-          description = "The chord, as its program spells it: Super+Return, ctrl+shift+t.";
+          description = ''
+            The chord, as its program spells it: Super+Return, ctrl+shift+t.
+            Keys pressed one after another are written with a space between,
+            as Space b w.
+          '';
+        };
+        when = lib.mkOption {
+          type = lib.types.str;
+          default = "";
+          description = ''
+            Where in its program the chord works, when not everywhere, in
+            plain words: "in code", "with text selected". The same chord may
+            mean something else elsewhere.
+          '';
         };
         keys = lib.mkOption {
           type = lib.types.str;
@@ -40,7 +65,8 @@ let
           description = ''
             The chord in the one spelling every layer's is brought to, for
             comparing two and drawing them alike: modifiers in a set order,
-            then the key, all lower case, joined with +, as super+shift+/.
+            then the key, all lower case, joined with +, as super+shift+/,
+            and a sequence's keys with a space between, as space b w.
           '';
         };
         does = lib.mkOption {
@@ -93,7 +119,8 @@ let
 
   # Each program spells chords its own way, so every chord is brought to one
   # spelling before two are compared: modifiers in a set order, then the key,
-  # all lower case, joined with +.
+  # all lower case, joined with +. A capital letter alone, as Neovim's are,
+  # is its key with Shift; after a modifier it's only how the key is named.
   modifiers = {
     super = "super";
     mod = "super";
@@ -128,13 +155,15 @@ let
     bracketleft = "[";
     bracketright = "]";
   };
-  normalise =
+  normaliseOne =
     chord:
     let
       # The last part is the key, which may itself be +.
       parts = lib.filter (part: lib.isString part && part != "") (builtins.split "\\+" chord);
+      last = if parts == [ ] then "+" else lib.last parts;
+      capital = lib.length parts == 1 && lib.stringLength last == 1 && lib.toLower last != last;
       words = map lib.toLower parts;
-      held = lib.filter (word: modifiers ? ${word}) words;
+      held = lib.filter (word: modifiers ? ${word}) words ++ lib.optional capital "shift";
       keys = lib.filter (word: !(modifiers ? ${word})) words;
       key = if keys == [ ] then "+" else lib.last keys;
       named = map (word: modifiers.${word}) held;
@@ -142,6 +171,11 @@ let
     lib.concatStringsSep "+" (
       lib.filter (modifier: lib.elem modifier named) modifierOrder ++ [ keyNames.${key} or key ]
     );
+  normalise = chord: lib.concatMapStringsSep " " normaliseOne (lib.splitString " " chord);
+
+  # The key a chord starts with, which is the whole of one that's no
+  # sequence.
+  first = keys: lib.head (lib.splitString " " keys);
 
   spelled = layer: cfg.${layer};
 
@@ -160,21 +194,22 @@ let
               above
               below
               ;
-          }) (lib.filter (above: above.keys == below.keys) (spelled upper))
+          }) (lib.filter (above: above.keys == first below.keys) (spelled upper))
         ) (spelled lower)
-      ) (lib.drop (index + 1) order)
+      ) (lib.filter (lower: !(beside upper lower)) (lib.drop (index + 1) order))
     ) order
   );
 
-  # Every chord a layer claims twice.
+  # Every chord a layer claims twice in the same place.
   repeats = lib.concatMap (
     layer:
     let
-      groups = lib.groupBy (b: b.keys) (spelled layer);
+      groups = lib.groupBy (b: "${b.keys} ${b.when}") (spelled layer);
     in
-    lib.mapAttrsToList (keys: binds: { inherit layer keys binds; }) (
-      lib.filterAttrs (_: binds: lib.length binds > 1) groups
-    )
+    lib.mapAttrsToList (_: binds: {
+      inherit layer binds;
+      inherit ((lib.head binds)) keys;
+    }) (lib.filterAttrs (_: binds: lib.length binds > 1) groups)
   ) order;
 in
 {
@@ -203,6 +238,7 @@ in
             chord
             keys
             does
+            when
             run
             ;
         }) (spelled layer);

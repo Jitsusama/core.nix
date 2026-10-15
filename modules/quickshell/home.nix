@@ -207,8 +207,17 @@ let
 
   # A chord in the key map's one spelling (super+shift+/), drawn key by key
   # as the desktop's are: a key with a face wears it, a letter is a capital,
-  # and a word starts with one.
+  # and a word starts with one. A sequence (space b w) is each of its chords
+  # in turn, the first key of each after the first marked as coming after,
+  # with no + before it.
   chordFaces =
+    keys:
+    lib.concatLists (
+      lib.imap0 (
+        index: step: lib.imap0 (at: face: face // { after = index > 0 && at == 0; }) (stepFaces step)
+      ) (lib.splitString " " keys)
+    );
+  stepFaces =
     keys:
     let
       faces = lib.mapAttrs' (name: lib.nameValuePair (lib.toLower name)) keyFaces // {
@@ -244,7 +253,7 @@ let
         name = layer;
         glyph = layerGlyphs.${layer};
         binds = map (b: {
-          inherit (b) does run;
+          inherit (b) does run when;
           chord = chordFaces b.keys;
           glyph = if layer == "desktop" then actionGlyph b.run else "";
         }) config.jitsusama.keys.${layer};
@@ -256,7 +265,8 @@ let
     ]
     ++ map keyed [
       "terminal"
-      "program"
+      "neovim"
+      "pi"
     ];
 
   # Each swipe drawn as a chord is: how many fingers, then which way, the
@@ -390,7 +400,8 @@ let
   layerGlyphs = {
     desktop = "";
     terminal = nerd "f489";
-    program = nerd "f0614";
+    neovim = nerd "e6ae";
+    pi = nerd "f03ff";
   };
 
   pieces = import ../theme/pieces.nix { inherit lib; };

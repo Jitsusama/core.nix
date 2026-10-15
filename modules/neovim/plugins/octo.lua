@@ -1,5 +1,5 @@
--- GitHub Integration Plugin Configuration
--- Comprehensive keybinding setup following our design patterns
+-- Octo edits GitHub's issues and pull requests in Neovim. Space g h's keys
+-- are in keys.nix; these are the keys inside Octo's own buffers.
 
 require('octo').setup({
   mappings = {
@@ -183,75 +183,3 @@ require('octo').setup({
     },
   },
 })
-
--- Global GitHub operations (available everywhere)
-
--- GitHub home (quick access)
-vim.keymap.set('n', '<leader>ghh', ':Octo pr list<CR>', { desc = 'GitHub home (PR list)' })
-
--- Search operations
-vim.keymap.set('n', '<leader>ghs', ':Octo search<CR>', { desc = 'GitHub search (current repo)' })
-vim.keymap.set('n', '<leader>ghS', ':Octo search<CR>', { desc = 'GitHub Search (global)' })
-
--- Issues (<leader>ghi)
-vim.keymap.set('n', '<leader>ghii', ':Octo issue list<CR>', { desc = 'Issue picker' })
-vim.keymap.set('n', '<leader>ghin', ':Octo issue create<CR>', { desc = 'Issue new' })
-vim.keymap.set('n', '<leader>ghis', ':Octo issue search<CR>', { desc = 'Issue search' })
-
--- Pull Requests (<leader>ghp)
-vim.keymap.set('n', '<leader>ghpp', ':Octo pr list<CR>', { desc = 'PR picker' })
-vim.keymap.set('n', '<leader>ghpn', ':Octo pr create<CR>', { desc = 'PR new' })
-vim.keymap.set(
-  'n',
-  '<leader>ghpc',
-  ':Octo pr list author:@me<CR>',
-  { desc = 'PR current (your PRs)' }
-)
-vim.keymap.set('n', '<leader>ghps', ':Octo pr search<CR>', { desc = 'PR search' })
-vim.keymap.set('n', '<leader>ghpC', ':Octo pr checks<CR>', { desc = 'PR Checks' })
-
--- Repository (<leader>ghr)
-vim.keymap.set('n', '<leader>ghrr', ':Octo repo list<CR>', { desc = 'Repo picker' })
-vim.keymap.set('n', '<leader>ghrf', ':Octo repo fork<CR>', { desc = 'Repo fork' })
-vim.keymap.set('n', '<leader>ghro', ':Octo repo browser<CR>', { desc = 'Repo open browser' })
-
--- Gists (<leader>ghg)
-vim.keymap.set('n', '<leader>ghgg', ':Octo gist list<CR>', { desc = 'Gist picker' })
--- Note: ghgn (gist new) is handled by rhubarb.lua to support both normal and visual modes
-
--- Notifications (<leader>ghn)
-vim.keymap.set('n', '<leader>ghnn', ':Octo notification list<CR>', { desc = 'Notification picker' })
-
--- Register specific keymaps with which-key
-local wk_ok, which_key = pcall(require, 'which-key')
-if wk_ok then
-  which_key.add({
-    -- Global GitHub operation descriptions
-    { '<leader>ghh', desc = 'GitHub home (PR list)', icon = '🏠' },
-    { '<leader>ghs', desc = 'GitHub search (current repo)', icon = '🔍' },
-    { '<leader>ghS', desc = 'GitHub Search (global)', icon = '🌍' },
-
-    -- Issue operations
-    { '<leader>ghii', desc = 'Issue picker' },
-    { '<leader>ghin', desc = 'Issue new' },
-    { '<leader>ghis', desc = 'Issue search' },
-
-    -- Pull Request operations
-    { '<leader>ghpp', desc = 'PR picker' },
-    { '<leader>ghpn', desc = 'PR new' },
-    { '<leader>ghpc', desc = 'PR current' },
-    { '<leader>ghps', desc = 'PR search' },
-    { '<leader>ghpC', desc = 'PR Checks' },
-
-    -- Repository operations
-    { '<leader>ghrr', desc = 'Repo picker' },
-    { '<leader>ghrf', desc = 'Repo fork' },
-    { '<leader>ghro', desc = 'Repo open browser' },
-
-    -- Gist operations
-    { '<leader>ghgg', desc = 'Gist picker' },
-
-    -- Notification operations
-    { '<leader>ghnn', desc = 'Notification picker' },
-  })
-end

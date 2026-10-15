@@ -184,26 +184,3 @@ aerial.setup({
     update_when_errors = true,
   },
 })
-
--- NEW KEYBINDING SYSTEM: Code outline under <leader>co
-
--- Main outline operations
-vim.keymap.set('n', '<leader>coo', '<cmd>AerialToggle<CR>', { desc = 'Code outline' })
-vim.keymap.set('n', '<leader>coO', '<cmd>AerialOpen<CR>', { desc = 'Code Outline (focus)' })
-vim.keymap.set('n', '<leader>con', '<cmd>AerialNext<CR>', { desc = 'Code outline next' })
-vim.keymap.set('n', '<leader>cop', '<cmd>AerialPrev<CR>', { desc = 'Code outline previous' })
-vim.keymap.set('n', '<leader>coN', '<cmd>AerialNavToggle<CR>', { desc = 'Code outline Navigate' })
-
--- Symbol search with fzf-lua integration (replaces telescope)
-vim.keymap.set('n', '<leader>cos', function()
-  local fzf_ok = pcall(require, 'fzf-lua')
-  if fzf_ok then
-    require('fzf-lua').lsp_document_symbols()
-  else
-    vim.cmd('AerialToggle')
-  end
-end, { desc = 'Code outline symbols' })
-
--- SEQUENTIAL NAVIGATION: Next/previous symbols
-vim.keymap.set('n', ']s', '<cmd>AerialNext<CR>', { desc = 'Next symbol' })
-vim.keymap.set('n', '[s', '<cmd>AerialPrev<CR>', { desc = 'Previous symbol' })

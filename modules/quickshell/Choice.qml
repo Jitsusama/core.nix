@@ -62,7 +62,8 @@ Rectangle {
         font.pointSize: Theme.mono.large
     }
 
-    // The chord key by key, joined by +, or what the row is.
+    // The chord key by key, joined by +, or what the row is. In a sequence a
+    // key pressed after the one before stands a space apart, with no +.
     Item {
         id: right
         anchors.right: parent.right
@@ -99,9 +100,10 @@ Rectangle {
                     Text {
                         id: plus
                         visible: index > 0
-                        width: implicitWidth + 2 * Theme.space.xs * 3 / 2
+                        width: parent.modelData.after === true ? Theme.space.l
+                            : implicitWidth + 2 * Theme.space.xs * 3 / 2
                         horizontalAlignment: Text.AlignHCenter
-                        text: "+"
+                        text: parent.modelData.after === true ? "" : "+"
                         color: Theme.muted
                         font: parent.font
                     }

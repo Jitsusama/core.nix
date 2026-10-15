@@ -199,6 +199,8 @@ The last two rows exist only until no machine repository imports them;
 | `jitsusama.keys.*`                 | every layer's shortcuts, checked for clashes             |
 | `jitsusama.niri.binds`             | niri's shortcuts: chord, plain words and action          |
 | `jitsusama.kitty.keys`             | kitty's shortcuts: chord, plain words and action         |
+| `jitsusama.keys.neovim`            | Neovim's keys, from `modules/neovim/keys.nix`            |
+| `jitsusama.keys.pi`                | pi's keys, from `modules/pi/keys.nix`                    |
 
 Renaming or removing an output or an option is a breaking change. A machine
 repository sees it only when it runs `nix flake update core`. [Decision

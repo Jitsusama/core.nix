@@ -1,9 +1,5 @@
+-- Trouble lists problems and the quickfix list, as Space e q asks (keys.nix).
 local trouble = require('trouble')
-
--- Helper function for setting keymaps
-local function map(mode, keys, func, desc)
-  vim.keymap.set(mode, keys, func, { desc = desc })
-end
 
 -- Fold icons
 local icons = {
@@ -56,19 +52,3 @@ trouble.setup({
   -- Use diagnostic signs in the sign column
   use_diagnostic_signs = true,
 })
-
--- ERROR DOMAIN: Diagnostic and error management keybindings
--- Per KEYBINDINGS.md documentation
-
--- DOCUMENTED: Lists using Trouble (static diagnostic view)
-map('n', '<leader>eq', function()
-  trouble.toggle('quickfix')
-end, 'Error quickfix')
-
--- Register with which-key - DOCUMENTED KEYBINDINGS ONLY
-local wk_ok, which_key = pcall(require, 'which-key')
-if wk_ok then
-  which_key.add({
-    { '<leader>eq', desc = 'Error quickfix' },
-  })
-end
