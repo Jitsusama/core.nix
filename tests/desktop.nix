@@ -2333,6 +2333,14 @@ pkgs.testers.runNixOSTest {
           )
           machine.succeed("systemctl is-active bluetooth-agent")
 
+      # Taking its agent back from BlueZ is a call over the bus, which only
+      # an agent still reading the bus can make, and stopping it promptly
+      # is what keeps it from holding up every shutdown.
+      with subtest("the Bluetooth agent stops at once, handing its agent back"):
+          machine.succeed("timeout 15 systemctl stop bluetooth-agent")
+          machine.succeed("journalctl -u bluetooth-agent | grep -q 'unregistering agent'")
+          machine.fail("systemctl is-failed --quiet bluetooth-agent")
+
       machine.screenshot("desktop")
     '';
 }

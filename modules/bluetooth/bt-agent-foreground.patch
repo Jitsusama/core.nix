@@ -1,0 +1,61 @@
+bt-agent: stay in the foreground with --daemon
+
+The daemon forked after it had connected to D-Bus and registered its
+agent. A forked child keeps only the thread that forked, so it lost
+GDBus's worker thread, which reads and writes the bus, and GLib's,
+which hands Unix signals to the main loop. It couldn't answer BlueZ,
+and it never saw SIGTERM, so stopping it waited out systemd's timeout
+at every shutdown. Under systemd it needs no fork, so --daemon now only
+answers without asking anyone, and stdout is line-buffered so its
+lines reach the journal as they're written.
+
+--- a/src/bt-agent.c
++++ b/src/bt-agent.c
+@@ -157,7 +157,7 @@
+ static GOptionEntry entries[] = {
+ 	{"capability", 'c', 0, G_OPTION_ARG_STRING, &capability_arg, "Agent capability", "<capability>"},
+ 	{"pin", 'p', 0, G_OPTION_ARG_STRING, &pin_arg, "Path to the PIN's file"},
+-	{"daemon", 'd', 0, G_OPTION_ARG_NONE, &daemon_arg, "Run in background (as daemon)"},
++	{"daemon", 'd', 0, G_OPTION_ARG_NONE, &daemon_arg, "Answer without asking anyone"},
+ 	{NULL}
+ };
+ 
+@@ -169,6 +169,10 @@
+ 	/* Query current locale */
+ 	setlocale(LC_CTYPE, "");
+ 
++	/* Lines reach the journal as they're written: stdout to anything
++	   but a terminal is otherwise written in blocks. */
++	setvbuf(stdout, NULL, _IOLBF, 0);
++
+         // Deprecated
+ 	// g_type_init();
+ 	dbus_init();
+@@ -251,27 +255,6 @@
+ 	exit_if_error(error);
+         g_print("Default agent requested\n");
+ 
+-	if (daemon_arg) {
+-		pid_t pid, sid;
+-
+-		/* Fork off the parent process */
+-		pid = fork();
+-		if (pid < 0)
+-			exit(EXIT_FAILURE);
+-		/* Ok, terminate parent proccess */
+-		if (pid > 0)
+-			exit(EXIT_SUCCESS);
+-
+-		/* Create a new SID for the child process */
+-		sid = setsid();
+-		if (sid < 0)
+-			exit(EXIT_FAILURE);
+-
+-		/* Close out the standard file descriptors */
+-		close(STDIN_FILENO);
+-		close(STDOUT_FILENO);
+-		close(STDERR_FILENO);
+-	}
+ 
+ 	/* Add SIGTERM/SIGINT/SIGUSR1 handlers */
+ 	g_unix_signal_add (SIGTERM, term_signal_handler, NULL);

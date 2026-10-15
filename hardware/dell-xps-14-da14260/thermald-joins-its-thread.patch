@@ -1,0 +1,67 @@
+thermald: wait for the engine thread rather than sleeping
+
+Stopping thermald took two seconds every time, at every shutdown and
+every restart. Terminating sent the engine thread a message and slept
+a second for it to finish, since the thread was detached, and the
+signal handler then slept another second before exiting. The thread
+is now joinable and joined: the message wakes its poll, so it ends in
+a moment, and nothing is left for the second sleep to wait for.
+
+--- a/src/thd_engine.h
++++ b/src/thd_engine.h
+@@ -109,6 +109,7 @@
+ 
+ 	pthread_t thd_engine;
+ 	pthread_attr_t thd_attr;
++	bool engine_thread_running;
+ 
+ 	std::mutex thd_engine_mutex;
+ 
+--- a/src/thd_engine.cpp
++++ b/src/thd_engine.cpp
+@@ -81,6 +81,7 @@
+ 				parser_init_done(false) {
+ 	thd_engine = pthread_t();
+ 	thd_attr = pthread_attr_t();
++	engine_thread_running = false;
+ 
+ 	memset(poll_fds, 0, sizeof(poll_fds));
+ 	memset(last_cpu_update, 0, sizeof(last_cpu_update));
+@@ -428,9 +429,10 @@
+ #ifndef DISABLE_PTHREAD
+ 	// Create thread
+ 	pthread_attr_init(&thd_attr);
+-	pthread_attr_setdetachstate(&thd_attr, PTHREAD_CREATE_DETACHED);
++	pthread_attr_setdetachstate(&thd_attr, PTHREAD_CREATE_JOINABLE);
+ 	ret = pthread_create(&thd_engine, &thd_attr, cthd_engine_thread,
+ 			(void*) this);
++	engine_thread_running = (ret == 0);
+ #else
+ 	{
+ 		pid_t childpid;
+@@ -520,7 +522,15 @@
+ 
+ void cthd_engine::thd_engine_terminate() {
+ 	send_message(TERMINATE, 0, nullptr);
++#ifndef DISABLE_PTHREAD
++	/* The message wakes the engine thread's poll, so it ends at once. */
++	if (engine_thread_running) {
++		pthread_join(thd_engine, nullptr);
++		engine_thread_running = false;
++	}
++#else
+ 	sleep(1);
++#endif
+ 	process_terminate();
+ }
+ 
+--- a/src/main.cpp
++++ b/src/main.cpp
+@@ -169,7 +169,6 @@
+ gboolean sig_int_handler(void) {
+ 	if (thd_engine)
+ 		thd_engine->thd_engine_terminate();
+-	sleep(1);
+ 	if (g_main_loop)
+ 		g_main_loop_quit(g_main_loop);
+ 	thd_engine.reset();

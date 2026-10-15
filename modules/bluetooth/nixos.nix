@@ -39,6 +39,12 @@ let
       })
     else
       pkgs.bluez;
+  # bt-agent's daemon forked once it was on the bus, which left it unable
+  # to answer the bus or see a signal, so every shutdown waited out its
+  # stop timeout. It stays in the foreground, under systemd.
+  bluez-tools = pkgs.bluez-tools.overrideAttrs (old: {
+    patches = (old.patches or [ ]) ++ [ ./bt-agent-foreground.patch ];
+  });
 in
 {
   services.pipewire.wireplumber.configPackages = [ headsetMicrophoneSecond ];
@@ -70,10 +76,12 @@ in
     bindsTo = [ "bluetooth.service" ];
     wantedBy = [ "bluetooth.service" ];
     serviceConfig = {
-      Type = "forking";
+      Type = "exec";
       ExecStart = lib.concatStringsSep " " [
-        (lib.getExe' pkgs.bluez-tools "bt-agent")
+        (lib.getExe' bluez-tools "bt-agent")
         "--capability=NoInputNoOutput"
+        # Answers without asking anyone, where it would otherwise ask on
+        # a terminal it hasn't got.
         "--daemon"
       ];
       Restart = "on-failure";
