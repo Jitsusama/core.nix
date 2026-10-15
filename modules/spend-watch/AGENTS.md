@@ -21,7 +21,10 @@ feed speaks.
   tool and agent kind, so every cut is a sum of the same pieces and every
   report agrees with every other. A quest's spend rolls up to its root. A
   bill that doesn't say which session spent it is shared by the pieces on
-  its model, by their list prices, since models are priced apart.
+  its model, by their list prices, since models are priced apart. When pi
+  carries a session into a new log it copies the old entries ahead of the
+  new header, so what comes before the header is the parent log's to
+  count, unless that log is gone.
 - **Agents.** The config names where agents' logs are kept, by patterns
   whose each `*` is one name, so a large tree beside them is never walked,
   and the kind of work each pattern's are. A run's agents (a council's
