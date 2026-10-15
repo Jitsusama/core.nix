@@ -3,7 +3,7 @@
 # and enrols the keys on the first boot, the disk is bound to the TPM's
 # measured-boot policy with a PIN, a recovery key is added and the install
 # passphrase wiped, and the disk opens with the PIN alone. A changed PCR makes
-# the TPM refuse.
+# the TPM refuse. The TPM keeps no NvPCRs, so no boot or login waits on them.
 { self, pkgs }:
 let
   passphrase = "install-passphrase";
@@ -85,6 +85,11 @@ pkgs.testers.runNixOSTest {
         memorySize = 2048;
       };
       networking.hostName = "machine";
+      # A user whose first login logind would measure into the login NvPCR.
+      users.users.alice = {
+        isNormalUser = true;
+        uid = 1000;
+      };
       boot.loader.timeout = 0;
       # nixos-install puts the boot loader on through it; tests leave it out.
       system.switch.enable = true;
@@ -180,15 +185,23 @@ pkgs.testers.runNixOSTest {
           machine.wait_for_unit("multi-user.target")
           print(machine.succeed("journalctl -b -o cat -u systemd-cryptsetup@system.service"))
 
-      with subtest("the NvPCRs' anchor holds across boots, without errors"):
-          # The boot before put the anchor's secret on the ESP, where this
-          # boot's initrd found it, so the copy in /var already matched.
-          setup = machine.succeed("journalctl -b -o cat -u systemd-tpm2-setup.service")
+      with subtest("no NvPCR is set up, and a login measures nothing"):
+          # By its name rather than its unit: it exits before journald can
+          # tell which unit its lines came from.
+          setup = machine.succeed("journalctl -b -o cat -t systemd-tpm2-setup")
           print(setup)
-          t.assertIn("NvPCRs initialized", setup)
-          machine.succeed("ls /boot/loader/credentials/nvpcr-anchor.*.cred")
-          t.assertNotIn("different from current anchor secret", setup)
-          t.assertNotIn("ERROR:esys", setup)
+          t.assertIn("SRK already stored in the TPM.", setup)
+          t.assertNotIn("NvPCR", setup)
+          machine.fail("ls /boot/loader/credentials/nvpcr-anchor.*.cred")
+          machine.fail("test -s /run/systemd/nvpcr/nvpcr-anchor.cred")
+          # Lingering has logind start the user as a first login does.
+          machine.succeed("loginctl enable-linger alice")
+          machine.wait_for_unit("user@1000.service")
+          state = machine.succeed("systemctl show -P LoadState systemd-pcrlogin@1000.service")
+          t.assertEqual(state.strip(), "masked")
+          logind = machine.succeed("journalctl -b -o cat -u systemd-logind.service")
+          print(logind)
+          t.assertNotIn("measurement", logind)
 
       with subtest("the TPM refuses once a measured PCR changes"):
           # A scratch volume bound to the same policy, since the system's own
