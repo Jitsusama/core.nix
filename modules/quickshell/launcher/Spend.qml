@@ -221,7 +221,7 @@ Provider {
             return {
                 headline: "Amounts are hidden while the screen is shared",
                 copy: "",
-                rows: (said.quiet ?? []).map(build),
+                rows: ordered([], said.quiet ?? []).map(build),
                 note: "Ask again once sharing ends"
             };
         if (id === "summary") {
@@ -229,7 +229,7 @@ Provider {
             return {
                 headline: lead ? lead.copy : shown.headline,
                 copy: shown.markdown,
-                rows: (said.now ?? []).slice(1).concat(said.findings ?? []).map(build),
+                rows: ordered((said.now ?? []).slice(1), said.findings ?? []).map(build),
                 note: "Return copies the summary"
             };
         }

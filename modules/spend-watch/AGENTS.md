@@ -38,7 +38,9 @@ feed speaks.
   them.
 - **Waste.** Each cache write gets a cause: a compaction, a pause longer
   than the cache lives, a fresh session, a model change. Rebuilt context is
-  the money a session spent having again what it had.
+  the money a session spent having again what it had. Some is how an
+  account works, so the last seven days' is a finding only past half again
+  the median share of the eight weeks before; otherwise it's a report.
 - **Forecast.** A mixture of a state-space model on log daily spend and the
   same weekdays of the last eight weeks, weighted by each one's CRPS on the
   last 28 days. Picked by backtest over 175 days against the hour-of-week
@@ -57,7 +59,8 @@ feed speaks.
 - **Detectors.** Each threshold is set for a stated false-alarm rate. A
   burn is a minute CUSUM against twice the usual rate for the hour,
   alarming past the quantile eight weeks of daily maxima crossed once a
-  month. Costly sessions are found against their peers with empirical-Bayes
+  month. It's the account running hot, so it's one finding a day, named
+  for the session spending most. Costly sessions are found against their peers with empirical-Bayes
   shrinkage and Benjamini-Hochberg at 5%. Changes of regime come from
   Bayesian online changepoints, confirmed after a week. A price is a
   model's ratio of bill to list moving in a step from one level to
@@ -65,8 +68,8 @@ feed speaks.
   outside the month before's tenth to ninetieth percentiles, which lie
   within a quarter of their median, since spend another machine made
   comes and goes by the day; the estimates take the new ratio up at once.
-  `src/detect.rs` holds them all, and `spend-watch backtest` replays them
-  on the history.
+  `src/detect.rs` holds them all, and `spend-watch backtest` replays the
+  forecast, the burn and the caps on the history.
 - **Sources.** A feed's source that can't be read is nothing for its first
   fifteen minutes, since a machine booting or waking fails every read until
   its network comes; then a note, or a warning when only a sign-in mends
