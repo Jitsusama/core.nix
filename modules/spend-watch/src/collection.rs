@@ -27,8 +27,9 @@ pub const VERSION: u32 = 2;
 const TOP: usize = 12;
 
 /// The periods behind Earlier, most recent first.
-const EARLIER: [Period; 5] = [
+const EARLIER: [Period; 6] = [
     Period::Yesterday,
+    Period::ThisWeek,
     Period::LastWeek,
     Period::ThisMonth,
     Period::LastMonth,
@@ -93,8 +94,8 @@ pub struct Words {
 #[serde(rename_all = "camelCase")]
 pub struct Collection {
     pub v: u32,
-    /// How things stand: today, this week, each cap, what's ahead, and
-    /// the periods before.
+    /// How things stand: today, each cap longer than a day, and the
+    /// periods before.
     pub now: Vec<Line>,
     /// What's been found, best first.
     pub findings: Vec<Line>,
@@ -514,8 +515,11 @@ fn widest_first(caps: &[CapView]) -> Vec<&CapView> {
     caps
 }
 
-/// How things stand: today, this week, the caps, what's ahead, and the
-/// periods before, each with its detail behind it.
+/// How things stand: today, with a day's caps behind it; each longer cap,
+/// the widest first, with the week ahead behind the first, since its days
+/// are the week that can stop work; and the periods before, this week
+/// among them. Each has its detail behind it, and with no longer cap the
+/// week ahead stands on its own.
 fn now(picture: &Picture, reports: &BTreeMap<String, (Report, Shown)>) -> Vec<Line> {
     let word = picture.standing.word.as_str();
     let mut now = Vec::new();
@@ -545,15 +549,8 @@ fn now(picture: &Picture, reports: &BTreeMap<String, (Report, Shown)>) -> Vec<Li
         likeliest.unwrap_or_default()
     );
     now.push(made);
-    let (week, week_basis) = figure_of(picture, Period::ThisWeek);
-    let (monday, _) = Period::ThisWeek.days(&picture.zone, picture.now);
-    now.push(period_line(
-        Period::ThisWeek,
-        reports,
-        week,
-        joined(&[&format!("since {}", Zone::day_name(monday)), week_basis]),
-    ));
     let mut offered: Vec<&str> = Vec::new();
+    let mut daily = Vec::new();
     for view in widest_first(&picture.caps) {
         let feed = view.cap.feed.as_str();
         let doors = if offered.contains(&feed) {
@@ -562,16 +559,25 @@ fn now(picture: &Picture, reports: &BTreeMap<String, (Report, Shown)>) -> Vec<Li
             offered.push(feed);
             sign_ins(picture, feed)
         };
-        now.push(cap_line(picture, view, doors));
+        let made = cap_line(picture, view, doors);
+        if view.cap.window_hours <= 24 {
+            daily.push(made);
+        } else {
+            now.push(made);
+        }
     }
+    now[0].rows.splice(0..0, daily);
     if let Some((low, mid, high)) = picture.week_ahead() {
         let mut made = line("ahead", "Next 7 days", format!("near {}", whole(mid)));
         made.note = likely(low, high);
         made.report = "forecast".into();
-        now.push(made);
+        match now.get_mut(1) {
+            Some(cap) => cap.rows.insert(0, made),
+            None => now.push(made),
+        }
     }
     let mut earlier = line("earlier", "Earlier", "");
-    earlier.note = "yesterday, last week and the months before".into();
+    earlier.note = "yesterday, this week and the months before".into();
     earlier.rows = EARLIER
         .iter()
         .map(|period| {
@@ -915,8 +921,10 @@ mod tests {
     }
 
     // The first screen holds how things stand and what was found: today,
-    // the week, each cap, what's ahead and Earlier, then the findings, with
-    // every report behind the row it belongs to.
+    // each cap longer than a day and Earlier, then the findings, with every
+    // report behind the row it belongs to. A day's cap is behind today, the
+    // week ahead behind the week's cap, and this week among the periods
+    // before, since the cap's own seven days are the week that matters.
     #[test]
     fn the_first_screen_is_short_and_says_each_thing_once() {
         let (collected, found) = collected();
@@ -925,34 +933,44 @@ mod tests {
             .iter()
             .map(|line| line.name.as_str())
             .collect();
-        assert_eq!(
-            names,
-            [
-                "Today",
-                "This week",
-                "Weekly cap",
-                "Premium day",
-                "Next 7 days",
-                "Earlier"
-            ]
-        );
+        assert_eq!(names, ["Today", "Weekly cap", "Earlier"]);
         assert_eq!(collected.findings.len(), found.len());
         assert!(collected.more.len() <= 2, "{:?}", collected.more);
         // The cap's figure is its share; its dollars are in the footer.
-        let weekly = &collected.now[2];
+        let weekly = &collected.now[1];
         assert!(weekly.side.ends_with("of $4,000"), "{weekly:?}");
         assert!(weekly.note.contains("the last 7 days"), "{weekly:?}");
-        // Its change is behind it, and the optional sign-in too.
+        // The week ahead is behind it, then its change, and the optional
+        // sign-in too.
         let behind: Vec<&str> = weekly.rows.iter().map(|row| row.name.as_str()).collect();
-        assert_eq!(behind, ["Override lapsed", "Refusing", "Sign in to Drive"]);
-        assert_eq!(weekly.rows[1].note, "with $14,200 spent");
-        // A period's cuts are behind it, each standing for its report.
+        assert_eq!(
+            behind,
+            [
+                "Next 7 days",
+                "Override lapsed",
+                "Refusing",
+                "Sign in to Drive"
+            ]
+        );
+        assert_eq!(weekly.rows[2].note, "with $14,200 spent");
+        // The premium day leads what's behind today, before its cuts.
+        assert_eq!(collected.now[0].rows[0].name, "Premium day");
+        // This week is the first period after yesterday.
+        let earlier: Vec<&str> = collected.now[2]
+            .rows
+            .iter()
+            .map(|row| row.name.as_str())
+            .collect();
+        assert_eq!(earlier[..2], ["Yesterday", "This week"]);
+        // A period's cuts are behind it, after a day's caps, each standing
+        // for its report.
         let today = &collected.now[0];
         assert!(today.rows.iter().any(|row| row.name == "By model"));
         assert!(
             today
                 .rows
                 .iter()
+                .filter(|row| !row.key.starts_with("cap:"))
                 .all(|row| collected.reports.contains_key(&row.report))
         );
         assert!(!today.rows.iter().any(|row| row.name == "By day"));

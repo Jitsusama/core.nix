@@ -3,11 +3,12 @@
 // row a short name with a few muted words beside it, what else is known of
 // it in the footer while it's picked, and the rest a right arrow away,
 // behind the row it belongs to. First what was found that wants a look;
-// then how things stand: today, this week, each cap, the week ahead and the
-// periods before; then the rest of what was found, and the reports that
-// belong behind nothing else. A period steps into its
-// cuts and a cut into its rows; a cap into its changes and the sign-ins its
-// feed offers. Return copies a row, or a report whole as markdown, to paste
+// then how things stand: today, with a day's cap behind it, each longer
+// cap, with the week ahead behind the first, and the periods before; then
+// the rest of what was found, and the reports that belong behind nothing
+// else. A period steps into its cuts and a cut into its rows, and is found
+// by typing however deep it's kept; a cap steps into its changes and the
+// sign-ins its feed offers. Return copies a row, or a report whole as markdown, to paste
 // where it's asked about; a finding with something to do does it, and
 // steps into marking it expected.
 //
@@ -150,10 +151,22 @@ Provider {
         return today ? today.side : "";
     }
 
+    // What typing finds: every row, and the periods kept behind one, so
+    // "this week" finds it behind Earlier.
+    readonly property var findable: {
+        const rows = all.slice();
+        if (said !== null && !sharing)
+            for (const given of said.now ?? [])
+                for (const inner of given.rows ?? [])
+                    if (inner.key.startsWith("period:"))
+                        rows.push(build(inner));
+        return rows;
+    }
+
     function search(typed) {
         const words = Fuzzy.words(typed);
         const found = [];
-        for (const row of all) {
+        for (const row of findable) {
             const m = matched(row, words);
             if (m.score >= 0)
                 found.push({ item: row.prepared, score: m.score, grade: m.grade, row: row });

@@ -259,16 +259,22 @@ ShellRoot {
                 expect(`not a report: ${typed}`, spend.answer(typed) === null,
                     JSON.stringify(spend.answer(typed)));
             const all = spend.everything();
-            // A day of history has no forecast yet, so no next seven days.
-            expect("everything", all.length >= 3 && all[0].name === "Today"
+            // A day of history has no forecast yet and the history no cap,
+            // so today and Earlier.
+            expect("everything", all.length >= 2 && all[0].name === "Today"
                 && all.every(row => row.side.length <= 32),
                 all.map(row => `${row.name}: ${row.side}`).join(", "));
             expect("how today stands, at home", spend.counted() === all[0].side,
                 spend.counted());
 
             // A period steps into its cuts, and a cut into its rows, each
-            // saying more in the footer and copying its report.
-            const thisWeek = all.find(row => row.name === "This week");
+            // saying more in the footer and copying its report. This week
+            // is among the periods behind Earlier.
+            const earlier = all.find(row => row.name === "Earlier");
+            expect("no week of its own on the first screen",
+                earlier && !all.some(row => row.name === "This week"),
+                all.map(row => row.name).join(", "));
+            const thisWeek = earlier.verbs().find(row => row.name === "This week");
             expect("a period with its cuts",
                 thisWeek && thisWeek.nested && thisWeek.ask === "which?",
                 JSON.stringify(thisWeek));
@@ -280,9 +286,19 @@ ShellRoot {
             expect("its rows", models.length === 2 && models.every(row => !row.verbs),
                 models.map(row => row.name).join(", "));
             expect("copying its report", byModel.verb === "copy", byModel.verb);
-            const found = spend.search("week").rows;
+            // Typing finds a period however deep it's kept.
+            const found = spend.search("this week").rows;
             expect("a search", found.length > 0 && found[0].name === "This week",
                 found.map(row => row.name).join(", "));
+            // In the main search the collection adds its best match as a
+            // row, unless it answered what's typed: its answer already
+            // lists them, so "spend" says each thing once.
+            const gathered = spend.gather("this week").rows;
+            expect("a row in the main search",
+                gathered.length > 0 && gathered[0].name === "This week",
+                gathered.map(row => row.name).join(", "));
+            expect("no row beside its answer", spend.gather("spend").rows.length === 0,
+                spend.gather("spend").rows.map(row => row.name).join(", "));
             expect("an older file draws nothing", spend.parsed('{"v":1}') === null, "drawn");
 
             // While sharing, no row and no answer holds an amount.

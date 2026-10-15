@@ -86,7 +86,10 @@ feed speaks.
   beside its name: `src/status.rs` `HEADER` and `FOOTER`.
   `src/collection.rs` lays them out as the launcher's other collections
   are: what wants a look first, then how things stand, each a figure with
-  its parts a step in, then what was found.
+  its parts a step in, then what was found. How things stand is today,
+  each cap longer than a day and Earlier, so the week is said once: a
+  day's cap is behind today, the week ahead behind the widest cap, and
+  this week among the periods before.
 - **Telling.** Notes stay in the collection. Warnings and alerts are told
   once as a notice, at most three a week outside a cap's, and withdrawn when
   they no longer hold or are marked expected. No notice holds an amount, and

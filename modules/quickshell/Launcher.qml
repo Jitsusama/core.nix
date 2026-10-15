@@ -149,7 +149,7 @@ Scope {
             // One opened only by its own chord adds no row to a search.
             if (source.collection.searched === false)
                 continue;
-            const said = source.search(letters);
+            const said = source.gather(letters);
             const found = learnedFirst(said.rows, letters);
             if (found.length === 0)
                 continue;
