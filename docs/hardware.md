@@ -45,7 +45,7 @@ behind Intel's CVS bridge, and Intel's BE211 Wi-Fi 7.
 | Part     | What the module does                                                   |
 | -------- | ---------------------------------------------------------------------- |
 | CPU      | the kernel compiled for `pantherlake`, microcode, thermald             |
-| Kernel   | the CVS patch and the charger's offers below                           |
+| Kernel   | the CVS patch, the charger's offers and the memory's SPD below         |
 | Keyboard | named as the built-in one: the embedded controller's PS/2 keyboard     |
 | Boot     | NVMe, USB and Thunderbolt drivers in the initrd, so a dock can unlock  |
 | Graphics | Mesa, with VA-API (iHD), oneVPL, OpenCL and Level Zero for the Arc GPU |
@@ -102,6 +102,19 @@ an empty list. The kernel logged "UCSI_GET_PDOS failed (-95)" at each plug-in
 and stopped there, so the charger's offers were registered but never linked
 to it: `/sys/class/typec/port0-partner` had no `usb_power_delivery`.
 `ucsi-partner-without-pdos.patch`, written here, reads that answer as none.
+
+### The Memory's SPD
+
+The memory is LPDDR5X soldered to the board, which SMBIOS lists as eight rows
+of chips. A memory module carries an SPD chip on the SMBus that describes it;
+soldered memory has none. The kernel probes for one at each of the eight
+addresses anyway, since the memory type alone doesn't say, LPCAMM2 modules
+being LPDDR5 too. The first probe never completes: the SMBus driver waits out
+its 200 ms timeout and as long again trying to stop it, the bus stays busy,
+and the seven probes after it fail with "SMBus is busy, can't use it!". That
+held the SMBus driver for 450 ms at every boot and left the bus busy.
+`spd-skips-soldered-memory.patch`, written here, has DMI keep each memory
+device's form factor and the SPD probe skip soldered memory.
 
 ### The Boot Clock
 
@@ -341,9 +354,6 @@ and is harmless, so nothing silences or patches it:
   replaces `/var`'s copy. Nothing here seals to an NvPCR: the disk's policy
   is PCRs 0, 4 and 7. Ordering the unit after `/boot` would put its 0.7 s on
   the way to `sysinit.target`.
-- **"SMBus is busy, can't use it!", seven times.** The i801 driver finds the
-  bus busy as it probes. Nothing uses the bus: the LPDDR5's SPD isn't
-  registered while its write protection is on.
 - **No "RAPL domain uncore" on BIOS 1.11.0.** 1.10.1 reported it. It only
   meters the uncore's energy; the power limits are unaffected.
 - **xe's "Selective fetch area calculation failed in pipe A"**, once. When

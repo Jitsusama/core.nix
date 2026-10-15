@@ -132,6 +132,14 @@ in
       name = "ucsi-partner-without-pdos";
       patch = ./ucsi-partner-without-pdos.patch;
     }
+    {
+      # The memory is soldered and has no SPD chip, but the kernel probes the
+      # SMBus for one anyway: the first probe hangs the bus, the next seven
+      # fail, and the SMBus driver stalls for 450 ms at every boot. Written
+      # here; the patch says why.
+      name = "spd-skips-soldered-memory";
+      patch = ./spd-skips-soldered-memory.patch;
+    }
   ];
 
   # The disk, and the USB and Thunderbolt ports a dock's keyboard arrives
