@@ -14,8 +14,9 @@
 # the commands, and a blank line separates each command from the last.
 #
 # Nothing here starts a process once the shell is up. git's state comes from
-# gitstatusd, started once and asked without waiting, and where it isn't (a
-# host the ssh kitten carried this file to) the branch is read from HEAD.
+# git-engine, which answers as gitstatusd does, through gitstatus's plugin,
+# started once and asked without waiting. Where it isn't (a host the ssh
+# kitten carried this file to) the branch is read from HEAD.
 #
 # The header written with this file sets _prompt_hue (the theme's roles),
 # _prompt_glyph and _prompt_console (its marks and their console stand-ins),
@@ -223,7 +224,7 @@ _prompt_reftable() {
   return 1
 }
 
-# The branch as HEAD names it, for where gitstatusd isn't, or can't read.
+# The branch as HEAD names it, for where the daemon isn't, or can't read.
 _prompt_head() {
   _prompt_state[branch]=""
   local dir=${_prompt_state[gitdir]}
@@ -236,7 +237,7 @@ _prompt_head() {
   fi
 }
 
-# What gitstatusd answered, when it answered for this folder.
+# What the daemon answered, when it answered for this folder.
 _prompt_git() {
   _prompt_state[unsaved]=0 _prompt_state[ahead]=0 _prompt_state[conflicted]=0
   [[ $VCS_STATUS_RESULT == ok-* ]] || return
@@ -472,7 +473,7 @@ _prompt_precmd() {
   _prompt_head
   _prompt_state[unsaved]=0 _prompt_state[ahead]=0 _prompt_state[conflicted]=0
   _prompt_asked=0
-  # gitstatusd was started without waiting for it; the first prompt takes its
+  # The daemon was started without waiting for it; the first prompt takes its
   # hello, which the rest of the shell's start has usually given it time for.
   (( $+functions[gitstatus_start_prompt] )) && gitstatus_start_prompt $_prompt_daemon prompt
   if [[ -n ${_prompt_state[gitdir]} ]] && (( $+functions[gitstatus_query_prompt] )); then

@@ -1,7 +1,8 @@
 # Joel's zsh prompt (prompt.zsh): where he is and where his keys go, then
 # what's worth acting on, giving way a step at a time as the window
 # narrows. The theme's roles and marks are written into its header here,
-# so it starts nothing to find them, and git's state comes from gitstatusd.
+# so it starts nothing to find them, and git's state comes from git-engine
+# through gitstatus's plugin.
 # It's kept as a file in the account as well, which is what kitty's ssh
 # kitten carries to another machine.
 {
@@ -32,15 +33,21 @@ let
     "typeset -ga _prompt_steps=(${lib.concatStringsSep " " cfg.givesWay})"
     "typeset -gi _prompt_long=${toString cfg.longRun}"
     "typeset -g _prompt_gitstatus=${gitstatus}/gitstatus.plugin.zsh"
-    "typeset -g GITSTATUS_DAEMON=${lib.getExe' pkgs.gitstatus "gitstatusd"}"
+    "typeset -g GITSTATUS_DAEMON=${lib.getExe engine}"
     "typeset -g GITSTATUS_AUTO_INSTALL=0"
   ];
 
   prompt = pkgs.writeText "prompt.zsh" (header + builtins.readFile ./prompt.zsh);
 
+  # Answers what the prompt asks of a repository as gitstatusd would, but
+  # reads World, whose refs and index gitstatusd's libgit2 can't.
+  engine = pkgs.callPackage ../git-engine/package.nix { };
+
   # gitstatus's plugin, starting no program it needn't: the machine it runs
   # on is known when it's built rather than asked of uname, and the watchdog
-  # beside the daemon waits in zsh rather than in sleep.
+  # beside the daemon waits in zsh rather than in sleep. nixpkgs' install
+  # script names gitstatusd over whatever the caller asked for, so it names
+  # git-engine instead.
   machine =
     let
       inherit (pkgs.stdenv.hostPlatform.uname) system processor;
@@ -53,6 +60,9 @@ let
     substituteInPlace $out/gitstatus.plugin.zsh \
       --replace-fail ${lib.escapeShellArg asked} ${lib.escapeShellArg "\"${machine}\""} \
       --replace-fail 'command sleep 5' '{ zselect -t 500 || : }'
+    substituteInPlace $out/install \
+      --replace-fail ${lib.escapeShellArg "GITSTATUS_DAEMON=${lib.getExe' pkgs.gitstatus "gitstatusd"}"} \
+        ${lib.escapeShellArg "GITSTATUS_DAEMON=${lib.getExe engine}"}
   '';
 in
 {
@@ -120,7 +130,7 @@ in
   config = {
     xdg.dataFile."jitsusama/prompt.zsh".source = prompt;
 
-    # Early, before completion, so gitstatusd starts while the rest of the
+    # Early, before completion, so git-engine starts while the rest of the
     # shell's setup runs. Each precmd hook is handed the last command's status
     # afresh, so the prompt still sees a failure wherever it sits.
     programs.zsh.initContent = lib.mkOrder 500 "source ${prompt}";
