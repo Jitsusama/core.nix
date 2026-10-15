@@ -384,6 +384,36 @@ let
       console = "~";
       means = "something cut short, or more hidden";
     };
+    prompt = {
+      glyph = "❯";
+      console = ">";
+      means = "where a shell's keys go next";
+    };
+    root = {
+      glyph = "#";
+      console = "#";
+      means = "where a shell's keys go next, reaching everything";
+    };
+    elsewhere = {
+      glyph = "@";
+      console = "@";
+      means = "on another machine, named after it";
+    };
+    branch = {
+      glyph = nerd "f418";
+      console = "b";
+      means = "a git branch, named after it";
+    };
+    shell = {
+      glyph = nerd "f313";
+      console = "N";
+      means = "a development shell is loaded";
+    };
+    unpushed = {
+      glyph = nerd "f431";
+      console = "^";
+      means = "commits not yet pushed";
+    };
   };
 
   glyph = lib.types.submodule {

@@ -1,4 +1,5 @@
-{ pkgs, ... }:
+# zsh in each account: oh-my-zsh's plugins and the terminal's marks for each
+# command. The prompt is its own module (modules/prompt).
 {
   programs.zsh = {
     enable = true;
@@ -20,17 +21,9 @@
         "terraform"
       ];
     };
-    plugins = [
-      {
-        name = "powerlevel10k";
-        src = pkgs.zsh-powerlevel10k;
-        file = "share/zsh-powerlevel10k/powerlevel10k.zsh-theme";
-      }
-    ];
     initContent = ''
       ${builtins.readFile ./init.zsh}
       ${builtins.readFile ./terminal.zsh}
-      ${builtins.readFile ./powerlevel10k.zsh}
     '';
   };
 }
