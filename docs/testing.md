@@ -168,7 +168,8 @@ TPM, then follows [the install guide][3] step by step: the keys are made and
 enrolled, the disk is bound to the TPM and a PIN, the passphrase is wiped,
 and the TPM refuses once a measured PCR changes. On the way it checks that
 enrolling without checksums refuses the option ROM of QEMU's network card,
-which the firmware runs. It lives in [`tests/secure-boot.nix`][4].
+which the firmware runs, and that no NvPCR is set up at boot or measured at
+login. It lives in [`tests/secure-boot.nix`][4].
 
 ## Earning a Check
 
