@@ -21,10 +21,11 @@ feed speaks.
   tool and agent kind, so every cut is a sum of the same pieces and every
   report agrees with every other. A quest's spend rolls up to its root. A
   bill that doesn't say which session spent it is shared by the pieces on
-  its model, by their list prices, since models are priced apart. When pi
-  carries a session into a new log it copies the old entries ahead of the
-  new header, so what comes before the header is the parent log's to
-  count, unless that log is gone.
+  its model, by their list prices, since models are priced apart; a
+  metered hour keeps what other tools spent on each model as theirs on it.
+  When pi carries a session into a new log it copies the old entries ahead
+  of the new header, so what comes before the header is the parent log's
+  to count, unless that log is gone.
 - **Agents.** The config names where agents' logs are kept, by patterns
   whose each `*` is one name, so a large tree beside them is never walked,
   and the kind of work each pattern's are. A run's agents (a council's
@@ -59,10 +60,11 @@ feed speaks.
   month. Costly sessions are found against their peers with empirical-Bayes
   shrinkage and Benjamini-Hochberg at 5%. Changes of regime come from
   Bayesian online changepoints, confirmed after a week. A price is a
-  model's ratio of bill to list moving in a step: the last three settled
-  days agreeing with each other and all outside the month before's tenth
-  to ninetieth percentiles, since spend another machine made comes and
-  goes by the day; the estimates take the new ratio up at once.
+  model's ratio of bill to list moving in a step from one level to
+  another: the last three settled days agreeing with each other and all
+  outside the month before's tenth to ninetieth percentiles, which lie
+  within a quarter of their median, since spend another machine made
+  comes and goes by the day; the estimates take the new ratio up at once.
   `src/detect.rs` holds them all, and `spend-watch backtest` replays them
   on the history.
 - **Sources.** A feed's source that can't be read is nothing for its first
