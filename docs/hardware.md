@@ -45,7 +45,7 @@ behind Intel's CVS bridge, and Intel's BE211 Wi-Fi 7.
 | Part     | What the module does                                                   |
 | -------- | ---------------------------------------------------------------------- |
 | CPU      | the kernel compiled for `pantherlake`, microcode, thermald             |
-| Kernel   | the CVS patch and the charger's offers below                           |
+| Kernel   | the CVS patch, the charger's offers and the memory's SPD below         |
 | Keyboard | named as the built-in one: the embedded controller's PS/2 keyboard     |
 | Boot     | NVMe, USB and Thunderbolt drivers in the initrd, so a dock can unlock  |
 | Graphics | Mesa, with VA-API (iHD), oneVPL, OpenCL and Level Zero for the Arc GPU |
@@ -95,6 +95,26 @@ offers under `/sys/class/usb_power_delivery` stopped at the empty one and
 listed none. Charging itself was never short. The first offer is always 5 V
 and never empty, so `ucsi-leading-empty-pdo.patch`, written here, drops an
 empty one there.
+
+Asked for the offers a charger would take as a sink, which it has none of, the
+controller answers that the request isn't supported, where others answer with
+an empty list. The kernel logged "UCSI_GET_PDOS failed (-95)" at each plug-in
+and stopped there, so the charger's offers were registered but never linked
+to it: `/sys/class/typec/port0-partner` had no `usb_power_delivery`.
+`ucsi-partner-without-pdos.patch`, written here, reads that answer as none.
+
+### The Memory's SPD
+
+The memory is LPDDR5X soldered to the board, which SMBIOS lists as eight rows
+of chips. A memory module carries an SPD chip on the SMBus that describes it;
+soldered memory has none. The kernel probes for one at each of the eight
+addresses anyway, since the memory type alone doesn't say, LPCAMM2 modules
+being LPDDR5 too. The first probe never completes: the SMBus driver waits out
+its 200 ms timeout and as long again trying to stop it, the bus stays busy,
+and the seven probes after it fail with "SMBus is busy, can't use it!". That
+held the SMBus driver for 450 ms at every boot and left the bus busy.
+`spd-skips-soldered-memory.patch`, written here, has DMI keep each memory
+device's form factor and the SPD probe skip soldered memory.
 
 ### The Boot Clock
 
@@ -324,24 +344,8 @@ and is harmless, so nothing silences or patches it:
   gives the bus `system-path`'s `share/dbus-1` beside each package's own, so
   every service file is found twice, once through a link. Leaving
   `system-path` out would lose the services only it has.
-- **"Esys_NV_DefineSpace ErrorCode (0x0000014c)", four times.** That's
-  `TPM_RC_NV_DEFINED`: systemd-tpm2-setup finds its NvPCR indexes already
-  defined from an earlier boot and carries on.
-- **"Anchor secret file ... different from current anchor secret,
-  updating."** systemd-tpm2-setup leaves a copy of the NvPCR anchor on the
-  ESP for the initrd, but runs before `/boot` is mounted, so finds no ESP and
-  leaves none. The initrd then makes a new anchor at every boot, and the unit
-  replaces `/var`'s copy. Nothing here seals to an NvPCR: the disk's policy
-  is PCRs 0, 4 and 7. Ordering the unit after `/boot` would put its 0.7 s on
-  the way to `sysinit.target`.
-- **"SMBus is busy, can't use it!", seven times.** The i801 driver finds the
-  bus busy as it probes. Nothing uses the bus: the LPDDR5's SPD isn't
-  registered while its write protection is on.
 - **No "RAPL domain uncore" on BIOS 1.11.0.** 1.10.1 reported it. It only
   meters the uncore's energy; the power limits are unaffected.
-- **"UCSI_GET_PDOS failed (-95)".** The kernel asks the charger for the
-  offers it would take as a sink, and a charger that only supplies power has
-  none, so the USB-C controller refuses.
 - **xe's "Selective fetch area calculation failed in pipe A"**, once. When
   the panel's self refresh can't work out which part of a frame changed, the
   driver sends the whole frame instead, and says so the first time. The
@@ -350,9 +354,13 @@ and is harmless, so nothing silences or patches it:
   HDMI codec has four converters and the DSP's topology three outputs. The
   GPU drives four displays, the panel being one, so the three cover every
   external display.
-- **Bluetooth's "Received gp1 mailbox interrupt" and "Failed to send
-  Intel_Write_DDC (-95)".** The controller doesn't take the DDC parameters,
-  and works without them.
+- **Bluetooth's "Received gp1 mailbox interrupt"**, four times as the
+  controller loads its firmware. The driver reports every interrupt from that
+  mailbox as an error and dumps its registers for debugging; the firmware
+  loads and the controller works. On some boots, and on resuming from them,
+  that dump also logs "Controller device warning": a bit the controller's
+  own firmware sets in its boot stage register, which the driver reports and
+  does nothing with.
 - **"Returned feature report did not match the request"** from the
   touchpad, which answers one feature request with another report and works
   as it should.
@@ -427,6 +435,16 @@ upstream as it is and the override can then come out.
   +  ];
   ```
 
+- **Bluetooth's DDC file.** linux-firmware 20260916's
+  `intel/ibt-00a0-01a1-pci.ddc` ends in a stray newline. The kernel reads it
+  as a record 11 bytes long with 1 byte left: 7.2.9 sent it past the end of
+  the file, and the controller refused it with "Failed to send
+  Intel_Write_DDC (-95)"; 7.2.10 checks the length first and says "Malformed
+  DDC record (plen=11, remaining=1)". The two real records go first either
+  way, so the controller has its parameters. linux-firmware's
+  [a98a6daa9f4d][14] drops the byte two days after that release, so its file
+  goes ahead of the package's until nixpkgs has a newer one.
+
 ### Left Out on Purpose
 
 - **`fred=on`.** Omarchy sets it, but 7.2 turns FRED on by default wherever
@@ -460,3 +478,4 @@ upstream as it is and the override can then come out.
 [11]: ../hardware/dell-xps-14-da14260/camera.nix
 [12]: https://github.com/TsaiGaggery/hurrican_omarchy_enabling
 [13]: ../modules/firmware-settings/nixos.nix
+[14]: https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/commit/?id=a98a6daa9f4dee2f662cc8a48610287189b23499

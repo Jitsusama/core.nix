@@ -1,0 +1,105 @@
+i2c: smbus: Don't probe soldered memory for SPD EEPROMs
+
+On the Dell XPS 14 DA14260, all eight memory devices in SMBIOS are
+LPDDR5X soldered to the board ("Row Of Chips"), so there is no SPD
+EEPROM on the SMBus. i2c_register_spd() still probes 0x50 to 0x57 for
+spd5118 devices. The first read at 0x50 never completes: the i801
+transfer waits out its 200 ms timeout, the kill waits up to another
+200 ms, and the host stays busy. Every later probe then fails with
+"SMBus is busy, can't use it!", seven errors and a 450 ms stall in the
+i801 probe at every boot, with the controller left busy afterwards.
+
+The memory type can't tell soldered memory apart: LPCAMM2 modules are
+LPDDR5 too and do carry an SPD5118 hub. The SMBIOS form factor can, so
+DMI now keeps it, and slots holding chips, TSOP, rows of chips or dies
+are skipped like empty ones.
+
+diff -ruN a/drivers/firmware/dmi_scan.c b/drivers/firmware/dmi_scan.c
+--- a/drivers/firmware/dmi_scan.c
++++ b/drivers/firmware/dmi_scan.c
+@@ -43,6 +43,7 @@
+ 	u64 size;		/* bytes */
+ 	u16 handle;
+ 	u8 type;		/* DDR2, DDR3, DDR4 etc */
++	u8 form_factor;		/* DIMM, SODIMM, Row Of Chips etc */
+ } *dmi_memdev;
+ static int dmi_memdev_nr;
+ static int dmi_memdev_populated_nr __initdata;
+@@ -451,6 +452,7 @@
+ 	dmi_memdev[nr].device = dmi_string(dm, d[0x10]);
+ 	dmi_memdev[nr].bank = dmi_string(dm, d[0x11]);
+ 	dmi_memdev[nr].type = d[0x12];
++	dmi_memdev[nr].form_factor = d[0x0E];
+ 
+ 	size = get_unaligned((u16 *)&d[0xC]);
+ 	if (size == 0)
+@@ -1207,6 +1209,27 @@
+ EXPORT_SYMBOL_GPL(dmi_memdev_type);
+ 
+ /**
++ * dmi_memdev_form_factor - get the memory form factor
++ * @handle: DMI structure handle
++ *
++ * Return the DMI form factor of the memory in the slot associated with the
++ * given DMI handle, or 0x0 if no such DMI handle exists.
++ */
++u8 dmi_memdev_form_factor(u16 handle)
++{
++	int n;
++
++	if (dmi_memdev) {
++		for (n = 0; n < dmi_memdev_nr; n++) {
++			if (handle == dmi_memdev[n].handle)
++				return dmi_memdev[n].form_factor;
++		}
++	}
++	return 0x0;	/* Not a valid value */
++}
++EXPORT_SYMBOL_GPL(dmi_memdev_form_factor);
++
++/**
+  *	dmi_memdev_handle - get the DMI handle of a memory slot
+  *	@slot: slot number
+  *
+diff -ruN a/drivers/i2c/i2c-smbus.c b/drivers/i2c/i2c-smbus.c
+--- a/drivers/i2c/i2c-smbus.c
++++ b/drivers/i2c/i2c-smbus.c
+@@ -388,6 +388,19 @@
+ 		if (!mem_size)
+ 			continue;
+ 
++		/*
++		 * Skip memory soldered to the board: it has no SPD EEPROM, and
++		 * probing for one on some controllers hangs the bus until the
++		 * transfer times out, leaving it busy for every later slot.
++		 */
++		switch (dmi_memdev_form_factor(handle)) {
++		case 0x05:	/* Chip */
++		case 0x0A:	/* TSOP */
++		case 0x0B:	/* Row Of Chips */
++		case 0x10:	/* Die */
++			continue;
++		}
++
+ 		/* Skip undefined memory type */
+ 		mem_type = dmi_memdev_type(handle);
+ 		if (mem_type <= 0x02)		/* Invalid, Other, Unknown */
+diff -ruN a/include/linux/dmi.h b/include/linux/dmi.h
+--- a/include/linux/dmi.h
++++ b/include/linux/dmi.h
+@@ -134,6 +134,7 @@
+ extern void dmi_memdev_name(u16 handle, const char **bank, const char **device);
+ extern u64 dmi_memdev_size(u16 handle);
+ extern u8 dmi_memdev_type(u16 handle);
++extern u8 dmi_memdev_form_factor(u16 handle);
+ extern u16 dmi_memdev_handle(int slot);
+ const char *dmi_string_nosave(const struct dmi_header *dm, u8 s);
+ 
+@@ -166,6 +167,7 @@
+ 		const char **device) { }
+ static inline u64 dmi_memdev_size(u16 handle) { return ~0ul; }
+ static inline u8 dmi_memdev_type(u16 handle) { return 0x0; }
++static inline u8 dmi_memdev_form_factor(u16 handle) { return 0x0; }
+ static inline u16 dmi_memdev_handle(int slot) { return 0xffff; }
+ static inline const struct dmi_system_id *
+ 	dmi_first_match(const struct dmi_system_id *list) { return NULL; }
