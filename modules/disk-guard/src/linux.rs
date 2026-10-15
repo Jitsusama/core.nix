@@ -344,15 +344,33 @@ pub fn processes(proc: &Path) -> io::Result<Vec<crate::activity::Process>> {
     Ok(all)
 }
 
+/// When process `pid` started, in clock ticks since boot, or none when it's
+/// gone or a zombie, which holds no files. Its stat is anybody's to read.
+pub fn started(proc: &Path, pid: u32) -> Option<u64> {
+    let stat = fs::read_to_string(proc.join(pid.to_string()).join("stat")).ok()?;
+    let (_, fields) = stat_fields(&stat)?;
+    if fields.first() == Some(&"Z") {
+        return None;
+    }
+    fields.get(19)?.parse().ok()
+}
+
+/// A stat's name and its fields from the state (the third) on, so field n
+/// is at n - 3. The name sits in parentheses and may hold any of them.
+fn stat_fields(stat: &str) -> Option<(&str, Vec<&str>)> {
+    let (open, close) = (stat.find('(')?, stat.rfind(')')?);
+    Some((
+        stat.get(open + 1..close)?,
+        stat.get(close + 1..)?.split_whitespace().collect(),
+    ))
+}
+
 /// One process, or none when it's gone, a kernel thread or a zombie.
 fn process(dir: &Path, pid: u32) -> Option<crate::activity::Process> {
     use std::os::unix::ffi::OsStrExt;
     let stat = fs::read_to_string(dir.join("stat")).ok()?;
-    // The name sits in parentheses and may hold any of them itself.
-    let (open, close) = (stat.find('(')?, stat.rfind(')')?);
-    let name = stat.get(open + 1..close)?.to_owned();
-    // Fields from the state (the third) on; field n is at n - 3.
-    let fields: Vec<&str> = stat.get(close + 1..)?.split_whitespace().collect();
+    let (name, fields) = stat_fields(&stat)?;
+    let name = name.to_owned();
     let flags: u64 = fields.get(6)?.parse().ok()?;
     if fields.first() == Some(&"Z") || flags & PF_KTHREAD != 0 {
         return None;

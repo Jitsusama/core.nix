@@ -298,6 +298,20 @@ pub fn processes(_proc: &Path) -> io::Result<Vec<crate::activity::Process>> {
         .collect())
 }
 
+/// When process `pid` started, in the microseconds `processes` gives as its
+/// start, or none when it's gone or a zombie, which holds no files. Its BSD
+/// info is anybody's to read.
+pub fn started(_proc: &Path, pid: u32) -> Option<u64> {
+    let info: libc::proc_bsdinfo = pidinfo(pid as libc::pid_t, libc::PROC_PIDTBSDINFO, 0).ok()?;
+    (info.pbi_status != libc::SZOMB).then(|| start_of(&info))
+}
+
+fn start_of(info: &libc::proc_bsdinfo) -> u64 {
+    info.pbi_start_tvsec
+        .saturating_mul(1_000_000)
+        .saturating_add(info.pbi_start_tvusec)
+}
+
 /// One process, or none when it's gone or a zombie. `args` is room for its
 /// arguments, shared between processes.
 fn process(pid: libc::pid_t, args: &mut [u8]) -> Option<crate::activity::Process> {
@@ -310,10 +324,7 @@ fn process(pid: libc::pid_t, args: &mut [u8]) -> Option<crate::activity::Process
     } else {
         bytes(&info.pbi_comm)
     };
-    let start_ticks = info
-        .pbi_start_tvsec
-        .saturating_mul(1_000_000)
-        .saturating_add(info.pbi_start_tvusec);
+    let start_ticks = start_of(&info);
 
     let cwd: io::Result<Option<PathBuf>> =
         pidinfo::<libc::proc_vnodepathinfo>(pid, libc::PROC_PIDVNODEPATHINFO, 0)

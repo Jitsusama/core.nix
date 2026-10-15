@@ -144,7 +144,15 @@ impl Scan {
         if stale {
             let taken = Instant::now();
             let local = crate::sys::processes(&self.proc)?;
-            self.seen = Some((taken, self.vouched(local)));
+            let mut processes = self.vouched(local);
+            // A process the system couldn't vouch for may have exited before
+            // it looked, as most of a build's do within a second, and one
+            // that's gone holds nothing. Kept, it would keep every candidate.
+            processes.retain(|process| {
+                process.readable
+                    || crate::sys::started(&self.proc, process.pid) == Some(process.start_ticks)
+            });
+            self.seen = Some((taken, processes));
         }
         Ok(self.seen.as_ref().map_or(&[], |(_, processes)| processes))
     }

@@ -326,6 +326,109 @@ fn a_listing_is_kept_for_the_next_guard() {
     assert_eq!(lists, 1, "a day old at most, so not listed again");
 }
 
+/// How many times the store has been listed.
+fn lists(store: &Store) -> usize {
+    store
+        .log()
+        .iter()
+        .filter(|line| line.starts_with("list"))
+        .count()
+}
+
+/// When the listing the guard last kept began, once it has kept one.
+fn kept(store: &Store) -> Option<f64> {
+    let text = fs::read_to_string(store.root.join("state/garbage.json")).ok()?;
+    serde_json::from_str::<serde_json::Value>(&text).ok()?["listed_at"].as_f64()
+}
+
+/// Steps `guard` at `seconds` past now until `done` holds of the store and
+/// that moment, as the listing runs apart. A machine busy with other
+/// builds can take a while to start one, so this waits on what it sees.
+fn step_later_until(
+    store: &Store,
+    guard: &mut Guard,
+    seconds: f64,
+    senses: &Senses,
+    done: impl Fn(&Store, f64) -> bool,
+) {
+    let at = Tick {
+        wall: now() + seconds,
+        ..tick()
+    };
+    let started = Instant::now();
+    while !done(store, at.wall) {
+        assert!(
+            started.elapsed() < Duration::from_secs(10),
+            "{seconds} s on: {:?}",
+            store.log()
+        );
+        guard.step(&at, senses).unwrap();
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
+/// Steps `guard` at `seconds` past now until it keeps a listing begun then.
+/// JSON can bring a moment back a hair off, so near enough is the same.
+fn listed_later(store: &Store, guard: &mut Guard, seconds: f64, senses: &Senses) {
+    step_later_until(store, guard, seconds, senses, |store, at| {
+        kept(store).is_some_and(|kept| (kept - at).abs() < 0.001)
+    });
+}
+
+/// Steps `guard` at `seconds` past now long enough for a listing begun to
+/// say so. That it said nothing is borne out by the next `listed_later`,
+/// which waits for a listing begun at its own moment rather than this one.
+fn step_later(guard: &mut Guard, seconds: f64, senses: &Senses) {
+    let at = Tick {
+        wall: now() + seconds,
+        ..tick()
+    };
+    for _ in 0..10 {
+        guard.step(&at, senses).unwrap();
+        std::thread::sleep(Duration::from_millis(30));
+    }
+}
+
+const BUSY: Senses = Senses {
+    pressure: Pressure {
+        io: disk_guard::moments::Stall {
+            some: 50.0,
+            full: 0.0,
+        },
+        ..CALM.pressure
+    },
+    ..CALM
+};
+
+#[test]
+fn a_healthy_store_is_listed_again_six_hours_on_in_a_spare_moment() {
+    // Upkeep comes every six hours and takes what the listing holds, so a
+    // listing a day old misses a day of builds.
+    let store = Store::new();
+    store.dead("aaa-young", 3600.0, 4096);
+    let mut guard = store.guard(store.config("0%", "0%"));
+    listed_later(&store, &mut guard, 0.0, &CALM);
+    assert_eq!(lists(&store), 1);
+    step_later(&mut guard, 5.0 * 3600.0, &CALM);
+    assert_eq!(lists(&store), 1, "five hours on");
+    listed_later(&store, &mut guard, 7.0 * 3600.0, &CALM);
+    assert_eq!(lists(&store), 2, "seven hours on");
+}
+
+#[test]
+fn a_listing_a_day_old_is_taken_again_however_busy_the_machine() {
+    // A machine that builds all day is never calm.
+    let store = Store::new();
+    store.dead("aaa-young", 3600.0, 4096);
+    let mut guard = store.guard(store.config("0%", "0%"));
+    listed_later(&store, &mut guard, 0.0, &CALM);
+    step_later(&mut guard, 7.0 * 3600.0, &BUSY);
+    assert_eq!(lists(&store), 1, "not while busy, within a day");
+    listed_later(&store, &mut guard, 25.0 * 3600.0, &BUSY);
+    assert_eq!(lists(&store), 2, "a day on");
+    assert_eq!(store.log()[1], "list 5", "still at idle priority");
+}
+
 #[test]
 fn a_listing_kept_by_names_is_listed_again() {
     // As the guard kept them before it held references by place.
@@ -348,35 +451,13 @@ fn a_listing_that_failed_under_pressure_is_tried_again_within_minutes() {
     store.dead("aaa-old", 10.0 * DAY, 4096);
     fs::write(store.root.join("listing-broken"), "").unwrap();
     let mut guard = store.guard(store.config("100%", "0%"));
-    let lists = |store: &Store| {
-        store
-            .log()
-            .iter()
-            .filter(|line| line.starts_with("list"))
-            .count()
-    };
-    let later = |seconds: f64| Tick {
-        wall: now() + seconds,
-        ..tick()
-    };
-    let step_for = |guard: &mut Guard, at: &Tick| {
-        // Long enough for a listing begun to say so.
-        for _ in 0..10 {
-            guard.step(at, &CALM).unwrap();
-            std::thread::sleep(Duration::from_millis(30));
-        }
-    };
-    step_for(&mut guard, &tick());
-    assert_eq!(lists(&store), 1, "{:?}", store.log());
+    step_later_until(&store, &mut guard, 0.0, &CALM, |store, _| lists(store) == 1);
     fs::remove_file(store.root.join("listing-broken")).unwrap();
-    step_for(&mut guard, &later(60.0));
+    step_later(&mut guard, 60.0, &CALM);
     assert_eq!(lists(&store), 1, "not at once: a listing costs the disk");
-    step_for(&mut guard, &later(6.0 * 60.0));
+    // Kept, so this one listed, and listed six minutes on, not one.
+    listed_later(&store, &mut guard, 6.0 * 60.0, &CALM);
     assert_eq!(lists(&store), 2, "{:?}", store.log());
-    assert!(
-        store.root.join("state/garbage.json").exists(),
-        "the second listing is kept"
-    );
 }
 
 #[test]

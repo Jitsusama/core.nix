@@ -2,8 +2,8 @@
 //! them, and plan again.
 
 use crate::band::{Band, Space, Thresholds};
-use crate::plan::{Candidate, Class, plan};
-use std::collections::BTreeMap;
+use crate::plan::{Candidate, Class, Group, plan};
+use std::collections::{BTreeMap, BTreeSet};
 use std::io;
 use std::path::PathBuf;
 
@@ -12,10 +12,18 @@ use std::path::PathBuf;
 const BATCH_SECONDS: f64 = 5.0;
 
 /// A batch freeing under this share of its prediction made no progress,
-/// and this many of them running stop the pass: something is holding the
-/// extents, a snapshot, a reflink or a hard link, and deleting on won't help.
+/// and this many of them running in a group stop that group: something is
+/// holding its extents, a snapshot, a reflink or a hard link, and deleting
+/// more of it won't help. The pass goes on to the next group, which may
+/// hold what will.
 const STALL_SHARE: f64 = 0.1;
 const STALL_BATCHES: usize = 3;
+
+/// The least a batch must predict for its measurement to mean anything. A
+/// build writes a gigabyte in seconds, so a batch of temp files predicting
+/// a few megabytes measures the writer, not itself: it neither stalls nor
+/// teaches.
+const STALL_FLOOR: u64 = 1 << 30;
 
 /// The filesystem a pass works on.
 pub trait Disk {
@@ -104,7 +112,9 @@ pub struct Report {
 /// from the measurement, never the sum of sizes. The pass plans by the
 /// worst band it has seen, so a disk freed out of urgent into pressure
 /// still reaches the target. A batch that stalls teaches nothing, since a
-/// ratio learned from it would plan everything.
+/// ratio learned from it would plan everything, and a group that keeps
+/// stalling is left for the next: a pass ends stalled only when it then
+/// runs out of anything else to take.
 pub fn pass(
     disk: &mut impl Disk,
     reclaimer: &mut impl Reclaimer,
@@ -121,7 +131,10 @@ pub fn pass(
         actions: Vec::new(),
     };
     let mut taken = vec![false; candidates.len()];
-    let (mut band, mut stalls) = (previous, 0);
+    let mut band = previous;
+    // Stalled batches running, by group, and the groups given up on.
+    let mut stalls: BTreeMap<Group, usize> = BTreeMap::new();
+    let mut given_up: BTreeSet<Group> = BTreeSet::new();
     loop {
         let before = match disk.space() {
             Ok(space) => space,
@@ -144,15 +157,20 @@ pub fn pass(
         };
         let left: Vec<usize> = (0..candidates.len()).filter(|&i| !taken[i]).collect();
         let offered: Vec<Candidate> = left.iter().map(|&i| candidates[i].clone()).collect();
-        let steps = plan(&offered, windows, None, |class| learned.ratio(class));
+        let mut steps = plan(&offered, windows, None, |class| learned.ratio(class));
+        steps.retain(|step| !given_up.contains(&step.group));
         if steps.is_empty() {
-            report.end = End::Exhausted;
+            report.end = if !given_up.is_empty() {
+                End::Stalled
+            } else {
+                End::Exhausted
+            };
             return report;
         }
 
         let started = disk.now();
-        let (mut predicted, mut batch) = (0, Vec::new());
-        for step in steps {
+        let (mut predicted, mut batch, mut groups) = (0, Vec::new(), Vec::new());
+        for step in &steps {
             let index = left[step.index];
             let candidate = &candidates[index];
             // A command is measured alone, so what it frees is credited to
@@ -167,6 +185,9 @@ pub fn pass(
             if reclaimed {
                 predicted += step.predicted;
                 batch.push(candidate);
+                if !groups.contains(&step.group) {
+                    groups.push(step.group);
+                }
             }
             report.actions.push((candidate.path.clone(), outcome));
             let enough = remaining.is_some_and(|remaining| predicted >= remaining);
@@ -188,14 +209,21 @@ pub fn pass(
         let freed = after.free.saturating_sub(before.free);
         report.freed += freed;
         if (freed as f64) < predicted as f64 * STALL_SHARE {
-            stalls += 1;
-            if stalls >= STALL_BATCHES {
-                report.end = End::Stalled;
-                return report;
+            if predicted < STALL_FLOOR {
+                continue;
+            }
+            for group in groups {
+                let count = stalls.entry(group).or_default();
+                *count += 1;
+                if *count >= STALL_BATCHES {
+                    given_up.insert(group);
+                }
             }
             continue;
         }
-        stalls = 0;
+        for group in groups {
+            stalls.remove(&group);
+        }
         // Each kind is credited its share of the batch's logical bytes.
         let logical: u64 = batch.iter().map(|candidate| candidate.size).sum();
         for candidate in batch {

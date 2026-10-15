@@ -22,6 +22,8 @@ struct FakeDisk {
     fills: Vec<u64>,
     settles: usize,
     clock: f64,
+    /// Seconds each reclaim takes, so batches end on their clock.
+    each: f64,
 }
 
 impl FakeDisk {
@@ -32,6 +34,7 @@ impl FakeDisk {
             fills: Vec::new(),
             settles: 0,
             clock: 0.0,
+            each: 0.0,
         }
     }
 }
@@ -68,6 +71,10 @@ struct FakeReclaimer<'a> {
 
 impl Reclaimer for FakeReclaimer<'_> {
     fn reclaim(&mut self, candidate: &Candidate) -> Outcome {
+        {
+            let mut disk = self.disk.borrow_mut();
+            disk.clock += disk.each;
+        }
         if self.kept.contains(&candidate.path) {
             return Outcome::Kept("a build started in it".into());
         }
@@ -282,6 +289,67 @@ fn deletes_that_free_nothing_stop_the_pass_after_three_batches() {
     );
     // A stall teaches nothing, or the next pass would plan everything.
     assert_eq!(run.learned.ratio(Class::Target), 1.0);
+}
+
+/// `count` temp files of `size` each, long idle, so due at any band.
+fn temps(count: usize, size: u64) -> Vec<Candidate> {
+    (0..count)
+        .map(|n| Candidate {
+            path: PathBuf::from(format!("/tmp/tmp.{n:04}")),
+            class: Class::Temp,
+            idle: 30.0 * 86_400.0 + (count - n) as f64,
+            size,
+            occupied: false,
+            spent: false,
+            checkout: None,
+        })
+        .collect()
+}
+
+#[test]
+fn small_batches_a_writer_swamps_dont_stop_the_pass() {
+    // Batches of temp files a few MiB each can't be told from a writer
+    // filling the disk as they go, so they measure nothing, and the pass
+    // still reaches the targets that make up the shortfall.
+    let mut candidates = temps(60, 16 << 20);
+    candidates.extend(targets(10, 7.0 * HOUR));
+    let nothing = candidates[..60]
+        .iter()
+        .map(|c| (c.path.clone(), 0))
+        .collect();
+    let mut disk = FakeDisk::new(14 * GIB);
+    disk.each = 1.0;
+    let run = run(disk, &candidates, Goal::Reach, nothing, Vec::new());
+    assert_eq!(run.end, End::Reached);
+    assert_eq!(run.free, 20 * GIB);
+    assert_eq!(
+        run.learned.ratio(Class::Temp),
+        1.0,
+        "too small to learn from"
+    );
+}
+
+#[test]
+fn a_group_that_stalls_gives_way_to_the_next() {
+    // Temp files that free nothing, as hard links to files kept elsewhere
+    // do, stop their own group after three batches, not the pass.
+    let mut candidates = temps(20, GIB);
+    candidates.extend(targets(10, 7.0 * HOUR));
+    let nothing = candidates[..20]
+        .iter()
+        .map(|c| (c.path.clone(), 0))
+        .collect();
+    let mut disk = FakeDisk::new(14 * GIB);
+    disk.each = 1.0;
+    let run = run(disk, &candidates, Goal::Reach, nothing, Vec::new());
+    assert_eq!(run.end, End::Reached);
+    let temp = |path: &PathBuf| path.starts_with("/tmp");
+    assert_eq!(
+        run.taken.iter().filter(|path| temp(path)).count(),
+        15,
+        "three batches of five"
+    );
+    assert_eq!(run.taken.iter().filter(|path| !temp(path)).count(), 6);
 }
 
 #[test]

@@ -505,6 +505,58 @@ fn a_pass_that_falls_short_rests_before_the_next_and_longer_each_time() {
 }
 
 #[test]
+fn a_pressed_disk_gives_way_to_a_busy_machine_for_twenty_minutes_at_most() {
+    // Builds stall IO all night, so a pressure pass that always gave way
+    // would take nothing until the disk fell to urgent.
+    let home = Home::new();
+    let old = home.trashed("old.txt", "2001-09-09T01:46:40");
+    let busy = home.root.join("proc/pressure");
+    fs::create_dir_all(&busy).unwrap();
+    fs::write(
+        busy.join("io"),
+        "some avg10=50.00 avg60=0.00 avg300=0.00 total=0\n",
+    )
+    .unwrap();
+    let mut guard = home.guard(home.config("100%", "100%"));
+    // Each past the rest the one before earned.
+    for at in [3600.0, 3700.0, 3900.0, 4200.0] {
+        guard.step(&tick_at(at), &CALM).unwrap();
+        assert!(old.exists(), "given way at {at}");
+    }
+    guard.step(&tick_at(4900.0), &CALM).unwrap();
+    assert!(!old.exists(), "twenty minutes on");
+    let pass = home
+        .journal()
+        .into_iter()
+        .rfind(|line| line["event"] == "pass")
+        .unwrap();
+    assert_eq!(pass["band"], "pressure");
+}
+
+#[test]
+fn a_pass_that_falls_short_at_critical_rests_a_minute_at_most() {
+    let home = Home::new();
+    home.cold_scratch("run-1");
+    home.hidden(300, 77);
+    let mut config = home.config("100%", "100%");
+    config.bands.urgent = Size::Percent(100.0);
+    config.bands.critical = Size::Percent(100.0);
+    let mut guard = home.guard(config);
+    let passes = || {
+        home.journal()
+            .iter()
+            .filter(|line| line["event"] == "pass")
+            .count()
+    };
+    let mut seen = Vec::new();
+    for at in [3600.0, 3661.0, 3782.0, 3843.0, 3904.0] {
+        guard.step(&tick_at(at), &CALM).unwrap();
+        seen.push(passes());
+    }
+    assert_eq!(seen, [1, 2, 3, 4, 5], "a minute's rest each time");
+}
+
+#[test]
 fn a_preview_says_how_many_processes_it_could_not_judge_and_why() {
     let home = Home::new();
     home.cold_scratch("run-1");
