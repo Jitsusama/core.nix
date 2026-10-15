@@ -8,6 +8,7 @@
     homeModules.zellij
     homeModules.claude
     homeModules.opencode
+    homeModules.pi
     homeModules.ergodox
   ];
 }

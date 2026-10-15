@@ -145,6 +145,7 @@
         nixfmt = ./modules/nixfmt/home.nix;
         opencode = ./modules/opencode/home.nix;
         openssl = ./modules/openssl/home.nix;
+        pi = ./modules/pi/home.nix;
         podman = ./modules/podman/home.nix;
         prompt = ./modules/prompt/home.nix;
         qt = ./modules/qt/home.nix;

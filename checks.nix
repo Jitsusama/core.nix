@@ -381,6 +381,21 @@ in
       && mix 0.25 "#ff0000" "#000000" == "#400000"
     );
 
+  # pi's theme is the machine's: its text, its code and its thinking levels
+  # are the theme's colours, and every colour it names is one pi reads.
+  pi-wears-the-theme =
+    let
+      home = account workstation;
+      theme = builtins.fromJSON home.home.file.".pi/agent/themes/jitsusama.json".text;
+      colours = lib.attrValues theme.colors ++ lib.attrValues theme.export;
+    in
+    holds "pi-wears-the-theme" "pi's theme isn't the machine's, or names a colour pi can't read." (
+      theme.colors.text == home.jitsusama.theme.roles.text
+      && theme.colors.syntaxString == home.jitsusama.theme.syntax.string.colour
+      && theme.colors.thinkingMax == home.jitsusama.theme.roles.alert
+      && lib.all (colour: builtins.match "#[0-9a-fA-F]{6}" colour != null) colours
+    );
+
   # The prompt starts nothing once the shell is up: across a run of prompts
   # in and out of a repository, with git-engine answering, the shell itself
   # forks and executes nothing, and its reads of HEAD show the prompts ran.
