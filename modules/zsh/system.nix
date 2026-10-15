@@ -3,7 +3,8 @@
 {
   programs.zsh = {
     enable = true;
-    # oh-my-zsh runs compinit itself; a second global one walks fpath twice.
+    # The account's zsh runs compinit itself, from a kept dump
+    # (completion.zsh); a second global one walks fpath again.
     enableGlobalCompInit = false;
     # The prompt module owns the prompt.
     promptInit = "";
