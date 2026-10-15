@@ -638,6 +638,8 @@ bright_black = "sage"
 
 # Code's roles (keyword, string, comment and the rest), by pigment and style.
 [syntax]
+string = "mint"
+comment = { pigment = "sage", italic = true }
 
 # The type scale's ratio and steps, the space scale's unit and steps, motion's
 # spring, curve and durations, and any glyph to change, as the theme module's
@@ -667,7 +669,16 @@ lock = "landscapes/mountain-woods-green.png"
 
 The shades, `palette`, `roles` and `terminal` are required. Every other table
 falls back to the defaults the theme module carries, so a theme changes only
-what it means to. Colours may carry alpha (`#rrggbbaa`). Roles always name a
+what it means to.
+
+Code has nine roles, each falling back to a role of the theme's: `comment`
+(muted, in italics), `keyword` (strong), `punctuation` (muted), `operator`
+(text), `string` (success), `constant` (machine), `function` (program),
+`type` (voice) and `special` (person) for escapes, macros and attributes.
+Structure goes by brightness and meaning by a few hues, so most of a file
+reads as text, and the accent stays where the keys go. Neovim's colour scheme
+is drawn from them, and the legibility check holds each to 4.5:1 on the
+background and the sunken shade. Colours may carry alpha (`#rrggbbaa`). Roles always name a
 pigment, never a value, so changing one pigment recolours everything that
 means it. A pigment's name says what it looks like (jade, parchment, night),
 never what it's for, which is the role's job.
