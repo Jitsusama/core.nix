@@ -120,6 +120,9 @@ in
   config = {
     xdg.dataFile."jitsusama/prompt.zsh".source = prompt;
 
-    programs.zsh.initContent = lib.mkAfter "source ${prompt}";
+    # Early, before completion, so gitstatusd starts while the rest of the
+    # shell's setup runs. Each precmd hook is handed the last command's status
+    # afresh, so the prompt still sees a failure wherever it sits.
+    programs.zsh.initContent = lib.mkOrder 500 "source ${prompt}";
   };
 }

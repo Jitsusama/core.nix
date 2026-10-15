@@ -25,6 +25,14 @@
 # from its own setup already.
 (( $+functions[_prompt_precmd] )) && return
 
+# A dumb terminal, as an editor's shell is, gets a plain $ and nothing to
+# redraw.
+if [[ $TERM == dumb ]]; then
+  unsetopt zle prompt_cr prompt_subst
+  PROMPT='$ ' RPROMPT=''
+  return
+fi
+
 zmodload zsh/datetime zsh/parameter zsh/system
 autoload -Uz add-zle-hook-widget
 setopt prompt_subst prompt_percent
@@ -464,6 +472,9 @@ _prompt_precmd() {
   _prompt_head
   _prompt_state[unsaved]=0 _prompt_state[ahead]=0 _prompt_state[conflicted]=0
   _prompt_asked=0
+  # gitstatusd was started without waiting for it; the first prompt takes its
+  # hello, which the rest of the shell's start has usually given it time for.
+  (( $+functions[gitstatus_start_prompt] )) && gitstatus_start_prompt $_prompt_daemon prompt
   if [[ -n ${_prompt_state[gitdir]} ]] && (( $+functions[gitstatus_query_prompt] )); then
     _prompt_asked=1
     # A moment's wait answers most folders in time for the first draw, so
@@ -519,5 +530,6 @@ if [[ -r $_prompt_gitstatus ]]; then
     typeset -g GITSTATUS_NUM_THREADS=$(( cpus > 16 ? 32 : 2 * cpus ))
   }
   source $_prompt_gitstatus _prompt
-  gitstatus_start_prompt -s 1 -u 1 -c 1 -d 1 prompt
+  typeset -ga _prompt_daemon=(-s 1 -u 1 -c 1 -d 1)
+  gitstatus_start_prompt -a $_prompt_daemon prompt
 fi

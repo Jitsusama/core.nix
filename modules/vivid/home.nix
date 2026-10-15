@@ -2,8 +2,7 @@
 # completion menus: most names in the text colour, directories in the
 # strongest, what runs in the program colour, links in the voice colour and
 # what nobody needs to read muted. vivid runs once when the account builds
-# and the shell sources what it wrote, so no shell starts a program for it,
-# and oh-my-zsh, finding LS_COLORS set, runs no dircolors either.
+# and the shell sources what it wrote, so no shell starts a program for it.
 {
   config,
   lib,
