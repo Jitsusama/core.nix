@@ -63,7 +63,8 @@ feed speaks.
   days agreeing with each other and all outside the month before's tenth
   to ninetieth percentiles, since spend another machine made comes and
   goes by the day; the estimates take the new ratio up at once.
-  `src/detect.rs` holds them all, and `spend-watch backtest` replays them on the history.
+  `src/detect.rs` holds them all, and `spend-watch backtest` replays them
+  on the history.
 - **Sources.** A feed's source that can't be read is nothing for its first
   fifteen minutes, since a machine booting or waking fails every read until
   its network comes; then a note, or a warning when only a sign-in mends
