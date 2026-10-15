@@ -123,6 +123,14 @@ in
       };
     }
     {
+      # The CVS bridge's wake interrupt leaves an active-low flag on that
+      # same pin, so the first amplifier to read its speaker ID reads it
+      # inverted and loads the other speakers' tuning: the right woofer,
+      # at every boot. Written here; the patch says why.
+      name = "gpio-acpi-irq-leaves-polarity";
+      patch = ./gpio-acpi-irq-leaves-polarity.patch;
+    }
+    {
       # The four amplifiers probe at once and each takes that pin for itself,
       # so now and then one finds it taken and the sound card never comes.
       # Written here; the patch says why.
