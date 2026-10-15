@@ -231,6 +231,7 @@
         quickshell = ./modules/quickshell/nixos.nix;
         slices = ./modules/slices/nixos.nix;
         swayimg = ./modules/swayimg/nixos.nix;
+        systemd = ./modules/systemd/nixos.nix;
         systemd-networkd = ./modules/systemd-networkd/nixos.nix;
         timesyncd = ./modules/timesyncd/nixos.nix;
         tpm = ./modules/tpm/nixos.nix;
