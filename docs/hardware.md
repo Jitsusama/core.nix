@@ -84,6 +84,20 @@ with that same -EBUSY, and the card didn't register until the amplifier was
 bound by hand. `cs35l56-spkid-lock.patch`, written here, makes them take turns
 with a lock around the read; the patch says why.
 
+The amplifiers then disagreed about what they read. Dell ships two tunings
+for each amplifier, and Windows picks between them by that pin, as Linux
+does; the files are byte for byte the ones linux-firmware has as `spkid0` and
+`spkid1`. At every boot the right woofer, the first to probe, loaded `spkid1`
+and the other three `spkid0`. The pin reads low the whole time: sampled every
+2 ms for 30 s while the camera opened and closed, it never went high. The
+bridge's wake interrupt is an active-low `GpioInt` on that pin, and the ACPI
+code that hands it the interrupt marks the pin active-low without requesting
+it. The first amplifier to request the pin inherits the flag and reads 1, and
+putting the pin back clears the flag for the rest.
+`gpio-acpi-irq-leaves-polarity.patch`, written here, keeps the flag off the
+pin, since the interrupt's trigger already carries its polarity, so every
+amplifier reads the pin's real level.
+
 ### The Charger's Offers
 
 The USB-C controller lists a charger's offers with an empty one first. A

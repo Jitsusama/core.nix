@@ -1,0 +1,38 @@
+gpiolib: acpi: Keep an IRQ's polarity off the GPIO line
+
+acpi_dev_gpio_irq_wake_get_by() configures the GPIO behind a GpioInt
+with gpiod_configure_flags(), passing GPIO_ACTIVE_LOW when the resource
+is ActiveLow. It never requests the line, and gpiod_configure_flags()
+only ever sets that flag; gpiod_free_commit() is what clears it. So the
+flag stays on the line, and the next consumer to request it inherits
+it and reads the line inverted, until it puts the line back.
+
+On the Dell XPS 14 DA14260 the camera's CVS bridge takes its wake IRQ
+from a GpioInt(Edge, ActiveLow, Shared) on GPP_F_20, and all four
+CS35L57 amplifiers read their speaker ID from a GpioIo on the same pin.
+The first amp to read it gets 1 while the line is low, then frees the
+line, which clears the flag, and the other three read 0. So at every
+boot one amp loads the tuning meant for a different set of speakers.
+
+The interrupt's polarity is already applied as its trigger type, a few
+lines further on, so the flag does nothing for the IRQ. Leave it off.
+
+diff -ruN a/drivers/gpio/gpiolib-acpi-core.c b/drivers/gpio/gpiolib-acpi-core.c
+--- a/drivers/gpio/gpiolib-acpi-core.c
++++ b/drivers/gpio/gpiolib-acpi-core.c
+@@ -1048,6 +1048,15 @@
+ 			acpi_gpio_update_gpiod_flags(&dflags, &info);
+ 			acpi_gpio_update_gpiod_lookup_flags(&lflags, &info);
+ 
++			/*
++			 * The trigger type set below carries the interrupt's
++			 * polarity. The line isn't requested here, so an
++			 * active-low flag would stay on it until it's next
++			 * freed, and the next consumer to request it would
++			 * read its value inverted.
++			 */
++			lflags &= ~GPIO_ACTIVE_LOW;
++
+ 			snprintf(label, sizeof(label), "%pfwP GpioInt(%d)", fwnode, index);
+ 			ret = gpiod_set_consumer_name(desc, con_id ?: label);
+ 			if (ret)
