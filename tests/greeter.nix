@@ -2,9 +2,11 @@
 # itself, so greetd asks through the greeter: it shows, refuses a wrong
 # password, takes the right one and starts the account's session, then
 # shows again once that session ends, as after logging out. When the
-# greeter falls over, tuigreet asks instead. The greeter says what it does
-# to the journal as greeter (modules/quickshell/Report.qml), which the test waits
-# on rather than guessing how long anything takes.
+# greeter falls over, tuigreet asks instead. It shows while home-manager
+# still sets up the account, whose service manager waits for that. The
+# greeter says what it does to the journal as greeter
+# (modules/quickshell/Report.qml), which the test waits on rather than
+# guessing how long anything takes.
 { self, pkgs }:
 let
   account = "jitsusama";
@@ -55,9 +57,19 @@ pkgs.testers.runNixOSTest {
         isNormalUser = true;
         description = "Joel Gerber";
         initialPassword = secret;
+        # Its service manager starts at boot, as a lingering account's does.
+        linger = true;
       };
-      home-manager.users.${account} = {
+      # Where the account's setup waits to be let go.
+      systemd.tmpfiles.rules = [ "d /run/home-hold 0700 ${account} users -" ];
+      home-manager.users.${account} = hm: {
         home.stateVersion = "26.05";
+        # The setup waits at boot, its files linked, until the test writes
+        # to this pipe, so what waits for the setup shows.
+        home.activation.heldAtBoot = hm.lib.hm.dag.entryAfter [ "linkGeneration" ] ''
+          ${pkgs.coreutils}/bin/mkfifo /run/home-hold/release
+          read -r _ < /run/home-hold/release
+        '';
         jitsusama.quickshell.reports = true;
         # No key repeats, as in the desktop test: a key let go late on a busy
         # host would type twice.
@@ -98,7 +110,32 @@ pkgs.testers.runNixOSTest {
             machine.screenshot("unheard")
         assert status == 0, f"the greeter never said {what!r}"
 
-    machine.wait_for_unit("greetd.service")
+    with subtest("the greeter shows while the account is set up"):
+        machine.wait_for_file("/run/home-hold/release", timeout=120)
+        machine.wait_until_succeeds("systemctl is-active --quiet greetd.service", timeout=120)
+        setup = machine.succeed(
+            "systemctl show --property=ActiveState --value home-manager-${account}.service"
+        ).strip()
+        assert setup == "activating", f"the account's setup was {setup!r}"
+
+    with subtest("the account's service manager waits for its setup"):
+        manager = "user@$(id -u ${account}).service"
+        state = machine.succeed(f"systemctl show --property=ActiveState --value {manager}").strip()
+        assert state == "inactive", f"the manager was {state!r} before the setup finished"
+        machine.succeed("echo go > /run/home-hold/release")
+        machine.wait_until_succeeds(f"systemctl is-active --quiet {manager}", timeout=60)
+        finished = int(
+            machine.succeed(
+                "systemctl show --property=ActiveEnterTimestampMonotonic --value"
+                " home-manager-${account}.service"
+            )
+        )
+        started = int(
+            machine.succeed(
+                f"systemctl show --property=InactiveExitTimestampMonotonic --value {manager}"
+            )
+        )
+        assert started >= finished, "the manager started before the setup finished"
 
     with subtest("the greeter asks who's there"):
         heard("keys greeter", "", timeout=120)

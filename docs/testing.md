@@ -158,6 +158,7 @@ a running system shows.
 | `vm-keyring-opens-without-asking` | the keyring opens with its TPM-sealed password, unasked |
 | `vm-speakers-are-tuned`           | the XPS 14's speakers hear the tuning, headphones don't |
 | `vm-desktop-works`                | it boots clean; the desktop shows, opens, locks and asks |
+| `vm-greeter-signs-in`             | the greeter signs in and out, not waiting on the account's setup |
 | `vm-wifi-joins`                   | wifid joins, finds sign-ins, keeps others' routing rules |
 | `vm-disk-guard-keeps-the-disk`    | the guards answer each band, sparing what's in use       |
 | `vm-network-revives-units`        | what the network let down starts, and reloads on change  |
