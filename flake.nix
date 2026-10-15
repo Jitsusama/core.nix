@@ -146,6 +146,7 @@
         opencode = ./modules/opencode/home.nix;
         openssl = ./modules/openssl/home.nix;
         podman = ./modules/podman/home.nix;
+        prompt = ./modules/prompt/home.nix;
         qt = ./modules/qt/home.nix;
         quickshell = moduleFrom ./modules/quickshell/home.nix { inherit wallpapers; };
         ripgrep = ./modules/ripgrep/home.nix;
@@ -334,6 +335,7 @@
         self.homeModules.zellij
         self.homeModules.zoxide
         self.homeModules.zsh
+        self.homeModules.prompt
         self.homeModules.home-manager
       ];
       nix-darwin.imports = [

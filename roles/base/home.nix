@@ -1,9 +1,11 @@
-# Every machine, a server included: zsh, git and the command-line tools used daily.
+# Every machine, a server included: zsh and its prompt, git and the
+# command-line tools used daily.
 { homeModules }:
 {
   imports = [
     homeModules.home-manager
     homeModules.zsh
+    homeModules.prompt
     homeModules.git
     homeModules.bat
     homeModules.delta
