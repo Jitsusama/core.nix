@@ -1,6 +1,5 @@
 # Every shortcut Joel has, gathered from each layer that takes keys: the
-# desktop first, then the terminal, then the multiplexer inside it, then the
-# program inside that. A layer above sees a key before the ones below, so a
+# desktop first, then the terminal, then the program inside it. A layer above sees a key before the ones below, so a
 # chord two layers both claim never reaches the lower one; the machine
 # refuses to build with one, naming the chord and both layers. The map is
 # written to ~/.config/jitsusama/keys.json, with what each chord does in
@@ -17,13 +16,11 @@ let
   layers = {
     desktop = "the compositor and the shell around every window";
     terminal = "the terminal, inside a window";
-    multiplexer = "a multiplexer, inside the terminal, in its resting mode";
     program = "the program running in the terminal";
   };
   order = [
     "desktop"
     "terminal"
-    "multiplexer"
     "program"
   ];
 
@@ -134,10 +131,8 @@ let
   normalise =
     chord:
     let
-      # zellij separates with spaces, where a key may be +; the rest with +.
-      parts = lib.filter (part: lib.isString part && part != "") (
-        builtins.split (if lib.hasInfix " " chord then " " else "\\+") chord
-      );
+      # The last part is the key, which may itself be +.
+      parts = lib.filter (part: lib.isString part && part != "") (builtins.split "\\+" chord);
       words = map lib.toLower parts;
       held = lib.filter (word: modifiers ? ${word}) words;
       keys = lib.filter (word: !(modifiers ? ${word})) words;

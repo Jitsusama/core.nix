@@ -75,7 +75,7 @@ cursor {
     hide-when-typing
 }
 
-// The overview has Super+Tab and the four-finger swipe, so a corner the
+// The overview has Super+A and the four-finger swipe, so a corner the
 // pointer happens into doesn't open it as well.
 gestures {
     hot-corners {

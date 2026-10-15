@@ -3,20 +3,24 @@
 # niri's own list of shortcuts with its words, and adds them to the keyboard
 # map, which checks them against every layer below (modules/keys).
 #
-# The keys follow Joel's own habits, from his i3, zellij and Neovim
-# configurations, and one grammar so a chord can be worked out rather than
-# remembered:
+# The keys speak the language every layer does (docs/design.md, The
+# Keyboard), so a chord can be worked out rather than remembered:
 #
 # - Super is the desktop, and the arrows move focus. Focus flows over an
 #   edge the way niri lays things out: up and down run on into the next
 #   workspace, left and right into the next screen.
-# - Shift carries the column along with focus, Alt carries just the window
-#   through the grid of columns and the windows stacked in them, and Ctrl
+# - Shift carries the thing at that level: the column with the arrows, the
+#   workspace with Page Up and Down. Alt carries just the window, and Ctrl
 #   reaches across to another screen.
+# - The words mean what they mean in every layer: Return opens, W closes,
+#   Space finds, ? shows what's here, Tab goes back to the one used last.
+# - A letter keeps its meaning with a modifier: F fills, R sizes, M widens,
+#   C centres, T shows tabs.
+# - What's done often ends on a key both of Joel's keyboards have without a
+#   layer or Fn: a letter, an arrow, Tab, Return, Space or Escape. Page Up,
+#   Home, Print and the symbols are for what's done rarely.
 # - A window opens in a column of its own, as niri opens it, unless it's
 #   asked to open below the focused one.
-# - A letter keeps its meaning with a modifier: F fills, R sizes, M widens,
-#   C centres.
 # - Nothing ends the session on a bare chord.
 { lib }:
 let
@@ -68,7 +72,7 @@ in
     action = ''spawn "qs" "ipc" "call" "launcher" "collection" "clipboard";'';
   }
   {
-    chord = "Super+Ctrl+Space";
+    chord = "Super+E";
     does = "Find an emoji";
     action = ''spawn "qs" "ipc" "call" "launcher" "collection" "emoji";'';
   }
@@ -110,9 +114,10 @@ in
     action = ''spawn "qs" "ipc" "call" "keyboard" "toggle";'';
   }
 
-  # Closing is destructive, so it takes Shift, as in i3.
+  # W closes in every layer, as Cmd+W did on the Mac. A program asks before
+  # it loses work.
   {
-    chord = "Super+Shift+Q";
+    chord = "Super+W";
     does = "Close the window";
     action = "close-window;";
     flags.repeat = "false";
@@ -155,7 +160,8 @@ in
     action = "switch-focus-between-floating-and-tiling;";
   }
 
-  # Shift carries the column, or the window up and down within it.
+  # Shift carries the column: sideways, and up and down onto the workspace
+  # past it.
   {
     chord = "Super+Shift+Left";
     does = "Move the column left, or onto the screen past it";
@@ -168,13 +174,13 @@ in
   }
   {
     chord = "Super+Shift+Up";
-    does = "Move the window up, or onto the workspace past it";
-    action = "move-window-up-or-to-workspace-up;";
+    does = "Move the column to the workspace above";
+    action = "move-column-to-workspace-up;";
   }
   {
     chord = "Super+Shift+Down";
-    does = "Move the window down, or onto the workspace past it";
-    action = "move-window-down-or-to-workspace-down;";
+    does = "Move the column to the workspace below";
+    action = "move-column-to-workspace-down;";
   }
   {
     chord = "Super+Shift+Home";
@@ -189,8 +195,7 @@ in
 
   # Alt carries just the window through the grid: sideways into the next
   # column, below what's there, or out into a column of its own when it
-  # shares one; up and down within its column. The brackets swap it with
-  # the window beside it instead.
+  # shares one; up and down its column, and on onto the workspace past it.
   {
     chord = "Super+Alt+Left";
     does = "Move the window into the column on the left, or out of its own";
@@ -203,33 +208,13 @@ in
   }
   {
     chord = "Super+Alt+Up";
-    does = "Move the window up its column";
-    action = "move-window-up;";
+    does = "Move the window up, or onto the workspace past it";
+    action = "move-window-up-or-to-workspace-up;";
   }
   {
     chord = "Super+Alt+Down";
-    does = "Move the window down its column";
-    action = "move-window-down;";
-  }
-  {
-    chord = "Super+BracketLeft";
-    does = "Swap the window with the one to the left";
-    action = "swap-window-left;";
-  }
-  {
-    chord = "Super+BracketRight";
-    does = "Swap the window with the one to the right";
-    action = "swap-window-right;";
-  }
-  {
-    chord = "Super+Comma";
-    does = "Take the window to the right into this column";
-    action = "consume-window-into-column;";
-  }
-  {
-    chord = "Super+Period";
-    does = "Put the column's bottom window into a column of its own";
-    action = "expel-window-from-column;";
+    does = "Move the window down, or onto the workspace past it";
+    action = "move-window-down-or-to-workspace-down;";
   }
 
   # Ctrl reaches across to the other screens.
@@ -295,7 +280,10 @@ in
   }
 ]
 
-# Workspaces by number, as in i3; Page Up and Down walk through them.
+# Workspaces by number, as in i3; Page Up and Down walk through them, and
+# with Shift carry the workspace itself, as Shift carries the thing at its
+# level. They need Fn on the laptop, so what's done often is on the arrows
+# too.
 ++ numbered (number: {
   chord = "Super+${number}";
   does = "Go to workspace ${number}";
@@ -324,13 +312,13 @@ in
   }
   {
     chord = "Super+Shift+Page_Up";
-    does = "Move the column to the workspace above";
-    action = "move-column-to-workspace-up;";
+    does = "Move the workspace up";
+    action = "move-workspace-up;";
   }
   {
     chord = "Super+Shift+Page_Down";
-    does = "Move the column to the workspace below";
-    action = "move-column-to-workspace-down;";
+    does = "Move the workspace down";
+    action = "move-workspace-down;";
   }
   {
     chord = "Super+Alt+Page_Up";
@@ -342,8 +330,9 @@ in
     does = "Move the window to the workspace below";
     action = "move-window-to-workspace-down;";
   }
+  # A for all. Super+Tab is the switcher's (home.nix).
   {
-    chord = "Super+Tab";
+    chord = "Super+A";
     does = "Show every workspace";
     action = "toggle-overview;";
     flags.repeat = "false";
@@ -385,9 +374,10 @@ in
     action = "focus-column-left;";
   }
 
-  # Sizes: r cycles the presets, as resizing was r in i3 and zellij; equals
-  # and minus grow and shrink, as in zellij. Shift turns each to the height,
-  # and Shift with 0 hands the height back to niri.
+  # Sizes: r cycles the presets, as resizing was r in i3; equals and minus
+  # grow and shrink, as they do the text in a terminal or a browser. Shift
+  # turns each to the height, and Shift with 0 hands the height back to
+  # niri.
   {
     chord = "Super+R";
     does = "Cycle the column's width";
@@ -433,15 +423,21 @@ in
     does = "Widen the column into the space beside it";
     action = "expand-column-to-available-width;";
   }
+  {
+    chord = "Super+Alt+M";
+    does = "Stretch the window to the screen's edges, or put it back";
+    action = "maximize-window-to-edges;";
+  }
 
-  # Layout, with i3's letters where niri has the same idea.
+  # Layout, with i3's letters where niri has the same idea, and G, for
+  # grab, lifting a window out to float so F only ever fills.
   {
     chord = "Super+F";
     does = "Fill the screen with the window, or put it back";
     action = "fullscreen-window;";
   }
   {
-    chord = "Super+Shift+F";
+    chord = "Super+G";
     does = "Float the window, or tile it again";
     action = "toggle-window-floating;";
   }
@@ -451,12 +447,7 @@ in
     action = "toggle-windowed-fullscreen;";
   }
   {
-    chord = "Super+E";
-    does = "Stretch the window to the screen's edges, or put it back";
-    action = "maximize-window-to-edges;";
-  }
-  {
-    chord = "Super+W";
+    chord = "Super+T";
     does = "Show the column's windows as tabs, or stacked";
     action = "toggle-column-tabbed-display;";
   }
@@ -471,8 +462,8 @@ in
     action = "center-visible-columns;";
   }
 
-  # Hand every key to the focused program, as zellij's locked mode does, for
-  # a virtual machine or a remote desktop. The same chord gives them back.
+  # Hand every key to the focused program, for a virtual machine or a
+  # remote desktop. The same chord gives them back.
   {
     chord = "Super+Escape";
     does = "Give every key to the window, or take them back";
@@ -557,6 +548,13 @@ in
   # typing (Quickshell's launcher/Capture.qml). A region is picked by the
   # keys (Picker.qml), since niri's own picker takes only the pointer. The
   # chords after it are shortcuts to Capture's rows, shown beside them.
+  # The ErgoDox has Print only on a layer, so Super+P opens Capture too,
+  # first so it's the chord the launcher shows.
+  {
+    chord = "Super+P";
+    does = "Capture the screen, a window, a region or the camera";
+    action = ''spawn "qs" "ipc" "call" "launcher" "collection" "capture";'';
+  }
   {
     chord = "Print";
     does = "Capture the screen, a window, a region or the camera";
@@ -568,18 +566,17 @@ in
     action = "screenshot-screen;";
   }
   {
-    chord = "Ctrl+Print";
+    chord = "Alt+Print";
     does = "Take a screenshot of the window";
     action = "screenshot-window;";
   }
 
-  # A recording, with Alt as the picture that moves: the chord that starts it
-  # stops it (Quickshell's Recorder.qml). With Alt held niri can't tell Shift
-  # or Ctrl on this key, so a region is the launcher's to record, and niri
-  # says where a tiled window sits only to the portal's shares, so a window
-  # isn't recorded on its own.
+  # A recording: the chord that starts it stops it (Quickshell's
+  # Recorder.qml). A region is the launcher's to record, and niri says where
+  # a tiled window sits only to the portal's shares, so a window isn't
+  # recorded on its own.
   {
-    chord = "Alt+Print";
+    chord = "Ctrl+Print";
     does = "Record the screen, or stop recording";
     action = ''spawn "qs" "ipc" "call" "recording" "screen";'';
   }

@@ -466,8 +466,7 @@ works the same way everywhere.
   that match; the right arrow sees all of them, with what was typed still
   searching. The row sits below the matches as tidy as its own and above any
   scattered ones. Each is whole at home, and most have a chord that opens
-  them: Super+V the copies, Super+Ctrl+Space the emoji (the Mac's chord for
-  them), Super+N the notices, Super+Shift+/ the shortcuts.
+  them: Super+V the copies, Super+E the emoji, Super+N the notices, Super+Shift+/ the shortcuts.
 - **Copies stay in memory.** One program hears every text copy for the
   session and the shell asks it for them, so none is written to disk and
   none is kept that a password manager marks secret. A copy's glyph says
@@ -505,17 +504,41 @@ works the same way everywhere.
 
 ## The Keyboard
 
-Every layer's keys are designed together, so a chord means one thing and the
-same idea gets the same key wherever it can.
+Every layer's keys speak one language, so a key known in one layer tells the
+key in the next. A chord says three things, in order: who hears it, what
+comes along, and what to do.
 
-- **Each layer owns its modifier.** Super is the desktop (the compositor and
+- **Who hears it is the modifier.** Super is the desktop (the compositor and
   the shell). Ctrl+Shift is the terminal. Inside the terminal each program has
   its own (Neovim's Space leader, pi's chords). A chord a lower layer needs is
-  never taken by a higher one.
-- **The same gestures everywhere:** arrows for direction, Escape to back out,
-  Enter to confirm, typing to filter.
-- **The same verb on the same letter** across layers where it can be: new,
-  close, find, the full view of something.
+  never taken by a higher one. Print and the media keys do their one job
+  bare, and each has another way in.
+- **What comes along is a second modifier.** Nothing moves only focus. Shift
+  carries the thing at that level, Alt just the smaller thing inside it, and
+  Ctrl reaches across to another screen.
+- **What to do is the same word in every layer:**
+
+  | Key          | Means                                    | Desktop        | Terminal        |
+  | ------------ | ---------------------------------------- | -------------- | --------------- |
+  | arrows       | that way                                 | windows        |                 |
+  | Tab          | the one used last, and held, the others  | windows        | the next tab    |
+  | Page Up Down | the level above                          | workspaces     | tabs            |
+  | 1 to 9       | that one, by number                      | workspaces     | tabs            |
+  | Return       | open a new one                           | a terminal     |                 |
+  | T            | tabs                                     | column as tabs | a new tab       |
+  | W            | close the one in focus                   | the window     | the tab         |
+  | Space        | find anything here                       | the launcher   | the scrollback  |
+  | ?            | what's here: every key, by what it does  | every layer's  | the terminal's  |
+  | Escape       | back out                                 | everywhere     | everywhere      |
+
+- **Friendly on every keyboard Joel types on.** The laptop reaches Page Up,
+  Home and End through Fn, and the ErgoDox reaches the symbols and Print
+  through a layer, so what's done often ends on a key both have bare: a
+  letter, an arrow, Tab, Return, Space or Escape. Page Up, Home, Print and
+  the symbols are for what's done rarely, and anything on them has another
+  way in (Super+P for Print). A chord holds its modifiers on one hand and
+  presses its key with the other, and never asks one little finger for two
+  keys, which is why the terminal opens a window on N rather than Return.
 - **One "what's here" key per layer,** the same shape on each, showing that
   layer's actions and keys drawn from the real configuration, never a
   hand-kept copy.
@@ -524,8 +547,8 @@ same idea gets the same key wherever it can.
   check reports any chord two layers both claim.
 
 Each program's shortcuts are data: a chord, what it does in plain words, and
-the program's action, in `jitsusama.niri.binds`, `jitsusama.kitty.keys` and
-`jitsusama.zellij.keys`, rendered into each program's own file. They gather
+the program's action, in `jitsusama.niri.binds` and `jitsusama.kitty.keys`,
+rendered into each program's own file. They gather
 in `jitsusama.keys`, layer by layer from the desktop down, which refuses to
 build a machine where two layers claim one chord, or one layer claims a chord
 twice, and writes the whole map to `~/.config/jitsusama/keys.json` for the
@@ -545,21 +568,26 @@ it, and focus carries on over an edge the way niri lays things out, up and
 down into the next workspace, left and right onto the next screen. A
 modifier says what comes along:
 
-| Held       | Carries         | With the arrows                              |
-| ---------- | --------------- | -------------------------------------------- |
-| nothing    | focus           | to the next window, workspace or screen      |
-| Shift      | the column      | along the row, or the window up and down     |
-| Alt        | just the window | into the next column, or up and down its own |
-| Ctrl       | focus           | to the next screen, past any window          |
-| Ctrl+Shift | the column      | to the next screen                           |
-| Ctrl+Alt   | just the window | to the next screen                           |
+| Held       | Carries         | With the arrows                                  |
+| ---------- | --------------- | ------------------------------------------------ |
+| nothing    | focus           | to the next window, workspace or screen          |
+| Shift      | the column      | along the row, or onto the workspace past it     |
+| Alt        | just the window | into the next column, or up and down and past it |
+| Ctrl       | focus           | to the next screen, past any window              |
+| Ctrl+Shift | the column      | to the next screen                               |
+| Ctrl+Alt   | just the window | to the next screen                               |
 
-The numbers, Page Up and Page Down take the same modifiers to the workspaces.
-A letter keeps its meaning whatever is held: F fills, R sizes, M widens, C
-centres, and Shift turns a width into a height. A window opens in a column
-of its own, as niri opens it; Super+Shift+Return opens a terminal just below
-the focused window instead, and Super+Alt+Return does that for whichever
-window opens next, from the launcher or anywhere else.
+The numbers take the same modifiers to the workspaces. Page Up and Page Down
+walk through them, and with Shift carry the workspace itself, since it's
+the thing at that level. Super+A shows every workspace, and Super+Tab goes
+back to the window before, or held, chooses among the recent ones; Super+`
+keeps to the program in focus. A letter keeps its meaning whatever is held:
+F fills, R sizes, M widens (and with Alt stretches the window to the edges),
+C centres, T shows a column as tabs, G lifts a window out to float, and
+Shift turns a width into a height. A window opens in a column of its own, as
+niri opens it; Super+Shift+Return opens a terminal just below the focused
+window instead, and Super+Alt+Return does that for whichever window opens
+next, from the launcher or anywhere else.
 
 ## Customising
 
