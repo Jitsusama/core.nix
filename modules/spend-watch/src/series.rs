@@ -429,6 +429,78 @@ impl Inputs {
         }
     }
 
+    /// An hour the meter read: the meter is the whole bill, by model. pi's
+    /// pieces on a model take their estimate, scaled to the model's figure
+    /// when they'd pass it, and the rest of each model's is other tools'
+    /// on it. Pieces on a model the meter doesn't name, as when it names a
+    /// model differently, are drawn evenly from what's left over.
+    fn metered(
+        hour: i64,
+        known: &[Known],
+        meter: &BTreeMap<&str, f64>,
+        estimate: impl Fn(&Known) -> Option<f64>,
+        out: &mut Vec<Piece>,
+    ) {
+        let dollars = |piece: &Known| estimate(piece).unwrap_or(piece.list);
+        let mut pi: HashMap<&str, f64> = HashMap::new();
+        for piece in known {
+            *pi.entry(piece.model.as_str()).or_default() += dollars(piece);
+        }
+        let mut left: Vec<(&str, f64)> = Vec::new();
+        for (&model, &figure) in meter {
+            let logged = pi.get(model).copied().unwrap_or(0.0);
+            if figure > logged {
+                left.push((model, figure - logged));
+            }
+        }
+        let unnamed: f64 = known
+            .iter()
+            .filter(|piece| !meter.contains_key(piece.model.as_str()))
+            .map(dollars)
+            .sum();
+        let over: f64 = left.iter().map(|(_, dollars)| dollars).sum();
+        // How much of each piece on an unnamed model is kept, and how much
+        // of what's left over stays other tools'.
+        let (kept, stays) = if unnamed <= 0.0 {
+            (1.0, 1.0)
+        } else if unnamed <= over {
+            (1.0, (over - unnamed) / over)
+        } else {
+            (over / unnamed, 0.0)
+        };
+        for piece in known {
+            let scale = match meter.get(piece.model.as_str()) {
+                Some(&figure) => {
+                    let logged = pi[piece.model.as_str()];
+                    if logged > figure && logged > 0.0 {
+                        figure / logged
+                    } else {
+                        1.0
+                    }
+                }
+                None => kept,
+            };
+            out.push(Self::piece(
+                hour,
+                piece,
+                dollars(piece) * scale,
+                Source::Meter,
+            ));
+        }
+        for (model, dollars) in left {
+            if dollars * stays > 0.0 {
+                out.push(Self::other(
+                    hour,
+                    "other",
+                    model,
+                    "",
+                    dollars * stays,
+                    Source::Meter,
+                ));
+            }
+        }
+    }
+
     fn hour_pieces(&self, hour: i64, ratios: &Ratios, out: &mut Vec<Piece>) {
         let known: &[Known] = self.known.get(&hour).map_or(&[], Vec::as_slice);
         let billed: &[BilledRow] = self.billed.get(&hour).map_or(&[], Vec::as_slice);
@@ -534,39 +606,13 @@ impl Inputs {
             }
             return;
         }
-        let meter: f64 = billed
-            .iter()
-            .filter(|row| row.source == "meter")
-            .map(|row| row.dollars)
-            .sum();
-        let metered = billed.iter().any(|row| row.source == "meter");
+        let mut meter: BTreeMap<&str, f64> = BTreeMap::new();
+        for row in billed.iter().filter(|row| row.source == "meter") {
+            *meter.entry(&row.model).or_default() += row.dollars;
+        }
         let estimate = |piece: &Known| ratios.of(&piece.model).map(|ratio| piece.list * ratio);
-        if metered {
-            // The meter is the whole bill; pi's share of it follows the
-            // estimate, and what's left is other tools'.
-            let pi: f64 = known
-                .iter()
-                .map(|piece| estimate(piece).unwrap_or(piece.list))
-                .sum();
-            let scale = if pi > meter && pi > 0.0 {
-                meter / pi
-            } else {
-                1.0
-            };
-            for piece in known {
-                let dollars = estimate(piece).unwrap_or(piece.list) * scale;
-                out.push(Self::piece(hour, piece, dollars, Source::Meter));
-            }
-            if meter > pi {
-                out.push(Self::other(
-                    hour,
-                    "other",
-                    "",
-                    "",
-                    meter - pi,
-                    Source::Meter,
-                ));
-            }
+        if !meter.is_empty() {
+            Self::metered(hour, known, &meter, estimate, out);
             return;
         }
         for piece in known {
@@ -859,6 +905,37 @@ mod tests {
         let tools = by(&pieces, |piece| piece.tool.clone());
         assert!((tools[0].1 - 8.5).abs() < 1e-9 && tools[0].0 == "pi");
         assert_eq!(weakest(&pieces), Some(Source::Meter));
+    }
+
+    // The meter says each model's spend, so what pi's logs don't account
+    // for keeps its model: a model no log names is other tools' on it, and
+    // a model the meter doesn't name is drawn from what's left over.
+    #[test]
+    fn a_live_hour_s_other_tools_keep_their_models() {
+        let history = history();
+        turn(&history, "s1", H, "opus", 10.0, None);
+        turn(&history, "s2", H, "sonnet", 2.0, None);
+        billed(&history, "meter", H, "all", "opus", None, 12.0);
+        billed(&history, "meter", H, "all", "gemini", None, 5.0);
+        let ratios = Ratios::fixed(&[("opus", 0.85), ("sonnet", 1.0)]);
+        let pieces = Inputs::read(&history, H, H + 1).unwrap().pieces(&ratios);
+        assert!((total(&pieces) - 17.0).abs() < 1e-9);
+        let mut models = by(&pieces, |piece| format!("{} {}", piece.tool, piece.model));
+        models.sort_by(|one, other| one.0.cmp(&other.0));
+        let rounded: Vec<(String, i64)> = models
+            .into_iter()
+            .map(|(name, dollars)| (name, (dollars * 100.0).round() as i64))
+            .collect();
+        assert_eq!(
+            rounded,
+            [
+                // $8.50 left over, of which sonnet's $2 is drawn evenly.
+                ("other gemini".into(), 382),
+                ("other opus".into(), 268),
+                ("pi opus".into(), 850),
+                ("pi sonnet".into(), 200),
+            ]
+        );
     }
 
     #[test]
