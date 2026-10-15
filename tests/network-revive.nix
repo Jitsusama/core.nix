@@ -11,7 +11,9 @@
 # why. One that runs reloads when the servers resolved asks change: once
 # for a burst however long, and not at all for a burst that ends where it
 # began. It keeps following networkd through a restart, and when it starts
-# itself, it starts what it finds down.
+# itself, it starts what it finds down. A start asked just as systemd
+# executes itself again, as a switch has it do, is asked again once it's
+# back.
 { self, pkgs }:
 let
   inherit (pkgs) lib;
@@ -19,13 +21,17 @@ let
   # Starts only while the uplink reaches 10.0.0.53, then runs until stopped.
   # QEMU's own network is on another link networkd keeps up throughout,
   # with a default route, so the route has to go by the uplink. Its --check
-  # says whether it could start; --never that it never could.
+  # says whether it could start; --never that it never could. --reexec
+  # checks as --check does, but the first time it passes it has the
+  # account's systemd execute itself again, without waiting for it to go, so
+  # the start that follows reaches systemd as it leaves.
   standIn = pkgs.writeShellScript "stand-in" ''
     export PATH=${
       lib.makeBinPath [
         pkgs.iproute2
         pkgs.coreutils
         pkgs.gnugrep
+        pkgs.systemd
       ]
     }
     reaches() {
@@ -34,6 +40,14 @@ let
     case "''${1-}" in
       --check) reaches ;;
       --never) echo "never ready" >&2; exit 1 ;;
+      --reexec)
+        reaches || exit 1
+        if [ ! -e "$HOME/reexecuted" ]; then
+          touch "$HOME/reexecuted"
+          busctl --user call --expect-reply=no org.freedesktop.systemd1 \
+            /org/freedesktop/systemd1 org.freedesktop.systemd1.Manager Reexecute
+        fi
+        ;;
       --once) reaches || { echo "10.0.0.53 is out of reach" >&2; exit 1; } ;;
       *)
         reaches || { echo "10.0.0.53 is out of reach" >&2; exit 1; }
@@ -99,6 +113,7 @@ pkgs.testers.runNixOSTest {
           reload = true;
         };
         "backs-up.service" = { };
+        "meets-reexec.service".check = [ "--reexec" ];
       };
       systemd.user.services = {
         # As a proxy's: it tries five times a second apart, then fails.
@@ -120,6 +135,7 @@ pkgs.testers.runNixOSTest {
           Type = "oneshot";
           ExecStart = "${standIn} --once";
         };
+        meets-reexec = service { };
       };
     };
   };
@@ -247,6 +263,22 @@ pkgs.testers.runNixOSTest {
         as_joel("systemctl --user start network-revive")
         wait_for_state("needs-network", "active", "running")
         t.assertIn("started needs-network.service again, which had failed\n", said() + "\n")
+
+    with subtest("a start asked as systemd executes itself again is asked again"):
+        # Heard going, so its coming back is a change of its own rather than
+        # the end of a burst that changed nothing.
+        looked = times_said("the machine reaches .*")
+        machine.succeed("networkctl down uplink")
+        wait_for_more("the machine reaches .*", looked)
+        as_joel("systemctl --user start --no-block meets-reexec")
+        wait_for_state("meets-reexec", "failed", "failed")
+        machine.succeed("networkctl up uplink")
+        wait_for_state("meets-reexec", "active", "running")
+        machine.succeed("test -e /home/joel/reexecuted")
+        machine.succeed("journalctl _UID=1000 _COMM=systemd -o cat | grep -qx Reexecuting.")
+        t.assertIn(
+            "started meets-reexec.service again, which had failed, as the network changed", said()
+        )
 
     with subtest("systemd refused nothing it was asked for"):
         t.assertEqual(times_said("couldn't .*"), 0, said())

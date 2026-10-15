@@ -4,7 +4,11 @@
 //! doesn't know, is left. A unit's check has to pass first, so nothing
 //! starts only to fail. The network often answers names a moment after
 //! networkd calls it routable, so a refused check is tried again for half a
-//! minute before the unit is left down.
+//! minute before the unit is left down. systemd leaves the bus for a moment
+//! whenever it executes itself again, as a switch to a new configuration has
+//! it do, so what it didn't answer then is asked again once it's back.
+
+use std::future::Future;
 
 use tokio::time::{Duration, sleep};
 
@@ -59,15 +63,50 @@ pub enum Outcome {
     },
 }
 
+/// Why something asked of systemd came back without what was asked.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Unanswered {
+    /// systemd left the bus before answering, or isn't on it yet.
+    Away(String),
+    /// systemd refused, or the check failed.
+    Said(String),
+}
+
 /// The account's units, as the daemon reaches them.
 pub trait Units {
-    async fn state(&self, name: &str) -> Result<State, String>;
+    async fn state(&self, name: &str) -> Result<State, Unanswered>;
     /// Runs the unit's program with the check's arguments added.
-    async fn check(&self, name: &str, arguments: &[String]) -> Result<(), String>;
+    async fn check(&self, name: &str, arguments: &[String]) -> Result<(), Unanswered>;
     /// Clears what systemd counts against the unit and starts it, both or
     /// neither, even if what asked is dropped in between.
-    async fn start(&self, name: &str) -> Result<(), String>;
-    async fn reload(&self, name: &str) -> Result<(), String>;
+    async fn start(&self, name: &str) -> Result<(), Unanswered>;
+    async fn reload(&self, name: &str) -> Result<(), Unanswered>;
+}
+
+/// How long systemd may be away before what it wasn't there to answer is
+/// given up on. An account's systemd is back on the bus well within half a
+/// second of executing itself again.
+pub const AWAY: Duration = Duration::from_secs(10);
+
+/// How often systemd is asked again while it's away.
+const AWAY_AGAIN: Duration = Duration::from_millis(250);
+
+/// Asks systemd, and asks again while it's away, until it answers or has
+/// been away too long.
+async fn asked<T, Answer: Future<Output = Result<T, Unanswered>>>(
+    mut ask: impl FnMut() -> Answer,
+) -> Result<T, String> {
+    let mut away = Duration::ZERO;
+    loop {
+        match ask().await {
+            Ok(answer) => return Ok(answer),
+            Err(Unanswered::Away(_)) if away < AWAY => {
+                sleep(AWAY_AGAIN).await;
+                away += AWAY_AGAIN;
+            }
+            Err(Unanswered::Away(error) | Unanswered::Said(error)) => return Err(error),
+        }
+    }
 }
 
 /// How long to wait before each further look at a unit whose check failed.
@@ -98,7 +137,7 @@ pub async fn revive(units: &impl Units, unit: &Unit, why: Why) -> Outcome {
         sleep(wait).await;
         // Looked at afresh each time, since anything may have started or
         // stopped it meanwhile.
-        let state = match units.state(&unit.name).await {
+        let state = match asked(|| units.state(&unit.name)).await {
             Ok(state) => state,
             Err(error) => {
                 return Outcome::Failed {
@@ -115,7 +154,7 @@ pub async fn revive(units: &impl Units, unit: &Unit, why: Why) -> Outcome {
             return Outcome::Left;
         };
         if let Some(arguments) = &unit.check
-            && let Err(why) = units.check(&unit.name, arguments).await
+            && let Err(why) = asked(|| units.check(&unit.name, arguments)).await
         {
             if action == Action::Reload {
                 return Outcome::Kept { why };
@@ -124,11 +163,11 @@ pub async fn revive(units: &impl Units, unit: &Unit, why: Why) -> Outcome {
             continue;
         }
         return match action {
-            Action::Start => match units.start(&unit.name).await {
+            Action::Start => match asked(|| units.start(&unit.name)).await {
                 Ok(()) => Outcome::Started(state),
                 Err(error) => Outcome::Failed { action, error },
             },
-            Action::Reload => match units.reload(&unit.name).await {
+            Action::Reload => match asked(|| units.reload(&unit.name)).await {
                 Ok(()) => Outcome::Reloaded,
                 Err(error) => Outcome::Failed { action, error },
             },
@@ -169,6 +208,7 @@ mod tests {
     struct Told {
         states: RefCell<VecDeque<State>>,
         checks: RefCell<VecDeque<Result<(), String>>>,
+        answers: RefCell<VecDeque<Result<(), Unanswered>>>,
         began: Instant,
         asked: RefCell<Vec<(Duration, String)>>,
     }
@@ -183,6 +223,7 @@ mod tests {
                         .map(|check| check.map_err(str::to_string))
                         .collect(),
                 ),
+                answers: RefCell::new(VecDeque::new()),
                 began: Instant::now(),
                 asked: RefCell::new(Vec::new()),
             }
@@ -192,6 +233,32 @@ mod tests {
             self.asked
                 .borrow_mut()
                 .push((self.began.elapsed(), what.to_string()));
+        }
+
+        /// Has starts and reloads answered with these in turn, the last for
+        /// every one after it.
+        fn answering(self, answers: &[Result<(), Unanswered>]) -> Told {
+            *self.answers.borrow_mut() = answers.iter().cloned().collect();
+            self
+        }
+
+        fn answer(&self) -> Result<(), Unanswered> {
+            let mut answers = self.answers.borrow_mut();
+            let answer = if answers.len() > 1 {
+                answers.pop_front()
+            } else {
+                answers.front().cloned()
+            };
+            answer.unwrap_or(Ok(()))
+        }
+
+        fn acted_at(&self) -> Vec<Duration> {
+            let asked = self.asked.borrow();
+            asked
+                .iter()
+                .filter(|(_, what)| ["start", "reload"].contains(&what.as_str()))
+                .map(|(at, _)| *at)
+                .collect()
         }
 
         fn actions(&self) -> Vec<String> {
@@ -213,17 +280,17 @@ mod tests {
     }
 
     impl Units for Told {
-        async fn state(&self, _: &str) -> Result<State, String> {
+        async fn state(&self, _: &str) -> Result<State, Unanswered> {
             let mut states = self.states.borrow_mut();
             let state = if states.len() > 1 {
                 states.pop_front()
             } else {
                 states.front().cloned()
             };
-            state.ok_or_else(|| "no state".to_string())
+            state.ok_or_else(|| Unanswered::Said("no state".to_string()))
         }
 
-        async fn check(&self, _: &str, arguments: &[String]) -> Result<(), String> {
+        async fn check(&self, _: &str, arguments: &[String]) -> Result<(), Unanswered> {
             assert_eq!(arguments, ["-t"]);
             self.asked("check");
             let mut checks = self.checks.borrow_mut();
@@ -232,18 +299,22 @@ mod tests {
             } else {
                 checks.front().cloned()
             };
-            check.unwrap_or(Ok(()))
+            check.unwrap_or(Ok(())).map_err(Unanswered::Said)
         }
 
-        async fn start(&self, _: &str) -> Result<(), String> {
+        async fn start(&self, _: &str) -> Result<(), Unanswered> {
             self.asked("start");
-            Ok(())
+            self.answer()
         }
 
-        async fn reload(&self, _: &str) -> Result<(), String> {
+        async fn reload(&self, _: &str) -> Result<(), Unanswered> {
             self.asked("reload");
-            Ok(())
+            self.answer()
         }
+    }
+
+    fn away() -> Result<(), Unanswered> {
+        Err(Unanswered::Away("Remote peer disconnected".into()))
     }
 
     #[test]
@@ -378,6 +449,69 @@ mod tests {
 
         assert_eq!(outcome, Outcome::Reloaded);
         assert_eq!(units.actions(), ["reload"]);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_start_systemd_was_away_for_is_asked_again_once_it_is_back() {
+        let units = Told::new(&[state("failed", "failed")], &[Ok(())]).answering(&[
+            away(),
+            away(),
+            away(),
+            Ok(()),
+        ]);
+
+        let outcome = revive(&units, &unit(true, false), Why::Changed).await;
+
+        assert_eq!(outcome, Outcome::Started(state("failed", "failed")));
+        let millis = |millis| Duration::from_millis(millis);
+        assert_eq!(
+            units.acted_at(),
+            [millis(0), millis(250), millis(500), millis(750)]
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_reload_systemd_was_away_for_is_asked_again_once_it_is_back() {
+        let units =
+            Told::new(&[state("active", "running")], &[Ok(())]).answering(&[away(), Ok(())]);
+
+        let outcome = revive(&units, &unit(true, true), Why::Changed).await;
+
+        assert_eq!(outcome, Outcome::Reloaded);
+        assert_eq!(units.actions(), ["reload", "reload"]);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_start_systemd_stays_away_for_is_given_up_and_says_why() {
+        let units = Told::new(&[state("failed", "failed")], &[Ok(())]).answering(&[away()]);
+
+        let outcome = revive(&units, &unit(true, false), Why::Changed).await;
+
+        assert_eq!(
+            outcome,
+            Outcome::Failed {
+                action: Action::Start,
+                error: "Remote peer disconnected".into()
+            }
+        );
+        assert_eq!(units.acted_at().last(), Some(&AWAY));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_start_systemd_refuses_is_not_asked_again() {
+        let refused = Err(Unanswered::Said("Unit proxy.service is masked.".into()));
+        let units = Told::new(&[state("failed", "failed")], &[Ok(())]).answering(&[refused]);
+
+        let outcome = revive(&units, &unit(true, false), Why::Changed).await;
+
+        assert_eq!(
+            outcome,
+            Outcome::Failed {
+                action: Action::Start,
+                error: "Unit proxy.service is masked.".into()
+            }
+        );
+        assert_eq!(units.actions(), ["start"]);
     }
 
     #[tokio::test(start_paused = true)]
