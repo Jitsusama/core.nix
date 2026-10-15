@@ -112,6 +112,9 @@ pub struct Picture {
     pub actions: Vec<FeedAction>,
     pub said: Vec<(String, String)>,
     pub waste: Waste,
+    /// The share rebuilt in each of the eight weeks before the last seven
+    /// days, of those that spent anything.
+    pub waste_before: Vec<f64>,
     pub work: Vec<waste::Work>,
     pub quests: Vec<crate::quests::Quest>,
     /// Each quest's root, the quest at the top of its family, by id.
@@ -297,6 +300,15 @@ impl Picture {
             actions,
             said,
             waste: waste::waste(history, week_start, now + 1.0)?,
+            waste_before: (1..=8)
+                .map(|weeks| {
+                    let first = today - 6 - 7 * weeks;
+                    waste::share(history, zone.day_start(first), zone.day_start(first + 7))
+                })
+                .collect::<Result<Vec<_>, _>>()?
+                .into_iter()
+                .flatten()
+                .collect(),
             work: waste::work(history, now - 30.0 * DAY, now + 1.0)?,
             roots: quests
                 .iter()

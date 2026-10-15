@@ -23,6 +23,22 @@ fn fail(error: rusqlite::Error) -> String {
     error.to_string()
 }
 
+/// The share of a span's spend that went on rebuilding context a session
+/// already had, counted as `waste` counts it, or none if it spent nothing.
+pub fn share(history: &History, from: f64, to: f64) -> Result<Option<f64>, String> {
+    let (spent, rebuilt): (f64, f64) = history
+        .db
+        .query_row(
+            "SELECT COALESCE(SUM(cost),0), COALESCE(SUM(CASE WHEN cause IS NOT NULL
+             AND cause != 'fresh' THEN rebuilt_cost ELSE 0 END),0)
+             FROM turns WHERE at >= ?1 AND at < ?2",
+            [from, to],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .map_err(fail)?;
+    Ok((spent >= 1.0).then(|| rebuilt / spent.max(rebuilt)))
+}
+
 pub fn waste(history: &History, from: f64, to: f64) -> Result<Waste, String> {
     let db = &history.db;
     let (spent, cache_write, rebuilt): (f64, f64, f64) = db

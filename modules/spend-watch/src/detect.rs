@@ -439,7 +439,9 @@ fn minutes(history: &History, from: f64) -> Result<BTreeMap<i64, (f64, String)>,
 /// A burn: spend running far above the rate a usual hour like this one
 /// spends at, found by CUSUM minute by minute. Its allowance is twice the
 /// expected rate; its threshold is set so that on the last `BURN_DAYS`
-/// days it would have alarmed once in the configured run length.
+/// days it would have alarmed once in the configured run length. It's the
+/// account's spend running hot, so it's one burn a day, whichever session
+/// leads it, and names the one spending most now.
 pub fn burn(picture: &Picture, history: &History, config: &Config) -> Result<Vec<Finding>, String> {
     let now = picture.now;
     let from = now - BURN_DAYS as f64 * DAY;
@@ -552,7 +554,7 @@ pub fn burn(picture: &Picture, history: &History, config: &Config) -> Result<Vec
         .and_then(|id| picture.quests.iter().find(|q| &q.id == id))
         .map(|q| q.title.clone());
     let mut f = finding(
-        format!("burn:{top}"),
+        format!("burn:{}", Zone::iso_day(today)),
         "burn",
         Severity::Alert,
         match &title_of {
@@ -581,17 +583,6 @@ pub fn burn(picture: &Picture, history: &History, config: &Config) -> Result<Vec
     Ok(vec![f])
 }
 
-/// Why context was rebuilt, in the few words a footer has.
-fn cause_short(cause: &str) -> &'static str {
-    match cause {
-        "gap" => "after pauses",
-        "compaction" => "after compactions",
-        "fresh" => "for new sessions",
-        "model" => "after changing model",
-        _ => "for no reason found",
-    }
-}
-
 pub fn waste(picture: &Picture, config: &Config) -> Vec<Finding> {
     let waste = &picture.waste;
     let ratio = if picture.fed {
@@ -606,6 +597,17 @@ pub fn waste(picture: &Picture, config: &Config) -> Vec<Finding> {
     let Some((cause, amount)) = waste.causes.first() else {
         return Vec::new();
     };
+    // Some rebuilding is how an account works, so it's news only past half
+    // again the usual share of the eight weeks before, and four of them are
+    // needed to say what's usual.
+    let share = rebuilt / (waste.spent * ratio).max(rebuilt);
+    if picture.waste_before.len() < 4 {
+        return Vec::new();
+    }
+    let usual = stats::median(&picture.waste_before);
+    if share <= 1.5 * usual {
+        return Vec::new();
+    }
     let mut detail = format!(
         "{} of the last 7 days' {} went on rebuilding context a session already had, the most \
          of it ({}) {}.",
@@ -623,9 +625,9 @@ pub fn waste(picture: &Picture, config: &Config) -> Vec<Finding> {
     );
     f.badge = whole(rebuilt);
     f.note = format!(
-        "{} of all spent, most {}",
-        percent(rebuilt / (waste.spent * ratio).max(rebuilt)),
-        cause_short(cause)
+        "{} of all spent, usually {}",
+        percent(share),
+        percent(usual)
     );
     if let Some((session, worst)) = &waste.worst
         && worst * ratio >= config.detectors.floor
@@ -1233,6 +1235,65 @@ mod tests {
 
     const NOW: f64 = 1_791_988_200.0; // 2026-10-14T14:30:00Z, a Wednesday
 
+    // A day's turn of a hundred dollars, so much of it rebuilt after a
+    // compaction, for each of so many days before now.
+    fn rebuilding(history: &History, days: std::ops::Range<i64>, share: impl Fn(i64) -> f64) {
+        for back in days {
+            history
+                .add_event(&Event::Turn(Turn {
+                    session: format!("s{back}"),
+                    at: NOW - back as f64 * DAY - 3600.0,
+                    model: "m".into(),
+                    provider: "p".into(),
+                    kind: Kind::Agent,
+                    tokens: Tokens::default(),
+                    cost: Cost {
+                        total: 100.0,
+                        ..Cost::default()
+                    },
+                    quest: None,
+                    gap: None,
+                    rebuilt: 0.0,
+                    rebuilt_cost: 100.0 * share(back),
+                    cause: Some(crate::logs::Cause::Compaction),
+                }))
+                .unwrap();
+        }
+    }
+
+    fn wasted(history: &History) -> Vec<Finding> {
+        let config = config();
+        waste(&Picture::read(history, &config, NOW).unwrap(), &config)
+    }
+
+    // A quarter of every week rebuilt is how this account works, not
+    // news: it stood in the collection every hour for 26 weeks.
+    #[test]
+    fn rebuilding_as_usual_is_no_finding() {
+        let history = History::memory();
+        rebuilding(&history, 0..63, |_| 0.25);
+        assert!(wasted(&history).is_empty(), "{:?}", wasted(&history));
+    }
+
+    // A week rebuilding four times its usual share is, as when August's
+    // rose from a quarter to a half.
+    #[test]
+    fn rebuilding_past_the_usual_is_a_note() {
+        let history = History::memory();
+        rebuilding(&history, 0..63, |back| if back < 7 { 0.4 } else { 0.1 });
+        let found = wasted(&history);
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert_eq!(found[0].note, "40% of all spent, usually 10%");
+    }
+
+    // Three weeks before can't say what's usual.
+    #[test]
+    fn rebuilding_with_too_few_weeks_is_no_finding() {
+        let history = History::memory();
+        rebuilding(&history, 0..28, |back| if back < 7 { 0.4 } else { 0.1 });
+        assert!(wasted(&history).is_empty(), "{:?}", wasted(&history));
+    }
+
     // Eight weeks of the same working days, a dollar every ten minutes
     // from nine to five, in a session a day.
     fn ordinary() -> History {
@@ -1428,8 +1489,32 @@ mod tests {
         }
         let found = burns(&history);
         assert_eq!(found.len(), 1, "{found:?}");
-        assert_eq!(found[0].key, "burn:hot");
+        let day = Zone::iso_day(Zone::utc().day(NOW));
+        assert_eq!(found[0].key, format!("burn:{day}"));
         assert_eq!(found[0].session.as_deref(), Some("hot"));
+    }
+
+    // A burn is the account's spend running hot, so it's one burn however
+    // many sessions take the lead in it: on 28 July one asked four times
+    // as its busiest session changed, and marking one expected left the
+    // next. It still names the session spending most now.
+    #[test]
+    fn a_burn_is_one_however_its_sessions_change() {
+        let history = ordinary();
+        for minute in 0..60 {
+            turn(&history, "first", NOW - 7200.0 + minute as f64 * 60.0, 10.0);
+            turn(
+                &history,
+                "second",
+                NOW - 3600.0 + minute as f64 * 60.0,
+                10.0,
+            );
+        }
+        let earlier = burns_at(&history, NOW - 3600.0);
+        let now = burns(&history);
+        assert_eq!((earlier.len(), now.len()), (1, 1), "{earlier:?} {now:?}");
+        assert_eq!(earlier[0].key, now[0].key);
+        assert_eq!(now[0].session.as_deref(), Some("second"));
     }
 
     // A day of logs at a steady three dollars an hour knows no usual hour
