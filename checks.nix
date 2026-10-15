@@ -2039,14 +2039,21 @@ in
         '';
 
     # Neovim starts with the configuration an account gets, in bamboo drawn on
-    # the terminal's own background, and nothing it loads complains.
+    # the terminal's own background, with Tree-sitter drawing a file in a
+    # language it has a parser for and its text objects mapped, and nothing it
+    # loads complains.
     neovim-starts-in-the-theme =
       let
         home = account workstation;
         files = home.xdg.configFile;
         # home-manager puts the plugins where Neovim looks for packages.
         plugins = home.xdg.dataFile."nvim/site/pack/hm".source;
-        report = "vim.g.colors_name .. ' ' .. tostring(vim.api.nvim_get_hl(0, { name = 'Normal' }).bg)";
+        report = lib.concatStringsSep " .. ' ' .. " [
+          "vim.g.colors_name"
+          "tostring(vim.api.nvim_get_hl(0, { name = 'Normal' }).bg)"
+          "tostring(vim.treesitter.highlighter.active[vim.api.nvim_get_current_buf()] ~= nil)"
+          "(vim.fn.mapcheck('af', 'o') ~= '' and 'objects' or 'none')"
+        ];
       in
       pkgs.runCommandLocal "neovim-starts-in-the-theme"
         {
@@ -2061,12 +2068,13 @@ in
           ln -s ${plugins} data/nvim/site/pack/hm
           cp ${files."nvim/init.lua".source} config/nvim/init.lua
           cp ${files."nvim/lua/theme.lua".source} config/nvim/lua/theme.lua
-          nvim --headless -c "lua io.stdout:write(${report})" -c 'qa!' > answer 2> complaints
+          echo 'return {}' > probe.lua
+          nvim --headless probe.lua -c "lua io.stdout:write(${report})" -c 'qa!' > answer 2> complaints
           # claudecode says it has stopped as Neovim quits, which is news, not a
           # complaint.
           grep -v '\[INFO\]' complaints > errors || true
           if [ -s errors ]; then cat errors; exit 1; fi
-          if [ "$(cat answer)" != "bamboo nil" ]; then cat answer; exit 1; fi
+          if [ "$(cat answer)" != "bamboo nil true objects" ]; then cat answer; exit 1; fi
           touch $out
         '';
 
