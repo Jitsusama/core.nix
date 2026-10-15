@@ -57,10 +57,13 @@ feed speaks.
   alert once the cap is back, and its finding clears at once, as a
   source's health does. `src/caps.rs` `held`.
 - **Detectors.** Each threshold is set for a stated false-alarm rate. A
-  burn is a minute CUSUM against twice the usual rate for the hour,
-  alarming past the quantile eight weeks of daily maxima crossed once a
-  month. It's the account running hot, so it's one finding a day, named
-  for the session spending most. Costly sessions are found against their peers with empirical-Bayes
+  burn is a minute CUSUM against twice a working hour's rate (the median
+  hour of eight weeks that spent a dollar) at any time of day, since
+  agents left working overnight are work, found past the quantile eight
+  weeks of daily maxima crossed once a month. It's the account running
+  hot, so it's one note a day, named for the session spending most, and
+  never told: the caps say when spending fast is about to cost access.
+  Costly sessions are found against their peers with empirical-Bayes
   shrinkage and Benjamini-Hochberg at 5%. Changes of regime come from
   Bayesian online changepoints, confirmed after a week. A price is a
   model's ratio of bill to list moving in a step from one level to

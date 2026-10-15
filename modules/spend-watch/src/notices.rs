@@ -57,7 +57,6 @@ fn summary(finding: &Finding) -> String {
     if title.contains('$') {
         match finding.detector.as_str() {
             "caps" => "A cap needs you".into(),
-            "burn" => "Spend is burning fast".into(),
             _ => "AI spend needs a look".into(),
         }
     } else {

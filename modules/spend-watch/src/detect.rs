@@ -436,12 +436,14 @@ fn minutes(history: &History, from: f64) -> Result<BTreeMap<i64, (f64, String)>,
     Ok(out)
 }
 
-/// A burn: spend running far above the rate a usual hour like this one
-/// spends at, found by CUSUM minute by minute. Its allowance is twice the
-/// expected rate; its threshold is set so that on the last `BURN_DAYS`
-/// days it would have alarmed once in the configured run length. It's the
+/// A burn: spend running far above what a working hour spends, found by
+/// CUSUM minute by minute. Its allowance is twice a working hour's rate at
+/// any time of day, since agents left working overnight are work, not a
+/// fault; its threshold is set so that on the last `BURN_DAYS` days it
+/// would have found one once in the configured run length. It's the
 /// account's spend running hot, so it's one burn a day, whichever session
-/// leads it, and names the one spending most now.
+/// leads it, and names the one spending most now. It's a note to look at,
+/// never told: the caps say when spending fast is about to cost access.
 pub fn burn(picture: &Picture, history: &History, config: &Config) -> Result<Vec<Finding>, String> {
     let now = picture.now;
     let from = now - BURN_DAYS as f64 * DAY;
@@ -455,29 +457,24 @@ pub fn burn(picture: &Picture, history: &History, config: &Config) -> Result<Vec
         1.0
     };
     let zone = &picture.zone;
-    // A usual active day's spend, and the hour shape, give each minute's
-    // expected rate.
-    let usual_day = stats::median(
-        &picture
-            .days
-            .dollars
-            .iter()
-            .rev()
-            .skip(1)
-            .take(28)
-            .copied()
-            .filter(|d| *d >= 5.0)
+    let today = zone.day(now);
+    // A working hour: the median of the hours before today that spent at
+    // least a dollar.
+    let mut hours: BTreeMap<i64, f64> = BTreeMap::new();
+    for (minute, (spent, _)) in by_minute.range(..(zone.day_start(today) / 60.0) as i64) {
+        *hours.entry(minute / 60).or_default() += spent * ratio;
+    }
+    let working = stats::median(
+        &hours
+            .into_values()
+            .filter(|spent| *spent >= 1.0)
             .collect::<Vec<_>>(),
     );
-    if !usual_day.is_finite() || usual_day <= 0.0 {
+    if !working.is_finite() || working <= 0.0 {
         return Ok(Vec::new());
     }
-    let allowance = |minute: i64| {
-        let at = minute as f64 * 60.0;
-        let share = picture.shape.shares[Zone::weekday(zone.day(at))][zone.local_hour(at) as usize];
-        // Twice the usual rate, and never less than a dollar an hour.
-        (2.0 * usual_day * share / 60.0).max(1.0 / 60.0)
-    };
+    // Twice a working hour's rate, whatever the hour.
+    let allowance = |_minute: i64| 2.0 * working / 60.0;
     let first = (from / 60.0) as i64;
     let last = (now / 60.0) as i64;
     let mut score = 0.0;
@@ -497,7 +494,6 @@ pub fn burn(picture: &Picture, history: &History, config: &Config) -> Result<Vec
             last_hour.push((spent, session));
         }
     }
-    let today = zone.day(now);
     // Only the days since the logs began, since a day before them scores
     // nothing for want of spend rather than for spending as usual, and two
     // weeks of those would make a day of logs a burn.
@@ -515,8 +511,8 @@ pub fn burn(picture: &Picture, history: &History, config: &Config) -> Result<Vec
     }
     let rate = 1.0 / config.detectors.burn_run_length_days;
     // The threshold: what the daily maximum passed on that share of days,
-    // and never below an hour of twice the usual rate.
-    let threshold = stats::quantile(&past, 1.0 - rate).max(usual_day / 12.0);
+    // and never below a working hour.
+    let threshold = stats::quantile(&past, 1.0 - rate).max(working);
     if score <= threshold {
         return Ok(Vec::new());
     }
@@ -556,16 +552,16 @@ pub fn burn(picture: &Picture, history: &History, config: &Config) -> Result<Vec
     let mut f = finding(
         format!("burn:{}", Zone::iso_day(today)),
         "burn",
-        Severity::Alert,
+        Severity::Note,
         match &title_of {
             Some(title) => format!("a burn in {title}"),
             None => "a burn".into(),
         },
         format!(
-            "{} in the last hour against a usual {} for this hour; past what eight weeks crossed \
-             once a {}.",
+            "{} in the last hour against {} in a working hour; past what eight weeks crossed once \
+             a {}.",
             dollars(spent_hour),
-            dollars(picture.expected_rate()),
+            dollars(working),
             if config.detectors.burn_run_length_days >= 28.0 {
                 "month".to_owned()
             } else {
@@ -574,7 +570,7 @@ pub fn burn(picture: &Picture, history: &History, config: &Config) -> Result<Vec
         ),
     );
     f.badge = format!("{}/h", whole(spent_hour));
-    f.note = format!("against a usual {}/h", whole(picture.expected_rate()));
+    f.note = format!("a working hour is {}", whole(working));
     f.dollars = spent_hour;
     f.surprise = -(rate.log10());
     f.session = Some(top.clone());
@@ -744,6 +740,15 @@ pub fn stalled(picture: &Picture, config: &Config) -> Vec<Finding> {
             *spend.entry(picture.root(quest)).or_default() += piece.dollars;
         }
     }
+    // A subquest's spend is its root's, so its changes are too: a root's
+    // record can sit still while the work moves in a subquest.
+    let mut changed: HashMap<&str, i64> = HashMap::new();
+    for quest in &picture.quests {
+        if let Some(day) = quest.updated.as_deref().and_then(crate::time::parse_day) {
+            let latest = changed.entry(picture.root(&quest.id)).or_insert(day);
+            *latest = (*latest).max(day);
+        }
+    }
     let today = picture.zone.day(picture.now);
     let mut out = Vec::new();
     for quest in &picture.quests {
@@ -751,7 +756,7 @@ pub fn stalled(picture: &Picture, config: &Config) -> Vec<Finding> {
             continue;
         }
         let spent = spend.get(quest.id.as_str()).copied().unwrap_or(0.0);
-        let updated = quest.updated.as_deref().and_then(crate::time::parse_day);
+        let updated = changed.get(quest.id.as_str());
         let quiet_days = updated.map_or(0, |day| today - day);
         if spent >= config.detectors.floor.max(100.0) && quiet_days >= 5 {
             let mut f = finding(
@@ -760,7 +765,7 @@ pub fn stalled(picture: &Picture, config: &Config) -> Vec<Finding> {
                 Severity::Note,
                 format!("still spending on {}", quest.title),
                 format!(
-                    "{} in the last 7 days; its record last changed {quiet_days} days ago, with \
+                    "{} in the last 7 days; its records last changed {quiet_days} days ago, with \
                      {} pull requests.",
                     dollars(spent),
                     quest.prs
@@ -1493,6 +1498,38 @@ mod tests {
         let day = Zone::iso_day(Zone::utc().day(NOW));
         assert_eq!(found[0].key, format!("burn:{day}"));
         assert_eq!(found[0].session.as_deref(), Some("hot"));
+        assert_eq!(found[0].note, "a working hour is $6");
+    }
+
+    // A burn is something to look at, never to be told: the caps say when
+    // spending fast is about to cost access.
+    #[test]
+    fn a_burn_is_a_note() {
+        let history = ordinary();
+        for minute in 0..60 {
+            turn(&history, "hot", NOW - 3600.0 + minute as f64 * 60.0, 10.0);
+        }
+        let found = burns(&history);
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert_eq!(found[0].severity, Severity::Note);
+    }
+
+    // Agents left working overnight at a working hour's pace aren't a burn,
+    // though the night usually spends nothing: on 15 October they were, at
+    // $151 an hour against a usual $3 for 4 a.m.
+    #[test]
+    fn working_through_the_night_is_no_burn() {
+        let history = ordinary();
+        let night = (NOW / DAY).floor() * DAY + 5.0 * 3600.0;
+        for minute in (0..60).step_by(10) {
+            turn(
+                &history,
+                "agent",
+                night - 3600.0 + minute as f64 * 60.0,
+                1.5,
+            );
+        }
+        assert!(burns_at(&history, night).is_empty());
     }
 
     // A burn is the account's spend running hot, so it's one burn however
@@ -1516,6 +1553,70 @@ mod tests {
         assert_eq!((earlier.len(), now.len()), (1, 1), "{earlier:?} {now:?}");
         assert_eq!(earlier[0].key, now[0].key);
         assert_eq!(now[0].session.as_deref(), Some("second"));
+    }
+
+    fn quest(id: &str, parent: Option<&str>, updated: &str) -> crate::quests::Quest {
+        crate::quests::Quest {
+            id: id.into(),
+            title: id.into(),
+            kind: if parent.is_some() {
+                "subquest"
+            } else {
+                "quest"
+            }
+            .into(),
+            parent: parent.map(Into::into),
+            status: "active".into(),
+            started: None,
+            updated: Some(updated.into()),
+            prs: 0,
+            sessions: Vec::new(),
+        }
+    }
+
+    fn stalled_keys(updated: &str) -> Vec<String> {
+        let history = History::memory();
+        let quests = [
+            quest("root", None, "2026-09-22"),
+            quest("child", Some("root"), updated),
+        ];
+        crate::quests::store(&history, &quests).unwrap();
+        for day in 0..4 {
+            history
+                .add_event(&Event::Turn(Turn {
+                    session: "s".into(),
+                    at: NOW - day as f64 * DAY - 3600.0,
+                    model: "m".into(),
+                    provider: "p".into(),
+                    kind: Kind::Agent,
+                    tokens: Tokens::default(),
+                    cost: Cost {
+                        total: 50.0,
+                        ..Cost::default()
+                    },
+                    quest: Some("child".into()),
+                    gap: None,
+                    rebuilt: 0.0,
+                    rebuilt_cost: 0.0,
+                    cause: None,
+                }))
+                .unwrap();
+        }
+        let config = config();
+        let picture = Picture::read(&history, &config, NOW).unwrap();
+        stalled(&picture, &config)
+            .into_iter()
+            .map(|found| found.key)
+            .collect()
+    }
+
+    // A subquest's spend counts toward its root, so its changes do too: on
+    // 15 October one was called unchanged for 22 days by its root's record
+    // while its subquest changed that morning.
+    #[test]
+    fn a_quest_moving_in_its_subquest_isnt_stalled() {
+        assert!(stalled_keys("2026-10-14").is_empty());
+        assert_eq!(stalled_keys("2026-09-30"), ["stalled:root"]);
     }
 
     // A day of logs at a steady three dollars an hour knows no usual hour
