@@ -2339,7 +2339,7 @@ in
               cap.allowance = 4000;
               zone = "America/Toronto";
               premium = [ "big-model" ];
-              detectors.quiet = [ "mix" ];
+              detectors.quiet = [ "spikes" ];
             };
           }
         ]);

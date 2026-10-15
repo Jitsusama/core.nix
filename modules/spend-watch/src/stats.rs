@@ -1,6 +1,6 @@
 //! The statistics the detectors share: robust location and scale, the
-//! normal's tail, Benjamini-Hochberg's false discovery control, Jensen-
-//! Shannon divergence, and CRPS, the proper score a forecast is judged by.
+//! normal's tail, Benjamini-Hochberg's false discovery control, and CRPS,
+//! the proper score a forecast is judged by.
 
 /// The q-quantile of sorted values, interpolated; none gives nothing.
 pub fn quantile_sorted(sorted: &[f64], q: f64) -> f64 {
@@ -74,25 +74,6 @@ pub fn discoveries(p: &[f64], q: f64) -> Vec<bool> {
     out
 }
 
-/// Jensen-Shannon divergence between two distributions over the same keys,
-/// in bits: 0 for the same, 1 for nothing shared.
-pub fn jensen_shannon(one: &[f64], other: &[f64]) -> f64 {
-    let total = |values: &[f64]| values.iter().sum::<f64>().max(f64::MIN_POSITIVE);
-    let (a, b) = (total(one), total(other));
-    let mut divergence = 0.0;
-    for (x, y) in one.iter().zip(other) {
-        let (p, q) = (x / a, y / b);
-        let m = (p + q) / 2.0;
-        if p > 0.0 {
-            divergence += p * (p / m).log2() / 2.0;
-        }
-        if q > 0.0 {
-            divergence += q * (q / m).log2() / 2.0;
-        }
-    }
-    divergence
-}
-
 /// The continuous ranked probability score of a forecast, as samples,
 /// against what happened: in the outcome's own units, lower is better.
 pub fn crps(samples: &[f64], outcome: f64) -> f64 {
@@ -139,12 +120,6 @@ mod tests {
         let found = discoveries(&p, 0.05);
         assert_eq!(found.iter().filter(|&&found| found).count(), 2);
         assert!(found[0] && found[1]);
-    }
-
-    #[test]
-    fn divergence_is_none_for_the_same_and_one_for_nothing_shared() {
-        assert!(jensen_shannon(&[1.0, 2.0], &[2.0, 4.0]).abs() < 1e-12);
-        assert!((jensen_shannon(&[1.0, 0.0], &[0.0, 1.0]) - 1.0).abs() < 1e-12);
     }
 
     #[test]

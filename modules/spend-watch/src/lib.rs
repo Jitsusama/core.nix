@@ -7,8 +7,8 @@
 //! good and rebuilt from its sources when its shape changes, and from the
 //! history it traces every dollar to its session, agent and quest, finds
 //! where money bought nothing, forecasts what's coming, and watches for
-//! what wants the person: a cap close or lapsing, a burn, something new
-//! spending under their name.
+//! what wants the person: a cap close or lapsing, a credential nobody
+//! knew spending under their name.
 //!
 //! Every figure carries where it came from. A source that's missing leaves
 //! the rest working, down to pi's logs alone, which price at pi's own list

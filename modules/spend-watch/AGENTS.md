@@ -65,7 +65,11 @@ feed speaks.
   never told: the caps say when spending fast is about to cost access.
   Costly sessions are found against their peers with empirical-Bayes
   shrinkage and Benjamini-Hochberg at 5%. Changes of regime come from
-  Bayesian online changepoints, confirmed after a week. A price is a
+  Bayesian online changepoints, confirmed after a week. Something new
+  billed in the last day is a note when it's a model or tool, which
+  someone chose, and told when it's a credential, which may be a leaked
+  key; a day leaning on one model isn't a finding, since a switch to a
+  newer one is all it ever said. A price is a
   model's ratio of bill to list moving in a step from one level to
   another: the last three settled days agreeing with each other and all
   outside the month before's tenth to ninetieth percentiles, which lie
