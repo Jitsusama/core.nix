@@ -954,7 +954,7 @@ pub fn novelty(
     ] {
         let query = format!(
             "SELECT {column}, SUM(dollars) FROM billed
-             WHERE hour >= ?1 AND {column} != '' AND {column} != 'all'
+             WHERE hour >= ?1 AND hour <= ?3 AND {column} != '' AND {column} != 'all'
              AND {column} NOT IN (SELECT {column} FROM billed WHERE hour >= ?2 AND hour < ?1)
              GROUP BY 1 HAVING SUM(dollars) >= 1"
         );
@@ -971,9 +971,10 @@ pub fn novelty(
         }
         let mut statement = history.db.prepare(&query).map_err(fail)?;
         let rows = statement
-            .query_map([recent_from, before_from], |row| {
-                Ok((row.get::<_, String>(0)?, row.get::<_, f64>(1)?))
-            })
+            .query_map(
+                [recent_from, before_from, crate::time::hour_of(now)],
+                |row| Ok((row.get::<_, String>(0)?, row.get::<_, f64>(1)?)),
+            )
             .map_err(fail)?;
         for row in rows {
             let (name, spent) = row.map_err(fail)?;
@@ -1608,5 +1609,21 @@ mod tests {
         assert_eq!(severity("new:model:big"), Some(Severity::Warning));
         assert_eq!(severity("new:model:small"), None);
         assert_eq!(severity("new:model:old"), None);
+    }
+
+    // What's new is what the last day billed, up to the moment judged: a
+    // replay of a past day mustn't count the months after it, as it once
+    // counted $42,642 of one model as a single day's.
+    #[test]
+    fn something_new_is_judged_at_its_moment() {
+        let history = History::memory();
+        billed(&history, "2026-10-04T12:00:00Z", "old", 50.0);
+        billed(&history, "2026-10-14T12:00:00Z", "big", 30.0);
+        billed(&history, "2026-10-20T12:00:00Z", "later", 900.0);
+        let config = config();
+        let picture = Picture::read(&history, &config, NOW).unwrap();
+        let found = novelty(&picture, &history, &config).unwrap();
+        let keys: Vec<&str> = found.iter().map(|f| f.key.as_str()).collect();
+        assert_eq!(keys, ["new:model:big"]);
     }
 }
