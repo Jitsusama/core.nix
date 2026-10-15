@@ -560,7 +560,8 @@ Scope {
                                 glyph: String.fromCodePoint(0xf0674)
                                 hue: Theme.voice
                                 quiet: true
-                                name: "Nothing's on, and nothing's waiting."
+                                // As tests/rows.qml holds it, whole.
+                                name: "Nothing's on or waiting."
                             }
                         }
 
