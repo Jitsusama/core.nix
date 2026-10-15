@@ -15,8 +15,15 @@
 //!
 //! A session the warehouse bills that no log here and no run knows is
 //! "elsewhere": another machine, a one-shot run that keeps no log.
+//!
+//! An agent's session is its own agent: a run's (a council's reviewer, a
+//! judge) is shown as that run's work, under the session that started it
+//! and in its quest, at the hours its log has turns in, and the run's own
+//! total counts only what no log of it covers; a swarm's is its kind's,
+//! named by its session.
 
 use crate::estimate::Ratios;
+
 use crate::history::History;
 use std::collections::{BTreeMap, HashMap, HashSet};
 
@@ -69,7 +76,11 @@ pub struct Piece {
 /// the runs.
 #[derive(Debug, Clone, PartialEq)]
 struct Known {
+    /// The session it's shown under: the one that started a run, for a
+    /// run's agents.
     session: String,
+    /// The session that spent it, which a bill names.
+    own: String,
     quest: Option<String>,
     repo: String,
     model: String,
@@ -111,21 +122,34 @@ impl Inputs {
         let db = &history.db;
         let mut inputs = Inputs::default();
         let mut repos: HashMap<String, String> = HashMap::new();
+        // An agent's session's kind and name, by where its log was found.
+        let mut agents: HashMap<String, (String, String)> = HashMap::new();
         {
-            let mut statement = db.prepare("SELECT id, repo FROM sessions").map_err(fail)?;
+            let mut statement = db
+                .prepare("SELECT id, repo, kind, name FROM sessions")
+                .map_err(fail)?;
             let rows = statement
                 .query_map([], |row| {
-                    Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, Option<String>>(2)?,
+                        row.get::<_, Option<String>>(3)?,
+                    ))
                 })
                 .map_err(fail)?;
             for row in rows {
-                let (id, repo) = row.map_err(fail)?;
+                let (id, repo, kind, name) = row.map_err(fail)?;
                 inputs.logged.insert(id.clone());
+                if let Some(kind) = kind {
+                    agents.insert(id.clone(), (kind, name.unwrap_or_default()));
+                }
                 repos.insert(id, repo);
             }
         }
         // The quest a session served in each hour, for its subagents.
         let mut quest_at: HashMap<(i64, String), Option<String>> = HashMap::new();
+        let mut turns: Vec<(i64, Known)> = Vec::new();
         {
             let mut statement = db
                 .prepare(
@@ -148,15 +172,19 @@ impl Inputs {
             for row in rows {
                 let (hour, session, quest, model, kind, list) = row.map_err(fail)?;
                 quest_at.insert((hour, session.clone()), quest.clone());
-                inputs.known.entry(hour).or_default().push(Known {
-                    repo: repos.get(&session).cloned().unwrap_or_default(),
-                    session,
-                    quest,
-                    model,
-                    kind,
-                    persona: String::new(),
-                    list,
-                });
+                turns.push((
+                    hour,
+                    Known {
+                        repo: repos.get(&session).cloned().unwrap_or_default(),
+                        own: session.clone(),
+                        session,
+                        quest,
+                        model,
+                        kind,
+                        persona: String::new(),
+                        list,
+                    },
+                ));
             }
         }
         {
@@ -183,6 +211,7 @@ impl Inputs {
                 let known = Known {
                     quest: quest_at.get(&(hour, parent.clone())).cloned().flatten(),
                     repo: repos.get(&parent).cloned().unwrap_or_default(),
+                    own: parent.clone(),
                     session: parent,
                     model,
                     kind: format!("subagent:{kind}"),
@@ -190,19 +219,42 @@ impl Inputs {
                     list: cost,
                 };
                 let ids: Vec<String> = serde_json::from_str(&sessions).unwrap_or_default();
-                for id in ids {
+                for id in &ids {
                     inputs.subagents.insert(
-                        id,
+                        id.clone(),
                         Known {
+                            own: id.clone(),
                             list: 0.0,
                             ..known.clone()
                         },
                     );
                 }
-                if (from..to).contains(&hour) {
-                    inputs.known.entry(hour).or_default().push(known);
+                if !(from..to).contains(&hour) {
+                    continue;
+                }
+                // What the run's logs hold is counted at their own hours.
+                let mut logged = 0.0;
+                for id in ids.iter().filter(|id| inputs.logged.contains(*id)) {
+                    logged += db
+                        .query_row(
+                            "SELECT COALESCE(SUM(cost), 0) FROM turns WHERE session = ?1",
+                            [id],
+                            |row| row.get::<_, f64>(0),
+                        )
+                        .map_err(fail)?;
+                }
+                let rest = known.list - logged;
+                if rest > 1e-9 {
+                    inputs.known.entry(hour).or_default().push(Known {
+                        list: rest,
+                        ..known
+                    });
                 }
             }
+        }
+        for (hour, turn) in turns {
+            let known = inputs.labelled(turn, &agents);
+            inputs.known.entry(hour).or_default().push(known);
         }
         {
             let mut statement = db
@@ -257,6 +309,35 @@ impl Inputs {
             .query_row("SELECT EXISTS (SELECT 1 FROM billed)", [], |row| row.get(0))
             .map_err(fail)?;
         Ok(inputs)
+    }
+
+    /// A turn as the work it was part of: a run's, shown as the run's under
+    /// the session that started it; an agent's, as its kind's and named.
+    /// A compaction or an extension's call stays what it is.
+    fn labelled(&self, turn: Known, agents: &HashMap<String, (String, String)>) -> Known {
+        let agent = turn.kind == "agent";
+        if let Some(run) = self.subagents.get(&turn.own) {
+            return Known {
+                session: run.session.clone(),
+                quest: turn.quest.or_else(|| run.quest.clone()),
+                repo: run.repo.clone(),
+                kind: if agent { run.kind.clone() } else { turn.kind },
+                persona: run.persona.clone(),
+                ..turn
+            };
+        }
+        match agents.get(&turn.own) {
+            Some((kind, name)) => Known {
+                kind: if agent {
+                    format!("subagent:{kind}")
+                } else {
+                    turn.kind
+                },
+                persona: name.clone(),
+                ..turn
+            },
+            None => turn,
+        }
     }
 
     fn settled(&self, source: &str, hour: i64) -> bool {
@@ -356,7 +437,7 @@ impl Inputs {
                 .iter()
                 .filter(|row| row.source == "warehouse")
                 .collect();
-            let mut unsplit = 0.0;
+            let mut unsplit: HashMap<&str, f64> = HashMap::new();
             let mut by_session: HashMap<&str, f64> = HashMap::new();
             for row in &rows {
                 if row.tool != "pi" {
@@ -369,7 +450,7 @@ impl Inputs {
                         Source::Warehouse,
                     ));
                 } else if row.session.is_empty() {
-                    unsplit += row.dollars;
+                    *unsplit.entry(&row.model).or_default() += row.dollars;
                 } else {
                     *by_session.entry(&row.session).or_default() += row.dollars;
                 }
@@ -377,10 +458,8 @@ impl Inputs {
             // A session's own bill goes to its pieces by their list shares.
             let mut covered: HashSet<&str> = HashSet::new();
             for (session, dollars) in &by_session {
-                let mine: Vec<&Known> = known
-                    .iter()
-                    .filter(|piece| piece.session == *session)
-                    .collect();
+                let mine: Vec<&Known> =
+                    known.iter().filter(|piece| piece.own == *session).collect();
                 let mine_list: f64 = mine.iter().map(|piece| piece.list).sum();
                 if !mine.is_empty() && mine_list > 0.0 {
                     covered.insert(session);
@@ -415,25 +494,40 @@ impl Inputs {
                     out.push(piece);
                 }
             }
-            // What came without a split follows the uncovered pieces' shares.
+            // What came without a split follows the shares of the uncovered
+            // pieces on its model, and where no log names that model, every
+            // uncovered piece's: a model's price differs, so its bill is its
+            // own pieces'.
             let rest: Vec<&Known> = known
                 .iter()
-                .filter(|piece| !covered.contains(piece.session.as_str()))
+                .filter(|piece| !covered.contains(piece.own.as_str()))
                 .collect();
-            let rest_list: f64 = rest.iter().map(|piece| piece.list).sum();
-            if unsplit > 0.0 {
-                if rest_list > 0.0 {
-                    for piece in rest {
+            let mut unsplit: Vec<(&str, f64)> = unsplit.into_iter().collect();
+            unsplit.sort_by(|one, other| one.0.cmp(other.0));
+            for (model, dollars) in unsplit.into_iter().filter(|(_, dollars)| *dollars > 0.0) {
+                let on_model: Vec<&Known> = rest
+                    .iter()
+                    .copied()
+                    .filter(|piece| piece.model == model && piece.list > 0.0)
+                    .collect();
+                let shared = if on_model.is_empty() {
+                    &rest
+                } else {
+                    &on_model
+                };
+                let list: f64 = shared.iter().map(|piece| piece.list).sum();
+                if list > 0.0 {
+                    for piece in shared {
                         out.push(Self::piece(
                             hour,
                             piece,
-                            unsplit * piece.list / rest_list,
+                            dollars * piece.list / list,
                             Source::Warehouse,
                         ));
                     }
                 } else {
                     let mut piece =
-                        Self::other(hour, "pi", "", "elsewhere", unsplit, Source::Warehouse);
+                        Self::other(hour, "pi", model, "elsewhere", dollars, Source::Warehouse);
                     piece.kind = "elsewhere".into();
                     out.push(piece);
                 }
@@ -545,7 +639,7 @@ mod tests {
         history
             .db
             .execute(
-                "INSERT OR IGNORE INTO sessions VALUES
+                "INSERT OR IGNORE INTO sessions (id, cwd, repo, started) VALUES
                  (?1, '/src/github.com/me/thing', 'github.com/me/thing', 0)",
                 [session],
             )
@@ -635,6 +729,123 @@ mod tests {
             .pieces(&Ratios::default());
         let quests = by(&pieces, |piece| piece.quest.clone().unwrap_or_default());
         assert_eq!(quests, vec![("Q2".into(), 15.0), ("Q1".into(), 5.0)]);
+    }
+
+    /// A run started from `parent` at `hour`, its agents' sessions `ids`.
+    fn run(history: &History, kind: &str, parent: &str, hour: i64, cost: f64, ids: &[&str]) {
+        history
+            .db
+            .execute(
+                "INSERT INTO runs VALUES (?1, 'a1', ?2, 'opus', 'critic', ?3, ?4, NULL, ?5,
+                 0, 0, 0, 0, ?6)",
+                rusqlite::params![
+                    format!("{kind}-1"),
+                    kind,
+                    parent,
+                    hour as f64 * 3600.0,
+                    cost,
+                    serde_json::to_string(ids).unwrap()
+                ],
+            )
+            .unwrap();
+    }
+
+    // A council whose reviewers keep logs counts once, at the hours they
+    // worked, as the council's work under the session that asked for it.
+    #[test]
+    fn a_logged_council_is_counted_once_as_its_work() {
+        let history = history();
+        turn(&history, "me", H, "opus", 10.0, Some("Q1"));
+        turn(&history, "r1", H + 1, "opus", 4.0, None);
+        run(&history, "council", "me", H, 5.0, &["r1", "r2"]);
+        let pieces = Inputs::read(&history, H, H + 2)
+            .unwrap()
+            .pieces(&Ratios::default());
+        assert!((total(&pieces) - 15.0).abs() < 1e-9, "{pieces:?}");
+        let reviewer: Vec<&Piece> = pieces.iter().filter(|p| p.hour == H + 1).collect();
+        assert_eq!(reviewer.len(), 1);
+        assert_eq!(
+            (
+                reviewer[0].kind.as_str(),
+                reviewer[0].persona.as_str(),
+                reviewer[0].session.as_str(),
+                reviewer[0].quest.as_deref(),
+            ),
+            ("subagent:council", "critic", "me", Some("Q1"))
+        );
+        let lump: f64 = pieces
+            .iter()
+            .filter(|p| p.hour == H && p.kind == "subagent:council")
+            .map(|p| p.dollars)
+            .sum();
+        assert!((lump - 1.0).abs() < 1e-9, "{pieces:?}");
+    }
+
+    // A fleet keeps no logs, so its total stands where it started.
+    #[test]
+    fn a_fleet_without_logs_keeps_its_total() {
+        let history = history();
+        turn(&history, "me", H, "opus", 10.0, Some("Q1"));
+        run(&history, "fleet", "me", H, 5.0, &["f1"]);
+        let pieces = Inputs::read(&history, H, H + 1)
+            .unwrap()
+            .pieces(&Ratios::default());
+        assert!((total(&pieces) - 15.0).abs() < 1e-9);
+        let fleet = by(&pieces, |piece| piece.kind.clone());
+        assert!(fleet.contains(&("subagent:fleet".into(), 5.0)), "{fleet:?}");
+        let quests = by(&pieces, |piece| piece.quest.clone().unwrap_or_default());
+        assert_eq!(quests, vec![("Q1".into(), 15.0)]);
+    }
+
+    // A swarm's agent is its own agent, named, in its quest, and takes its
+    // share of a bill that came without a split.
+    #[test]
+    fn a_swarm_s_agent_takes_its_share() {
+        let history = history();
+        turn(&history, "me", H, "opus", 10.0, Some("Q1"));
+        turn(&history, "acp", H, "sonnet", 30.0, Some("Q2"));
+        history
+            .db
+            .execute(
+                "UPDATE sessions SET kind = 'swarm', name = 'acp@team' WHERE id = 'acp'",
+                [],
+            )
+            .unwrap();
+        billed(&history, "warehouse", H, "pi", "opus", None, 5.0);
+        billed(&history, "warehouse", H, "pi", "sonnet", None, 15.0);
+        settle(&history, H + 1);
+        let pieces = Inputs::read(&history, H, H + 1)
+            .unwrap()
+            .pieces(&Ratios::default());
+        let agent = pieces.iter().find(|p| p.session == "acp").unwrap();
+        assert_eq!(
+            (
+                agent.kind.as_str(),
+                agent.persona.as_str(),
+                agent.quest.as_deref()
+            ),
+            ("subagent:swarm", "acp@team", Some("Q2"))
+        );
+        assert!((agent.dollars - 15.0).abs() < 1e-9);
+        assert!((total(&pieces) - 20.0).abs() < 1e-9);
+    }
+
+    // A bill without a split goes to the pieces on its own model, since
+    // models are priced apart; a model no log names follows every piece.
+    #[test]
+    fn an_unsplit_bill_stays_on_its_model() {
+        let history = history();
+        turn(&history, "s1", H, "opus", 10.0, Some("Q1"));
+        turn(&history, "s2", H, "sonnet", 30.0, Some("Q2"));
+        billed(&history, "warehouse", H, "pi", "opus", None, 8.0);
+        billed(&history, "warehouse", H, "pi", "sonnet", None, 20.0);
+        billed(&history, "warehouse", H, "pi", "other", None, 4.0);
+        settle(&history, H + 1);
+        let pieces = Inputs::read(&history, H, H + 1)
+            .unwrap()
+            .pieces(&Ratios::default());
+        let quests = by(&pieces, |piece| piece.quest.clone().unwrap_or_default());
+        assert_eq!(quests, vec![("Q2".into(), 23.0), ("Q1".into(), 9.0)]);
     }
 
     #[test]

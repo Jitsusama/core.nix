@@ -164,68 +164,80 @@ pub fn lock(state: &Path) -> Result<std::fs::File, String> {
 }
 
 /// Tells the loop whenever pi's logs change: inotify on the sessions
-/// directory and each directory in it, adding one as it appears.
+/// directory and each directory in it, adding one as it appears, and on
+/// each directory an agent's log is in.
 #[cfg(target_os = "linux")]
-fn watch(sessions: PathBuf, wake: Sender<Wake>) {
+fn watch(config: Config, wake: Sender<Wake>) {
     use rustix::fs::inotify::{self, CreateFlags, WatchFlags};
     std::thread::spawn(move || {
+        let sessions = config.sessions.clone();
         let Ok(fd) = inotify::init(CreateFlags::CLOEXEC) else {
-            return poll(sessions, wake);
+            return poll(config, wake);
         };
         let flags = WatchFlags::MODIFY
             | WatchFlags::CREATE
             | WatchFlags::MOVED_TO
             | WatchFlags::CLOSE_WRITE;
         let mut watched: std::collections::HashSet<PathBuf> = std::collections::HashSet::new();
-        // A directory counts as watched only once inotify has it.
-        let add = |watched: &mut std::collections::HashSet<PathBuf>| {
-            let paths = std::iter::once(sessions.clone()).chain(
-                std::fs::read_dir(&sessions)
-                    .into_iter()
-                    .flatten()
-                    .flatten()
-                    .map(|entry| entry.path())
-                    .filter(|path| path.is_dir()),
-            );
+        let mut looked: Option<Instant> = None;
+        // A directory counts as watched only once inotify has it. The
+        // agents' patterns are followed again at most once a pass, since
+        // pi's own logs change many times a minute.
+        let add = |watched: &mut std::collections::HashSet<PathBuf>,
+                   looked: &mut Option<Instant>| {
+            let mut paths: Vec<PathBuf> = std::iter::once(sessions.clone())
+                .chain(
+                    std::fs::read_dir(&sessions)
+                        .into_iter()
+                        .flatten()
+                        .flatten()
+                        .map(|entry| entry.path())
+                        .filter(|path| path.is_dir()),
+                )
+                .collect();
+            if looked.is_none_or(|at| at.elapsed() >= BUSY) {
+                *looked = Some(Instant::now());
+                paths.extend(crate::ingest::agents_directories(&config));
+            }
             for path in paths {
                 if !watched.contains(&path) && inotify::add_watch(&fd, &path, flags).is_ok() {
                     watched.insert(path);
                 }
             }
         };
-        add(&mut watched);
+        add(&mut watched, &mut looked);
         // No sessions directory yet, as before pi's first run: polling
         // notices it appear.
         if !watched.contains(&sessions) {
-            return poll(sessions, wake);
+            return poll(config, wake);
         }
         let mut buffer = [0u8; 8192];
         loop {
             match rustix::io::read(&fd, &mut buffer) {
                 Ok(_) => {
-                    add(&mut watched);
+                    add(&mut watched, &mut looked);
                     if wake.send(Wake::Moved).is_err() {
                         return;
                     }
                 }
                 Err(rustix::io::Errno::INTR) => {}
-                Err(_) => return poll(sessions, wake),
+                Err(_) => return poll(config, wake),
             }
         }
     });
 }
 
 #[cfg(not(target_os = "linux"))]
-fn watch(sessions: PathBuf, wake: Sender<Wake>) {
-    std::thread::spawn(move || poll(sessions, wake));
+fn watch(config: Config, wake: Sender<Wake>) {
+    std::thread::spawn(move || poll(config, wake));
 }
 
 /// Where inotify can't be had: the logs' newest change, every five seconds.
-fn poll(sessions: PathBuf, wake: Sender<Wake>) {
+fn poll(config: Config, wake: Sender<Wake>) {
     let newest = || {
-        crate::ingest::logs(&sessions)
+        crate::ingest::found(&config)
             .iter()
-            .filter_map(|path| std::fs::metadata(path).ok())
+            .filter_map(|found| std::fs::metadata(&found.path).ok())
             .map(|meta| (meta.len(), meta.modified().ok()))
             .fold((0u64, None), |(size, at), (len, modified)| {
                 (size + len, at.max(modified))
@@ -320,7 +332,8 @@ pub fn harness(history: &History, config: &Config) {
 /// Reads what pi's logs added, all of it, a slice at a time.
 pub fn catch_up(history: &History, config: &Config) -> Result<(), String> {
     loop {
-        let pass = crate::ingest::scan(history, &config.sessions, &config.refusals)?;
+        let logs = crate::ingest::found(config);
+        let pass = crate::ingest::scan(history, &logs, crate::ingest::Reading::of(config))?;
         if !pass.behind {
             return Ok(());
         }
@@ -457,7 +470,7 @@ pub fn run(config: Config) -> Result<(), String> {
     let history = History::open(&config.history())?;
     let (wake, woken): (Sender<Wake>, Receiver<Wake>) = mpsc::channel();
     listen(&config.socket(), wake.clone())?;
-    watch(config.sessions.clone(), wake.clone());
+    watch(config.clone(), wake.clone());
     {
         let wake = wake.clone();
         std::thread::spawn(move || {

@@ -14,7 +14,7 @@ use std::path::Path;
 use std::time::Duration;
 
 /// Bumped whenever a table's shape or meaning changes.
-pub const SCHEMA: i64 = 4;
+pub const SCHEMA: i64 = 5;
 
 /// Each hour's turns summed by what the picture splits them by, kept as
 /// they're added and forgotten. Every pass reads every hour, and summing
@@ -52,7 +52,7 @@ END;
 
 /// What brings each older shape up to the next, where only something was
 /// added: `UPGRADES[n - 1]` takes shape n to n + 1.
-const UPGRADES: [&str; 3] = [
+const UPGRADES: [&str; 4] = [
     "ALTER TABLE caps ADD COLUMN resets REAL;",
     "ALTER TABLE health ADD COLUMN since REAL;",
     concat!(
@@ -60,6 +60,7 @@ const UPGRADES: [&str; 3] = [
         "INSERT INTO turn_hours SELECT hour, session, quest, model, kind, COUNT(*), SUM(cost)
          FROM turns GROUP BY hour, session, quest, model, kind;"
     ),
+    "ALTER TABLE sessions ADD COLUMN kind TEXT; ALTER TABLE sessions ADD COLUMN name TEXT;",
 ];
 
 const TABLES: &str = concat!(
@@ -69,7 +70,8 @@ CREATE TABLE files (
     path TEXT PRIMARY KEY, identity TEXT NOT NULL, offset INTEGER NOT NULL,
     carry TEXT NOT NULL, session TEXT);
 CREATE TABLE sessions (
-    id TEXT PRIMARY KEY, cwd TEXT NOT NULL, repo TEXT NOT NULL, started REAL NOT NULL);
+    id TEXT PRIMARY KEY, cwd TEXT NOT NULL, repo TEXT NOT NULL, started REAL NOT NULL,
+    kind TEXT, name TEXT);
 CREATE TABLE turns (
     session TEXT NOT NULL, at REAL NOT NULL, hour INTEGER NOT NULL, model TEXT NOT NULL,
     provider TEXT NOT NULL, kind TEXT NOT NULL, quest TEXT,
@@ -369,11 +371,21 @@ impl History {
     pub fn add_event(&self, event: &crate::logs::Event) -> Result<(), String> {
         use crate::logs::Event;
         match event {
-            Event::Session { id, cwd, at } => {
+            Event::Session { id, cwd, at, kind } => {
+                // A log read again keeps the name its session was given.
                 self.db
                     .execute(
-                        "INSERT OR REPLACE INTO sessions VALUES (?1, ?2, ?3, ?4)",
-                        params![id, cwd, crate::logs::repo_of(cwd), at],
+                        "INSERT OR REPLACE INTO sessions VALUES (?1, ?2, ?3, ?4, ?5,
+                         (SELECT name FROM sessions WHERE id = ?1))",
+                        params![id, cwd, crate::logs::repo_of(cwd), at, kind],
+                    )
+                    .map_err(sql)?;
+            }
+            Event::Named { session, name } => {
+                self.db
+                    .execute(
+                        "UPDATE sessions SET name = ?2 WHERE id = ?1",
+                        params![session, name],
                     )
                     .map_err(sql)?;
             }
@@ -519,7 +531,8 @@ mod tests {
                 &TABLES
                     .replace(hours!(), "")
                     .replace("\n    resets REAL,", "")
-                    .replace("\n    since REAL,", ""),
+                    .replace("\n    since REAL,", "")
+                    .replace(SESSIONS_5, ""),
             )
             .unwrap();
             db.execute_batch(
@@ -644,7 +657,7 @@ mod tests {
             };
             history
                 .db
-                .execute_batch(&TABLES.replace(hours!(), ""))
+                .execute_batch(&TABLES.replace(hours!(), "").replace(SESSIONS_5, ""))
                 .unwrap();
             history
                 .db
@@ -659,6 +672,77 @@ mod tests {
         hours_hold(&history);
         turn(&history, "b", 12, None, 1.0);
         hours_hold(&history);
+    }
+
+    /// What shape 5 added to a session.
+    const SESSIONS_5: &str = ",\n    kind TEXT, name TEXT";
+
+    // The fourth shape's sessions gain a kind and a name, none for those
+    // read before, and its turns stay.
+    #[test]
+    fn sessions_gain_a_kind_where_they_stand() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("history.db");
+        {
+            let history = History {
+                db: Connection::open(&path).unwrap(),
+            };
+            history
+                .db
+                .execute_batch(&TABLES.replace(SESSIONS_5, ""))
+                .unwrap();
+            history
+                .db
+                .execute_batch(
+                    "INSERT INTO meta VALUES ('schema', '4');
+                     INSERT INTO sessions VALUES ('a', '/x', 'x', 1.0);",
+                )
+                .unwrap();
+            turn(&history, "a", 10, Some("q"), 1.5);
+        }
+        let history = History::open(&path).unwrap();
+        assert_eq!(history.meta("schema"), Some(SCHEMA.to_string()));
+        let (kind, name): (Option<String>, Option<String>) = history
+            .db
+            .query_row(
+                "SELECT kind, name FROM sessions WHERE id = 'a'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!((kind, name), (None, None));
+        hours_hold(&history);
+        assert!(!dir.path().join("history.db.schema-4").exists());
+    }
+
+    // A session read again keeps its name.
+    #[test]
+    fn a_session_keeps_its_name() {
+        use crate::logs::Event;
+        let history = History::memory();
+        let session = Event::Session {
+            id: "a".into(),
+            cwd: "/x".into(),
+            at: 1.0,
+            kind: Some("swarm".into()),
+        };
+        history.add_event(&session).unwrap();
+        history
+            .add_event(&Event::Named {
+                session: "a".into(),
+                name: "acp@team".into(),
+            })
+            .unwrap();
+        history.add_event(&session).unwrap();
+        let row: (String, String) = history
+            .db
+            .query_row(
+                "SELECT kind, name FROM sessions WHERE id = 'a'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(row, ("swarm".into(), "acp@team".into()));
     }
 
     #[test]

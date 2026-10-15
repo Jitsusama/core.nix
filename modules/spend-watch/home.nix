@@ -1,6 +1,6 @@
 # spend-watch keeps the account told what its AI use costs: a daemon that
-# reads pi's session logs as they grow, the harness's subagent runs and its
-# quests, and whatever feeds a machine adds for a provider's bill, keeps a
+# reads pi's session logs as they grow, its agents' too (a swarm's, a
+# review council's), the harness's subagent runs and its quests, and whatever feeds a machine adds for a provider's bill, keeps a
 # history of every dollar, and writes what the shell draws: the overview's
 # row, the margin while something wants Joel, and the launcher's collection
 # on Super+U. AGENTS.md beside this says how it decides.
@@ -27,15 +27,19 @@ let
   cfg = config.jitsusama.spend-watch;
   package = pkgs.callPackage ./package.nix { };
   home = config.home.homeDirectory;
-  inherit (config.xdg) dataHome stateHome;
+  inherit (config.xdg) cacheHome dataHome stateHome;
   # Where the coding harness keeps what it knows of runs, sessions and quests.
   harness = {
     state = "${stateHome}/pi/agentic-harness.pi";
     data = "${dataHome}/pi/agentic-harness.pi";
+    cache = "${cacheHome}/pi/agentic-harness.pi";
   };
+  workspaces = cfg.paths.workspaces;
 
   rendered = {
     sessions = cfg.paths.sessions;
+    inherit (cfg) agents;
+    inherit workspaces;
     runs = cfg.paths.runs;
     registry = cfg.paths.registry;
     quests = cfg.paths.quests;
@@ -122,7 +126,51 @@ in
       runs = path "The harness's record of subagent runs." "${harness.state}/observability/runs.db";
       registry = path "Open sessions, to go to one." "${harness.state}/quest-workflow/sessions";
       quests = path "The harness's quests." "${harness.data}/quest-workflow/quests";
+      workspaces = path "Each quest's workspace, named by its id." "${harness.cache}/quest-workspace";
       state = path "Where the history and the weekly reports are kept." "${stateHome}/spend-watch";
+    };
+
+    agents = lib.mkOption {
+      description = ''
+        Where pi keeps the logs of agents nobody types into, each a whole path
+        with `*` for any one name, and the kind of work they are. A run's
+        record says more of its agents' sessions, and wins.
+      '';
+      type = lib.types.listOf (
+        lib.types.submodule {
+          options = {
+            pattern = lib.mkOption {
+              description = "The logs' paths, each `*` one name.";
+              type = lib.types.str;
+            };
+            kind = lib.mkOption {
+              description = "The kind of work they are, one word.";
+              type = lib.types.strMatching "[A-Za-z0-9-]+";
+            };
+          };
+        }
+      );
+      # A swarm's agents each keep a home in their quest's workspace, at its
+      # top or in a trial under its tmp; a review's reviewers and judges
+      # keep theirs with its transcripts.
+      default =
+        map
+          (home: {
+            pattern = "${workspaces}/*/${home}agents/*/session/*.jsonl";
+            kind = "swarm";
+          })
+          [
+            "*/"
+            "tmp/*/"
+            "tmp/*/*/"
+          ]
+        ++ [
+          {
+            pattern = "${harness.state}/review/transcripts/runs/*/reviewers/*/session/*.jsonl";
+            kind = "review";
+          }
+        ];
+      defaultText = lib.literalMD "a swarm's homes in each quest's workspace, and review transcripts";
     };
 
     zone = lib.mkOption {
