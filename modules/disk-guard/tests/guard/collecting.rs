@@ -326,6 +326,68 @@ fn a_listing_is_kept_for_the_next_guard() {
     assert_eq!(lists, 1, "a day old at most, so not listed again");
 }
 
+/// How many times the store has been listed.
+fn lists(store: &Store) -> usize {
+    store
+        .log()
+        .iter()
+        .filter(|line| line.starts_with("list"))
+        .count()
+}
+
+/// Steps `guard` at `seconds` past now long enough for a listing begun to
+/// say so.
+fn step_later(guard: &mut Guard, seconds: f64, senses: &Senses) {
+    let at = Tick {
+        wall: now() + seconds,
+        ..tick()
+    };
+    for _ in 0..10 {
+        guard.step(&at, senses).unwrap();
+        std::thread::sleep(Duration::from_millis(30));
+    }
+}
+
+const BUSY: Senses = Senses {
+    pressure: Pressure {
+        io: disk_guard::moments::Stall {
+            some: 50.0,
+            full: 0.0,
+        },
+        ..CALM.pressure
+    },
+    ..CALM
+};
+
+#[test]
+fn a_healthy_store_is_listed_again_six_hours_on_in_a_spare_moment() {
+    // Upkeep comes every six hours and takes what the listing holds, so a
+    // listing a day old misses a day of builds.
+    let store = Store::new();
+    store.dead("aaa-young", 3600.0, 4096);
+    let mut guard = store.guard(store.config("0%", "0%"));
+    step_later(&mut guard, 0.0, &CALM);
+    assert_eq!(lists(&store), 1);
+    step_later(&mut guard, 5.0 * 3600.0, &CALM);
+    assert_eq!(lists(&store), 1, "five hours on");
+    step_later(&mut guard, 7.0 * 3600.0, &CALM);
+    assert_eq!(lists(&store), 2, "seven hours on");
+}
+
+#[test]
+fn a_listing_a_day_old_is_taken_again_however_busy_the_machine() {
+    // A machine that builds all day is never calm.
+    let store = Store::new();
+    store.dead("aaa-young", 3600.0, 4096);
+    let mut guard = store.guard(store.config("0%", "0%"));
+    step_later(&mut guard, 0.0, &CALM);
+    step_later(&mut guard, 7.0 * 3600.0, &BUSY);
+    assert_eq!(lists(&store), 1, "not while busy, within a day");
+    step_later(&mut guard, 25.0 * 3600.0, &BUSY);
+    assert_eq!(lists(&store), 2, "a day on");
+    assert_eq!(store.log()[1], "list 5", "still at idle priority");
+}
+
 #[test]
 fn a_listing_kept_by_names_is_listed_again() {
     // As the guard kept them before it held references by place.

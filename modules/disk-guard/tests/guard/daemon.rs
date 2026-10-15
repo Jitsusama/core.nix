@@ -528,8 +528,7 @@ fn a_pressed_disk_gives_way_to_a_busy_machine_for_twenty_minutes_at_most() {
     let pass = home
         .journal()
         .into_iter()
-        .filter(|line| line["event"] == "pass")
-        .last()
+        .rfind(|line| line["event"] == "pass")
         .unwrap();
     assert_eq!(pass["band"], "pressure");
 }

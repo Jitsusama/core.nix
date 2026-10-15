@@ -130,11 +130,14 @@ type DedupeOut = (f64, Arc<AtomicBool>, Receiver<Result<Option<u64>, String>>);
 /// The candidates a profile's generations are offered as.
 const GENERATIONS: &str = "generations";
 const YOUNG_GENERATIONS: &str = "generations:young";
-/// How old Nix's garbage listing may grow on a healthy disk, and under
-/// pressure; and how long a listing that failed waits for the next, on a
-/// healthy disk and under pressure, where a listing is all garbage can be
-/// collected by.
-const LISTING_FRESH: f64 = 86400.0;
+/// How old Nix's garbage listing may grow on a healthy disk before a spare
+/// moment lists it again, as often as upkeep comes; how old before it's
+/// listed however busy the machine, which one building all day always is;
+/// and how old under pressure. Then how long a listing that failed waits
+/// for the next, on a healthy disk and under pressure, where a listing is
+/// all garbage can be collected by.
+const LISTING_FRESH: f64 = 6.0 * 3600.0;
+const LISTING_STALE: f64 = 86400.0;
 const LISTING_PRESSED: f64 = 3600.0;
 const LISTING_RETRY: f64 = 3600.0;
 const LISTING_RETRY_PRESSED: f64 = 300.0;
@@ -722,7 +725,7 @@ impl Guard {
                 due.push((device, decision, thresholds));
             }
         }
-        self.list_garbage(tick.wall, spare);
+        self.list_garbage(tick.wall, spare, powered(senses.power, senses.saver));
         self.dedupe(tick, spare, powered(senses.power, senses.saver))?;
         self.collects(tick);
         let passed = !due.is_empty();
@@ -880,7 +883,7 @@ impl Guard {
         let me = std::process::id();
         let mut scan = Scan::new(&self.processes, Path::new("/proc/locks"), me, FRESH);
         let decision = Decision::Reach(band);
-        self.pass_on(tick, device, mount, &here, decision, thresholds, &mut scan)
+        self.pass_on(tick, device, &here, decision, thresholds, &mut scan)
             .map_err(|error| error.to_string())
     }
 
@@ -915,10 +918,11 @@ impl Guard {
         Ok(())
     }
 
-    /// Begins listing Nix's garbage on its own thread when it's due: daily
-    /// at a spare moment, at idle priority; and at once when the store's
-    /// filesystem is under pressure and the listing is an hour old.
-    fn list_garbage(&mut self, now: f64, spare: bool) {
+    /// Begins listing Nix's garbage on its own thread when it's due: six
+    /// hours on at a spare moment, or a day on whenever there's power, at
+    /// idle priority; and at once when the store's filesystem is under
+    /// pressure and the listing is an hour old.
+    fn list_garbage(&mut self, now: f64, spare: bool, powered: bool) {
         if self.listing_out.is_some() {
             return;
         }
@@ -941,7 +945,7 @@ impl Guard {
                 && if pressed {
                     listed >= LISTING_PRESSED
                 } else {
-                    spare && listed >= LISTING_FRESH
+                    spare && listed >= LISTING_FRESH || powered && listed >= LISTING_STALE
                 };
         if !due {
             return;
@@ -1254,19 +1258,15 @@ impl Guard {
     fn passes(&mut self, tick: &Tick, due: &[(u64, Decision, Thresholds)]) -> io::Result<()> {
         let (mut scan, offers) = self.offers(tick)?;
         for &(device, decision, thresholds) in due {
-            let Some(path) = self
-                .watched
-                .get(&device)
-                .map(|watched| watched.path.clone())
-            else {
+            if !self.watched.contains_key(&device) {
                 continue;
-            };
+            }
             let here: Vec<Offer> = offers
                 .iter()
                 .filter(|offer| offer.device == device)
                 .cloned()
                 .collect();
-            let end = self.pass_on(tick, device, path, &here, decision, thresholds, &mut scan)?;
+            let end = self.pass_on(tick, device, &here, decision, thresholds, &mut scan)?;
             let Decision::Reach(band) = decision else {
                 continue;
             };
@@ -1348,17 +1348,24 @@ impl Guard {
         Ok((scan, offers))
     }
 
-    /// Runs one filesystem's pass over what lies there and journals it.
+    /// Runs a pass over what lies on the watched filesystem `device` and
+    /// journals it.
     fn pass_on(
         &mut self,
         tick: &Tick,
         device: u64,
-        path: PathBuf,
         here: &[Offer],
         decision: Decision,
         thresholds: Thresholds,
         scan: &mut Scan,
     ) -> io::Result<End> {
+        let Some(path) = self
+            .watched
+            .get(&device)
+            .map(|watched| watched.path.clone())
+        else {
+            return Ok(End::Exhausted);
+        };
         let candidates: Vec<_> = here.iter().map(|offer| offer.candidate.clone()).collect();
         let (band, goal) = match decision {
             Decision::Reach(band) => (band, Goal::Reach),

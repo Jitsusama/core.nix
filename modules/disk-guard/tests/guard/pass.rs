@@ -313,13 +313,20 @@ fn small_batches_a_writer_swamps_dont_stop_the_pass() {
     // still reaches the targets that make up the shortfall.
     let mut candidates = temps(60, 16 << 20);
     candidates.extend(targets(10, 7.0 * HOUR));
-    let nothing = candidates[..60].iter().map(|c| (c.path.clone(), 0)).collect();
+    let nothing = candidates[..60]
+        .iter()
+        .map(|c| (c.path.clone(), 0))
+        .collect();
     let mut disk = FakeDisk::new(14 * GIB);
     disk.each = 1.0;
     let run = run(disk, &candidates, Goal::Reach, nothing, Vec::new());
     assert_eq!(run.end, End::Reached);
     assert_eq!(run.free, 20 * GIB);
-    assert_eq!(run.learned.ratio(Class::Temp), 1.0, "too small to learn from");
+    assert_eq!(
+        run.learned.ratio(Class::Temp),
+        1.0,
+        "too small to learn from"
+    );
 }
 
 #[test]
@@ -328,7 +335,10 @@ fn a_group_that_stalls_gives_way_to_the_next() {
     // do, stop their own group after three batches, not the pass.
     let mut candidates = temps(20, GIB);
     candidates.extend(targets(10, 7.0 * HOUR));
-    let nothing = candidates[..20].iter().map(|c| (c.path.clone(), 0)).collect();
+    let nothing = candidates[..20]
+        .iter()
+        .map(|c| (c.path.clone(), 0))
+        .collect();
     let mut disk = FakeDisk::new(14 * GIB);
     disk.each = 1.0;
     let run = run(disk, &candidates, Goal::Reach, nothing, Vec::new());

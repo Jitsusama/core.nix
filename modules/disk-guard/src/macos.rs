@@ -302,8 +302,7 @@ pub fn processes(_proc: &Path) -> io::Result<Vec<crate::activity::Process>> {
 /// start, or none when it's gone or a zombie, which holds no files. Its BSD
 /// info is anybody's to read.
 pub fn started(_proc: &Path, pid: u32) -> Option<u64> {
-    let info: libc::proc_bsdinfo =
-        pidinfo(pid as libc::pid_t, libc::PROC_PIDTBSDINFO, 0).ok()?;
+    let info: libc::proc_bsdinfo = pidinfo(pid as libc::pid_t, libc::PROC_PIDTBSDINFO, 0).ok()?;
     (info.pbi_status != libc::SZOMB).then(|| start_of(&info))
 }
 
