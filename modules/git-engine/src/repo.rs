@@ -12,6 +12,7 @@ use crate::refs::Refs;
 use crate::reftable::Value;
 use crate::stamp::{Stamp, Stamps};
 use crate::status::{self, Counts, Limits, Paths, Settings};
+use crate::walks::Walks;
 use std::collections::HashMap;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -104,7 +105,8 @@ pub struct Repo {
     /// The index as last read, with its stamp and the checksum it ends in.
     index: Option<(Option<Stamp>, Arc<Index>, Vec<u8>)>,
     cache: status::Cache,
-    walks: HashMap<(Oid, Oid), (usize, usize)>,
+    /// Ahead and behind counts walked already, by this engine or another.
+    walks: Walks,
     /// HEAD's commit as last read: its name, tree, encoding and summary.
     head_commit: Option<(Oid, Oid, String, String)>,
     /// Every tag by name with the commit it comes to, and what they were
@@ -200,6 +202,7 @@ impl Repo {
         let objects = location.common.join("objects");
         let odb = Odb::open(&objects);
         let graph = Graph::open(&objects);
+        let walks = Walks::new(Walks::folder(home.as_deref()), &location.common);
         Ok(Repo {
             location,
             home,
@@ -210,7 +213,7 @@ impl Repo {
             known: Known::default(),
             index: None,
             cache: status::Cache::default(),
-            walks: HashMap::new(),
+            walks,
             head_commit: None,
             tags: None,
             monitor: None,
@@ -281,7 +284,7 @@ impl Repo {
     }
 
     fn ahead_behind(&mut self, local: Oid, upstream: Oid) -> io::Result<(usize, usize)> {
-        if let Some(&answer) = self.walks.get(&(local, upstream)) {
+        if let Some(answer) = self.walks.get(local, upstream) {
             return Ok(answer);
         }
         let answer = ahead_behind(
@@ -291,10 +294,7 @@ impl Repo {
             &local,
             &upstream,
         )?;
-        if self.walks.len() > 256 {
-            self.walks.clear();
-        }
-        self.walks.insert((local, upstream), answer);
+        self.walks.put(local, upstream, answer);
         Ok(answer)
     }
 

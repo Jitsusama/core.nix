@@ -27,6 +27,7 @@ mod reftable;
 mod repo;
 mod stamp;
 mod status;
+mod walks;
 mod wildmatch;
 
 use repo::{Answer, Options, Repo};
