@@ -830,7 +830,12 @@ pub fn mix(picture: &Picture, config: &Config) -> Vec<Finding> {
     let zone = &picture.zone;
     let today = zone.day(picture.now);
     let mut by_day: BTreeMap<i64, HashMap<String, f64>> = BTreeMap::new();
-    for piece in &picture.pieces_month {
+    // Spend whose model nobody recorded isn't a model to lean on.
+    for piece in picture
+        .pieces_month
+        .iter()
+        .filter(|piece| !piece.model.is_empty())
+    {
         let day = zone.day(crate::time::hour_start(piece.hour));
         *by_day
             .entry(day)
@@ -892,6 +897,11 @@ pub fn mix(picture: &Picture, config: &Config) -> Vec<Finding> {
         .iter()
         .position(|m| *m == top.0)
         .map_or(0.0, |i| usual[i] / total_usual.max(1e-9));
+    // A model that spent nothing on most days is new, which is novelty's to
+    // say, once.
+    if usual_share <= 0.0 {
+        return Vec::new();
+    }
     let mut f = finding(
         format!("mix:{today}"),
         "mix",
@@ -1228,6 +1238,51 @@ mod tests {
             }
         }
         history
+    }
+
+    // Spend whose model nobody recorded says nothing of the day's mix of
+    // models, however much of it there is.
+    #[test]
+    fn the_mix_is_of_models_someone_named() {
+        assert!(mix_with("").is_empty());
+        // One that spent nothing on most days is new, which novelty says.
+        assert!(mix_with("z").is_empty());
+        // One that spends a little most days and most of today is told.
+        let found = mix_with("y");
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].title, "today leans on y");
+    }
+
+    // Twenty-eight days of model m from nine to five, with $5 of y each
+    // morning, and today $900 of `model`.
+    fn mix_with(model: &str) -> Vec<Finding> {
+        let history = History::memory();
+        let today = (NOW / DAY).floor() * DAY;
+        for back in 1..28 {
+            let line = serde_json::json!({
+                "v": 1, "kind": "billed", "source": "meter", "tool": "all",
+                "hour": crate::time::rfc3339(today - back as f64 * DAY + 7.0 * HOUR),
+                "model": "y", "dollars": 5.0,
+            });
+            let record = crate::feed::parse(&line.to_string()).unwrap();
+            crate::feed::store(&history, "proxy", &record, NOW).unwrap();
+        }
+        for back in 0..28 {
+            for minute in (9 * 60..17 * 60).step_by(10) {
+                let at = today - back as f64 * DAY + minute as f64 * 60.0;
+                if at < NOW - 3600.0 {
+                    turn(&history, &format!("s{back}"), at, 2.0);
+                }
+            }
+        }
+        let line = serde_json::json!({
+            "v": 1, "kind": "billed", "source": "meter", "tool": "all",
+            "hour": crate::time::rfc3339(NOW - 1800.0), "model": model, "dollars": 900.0,
+        });
+        let record = crate::feed::parse(&line.to_string()).unwrap();
+        crate::feed::store(&history, "proxy", &record, NOW).unwrap();
+        let picture = Picture::read(&history, &config(), NOW).unwrap();
+        mix(&picture, &config())
     }
 
     // A model billed at a new share of its list price for three settled
