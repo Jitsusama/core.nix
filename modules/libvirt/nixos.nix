@@ -26,6 +26,24 @@
 # https://gitlab.com/qemu-project/qemu/-/issues/4581.
 { config, pkgs, ... }:
 let
+  # libvirt 12.7.0's device driver joins its udev thread at shutdown while
+  # holding the lock that thread needs to see it should stop. When the
+  # thread loses that race, both wait until the daemon gives up 30 seconds
+  # later and exits as failed, and the machine's shutdown waits with them.
+  # The fix is upstream from 12.8.0, so this comes out with that release.
+  joinUnlocked = pkgs.fetchpatch {
+    name = "libvirt-nodedev-join-unlocked.patch";
+    url = "https://gitlab.com/libvirt/libvirt/-/commit/0c053ffd2c44ef0820886ab79c1f812775b2cd15.patch";
+    hash = "sha256-aiSUJmQaMZu3vGGzPUK34rUjRQlyB3EyUpF2FkyGZiA=";
+  };
+  libvirt =
+    if pkgs.libvirt.version == "12.7.0" then
+      pkgs.libvirt.overrideAttrs (old: {
+        patches = (old.patches or [ ]) ++ [ joinUnlocked ];
+      })
+    else
+      pkgs.libvirt;
+
   refuseIoUring = pkgs.runCommandCC "refuse-io-uring" { buildInputs = [ pkgs.libseccomp ]; } ''
     mkdir -p $out/bin
     $CC -O2 -Wall -Werror -o $out/bin/refuse-io-uring ${./refuse-io-uring.c} -lseccomp
@@ -58,6 +76,7 @@ in
 {
   virtualisation.libvirtd = {
     enable = true;
+    package = libvirt;
     qemu = {
       package = qemu;
       # System machines run as libvirt's own qemu account, not root.

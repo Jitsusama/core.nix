@@ -162,6 +162,7 @@ a running system shows.
 | `vm-disk-guard-keeps-the-disk`    | the guards answer each band, sparing what's in use       |
 | `vm-network-revives-units`        | what the network let down starts, and reloads on change  |
 | `vm-clock-keeps-time`             | the clock sets from the machine's servers past a network's silent one |
+| `vm-libvirt-stops-quickly`        | libvirt's daemon stops at once, its udev thread starved  |
 
 The install test builds a disk image with disko and boots it with a software
 TPM, then follows [the install guide][3] step by step: the keys are made and
