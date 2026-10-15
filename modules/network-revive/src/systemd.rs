@@ -8,7 +8,7 @@ use zbus::proxy::CacheProperties;
 use zbus::zvariant::OwnedObjectPath;
 use zbus::{Connection, proxy};
 
-use crate::revive::{self, State};
+use crate::revive::{self, State, Unanswered};
 
 #[proxy(
     interface = "org.freedesktop.systemd1.Manager",
@@ -68,13 +68,13 @@ impl Units {
         })
     }
 
-    async fn path(&self, name: &str) -> Result<OwnedObjectPath, String> {
+    async fn path(&self, name: &str) -> Result<OwnedObjectPath, Unanswered> {
         self.manager.load_unit(name).await.map_err(said)
     }
 
     /// The service's first command, as systemd would run it: the program,
     /// its arguments, its environment and its directory.
-    async fn program(&self, name: &str) -> Result<Command, String> {
+    async fn program(&self, name: &str) -> Result<Command, Unanswered> {
         let service = ServiceProxy::builder(&self.bus)
             .path(self.path(name).await?)
             .map_err(said)?
@@ -84,7 +84,7 @@ impl Units {
             .map_err(said)?;
         let commands = service.exec_start().await.map_err(said)?;
         let Some((path, arguments, ..)) = commands.into_iter().next() else {
-            return Err("it has no ExecStart to check with".into());
+            return Err(Unanswered::Said("it has no ExecStart to check with".into()));
         };
         let mut program = Command::new(path);
         program.args(arguments.iter().skip(1));
@@ -106,7 +106,7 @@ impl Units {
 }
 
 impl revive::Units for Units {
-    async fn state(&self, name: &str) -> Result<State, String> {
+    async fn state(&self, name: &str) -> Result<State, Unanswered> {
         let unit = UnitProxy::builder(&self.bus)
             .path(self.path(name).await?)
             .map_err(said)?
@@ -121,7 +121,7 @@ impl revive::Units for Units {
         })
     }
 
-    async fn check(&self, name: &str, arguments: &[String]) -> Result<(), String> {
+    async fn check(&self, name: &str, arguments: &[String]) -> Result<(), Unanswered> {
         let mut program = self.program(name).await?;
         program
             .args(arguments)
@@ -131,26 +131,27 @@ impl revive::Units for Units {
             .kill_on_drop(true);
         let child = program
             .spawn()
-            .map_err(|error| format!("its program won't run: {error}"))?;
+            .map_err(|error| Unanswered::Said(format!("its program won't run: {error}")))?;
         let Ok(ran) = timeout(CHECKING, child.wait_with_output()).await else {
-            return Err(format!(
+            return Err(Unanswered::Said(format!(
                 "its check took longer than {} s",
                 CHECKING.as_secs()
-            ));
+            )));
         };
-        let ran = ran.map_err(|error| format!("its check went wrong: {error}"))?;
+        let ran =
+            ran.map_err(|error| Unanswered::Said(format!("its check went wrong: {error}")))?;
         if ran.status.success() {
             return Ok(());
         }
         let said = String::from_utf8_lossy(&ran.stderr);
         let first = said.lines().map(str::trim).find(|line| !line.is_empty());
-        Err(first.map_or_else(
+        Err(Unanswered::Said(first.map_or_else(
             || format!("its check ended with {}", ran.status),
             str::to_string,
-        ))
+        )))
     }
 
-    async fn start(&self, name: &str) -> Result<(), String> {
+    async fn start(&self, name: &str) -> Result<(), Unanswered> {
         // Spawned, so the start is asked for even if the network changes
         // again between the two calls and this look is given up.
         let manager = self.manager.clone();
@@ -166,11 +167,11 @@ impl revive::Units for Units {
         });
         match starting.await {
             Ok(started) => started.map(drop).map_err(said),
-            Err(error) => Err(error.to_string()),
+            Err(error) => Err(Unanswered::Said(error.to_string())),
         }
     }
 
-    async fn reload(&self, name: &str) -> Result<(), String> {
+    async fn reload(&self, name: &str) -> Result<(), Unanswered> {
         self.manager
             .reload_unit(name, "replace")
             .await
@@ -179,12 +180,29 @@ impl revive::Units for Units {
     }
 }
 
-/// What D-Bus said went wrong, without the name of its error.
+/// What systemd says of a unit it has unloaded.
 const NO_SUCH_UNIT: &str = "org.freedesktop.systemd1.NoSuchUnit";
 
-fn said(error: zbus::Error) -> String {
-    match error {
+/// What the bus says in systemd's place while it executes itself again: that
+/// it left before answering, then that nobody has its name until it's back.
+const AWAY: [&str; 3] = [
+    "org.freedesktop.DBus.Error.NoReply",
+    "org.freedesktop.DBus.Error.NameHasNoOwner",
+    "org.freedesktop.DBus.Error.ServiceUnknown",
+];
+
+/// What D-Bus said went wrong, without the name of its error, and whether it
+/// said so because systemd was away.
+fn said(error: zbus::Error) -> Unanswered {
+    let away =
+        matches!(&error, zbus::Error::MethodError(name, _, _) if AWAY.contains(&name.as_str()));
+    let message = match error {
         zbus::Error::MethodError(_, Some(message), _) => message,
         error => error.to_string(),
+    };
+    if away {
+        Unanswered::Away(message)
+    } else {
+        Unanswered::Said(message)
     }
 }
