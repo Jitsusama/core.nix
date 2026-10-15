@@ -1,0 +1,14 @@
+# git-engine: answers what the prompt asks of a repository (the branch,
+# whether anything is unsaved or unpushed) by reading git's files itself,
+# starting no program (src/main.rs says how).
+[package]
+name = "git-engine"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[dependencies]
+# zlib, for objects and packs: pure Rust, so it builds anywhere the prompt
+# runs.
+miniz_oxide = "0.9"
