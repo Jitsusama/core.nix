@@ -55,8 +55,12 @@ feed speaks.
   alarming past the quantile eight weeks of daily maxima crossed once a
   month. Costly sessions are found against their peers with empirical-Bayes
   shrinkage and Benjamini-Hochberg at 5%. Changes of regime come from
-  Bayesian online changepoints, confirmed after a week. `src/detect.rs`
-  holds them all, and `spend-watch backtest` replays them on the history.
+  Bayesian online changepoints, confirmed after a week. A price is a
+  model's ratio of bill to list moving in a step: the last three settled
+  days agreeing with each other and all outside the month before's tenth
+  to ninetieth percentiles, since spend another machine made comes and
+  goes by the day; the estimates take the new ratio up at once.
+  `src/detect.rs` holds them all, and `spend-watch backtest` replays them on the history.
 - **Sources.** A feed's source that can't be read is nothing for its first
   fifteen minutes, since a machine booting or waking fails every read until
   its network comes; then a note, or a warning when only a sign-in mends

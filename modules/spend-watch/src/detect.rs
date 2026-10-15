@@ -111,6 +111,7 @@ pub fn all(picture: &Picture, history: &History, config: &Config) -> Result<Vec<
     found.extend(mix(picture, config));
     found.extend(novelty(picture, history, config)?);
     found.extend(spikes(picture));
+    found.extend(prices(picture));
     found.extend(health(picture));
     found.extend(said(picture));
     let quiet: HashSet<&str> = config.detectors.quiet.iter().map(String::as_str).collect();
@@ -1071,6 +1072,37 @@ pub fn spikes(picture: &Picture) -> Vec<Finding> {
     vec![f]
 }
 
+/// A model the bill now prices apart from the month before, which the
+/// estimates have already taken up: a note, since nothing is to be done but
+/// knowing figures from the logs moved with it.
+pub fn prices(picture: &Picture) -> Vec<Finding> {
+    picture
+        .shifts
+        .iter()
+        .map(|shift| {
+            let mut f = finding(
+                format!("price:{}", shift.model),
+                "prices",
+                Severity::Note,
+                format!("{} billed at {} of list", shift.model, percent(shift.now)),
+                format!(
+                    "{} has billed at {} of its list price since {}, against {} in the \
+                     month before; estimates from the logs use the new price.",
+                    shift.model,
+                    percent(shift.now),
+                    Zone::day_name(shift.since),
+                    percent(shift.before)
+                ),
+            );
+            f.badge = percent(shift.now);
+            f.note = format!("from {} before", percent(shift.before));
+            f.dollars = (shift.now - shift.before).abs() * shift.list_a_day * 7.0;
+            f.surprise = 1.0;
+            f
+        })
+        .collect()
+}
+
 /// How long a source stands unreadable before it's a finding: past the
 /// minute or two a machine waking or booting spends before its network.
 const OUTAGE: f64 = 15.0 * 60.0;
@@ -1194,6 +1226,41 @@ mod tests {
             }
         }
         history
+    }
+
+    // A model billed at a new share of its list price for three settled
+    // days is a note, and the estimates take the new price up at once.
+    #[test]
+    fn a_moved_price_is_noted_and_taken_up() {
+        let history = History::memory();
+        let today = (NOW / DAY).floor() as i64;
+        for back in 1..=23 {
+            let day = today - back;
+            let hour = day * 24 + 12;
+            turn(&history, "s", hour as f64 * HOUR, 100.0);
+            let ratio = if back <= 3 { 0.55 } else { 0.72 };
+            let line = serde_json::json!({
+                "v": 1, "kind": "billed", "source": "warehouse", "tool": "pi",
+                "hour": crate::time::rfc3339(hour as f64 * HOUR), "model": "m",
+                "dollars": 100.0 * ratio,
+            });
+            let record = crate::feed::parse(&line.to_string()).unwrap();
+            crate::feed::store(&history, "proxy", &record, NOW).unwrap();
+        }
+        let settled = serde_json::json!({
+            "v": 1, "kind": "settled", "source": "warehouse",
+            "through": crate::time::rfc3339((today * 24) as f64 * HOUR),
+        });
+        let record = crate::feed::parse(&settled.to_string()).unwrap();
+        crate::feed::store(&history, "proxy", &record, NOW).unwrap();
+        let picture = Picture::read(&history, &config(), NOW).unwrap();
+        let found = prices(&picture);
+        assert_eq!(found.len(), 1, "{:?}", picture.shifts);
+        assert_eq!(
+            (found[0].key.as_str(), found[0].badge.as_str()),
+            ("price:m", "55%")
+        );
+        assert_eq!(picture.ratios.of("m"), Some(0.55));
     }
 
     fn burns_at(history: &History, now: f64) -> Vec<Finding> {

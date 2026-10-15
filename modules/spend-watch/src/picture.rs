@@ -6,7 +6,7 @@
 
 use crate::caps::{self, Cap, Clock};
 use crate::config::Config;
-use crate::estimate::Ratios;
+use crate::estimate::{Ratios, Shift};
 use crate::forecast::{self, Days, Paths, Shape};
 use crate::history::History;
 use crate::series::{self, Inputs, Piece, Source};
@@ -99,6 +99,8 @@ pub struct Picture {
     pub pieces_week: Vec<Piece>,
     pub pieces_month: Vec<Piece>,
     pub ratios: Ratios,
+    /// Models the bill now prices apart from how it did.
+    pub shifts: Vec<Shift>,
     pub caps: Vec<CapView>,
     pub events: Vec<caps::Event>,
     pub refusals: Vec<(f64, String)>,
@@ -137,7 +139,17 @@ impl Picture {
             .unwrap_or(crate::time::hour_of(now));
         let now_hour = crate::time::hour_of(now);
         let inputs = Inputs::read(history, first_hour, now_hour + 1)?;
-        let ratios = Ratios::learn(&inputs.learning());
+        let learning = inputs.learning();
+        let mut ratios = Ratios::learn(&learning);
+        let shifts =
+            crate::estimate::shifts(&learning, |hour| zone.day(crate::time::hour_start(hour)));
+        // A month's ratio lags a price that's moved, so the hours the bill
+        // hasn't come for are estimated at the price as it is now.
+        for shift in &shifts {
+            if let Some(ratio) = ratios.models.get_mut(&shift.model) {
+                ratio.ratio = shift.now;
+            }
+        }
         let pieces = inputs.pieces(&ratios);
         let mut hours: BTreeMap<i64, f64> = BTreeMap::new();
         for piece in &pieces {
@@ -273,6 +285,7 @@ impl Picture {
             pieces_week: owned(today - 6, today),
             pieces_month: owned(today - 29, today),
             ratios,
+            shifts,
             caps,
             events,
             refusals,
