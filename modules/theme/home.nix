@@ -68,6 +68,59 @@ let
   }
   // lib.genAttrs ansi (name: "ANSI colour ${name}, which programs in the terminal draw with");
 
+  # Code's roles: what each means, the role it wears where the theme file
+  # names no pigment, and how it's set. Structure goes by brightness, the
+  # language's own words strong and its punctuation muted; meaning goes by a
+  # few hues; comments are written in italics, as handwriting.
+  syntax = {
+    comment = {
+      means = "comments and documentation, written for people";
+      role = "muted";
+      italic = true;
+    };
+    keyword = {
+      means = "the language's own words: fn, if, return, import";
+      role = "strong";
+    };
+    punctuation = {
+      means = "brackets, commas and separators";
+      role = "muted";
+    };
+    operator = {
+      means = "operators: = + -> &&";
+      role = "text";
+    };
+    string = {
+      means = "strings and characters";
+      role = "success";
+    };
+    constant = {
+      means = "numbers, booleans and named constants";
+      role = "machine";
+    };
+    function = {
+      means = "functions and methods, where they're defined and called";
+      role = "program";
+    };
+    type = {
+      means = "types, traits, classes and their constructors";
+      role = "voice";
+    };
+    special = {
+      means = "what the language reads specially: escapes, macros, attributes, patterns";
+      role = "person";
+    };
+  };
+
+  # What the theme file says of a syntax role: a pigment's name, or a table
+  # of a pigment and a style.
+  written =
+    name:
+    let
+      entry = (theme.syntax or { }).${name} or { };
+    in
+    if builtins.isString entry then { pigment = entry; } else entry;
+
   ansi = [
     "black"
     "red"
@@ -148,6 +201,19 @@ let
       "warning"
       "success"
     ]) [ (role "on_accent") ]
+    # Code is drawn on the background, and in floats on the sunken shade.
+    ++
+      on
+        (map role [
+          "background"
+          "sunken"
+        ])
+        (
+          lib.mapAttrsToList (name: _: {
+            name = "syntax ${name}";
+            value = cfg.syntax.${name}.colour;
+          }) syntax
+        )
     ++ on [ (term "background") ] (map term (lib.subtractLists background ansi ++ [ "foreground" ]))
     ++ on [ (term "selection_background") ] [ (term "selection_foreground") ];
 
@@ -499,6 +565,28 @@ in
     terminal = lib.mapAttrs (
       name: description: colorOption theme.terminal.${name} "The colour for ${description}."
     ) terminal;
+
+    syntax = lib.mapAttrs (name: about: {
+      colour = lib.mkOption {
+        type = color;
+        default =
+          if written name ? pigment then pigment (written name).pigment else cfg.roles.${about.role};
+        defaultText = lib.literalMD "the pigment the theme file names, or the ${about.role} role";
+        description = "The colour for ${about.means}.";
+      };
+      italic = lib.mkOption {
+        type = lib.types.bool;
+        default = (written name).italic or (about.italic or false);
+        defaultText = lib.literalMD "what the theme file says";
+        description = "Whether ${about.means} are set in italics.";
+      };
+      bold = lib.mkOption {
+        type = lib.types.bool;
+        default = (written name).bold or false;
+        defaultText = lib.literalMD "what the theme file says";
+        description = "Whether ${about.means} are set in bold.";
+      };
+    }) syntax;
 
     shades = lib.mkOption {
       type = lib.types.listOf color;
@@ -877,6 +965,7 @@ in
     inherit (cfg)
       roles
       terminal
+      syntax
       shades
       font
       space

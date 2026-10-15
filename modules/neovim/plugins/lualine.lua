@@ -46,10 +46,35 @@ local function has_lsp()
   return #clients > 0
 end
 
+-- The status line in the theme's roles until its own design is chosen: the
+-- mode on a raised shade, or the accent while typing goes into the buffer.
+local function status_theme()
+  local t = require('theme')
+  local rest = {
+    b = { fg = t.text, bg = t.sunken },
+    c = { fg = t.muted, bg = t.background },
+  }
+  local function mode(a)
+    return vim.tbl_extend('force', rest, { a = a })
+  end
+  return {
+    normal = mode({ fg = t.strong, bg = t.raised, gui = 'bold' }),
+    insert = mode({ fg = t.on_accent, bg = t.accent, gui = 'bold' }),
+    visual = mode({ fg = t.strong, bg = t.selection, gui = 'bold' }),
+    replace = mode({ fg = t.on_accent, bg = t.alert, gui = 'bold' }),
+    command = mode({ fg = t.on_accent, bg = t.warning, gui = 'bold' }),
+    inactive = {
+      a = { fg = t.muted, bg = t.background },
+      b = { fg = t.muted, bg = t.background },
+      c = { fg = t.muted, bg = t.background },
+    },
+  }
+end
+
 require('lualine').setup({
   options = {
     icons_enabled = true,
-    theme = 'bamboo',
+    theme = status_theme(),
     component_separators = {
       left = separators.thin_arrow_left,
       right = separators.thin_arrow_right,

@@ -25,18 +25,26 @@ in
 {
   imports = [ ../theme/home.nix ];
 
-  # The theme's roles, for the plugins that draw on the terminal's own
-  # background (require('theme').background), with the terminal's colours,
-  # the shades and the marks beside them.
+  # The theme's roles, for the colour scheme and the plugins that draw on the
+  # terminal's own background (require('theme').background), with the
+  # terminal's colours, code's roles, the shades and the marks beside them.
   xdg.configFile."nvim/lua/theme.lua".text = "return ${
     lib.generators.toLua { } (
       config.jitsusama.theme.roles
       // {
-        inherit (config.jitsusama.theme) terminal shades;
+        inherit (config.jitsusama.theme)
+          terminal
+          syntax
+          shades
+          appearance
+          ;
         glyphs = lib.mapAttrs (_: mark: mark.glyph) config.jitsusama.theme.glyphs;
       }
     )
   }\n";
+
+  # The theme as Neovim's colour scheme, every colour one of its roles.
+  xdg.configFile."nvim/colors/jitsusama.lua".source = ./colors/jitsusama.lua;
 
   programs.git.ignores = [
     "*.swp"
@@ -62,14 +70,13 @@ in
     ];
 
     initLua = lib.concatLines [
+      "vim.cmd.colorscheme('jitsusama')"
       (builtins.readFile ./init.lua)
     ];
 
     plugins = [
       # A code outline window for skimming and quick navigation.
       (configured aerial ./plugins/aerial.lua)
-      # The colour scheme Omarchy gives Neovim in its Osaka Jade theme.
-      (configured vimPlugins.bamboo-nvim ./plugins/bamboo.lua)
       # Seamless integration with Claude Code.
       (configured vimPlugins.claudecode-nvim ./plugins/claudecode.lua)
       # A completion engine plugin.
