@@ -125,7 +125,6 @@ Code intelligence, refactoring, and formatting operations.
 |-----|--------|-------------|
 | `<leader>css` | Code selection start | Start treesitter selection |
 | `<leader>csi` | Code selection increment | Expand to parent node |
-| `<leader>csc` | Code selection scope | Expand to containing scope |
 | `<leader>csd` | Code selection decrement | Shrink selection |
 
 ##### Code Toggles (`<leader>ct`)
