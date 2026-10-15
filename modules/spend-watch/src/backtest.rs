@@ -1,5 +1,5 @@
 //! The backtest: how the forecast would have done on every day of the
-//! history, and how often the watch would have asked for the person,
+//! history, how often the burn would have been found and the caps asked,
 //! replayed day by day, so its thresholds are judged on real spend.
 
 use crate::config::Config;
@@ -17,8 +17,11 @@ fn fail(error: rusqlite::Error) -> String {
 }
 
 /// Each local day's largest burn score, replayed with the allowance a
-/// usual day of the four weeks before it gave.
-pub fn burn_days(history: &History, picture: &Picture) -> Result<BTreeMap<i64, f64>, String> {
+/// working hour of the eight weeks before it gave, and that working hour.
+pub fn burn_days(
+    history: &History,
+    picture: &Picture,
+) -> Result<BTreeMap<i64, (f64, f64)>, String> {
     let zone = &picture.zone;
     let mut statement = history
         .db
@@ -34,13 +37,19 @@ pub fn burn_days(history: &History, picture: &Picture) -> Result<BTreeMap<i64, f
         return Ok(BTreeMap::new());
     };
     let spent: BTreeMap<i64, f64> = minutes.into_iter().collect();
-    let usual = |day: i64| {
-        let from = (day - picture.days.first - 28).max(0) as usize;
-        let to = ((day - picture.days.first).max(0) as usize).min(picture.days.dollars.len());
-        let active: Vec<f64> = picture.days.dollars[from.min(to)..to]
-            .iter()
-            .copied()
-            .filter(|d| *d >= 5.0)
+    let mut hours: BTreeMap<i64, f64> = BTreeMap::new();
+    for (minute, dollars) in &spent {
+        *hours.entry(minute / 60).or_default() += dollars;
+    }
+    // A working hour before a day: the median of the hours of the eight
+    // weeks before it that spent at least a dollar, as the burn takes it.
+    let working = |day: i64| {
+        let to = (zone.day_start(day) / 3600.0) as i64;
+        let from = (zone.day_start(day - crate::detect::BURN_DAYS as i64) / 3600.0) as i64;
+        let active: Vec<f64> = hours
+            .range(from..to)
+            .map(|(_, spent)| *spent)
+            .filter(|spent| *spent >= 1.0)
             .collect();
         if active.len() < 5 {
             f64::NAN
@@ -48,24 +57,23 @@ pub fn burn_days(history: &History, picture: &Picture) -> Result<BTreeMap<i64, f
             stats::median(&active)
         }
     };
-    let mut usual_by_day: BTreeMap<i64, f64> = BTreeMap::new();
+    let mut working_by_day: BTreeMap<i64, f64> = BTreeMap::new();
     let mut score = 0.0;
-    let mut out: BTreeMap<i64, f64> = BTreeMap::new();
+    let mut out: BTreeMap<i64, (f64, f64)> = BTreeMap::new();
     for minute in first..=last {
         let at = minute as f64 * 60.0;
         let day = zone.day(at);
-        let usual_day = *usual_by_day.entry(day).or_insert_with(|| usual(day));
-        if !usual_day.is_finite() {
+        let working = *working_by_day.entry(day).or_insert_with(|| working(day));
+        if !working.is_finite() {
             continue;
         }
-        let share = picture.shape.shares[Zone::weekday(day)][zone.local_hour(at) as usize];
-        let allowance = (2.0 * usual_day * share / 60.0).max(1.0 / 60.0);
+        let allowance = 2.0 * working / 60.0;
         score = f64::max(
             0.0,
             score + spent.get(&minute).copied().unwrap_or(0.0) - allowance,
         );
-        let entry = out.entry(day).or_default();
-        *entry = entry.max(score);
+        let entry = out.entry(day).or_insert((0.0, working));
+        entry.0 = entry.0.max(score);
     }
     Ok(out)
 }
@@ -108,31 +116,16 @@ pub fn backtest(history: &History, picture: &Picture, config: &Config) -> Result
     let burn = burn_days(history, picture)?;
     let rate = 1.0 / config.detectors.burn_run_length_days;
     let mut alarms: BTreeMap<i64, u32> = BTreeMap::new();
-    let values: Vec<(i64, f64)> = burn.iter().map(|(d, s)| (*d, *s)).collect();
-    for (index, (day, max)) in values.iter().enumerate() {
+    let values: Vec<(i64, f64, f64)> = burn.iter().map(|(d, (s, w))| (*d, *s, *w)).collect();
+    for (index, (day, max, working)) in values.iter().enumerate() {
         if index < window {
             continue;
         }
         let past: Vec<f64> = values[index - window..index]
             .iter()
-            .map(|(_, s)| *s)
+            .map(|(_, s, _)| *s)
             .collect();
-        let usual_floor = {
-            let from = (day - days.first - 28).max(0) as usize;
-            let to = ((day - days.first).max(0) as usize).min(days.dollars.len());
-            stats::median(
-                &days.dollars[from.min(to)..to]
-                    .iter()
-                    .copied()
-                    .filter(|d| *d >= 5.0)
-                    .collect::<Vec<_>>(),
-            ) / 12.0
-        };
-        let threshold = stats::quantile(&past, 1.0 - rate).max(if usual_floor.is_finite() {
-            usual_floor
-        } else {
-            0.0
-        });
+        let threshold = stats::quantile(&past, 1.0 - rate).max(*working);
         if *max > threshold {
             *alarms.entry(day - Zone::weekday(*day) as i64).or_default() += 1;
         }
@@ -172,30 +165,13 @@ pub fn backtest(history: &History, picture: &Picture, config: &Config) -> Result
             .collect()
     };
     if !weeks.is_empty() {
-        let counts: Vec<f64> = weeks
-            .iter()
-            .map(|week| {
-                f64::from(
-                    alarms
-                        .get(week)
-                        .copied()
-                        .unwrap_or(0)
-                        .min(config.notices.budget),
-                )
-            })
-            .collect();
-        let over = weeks
-            .iter()
-            .filter(|week| alarms.get(week).copied().unwrap_or(0) > config.notices.budget)
-            .count();
+        // A burn is listed, never told, so its days are counted as found.
         let total: u32 = alarms.values().sum();
         notes.push(format!(
-            "The burn would have asked {total} times in {} weeks: {:.1} a week, the most {} in \
-             one; {over} weeks past the budget of {}.",
+            "The burn would have been found on {total} day{} in {} weeks, at most {} in a week.",
+            if total == 1 { "" } else { "s" },
             weeks.len(),
-            stats::mean(&counts),
             alarms.values().max().copied().unwrap_or(0),
-            config.notices.budget
         ));
         let cap_total: u32 = caps.values().sum();
         notes.push(format!(
@@ -232,4 +208,72 @@ pub fn backtest(history: &History, picture: &Picture, config: &Config) -> Result
         notes,
         rest: None,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::logs::{Cost, Event, Kind, Tokens, Turn};
+
+    const NOW: f64 = 1_791_988_200.0;
+
+    fn turn(history: &History, at: f64, dollars: f64) {
+        history
+            .add_event(&Event::Turn(Turn {
+                session: "s".into(),
+                at,
+                model: "m".into(),
+                provider: "p".into(),
+                kind: Kind::Agent,
+                tokens: Tokens::default(),
+                cost: Cost {
+                    total: dollars,
+                    ..Cost::default()
+                },
+                quest: None,
+                gap: None,
+                rebuilt: 0.0,
+                rebuilt_cost: 0.0,
+                cause: None,
+            }))
+            .unwrap();
+    }
+
+    // A burn is listed, never told, so the backtest counts the days it
+    // would have been found, not notices against their weekly budget.
+    #[test]
+    fn a_burn_is_counted_as_found_not_asked() {
+        let history = History::memory();
+        let today = (NOW / DAY).floor() * DAY;
+        for back in 1..90 {
+            let day = today - back as f64 * DAY;
+            for minute in (9 * 60..17 * 60).step_by(10) {
+                turn(&history, day + minute as f64 * 60.0, 1.0);
+            }
+        }
+        for minute in 0..180 {
+            turn(
+                &history,
+                today - DAY + (2 * 60 + minute) as f64 * 60.0,
+                10.0,
+            );
+        }
+        let config: Config = serde_json::from_value(serde_json::json!({
+            "sessions": "/none", "runs": "/none", "registry": "/none", "quests": "/none",
+            "state": "/none", "zone": "UTC",
+        }))
+        .unwrap();
+        let picture = Picture::read(&history, &config, NOW).unwrap();
+        let report = backtest(&history, &picture, &config).unwrap();
+        let burn = report
+            .notes
+            .iter()
+            .find(|note| note.starts_with("The burn"))
+            .unwrap();
+        assert_eq!(
+            burn, "The burn would have been found on 1 day in 9 weeks, at most 1 in a week.",
+            "{:?}",
+            report.notes
+        );
+    }
 }
