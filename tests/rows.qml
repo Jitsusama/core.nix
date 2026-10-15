@@ -31,6 +31,15 @@ ShellRoot {
             Choice { id: sideLong; name: "Weekly cap"; side: root.sentence; glyph: "$" }
             Choice { id: nameLong; name: root.long + root.long; side: "7.0× usual"; glyph: "$" }
             Choice { id: fits; name: "Today"; side: "$484 · usual"; glyph: "$" }
+            // The margin's row for nothing on, as Margin.qml draws it inside
+            // its 440 points: whimsy that ends in an ellipsis isn't whimsy.
+            Choice {
+                id: nothing
+                width: 440 - 2 * Theme.inset
+                quiet: true
+                glyph: String.fromCodePoint(0xf0674)
+                name: "Nothing's on or waiting."
+            }
             Prompt {
                 id: ghosted
                 width: root.panel
@@ -89,6 +98,9 @@ ShellRoot {
                 && cut(texts)[0] === nameLong.name, said(texts));
             texts = apart(fits, fits.width);
             expect("words that fit left whole", cut(texts).length === 0, said(texts));
+            texts = apart(nothing, nothing.width);
+            expect("the margin's words for nothing on whole", cut(texts).length === 0,
+                said(texts));
             for (const field of [ghosted, hinted]) {
                 const end = field.mapToItem(null, field.end, 0).x;
                 texts = drawn(field, []);

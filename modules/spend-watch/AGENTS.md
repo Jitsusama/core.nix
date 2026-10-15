@@ -21,7 +21,11 @@ feed speaks.
   tool and agent kind, so every cut is a sum of the same pieces and every
   report agrees with every other. A quest's spend rolls up to its root. A
   bill that doesn't say which session spent it is shared by the pieces on
-  its model, by their list prices, since models are priced apart.
+  its model, by their list prices, since models are priced apart; a
+  metered hour keeps what other tools spent on each model as theirs on it.
+  When pi carries a session into a new log it copies the old entries ahead
+  of the new header, so what comes before the header is the parent log's
+  to count, unless that log is gone.
 - **Agents.** The config names where agents' logs are kept, by patterns
   whose each `*` is one name, so a large tree beside them is never walked,
   and the kind of work each pattern's are. A run's agents (a council's
@@ -55,8 +59,14 @@ feed speaks.
   alarming past the quantile eight weeks of daily maxima crossed once a
   month. Costly sessions are found against their peers with empirical-Bayes
   shrinkage and Benjamini-Hochberg at 5%. Changes of regime come from
-  Bayesian online changepoints, confirmed after a week. `src/detect.rs`
-  holds them all, and `spend-watch backtest` replays them on the history.
+  Bayesian online changepoints, confirmed after a week. A price is a
+  model's ratio of bill to list moving in a step from one level to
+  another: the last three settled days agreeing with each other and all
+  outside the month before's tenth to ninetieth percentiles, which lie
+  within a quarter of their median, since spend another machine made
+  comes and goes by the day; the estimates take the new ratio up at once.
+  `src/detect.rs` holds them all, and `spend-watch backtest` replays them
+  on the history.
 - **Sources.** A feed's source that can't be read is nothing for its first
   fifteen minutes, since a machine booting or waking fails every read until
   its network comes; then a note, or a warning when only a sign-in mends
@@ -71,9 +81,12 @@ feed speaks.
   shape it reads, or the newer one replaces it.
 - **Strings.** Each finding carries a title for its row, a badge of a few
   words beside it, a note for the launcher's footer and a detail for what's
-  copied and told. `src/collection.rs` lays them out as the launcher's
-  other collections are: what wants a look first, then how things stand,
-  each a figure with its parts a step in, then what was found.
+  copied and told. What asks for a look puts its note in the margin's
+  footer too, which holds 28 characters, and the margin's header holds 23
+  beside its name: `src/status.rs` `HEADER` and `FOOTER`.
+  `src/collection.rs` lays them out as the launcher's other collections
+  are: what wants a look first, then how things stand, each a figure with
+  its parts a step in, then what was found.
 - **Telling.** Notes stay in the collection. Warnings and alerts are told
   once as a notice, at most three a week outside a cap's, and withdrawn when
   they no longer hold or are marked expected. No notice holds an amount, and

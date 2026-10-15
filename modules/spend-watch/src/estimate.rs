@@ -101,9 +101,138 @@ impl Ratios {
     }
 }
 
+/// The settled days a price's change is judged on, newest last.
+pub const SHIFT_DAYS: usize = 3;
+
+/// A model the bill now prices apart from how it did: its ratio of bill to
+/// list over the last few settled days against the month before.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Shift {
+    pub model: String,
+    pub before: f64,
+    pub now: f64,
+    /// The first day of the change, as `day` numbers it.
+    pub since: i64,
+    /// List-priced spend a day in those days, to say what it's worth.
+    pub list_a_day: f64,
+}
+
+/// Each model whose last `SHIFT_DAYS` settled days, ending on the last day
+/// anything settled, all fall outside the tenth to ninetieth percentiles
+/// of the days before on the same side, agree with each other within a
+/// tenth, and move its ratio by a tenth or more, from days before that
+/// held within a quarter of their median. A price moves in a step from
+/// one level to another and stays; spend some other machine made, with no
+/// log here, comes and goes by the day, and a ratio that wandered before
+/// was never one price. `day` says which day an hour is in.
+pub fn shifts(rows: &[(i64, String, f64, f64)], day: impl Fn(i64) -> i64) -> Vec<Shift> {
+    let mut daily: BTreeMap<&str, BTreeMap<i64, (f64, f64)>> = BTreeMap::new();
+    for (hour, model, list, billed) in rows {
+        let entry = daily
+            .entry(model)
+            .or_default()
+            .entry(day(*hour))
+            .or_default();
+        entry.0 += list;
+        entry.1 += billed;
+    }
+    let last = daily
+        .values()
+        .filter_map(|days| days.keys().next_back().copied())
+        .max();
+    let mut out = Vec::new();
+    for (model, days) in daily {
+        if days.keys().next_back().copied() != last {
+            continue;
+        }
+        // Days with too little spend say little of a price.
+        let days: Vec<(i64, f64, f64)> = days
+            .into_iter()
+            .filter(|(_, (list, _))| *list >= 1.0)
+            .map(|(day, (list, billed))| (day, list, billed))
+            .collect();
+        if days.len() < SHIFT_DAYS + 7 {
+            continue;
+        }
+        let (earlier, recent) = days.split_at(days.len() - SHIFT_DAYS);
+        let earlier = &earlier[earlier.len().saturating_sub(LEARN_DAYS as usize)..];
+        let sum = |days: &[(i64, f64, f64)]| {
+            days.iter().fold((0.0, 0.0), |(list, billed), day| {
+                (list + day.1, billed + day.2)
+            })
+        };
+        let ((before_list, before_billed), (now_list, now_billed)) = (sum(earlier), sum(recent));
+        if before_list < LEARN_FLOOR || now_list < LEARN_FLOOR {
+            continue;
+        }
+        let mut each: Vec<f64> = earlier.iter().map(|day| day.2 / day.1).collect();
+        each.sort_by(f64::total_cmp);
+        let (low, high) = (
+            crate::stats::quantile_sorted(&each, 0.1),
+            crate::stats::quantile_sorted(&each, 0.9),
+        );
+        let middle = crate::stats::quantile_sorted(&each, 0.5);
+        if middle <= 0.0 || (high - low) / middle > 0.25 {
+            continue;
+        }
+        let ratios: Vec<f64> = recent.iter().map(|day| day.2 / day.1).collect();
+        let all_below = ratios.iter().all(|ratio| *ratio < low);
+        let all_above = ratios.iter().all(|ratio| *ratio > high);
+        let (before, now) = (before_billed / before_list, now_billed / now_list);
+        let steady = ratios.iter().all(|ratio| (ratio / now - 1.0).abs() <= 0.1);
+        if (all_below || all_above) && steady && before > 0.0 && (now / before - 1.0).abs() >= 0.1 {
+            out.push(Shift {
+                model: model.to_owned(),
+                before,
+                now,
+                since: recent[0].0,
+                list_a_day: now_list / SHIFT_DAYS as f64,
+            });
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn days(model: &str, ratios: &[f64]) -> Vec<(i64, String, f64, f64)> {
+        ratios
+            .iter()
+            .enumerate()
+            .map(|(day, ratio)| (day as i64 * 24, model.to_owned(), 100.0, 100.0 * ratio))
+            .collect()
+    }
+
+    // Three days on at a new ratio is a price; one odd day isn't, nor is
+    // a small drift.
+    #[test]
+    fn a_price_is_three_days_at_a_new_ratio() {
+        let usual: Vec<f64> = (0..20).map(|day| 0.70 + 0.02 * (day % 3) as f64).collect();
+        let moved = [usual.clone(), vec![0.55, 0.56, 0.54]].concat();
+        let shifts = |rows: &[(i64, String, f64, f64)]| shifts(rows, |hour| hour.div_euclid(24));
+        let found = shifts(&days("opus", &moved));
+        assert_eq!(found.len(), 1);
+        assert_eq!((found[0].model.as_str(), found[0].since), ("opus", 20));
+        assert!((found[0].now - 0.55).abs() < 1e-9);
+        assert!((found[0].before - 0.72).abs() < 0.01);
+        let once = [usual.clone(), vec![0.71, 0.40, 0.72]].concat();
+        assert!(shifts(&days("opus", &once)).is_empty());
+        let unsteady = [usual.clone(), vec![1.2, 1.9, 1.4]].concat();
+        assert!(shifts(&days("opus", &unsteady)).is_empty());
+        let mut gone = days("opus", &moved);
+        gone.push((30 * 24, "sonnet".to_owned(), 10.0, 7.0));
+        assert!(shifts(&gone).is_empty());
+        let drift = [usual.clone(), vec![0.67, 0.67, 0.67]].concat();
+        assert!(shifts(&days("opus", &drift)).is_empty());
+        assert!(shifts(&days("opus", &[0.7, 0.5, 0.5, 0.5])).is_empty());
+        // A ratio that wandered from 80% to 190% of list was never one
+        // price, so three steady days below it aren't a new one.
+        let wandering: Vec<f64> = (0..20).map(|day| [0.85, 1.0, 1.3, 1.9][day % 4]).collect();
+        let settled = [wandering, vec![0.77, 0.74, 0.80]].concat();
+        assert!(shifts(&days("opus", &settled)).is_empty());
+    }
 
     #[test]
     fn a_ratio_is_billed_over_list_with_its_spread() {

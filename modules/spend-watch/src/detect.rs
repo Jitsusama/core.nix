@@ -111,6 +111,7 @@ pub fn all(picture: &Picture, history: &History, config: &Config) -> Result<Vec<
     found.extend(mix(picture, config));
     found.extend(novelty(picture, history, config)?);
     found.extend(spikes(picture));
+    found.extend(prices(picture));
     found.extend(health(picture));
     found.extend(said(picture));
     let quiet: HashSet<&str> = config.detectors.quiet.iter().map(String::as_str).collect();
@@ -120,6 +121,32 @@ pub fn all(picture: &Picture, history: &History, config: &Config) -> Result<Vec<
         }
     }
     Ok(found)
+}
+
+// What asks for a look says why in the margin's footer, beside one hint,
+// so each of these notes is held to what that shows.
+
+fn ending_note(after: f64, fallback: f64) -> String {
+    // The side already says when it ends.
+    format!("{} likely over {}", percent(after), whole(fallback))
+}
+
+fn changed_note(before: Option<f64>, spent: f64) -> String {
+    format!(
+        "was {}; {} spent",
+        before.map_or("no limit".into(), whole),
+        whole(spent)
+    )
+}
+
+fn refused_note(refused: usize, since: &str) -> String {
+    format!("{refused} refused since {since}")
+}
+
+const NEW_NOTE: &str = "first in thirty days";
+
+fn elsewhere_note(week: f64, month: f64) -> String {
+    format!("{} of pi's, usually {}", percent(week), percent(month))
 }
 
 /// The days of history a burn's threshold is judged on: long enough that
@@ -258,11 +285,7 @@ pub fn caps(picture: &Picture) -> Vec<Finding> {
                         ),
                     );
                     f.badge = format!("ends {day}");
-                    f.note = format!(
-                        "{} likely over the {} after",
-                        percent(after),
-                        whole(fallback)
-                    );
+                    f.note = ending_note(after, fallback);
                     f.dollars = view.spent;
                     f.surprise = 2.5;
                     f.cap = true;
@@ -334,11 +357,7 @@ pub fn caps(picture: &Picture) -> Vec<Finding> {
         );
         // The title says what it is now; the side, when.
         f.badge = format!("at {}", picture.zone.clock(event.at, now));
-        f.note = format!(
-            "from {}, with {} spent",
-            event.before.map_or("no limit".into(), whole),
-            whole(event.spent)
-        );
+        f.note = changed_note(event.before, event.spent);
         f.dollars = event.spent;
         f.surprise = 3.0;
         f.cap = true;
@@ -376,11 +395,7 @@ pub fn refusals(picture: &Picture) -> Vec<Finding> {
         ),
     );
     f.badge = format!("last {}", picture.zone.clock(last.0, picture.now));
-    f.note = format!(
-        "{} refused since {}; your spend still shows",
-        recent.len(),
-        picture.zone.clock(recent[0].0, picture.now)
-    );
+    f.note = refused_note(recent.len(), &picture.zone.clock(recent[0].0, picture.now));
     f.surprise = 3.0;
     f.cap = true;
     f.action = offered(picture, "cap");
@@ -829,7 +844,12 @@ pub fn mix(picture: &Picture, config: &Config) -> Vec<Finding> {
     let zone = &picture.zone;
     let today = zone.day(picture.now);
     let mut by_day: BTreeMap<i64, HashMap<String, f64>> = BTreeMap::new();
-    for piece in &picture.pieces_month {
+    // Spend whose model nobody recorded isn't a model to lean on.
+    for piece in picture
+        .pieces_month
+        .iter()
+        .filter(|piece| !piece.model.is_empty())
+    {
         let day = zone.day(crate::time::hour_start(piece.hour));
         *by_day
             .entry(day)
@@ -891,6 +911,11 @@ pub fn mix(picture: &Picture, config: &Config) -> Vec<Finding> {
         .iter()
         .position(|m| *m == top.0)
         .map_or(0.0, |i| usual[i] / total_usual.max(1e-9));
+    // A model that spent nothing on most days is new, which is novelty's to
+    // say, once.
+    if usual_share <= 0.0 {
+        return Vec::new();
+    }
     let mut f = finding(
         format!("mix:{today}"),
         "mix",
@@ -978,7 +1003,7 @@ pub fn novelty(
                 ),
             );
             f.badge = whole(spent);
-            f.note = "in a day, after none in the thirty before".into();
+            f.note = NEW_NOTE.into();
             f.dollars = spent;
             f.surprise = 2.0;
             out.push(f);
@@ -1015,11 +1040,7 @@ pub fn novelty(
             ),
         );
         f.badge = whole(week);
-        f.note = format!(
-            "{} of pi's spend against {} usual",
-            percent(week_share),
-            percent(month_share)
-        );
+        f.note = elsewhere_note(week_share, month_share);
         f.dollars = week;
         f.surprise = 2.0;
         out.push(f);
@@ -1069,6 +1090,39 @@ pub fn spikes(picture: &Picture) -> Vec<Finding> {
     f.dollars = median - costliest;
     f.surprise = 1.5;
     vec![f]
+}
+
+/// A model the bill now prices apart from the month before, which the
+/// estimates have already taken up: a note, since nothing is to be done but
+/// knowing figures from the logs moved with it.
+pub fn prices(picture: &Picture) -> Vec<Finding> {
+    picture
+        .shifts
+        .iter()
+        .map(|shift| {
+            let mut f = finding(
+                format!("price:{}", shift.model),
+                "prices",
+                Severity::Note,
+                // Opened on its own words, since a title's first letter is
+                // capitalized and a model's name is written as it's named.
+                format!("a new price for {}", shift.model),
+                format!(
+                    "{} has billed at {} of its list price since {}, against {} in the \
+                     month before; estimates from the logs use the new price.",
+                    shift.model,
+                    percent(shift.now),
+                    Zone::day_name(shift.since),
+                    percent(shift.before)
+                ),
+            );
+            f.badge = percent(shift.now);
+            f.note = format!("of list, from {} before", percent(shift.before));
+            f.dollars = (shift.now - shift.before).abs() * shift.list_a_day * 7.0;
+            f.surprise = 1.0;
+            f
+        })
+        .collect()
 }
 
 /// How long a source stands unreadable before it's a finding: past the
@@ -1194,6 +1248,109 @@ mod tests {
             }
         }
         history
+    }
+
+    // Each note that asks for a look fits the margin's footer at its
+    // widest: a five-figure cap, every refusal of a day, all of the spend.
+    #[test]
+    fn what_asks_for_a_look_fits_the_margin() {
+        for note in [
+            ending_note(1.0, 15_000.0),
+            changed_note(Some(15_000.0), 15_000.0),
+            changed_note(None, 15_000.0),
+            refused_note(999, "Wed 23:10"),
+            NEW_NOTE.into(),
+            elsewhere_note(1.0, 1.0),
+        ] {
+            let shown = note.chars().count();
+            assert!(shown <= crate::status::FOOTER, "{note}: {shown}");
+        }
+    }
+
+    // Spend whose model nobody recorded says nothing of the day's mix of
+    // models, however much of it there is.
+    #[test]
+    fn the_mix_is_of_models_someone_named() {
+        assert!(mix_with("").is_empty());
+        // One that spent nothing on most days is new, which novelty says.
+        assert!(mix_with("z").is_empty());
+        // One that spends a little most days and most of today is told.
+        let found = mix_with("y");
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].title, "today leans on y");
+    }
+
+    // Twenty-eight days of model m from nine to five, with $5 of y each
+    // morning, and today $900 of `model`.
+    fn mix_with(model: &str) -> Vec<Finding> {
+        let history = History::memory();
+        let today = (NOW / DAY).floor() * DAY;
+        for back in 1..28 {
+            let line = serde_json::json!({
+                "v": 1, "kind": "billed", "source": "meter", "tool": "all",
+                "hour": crate::time::rfc3339(today - back as f64 * DAY + 7.0 * HOUR),
+                "model": "y", "dollars": 5.0,
+            });
+            let record = crate::feed::parse(&line.to_string()).unwrap();
+            crate::feed::store(&history, "proxy", &record, NOW).unwrap();
+        }
+        for back in 0..28 {
+            for minute in (9 * 60..17 * 60).step_by(10) {
+                let at = today - back as f64 * DAY + minute as f64 * 60.0;
+                if at < NOW - 3600.0 {
+                    turn(&history, &format!("s{back}"), at, 2.0);
+                }
+            }
+        }
+        let line = serde_json::json!({
+            "v": 1, "kind": "billed", "source": "meter", "tool": "all",
+            "hour": crate::time::rfc3339(NOW - 1800.0), "model": model, "dollars": 900.0,
+        });
+        let record = crate::feed::parse(&line.to_string()).unwrap();
+        crate::feed::store(&history, "proxy", &record, NOW).unwrap();
+        let picture = Picture::read(&history, &config(), NOW).unwrap();
+        mix(&picture, &config())
+    }
+
+    // A model billed at a new share of its list price for three settled
+    // days is a note, and the estimates take the new price up at once.
+    #[test]
+    fn a_moved_price_is_noted_and_taken_up() {
+        let history = History::memory();
+        let today = (NOW / DAY).floor() as i64;
+        for back in 1..=23 {
+            let day = today - back;
+            let hour = day * 24 + 12;
+            turn(&history, "s", hour as f64 * HOUR, 100.0);
+            let ratio = if back <= 3 { 0.55 } else { 0.72 };
+            let line = serde_json::json!({
+                "v": 1, "kind": "billed", "source": "warehouse", "tool": "pi",
+                "hour": crate::time::rfc3339(hour as f64 * HOUR), "model": "m",
+                "dollars": 100.0 * ratio,
+            });
+            let record = crate::feed::parse(&line.to_string()).unwrap();
+            crate::feed::store(&history, "proxy", &record, NOW).unwrap();
+        }
+        let settled = serde_json::json!({
+            "v": 1, "kind": "settled", "source": "warehouse",
+            "through": crate::time::rfc3339((today * 24) as f64 * HOUR),
+        });
+        let record = crate::feed::parse(&settled.to_string()).unwrap();
+        crate::feed::store(&history, "proxy", &record, NOW).unwrap();
+        let picture = Picture::read(&history, &config(), NOW).unwrap();
+        let found = prices(&picture);
+        assert_eq!(found.len(), 1, "{:?}", picture.shifts);
+        assert_eq!(
+            (found[0].key.as_str(), found[0].badge.as_str()),
+            ("price:m", "55%")
+        );
+        // A title opens on its own words, since what begins it is written
+        // with a capital and a model's name is written as it's named.
+        assert_eq!(
+            (found[0].title.as_str(), found[0].note.as_str()),
+            ("a new price for m", "of list, from 72% before")
+        );
+        assert_eq!(picture.ratios.of("m"), Some(0.55));
     }
 
     fn burns_at(history: &History, now: f64) -> Vec<Finding> {

@@ -335,9 +335,13 @@ pub fn summary(picture: &Picture, findings: &[Finding]) -> Report {
     };
     notes.push(figure("Today", &picture.today));
     if !picture.standing.word.is_empty() {
+        let stands = match picture.standing.word.as_str() {
+            "quiet" => "quieter than usual",
+            "ahead" => "ahead of usual",
+            _ => "usual",
+        };
         notes.push(format!(
-            "Today stands {}: a usual day by this hour is {}.",
-            picture.standing.word,
+            "Today is {stands}: a usual day by this hour is {}.",
             dollars(picture.standing.usual)
         ));
     }

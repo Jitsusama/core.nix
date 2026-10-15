@@ -53,6 +53,12 @@ pub struct Carry {
     pub last_context: Option<f64>,
     pub last_long: bool,
     pub compacted: bool,
+    /// For a log pi carried a session into, when it began: what comes
+    /// before is a copy of the parent's log, which holds it already.
+    pub copied_until: Option<f64>,
+    /// Whether the header was read with copies in mind, so a log held
+    /// from before they were is checked once.
+    pub copies_known: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -175,9 +181,32 @@ pub fn read(bytes: &[u8], carry: &mut Carry, refusals: &[String]) -> (Vec<Event>
         let Ok(entry) = serde_json::from_slice::<Value>(line) else {
             continue;
         };
+        let copied = carry
+            .copied_until
+            .is_some_and(|until| stamp(&entry).is_some_and(|at| at < until));
+        let from = events.len();
         entry_events(&entry, carry, refusals, &mut events);
+        // A copy still sets the context its log's own turns read, but
+        // its turns and refusals are its parent's to count.
+        if copied {
+            let read = events.split_off(from);
+            events.extend(
+                read.into_iter()
+                    .filter(|event| !matches!(event, Event::Turn(_) | Event::Refusal { .. })),
+            );
+        }
     }
     (events, used)
+}
+
+/// Whether a header is that of a log pi carried a session into, from a
+/// parent whose log is still there to count what was copied.
+pub fn carried(header: &Value) -> bool {
+    header.get("type").and_then(Value::as_str) == Some("session")
+        && header
+            .get("parentSession")
+            .and_then(Value::as_str)
+            .is_some_and(|parent| std::path::Path::new(parent).is_file())
 }
 
 /// The quest whose workspace `cwd` is in: the directory under `workspaces`
@@ -236,6 +265,10 @@ fn entry_events(entry: &Value, carry: &mut Carry, refusals: &[String], events: &
                 .to_owned();
             carry.session = Some(id.clone());
             carry.cwd = Some(cwd.clone());
+            carry.copies_known = true;
+            if carried(entry) {
+                carry.copied_until = at;
+            }
             if carry.quest.is_none() {
                 carry.quest = carry
                     .workspaces
@@ -521,6 +554,48 @@ mod tests {
         let (events, used) = read(&bytes, &mut carry, &refusals());
         assert_eq!(events.len(), 1);
         assert_eq!(used, HEADER.len() + 1);
+    }
+
+    // pi carries a session into a new log by copying its entries, with
+    // their times, ahead of the new header; the parent's log still holds
+    // them, so only what comes after the header is the new log's own.
+    fn carried(parent: &str) -> String {
+        serde_json::json!({
+            "type": "session", "id": "s2", "timestamp": "2026-10-14T10:30:00Z",
+            "cwd": "/home/someone/elsewhere", "parentSession": parent,
+        })
+        .to_string()
+    }
+
+    #[test]
+    fn a_carried_log_counts_only_its_own_turns() {
+        let parent = concat!(env!("CARGO_MANIFEST_DIR"), "/Cargo.toml");
+        let bytes = lines(&[
+            &carried(parent),
+            &turn("2026-10-14T10:00:00Z", 0, 50_000, 0),
+            &turn("2026-10-14T10:31:00Z", 50_000, 2_000, 0),
+        ]);
+        let mut carry = Carry::default();
+        let (events, _) = read(&bytes, &mut carry, &refusals());
+        let turns = turns(&events);
+        assert_eq!(turns.len(), 1);
+        assert_eq!(turns[0].session, "s2");
+        // The copy is still the context the first turn of its own read.
+        assert_eq!(turns[0].gap, Some(31.0 * 60.0));
+        assert_eq!(turns[0].cause, None);
+    }
+
+    // A copy whose parent's log is gone is the only record of its turns.
+    #[test]
+    fn a_copy_without_its_parent_keeps_every_turn() {
+        let bytes = lines(&[
+            &carried("/nowhere/2026_gone.jsonl"),
+            &turn("2026-10-14T10:00:00Z", 0, 50_000, 0),
+            &turn("2026-10-14T10:31:00Z", 50_000, 2_000, 0),
+        ]);
+        let mut carry = Carry::default();
+        let (events, _) = read(&bytes, &mut carry, &refusals());
+        assert_eq!(turns(&events).len(), 2);
     }
 
     #[test]

@@ -6,7 +6,7 @@
 
 use crate::caps::{self, Cap, Clock};
 use crate::config::Config;
-use crate::estimate::Ratios;
+use crate::estimate::{Ratios, Shift};
 use crate::forecast::{self, Days, Paths, Shape};
 use crate::history::History;
 use crate::series::{self, Inputs, Piece, Source};
@@ -33,10 +33,14 @@ impl Figure {
     }
 }
 
+/// How a day can stand against the usual ones by the same hour: a word,
+/// since the margin's header holds it beside the day's figure, and how far
+/// ahead is a burn's or a forecast's to say.
+pub const WORDS: [&str; 3] = ["quiet", "usual", "ahead"];
+
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct Standing {
-    /// "quiet", "usual", "ahead of usual", "well ahead of usual", or
-    /// nothing while there are too few days to say.
+    /// One of `WORDS`, or nothing while there are too few days to say.
     pub word: String,
     pub percentile: f64,
     /// A usual day's spend by this hour: the median of the comparable days.
@@ -99,6 +103,8 @@ pub struct Picture {
     pub pieces_week: Vec<Piece>,
     pub pieces_month: Vec<Piece>,
     pub ratios: Ratios,
+    /// Models the bill now prices apart from how it did.
+    pub shifts: Vec<Shift>,
     pub caps: Vec<CapView>,
     pub events: Vec<caps::Event>,
     pub refusals: Vec<(f64, String)>,
@@ -137,7 +143,17 @@ impl Picture {
             .unwrap_or(crate::time::hour_of(now));
         let now_hour = crate::time::hour_of(now);
         let inputs = Inputs::read(history, first_hour, now_hour + 1)?;
-        let ratios = Ratios::learn(&inputs.learning());
+        let learning = inputs.learning();
+        let mut ratios = Ratios::learn(&learning);
+        let shifts =
+            crate::estimate::shifts(&learning, |hour| zone.day(crate::time::hour_start(hour)));
+        // A month's ratio lags a price that's moved, so the hours the bill
+        // hasn't come for are estimated at the price as it is now.
+        for shift in &shifts {
+            if let Some(ratio) = ratios.models.get_mut(&shift.model) {
+                ratio.ratio = shift.now;
+            }
+        }
         let pieces = inputs.pieces(&ratios);
         let mut hours: BTreeMap<i64, f64> = BTreeMap::new();
         for piece in &pieces {
@@ -273,6 +289,7 @@ impl Picture {
             pieces_week: owned(today - 6, today),
             pieces_month: owned(today - 29, today),
             ratios,
+            shifts,
             caps,
             events,
             refusals,
@@ -438,26 +455,34 @@ fn mixture_weight(days: &Days) -> f64 {
     (other / (one + other)).clamp(0.2, 0.8)
 }
 
+/// How many periods before a period cap's own its share is judged over.
+const EARLIER_PERIODS: usize = 7;
+
 /// The share of what's billed that a feed's cap counts: a premium models'
 /// day counts only those models, and a weekly cap may count another
 /// tool's spend beside it. It's the feed's figure against what was billed
 /// over the same window, and all of it for a cap of the account's own or
-/// a window with nothing billed.
-fn counted(cap: &Cap, hours: &BTreeMap<i64, f64>) -> f64 {
+/// a window with nothing billed. A period's cap is judged over the periods
+/// before it too, since one just begun has too little billed to say.
+fn counted(cap: &Cap, earlier: &[Cap], hours: &BTreeMap<i64, f64>) -> f64 {
     if cap.feed.is_empty() {
         return 1.0;
     }
-    let last = crate::time::hour_of(cap.at);
-    // A period's cap counts from the period's start, not a window back.
-    let first = match cap.resets {
-        Some(resets) => crate::time::hour_of(resets - cap.window_hours as f64 * HOUR),
-        None => last - cap.window_hours as i64 + 1,
-    };
-    let billed: f64 = hours.range(first..=last).map(|(_, d)| d).sum();
+    let (mut spent, mut billed) = (0.0, 0.0);
+    for reading in std::iter::once(cap).chain(earlier) {
+        let last = crate::time::hour_of(reading.at);
+        // A period's cap counts from the period's start, not a window back.
+        let first = match reading.resets {
+            Some(resets) => crate::time::hour_of(resets - reading.window_hours as f64 * HOUR),
+            None => last - reading.window_hours as i64 + 1,
+        };
+        spent += reading.spent;
+        billed += hours.range(first..=last).map(|(_, d)| d).sum::<f64>();
+    }
     if billed <= 0.0 {
         1.0
     } else {
-        (cap.spent / billed).clamp(0.0, 2.0)
+        (spent / billed).clamp(0.0, 2.0)
     }
 }
 
@@ -505,13 +530,11 @@ fn standing(zone: &Zone, hours: &BTreeMap<i64, f64>, now: f64, so_far: f64) -> S
     let equal = comparable.iter().filter(|value| **value == so_far).count() as f64;
     let percentile = (below + equal / 2.0) / comparable.len() as f64;
     let word = if percentile <= 0.1 {
-        "quiet"
+        WORDS[0]
     } else if percentile <= 0.9 {
-        "usual"
-    } else if so_far > 1.5 * stats::quantile(&comparable, 0.9) {
-        "well ahead of usual"
+        WORDS[1]
     } else {
-        "ahead of usual"
+        WORDS[2]
     };
     Standing {
         word: word.into(),
@@ -557,7 +580,8 @@ fn cap_views(
     let mut out = Vec::new();
     for cap in caps {
         let window = cap.window_hours as i64;
-        let share = counted(&cap, hours);
+        let earlier = caps::earlier(history, &cap, EARLIER_PERIODS)?;
+        let share = counted(&cap, &earlier, hours);
         // What's been billed since the feed's figure, hours wholly after it:
         // none when the figure came this hour.
         let after = crate::time::hour_of(cap.at) + 1;
@@ -666,7 +690,7 @@ mod tests {
         day.resets = Some(106.0 * HOUR);
         let hours: BTreeMap<i64, f64> = (77..=100).map(|hour| (hour, 50.0)).collect();
         // The 19 hours from 82 to 100 billed $950.
-        assert_eq!(counted(&day, &hours), 300.0 / 950.0);
+        assert_eq!(counted(&day, &[], &hours), 300.0 / 950.0);
         assert_eq!(next_reset(&day, 101.0 * HOUR), Some(106.0 * HOUR));
         assert_eq!(next_reset(&day, 106.0 * HOUR), Some(130.0 * HOUR));
         assert_eq!(next_reset(&day, 131.0 * HOUR), Some(154.0 * HOUR));
@@ -678,9 +702,38 @@ mod tests {
     #[test]
     fn a_cap_counts_its_share_of_what_is_billed() {
         let hours: BTreeMap<i64, f64> = (77..=100).map(|hour| (hour, 50.0)).collect();
-        assert_eq!(counted(&cap("proxy", 0.0), &hours), 0.0);
-        assert_eq!(counted(&cap("proxy", 600.0), &hours), 0.5);
-        assert_eq!(counted(&cap("", 0.0), &hours), 1.0);
-        assert_eq!(counted(&cap("proxy", 10.0), &BTreeMap::new()), 1.0);
+        assert_eq!(counted(&cap("proxy", 0.0), &[], &hours), 0.0);
+        assert_eq!(counted(&cap("proxy", 600.0), &[], &hours), 0.5);
+        assert_eq!(counted(&cap("", 0.0), &[], &hours), 1.0);
+        assert_eq!(counted(&cap("proxy", 10.0), &[], &BTreeMap::new()), 1.0);
+    }
+
+    // A premium day read just after midnight has nothing billed in it yet,
+    // which says nothing of its share; the days before, which counted none
+    // of what was billed, say it's none.
+    #[test]
+    fn a_period_just_begun_takes_its_share_from_the_ones_before() {
+        let period = |at: f64, resets: f64, spent: f64| {
+            let mut day = cap("proxy", spent);
+            day.at = at;
+            day.resets = Some(resets);
+            day
+        };
+        let today = period(100.0 * HOUR + 60.0, 124.0 * HOUR, 0.0);
+        let hours: BTreeMap<i64, f64> = (52..=99).map(|hour| (hour, 50.0)).collect();
+        let earlier = [
+            period(99.0 * HOUR + 3000.0, 100.0 * HOUR, 0.0),
+            period(75.0 * HOUR + 3000.0, 76.0 * HOUR, 0.0),
+        ];
+        assert_eq!(counted(&today, &earlier, &hours), 0.0);
+        // Half of what each earlier day billed counted, and today has just
+        // begun at the same: still half.
+        let earlier = [
+            period(99.0 * HOUR + 3000.0, 100.0 * HOUR, 600.0),
+            period(75.0 * HOUR + 3000.0, 76.0 * HOUR, 600.0),
+        ];
+        assert_eq!(counted(&today, &earlier, &hours), 0.5);
+        // With nothing known before either, all of it counts.
+        assert_eq!(counted(&today, &[], &hours), 1.0);
     }
 }

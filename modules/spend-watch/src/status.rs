@@ -16,6 +16,23 @@ use std::path::Path;
 
 pub const VERSION: u32 = 1;
 
+/// What the margin's header shows beside its name, and its footer beside
+/// one hint, in the theme's face across the margin's 440 points: past them
+/// a line ends in an ellipsis.
+pub const HEADER: usize = 23;
+pub const FOOTER: usize = 28;
+
+/// Today's figure and how it stands, or the figure alone where both
+/// wouldn't fit the margin's header.
+fn value(today: &str, word: &str) -> String {
+    let both = format!("{today} today · {word}");
+    if word.is_empty() || both.chars().count() > HEADER {
+        format!("{today} today")
+    } else {
+        both
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Said {
@@ -81,11 +98,7 @@ pub fn status(picture: &Picture, findings: &[Finding]) -> Status {
     let top = asking.first().copied();
     let word = &picture.standing.word;
     let today = figure_text(&picture.today);
-    let value = if word.is_empty() {
-        format!("{today} today")
-    } else {
-        format!("{today} today · {word}")
-    };
+    let value = value(&today, word);
     let quiet_value = if word.is_empty() {
         "amounts hidden while sharing".to_owned()
     } else {
@@ -297,6 +310,18 @@ mod tests {
             "state": "/none", "zone": "UTC",
         }))
         .unwrap()
+    }
+
+    // The margin's header says how today stands beside a five-figure day,
+    // and keeps the figure whole beside an estimated one.
+    #[test]
+    fn the_margin_s_header_holds_how_today_stands() {
+        for word in crate::picture::WORDS {
+            assert_eq!(value("$12,345", word), format!("$12,345 today · {word}"));
+            assert!(value("about $12,345", word).chars().count() <= HEADER);
+        }
+        assert_eq!(value("about $12,345", "usual"), "about $12,345 today");
+        assert_eq!(value("about $32", "usual"), "about $32 today \u{b7} usual");
     }
 
     // Over a cap and refused: the open status says how much, and the quiet

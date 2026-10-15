@@ -43,36 +43,61 @@ fn fail(error: rusqlite::Error) -> String {
     error.to_string()
 }
 
+const COLUMNS: &str = "feed, name, label, allowance, window_hours, spent, warn, fallback, \
+    state, ends, ends_known, at, resets";
+
+fn cap(row: &rusqlite::Row) -> rusqlite::Result<Cap> {
+    Ok(Cap {
+        feed: row.get(0)?,
+        name: row.get(1)?,
+        label: row.get(2)?,
+        allowance: row.get(3)?,
+        window_hours: row.get(4)?,
+        spent: row.get(5)?,
+        warn: row.get(6)?,
+        fallback: row.get(7)?,
+        state: row.get(8)?,
+        ends: row
+            .get::<_, Option<String>>(9)?
+            .and_then(|day| crate::time::parse_day(&day)),
+        ends_known: row.get(10)?,
+        at: row.get(11)?,
+        resets: row.get(12)?,
+    })
+}
+
 /// Each cap as its feed last gave it.
 pub fn latest(history: &History) -> Result<Vec<Cap>, String> {
     let mut statement = history
         .db
-        .prepare(
-            "SELECT feed, name, label, allowance, window_hours, spent, warn, fallback, state,
-             ends, ends_known, at, resets FROM caps c WHERE at = (SELECT MAX(at) FROM caps d
-             WHERE d.feed = c.feed AND d.name = c.name) ORDER BY feed, name",
-        )
+        .prepare(&format!(
+            "SELECT {COLUMNS} FROM caps c WHERE at = (SELECT MAX(at) FROM caps d
+             WHERE d.feed = c.feed AND d.name = c.name) ORDER BY feed, name"
+        ))
+        .map_err(fail)?;
+    let rows = statement.query_map([], cap).map_err(fail)?;
+    rows.collect::<Result<Vec<_>, _>>().map_err(fail)
+}
+
+/// A period's cap as it was last read in each of up to `periods` periods
+/// before its own, newest first; none for a rolling one.
+pub fn earlier(history: &History, of: &Cap, periods: usize) -> Result<Vec<Cap>, String> {
+    let Some(resets) = of.resets else {
+        return Ok(Vec::new());
+    };
+    let mut statement = history
+        .db
+        .prepare(&format!(
+            "SELECT {COLUMNS} FROM caps c WHERE feed = ?1 AND name = ?2 AND resets < ?3
+             AND at = (SELECT MAX(at) FROM caps d WHERE d.feed = c.feed AND d.name = c.name
+             AND d.resets = c.resets) ORDER BY resets DESC LIMIT ?4"
+        ))
         .map_err(fail)?;
     let rows = statement
-        .query_map([], |row| {
-            Ok(Cap {
-                feed: row.get(0)?,
-                name: row.get(1)?,
-                label: row.get(2)?,
-                allowance: row.get(3)?,
-                window_hours: row.get(4)?,
-                spent: row.get(5)?,
-                warn: row.get(6)?,
-                fallback: row.get(7)?,
-                state: row.get(8)?,
-                ends: row
-                    .get::<_, Option<String>>(9)?
-                    .and_then(|day| crate::time::parse_day(&day)),
-                ends_known: row.get(10)?,
-                at: row.get(11)?,
-                resets: row.get(12)?,
-            })
-        })
+        .query_map(
+            rusqlite::params![of.feed, of.name, resets, periods as i64],
+            cap,
+        )
         .map_err(fail)?;
     rows.collect::<Result<Vec<_>, _>>().map_err(fail)
 }
@@ -314,6 +339,40 @@ pub fn held(events: Vec<Event>, now: f64) -> Vec<Event> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // A period's earlier readings are each period's last, newest first, and
+    // a rolling cap has none.
+    #[test]
+    fn a_period_s_cap_is_known_by_each_period_s_last_reading() {
+        let history = History::memory();
+        history
+            .db
+            .execute_batch(
+                "INSERT INTO caps VALUES
+                 ('proxy', 'premium', 10.0, 'premium day', 1000, 24, 5, 0.5, NULL, 'ok', NULL, 0,
+                  100.0),
+                 ('proxy', 'premium', 20.0, 'premium day', 1000, 24, 7, 0.5, NULL, 'ok', NULL, 0,
+                  100.0),
+                 ('proxy', 'premium', 110.0, 'premium day', 1000, 24, 9, 0.5, NULL, 'ok', NULL, 0,
+                  200.0),
+                 ('proxy', 'premium', 120.0, 'premium day', 1000, 24, 1, 0.5, NULL, 'ok', NULL, 0,
+                  300.0),
+                 ('proxy', 'weekly', 120.0, 'weekly cap', 15000, 168, 4, 0.9, NULL, 'ok', NULL, 0,
+                  NULL);",
+            )
+            .unwrap();
+        let caps = latest(&history).unwrap();
+        let spent = |cap: &Cap, periods| -> Vec<f64> {
+            earlier(&history, cap, periods)
+                .unwrap()
+                .iter()
+                .map(|reading| reading.spent)
+                .collect()
+        };
+        assert_eq!(spent(&caps[0], 7), [9.0, 7.0]);
+        assert_eq!(spent(&caps[0], 1), [9.0]);
+        assert!(spent(&caps[1], 7).is_empty());
+    }
 
     fn change(name: &str, at: f64, kind: &str, before: f64, after: f64) -> Event {
         Event {

@@ -177,6 +177,14 @@ pub fn scan_one(history: &History, found: &Found, reading: Reading) -> Result<Pa
     scan_slice(history, found, reading, SLICE)
 }
 
+/// A log's first line, read as its header.
+fn header(path: &Path) -> Option<serde_json::Value> {
+    let file = std::fs::File::open(path).ok()?;
+    let mut line = Vec::new();
+    std::io::BufRead::read_until(&mut std::io::BufReader::new(file), b'\n', &mut line).ok()?;
+    serde_json::from_slice(&line).ok()
+}
+
 /// Where the line under way at `from` ends, just past its newline, if it
 /// has ended yet.
 fn line_end(file: &mut std::fs::File, from: u64, slice: u64) -> Result<Option<u64>, String> {
@@ -220,6 +228,19 @@ fn scan_slice(
         history.forget_file(&name)?;
         offset = 0;
         carry = Carry::default();
+    }
+    if offset > 0 && !carry.copies_known {
+        // Held from before copies were told apart: a carried log is read
+        // again for its own turns, and any other is marked as checked.
+        if header(path).is_some_and(|header| crate::logs::carried(&header)) {
+            history.forget_file(&name)?;
+            offset = 0;
+            carry = Carry::default();
+        } else {
+            carry.copies_known = true;
+            let carried = serde_json::to_string(&carry).map_err(|error| error.to_string())?;
+            history.set_file(&name, &identity, offset, &carried, carry.session.as_deref())?;
+        }
     }
     if metadata.len() == offset {
         return Ok(Pass::default());
@@ -325,6 +346,43 @@ mod tests {
         std::fs::write(&path, format!("{HEADER}\n{TURN}\n")).unwrap();
         scan(&history, &own(dir.path()), Reading::default()).unwrap();
         assert_eq!(turns(&history), 1);
+    }
+
+    // A history from before copies were told apart holds a carried log's
+    // copied turns beside its parent's; the log is read again once.
+    #[test]
+    fn a_copy_held_from_before_is_read_again_for_its_own() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir(dir.path().join("project")).unwrap();
+        let parent = dir.path().join("project/2026_s1.jsonl");
+        let child = dir.path().join("project/2026_s2.jsonl");
+        let header = serde_json::json!({
+            "type": "session", "id": "s2", "timestamp": "2026-10-14T10:30:00Z",
+            "cwd": "/y", "parentSession": parent.to_string_lossy(),
+        });
+        let later = TURN.replace("10:01:00", "10:31:00");
+        std::fs::write(&child, format!("{header}\n{TURN}\n{later}\n")).unwrap();
+        let history = History::memory();
+        // Before its parent's log is there, the copy is the only record.
+        scan(&history, &own(dir.path()), Reading::default()).unwrap();
+        assert_eq!(turns(&history), 2);
+        history
+            .db
+            .execute("UPDATE files SET carry = '{\"session\":\"s2\"}'", [])
+            .unwrap();
+        std::fs::write(&parent, format!("{HEADER}\n{TURN}\n")).unwrap();
+        scan(&history, &own(dir.path()), Reading::default()).unwrap();
+        scan(&history, &own(dir.path()), Reading::default()).unwrap();
+        assert_eq!(turns(&history), 2);
+        let sessions: Vec<String> = history
+            .db
+            .prepare("SELECT session FROM turns ORDER BY session")
+            .unwrap()
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .map(Result::unwrap)
+            .collect();
+        assert_eq!(sessions, ["s1", "s2"]);
     }
 
     // A line longer than a slice is stepped past, and the turns after it
