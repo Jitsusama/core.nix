@@ -69,16 +69,23 @@ Scope {
     // on the home screen, `empty` saying what it says with nothing in it,
     // and searched false if it adds no row to a search, only opened by its
     // chord or from home. Its members stay out of the main list, though its
-    // `things` don't. The launcher asks `search(typed)` for its matches, best
-    // first, with how scattered the best is as Fuzzy.js grades a match,
-    // { rows, grade }, and shows the best as one row with a count of the
-    // rest, below the main search's matches as tidy and above any looser;
-    // the right arrow steps into all of them, with what was typed kept, and
-    // `everything()` gives them all once nothing is.
+    // `things` don't. In the main search the launcher asks `gather(typed)`
+    // for its matches, best first, with how scattered the best is as
+    // Fuzzy.js grades a match, { rows, grade }, and shows the best as one row
+    // with a count of the rest, below the main search's matches as tidy and
+    // above any looser; the right arrow steps into all of them, with what
+    // was typed kept, and `search(typed)` narrows them there. `everything()`
+    // gives them all once nothing is typed.
     property var collection: null
 
     function search(typed) {
         return { rows: [], grade: 0 };
+    }
+
+    // Its row in the main search: its matches, unless it answered what's
+    // typed, since its answer above them already lists them.
+    function gather(typed) {
+        return answer(typed) ? { rows: [], grade: 0 } : search(typed);
     }
 
     function everything() {
