@@ -382,9 +382,9 @@ in
     );
 
   # The prompt starts nothing once the shell is up: across a run of prompts
-  # in and out of a repository, with gitstatusd answering, the shell itself
+  # in and out of a repository, with git-engine answering, the shell itself
   # forks and executes nothing, and its reads of HEAD show the prompts ran.
-  # Starting up, it runs only gitstatusd and the mkfifo it talks through.
+  # Starting up, it runs only git-engine and the mkfifo it talks through.
   the-prompt-starts-nothing =
     pkgs.runCommandLocal "the-prompt-starts-nothing"
       {
@@ -417,7 +417,7 @@ in
         # Each program the shell ran, by name; a PATH lookup's misses fail.
         ran=$(grep 'execve("' trace | grep -v '= -1 ' | sed 's|.*execve("\([^"]*\)".*|\1|; s|.*/||' |
           sort -u | tr '\n' ' ')
-        [ "$ran" = "gitstatusd mkfifo zsh " ] || { echo "The shell ran: $ran" >&2; exit 1; }
+        [ "$ran" = "git-engine mkfifo zsh " ] || { echo "The shell ran: $ran" >&2; exit 1; }
         grep -q HEAD prompts || { echo "No prompt read the repository." >&2; exit 1; }
         grep -q tables.list prompts || { echo "No prompt read the reftable." >&2; exit 1; }
         if grep -E 'clone|fork|execve' prompts; then
@@ -428,7 +428,7 @@ in
       '';
 
   # The account's whole shell, not only its prompt: once its completion dump
-  # is made, starting it runs gitstatusd, its fifo and direnv's first look,
+  # is made, starting it runs git-engine, its fifo and direnv's first look,
   # and each prompt runs direnv alone, asking it whether the folder's .envrc
   # changed. Anything else a shell started would show here. Its history is
   # kept in the sandbox's home, since the account's own isn't there to hold
@@ -469,9 +469,36 @@ in
         mark() { grep -n "^$shell .*$1" trace | head -1 | cut -d: -f1; }
         started=$(head -n $(mark $PWD/begin) trace | names)
         prompts=$(sed -n "$(mark $PWD/begin),$(mark $PWD/end)p" trace | names)
-        [ "$started" = "direnv gitstatusd mkfifo zsh " ] ||
+        [ "$started" = "direnv git-engine mkfifo zsh " ] ||
           { echo "Starting the shell ran: $started" >&2; exit 1; }
         [ "$prompts" = "direnv " ] || { echo "Its prompts ran: $prompts" >&2; exit 1; }
+        touch $out
+      '';
+
+  # git-engine answers as gitstatusd does across the states a prompt meets,
+  # counting everything and stopping at one, some of them watched by git's
+  # file system monitor, and as git does where gitstatusd can't read the
+  # repository (modules/git-engine/tests/agrees.zsh). The plugin wants job
+  # control, so it runs on a terminal of script's.
+  git-engine-agrees-with-gitstatusd =
+    let
+      engine = pkgs.callPackage ./modules/git-engine/package.nix { };
+      plugin = "${pkgs.gitstatus}/share/gitstatus";
+    in
+    pkgs.runCommandLocal "git-engine-agrees-with-gitstatusd"
+      {
+        nativeBuildInputs = [
+          pkgs.git
+          pkgs.util-linux
+          pkgs.zsh
+        ];
+      }
+      ''
+        export HOME=$TMPDIR/home
+        script -q -e -c "zsh -f -i ${./modules/git-engine/tests/agrees.zsh} ${plugin} \
+          ${lib.getExe' pkgs.gitstatus "gitstatusd"} ${lib.getExe engine} $TMPDIR/work" \
+          agrees.log < /dev/null > /dev/null || { tr -d '\r' < agrees.log >&2; exit 1; }
+        tr -d '\r' < agrees.log | grep checked
         touch $out
       '';
 
@@ -2215,6 +2242,21 @@ in
         ''
           touch $out
         '';
+
+    # clippy finds nothing in git-engine, its tests included.
+    git-engine-passes-clippy =
+      (pkgs.callPackage ./modules/git-engine/package.nix { }).overrideAttrs
+        (old: {
+          pname = "git-engine-passes-clippy";
+          nativeBuildInputs = old.nativeBuildInputs ++ [ pkgs.clippy ];
+          buildPhase = ''
+            cargo clippy --all-targets --offline -- -D warnings
+          '';
+          doCheck = false;
+          installPhase = ''
+            touch $out
+          '';
+        });
 
     # clippy finds nothing in the backlight daemon, its tests included.
     backlight-passes-clippy =
