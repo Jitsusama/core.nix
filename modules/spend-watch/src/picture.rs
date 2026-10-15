@@ -451,26 +451,34 @@ fn mixture_weight(days: &Days) -> f64 {
     (other / (one + other)).clamp(0.2, 0.8)
 }
 
+/// How many periods before a period cap's own its share is judged over.
+const EARLIER_PERIODS: usize = 7;
+
 /// The share of what's billed that a feed's cap counts: a premium models'
 /// day counts only those models, and a weekly cap may count another
 /// tool's spend beside it. It's the feed's figure against what was billed
 /// over the same window, and all of it for a cap of the account's own or
-/// a window with nothing billed.
-fn counted(cap: &Cap, hours: &BTreeMap<i64, f64>) -> f64 {
+/// a window with nothing billed. A period's cap is judged over the periods
+/// before it too, since one just begun has too little billed to say.
+fn counted(cap: &Cap, earlier: &[Cap], hours: &BTreeMap<i64, f64>) -> f64 {
     if cap.feed.is_empty() {
         return 1.0;
     }
-    let last = crate::time::hour_of(cap.at);
-    // A period's cap counts from the period's start, not a window back.
-    let first = match cap.resets {
-        Some(resets) => crate::time::hour_of(resets - cap.window_hours as f64 * HOUR),
-        None => last - cap.window_hours as i64 + 1,
-    };
-    let billed: f64 = hours.range(first..=last).map(|(_, d)| d).sum();
+    let (mut spent, mut billed) = (0.0, 0.0);
+    for reading in std::iter::once(cap).chain(earlier) {
+        let last = crate::time::hour_of(reading.at);
+        // A period's cap counts from the period's start, not a window back.
+        let first = match reading.resets {
+            Some(resets) => crate::time::hour_of(resets - reading.window_hours as f64 * HOUR),
+            None => last - reading.window_hours as i64 + 1,
+        };
+        spent += reading.spent;
+        billed += hours.range(first..=last).map(|(_, d)| d).sum::<f64>();
+    }
     if billed <= 0.0 {
         1.0
     } else {
-        (cap.spent / billed).clamp(0.0, 2.0)
+        (spent / billed).clamp(0.0, 2.0)
     }
 }
 
@@ -570,7 +578,8 @@ fn cap_views(
     let mut out = Vec::new();
     for cap in caps {
         let window = cap.window_hours as i64;
-        let share = counted(&cap, hours);
+        let earlier = caps::earlier(history, &cap, EARLIER_PERIODS)?;
+        let share = counted(&cap, &earlier, hours);
         // What's been billed since the feed's figure, hours wholly after it:
         // none when the figure came this hour.
         let after = crate::time::hour_of(cap.at) + 1;
@@ -679,7 +688,7 @@ mod tests {
         day.resets = Some(106.0 * HOUR);
         let hours: BTreeMap<i64, f64> = (77..=100).map(|hour| (hour, 50.0)).collect();
         // The 19 hours from 82 to 100 billed $950.
-        assert_eq!(counted(&day, &hours), 300.0 / 950.0);
+        assert_eq!(counted(&day, &[], &hours), 300.0 / 950.0);
         assert_eq!(next_reset(&day, 101.0 * HOUR), Some(106.0 * HOUR));
         assert_eq!(next_reset(&day, 106.0 * HOUR), Some(130.0 * HOUR));
         assert_eq!(next_reset(&day, 131.0 * HOUR), Some(154.0 * HOUR));
@@ -691,9 +700,38 @@ mod tests {
     #[test]
     fn a_cap_counts_its_share_of_what_is_billed() {
         let hours: BTreeMap<i64, f64> = (77..=100).map(|hour| (hour, 50.0)).collect();
-        assert_eq!(counted(&cap("proxy", 0.0), &hours), 0.0);
-        assert_eq!(counted(&cap("proxy", 600.0), &hours), 0.5);
-        assert_eq!(counted(&cap("", 0.0), &hours), 1.0);
-        assert_eq!(counted(&cap("proxy", 10.0), &BTreeMap::new()), 1.0);
+        assert_eq!(counted(&cap("proxy", 0.0), &[], &hours), 0.0);
+        assert_eq!(counted(&cap("proxy", 600.0), &[], &hours), 0.5);
+        assert_eq!(counted(&cap("", 0.0), &[], &hours), 1.0);
+        assert_eq!(counted(&cap("proxy", 10.0), &[], &BTreeMap::new()), 1.0);
+    }
+
+    // A premium day read just after midnight has nothing billed in it yet,
+    // which says nothing of its share; the days before, which counted none
+    // of what was billed, say it's none.
+    #[test]
+    fn a_period_just_begun_takes_its_share_from_the_ones_before() {
+        let period = |at: f64, resets: f64, spent: f64| {
+            let mut day = cap("proxy", spent);
+            day.at = at;
+            day.resets = Some(resets);
+            day
+        };
+        let today = period(100.0 * HOUR + 60.0, 124.0 * HOUR, 0.0);
+        let hours: BTreeMap<i64, f64> = (52..=99).map(|hour| (hour, 50.0)).collect();
+        let earlier = [
+            period(99.0 * HOUR + 3000.0, 100.0 * HOUR, 0.0),
+            period(75.0 * HOUR + 3000.0, 76.0 * HOUR, 0.0),
+        ];
+        assert_eq!(counted(&today, &earlier, &hours), 0.0);
+        // Half of what each earlier day billed counted, and today has just
+        // begun at the same: still half.
+        let earlier = [
+            period(99.0 * HOUR + 3000.0, 100.0 * HOUR, 600.0),
+            period(75.0 * HOUR + 3000.0, 76.0 * HOUR, 600.0),
+        ];
+        assert_eq!(counted(&today, &earlier, &hours), 0.5);
+        // With nothing known before either, all of it counts.
+        assert_eq!(counted(&today, &[], &hours), 1.0);
     }
 }
