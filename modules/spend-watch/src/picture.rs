@@ -33,10 +33,14 @@ impl Figure {
     }
 }
 
+/// How a day can stand against the usual ones by the same hour: a word,
+/// since the margin's header holds it beside the day's figure, and how far
+/// ahead is a burn's or a forecast's to say.
+pub const WORDS: [&str; 3] = ["quiet", "usual", "ahead"];
+
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct Standing {
-    /// "quiet", "usual", "ahead of usual", "well ahead of usual", or
-    /// nothing while there are too few days to say.
+    /// One of `WORDS`, or nothing while there are too few days to say.
     pub word: String,
     pub percentile: f64,
     /// A usual day's spend by this hour: the median of the comparable days.
@@ -526,13 +530,11 @@ fn standing(zone: &Zone, hours: &BTreeMap<i64, f64>, now: f64, so_far: f64) -> S
     let equal = comparable.iter().filter(|value| **value == so_far).count() as f64;
     let percentile = (below + equal / 2.0) / comparable.len() as f64;
     let word = if percentile <= 0.1 {
-        "quiet"
+        WORDS[0]
     } else if percentile <= 0.9 {
-        "usual"
-    } else if so_far > 1.5 * stats::quantile(&comparable, 0.9) {
-        "well ahead of usual"
+        WORDS[1]
     } else {
-        "ahead of usual"
+        WORDS[2]
     };
     Standing {
         word: word.into(),

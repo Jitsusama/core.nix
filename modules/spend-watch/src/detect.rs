@@ -123,6 +123,32 @@ pub fn all(picture: &Picture, history: &History, config: &Config) -> Result<Vec<
     Ok(found)
 }
 
+// What asks for a look says why in the margin's footer, beside one hint,
+// so each of these notes is held to what that shows.
+
+fn ending_note(after: f64, fallback: f64) -> String {
+    // The side already says when it ends.
+    format!("{} likely over {}", percent(after), whole(fallback))
+}
+
+fn changed_note(before: Option<f64>, spent: f64) -> String {
+    format!(
+        "was {}; {} spent",
+        before.map_or("no limit".into(), whole),
+        whole(spent)
+    )
+}
+
+fn refused_note(refused: usize, since: &str) -> String {
+    format!("{refused} refused since {since}")
+}
+
+const NEW_NOTE: &str = "first in thirty days";
+
+fn elsewhere_note(week: f64, month: f64) -> String {
+    format!("{} of pi's, usually {}", percent(week), percent(month))
+}
+
 /// The days of history a burn's threshold is judged on: long enough that
 /// its quantile is more than the largest day of a short window.
 pub const BURN_DAYS: usize = 56;
@@ -259,11 +285,7 @@ pub fn caps(picture: &Picture) -> Vec<Finding> {
                         ),
                     );
                     f.badge = format!("ends {day}");
-                    f.note = format!(
-                        "{} likely over the {} after",
-                        percent(after),
-                        whole(fallback)
-                    );
+                    f.note = ending_note(after, fallback);
                     f.dollars = view.spent;
                     f.surprise = 2.5;
                     f.cap = true;
@@ -335,11 +357,7 @@ pub fn caps(picture: &Picture) -> Vec<Finding> {
         );
         // The title says what it is now; the side, when.
         f.badge = format!("at {}", picture.zone.clock(event.at, now));
-        f.note = format!(
-            "from {}, with {} spent",
-            event.before.map_or("no limit".into(), whole),
-            whole(event.spent)
-        );
+        f.note = changed_note(event.before, event.spent);
         f.dollars = event.spent;
         f.surprise = 3.0;
         f.cap = true;
@@ -377,11 +395,7 @@ pub fn refusals(picture: &Picture) -> Vec<Finding> {
         ),
     );
     f.badge = format!("last {}", picture.zone.clock(last.0, picture.now));
-    f.note = format!(
-        "{} refused since {}; your spend still shows",
-        recent.len(),
-        picture.zone.clock(recent[0].0, picture.now)
-    );
+    f.note = refused_note(recent.len(), &picture.zone.clock(recent[0].0, picture.now));
     f.surprise = 3.0;
     f.cap = true;
     f.action = offered(picture, "cap");
@@ -989,7 +1003,7 @@ pub fn novelty(
                 ),
             );
             f.badge = whole(spent);
-            f.note = "in a day, after none in the thirty before".into();
+            f.note = NEW_NOTE.into();
             f.dollars = spent;
             f.surprise = 2.0;
             out.push(f);
@@ -1026,11 +1040,7 @@ pub fn novelty(
             ),
         );
         f.badge = whole(week);
-        f.note = format!(
-            "{} of pi's spend against {} usual",
-            percent(week_share),
-            percent(month_share)
-        );
+        f.note = elsewhere_note(week_share, month_share);
         f.dollars = week;
         f.surprise = 2.0;
         out.push(f);
@@ -1238,6 +1248,23 @@ mod tests {
             }
         }
         history
+    }
+
+    // Each note that asks for a look fits the margin's footer at its
+    // widest: a five-figure cap, every refusal of a day, all of the spend.
+    #[test]
+    fn what_asks_for_a_look_fits_the_margin() {
+        for note in [
+            ending_note(1.0, 15_000.0),
+            changed_note(Some(15_000.0), 15_000.0),
+            changed_note(None, 15_000.0),
+            refused_note(999, "Wed 23:10"),
+            NEW_NOTE.into(),
+            elsewhere_note(1.0, 1.0),
+        ] {
+            let shown = note.chars().count();
+            assert!(shown <= crate::status::FOOTER, "{note}: {shown}");
+        }
     }
 
     // Spend whose model nobody recorded says nothing of the day's mix of

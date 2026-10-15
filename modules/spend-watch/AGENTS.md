@@ -81,9 +81,12 @@ feed speaks.
   shape it reads, or the newer one replaces it.
 - **Strings.** Each finding carries a title for its row, a badge of a few
   words beside it, a note for the launcher's footer and a detail for what's
-  copied and told. `src/collection.rs` lays them out as the launcher's
-  other collections are: what wants a look first, then how things stand,
-  each a figure with its parts a step in, then what was found.
+  copied and told. What asks for a look puts its note in the margin's
+  footer too, which holds 28 characters, and the margin's header holds 23
+  beside its name: `src/status.rs` `HEADER` and `FOOTER`.
+  `src/collection.rs` lays them out as the launcher's other collections
+  are: what wants a look first, then how things stand, each a figure with
+  its parts a step in, then what was found.
 - **Telling.** Notes stay in the collection. Warnings and alerts are told
   once as a notice, at most three a week outside a cap's, and withdrawn when
   they no longer hold or are marked expected. No notice holds an amount, and
