@@ -124,6 +124,14 @@ in
       name = "ucsi-retry-timed-out-init";
       patch = ./ucsi-retry-timed-out-init.patch;
     }
+    {
+      # The USB-C controller answers "not supported" when asked for a
+      # charger's sink offers, which it has none of, so the kernel logs an
+      # error and never links the charger's offers to it. Written here; the
+      # patch says why.
+      name = "ucsi-partner-without-pdos";
+      patch = ./ucsi-partner-without-pdos.patch;
+    }
   ];
 
   # The disk, and the USB and Thunderbolt ports a dock's keyboard arrives

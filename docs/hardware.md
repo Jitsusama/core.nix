@@ -96,6 +96,13 @@ listed none. Charging itself was never short. The first offer is always 5 V
 and never empty, so `ucsi-leading-empty-pdo.patch`, written here, drops an
 empty one there.
 
+Asked for the offers a charger would take as a sink, which it has none of, the
+controller answers that the request isn't supported, where others answer with
+an empty list. The kernel logged "UCSI_GET_PDOS failed (-95)" at each plug-in
+and stopped there, so the charger's offers were registered but never linked
+to it: `/sys/class/typec/port0-partner` had no `usb_power_delivery`.
+`ucsi-partner-without-pdos.patch`, written here, reads that answer as none.
+
 ### The Boot Clock
 
 The firmware hands over to the boot loader at 400 MHz with HWP off, and holds
@@ -339,9 +346,6 @@ and is harmless, so nothing silences or patches it:
   registered while its write protection is on.
 - **No "RAPL domain uncore" on BIOS 1.11.0.** 1.10.1 reported it. It only
   meters the uncore's energy; the power limits are unaffected.
-- **"UCSI_GET_PDOS failed (-95)".** The kernel asks the charger for the
-  offers it would take as a sink, and a charger that only supplies power has
-  none, so the USB-C controller refuses.
 - **xe's "Selective fetch area calculation failed in pipe A"**, once. When
   the panel's self refresh can't work out which part of a frame changed, the
   driver sends the whole frame instead, and says so the first time. The

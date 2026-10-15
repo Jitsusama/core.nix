@@ -1,0 +1,31 @@
+usb: typec: ucsi: Read NOT_SUPPORTED partner PDOs as none
+
+On the Dell XPS 14 DA14260, the PPM answers GET_PDOS for a charger's
+sink PDOs with NOT_SUPPORTED rather than an empty list. The kernel logs
+"UCSI_GET_PDOS failed (-95)", and ucsi_register_partner_pdos() returns
+before typec_partner_set_usb_power_delivery(), so the charger's source
+capabilities are registered but never linked to the partner: the
+partner has no usb_power_delivery attribute.
+
+A partner without PDOs for a role is what NOT_SUPPORTED means here, as
+an empty answer does from other PPMs, so it's read as none and the
+partner's other PDOs are still registered.
+
+diff -ruN a/drivers/usb/typec/ucsi/ucsi.c b/drivers/usb/typec/ucsi/ucsi.c
+--- a/drivers/usb/typec/ucsi/ucsi.c
++++ b/drivers/usb/typec/ucsi/ucsi.c
+@@ -877,6 +877,14 @@
+ 	command |= is_source(role) ? UCSI_GET_PDOS_SRC_PDOS : 0;
+ 	ret = ucsi_send_command(ucsi, command, pdos + offset,
+ 				num_pdos * sizeof(u32));
++	/*
++	 * Some PPMs answer NOT_SUPPORTED when the partner has no PDOs for a
++	 * role, such as a charger asked for its sink PDOs. It means the
++	 * partner has none, as an empty answer does, so its other PDOs are
++	 * still registered.
++	 */
++	if (ret == -EOPNOTSUPP && is_partner)
++		return 0;
+ 	if (ret < 0 && ret != -ETIMEDOUT)
+ 		dev_err(ucsi->dev, "UCSI_GET_PDOS failed (%d)\n", ret);
+ 
