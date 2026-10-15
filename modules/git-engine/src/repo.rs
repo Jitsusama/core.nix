@@ -220,6 +220,13 @@ impl Repo {
         })
     }
 
+    /// Whether the packs or commit-graph it holds open have changed on disk
+    /// since it read them: replaced by a repack, say, whose old files stay
+    /// on the disk for as long as anything holds them.
+    pub fn holds_changed_files(&self) -> bool {
+        !crate::stamp::still(&self.odb.stamps) || !crate::stamp::still(&self.graph.stamps)
+    }
+
     /// Reads again whatever changed on disk since the last question.
     fn refresh(&mut self) -> io::Result<()> {
         if !crate::stamp::still(&self.config.stamps) {
