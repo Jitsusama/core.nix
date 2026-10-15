@@ -96,8 +96,19 @@ pub fn matching(pattern: &str) -> Vec<PathBuf> {
         };
     }
     let mut found: Vec<PathBuf> = at.into_iter().filter(|path| path.is_file()).collect();
-    found.sort_by(|one, other| one.file_name().cmp(&other.file_name()));
+    oldest_first(&mut found);
     found
+}
+
+/// pi names a log by when it began, so by name is oldest first. Two logs
+/// can share a name in different directories, and then the whole path
+/// decides, rather than the order a filesystem happens to list them in.
+fn oldest_first(found: &mut [PathBuf]) {
+    found.sort_by(|one, other| {
+        one.file_name()
+            .cmp(&other.file_name())
+            .then_with(|| one.cmp(other))
+    });
 }
 
 /// Whether `name` fits `part`, each `*` in it any run of characters.
@@ -141,8 +152,7 @@ pub fn logs(dir: &Path) -> Vec<PathBuf> {
             }
         }
     }
-    // Named by when they started, so the names sort by time.
-    found.sort_by(|one, other| one.file_name().cmp(&other.file_name()));
+    oldest_first(&mut found);
     found
 }
 
@@ -420,7 +430,9 @@ mod tests {
     fn a_pattern_finds_agents_logs() {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
-        for agent in ["q1/hub/agents/a1", "q2/demo/agents/b1"] {
+        // Made out of order, since a directory lists in whatever order its
+        // filesystem keeps: some by when, some by a hash of the name.
+        for agent in ["q2/demo/agents/b1", "q1/hub/agents/a1"] {
             std::fs::create_dir_all(root.join(agent).join("session")).unwrap();
             std::fs::write(root.join(agent).join("session/2026_x.jsonl"), "").unwrap();
             std::fs::write(root.join(agent).join("agent.log"), "").unwrap();
