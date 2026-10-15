@@ -51,6 +51,16 @@ let
       patch = "${drivers}/patch/v7.0.0_iot/0001-ipu7-Wait-ipu-fw-requests-to-clear.patch";
     }
     {
+      # The wait above lasts until the firmware hands back every frame it was
+      # given, and a stopped stream never hands back the frames still queued,
+      # so every mapping dropped as the camera closed waited out 110 ms: 32 of
+      # them, 3.5 s, each with a "wait running fw tasks clear timeout".
+      # This takes a stream's frames back once the firmware says it's closed.
+      # The next patch in Intel's same release.
+      name = "ipu7-reclaim-stream-msgs";
+      patch = "${drivers}/patch/v7.0.0_iot/0002-staging-ipu7-reclaim-pending-fw-msg-buffers-by-strea.patch";
+    }
+    {
       # Without it one failed wake leaves the ISP failed until the next boot,
       # and unbinding the driver oopses holding the device's lock, so suspend
       # and reboot hang. Written here; the patch says why.
