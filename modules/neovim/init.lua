@@ -89,36 +89,38 @@ vim.opt.sessionoptions =
 -- The status line, which holds the window's facts (status.lua).
 require('status').setup()
 
--- The sign column marks a problem as the status line counts it, with the
--- theme's marks.
+-- How problems look, set as vim.diagnostic first loads, since nothing
+-- needs it until something reports one. The sign column marks a problem as
+-- the status line counts it, with the theme's marks.
 local glyphs = require('theme').glyphs
-local signs = {
-  text = {
-    [vim.diagnostic.severity.ERROR] = glyphs.failed,
-    [vim.diagnostic.severity.WARN] = glyphs.caution,
-    [vim.diagnostic.severity.INFO] = glyphs.note,
-    [vim.diagnostic.severity.HINT] = glyphs.suggestion,
-  },
-}
-
--- Configure diagnostics appearance with better defaults
-vim.diagnostic.config({
-  float = {
-    border = 'rounded',
-    source = 'always',
-    header = '',
-    prefix = '',
-  },
-  severity_sort = true,
-  signs = signs,
-  underline = true,
-  update_in_insert = false,
-  virtual_text = {
-    spacing = 4,
-    source = 'if_many',
-    prefix = '●',
-  },
-})
+local signs
+require('later').when('vim.diagnostic', function(diagnostic)
+  signs = {
+    text = {
+      [diagnostic.severity.ERROR] = glyphs.failed,
+      [diagnostic.severity.WARN] = glyphs.caution,
+      [diagnostic.severity.INFO] = glyphs.note,
+      [diagnostic.severity.HINT] = glyphs.suggestion,
+    },
+  }
+  diagnostic.config({
+    float = {
+      border = 'rounded',
+      source = 'always',
+      header = '',
+      prefix = '',
+    },
+    severity_sort = true,
+    signs = signs,
+    underline = true,
+    update_in_insert = false,
+    virtual_text = {
+      spacing = 4,
+      source = 'if_many',
+      prefix = '●',
+    },
+  })
+end)
 
 -- Essential Autocmds
 local function augroup(name)

@@ -819,6 +819,14 @@ as an exception with the reason.
 
 What each studio round settled, newest first, with the reason.
 
+- **Neovim starts with only what draws its first screen** (2026-10-16, on
+  Joel's word that it be as fast as the rest). Six plugins load as it
+  starts; the rest wait for a module, a command, an action or an event,
+  and the background ones load once the screen is drawn. Nothing it does
+  as it starts waits on another program. The Lua language server reads
+  Neovim's own runtime and roots at the prompt's markers, so it answers in
+  seconds rather than a minute. neovim-starts-with-only-what-it-draws
+  holds it.
 - **Neovim's status line speaks the prompt's language** (2026-10-16,
   judged against the taste without a round). lualine drew powerline arrows,
   a mode block on a shade, a tab line repeating the root and branch, and

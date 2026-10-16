@@ -2,6 +2,8 @@
 -- are in keys.nix; these are the keys inside Octo's own buffers.
 
 require('octo').setup({
+  -- Its lists open in fzf-lua, as every other list does.
+  picker = 'fzf-lua',
   mappings = {
     issue = {
       -- Buffer operations

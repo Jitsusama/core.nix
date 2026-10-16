@@ -213,9 +213,9 @@ local function folder(buf)
   return vim.fn.getcwd()
 end
 
--- Asks for a folder's state. A folder never asked before is given a moment
--- to answer, as the prompt gives the first draw, so the branch doesn't
--- arrive a beat after the file's name.
+-- Asks for a folder's state. Nothing waits for the answer: the line
+-- redraws when it comes, and since the branch sits at the right end,
+-- nothing else moves when it arrives.
 local function ask(dir)
   local job = engine()
   if not job or not exists(dir) then
@@ -224,14 +224,7 @@ local function ask(dir)
   git.next = git.next + 1
   local id = tostring(git.next)
   git.asked[id] = dir
-  if not pcall(job.write, job, id .. '\31' .. dir .. '\31\30') then
-    return
-  end
-  if git.answers[dir] == nil then
-    vim.wait(20, function()
-      return git.answers[dir] ~= nil
-    end, 2)
-  end
+  pcall(job.write, job, id .. '\31' .. dir .. '\31\30')
 end
 
 -- Where -------------------------------------------------------------------
@@ -377,13 +370,15 @@ local function count_found()
   end
 end
 
+-- Asks only an agent's plugin that has loaded, since asking one that
+-- hasn't would load it, or search for it on every draw.
 local function paired()
-  local ok, pi = pcall(require, 'neovim-pi')
-  if ok and pi.is_attached and pi.is_attached() then
+  local pi = package.loaded['neovim-pi']
+  if pi and pi.is_attached and pi.is_attached() then
     return true
   end
-  local ok_claude, claude = pcall(require, 'claudecode')
-  return ok_claude and claude.is_claude_connected ~= nil and claude.is_claude_connected()
+  local claude = package.loaded.claudecode
+  return claude ~= nil and claude.is_claude_connected ~= nil and claude.is_claude_connected()
 end
 
 -- The steps the line gives way by, in order, each keeping the ones before:
@@ -477,11 +472,14 @@ local function draw(on)
     end
   end
 
-  local problems = vim.diagnostic.count(buf, {
-    severity = { min = vim.diagnostic.severity.WARN },
-  })
-  local errors = problems[vim.diagnostic.severity.ERROR] or 0
-  local warnings = problems[vim.diagnostic.severity.WARN] or 0
+  -- Until something has loaded vim.diagnostic, nothing has reported a
+  -- problem, and counting would load it for nothing.
+  local diagnostic = package.loaded['vim.diagnostic']
+  local problems = diagnostic
+      and diagnostic.count(buf, { severity = { min = diagnostic.severity.WARN } })
+    or {}
+  local errors = diagnostic and problems[diagnostic.severity.ERROR] or 0
+  local warnings = diagnostic and problems[diagnostic.severity.WARN] or 0
   if errors > 0 then
     gap()
     put(right, 'alert', glyph.failed)
