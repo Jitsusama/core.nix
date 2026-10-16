@@ -392,7 +392,7 @@ it. Owners go by layer:
 | Disk space                                                             | the margin mark, only while a disk is short of room, a writer is frozen or nothing watches it; a notice when the guard acts | the same mark, in the status |
 | AI spend and its caps                                                  | the margin mark, only while a finding wants a look or nothing watches it; a notice once when one starts to; a line each morning | the overview's status, as the "ai" row |
 | Directory, repository, branch, git state                               | the program running the window                     | nobody                       |
-| Window titles                                                          | a terminal's unseen tabs; the window switcher      | the window switcher          |
+| Window titles                                                          | a terminal's unseen tabs; the launcher's windows   | the launcher's windows       |
 
 The margin mark is the one always-visible desktop element: the drawer's
 pulls at the top right (Shape and Kinds), nothing at all when nothing is
@@ -514,7 +514,7 @@ comes along, and what to do.
   | Key          | Means                                    | Desktop        | Terminal        | Neovim, after Space |
   | ------------ | ---------------------------------------- | -------------- | --------------- | ------------------- |
   | arrows       | that way                                 | windows        |                 | splits              |
-  | Tab          | the one used last, and held, the others  | windows        | the next tab    | the file used last  |
+  | Tab          | the one used last, the others by typing  | windows        | the next tab    | the file used last  |
   | Page Up Down | the level above                          | workspaces     | tabs            |                     |
   | 1 to 9       | that one, by number                      | workspaces     | tabs            | tabs                |
   | Return       | open a new one                           | a terminal     |                 | a terminal          |
@@ -590,12 +590,13 @@ modifier says what comes along:
 The numbers take the same modifiers to the workspaces. Page Up and Page Down
 walk through them, and with Shift carry the workspace itself, since it's
 the thing at that level; Ctrl+Shift carries it to the screen before or
-after. Super+A shows every workspace, and Super+Tab goes
-back to the window before, or held, chooses among the recent ones; Super+`
-keeps to the program in focus. A letter keeps its meaning whatever is held:
-F fills, R sizes, M widens (and with Alt stretches the window to the edges),
-C centres (a floating window too), T shows a column as tabs, G lifts a window out to float, and
-Shift turns a width into a height. A window opens in a column of its own, as
+after. Super+A shows every workspace, and Super+Tab finds a window in the
+launcher: every other window, the one used last first, so Super+Tab and
+Return go back to it and a few letters find any other, with nothing held. A
+letter keeps its meaning whatever is held: F fills, R sizes, M widens (and
+with Alt stretches the window to the edges), C centres (a floating window
+too), T shows a column as tabs, G lifts a window out to float, and Shift
+turns a width into a height. A window opens in a column of its own, as
 niri opens it; Super+Shift+Return opens a terminal just below the focused
 window instead, and Super+Alt+Return does that for whichever window opens
 next, from the launcher or anywhere else.

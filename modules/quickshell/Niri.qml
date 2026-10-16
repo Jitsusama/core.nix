@@ -37,6 +37,16 @@ Singleton {
     property var focused: null
     property int revision: 0
 
+    // The window the keys were in, by id. niri says no window has focus
+    // while a layer such as the launcher has the keys, so it's the focused
+    // workspace's active window then; null on an empty workspace.
+    readonly property var current: {
+        revision;
+        const workspace = root.workspace();
+        const id = focused ?? (workspace ? workspace.active_window_id : null);
+        return id ?? null;
+    }
+
     // Every screencast by its stream's id: a program sharing the screen
     // through the portal (PipeWire), or one recording it straight from niri
     // (WlrScreencopy), as wf-recorder does. Replaced whole on each change,
@@ -101,6 +111,8 @@ Singleton {
             const change = event.WindowFocusTimestampChanged;
             if (windows[change.id])
                 windows[change.id].focus_timestamp = change.focus_timestamp;
+            // Lists of windows put the one used last first.
+            revision++;
         } else if (event.WindowUrgencyChanged) {
             const change = event.WindowUrgencyChanged;
             if (windows[change.id])

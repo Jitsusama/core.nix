@@ -59,14 +59,8 @@ Provider {
         Niri.act({ ScreenshotWindow: { id: window.id, write_to_disk: true, show_pointer: false } });
     }
 
-    // The window the keys were in. niri says no window has focus while the
-    // launcher has the keys, so it's the focused workspace's active one.
-    readonly property var focused: {
-        Niri.revision;
-        const workspace = Niri.workspace();
-        const id = Niri.focused ?? (workspace ? workspace.active_window_id : null);
-        return id === null || id === undefined ? null : Niri.windows[id] ?? null;
-    }
+    // The window the keys were in.
+    readonly property var focused: Niri.current === null ? null : Niri.windows[Niri.current] ?? null
 
     readonly property var stop: member({
         key: "capture:stop",

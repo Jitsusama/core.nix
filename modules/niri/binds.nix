@@ -65,7 +65,14 @@ in
     does = "Show what's on";
     action = ''spawn "qs" "ipc" "call" "margin" "toggle";'';
   }
-  # The launcher's largest collections, each opened straight.
+  # The launcher's largest collections, each opened straight. Tab is the one
+  # used last: every other window, that one first, so Super+Tab and Return
+  # go back to it and a few letters find the rest, with nothing held.
+  {
+    chord = "Super+Tab";
+    does = "Find a window";
+    action = ''spawn "qs" "ipc" "call" "launcher" "collection" "windows";'';
+  }
   {
     chord = "Super+V";
     does = "Find something copied earlier";
@@ -343,7 +350,7 @@ in
     does = "Move the workspace to the screen after";
     action = "move-workspace-to-monitor-next;";
   }
-  # A for all. Super+Tab is the switcher's (home.nix).
+  # A for all.
   {
     chord = "Super+A";
     does = "Show every workspace";
