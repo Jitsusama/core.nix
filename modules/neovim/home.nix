@@ -77,6 +77,7 @@ let
     files = "in the file browser";
     problems = "in the problems list";
     completion = "with suggestions";
+    commands = "on the command line";
   };
   modeWhere = {
     x = "with text selected";
