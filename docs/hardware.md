@@ -130,6 +130,24 @@ held the SMBus driver for 450 ms at every boot and left the bus busy.
 `spd-skips-soldered-memory.patch`, written here, has DMI keep each memory
 device's form factor and the SPD probe skip soldered memory.
 
+### Mainline's Fixes 7.2 Lacks
+
+Mainline's fixes since 7.2, for the drivers this laptop runs, were read
+against 7.2.11. Most were in 7.2.10 already under other subjects; two that
+matter here weren't:
+
+- `dm-crypt-status-after-last-reference.patch`, mainline's 148845aa1921.
+  `crypt_dec_pending` read a request's error before dropping its reference,
+  so a completion that set the error in between was missed, and a failed
+  read or write on the encrypted disk completed as a success.
+- `cs35l56-suspend-before-attach.patch`, mainline's fbf2c660bac8 backported
+  to 7.2's names. Suspending an amplifier before it first attached returned
+  early, skipping `pm_runtime_force_suspend`, while resume always runs
+  `pm_runtime_force_resume`, so its runtime power count went out of balance.
+
+Once a stable release takes one, its patch no longer applies and the kernel
+build stops, which is the sign to drop it.
+
 ### The Boot Clock
 
 The firmware hands over to the boot loader at 400 MHz with HWP off, and holds
