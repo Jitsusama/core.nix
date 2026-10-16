@@ -377,9 +377,12 @@ sends a sample only when the light changes by 1%, checking ten times a second.
   camera sensor powered, the bridge's vision-sensing bit and the hub's
   suspend state changed nothing, and Windows on the same bridge sends it
   nothing while the camera is idle. Dell's specifications and driver pack
-  offer no presence feature on this model. The firmware's presence
-  setting is Intel's here rather than Microsoft's, its only other choice,
-  in case Intel's starts the bridge's own sensing.
+  offer no presence feature on this model. The firmware's other presence
+  setting, Intel's, gives no reading either, idle or with the camera
+  streaming. The one boot with it, which also first bound the IR sensor,
+  was the first where the bridge never answered the driver handing the
+  camera's link back as the camera closed, so the setting stays
+  Microsoft's, the one the camera was proven on.
 
 ### Expected in the Journal
 
