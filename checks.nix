@@ -2235,6 +2235,23 @@ in
           if vim.tbl_count(mapping) ~= #suggesting then
             say('completion has ' .. vim.tbl_count(mapping) .. ' keys, not ' .. #suggesting)
           end
+          -- The command line's are its own, for a command and a search alike.
+          local lines = require('cmp.config').cmdline
+          local commanding = vim.tbl_filter(function(key)
+            return key.scope == 'commands'
+          end, keys.keys)
+          for _, kind in ipairs({ ':', '/', '?' }) do
+            local line = require('cmp.config').normalize(lines[kind] or {}).mapping or {}
+            for _, key in ipairs(commanding) do
+              local bound = line[require('cmp.utils.keymap').normalize(key.lhs)]
+              if bound == nil or bound.c == nil then
+                say('command line ' .. kind .. ' ' .. key.lhs .. ' is unbound')
+              end
+            end
+            if vim.tbl_count(line) ~= #commanding then
+              say('command line ' .. kind .. ' has ' .. vim.tbl_count(line) .. ' keys, not ' .. #commanding)
+            end
+          end
           io.stdout:write(#wrong == 0 and 'every key' or table.concat(wrong, '\n'))
         '';
       in

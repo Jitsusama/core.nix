@@ -109,9 +109,44 @@ cmp.setup({
   },
 })
 
+-- The command line's keys, by keys.nix's names for what they do, for a
+-- search and a command alike. With no suggestions showing, Tab and
+-- Shift+Tab suggest, and Ctrl+N and Ctrl+P fall back to the history.
+local function choose(step)
+  return function()
+    if cmp.visible() then
+      step()
+    else
+      cmp.complete()
+    end
+  end
+end
+
+local function or_history(step)
+  return function(fallback)
+    if cmp.visible() then
+      step()
+    else
+      fallback()
+    end
+  end
+end
+
+local command_line = keys.window('commands', function(key)
+  local does = {
+    next = choose(cmp.select_next_item),
+    before = choose(cmp.select_prev_item),
+    later = or_history(cmp.select_next_item),
+    earlier = or_history(cmp.select_prev_item),
+    take = cmp.mapping.confirm({ select = true }),
+    away = cmp.mapping.abort(),
+  }
+  return cmp.mapping(does[key.plugin], key.modes)
+end)
+
 -- Search completion (/ and ?)
 cmp.setup.cmdline({ '/', '?' }, {
-  mapping = cmp.mapping.preset.cmdline(),
+  mapping = command_line,
   sources = {
     { name = 'buffer' },
   },
@@ -119,7 +154,7 @@ cmp.setup.cmdline({ '/', '?' }, {
 
 -- Command line completion (:)
 cmp.setup.cmdline(':', {
-  mapping = cmp.mapping.preset.cmdline(),
+  mapping = command_line,
   sources = cmp.config.sources({
     { name = 'path' },
   }, {

@@ -43,7 +43,9 @@ list, share the pickers' words:
 | z and a letter   | fold, as anywhere in Neovim             |
 
 While suggestions show, Tab and Shift+Tab choose among them, Ctrl+Y takes
-one and Ctrl+E puts them away.
+one and Ctrl+E puts them away. The command line's are the same, for a
+command and a search alike: with none showing, Tab suggests, and Ctrl+N and
+Ctrl+P step through what was typed before.
 
 ## Finding a Key
 
