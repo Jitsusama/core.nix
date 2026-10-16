@@ -616,6 +616,31 @@ in
           default = "10.5";
           description = "The monospaced face's size in points, as Linux counts them.";
         };
+        features = lib.mkOption {
+          type = lib.types.listOf (lib.types.strMatching "[a-z0-9]{4}");
+          # Monaspace's coding ligatures, each a stylistic set off by default;
+          # texture healing is its contextual alternates, on by default. Each
+          # set kept still reads as the operator it stands for: equals (!=
+          # as an unequal sign), comparisons, arrows, tags, Markdown's marks,
+          # the centred colon, the double arrows and the other tags. Two are
+          # left off: the F# shapes draw |> and <| as triangles, which are
+          # characters of their own, and the centred period draws a range
+          # such as 1..=10 in middle dots.
+          default = [
+            "ss01"
+            "ss02"
+            "ss03"
+            "ss04"
+            "ss06"
+            "ss07"
+            "ss09"
+            "ss10"
+          ];
+          description = ''
+            The OpenType features the monospaced face is drawn with wherever
+            fontconfig is asked for it, by their four-letter tags.
+          '';
+        };
       };
       sans = {
         family = lib.mkOption {

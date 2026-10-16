@@ -1016,6 +1016,14 @@ What each studio round settled, newest first, with the reason.
   among them every Braille pattern, which btop draws its graphs with, and
   those would fall back to another face. The variable font has neither the
   icons nor anything the static faces lack but its width axis.
+- **Eight of Monaspace's ten ligature sets** (2026-10-16). The sets are off
+  until asked for, so kitty drew texture healing alone. Now fontconfig gives
+  the face equals, comparisons, arrows, tags, Markdown's marks, the centred
+  colon, double arrows and the other tags, each still reading as the operator
+  it stands for. The F# shapes stay off, since they draw |> and <| as
+  triangles, which are characters of their own; so does the centred period,
+  which draws a range such as 1..=10 in middle dots. kitty still shows the
+  plain characters under the cursor.
 - **Muted text is sage, not Osaka Jade's own muted** (2026-10-10). Omarchy's
   muted measures 2.90:1 on the background, too faint to read, so muted text
   is its hue made just light enough to pass (4.52:1), and the original
