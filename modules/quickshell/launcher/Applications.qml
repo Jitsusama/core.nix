@@ -12,7 +12,7 @@ Provider {
         .filter(entry => !entry.noDisplay)
         .map(entry => {
             const open = () => Niri.spawn(provider.command(entry));
-            const below = () => provider.launcher.grid.under(Niri.focused, provider.command(entry));
+            const below = () => provider.launcher.grid.under(Niri.current, provider.command(entry));
             return thing({
                 key: `program:${entry.id}`,
                 verb: "open",

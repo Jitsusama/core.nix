@@ -28,7 +28,7 @@ Scope {
     property var placing: null
 
     function below(program: string): void {
-        under(Niri.focused, program === "" ? [] : [program]);
+        under(Niri.current, program === "" ? [] : [program]);
     }
 
     // Opens what the command runs below the window given, focusing it first

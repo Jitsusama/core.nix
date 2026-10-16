@@ -1006,6 +1006,68 @@ pkgs.testers.runNixOSTest {
               in_session("niri msg focused-window | grep -q 'Notes for Tuesday'"), timeout=10
           )
 
+      # Super+Tab opens the launcher on every other window, the one used last
+      # first, so Return goes back to it, and a few letters find any other,
+      # among two dozen as easily as among two, with nothing held down. The
+      # windows are one kitty's, so the machine holds them all.
+      with subtest("Super+Tab goes back to the window before, and finds any by typing"):
+          # The last one's title is far wider than the launcher, as a
+          # browser tab's can be.
+          scratch = [f"Scratch {n:02}" for n in range(1, 25)] + [
+              "Scratch 25 and a title that goes on well past the edge of the launcher"
+              " and the screen, as the titles of web pages often do"
+          ]
+          for title in scratch:
+              as_account(
+                  "niri msg action spawn -- kitty --single-instance"
+                  f" --instance-group scratch --title '{title}'"
+              )
+              machine.wait_until_succeeds(
+                  in_session(f"niri msg windows | grep -q '{title}'"), timeout=30
+              )
+          notes = window_titled("Notes for Tuesday")
+          as_account(f"niri msg action focus-window --id {notes['id']}")
+          machine.wait_until_succeeds(
+              in_session("niri msg focused-window | grep -q 'Notes for Tuesday'"), timeout=10
+          )
+          closed = in_session("niri msg layers | grep -qw launcher")
+
+          def tab_to(typed, title):
+              machine.send_key("meta_l-tab")
+              launcher_ready()
+              launcher_until(lambda shown: shown["held"] == ["windows"])
+              if typed:
+                  type_in(typed, selecting=title)
+              launcher_until(
+                  lambda shown: shown["selected"] and shown["selected"]["name"] == title
+              )
+
+          def went(title):
+              machine.send_key("ret")
+              machine.wait_until_fails(closed, timeout=10)
+              machine.wait_until_succeeds(
+                  in_session(f"niri msg focused-window | grep -q '{title}'"), timeout=10
+              )
+
+          # The window used last is chosen as it opens, and this one isn't
+          # there to choose.
+          tab_to("", scratch[-1])
+          machine.screenshot("launcher-windows")
+          went("Scratch 25")
+          tab_to("", "Notes for Tuesday")
+          went("Notes for Tuesday")
+          # A few letters find one among them all, and nothing looser.
+          tab_to("scr 07", "Scratch 07")
+          went("Scratch 07")
+          # A program's name finds its windows, the one used last first.
+          tab_to("kitty", "Notes for Tuesday")
+          machine.send_key("esc")
+          machine.wait_until_fails(closed, timeout=10)
+          for title in scratch:
+              as_account(f"niri msg action close-window --id {window_titled(title)['id']}")
+          machine.wait_until_fails(in_session("niri msg windows | grep -q Scratch"), timeout=30)
+          as_account(f"niri msg action focus-window --id {notes['id']}")
+
       # The right arrow steps into what can be done to a window, and a verb
       # that needs a target asks for it in the same field.
       with subtest("the launcher moves a window and copies its title"):

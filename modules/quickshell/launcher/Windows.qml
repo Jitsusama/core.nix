@@ -1,16 +1,66 @@
 // Every open window, found by its title and by its program's name, the most
-// recently used first, each saying where it is: this window, here on the
-// focused workspace, or the workspace it's on. Return goes to it, and
+// recently used first, each saying where it is: this window, or the
+// workspace it's on when that's another. Return goes to it, and
 // Shift+Return opens another of its program below it. Its verbs move it to
 // another workspace, float or tile it, copy its title or close it. What niri
 // says of its windows comes through Niri, from niri's own event stream, so
 // finding a window costs no process.
+//
+// They're also a collection, which Super+Tab opens on its own: every window
+// but this one, the one used last first, so Super+Tab and Return go back to
+// it and a few letters find any other. It adds no row of its own to the
+// search, where each window is already found by itself.
 import Quickshell
 import qs
 import QtQuick
+import "../Fuzzy.js" as Fuzzy
 
 Provider {
     id: provider
+
+    collection: ({
+        noun: "windows",
+        title: "Windows",
+        glyph: String.fromCodePoint(0xf05b2),
+        ask: "which window?",
+        empty: "No other windows.",
+        searched: false
+    })
+
+    // An open list follows windows opening, closing and being renamed.
+    onThingsChanged: changed()
+
+    function everything() {
+        return things.filter(window => !window.focused);
+    }
+
+    // Found by title, or by program more loosely, as the main search finds
+    // them; the tidiest matches kept, and among equals the one used last.
+    function search(typed) {
+        const words = Fuzzy.words(typed);
+        const need = Fuzzy.letters(words);
+        const others = everything();
+        const found = [];
+        others.forEach((window, recency) => {
+            const byName = (window.prepared.mask & need) === need
+                ? Fuzzy.match(window.prepared, words, false) : { score: -1 };
+            if (byName.score >= 0) {
+                found.push({ item: window.prepared, score: byName.score, grade: byName.grade,
+                    recency: recency, choice: window });
+                return;
+            }
+            if (!window.keywords || (window.keywords.mask & need) !== need)
+                return;
+            const byWord = Fuzzy.match(window.keywords, words, false);
+            if (byWord.score >= 0)
+                found.push({ item: window.prepared, score: byWord.score / 4, grade: byWord.grade,
+                    recency: recency, choice: window });
+        });
+        const grade = Math.min(3, ...found.map(f => f.grade));
+        const kept = found.filter(f => f.grade === grade)
+            .sort((a, b) => b.score - a.score || a.recency - b.recency);
+        return { rows: kept.map(f => f.choice), grade: grade };
+    }
 
     things: {
         Niri.revision;
@@ -35,11 +85,13 @@ Provider {
                     keywords: program,
                     glyph: programGlyph(entry ? entry.id : window.app_id),
                     hue: "program",
-                    side: window.is_focused ? "this window"
-                        : workspace && here && workspace.id === here.id ? "here"
+                    // Where a window is matters only when it's elsewhere, so
+                    // a list of the windows here isn't "here" over and over.
+                    side: window.id === Niri.current ? "this window"
+                        : workspace && here && workspace.id === here.id ? ""
                         : workspace ? `workspace ${workspace.idx}` : "",
                     context: workspace ? `on workspace ${workspace.idx}` : "",
-                    focused: window.is_focused,
+                    focused: window.id === Niri.current,
                     run: () => Niri.act({ FocusWindow: { id: window.id } }),
                     below: below,
                     verbs: () => provider.verbs(window, title, program, below)
@@ -142,7 +194,7 @@ Provider {
         return spaces.map((space, at) => {
             const inside = names(space);
             const last = at === spaces.length - 1 && inside.length === 0;
-            const chord = window.is_focused ? chordTo(space.idx) : "";
+            const chord = window.id === Niri.current ? chordTo(space.idx) : "";
             return thing({
                 key: `workspace:${space.idx}`,
                 verb: "move",
