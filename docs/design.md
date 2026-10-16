@@ -2,9 +2,9 @@
 
 How everything Joel sees and touches is meant to look, read and behave, from
 the boot menu to a shell session, Neovim, pi, a browser or a chat app. Every
-module that puts something on a screen follows this document, and every
-module's `AGENTS.md` points at it, so an agent builds to it rather than to its
-own taste.
+module that puts something on a screen follows this document, and the
+`AGENTS.md` of core.nix and of every repository built on it points at it, so
+an agent builds to it rather than to its own taste.
 
 It's a living document. No existing example is purely what Joel likes yet, so
 the aesthetic is found surface by surface in studio rounds (below), and what
@@ -39,6 +39,9 @@ And, as the design grew:
 - Things collapse cleanly and on purpose when space is short.
 - The keyboard is the way in to everything, without exception, and it has
   to be comfortable; the pointer comes second.
+- "Anything you build has to meet an insanely high quality bar. No half
+  assed shit can happen. Everything has to follow my design aesthetic which
+  has been refined through our work."
 
 ## The Principles
 
@@ -100,6 +103,16 @@ for judging before it's been judged here first.
   legibility check passes, and its keys are in the map without a clash.
 - **Proven.** Every bug found gets a check before its fix, and the check is
   seen failing first.
+- **Tried as he works.** It's been used the way Joel uses it and at his
+  scale: dozens of windows over many workspaces, on the laptop's keyboard and
+  on the ErgoDox. A design that only holds up for a few things isn't done,
+  however tidy its reasons.
+- **Asked, where a habit changes.** A key, a gesture or a flow he already uses
+  changes only when he's said yes to that change on its own, with what it
+  costs him beside what it gives. A yes to a larger draft doesn't cover a
+  change inside it.
+- **Said, where it's unfinished.** Whatever hasn't met all of this is called
+  unfinished when it's shown, never done.
 
 ## Type
 
