@@ -512,8 +512,13 @@ upstream as it is and the override can then come out.
   Intel_Write_DDC (-95)"; 7.2.10 checks the length first and says "Malformed
   DDC record (plen=11, remaining=1)". The two real records go first either
   way, so the controller has its parameters. linux-firmware's
-  [a98a6daa9f4d][14] drops the byte two days after that release, so its file
-  goes ahead of the package's until nixpkgs has a newer one.
+  [a98a6daa9f4d][14] drops the byte two days after that release.
+
+- **Bluetooth's firmware.** The same release carries Intel's build from
+  July for this chip, where linux-firmware's [8a2941fae0d0][17] has its
+  release 24.80.0.2 from 1 October, under the same file names. That commit
+  also holds the fixed DDC file, so all three files come from it and go
+  ahead of the package's until nixpkgs has a newer one.
 
 - **bolt's USB4 controllers.** bolt 0.9.8 decides whether a USB4 domain
   keeps its UUID across reboots from a table of controller PCI IDs, and
@@ -559,3 +564,4 @@ upstream as it is and the override can then come out.
 [14]: https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/commit/?id=a98a6daa9f4dee2f662cc8a48610287189b23499
 [15]: https://lore.kernel.org/all/20261013-hm1092-driver-v7-0-d81a9b152ffd@gmail.com/
 [16]: ../modules/ir-camera/nixos.nix
+[17]: https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/commit/?id=8a2941fae0d02364d8ae6542ba890fd496681b55
