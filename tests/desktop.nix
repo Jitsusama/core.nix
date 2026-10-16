@@ -432,38 +432,31 @@ pkgs.testers.runNixOSTest {
         }
       ];
       # A microphone of the class a real one has, which Quickshell needs to see
-      # its audio: a loopback whose far side is a source, as Pipewire's guide
-      # makes one, since a null sink's ports face the wrong way for that class.
-      # It hears what the speakers play, so it gives something to record, as a
-      # real one always does: unlinked, it would give nothing, and a recording
-      # with sound waits for its first sound before it writes anything.
-      services.pipewire.extraConfig.pipewire."91-stand-in-microphone"."context.modules" = [
-        {
-          name = "libpipewire-module-loopback";
-          args = {
-            "capture.props" = {
-              "node.name" = "stand-in-microphone-input";
-              "stream.capture.sink" = true;
-              "target.object" = "stand-in-speakers";
-              # Two channels, as a laptop's microphones are: Quickshell reads no
-              # volume from a loopback whose map and volumes differ in size.
-              "audio.position" = [
-                "FL"
-                "FR"
-              ];
-              "node.passive" = true;
-            };
-            "playback.props" = {
+      # its audio: Pipewire's test tone, a node of its own as a sound card's
+      # is. A loopback's far side is a stream, and on about one mute in two
+      # hundred Quickshell read back the mute from before, which a node of
+      # its own never did in six hundred. The tone gives something to record
+      # from the start, as a real microphone does, and a recording with
+      # sound waits for its first sound before it writes anything.
+      services.pipewire.extraConfig.pipewire."91-stand-in-microphone" = {
+        "context.spa-libs".audiotestsrc = "audiotestsrc/libspa-audiotestsrc";
+        "context.objects" = [
+          {
+            factory = "adapter";
+            args = {
+              "factory.name" = "audiotestsrc";
               "node.name" = "stand-in-microphone";
+              "node.description" = "Stand-in microphone";
               "media.class" = "Audio/Source";
+              # Two channels, as a laptop's microphones are.
               "audio.position" = [
                 "FL"
                 "FR"
               ];
             };
-          };
-        }
-      ];
+          }
+        ];
+      };
 
       virtualisation = {
         memorySize = 4096;
