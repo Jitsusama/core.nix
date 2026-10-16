@@ -17,14 +17,14 @@ after it come the words every layer shares:
 A letter after Space opens a group, and the group then Space finds among what
 it holds:
 
-| Group   | Holds                    | Group     | Holds                       |
-| ------- | ------------------------ | --------- | --------------------------- |
-| Space a | AI                       | Space i   | Neovim's insides            |
-| Space b | the open files           | Space k   | the language server's folders |
-| Space c | code                     | Space s   | search                      |
-| Space e | problems                 | Space t   | tests                       |
-| Space f | files                    | Space T   | tabs                        |
-| Space g | git, and g h GitHub      | Space u   | looks                       |
+| Group   | Holds               | Group   | Holds                         |
+| ------- | ------------------- | ------- | ----------------------------- |
+| Space b | the open files      | Space k | the language server's folders |
+| Space c | code                | Space s | search                        |
+| Space e | problems            | Space t | tests                         |
+| Space f | files               | Space T | tabs                          |
+| Space g | git, and g h GitHub | Space u | looks                         |
+| Space i | Neovim's insides    |         |                               |
 
 A capital letter is that letter with Shift. [ and ] step to the one before
 and after: [ d a problem, [ g a git change, [ t a test, [ b an open file.

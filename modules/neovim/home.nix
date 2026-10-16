@@ -395,8 +395,6 @@ in
       (waits vimPlugins.vim-surround null { soon = true; })
       # Simple text alignment plugin.
       (waits vimPlugins.vim-easy-align null { soon = true; })
-      # Seamless integration with Claude Code.
-      (waits vimPlugins.claudecode-nvim ./plugins/claudecode.lua { soon = true; })
       # Companion plugin for pi: pairs nvim with a pi session over msgpack-rpc.
       (waits pi ./plugins/neovim-pi.lua { soon = true; })
 
@@ -435,8 +433,6 @@ in
       (waits vimPlugins.neotest-minitest null { })
       # Edit and review GitHub issues and pull requests.
       (waits vimPlugins.octo-nvim ./plugins/octo.lua { })
-      # Integration with OpenCode AI coding assistant.
-      (waits vimPlugins.opencode-nvim ./plugins/opencode.lua { })
       # The Refactoring library based off the refactoring book by Martin Fowler.
       (waits vimPlugins.refactoring-nvim ./plugins/refactoring.lua { })
       # Visualize undo history as a tree structure.

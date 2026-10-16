@@ -231,34 +231,6 @@ in
     command = "UndotreeToggle";
   }
 
-  # ─── a: AI ──────────────────────────────────────────────────────────────
-  {
-    chord = "Space a a";
-    does = "Go to Claude";
-    command = "ClaudeCodeFocus";
-  }
-  {
-    chord = "Space a s";
-    does = "Send the file, or the selection, to Claude";
-    command = "ClaudeCodeSend";
-    modes = both;
-  }
-  {
-    chord = "Space a d";
-    does = "Take Claude's change";
-    command = "ClaudeCodeDiffAccept";
-  }
-  {
-    chord = "Space a r";
-    does = "Turn down Claude's change";
-    command = "ClaudeCodeDiffDeny";
-  }
-  {
-    chord = "Space a m";
-    does = "Choose Claude's model";
-    command = "ClaudeCodeSelectModel";
-  }
-
   # ─── b: the open files ──────────────────────────────────────────────────
   {
     chord = "Space b Space";

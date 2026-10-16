@@ -2261,10 +2261,7 @@ in
           ${neovimAt home}
           echo 'return {}' > probe.lua
           nvim --headless probe.lua -c "lua io.stdout:write(${report})" -c 'qa!' > answer 2> complaints
-          # claudecode says it has stopped as Neovim quits, which is news, not a
-          # complaint.
-          grep -v '\[INFO\]' complaints > errors || true
-          if [ -s errors ]; then cat errors; exit 1; fi
+          if [ -s complaints ]; then cat complaints; exit 1; fi
           if [ "$(cat answer)" != "jitsusama nil true objects" ]; then cat answer; exit 1; fi
           touch $out
         '';
@@ -2379,8 +2376,7 @@ in
           # rather than waits.
           timeout 120 nvim --headless --cmd 'autocmd VimEnter * ++once lua local ok, problem = xpcall(dofile, debug.traceback, "${probe}") if not ok then io.stdout:write(problem) vim.cmd("qa!") end' probe.lua \
             > answer 2> complaints || true
-          grep -v '\[INFO\]' complaints > errors || true
-          if [ -s errors ]; then cat errors; exit 1; fi
+          if [ -s complaints ]; then cat complaints; exit 1; fi
           if [ ! -s answer ]; then echo 'Neovim did not finish in two minutes'; exit 1; fi
           if [ "$(cat answer)" != "as designed" ]; then cat answer; exit 1; fi
           touch $out
@@ -2509,8 +2505,7 @@ in
         echo 'return {}' > probe.lua
         timeout 120 nvim --headless --cmd 'autocmd VimEnter * ++once lua local ok, problem = xpcall(dofile, debug.traceback, "${probe}") if not ok then io.stdout:write(problem) vim.cmd("qa!") end' probe.lua \
           > answer 2> complaints || true
-        grep -v '\[INFO\]' complaints > errors || true
-        if [ -s errors ]; then cat errors; exit 1; fi
+        if [ -s complaints ]; then cat complaints; exit 1; fi
         if [ ! -s answer ]; then echo 'Neovim did not finish in two minutes'; exit 1; fi
         if [ "$(cat answer)" != "as designed" ]; then cat answer; exit 1; fi
         touch $out
@@ -2575,8 +2570,7 @@ in
           commit -q -m first
         echo 'a second line' >> project/sub/notes.txt
         nvim --headless project/sub/notes.txt -c 'luafile ${probe}' > answer 2> complaints
-        grep -v '\[INFO\]' complaints > errors || true
-        if [ -s errors ]; then cat errors; exit 1; fi
+        if [ -s complaints ]; then cat complaints; exit 1; fi
         if [ "$(cat answer)" != "as designed" ]; then cat answer; exit 1; fi
         touch $out
       '';
@@ -2734,8 +2728,7 @@ in
         # goes to a file rather than among the complaints.
         nvim --headless --cmd 'set verbose=1 verbosefile=verbose' \
           -c 'set verbose=0' -c 'luafile ${probe}' -c 'qa!' > answer 2> complaints
-        grep -v '\[INFO\]' complaints > errors || true
-        if [ -s errors ]; then cat errors; exit 1; fi
+        if [ -s complaints ]; then cat complaints; exit 1; fi
         if [ "$(cat answer)" != "every key" ]; then cat answer; exit 1; fi
         touch $out
       '';
