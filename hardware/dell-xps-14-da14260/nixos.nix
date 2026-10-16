@@ -211,6 +211,22 @@ in
 
   # The NPU, through Level Zero.
   hardware.cpu.intel.npu.enable = true;
+  # Level Zero's loader checks a driver's file exists before it loads it,
+  # and looks everywhere but where NixOS links the drivers, so without this
+  # no program finds the GPU's or the NPU's driver unless LD_LIBRARY_PATH
+  # names that directory. As an overlay, so whatever is built against the
+  # loader gets the fixed one. Take it out once nixpkgs's package does it.
+  nixpkgs.overlays = [
+    (_final: prev: {
+      level-zero = prev.level-zero.overrideAttrs (old: {
+        patches = (old.patches or [ ]) ++ [ ./level-zero-driver-link.patch ];
+        postPatch = (old.postPatch or "") + ''
+          substituteInPlace source/loader/linux/driver_discovery_lin.cpp \
+            --replace-fail @driverLink@ ${prev.addDriverRunpath.driverLink}
+        '';
+      });
+    })
+  ];
 
   # The mute key's light follows the switch PipeWire's mute flips, as
   # alsa-ucm-conf's cs42l45 profile would attach it if it ran as root. udev
