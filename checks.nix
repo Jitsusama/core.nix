@@ -87,6 +87,25 @@ let
 
   account = machine: machine.config.home-manager.users.someone;
 
+  # Puts an account's Neovim where Neovim looks for it, under $PWD: every
+  # file the account has in ~/.config/nvim, and the plugins.
+  neovimAt =
+    home:
+    let
+      files = home.xdg.configFile;
+      names = lib.filter (lib.hasPrefix "nvim/") (lib.attrNames files);
+    in
+    ''
+      export HOME=$PWD XDG_CONFIG_HOME=$PWD/config XDG_DATA_HOME=$PWD/data
+      export XDG_STATE_HOME=$PWD/state XDG_CACHE_HOME=$PWD/cache
+      mkdir -p data/nvim/site/pack
+      ln -s ${home.xdg.dataFile."nvim/site/pack/hm".source} data/nvim/site/pack/hm
+      ${lib.concatMapStrings (name: ''
+        mkdir -p config/${dirOf name}
+        cp ${files.${name}.source} config/${name}
+      '') names}
+    '';
+
   # Runs a test that times itself in Qt's engine, in a fresh process each
   # time, until one is fast enough. How fast the engine runs the same code
   # differs from one process to the next by as much as half, while a
@@ -2126,9 +2145,6 @@ in
     neovim-starts-in-the-theme =
       let
         home = account workstation;
-        files = home.xdg.configFile;
-        # home-manager puts the plugins where Neovim looks for packages.
-        plugins = home.xdg.dataFile."nvim/site/pack/hm".source;
         report = lib.concatStringsSep " .. ' ' .. " [
           "vim.g.colors_name"
           "tostring(vim.api.nvim_get_hl(0, { name = 'Normal' }).bg)"
@@ -2143,14 +2159,7 @@ in
           nativeBuildInputs = [ home.home.path ];
         }
         ''
-          export HOME=$PWD XDG_CONFIG_HOME=$PWD/config XDG_DATA_HOME=$PWD/data
-          export XDG_STATE_HOME=$PWD/state XDG_CACHE_HOME=$PWD/cache
-          mkdir -p config/nvim/lua config/nvim/colors data/nvim/site/pack
-          ln -s ${plugins} data/nvim/site/pack/hm
-          cp ${files."nvim/init.lua".source} config/nvim/init.lua
-          cp ${files."nvim/lua/theme.lua".source} config/nvim/lua/theme.lua
-          cp ${files."nvim/lua/keys.lua".source} config/nvim/lua/keys.lua
-          cp ${files."nvim/colors/jitsusama.lua".source} config/nvim/colors/jitsusama.lua
+          ${neovimAt home}
           echo 'return {}' > probe.lua
           nvim --headless probe.lua -c "lua io.stdout:write(${report})" -c 'qa!' > answer 2> complaints
           # claudecode says it has stopped as Neovim quits, which is news, not a
@@ -2161,6 +2170,71 @@ in
           touch $out
         '';
 
+    # Neovim's status line, drawn for a file in a repository with changes
+    # not yet committed, with git's state from the engine: the file told
+    # from its root, the branch with its unsaved mark, a mark once the
+    # buffer changes, an error counted, the mode once it isn't Normal, and
+    # all of it fitting a narrow window.
+    neovim-draws-its-status-line =
+      let
+        home = account workstation;
+        probe = pkgs.writeText "probe.lua" ''
+          local status = require('status')
+          local g = require('theme').glyphs
+          local wrong = {}
+          local function plain(pieces)
+            local text = {}
+            for _, piece in ipairs(pieces) do
+              table.insert(text, piece[2])
+            end
+            return table.concat(text)
+          end
+          local function expect(what, columns, left, right)
+            local l, r = status.layout(columns)
+            l, r = plain(l), plain(r)
+            if l ~= left or r ~= right then
+              table.insert(wrong, what .. ': "' .. l .. '" and "' .. r .. '"')
+            end
+          end
+          vim.wait(5000, function()
+            return #select(2, status.layout(200)) > 0
+          end)
+          expect('at rest', 120, 'project/sub/notes.txt', g.branch .. ' main ' .. g.on)
+          vim.api.nvim_buf_set_lines(0, -1, -1, false, { 'more' })
+          expect('changed', 120, 'project/sub/notes.txt ' .. g.on, g.branch .. ' main ' .. g.on)
+          vim.diagnostic.set(vim.api.nvim_create_namespace('probe'), 0, {
+            { lnum = 0, col = 0, severity = vim.diagnostic.severity.ERROR, message = 'e' },
+          })
+          expect('an error', 120, 'project/sub/notes.txt ' .. g.on,
+            g.failed .. ' 1  ' .. g.branch .. ' main ' .. g.on)
+          expect('narrow', 35, 'project/' .. g.more .. '/notes.txt ' .. g.on,
+            g.failed .. ' 1  ' .. g.branch .. ' ' .. g.on .. '  ' .. g.more)
+          vim.api.nvim_feedkeys('i', 'n', false)
+          vim.defer_fn(function()
+            expect('typing', 120, 'project/sub/notes.txt ' .. g.on .. '  insert',
+              g.failed .. ' 1  ' .. g.branch .. ' main ' .. g.on)
+            io.stdout:write(#wrong == 0 and 'as designed' or table.concat(wrong, '\n'))
+            vim.cmd('qa!')
+          end, 200)
+        '';
+      in
+      pkgs.runCommandLocal "neovim-draws-its-status-line" { nativeBuildInputs = [ home.home.path ]; } ''
+        ${neovimAt home}
+        mkdir -p project/sub
+        # Text, which no language server reads, so none reports its progress.
+        echo 'a first line' > project/sub/notes.txt
+        git -C project init -q -b main
+        git -C project add -A
+        git -C project -c user.name=check -c user.email=check@localhost -c commit.gpgsign=false \
+          commit -q -m first
+        echo 'a second line' >> project/sub/notes.txt
+        nvim --headless project/sub/notes.txt -c 'luafile ${probe}' > answer 2> complaints
+        grep -v '\[INFO\]' complaints > errors || true
+        if [ -s errors ]; then cat errors; exit 1; fi
+        if [ "$(cat answer)" != "as designed" ]; then cat answer; exit 1; fi
+        touch $out
+      '';
+
     # The account's Neovim binds every key in the map, and only those: each
     # action a key names is one a file registered, each key is bound as it
     # says, a scope's in a buffer it arrives in, each plugin's window holds
@@ -2169,8 +2243,6 @@ in
     neovim-binds-every-key =
       let
         home = account workstation;
-        files = home.xdg.configFile;
-        plugins = home.xdg.dataFile."nvim/site/pack/hm".source;
         probe = pkgs.writeText "probe.lua" ''
           local keys = require('keys')
           local wrong = {}
@@ -2303,14 +2375,7 @@ in
         '';
       in
       pkgs.runCommandLocal "neovim-binds-every-key" { nativeBuildInputs = [ home.home.path ]; } ''
-        export HOME=$PWD XDG_CONFIG_HOME=$PWD/config XDG_DATA_HOME=$PWD/data
-        export XDG_STATE_HOME=$PWD/state XDG_CACHE_HOME=$PWD/cache
-        mkdir -p config/nvim/lua config/nvim/colors data/nvim/site/pack
-        ln -s ${plugins} data/nvim/site/pack/hm
-        cp ${files."nvim/init.lua".source} config/nvim/init.lua
-        cp ${files."nvim/lua/theme.lua".source} config/nvim/lua/theme.lua
-        cp ${files."nvim/lua/keys.lua".source} config/nvim/lua/keys.lua
-        cp ${files."nvim/colors/jitsusama.lua".source} config/nvim/colors/jitsusama.lua
+        ${neovimAt home}
         # Neovim says where each key was set only when it's verbose, which
         # goes to a file rather than among the complaints.
         nvim --headless --cmd 'set verbose=1 verbosefile=verbose' \

@@ -123,6 +123,7 @@ in
   imports = [
     ../theme/home.nix
     ../keys/home.nix
+    ../prompt/home.nix
   ];
 
   # Every key, for the launcher to find by what it does.
@@ -236,6 +237,16 @@ in
   # The theme as Neovim's colour scheme, every colour one of its roles.
   xdg.configFile."nvim/colors/jitsusama.lua".source = ./colors/jitsusama.lua;
 
+  # The status line, and what it tells a file's place and git's state by:
+  # the prompt's root markers and its git-engine, so the two agree.
+  xdg.configFile."nvim/lua/status.lua".source = ./status.lua;
+  xdg.configFile."nvim/lua/where.lua".text = "return ${
+    lib.generators.toLua { } {
+      engine = lib.getExe (pkgs.callPackage ../git-engine/package.nix { });
+      inherit (config.jitsusama.prompt) roots;
+    }
+  }\n";
+
   programs.git.ignores = [
     "*.swp"
     "*.swo"
@@ -294,8 +305,6 @@ in
       (configured vimPlugins.gitsigns-nvim ./plugins/gitsigns.lua)
       # Quickstart configs for Nvim LSP.
       (configured vimPlugins.nvim-lspconfig ./plugins/lsp.lua)
-      # A blazing fast and statusline.
-      (configured vimPlugins.lualine-nvim ./plugins/lualine.lua)
       # A framework for interacting with tests.
       (configured vimPlugins.neotest ./plugins/neotest.lua)
       # Neotest adapter for Minitest.
