@@ -49,7 +49,17 @@ fzf.setup({
   },
 })
 
-fzf.register_ui_select()
+-- A choice is a finder like the rest: what's chosen is its title, over the
+-- prompt's own mark, and the number fzf-lua keeps to know which was chosen
+-- stays out of sight.
+fzf.register_ui_select(function(ui_opts)
+  local asked = ui_opts.prompt and vim.trim((ui_opts.prompt:gsub(':%s*$', ''))) or ''
+  return {
+    prompt = glyphs.prompt .. ' ',
+    winopts = { title = asked ~= '' and asked or nil },
+    fzf_opts = { ['--delimiter'] = '[.] ', ['--with-nth'] = '2..' },
+  }
+end)
 
 -- fzf-lua pads each title with a space either side, which would set it a
 -- step right of the prompt under it. Every finder's window is opened and

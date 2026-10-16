@@ -231,34 +231,6 @@ in
     command = "UndotreeToggle";
   }
 
-  # ─── a: AI ──────────────────────────────────────────────────────────────
-  {
-    chord = "Space a a";
-    does = "Go to Claude";
-    command = "ClaudeCodeFocus";
-  }
-  {
-    chord = "Space a s";
-    does = "Send the file, or the selection, to Claude";
-    command = "ClaudeCodeSend";
-    modes = both;
-  }
-  {
-    chord = "Space a d";
-    does = "Take Claude's change";
-    command = "ClaudeCodeDiffAccept";
-  }
-  {
-    chord = "Space a r";
-    does = "Turn down Claude's change";
-    command = "ClaudeCodeDiffDeny";
-  }
-  {
-    chord = "Space a m";
-    does = "Choose Claude's model";
-    command = "ClaudeCodeSelectModel";
-  }
-
   # ─── b: the open files ──────────────────────────────────────────────────
   {
     chord = "Space b Space";
@@ -358,6 +330,11 @@ in
     modes = selected;
   }
   {
+    chord = "Space c c Space";
+    does = "Find a key for calls, by what it does";
+    lua = "require('keys').find('Space c c', 'calls')";
+  }
+  {
     chord = "Space c c i";
     does = "Find what calls this";
     lua = "require('fzf-lua').lsp_incoming_calls()";
@@ -368,6 +345,11 @@ in
     does = "Find what this calls";
     lua = "require('fzf-lua').lsp_outgoing_calls()";
     scope = "code";
+  }
+  {
+    chord = "Space c l Space";
+    does = "Find a key for code lenses, by what it does";
+    lua = "require('keys').find('Space c l', 'lens')";
   }
   {
     chord = "Space c l r";
@@ -382,10 +364,20 @@ in
     scope = "code";
   }
   {
+    chord = "Space c t Space";
+    does = "Find a key for what code shows, by what it does";
+    lua = "require('keys').find('Space c t', 'toggles')";
+  }
+  {
     chord = "Space c t i";
     does = "Show the types the code leaves out, or hide them";
     action = "code.inlayHints";
     scope = "code";
+  }
+  {
+    chord = "Space c o Space";
+    does = "Find a key for the outline, by what it does";
+    lua = "require('keys').find('Space c o', 'outline')";
   }
   {
     chord = "Space c o o";
@@ -411,6 +403,11 @@ in
     chord = "Space c o N";
     does = "Walk the outline's symbols";
     command = "AerialNavToggle";
+  }
+  {
+    chord = "Space c r Space";
+    does = "Find a key for refactoring, by what it does";
+    lua = "require('keys').find('Space c r', 'refactor')";
   }
   {
     chord = "Space c r e";
@@ -446,6 +443,11 @@ in
     chord = "Space c r B";
     does = "Move this block to a file of its own";
     lua = "require('refactoring').refactor('Extract Block To File')";
+  }
+  {
+    chord = "Space c s Space";
+    does = "Find a key for selecting code, by what it does";
+    lua = "require('keys').find('Space c s', 'selection')";
   }
   {
     chord = "Space c s s";
@@ -488,6 +490,11 @@ in
     chord = "Space e q";
     does = "Show the quickfix list as Trouble's, or hide it";
     lua = "require('trouble').toggle('quickfix')";
+  }
+  {
+    chord = "Space e t Space";
+    does = "Find a key for how problems show, by what it does";
+    lua = "require('keys').find('Space e t', 'toggles')";
   }
   {
     chord = "Space e t d";
@@ -538,6 +545,11 @@ in
   }
 
   # ─── g: git ─────────────────────────────────────────────────────────────
+  {
+    chord = "Space g Space";
+    does = "Find a key for git, by what it does";
+    lua = "require('keys').find('Space g', 'git')";
+  }
   {
     chord = "Space g g";
     does = "Show what's changed, file by file";
@@ -635,6 +647,11 @@ in
     scope = "git";
   }
   {
+    chord = "Space g c t Space";
+    does = "Find a key for what commits show, by what it does";
+    lua = "require('keys').find('Space g c t', 'toggles')";
+  }
+  {
     chord = "Space g c t b";
     does = "Show who wrote each line as you go, or stop";
     lua = "require('gitsigns').toggle_current_line_blame()";
@@ -703,6 +720,11 @@ in
     scope = "git";
   }
   {
+    chord = "Space g s Space";
+    does = "Find a key for staging, by what it does";
+    lua = "require('keys').find('Space g s', 'stage')";
+  }
+  {
     chord = "Space g s a";
     does = "Stage the change here";
     lua = "require('gitsigns').stage_hunk()";
@@ -734,6 +756,11 @@ in
     scope = "git";
   }
   {
+    chord = "Space g n Space";
+    does = "Find a key for the remote, by what it does";
+    lua = "require('keys').find('Space g n', 'remote')";
+  }
+  {
     chord = "Space g n p";
     does = "Push";
     command = "Git push";
@@ -750,6 +777,11 @@ in
   }
 
   # ─── g h: GitHub ────────────────────────────────────────────────────────
+  {
+    chord = "Space g h Space";
+    does = "Find a key for GitHub, by what it does";
+    lua = "require('keys').find('Space g h', 'GitHub')";
+  }
   {
     chord = "Space g h h";
     does = "Show this repository's pull requests";
@@ -853,6 +885,11 @@ in
     command = "Octo notification list";
   }
   {
+    chord = "Space g h f Space";
+    does = "Find a key for links to the file, by what it does";
+    lua = "require('keys').find('Space g h f', 'file links')";
+  }
+  {
     chord = "Space g h f y";
     does = "Copy a lasting link to these lines";
     keys = ":GBrowse!<CR>";
@@ -866,6 +903,11 @@ in
   }
 
   # ─── i: what Neovim holds ───────────────────────────────────────────────
+  {
+    chord = "Space i Space";
+    does = "Find a key for Neovim's insides, by what it does";
+    lua = "require('keys').find('Space i', 'insides')";
+  }
   {
     chord = "Space i k";
     does = "Find a key, with what it runs";
@@ -936,6 +978,11 @@ in
 
   # ─── k: the language server's folders ───────────────────────────────────
   {
+    chord = "Space k Space";
+    does = "Find a key for the language server's folders, by what it does";
+    lua = "require('keys').find('Space k', 'language server folders')";
+  }
+  {
     chord = "Space k a";
     does = "Give the language server another folder";
     lua = "vim.lsp.buf.add_workspace_folder()";
@@ -955,6 +1002,11 @@ in
   }
 
   # ─── s: search ──────────────────────────────────────────────────────────
+  {
+    chord = "Space s Space";
+    does = "Find a key for searching, by what it does";
+    lua = "require('keys').find('Space s', 'search')";
+  }
   {
     chord = "Space s p";
     does = "Search every file";
@@ -1023,6 +1075,11 @@ in
   }
 
   # ─── t: tests ───────────────────────────────────────────────────────────
+  {
+    chord = "Space t Space";
+    does = "Find a key for tests, by what it does";
+    lua = "require('keys').find('Space t', 'tests')";
+  }
   {
     chord = "Space t t";
     does = "Test the nearest";
@@ -1107,6 +1164,11 @@ in
   }
 
   # ─── u: how it looks ────────────────────────────────────────────────────
+  {
+    chord = "Space u Space";
+    does = "Find a key for how it looks, by what it does";
+    lua = "require('keys').find('Space u', 'looks')";
+  }
   {
     chord = "Space u b";
     does = "Switch between light and dark";

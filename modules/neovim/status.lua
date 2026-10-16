@@ -370,15 +370,11 @@ local function count_found()
   end
 end
 
--- Asks only an agent's plugin that has loaded, since asking one that
--- hasn't would load it, or search for it on every draw.
+-- Asks neovim-pi only once it has loaded, since asking before would load
+-- it, or search for it on every draw.
 local function paired()
   local pi = package.loaded['neovim-pi']
-  if pi and pi.is_attached and pi.is_attached() then
-    return true
-  end
-  local claude = package.loaded.claudecode
-  return claude ~= nil and claude.is_claude_connected ~= nil and claude.is_claude_connected()
+  return pi ~= nil and pi.is_attached ~= nil and pi.is_attached()
 end
 
 -- The steps the line gives way by, in order, each keeping the ones before:

@@ -15,16 +15,18 @@ after it come the words every layer shares:
 | Space 1 to 9         | go to that tab                                      |
 
 A letter after Space opens a group, and the group then Space finds among what
-it holds:
+it holds: in a group of things, one of them (Space b Space an open file, Space
+f Space a file), and in a group of things to do, one of its keys by what it
+does (Space g Space, Space s Space), run as if pressed:
 
-| Group   | Holds                    | Group     | Holds                       |
-| ------- | ------------------------ | --------- | --------------------------- |
-| Space a | AI                       | Space i   | Neovim's insides            |
-| Space b | the open files           | Space k   | the language server's folders |
-| Space c | code                     | Space s   | search                      |
-| Space e | problems                 | Space t   | tests                       |
-| Space f | files                    | Space T   | tabs                        |
-| Space g | git, and g h GitHub      | Space u   | looks                       |
+| Group   | Holds               | Group   | Holds                         |
+| ------- | ------------------- | ------- | ----------------------------- |
+| Space b | the open files      | Space k | the language server's folders |
+| Space c | code                | Space s | search                        |
+| Space e | problems            | Space t | tests                         |
+| Space f | files               | Space T | tabs                          |
+| Space g | git, and g h GitHub | Space u | looks                         |
+| Space i | Neovim's insides    |         |                               |
 
 A capital letter is that letter with Shift. [ and ] step to the one before
 and after: [ d a problem, [ g a git change, [ t a test, [ b an open file.
@@ -62,9 +64,10 @@ what it does:
 Add it to keys.nix: a chord, what it does, and one of `lua`, `action`,
 `command` or `keys`, or `plugin` with the plugin's name for one of its
 actions, for a key in a plugin's own window, which its file hands to the
-plugin in place of the plugin's own keys. A function too long for one line goes in the plugin's
-file, registered under a name with `require('keys').act(name, fn)`, and the
-key names it with `action`. The `neovim-binds-every-key` check fails if a
+plugin in place of the plugin's own keys. A function too long for one line
+goes in the plugin's file, registered under a name with
+`require('keys').act(name, fn)`, and the key names it with `action`. A new
+group needs its Space, which `neovim-finds-in-every-group` holds. The `neovim-binds-every-key` check fails if a
 named action is missing, a key isn't bound as keys.nix says, a plugin's
 window holds a key keys.nix doesn't give it, or a file binds a key that says
 what it does without it being in keys.nix.

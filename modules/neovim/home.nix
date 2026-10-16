@@ -111,7 +111,7 @@ let
   bound =
     key:
     {
-      inherit (key) modes;
+      inherit (key) chord modes;
       lhs = spell key.chord;
       desc = key.does;
     }
@@ -209,6 +209,63 @@ in
         end
       end
       return window
+    end
+
+    local function run(key)
+      local how = rhs(key)
+      if type(how) == 'function' then
+        return how()
+      end
+      vim.api.nvim_feedkeys(vim.keycode(how), key.remap and 'm' or 'n', false)
+    end
+
+    -- Whether a key works here: everywhere, or bound in this buffer.
+    local function here(key)
+      return key.scope == nil or vim.fn.maparg(key.lhs, 'n', false, true).buffer == 1
+    end
+
+    -- Words in one of the theme's roles, as the finder draws them.
+    local function painted(role, words)
+      local hex = require('theme')[role]
+      local red, green, blue =
+        tonumber(hex:sub(2, 3), 16), tonumber(hex:sub(4, 5), 16), tonumber(hex:sub(6, 7), 16)
+      return ('\27[38;2;%d;%d;%dm%s\27[0m'):format(red, green, blue, words)
+    end
+
+    -- A group's keys, found by what they do and run as if pressed: Space
+    -- in a group whose keys are things to do rather than things to find.
+    -- Each row reads as the launcher's do, what it does and then its keys,
+    -- one step quieter, in a column of their own.
+    function M.find(group, name)
+      local found, widest = {}, 0
+      for _, key in ipairs(M.keys) do
+        local rest = key.chord:sub(#group + 2)
+        if
+          key.plugin == nil
+          and vim.tbl_contains(key.modes, 'n')
+          and here(key)
+          and key.chord:sub(1, #group + 1) == group .. ' '
+          and rest ~= 'Space'
+        then
+          table.insert(found, { key = key, rest = rest })
+          widest = math.max(widest, vim.fn.strdisplaywidth(key.desc))
+        end
+      end
+      if #found == 0 then
+        vim.notify('No key for ' .. name .. ' works here', vim.log.levels.INFO)
+        return
+      end
+      vim.ui.select(found, {
+        prompt = (name:gsub('^%l', string.upper)),
+        format_item = function(item)
+          local gap = string.rep(' ', widest - vim.fn.strdisplaywidth(item.key.desc) + 2)
+          return painted('strong', item.key.desc) .. gap .. painted('text', item.rest)
+        end,
+      }, function(item)
+        if item then
+          run(item.key)
+        end
+      end)
     end
 
     -- The names keys.nix gives that no file has registered.
@@ -395,8 +452,6 @@ in
       (waits vimPlugins.vim-surround null { soon = true; })
       # Simple text alignment plugin.
       (waits vimPlugins.vim-easy-align null { soon = true; })
-      # Seamless integration with Claude Code.
-      (waits vimPlugins.claudecode-nvim ./plugins/claudecode.lua { soon = true; })
       # Companion plugin for pi: pairs nvim with a pi session over msgpack-rpc.
       (waits pi ./plugins/neovim-pi.lua { soon = true; })
 
@@ -435,8 +490,6 @@ in
       (waits vimPlugins.neotest-minitest null { })
       # Edit and review GitHub issues and pull requests.
       (waits vimPlugins.octo-nvim ./plugins/octo.lua { })
-      # Integration with OpenCode AI coding assistant.
-      (waits vimPlugins.opencode-nvim ./plugins/opencode.lua { })
       # The Refactoring library based off the refactoring book by Martin Fowler.
       (waits vimPlugins.refactoring-nvim ./plugins/refactoring.lua { })
       # Visualize undo history as a tree structure.

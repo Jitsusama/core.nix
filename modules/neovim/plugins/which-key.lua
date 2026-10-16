@@ -60,7 +60,6 @@ local function group(prefix, name)
 end
 
 which_key.add({
-  group('<leader>a', 'AI'),
   group('<leader>b', 'open files'),
   group('<leader>c', 'code'),
   group('<leader>cc', 'calls'),
