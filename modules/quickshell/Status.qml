@@ -5,10 +5,11 @@
 // overview where the backdrop's layers zoom out with the workspaces, and
 // shows only while the overview is open, letting every click through, so it
 // takes nothing while he works. The overview shrinks the workspaces to half
-// the screen's width, centred, which leaves the left quarter for it.
+// the screen's width, centred, and it keeps to the left quarter beside them.
 //
-// It lies over the picture and over any workspace that reaches under it,
-// with no box behind it: the theme's halo (jitsusama.theme.wallpaper.halo)
+// The overview also draws the columns a workspace has scrolled out of view,
+// so nothing keeps that quarter free. It lies over the picture and over any
+// workspace that reaches under it, with no box behind it: the theme's halo (jitsusama.theme.wallpaper.halo)
 // holds its letters and glyphs off whatever is there, feathered from crisp
 // at the ink to wide and soft, so the picture still shows round it. The
 // halo is the status drawn again as a silhouette in the shadow colour and
