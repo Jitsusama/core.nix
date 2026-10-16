@@ -397,8 +397,26 @@ M.steps = {
   'nameshort',
 }
 
+-- A float stands above the windows, so while one has the keys the line goes
+-- on naming the window under it, and the float's own prompt says where the
+-- keys go rather than a mode.
+local beneath = nil
+local function floating(win)
+  return vim.api.nvim_win_get_config(win).relative ~= ''
+end
+local function shown()
+  local win = vim.api.nvim_get_current_win()
+  if not floating(win) then
+    return vim.api.nvim_win_get_buf(win), false
+  end
+  if beneath and vim.api.nvim_win_is_valid(beneath) then
+    return vim.api.nvim_win_get_buf(beneath), true
+  end
+  return vim.api.nvim_win_get_buf(win), true
+end
+
 local function draw(on)
-  local buf = vim.api.nvim_get_current_buf()
+  local buf, above = shown()
   local left, right = {}, {}
   local lost = false
 
@@ -454,7 +472,7 @@ local function draw(on)
 
   local mode = vim.api.nvim_get_mode().mode
   local named = modes[mode:sub(1, 1)]
-  if named and mode ~= 'nt' then
+  if named and mode ~= 'nt' and not above then
     put(left, 'accent', '  ' .. named)
   end
 
@@ -537,7 +555,7 @@ end
 -- The line as it is now, the window's width deciding how much gives way.
 -- M.layout gives the pieces themselves, for the checks to read.
 function M.layout(columns)
-  if vim.bo.filetype == 'snacks_dashboard' then
+  if vim.bo[(shown())].filetype == 'snacks_dashboard' then
     return {}, {}
   end
   local on = {}
@@ -579,7 +597,7 @@ end
 
 -- Asks git about the buffer in view.
 local function refresh()
-  ask(folder(vim.api.nvim_get_current_buf()))
+  ask(folder((shown())))
 end
 
 function M.setup()
@@ -591,6 +609,16 @@ function M.setup()
 
   local group = vim.api.nvim_create_augroup('status', { clear = true })
   vim.api.nvim_create_autocmd('ColorScheme', { group = group, callback = paint })
+  beneath = vim.api.nvim_get_current_win()
+  vim.api.nvim_create_autocmd('WinEnter', {
+    group = group,
+    callback = function()
+      local win = vim.api.nvim_get_current_win()
+      if not floating(win) then
+        beneath = win
+      end
+    end,
+  })
   vim.api.nvim_create_autocmd({ 'BufEnter', 'BufFilePost', 'BufWritePost' }, {
     group = group,
     callback = function(event)

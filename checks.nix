@@ -2420,6 +2420,36 @@ in
             say('the outline shows what is behind it')
           end
           solid("a change's preview", require('gitsigns.config').config.preview_config.border)
+
+          -- The finder: on the floats' shade, nothing dimmed behind it, and
+          -- its title at the list's edge rather than a space in.
+          local finder = require('fzf-lua.config').globals.winopts
+          solid('the finder', finder.border)
+          solid("the finder's preview", finder.preview.border)
+          if finder.backdrop ~= false then
+            say('the finder dims what is behind it')
+          end
+          local shade = vim.api.nvim_get_hl(0, { name = 'NormalFloat', link = false }).bg
+          if vim.api.nvim_get_hl(0, { name = 'FzfLuaNormal', link = false }).bg ~= shade then
+            say("the finder isn't on the floats' shade")
+          end
+          local titled = require('fzf-lua.utils').nvim_open_win(vim.api.nvim_create_buf(false, true), false, {
+            relative = 'editor', row = 1, col = 1, width = 20, height = 2, title = { { ' Files ', 'FloatTitle' } },
+          })
+          local title = vim.api.nvim_win_get_config(titled).title
+          if title[1][1] ~= 'Files' then
+            say('the finder is titled "' .. title[1][1] .. '", not from its edge')
+          end
+
+          -- While a float has the keys, the status line names the file under it.
+          vim.api.nvim_set_current_win(titled)
+          local named = {}
+          for _, piece in ipairs((require('status').layout(200))) do
+            table.insert(named, piece[2])
+          end
+          if not table.concat(named):find('probe.lua', 1, true) then
+            say('the status line names "' .. table.concat(named) .. '" over a float, not the file under it')
+          end
           io.stdout:write(#wrong == 0 and 'as designed' or table.concat(wrong, '\n'))
           vim.cmd('qa!')
         '';

@@ -15,8 +15,9 @@ which_key.setup({
   filter = function(mapping)
     return mapping.desc and mapping.desc ~= ''
   end,
-  -- Words, not pictures, in the list.
-  icons = { mappings = false },
+  -- Words, not pictures, in the list, each after its key with nothing
+  -- between: the key in the accent and its words beside it read as a pair.
+  icons = { mappings = false, separator = '' },
   plugins = {
     marks = true,
     registers = true,
