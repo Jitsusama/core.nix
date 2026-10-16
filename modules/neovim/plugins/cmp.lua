@@ -1,4 +1,7 @@
+-- cmp suggests as code is typed, with the keys for its suggestions from
+-- keys.nix.
 local cmp = require('cmp')
+local keys = require('keys')
 
 -- Helper function to check if cursor has text before it
 local function has_words_before()
@@ -78,25 +81,19 @@ cmp.setup({
     completion = cmp.config.window.bordered(),
     documentation = cmp.config.window.bordered(),
   },
-  mapping = cmp.mapping.preset.insert({
-    -- Documentation scrolling
-    ['<C-b>'] = cmp.mapping.scroll_docs(-4),
-    ['<C-f>'] = cmp.mapping.scroll_docs(4),
-
-    -- Completion control
-    ['<C-Space>'] = cmp.mapping.complete(),
-    ['<C-e>'] = cmp.mapping.abort(),
-    ['<C-y>'] = cmp.mapping.confirm({ select = true }),
-
-    -- Smart Tab navigation (primary completion interface)
-    ['<Tab>'] = cmp.mapping(tab_complete, { 'i', 's' }),
-    ['<S-Tab>'] = cmp.mapping(shift_tab_complete, { 'i', 's' }),
-
-    -- Literal tab insertion
-    ['<C-Tab>'] = cmp.mapping(function()
-      vim.api.nvim_put({ '\t' }, 'c', false, true)
-    end, { 'i' }),
-  }),
+  -- The suggestions' keys, by keys.nix's names for what they do.
+  mapping = keys.window('completion', function(key)
+    local does = {
+      next = tab_complete,
+      before = shift_tab_complete,
+      suggest = cmp.mapping.complete(),
+      take = cmp.mapping.confirm({ select = true }),
+      away = cmp.mapping.abort(),
+      ['notes.up'] = cmp.mapping.scroll_docs(-4),
+      ['notes.down'] = cmp.mapping.scroll_docs(4),
+    }
+    return cmp.mapping(does[key.plugin], key.modes)
+  end),
   sources = cmp.config.sources({
     { name = 'nvim_lsp' },
   }, {

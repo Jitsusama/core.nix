@@ -557,7 +557,9 @@ branch. A capital letter is that letter with Shift, and does more of the
 same, or more forcefully: Space b W closes the file without saving it. [ and
 ] step to the one before and after (a problem, a git change, a test), and a
 key that only makes sense somewhere, in code a language server reads or a
-file git tracks, is there only then.
+file git tracks, is there only then. A window a plugin opens, the outline,
+the file browser or the problems list, uses the pickers' words: Return opens,
+Ctrl+S below, Ctrl+V beside, Ctrl+T in a tab, q closes and ? shows its keys.
 
 Each program's shortcuts are data: a chord, what it does in plain words, and
 the program's action, in `jitsusama.niri.binds` and `jitsusama.kitty.keys`,
@@ -596,11 +598,12 @@ modifier says what comes along:
 
 The numbers take the same modifiers to the workspaces. Page Up and Page Down
 walk through them, and with Shift carry the workspace itself, since it's
-the thing at that level. Super+A shows every workspace, and Super+Tab goes
+the thing at that level; Ctrl+Shift carries it to the screen before or
+after. Super+A shows every workspace, and Super+Tab goes
 back to the window before, or held, chooses among the recent ones; Super+`
 keeps to the program in focus. A letter keeps its meaning whatever is held:
 F fills, R sizes, M widens (and with Alt stretches the window to the edges),
-C centres, T shows a column as tabs, G lifts a window out to float, and
+C centres (a floating window too), T shows a column as tabs, G lifts a window out to float, and
 Shift turns a width into a height. A window opens in a column of its own, as
 niri opens it; Super+Shift+Return opens a terminal just below the focused
 window instead, and Super+Alt+Return does that for whichever window opens

@@ -1,6 +1,8 @@
+-- Oil shows a folder as a file to edit, for Space f e and - (keys.nix), and
+-- its keys inside are in keys.nix too.
 local oil = require('oil')
+local keys = require('keys')
 
--- Configure oil.nvim for file management as editable buffers
 oil.setup({
   default_file_explorer = true,
   delete_to_trash = true,
@@ -10,27 +12,9 @@ oil.setup({
       return name == '..' or name == '.git'
     end,
   },
-  -- Override conflicting keymaps to avoid conflicts with global mappings
-  keymaps = {
-    ['g?'] = { 'actions.show_help', mode = 'n' },
-    ['<CR>'] = 'actions.select',
-    ['<C-s>'] = { 'actions.select', opts = { vertical = true } },
-    ['<C-h>'] = { 'actions.select', opts = { horizontal = true } },
-    ['<C-t>'] = { 'actions.select', opts = { tab = true } },
-    ['<C-p>'] = 'actions.preview',
-    ['<C-c>'] = { 'actions.close', mode = 'n' },
-    ['<C-l>'] = 'actions.refresh',
-    ['-'] = { 'actions.parent', mode = 'n' },
-    ['_'] = { 'actions.open_cwd', mode = 'n' },
-    ['`'] = { 'actions.cd', mode = 'n' },
-    ['~'] = { 'actions.cd', opts = { scope = 'tab' }, mode = 'n' },
-    -- Disable gs to avoid conflict with Flash navigation
-    ['gs'] = false,
-    -- Keep gx but document it
-    ['gx'] = 'actions.open_external',
-    -- Remap toggle hidden to avoid g. conflict (use gh instead)
-    ['gh'] = { 'actions.toggle_hidden', mode = 'n' },
-    ['g.'] = false,
-    ['g\\'] = { 'actions.toggle_trash', mode = 'n' },
-  },
+  -- The file browser's keys, and none of oil's own.
+  use_default_keymaps = false,
+  keymaps = keys.window('files', function(key)
+    return { key.plugin, opts = key.options, mode = key.modes, desc = key.desc }
+  end),
 })

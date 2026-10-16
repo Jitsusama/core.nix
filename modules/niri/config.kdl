@@ -37,6 +37,11 @@ input {
     // Focus follows the pointer, as it did in i3, without scrolling the
     // view to reveal a window the pointer only grazes.
     focus-follows-mouse max-scroll-amount="0%"
+
+    // And the pointer follows focus moved from the keyboard, so a nudge of
+    // the mouse afterwards can't hand focus back to the window it was left
+    // over. A pointer hidden while typing stays hidden.
+    warp-mouse-to-focus
 }
 
 // The gaps, border width and corners come from theme.kdl.
