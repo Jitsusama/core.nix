@@ -48,14 +48,36 @@ by
     width = { min = 40, max = 80 },
     height = { min = 1, max = 20 },
     top_down = true,
+    -- A notice is its mark and then its words, on the floats' shade with a
+    -- step of it all round and a line of air between two; the mark in its
+    -- level's colour, and no box round it.
+    padding = false,
+    gap = 1,
     icons = {
-      error = '✖',
-      warn = '⚠',
-      info = 'ℹ',
-      debug = '⚙',
-      trace = '✎',
+      error = require('theme').glyphs.failed,
+      warn = require('theme').glyphs.caution,
+      info = require('theme').glyphs.note,
+      debug = require('theme').glyphs.suggestion,
+      trace = require('theme').glyphs.suggestion,
     },
-    style = 'compact',
+    style = function(buf, notif, ctx)
+      ctx.opts.border = 'solid'
+      ctx.opts.wo.winhighlight = 'Normal:NormalFloat,FloatBorder:FloatBorder'
+      local mark = notif.icon .. ' '
+      local hanging = string.rep(' ', vim.fn.strdisplaywidth(mark))
+      local lines = vim.split(notif.msg, '\n')
+      for index, line in ipairs(lines) do
+        lines[index] = (index == 1 and mark or hanging) .. line
+      end
+      vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+      vim.api.nvim_buf_set_extmark(
+        buf,
+        ctx.ns,
+        0,
+        0,
+        { end_col = #notif.icon, hl_group = ctx.hl.icon }
+      )
+    end,
   },
 
   -- Scratch buffers for temporary work
@@ -63,7 +85,7 @@ by
     win = {
       width = 0.6,
       height = 0.6,
-      border = 'rounded',
+      border = 'solid',
     },
   },
 
@@ -71,7 +93,7 @@ by
   terminal = {
     win = {
       position = 'float',
-      border = 'rounded',
+      border = 'solid',
       width = 0.8,
       height = 0.8,
     },

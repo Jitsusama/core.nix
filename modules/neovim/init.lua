@@ -22,7 +22,10 @@ vim.opt.guicursor =
   'n-v-c-sm:block-blinkwait700-blinkon400-blinkoff250,i-ci-ve:ver25-blinkwait700-blinkon400-blinkoff250,r-cr-o:hor20,t:block-blinkon500-blinkoff500-TermCursor'
 
 -- UI Polish - Clean and sleek interface
-vim.opt.pumblend = 10 -- Transparent completion popups
+-- A float is set apart by its shade rather than a line round it, with a
+-- step of the shade round its words, and nothing behind it shows through.
+vim.o.winborder = 'solid'
+vim.opt.pumblend = 0
 vim.opt.pumheight = 10 -- Maximum popup menu height
 vim.opt.showmode = false -- Don't show mode in command line (shown in statusline)
 vim.opt.laststatus = 3 -- Global statusline
@@ -105,7 +108,6 @@ require('later').when('vim.diagnostic', function(diagnostic)
   }
   diagnostic.config({
     float = {
-      border = 'rounded',
       source = 'always',
       header = '',
       prefix = '',
@@ -398,7 +400,7 @@ end)
 -- Each step to a problem shows it in full where it lands.
 local function show(diagnostic)
   if diagnostic then
-    vim.diagnostic.open_float({ border = 'rounded' })
+    vim.diagnostic.open_float()
   end
 end
 

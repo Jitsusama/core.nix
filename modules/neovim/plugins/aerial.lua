@@ -137,7 +137,7 @@ aerial.setup({
 
   -- Options for the floating aerial window
   float = {
-    border = 'rounded',
+    border = 'solid',
     relative = 'cursor',
     max_height = 0.9,
     height = nil,
@@ -165,15 +165,16 @@ aerial.setup({
   },
 
   -- Options for the navigation section of aerial
+  -- Its columns stand apart by the step of shade round each.
   nav = {
-    border = 'rounded',
+    border = 'solid',
     max_height = 0.9,
     min_height = { 10, 0.1 },
     max_width = 0.5,
     min_width = { 0.2, 20 },
     win_opts = {
       cursorline = true,
-      winblend = 10,
+      winblend = 0,
     },
     -- Jump to symbol in source window when the cursor moves
     autojump = false,

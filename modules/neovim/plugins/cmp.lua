@@ -47,14 +47,6 @@ local kind_icons = {
   TypeParameter = '',
 }
 
--- Source labels
-local source_labels = {
-  nvim_lsp = '[LSP]',
-  buffer = '[Buffer]',
-  path = '[Path]',
-  cmdline = '[CMD]',
-}
-
 -- Tab completion behavior
 local function tab_complete(fallback)
   if cmp.visible() then
@@ -77,9 +69,17 @@ end
 
 -- Main completion setup
 cmp.setup({
+  -- Set apart by their shade, with a step of it round the words, as every
+  -- float is; the chosen one in the selection's colour.
   window = {
-    completion = cmp.config.window.bordered(),
-    documentation = cmp.config.window.bordered(),
+    completion = cmp.config.window.bordered({
+      border = 'solid',
+      winhighlight = 'Normal:Pmenu,FloatBorder:Pmenu,CursorLine:PmenuSel,Search:None',
+    }),
+    documentation = cmp.config.window.bordered({
+      border = 'solid',
+      winhighlight = 'Normal:NormalFloat,FloatBorder:FloatBorder,Search:None',
+    }),
   },
   -- The suggestions' keys, by keys.nix's names for what they do.
   mapping = keys.window('completion', function(key)
@@ -100,10 +100,13 @@ cmp.setup({
     { name = 'buffer' },
     { name = 'path' },
   }),
+  -- A suggestion is its word and the mark of its kind. The kind's name and
+  -- where it came from would say the same on every row. On the command
+  -- line every suggestion is of one kind, so it goes unmarked there.
   formatting = {
     format = function(entry, vim_item)
-      vim_item.kind = string.format('%s %s', kind_icons[vim_item.kind], vim_item.kind)
-      vim_item.menu = source_labels[entry.source.name]
+      vim_item.kind = entry.source.name == 'cmdline' and '' or (kind_icons[vim_item.kind] or '')
+      vim_item.menu = nil
       return vim_item
     end,
   },
