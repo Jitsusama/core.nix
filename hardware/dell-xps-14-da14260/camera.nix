@@ -120,15 +120,83 @@ let
     "videoconvert"
     "v4l2sink name=v4l2sink device=$(cat ${device}) sync=false"
   ];
+
+  # Wires the IR sensor's pipeline before each stream, and links the relay's
+  # source to the node it ends at. The firmware fills in the sensor's CSI-2
+  # port at boot, and models differ, so the port is read from the sensor's own
+  # link rather than assumed. The links and formats last until the next boot,
+  # and the HAL touches only the colour camera's, so wiring them again is
+  # only ever setting them to what they are.
+  irPipeline = pkgs.writeShellApplication {
+    name = "ir-camera-pipeline";
+    runtimeInputs = [
+      pkgs.gawk
+      pkgs.v4l-utils
+    ];
+    text = ''
+      format=Y10_1X10/648x368
+
+      media=
+      for device in /sys/bus/media/devices/media*; do
+        if [ "$(cat "$device/model")" = ipu7 ]; then
+          media=/dev/''${device##*/}
+        fi
+      done
+      sensor=
+      for node in /sys/class/video4linux/v4l-subdev*; do
+        name=$(cat "$node/name")
+        case $name in "hm1092 "*) sensor=$name ;; esac
+      done
+      if [ -z "$media" ] || [ -z "$sensor" ]; then
+        echo "The IR sensor hasn't bound to the IPU7." >&2
+        exit 1
+      fi
+
+      topology=$(media-ctl -d "$media" -p)
+      # The entity a pad of an entity's links out to, its first if several.
+      target() {
+        awk -v entity="$1" -v pad="$2:" '
+          /^- entity / { inside = index($0, ": " entity " (") > 0; at = "" }
+          inside && /^\tpad[0-9]+:/ { at = $1 }
+          inside && at == pad && /^\t\t-> "/ { split($0, part, "\""); print part[2]; exit }
+        ' <<<"$topology"
+      }
+      port=$(target "$sensor" pad0)
+      capture=$(target "$port" pad1)
+      if [ -z "$port" ] || [ -z "$capture" ]; then
+        echo "No capture node follows $sensor." >&2
+        exit 1
+      fi
+
+      media-ctl -d "$media" -l "\"$port\":1 -> \"$capture\":0 [1]"
+      media-ctl -d "$media" -V "\"$sensor\":0 [fmt:$format]"
+      media-ctl -d "$media" -V "\"$port\":0 [fmt:$format]"
+      ln -sfn "$(media-ctl -d "$media" -e "$capture")" /run/ir-camera/source
+    '';
+  };
 in
 {
   imports = [
     ../../modules/camera/nixos.nix
+    ../../modules/ir-camera/nixos.nix
     ../../modules/kernel/nixos.nix
   ];
 
   # Pictures and videos are taken from the loopback, which the file names.
   jitsusama.camera.device = device;
+
+  # The IR camera, for any program that reads one. Its sensor's single mode.
+  jitsusama.irCamera = {
+    enable = true;
+    source = "/run/ir-camera/source";
+    format = "Y10";
+    width = 648;
+    height = 368;
+    prepare = lib.getExe irPipeline;
+  };
+  # Howdy's own threshold rejects every frame here: in the IR light, about
+  # three in four of a frame's pixels read near black, face and all.
+  services.howdy.settings.video.dark_threshold = lib.mkOverride 900 90;
 
   hardware.ipu7 = {
     enable = true;

@@ -214,6 +214,16 @@ power controller, which offers it to the sensor's driver, but no driver took
 it, so every frame was dark. A patch written here has the driver light it
 while the sensor streams, and only then, as Windows does.
 
+The IPU7's node for it offers colour formats too, and pads each line to 64
+bytes, so a program opening it as it would a webcam picks a format the sensor
+can't send, and OpenCV, which Howdy reads through, shears its frames. The
+[IR camera module][16] relays the stream to `/dev/ir-camera` as 8-bit grey,
+which every camera program reads, and only while one reads, so the sensor and
+its light stay off otherwise. Before each stream it wires the pipeline, from
+the CSI-2 port the sensor's own link names. Browsers and calls aren't offered
+it, as Windows keeps its IR camera to sign-in. Nothing signs in with it unless
+a machine turns Howdy on and names the services it may unlock.
+
 ### The Mic-Mute Light
 
 `dell-laptop` gives the light `audio-micmute` as its trigger, and `snd-ctl-led`
@@ -516,3 +526,4 @@ upstream as it is and the override can then come out.
 [13]: ../modules/firmware-settings/nixos.nix
 [14]: https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/commit/?id=a98a6daa9f4dee2f662cc8a48610287189b23499
 [15]: https://lore.kernel.org/all/20261013-hm1092-driver-v7-0-d81a9b152ffd@gmail.com/
+[16]: ../modules/ir-camera/nixos.nix
