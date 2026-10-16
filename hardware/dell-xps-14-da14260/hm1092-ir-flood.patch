@@ -1,0 +1,121 @@
+media: i2c: hm1092: Light the IR flood LED while streaming
+
+The HM1092 sees by the light of an IR flood LED beside it, which the
+INT3472 power controller registers as an LED with a lookup for the
+sensor under "ir_flood", for a consumer driver to find with led_get().
+Nothing takes it yet, so the LED stays off and every frame is dark
+unless a program finds the LED in sysfs and lights it itself, with the
+rights to.
+
+The driver now takes the LED at probe and lights it only while the
+sensor streams, as the sensor's Windows driver does. While the driver
+holds it, sysfs can't light it, as the V4L2 core does for a privacy
+LED, so nothing else can leave it on.
+
+diff -ruN a/drivers/media/i2c/hm1092.c b/drivers/media/i2c/hm1092.c
+--- a/drivers/media/i2c/hm1092.c
++++ b/drivers/media/i2c/hm1092.c
+@@ -9,6 +9,7 @@
+ #include <linux/delay.h>
+ #include <linux/gpio/consumer.h>
+ #include <linux/i2c.h>
++#include <linux/leds.h>
+ #include <linux/module.h>
+ #include <linux/pm_runtime.h>
+ #include <linux/regulator/consumer.h>
+@@ -574,6 +575,7 @@ struct hm1092 {
+ 	struct v4l2_ctrl *hblank;
+ 	struct v4l2_ctrl *vblank;
+ 	struct v4l2_ctrl *exposure;
++	struct led_classdev *ir_flood;
+ 	const struct hm1092_mode *mode;
+ 	u8 mipi_lanes;
+ };
+@@ -770,8 +772,14 @@ static int hm1092_enable_streams(struct v4l2_subdev *sd,
+ 
+ 	ret = cci_write(hm1092->regmap, HM1092_REG_STREAM,
+ 			HM1092_STREAM_ON, NULL);
+-	if (ret)
++	if (ret) {
+ 		dev_err(hm1092->dev, "failed to start streaming\n");
++		goto out;
++	}
++
++	if (hm1092->ir_flood)
++		led_set_brightness(hm1092->ir_flood,
++				   hm1092->ir_flood->max_brightness);
+ 
+ out:
+ 	if (ret)
+@@ -787,6 +795,9 @@ static int hm1092_disable_streams(struct v4l2_subdev *sd,
+ 	struct hm1092 *hm1092 = to_hm1092(sd);
+ 	int ret;
+ 
++	if (hm1092->ir_flood)
++		led_set_brightness(hm1092->ir_flood, LED_OFF);
++
+ 	ret = cci_write(hm1092->regmap, HM1092_REG_STREAM,
+ 			HM1092_STREAM_STANDBY, NULL);
+ 	pm_runtime_put(hm1092->dev);
+@@ -1019,6 +1030,50 @@ static void hm1092_remove(struct i2c_client *client)
+ 	}
+ }
+ 
++static void hm1092_release_ir_flood(void *data)
++{
++	struct led_classdev *led = data;
++
++	mutex_lock(&led->led_access);
++	led_sysfs_enable(led);
++	mutex_unlock(&led->led_access);
++}
++
++/*
++ * The IR flood illuminator lights the face for the sensor, which sees by its
++ * own light alone. The platform's power controller holds the LED and offers it
++ * to this sensor under "ir_flood". It is lit only while the sensor streams, as
++ * the sensor's Windows driver does, and kept from sysfs while bound, as the
++ * privacy LED is.
++ */
++static int hm1092_get_ir_flood(struct hm1092 *hm1092)
++{
++#if IS_REACHABLE(CONFIG_LEDS_CLASS)
++	struct led_classdev *led;
++
++	led = devm_led_get(hm1092->dev, "ir_flood");
++	if (IS_ERR(led)) {
++		if (PTR_ERR(led) == -ENOENT)
++			return 0;
++		return dev_err_probe(hm1092->dev, PTR_ERR(led),
++				     "failed to get IR flood LED\n");
++	}
++
++	mutex_lock(&led->led_access);
++	led_sysfs_disable(led);
++	led_trigger_remove(led);
++	led_set_brightness(led, LED_OFF);
++	mutex_unlock(&led->led_access);
++
++	hm1092->ir_flood = led;
++
++	return devm_add_action_or_reset(hm1092->dev, hm1092_release_ir_flood,
++					led);
++#else
++	return 0;
++#endif
++}
++
+ static int hm1092_probe(struct i2c_client *client)
+ {
+ 	struct hm1092 *hm1092;
+@@ -1058,6 +1113,10 @@ static int hm1092_probe(struct i2c_client *client)
+ 	if (ret)
+ 		return ret;
+ 
++	ret = hm1092_get_ir_flood(hm1092);
++	if (ret)
++		return ret;
++
+ 	hm1092->regmap = devm_cci_regmap_init_i2c(client, 16);
+ 	if (IS_ERR(hm1092->regmap))
+ 		return PTR_ERR(hm1092->regmap);
