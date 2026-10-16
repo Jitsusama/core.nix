@@ -59,6 +59,7 @@ quietly stopped holding.
 | `zsh-is-the-login-shell`            | an account on NixOS logs in to zsh, as one on a Mac does  |
 | `one-ruleset-for-every-program`     | the firewall, libvirt and Podman share nftables, and a reload flushes none of them |
 | `disks-go-by-their-name`            | a disk's partitions and open volume carry its name        |
+| `disks-are-scrubbed`                | the disk's Btrfs is scrubbed monthly, from its root       |
 | `booted-generation-stays-installed` | a switch never removes the generation the machine booted  |
 | `session-memory-is-protected`       | every slice above session.slice carries a hard memory floor |
 | `a-faint-theme-is-refused`          | a theme with text under WCAG's 4.5:1 doesn't build        |
