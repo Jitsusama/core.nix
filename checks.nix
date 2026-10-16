@@ -1391,6 +1391,25 @@ in
       && machine.config.boot.initrd.luks.devices ? stick
     );
 
+  # Btrfs finds a damaged block only when something reads it, so the disk is
+  # scrubbed on a schedule, whole, from its root.
+  disks-are-scrubbed =
+    let
+      machine = bareNixos [
+        self.nixosModules.disko
+        {
+          jitsusama.disk = {
+            device = "/dev/disk/by-id/nvme-example";
+            swapSize = "4G";
+          };
+        }
+      ];
+      inherit (machine.config.services.btrfs) autoScrub;
+    in
+    holds "disks-are-scrubbed" "The disk's Btrfs is never scrubbed, so damage stays hidden." (
+      autoScrub.enable && autoScrub.fileSystems == [ "/" ]
+    );
+
   # The kernel protects session.slice's memory only as far as every slice
   # above it is protected, so a floor one of them lacks is a floor nobody has,
   # and nothing says so. Only a hard floor counts: the kernel takes a soft one

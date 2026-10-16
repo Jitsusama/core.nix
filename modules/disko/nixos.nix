@@ -44,6 +44,18 @@ in
     };
   };
 
+  # Btrfs checks a block's checksum only when something reads it, so damage
+  # to a file nobody opens stays hidden until the day it's needed. A monthly
+  # scrub reads every block, mends metadata from the second copy Btrfs keeps
+  # of it, and names damaged data in the journal. It reads at idle priority,
+  # so other work goes first, and a month missed while the machine was off
+  # runs at the next boot.
+  config.services.btrfs.autoScrub = {
+    enable = true;
+    interval = "monthly";
+    fileSystems = [ "/" ];
+  };
+
   config.disko.devices.disk.main = {
     type = "disk";
     inherit (cfg) device;
