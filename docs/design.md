@@ -6,42 +6,20 @@ module that puts something on a screen follows this document, and the
 `AGENTS.md` of core.nix and of every repository built on it points at it, so
 an agent builds to it rather than to its own taste.
 
-It's a living document. No existing example is purely what Joel likes yet, so
-the aesthetic is found surface by surface in studio rounds (below), and what
-each round teaches is written here as it's learned. The document records the
-aesthetic that was found, not the one that was assumed.
+It's a living document. No existing example is purely what Joel likes, so the
+aesthetic was found surface by surface, and what each surface taught is
+written here. It's written so that it can be applied without him: a new
+surface is judged against [the aesthetic skill][taste] and the rules here, not
+handed back to him to look at. The document records the aesthetic that was
+found, not the one that was assumed.
 
-## The Brief
+## The Taste
 
-In Joel's words:
-
-> I am a minimalist but also an artist. I love form and function and text and
-> glyphs elevated to art. Spacing, padding, margins, typography, design
-> language, ligatures, monospace where it deserves to live and non-monospace
-> where it deserves to live. Every pixel matters. I want everything to feel
-> cohesive, I hate wasted space but I also hate too much business.
-
-And, as the design grew:
-
-- Strongly consistent; giving him what he needs; helping him see what's
-  important; never cluttered, and never leaving him looking for more.
-- No redundancy: nothing told twice, and everything where it makes sense and
-  only there. Conservation and intent.
-- Legibility is vital, whimsy is appreciated, anything buggy is anathema.
-  Smooth, never jerky; clean, with beautiful proportions and careful
-  whitespace.
-- Type and colour run through everything and are easy to swap, end to end.
-- He's very nerdy: useful information is always present. But no useless
-  information and no busyness for its own sake.
-- Every choice comes with deep room to customise it, and performance always.
-- He has a very poor memory, so everything has to be intuitive and work the
-  same way everywhere.
-- Things collapse cleanly and on purpose when space is short.
-- The keyboard is the way in to everything, without exception, and it has
-  to be comfortable; the pointer comes second.
-- "Anything you build has to meet an insanely high quality bar. No half
-  assed shit can happen. Everything has to follow my design aesthetic which
-  has been refined through our work."
+Joel's brief in his own words, the character of the design, what he's liked
+and turned down, and the questions a design is judged by are in [the
+aesthetic skill][taste], which the theme module gives every agent on the
+machine, so an agent working anywhere reads it before designing. This
+document is the system built from it.
 
 ## The Principles
 
@@ -88,8 +66,8 @@ for judging before it's been judged here first.
   alone, from the chord that reaches it to Escape, and its check does it
   that way too.
 - **Designed first.** Its three tiers, the facts it owns, its collapse order,
-  its palette entries and its keys are written in the surfaces table, and Joel
-  has read them.
+  its palette entries and its keys are written in the surfaces table before
+  it's built, and judged against [the aesthetic skill][taste].
 - **Seen in every state.** Each state it can be in (empty, one item, many, too
   many, long text, an error, two monitors, a monitor plugged in and out, after
   suspend, every theme) at every breakpoint, as a full-size screenshot, read
@@ -107,10 +85,10 @@ for judging before it's been judged here first.
   scale: dozens of windows over many workspaces, on the laptop's keyboard and
   on the ErgoDox. A design that only holds up for a few things isn't done,
   however tidy its reasons.
-- **Asked, where a habit changes.** A key, a gesture or a flow he already uses
-  changes only when he's said yes to that change on its own, with what it
-  costs him beside what it gives. A yes to a larger draft doesn't cover a
-  change inside it.
+- **Better, where a habit changes.** A key, a gesture or a flow he already
+  uses changes only for something clearly better by this document's own
+  terms, and the change is said plainly when it ships: what moved, where it
+  went, and why.
 - **Said, where it's unfinished.** Whatever hasn't met all of this is called
   unfinished when it's shown, never done.
 
@@ -773,8 +751,11 @@ the result beside the source before calling it done.
 
 For each layer, before it's built, two or three distinct directions for its
 most-seen surfaces are built for real, in the theme's type and colour, and
-shown side by side at full size on the panel they're for. Joel picks, the pick
-is refined in rounds, and the findings go under [Decisions][decisions].
+judged side by side at full size on the panel they're for, against [The
+Taste][taste]. The best is refined in rounds and built, and what was learned
+goes under [Decisions][decisions] and into [the aesthetic skill][taste]. A
+round is shown to
+Joel only where the document can't decide it.
 
 Each round compares a dense version beside a sparse one, the defaults beside a
 customised configuration, and the panel beside a small monitor.
@@ -1041,3 +1022,4 @@ What each studio round settled, newest first, with the reason.
 
 [surfaces]: #surfaces
 [decisions]: #decisions
+[taste]: ../modules/theme/SKILL.md

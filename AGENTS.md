@@ -52,7 +52,9 @@ meaning each; [docs/architecture.md][2] defines them.
   it.
 - Anything that puts something on a screen, or that Joel types or presses,
   follows [docs/design.md][9] and isn't done until it meets its Quality Bar:
-  read the brief and the principles before designing it. Surfaces name the
+  load the `aesthetic` skill ([modules/theme/SKILL.md][10]) and read the
+  principles before designing it, and judge it by them rather than asking
+  Joel to look. Surfaces name the
   theme's roles and faces, never a colour or a font, and a new program goes
   through its checklist. A theme from elsewhere is
   translated with the `translate-a-theme` skill.
@@ -94,6 +96,8 @@ Renaming or removing an output or a `jitsusama.*` option is breaking: mark it
   them
 - [docs/hardware.md][8]: each machine model, where its workarounds come from,
   and what's left
+- [modules/theme/SKILL.md][10]: Joel's aesthetic, and how to judge a design
+  by it
 - [docs/design.md][9]: how everything on a screen looks, reads and behaves
 - [docs/decisions/][6]: why the design is what it is
 
@@ -106,3 +110,4 @@ Renaming or removing an output or a `jitsusama.*` option is breaking: mark it
 [7]: docs/kernel.md
 [8]: docs/hardware.md
 [9]: docs/design.md
+[10]: modules/theme/SKILL.md

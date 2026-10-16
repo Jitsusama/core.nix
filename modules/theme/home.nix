@@ -981,6 +981,21 @@ in
     glyphs = lib.mapAttrs (_: mark: { inherit (mark) glyph console; }) cfg.glyphs;
   };
 
+  # Joel's aesthetic, for every agent on the machine, so one designing
+  # anything in any repository builds to it rather than to its own taste,
+  # with the design document beside it for the system built from it.
+  config.home.file = lib.listToAttrs (
+    lib.concatMap
+      (skills: [
+        (lib.nameValuePair "${skills}/aesthetic/SKILL.md" { source = ./SKILL.md; })
+        (lib.nameValuePair "${skills}/aesthetic/design.md" { source = ../../docs/design.md; })
+      ])
+      [
+        ".pi/agent/skills"
+        ".claude/skills"
+      ]
+  );
+
   config.assertions = [
     {
       assertion = lib.length cfg.shades == 8;

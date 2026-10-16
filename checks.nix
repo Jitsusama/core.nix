@@ -1234,7 +1234,9 @@ in
 
   # Picking another theme changes everything the account draws: the desktop
   # rendered in Flexoki Light keeps none of Osaka Jade's colours anywhere in
-  # its files, so no surface was left behind in the old one.
+  # its files, so no surface was left behind in the old one. The design
+  # document installed for agents beside the aesthetic skill is passed over:
+  # it describes themes, Osaka Jade among them, and draws nothing.
   a-theme-changes-everything =
     let
       osakaJade = (builtins.fromTOML (builtins.readFile ./modules/theme/osaka-jade.toml)).palette;
@@ -1248,6 +1250,7 @@ in
     pkgs.runCommandLocal "a-theme-changes-everything" { nativeBuildInputs = [ pkgs.ripgrep ]; } ''
       test ${lib.escapeShellArg home.jitsusama.theme.roles.background} = '#FFFCF0'
       if rg --follow --ignore-case --fixed-strings --line-number --no-heading --hidden \
+        --glob '!**/skills/aesthetic/design.md' \
         ${
           lib.concatMapStringsSep " " (colour: "-e ${lib.escapeShellArg colour}") (lib.attrValues osakaJade)
         } ${home.home-files}/; then
