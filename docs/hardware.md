@@ -343,11 +343,18 @@ sends a sample only when the light changes by 1%, checking ten times a second.
 | Part         | Why it isn't here yet                                                 |
 | ------------ | --------------------------------------------------------------------- |
 | Panel VRR    | the panel's range comes from a DisplayID block Linux doesn't read yet |
-| Presence     | `iio-sensor-proxy` doesn't publish the presence sensor; see below     |
+| Presence     | the camera bridge never senses anyone with the camera idle; see below |
 
-- **Presence.** The sensor hub's attention sensor shows up as an IIO
-  proximity device, but `iio-sensor-proxy` has no near level for it and
-  publishes nothing, and nothing would read it yet.
+- **Presence.** The sensor hub's presence reading comes from the Synaptics
+  camera bridge, which the hub asks for results every 2 s once face
+  detection is on. The bridge answers with nothing unless an app has the
+  camera open, so the reading never changes. Dell's own hub firmware, the
+  camera sensor powered, the bridge's vision-sensing bit and the hub's
+  suspend state changed nothing, and Windows on the same bridge sends it
+  nothing while the camera is idle. Dell's specifications and driver pack
+  offer no presence feature on this model. The firmware's presence
+  setting is Intel's here rather than Microsoft's, its only other choice,
+  in case Intel's starts the bridge's own sensing.
 
 ### Expected in the Journal
 

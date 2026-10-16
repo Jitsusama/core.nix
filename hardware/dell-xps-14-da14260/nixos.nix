@@ -275,6 +275,10 @@ in
     PowerWarn = "Disabled";
     # A bad BIOS can be rolled back.
     AllowBiosDowngrade = "Enabled";
+    # Intel's presence detection rather than Microsoft's. Linux has no
+    # Microsoft presence stack, and under it the camera bridge never
+    # sensed anyone with the camera idle; see docs/hardware.md.
+    HPDSensor = "IntelHPD";
 
     # None of Dell's ways in from outside: no network stack before the
     # loader, so no HTTP(S) boot and no BIOSConnect recovery from Dell's
