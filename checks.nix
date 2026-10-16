@@ -421,6 +421,37 @@ in
       && lib.all (colour: builtins.match "#[0-9a-fA-F]{6}" colour != null) colours
     );
 
+  # pi's status line tells a folder and git as the prompt does: by the
+  # prompt's root markers, the prompt's git-engine, and the theme's marks,
+  # each by the name the harness reads it under.
+  pi-tells-where-as-the-prompt-does =
+    let
+      home = account workstation;
+      where = builtins.fromJSON (
+        builtins.unsafeDiscardStringContext
+          home.xdg.configFile."pi/agentic-harness.pi/status-line/where.json".text
+      );
+      inherit (home.jitsusama.theme) glyphs;
+      engine = lib.getExe (pkgs.callPackage ./modules/git-engine/package.nix { });
+    in
+    holds "pi-tells-where-as-the-prompt-does"
+      "pi's status line tells the folder or git by something other than the prompt's roots, engine and marks."
+      (
+        where.roots == home.jitsusama.prompt.roots
+        && where.engine == builtins.unsafeDiscardStringContext engine
+        &&
+          where.marks == {
+            branch = glyphs.branch.glyph;
+            unsaved = glyphs.on.glyph;
+            unpushed = glyphs.unpushed.glyph;
+            more = glyphs.more.glyph;
+            complete = glyphs.complete.glyph;
+            active = glyphs.active.glyph;
+            pending = glyphs.pending.glyph;
+            thinking = glyphs.thinking.glyph;
+          }
+      );
+
   # The prompt starts nothing once the shell is up: across a run of prompts
   # in and out of a repository, with git-engine answering, the shell itself
   # forks and executes nothing, and its reads of HEAD show the prompts ran.

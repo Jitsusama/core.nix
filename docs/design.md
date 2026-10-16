@@ -793,7 +793,7 @@ by them isn't done.
 | The prompt                                | prompt, kitty            | monospace      | where Joel is, told from the nearest root (the root in text, the folders between muted, the folder he's in strong); the glyph where his keys go, in the accent, red after a failure, # in gold as root | another machine, @ and its name; a rebase, merge or pick under way, a rebase drawn as its steps, red while a conflict waits; a development shell and jobs as glyphs; a long command's time; the branch, muted, with a mark for unsaved work and one for unpushed; over ssh in kitty, the window a little towards the machine hue | git status, and a wider window | nothing | laid out per prompt, never per keystroke: a long run's time, the shell's glyphs, the branch's middle, the path's middle, the branch to its glyph, the right side, then what's under way to its glyph, the more mark wherever something's hidden; the left keeps to a third of the window; zsh clears the right side once typing reaches it |
 | Terminal programs                         | each tool's module       | monospace      |        |        |           |         |          |
 | Neovim                                    | neovim                   | monospace      | the status line's one line at the bottom, on Neovim's own background: the file told from its root as the prompt tells a folder (the root in text, the folders between muted, the file strong), or a buffer's kind by name (help, terminal, quickfix, a plugin's window) | a mark while the buffer is unsaved, a padlock on a file that can't be changed; what git is in the middle of, drawn as the prompt draws it; the mode, in the accent, whenever it isn't Normal; what's selected, in lines or characters, or which match of a search; errors and warnings, each its mark and count; a language server at work; π while an agent is paired; the branch, muted, with the prompt's marks for unsaved and unpushed work; a tab line only with two tabs or more | the problems list, the outline, git's status | nothing | the language server's words, the branch's middle, the path's middle, the branch to its glyph, what's under way to its glyph, the path to the file's name, the right side but for the problems, then the name's own middle; the more mark wherever something's hidden |
-| pi                                        | its theme, its harness   | monospace      |        |        |           |         |          |
+| pi                                        | its theme, its harness   | monospace      | the status line's one line at the bottom: where pi works, told from its root as the prompt tells a folder (the root in text, the folders between muted, the folder strong); the model, muted; context's mark and reading, and what the next turn costs | what git is in the middle of, drawn as the prompt draws it; how hard the model thinks, its mark in the level's colour and the word muted; each extension's mark while its state holds; the panel's height when it isn't the usual one; the session's total; the branch, muted, with the prompt's marks for unsaved and unpushed work | each mark's own command (`/guards`, `/jobs`), `/settings` | nothing | the total, the branch's middle, the path's middle, context to a share, the model to its short name, how hard it thinks, the branch to its glyph, what's under way to its glyph, the path to the folder's name, the model, then the name's own middle; the next turn's cost never; the more mark wherever something's hidden |
 
 Where a surface can't take the design (web pages in a browser, a chat app's
 messages), the row says so, and what's themed is what can be reached. The
@@ -819,6 +819,17 @@ as an exception with the reason.
 
 What each studio round settled, newest first, with the reason.
 
+- **pi's status line speaks the prompt's language** (2026-10-16, judged
+  against the taste without a round). It drew the folder from home in a
+  colour of its own, the branch beside it with no marks, fields between bars,
+  the panel's usual height as a square, and how hard the model thinks as an
+  emoji and a small number. It now tells the folder from its root, by the
+  prompt's own markers, and keeps the branch at the right end, muted, with
+  the prompt's marks from the prompt's git-engine, asked when something may
+  have changed it, so nothing polls. Fields are two spaces apart. How hard
+  the model thinks sits beside the model, a mark in the level's colour and
+  the level's word muted; the panel's height shows only when it isn't the
+  usual one. pi-tells-where-as-the-prompt-does holds that the two agree.
 - **Neovim's finder is a float like the rest** (2026-10-16, judged against
   the taste without a round). fzf-lua draws on the floats' shade with a step
   of it round the list and the preview, dims nothing behind it, and takes
