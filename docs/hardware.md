@@ -447,6 +447,20 @@ and is harmless, so nothing silences or patches it:
 - **Dummy regulators** for the camera sensor, the SPI flash and the four
   amplifiers. ACPI names no supplies for them, and all three work as they
   should.
+- **intel_ipu7's and intel_ipu7_isys's "module is from the staging
+  directory".** The camera's image unit driver is still in staging, so the
+  kernel says so as each loads and marks itself with that taint.
+- **iio-sensor-proxy's "Found proximity sensor but no PROXIMITY_NEAR_LEVEL
+  udev property" and "No sensors", twice.** The sensor hub offers two light
+  sensors, a presence sensor and the hinge's angle. The light sensors belong
+  to the backlight daemon (modules/backlight), which tells the proxy to leave
+  them alone. The presence sensor reports no reading on this firmware (see
+  "Presence" above), so no udev rule gives it a near level, and the proxy
+  finds nothing it can serve and exits, which it does twice each boot.
+- **gnome-keyring's "discover_other_daemon: 1" and "0".** gnome-keyring
+  50.0 prints whether it found a daemon already running, with g_printerr
+  and no newline, so the line runs into the next one. Upstream's main still
+  prints it.
 
 ### Fixed Here Until nixpkgs Fixes It
 
