@@ -330,6 +330,19 @@ in
     does = "Move the window to the workspace below";
     action = "move-window-to-workspace-down;";
   }
+  # Ctrl reaches another screen here too, and Shift still carries the
+  # workspace: screens sit side by side, so up and down mean the one before
+  # and the one after.
+  {
+    chord = "Super+Ctrl+Shift+Page_Up";
+    does = "Move the workspace to the screen before";
+    action = "move-workspace-to-monitor-previous;";
+  }
+  {
+    chord = "Super+Ctrl+Shift+Page_Down";
+    does = "Move the workspace to the screen after";
+    action = "move-workspace-to-monitor-next;";
+  }
   # A for all. Super+Tab is the switcher's (home.nix).
   {
     chord = "Super+A";
@@ -453,8 +466,9 @@ in
   }
   {
     chord = "Super+C";
-    does = "Centre the column";
-    action = "center-column;";
+    # A tiled window is centred with its column, a floating one alone.
+    does = "Centre the window";
+    action = "center-window;";
   }
   {
     chord = "Super+Shift+C";

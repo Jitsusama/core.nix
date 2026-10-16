@@ -596,11 +596,12 @@ modifier says what comes along:
 
 The numbers take the same modifiers to the workspaces. Page Up and Page Down
 walk through them, and with Shift carry the workspace itself, since it's
-the thing at that level. Super+A shows every workspace, and Super+Tab goes
+the thing at that level; Ctrl+Shift carries it to the screen before or
+after. Super+A shows every workspace, and Super+Tab goes
 back to the window before, or held, chooses among the recent ones; Super+`
 keeps to the program in focus. A letter keeps its meaning whatever is held:
 F fills, R sizes, M widens (and with Alt stretches the window to the edges),
-C centres, T shows a column as tabs, G lifts a window out to float, and
+C centres (a floating window too), T shows a column as tabs, G lifts a window out to float, and
 Shift turns a width into a height. A window opens in a column of its own, as
 niri opens it; Super+Shift+Return opens a terminal just below the focused
 window instead, and Super+Alt+Return does that for whichever window opens

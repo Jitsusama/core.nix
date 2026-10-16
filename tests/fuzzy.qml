@@ -52,6 +52,8 @@ QtObject {
         "Move the workspace down",
         "Move the window to the workspace above",
         "Move the window to the workspace below",
+        "Move the workspace to the screen before",
+        "Move the workspace to the screen after",
         "Show every workspace",
         "Cycle the column's width",
         "Cycle the window's height",
@@ -67,7 +69,7 @@ QtObject {
         "Float the window, or tile it again",
         "Tell the window it fills the screen, but keep it in its tile",
         "Show the column's windows as tabs, or stacked",
-        "Centre the column",
+        "Centre the window",
         "Centre every column in view",
         "Give every key to the window, or take them back",
         "Turn the volume up",
@@ -138,7 +140,7 @@ QtObject {
         "reb": "Reboot",
         "off": "Power Off",
         "log": "Log Out",
-        "cent": "Centre the column",
+        "cent": "Centre the window",
         "wide": "Widen the column",
         "every key": "Give every key to the window, or take them back"
     })
