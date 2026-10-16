@@ -1221,6 +1221,52 @@ in
         && lib.hasInfix "ctrl+shift+c in terminal: Copy, Copy again" refusals
       );
 
+  # The boot's lock is drawn whole: its picture at each scale holds all the
+  # ink the glyph has when drawn with room to spare, and is the line's height.
+  boot-lock-is-whole =
+    let
+      machine = bareNixos [
+        self.nixosModules.workstation
+        self.nixosModules.graphical
+        { jitsusama.login.account = "someone"; }
+      ];
+      inherit (machine.config.boot.plymouth) themePackages;
+      theme = (account machine).jitsusama.theme;
+    in
+    pkgs.runCommandLocal "boot-lock-is-whole"
+      {
+        nativeBuildInputs = [
+          pkgs.imagemagick
+          pkgs.pango.bin
+        ];
+        LC_ALL = "C.UTF-8";
+        FONTCONFIG_FILE = pkgs.makeFontsConf { fontDirectories = machine.config.fonts.packages; };
+      }
+      ''
+        export HOME=$PWD
+        dir=${lib.head themePackages}/share/plymouth/themes/jitsusama
+        for scale in 1 2; do
+          pango-view -q --no-display --dpi=$((96 * scale)) --margin=$((64 * scale)) \
+            --antialias=gray --hinting=none --background=transparent --foreground=white \
+            --font=${lib.escapeShellArg "${theme.font.mono.family} ${toString theme.type.mono.large}"} \
+            --output=roomy.png --text=$'\uf023'
+          pango-view -q --no-display --dpi=$((96 * scale)) --margin=0 \
+            --hinting=none --font=${lib.escapeShellArg "${theme.font.mono.family} ${toString theme.type.mono.large}"} \
+            --output=line.png --text=x
+          want="$(magick roomy.png -trim -format '%wx%h' info:)"
+          got="$(magick $dir/lock-$scale.png -trim -format '%wx%h' info:)"
+          if [ "$got" != "$want" ]; then
+            echo "the lock drawn at $scale holds $got of its $want ink"; exit 1
+          fi
+          line="$(magick line.png -format '%h' info:)"
+          height="$(magick $dir/lock-$scale.png -format '%h' info:)"
+          if [ "$height" != "$line" ]; then
+            echo "the lock drawn at $scale is $height tall, not the line's $line"; exit 1
+          fi
+        done
+        touch $out
+      '';
+
   # The console wears the theme of the account the machine signs in, in the
   # console's order, and follows it when the theme changes. A machine that
   # names no account keeps the kernel's colours.
