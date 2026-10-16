@@ -2173,6 +2173,113 @@ in
           touch $out
         '';
 
+    # Neovim starts with only what draws its first screen: with a file open,
+    # no plugin that waits has loaded, nor vim.diagnostic, yet every command
+    # a key runs is there, standing in. A command run, a module required and
+    # an action asked for each load their plugin, the background ones load
+    # once the first screen is drawn, and the Lua language server reads
+    # only Neovim's own runtime.
+    neovim-starts-with-only-what-it-draws =
+      let
+        home = account workstation;
+        probe = pkgs.writeText "probe.lua" ''
+          local later = require('later')
+          local keys = require('keys')
+          local wrong = {}
+          local function say(line)
+            table.insert(wrong, line)
+          end
+          for name in pairs(require('waiting')) do
+            if later.loaded(name) then
+              say(name .. ' loaded as Neovim started')
+            end
+          end
+          -- What draws the first screen, and what those need.
+          local first = {
+            ['async.nvim'] = true,
+            ['nvim-numbertoggle'] = true,
+            ['nvim-treesitter'] = true,
+            ['nvim-treesitter-grammars'] = true,
+            ['nvim-treesitter-textobjects'] = true,
+            ['oil.nvim'] = true,
+            ['snacks.nvim'] = true,
+            ['vim-nix'] = true,
+            ['vim-repeat'] = true,
+          }
+          for _, dir in ipairs(vim.fn.globpath(vim.o.packpath, 'pack/*/start/*', false, true)) do
+            if not first[vim.fs.basename(dir)] then
+              say(vim.fs.basename(dir) .. ' starts with Neovim, though the first screen needs none of it')
+            end
+          end
+          if package.loaded['vim.diagnostic'] then
+            say('vim.diagnostic loaded as Neovim started')
+          end
+          for _, key in ipairs(keys.keys) do
+            local command = key.command and key.command:match('^%S+')
+            if command and vim.fn.exists(':' .. command) ~= 2 then
+              say(key.lhs .. ' runs ' .. command .. ', which is not there')
+            end
+          end
+          local windows = #vim.api.nvim_list_wins()
+          vim.cmd('UndotreeShow')
+          if not later.loaded('undotree') or #vim.api.nvim_list_wins() == windows then
+            say('UndotreeShow did not load undotree and show it')
+          end
+          require('trouble')
+          if not later.loaded('trouble.nvim') then
+            say('requiring trouble did not load it')
+          end
+          later.provide('jump.line')
+          if not later.loaded('flash.nvim') or keys.actions['jump.line'] == nil then
+            say('asking for jump.line did not load flash')
+          end
+          vim.api.nvim_exec_autocmds('UIEnter', {})
+          local background = { 'nvim-lspconfig', 'nvim-cmp', 'gitsigns.nvim', 'which-key.nvim' }
+          vim.wait(5000, function()
+            return vim.iter(background):all(later.loaded)
+          end)
+          for _, name in ipairs(background) do
+            if not later.loaded(name) then
+              say(name .. ' did not load once the first screen was drawn')
+            end
+          end
+          -- Completion's sources register in their after/plugin files.
+          vim.wait(2000, function()
+            return #require('cmp').core:get_sources() >= 2
+          end)
+          local sources = {}
+          for _, source in ipairs(require('cmp').core:get_sources()) do
+            sources[source.name] = true
+          end
+          if not (sources.buffer and sources.path) then
+            say('suggestions come from ' .. table.concat(vim.tbl_keys(sources), ' '))
+          end
+          local library = vim.lsp.config.lua_ls.settings.Lua.workspace.library
+          if not vim.deep_equal(library, { vim.env.VIMRUNTIME, "''${3rd}/luv/library" }) then
+            say('lua_ls reads ' .. #library .. ' folders')
+          end
+          io.stdout:write(#wrong == 0 and 'as designed' or table.concat(wrong, '\n'))
+          vim.cmd('qa!')
+        '';
+      in
+      pkgs.runCommandLocal "neovim-starts-with-only-what-it-draws"
+        { nativeBuildInputs = [ home.home.path ]; }
+        ''
+          ${neovimAt home}
+          echo 'return {}' > probe.lua
+          # From VimEnter, which a person meets Neovim after, rather than from
+          # a -c command, which runs before it. A probe that fails says why and
+          # quits, and one that never finishes is stopped, so the check fails
+          # rather than waits.
+          timeout 120 nvim --headless --cmd 'autocmd VimEnter * ++once lua local ok, problem = xpcall(dofile, debug.traceback, "${probe}") if not ok then io.stdout:write(problem) vim.cmd("qa!") end' probe.lua \
+            > answer 2> complaints || true
+          grep -v '\[INFO\]' complaints > errors || true
+          if [ -s errors ]; then cat errors; exit 1; fi
+          if [ ! -s answer ]; then echo 'Neovim did not finish in two minutes'; exit 1; fi
+          if [ "$(cat answer)" != "as designed" ]; then cat answer; exit 1; fi
+          touch $out
+        '';
+
     # Neovim's status line, drawn for a file in a repository with changes
     # not yet committed, with git's state from the engine: the file told
     # from its root, the branch with its unsaved mark, a mark once the
@@ -2239,19 +2346,27 @@ in
       '';
 
     # The account's Neovim binds every key in the map, and only those: each
-    # action a key names is one a file registered, each key is bound as it
-    # says, a scope's in a buffer it arrives in, each plugin's window holds
-    # its keys and none of the plugin's own, and no key Neovim has that says
-    # what it does is missing from the map.
+    # action a key names is one a file registered, or one a plugin that
+    # waits provides, each key is bound as it says, a scope's in a buffer it
+    # arrives in, each plugin's window holds its keys and none of the
+    # plugin's own, and no key Neovim has that says what it does is missing
+    # from the map. Every plugin is loaded first, as it would be once used.
     neovim-binds-every-key =
       let
         home = account workstation;
         probe = pkgs.writeText "probe.lua" ''
           local keys = require('keys')
+          local later = require('later')
           local wrong = {}
           local function say(line)
             table.insert(wrong, line)
           end
+          for _, name in ipairs(keys.missing()) do
+            if not later.provides(name) then
+              say('nothing provides ' .. name)
+            end
+          end
+          later.load_all()
           for _, name in ipairs(keys.missing()) do
             say('no action ' .. name)
           end

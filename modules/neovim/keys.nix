@@ -929,7 +929,9 @@ in
   {
     chord = "Space i l";
     does = "Show the language servers";
-    command = "LspInfo";
+    # Neovim's own report; lspconfig's LspInfo, an alias for it, is gone
+    # since Neovim has a command of its own.
+    command = "checkhealth vim.lsp";
   }
 
   # ─── k: the language server's folders ───────────────────────────────────

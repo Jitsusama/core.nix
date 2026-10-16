@@ -13,8 +13,9 @@ gitsigns.setup({
   numhl = false,
   linehl = false,
   word_diff = false,
+  -- Git's folder is watched by the file system's change events, so
+  -- nothing polls.
   watch_gitdir = {
-    interval = 1000,
     follow_files = true,
   },
   attach_to_untracked = true,

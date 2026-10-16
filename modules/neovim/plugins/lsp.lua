@@ -1,11 +1,18 @@
 local capabilities = require('cmp_nvim_lsp').default_capabilities()
 local keys = require('keys')
 
+-- A project's root is the nearest folder holding any of these, beside the
+-- prompt's own markers, so a server reads the project the prompt names
+-- and never the whole of a repository holding many.
+local function nearest(markers)
+  return { vim.list_extend(markers, require('where').roots) }
+end
+
 -- Nix LSP
 vim.lsp.config('nil_ls', {
   cmd = { 'nil' },
   filetypes = { 'nix' },
-  root_markers = { 'flake.nix', '.git' },
+  root_markers = nearest({ 'flake.nix' }),
   capabilities = capabilities,
   settings = {
     ['nil'] = {
@@ -19,7 +26,7 @@ vim.lsp.enable('nil_ls')
 vim.lsp.config('lua_ls', {
   cmd = { 'lua-language-server' },
   filetypes = { 'lua' },
-  root_markers = {
+  root_markers = nearest({
     '.luarc.json',
     '.luarc.jsonc',
     '.luacheckrc',
@@ -27,15 +34,17 @@ vim.lsp.config('lua_ls', {
     'stylua.toml',
     'selene.toml',
     'selene.yml',
-    '.git',
-  },
+  }),
   capabilities = capabilities,
   settings = {
     Lua = {
       runtime = { version = 'LuaJIT' },
       diagnostics = { globals = { 'vim' } },
+      -- Neovim's own runtime is the library: its API and vim.uv, under two
+      -- hundred files, where every plugin and grammar took a minute to
+      -- read. A project's own .luarc.json comes before this.
       workspace = {
-        library = vim.api.nvim_get_runtime_file('', true),
+        library = { vim.env.VIMRUNTIME, '${3rd}/luv/library' },
         checkThirdParty = false,
       },
       telemetry = { enable = false },

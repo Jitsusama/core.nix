@@ -13,6 +13,18 @@ let
     type = "lua";
     config = builtins.readFile file;
   };
+  # The rest wait until they're wanted (later.lua), each with what wakes
+  # it, and run their file, if any, once loaded.
+  waits = plugin: file: how: {
+    inherit plugin;
+    optional = true;
+    type = "lua";
+    config = "require('later').add(${
+      lib.generators.toLua { } (lib.getName plugin)
+    }, ${lib.generators.toLua { } how}, ${
+      if file == null then "nil" else "function()\n${builtins.readFile file}\nend"
+    })";
+  };
   aerial = vimPlugins.aerial-nvim.overrideAttrs (old: {
     patches = (old.patches or [ ]) ++ [ ./patches/aerial-fzf-lua.patch ];
   });
@@ -153,6 +165,9 @@ in
       elseif key.action then
         return function(...)
           local fn = M.actions[key.action]
+          if fn == nil and require('later').provide(key.action) then
+            fn = M.actions[key.action]
+          end
           if fn == nil then
             vim.notify('Nothing does ' .. key.action .. ' yet', vim.log.levels.ERROR)
             return
@@ -237,6 +252,53 @@ in
   # The theme as Neovim's colour scheme, every colour one of its roles.
   xdg.configFile."nvim/colors/jitsusama.lua".source = ./colors/jitsusama.lua;
 
+  # The plugins that wait, and what each brings: the modules it holds and
+  # the commands it and its file make, found by starting this Neovim once
+  # with nothing yet known and loading every plugin in turn.
+  xdg.configFile."nvim/lua/later.lua".source = ./later.lua;
+  xdg.configFile."nvim/lua/waiting.lua".source =
+    let
+      files = [
+        "init.lua"
+        "lua/keys.lua"
+        "lua/theme.lua"
+        "lua/where.lua"
+        "lua/status.lua"
+        "lua/later.lua"
+        "colors/jitsusama.lua"
+      ];
+    in
+    # gitsigns and octo look for git and gh as they set up, and neovim-pi
+    # opens a socket.
+    pkgs.runCommandLocal "waiting.lua"
+      {
+        nativeBuildInputs = [
+          config.programs.neovim.package
+          pkgs.git
+          pkgs.gh
+        ];
+      }
+      ''
+        export HOME=$PWD XDG_CONFIG_HOME=$PWD/config XDG_DATA_HOME=$PWD/data
+        export XDG_STATE_HOME=$PWD/state XDG_CACHE_HOME=$PWD/cache XDG_RUNTIME_DIR=$PWD/run
+        mkdir -p config/nvim/lua config/nvim/colors data/nvim/site/pack
+        ${lib.concatMapStrings (file: ''
+          cp ${config.xdg.configFile."nvim/${file}".source} config/nvim/${file}
+        '') files}
+        echo 'return {}' > config/nvim/lua/waiting.lua
+        ln -s ${config.xdg.dataFile."nvim/site/pack/hm".source} data/nvim/site/pack/hm
+        # An error anywhere fails the build, since one in init.lua stops it
+        # before any plugin says how it waits, and the list would be empty.
+        nvim --headless -c "lua os.exit(require('later').find('$out'))" 2> complaints || {
+          cat complaints
+          exit 1
+        }
+        if grep -v '\[INFO\]' complaints | grep -q .; then
+          cat complaints
+          exit 1
+        fi
+      '';
+
   # The status line, and what it tells a file's place and git's state by:
   # the prompt's root markers and its git-engine, so the two agree.
   xdg.configFile."nvim/lua/status.lua".source = ./status.lua;
@@ -270,97 +332,124 @@ in
       pkgs.stylua # Lua formatter for conform.nvim
     ];
 
+    # The bytecode cache first, so every module after it loads from it, then
+    # what wakes a waiting plugin, so a module of one required anywhere
+    # loads it.
     initLua = lib.concatLines [
+      "vim.loader.enable()"
+      "require('later')"
       "vim.cmd.colorscheme('jitsusama')"
       (builtins.readFile ./init.lua)
     ];
 
     plugins = [
-      # A code outline window for skimming and quick navigation.
-      (configured aerial ./plugins/aerial.lua)
-      # Seamless integration with Claude Code.
-      (configured vimPlugins.claudecode-nvim ./plugins/claudecode.lua)
-      # A completion engine plugin.
-      (configured vimPlugins.nvim-cmp ./plugins/cmp.lua)
-      # nvim-cmp source for buffer words.
-      vimPlugins.cmp-buffer
-      # nvim-cmp source for vim's cmdline.
-      vimPlugins.cmp-cmdline
-      # nvim-cmp source for neovim's built-in language server client.
-      vimPlugins.cmp-nvim-lsp
-      # nvim-cmp source for filesystem paths.
-      vimPlugins.cmp-path
-      # Automatic insertion of closing brackets, quotes, etc.
-      (configured vimPlugins.nvim-autopairs ./plugins/autopairs.lua)
-      # Lightweight yet powerful formatter plugin.
-      (configured vimPlugins.conform-nvim ./plugins/conform.lua)
-      # Navigate your code with search labels, enhanced character motions and
-      # Treesitter integration.
-      (configured vimPlugins.flash-nvim ./plugins/flash.lua)
-      # Powerful fuzzy finder powered by fzf.
-      (configured vimPlugins.fzf-lua ./plugins/fzf-lua.lua)
-      # A Git wrapper so awesome, it should be illegal.
-      (configured vimPlugins.vim-fugitive ./plugins/fugitive.lua)
-      # Deep buffer integration for Git.
-      (configured vimPlugins.gitsigns-nvim ./plugins/gitsigns.lua)
-      # Quickstart configs for Nvim LSP.
-      (configured vimPlugins.nvim-lspconfig ./plugins/lsp.lua)
-      # A framework for interacting with tests.
-      (configured vimPlugins.neotest ./plugins/neotest.lua)
-      # Neotest adapter for Minitest.
-      vimPlugins.neotest-minitest
-      # Companion plugin for pi: pairs nvim with a pi session over msgpack-rpc.
-      (configured pi ./plugins/neovim-pi.lua)
-      # A library for asynchronous IO.
-      vimPlugins.nvim-nio
-      # Support for writing Nix expressions.
-      vimPlugins.vim-nix
-      # Automatically toggle between relative and absolute line numbers.
-      vimPlugins.nvim-numbertoggle
-      # Edit and review GitHub issues and pull requests.
-      (configured vimPlugins.octo-nvim ./plugins/octo.lua)
-      # Edit your filesystem like a buffer.
-      (configured vimPlugins.oil-nvim ./plugins/oil.lua)
-      # Integration with OpenCode AI coding assistant.
-      (configured vimPlugins.opencode-nvim ./plugins/opencode.lua)
-      # Asynchronous utilities for writing neovim LUA.
-      vimPlugins.plenary-nvim
-      # The Refactoring library based off the refactoring book by Martin Fowler.
-      (configured vimPlugins.refactoring-nvim ./plugins/refactoring.lua)
-      # GitHub extension for fugitive.
-      vimPlugins.vim-rhubarb
-      # A collection of small QoL plugins.
-      (configured vimPlugins.snacks-nvim ./plugins/snacks.lua)
-      # SQLite LuaJIT binding with a very simple api.
-      vimPlugins.sqlite-lua
-      # Nvim Treesitter configurations and abstraction layer.
+      # Loaded as Neovim starts, since the first screen needs them.
+
+      # Tree-sitter's grammars, to colour the first file as it's drawn.
       (configured vimPlugins.nvim-treesitter.withAllGrammars ./plugins/treesitter.lua)
       # Syntax aware text-objects, select, move, swap, and peek support.
       vimPlugins.nvim-treesitter-textobjects
-      # Provides mappings to easily delete, change and add surroundings in pairs.
-      vimPlugins.vim-surround
-      # Simple text alignment plugin.
-      vimPlugins.vim-easy-align
-      # Visualize undo history as a tree structure.
-      (configured vimPlugins.undotree ./plugins/undotree.lua)
+      # The start screen, notices, and files too big to read whole.
+      (configured vimPlugins.snacks-nvim ./plugins/snacks.lua)
+      # The file browser, which a folder opens in.
+      (configured vimPlugins.oil-nvim ./plugins/oil.lua)
+      # Automatically toggle between relative and absolute line numbers.
+      vimPlugins.nvim-numbertoggle
+      # Support for writing Nix expressions.
+      vimPlugins.vim-nix
+
+      # Loaded once the first screen is drawn, since they work in the
+      # background: language servers, suggestions, git's marks, the keys'
+      # hints, and the agents' pairing.
+
+      # The language servers, and the suggestions they feed.
+      (waits vimPlugins.nvim-lspconfig ./plugins/lsp.lua {
+        soon = true;
+        actions = [
+          "code.inlayHints"
+          "code.folders"
+        ];
+      })
+      (waits vimPlugins.nvim-cmp ./plugins/cmp.lua {
+        soon = true;
+        also = [
+          "cmp-buffer"
+          "cmp-cmdline"
+          "cmp-nvim-lsp"
+          "cmp-path"
+        ];
+      })
+      (waits vimPlugins.cmp-buffer null { })
+      (waits vimPlugins.cmp-cmdline null { })
+      (waits vimPlugins.cmp-nvim-lsp null { })
+      (waits vimPlugins.cmp-path null { })
+      # Automatic insertion of closing brackets, quotes, etc.
+      (waits vimPlugins.nvim-autopairs ./plugins/autopairs.lua { soon = true; })
+      # Deep buffer integration for Git.
+      (waits vimPlugins.gitsigns-nvim ./plugins/gitsigns.lua { soon = true; })
       # Highlight and search for todo comments like TODO, HACK, BUG in your code.
-      (configured vimPlugins.todo-comments-nvim ./plugins/todo-comments.lua)
-      # List for showing diagnostics, references, telescope results, quickfix and location lists.
-      (configured vimPlugins.trouble-nvim ./plugins/trouble.lua)
-      # Dims inactive portions of code for better focus using TreeSitter.
-      (configured vimPlugins.twilight-nvim ./plugins/twilight.lua)
-      # Provides file type icons, from the Nerd Fonts set, for plugins.
-      vimPlugins.nvim-web-devicons
-      # Minimal telescope for aerial compatibility.
-      {
-        plugin = vimPlugins.telescope-nvim;
-        type = "lua";
-        config = ''
-          require('telescope').setup({})
-        '';
-      }
+      (waits vimPlugins.todo-comments-nvim ./plugins/todo-comments.lua { soon = true; })
       # Helps you remember your keymaps, by showing available keybindings in a popup as you type.
-      (configured vimPlugins.which-key-nvim ./plugins/which-key.lua)
+      (waits vimPlugins.which-key-nvim ./plugins/which-key.lua { soon = true; })
+      # Provides mappings to easily delete, change and add surroundings in pairs.
+      (waits vimPlugins.vim-surround null { soon = true; })
+      # Simple text alignment plugin.
+      (waits vimPlugins.vim-easy-align null { soon = true; })
+      # Seamless integration with Claude Code.
+      (waits vimPlugins.claudecode-nvim ./plugins/claudecode.lua { soon = true; })
+      # Companion plugin for pi: pairs nvim with a pi session over msgpack-rpc.
+      (waits pi ./plugins/neovim-pi.lua { soon = true; })
+
+      # Loaded when first asked for: a module required, a command run, an
+      # action pressed, or the event it waits for.
+
+      # Lightweight yet powerful formatter plugin, wanted when a file's written.
+      (waits vimPlugins.conform-nvim ./plugins/conform.lua {
+        on = [ "BufWritePre" ];
+        commands = [ "ConformInfo" ];
+      })
+      # A code outline window for skimming and quick navigation.
+      (waits aerial ./plugins/aerial.lua { })
+      # Navigate your code with search labels.
+      (waits vimPlugins.flash-nvim ./plugins/flash.lua {
+        actions = [
+          "jump.line"
+          "jump.word"
+        ];
+      })
+      # Powerful fuzzy finder powered by fzf, which answers every choice.
+      (waits vimPlugins.fzf-lua ./plugins/fzf-lua.lua { replaces = [ "vim.ui.select" ]; })
+      # A Git wrapper so awesome, it should be illegal.
+      (waits vimPlugins.vim-fugitive ./plugins/fugitive.lua {
+        actions = [
+          "git.tag"
+          "git.untag"
+        ];
+        also = [ "vim-rhubarb" ];
+      })
+      # GitHub extension for fugitive.
+      (waits vimPlugins.vim-rhubarb null { needs = [ "vim-fugitive" ]; })
+      # A framework for interacting with tests.
+      (waits vimPlugins.neotest ./plugins/neotest.lua { })
+      # Neotest adapter for Minitest.
+      (waits vimPlugins.neotest-minitest null { })
+      # Edit and review GitHub issues and pull requests.
+      (waits vimPlugins.octo-nvim ./plugins/octo.lua { })
+      # Integration with OpenCode AI coding assistant.
+      (waits vimPlugins.opencode-nvim ./plugins/opencode.lua { })
+      # The Refactoring library based off the refactoring book by Martin Fowler.
+      (waits vimPlugins.refactoring-nvim ./plugins/refactoring.lua { })
+      # Visualize undo history as a tree structure.
+      (waits vimPlugins.undotree ./plugins/undotree.lua { })
+      # List for showing diagnostics, references, telescope results, quickfix and location lists.
+      (waits vimPlugins.trouble-nvim ./plugins/trouble.lua { })
+      # Dims inactive portions of code for better focus using TreeSitter.
+      (waits vimPlugins.twilight-nvim ./plugins/twilight.lua { })
+      # Libraries the others use.
+      (waits vimPlugins.nvim-nio null { })
+      (waits vimPlugins.plenary-nvim null { })
+      (waits vimPlugins.sqlite-lua null { })
+      (waits vimPlugins.nvim-web-devicons null { })
     ];
   };
 }

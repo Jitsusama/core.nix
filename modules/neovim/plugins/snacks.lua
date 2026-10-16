@@ -88,5 +88,7 @@ by
   },
 })
 
--- Replace vim.notify with Snacks notifier
-vim.notify = Snacks.notifier.notify
+-- Notices go to Snacks' notifier, which loads with the first one.
+vim.notify = function(...)
+  return Snacks.notifier.notify(...)
+end
