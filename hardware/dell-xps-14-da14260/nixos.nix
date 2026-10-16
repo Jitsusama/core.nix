@@ -243,8 +243,13 @@ in
   # how the power limits and profiles here were measured.
   environment.systemPackages = [ turbostat ];
 
-  # Authorizes Thunderbolt and USB4 docks.
+  # Authorizes Thunderbolt and USB4 docks. bolt 0.9.8 doesn't know Panther
+  # Lake's USB4 controllers and warns at every boot before treating them as
+  # they should be (bolt-panther-lake.patch).
   services.hardware.bolt.enable = true;
+  services.hardware.bolt.package = pkgs.bolt.overrideAttrs (old: {
+    patches = (old.patches or [ ]) ++ [ ./bolt-panther-lake.patch ];
+  });
 
   # Dell publishes this laptop's BIOS and firmware updates through LVFS.
   services.fwupd.enable = true;

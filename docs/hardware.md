@@ -494,6 +494,14 @@ upstream as it is and the override can then come out.
   [a98a6daa9f4d][14] drops the byte two days after that release, so its file
   goes ahead of the package's until nixpkgs has a newer one.
 
+- **bolt's USB4 controllers.** bolt 0.9.8 decides whether a USB4 domain
+  keeps its UUID across reboots from a table of controller PCI IDs, and
+  Panther Lake's 0xe433 and 0xe434 aren't in it, so every boot logs "failed
+  to determine if uid is stable: unknown NHI PCI id" before taking them as
+  unstable, which they are. Upstream bolt's 3a38c237, after its 0.9.11,
+  adds them; the patch adds the same four lines to
+  `boltd/bolt-sysfs.c`'s `nhi_table`.
+
 ### Left Out on Purpose
 
 - **`fred=on`.** Omarchy sets it, but 7.2 turns FRED on by default wherever
