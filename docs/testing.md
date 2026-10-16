@@ -143,6 +143,7 @@ kernel guide][2] says what that catches.
 | `disk-guard-passes-clippy`        | clippy finds nothing in the disk guard or its scenarios   |
 | `disk-guard-compiles-for-macos`   | the disk guard and its scenarios compile for macOS, clean |
 | `network-revive-passes-clippy`    | clippy finds nothing in network-revive or its tests       |
+| `ir-camera-passes-clippy`         | clippy finds nothing in ir-camera or its tests            |
 | `spend-watch-accepts-its-configuration` | spend-watch passes its tests and accepts the config an account gets, a feed and a cap among it |
 | `spend-watch-passes-clippy`       | clippy finds nothing in spend-watch or its tests          |
 
@@ -164,6 +165,7 @@ a running system shows.
 | `vm-network-revives-units`        | what the network let down starts, and reloads on change  |
 | `vm-clock-keeps-time`             | the clock sets from the machine's servers past a network's silent one |
 | `vm-libvirt-stops-quickly`        | libvirt's daemon stops at once, its udev thread starved  |
+| `vm-ir-camera-opens-for-readers`  | the IR camera opens only while read, its frames grey, never the last reader's |
 
 The install test builds a disk image with disko and boots it with a software
 TPM, then follows [the install guide][3] step by step: the keys are made and

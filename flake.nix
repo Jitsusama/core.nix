@@ -210,6 +210,7 @@
         gpu = ./modules/gpu/nixos.nix;
         greetd = ./modules/greetd/nixos.nix;
         home-manager = moduleFrom ./modules/home-manager/nixos.nix { inherit home-manager; };
+        ir-camera = ./modules/ir-camera/nixos.nix;
         kernel = ./modules/kernel/nixos.nix;
         keyboard = ./modules/keyboard/nixos.nix;
         keyd = ./modules/keyd/nixos.nix;
