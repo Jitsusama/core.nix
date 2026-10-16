@@ -3,9 +3,21 @@
 # else. pi keeps which theme it uses in a settings file of its own, so this
 # only puts the theme where pi finds it, for Joel to pick in /settings. Its
 # keys come from keys.nix, written where pi reads them and into the key map.
-{ config, lib, ... }:
+# Its status line tells a folder and git as the prompt does, by the prompt's
+# root markers, its git-engine and the theme's marks.
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 let
-  inherit (config.jitsusama.theme) appearance roles syntax;
+  inherit (config.jitsusama.theme)
+    appearance
+    glyphs
+    roles
+    syntax
+    ;
   mix = import ../theme/mix.nix { inherit lib; };
 
   # A tool's result is a faint tint of how it went, under text that stays
@@ -102,9 +114,29 @@ in
   imports = [
     ../theme/home.nix
     ../keys/home.nix
+    ../prompt/home.nix
   ];
 
   home.file.".pi/agent/themes/jitsusama.json".text = builtins.toJSON theme;
+
+  # Where the harness's status line learns the folder and git; its README
+  # says what each field means.
+  xdg.configFile."pi/agentic-harness.pi/status-line/where.json".text = builtins.toJSON {
+    engine = lib.getExe (pkgs.callPackage ../git-engine/package.nix { });
+    inherit (config.jitsusama.prompt) roots;
+    marks = lib.mapAttrs (_: mark: mark.glyph) {
+      inherit (glyphs)
+        branch
+        unpushed
+        more
+        complete
+        active
+        pending
+        thinking
+        ;
+      unsaved = glyphs.on;
+    };
+  };
 
   home.file.".pi/agent/keybindings.json".text = builtins.toJSON (
     { "$schema" = "https://pi.dev/schemas/keybindings.schema.json"; } // keybindings

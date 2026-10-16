@@ -505,6 +505,11 @@ let
       console = "p";
       means = "an agent is paired with this editor";
     };
+    thinking = {
+      glyph = nerd "f09d1";
+      console = "t";
+      means = "how hard an agent thinks, in its level's colour";
+    };
   };
 
   glyph = lib.types.submodule {
