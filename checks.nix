@@ -182,6 +182,9 @@ let
     # Whether libvirt's daemon stops in time shows only with the daemon
     # running and its threads short of CPU, as at a busy shutdown.
     vm-libvirt-stops-quickly = import ./tests/libvirt.nix { inherit self pkgs; };
+    # Whether the IR camera opens only while it's read, and hands each reader
+    # its frames and none of the last one's, shows only with cameras there.
+    vm-ir-camera-opens-for-readers = import ./tests/ir-camera.nix { inherit self pkgs; };
   };
 in
 {
@@ -2605,6 +2608,21 @@ in
       (pkgs.callPackage ./modules/network-revive/package.nix { }).overrideAttrs
         (old: {
           pname = "network-revive-passes-clippy";
+          nativeBuildInputs = old.nativeBuildInputs ++ [ pkgs.clippy ];
+          buildPhase = ''
+            cargo clippy --all-targets --offline -- -D warnings
+          '';
+          doCheck = false;
+          installPhase = ''
+            touch $out
+          '';
+        });
+
+    # clippy finds nothing in ir-camera, its tests included.
+    ir-camera-passes-clippy =
+      (pkgs.callPackage ./modules/ir-camera/package.nix { }).overrideAttrs
+        (old: {
+          pname = "ir-camera-passes-clippy";
           nativeBuildInputs = old.nativeBuildInputs ++ [ pkgs.clippy ];
           buildPhase = ''
             cargo clippy --all-targets --offline -- -D warnings

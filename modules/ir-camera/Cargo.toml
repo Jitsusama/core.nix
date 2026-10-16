@@ -1,0 +1,11 @@
+# ir-camera relays an IR camera's raw greyscale frames to a camera any
+# program can open (src/main.rs says how).
+[package]
+name = "ir-camera"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[dependencies]
+libc = "0.2"
