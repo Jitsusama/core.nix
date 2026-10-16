@@ -50,9 +50,11 @@ meaning each; [docs/architecture.md][2] defines them.
 - Name nothing that builds on core.nix, anywhere in it: no machine, no machine
   repository, no employer. They name core.nix instead. `stands-alone` fails on
   it.
-- Anything that puts something on a screen follows [docs/design.md][9]:
-  surfaces name the theme's roles and faces, never a colour or a font, and a
-  new program goes through its checklist. A theme from elsewhere is
+- Anything that puts something on a screen, or that Joel types or presses,
+  follows [docs/design.md][9] and isn't done until it meets its Quality Bar:
+  read the brief and the principles before designing it. Surfaces name the
+  theme's roles and faces, never a colour or a font, and a new program goes
+  through its checklist. A theme from elsewhere is
   translated with the `translate-a-theme` skill.
 - Comments say why, in full sentences. A file opens with a comment saying
   what it is for when its path alone doesn't.
