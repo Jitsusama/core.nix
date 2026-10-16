@@ -1,0 +1,77 @@
+media: staging/ipu7: Add monochrome pixel formats
+
+The IPU7's CSI-2 receiver accepts MEDIA_BUS_FMT_Y10_1X10, but its video
+nodes offer no pixel format for it, so a monochrome sensor such as the
+HM1092 can't stream at all. This adds GREY, Y10 and Y10P, mapped to the
+raw frame formats of their Bayer counterparts, accepts Y8 on the
+receiver, and keeps the mono codes out of the Bayer order conversion,
+which would warn about them. Ruslan Koreev's patch from the media list,
+tested on 7.2.5 with the ThinkPad X1 Carbon Gen 14's IR sensor. It was
+dropped upstream only because the ipu6 driver takes the IPU7 over and
+already has these formats.
+
+Link: https://lore.kernel.org/all/20260924171820.1179823-5-koreev.r@gmail.com/
+
+diff -ruN a/drivers/staging/media/ipu7/ipu7-isys-csi2.c b/drivers/staging/media/ipu7/ipu7-isys-csi2.c
+--- a/drivers/staging/media/ipu7/ipu7-isys-csi2.c
++++ b/drivers/staging/media/ipu7/ipu7-isys-csi2.c
+@@ -27,6 +27,7 @@
+ #include "ipu7-isys-csi-phy.h"
+ 
+ static const u32 csi2_supported_codes[] = {
++	MEDIA_BUS_FMT_Y8_1X8,
+ 	MEDIA_BUS_FMT_Y10_1X10,
+ 	MEDIA_BUS_FMT_RGB565_1X16,
+ 	MEDIA_BUS_FMT_RGB888_1X24,
+diff -ruN a/drivers/staging/media/ipu7/ipu7-isys-subdev.c b/drivers/staging/media/ipu7/ipu7-isys-subdev.c
+--- a/drivers/staging/media/ipu7/ipu7-isys-subdev.c
++++ b/drivers/staging/media/ipu7/ipu7-isys-subdev.c
+@@ -42,6 +42,7 @@ unsigned int ipu7_isys_mbus_code_to_mipi(u32 code)
+ 	case MEDIA_BUS_FMT_SGRBG10_1X10:
+ 	case MEDIA_BUS_FMT_SRGGB10_1X10:
+ 		return MIPI_CSI2_DT_RAW10;
++	case MEDIA_BUS_FMT_Y8_1X8:
+ 	case MEDIA_BUS_FMT_SBGGR8_1X8:
+ 	case MEDIA_BUS_FMT_SGBRG8_1X8:
+ 	case MEDIA_BUS_FMT_SGRBG8_1X8:
+@@ -88,6 +89,10 @@ u32 ipu7_isys_convert_bayer_order(u32 code, int x, int y)
+ 	};
+ 	unsigned int i;
+ 
++	/* Monochrome raw formats have no Bayer order to convert */
++	if (code == MEDIA_BUS_FMT_Y8_1X8 || code == MEDIA_BUS_FMT_Y10_1X10)
++		return code;
++
+ 	for (i = 0; i < ARRAY_SIZE(code_map); i++)
+ 		if (code_map[i] == code)
+ 			break;
+diff -ruN a/drivers/staging/media/ipu7/ipu7-isys-video.c b/drivers/staging/media/ipu7/ipu7-isys-video.c
+--- a/drivers/staging/media/ipu7/ipu7-isys-video.c
++++ b/drivers/staging/media/ipu7/ipu7-isys-video.c
+@@ -54,6 +54,8 @@ const struct ipu7_isys_pixelformat ipu7_isys_pfmts[] = {
+ 	 IPU_INSYS_FRAME_FORMAT_RAW16},
+ 	{V4L2_PIX_FMT_SRGGB10, 16, 10, MEDIA_BUS_FMT_SRGGB10_1X10,
+ 	 IPU_INSYS_FRAME_FORMAT_RAW16},
++	{V4L2_PIX_FMT_Y10, 16, 10, MEDIA_BUS_FMT_Y10_1X10,
++	 IPU_INSYS_FRAME_FORMAT_RAW16},
+ 	{V4L2_PIX_FMT_SBGGR8, 8, 8, MEDIA_BUS_FMT_SBGGR8_1X8,
+ 	 IPU_INSYS_FRAME_FORMAT_RAW8},
+ 	{V4L2_PIX_FMT_SGBRG8, 8, 8, MEDIA_BUS_FMT_SGBRG8_1X8,
+@@ -62,6 +64,8 @@ const struct ipu7_isys_pixelformat ipu7_isys_pfmts[] = {
+ 	 IPU_INSYS_FRAME_FORMAT_RAW8},
+ 	{V4L2_PIX_FMT_SRGGB8, 8, 8, MEDIA_BUS_FMT_SRGGB8_1X8,
+ 	 IPU_INSYS_FRAME_FORMAT_RAW8},
++	{V4L2_PIX_FMT_GREY, 8, 8, MEDIA_BUS_FMT_Y8_1X8,
++	 IPU_INSYS_FRAME_FORMAT_RAW8},
+ 	{V4L2_PIX_FMT_SBGGR12P, 12, 12, MEDIA_BUS_FMT_SBGGR12_1X12,
+ 	 IPU_INSYS_FRAME_FORMAT_RAW12},
+ 	{V4L2_PIX_FMT_SGBRG12P, 12, 12, MEDIA_BUS_FMT_SGBRG12_1X12,
+@@ -78,6 +82,8 @@ const struct ipu7_isys_pixelformat ipu7_isys_pfmts[] = {
+ 	 IPU_INSYS_FRAME_FORMAT_RAW10},
+ 	{V4L2_PIX_FMT_SRGGB10P, 10, 10, MEDIA_BUS_FMT_SRGGB10_1X10,
+ 	 IPU_INSYS_FRAME_FORMAT_RAW10},
++	{V4L2_PIX_FMT_Y10P, 10, 10, MEDIA_BUS_FMT_Y10_1X10,
++	 IPU_INSYS_FRAME_FORMAT_RAW10},
+ 	{V4L2_PIX_FMT_UYVY, 16, 16, MEDIA_BUS_FMT_UYVY8_1X16,
+ 	 IPU_INSYS_FRAME_FORMAT_UYVY},
+ 	{V4L2_PIX_FMT_YUYV, 16, 16, MEDIA_BUS_FMT_YUYV8_1X16,

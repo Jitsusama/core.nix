@@ -1,5 +1,6 @@
-# The front camera: an OV08X40 behind Intel's CVS bridge, imaged by the IPU7's
-# hardware ISP. The kernel has the IPU's core and capture side and the bridge,
+# The front cameras: an OV08X40 behind Intel's CVS bridge, imaged by the IPU7's
+# hardware ISP, and beside it the HM1092 IR camera, whose greyscale frames are
+# captured raw. The kernel has the IPU's core and capture side and the bridge,
 # nixpkgs's hardware.ipu7 adds the ISP's module and firmware, and Intel's camera
 # HAL turns the sensor's raw frames into a picture with its tuning for this
 # sensor. Programs only speak V4L2, so a relay plays the HAL's picture into a
@@ -157,6 +158,34 @@ in
       # here; the patch says why.
       name = "cvs-link-owner-wait";
       patch = ./cvs-link-owner-wait.patch;
+    }
+    # The IR camera Windows signs in with: an HM1092 on one of the IPU7's
+    # CSI-2 ports, powered by its own INT3472. The four patches below, three
+    # from the media list and one written here, take it from unknown to
+    # streaming greyscale frames.
+    {
+      # Gives the sensor its link frequencies, without which it never binds.
+      # From mainline.
+      name = "ipu-bridge-hm1092";
+      patch = ./ipu-bridge-hm1092.patch;
+    }
+    {
+      # The sensor's driver, which no release has yet.
+      name = "hm1092-ir-sensor";
+      patch = ./hm1092-ir-sensor.patch;
+      structuredExtraConfig.VIDEO_HM1092 = lib.kernel.module;
+    }
+    {
+      # Lights the IR flood LED while the sensor streams, and only then, so
+      # its frames aren't dark. Written here; the patch says why.
+      name = "hm1092-ir-flood";
+      patch = ./hm1092-ir-flood.patch;
+    }
+    {
+      # The capture side's greyscale formats, without which a mono sensor
+      # can't stream.
+      name = "ipu7-mono-formats";
+      patch = ./ipu7-mono-formats.patch;
     }
   ];
   jitsusama.kernel.packageOverlays = [ psys ];

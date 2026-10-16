@@ -199,6 +199,21 @@ the image processor appears, so a machine without the camera never runs it.
 Omarchy also sharpens the picture and lowers its exposure. Whether that looks
 better is for the laptop to show, as is the camera itself.
 
+The IR camera beside it, an HM1092 that Windows signs in with, has no driver in
+any kernel release yet. Three patches from the media list bring it up: its
+`ipu-bridge` entry from mainline, the sensor's driver from the [v7
+series][15] with Jake Steinman's patch for Intel laptops, and the IPU7's
+greyscale formats, which the IPU7 has to have before any mono sensor can
+stream. Jake found the cause that kept it dark for months: the link frequency
+had been given as the lane's bit rate, twice the clock the receiver should
+lock to. He tested the driver on the XPS 16 DA16260, with the same bridge and
+sensors. The sensor streams 648x368 greyscale, raw and unprocessed, on a
+CSI-2 port the firmware names only at boot, which differs between models.
+Its flood light, the `HIMX1092_00::ir_flood_led` LED, belongs to the sensor's
+power controller, which offers it to the sensor's driver, but no driver took
+it, so every frame was dark. A patch written here has the driver light it
+while the sensor streams, and only then, as Windows does.
+
 ### The Mic-Mute Light
 
 `dell-laptop` gives the light `audio-micmute` as its trigger, and `snd-ctl-led`
@@ -343,11 +358,18 @@ sends a sample only when the light changes by 1%, checking ten times a second.
 | Part         | Why it isn't here yet                                                 |
 | ------------ | --------------------------------------------------------------------- |
 | Panel VRR    | the panel's range comes from a DisplayID block Linux doesn't read yet |
-| Presence     | `iio-sensor-proxy` doesn't publish the presence sensor; see below     |
+| Presence     | the camera bridge never senses anyone with the camera idle; see below |
 
-- **Presence.** The sensor hub's attention sensor shows up as an IIO
-  proximity device, but `iio-sensor-proxy` has no near level for it and
-  publishes nothing, and nothing would read it yet.
+- **Presence.** The sensor hub's presence reading comes from the Synaptics
+  camera bridge, which the hub asks for results every 2 s once face
+  detection is on. The bridge answers with nothing unless an app has the
+  camera open, so the reading never changes. Dell's own hub firmware, the
+  camera sensor powered, the bridge's vision-sensing bit and the hub's
+  suspend state changed nothing, and Windows on the same bridge sends it
+  nothing while the camera is idle. Dell's specifications and driver pack
+  offer no presence feature on this model. The firmware's presence
+  setting is Intel's here rather than Microsoft's, its only other choice,
+  in case Intel's starts the bridge's own sensing.
 
 ### Expected in the Journal
 
@@ -493,3 +515,4 @@ upstream as it is and the override can then come out.
 [12]: https://github.com/TsaiGaggery/hurrican_omarchy_enabling
 [13]: ../modules/firmware-settings/nixos.nix
 [14]: https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/commit/?id=a98a6daa9f4dee2f662cc8a48610287189b23499
+[15]: https://lore.kernel.org/all/20261013-hm1092-driver-v7-0-d81a9b152ffd@gmail.com/
