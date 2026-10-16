@@ -185,6 +185,20 @@ in
       name = "spd-skips-soldered-memory";
       patch = ./spd-skips-soldered-memory.patch;
     }
+    {
+      # The encrypted disk could report a failed read or write as a success
+      # when two completions raced. Mainline's fix, which 7.2's stable
+      # releases have yet to take.
+      name = "dm-crypt-status-after-last-reference";
+      patch = ./dm-crypt-status-after-last-reference.patch;
+    }
+    {
+      # A suspend before an amplifier first attaches skipped a step its
+      # resume always undoes, unbalancing its power management. Mainline's
+      # fix, backported to 7.2's names.
+      name = "cs35l56-suspend-before-attach";
+      patch = ./cs35l56-suspend-before-attach.patch;
+    }
   ];
 
   # The disk, and the USB and Thunderbolt ports a dock's keyboard arrives
