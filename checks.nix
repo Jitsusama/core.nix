@@ -1594,6 +1594,16 @@ in
         && resolve.DNSOverTLS == false
       );
 
+  # UPower waits 20 s before its action, and under load 1% of a laptop's
+  # battery lasts about a minute, so acting at 2% acts after it's flat.
+  batteries-leave-time-to-power-off =
+    let
+      inherit ((bareNixos [ self.nixosModules.power-profiles-daemon ]).config.services) upower;
+    in
+    holds "batteries-leave-time-to-power-off"
+      "UPower acts below 5% or by sleeping, so a laptop under load goes flat first."
+      (upower.enable && upower.percentageAction >= 5 && upower.criticalPowerAction == "PowerOff");
+
   greetd-waits-for-the-gpu =
     let
       xps = bareNixos [
