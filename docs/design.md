@@ -819,6 +819,14 @@ as an exception with the reason.
 
 What each studio round settled, newest first, with the reason.
 
+- **Space finds in every one of Neovim's groups** (2026-10-16, judged
+  against the taste without a round). The language says a group then Space
+  finds among what it holds, but eighteen groups, git, search, tests and
+  looks among them, had no Space. Where a group holds things, Space finds
+  one; where it holds things to do, Space finds one of its keys by what it
+  does and runs it as if pressed, listing only the keys that work in this
+  buffer. Found by typing, so nothing has to be remembered past the group's
+  letter. neovim-finds-in-every-group holds that every group has one.
 - **Neovim pairs with one agent, pi** (2026-10-16, judged against the
   taste without a round). Neovim carried three: Claude Code's plugin on
   Space a, which started a server in every Neovim for a Claude Code that

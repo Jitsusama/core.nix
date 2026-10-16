@@ -2511,6 +2511,117 @@ in
         touch $out
       '';
 
+    # Space in any of Neovim's groups finds among what it holds: every group
+    # keys.nix gives keys has its own Space, and one whose keys are things
+    # to do lists exactly its keys that work here, each by what it does in
+    # strong and then its keys in text, in a column of their own, titled by
+    # the group, and runs the one chosen as if pressed. A group with nothing
+    # that works here says so rather than opening an empty list.
+    neovim-finds-in-every-group =
+      let
+        home = account workstation;
+        chords = map (key: key.chord) (import ./modules/neovim/keys.nix);
+        groups = lib.unique (
+          lib.concatMap (
+            chord:
+            let
+              words = lib.splitString " " chord;
+            in
+            lib.optionals (lib.head words == "Space" && lib.length words > 2) (
+              map (length: lib.concatStringsSep " " (lib.take length words)) (lib.range 2 (lib.length words - 1))
+            )
+          ) chords
+        );
+        lacking = lib.filter (group: !(lib.elem "${group} Space" chords)) groups;
+        probe = pkgs.writeText "probe.lua" ''
+          local keys = require('keys')
+          local wrong = {}
+          local function say(line)
+            table.insert(wrong, line)
+          end
+          local offered, chosen, told, titled
+          vim.ui.select = function(items, opts, on_choice)
+            offered, titled = {}, opts.prompt
+            for _, item in ipairs(items) do
+              offered[item.rest] = opts.format_item(item)
+            end
+            chosen = function(rest)
+              for _, item in ipairs(items) do
+                if item.rest == rest then
+                  return on_choice(item)
+                end
+              end
+            end
+          end
+          vim.notify = function(message)
+            told = message
+          end
+
+          local looks = 0
+          for _, key in ipairs(keys.keys) do
+            if key.chord:match('^Space u %S+$') and key.chord ~= 'Space u Space' then
+              looks = looks + 1
+            end
+          end
+          keys.find('Space u', 'looks')
+          local count = vim.tbl_count(offered or {})
+          if count ~= looks then
+            say('Space u Space offers ' .. count .. ' keys, not its ' .. looks)
+          end
+          local function paint(role, words)
+            local hex = require('theme')[role]
+            return ('\27[38;2;%d;%d;%dm%s\27[0m'):format(
+              tonumber(hex:sub(2, 3), 16), tonumber(hex:sub(4, 5), 16), tonumber(hex:sub(6, 7), 16), words)
+          end
+          local row = (offered or {}).w or '''
+          local said = row:match('^' .. vim.pesc(paint('strong', 'Wrap long lines, or not')) .. ' +')
+          if not said or row ~= said .. paint('text', 'w') then
+            say('Space u Space shows w as "' .. vim.inspect(row) .. '"')
+          end
+          local columns = {}
+          for rest, line in pairs(offered or {}) do
+            local plain = line:gsub('\27%[[%d;]*m', ''')
+            columns[#plain - #rest] = true
+          end
+          if vim.tbl_count(columns) ~= 1 then
+            say('Space u Space puts its keys in ' .. vim.tbl_count(columns) .. ' columns, not one')
+          end
+          if titled ~= 'Looks' then
+            say('Space u Space is titled "' .. tostring(titled) .. '"')
+          end
+          local wrapped = vim.wo.wrap
+          chosen('w')
+          if vim.wo.wrap == wrapped then
+            say('choosing w from Space u Space left wrapping as it was')
+          end
+
+          offered = nil
+          keys.find('Space g s', 'stage')
+          if offered ~= nil then
+            say('Space g s Space offers git keys in a file git does not track')
+          elseif told ~= 'No key for stage works here' then
+            say('Space g s Space with nothing to offer said "' .. tostring(told) .. '"')
+          end
+          io.stdout:write(#wrong == 0 and 'as designed' or table.concat(wrong, '\n'))
+          vim.cmd('qa!')
+        '';
+      in
+      if lacking != [ ] then
+        holds "neovim-finds-in-every-group"
+          "These groups have no Space: ${lib.concatStringsSep ", " lacking}."
+          false
+      else
+        pkgs.runCommandLocal "neovim-finds-in-every-group" { nativeBuildInputs = [ home.home.path ]; } ''
+          ${neovimAt home}
+          echo 'return {}' > probe.lua
+          timeout 120 nvim --headless --cmd 'autocmd VimEnter * ++once lua local ok, problem = xpcall(dofile, debug.traceback, "${probe}") if not ok then io.stdout:write(problem) vim.cmd("qa!") end' probe.lua \
+            > answer 2> complaints || true
+          if [ -s complaints ]; then cat complaints; exit 1; fi
+          if [ ! -s answer ]; then echo 'Neovim did not finish in two minutes'; exit 1; fi
+          if [ "$(cat answer)" != "as designed" ]; then cat answer; exit 1; fi
+          touch $out
+        '';
+
     # Neovim's status line, drawn for a file in a repository with changes
     # not yet committed, with git's state from the engine: the file told
     # from its root, the branch with its unsaved mark, a mark once the
