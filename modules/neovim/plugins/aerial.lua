@@ -1,4 +1,27 @@
+-- Aerial shows the outline, and walks it in a float, for Space c o's keys;
+-- the keys inside both are in keys.nix.
 local aerial = require('aerial')
+local keys = require('keys')
+
+-- Aerial adds its own keys to whatever it's given, so each one it has is
+-- turned off before the ones from keys.nix go on, each with keys.nix's
+-- words for it. A double click jumps too.
+local function window(scope, actions, theirs)
+  local off = {}
+  for _, lhs in ipairs(theirs) do
+    off[lhs] = false
+  end
+  local ours = vim.tbl_extend(
+    'force',
+    off,
+    keys.window(scope, function(key)
+      local action = require(actions)[(key.plugin:gsub('^actions%.', ''))]
+      return { callback = action.callback, desc = key.desc }
+    end)
+  )
+  ours['<2-LeftMouse>'] = 'actions.jump'
+  return ours
+end
 
 -- Configure aerial for automatic code structure visualization
 aerial.setup({
@@ -20,41 +43,41 @@ aerial.setup({
     preserve_equality = false,
   },
 
-  -- Keymaps in aerial window (set to false to remove default bindings)
-  keymaps = {
-    ['?'] = 'actions.show_help',
-    ['g?'] = 'actions.show_help',
-    ['<CR>'] = 'actions.jump',
-    ['<2-LeftMouse>'] = 'actions.jump',
-    ['<C-v>'] = 'actions.jump_vsplit',
-    ['<C-x>'] = 'actions.jump_split',
-    ['p'] = 'actions.scroll',
-    ['<C-j>'] = 'actions.down_and_scroll',
-    ['<C-k>'] = 'actions.up_and_scroll',
-    ['{'] = 'actions.prev',
-    ['}'] = 'actions.next',
-    ['[['] = 'actions.prev_up',
-    [']]'] = 'actions.next_up',
-    ['q'] = 'actions.close',
-    ['o'] = 'actions.tree_toggle',
-    ['za'] = 'actions.tree_toggle',
-    ['O'] = 'actions.tree_toggle_recursive',
-    ['zA'] = 'actions.tree_toggle_recursive',
-    ['l'] = 'actions.tree_open',
-    ['zo'] = 'actions.tree_open',
-    ['L'] = 'actions.tree_open_recursive',
-    ['zO'] = 'actions.tree_open_recursive',
-    ['h'] = 'actions.tree_close',
-    ['zc'] = 'actions.tree_close',
-    ['H'] = 'actions.tree_close_recursive',
-    ['zC'] = 'actions.tree_close_recursive',
-    ['zr'] = 'actions.tree_increase_fold_level',
-    ['zR'] = 'actions.tree_open_all',
-    ['zm'] = 'actions.tree_decrease_fold_level',
-    ['zM'] = 'actions.tree_close_all',
-    ['zx'] = 'actions.tree_sync_folds',
-    ['zX'] = 'actions.tree_sync_folds',
-  },
+  -- The outline's keys, and none of aerial's own.
+  keymaps = window('outline', 'aerial.actions', {
+    '?',
+    'g?',
+    '<CR>',
+    '<2-LeftMouse>',
+    '<C-v>',
+    '<C-s>',
+    'p',
+    '<C-j>',
+    '<C-k>',
+    '{',
+    '}',
+    '[[',
+    ']]',
+    'q',
+    'o',
+    'za',
+    'O',
+    'zA',
+    'l',
+    'zo',
+    'L',
+    'zO',
+    'h',
+    'zc',
+    'H',
+    'zC',
+    'zr',
+    'zR',
+    'zm',
+    'zM',
+    'zx',
+    'zX',
+  }),
 
   -- When true, don't load aerial until a command or function is called
   lazy_load = true,
@@ -156,16 +179,16 @@ aerial.setup({
     autojump = false,
     -- Show a preview of the code in the right column
     preview = false,
-    -- Keymaps in the nav window
-    keymaps = {
-      ['<CR>'] = 'actions.jump',
-      ['<2-LeftMouse>'] = 'actions.jump',
-      ['<C-v>'] = 'actions.jump_vsplit',
-      ['<C-x>'] = 'actions.jump_split',
-      ['h'] = 'actions.left',
-      ['l'] = 'actions.right',
-      ['<C-c>'] = 'actions.close',
-    },
+    -- The walking float's keys, and none of aerial's own.
+    keymaps = window('walk', 'aerial.nav_actions', {
+      '<CR>',
+      '<2-LeftMouse>',
+      '<C-v>',
+      '<C-s>',
+      'h',
+      'l',
+      '<C-c>',
+    }),
   },
 
   -- Options for treesitter backend

@@ -557,7 +557,9 @@ branch. A capital letter is that letter with Shift, and does more of the
 same, or more forcefully: Space b W closes the file without saving it. [ and
 ] step to the one before and after (a problem, a git change, a test), and a
 key that only makes sense somewhere, in code a language server reads or a
-file git tracks, is there only then.
+file git tracks, is there only then. A window a plugin opens, the outline,
+the file browser or the problems list, uses the pickers' words: Return opens,
+Ctrl+S below, Ctrl+V beside, Ctrl+T in a tab, q closes and ? shows its keys.
 
 Each program's shortcuts are data: a chord, what it does in plain words, and
 the program's action, in `jitsusama.niri.binds` and `jitsusama.kitty.keys`,

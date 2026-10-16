@@ -2113,8 +2113,9 @@ in
 
     # The account's Neovim binds every key in the map, and only those: each
     # action a key names is one a file registered, each key is bound as it
-    # says, a scope's in a buffer it arrives in, and no key Neovim has that
-    # says what it does is missing from the map.
+    # says, a scope's in a buffer it arrives in, each plugin's window holds
+    # its keys and none of the plugin's own, and no key Neovim has that says
+    # what it does is missing from the map.
     neovim-binds-every-key =
       let
         home = account workstation;
@@ -2134,7 +2135,9 @@ in
             keys.attach(scope, 0)
           end
           local ours = {}
-          for _, key in ipairs(keys.keys) do
+          for _, key in ipairs(vim.tbl_filter(function(key)
+            return key.plugin == nil
+          end, keys.keys)) do
             for _, mode in ipairs(key.modes) do
               local map = vim.fn.maparg(key.lhs, mode, false, true)
               if map.desc ~= key.desc then
@@ -2162,6 +2165,72 @@ in
                 say('stray ' .. mode .. ' ' .. map.lhs .. ' ' .. map.desc)
               end
             end
+          end
+
+          -- A plugin's window binds its own keys, so each window is opened
+          -- as it would be, and holds its keys from keys.nix and no others
+          -- but a mouse's.
+          vim.fn.writefile({ 'local function hello()', 'end' }, 'probe.lua')
+          vim.cmd('edit probe.lua')
+          local function window(scope, filetype, open)
+            open()
+            if not vim.wait(5000, function() return vim.bo.filetype == filetype end) then
+              say('no ' .. scope .. ' window')
+              return
+            end
+            local mine, modes = {}, {}
+            for _, key in ipairs(keys.keys) do
+              if key.scope == scope then
+                for _, mode in ipairs(key.modes) do
+                  modes[mode] = true
+                  local map = vim.fn.maparg(key.lhs, mode, false, true)
+                  if map.desc ~= key.desc or map.buffer ~= 1 then
+                    say(scope .. ' ' .. mode .. ' ' .. key.lhs .. ' is ' .. tostring(map.desc))
+                  else
+                    mine[mode .. map.lhsraw] = true
+                  end
+                end
+              end
+            end
+            for mode in pairs(modes) do
+              for _, map in ipairs(vim.api.nvim_buf_get_keymap(0, mode)) do
+                local raw = vim.fn.maparg(map.lhs, mode, false, true).lhsraw
+                if not mine[mode .. raw] and not map.lhs:find('Mouse') then
+                  say('stray ' .. scope .. ' ' .. mode .. ' ' .. map.lhs .. ' ' .. tostring(map.desc))
+                end
+              end
+            end
+          end
+          window('outline', 'aerial', function()
+            require('aerial').open({ focus = true })
+          end)
+          vim.cmd('AerialClose')
+          window('walk', 'aerial-nav', function()
+            require('aerial').nav_open()
+          end)
+          vim.wait(200)
+          require('aerial').nav_close()
+          vim.wait(200)
+          window('files', 'oil', function()
+            vim.cmd('Oil .')
+          end)
+          vim.cmd('edit probe.lua')
+          window('problems', 'trouble', function()
+            vim.fn.setqflist({ { filename = 'probe.lua', lnum = 1, text = 'a problem' } })
+            require('trouble').toggle('quickfix')
+          end)
+          -- cmp binds the suggestions' keys as it suggests, from these.
+          local mapping = require('cmp').get_config().mapping
+          local suggesting = vim.tbl_filter(function(key)
+            return key.scope == 'completion'
+          end, keys.keys)
+          for _, key in ipairs(suggesting) do
+            if mapping[require('cmp.utils.keymap').normalize(key.lhs)] == nil then
+              say('completion ' .. key.lhs .. ' is unbound')
+            end
+          end
+          if vim.tbl_count(mapping) ~= #suggesting then
+            say('completion has ' .. vim.tbl_count(mapping) .. ' keys, not ' .. #suggesting)
           end
           io.stdout:write(#wrong == 0 and 'every key' or table.concat(wrong, '\n'))
         '';

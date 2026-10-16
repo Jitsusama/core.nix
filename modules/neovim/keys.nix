@@ -18,13 +18,106 @@
 #   command  an Ex command
 #   keys     keys for Neovim to press in its place, through other maps
 #            when remap is set
+#   plugin   the name a plugin gives one of its actions, for a key in its
+#            own window, with options the Lua for what it's given
 #
 # modes are Neovim's (n, x for a selection, o after an operator, i while
 # typing, t in a terminal), normal mode unless said. A key with a scope is
 # bound in a buffer only when that scope arrives: code when a language
-# server attaches, git when gitsigns does, status in fugitive's window.
+# server attaches, git when gitsigns does, status in fugitive's window, and
+# a plugin's window's when the plugin opens it.
 let
   selected = [ "x" ];
+  typing = [ "i" ];
+
+  # A plugin window's keys, which the plugin binds in its window.
+  inWindow = scope: map (key: key // { inherit scope; });
+
+  # Neovim's own fold keys, in a window that folds what it lists, by the
+  # names its plugin gives them.
+  folds =
+    names:
+    map
+      (fold: {
+        inherit (fold) chord does;
+        plugin = names.${fold.name};
+      })
+      [
+        {
+          chord = "z a";
+          does = "Fold here, or unfold";
+          name = "toggle";
+        }
+        {
+          chord = "z A";
+          does = "Fold here all the way down, or unfold";
+          name = "toggleAll";
+        }
+        {
+          chord = "z o";
+          does = "Unfold here";
+          name = "open";
+        }
+        {
+          chord = "z O";
+          does = "Unfold here all the way down";
+          name = "openAll";
+        }
+        {
+          chord = "z c";
+          does = "Fold here";
+          name = "close";
+        }
+        {
+          chord = "z C";
+          does = "Fold here all the way down";
+          name = "closeAll";
+        }
+        {
+          chord = "z r";
+          does = "Unfold a level everywhere";
+          name = "less";
+        }
+        {
+          chord = "z R";
+          does = "Unfold everything";
+          name = "none";
+        }
+        {
+          chord = "z m";
+          does = "Fold a level more everywhere";
+          name = "more";
+        }
+        {
+          chord = "z M";
+          does = "Fold everything";
+          name = "all";
+        }
+      ];
+  outlineFolds = {
+    toggle = "actions.tree_toggle";
+    toggleAll = "actions.tree_toggle_recursive";
+    open = "actions.tree_open";
+    openAll = "actions.tree_open_recursive";
+    close = "actions.tree_close";
+    closeAll = "actions.tree_close_recursive";
+    less = "actions.tree_increase_fold_level";
+    none = "actions.tree_open_all";
+    more = "actions.tree_decrease_fold_level";
+    all = "actions.tree_close_all";
+  };
+  problemFolds = {
+    toggle = "fold_toggle";
+    toggleAll = "fold_toggle_recursive";
+    open = "fold_open";
+    openAll = "fold_open_recursive";
+    close = "fold_close";
+    closeAll = "fold_close_recursive";
+    less = "fold_reduce";
+    none = "fold_open_all";
+    more = "fold_more";
+    all = "fold_close_all";
+  };
   both = [
     "n"
     "x"
@@ -1421,3 +1514,361 @@ in
     scope = "status";
   }
 ]
+
+# The plugins' own windows, which bind their keys themselves: each key names
+# the plugin's action, and its file hands the plugin these and no others.
+# They share words with the pickers: Return opens, Ctrl+S below, Ctrl+V
+# beside, Ctrl+T in a tab, q closes, ? shows the window's keys, Ctrl+L reads
+# it again, and a float closes on Escape too. Neovim's own z keys fold.
+++ inWindow "outline" [
+  {
+    chord = "?";
+    does = "Show the outline's keys";
+    plugin = "actions.show_help";
+  }
+  {
+    chord = "Return";
+    does = "Go to the symbol";
+    plugin = "actions.jump";
+  }
+  {
+    chord = "Ctrl+S";
+    does = "Open the symbol below";
+    plugin = "actions.jump_split";
+  }
+  {
+    chord = "Ctrl+V";
+    does = "Open the symbol beside";
+    plugin = "actions.jump_vsplit";
+  }
+  {
+    chord = "p";
+    does = "Show the symbol, staying in the outline";
+    plugin = "actions.scroll";
+  }
+  {
+    chord = "Ctrl+J";
+    does = "Show the next symbol, staying in the outline";
+    plugin = "actions.down_and_scroll";
+  }
+  {
+    chord = "Ctrl+K";
+    does = "Show the symbol before, staying in the outline";
+    plugin = "actions.up_and_scroll";
+  }
+  {
+    chord = "{";
+    does = "Go to the symbol before";
+    plugin = "actions.prev";
+  }
+  {
+    chord = "}";
+    does = "Go to the next symbol";
+    plugin = "actions.next";
+  }
+  {
+    chord = "[ [";
+    does = "Go to the symbol before, a level up";
+    plugin = "actions.prev_up";
+  }
+  {
+    chord = "] ]";
+    does = "Go to the next symbol, a level up";
+    plugin = "actions.next_up";
+  }
+  {
+    chord = "q";
+    does = "Close the outline";
+    plugin = "actions.close";
+  }
+  {
+    chord = "l";
+    does = "Show what the symbol holds";
+    plugin = "actions.tree_open";
+  }
+  {
+    chord = "L";
+    does = "Show everything the symbol holds";
+    plugin = "actions.tree_open_recursive";
+  }
+  {
+    chord = "h";
+    does = "Fold the symbol";
+    plugin = "actions.tree_close";
+  }
+  {
+    chord = "H";
+    does = "Fold the symbol and everything in it";
+    plugin = "actions.tree_close_recursive";
+  }
+]
+++ inWindow "outline" (folds outlineFolds)
+++ inWindow "walk" [
+  {
+    chord = "Return";
+    does = "Go to the symbol";
+    plugin = "actions.jump";
+  }
+  {
+    chord = "Ctrl+S";
+    does = "Open the symbol below";
+    plugin = "actions.jump_split";
+  }
+  {
+    chord = "Ctrl+V";
+    does = "Open the symbol beside";
+    plugin = "actions.jump_vsplit";
+  }
+  {
+    chord = "h";
+    does = "Go out to the symbol holding this";
+    plugin = "actions.left";
+  }
+  {
+    chord = "l";
+    does = "Go into the symbol";
+    plugin = "actions.right";
+  }
+  {
+    chord = "q";
+    does = "Stop walking the outline";
+    plugin = "actions.close";
+  }
+  {
+    chord = "Escape";
+    does = "Stop walking the outline";
+    plugin = "actions.close";
+  }
+]
+++ inWindow "files" [
+  {
+    chord = "?";
+    does = "Show the file browser's keys";
+    plugin = "actions.show_help";
+  }
+  {
+    chord = "Return";
+    does = "Open the file or folder";
+    plugin = "actions.select";
+  }
+  {
+    chord = "Ctrl+S";
+    does = "Open the file below";
+    plugin = "actions.select";
+    options = "{ horizontal = true }";
+  }
+  {
+    chord = "Ctrl+V";
+    does = "Open the file beside";
+    plugin = "actions.select";
+    options = "{ vertical = true }";
+  }
+  {
+    chord = "Ctrl+T";
+    does = "Open the file in a tab";
+    plugin = "actions.select";
+    options = "{ tab = true }";
+  }
+  {
+    chord = "Ctrl+P";
+    does = "Show the file beside, staying here";
+    plugin = "actions.preview";
+  }
+  {
+    chord = "q";
+    does = "Close the file browser";
+    plugin = "actions.close";
+  }
+  {
+    chord = "Ctrl+L";
+    does = "Read the folder again";
+    plugin = "actions.refresh";
+  }
+  {
+    chord = "-";
+    does = "Go up to the folder holding this";
+    plugin = "actions.parent";
+  }
+  {
+    chord = "_";
+    does = "Go to the working folder";
+    plugin = "actions.open_cwd";
+  }
+  {
+    chord = "`";
+    does = "Make this the working folder";
+    plugin = "actions.cd";
+  }
+  {
+    chord = "~";
+    does = "Make this the tab's working folder";
+    plugin = "actions.cd";
+    options = "{ scope = 'tab' }";
+  }
+  {
+    chord = "g x";
+    does = "Open the file in its own program";
+    plugin = "actions.open_external";
+  }
+  {
+    chord = "g h";
+    does = "Show hidden files, or hide them";
+    plugin = "actions.toggle_hidden";
+  }
+  {
+    chord = "g \\";
+    does = "Show the trash, or the folder";
+    plugin = "actions.toggle_trash";
+  }
+]
+++ inWindow "problems" [
+  {
+    chord = "?";
+    does = "Show the problems list's keys";
+    plugin = "help";
+  }
+  {
+    chord = "Return";
+    does = "Go to the problem";
+    plugin = "jump";
+  }
+  {
+    chord = "o";
+    does = "Go to the problem and close the list";
+    plugin = "jump_close";
+  }
+  {
+    chord = "Ctrl+S";
+    does = "Open the problem below";
+    plugin = "jump_split";
+  }
+  {
+    chord = "Ctrl+V";
+    does = "Open the problem beside";
+    plugin = "jump_vsplit";
+  }
+  {
+    chord = "p";
+    does = "Show the problem, staying in the list";
+    plugin = "preview";
+  }
+  {
+    chord = "P";
+    does = "Show each problem as the cursor reaches it, or stop";
+    plugin = "toggle_preview";
+  }
+  {
+    chord = "Escape";
+    does = "Put back what the preview replaced";
+    plugin = "cancel";
+  }
+  {
+    chord = "q";
+    does = "Close the problems list";
+    plugin = "close";
+  }
+  {
+    chord = "Ctrl+L";
+    does = "Read the problems again";
+    plugin = "refresh";
+  }
+  {
+    chord = "R";
+    does = "Keep the list up to date, or stop";
+    plugin = "toggle_refresh";
+  }
+  {
+    chord = "{";
+    does = "Go to the problem before";
+    plugin = "prev";
+  }
+  {
+    chord = "}";
+    does = "Go to the next problem";
+    plugin = "next";
+  }
+  {
+    chord = "d d";
+    does = "Take the problem off the list";
+    plugin = "delete";
+  }
+  {
+    chord = "d";
+    does = "Take the selected problems off the list";
+    plugin = "delete";
+    modes = selected;
+  }
+  {
+    chord = "i";
+    does = "Show everything the list knows of the problem";
+    plugin = "inspect";
+  }
+  {
+    chord = "g b";
+    does = "Show only this file's problems, or every file's";
+    plugin = "only.file";
+  }
+  {
+    chord = "s";
+    does = "Show only the worse problems, a step at a time";
+    plugin = "only.worse";
+  }
+]
+++ inWindow "problems" (folds problemFolds)
+++ inWindow "completion" (
+  map (key: { modes = typing; } // key) [
+    {
+      chord = "Tab";
+      does = "Choose the next suggestion, or suggest";
+      plugin = "next";
+      modes = [
+        "i"
+        "s"
+      ];
+    }
+    {
+      chord = "Shift+Tab";
+      does = "Choose the suggestion before";
+      plugin = "before";
+      modes = [
+        "i"
+        "s"
+      ];
+    }
+    {
+      chord = "Ctrl+N";
+      does = "Choose the next suggestion, or suggest";
+      plugin = "next";
+    }
+    {
+      chord = "Ctrl+P";
+      does = "Choose the suggestion before";
+      plugin = "before";
+    }
+    {
+      chord = "Ctrl+Space";
+      does = "Suggest";
+      plugin = "suggest";
+    }
+    {
+      chord = "Ctrl+Y";
+      does = "Take the suggestion";
+      plugin = "take";
+    }
+    {
+      chord = "Ctrl+E";
+      does = "Put the suggestions away";
+      plugin = "away";
+    }
+    {
+      chord = "Ctrl+B";
+      does = "Scroll the suggestion's notes up";
+      plugin = "notes.up";
+    }
+    {
+      chord = "Ctrl+F";
+      does = "Scroll the suggestion's notes down";
+      plugin = "notes.down";
+    }
+  ]
+)

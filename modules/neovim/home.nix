@@ -72,12 +72,18 @@ let
     code = "in code";
     git = "in a file git tracks";
     status = "in git's status";
+    outline = "in the outline";
+    walk = "walking the outline";
+    files = "in the file browser";
+    problems = "in the problems list";
+    completion = "with suggestions";
   };
   modeWhere = {
     x = "with text selected";
     "x o" = "selecting, or after an operator";
     t = "in a terminal";
     i = "while typing";
+    "i s" = "while typing";
   };
   where =
     key:
@@ -100,12 +106,16 @@ let
     // lib.optionalAttrs (key ? lua) {
       lua = lib.generators.mkLuaInline "function() ${key.lua} end";
     }
+    // lib.optionalAttrs (key ? options) {
+      options = lib.generators.mkLuaInline key.options;
+    }
     // lib.getAttrs (lib.filter (field: key ? ${field}) [
       "action"
       "command"
       "keys"
       "expr"
       "remap"
+      "plugin"
     ]) key;
 in
 {
@@ -166,10 +176,22 @@ in
     -- A scope's keys, in the buffer it has arrived in.
     function M.attach(scope, buffer)
       for _, key in ipairs(M.keys) do
-        if key.scope == scope then
+        if key.scope == scope and key.plugin == nil then
           bind(key, buffer)
         end
       end
+    end
+
+    -- A plugin window's keys, for its plugin to bind: each key's spelling,
+    -- to what make turns it into in the plugin's own terms.
+    function M.window(scope, make)
+      local window = {}
+      for _, key in ipairs(M.keys) do
+        if key.scope == scope and key.plugin ~= nil then
+          window[key.lhs] = make(key)
+        end
+      end
+      return window
     end
 
     -- The names keys.nix gives that no file has registered.
