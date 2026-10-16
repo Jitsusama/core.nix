@@ -819,6 +819,16 @@ as an exception with the reason.
 
 What each studio round settled, newest first, with the reason.
 
+- **Neovim's finder is a float like the rest** (2026-10-16, judged against
+  the taste without a round). fzf-lua draws on the floats' shade with a step
+  of it round the list and the preview, dims nothing behind it, and takes
+  the theme's colours: the prompt's mark in the accent, a hairline under
+  what's typed, the chosen row in the selection's colour. Its title starts
+  at the list's edge, over the prompt. A file reads as its name in strong
+  and then its folder in text, since muted words can't be read on the
+  selection. The folder isn't in the prompt, nor the file over the preview:
+  the status line names the folder, and goes on naming the file under a
+  float rather than the float itself. neovim-floats-by-shade holds it.
 - **Neovim's floats stand apart by their shade** (2026-10-16, judged against
   the taste without a round). A problem in full, a language server's note, a
   notice, the suggestions, the outline and a change's preview are each drawn

@@ -250,6 +250,26 @@ local groups = {
   CmpItemAbbrDeprecated = { fg = t.muted, strikethrough = true },
   CmpItemKind = { fg = t.muted },
   CmpItemMenu = { fg = t.muted },
+  -- The finder is drawn as every float is, its prompt where the keys go and
+  -- a hairline between what's typed and what's found. A file's name is in
+  -- strong and its folder in text, which both still read on the chosen row's
+  -- selection, where muted would not.
+  FzfLuaNormal = { link = 'NormalFloat' },
+  FzfLuaBorder = { link = 'FloatBorder' },
+  FzfLuaTitle = { link = 'FloatTitle' },
+  FzfLuaPreviewNormal = { link = 'NormalFloat' },
+  FzfLuaPreviewBorder = { link = 'FloatBorder' },
+  FzfLuaCursorLine = { link = 'PmenuSel' },
+  FzfLuaScrollFloatEmpty = { link = 'PmenuSbar' },
+  FzfLuaScrollFloatFull = { link = 'PmenuThumb' },
+  FzfLuaFzfMatch = { fg = t.strong, bold = true },
+  FzfLuaFzfPrompt = { fg = t.accent },
+  FzfLuaFzfPointer = { fg = t.accent },
+  FzfLuaFzfInfo = { fg = t.muted },
+  FzfLuaFzfSeparator = { fg = t.rule },
+  FzfLuaFzfScrollbar = { fg = t.rule },
+  FzfLuaDirPart = { fg = t.text },
+  FzfLuaFilePart = { fg = t.strong },
 }
 
 for name, spec in pairs(groups) do
