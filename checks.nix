@@ -2534,14 +2534,16 @@ in
         );
         lacking = lib.filter (group: !(lib.elem "${group} Space" chords)) groups;
         probe = pkgs.writeText "probe.lua" ''
+          -- Every plugin loaded first, so none replaces the stand-ins after.
+          require('later').load_all()
           local keys = require('keys')
           local wrong = {}
           local function say(line)
             table.insert(wrong, line)
           end
-          local offered, chosen, told, titled
+          local offered, rows, chosen, told, titled
           vim.ui.select = function(items, opts, on_choice)
-            offered, titled = {}, opts.prompt
+            offered, rows, titled = {}, #items, opts.prompt
             for _, item in ipairs(items) do
               offered[item.rest] = opts.format_item(item)
             end
@@ -2594,6 +2596,29 @@ in
           if vim.wo.wrap == wrapped then
             say('choosing w from Space u Space left wrapping as it was')
           end
+
+          -- In an issue, its comments' keys, once each, though octo's other
+          -- windows give the same chords keys of their own.
+          vim.cmd('enew')
+          require('octo.utils').apply_mappings('issue', 0)
+          offered = nil
+          keys.find('Space g h c', 'comments')
+          local comments = vim.tbl_keys(offered or {})
+          table.sort(comments)
+          if table.concat(comments, ' ') ~= 'Return h i r w' or rows ~= 5 then
+            say('Space g h c Space in an issue offers ' .. tostring(rows) .. ': ' .. table.concat(comments, ', '))
+          end
+          -- And in a review's change, its own comment key, not an issue's.
+          vim.cmd('enew')
+          require('octo.utils').apply_mappings('review_diff', 0)
+          offered = nil
+          keys.find('Space g h c', 'comments')
+          local comment = (offered or {}).Return or '''
+          if not comment:find('Comment on the line', 1, true) then
+            say('Space g h c Space in a change offers Return as "' .. comment .. '"')
+          end
+          vim.cmd('bwipeout!')
+          vim.cmd('bwipeout!')
 
           offered = nil
           keys.find('Space g s', 'stage')
@@ -2753,7 +2778,7 @@ in
           -- but a mouse's.
           vim.fn.writefile({ 'local function hello()', 'end' }, 'probe.lua')
           vim.cmd('edit probe.lua')
-          local function window(scope, filetype, open)
+          local function window(scope, filetype, open, theirs)
             open()
             if not vim.wait(5000, function() return vim.bo.filetype == filetype end) then
               say('no ' .. scope .. ' window')
@@ -2776,7 +2801,7 @@ in
             for mode in pairs(modes) do
               for _, map in ipairs(vim.api.nvim_buf_get_keymap(0, mode)) do
                 local raw = vim.fn.maparg(map.lhs, mode, false, true).lhsraw
-                if not mine[mode .. raw] and not map.lhs:find('Mouse') then
+                if not mine[mode .. raw] and not map.lhs:find('Mouse') and not (theirs and theirs(map)) then
                   say('stray ' .. scope .. ' ' .. mode .. ' ' .. map.lhs .. ' ' .. tostring(map.desc))
                 end
               end
@@ -2800,6 +2825,43 @@ in
             vim.fn.setqflist({ { filename = 'probe.lua', lnum = 1, text = 'a problem' } })
             require('trouble').toggle('quickfix')
           end)
+          -- octo binds a buffer's keys as it opens one, through apply_mappings,
+          -- and its notifications' in the finder, from its configuration.
+          local octo = {
+            ['octo-issue'] = 'issue',
+            ['octo-pull'] = 'pull_request',
+            ['octo-thread'] = 'review_thread',
+            ['octo-submit'] = 'submit_win',
+            ['octo-change'] = 'review_diff',
+            ['octo-files'] = 'file_panel',
+          }
+          for _, scope in ipairs(vim.tbl_keys(octo)) do
+            -- autopairs binds its own keys for typing in every buffer.
+            window(scope, 'octo-probe', function()
+              vim.cmd('enew')
+              vim.bo.filetype = 'octo-probe'
+              require('octo.utils').apply_mappings(octo[scope], 0)
+            end, function(map)
+              return (map.desc or '''):find('^autopairs') ~= nil
+            end)
+          end
+          -- Its notifications' and workflow runs' keys octo binds its own
+          -- way, so they're read from its configuration, and its runs'
+          -- view, which reads them as it loads, loads.
+          local given = require('octo.config').values.mappings
+          local theirs = { ['octo-notices'] = 'notification', ['octo-runs'] = 'runs' }
+          for _, key in ipairs(keys.keys) do
+            if theirs[key.scope] then
+              local action = (given[theirs[key.scope]] or {})[key.plugin] or {}
+              if action.lhs ~= key.lhs or action.desc ~= key.desc then
+                say(key.scope .. ' ' .. key.lhs .. ' is not ' .. key.plugin)
+              end
+            end
+          end
+          local loaded, problem = pcall(require, 'octo.workflow_runs')
+          if not loaded then
+            say('octo cannot show a workflow run: ' .. tostring(problem))
+          end
           -- cmp binds the suggestions' keys as it suggests, from these.
           local mapping = require('cmp').get_config().mapping
           local suggesting = vim.tbl_filter(function(key)

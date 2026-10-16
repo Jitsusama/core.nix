@@ -819,6 +819,17 @@ as an exception with the reason.
 
 What each studio round settled, newest first, with the reason.
 
+- **octo's keys speak the language** (2026-10-16, judged against the taste
+  without a round). octo's buffers held 117 keys of its own in words like
+  "Buffer close (close issue)" and emoji, with its defaults still bound
+  beside them, and none in the key map. Every octo action is now in
+  keys.nix in plain words, and octo binds nothing else. Where the
+  language has a word, octo's keys use it: Return adds and w takes away or
+  closes, Ctrl+L reads again, and [ and ] step with the thing's letter,
+  [ C a comment or thread and [ v a changed file, so octo no longer gives
+  the quickfix list's and the symbols' steps other meanings. The
+  notifications' keys, which never worked behind Space, are the finder's
+  Ctrl+R, Ctrl+X and Alt+X.
 - **Space finds in every one of Neovim's groups** (2026-10-16, judged
   against the taste without a round). The language says a group then Space
   finds among what it holds, but eighteen groups, git, search, tests and

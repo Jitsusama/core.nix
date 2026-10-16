@@ -64,7 +64,8 @@ let
   spellStep =
     index: step:
     let
-      parts = lib.splitString "+" step;
+      # + joins the keys held together, so + alone is the key itself.
+      parts = if step == "+" then [ "+" ] else lib.splitString "+" step;
       key = lib.last parts;
       # A named key held with others loses its brackets: <S-Esc>.
       bare = lib.removePrefix "<" (lib.removeSuffix ">" (named.${key} or key));
@@ -90,6 +91,14 @@ let
     problems = "in the problems list";
     completion = "with suggestions";
     commands = "on the command line";
+    octo-issue = "in a GitHub issue";
+    octo-pull = "in a pull request";
+    octo-thread = "in a review's thread";
+    octo-submit = "submitting a review";
+    octo-change = "in a review's change";
+    octo-files = "in a review's changed files";
+    octo-runs = "in a workflow run";
+    octo-notices = "finding GitHub's notifications";
   };
   modeWhere = {
     x = "with text selected";
@@ -211,7 +220,12 @@ in
       return window
     end
 
+    -- A key run as if pressed: a plugin's own by pressing it, since its
+    -- plugin bound it, and the rest by what keys.nix says it does.
     local function run(key)
+      if key.plugin then
+        return vim.api.nvim_feedkeys(vim.keycode(key.lhs), 'm', false)
+      end
       local how = rhs(key)
       if type(how) == 'function' then
         return how()
@@ -219,9 +233,14 @@ in
       vim.api.nvim_feedkeys(vim.keycode(how), key.remap and 'm' or 'n', false)
     end
 
-    -- Whether a key works here: everywhere, or bound in this buffer.
+    -- Whether a key works here: everywhere, or bound in this buffer as this
+    -- key, since a plugin's windows can give one chord different keys.
     local function here(key)
-      return key.scope == nil or vim.fn.maparg(key.lhs, 'n', false, true).buffer == 1
+      if key.scope == nil then
+        return true
+      end
+      local bound = vim.fn.maparg(key.lhs, 'n', false, true)
+      return bound.buffer == 1 and bound.desc == key.desc
     end
 
     -- Words in one of the theme's roles, as the finder draws them.
@@ -237,17 +256,18 @@ in
     -- Each row reads as the launcher's do, what it does and then its keys,
     -- one step quieter, in a column of their own.
     function M.find(group, name)
-      local found, widest = {}, 0
+      local found, seen, widest = {}, {}, 0
       for _, key in ipairs(M.keys) do
         local rest = key.chord:sub(#group + 2)
         if
-          key.plugin == nil
-          and vim.tbl_contains(key.modes, 'n')
+          vim.tbl_contains(key.modes, 'n')
+          and not seen[key.lhs]
           and here(key)
           and key.chord:sub(1, #group + 1) == group .. ' '
           and rest ~= 'Space'
         then
           table.insert(found, { key = key, rest = rest })
+          seen[key.lhs] = true
           widest = math.max(widest, vim.fn.strdisplaywidth(key.desc))
         end
       end
