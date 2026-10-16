@@ -819,6 +819,11 @@ as an exception with the reason.
 
 What each studio round settled, newest first, with the reason.
 
+- **kitty's cursor rests** (2026-10-16, judged against the taste without a
+  round). The block in strong, fading on WezTerm's 800 ms, stays: it's
+  legible and quiet while typing. It used to blink for as long as a window
+  had focus, motion on a screen nobody's touching and an animation kitty
+  draws all the while; it now rests, solid, 15 seconds after the last key.
 - **octo's keys speak the language** (2026-10-16, judged against the taste
   without a round). octo's buffers held 117 keys of its own in words like
   "Buffer close (close issue)" and emoji, with its defaults still bound
