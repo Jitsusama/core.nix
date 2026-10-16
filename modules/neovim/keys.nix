@@ -152,6 +152,112 @@ let
     Up = "k";
     Right = "l";
   };
+
+  # octo's keys in its own buffers, by what they act on, for the windows
+  # that share them; each names the octo action it runs. Space g h holds
+  # them, as it holds GitHub's keys everywhere else.
+  octo = rec {
+    key = chord: does: plugin: { inherit chord does plugin; };
+    thing = thing: options: [
+      (key "Return" "Choose what to do with the ${thing}" options)
+      (key "Space g h b w" "Close the ${thing}" "close_issue")
+      (key "Space g h b R" "Reopen the ${thing}" "reopen_issue")
+      (key "Ctrl+L" "Read the ${thing} again" "reload")
+      (key "Space g h b o" "Open the ${thing} in the browser" "open_in_browser")
+      (key "Space g h b y" "Copy the ${thing}'s link" "copy_url")
+    ];
+    assignees = [
+      (key "Space g h a Return" "Add someone to the assignees" "add_assignee")
+      (key "Space g h a w" "Take someone off the assignees" "remove_assignee")
+    ];
+    reviewers = [
+      (key "Space g h a Shift+Return" "Ask someone to review" "add_reviewer")
+      (key "Space g h a W" "Take someone off the reviewers" "remove_reviewer")
+    ];
+    labels = [
+      (key "Space g h l Return" "Make a label" "create_label")
+      (key "Space g h l a" "Put a label on" "add_label")
+      (key "Space g h l w" "Take a label off" "remove_label")
+    ];
+    comments = [
+      (key "Space g h c Return" "Comment" "add_comment")
+      (key "Space g h c r" "Reply to the comment here" "add_reply")
+      (key "Space g h c w" "Delete the comment here" "delete_comment")
+      (key "Space g h c h" "Show how the comment here was edited" "comment_edits")
+      (key "Space g h c i" "Quote the comment here in a new issue" "reference_in_new_issue")
+      (key "] C" "Go to the next comment" "next_comment")
+      (key "[ C" "Go to the comment before" "prev_comment")
+      (key "Space g h i g" "Go to the issue named here" "goto_issue")
+    ];
+    threads = [
+      (key "Space g h T r" "Resolve the thread" "resolve_thread")
+      (key "Space g h T u" "Open the thread again" "unresolve_thread")
+    ];
+    reactions =
+      map
+        (reaction: key "Space g h t ${reaction.key}" "React with ${reaction.word}" "react_${reaction.name}")
+        [
+          {
+            key = "p";
+            name = "hooray";
+            word = "a party";
+          }
+          {
+            key = "h";
+            name = "heart";
+            word = "a heart";
+          }
+          {
+            key = "e";
+            name = "eyes";
+            word = "eyes";
+          }
+          {
+            key = "+";
+            name = "thumbs_up";
+            word = "a thumbs up";
+          }
+          {
+            key = "-";
+            name = "thumbs_down";
+            word = "a thumbs down";
+          }
+          {
+            key = "r";
+            name = "rocket";
+            word = "a rocket";
+          }
+          {
+            key = "l";
+            name = "laugh";
+            word = "a laugh";
+          }
+          {
+            key = "c";
+            name = "confused";
+            word = "a confused face";
+          }
+        ];
+    changes = [
+      (key "] v" "Go to the next changed file" "select_next_entry")
+      (key "[ v" "Go to the changed file before" "select_prev_entry")
+      (key "[ V" "Go to the first changed file" "select_first_entry")
+      (key "] V" "Go to the last changed file" "select_last_entry")
+      (key "] u" "Go to the next file not yet viewed" "select_next_unviewed_entry")
+      (key "[ u" "Go to the file not yet viewed before" "select_prev_unviewed_entry")
+      (key "Ctrl+C" "Close the review" "close_review_tab")
+    ];
+    submitting = [
+      (key "Space g h v S" "Submit the review" "submit_review")
+      (key "Space g h v d" "Throw the review away" "discard_review")
+    ];
+    panel = [
+      (key "Space g h v e" "Go to the changed files" "focus_files")
+      (key "Space g h v b" "Show the changed files, or hide them" "toggle_files")
+      (key "Space g h v t" "Mark the file viewed, or not" "toggle_viewed")
+      (key "Space g h v c" "Review one of the pull request's commits" "review_commits")
+    ];
+  };
 in
 [
   # ─── What every layer shares ────────────────────────────────────────────
@@ -782,6 +888,69 @@ in
     does = "Find a key for GitHub, by what it does";
     lua = "require('keys').find('Space g h', 'GitHub')";
   }
+]
+# Space in each group of octo's own buffers' keys, which finds the group's
+# keys that work in the buffer here.
+++
+  map
+    (group: {
+      chord = "Space g h ${group.letters} Space";
+      does = "Find a key for ${group.words}, by what it does";
+      lua = "require('keys').find('Space g h ${group.letters}', '${group.name}')";
+    })
+    [
+      {
+        letters = "a";
+        words = "assignees and reviewers";
+        name = "people";
+      }
+      {
+        letters = "b";
+        words = "the issue or pull request";
+        name = "this issue or pull request";
+      }
+      {
+        letters = "c";
+        words = "comments";
+        name = "comments";
+      }
+      {
+        letters = "k";
+        words = "checks";
+        name = "checks";
+      }
+      {
+        letters = "l";
+        words = "labels";
+        name = "labels";
+      }
+      {
+        letters = "m";
+        words = "merging";
+        name = "merge";
+      }
+      {
+        letters = "m q";
+        words = "merging through the queue";
+        name = "through the queue";
+      }
+      {
+        letters = "t";
+        words = "reactions";
+        name = "reactions";
+      }
+      {
+        letters = "T";
+        words = "threads";
+        name = "threads";
+      }
+      {
+        letters = "v";
+        words = "reviewing";
+        name = "review";
+      }
+    ]
+++ [
   {
     chord = "Space g h h";
     does = "Show this repository's pull requests";
@@ -1973,3 +2142,115 @@ in
     }
   ]
 )
+
+# octo's buffers: an issue, a pull request, a review's thread, the window a
+# review is submitted from, the change a review shows and its changed files,
+# and the notifications it finds, whose keys work in the finder.
+++ inWindow "octo-issue" (
+  octo.thing "issue" "issue_options"
+  ++ octo.assignees
+  ++ octo.labels
+  ++ octo.comments
+  ++ octo.reactions
+)
+++ inWindow "octo-pull" (
+  octo.thing "pull request" "pr_options"
+  ++ [
+    (octo.key "Space g h b Y" "Copy the commit's id" "copy_sha")
+    (octo.key "Space g h m o" "Check the pull request out" "checkout_pr")
+    (octo.key "Space g h m m" "Merge it with a merge commit" "merge_pr")
+    (octo.key "Space g h m s" "Squash it and merge" "squash_and_merge_pr")
+    (octo.key "Space g h m r" "Rebase it and merge" "rebase_and_merge_pr")
+    (octo.key "Space g h m k" "Merge it and every pull request below it in its stack" "merge_pr_stack")
+    (octo.key "Space g h m q m" "Merge it with a merge commit, through the queue" "merge_pr_queue")
+    (octo.key "Space g h m q s" "Squash it and merge, through the queue" "squash_and_merge_queue")
+    (octo.key "Space g h m q r" "Rebase it and merge, through the queue" "rebase_and_merge_queue")
+    (octo.key "Space g h v a" "Approve the pull request" "approve_pr")
+    (octo.key "Space g h v c" "Find one of the pull request's commits" "list_commits")
+    (octo.key "Space g h v f" "Find a file the pull request changes" "list_changed_files")
+    (octo.key "Space g h v D" "Show everything the pull request changes" "show_pr_diff")
+    (octo.key "Space g h v s" "Start a review" "review_start")
+    (octo.key "Space g h v r" "Go back to your review" "review_resume")
+    (octo.key "] p" "Open the pull request above it in its stack" "stack_up")
+    (octo.key "[ p" "Open the pull request below it in its stack" "stack_down")
+    (octo.key "Space g h k o" "Open the check here" "goto_check")
+    (octo.key "Space g h k z" "Fold the checks, or unfold them" "toggle_checks")
+    (octo.key "g f" "Go to the file" "goto_file")
+  ]
+  ++ octo.reviewers
+  ++ octo.assignees
+  ++ octo.labels
+  ++ octo.comments
+  ++ octo.threads
+  ++ octo.reactions
+)
+++ inWindow "octo-thread" (
+  [ (octo.key "Space g h c s" "Suggest a change" "add_suggestion") ]
+  ++ octo.comments
+  ++ octo.changes
+  ++ octo.threads
+  ++ octo.reactions
+)
+++ inWindow "octo-submit" (
+  map
+    (
+      key:
+      key
+      // {
+        modes = [
+          "n"
+          "i"
+        ];
+      }
+    )
+    [
+      (octo.key "Ctrl+A" "Approve, with what's written" "approve_review")
+      (octo.key "Ctrl+M" "Comment, with what's written" "comment_review")
+      (octo.key "Ctrl+R" "Ask for changes, with what's written" "request_changes")
+      (octo.key "Ctrl+C" "Close the review" "close_review_tab")
+    ]
+)
+++ inWindow "octo-change" (
+  map (key: key // { modes = both; }) [
+    (octo.key "Space g h c Return" "Comment on the line, or the selection" "add_review_comment")
+    (octo.key "Space g h c s" "Suggest a change to the line, or the selection" "add_review_suggestion")
+  ]
+  ++ [
+    (octo.key "] C" "Go to the next thread" "next_thread")
+    (octo.key "[ C" "Go to the thread before" "prev_thread")
+    (octo.key "Space g h b Y" "Copy the commit's id" "copy_sha")
+    (octo.key "g f" "Go to the file" "goto_file")
+  ]
+  ++ octo.submitting
+  ++ octo.panel
+  ++ octo.changes
+)
+++ inWindow "octo-files" (
+  [
+    (octo.key "j" "Go to the next changed file" "next_entry")
+    (octo.key "k" "Go to the changed file before" "prev_entry")
+    (octo.key "Return" "Show the changed file" "select_entry")
+    (octo.key "Ctrl+L" "Read the changed files again" "refresh_files")
+  ]
+  ++ octo.submitting
+  ++ octo.panel
+  ++ octo.changes
+)
+++ inWindow "octo-runs" [
+  (octo.key "Return" "Open the step, or close it" "expand_step")
+  (octo.key "] e" "Go to the next step" "next_step")
+  (octo.key "[ e" "Go to the step before" "prev_step")
+  (octo.key "] j" "Go to the next job" "next_job")
+  (octo.key "[ j" "Go to the job before" "prev_job")
+  (octo.key "Ctrl+L" "Read the run again" "refresh")
+  (octo.key "Space g h b o" "Open the run in the browser" "open_in_browser")
+  (octo.key "Space g h b y" "Copy the run's link" "copy_url")
+  (octo.key "Space g h k r" "Run it again" "rerun")
+  (octo.key "Space g h k f" "Run its failed jobs again" "rerun_failed")
+  (octo.key "Space g h k w" "Cancel the run" "cancel")
+]
+++ inWindow "octo-notices" [
+  (octo.key "Ctrl+R" "Mark the notification read" "read")
+  (octo.key "Ctrl+X" "Mark the notification done" "done")
+  (octo.key "Alt+X" "Unsubscribe from what the notification is about" "unsubscribe")
+]
