@@ -90,25 +90,42 @@ in
   hardware.cpu.intel.updateMicrocode = true;
   hardware.enableRedistributableFirmware = true;
 
-  # linux-firmware 20260916's settings file for the Bluetooth chip ends in a
-  # stray newline, which the kernel reads as one record too many and rejects
-  # with "Malformed DDC record" at every boot. The records before it are sent
-  # first, so Bluetooth works either way. The file linux-firmware corrected
-  # two days later goes first, so it's the one found, until a release that
-  # has it.
-  hardware.firmware = lib.mkIf (lib.versionOlder pkgs.linux-firmware.version "20260917") (
-    lib.mkBefore [
-      (pkgs.runCommandLocal "ibt-00a0-01a1-pci-ddc" { } ''
-        install -D -m 444 ${
-          pkgs.fetchurl {
-            name = "ibt-00a0-01a1-pci.ddc";
-            url = "https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/plain/intel/ibt-00a0-01a1-pci.ddc?id=a98a6daa9f4dee2f662cc8a48610287189b23499";
-            hash = "sha256-ot+YgNGJUiDpv7uGsuI1hBnFaFa13MLWMAcTlp39B0Q=";
-          }
-        } $out/lib/firmware/intel/ibt-00a0-01a1-pci.ddc
-      '')
-    ]
-  );
+  # The Bluetooth chip's firmware and settings from linux-firmware's own
+  # tree, which is ahead of its 20260916 release in two ways:
+  # - Intel's firmware release 24.80.0.2 for this chip, from 1 October, where
+  #   the release carries the build from July.
+  # - The settings file, whose release copy ends in a stray newline. The
+  #   kernel reads it as one record too many and rejects it with "Malformed
+  #   DDC record" at every boot, after sending the records before it, so
+  #   Bluetooth works either way.
+  # The files keep their names and go first, so they're the ones found,
+  # until nixpkgs takes a release that has them.
+  hardware.firmware =
+    let
+      commit = "8a2941fae0d02364d8ae6542ba890fd496681b55";
+      file =
+        name: hash:
+        pkgs.fetchurl {
+          inherit name hash;
+          url = "https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/plain/intel/${name}?id=${commit}";
+        };
+      files = {
+        "ibt-00a0-01a1-iml.sfi" = "sha256-ab63c4enmnXudB/2+I94Kg/ETIsu/Me8tBxBMSKSgCY=";
+        "ibt-00a0-01a1-pci.sfi" = "sha256-VFrc2+gWzKWRI6CRK0WC9GDwmUK58MXeKmy9il6haA0=";
+        "ibt-00a0-01a1-pci.ddc" = "sha256-ot+YgNGJUiDpv7uGsuI1hBnFaFa13MLWMAcTlp39B0Q=";
+      };
+    in
+    lib.mkIf (lib.versionOlder pkgs.linux-firmware.version "20261002") (
+      lib.mkBefore [
+        (pkgs.runCommandLocal "ibt-00a0-01a1" { } (
+          lib.concatStrings (
+            lib.mapAttrsToList (name: hash: ''
+              install -D -m 444 ${file name hash} $out/lib/firmware/intel/${name}
+            '') files
+          )
+        ))
+      ]
+    );
 
   boot.kernelPatches = [
     {

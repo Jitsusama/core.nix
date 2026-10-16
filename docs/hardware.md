@@ -447,6 +447,20 @@ and is harmless, so nothing silences or patches it:
 - **Dummy regulators** for the camera sensor, the SPI flash and the four
   amplifiers. ACPI names no supplies for them, and all three work as they
   should.
+- **intel_ipu7's and intel_ipu7_isys's "module is from the staging
+  directory".** The camera's image unit driver is still in staging, so the
+  kernel says so as each loads and marks itself with that taint.
+- **iio-sensor-proxy's "Found proximity sensor but no PROXIMITY_NEAR_LEVEL
+  udev property" and "No sensors", twice.** The sensor hub offers two light
+  sensors, a presence sensor and the hinge's angle. The light sensors belong
+  to the backlight daemon (modules/backlight), which tells the proxy to leave
+  them alone. The presence sensor reports no reading on this firmware (see
+  "Presence" above), so no udev rule gives it a near level, and the proxy
+  finds nothing it can serve and exits, which it does twice each boot.
+- **gnome-keyring's "discover_other_daemon: 1" and "0".** gnome-keyring
+  50.0 prints whether it found a daemon already running, with g_printerr
+  and no newline, so the line runs into the next one. Upstream's main still
+  prints it.
 
 ### Fixed Here Until nixpkgs Fixes It
 
@@ -512,8 +526,13 @@ upstream as it is and the override can then come out.
   Intel_Write_DDC (-95)"; 7.2.10 checks the length first and says "Malformed
   DDC record (plen=11, remaining=1)". The two real records go first either
   way, so the controller has its parameters. linux-firmware's
-  [a98a6daa9f4d][14] drops the byte two days after that release, so its file
-  goes ahead of the package's until nixpkgs has a newer one.
+  [a98a6daa9f4d][14] drops the byte two days after that release.
+
+- **Bluetooth's firmware.** The same release carries Intel's build from
+  July for this chip, where linux-firmware's [8a2941fae0d0][17] has its
+  release 24.80.0.2 from 1 October, under the same file names. That commit
+  also holds the fixed DDC file, so all three files come from it and go
+  ahead of the package's until nixpkgs has a newer one.
 
 - **bolt's USB4 controllers.** bolt 0.9.8 decides whether a USB4 domain
   keeps its UUID across reboots from a table of controller PCI IDs, and
@@ -559,3 +578,4 @@ upstream as it is and the override can then come out.
 [14]: https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/commit/?id=a98a6daa9f4dee2f662cc8a48610287189b23499
 [15]: https://lore.kernel.org/all/20261013-hm1092-driver-v7-0-d81a9b152ffd@gmail.com/
 [16]: ../modules/ir-camera/nixos.nix
+[17]: https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/commit/?id=8a2941fae0d02364d8ae6542ba890fd496681b55
