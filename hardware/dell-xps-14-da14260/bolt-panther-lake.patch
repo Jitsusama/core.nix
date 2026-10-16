@@ -1,0 +1,23 @@
+bolt-sysfs: know Panther Lake's NHIs
+
+bolt reads whether a host's USB4 domain keeps its UUID across reboots
+from a table of NHI PCI IDs, and logs a warning for one it doesn't
+know before taking it as unstable. Panther Lake's integrated NHIs, like
+Ice Lake's and Tiger Lake's, aren't stable, so the answer is already
+right and only the warning goes. Upstream's 3a38c237 (after 0.9.11)
+adds the same IDs.
+
+diff -ruN a/boltd/bolt-sysfs.c b/boltd/bolt-sysfs.c
+--- a/boltd/bolt-sysfs.c
++++ b/boltd/bolt-sysfs.c
+@@ -627,6 +627,10 @@
+   {0x8a17, FALSE}, // ICL_NHI0
+   {0x9a1b, FALSE}, // TGL_NHI0
+   {0x9a1d, FALSE}, // TGL_NHI1
++  {0xe333, FALSE}, // PTL_M_NHI0
++  {0xe334, FALSE}, // PTL_M_NHI1
++  {0xe433, FALSE}, // PTL_P_NHI0
++  {0xe434, FALSE}, // PTL_P_NHI1
+ };
+ 
+ gboolean

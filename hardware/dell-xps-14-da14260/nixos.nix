@@ -211,6 +211,22 @@ in
 
   # The NPU, through Level Zero.
   hardware.cpu.intel.npu.enable = true;
+  # Level Zero's loader checks a driver's file exists before it loads it,
+  # and looks everywhere but where NixOS links the drivers, so without this
+  # no program finds the GPU's or the NPU's driver unless LD_LIBRARY_PATH
+  # names that directory. As an overlay, so whatever is built against the
+  # loader gets the fixed one. Take it out once nixpkgs's package does it.
+  nixpkgs.overlays = [
+    (_final: prev: {
+      level-zero = prev.level-zero.overrideAttrs (old: {
+        patches = (old.patches or [ ]) ++ [ ./level-zero-driver-link.patch ];
+        postPatch = (old.postPatch or "") + ''
+          substituteInPlace source/loader/linux/driver_discovery_lin.cpp \
+            --replace-fail @driverLink@ ${prev.addDriverRunpath.driverLink}
+        '';
+      });
+    })
+  ];
 
   # The mute key's light follows the switch PipeWire's mute flips, as
   # alsa-ucm-conf's cs42l45 profile would attach it if it ran as root. udev
@@ -243,8 +259,13 @@ in
   # how the power limits and profiles here were measured.
   environment.systemPackages = [ turbostat ];
 
-  # Authorizes Thunderbolt and USB4 docks.
+  # Authorizes Thunderbolt and USB4 docks. bolt 0.9.8 doesn't know Panther
+  # Lake's USB4 controllers and warns at every boot before treating them as
+  # they should be (bolt-panther-lake.patch).
   services.hardware.bolt.enable = true;
+  services.hardware.bolt.package = pkgs.bolt.overrideAttrs (old: {
+    patches = (old.patches or [ ]) ++ [ ./bolt-panther-lake.patch ];
+  });
 
   # Dell publishes this laptop's BIOS and firmware updates through LVFS.
   services.fwupd.enable = true;

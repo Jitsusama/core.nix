@@ -1,0 +1,23 @@
+loader: look for drivers where NixOS links them
+
+Before it loads a driver, the loader checks that its file exists in
+LD_LIBRARY_PATH, the usual distribution directories or /etc/ld.so.conf.
+NixOS has none of those: the system's drivers are in
+/run/opengl-driver/lib, on the loader's RUNPATH, where its dlopen would
+find them. So every program found no drivers at all unless something
+set LD_LIBRARY_PATH. @driverLink@ is replaced with addDriverRunpath's
+driverLink at build time.
+
+diff -ruN a/source/loader/linux/driver_discovery_lin.cpp b/source/loader/linux/driver_discovery_lin.cpp
+--- a/source/loader/linux/driver_discovery_lin.cpp
++++ b/source/loader/linux/driver_discovery_lin.cpp
+@@ -46,6 +46,9 @@
+     auto split = splitPaths(ldLibPath);
+     paths.insert(paths.end(), split.begin(), split.end());
+   }
++  // Where NixOS links the system's drivers, which is on the loader's own
++  // RUNPATH, so the dlopen that follows finds a driver there.
++  paths.push_back("@driverLink@/lib");
+ #if defined(ANDROID)
+   paths.push_back("/vendor/lib64");
+ #else

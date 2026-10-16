@@ -459,14 +459,35 @@ upstream as it is and the override can then come out.
   RUNPATH. The Level Zero driver beside it gets nothing, so it can't
   `dlopen` `libigc.so.2`, and `zeInit` aborts the whole program in
   `command_stream_receiver.cpp`. OpenCL worked, but Level Zero didn't, for
-  the NPU either, since `zeInit` loads every driver. With the fix, `zeInit`
-  finds both the Arc B390 and the NPU. The fix in
+  the NPU either, since `zeInit` loads every driver. With this fix and the
+  loader's below, `zeInit` finds both the Arc B390 and the NPU. The fix in
   `pkgs/by-name/in/intel-compute-runtime/package.nix`:
 
   ```diff
   -      $out/lib/intel-opencl/libigdrcl.so
   +      $out/lib/intel-opencl/libigdrcl.so \
   +      $out/lib/libze_intel_gpu.so.1
+  ```
+
+- **Level Zero's loader.** The loader 1.32.0 checks a driver's file exists
+  before it opens it, in `LD_LIBRARY_PATH`, the usual distribution directories
+  and `/etc/ld.so.conf`; upstream's 1.34.0 still does. NixOS links the drivers
+  into `/run/opengl-driver/lib`, which is on the loader's RUNPATH but in none of
+  those, so it logged "0 Drivers Discovered" and `zeInit` failed with
+  `ZE_RESULT_ERROR_UNINITIALIZED` for every program, unless something set
+  `LD_LIBRARY_PATH`. nixpkgs's setup hook sets it only inside builds. The NPU
+  driver's `npu-umd-test --config none` stopped at its setup that way, and with
+  the fix, which adds the driver directory to the list the loader checks, the
+  loader opens both drivers and the 13 device and driver tests pass. It goes in
+  as an overlay, since programs link the loader. The fix in
+  `pkgs/by-name/le/level-zero/package.nix`, with the patch here:
+
+  ```diff
+  +  patches = [ ./driver-link.patch ];
+  +  postPatch = ''
+  +    substituteInPlace source/loader/linux/driver_discovery_lin.cpp \
+  +      --replace-fail @driverLink@ ${addDriverRunpath.driverLink}
+  +  '';
   ```
 
 - **turbostat.** Its Makefile, `tools/power/x86/turbostat/Makefile`, sets
@@ -493,6 +514,14 @@ upstream as it is and the override can then come out.
   way, so the controller has its parameters. linux-firmware's
   [a98a6daa9f4d][14] drops the byte two days after that release, so its file
   goes ahead of the package's until nixpkgs has a newer one.
+
+- **bolt's USB4 controllers.** bolt 0.9.8 decides whether a USB4 domain
+  keeps its UUID across reboots from a table of controller PCI IDs, and
+  Panther Lake's 0xe433 and 0xe434 aren't in it, so every boot logs "failed
+  to determine if uid is stable: unknown NHI PCI id" before taking them as
+  unstable, which they are. Upstream bolt's 3a38c237, after its 0.9.11,
+  adds them; the patch adds the same four lines to
+  `boltd/bolt-sysfs.c`'s `nhi_table`.
 
 ### Left Out on Purpose
 
