@@ -792,7 +792,7 @@ by them isn't done.
 | The terminal                              | kitty                    | monospace      |        |        |           |         |          |
 | The prompt                                | prompt, kitty            | monospace      | where Joel is, told from the nearest root (the root in text, the folders between muted, the folder he's in strong); the glyph where his keys go, in the accent, red after a failure, # in gold as root | another machine, @ and its name; a rebase, merge or pick under way, a rebase drawn as its steps, red while a conflict waits; a development shell and jobs as glyphs; a long command's time; the branch, muted, with a mark for unsaved work and one for unpushed; over ssh in kitty, the window a little towards the machine hue | git status, and a wider window | nothing | laid out per prompt, never per keystroke: a long run's time, the shell's glyphs, the branch's middle, the path's middle, the branch to its glyph, the right side, then what's under way to its glyph, the more mark wherever something's hidden; the left keeps to a third of the window; zsh clears the right side once typing reaches it |
 | Terminal programs                         | each tool's module       | monospace      |        |        |           |         |          |
-| Neovim                                    | neovim                   | monospace      |        |        |           |         |          |
+| Neovim                                    | neovim                   | monospace      | the status line's one line at the bottom, on Neovim's own background: the file told from its root as the prompt tells a folder (the root in text, the folders between muted, the file strong), or a buffer's kind by name (help, terminal, quickfix, a plugin's window) | a mark while the buffer is unsaved, a padlock on a file that can't be changed; what git is in the middle of, drawn as the prompt draws it; the mode, in the accent, whenever it isn't Normal; what's selected, in lines or characters, or which match of a search; errors and warnings, each its mark and count; a language server at work; π while an agent is paired; the branch, muted, with the prompt's marks for unsaved and unpushed work; a tab line only with two tabs or more | the problems list, the outline, git's status | nothing | the language server's words, the branch's middle, the path's middle, the branch to its glyph, what's under way to its glyph, the path to the file's name, the right side but for the problems, then the name's own middle; the more mark wherever something's hidden |
 | pi                                        | its theme, its harness   | monospace      |        |        |           |         |          |
 
 Where a surface can't take the design (web pages in a browser, a chat app's
@@ -819,6 +819,28 @@ as an exception with the reason.
 
 What each studio round settled, newest first, with the reason.
 
+- **Neovim's status line speaks the prompt's language** (2026-10-16,
+  judged against the taste without a round). lualine drew powerline arrows,
+  a mode block on a shade, a tab line repeating the root and branch, and
+  breadcrumbs, and couldn't draw the prompt's path or marks. The status line
+  is now Neovim's own: the file told from its root as the prompt tells a
+  folder, the mode as a word in the accent after it (where the prompt puts
+  its glyph, so nothing to its left moves), and on the right the branch,
+  muted, with the prompt's marks. Fields on the right are two spaces apart,
+  a mark and its count one, so each count reads with its own mark. Git's
+  state comes from git-engine, asked when something may have changed it,
+  so nothing polls. Hints and notes stay in the sign column and the problems
+  list, since they change nothing Joel would do. Where the cursor is goes
+  unsaid: the number column gives the line, and Ctrl+G tells the rest when
+  asked.
+- **Eight of Monaspace's ten ligature sets** (2026-10-16). The sets are off
+  until asked for, so kitty drew texture healing alone. Now fontconfig gives
+  the face equals, comparisons, arrows, tags, Markdown's marks, the centred
+  colon, double arrows and the other tags, each still reading as the operator
+  it stands for. The F# shapes stay off, since they draw |> and <| as
+  triangles, which are characters of their own; so does the centred period,
+  which draws a range such as 1..=10 in middle dots. kitty still shows the
+  plain characters under the cursor.
 - **Told only what costs access or money nobody chose** (2026-10-15,
   from a replay of every detector over 26 weeks after the burn). A new
   model sent a notice ten times, each a model chosen on purpose, and a
@@ -1016,14 +1038,6 @@ What each studio round settled, newest first, with the reason.
   among them every Braille pattern, which btop draws its graphs with, and
   those would fall back to another face. The variable font has neither the
   icons nor anything the static faces lack but its width axis.
-- **Eight of Monaspace's ten ligature sets** (2026-10-16). The sets are off
-  until asked for, so kitty drew texture healing alone. Now fontconfig gives
-  the face equals, comparisons, arrows, tags, Markdown's marks, the centred
-  colon, double arrows and the other tags, each still reading as the operator
-  it stands for. The F# shapes stay off, since they draw |> and <| as
-  triangles, which are characters of their own; so does the centred period,
-  which draws a range such as 1..=10 in middle dots. kitty still shows the
-  plain characters under the cursor.
 - **Muted text is sage, not Osaka Jade's own muted** (2026-10-10). Omarchy's
   muted measures 2.90:1 on the background, too faint to read, so muted text
   is its hue made just light enough to pass (4.52:1), and the original

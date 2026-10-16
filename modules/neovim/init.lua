@@ -43,7 +43,7 @@ vim.opt.listchars = {
 vim.opt.ignorecase = true
 vim.opt.smartcase = true -- Override ignorecase if search contains capitals
 vim.opt.inccommand = 'split' -- Preview substitutions live
-vim.opt.shortmess:append('S') -- Don't show search count in command line (we show it in lualine)
+vim.opt.shortmess:append('S') -- The status line shows the search count instead
 vim.opt.showcmdloc = 'statusline' -- Move partial commands to statusline instead of command line
 vim.opt.showcmd = false -- Don't show partial commands at all (including selection size)
 
@@ -86,6 +86,21 @@ vim.opt.foldenable = true
 vim.opt.sessionoptions =
   { 'buffers', 'curdir', 'tabpages', 'winsize', 'help', 'globals', 'skiprtp', 'folds' }
 
+-- The status line, which holds the window's facts (status.lua).
+require('status').setup()
+
+-- The sign column marks a problem as the status line counts it, with the
+-- theme's marks.
+local glyphs = require('theme').glyphs
+local signs = {
+  text = {
+    [vim.diagnostic.severity.ERROR] = glyphs.failed,
+    [vim.diagnostic.severity.WARN] = glyphs.caution,
+    [vim.diagnostic.severity.INFO] = glyphs.note,
+    [vim.diagnostic.severity.HINT] = glyphs.suggestion,
+  },
+}
+
 -- Configure diagnostics appearance with better defaults
 vim.diagnostic.config({
   float = {
@@ -95,7 +110,7 @@ vim.diagnostic.config({
     prefix = '',
   },
   severity_sort = true,
-  signs = true,
+  signs = signs,
   underline = true,
   update_in_insert = false,
   virtual_text = {
@@ -374,7 +389,7 @@ end)
 
 keys.act('errors.toggleSigns', function()
   local current = vim.diagnostic.config().signs
-  vim.diagnostic.config({ signs = not current })
+  vim.diagnostic.config({ signs = not current and signs })
   vim.notify('Diagnostic signs ' .. (current and 'disabled' or 'enabled'), vim.log.levels.INFO)
 end)
 

@@ -480,6 +480,31 @@ let
       console = "^";
       means = "commits not yet pushed";
     };
+    locked = {
+      glyph = nerd "f023";
+      console = "%";
+      means = "can be read but not changed";
+    };
+    caution = {
+      glyph = nerd "f071";
+      console = "!";
+      means = "a warning: worth a look, though nothing failed";
+    };
+    note = {
+      glyph = nerd "f05a";
+      console = "i";
+      means = "something to know, asking nothing";
+    };
+    suggestion = {
+      glyph = nerd "f0eb";
+      console = "?";
+      means = "a way it could be better";
+    };
+    agent = {
+      glyph = "π";
+      console = "p";
+      means = "an agent is paired with this editor";
+    };
   };
 
   glyph = lib.types.submodule {
