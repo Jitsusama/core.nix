@@ -31,7 +31,7 @@ gitsigns.setup({
   status_formatter = nil,
   max_file_length = 40000,
   preview_config = {
-    border = 'single',
+    border = 'solid',
     style = 'minimal',
     relative = 'cursor',
     row = 0,

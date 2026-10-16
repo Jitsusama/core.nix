@@ -161,7 +161,12 @@ let
       ${lifted (file "about") mono (points "mono" "small") about}
       ${framed (file "panel") roles.accent}
       ${framed (file "panel-urgent") roles.alert}
-      ${words (file "lock") mono large roles.machine 0 lockGlyph}
+      # The lock's ink reaches past its cell, so it's drawn with room round
+      # it and cut to the line's height and its ink's width; drawn without,
+      # its right side would be cut away.
+      ${words "lock.png" mono large roles.machine space.l lockGlyph}
+      magick lock.png -shave 0x${at space.l} -define trim:edges=east,west -trim +repage \
+        ${file "lock"}
       ${lib.concatStrings (lib.mapAttrsToList hint hints)}
       ${words (file "dot") mono large roles.strong 0 "●"}
       # The caret in the accent, as tall as a line and two pixels wide.

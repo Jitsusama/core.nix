@@ -370,6 +370,14 @@ table.insert(package.loaders, function(module)
     return nil
   end
   M.load(name)
+  -- The plugin's config may have required this very module as it set up;
+  -- that copy is the one set up, so it's the one to answer with.
+  if package.loaded[module] ~= nil then
+    local value = package.loaded[module]
+    return function()
+      return value
+    end
+  end
   for index = 1, #package.loaders - 1 do
     local found = package.loaders[index](module)
     if type(found) == 'function' then

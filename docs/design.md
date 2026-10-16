@@ -819,6 +819,14 @@ as an exception with the reason.
 
 What each studio round settled, newest first, with the reason.
 
+- **Neovim's floats stand apart by their shade** (2026-10-16, judged against
+  the taste without a round). A problem in full, a language server's note, a
+  notice, the suggestions, the outline and a change's preview are each drawn
+  on the floats' shade with a step of it round their words, never a line
+  round them, and nothing behind shows through. A notice is its mark and then
+  its words, the mark in its level's colour. A suggestion is its word and the
+  mark of its kind; the kind's name and its source said the same on every
+  row, so they went. neovim-floats-by-shade holds it.
 - **Neovim starts with only what draws its first screen** (2026-10-16, on
   Joel's word that it be as fast as the rest). Six plugins load as it
   starts; the rest wait for a module, a command, an action or an event,
