@@ -1,5 +1,5 @@
-// The screen being recorded straight from niri, as wf-recorder does: true
-// while niri says such a screencast streams, and for how long. The clock
+// The screen, a region or a window being recorded (Recorder.qml): true while
+// niri says such a screencast streams, and for how long. The clock
 // ticks only while it's true, so it costs nothing otherwise. Recorder.qml
 // starts and stops it.
 import qs
@@ -23,7 +23,7 @@ Piece {
     badge: length
     hint: `Recording ${Recorder.what}, ${length}`
     context: Recorder.what
-    actions: casts.some(cast => cast.pid !== null) ? [{
+    actions: Recorder.stoppable ? [{
         glyph: String.fromCodePoint(0xf04db),
         name: "Stop recording",
         run: () => Recorder.stop()

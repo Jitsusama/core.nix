@@ -592,14 +592,18 @@ in
     action = "screenshot-window;";
   }
 
-  # A recording: the chord that starts it stops it (Quickshell's
-  # Recorder.qml). A region is the launcher's to record, and niri says where
-  # a tiled window sits only to the portal's shares, so a window isn't
-  # recorded on its own.
+  # A recording: Ctrl makes Print's picture a video, and Alt makes it the
+  # window's, as it does the picture's. The chord that starts one stops it
+  # (Quickshell's Recorder.qml). A region is the launcher's to record.
   {
     chord = "Ctrl+Print";
     does = "Record the screen, or stop recording";
     action = ''spawn "qs" "ipc" "call" "recording" "screen";'';
+  }
+  {
+    chord = "Ctrl+Alt+Print";
+    does = "Record the window, or stop recording";
+    action = ''spawn "qs" "ipc" "call" "recording" "window";'';
   }
 
   # Sharing, for a call that shares niri's switchable target, which a

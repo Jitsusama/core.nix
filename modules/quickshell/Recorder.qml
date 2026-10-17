@@ -1,24 +1,25 @@
 pragma Singleton
-// Recording the screen: the focused screen, or a region picked by the keys
-// (Picker.qml), each into a file of its own beside the screenshots'
-// (Videos/Recordings, named by when it began). niri tells only the portal's
-// shares where a tiled window sits, so a window isn't recorded alone. The
-// chord or action that starts a recording stops it too, so there's one
-// gesture to remember, and the margin shows it while it runs
-// (pieces/Recording.qml).
+// Recording the screen: the focused screen, a region picked by the keys
+// (Picker.qml) or one window, each into a file of its own beside the
+// screenshots' (Videos/Recordings, named by when it began). The chord or
+// action that starts a recording stops it too, so there's one gesture to
+// remember, and the margin shows it while it runs (pieces/Recording.qml).
 //
 // A region's picture is taken here too, since niri's own picker takes only
 // the pointer. It's saved where niri saves its screenshots, named as niri
 // names them, by when it was taken, and copied as theirs are, and says so in
 // the notice niri gives its own, so every screenshot ends the same way.
 //
-// wf-recorder does the recording through niri, which tells the shell when
-// it starts and stops, so nothing here keeps any state of its own. It
-// encodes on the GPU where there is one, so the processor stays free, and
-// is stopped as Ctrl+C would, so it finishes the file. Once it has, a notice
-// says where it went, and playing it is the notice's action, which Super+N
-// opens on. It answers what Joel just did, so it's never missed
-// (Notices.qml).
+// wf-recorder records the screen and regions through niri, which tells the
+// shell when it starts and stops, so nothing here keeps any state of its
+// own. niri says where a tiled window sits only to a screencast, so a
+// window is recorded by record-window (modules/quickshell/record-window)
+// through the screencast a call would share, and it says in the runtime
+// directory which cast is its own. Each encodes on the GPU where there is
+// one, so the processor stays free, and is stopped as Ctrl+C would, so it
+// finishes the file. Once it has, a notice says where it went, and playing
+// it is the notice's action, which Super+N opens on. It answers what Joel
+// just did, so it's never missed (Notices.qml).
 import qs
 import Quickshell
 import Quickshell.Io
@@ -27,10 +28,16 @@ import QtQuick
 Singleton {
     id: root
 
-    // What niri says is recording now, the portal's shares left out.
+    // What niri says is recording now: the screen or a region straight
+    // from niri, and the window whose screencast record-window says is its
+    // own. A call's shares are left out.
     readonly property var casts: Object.values(Niri.casts)
-        .filter(cast => cast.kind === "WlrScreencopy" && cast.is_active)
+        .filter(cast => cast.is_active && (cast.kind === "WlrScreencopy"
+            || cast.kind === "PipeWire" && windowRecording.said !== null
+                && cast.session_id === windowRecording.said.session))
     readonly property bool recording: casts.length > 0
+    // Whether a recording can be stopped from here, which takes its process.
+    readonly property bool stoppable: casts.some(cast => recorderOf(cast) !== null)
     // Between asking for a recording and niri saying it began, so a second
     // press can't start another.
     property bool starting: false
@@ -41,10 +48,20 @@ Singleton {
 
     onRecordingChanged: starting = false
 
+    // The process recording a cast: niri's own casts say it, and a window's
+    // is record-window's.
+    function recorderOf(cast: var): var {
+        if (cast.kind === "PipeWire")
+            return windowRecording.said?.pid ?? null;
+        return cast.pid;
+    }
+
     function stop(): void {
-        for (const cast of casts)
-            if (cast.pid !== null)
-                Niri.spawn(["kill", "-INT", String(cast.pid)]);
+        for (const cast of casts) {
+            const pid = recorderOf(cast);
+            if (pid !== null)
+                Niri.spawn(["kill", "-INT", String(pid)]);
+        }
     }
 
     // Each starts one, or stops the one running.
@@ -54,6 +71,28 @@ Singleton {
         const workspace = Niri.workspace();
         what = "the whole screen";
         record(workspace === null ? [] : ["--output", workspace.output]);
+    }
+
+    // The window the keys are in, or the one given. The video is as many
+    // pixels as the window shows, so it's as sharp as it's seen, and keeps
+    // that size, the window fitted in, should the window change its own.
+    function window(chosen: var): void {
+        if (stopped())
+            return;
+        const target = chosen ?? (Niri.current === null ? null : Niri.windows[Niri.current] ?? null);
+        if (target === null)
+            return;
+        starting = true;
+        settled.restart();
+        Niri.request("Outputs", answer => {
+            const workspace = Niri.workspaces[target.workspace_id] ?? null;
+            const output = workspace === null ? null : answer.Outputs[workspace.output] ?? null;
+            const scale = output?.logical?.scale ?? 1;
+            const [width, height] = target.layout.window_size;
+            what = "a window";
+            Niri.spawn(["sh", "-c", windowScript, "recorder", folder, String(target.id),
+                String(Math.round(width * scale)), String(Math.round(height * scale))]);
+        });
     }
 
     // Escape in the picker calls back, if given.
@@ -73,6 +112,29 @@ Singleton {
         function onScreenshotCaptured(path: var): void {
             Report.say(`captured ${path}`);
         }
+
+        // record-window writes what it says before its cast begins and
+        // takes it back once it ends, so it's read again as they change.
+        function onCastsChanged(): void {
+            windowRecording.reload();
+        }
+    }
+
+    // What record-window says while it records: its process, and which of
+    // niri's casts is its own.
+    FileView {
+        id: windowRecording
+        property var said: null
+        path: `${Quickshell.env("XDG_RUNTIME_DIR")}/record-window.json`
+        printErrors: false
+        onLoaded: {
+            try {
+                said = JSON.parse(text());
+            } catch (error) {
+                said = null;
+            }
+        }
+        onLoadFailed: said = null
     }
 
     function screenshot(back: var): void {
@@ -122,13 +184,33 @@ Singleton {
             '    */i915 | */xe | */amdgpu)',
             '        set -- "$@" --codec h264_vaapi --device /dev/dri/renderD128 ;;',
             'esac',
-            'wf-recorder -y --file "$file" "$@" > /dev/null 2>&1 || exit',
-            'asked=$(notify-send --app-name=Recorder --action=play="Play it" \\',
-            '    "Recording saved" "Videos/Recordings/${file##*/}")',
-            '[ "$asked" = play ] && exec xdg-open "$file"'
-        ].join("\n");
+            'wf-recorder -y --file "$file" "$@" > /dev/null 2>&1 || exit'
+        ].concat(saved).join("\n");
         Niri.spawn(["sh", "-c", script, "recorder", folder].concat(given));
     }
+
+    // Records a window into a new file: its id, then the video's width and
+    // height. record-window says why it couldn't on its standard error, and
+    // exits 3 when it was stopped before it began, which needs no notice.
+    readonly property string windowScript: [
+        'folder=$1 window=$2 width=$3 height=$4',
+        'mkdir -p "$folder" || exit',
+        'file=$folder/$(date "+%Y-%m-%d %H-%M-%S").mp4',
+        'why=$(record-window "$window" "$width" "$height" "$file" 2>&1 > /dev/null)',
+        'case $? in',
+        '    0) ;;',
+        '    3) exit ;;',
+        '    *) printf "%s\\n" "$why" >&2',
+        '       exec notify-send --app-name=Recorder "The window could not be recorded" "$why" ;;',
+        'esac'
+    ].concat(saved).join("\n")
+
+    // Says where a recording went, with playing it as the notice's action.
+    readonly property var saved: [
+        'asked=$(notify-send --app-name=Recorder --action=play="Play it" \\',
+        '    "Recording saved" "Videos/Recordings/${file##*/}")',
+        '[ "$asked" = play ] && exec xdg-open "$file"'
+    ]
 
     // Gives up waiting for niri when a recording never began, as when
     // wf-recorder failed.
@@ -147,6 +229,10 @@ Singleton {
 
         function region(): void {
             root.region(null);
+        }
+
+        function window(): void {
+            root.window(null);
         }
 
         function stop(): void {

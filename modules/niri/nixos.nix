@@ -12,8 +12,21 @@
     # tap. The patch (touchscreen-gestures.patch says what it holds) lets
     # niri swipe the way its touchpad does and cancels the window's touches
     # once a swipe begins.
+    #
+    # niri 26.04 stamps a screencast's every frame with the same time, so
+    # GStreamer, which the recorder hands a window's screencast to
+    # (modules/quickshell/record-window), takes them all as one moment.
+    # Upstream's a30ca79, after 26.04, leaves the time unsaid, so each is
+    # timed as it comes.
     package = pkgs.niri.overrideAttrs (old: {
-      patches = (old.patches or [ ]) ++ [ ./touchscreen-gestures.patch ];
+      patches = (old.patches or [ ]) ++ [
+        ./touchscreen-gestures.patch
+        (pkgs.fetchpatch {
+          name = "niri-screencast-pts-unknown.patch";
+          url = "https://github.com/niri-wm/niri/commit/a30ca7983b2f1fc3ddeb209b3fe18fa78e0dbd25.patch";
+          hash = "sha256-fywWXRRC7bFsX9uytntQLEWUNG1oyxUMn575hAG6Oow=";
+        })
+      ];
     });
     # The GTK file chooser, rather than installing Nautilus to provide one.
     useNautilus = false;
