@@ -54,7 +54,7 @@ behind Intel's CVS bridge, and Intel's BE211 Wi-Fi 7.
 | Speakers | Omarchy's tuning, as a smart filter; see below                         |
 | Camera   | Intel's camera software, with the CVS bridge in its graph; see below   |
 | Sensors  | the light sensor's buffer, for the backlight; see below                |
-| Panel    | Chrome, Slack and 1Password told its colours are P3; see below         |
+| Panel    | Chrome, Slack and 1Password told it's P3; 60 Hz on a low battery       |
 | Docks    | bolt, which authorizes Thunderbolt and USB4 devices                    |
 | Firmware | fwupd, for the BIOS and firmware Dell publishes through LVFS           |
 | Battery  | charges to 80% and again below 75%, in the BIOS; see below             |
@@ -422,6 +422,18 @@ is 3.8 with the flag, Slack's aubergine 8.1 and 2.9, pure green 53.2 and 9.7:
 pure primaries stay a little off, because P3 is narrower than this panel.
 Other programs still draw sRGB stretched, as on Windows; only colour
 management in niri fixes them.
+
+### The Panel's Rate
+
+Below 30% on battery the panel drops from 120 Hz to 60 Hz, and it comes back
+when the charger is plugged in. Measured unplugged in light use, in five
+alternating pairs of 24 s, 60 Hz drew a median 1.4 W less than 120 Hz, about
+a tenth of the laptop's draw. It waits for a low battery because scrolling is
+less smooth at 60 Hz. Once the battery is under 30% it stays at 60 Hz until
+the charger is back, even if the reading climbs over 30% again, so the screen
+can't flick between the two. A rate picked by hand with niri holds until the
+next change. The panel can't vary its own rate yet (see VRR below), which
+would save the same power without the choice.
 
 ### What's Left
 
