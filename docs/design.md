@@ -819,6 +819,19 @@ as an exception with the reason.
 
 What each studio round settled, newest first, with the reason.
 
+- **pi's panels keep the accent for keys** (2026-10-16, judged against the
+  taste without a round). A gate's edges, title and scrollbar were all in
+  the accent, beside the one key that was, while the footer's keys were as
+  muted as their words. Now the edges are hairlines in the rule colour, the
+  title is bold in strong, the scrollbar takes the theme's scrollbar
+  shades, and every key the footer names is drawn as a chord: the key in
+  the accent, its word muted after it. Tab and Ctrl+# gained the words
+  they lacked, and the view on screen is marked by its word in text. The
+  review gates' rows moved one column right, onto the margin every other
+  row keeps. A gate docked above pi's editor leaves its closing rule to
+  the editor's border rather than lay a second hairline on it. Three
+  accents stay because they're keys or a state: a code to type, a
+  pipeline's current stage and the active tab's number.
 - **kitty's cursor rests** (2026-10-16, judged against the taste without a
   round). The block in strong, fading on WezTerm's 800 ms, stays: it's
   legible and quiet while typing. It used to blink for as long as a window
