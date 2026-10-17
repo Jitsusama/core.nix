@@ -2093,6 +2093,46 @@ in
           touch $out
         '';
 
+    # The legacy profile file, the one power-profiles-daemon writes, offers
+    # only what every profile driver takes, so a profile Dell's driver offers
+    # that the SoC slider doesn't never reaches either. Without quiet there,
+    # power-saver runs as balanced. Read from the XPS 14's patched source.
+    platform-profiles-reach-the-legacy-file =
+      let
+        inherit ((bareNixos [ self.nixosModules.dell-xps-14-da14260 ]).config.boot.kernelPackages)
+          kernel
+          ;
+        dell = "drivers/platform/x86/dell/dell-pc.c";
+        slider = "drivers/thermal/intel/int340x_thermal/processor_thermal_soc_slider.c";
+        patches = lib.filter (patch: patch != null) (map (patch: patch.patch) kernel.kernelPatches);
+      in
+      pkgs.runCommandLocal "platform-profiles-reach-the-legacy-file"
+        { nativeBuildInputs = [ pkgs.patchutils ]; }
+        ''
+          tar xf ${kernel.src} --strip-components=1 --wildcards '*/${dell}' '*/${slider}'
+          for patch in ${lib.escapeShellArgs (map (patch: "${patch}") patches)}; do
+            filterdiff -p1 -i ${dell} -i ${slider} "$patch" | patch -p1 --forward --batch --silent
+          done
+          profiles() {
+            { grep -o 'set_bit(PLATFORM_PROFILE_[A-Z_]*' "$1" || true; } | cut -d '(' -f 2 | sort -u
+          }
+          offered=$(profiles ${dell})
+          if [ -z "$offered" ]; then
+            echo "Dell's profile driver offers no profile, so there's nothing to hold."
+            exit 1
+          fi
+          taken=$(profiles ${slider})
+          missing=
+          for profile in $offered; do
+            echo "$taken" | grep -qx "$profile" || missing="$missing $profile"
+          done
+          if [ -n "$missing" ]; then
+            echo "The SoC slider doesn't take profiles Dell's driver offers:$missing"
+            exit 1
+          fi
+          touch $out
+        '';
+
     # niri reads back the files an account gets and rejects anything it
     # wouldn't load, from a misspelt action to a colour it can't parse.
     niri-accepts-its-configuration =

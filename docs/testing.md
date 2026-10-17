@@ -127,6 +127,7 @@ kernel guide][2] says what that catches.
 | `kernel-settings-hold`            | the kernel's patches apply and every setting holds        |
 | `kernel-settings-hold-<model>`    | the same for the kernel that hardware builds              |
 | `speaker-amps-have-every-dai-named` | the XPS 14's SoundWire machine driver names only DAIs its amplifiers register |
+| `platform-profiles-reach-the-legacy-file` | every profile Dell's driver offers, the XPS 14's SoC slider takes too |
 | `niri-accepts-its-configuration`  | niri loads the files an account gets                      |
 | `niri-cursor-has-its-shapes`      | the cursor theme niri names has the shapes programs ask for |
 | `kitty-accepts-its-configuration` | kitty loads its files without a complaint                 |

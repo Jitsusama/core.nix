@@ -370,6 +370,21 @@ within the noise, over three interleaved runs each. An earlier comparison
 found no difference in idle power because it read idle while another
 session's builds kept the laptop 9% busy.
 
+### The Power-Saver Profile
+
+Two drivers offer the firmware's platform profiles here: Dell's, with the
+quiet, cool, balanced and performance modes Dell's own app offers on
+Windows, and Intel's SoC slider, with low-power, balanced and performance.
+power-profiles-daemon writes only the legacy file, which offers what every
+driver has, so neither quiet nor low-power was there, and its power-saver
+profile fell back to balanced: Dell's balanced table, the slider's middle
+value. `soc-slider-takes-quiet.patch`, written here, has the slider take
+quiet and cool as hidden choices, as AMD's driver does for the same reason,
+and set them as its most efficient value. Power-saver now sets Dell's quiet
+mode and the slider's low power together, as Windows' best power efficiency
+does. `platform-profiles-reach-the-legacy-file` reads both drivers' choices
+from the kernel's patched source.
+
 ### The Two Crashes
 
 The laptop has panicked twice, both times on BIOS 1.10.1 and kernel 7.2.9,

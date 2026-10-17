@@ -1,0 +1,76 @@
+thermal: intel: int340x: take quiet and cool on the SoC slider
+
+The legacy platform_profile file offers only the profiles every
+profile driver has. On a laptop whose vendor driver offers quiet and
+cool, as dell-pc does, beside the SoC slider's low-power, it offers
+neither low-power nor quiet, so power-profiles-daemon's power-saver
+falls back to balanced and never reaches the vendor's quiet table or
+the slider's most efficient value. The slider now takes quiet and
+cool as hidden choices, as AMD's PMF driver does, and sets them as
+low power. It remembers the profile it was given, so the legacy file
+reads back quiet rather than custom.
+
+diff --git a/drivers/thermal/intel/int340x_thermal/processor_thermal_soc_slider.c b/drivers/thermal/intel/int340x_thermal/processor_thermal_soc_slider.c
+--- a/drivers/thermal/intel/int340x_thermal/processor_thermal_soc_slider.c
++++ b/drivers/thermal/intel/int340x_thermal/processor_thermal_soc_slider.c
+@@ -58,6 +58,14 @@
+ 
+ static int slider_balanced_param = SOC_SLIDER_VALUE_BALANCE;
+ 
++/*
++ * The profile last set. Quiet and cool are hidden choices the slider takes as
++ * low power, so a platform whose other profile driver offers them can be set
++ * to them through the legacy interface; they read back as themselves while
++ * the slider still holds the value they set.
++ */
++static enum platform_profile_option slider_profile = PLATFORM_PROFILE_LAST;
++
+ static int slider_def_balance_set(const char *arg, const struct kernel_param *kp)
+ {
+ 	u8 slider_val;
+@@ -137,6 +145,8 @@
+ {
+ 	switch (profile) {
+ 	case PLATFORM_PROFILE_LOW_POWER:
++	case PLATFORM_PROFILE_QUIET:
++	case PLATFORM_PROFILE_COOL:
+ 		return slider_values[SOC_POWER_SLIDER_POWERSAVE];
+ 	case PLATFORM_PROFILE_BALANCED:
+ 		return slider_values[SOC_POWER_SLIDER_BALANCE];
+@@ -216,6 +226,7 @@
+ 		return slider;
+ 
+ 	set_soc_power_profile(proc_priv, slider);
++	slider_profile = profile;
+ 
+ 	return 0;
+ }
+@@ -238,6 +249,10 @@
+ 	if (ret < 0)
+ 		return ret;
+ 
++	if (slider_profile != PLATFORM_PROFILE_LAST &&
++	    convert_profile_to_power_slider(slider_profile) == slider)
++		ret = slider_profile;
++
+ 	*profile = ret;
+ 
+ 	return 0;
+@@ -252,8 +267,17 @@
+ 	return 0;
+ }
+ 
++static int power_slider_platform_profile_hidden_choices(void *drvdata, unsigned long *choices)
++{
++	set_bit(PLATFORM_PROFILE_QUIET, choices);
++	set_bit(PLATFORM_PROFILE_COOL, choices);
++
++	return 0;
++}
++
+ static const struct platform_profile_ops power_slider_platform_profile_ops = {
+ 	.probe = power_slider_platform_profile_probe,
++	.hidden_choices = power_slider_platform_profile_hidden_choices,
+ 	.profile_get = power_slider_platform_profile_get,
+ 	.profile_set = power_slider_platform_profile_set,
+ };
