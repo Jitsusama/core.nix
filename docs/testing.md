@@ -143,7 +143,8 @@ kernel guide][2] says what that catches.
 | `the-ergodox-watch-tells-the-layer` | the layer watcher finds the board and says only what it's told |
 | `btrfs-reclaims-its-chunks`       | tmpfiles turns Btrfs's reclaim on for data and metadata   |
 | `the-firmware-takes-what-is-declared` | `firmware-settings` names what differs, writes it with the password, then wipes it |
-| `devices-that-stop-working-are-named` | `device-check` names a failed or missing device once, and again when it's fixed |
+| `devices-that-stop-working-are-named` | `device-check` names a failed or missing device, or a disk's fault, once, and again when it's fixed |
+| `disks-say-when-they-fail` | a workstation runs smartd on its disks and hands their faults to device-check, not to every terminal |
 | `disk-guard-accepts-its-configuration` | the disk guard passes its scenarios and accepts the configs a workstation and its account get |
 | `disk-guard-passes-clippy`        | clippy finds nothing in the disk guard or its scenarios   |
 | `disk-guard-compiles-for-macos`   | the disk guard and its scenarios compile for macOS, clean |
