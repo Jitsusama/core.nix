@@ -207,6 +207,13 @@ in
       name = "cs35l56-suspend-before-attach";
       patch = ./cs35l56-suspend-before-attach.patch;
     }
+    {
+      # 7.2.11 binds each amplifier's feedback capture to a DAI its driver
+      # doesn't register yet, so the sound card never binds. The DAI from
+      # mainline, as the stable queue holds it for 7.2.12.
+      name = "cs35l56-ot25-dai";
+      patch = ./cs35l56-ot25-dai.patch;
+    }
   ];
 
   # The disk, and the USB and Thunderbolt ports a dock's keyboard arrives

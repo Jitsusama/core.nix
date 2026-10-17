@@ -2054,6 +2054,45 @@ in
       ]).config.boot.kernelPackages.kernel;
   }
   // {
+    # The SoundWire machine driver binds each amplifier by the names of the
+    # DAIs it lists for it, and one the amplifiers' driver doesn't register
+    # leaves no sound card at all. 7.2.11 named the OT25 DAI before it had
+    # one. Read from the source the XPS 14 builds, with its patches.
+    speaker-amps-have-every-dai-named =
+      let
+        inherit ((bareNixos [ self.nixosModules.dell-xps-14-da14260 ]).config.boot.kernelPackages)
+          kernel
+          ;
+        codec = "sound/soc/codecs/cs35l56.c";
+        machine = "sound/soc/sdw_utils/soc_sdw_utils.c";
+        patches = lib.filter (patch: patch != null) (map (patch: patch.patch) kernel.kernelPatches);
+      in
+      pkgs.runCommandLocal "speaker-amps-have-every-dai-named"
+        { nativeBuildInputs = [ pkgs.patchutils ]; }
+        ''
+          tar xf ${kernel.src} --strip-components=1 --wildcards '*/${codec}' '*/${machine}'
+          for patch in ${lib.escapeShellArgs (map (patch: "${patch}") patches)}; do
+            filterdiff -p1 -i ${codec} -i ${machine} "$patch" | patch -p1 --forward --batch --silent
+          done
+          named=$(
+            { grep -o '\.dai_name = "cs35l56-[^"]*"' ${machine} || true; } |
+              cut -d '"' -f 2 | sort -u
+          )
+          if [ -z "$named" ]; then
+            echo "The SoundWire machine driver names no cs35l56 DAI, so there's nothing to hold."
+            exit 1
+          fi
+          missing=
+          for dai in $named; do
+            grep -qF ".name = \"$dai\"" ${codec} || missing="$missing $dai"
+          done
+          if [ -n "$missing" ]; then
+            echo "The SoundWire machine driver names DAIs no amplifier registers:$missing"
+            exit 1
+          fi
+          touch $out
+        '';
+
     # niri reads back the files an account gets and rejects anything it
     # wouldn't load, from a misspelt action to a colour it can't parse.
     niri-accepts-its-configuration =
