@@ -991,6 +991,25 @@ in
         && lib.hasSuffix "/bin/device-check-disk" smartd.defaults.autodetected
       );
 
+  # A machine with no disk that speaks SMART, as a virtual machine or a USB
+  # stick can be, runs smartd without it failing: it finds nothing to watch
+  # and stops cleanly. The build's sandbox has no disks, so the workstation's
+  # own smartd command runs there as it would on such a machine.
+  smartd-stops-cleanly-without-disks =
+    let
+      smartd = workstation.config.systemd.services.smartd.serviceConfig.ExecStart;
+    in
+    pkgs.runCommandLocal "smartd-stops-cleanly-without-disks"
+      { nativeBuildInputs = [ pkgs.coreutils ]; }
+      ''
+        fail() { echo "$1"; cat out; exit 1; }
+        status=0
+        timeout 60 ${smartd} > out 2>&1 || status=$?
+        [ "$status" != 124 ] || fail "smartd kept running with no disks to watch"
+        [ "$status" = 0 ] || fail "smartd failed with no disks to watch, exiting $status"
+        touch $out
+      '';
+
   # Do not disturb holds notices while the screen is shared and lets them go
   # after, as tests/quiet.qml drives it through Quickshell itself, with
   # niri's casts, the notices and the shell's options stood in for.
