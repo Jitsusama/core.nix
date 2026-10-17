@@ -1,10 +1,10 @@
 # power-profiles-daemon, which sets how hard the CPU and the firmware run:
 # performance, balanced or power saver. The profile follows the charger:
-# performance on mains power where the machine has that profile, and balanced
-# on battery, which the daemon itself leans towards battery life. A profile picked by hand holds until the charger
-# is next plugged in or pulled out. The daemon leaves a battery that charges
-# adaptively or to custom limits as it is, so the profile never changes how
-# the battery charges.
+# performance on mains power where the machine has that profile, and balanced on
+# battery, which the daemon itself leans towards battery life. A profile picked
+# by hand holds until the charger is next plugged in or pulled out. The daemon
+# leaves a battery that charges adaptively or to custom limits as it is, so the
+# profile never changes how the battery charges.
 #
 # UPower also decides what happens as the battery runs out. It powers the
 # machine off at 5%, warning at 20% and 10% as the desktop's battery does.
