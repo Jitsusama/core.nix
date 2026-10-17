@@ -990,13 +990,14 @@ in
       };
     };
 
-    # The recorder's tools (Recorder.qml): wf-recorder records, grim takes
-    # a region's picture and wl-copy copies it, and notify-send says where
-    # the file went.
+    # The recorder's tools (Recorder.qml): wf-recorder records the screen
+    # and record-window a window, grim takes a region's picture and wl-copy
+    # copies it, and notify-send says where the file went.
     home.packages = [
       askpass
       pkgs.quickshell
       pkgs.wf-recorder
+      (pkgs.callPackage ./record-window/package.nix { })
       pkgs.grim
       pkgs.wl-clipboard
       pkgs.libnotify

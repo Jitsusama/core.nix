@@ -151,6 +151,7 @@ kernel guide][2] says what that catches.
 | `disk-guard-compiles-for-macos`   | the disk guard and its scenarios compile for macOS, clean |
 | `network-revive-passes-clippy`    | clippy finds nothing in network-revive or its tests       |
 | `ir-camera-passes-clippy`         | clippy finds nothing in ir-camera or its tests            |
+| `record-window-passes-clippy`     | clippy finds nothing in record-window or its tests        |
 | `spend-watch-accepts-its-configuration` | spend-watch passes its tests and accepts the config an account gets, a feed and a cap among it |
 | `spend-watch-passes-clippy`       | clippy finds nothing in spend-watch or its tests          |
 

@@ -120,7 +120,20 @@ Provider {
             chord: chord("qs ipc call recording screen"),
             later: true,
             run: () => Recorder.screen()
-        }),
+        })
+    ], Recorder.recording || focused === null ? [] : [
+        member({
+            key: "capture:record-window",
+            verb: "record",
+            name: `Record this window \u00b7 ${titled(focused)}`,
+            keywords: "video recording screencast focused",
+            glyph: Theme.glyph.recording,
+            hue: "action",
+            chord: chord("qs ipc call recording window"),
+            later: true,
+            run: () => Recorder.window(focused)
+        })
+    ], Recorder.recording ? [] : [
         member({
             key: "capture:record-region",
             verb: "pick one",

@@ -3606,6 +3606,21 @@ in
           '';
         });
 
+    # clippy finds nothing in the window recorder, its tests included.
+    record-window-passes-clippy =
+      (pkgs.callPackage ./modules/quickshell/record-window/package.nix { }).overrideAttrs
+        (old: {
+          pname = "record-window-passes-clippy";
+          nativeBuildInputs = old.nativeBuildInputs ++ [ pkgs.clippy ];
+          buildPhase = ''
+            cargo clippy --all-targets --offline -- -D warnings
+          '';
+          doCheck = false;
+          installPhase = ''
+            touch $out
+          '';
+        });
+
     # clippy finds nothing in the console's font tool, its tests included.
     console-font-passes-clippy =
       (pkgs.callPackage ./modules/console/font/package.nix { }).overrideAttrs

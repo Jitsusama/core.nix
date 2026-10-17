@@ -1995,6 +1995,27 @@ pkgs.testers.runNixOSTest {
           t.assertEqual(newest_size(), tuple(shell["layout"]["window_size"]))
           as_account(f"niri msg action close-window --id {shell['id']}")
 
+      with subtest("Capture records the window, and says why when niri can't share it"):
+          as_account("niri msg action spawn -- kitty --title Tidepool")
+          machine.wait_until_succeeds(
+              in_session("niri msg --json windows | grep -qF '\"title\":\"Tidepool\"'"), timeout=60
+          )
+          capture()
+          type_in("record this window", selecting="Record this window \u00b7 Tidepool")
+          t.assertEqual(showing()["selected"]["chord"], "Ctrl Alt Print")
+          # niri here offers no screencast on the session bus, so the
+          # recording can't start, and the notice says why rather than it
+          # failing unseen.
+          with told("shows card The window could not be recorded"):
+              machine.send_key("ret")
+          kept = "cat ~/.local/state/quickshell/by-shell/*/notices.json"
+          print(machine.wait_until_succeeds(
+              in_session(kept + " | grep -o '\"summary\":\"The window could not[^}]*'"), timeout=10
+          ))
+          windows = json.loads(as_account("niri msg --json windows"))
+          pool = next(w for w in windows if w["title"] == "Tidepool")
+          as_account(f"niri msg action close-window --id {pool['id']}")
+
       with subtest("A region is picked by the keys, and Escape goes back to Capture"):
           # The picker covers the screen niri gives it, whatever cage leaves.
           logical = json.loads(as_account("niri msg --json focused-output"))["logical"]
