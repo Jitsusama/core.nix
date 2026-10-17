@@ -19,6 +19,7 @@ let
   loopback = lib.getExe' config.jitsusama.v4l2loopback.package.bin "v4l2loopback-ctl";
   name = "IR Camera";
   sink = "/run/ir-camera-loopback/sink";
+  device = "dev-ir\\x2dcamera.device";
 
   # The loopback announces itself as an output as well as a camera, which
   # browsers take as not a camera, so it's never offered for a call.
@@ -82,8 +83,9 @@ in
   config = lib.mkIf cfg.enable {
     jitsusama.v4l2loopback.enable = true;
 
+    # Tagged for systemd, so the relay can wait on it as a device unit.
     services.udev.extraRules = ''
-      SUBSYSTEM=="video4linux", ATTR{name}=="${name}", SYMLINK+="ir-camera"
+      SUBSYSTEM=="video4linux", ATTR{name}=="${name}", SYMLINK+="ir-camera", TAG+="systemd"
     '';
 
     # Nor is it offered through PipeWire.
@@ -117,8 +119,17 @@ in
     systemd.services.ir-camera = {
       description = "The IR camera, as a V4L2 camera programs can open";
       wantedBy = [ "multi-user.target" ];
-      bindsTo = [ "ir-camera-loopback.service" ];
-      after = [ "ir-camera-loopback.service" ];
+      # Bound to the device as well as the unit making it, so a relay
+      # started with the device gone, as when the module is reloaded, waits
+      # for it rather than failing every two seconds for good.
+      bindsTo = [
+        "ir-camera-loopback.service"
+        device
+      ];
+      after = [
+        "ir-camera-loopback.service"
+        device
+      ];
       serviceConfig = {
         ExecStart = lib.escapeShellArgs (
           [
