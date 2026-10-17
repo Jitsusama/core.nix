@@ -1,4 +1,5 @@
 pragma Singleton
+pragma ComponentBehavior: Bound
 // Tuple's calls, as the shell sees them, for the margin's piece (Call.qml)
 // and the launcher's rows (Calls.qml). Tuple's command starts, joins and
 // ends a call and says nothing after, so how a call stands comes from the

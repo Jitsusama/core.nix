@@ -22,6 +22,7 @@
 // it; the rest are rows, a muted label beside each value. When the left
 // quarter is too narrow, pieces give way by their collapse rank, lowest
 // first, until the widest fits.
+pragma ComponentBehavior: Bound
 import Quickshell
 import Quickshell.Wayland
 import QtQuick
@@ -190,7 +191,8 @@ Scope {
             anchors.left: true
             // The status sits a margin in; its window starts nearer, by the
             // halo's reach or at the screen's edge, so it isn't cut off.
-            margins.top: Theme.space.xxxl - root.lead
+            // Quickshell's type files can't place margins, so qmllint can't.
+            margins.top: Theme.space.xxxl - root.lead // qmllint disable unqualified
             margins.left: Theme.space.xxxl - root.lead
             implicitWidth: Math.max(1, root.lead + status.implicitWidth + root.reach)
             implicitHeight: Math.max(1, root.lead + status.implicitHeight + root.reach)

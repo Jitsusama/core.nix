@@ -11,6 +11,7 @@
 // waiting for its target. They share what the line has once what's typed
 // has room for its hint: a short one keeps its width, the others split what
 // remains, and one too long for its share ends in an ellipsis.
+pragma ComponentBehavior: Bound
 import QtQuick
 
 Item {
@@ -131,6 +132,8 @@ Item {
             model: prompt.chips
 
             Rectangle {
+                id: chip
+
                 required property var modelData
                 required property int index
 
@@ -142,8 +145,8 @@ Item {
                 Text {
                     id: chipText
                     anchors.centerIn: parent
-                    width: prompt.fitted[index] ?? implicitWidth
-                    text: modelData.text
+                    width: prompt.fitted[chip.index] ?? implicitWidth
+                    text: chip.modelData.text
                     elide: Text.ElideRight
                     color: Theme.strong
                     font.family: Theme.mono.family

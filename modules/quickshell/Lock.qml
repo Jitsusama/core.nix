@@ -24,6 +24,7 @@
 // first when let go: that's how a new shell knows the lock is its niri's,
 // since the directory outlives a session while the account lingers, and a
 // lock a crashed niri held mustn't lock the next one.
+pragma ComponentBehavior: Bound
 import Quickshell
 import Quickshell.Io
 import Quickshell.Services.Pam

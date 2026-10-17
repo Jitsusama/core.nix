@@ -706,7 +706,8 @@ Scope {
     PanelWindow {
         visible: root.open
         anchors.top: true
-        margins.top: screen ? screen.height / 4 - card.reach : 0
+        // Quickshell's type files can't place margins, so qmllint can't.
+        margins.top: screen ? screen.height / 4 - card.reach : 0 // qmllint disable unqualified
         implicitWidth: root.width + 2 * card.reach
         implicitHeight: card.height + 2 * card.reach
         exclusionMode: ExclusionMode.Ignore

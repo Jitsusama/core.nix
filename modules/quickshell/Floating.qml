@@ -5,6 +5,7 @@
 // says where keys go: the accent when it takes them, the edge when it
 // doesn't, the alert when it needs Joel. Its window gives it `area`, for
 // niri's blur and for where the pointer reaches.
+pragma ComponentBehavior: Bound
 import Quickshell
 import QtQuick
 import QtQuick.Effects

@@ -23,6 +23,7 @@
 // two never cover each other: the cover beside the title and the artist,
 // and the player and where in the track in the footer. It's no message, so
 // it isn't kept; a click lets it go.
+pragma ComponentBehavior: Bound
 import Quickshell
 import Quickshell.Io
 import Quickshell.Services.Notifications
@@ -131,7 +132,7 @@ Scope {
         function gather() {
             const found = root.playing ? [track.area] : [];
             for (let i = 0; i < cards.count; i++) {
-                const card = cards.itemAt(i);
+                const card = cards.itemAt(i) as Floating;
                 if (card)
                     found.push(card.area);
             }

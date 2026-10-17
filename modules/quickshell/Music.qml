@@ -1,4 +1,5 @@
 pragma Singleton
+pragma ComponentBehavior: Bound
 // The music: whichever media player matters now, what it plays and where in
 // the track, from any program that speaks MPRIS (Spotify, a browser's tab,
 // mpv, spotify-player), so no player needs anything of its own. Which one

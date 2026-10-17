@@ -1,4 +1,5 @@
 pragma Singleton
+pragma ComponentBehavior: Bound
 // Picking part of the screen by the keys, for a screenshot or a recording
 // (Recorder.qml), once the Capture collection is asked for a region
 // (launcher/Capture.qml). Its keys work as they do on text. Letters pick
