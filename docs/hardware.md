@@ -265,6 +265,12 @@ the CSI-2 port the sensor's own link names. Browsers and calls aren't offered
 it, as Windows keeps its IR camera to sign-in. Nothing signs in with it unless
 a machine turns Howdy on and names the services it may unlock.
 
+Both cameras are v4l2loopback devices, and both relays stop writing while
+nothing reads. The module hands a new reader the newest frame it holds,
+however old, so a call opened on the last frame of the one before, its
+timestamps running backwards, which recorders reject. A patch written here,
+in the [loopback module][18], starts each reader at the next frame written.
+
 ### The Mic-Mute Light
 
 `dell-laptop` gives the light `audio-micmute` as its trigger, and `snd-ctl-led`
@@ -651,3 +657,4 @@ upstream as it is and the override can then come out.
 [15]: https://lore.kernel.org/all/20261013-hm1092-driver-v7-0-d81a9b152ffd@gmail.com/
 [16]: ../modules/ir-camera/nixos.nix
 [17]: https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/commit/?id=8a2941fae0d02364d8ae6542ba890fd496681b55
+[18]: ../modules/v4l2loopback/nixos.nix

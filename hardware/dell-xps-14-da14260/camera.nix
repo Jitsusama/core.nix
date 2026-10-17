@@ -104,7 +104,7 @@ let
     pkgs.gst_all_1.gst-plugins-good
     icamerasrc
   ];
-  loopback = lib.getExe' config.boot.kernelPackages.v4l2loopback.bin "v4l2loopback-ctl";
+  loopback = lib.getExe' config.jitsusama.v4l2loopback.package.bin "v4l2loopback-ctl";
   device = "/run/camera/device";
 
   # The sensor is mounted upside down. Turning the picture around, rather than
@@ -180,6 +180,7 @@ in
     ../../modules/camera/nixos.nix
     ../../modules/ir-camera/nixos.nix
     ../../modules/kernel/nixos.nix
+    ../../modules/v4l2loopback/nixos.nix
   ];
 
   # Pictures and videos are taken from the loopback, which the file names.
@@ -258,14 +259,12 @@ in
   ];
   jitsusama.kernel.packageOverlays = [ psys ];
 
-  boot.extraModulePackages = [ config.boot.kernelPackages.v4l2loopback ];
+  jitsusama.v4l2loopback.enable = true;
   # The bridge carries the sensor's I2C over USB, so its drivers have to be up
   # before the IPU looks for the sensor; otherwise the bridge resets under it,
-  # over and over. The relay makes its own loopback camera, so the module makes
-  # none.
+  # over and over.
   boot.extraModprobeConfig = ''
     softdep intel_ipu7 pre: usbio gpio_usbio i2c_usbio intel_cvs intel_skl_int3472_discrete
-    options v4l2loopback devices=0
   '';
 
   # nixos-hardware found the bridge wedges when USB suspends it. The match is

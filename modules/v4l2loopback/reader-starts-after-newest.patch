@@ -1,0 +1,52 @@
+v4l2loopback: Start a reader after the newest frame
+
+A reader's position starts at zero, so its first dequeue finds itself
+more than a ring behind and is handed the newest frame written, however
+old. A writer that stops writing while it waits for its next reader, as
+a relay for a real camera does, leaves its last frame there, and the
+next session opens on the end of the one before, stamped with the time
+it was written: the stamps then run backwards, which recorders reject.
+
+Start each reader at the write position when it opens and when it starts
+streaming, so the first frame it gets is the next one written. A reader
+joining a live stream waits at most a frame.
+
+--- a/v4l2loopback.c
++++ b/v4l2loopback.c
+@@ -2054,6 +2054,20 @@
+ 
+ /* ------------- STREAMING ------------------- */
+ 
++/* A reader starts after the newest frame, so the first it gets is one
++ * written after it asked. A writer that stopped leaves its last frame in
++ * the ring, and handing that over would show the end of an earlier
++ * session, stamped with the time it was written.
++ */
++static void start_after_newest(struct v4l2_loopback_device *dev,
++			       struct v4l2_loopback_opener *opener)
++{
++	spin_lock_bh(&dev->lock);
++	opener->read_position = dev->write_position;
++	opener->reread_count = dev->reread_count;
++	spin_unlock_bh(&dev->lock);
++}
++
+ /* start streaming
+  * called on VIDIOC_STREAMON
+  */
+@@ -2074,6 +2088,7 @@
+ 	case V4L2_BUF_TYPE_VIDEO_CAPTURE:
+ 		if (has_output_token(dev->stream_tokens) && !dev->keep_format)
+ 			return -EIO;
++		start_after_newest(dev, opener);
+ 		if (dev->stream_tokens & token) {
+ 			acquire_token(dev, opener, stream, token);
+ 			client_usage_queue_event(dev->vdev);
+@@ -2363,6 +2378,7 @@
+ 		/* will clear timeout_image_io once buffer set acquired */
+ 		opener->io_method = V4L2L_IO_TIMEOUT;
+ 
++	start_after_newest(dev, opener);
+ 	v4l2_fh_init(&opener->fh, video_devdata(file));
+ 	file->private_data = &opener->fh;
+ 

@@ -16,7 +16,7 @@
 let
   cfg = config.jitsusama.irCamera;
   relay = pkgs.callPackage ./package.nix { };
-  loopback = lib.getExe' config.boot.kernelPackages.v4l2loopback.bin "v4l2loopback-ctl";
+  loopback = lib.getExe' config.jitsusama.v4l2loopback.package.bin "v4l2loopback-ctl";
   name = "IR Camera";
   sink = "/run/ir-camera-loopback/sink";
 
@@ -40,6 +40,8 @@ let
   overHowdy = lib.mkOverride 900;
 in
 {
+  imports = [ ../v4l2loopback/nixos.nix ];
+
   options.jitsusama.irCamera = {
     enable = lib.mkEnableOption "the IR camera, as a camera programs can open";
     source = lib.mkOption {
@@ -78,11 +80,7 @@ in
   };
 
   config = lib.mkIf cfg.enable {
-    boot.extraModulePackages = [ config.boot.kernelPackages.v4l2loopback ];
-    # The relay makes its own loopback, so the module makes none.
-    boot.extraModprobeConfig = ''
-      options v4l2loopback devices=0
-    '';
+    jitsusama.v4l2loopback.enable = true;
 
     services.udev.extraRules = ''
       SUBSYSTEM=="video4linux", ATTR{name}=="${name}", SYMLINK+="ir-camera"
