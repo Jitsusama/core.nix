@@ -231,6 +231,14 @@ in
     # itself to restart without its adaptive mode, which this CPU needs, so
     # it stayed down for the rest of the boot.
     "coretemp"
+    # Its adaptive mode also needs the drivers for the laptop's thermal
+    # tables, its sensors, and the CPU's own zone and power limits, which
+    # the tables steer. At the boot it failed they came a second after
+    # thermald, and a boot that lacked only coretemp still ran. Each probes
+    # as it loads.
+    "int3400_thermal"
+    "int3403_thermal"
+    "processor_thermal_device_pci"
   ];
 
   # Video decoding and encoding through VA-API and oneVPL, and OpenCL and
@@ -287,6 +295,21 @@ in
   services.thermald.package = pkgs.thermald.overrideAttrs (old: {
     patches = (old.patches or [ ]) ++ [ ./thermald-joins-its-thread.patch ];
   });
+  # When its adaptive mode can't run, thermald leaves itself a note and
+  # stops, so that its next start runs without it. This CPU runs only in
+  # adaptive mode, and thermald refuses it otherwise, so the note would keep
+  # it down until the next boot. Each start clears the note, and a stop on
+  # failure starts it again, adaptive, once whatever it lacked is there.
+  # Three starts a minute at most, so one that never can stops trying.
+  systemd.services.thermald = {
+    serviceConfig = {
+      ExecStartPre = "${lib.getExe' pkgs.coreutils "rm"} -f /run/thermald/ignore_adaptive";
+      Restart = "on-failure";
+      RestartSec = 2;
+    };
+    startLimitBurst = 3;
+    startLimitIntervalSec = 60;
+  };
 
   # The profiles' energy preferences, with performance's eased; see above.
   services.power-profiles-daemon.package = powerProfiles;

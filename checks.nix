@@ -1624,6 +1624,29 @@ in
         && graphical.config.systemd.services.greetd.serviceConfig.Type == "idle"
       );
 
+  # thermald reads the XPS 14's tables, sensors and the CPU's power limits
+  # once, as it starts, and stops if its adaptive mode finds no zone, which
+  # it did when udev loaded their drivers after it started.
+  thermald-starts-after-its-drivers =
+    let
+      xps = bareNixos [ self.nixosModules.dell-xps-14-da14260 ];
+      inherit (xps.config) boot systemd;
+      early = [
+        "intel_rapl_msr"
+        "coretemp"
+        "int3400_thermal"
+        "int3403_thermal"
+        "processor_thermal_device_pci"
+      ];
+    in
+    holds "thermald-starts-after-its-drivers"
+      "thermald can start before a driver it reads, or a restart can't run it adaptive again."
+      (
+        lib.all (module: lib.elem module boot.kernelModules) early
+        && (systemd.services.thermald.serviceConfig.Restart or null) == "on-failure"
+        && lib.hasInfix "ignore_adaptive" (systemd.services.thermald.serviceConfig.ExecStartPre or "")
+      );
+
   example-nixos = evaluates "example-nixos" (
     import ./examples/nixos.nix {
       core = self;
