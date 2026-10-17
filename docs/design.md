@@ -819,6 +819,19 @@ as an exception with the reason.
 
 What each studio round settled, newest first, with the reason.
 
+- **niri's own screens never show** (2026-10-17, judged against the taste
+  without a round). niri draws its screenshot screen, its key list, its
+  question before quitting and its banner for a configuration it can't
+  read in near-black boxes with white words and red or green borders, and
+  no theme reaches them. Rather than patch four screens to wear the theme,
+  none opens: the launcher shows every layer's keys, Picker.qml picks a
+  region by the keys, Log Out quits without niri's question, and the
+  build refuses a configuration niri can't read. A check holds the keys
+  and Log Out to it.
+- **The panic screen wears the theme** (2026-10-17). The log a panic draws
+  for ten seconds before the reboot is in the theme's text on its
+  background, like the console and the boot, not white on black. The
+  kernel takes colours only as it's built, so another theme rebuilds it.
 - **The rest of Neovim's screen goes quiet** (2026-10-16, judged against
   the taste without a round). The line's own number sat a column left of
   the counts around it, in muted; it now stands in their column, in

@@ -8,6 +8,13 @@
 # panel's scale; niri lets a later setting override an earlier one, so the
 # machine's lines win.
 #
+# niri draws four screens of its own in colours it doesn't let a theme
+# change, so none of them is ever shown: the key list is the launcher's
+# (Super+Shift+/), a region is picked by the keys in Quickshell's
+# Picker.qml rather than niri's screenshot screen, and Log Out quits without
+# niri's question. The banner for a configuration niri can't read would need
+# one the build refuses. checks.nix holds the keys to this.
+#
 # The cursor is Adwaita's, as Omarchy's is through its system default. niri
 # draws it and tells every program it starts which theme and size to use, and
 # its default names a theme called "default" that nothing installs, so without
