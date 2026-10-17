@@ -522,7 +522,7 @@ in
       (waits vimPlugins.nvim-nio null { })
       (waits vimPlugins.plenary-nvim null { })
       (waits vimPlugins.sqlite-lua null { })
-      (waits vimPlugins.nvim-web-devicons null { })
+      (waits vimPlugins.nvim-web-devicons ./plugins/devicons.lua { })
     ];
   };
 }

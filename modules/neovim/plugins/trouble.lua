@@ -82,4 +82,12 @@ trouble.setup({
   -- The list is opened to be worked through, so it takes the focus.
   focus = true,
   keys = window,
+  -- A flat list under each file, told from where Neovim is as the finder
+  -- tells it, rather than the whole path above it and lines between.
+  indent_guides = false,
+  modes = {
+    diagnostics = {
+      groups = { { 'filename', format = '{file_icon} {filename} {count}' } },
+    },
+  },
 })

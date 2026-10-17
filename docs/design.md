@@ -828,7 +828,9 @@ What each studio round settled, newest first, with the reason.
   foot ends in the more mark, not the prompt's mark or @@@. A terminal is
   named by its program, not its term:// address, and a file fugitive
   opens at a version is told from its root with the version after it,
-  beside its branch.
+  beside its branch. Every file's mark takes the text's colour, as the
+  finder's already did, and trouble lists problems flat under each file,
+  named from where Neovim is, without the whole path or tree lines.
 - **pi's panels keep the accent for keys** (2026-10-16, judged against the
   taste without a round). A gate's edges, title and scrollbar were all in
   the accent, beside the one key that was, while the footer's keys were as
