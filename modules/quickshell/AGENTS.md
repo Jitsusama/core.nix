@@ -63,7 +63,12 @@ The quickshell checks are named `quickshell-*` in [`checks.nix`][checks].
 `vm-desktop-works` ([`tests/desktop.nix`][desktop]) starts niri and the shell
 in a virtual machine and drives each surface by its keys, keeping a
 screenshot of each; a change to how a surface behaves or looks gets a
-subtest there.
+subtest there. A picture is taken with `photograph`, once the screen holds
+still, after waiting on what the shell reports for the state it shows.
+
+After any change to the shell, compare its pictures with main's using
+`shots-changed`, as [testing][testing] says, and look at every one it
+draws: a change to one surface can move another.
 
 [checks]: ../../checks.nix
 [clipboard]: clipboard/
@@ -74,3 +79,4 @@ subtest there.
 [pieces]: pieces/
 [provider]: launcher/Provider.qml
 [skill]: ../theme/SKILL.md
+[testing]: ../../docs/testing.md#what-changed-on-screen

@@ -1,0 +1,21 @@
+# The desktop test's pictures that change between two runs of the same code,
+# each with what moves in it, for shots-changed. A picture goes here only
+# once two runs of unchanged code show it moving, and only for a cause the
+# test can't hold still.
+
+# The stand-in camera's test pattern moves.
+camera
+# The time of day, as the margin's clock, the lock screen's, the
+# overview's, the launcher's answer and the copy made of it.
+margin-quiet
+locked
+overview
+overview-awake
+launcher-time
+launcher-copies-all
+# How long ago each notice came.
+launcher-from-margin
+launcher-held
+launcher-notices-all
+# What the network has carried so far.
+launcher-wifi-detail
