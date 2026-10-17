@@ -224,6 +224,10 @@ vim.api.nvim_create_autocmd('BufWritePre', {
   end,
 })
 
+-- Spelling is checked against English and the names English doesn't know
+-- (names.add), so Neovim, niri and a YubiKey aren't marked as mistakes.
+vim.opt.spelllang = { 'en', 'names' }
+
 -- Wrap and spell check in text filetypes
 vim.api.nvim_create_autocmd('FileType', {
   group = augroup('wrap_spell'),
