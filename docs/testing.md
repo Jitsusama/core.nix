@@ -172,7 +172,7 @@ a running system shows.
 | `vm-network-revives-units`        | what the network let down starts, and reloads on change  |
 | `vm-clock-keeps-time`             | the clock sets from the machine's servers past a network's silent one |
 | `vm-libvirt-stops-quickly`        | libvirt's daemon stops at once, its udev thread starved  |
-| `vm-ir-camera-opens-for-readers`  | the IR camera waits for udev, opens only while read, its frames grey, never the last reader's |
+| `vm-ir-camera-opens-for-readers`  | the IR camera waits for udev, opens only while read, its frames grey, no frame from before a reader opened |
 | `vm-swap-comes-down-while-probed` | the compressed swap comes down, its reset waiting out udev's probe |
 
 The install test builds a disk image with disko and boots it with a software

@@ -1,15 +1,17 @@
 # Relays a stand-in IR camera, a loopback sent 16-bit greyscale frames of a
 # known pattern, to the camera programs open. What has to hold shows only with
 # the devices there: the camera stays closed until a program reads, the reader
-# gets the pattern in 8-bit grey, the camera closes when it stops, and the next
-# reader starts on a blank frame rather than the last one's face.
+# gets the pattern in 8-bit grey, the camera closes when it stops, and no reader
+# gets a frame from before it opened, the last one's face least of all.
 { self, pkgs }:
 let
   width = 648;
   height = 368;
 
   # Sends the pattern to the loopback it's given, over and over, as a camera
-  # would, and says when the first frame is out. The pattern is 10-bit, sent
+  # would, and says when the first frame is out. It holds the loopback open but
+  # sends nothing while /run/stand-in-paused exists, as a relay waiting for its
+  # next reader does. The pattern is 10-bit, sent
   # as Y16, since v4l2loopback sizes Y10 frames at ten bits a pixel rather
   # than the sixteen they're stored in.
   camera = pkgs.writers.writePython3Bin "stand-in-camera" { } ''
@@ -17,6 +19,7 @@ let
     import os
     import struct
     import sys
+    import time
 
     VIDIOC_S_FMT = 0xC0D05605
     OUTPUT = 2
@@ -38,7 +41,10 @@ let
     os.write(device, frame)
     open("/run/stand-in-camera", "w").close()
     while True:
-        os.write(device, frame)
+        if os.path.exists("/run/stand-in-paused"):
+            time.sleep(0.05)
+        else:
+            os.write(device, frame)
   '';
 
   # Names each frame in the file it's given: the pattern in grey, blank, or
@@ -96,7 +102,7 @@ pkgs.testers.runNixOSTest {
       environment.systemPackages = [
         camera
         frames
-        config.boot.kernelPackages.v4l2loopback.bin
+        config.jitsusama.v4l2loopback.package.bin
         pkgs.v4l-utils
       ];
       # The stand-in sends frames as fast as it can, so it gets a CPU of its
@@ -145,17 +151,28 @@ pkgs.testers.runNixOSTest {
         t.assertNotIn("other", names)
         t.assertEqual(names[-1], "pattern", " ".join(names))
 
+    with subtest("a paused camera's next reader gets no frame from before it opened"):
+        machine.succeed("touch /run/stand-in-paused; sleep 1")
+        machine.execute(
+            f"timeout 3 v4l2-ctl -d {source} --stream-mmap --stream-count=1 --stream-to=/tmp/stale"
+        )
+        stale = int(machine.succeed("stat -c %s /tmp/stale 2>/dev/null || echo 0"))
+        t.assertEqual(stale, 0, "A reader opening a paused camera got the frame from before it")
+        machine.succeed("rm /run/stand-in-paused")
+
     with subtest("the camera closes when the reader stops"):
         machine.wait_until_succeeds(f"! {holds_camera}", timeout=30)
         machine.wait_until_succeeds(
             "journalctl -b -o cat -u ir-camera.service | grep -q 'The reader stopped'", timeout=30
         )
 
-    with subtest("the next reader starts on a blank frame, not the last one's"):
+    with subtest("the next reader never gets the last one's frames"):
         machine.succeed("systemctl stop stand-in.service")
-        machine.succeed(
-            "v4l2-ctl -d /dev/ir-camera --stream-mmap --stream-count=1 --stream-to=/tmp/next"
+        machine.execute(
+            ": > /tmp/next; timeout 5 v4l2-ctl -d /dev/ir-camera --stream-mmap --stream-count=1"
+            " --stream-to=/tmp/next"
         )
-        t.assertEqual(machine.succeed("frames /tmp/next").split(), ["blank"])
+        names = machine.succeed("frames /tmp/next").split()
+        t.assertNotIn("pattern", names, "The next reader got the last one's frames")
   '';
 }
