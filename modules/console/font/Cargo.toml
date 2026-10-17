@@ -1,0 +1,12 @@
+# The console's font, drawn from the theme's monospace face at build: each
+# glyph the console needs, rasterized into one cell and written as a PSF the
+# kernel loads (src/main.rs says how).
+[package]
+name = "console-font"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[dependencies]
+fontdue = "0.9"

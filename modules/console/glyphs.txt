@@ -1,0 +1,25 @@
+# What the console's font draws, one glyph to a word: written as itself,
+# as U+ and its code, or as a range of them. A font past 256 glyphs costs
+# the console its bright colours, so the list stops there. The console
+# clears the screen with the space, so the list has to hold it.
+
+# Every printable ASCII character, and Latin-1's, for words and names.
+U+0020..U+007E
+U+00A0..U+00FF
+
+# Box drawing, for tree, systemctl and every table: light, heavy, double,
+# then the rounded corners.
+─ │ ┌ ┐ └ ┘ ├ ┤ ┬ ┴ ┼
+━ ┃ ┏ ┓ ┗ ┛ ┣ ┫ ┳ ┻ ╋
+═ ║ ╔ ╗ ╚ ╝ ╠ ╣ ╦ ╩ ╬
+╭ ╮ ╯ ╰
+
+# The blocks and shades, for bars and meters.
+█ ▀ ▄ ▌ ▐ ░ ▒ ▓
+
+# Typographic punctuation, the marks systemd puts before a unit, the
+# arrows, and a tick and a cross.
+‘ ’ “ ” – — … •
+● ○
+← ↑ → ↓
+✓ ✗

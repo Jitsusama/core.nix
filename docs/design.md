@@ -217,9 +217,10 @@ its interface spells its marks in one place, a small geometric set (`▸ · ◆ 
 aligned, and its package tests refuse any surface that spells one itself. That
 idea holds everywhere now: a mark is looked up by meaning, never typed.
 
-A console font holds at most 512 glyphs and none of Nerd Fonts' marks, so each
-glyph also has a stand-in the console can draw, and a surface running on a
-console (the prompt in an emergency shell) uses those.
+The console's font holds 256 glyphs, since a font of more costs the console its
+bright colours, and none of Nerd Fonts' marks, so each glyph also has a
+stand-in the console can draw, and a surface running on a console (the prompt
+in an emergency shell) uses those.
 
 The table is `jitsusama.theme.glyphs`, each mark with what it means and its
 stand-in. Every program that can read it is given it: Quickshell as
@@ -644,8 +645,8 @@ it, in a format of our own. `jitsusama.theme.name` picks one. Nothing else
 lives with it: everything a theme uses that isn't text is named, not copied.
 Its typefaces and icons are packages, its wallpaper is a path in the
 `wallpapers` input (Joel's own collection, where an image or a shader from
-anywhere goes), and its console font is rendered from its monospace face at
-build, or named as a package.
+anywhere goes), and its console font is drawn from its monospace face at
+build.
 
 The format is built for how this design works rather than borrowed from
 another project's. It's TOML, because Nix reads it without help and a person
@@ -819,6 +820,14 @@ as an exception with the reason.
 
 What each studio round settled, newest first, with the reason.
 
+- **The console wears the theme's face** (2026-10-17, judged against the
+  taste without a round). The console drew in the kernel's Terminus, square
+  and technical beside everything else. It now draws in the theme's
+  monospace face at Medium, drawn at build into the kernel's own 16 by 32
+  cell: at one bit a pixel, the regular weight's stems fall on one pixel in
+  some letters and two in others, where Medium's stay at two. Box drawing is
+  the face's, carried to the cell's edges so lines join; the blocks are
+  drawn exact. It's loaded in the initrd, so the disk's prompt wears it too.
 - **niri's own screens never show** (2026-10-17, judged against the taste
   without a round). niri draws its screenshot screen, its key list, its
   question before quitting and its banner for a configuration it can't

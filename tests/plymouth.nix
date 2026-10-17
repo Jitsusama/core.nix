@@ -57,6 +57,7 @@ pkgs.testers.runNixOSTest {
     let
       encrypted = nodes.machine.specialisation.encrypted.configuration.system.build.toplevel;
       alert = nodes.machine.home-manager.users.${account}.jitsusama.theme.roles.alert;
+      inherit (nodes.machine.console) font;
     in
     ''
       import filecmp
@@ -120,5 +121,18 @@ pkgs.testers.runNixOSTest {
           machine.send_chars("${passphrase}\n")
           machine.wait_for_unit("multi-user.target")
           t.assertIn("/dev/mapper/root on / ", machine.succeed("mount"))
+
+      with subtest("the console draws in the theme's face"):
+          # The glyphs the kernel holds are the font's own, bitmap for
+          # bitmap, as many as its header counts at its size.
+          machine.send_key("ctrl-alt-f3")
+          machine.wait_until_tty_matches("3", "login: ")
+          machine.succeed(
+              "setfont -C /dev/tty3 -O /tmp/held.psf",
+              "word() { od -An -t u4 -j $(( $2 * 4 )) -N 4 $1 | tr -d ' '; }; "
+              "cmp -n $(( $(word ${font} 4) * $(word ${font} 5) )) "
+              "<(tail -c +33 /tmp/held.psf) <(tail -c +33 ${font})",
+          )
+          photographed("console")
     '';
 }
