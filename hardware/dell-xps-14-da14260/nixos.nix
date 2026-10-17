@@ -226,6 +226,11 @@ in
     # it warns they're missing. Loading it with the early modules, which
     # finish before thermald may start, has them there first.
     "intel_rapl_msr"
+    # The same for the cores' temperatures. When udev loaded coretemp after
+    # thermald started, thermald found no sensor, made no zones, and marked
+    # itself to restart without its adaptive mode, which this CPU needs, so
+    # it stayed down for the rest of the boot.
+    "coretemp"
   ];
 
   # Video decoding and encoding through VA-API and oneVPL, and OpenCL and
