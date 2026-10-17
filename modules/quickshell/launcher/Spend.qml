@@ -188,8 +188,9 @@ Provider {
         return hit ? { id: hit.id, rest: text.slice(hit.word.length).trim() } : null;
     }
 
-    // Which report what's typed asks for, by id, or null.
-    function asked(typed) {
+    // Which report what's typed asks for, by id, or null. Named apart from
+    // Provider's `asked`, the answers each URL gave, which it would hide.
+    function reportFor(typed) {
         let text = typed.trim().toLowerCase().replace(/\s+/g, " ");
         if (/^(caps?|ai caps?|spend caps?)$/.test(text))
             return "caps";
@@ -213,7 +214,7 @@ Provider {
     function answer(typed) {
         if (said === null)
             return null;
-        const id = asked(typed);
+        const id = reportFor(typed);
         const shown = id === null ? null : reports[id] ?? null;
         if (shown === null)
             return null;
