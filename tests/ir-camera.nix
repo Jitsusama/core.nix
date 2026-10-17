@@ -2,7 +2,8 @@
 # known pattern, to the camera programs open. What has to hold shows only with
 # the devices there: the camera stays closed until a program reads, the reader
 # gets the pattern in 8-bit grey, the camera closes when it stops, and no reader
-# gets a frame from before it opened, the last one's face least of all.
+# gets a frame from before it opened, the last one's face least of all, and a
+# relay whose loopback has gone waits for it rather than failing over and over.
 { self, pkgs }:
 let
   width = 648;
@@ -174,5 +175,15 @@ pkgs.testers.runNixOSTest {
         )
         names = machine.succeed("frames /tmp/next").split()
         t.assertNotIn("pattern", names, "The next reader got the last one's frames")
+
+    with subtest("a relay started with its loopback gone waits for it rather than retrying"):
+        machine.succeed("systemctl stop ir-camera.service")
+        machine.succeed("v4l2loopback-ctl delete $(readlink /run/ir-camera-loopback/sink)")
+        machine.succeed("systemctl start --no-block ir-camera.service")
+        machine.sleep(7)
+        restarts = machine.succeed("systemctl show -P NRestarts ir-camera.service").strip()
+        t.assertEqual(restarts, "0", "The relay kept retrying a loopback that had gone")
+        machine.succeed("systemctl restart ir-camera-loopback.service ir-camera.service")
+        machine.wait_for_unit("ir-camera.service")
   '';
 }
