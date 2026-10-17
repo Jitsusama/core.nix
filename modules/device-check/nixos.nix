@@ -17,7 +17,8 @@
 # fault to device-check-disk, which keeps it in /run for device-check to
 # name. It runs no self-tests, since Btrfs's monthly scrub reads and checks
 # every block, and it doesn't write to everyone's terminals, which NixOS
-# has it do unless told otherwise.
+# has it do unless told otherwise. On a machine with no disk it can read,
+# such as a virtual machine or a USB stick, it finds nothing and stops.
 {
   config,
   lib,
@@ -50,6 +51,9 @@ in
     services.smartd = {
       enable = true;
       autodetect = true;
+      # A machine with no disk smartd can read stops it cleanly, where it
+      # would otherwise fail at every boot.
+      extraOptions = [ "-q nodev0" ];
       notifications.wall.enable = false;
       defaults.autodetected = lib.concatStringsSep " " [
         "-H -f -l error"
