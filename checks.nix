@@ -1785,6 +1785,24 @@ in
         touch $out
       '';
 
+    # niri's own screens are drawn in colours no theme reaches, so no key
+    # opens one: not its screenshot screen, not its key list, and no quit that
+    # asks first. The launcher's Log Out quits without asking too.
+    niri-never-shows-its-own-screens =
+      let
+        actions = map (bind: bind.action) (account graphical).jitsusama.niri.binds;
+        opens =
+          action:
+          lib.hasPrefix "screenshot;" action
+          || lib.hasPrefix "screenshot " action
+          || lib.hasPrefix "show-hotkey-overlay" action
+          || (lib.hasPrefix "quit" action && !(lib.hasInfix "skip-confirmation=true" action));
+        session = builtins.readFile ./modules/quickshell/launcher/Session.qml;
+      in
+      holds "niri-never-shows-its-own-screens"
+        "A key opens one of niri's own screens, or Log Out asks niri's question: ${lib.concatStringsSep ", " (lib.filter opens actions)}"
+        (!(lib.any opens actions) && lib.hasInfix "Quit: { skip_confirmation: true }" session);
+
     # niri names a cursor theme, and a theme without a shape a program asks
     # for leaves niri's built-in arrow in its place without a word, so the
     # check looks for the shapes programs ask for most in the theme it names.
