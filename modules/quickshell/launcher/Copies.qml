@@ -3,7 +3,9 @@
 // One connection to its socket brings every copy kept, then each new one,
 // so nothing is started per copy and nothing is written to disk. A search
 // with a match adds one row; the right arrow, or Super+V, shows them all.
-// Return puts the copy back on the clipboard.
+// Return puts the copy back on the clipboard. Forget the Clipboard, found
+// by its words while there's something to forget, has the helper forget
+// every copy, and what the clipboard holds with them.
 import qs
 import Quickshell
 import Quickshell.Io
@@ -22,6 +24,23 @@ Provider {
 
     // Newest first.
     property var all: []
+
+    readonly property var forget: thing({
+        key: "copies:forget",
+        verb: "forget",
+        name: "Forget the Clipboard",
+        keywords: "clipboard copies history clear erase wipe",
+        glyph: String.fromCodePoint(0xf01fe),
+        hue: "action",
+        run: () => {
+            if (link.item !== null) {
+                link.item.write("clear\n");
+                link.item.flush();
+            }
+        }
+    })
+
+    things: all.length > 0 ? [forget] : []
 
     readonly property string socket:
         `${Quickshell.env("XDG_RUNTIME_DIR")}/clipboard-history.sock`
@@ -97,6 +116,7 @@ Provider {
         }
         if (said.clear) {
             all = [];
+            Report.say("forgot the copies");
             return;
         }
         const kept = all.filter(row => row.text !== said.text);

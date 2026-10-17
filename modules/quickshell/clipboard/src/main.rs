@@ -12,9 +12,16 @@
 //! that isn't text or is larger than `--largest`. A line `clear` from the
 //! shell forgets everything, and every client is sent `{"clear":true}`.
 //!
+//! A copy outlives the program that made it: when the clipboard empties
+//! because that program let go of it, as one does when it closes, this one
+//! offers the same text in its place, if it kept it. A secret, or anything
+//! else it didn't keep, is let go with its program, and once the history is
+//! forgotten, what it offers is nothing.
+//!
 //! Usage: clipboard-history --socket PATH [--keep N] [--largest BYTES]
 
 use std::collections::{HashMap, VecDeque};
+use std::fs::File;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::os::fd::AsFd;
 use std::os::unix::net::{UnixListener, UnixStream};
@@ -30,6 +37,7 @@ use wayland_protocols::ext::data_control::v1::client::{
     ext_data_control_device_v1::{self, ExtDataControlDeviceV1},
     ext_data_control_manager_v1::ExtDataControlManagerV1,
     ext_data_control_offer_v1::{self, ExtDataControlOfferV1},
+    ext_data_control_source_v1::{self, ExtDataControlSourceV1},
 };
 
 /// The type KDE's Klipper set the convention with, and 1Password follows,
@@ -45,12 +53,16 @@ const TEXT: [&str; 5] = [
     "TEXT",
 ];
 
+/// A type only this program's own offer has, so it knows the clipboard it
+/// set from one a program copied.
+const OURS: &str = "application/x-clipboard-history-kept";
+
 /// How long a program has to hand over what it copied before it's skipped.
 const PATIENCE: Duration = Duration::from_secs(2);
 
 /// The type to read an offer as, or none for one that's secret or not text.
 fn readable(types: &[String]) -> Option<&'static str> {
-    if types.iter().any(|t| t == SECRET) {
+    if types.iter().any(|t| t == SECRET || t == OURS) {
         return None;
     }
     TEXT.into_iter()
@@ -91,11 +103,13 @@ fn quoted(text: &str) -> String {
     out
 }
 
-/// The copies kept, newest first, and the shells listening for more.
+/// The copies kept, newest first, the shells listening for more, and what
+/// the clipboard holds now when it's a copy kept.
 struct History {
     copies: VecDeque<Copy>,
     keep: usize,
     clients: Vec<UnixStream>,
+    current: Option<String>,
 }
 
 impl History {
@@ -111,6 +125,28 @@ impl History {
         true
     }
 
+    /// What the clipboard now holds: a copy, kept if it can be, or for one
+    /// that can't, nothing to give back once its program lets go. Answers
+    /// the copy when it was kept.
+    fn copied(&mut self, text: Option<String>) -> Option<Copy> {
+        self.current = None;
+        let copy = Copy {
+            at: now(),
+            text: text?,
+        };
+        if !self.add(copy.clone()) {
+            return None;
+        }
+        self.current = Some(copy.text.clone());
+        Some(copy)
+    }
+
+    /// Forgets every copy, and what the clipboard holds with them.
+    fn forget(&mut self) {
+        self.copies.clear();
+        self.current = None;
+    }
+
     /// Sends a line to every shell, dropping any that has gone.
     fn tell(&mut self, line: &str) {
         self.clients
@@ -118,12 +154,62 @@ impl History {
     }
 }
 
-/// What the Wayland side needs: the history, and the types each offer has
-/// said it can be read as, until its selection arrives.
+/// What the Wayland side needs: the history, the types each offer has said
+/// it can be read as until its selection arrives, and while a copy is
+/// offered in its program's place, that offer.
 struct State {
     history: Arc<Mutex<History>>,
     offers: HashMap<ObjectId, Vec<String>>,
     largest: usize,
+    manager: ExtDataControlManagerV1,
+    device: ExtDataControlDeviceV1,
+    held: Option<ExtDataControlSourceV1>,
+}
+
+impl State {
+    /// Offers the copy the clipboard held, in place of the program that let
+    /// go of it.
+    fn hold(&mut self, handle: &QueueHandle<Self>) {
+        let source = self.manager.create_data_source(handle, ());
+        for kind in TEXT {
+            source.offer(kind.to_string());
+        }
+        source.offer(OURS.to_string());
+        self.device.set_selection(Some(&source));
+        if let Some(before) = self.held.replace(source) {
+            before.destroy();
+        }
+    }
+}
+
+impl Dispatch<ExtDataControlSourceV1, ()> for State {
+    fn event(
+        state: &mut Self,
+        source: &ExtDataControlSourceV1,
+        event: ext_data_control_source_v1::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        match event {
+            // Read when asked, so a history forgotten since gives nothing.
+            ext_data_control_source_v1::Event::Send { fd, .. } => {
+                let text = state.history.lock().unwrap().current.clone();
+                thread::spawn(move || {
+                    let mut file = File::from(fd);
+                    let _ = file.write_all(text.unwrap_or_default().as_bytes());
+                });
+            }
+            // Something else was copied, which holds the clipboard now.
+            ext_data_control_source_v1::Event::Cancelled => {
+                source.destroy();
+                if state.held.as_ref() == Some(source) {
+                    state.held = None;
+                }
+            }
+            _ => {}
+        }
+    }
 }
 
 impl Dispatch<wl_registry::WlRegistry, GlobalListContents> for State {
@@ -184,7 +270,7 @@ impl Dispatch<ExtDataControlDeviceV1, ()> for State {
         event: ext_data_control_device_v1::Event,
         _: &(),
         connection: &Connection,
-        _: &QueueHandle<Self>,
+        handle: &QueueHandle<Self>,
     ) {
         match event {
             ext_data_control_device_v1::Event::DataOffer { id } => {
@@ -192,15 +278,23 @@ impl Dispatch<ExtDataControlDeviceV1, ()> for State {
             }
             ext_data_control_device_v1::Event::Selection { id: Some(offer) } => {
                 let types = state.offers.remove(&offer.id()).unwrap_or_default();
+                // Its own offer, heard back: the clipboard holds what it did.
+                if types.iter().any(|kind| kind == OURS) {
+                    offer.destroy();
+                    return;
+                }
                 let text = readable(&types)
                     .and_then(|kind| receive(connection, &offer, kind, state.largest));
                 offer.destroy();
-                if let Some(text) = text {
-                    let copy = Copy { at: now(), text };
-                    let mut history = state.history.lock().unwrap();
-                    if history.add(copy.clone()) {
-                        history.tell(&copy.line());
-                    }
+                let mut history = state.history.lock().unwrap();
+                if let Some(copy) = history.copied(text) {
+                    history.tell(&copy.line());
+                }
+            }
+            // The program holding the clipboard let go of it.
+            ext_data_control_device_v1::Event::Selection { id: None } => {
+                if state.history.lock().unwrap().current.is_some() {
+                    state.hold(handle);
                 }
             }
             // The selection a middle click pastes isn't kept.
@@ -275,7 +369,7 @@ fn serve(listener: UnixListener, history: Arc<Mutex<History>>) {
                 let Ok(line) = line else { break };
                 if line.trim() == "clear" {
                     let mut history = history.lock().unwrap();
-                    history.copies.clear();
+                    history.forget();
                     history.tell("{\"clear\":true}\n");
                 }
             }
@@ -327,7 +421,7 @@ fn run() -> Result<(), String> {
     let seat: wl_seat::WlSeat = globals
         .bind(&handle, 1..=9, ())
         .map_err(|_| "the compositor has no seat")?;
-    manager.get_data_device(&seat, &handle, ());
+    let device = manager.get_data_device(&seat, &handle, ());
 
     // A socket left by an earlier run would refuse the bind.
     let _ = fs::remove_file(&settings.socket);
@@ -337,6 +431,7 @@ fn run() -> Result<(), String> {
         copies: VecDeque::new(),
         keep: settings.keep,
         clients: Vec::new(),
+        current: None,
     }));
     let serving = Arc::clone(&history);
     thread::spawn(move || serve(listener, serving));
@@ -345,6 +440,9 @@ fn run() -> Result<(), String> {
         history,
         offers: HashMap::new(),
         largest: settings.largest,
+        manager,
+        device,
+        held: None,
     };
     loop {
         queue
@@ -390,7 +488,41 @@ mod tests {
             copies: VecDeque::new(),
             keep,
             clients: Vec::new(),
+            current: None,
         }
+    }
+
+    #[test]
+    fn its_own_offer_is_never_read() {
+        assert_eq!(readable(&types(&["text/plain", OURS])), None);
+    }
+
+    #[test]
+    fn a_kept_copy_is_what_the_clipboard_holds() {
+        let mut kept = history(10);
+        kept.copied(Some("one".to_string()));
+        assert_eq!(kept.current.as_deref(), Some("one"));
+    }
+
+    #[test]
+    fn a_copy_not_kept_leaves_nothing_to_give_back() {
+        let mut kept = history(10);
+        kept.copied(Some("one".to_string()));
+        // A secret, a picture or something too large reads as none.
+        assert_eq!(kept.copied(None), None);
+        assert_eq!(kept.current, None);
+        kept.copied(Some("two".to_string()));
+        kept.copied(Some("  ".to_string()));
+        assert_eq!(kept.current, None);
+    }
+
+    #[test]
+    fn forgetting_forgets_what_the_clipboard_holds_too() {
+        let mut kept = history(10);
+        kept.copied(Some("one".to_string()));
+        kept.forget();
+        assert!(kept.copies.is_empty());
+        assert_eq!(kept.current, None);
     }
 
     fn copy(at: u128, text: &str) -> Copy {

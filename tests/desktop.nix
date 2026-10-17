@@ -1247,6 +1247,51 @@ pkgs.testers.runNixOSTest {
 
           retry(copied_again, timeout_seconds=10)
 
+      with subtest("a copy outlives the program that made it, unless it wasn't kept"):
+          # wl-copy in the foreground serves its copy until it's stopped, as a
+          # program closing would.
+          with told("heard copy gone with its program"):
+              as_account(
+                  "echo -n 'gone with its program' | wl-copy --foreground > /dev/null 2>&1 & "
+                  "sleep 2; kill $!"
+              )
+
+          # Empty for a moment between its program going and the helper's
+          # offer, which the retry waits out.
+          def still_there(_):
+              return as_account("wl-paste --no-newline 2>&1 || true") == "gone with its program"
+
+          retry(still_there, timeout_seconds=10)
+          # One the history didn't keep, such as a password manager's, goes
+          # with its program, leaving the clipboard empty rather than handing
+          # back an older copy. The helper answers the moment it empties, so
+          # empty twice over is empty for good.
+          as_account(
+              "echo -n 'a password' | wl-copy --foreground "
+              "--type x-kde-passwordManagerHint > /dev/null 2>&1 & sleep 2; kill $!"
+          )
+          machine.wait_until_fails(in_session("wl-paste --list-types > /dev/null 2>&1"), timeout=10)
+          machine.fail(in_session("wl-paste --list-types > /dev/null 2>&1"))
+
+      with subtest("Forget the Clipboard forgets every copy, and what it held"):
+          with told("heard copy kept until forgotten"):
+              as_account(
+                  "echo -n 'kept until forgotten' | wl-copy --foreground > /dev/null 2>&1 & "
+                  "sleep 2; kill $!"
+              )
+
+          def still_kept(_):
+              return as_account("wl-paste --no-newline 2>&1 || true") == "kept until forgotten"
+
+          retry(still_kept, timeout_seconds=10)
+          as_account("qs ipc call launcher toggle")
+          launcher_ready()
+          type_in("forget the clip", selecting="Forget the Clipboard")
+          machine.screenshot("launcher-forget-copies")
+          with told("forgot the copies"):
+              machine.send_key("ret")
+          t.assertEqual(as_account("wl-paste --no-newline 2>&1 || true"), "")
+
       with subtest("the launcher's home shows each collection, and opens it"):
           windows = len(json.loads(as_account("niri msg --json windows")))
           as_account("qs ipc call launcher toggle")
