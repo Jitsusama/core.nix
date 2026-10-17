@@ -200,12 +200,32 @@ local function engine()
   return git.job
 end
 
+-- The folder a git folder belongs to: its parent, or for a worktree's, the
+-- folder its gitdir file names.
+local function work_tree(gitdir)
+  if vim.fs.basename(gitdir) == '.git' then
+    return vim.fs.dirname(gitdir)
+  end
+  local file = first_line(gitdir .. '/gitdir')
+  return file and vim.fs.dirname(file)
+end
+
+-- Where a file fugitive opened at another version lives in its work tree.
+local function versioned(name)
+  local gitdir, object, inside = name:match('^fugitive://(.-)//(%w+)/(.*)$')
+  local tree = gitdir and work_tree(gitdir)
+  return tree and tree .. '/' .. inside, object
+end
+
 -- The folder a buffer's git state is asked for: its file's, or for a
 -- buffer that's no file, the editor's.
 local function folder(buf)
   local name = vim.api.nvim_buf_get_name(buf)
   local dir = name:match('^oil://(.*)$')
-  if dir then
+  local file = vim.startswith(name, 'fugitive://') and versioned(name)
+  if file then
+    return vim.fs.dirname(file)
+  elseif dir then
     return vim.fs.normalize(dir)
   elseif vim.bo[buf].buftype == '' and name ~= '' then
     return vim.fs.dirname(name)
@@ -267,13 +287,40 @@ local function told(path, dir)
   return { lead = '/', parts = parts_of(path), first = 'muted' }
 end
 
+-- The versions fugitive opens a file at, by the stage git gives them; any
+-- other is a commit, told by the start of its id.
+local stages = { ['0'] = 'index', ['1'] = 'base', ['2'] = 'ours', ['3'] = 'theirs' }
+
+-- A file fugitive opened at another version, told from its root as the
+-- file itself is, with the version after it.
+local function version_of(name)
+  local path, object = versioned(name)
+  if not path then
+    return nil
+  end
+  return { path = told(path, vim.fs.dirname(path)), after = stages[object] or object:sub(1, 7) }
+end
+
+-- A terminal by the title its program gave it, or by the program's name
+-- until it gives one, rather than the whole term:// address.
+local function terminal_name(buf, name)
+  local title = vim.b[buf].term_title
+  if title and title ~= '' and not vim.startswith(title, 'term://') then
+    return title
+  end
+  return vim.fs.basename(name:match(':([^:]*)$') or name)
+end
+
 -- What a buffer is: a file or folder told from its root, or a name for
 -- the kind of buffer it is, with words before it in muted.
 local function place(buf)
   local name = vim.api.nvim_buf_get_name(buf)
   local kind = vim.bo[buf].buftype
   local dir = name:match('^oil://(.*)$')
-  if dir then
+  local version = vim.startswith(name, 'fugitive://') and version_of(name)
+  if version then
+    return version
+  elseif dir then
     dir = vim.fs.normalize(dir)
     return { path = told(dir, dir) }
   elseif kind == '' and name ~= '' then
@@ -283,7 +330,7 @@ local function place(buf)
   elseif kind == 'help' then
     return { before = 'help', name = vim.fs.basename(name) }
   elseif kind == 'terminal' then
-    return { before = 'terminal', name = vim.b[buf].term_title or vim.fs.basename(name) }
+    return { before = 'terminal', name = terminal_name(buf, name) }
   elseif kind == 'quickfix' then
     local list = vim.fn.getwininfo(vim.api.nvim_get_current_win())[1].loclist == 1
     return { name = list and 'locations' or 'quickfix' }
@@ -430,6 +477,9 @@ local function draw(on)
       put(left, 'muted', here.before .. ' ')
     end
     put(left, 'strong', on.nameshort and middle(here.name, 16) or here.name)
+  end
+  if here.after then
+    put(left, 'muted', '  ' .. here.after)
   end
   if vim.bo[buf].modified then
     put(left, 'text', ' ' .. glyph.on)

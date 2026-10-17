@@ -2700,8 +2700,21 @@ in
           vim.defer_fn(function()
             expect('typing', 120, 'project/sub/notes.txt ' .. g.on .. '  insert',
               g.failed .. ' 1  ' .. g.branch .. ' main ' .. g.on)
-            io.stdout:write(#wrong == 0 and 'as designed' or table.concat(wrong, '\n'))
-            vim.cmd('qa!')
+            vim.cmd('stopinsert')
+            vim.defer_fn(function()
+              -- The file as fugitive opens it in the index: told from its
+              -- root as the file is, the version after it, git's state its
+              -- folder's.
+              vim.cmd('enew')
+              vim.bo.buftype = 'nowrite'
+              vim.api.nvim_buf_set_name(0, 'fugitive://' .. vim.fn.getcwd() .. '/project/.git//0/sub/notes.txt')
+              expect('a version', 120, 'project/sub/notes.txt  index', g.branch .. ' main ' .. g.on)
+              -- A terminal by its program, not its whole term:// address.
+              vim.cmd('terminal sleep 5')
+              expect('a terminal', 120, 'terminal sleep 5', ''')
+              io.stdout:write(#wrong == 0 and 'as designed' or table.concat(wrong, '\n'))
+              vim.cmd('qa!')
+            end, 100)
           end, 200)
         '';
       in
@@ -2720,6 +2733,57 @@ in
         if [ "$(cat answer)" != "as designed" ]; then cat answer; exit 1; fi
         touch $out
       '';
+
+    # Neovim's numbers stand in one column: the line the cursor is on says
+    # its own number, marked, right-aligned with the counts above and below
+    # it rather than pushed left, and a wrapped line's later rows say none.
+    neovim-keeps-its-numbers-in-one-column =
+      let
+        home = account workstation;
+        probe = pkgs.writeText "probe.lua" ''
+          local wrong = {}
+          vim.wo.wrap = true
+          vim.api.nvim_win_set_cursor(0, { 61, 0 })
+          local function column(lnum)
+            return vim.api.nvim_eval_statusline(vim.o.statuscolumn, {
+              use_statuscol_lnum = lnum, highlights = true, winid = 0,
+            })
+          end
+          local above, here, below = column(60), column(61), column(62)
+          if not here.str:match('^%s*61 $') then
+            table.insert(wrong, 'the line here reads "' .. here.str .. '"')
+          end
+          if not above.str:match('^%s*1 $') or not below.str:match('^%s*1 $') then
+            table.insert(wrong, 'the lines beside it read "' .. above.str .. '" and "' .. below.str .. '"')
+          end
+          if #above.str ~= #here.str or #below.str ~= #here.str then
+            table.insert(wrong, 'the numbers are not one width: "' .. above.str .. '", "' .. here.str .. '", "' .. below.str .. '"')
+          end
+          local marked = false
+          for _, mark in ipairs(here.highlights) do
+            marked = marked or mark.group == 'CursorLineNr'
+          end
+          if not marked then
+            table.insert(wrong, 'the line here is not marked as the cursor line')
+          end
+          vim.wo.relativenumber, vim.wo.number = false, false
+          if vim.trim(column(60).str) ~= ''' then
+            table.insert(wrong, 'with numbers off the column says "' .. column(60).str .. '"')
+          end
+          io.stdout:write(#wrong == 0 and 'as designed' or table.concat(wrong, '\n'))
+          vim.cmd('qa!')
+        '';
+      in
+      pkgs.runCommandLocal "neovim-keeps-its-numbers-in-one-column"
+        { nativeBuildInputs = [ home.home.path ]; }
+        ''
+          ${neovimAt home}
+          seq 1 120 > lines.txt
+          nvim --headless lines.txt -c 'luafile ${probe}' > answer 2> complaints
+          if [ -s complaints ]; then cat complaints; exit 1; fi
+          if [ "$(cat answer)" != "as designed" ]; then cat answer; exit 1; fi
+          touch $out
+        '';
 
     # The account's Neovim binds every key in the map, and only those: each
     # action a key names is one a file registered, or one a plugin that
