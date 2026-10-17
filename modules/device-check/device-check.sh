@@ -1,6 +1,7 @@
 # Names the devices that have stopped working: any whose runtime power
 # management failed, which the kernel then holds failed and won't wake until
-# the next boot, and any the machine expects that isn't there.
+# the next boot, any the machine expects that isn't there, and any disk that
+# reported a fault to smartd this boot, which device-check-disk keeps.
 #
 #   device-check    names what has gone wrong since it last ran, and what
 #                   works again, in the journal and on the desktop
@@ -45,9 +46,21 @@ missing() {
   done < "$expected"
 }
 
+# Each disk that reported a fault, as "disk", a tab, and the disk with what
+# it reported.
+disk_faults() {
+  local file device message
+  for file in "$root/run/device-check/disks"/*; do
+    [ -f "$file" ] || continue
+    IFS=$'\t' read -r device message < "$file" || continue
+    printf 'disk\t%s reports %s\n' "$device" "$message"
+  done
+}
+
 {
   failed_power
   missing
+  disk_faults
 } | sort -u > "$now"
 
 # Says each finding, warnings for what broke and notices for what's fixed,
@@ -61,6 +74,8 @@ tell() {
       power/fixed) line="$subject wakes again" ;;
       missing/broke) line="$subject is missing" ;;
       missing/fixed) line="$subject is back" ;;
+      disk/broke) line="The disk $subject" ;;
+      disk/fixed) line="The disk ${subject/ reports / no longer reports }" ;;
     esac
     echo "<$priority>$line" >&2
     "$notify" -u "$urgency" -a Devices "$line" || true

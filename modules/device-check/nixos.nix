@@ -7,6 +7,17 @@
 # every two minutes after, which, since its clock stops in sleep, includes two
 # minutes after every resume. It names each finding once, in the journal and
 # as a notification, and again when it's fixed.
+#
+# A disk that's failing says so before it fails: its spare blocks run low,
+# it overheats, it finds errors in what it stored, or it turns read-only. On
+# NVMe those are the critical warning flags (-H), new media errors or wear
+# past 95% (-f), and new errors of the disk's own in its error log (-l
+# error), which smartd tells apart from commands the system sent that the
+# disk didn't support. smartd reads each disk every 30 minutes, and hands a
+# fault to device-check-disk, which keeps it in /run for device-check to
+# name. It runs no self-tests, since Btrfs's monthly scrub reads and checks
+# every block, and it doesn't write to everyone's terminals, which NixOS
+# has it do unless told otherwise.
 {
   config,
   lib,
@@ -35,6 +46,16 @@ in
       lib.mapAttrsToList (name: path: "${name}=${path}") config.jitsusama.devices.expected
     );
     environment.systemPackages = [ deviceCheck ];
+
+    services.smartd = {
+      enable = true;
+      autodetect = true;
+      notifications.wall.enable = false;
+      defaults.autodetected = lib.concatStringsSep " " [
+        "-H -f -l error"
+        "-m <nomailer> -M exec ${deviceCheck}/bin/device-check-disk"
+      ];
+    };
 
     # Every account's, but the greeter's and the system's own.
     systemd.user.services.device-check = {
