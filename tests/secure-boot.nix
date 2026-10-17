@@ -4,17 +4,33 @@
 # measured-boot policy with a PIN, a recovery key is added and the install
 # passphrase wiped, and the disk opens with the PIN alone. A changed PCR makes
 # the TPM refuse. The TPM keeps no NvPCRs, so no boot or login waits on them.
+# Each generation is counted as it boots and blessed once it's up, and one
+# whose tries are spent is passed over for the last good one, the TPM still
+# opening the disk, with a word to the session.
 { self, pkgs }:
 let
   passphrase = "install-passphrase";
   pin = "2468";
+  notices = pkgs.writeShellApplication {
+    name = "stand-in-notices";
+    text = ''
+      exec ${
+        pkgs.python3.withPackages (python: [ python.dbus-fast ])
+      }/bin/python3 ${./stand-in-notices.py} "$@"
+    '';
+  };
 in
 pkgs.testers.runNixOSTest {
   name = "secure-boot";
   globalTimeout = 40 * 60;
 
   nodes.machine =
-    { config, lib, ... }:
+    {
+      config,
+      extendModules,
+      lib,
+      ...
+    }:
     {
       imports = [
         self.nixosModules.disko
@@ -46,8 +62,16 @@ pkgs.testers.runNixOSTest {
       # which has one.
       disko.imageBuilder.extraConfig = {
         boot.lanzaboote.measuredBoot.enable = lib.mkForce false;
-        system.extraDependencies = [ config.system.build.toplevel ];
+        system.extraDependencies = [
+          config.system.build.toplevel
+          config.system.build.later
+        ];
       };
+      # A later generation to install, which differs only in what it says.
+      system.build.later =
+        (extendModules {
+          modules = [ { environment.etc.generation.text = "later"; } ];
+        }).config.system.build.toplevel;
       # disko's image builder hands vmTools its module tree as the kernel,
       # which current nixpkgs refuses (disko#1298); its new name is
       # kernelModules, beside the real kernel.
@@ -68,6 +92,7 @@ pkgs.testers.runNixOSTest {
       );
 
       environment.systemPackages = [
+        notices
         pkgs.tpm2-tools
         pkgs.jq
         pkgs.cryptsetup
@@ -151,10 +176,22 @@ pkgs.testers.runNixOSTest {
           real = "${nodes.machine.system.build.toplevel}"
           machine.succeed(f"nix-env -p /nix/var/nix/profiles/system --set {real}")
           print(machine.succeed(f"{real}/bin/switch-to-configuration boot 2>&1"))
+          # Installed with its three tries to count.
+          machine.succeed("ls /boot/EFI/Linux/nixos-generation-2-*+3.efi")
           machine.reboot()
           unlock("${passphrase}")
           machine.wait_for_unit("multi-user.target")
           t.assertIn("Secure Boot: enabled (user)", machine.succeed("bootctl status"))
+          # The boot counts only once the services are up.
+          machine.wait_for_unit("systemd-bless-boot.service")
+          up, blessed = (
+              int(machine.succeed(f"systemctl show -P {when} {unit}"))
+              for when, unit in [
+                  ("ActiveEnterTimestampMonotonic", "multi-user.target"),
+                  ("ExecMainStartTimestampMonotonic", "systemd-bless-boot.service"),
+              ]
+          )
+          t.assertGreater(blessed, up, "the boot was blessed before its services were up")
 
       with subtest("the measured-boot policy covers PCRs 0, 4 and 7"):
           machine.wait_for_unit("systemd-pcrlock-make-policy.service")
@@ -203,6 +240,54 @@ pkgs.testers.runNixOSTest {
           print(logind)
           t.assertNotIn("measurement", logind)
 
+      def entries():
+          return json.loads(machine.succeed("bootctl list --json=short"))
+
+      with subtest("a generation counted from its install is blessed once it's up"):
+          booted = [e for e in entries() if e.get("isSelected")]
+          print(booted)
+          t.assertEqual(len(booted), 1)
+          t.assertIn("nixos-generation-2-", booted[0]["id"])
+          t.assertNotIn("triesLeft", booted[0], "the booted generation is still being counted")
+          machine.wait_for_unit("boot-fell-back.service")
+          machine.fail("test -e /run/boot-fell-back")
+
+      with subtest("a generation that never boots is passed over, and the session is told"):
+          later = "${nodes.machine.system.build.later}"
+          machine.succeed(f"nix-env -p /nix/var/nix/profiles/system --set {later}")
+          machine.succeed(f"{later}/bin/switch-to-configuration boot")
+          # Its three tries spent, as three boots that never came up leave it.
+          machine.succeed(
+              "cd /boot/EFI/Linux && f=$(ls nixos-generation-3-*+3.efi) && mv $f ''${f%+3.efi}+0-3.efi"
+          )
+          machine.reboot()
+          unlock("${pin}")
+          machine.wait_for_unit("multi-user.target")
+          t.assertEqual(machine.succeed("readlink -f /run/booted-system").strip(), real)
+          machine.wait_for_unit("boot-fell-back.service")
+          said = machine.succeed("cat /run/boot-fell-back").strip()
+          t.assertEqual(said, "Generation 3 failed to boot 3 times, so this is 2.")
+          # The session hears the file and waits for something to show
+          # notices, then tells it.
+          machine.succeed("loginctl enable-linger alice")
+          machine.wait_for_unit("user@1000.service")
+          told = lambda state: machine.wait_until_succeeds(
+              "test \"$(systemctl --user -M alice@ show -P ActiveState"
+              f" boot-fell-back.service)\" = {state}",
+              timeout=60,
+          )
+          told("activating")
+          machine.succeed(
+              "systemd-run --user -M alice@ --unit notices"
+              " /run/current-system/sw/bin/stand-in-notices /home/alice/told"
+          )
+          told("active")
+          t.assertEqual(
+              machine.succeed("cat /home/alice/told"),
+              f"Boot\nBooted the last good generation\n{said}\n",
+          )
+
+      # Last, since the PCR it changes stays changed until the next boot.
       with subtest("the TPM refuses once a measured PCR changes"):
           # A scratch volume bound to the same policy, since the system's own
           # is already open.
