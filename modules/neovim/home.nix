@@ -328,6 +328,14 @@ in
 
   # The theme as Neovim's colour scheme, every colour one of its roles.
   xdg.configFile."nvim/colors/jitsusama.lua".source = ./colors/jitsusama.lua;
+  # The names English doesn't know, checked beside it (init.lua's
+  # spelllang), built once here rather than each time Neovim starts.
+  xdg.configFile."nvim/spell/names.utf-8.spl".source =
+    pkgs.runCommandLocal "names.utf-8.spl" { nativeBuildInputs = [ pkgs.neovim-unwrapped ]; }
+      ''
+        HOME=$TMPDIR nvim --clean --headless -c "mkspell! $TMPDIR/names.utf-8.spl ${./names.add}" -c 'qa!'
+        mv $TMPDIR/names.utf-8.spl $out
+      '';
 
   # The plugins that wait, and what each brings: the modules it holds and
   # the commands it and its file make, found by starting this Neovim once

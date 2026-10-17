@@ -1,0 +1,60 @@
+# The names Neovim's spell check doesn't know but writing here uses: the
+# programs, protocols and hardware the machines run on, and the words
+# for them. Built into the "names" spell file Neovim checks beside
+# English. A word in lowercase also allows it capitalized; one with a
+# capital needs it.
+#
+# Programs and projects
+btop
+disko
+ErgoDox
+fzf
+gitsigns
+greetd
+Hyprland
+Jitsusama
+kitty's
+neovim
+neovim's
+niri
+niri's
+nixpkgs
+nixpkgs's
+NixOS
+NetworkManager
+octo
+octo's
+Omarchy
+Omarchy's
+PipeWire
+Plymouth
+polkit
+Quickshell
+Quickshell's
+shellcheck
+swayidle
+systemd
+treefmt
+udev
+Wayland
+WezTerm
+zellij
+zsh
+# Hardware and systems
+initrd
+macOS
+MacBook
+TPM
+TPMs
+YubiKey
+YubiKeys
+# Words for the work
+config
+Colemak
+monospace
+runbook
+unpushed
+worktree
+worktrees
+Ctrl
+GTK

@@ -2785,6 +2785,33 @@ in
           touch $out
         '';
 
+    # Neovim's spell check in a markdown file knows the names this writing
+    # uses, and still finds a word spelt wrong.
+    neovim-knows-the-names-it-writes =
+      let
+        home = account workstation;
+        probe = pkgs.writeText "probe.lua" ''
+          local line = vim.api.nvim_buf_get_lines(0, 0, 1, false)[1]
+          local flagged = {}
+          for _, bad in ipairs(vim.spell.check(line)) do
+            table.insert(flagged, bad[1])
+          end
+          local said = table.concat(flagged, ' ')
+          io.stdout:write(vim.wo.spell and said == 'speling' and 'as designed'
+            or ('spell ' .. tostring(vim.wo.spell) .. ', flagged: ' .. said))
+          vim.cmd('qa!')
+        '';
+      in
+      pkgs.runCommandLocal "neovim-knows-the-names-it-writes" { nativeBuildInputs = [ home.home.path ]; }
+        ''
+          ${neovimAt home}
+          echo "Neovim's niri and Quickshell, a YubiKey and the TPM, in monospace: a speling slip." > notes.md
+          nvim --headless notes.md -c 'luafile ${probe}' > answer 2> complaints
+          if [ -s complaints ]; then cat complaints; exit 1; fi
+          if [ "$(cat answer)" != "as designed" ]; then cat answer; exit 1; fi
+          touch $out
+        '';
+
     # The account's Neovim binds every key in the map, and only those: each
     # action a key names is one a file registered, or one a plugin that
     # waits provides, each key is bound as it says, a scope's in a buffer it
