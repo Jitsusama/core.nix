@@ -33,6 +33,9 @@ Singleton {
     // The letters typed toward a cell, and the first cell, once picked.
     property string typed: ""
     property var first: null
+    // Said for the desktop test, which waits on the letters it typed
+    // before photographing them.
+    onTypedChanged: Report.say(`picker typed ${typed}`)
     readonly property bool lettered: typed !== "" || first !== null
     // Set once the box is taken, so the next frame is drawn empty.
     property bool leaving: false

@@ -75,10 +75,21 @@ Singleton {
         hide.restart();
     }
 
+    // What last showed itself, as its player and track.
+    property string announced: ""
+
     // A player's own change, which shows only while notices aren't held,
-    // and never over what a key just did.
+    // and never over what a key just did. It shows once for each track a
+    // player plays, whichever order MPRIS says it took over, began playing
+    // and changed track in, so a player starting shows itself every time.
     function arrived(): void {
-        if (playing && !Quiet.on && !(shown && told !== null))
+        if (!playing)
+            return;
+        const now = `${player.dbusName} ${title}`;
+        if (now === announced)
+            return;
+        announced = now;
+        if (!Quiet.on && !(shown && told !== null))
             show(null);
     }
 
@@ -184,6 +195,7 @@ Singleton {
     }
 
     onPlayerChanged: arrived()
+    onPlayingChanged: arrived()
 
     Timer {
         id: hide

@@ -477,6 +477,9 @@ pkgs.testers.runNixOSTest {
       };
       home-manager.users.${account} = {
         home.stateVersion = "26.05";
+        # A cursor that holds still, so two runs photograph kitty the same
+        # rather than catching its fade wherever it happens to be.
+        xdg.configFile."kitty/kitty.conf".text = lib.mkAfter "cursor_blink_interval 0";
         jitsusama.quickshell.reports = true;
         # No key repeats. A key the test presses is let go when the host gets
         # round to it, which on a busy host is past the delay a held key
@@ -630,21 +633,23 @@ pkgs.testers.runNixOSTest {
           yield
           reported(what, lambda rest: rest == "", since, timeout)
 
-      # Whether the screen holds still, two pictures in a row the same, before
-      # the time is up: niri composes a frame a moment after it's asked to,
-      # and windows and surfaces move as they come.
-      def held_still(timeout=10):
+      # Whether the screen holds still for half a second, twice the theme's
+      # longest movement, before the time is up: niri composes a frame a
+      # moment after it's asked to, windows and surfaces move as they come,
+      # and a busy host can draw two frames in a row the same mid-motion.
+      def held_still(timeout=10, span=0.5):
           deadline = time.monotonic() + timeout
           with tempfile.TemporaryDirectory() as folder:
               shot = os.path.join(folder, "shot.ppm")
-              last = None
+              last, since = None, time.monotonic()
               while time.monotonic() < deadline:
                   machine.send_monitor_command(f"screendump {shot}")
                   with open(shot, "rb") as taken:
                       now = taken.read()
-                  if now == last:
+                  if now != last:
+                      last, since = now, time.monotonic()
+                  elif time.monotonic() - since >= span:
                       return True
-                  last = now
           return False
 
       # A photograph of the screen once it holds still, for a person to look
@@ -820,6 +825,11 @@ pkgs.testers.runNixOSTest {
               return colours > 1000
 
           retry(painted, timeout_seconds=30)
+          # The picture to look at, once its fade has finished and the
+          # microphone's meter, which can show as the session starts, has
+          # gone.
+          machine.wait_until_fails(in_session("niri msg layers | grep -q microphone"), timeout=30)
+          photograph("workspace")
 
       with subtest("the overview shows the time and status, and only the overview"):
           machine.fail(in_session("niri msg layers | grep -qw status"))
@@ -840,6 +850,9 @@ pkgs.testers.runNixOSTest {
           with told("drawn notifications"):
               as_account("notify-send 'Build finished' 'the laptop is ready'")
           photograph("notification")
+          # It leaves on its own, before the meters, whose pictures it would
+          # be in for as long as the host takes to reach them.
+          machine.wait_until_fails(in_session("niri msg layers | grep -q notifications"), timeout=30)
 
       # Quickshell hears a node change only once it has bound the node's audio,
       # a moment after WirePlumber names it the default, which the meter says,
@@ -935,7 +948,7 @@ pkgs.testers.runNixOSTest {
           as_account("qs ipc call launcher toggle")
           launcher_ready()
           type_in("volume")
-          machine.screenshot("launcher-volume")
+          photograph("launcher-volume")
           machine.send_key("esc")
           machine.wait_until_fails(in_session("niri msg layers | grep -qw launcher"), timeout=10)
 
@@ -943,7 +956,7 @@ pkgs.testers.runNixOSTest {
           as_account("qs ipc call launcher toggle")
           launcher_ready()
           type_in("kitty", selecting="kitty")
-          machine.screenshot("launcher")
+          photograph("launcher")
           machine.send_key("ret")
           # The first window opened can take as long as the first GTK one.
           machine.wait_until_succeeds(in_session("niri msg windows | grep -i kitty"), timeout=120)
@@ -1000,7 +1013,7 @@ pkgs.testers.runNixOSTest {
           as_account("qs ipc call launcher toggle")
           launcher_ready()
           type_in("tuesday", selecting="Notes for Tuesday")
-          machine.screenshot("launcher-window")
+          photograph("launcher-window")
           machine.send_key("ret")
           machine.wait_until_succeeds(
               in_session("niri msg focused-window | grep -q 'Notes for Tuesday'"), timeout=10
@@ -1052,7 +1065,7 @@ pkgs.testers.runNixOSTest {
           # The window used last is chosen as it opens, and this one isn't
           # there to choose.
           tab_to("", scratch[-1])
-          machine.screenshot("launcher-windows")
+          photograph("launcher-windows")
           went("Scratch 25")
           tab_to("", "Notes for Tuesday")
           went("Notes for Tuesday")
@@ -1081,14 +1094,14 @@ pkgs.testers.runNixOSTest {
               type_in(verb)
 
           into_notes("copy")
-          machine.screenshot("launcher-verbs")
+          photograph("launcher-verbs")
           machine.send_key("ret")
           machine.wait_until_fails(in_session("niri msg layers | grep -qw launcher"), timeout=10)
           t.assertEqual(as_account("wl-paste --no-newline"), "Notes for Tuesday")
 
           into_notes("move")
           step_in("ret")
-          machine.screenshot("launcher-target")
+          photograph("launcher-target")
           machine.send_key("ret")
 
           def moved(_):
@@ -1143,13 +1156,13 @@ pkgs.testers.runNixOSTest {
           copied("3c:22:fb:12:34:56", "Apple, Inc.")
           copied("5 km in mi", "3.10686")
           answer("350 f in c")
-          machine.screenshot("launcher-units")
+          photograph("launcher-units")
           machine.send_key("esc")
           # The zones come from the list built from tzdata, so this proves it's
           # there. The minute may turn while it's asked, so either will do.
           before = machine.succeed("date -u +%H:%M").strip()
           answer("time in utc")
-          machine.screenshot("launcher-time")
+          photograph("launcher-time")
           machine.send_key("ret")
           machine.wait_until_fails(in_session("niri msg layers | grep -qw launcher"), timeout=10)
           after = machine.succeed("date -u +%H:%M").strip()
@@ -1163,10 +1176,10 @@ pkgs.testers.runNixOSTest {
           slack += ["success", "alert", "deepest", "text"]
           copied("slack theme", ",".join(theme["roles"][role] for role in slack))
           answer("#f53")
-          machine.screenshot("launcher-colour")
+          photograph("launcher-colour")
           machine.send_key("esc")
           answer("10.0.0.0/22")
-          machine.screenshot("launcher-answer")
+          photograph("launcher-answer")
           machine.send_key("esc")
           # With no network, what has to ask one says it couldn't, and nothing
           # breaks. Each waits for its answer to settle, failed; asked again
@@ -1176,7 +1189,7 @@ pkgs.testers.runNixOSTest {
               answer(typed)
               machine.send_key("esc")
           answer("weather tokyo")
-          machine.screenshot("launcher-offline")
+          photograph("launcher-offline")
           machine.send_key("esc")
           log = as_account("journalctl --user -u quickshell --no-pager -o cat")
           assert "ERROR" not in log and "Error:" not in log, "an answer raised an error"
@@ -1184,10 +1197,10 @@ pkgs.testers.runNixOSTest {
       with subtest("the launcher finds emoji as one row, and steps into the rest"):
           copied("tada", "\U0001F389")
           answer("smiling")
-          machine.screenshot("launcher-emoji")
+          photograph("launcher-emoji")
           step_in()
           type_in(" cat")
-          machine.screenshot("launcher-emoji-all")
+          photograph("launcher-emoji-all")
           machine.send_key("ret")
           closed = in_session("niri msg layers | grep -qw launcher")
           machine.wait_until_fails(closed, timeout=10)
@@ -1207,7 +1220,7 @@ pkgs.testers.runNixOSTest {
           machine.send_key("meta_l-shift-slash")
           launcher_ready()
           type_in("paste")
-          machine.screenshot("launcher-shortcuts")
+          photograph("launcher-shortcuts")
           for _ in "paste":
               machine.send_key("backspace")
           # The touchscreen's swipes are among them, found by "swipe", each
@@ -1215,7 +1228,7 @@ pkgs.testers.runNixOSTest {
           swipe = "swipe workspace below"
           type_in(swipe, selecting="Go to the workspace below")
           t.assertTrue(showing()["selected"]["chord"].startswith("3 "))
-          machine.screenshot("launcher-swipes")
+          photograph("launcher-swipes")
           for _ in swipe:
               machine.send_key("backspace")
           type_in("open a terminal")
@@ -1237,9 +1250,9 @@ pkgs.testers.runNixOSTest {
               as_account("printf 'the second copy\\nover two lines' | wl-copy > /dev/null 2>&1")
           machine.send_key("meta_l-v")
           launcher_ready()
-          machine.screenshot("launcher-copies-all")
+          photograph("launcher-copies-all")
           type_in("tues", selecting="Notes for Tuesday")
-          machine.screenshot("launcher-copies")
+          photograph("launcher-copies")
           machine.send_key("ret")
 
           def copied_again(_):
@@ -1287,7 +1300,7 @@ pkgs.testers.runNixOSTest {
           as_account("qs ipc call launcher toggle")
           launcher_ready()
           type_in("forget the clip", selecting="Forget the Clipboard")
-          machine.screenshot("launcher-forget-copies")
+          photograph("launcher-forget-copies")
           with told("forgot the copies"):
               machine.send_key("ret")
           t.assertEqual(as_account("wl-paste --no-newline 2>&1 || true"), "")
@@ -1296,7 +1309,7 @@ pkgs.testers.runNixOSTest {
           windows = len(json.loads(as_account("niri msg --json windows")))
           as_account("qs ipc call launcher toggle")
           launcher_ready()
-          machine.screenshot("launcher-home")
+          photograph("launcher-home")
           # The last row at home is the last collection, the shortcuts; a page
           # down stops there, so two reach it however long home grows.
           machine.send_key("pgdn")
@@ -1367,7 +1380,9 @@ pkgs.testers.runNixOSTest {
           wide = json.loads(as_account("niri msg --json focused-output"))["logical"]["width"]
           assert abs(width - wide * 0.8) <= wide * 0.02, swayimg
           assert abs(left + width / 2 - wide / 2) <= wide * 0.02, swayimg
-          machine.screenshot("swayimg")
+          # The steps before leave notices, which go on their own.
+          machine.wait_until_fails(in_session("niri msg layers | grep -q notifications"), timeout=30)
+          photograph("swayimg")
           machine.send_key("e")
           machine.wait_until_succeeds(f"pgrep -u ${account} -f '[g]imp.*{looked}'", timeout=30)
           machine.wait_until_fails("pgrep -u ${account} -x swayimg", timeout=10)
@@ -1381,7 +1396,7 @@ pkgs.testers.runNixOSTest {
           windows = json.loads(as_account("niri msg --json windows"))
           zathura = next(window for window in windows if window["app_id"] == "org.pwmt.zathura")
           assert not zathura["is_floating"], zathura
-          machine.screenshot("zathura")
+          photograph("zathura")
           machine.send_key("q")
           machine.wait_until_fails("pgrep -u ${account} -f '[z]athura'", timeout=10)
 
@@ -1389,7 +1404,7 @@ pkgs.testers.runNixOSTest {
           for output in ["stand-in-headphones", "stand-in-speakers"]:
               as_account("qs ipc call launcher collection sound")
               launcher_ready()
-              machine.screenshot(f"launcher-sound-{output}")
+              photograph(f"launcher-sound-{output}")
               kind = output.removeprefix("stand-in-")
               type_in(kind, selecting=kind)
               machine.send_key("ret")
@@ -1418,7 +1433,7 @@ pkgs.testers.runNixOSTest {
               as_account("qs ipc call launcher collection displays")
               launcher_ready()
               step_in()
-              machine.screenshot("launcher-displays")
+              photograph("launcher-displays")
               type_in(f"scale {round(wanted * 100)}")
               machine.send_key("ret")
               retry(lambda _, wanted=wanted: scale() == wanted, timeout_seconds=15)
@@ -1433,13 +1448,13 @@ pkgs.testers.runNixOSTest {
           )
           as_account("qs ipc call launcher collection wifi")
           launcher_ready()
-          machine.screenshot("launcher-wifi")
+          photograph("launcher-wifi")
           type_in("lant", selecting="Lantern")
           # Never joined, it asks for its password, which a wrong one doesn't
           # satisfy; the launcher stays to say so.
           step_in("ret")
           type_in("not the password")
-          machine.screenshot("launcher-wifi-password")
+          photograph("launcher-wifi-password")
           with told("refused wifi Lantern", timeout=60):
               machine.send_key("ret")
           machine.succeed("journalctl -u wifid | grep -q \"couldn't join Lantern: WrongPassword\"")
@@ -1533,9 +1548,9 @@ pkgs.testers.runNixOSTest {
           as_account("qs ipc call launcher toggle")
           launcher_ready()
           # Its row at home counts the one missed earlier, since it left by itself.
-          machine.screenshot("launcher-home-missed")
+          photograph("launcher-home-missed")
           type_in("build fin", selecting="the laptop is ready")
-          machine.screenshot("launcher-notices")
+          photograph("launcher-notices")
           # Nothing sent it that can be gone to, so Return copies what it said.
           machine.send_key("ret")
 
@@ -1548,7 +1563,7 @@ pkgs.testers.runNixOSTest {
           # Super+N opens all of them, which counts them seen.
           machine.send_key("meta_l-n")
           launcher_ready()
-          machine.screenshot("launcher-notices-all")
+          photograph("launcher-notices-all")
           machine.send_key("esc")
 
       with subtest("a notice's action is done by the keys, and one not acted on stays unread"):
@@ -1575,7 +1590,7 @@ pkgs.testers.runNixOSTest {
               machine.send_key("meta_l-n")
           launcher_ready()
           launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Play it")
-          machine.screenshot("launcher-notice-actions")
+          photograph("launcher-notice-actions")
           machine.send_key("ret")
           machine.wait_until_succeeds("grep -qx play /tmp/answer", timeout=15)
           machine.wait_until_fails(in_session("niri msg layers | grep -q launcher"), timeout=10)
@@ -1671,7 +1686,7 @@ pkgs.testers.runNixOSTest {
           as_account("qs ipc call launcher toggle")
           launcher_ready()
           type_in("keep awake")
-          machine.screenshot("launcher-keep-awake")
+          photograph("launcher-keep-awake")
           machine.send_key("ret")
           machine.wait_until_succeeds(f"{held} | grep -qw idle", timeout=10)
           machine.wait_until_succeeds(f"{held} | grep -q handle-lid-switch", timeout=10)
@@ -1691,7 +1706,7 @@ pkgs.testers.runNixOSTest {
           machine.wait_until_succeeds(f"{held} | grep -q handle-lid-switch", timeout=10)
           as_account("qs ipc call launcher toggle")
           launcher_ready()
-          machine.screenshot("launcher-home-awake")
+          photograph("launcher-home-awake")
           type_in("let it sleep")
           machine.send_key("ret")
           machine.wait_until_fails(held, timeout=10)
@@ -1737,7 +1752,7 @@ pkgs.testers.runNixOSTest {
           machine.send_key("down")
           machine.send_key("ret")
           launcher_ready()
-          machine.screenshot("launcher-held")
+          photograph("launcher-held")
           machine.send_key("esc")
           machine.wait_until_fails(in_session("niri msg layers | grep -q launcher"), timeout=10)
           with told("keys margin"):
@@ -1757,7 +1772,7 @@ pkgs.testers.runNixOSTest {
               machine.send_key("meta_l-o")
           machine.send_key("ret")
           launcher_ready()
-          machine.screenshot("launcher-from-margin")
+          photograph("launcher-from-margin")
           machine.send_key("esc")
           # Opening them counted them seen, so nothing's waiting.
           machine.wait_until_fails(in_session(margin), timeout=10)
@@ -1780,15 +1795,21 @@ pkgs.testers.runNixOSTest {
           muted = "wpctl get-volume @DEFAULT_AUDIO_SOURCE@ | grep -q MUTED"
           machine.wait_until_fails(in_session(muted), timeout=10)
           machine.wait_until_fails(in_session(margin), timeout=10)
+          # Unmuting shows the meter a moment, which the next pictures
+          # would hold for as long as the host takes to reach them.
+          machine.wait_until_fails(in_session("niri msg layers | grep -q microphone"), timeout=10)
 
       # Any player that tells the desktop what it plays shows in the margin
       # while it plays, and the media keys' command shows what it is.
       with subtest("what's playing shows in the margin, and a media key shows what it is"):
           machine.wait_until_fails(in_session(margin), timeout=10)
-          with told("drawn margin"):
+          # A track that starts by itself shows its card a moment, which
+          # goes before the margin is photographed.
+          with told("drawn notifications"), told("drawn margin"):
               as_account(
                   "systemd-run --user --unit=player mpv --ao=null --no-video --loop ${track}"
               )
+          machine.wait_until_fails(in_session("niri msg layers | grep -q notifications"), timeout=30)
           photograph("margin-playing")
           # The play key pauses it, and the card says what was paused.
           with told("drawn notifications"):
@@ -1891,7 +1912,7 @@ pkgs.testers.runNixOSTest {
           machine.send_key("caps_lock")
           machine.wait_until_succeeds(f"grep -qx 1 {capitals}", timeout=10)
           wait_for_surface("margin")
-          machine.screenshot("margin-capitals")
+          photograph("margin-capitals")
           machine.send_key("caps_lock")
           machine.wait_until_succeeds(f"grep -qx 0 {capitals}", timeout=10)
           machine.wait_until_fails(in_session(margin), timeout=10)
@@ -1999,6 +2020,8 @@ pkgs.testers.runNixOSTest {
               machine.send_key("ret")
           for key in ("left", "up", "shift-right", "shift-right"):
               machine.send_key(key)
+          # The pictures before leave their notices, which go on their own.
+          machine.wait_until_fails(in_session("niri msg layers | grep -q notifications"), timeout=30)
           photograph("picker")
           with told(f"picked {x - 16},{y - 16} {width + 32}x{height}"):
               machine.send_key("ret")
@@ -2012,7 +2035,9 @@ pkgs.testers.runNixOSTest {
           type_in("region", selecting="A region")
           with told("keys picker"):
               machine.send_key("ret")
-          machine.send_chars("aab")
+          with told("picker typed b"):
+              machine.send_chars("aab")
+          machine.wait_until_fails(in_session("niri msg layers | grep -q notifications"), timeout=30)
           photograph("picker-cells")
           rows = round(16 * high / wide)
           with told(f"picked 0,0 {round(2 * wide / 16)}x{round(2 * high / rows)}"):
@@ -2441,6 +2466,6 @@ pkgs.testers.runNixOSTest {
           machine.succeed("journalctl -u bluetooth-agent | grep -q 'unregistering agent'")
           machine.fail("systemctl is-failed --quiet bluetooth-agent")
 
-      machine.screenshot("desktop")
+      photograph("desktop")
     '';
 }

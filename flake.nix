@@ -269,7 +269,9 @@
       # The tools for working on core's own programs, the disk guard and
       # wifid among them, with the toolchain their packages build with, so
       # nothing but Nix has to be installed first. direnv enters it in a
-      # program's directory, or `nix develop` then cargo there.
+      # program's directory, or `nix develop` then cargo there. It also
+      # holds shots-changed, which compares two runs of the desktop test's
+      # pictures (docs/testing.md).
       devShells = forEachSystem (pkgs: {
         default = pkgs.mkShell {
           # wifid's sign-in window builds against GTK and WebKit, which
@@ -283,6 +285,7 @@
             pkgs.rust-analyzer
             pkgs.rustc
             pkgs.rustfmt
+            (pkgs.callPackage ./tests/shots-changed.nix { })
           ];
         };
       });

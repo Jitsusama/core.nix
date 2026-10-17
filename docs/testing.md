@@ -183,6 +183,31 @@ enrolling without checksums refuses the option ROM of QEMU's network card,
 which the firmware runs, and that no NvPCR is set up at boot or measured at
 login. It lives in [`tests/secure-boot.nix`][4].
 
+### What Changed on Screen
+
+The desktop test photographs every state it puts the desktop in, each once
+the screen holds still, and keeps the pictures in its result. No check
+compares them with stored ones: a stored picture would fail on every change
+meant, and two runs of the same code don't draw every picture the same, as a
+clock or a notice's age moves on. Instead, a change to how anything looks is
+compared with main, and every picture it changed is looked at:
+
+```sh
+desktop=checks.x86_64-linux.vm-desktop-works
+main=$(nix build --no-link --print-out-paths "github:Jitsusama/core.nix#$desktop")
+here=$(nix build --no-link --print-out-paths ".#$desktop")
+nix develop -c shots-changed "$main" "$here" changed
+```
+
+`shots-changed` names each picture that changed, most first, by how many
+pixels, and draws it in `changed/` before, after and their difference, cut
+to where it changed. A picture that should have changed and isn't named
+matters as much as one named that shouldn't have. The pictures that move by
+themselves are named in [`tests/shots-that-move.txt`][5], each with what
+moves in it, and listed apart. One joins that list only once two runs of
+unchanged code show it moving, for a cause the test can't hold still; a
+picture caught before its state was drawn is a fault in the test instead.
+
 ## Earning a Check
 
 - A new check goes in the lowest tier that can show what it covers. Most
@@ -221,3 +246,4 @@ isn't restored by accident.
 [2]: kernel.md
 [3]: installing.md
 [4]: ../tests/secure-boot.nix
+[5]: ../tests/shots-that-move.txt
