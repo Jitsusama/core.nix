@@ -1,7 +1,12 @@
 # What Joel's kernel is configured for, one intent at a time. Each entry is a
 # Kconfig option set on top of nixpkgs's common configuration, and checks.nix
-# reads the finished configuration back to prove each one held.
-{ lib }:
+# reads the finished configuration back to prove each one held. The panic
+# screen's colours, { text, background } as "#rrggbb", come from the machine's
+# theme (nixos.nix); null keeps the kernel's white on black.
+{
+  lib,
+  panic ? null,
+}:
 let
   inherit (lib.kernel)
     yes
@@ -94,4 +99,11 @@ in
   DRM_PANIC_SCREEN_QR_CODE = option no;
   NOVA_CORE = option no;
   DRM_NOVA = option no;
+}
+// lib.optionalAttrs (panic != null) {
+  # The screen a panic draws, its log in the theme's text on its background,
+  # as the console and the boot draw theirs. The kernel takes these only as
+  # it's built, so another theme builds another kernel.
+  DRM_PANIC_FOREGROUND_COLOR = freeform "0x${lib.toLower (lib.removePrefix "#" panic.text)}";
+  DRM_PANIC_BACKGROUND_COLOR = freeform "0x${lib.toLower (lib.removePrefix "#" panic.background)}";
 }

@@ -113,6 +113,7 @@ configuration, and its own setting wins where the two differ. In short:
 | decompress modules quickly        | `MODULE_COMPRESS_ZSTD`, not xz      |
 | no allocation profiler            | `MEM_ALLOC_PROFILING` off           |
 | reboot after a panic              | `PANIC_TIMEOUT` of 10 s             |
+| a panic screen in the theme       | `DRM_PANIC_*_COLOR` from its roles  |
 
 nixpkgs gives huge pages only to programs that ask for them, with
 `TRANSPARENT_HUGEPAGE_MADVISE`, and the ones that would gain most no longer
@@ -134,6 +135,13 @@ it comes out of the build. A leak hunt can build it back in.
 A panic otherwise waits forever, and on the XPS 14 [both crashes][crashes]
 froze it until the power button was held. Ten seconds later the record is
 already in pstore, so rebooting loses nothing.
+
+The ten seconds before it show the panic's log, drawn by the kernel over
+whatever was on the screen. It's in the theme's text on its background, the
+colours of the account the machine signs in, as the console and the boot
+wear them, rather than the kernel's white on black. The kernel takes its
+colours only as it's built, so changing the theme builds the kernel again.
+A machine with no such account keeps the kernel's.
 
 Preemption stays switchable at boot, with `preempt=`, because nixpkgs keeps
 `PREEMPT_DYNAMIC` on. The rest of what a developer needs is already in

@@ -6,8 +6,9 @@
 # Import this with nixpkgs rather than calling it with callPackage, so the
 # kernel's override stays the one nixpkgs gives it: NixOS uses that to add
 # the features a machine needs. Then give it the CPU, as Clang's -march names
-# it, or null for any x86-64 machine, and the machine's AutoFDO profile, or
-# null for none.
+# it, or null for any x86-64 machine, the machine's AutoFDO profile, or
+# null for none, and the panic screen's colours, { text, background } as
+# "#rrggbb", or null for the kernel's white on black.
 {
   lib,
   fetchpatch,
@@ -19,7 +20,11 @@
   writeText,
   ...
 }:
-{ cpu, profile }:
+{
+  cpu,
+  profile,
+  panic ? null,
+}:
 let
   # Clang compiles and LLD links, which ThinLTO needs. LLVM 22 rather than
   # nixpkgs's default 21, whose LLD breaks objtool when compiled with GCC 16,
@@ -67,7 +72,7 @@ linux_7_2.override {
   # Where nixpkgs's common configuration sets one of these differently, ours
   # wins.
   structuredExtraConfig = lib.mapAttrs (_option: lib.mkForce) (
-    import ./settings.nix { inherit lib; }
+    import ./settings.nix { inherit lib panic; }
   );
 
   kernelPatches = [
