@@ -1393,6 +1393,46 @@ in
       "The console's colours aren't the account's theme, in the console's order."
       (follows "osaka-jade" && follows "flexoki-light" && graphical.config.console.colors == [ ]);
 
+  # The console's font is the account's monospace face at Medium, drawn into
+  # the kernel's 16 by 32 cell: a PSF 2 font of at most 256 glyphs, so the
+  # console keeps its bright colours, naming what each glyph stands for, with
+  # slot 32 blank, since the console clears the screen with it and kbd
+  # refuses a font without, and loaded in the initrd. A machine that names
+  # no account keeps the kernel's own font.
+  the-console-wears-the-face =
+    let
+      machine = bareNixos [
+        self.nixosModules.workstation
+        self.nixosModules.graphical
+        { jitsusama.login.account = "someone"; }
+      ];
+      inherit (machine.config) console;
+      face = (account machine).jitsusama.theme.font.mono.family;
+    in
+    if !console.earlySetup || graphical.config.console.font != null then
+      holds "the-console-wears-the-face"
+        "The console's font isn't loaded in the initrd, or a machine without an account has one."
+        false
+    else
+      pkgs.runCommandLocal "the-console-wears-the-face" { } ''
+        font=${console.font}
+        word() { od -An -t u4 -j $(( $1 * 4 )) -N 4 "$font" | tr -d ' '; }
+        fail() { echo "The console's font $1."; exit 1; }
+        [ "$(word 0)" = 2253043058 ] || fail "isn't a PSF 2 font"
+        [ "$(word 3)" = 1 ] || fail "doesn't say what its glyphs stand for"
+        [ "$(word 4)" -le 256 ] || fail "holds $(word 4) glyphs, past which the console loses its bright colours"
+        [ "$(word 6)x$(word 7)" = 32x16 ] || fail "draws $(word 7) by $(word 6), not the kernel's 16 by 32"
+        ink=$(od -An -t x1 -v -j $(( 32 + 32 * $(word 5) )) -N "$(word 5)" "$font" | tr -d ' \n0')
+        [ -z "$ink" ] || fail "has ink in slot 32, which the console clears the screen with"
+        printf '%s\nMedium\n' ${lib.escapeShellArg face} | cmp -s - "$(dirname "$font")/face" \
+          || fail "isn't drawn from ${face} at Medium"
+        tail -c +$(( 32 + $(word 4) * $(word 5) + 1 )) "$font" | tr '\377' '\n' > table
+        for c in A '~' ─ █ ● é; do
+          grep -qxF "$c" table || fail "has no glyph for $c"
+        done
+        touch $out
+      '';
+
   # The panic screen wears the theme of the account the machine signs in, its
   # text on its background, and follows it when the theme changes. A machine
   # that names no account keeps the kernel's white on black. Read from the
@@ -3390,6 +3430,21 @@ in
       (pkgs.callPackage ./modules/quickshell/clipboard/package.nix { }).overrideAttrs
         (old: {
           pname = "clipboard-history-passes-clippy";
+          nativeBuildInputs = old.nativeBuildInputs ++ [ pkgs.clippy ];
+          buildPhase = ''
+            cargo clippy --all-targets --offline -- -D warnings
+          '';
+          doCheck = false;
+          installPhase = ''
+            touch $out
+          '';
+        });
+
+    # clippy finds nothing in the console's font tool, its tests included.
+    console-font-passes-clippy =
+      (pkgs.callPackage ./modules/console/font/package.nix { }).overrideAttrs
+        (old: {
+          pname = "console-font-passes-clippy";
           nativeBuildInputs = old.nativeBuildInputs ++ [ pkgs.clippy ];
           buildPhase = ''
             cargo clippy --all-targets --offline -- -D warnings
