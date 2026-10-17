@@ -40,8 +40,8 @@ let
   # only while nixpkgs's is older, so it never holds the kernel back.
   # docs/kernel.md says why this release.
   stable = {
-    version = "7.2.10";
-    hash = "sha256-L+qnBFPpH1Qb5qXJB42BaOCBr0Wj2XGAVIUFOM/y6/M=";
+    version = "7.2.11";
+    hash = "sha256-/Q/EefmDqMBTE/E+nDYzD+ZlHPclOWdIxA1c2T+h5qQ=";
   };
 in
 linux_7_2.override {
