@@ -1260,14 +1260,20 @@ pkgs.testers.runNixOSTest {
 
           retry(copied_again, timeout_seconds=10)
 
+      # A copy from a program that then closes: wl-copy in the foreground
+      # serves it until it's stopped. It's stopped once the clipboard hands
+      # the copy back, not after a guess: a two-second guess once ended a
+      # copy the history never heard.
+      def copied_then_closed(text, flags="", served=None):
+          served = served or f"[ \"$(wl-paste --no-newline 2>/dev/null)\" = '{text}' ]"
+          as_account(
+              f"echo -n '{text}' | wl-copy --foreground {flags} > /dev/null 2>&1 & p=$!; "
+              f"for i in $(seq 100); do {served} && break; sleep 0.1; done; kill $p"
+          )
+
       with subtest("a copy outlives the program that made it, unless it wasn't kept"):
-          # wl-copy in the foreground serves its copy until it's stopped, as a
-          # program closing would.
           with told("heard copy gone with its program"):
-              as_account(
-                  "echo -n 'gone with its program' | wl-copy --foreground > /dev/null 2>&1 & "
-                  "sleep 2; kill $!"
-              )
+              copied_then_closed("gone with its program")
 
           # Empty for a moment between its program going and the helper's
           # offer, which the retry waits out.
@@ -1279,19 +1285,17 @@ pkgs.testers.runNixOSTest {
           # with its program, leaving the clipboard empty rather than handing
           # back an older copy. The helper answers the moment it empties, so
           # empty twice over is empty for good.
-          as_account(
-              "echo -n 'a password' | wl-copy --foreground "
-              "--type x-kde-passwordManagerHint > /dev/null 2>&1 & sleep 2; kill $!"
+          copied_then_closed(
+              "a password",
+              flags="--type x-kde-passwordManagerHint",
+              served="wl-paste --list-types 2>/dev/null | grep -qx x-kde-passwordManagerHint",
           )
           machine.wait_until_fails(in_session("wl-paste --list-types > /dev/null 2>&1"), timeout=10)
           machine.fail(in_session("wl-paste --list-types > /dev/null 2>&1"))
 
       with subtest("Forget the Clipboard forgets every copy, and what it held"):
           with told("heard copy kept until forgotten"):
-              as_account(
-                  "echo -n 'kept until forgotten' | wl-copy --foreground > /dev/null 2>&1 & "
-                  "sleep 2; kill $!"
-              )
+              copied_then_closed("kept until forgotten")
 
           def still_kept(_):
               return as_account("wl-paste --no-newline 2>&1 || true") == "kept until forgotten"
@@ -2119,18 +2123,30 @@ pkgs.testers.runNixOSTest {
               assert not last or status == 0, f"video {count} never grew"
               return status == 0
 
+          # A key that stops the recording, then the notice that it's saved.
+          # A run has gone a minute without it, so what the recording was
+          # doing then is printed.
+          def saved(key):
+              try:
+                  with told("shows card Video saved", timeout=60):
+                      machine.send_key(key)
+              except AssertionError:
+                  print(machine.execute("ps -eww -o pid,stat,wchan:32,args | grep -aE '[f]fmpeg|[m]pv'")[1])
+                  print(machine.execute("ls -la /run/user/1000/camera-*; cat /run/user/1000/camera-recording.log")[1])
+                  print(as_account("pw-top -b -n 2 || true"))
+                  print(as_account("journalctl --user --no-pager -n 60 -o cat"))
+                  raise
+
           # Tab makes Return record, and Return again stops it.
           machine.send_key("tab")
           machine.send_key("ret")
           retry(lambda last: recording(1, last), timeout_seconds=60)
-          with told("shows card Video saved", timeout=60):
-              machine.send_key("ret")
+          saved("ret")
           # Escape while recording saves the video, then closes.
           machine.wait_until_succeeds(in_session(camera), timeout=10)
           machine.send_key("ret")
           retry(lambda last: recording(2, last), timeout_seconds=60)
-          with told("shows card Video saved", timeout=60):
-              machine.send_key("esc")
+          saved("esc")
           machine.wait_until_fails(in_session(camera), timeout=30)
           streams = probe("stream=codec_name", f"{videos}/*.mp4")
           t.assertEqual(streams.split(), ["h264", "aac"] * 2)
