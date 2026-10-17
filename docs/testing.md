@@ -73,6 +73,7 @@ quietly stopped holding.
 | `nix-collects-before-the-disk-fills` | Nix collects garbage during a build that fills the disk |
 | `resolved-is-set-per-network` | a laptop leaves resolved's global DNS settings as they ship |
 | `thermald-starts-after-its-drivers` | the XPS 14's thermal drivers load before thermald starts, and a thermald that stops is restarted |
+| `chromium-knows-the-panels-colours` | the XPS 14's Chrome, Slack and 1Password convert their colours to its panel's P3 |
 | `disk-guard-stays-in-the-background` | the disk guard yields to the account, and a command overrunning its memory never stops it |
 | `the-mac-guards-its-disk` | a Mac's guards run under launchd, with a Mac's paths and nothing to confine a run |
 | `spend-watch-stays-in-the-background` | the AI spend watch yields to the account, comes back when it fails, and leaves its status behind when it stops |

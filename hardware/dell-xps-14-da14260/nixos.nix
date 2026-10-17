@@ -58,6 +58,7 @@ in
     ../../modules/gpu/nixos.nix
     ../../modules/kernel/nixos.nix
     ../../modules/keyboard/nixos.nix
+    ../../modules/panel/nixos.nix
     ./camera.nix
     ./speakers.nix
   ];
@@ -84,6 +85,13 @@ in
   # starts, and has its own ready about 1.6 s later, so for that long there's
   # no card at all.
   jitsusama.gpu.path = "pci-0000:00:02.0";
+
+  # The panel, LG Display's 0x07C6, shows a gamut wider than Display P3: its
+  # EDID gives red 0.689/0.310, green 0.240/0.721 and blue 0.136/0.045. Dell's
+  # Windows profile for it has the same primaries and no calibration curves,
+  # so Windows only lets the programs that convert colours use it. P3 is the
+  # nearest space Chromium names.
+  jitsusama.panel.colourSpace = "display-p3-d65";
 
   # Microcode, and the firmware for Wi-Fi, Bluetooth, the GPU and the audio
   # DSP, which Sound Open Firmware runs.

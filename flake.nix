@@ -224,6 +224,7 @@
         nix-daemon = ./modules/nix-daemon/nixos.nix;
         nixpkgs = ./modules/nixpkgs/system.nix;
         onepassword = ./modules/onepassword/nixos.nix;
+        panel = ./modules/panel/nixos.nix;
         perf = ./modules/perf/nixos.nix;
         pipewire = ./modules/pipewire/nixos.nix;
         plymouth = moduleFrom ./modules/plymouth/nixos.nix { inherit wallpapers; };
