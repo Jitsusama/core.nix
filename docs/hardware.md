@@ -54,6 +54,7 @@ behind Intel's CVS bridge, and Intel's BE211 Wi-Fi 7.
 | Speakers | Omarchy's tuning, as a smart filter; see below                         |
 | Camera   | Intel's camera software, with the CVS bridge in its graph; see below   |
 | Sensors  | the light sensor's buffer, for the backlight; see below                |
+| Panel    | Chrome, Slack and 1Password told its colours are P3; see below         |
 | Docks    | bolt, which authorizes Thunderbolt and USB4 devices                    |
 | Firmware | fwupd, for the BIOS and firmware Dell publishes through LVFS           |
 | Battery  | charges to 80% and again below 75%, in the BIOS; see below             |
@@ -402,6 +403,25 @@ after turning it off and on again, which the hub never manages, so the proxy
 read the first device on a timer. The backlight module turns both buffers on
 through udev, keeps the proxy off them, and reads the first itself: the hub
 sends a sample only when the light changes by 1%, checking ten times a second.
+
+### The Panel's Colours
+
+The panel, LG Display's 0x07C6, shows more than sRGB: its EDID gives red
+0.689/0.310, green 0.240/0.721 and blue 0.136/0.045, a little wider than
+Display P3. Dell's Windows profile for it has the same primaries and no
+calibration curves, so Windows changes nothing for the whole screen and only
+the programs that convert colours use it. niri has no colour management, so
+every program here draws as if the screen were sRGB, which stretches sRGB's
+colours over the wider gamut.
+
+Chromium converts to the screen's colours when told what they are, so the
+module names the panel's as P3 and the panel module adds
+`--force-color-profile=display-p3-d65` to Chrome, Slack and 1Password. Against
+true sRGB, by CIE76 from the panel's primaries, a skin tone was 10.8 off and
+is 3.8 with the flag, Slack's aubergine 8.1 and 2.9, pure green 53.2 and 9.7:
+pure primaries stay a little off, because P3 is narrower than this panel.
+Other programs still draw sRGB stretched, as on Windows; only colour
+management in niri fixes them.
 
 ### What's Left
 
