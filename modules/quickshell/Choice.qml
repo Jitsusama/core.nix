@@ -2,6 +2,7 @@
 // in a column of its own, its name, and on the right its chord or what it
 // is, muted (docs/design.md, Shape and Kinds).
 // Not Row, which is QtQuick's own and would silently win.
+pragma ComponentBehavior: Bound
 import QtQuick
 
 Rectangle {
@@ -99,7 +100,7 @@ Rectangle {
 
                     Text {
                         id: plus
-                        visible: index > 0
+                        visible: parent.index > 0
                         width: parent.modelData.after === true ? Theme.space.l
                             : implicitWidth + 2 * Theme.space.xs * 3 / 2
                         horizontalAlignment: Text.AlignHCenter

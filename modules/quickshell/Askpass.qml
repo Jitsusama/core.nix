@@ -14,6 +14,7 @@
 // only in memory, and only for that moment. A second program asking waits
 // until the first is answered. Asks live only here, so an askpass checks this
 // still has its own while it waits, and asks again after a restart.
+pragma ComponentBehavior: Bound
 import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
@@ -46,7 +47,7 @@ Scope {
         const ask = asking;
         if (!ask)
             return;
-        const file = writer.createObject(root, { path: `${ask.reply}/${name}` });
+        const file = writer.createObject(root, { path: `${ask.reply}/${name}` }) as FileView;
         file.setText(text);
         file.destroy();
         asks = asks.filter(other => other !== ask);

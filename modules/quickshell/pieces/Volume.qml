@@ -4,6 +4,8 @@ import Quickshell.Services.Pipewire
 import QtQuick
 
 Piece {
+    id: piece
+
     readonly property PwNode sink: Pipewire.defaultAudioSink
 
     active: !sink || sink.audio.muted
@@ -11,6 +13,6 @@ Piece {
 
     // Pipewire reports a node's volume only once something binds it.
     PwObjectTracker {
-        objects: [sink]
+        objects: [piece.sink]
     }
 }

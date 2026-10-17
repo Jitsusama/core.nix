@@ -9,7 +9,6 @@
 // comes from BlueZ over D-Bus through Quickshell, so no process is asked,
 // and the radio looks for devices only while the launcher is open.
 import qs
-import Quickshell
 import Quickshell.Bluetooth
 import QtQuick
 import "../Fuzzy.js" as Fuzzy

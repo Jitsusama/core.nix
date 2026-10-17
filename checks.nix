@@ -670,6 +670,63 @@ in
         && "${home.xdg.configFile."quickshell/pieces/wide.qml".source}" == "${own}"
       );
 
+  # qmllint reads the shell as the account gets it, as the module qs, against
+  # Quickshell's own type files, and any warning fails. Two faults in those
+  # files are corrected in a copy first: the blur module doesn't say it
+  # depends on Quickshell, whose Region it names, and PanelWindow is marked
+  # uncreatable because Quickshell types it as the interface it makes a real
+  # window behind. Two kinds of report are left out, since each one here is
+  # Quickshell's files, not the shell: a property typed by a name its files
+  # don't export (AuthFlow, BluetoothAdapter and the like), and a handler
+  # whose parameter is a Qt enum QML can't see (QProcess::ExitStatus).
+  quickshell-passes-qmllint =
+    let
+      files =
+        lib.filterAttrs (name: _: lib.hasPrefix "quickshell/" name)
+          (account graphical).xdg.configFile;
+      qt = pkgs.kdePackages.qtdeclarative;
+      types = pkgs.runCommandLocal "quickshell-types" { } ''
+        mkdir -p $out/lib/qt-6/qml
+        cp -r ${pkgs.quickshell}/lib/qt-6/qml/Quickshell $out/lib/qt-6/qml/
+        chmod -R u+w $out
+        echo 'depends Quickshell' >> $out/lib/qt-6/qml/Quickshell/Wayland/_BackgroundEffect/qmldir
+        substituteInPlace $out/lib/qt-6/qml/Quickshell/_Window/quickshell-window.qmltypes \
+          --replace-fail 'exports: ["Quickshell._Window/PanelWindow 0.0"]
+                isCreatable: false' 'exports: ["Quickshell._Window/PanelWindow 0.0"]'
+      '';
+    in
+    # In UTF-8, which Qt otherwise switches to and says so.
+    pkgs.runCommandLocal "quickshell-passes-qmllint" { LC_ALL = "C.UTF-8"; } ''
+      ${lib.concatLines (
+        lib.mapAttrsToList (name: file: ''
+          mkdir -p "$(dirname ${lib.escapeShellArg name})"
+          cp ${file.source} ${lib.escapeShellArg name}
+        '') files
+      )}
+      mv quickshell qs
+      # Quickshell finds a folder's files as a module by its path; qmllint
+      # needs a qmldir saying so.
+      find qs -type d | while read -r dir; do
+        {
+          echo "module ''${dir//\//.}"
+          for file in "$dir"/[A-Z]*.qml; do
+            [ -e "$file" ] || continue
+            name=$(basename "$file" .qml)
+            if grep -q '^pragma Singleton' "$file"; then
+              echo "singleton $name 1.0 $name.qml"
+            else
+              echo "$name 1.0 $name.qml"
+            fi
+          done
+        } > "$dir/qmldir"
+      done
+      ${qt}/bin/qmllint --ignore-settings --max-warnings 0 \
+        -I ${types}/lib/qt-6/qml -I ${qt}/lib/qt-6/qml -I . \
+        --unresolved-type disable --signal-handler-parameters disable \
+        $(find qs -name '*.qml' | sort)
+      touch $out
+    '';
+
   # The shell hands every program it opens to niri, which gives it a scope of
   # its own. One the shell started itself would leave its helpers in the
   # shell's service, and restarting the shell would kill them.

@@ -8,6 +8,7 @@
 // polkit says which action is asked for but not which program asked, so the
 // asker is the one that owns the action: org.freedesktop.systemd1's actions
 // are systemd's.
+pragma ComponentBehavior: Bound
 import Quickshell
 import Quickshell.Services.Polkit
 import Quickshell.Wayland

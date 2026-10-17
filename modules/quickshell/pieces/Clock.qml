@@ -4,10 +4,12 @@ import Quickshell
 import QtQuick
 
 Piece {
+    id: piece
+
     value: Qt.formatDateTime(clock.date, settings.format ?? "HH:mm")
 
     SystemClock {
         id: clock
-        precision: (settings.format ?? "").includes("s") ? SystemClock.Seconds : SystemClock.Minutes
+        precision: (piece.settings.format ?? "").includes("s") ? SystemClock.Seconds : SystemClock.Minutes
     }
 }

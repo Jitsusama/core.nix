@@ -5,7 +5,6 @@
 // Everything comes from PipeWire through Quickshell, so nothing is asked
 // and nothing is spawned.
 import qs
-import Quickshell
 import Quickshell.Bluetooth
 import Quickshell.Services.Pipewire
 import QtQuick

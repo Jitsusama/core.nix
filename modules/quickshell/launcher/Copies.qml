@@ -6,6 +6,7 @@
 // Return puts the copy back on the clipboard. Forget the Clipboard, found
 // by its words while there's something to forget, has the helper forget
 // every copy, and what the clipboard holds with them.
+pragma ComponentBehavior: Bound
 import qs
 import Quickshell
 import Quickshell.Io
@@ -33,9 +34,10 @@ Provider {
         glyph: String.fromCodePoint(0xf01fe),
         hue: "action",
         run: () => {
-            if (link.item !== null) {
-                link.item.write("clear\n");
-                link.item.flush();
+            const socket = link.item as Socket;
+            if (socket !== null) {
+                socket.write("clear\n");
+                socket.flush();
             }
         }
     })

@@ -17,6 +17,7 @@
 // A mark wears its kind's colour only while its thing wants Joel, so what
 // has colour is what matters. While the overview is open the margin goes,
 // and its pieces are rows of the overview's status instead.
+pragma ComponentBehavior: Bound
 import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland

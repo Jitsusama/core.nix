@@ -10,6 +10,7 @@
 // the text's colour and what holding it does beneath, smaller and muted. A
 // key that falls through shows the first layer's cap, muted, with nothing
 // behind it, and an empty one shows nothing. A click puts it away.
+pragma ComponentBehavior: Bound
 import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland

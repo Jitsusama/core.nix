@@ -14,7 +14,6 @@
 // socket (Wifi.qml), and the cards look for networks only while the
 // launcher is open.
 import qs
-import Quickshell
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
 

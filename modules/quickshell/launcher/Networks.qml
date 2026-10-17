@@ -6,7 +6,6 @@
 // asked about, and with `lookups` set false nothing leaves the machine.
 // The local addresses are read from the kernel's files under /proc, so
 // nothing is spawned.
-import Quickshell
 import Quickshell.Io
 import QtQuick
 import "Addresses.js" as Addresses
