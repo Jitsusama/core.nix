@@ -102,12 +102,25 @@ pkgs.testers.runNixOSTest {
       # The stand-in sends frames as fast as it can, so it gets a CPU of its
       # own.
       virtualisation.cores = 2;
+      # udev takes its time over each camera, as it can on a busy boot, so a
+      # relay let at the loopback before udev gives it to the video group
+      # finds it root's alone.
+      services.udev.extraRules = ''
+        SUBSYSTEM=="video4linux", ACTION=="add", PROGRAM="${pkgs.coreutils}/bin/sleep 2"
+      '';
     };
 
   testScript = ''
     machine.wait_for_unit("ir-camera.service")
     machine.wait_for_file("/dev/ir-camera")
+
+    with subtest("the relay waits for udev to give it the loopback"):
+        restarts = machine.succeed("systemctl show -P NRestarts ir-camera.service")
+        t.assertEqual(restarts.strip(), "0")
+        machine.fail("journalctl -b -o cat -u ir-camera.service | grep -q 'Permission denied'")
+
     source = machine.succeed("v4l2loopback-ctl add -n 'Stand-in IR' -x 1 -b 2").strip()
+    machine.succeed(f"udevadm wait --timeout 10 {source}")
     machine.succeed(f"systemd-run --unit=stand-in -p Type=exec stand-in-camera {source}")
     machine.wait_for_file("/run/stand-in-camera")
     relay = machine.succeed("systemctl show -P MainPID ir-camera.service").strip()
