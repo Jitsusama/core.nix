@@ -2,6 +2,19 @@
 vim.opt.number = true
 vim.opt.relativenumber = true
 vim.opt.signcolumn = 'yes'
+-- The line's own number, in strong, stands in the column with the counts
+-- above and below it: Neovim pushes it left, even through the column's own
+-- number item, so the column says the number itself; and Neovim marks it
+-- only with 'cursorline', here on the number alone. A wrapped line's
+-- rows after its first, and a window without numbers, show none.
+vim.opt.statuscolumn =
+  '%s%=%{v:virtnum ? "" : &rnu && v:relnum ? v:relnum .. " " : &nu || &rnu ? v:lnum .. " " : ""}'
+vim.opt.cursorline = true
+vim.opt.cursorlineopt = 'number'
+-- Nothing drawn where there's nothing: no tildes past the end, no fill
+-- after a fold or in a diff's gaps, and the more mark, not @@@, where a
+-- long line runs off the foot of a window.
+vim.opt.fillchars = { eob = ' ', fold = ' ', diff = ' ', lastline = '…' }
 vim.opt.updatetime = 300 -- Faster cursor hold events (default is 4000ms)
 vim.opt.scrolloff = 4 -- Lines of context when scrolling
 vim.opt.sidescrolloff = 8 -- Columns of context
@@ -16,7 +29,7 @@ vim.g.maplocalleader = ' '
 
 -- Cursor: a calm blink, block in normal, bar in insert. A cursor blinks
 -- only when blinkon and blinkoff are both non-zero; the actual cadence is
--- WezTerm's to own. This is a taste choice, not a fix: drop the blink
+-- kitty's to own. This is a taste choice, not a fix: drop the blink
 -- markers (or this whole line) for a steady block instead.
 vim.opt.guicursor =
   'n-v-c-sm:block-blinkwait700-blinkon400-blinkoff250,i-ci-ve:ver25-blinkwait700-blinkon400-blinkoff250,r-cr-o:hor20,t:block-blinkon500-blinkoff500-TermCursor'
@@ -37,8 +50,9 @@ vim.opt.list = true
 vim.opt.listchars = {
   tab = '  ',
   trail = '·',
-  extends = '❯',
-  precedes = '❮',
+  -- The more mark, either way a line runs past the window's edge.
+  extends = '…',
+  precedes = '…',
   nbsp = '␣',
 }
 
@@ -84,6 +98,9 @@ vim.opt.breakindent = true -- Preserve indentation in wrapped lines
 vim.opt.foldlevel = 99
 vim.opt.foldlevelstart = 99
 vim.opt.foldenable = true
+-- A closed fold shows its first line as it reads open, coloured as code,
+-- on the fold's shade, rather than a count and a row of dots.
+vim.opt.foldtext = ''
 
 -- Session options
 vim.opt.sessionoptions =
@@ -224,6 +241,7 @@ vim.api.nvim_create_autocmd('TermOpen', {
     vim.opt_local.number = false
     vim.opt_local.relativenumber = false
     vim.opt_local.signcolumn = 'no'
+    vim.opt_local.statuscolumn = ''
   end,
 })
 

@@ -819,6 +819,31 @@ as an exception with the reason.
 
 What each studio round settled, newest first, with the reason.
 
+- **The rest of Neovim's screen goes quiet** (2026-10-16, judged against
+  the taste without a round). The line's own number sat a column left of
+  the counts around it, in muted; it now stands in their column, in
+  strong. Tildes past a buffer's end, a fold's "+--" and row of dots, and
+  the dashes in a diff's gaps are gone: a closed fold shows its first line
+  coloured as code on the fold's shade. A line cut at a window's edge or
+  foot ends in the more mark, not the prompt's mark or @@@. A terminal is
+  named by its program, not its term:// address, and a file fugitive
+  opens at a version is told from its root with the version after it,
+  beside its branch. Every file's mark takes the text's colour, as the
+  finder's already did, and trouble lists problems flat under each file,
+  named from where Neovim is, without the whole path or tree lines.
+- **pi's panels keep the accent for keys** (2026-10-16, judged against the
+  taste without a round). A gate's edges, title and scrollbar were all in
+  the accent, beside the one key that was, while the footer's keys were as
+  muted as their words. Now the edges are hairlines in the rule colour, the
+  title is bold in strong, the scrollbar takes the theme's scrollbar
+  shades, and every key the footer names is drawn as a chord: the key in
+  the accent, its word muted after it. Tab and Ctrl+# gained the words
+  they lacked, and the view on screen is marked by its word in text. The
+  review gates' rows moved one column right, onto the margin every other
+  row keeps. A gate docked above pi's editor leaves its closing rule to
+  the editor's border rather than lay a second hairline on it. Three
+  accents stay because they're keys or a state: a code to type, a
+  pipeline's current stage and the active tab's number.
 - **kitty's cursor rests** (2026-10-16, judged against the taste without a
   round). The block in strong, fading on WezTerm's 800 ms, stays: it's
   legible and quiet while typing. It used to blink for as long as a window
