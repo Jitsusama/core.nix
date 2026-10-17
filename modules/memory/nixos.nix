@@ -3,9 +3,21 @@
 # kernel kills before it thrashes, and writes reach the disk steadily rather
 # than in stalls. The kernel's own documentation gives each value's reasoning:
 # Documentation/admin-guide/sysctl/vm.rst and mm/multigen_lru.rst.
+{ pkgs, ... }:
 {
   # Swap to zstd-compressed RAM, which NixOS sizes at half of memory.
   zramSwap.enable = true;
+  # Taking the swap down resets its device, which the kernel refuses while
+  # anything holds it open, and udev opens it to probe it as swapoff closes
+  # it. One shutdown in 18 failed that way, and a restart by hand would
+  # leave the device at its old size, since the kernel refuses a new one;
+  # NixOS doesn't restart it on a switch for that reason. Upstream's
+  # systemd/zram-generator#226 is still open. zram-reset-waits.patch
+  # retries while it's busy; take it out once zram-generator does that
+  # itself.
+  services.zram-generator.package = pkgs.zram-generator.overrideAttrs (old: {
+    patches = (old.patches or [ ]) ++ [ ./zram-reset-waits.patch ];
+  });
 
   boot.kernel.sysctl = {
     # Swapping to zram costs about a tenth of reading the disk, which the

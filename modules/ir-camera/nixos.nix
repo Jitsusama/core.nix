@@ -22,9 +22,12 @@ let
 
   # The loopback announces itself as an output as well as a camera, which
   # browsers take as not a camera, so it's never offered for a call.
+  # The node is root's alone until udev gives it to the video group, so the
+  # relay is let at it only once udev is done with it.
   add = pkgs.writeShellScript "ir-camera-add" ''
     set -eu
     device=$(${loopback} add -n '${name}' -x 0 -b 2)
+    ${lib.getExe' config.systemd.package "udevadm"} wait --timeout 10 "$device"
     ln -sfn "$device" ${sink}
   '';
   delete = pkgs.writeShellScript "ir-camera-delete" ''

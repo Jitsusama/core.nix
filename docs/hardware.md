@@ -162,6 +162,28 @@ records what it found in the volatile `StubHwp` variable: IA32_PM_ENABLE and
 IA32_PERF_STATUS as handed over, and IA32_PERF_STATUS a millisecond after.
 It can't shorten the firmware's own time.
 
+### thermald's Start
+
+thermald's adaptive mode runs the laptop's own thermal tables, as Intel's
+Dynamic Tuning does on Windows. Their ITMT3 tables steer the CPU's zone,
+`TCPU`, through the power limits behind `intel-rapl-mmio`, and thermald
+looks for both once, as it starts. udev used to load their drivers, and on
+one boot of 24 they came a second after thermald: it logged that adaptive
+policy couldn't create any zones, left itself `/run/thermald/ignore_adaptive`
+and stopped, for its unit to start it again without adaptive mode. NixOS's
+unit doesn't restart it, and this CPU runs only in adaptive mode, so even a
+restart refused it ("Unsupported cpu model") until the next boot.
+
+The module loads `int3400_thermal`, `int3403_thermal` and
+`processor_thermal_device_pci` with the early modules, which finish before
+thermald may start, and none of them probes in the background, so the zones
+and limits are there when it looks. `coretemp` loads early too, which stops
+thermald warning there's no core temperature; on its own that wasn't the
+failure, since another boot without it still ran adaptive mode. Each start
+also clears the note, and thermald is started again 2 s after a failure, so
+should adaptive mode fail again it tries adaptive mode again once its drivers
+are there. Three starts a minute at most, so one that never can stops trying.
+
 ### Wi-Fi
 
 The BE211's Wi-Fi 7 receive path drops a link to its slowest rate, so the

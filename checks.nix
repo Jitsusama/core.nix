@@ -204,6 +204,9 @@ let
     # Whether the IR camera opens only while it's read, and hands each reader
     # its frames and none of the last one's, shows only with cameras there.
     vm-ir-camera-opens-for-readers = import ./tests/ir-camera.nix { inherit self pkgs; };
+    # Whether the swap comes down while udev probes its device shows only with
+    # the device there and held open.
+    vm-swap-comes-down-while-probed = import ./tests/zram.nix { inherit self pkgs; };
   };
 in
 {
@@ -1622,6 +1625,29 @@ in
         && lib.elem jitsusama.gpu.unit greetd.after
         && lib.hasInfix ''ENV{ID_PATH}=="${jitsusama.gpu.path}", TAG+="systemd"'' services.udev.extraRules
         && graphical.config.systemd.services.greetd.serviceConfig.Type == "idle"
+      );
+
+  # thermald reads the XPS 14's tables, sensors and the CPU's power limits
+  # once, as it starts, and stops if its adaptive mode finds no zone, which
+  # it did when udev loaded their drivers after it started.
+  thermald-starts-after-its-drivers =
+    let
+      xps = bareNixos [ self.nixosModules.dell-xps-14-da14260 ];
+      inherit (xps.config) boot systemd;
+      early = [
+        "intel_rapl_msr"
+        "coretemp"
+        "int3400_thermal"
+        "int3403_thermal"
+        "processor_thermal_device_pci"
+      ];
+    in
+    holds "thermald-starts-after-its-drivers"
+      "thermald can start before a driver it reads, or a restart can't run it adaptive again."
+      (
+        lib.all (module: lib.elem module boot.kernelModules) early
+        && (systemd.services.thermald.serviceConfig.Restart or null) == "on-failure"
+        && lib.hasInfix "ignore_adaptive" (systemd.services.thermald.serviceConfig.ExecStartPre or "")
       );
 
   example-nixos = evaluates "example-nixos" (

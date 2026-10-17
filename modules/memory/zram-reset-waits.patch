@@ -1,0 +1,52 @@
+Wait for udev to let go of a device before resetting it
+
+The kernel won't reset a zram device anything holds open, and udev
+opens one to probe it whenever a program that wrote to it closes it, as
+swapoff does just before the reset. When udev got there first, the
+reset failed with Device or resource busy and the device stayed set up.
+Retry a busy device for up to two seconds, saying once that it waits.
+
+--- a/src/setup.rs
++++ b/src/setup.rs
+@@ -2,13 +2,15 @@
+ 
+ use crate::config::Device;
+ use anyhow::{anyhow, Context, Result};
+-use log::warn;
++use log::{info, warn};
+ use std::fs;
+ use std::io::ErrorKind;
+ use std::os::unix::ffi::OsStrExt;
+ use std::os::unix::process::ExitStatusExt;
+ use std::path::Path;
+ use std::process::Command;
++use std::thread;
++use std::time::{Duration, Instant};
+ 
+ pub const SYSTEMD_MAKEFS_COMMAND: &str = concat!(
+     env!(
+@@ -153,6 +155,22 @@
+ 
+ pub fn run_device_reset(device_name: &str) -> Result<()> {
+     let reset = Path::new("/sys/block").join(device_name).join("reset");
+-    fs::write(reset, b"1")?;
+-    Ok(())
++    // The kernel won't reset a device anything holds open, and udev opens one
++    // to probe it whenever a program that wrote to it closes it, as swapoff
++    // does just before this runs. So a busy device is tried again until udev
++    // lets go, for up to two seconds.
++    let deadline = Instant::now() + Duration::from_secs(2);
++    let mut waited = false;
++    loop {
++        match fs::write(&reset, b"1") {
++            Err(e) if e.kind() == ErrorKind::ResourceBusy && Instant::now() < deadline => {
++                if !waited {
++                    info!("{device_name} is busy, so its reset waits for it to close");
++                    waited = true;
++                }
++                thread::sleep(Duration::from_millis(20));
++            }
++            result => return Ok(result?),
++        }
++    }
+ }

@@ -72,6 +72,7 @@ quietly stopped holding.
 | `nix-builds-yield-to-the-user` | Nix's builds run at a lower weight than the user's programs |
 | `nix-collects-before-the-disk-fills` | Nix collects garbage during a build that fills the disk |
 | `resolved-is-set-per-network` | a laptop leaves resolved's global DNS settings as they ship |
+| `thermald-starts-after-its-drivers` | the XPS 14's thermal drivers load before thermald starts, and a thermald that stops is restarted |
 | `disk-guard-stays-in-the-background` | the disk guard yields to the account, and a command overrunning its memory never stops it |
 | `the-mac-guards-its-disk` | a Mac's guards run under launchd, with a Mac's paths and nothing to confine a run |
 | `spend-watch-stays-in-the-background` | the AI spend watch yields to the account, comes back when it fails, and leaves its status behind when it stops |
@@ -167,7 +168,8 @@ a running system shows.
 | `vm-network-revives-units`        | what the network let down starts, and reloads on change  |
 | `vm-clock-keeps-time`             | the clock sets from the machine's servers past a network's silent one |
 | `vm-libvirt-stops-quickly`        | libvirt's daemon stops at once, its udev thread starved  |
-| `vm-ir-camera-opens-for-readers`  | the IR camera opens only while read, its frames grey, never the last reader's |
+| `vm-ir-camera-opens-for-readers`  | the IR camera waits for udev, opens only while read, its frames grey, never the last reader's |
+| `vm-swap-comes-down-while-probed` | the compressed swap comes down, its reset waiting out udev's probe |
 
 The install test builds a disk image with disko and boots it with a software
 TPM, then follows [the install guide][3] step by step: the keys are made and
