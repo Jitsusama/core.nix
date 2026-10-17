@@ -42,6 +42,41 @@ let
     '';
   };
 
+  # How many boots a new generation gets to reach multi-user.target before
+  # systemd-boot passes it over for the last one that did.
+  tries = 3;
+
+  # Where the boot says a newer generation never finished booting, for the
+  # session to hear.
+  fellBack = "/run/boot-fell-back";
+
+  # Says when the generation booted isn't the newest because a newer one ran
+  # out of tries, in the journal as a warning and in a file the session reads.
+  # systemd-boot keeps an entry's tries in its file name, so only bootctl,
+  # which reads the ESP, can say.
+  fellBackSaid = pkgs.writeText "boot-fell-back.jq" ''
+    def generation: capture("^nixos-generation-(?<n>[0-9]+)").n | tonumber;
+    ([.[] | select(.isSelected) | .id | generation?] | first) as $booted
+    | select($booted != null)
+    | [.[] | select(.triesLeft == 0) | .id | generation? | select(. > $booted)]
+    | max // empty
+    | "Generation \(.) failed to boot ${toString tries} times, so this is \($booted)."
+  '';
+  fellBackCheck = pkgs.writeShellApplication {
+    name = "boot-fell-back";
+    runtimeInputs = [
+      config.systemd.package
+      pkgs.jq
+    ];
+    text = ''
+      said=$(bootctl list --json=short | jq -r -f ${fellBackSaid})
+      if [ -n "$said" ]; then
+        echo "<4>$said"
+        printf '%s\n' "$said" > ${fellBack}
+      fi
+    '';
+  };
+
   # Every NvPCR this systemd defines, each pointed at /dev/null, which is how
   # systemd reads a definition it should ignore. Taken from the package, so a
   # new one in a later systemd is masked as well.
@@ -133,6 +168,60 @@ in
         ];
       };
       configurationLimit = 4;
+      # A new generation that can't boot, such as a kernel that panics or an
+      # initrd that can't open the disk, is tried three times and then passed
+      # over, rather than left for the boot menu, which systemd-boot never
+      # shows for it.
+      bootCounting.initialTries = tries;
+    };
+
+    # A boot counts once the machine's services are up, not just its disk.
+    systemd.targets.boot-complete.after = [ "multi-user.target" ];
+    # The last good generation boots with no tries to count, so nothing
+    # blesses it and boot-complete.target is never reached; this runs on
+    # every boot instead, reading only the other entries' tries.
+    systemd.services.boot-fell-back = {
+      description = "Say when a newer generation never finished booting";
+      wantedBy = [ "multi-user.target" ];
+      unitConfig.RequiresMountsFor = [ config.boot.loader.efi.efiSysMountPoint ];
+      serviceConfig = {
+        Type = "oneshot";
+        RemainAfterExit = true;
+        ExecStart = lib.getExe fellBackCheck;
+      };
+    };
+    # Each account but the system's hears it once a sign-in, from the file
+    # appearing rather than from looking for it.
+    systemd.user.paths.boot-fell-back = {
+      description = "Hear when a newer generation never finished booting";
+      wantedBy = [ "default.target" ];
+      unitConfig.ConditionUser = "!@system";
+      pathConfig.PathExists = fellBack;
+    };
+    systemd.user.services.boot-fell-back = {
+      description = "Say a newer generation never finished booting";
+      unitConfig.ConditionUser = "!@system";
+      # Active until the session ends, so the path doesn't start it again.
+      # The account's manager starts before anything shows notices, so it
+      # waits for one to take the name, however long that is.
+      serviceConfig = {
+        Type = "oneshot";
+        RemainAfterExit = true;
+        TimeoutStartSec = "infinity";
+        ExecStart = lib.getExe (
+          pkgs.writeShellApplication {
+            name = "boot-fell-back-told";
+            runtimeInputs = [
+              pkgs.glib.bin
+              pkgs.libnotify
+            ];
+            text = ''
+              gdbus wait --session org.freedesktop.Notifications
+              notify-send --urgency=critical --app-name=Boot "Booted the last good generation" "$(< ${fellBack})"
+            '';
+          }
+        );
+      };
     };
 
     # Without checksums or Microsoft's keys, the firmware would stop running

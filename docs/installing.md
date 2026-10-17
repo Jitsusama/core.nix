@@ -13,6 +13,7 @@ update that breaks any of them fails its checks.
 | ----------- | -------------------------------------------------------------- |
 | Boot        | systemd-boot and each generation, signed by lanzaboote         |
 | Boot menu   | hidden; hold Space at power-on for an older generation         |
+| Bad boots   | three tries for a new generation, then the last good one       |
 | Secure Boot | Joel's keys only, made on the machine and never copied off it  |
 | Disk        | a 1 GB boot partition, then LUKS2 holding Btrfs subvolumes     |
 | Daily key   | the TPM, bound to PCRs 0, 4 and 7, plus a PIN                  |
@@ -27,6 +28,13 @@ loader, kernel, initrd and command line (PCR 4), and the same Secure Boot keys
 and state (PCR 7). Something signed with Joel's own keys but built differently
 still changes PCR 4, so it gets no key. lanzaboote rewrites the policy after
 every rebuild, so updates never need the disk enrolled again.
+
+A new generation counts as good once it reaches multi-user.target. Until then
+systemd-boot counts each boot in its file name, and after three that never got
+there it boots the newest generation that did, which a kernel that panics or
+an initrd that can't open the disk would otherwise leave to the hidden menu.
+The session is then told which generation failed. Three boots of a new
+generation powered off at the PIN count the same way.
 
 Microsoft's keys stay out, so nothing they ever signed boots here, such as a
 shim that shows a fake disk prompt to learn the PIN. A machine whose firmware

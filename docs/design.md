@@ -820,6 +820,13 @@ as an exception with the reason.
 
 What each studio round settled, newest first, with the reason.
 
+- **A generation that won't boot is passed over, and said** (2026-10-17,
+  judged against the taste without a round). The boot menu stays hidden:
+  systemd-boot never shows it for a generation out of tries, and a menu
+  is a question asked at the worst moment. A new generation gets three
+  boots to bring the machine's services up; after that the last good one
+  boots by itself, and once the session can show notices it says which
+  generation failed, as a critical notice that waits to be read.
 - **The console wears the theme's face** (2026-10-17, judged against the
   taste without a round). The console drew in the kernel's Terminus, square
   and technical beside everything else. It now draws in the theme's
