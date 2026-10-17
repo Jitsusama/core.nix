@@ -3183,6 +3183,21 @@ in
           '';
         });
 
+    # clippy finds nothing in the clipboard's history, its tests included.
+    clipboard-history-passes-clippy =
+      (pkgs.callPackage ./modules/quickshell/clipboard/package.nix { }).overrideAttrs
+        (old: {
+          pname = "clipboard-history-passes-clippy";
+          nativeBuildInputs = old.nativeBuildInputs ++ [ pkgs.clippy ];
+          buildPhase = ''
+            cargo clippy --all-targets --offline -- -D warnings
+          '';
+          doCheck = false;
+          installPhase = ''
+            touch $out
+          '';
+        });
+
     # clippy finds nothing in the guard, its scenarios included.
     disk-guard-passes-clippy =
       (pkgs.callPackage ./modules/disk-guard/package.nix { }).overrideAttrs
