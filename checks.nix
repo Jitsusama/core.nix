@@ -204,6 +204,9 @@ let
     # Whether the IR camera opens only while it's read, and hands each reader
     # its frames and none of the last one's, shows only with cameras there.
     vm-ir-camera-opens-for-readers = import ./tests/ir-camera.nix { inherit self pkgs; };
+    # Whether the swap comes down while udev probes its device shows only with
+    # the device there and held open.
+    vm-swap-comes-down-while-probed = import ./tests/zram.nix { inherit self pkgs; };
   };
 in
 {
