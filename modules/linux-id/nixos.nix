@@ -49,17 +49,15 @@ in
       ExecStart = lib.getExe linuxId;
       Restart = "on-failure";
       RestartSec = 5;
-      # Passkeys a site keeps on the key are written here.
+      # Passkeys a site keeps on the key are written here, which systemd
+      # leaves writable.
       ConfigurationDirectory = "linux-id";
       # It needs the TPM, the device it makes, its own folder, and the
       # runtime directory, where the askpass asks the shell.
       NoNewPrivileges = true;
       ProtectSystem = "strict";
       ProtectHome = "read-only";
-      ReadWritePaths = [
-        "%E/linux-id"
-        "%t"
-      ];
+      ReadWritePaths = [ "%t" ];
       PrivateTmp = true;
       PrivateNetwork = true;
       RestrictAddressFamilies = [ "AF_UNIX" ];
