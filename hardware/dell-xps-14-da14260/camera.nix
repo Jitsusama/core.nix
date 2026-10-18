@@ -28,6 +28,34 @@ let
   });
   icamerasrc = pkgs.gst_all_1.icamerasrc-ipu75xa.override { ipu7x-camera-hal = hal; };
 
+  # The HAL's configuration with Dell's tuning for the laptop's camera module
+  # in place of Intel's, from Dell's driver pack, which can't be shared, so
+  # it's fetched as the system builds. The HAL reads the tuning the sensor's
+  # file names, and the file is the same format on Linux as on Windows.
+  module = config.jitsusama.dellXps14.cameraModule;
+  driverPack = pkgs.fetchurl {
+    url = "https://downloads.dell.com/FOLDER14363593M/1/XPS-14-DA14260-10KF7_Win11_1.0_A01.exe";
+    hash = "sha256-xt2uMrziirUj2G5M/1XFhz8HvUFtgPTKvqIrX7K+xCA=";
+  };
+  tuning = "OV08X40_${module}_PTL";
+  halConfig =
+    pkgs.runCommand "camera-config-${module}"
+      {
+        nativeBuildInputs = [ pkgs._7zz ];
+        meta.license = lib.licenses.unfree;
+      }
+      ''
+        cp -r ${hal}/etc/camera/ipu75xa $out
+        chmod -R u+w $out
+        7zz e -o$out ${driverPack} 'XPS-14-DA14260/Win11/x64/camera/YMY0G_A00-00/3.IPU/${tuning}.aiqb' > /dev/null
+        if [ ! -e $out/${tuning}.aiqb ]; then
+          echo "Dell's driver pack has no tuning for camera module ${module}."
+          exit 1
+        fi
+        substituteInPlace $out/sensors/ov08x40-uf.json \
+          --replace-fail '"OV08X40_KAFE799_PTL"' '"${tuning}"'
+      '';
+
   # Intel's IPU drivers, which hardware.ipu7 builds the ISP's module from. That
   # module shares structs with the kernel's own IPU driver and is written for a
   # kernel patched to match it, so the kernel patch and the module come from
@@ -177,6 +205,7 @@ let
 in
 {
   imports = [
+    ./camera-module.nix
     ../../modules/camera/nixos.nix
     ../../modules/ir-camera/nixos.nix
     ../../modules/kernel/nixos.nix
@@ -301,7 +330,10 @@ in
     description = "The front camera, as a V4L2 camera programs can open";
     wants = [ "modprobe@v4l2loopback.service" ];
     after = [ "modprobe@v4l2loopback.service" ];
-    environment.GST_PLUGIN_PATH = plugins;
+    environment = {
+      GST_PLUGIN_PATH = plugins;
+    }
+    // lib.optionalAttrs (module != null) { CAMERA_CFG_PATH = "${halConfig}/"; };
     serviceConfig = {
       RuntimeDirectory = "camera";
       # It runs as root to make the loopback camera, as nixpkgs's relay does,

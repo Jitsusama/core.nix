@@ -245,6 +245,16 @@ the image processor appears, so a machine without the camera never runs it.
 Omarchy also sharpens the picture and lowers its exposure. Whether that looks
 better is for the laptop to show, as is the camera itself.
 
+Dell fits the laptop with one of several camera modules, and its Windows
+driver tunes the picture for the one fitted; the HAL has only Intel's tuning
+for its own reference module, KAFE799. The firmware names the module in the
+sensor's `_DDN`, which Linux doesn't show: `acpi_call` reads it, at the path
+in `/sys/bus/acpi/devices/OVTI08F4:00/path` with `._DDN` added. Naming it in
+`jitsusama.dellXps14.cameraModule` has the HAL read Dell's tuning for it,
+taken from Dell's driver pack as the system builds, since it can't be shared.
+On a sheet of white paper, Dell's tuning for CJFOE90 lit the corners to 86%
+of the centre and Intel's to 76%, at the same signal to noise.
+
 The IR camera beside it, an HM1092 that Windows signs in with, has no driver in
 any kernel release yet. Three patches from the media list bring it up: its
 `ipu-bridge` entry from mainline, the sensor's driver from the [v7
