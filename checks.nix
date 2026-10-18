@@ -2323,6 +2323,36 @@ in
         touch $out
       '';
 
+    # The XPS 14's panel gives its variable refresh range only in DisplayID's
+    # Adaptive Sync block, so a kernel that doesn't read it never offers
+    # variable refresh. Read from the XPS 14's patched source.
+    the-panel-offers-variable-refresh =
+      let
+        inherit ((bareNixos [ self.nixosModules.dell-xps-14-da14260 ]).config.boot.kernelPackages)
+          kernel
+          ;
+        edid = "drivers/gpu/drm/drm_edid.c";
+        displayid = "drivers/gpu/drm/drm_displayid_internal.h";
+        patches = lib.filter (patch: patch != null) (map (patch: patch.patch) kernel.kernelPatches);
+      in
+      pkgs.runCommandLocal "the-panel-offers-variable-refresh"
+        { nativeBuildInputs = [ pkgs.patchutils ]; }
+        ''
+          tar xf ${kernel.src} --strip-components=1 --wildcards '*/${edid}' '*/${displayid}'
+          for patch in ${lib.escapeShellArgs (map (patch: "${patch}") patches)}; do
+            filterdiff -p1 -i ${edid} -i ${displayid} "$patch" | patch -p1 --forward --batch --silent
+          done
+          if ! grep -Eq '^#define DATA_BLOCK_2_ADAPTIVE_SYNC[[:space:]]+0x2b$' ${displayid}; then
+            echo "The kernel doesn't know DisplayID's Adaptive Sync block, so the panel's variable refresh is never offered."
+            exit 1
+          fi
+          if ! grep -q 'block->tag != DATA_BLOCK_2_ADAPTIVE_SYNC' ${edid}; then
+            echo "The kernel reads no refresh range from DisplayID's Adaptive Sync block, so the panel's variable refresh is never offered."
+            exit 1
+          fi
+          touch $out
+        '';
+
     # niri reads back the files an account gets and rejects anything it
     # wouldn't load, from a misspelt action to a colour it can't parse.
     niri-accepts-its-configuration =
