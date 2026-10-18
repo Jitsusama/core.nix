@@ -60,6 +60,7 @@ quietly stopped holding.
 | `one-ruleset-for-every-program`     | the firewall, libvirt and Podman share nftables, and a reload flushes none of them |
 | `disks-go-by-their-name`            | a disk's partitions and open volume carry its name        |
 | `batteries-leave-time-to-power-off` | UPower powers a laptop off at 5%, before it goes flat     |
+| `the-profile-saves-power-on-a-low-battery` | the power profile follows the charger, goes to power saver below 20% on battery, and holds a profile picked by hand |
 | `disks-are-scrubbed`                | the disk's Btrfs is scrubbed monthly, from its root       |
 | `booted-generation-stays-installed` | a switch never removes the generation the machine booted  |
 | `session-memory-is-protected`       | every slice above session.slice carries a hard memory floor |
