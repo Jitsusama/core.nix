@@ -323,10 +323,6 @@ Secure Boot's settings stay out: recovering those is the enrolment's job.
 
 ### Nothing to Add
 
-- **The touchpad.** It's a `2C2F` haptic pad on `hid-multitouch`. Omarchy
-  installs Dell's haptics daemon only for Synaptics pads (`VEN_06CB`), and
-  nothing for this one, and `hid-multitouch` registers no force feedback on
-  it, so it behaves here as it does on Omarchy.
 - **The Synaptics USB device** (`06cb:0701`) is the camera's USB-IO bridge,
   bound to `usbio-bridge`, not a fingerprint reader. This laptop has none.
 - **Option ROMs for Secure Boot.** The firmware runs none, so its TPM event
@@ -460,6 +456,21 @@ the charger is back, even if the reading climbs over 30% again, so the screen
 can't flick between the two. A rate picked by hand with niri holds until the
 next change. The panel can't vary its own rate yet (see VRR below), which
 would save the same power without the choice.
+
+### The Touchpad's Click
+
+The touchpad is a `2C2F` haptic pad on `hid-multitouch`: it has no button,
+and its firmware buzzes when it's pressed. Its report descriptor gives the
+strength as a feature, Intensity on the Haptics page (report 11, 0 to 100),
+which is what Windows' haptic feedback intensity slider writes. The firmware
+starts at 50 and nothing on Linux changes it: the kernel's `hid-haptic` takes
+only pads that name a trigger as well, which this one doesn't, and Omarchy
+installs Dell's haptics daemon only for Synaptics pads (`VEN_06CB`).
+`jitsusama.touchpad.clickStrength` sets it as the pad appears and after each
+sleep, and a machine that leaves it unset keeps the firmware's 50.
+
+Palm rejection needs nothing: the pad flags a palm in each contact's tool
+type, which libinput reads as Windows reads the same flag.
 
 ### What's Left
 

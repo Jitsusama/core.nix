@@ -59,6 +59,7 @@ in
     ../../modules/kernel/nixos.nix
     ../../modules/keyboard/nixos.nix
     ../../modules/panel/nixos.nix
+    ../../modules/touchpad/nixos.nix
     ./camera.nix
     ./speakers.nix
   ];

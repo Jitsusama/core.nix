@@ -237,6 +237,7 @@
         systemd = ./modules/systemd/nixos.nix;
         systemd-networkd = ./modules/systemd-networkd/nixos.nix;
         timesyncd = ./modules/timesyncd/nixos.nix;
+        touchpad = ./modules/touchpad/nixos.nix;
         tpm = ./modules/tpm/nixos.nix;
         wifid = ./modules/wifid/nixos.nix;
         wpa_supplicant = ./modules/wpa_supplicant/nixos.nix;
