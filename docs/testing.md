@@ -75,6 +75,7 @@ quietly stopped holding.
 | `thermald-starts-after-its-drivers` | the XPS 14's thermal drivers load before thermald starts, and a thermald that stops is restarted |
 | `chromium-knows-the-panels-colours` | the XPS 14's Chrome, Slack and 1Password convert their colours to its panel's P3 |
 | `the-panel-slows-on-a-low-battery` | the XPS 14's panel drops to 60 Hz below 30% on battery, holds there, and comes back to its fastest rate on the charger |
+| `the-click-strength-holds-after-sleep` | a machine naming a click strength sets it as each hidraw device appears and after every sleep, and one naming none runs nothing |
 | `disk-guard-stays-in-the-background` | the disk guard yields to the account, and a command overrunning its memory never stops it |
 | `the-mac-guards-its-disk` | a Mac's guards run under launchd, with a Mac's paths and nothing to confine a run |
 | `spend-watch-stays-in-the-background` | the AI spend watch yields to the account, comes back when it fails, and leaves its status behind when it stops |
@@ -142,6 +143,7 @@ kernel guide][2] says what that catches.
 | `the-ergodox-command-reaches-the-board` | `ergodox` writes each command whole to the board's channel alone |
 | `the-pinentry-asks-the-shell` | linux-id's pinentry asks the askpass in the program's words |
 | `the-ergodox-watch-tells-the-layer` | the layer watcher finds the board and says only what it's told |
+| `the-click-strength-finds-the-intensity` | the click strength's setter finds a haptic pad's intensity, the XPS 14's among them, and writes only it, only when it differs |
 | `btrfs-reclaims-its-chunks`       | tmpfiles turns Btrfs's reclaim on for data and metadata   |
 | `the-firmware-takes-what-is-declared` | `firmware-settings` names what differs, writes it with the password, then wipes it |
 | `devices-that-stop-working-are-named` | `device-check` names a failed or missing device, or a disk's fault, once, and again when it's fixed |
