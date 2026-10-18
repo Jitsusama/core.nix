@@ -5,6 +5,12 @@
 # virtual machine test gets a runner of its own beside them. The darwin checks
 # evaluate on Linux, so one platform covers both. Actions are pinned by
 # commit, with the release they came from beside each.
+#
+# Sixteen runners share one GitHub Actions cache, which throttles them, and a
+# path Nix meant to fetch from a throttled cache otherwise fails the build
+# with "no substituter that can build it". Falling back builds it instead.
+# FlakeHub's cache needs an account this repository doesn't have, so it's
+# left off rather than failing its sign-in on every run.
 name: check
 
 on:
@@ -21,7 +27,11 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: DeterminateSystems/determinate-nix-action@d0c908e6cbe9f89f36ed8205a3ab6f092636916a # v3.23.1
+        with:
+          extra-conf: fallback = true
       - uses: DeterminateSystems/magic-nix-cache-action@84c0677f58dcedf3b91f8223ce36a9ea5b3c84b7 # v15
+        with:
+          use-flakehub: false
       - name: every check but the virtual machine tests
         run: |
           nix eval --raw .#checks.x86_64-linux --apply '
@@ -55,5 +65,9 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: DeterminateSystems/determinate-nix-action@d0c908e6cbe9f89f36ed8205a3ab6f092636916a # v3.23.1
+        with:
+          extra-conf: fallback = true
       - uses: DeterminateSystems/magic-nix-cache-action@84c0677f58dcedf3b91f8223ce36a9ea5b3c84b7 # v15
+        with:
+          use-flakehub: false
       - run: nix build --no-link --print-build-logs .#checks.x86_64-linux.${{ matrix.test }}
