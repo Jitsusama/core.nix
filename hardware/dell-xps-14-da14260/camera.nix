@@ -256,6 +256,13 @@ in
       name = "ipu7-mono-formats";
       patch = ./ipu7-mono-formats.patch;
     }
+    {
+      # Unbinding the IPU frees the capture side while WirePlumber still
+      # holds its nodes open, and the kernel oopses as they close. Written
+      # here; the patch says why.
+      name = "ipu7-outlives-open-files";
+      patch = ./ipu7-outlives-open-files.patch;
+    }
   ];
   jitsusama.kernel.packageOverlays = [ psys ];
 

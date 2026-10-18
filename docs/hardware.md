@@ -276,6 +276,13 @@ however old, so a call opened on the last frame of the one before, its
 timestamps running backwards, which recorders reject. A patch written here,
 in the [loopback module][18], starts each reader at the next frame written.
 
+Unbinding the IPU and binding it again, which brings a hung camera back
+without a reboot as disabling it in Windows' Device Manager does, freed the
+capture side's nodes while WirePlumber still held them open, and the kernel
+oopsed as they closed. A patch written here keeps them until the last one
+closes. A sensor's node held open across the unbind still isn't made again
+at the bind, so the IR camera needs WirePlumber stopped first.
+
 ### The Mic-Mute Light
 
 `dell-laptop` gives the light `audio-micmute` as its trigger, and `snd-ctl-led`
