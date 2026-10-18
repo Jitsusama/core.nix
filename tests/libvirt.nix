@@ -25,6 +25,10 @@ pkgs.testers.runNixOSTest {
 
     with subtest("the daemon stops at once while its udev thread waits"):
         for attempt in range(10):
+            # systemd refuses a unit's sixth start in ten seconds, manual ones
+            # included, and a fast runner gets through a round in under two.
+            # These starts are the test's, so its count is cleared for each.
+            machine.succeed("systemctl reset-failed libvirtd.service libvirtd-config.service")
             machine.succeed("systemctl start libvirtd.service")
             machine.succeed("virsh --connect qemu:///system version")
             pid = machine.succeed("systemctl show -P MainPID libvirtd.service").strip()
