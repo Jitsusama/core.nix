@@ -16,9 +16,12 @@ FIDO2 and nothing heavier.
 ## Decision
 
 The TPM holds every everyday key, and none of them can leave it: the disk's
-(decision 0008), the SSH key that logs in, the keys that sign commits, and an
-age identity for secrets. ssh-tpm-agent serves the SSH and signing keys; a
-PIN unlocks them once a session, through a prompt drawn in the theme.
+(decision 0008), the SSH key that logs in, the keys that sign commits, an age
+identity for secrets, and a key for each site Joel signs in to on the web.
+ssh-tpm-agent serves the SSH and signing keys; a PIN unlocks them once a
+session, through a prompt drawn in the theme. linux-id serves the web's keys
+as a security key a browser finds, asking the same prompt for a yes before
+each one signs.
 
 The YubiKey holds a spare of each, all through FIDO2: the disk's recovery
 slot, a resident `ed25519-sk` SSH key that `ssh-keygen -K` brings back onto
@@ -43,6 +46,9 @@ and no gpg-agent.
 
 - A wiped TPM loses the everyday keys for good. The spares on the YubiKey
   get Joel back in, and new TPM keys replace the old ones.
+- linux-id confirms that Joel is there, never who he is, so a site that
+  insists on knowing turns the TPM's key down, and the YubiKey, which asks
+  for its PIN, is that site's key.
 - Everything that names a key has to name both: GitHub gets the TPM's and the
   YubiKey's SSH keys, and the backups are encrypted to both age identities.
 - The backups that are still encrypted to the OpenPGP key move to age before

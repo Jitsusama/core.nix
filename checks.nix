@@ -183,6 +183,9 @@ let
     # The disk layout and Secure Boot decide whether a machine starts at all.
     vm-secure-boot-installs = import ./tests/secure-boot.nix { inherit self pkgs; };
     vm-commits-are-signed = import ./tests/signing.nix { inherit self pkgs; };
+    # A passkey is the TPM, uhid, udev's seat rules and the shell's askpass
+    # together, and only a running machine has them all.
+    vm-passkeys-come-from-the-tpm = import ./tests/linux-id.nix { inherit self pkgs; };
     vm-keyring-opens-without-asking = import ./tests/gnome-keyring.nix { inherit self pkgs; };
     vm-speakers-are-tuned = import ./tests/speakers.nix { inherit pkgs; };
     vm-desktop-works = import ./tests/desktop.nix { inherit self pkgs; };
@@ -3505,6 +3508,16 @@ in
     # The layer watcher's own tests: it finds the board's channel as the
     # command does, asks to watch in one report, and says only what a watch
     # report tells it, by the layer's name.
+    # linux-id's pinentry speaks pinentry's protocol and asks the askpass in
+    # the words the program set, as its own tests say.
+    the-pinentry-asks-the-shell =
+      pkgs.runCommandCC "the-pinentry-asks-the-shell" { nativeBuildInputs = [ pkgs.rustc ]; }
+        ''
+          rustc --edition 2024 --test -D warnings -o tests ${./modules/linux-id/pinentry.rs}
+          ./tests
+          touch $out
+        '';
+
     the-ergodox-watch-tells-the-layer =
       pkgs.runCommandCC "the-ergodox-watch-tells-the-layer" { nativeBuildInputs = [ pkgs.rustc ]; }
         ''

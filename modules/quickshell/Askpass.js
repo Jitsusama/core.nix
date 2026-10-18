@@ -57,6 +57,24 @@ function read(kind, asker, prompt, home) {
                 mono: chain.length > 1
             }, allow);
         }
+        // linux-id's, through pinentry-askpass, before a key the TPM holds
+        // signs: a passkey made for a site or signed in with, or a plain
+        // security key, which isn't told the site.
+        const passkey = /^FIDO2 (Register|Authenticate): (.+)$/.exec(text);
+        if (passkey)
+            return Object.assign({
+                title: passkey[1] === "Register"
+                    ? [plain("Make a passkey for "), thing(passkey[2])]
+                    : [plain("Sign in to "), thing(passkey[2]), plain(" with its passkey")],
+                detail: "", mono: false
+            }, allow);
+        const key = /^FIDO Confirm (Register|Auth)$/.exec(text);
+        if (key)
+            return Object.assign({
+                title: [plain(key[1] === "Register" ? "Add the TPM as a security key"
+                    : "Sign in with the TPM's security key")],
+                detail: "", mono: false
+            }, allow);
         return Object.assign({ title: [program(who), plain(" asks")], detail: text, mono: false },
             allow);
     }

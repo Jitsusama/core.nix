@@ -216,6 +216,7 @@
         keyd = ./modules/keyd/nixos.nix;
         lanzaboote = moduleFrom ./modules/lanzaboote/nixos.nix { inherit lanzaboote; };
         libvirt = ./modules/libvirt/nixos.nix;
+        linux-id = ./modules/linux-id/nixos.nix;
         memory = ./modules/memory/nixos.nix;
         mpv = ./modules/mpv/nixos.nix;
         network-revive = ./modules/network-revive/nixos.nix;
