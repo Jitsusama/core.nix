@@ -82,6 +82,15 @@ in
     (lib.mkIf (face != null) {
       console.font = "${font}/console.psf";
       console.earlySetup = true;
+
+      # udev sets the font each time a graphics driver takes the console
+      # over, but once Plymouth holds the console it's busy and nothing is
+      # set, so a boot whose driver comes after the splash keeps the
+      # kernel's font. Each console a login prompt opens sets it again on
+      # itself, which a busy console elsewhere doesn't stop.
+      systemd.services."getty@".serviceConfig.ExecStartPre = [
+        "-${config.systemd.package}/lib/systemd/systemd-vconsole-setup /dev/%I"
+      ];
     })
   ];
 }

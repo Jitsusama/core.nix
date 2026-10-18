@@ -124,7 +124,11 @@ pkgs.testers.runNixOSTest {
 
       with subtest("the console draws in the theme's face"):
           # The glyphs the kernel holds are the font's own, bitmap for
-          # bitmap, as many as its header counts at its size.
+          # bitmap, as many as its header counts at its size, even when
+          # the console it's switched from has lost the face, as a splash
+          # that outlasts the graphics driver leaves it: a new console
+          # takes that one's font until its login prompt sets its own.
+          machine.succeed("setfont -C /dev/tty1 default8x16")
           machine.send_key("ctrl-alt-f3")
           machine.wait_until_tty_matches("3", "login: ")
           machine.succeed(
