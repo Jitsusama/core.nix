@@ -40,6 +40,17 @@ QtObject {
             "Allow use of key /home/joel/.ssh/id_ed25519?\nKey fingerprint SHA256:abc.",
             "[ssh-agent] wants to use *~/.ssh/id_ed25519* |  | no field"
                 + " | \u21b5 allow, Esc refuse");
+        // linux-id, before the TPM's key for a site signs.
+        expect("a passkey made", "confirm", "pinentry-askpass", "FIDO2 Register: github.com",
+            "Make a passkey for *github.com* |  | no field | \u21b5 allow, Esc refuse");
+        expect("a passkey used", "confirm", "pinentry-askpass",
+            "FIDO2 Authenticate: accounts.google.com",
+            "Sign in to *accounts.google.com* with its passkey |  | no field"
+                + " | \u21b5 allow, Esc refuse");
+        expect("a security key added", "confirm", "pinentry-askpass", "FIDO Confirm Register",
+            "Add the TPM as a security key |  | no field | \u21b5 allow, Esc refuse");
+        expect("a security key used", "confirm", "pinentry-askpass", "FIDO Confirm Auth",
+            "Sign in with the TPM's security key |  | no field | \u21b5 allow, Esc refuse");
         expect("a yes it can't read", "confirm", "thing", "Really?",
             "[thing] asks | Really? | no field | \u21b5 allow, Esc refuse");
 

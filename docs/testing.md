@@ -140,6 +140,7 @@ kernel guide][2] says what that catches.
 | `cargo-links-with-mold`           | cargo links an account's Rust builds with mold            |
 | `the-ergodox-layout-builds`       | the layout fits the board and answers with its own serial |
 | `the-ergodox-command-reaches-the-board` | `ergodox` writes each command whole to the board's channel alone |
+| `the-pinentry-asks-the-shell` | linux-id's pinentry asks the askpass in the program's words |
 | `the-ergodox-watch-tells-the-layer` | the layer watcher finds the board and says only what it's told |
 | `btrfs-reclaims-its-chunks`       | tmpfiles turns Btrfs's reclaim on for data and metadata   |
 | `the-firmware-takes-what-is-declared` | `firmware-settings` names what differs, writes it with the password, then wipes it |
@@ -164,6 +165,7 @@ a running system shows.
 | --------------------------------- | ------------------------------------------------------- |
 | `vm-secure-boot-installs`         | the whole install works, and the disk opens only for it |
 | `vm-commits-are-signed`           | commits are signed with the TPM's keys, PINs asked for  |
+| `vm-passkeys-come-from-the-tpm`   | passkeys and security keys are made in the TPM, each after a yes |
 | `vm-keyring-opens-without-asking` | the keyring opens with its TPM-sealed password, unasked |
 | `vm-speakers-are-tuned`           | the XPS 14's speakers hear the tuning, headphones don't |
 | `vm-desktop-works`                | it boots clean; the desktop shows, opens, locks and asks |
