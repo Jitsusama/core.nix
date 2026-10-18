@@ -803,7 +803,16 @@ fn a_run_stops_when_the_moment_ends_and_isnt_counted_done() {
         );
         steps(&mut guard, &SAVING);
     }
-    steps(&mut guard, &SAVING);
+    // The run is at idle priority, so on a busy machine it can be a while
+    // between saying it stopped and exiting, which is when it's journaled.
+    while store.deduped().is_empty() {
+        assert!(
+            started.elapsed() < Duration::from_secs(10),
+            "{:?}",
+            store.linked()
+        );
+        steps(&mut guard, &SAVING);
+    }
     let stopped = store.deduped();
     assert_eq!(stopped.len(), 1, "{stopped:?}");
     assert_eq!(stopped[0]["outcome"], "kept", "{stopped:?}");
