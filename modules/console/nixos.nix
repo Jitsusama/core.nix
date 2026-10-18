@@ -5,8 +5,9 @@
 # line. Its font is the theme's monospace face at Medium, found among the
 # machine's fonts and drawn into the 16 by 32 cell the kernel picks for a
 # large screen, from the glyphs in glyphs.txt (font/ says how), and loaded
-# in the initrd, so the disk's prompt has it too. A machine without such an
-# account, or without a theme for it, keeps the kernel's own.
+# in the initrd, so the disk's prompt has it too. A failed boot's shell says
+# what stopped it first (stopped.sh). A machine without such an account, or
+# without a theme for it, keeps the kernel's own.
 {
   config,
   lib,
@@ -22,6 +23,7 @@ let
     else
       null;
   terminal = lib.attrByPath [ "jitsusama" "theme" "terminal" ] null home;
+  theme = lib.attrByPath [ "jitsusama" "theme" ] null home;
   face = lib.attrByPath [ "jitsusama" "theme" "font" "mono" "family" ] null home;
 
   # The console's order: the eight colours, then the bright eight, each as
@@ -39,6 +41,35 @@ let
   colours = map (name: lib.substring 1 6 terminal.${name}) (
     eight ++ map (name: "bright_${name}") eight
   );
+
+  # A role's colour as the console's SGR number: the one of its sixteen
+  # holding the role's colour, or its own foreground when none does.
+  slot =
+    role:
+    let
+      names = eight ++ map (name: "bright_${name}") eight;
+      at = lib.lists.findFirstIndex (
+        name: lib.toLower terminal.${name} == lib.toLower theme.roles.${role}
+      ) null names;
+    in
+    if at == null then "39" else toString (if at < 8 then 30 + at else 82 + at);
+
+  # Says what stopped the boot (stopped.sh), in the theme's colours.
+  stopped = pkgs.writeShellApplication {
+    name = "boot-stopped";
+    runtimeInputs = [
+      config.systemd.package
+      pkgs.coreutils
+    ];
+    text = lib.concatLines [
+      "alert=${slot "alert"} strong=${slot "strong"} text=${slot "text"} muted=${slot "muted"}"
+      "mark=${lib.escapeShellArg theme.glyphs.failed.console}"
+      (builtins.readFile ./stopped.sh)
+    ];
+  };
+
+  # What sets a console's font and keymap, given the console.
+  setup = "${config.systemd.package}/lib/systemd/systemd-vconsole-setup";
 
   # Medium, since a console draws each pixel on or off: the regular weight's
   # stems fall on one pixel in some letters and two in others, and Medium's
@@ -87,10 +118,28 @@ in
       # over, but once Plymouth holds the console it's busy and nothing is
       # set, so a boot whose driver comes after the splash keeps the
       # kernel's font. Each console a login prompt opens sets it again on
-      # itself, which a busy console elsewhere doesn't stop.
-      systemd.services."getty@".serviceConfig.ExecStartPre = [
-        "-${config.systemd.package}/lib/systemd/systemd-vconsole-setup /dev/%I"
+      # itself, which a busy console elsewhere doesn't stop, and a failed
+      # boot's emergency shell sets it on the console in front once Plymouth
+      # has let go of it: after, since Plymouth's module empties its list
+      # first.
+      systemd.services = {
+        "getty@".serviceConfig.ExecStartPre = [ "-${setup} /dev/%I" ];
+        emergency.serviceConfig.ExecStartPre = lib.mkAfter [ "-${setup} /dev/tty0" ];
+      };
+    })
+    # A failed boot's emergency shell says what stopped it, after the face
+    # is set, which comes after Plymouth lets go; the initrd's says so too,
+    # since it carries the shell, coreutils and systemd the summary runs on.
+    (lib.mkIf (terminal != null) {
+      systemd.services.emergency.serviceConfig.ExecStartPre = lib.mkOrder 1600 [
+        "-${lib.getExe stopped}"
       ];
+      boot.initrd.systemd = lib.mkIf config.boot.initrd.systemd.enable {
+        storePaths = [ stopped ];
+        services.emergency.serviceConfig.ExecStartPre = lib.mkOrder 1600 [
+          "-${lib.getExe stopped}"
+        ];
+      };
     })
   ];
 }
