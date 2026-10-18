@@ -134,7 +134,7 @@ device's form factor and the SPD probe skip soldered memory.
 ### Mainline's Fixes 7.2 Lacks
 
 Mainline's fixes since 7.2, for the drivers this laptop runs, were read
-against 7.2.11. Most were in 7.2.10 already under other subjects; two that
+against 7.2.11. Most were in 7.2.11 already under other subjects; three that
 matter here weren't:
 
 - `dm-crypt-status-after-last-reference.patch`, mainline's 148845aa1921.
@@ -145,6 +145,11 @@ matter here weren't:
   to 7.2's names. Suspending an amplifier before it first attached returned
   early, skipping `pm_runtime_force_suspend`, while resume always runs
   `pm_runtime_force_resume`, so its runtime power count went out of balance.
+- `cs35l56-ot25-dai.patch`, mainline's 86c8360c97f6 as the stable queue
+  holds it for 7.2.12. 7.2.11 took 4b7f393a01f8, which moves each
+  amplifier's feedback capture to the OT25 DAI on SoundWire's DP4, without
+  this one, which adds the DAI. The machine driver then names a DAI no
+  amplifier registers, and the sound card never binds.
 
 Once a stable release takes one, its patch no longer applies and the kernel
 build stops, which is the sign to drop it.

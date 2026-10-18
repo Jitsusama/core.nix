@@ -22,11 +22,14 @@ x86-64 machine as `packages.x86_64-linux.kernel`.
 - **The series:** 7.2, at whichever point release nixpkgs pins, or a newer
   one `package.nix` names in `stable` while nixpkgs catches up. Taking a new
   nixpkgs takes the latest 7.2 release with its fixes, and `stable` stops
-  applying once nixpkgs's release is as new. It names 7.2.10, newer than the
-  pinned nixpkgs's 7.2.9, for its fixes to what the XPS 14 runs:
-  use-after-frees in Bluetooth's core and in cache-aware scheduling, overruns
-  in the Intel Bluetooth driver, the SDCA codec's power management, the TPM
-  driver, and a deadlock freeing slab memory under the scheduler's lock.
+  applying once nixpkgs's release is as new. It names 7.2.11, newer than the
+  pinned nixpkgs's 7.2.9, for its fixes to what the XPS 14 runs: the Intel
+  Bluetooth driver resetting the chip for a clean start and bounding its
+  transmit ring, races in Bluetooth's RFCOMM, SCO and ISO sockets, the Xe
+  graphics driver's register waits and shrinker, device-mapper reading freed
+  memory on resume, Btrfs's extended attributes, and locked-memory leaks in
+  mremap and io_uring. 7.2.10 brought fixes to Bluetooth's core, the SDCA
+  codec's power management, the TPM driver and the slab allocator.
 - **The compiler:** Clang 22, linked with LLD, which link-time optimization
   needs. Not nixpkgs's default LLVM 21: its LLD, compiled with GCC 16 as
   nixpkgs compiles it, writes objects the kernel's objtool rejects.
