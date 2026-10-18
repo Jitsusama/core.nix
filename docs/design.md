@@ -820,6 +820,17 @@ as an exception with the reason.
 
 What each studio round settled, newest first, with the reason.
 
+- **A failed boot says what stopped it** (2026-10-18, judged against the
+  taste without a round). A boot that drops to the emergency shell, the
+  initrd's or the system's, showed systemd's status lines and sulogin's
+  words, and with root locked sulogin opens nothing, so nothing said which
+  unit failed. Before the shell asks, each failed unit is listed: the
+  failure mark in alert, the unit strong with its description beside it,
+  and the last its own programs said muted under it, wrapped between words
+  rather than cut. A line of air parts the units, and the way out comes
+  last with its keys strong: Ctrl+Alt+Delete restarts, and Space held as it
+  starts gives an older generation. A shell asked for with nothing failed
+  adds nothing.
 - **A generation that won't boot is passed over, and said** (2026-10-17,
   judged against the taste without a round). The boot menu stays hidden:
   systemd-boot never shows it for a generation out of tries, and a menu

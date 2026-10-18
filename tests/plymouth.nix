@@ -50,18 +50,41 @@ pkgs.testers.runNixOSTest {
         };
         virtualisation.rootDevice = "/dev/mapper/root";
       };
+      # An initrd that can't finish, as one whose disk never comes can't.
+      specialisation.stops.configuration = {
+        # The test framework panics a test machine whose initrd fails, to
+        # fail fast; a real machine waits in the shell.
+        boot.initrd.systemd.services.panic-on-fail.enable = false;
+        boot.initrd.systemd.services.breaks = {
+          description = "Breaks on purpose";
+          wantedBy = [ "initrd.target" ];
+          before = [ "initrd.target" ];
+          unitConfig = {
+            OnFailure = "emergency.target";
+            # As initrd.target fails over.
+            OnFailureJobMode = "replace-irreversibly";
+          };
+          serviceConfig = {
+            Type = "oneshot";
+            ExecStart = "/bin/bash -c 'echo the disk was not there; exit 1'";
+          };
+        };
+      };
     };
 
   testScript =
     { nodes, ... }:
     let
       encrypted = nodes.machine.specialisation.encrypted.configuration.system.build.toplevel;
+      stops = nodes.machine.specialisation.stops.configuration.system.build.toplevel;
       alert = nodes.machine.home-manager.users.${account}.jitsusama.theme.roles.alert;
       inherit (nodes.machine.console) font;
     in
     ''
       import filecmp
       import os
+      import re
+      import shlex
       import subprocess
 
       # A photograph of the screen, kept for a person to judge.
@@ -90,6 +113,16 @@ pkgs.testers.runNixOSTest {
           def differs(_):
               return not filecmp.cmp(before, photographed(name), shallow=False)
           retry(differs, timeout)
+
+      # Whether a console's glyphs are the theme's font, bitmap for
+      # bitmap, as many as its header counts at its size.
+      def wears_the_face(console):
+          machine.succeed(
+              f"setfont -C {console} -O /tmp/held.psf",
+              "word() { od -An -t u4 -j $(( $2 * 4 )) -N 4 $1 | tr -d ' '; }; "
+              "cmp -n $(( $(word ${font} 4) * $(word ${font} 5) )) "
+              "<(tail -c +33 /tmp/held.psf) <(tail -c +33 ${font})",
+          )
 
       machine.wait_for_unit("multi-user.target")
       machine.succeed(
@@ -123,20 +156,76 @@ pkgs.testers.runNixOSTest {
           t.assertIn("/dev/mapper/root on / ", machine.succeed("mount"))
 
       with subtest("the console draws in the theme's face"):
-          # The glyphs the kernel holds are the font's own, bitmap for
-          # bitmap, as many as its header counts at its size, even when
-          # the console it's switched from has lost the face, as a splash
-          # that outlasts the graphics driver leaves it: a new console
-          # takes that one's font until its login prompt sets its own.
-          machine.succeed("setfont -C /dev/tty1 default8x16")
+          # Even when the console it's switched from has lost the face,
+          # as a splash that outlasts the graphics driver leaves it: a new
+          # console takes that one's font until its login prompt sets its
+          # own. While the greeter starts or stops, the first console can
+          # refuse to be opened for a moment.
+          machine.wait_until_succeeds("setfont -C /dev/tty1 default8x16", timeout=30)
           machine.send_key("ctrl-alt-f3")
           machine.wait_until_tty_matches("3", "login: ")
-          machine.succeed(
-              "setfont -C /dev/tty3 -O /tmp/held.psf",
-              "word() { od -An -t u4 -j $(( $2 * 4 )) -N 4 $1 | tr -d ' '; }; "
-              "cmp -n $(( $(word ${font} 4) * $(word ${font} 5) )) "
-              "<(tail -c +33 /tmp/held.psf) <(tail -c +33 ${font})",
-          )
+          wears_the_face("/dev/tty3")
           photographed("console")
+
+      # The next boot is one whose initrd fails, set up while the system is
+      # whole. The encrypted disk is a new root with no profile of its own,
+      # so it's given one, as nix-env would.
+      machine.succeed(
+          "mkdir -p /nix/var/nix/profiles",
+          "ln -sfn ${stops} /nix/var/nix/profiles/system-1-link",
+          "ln -sfn system-1-link /nix/var/nix/profiles/system",
+          "${stops}/bin/switch-to-configuration boot",
+          "sync",
+      )
+
+      with subtest("the emergency shell wears the face, and says what failed"):
+          # As after a failed boot: a unit has failed, nothing graphical
+          # holds a console and no login prompt runs, logind masked so none
+          # starts again and sets the face itself, and the splash is up over
+          # consoles that have lost the face. The shell's own steps before it asks, Plymouth's
+          # quitting and then this module's, run in order on the console in
+          # front as the shell would run them. sulogin itself isn't started:
+          # it asks on every console, the test's serial line among them,
+          # and the test stops hearing the machine. The splash is started by
+          # systemd, as at boot: started from the test's own shell, it broke
+          # the driver's reading of that shell.
+          machine.execute(
+              "systemd-run --unit=breaks --description='Breaks on purpose' "
+              "sh -c 'echo the disk was not there; exit 1'"
+          )
+          machine.wait_until_succeeds("systemctl is-failed breaks.service", timeout=30)
+          machine.succeed(
+              "systemctl mask --runtime --now systemd-logind.service",
+              "systemctl stop greetd.service 'getty@*' 'autovt@*'",
+          )
+          # A boot has one console, the first, which the splash draws on.
+          machine.succeed("chvt 1")
+          machine.wait_until_succeeds("setfont -C /dev/tty1 default8x16", timeout=30)
+          machine.succeed(
+              "printf '\\033[H\\033[2J' > /dev/tty1",
+              "systemctl restart plymouth-start.service",
+          )
+          steps = re.findall(
+              r"argv\[\]=([^;]*) ;", machine.succeed("systemctl show -P ExecStartPre emergency.service")
+          )
+          machine.succeed(
+              "systemd-run --wait --collect -p StandardInput=tty-force -p StandardOutput=tty"
+              " -p TTYPath=/dev/tty0 /bin/sh -c " + shlex.quote("; ".join(steps))
+          )
+          front = machine.succeed("fgconsole").strip()
+          wears_the_face(f"/dev/tty{front}")
+          said = machine.get_tty_text(front)
+          for words in ["breaks.service  Breaks on purpose", "the disk was not there", "Ctrl+Alt+Delete"]:
+              t.assertIn(words, said)
+          photographed("emergency")
+
+      with subtest("a failed initrd says what stopped it"):
+          # Its shell can't be read through the test's own, which starts
+          # later, so the screen is read.
+          machine.crash()
+          machine.start()
+          for words in ["breaks.service", "the disk was not there", "Ctrl.Alt.Delete"]:
+              machine.wait_for_text(words, timeout=120)
+          photographed("initrd-stops")
     '';
 }

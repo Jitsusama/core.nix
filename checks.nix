@@ -1416,6 +1416,26 @@ in
         touch $out
       '';
 
+  # A failed boot's shell says what stopped it, as tests/boot-stopped.sh
+  # says, with stand-ins for systemctl and journalctl. The boot test shows it
+  # on a real console, in minutes; this holds what it says, in seconds.
+  a-failed-boot-says-what-stopped-it =
+    let
+      machine = bareNixos [
+        self.nixosModules.workstation
+        self.nixosModules.graphical
+        { jitsusama.login.account = "someone"; }
+      ];
+      stopped = lib.removePrefix "-" (
+        lib.findFirst (lib.hasInfix "boot-stopped") (throw "the emergency shell runs no boot-stopped")
+          machine.config.systemd.services.emergency.serviceConfig.ExecStartPre
+      );
+    in
+    pkgs.runCommandLocal "a-failed-boot-says-what-stopped-it" { } ''
+      ${lib.getExe pkgs.bash} ${./tests/boot-stopped.sh} ${stopped}
+      touch $out
+    '';
+
   # The console wears the theme of the account the machine signs in, in the
   # console's order, and follows it when the theme changes. A machine that
   # names no account keeps the kernel's colours.
