@@ -19,7 +19,11 @@ pkgs.testers.runNixOSTest {
 
     virtualisation.tpm.enable = true;
 
-    users.users.joel.isNormalUser = true;
+    users.users.joel = {
+      isNormalUser = true;
+      # For a sign-in at the console, through PAM as the greeter's goes.
+      initialPassword = "hunter3";
+    };
     home-manager.users.joel.home.stateVersion = "26.05";
 
     environment.systemPackages = [ pkgs.libsecret ];
@@ -114,6 +118,18 @@ pkgs.testers.runNixOSTest {
         log_out()
         secret = as_joel("timeout 10 secret-tool lookup service slack account joel")
         t.assertEqual(secret, "hunter2")
+        keyring_is_up()
+
+    # PAM's keyring step would start a daemon of its own at every sign-in,
+    # before the session, with a password that never opens the keyring.
+    with subtest("signing in starts no keyring of PAM's"):
+        machine.wait_until_tty_matches("1", "login: ")
+        machine.send_chars("joel\n")
+        machine.wait_until_tty_matches("1", "Password: ")
+        machine.send_chars("hunter3\n")
+        # The shell's prompt comes once every PAM step has run.
+        machine.wait_until_tty_matches("1", r"joel@machine.*\$ ", timeout=60)
+        t.assertEqual(machine.succeed("journalctl -b -q -o cat --grep gkr-pam || true"), "")
         keyring_is_up()
   '';
 }

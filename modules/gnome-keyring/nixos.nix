@@ -71,6 +71,11 @@ in
   services.gnome.gnome-keyring.enable = true;
   environment.systemPackages = [ (lib.hiPrio activation) ];
 
+  # PAM's step would start a daemon at each sign-in, in the sign-in's way, to
+  # unlock the keyring with a password that never opens it, only for the unit
+  # below to replace it.
+  security.pam.services.login.enableGnomeKeyring = lib.mkForce false;
+
   # It starts with the account's manager, beside the session rather than
   # ahead of it: a slow TPM can take seconds to unseal the password, and niri
   # needs no secrets. A target waits for every unit it wants, so the session's
