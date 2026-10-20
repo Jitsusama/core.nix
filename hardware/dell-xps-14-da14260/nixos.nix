@@ -221,6 +221,13 @@ in
       name = "soc-slider-takes-quiet";
       patch = ./soc-slider-takes-quiet.patch;
     }
+    {
+      # The panel gives its 20 to 120 Hz variable refresh range only where
+      # the kernel doesn't look, so the driver never offers it. Written here;
+      # the patch says why.
+      name = "panel-variable-refresh";
+      patch = ./panel-variable-refresh.patch;
+    }
   ];
 
   # The disk, and the USB and Thunderbolt ports a dock's keyboard arrives

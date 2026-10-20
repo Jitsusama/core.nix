@@ -130,6 +130,7 @@ kernel guide][2] says what that catches.
 | `kernel-settings-hold`            | the kernel's patches apply and every setting holds        |
 | `kernel-settings-hold-<model>`    | the same for the kernel that hardware builds              |
 | `speaker-amps-have-every-dai-named` | the XPS 14's SoundWire machine driver names only DAIs its amplifiers register |
+| `the-panel-offers-variable-refresh` | the XPS 14's kernel reads the panel's refresh range from DisplayID's Adaptive Sync block |
 | `platform-profiles-reach-the-legacy-file` | every profile Dell's driver offers, the XPS 14's SoC slider takes too |
 | `ipu7-outlives-its-open-files` | the XPS 14's capture side is freed when its last node closes, not when the IPU unbinds |
 | `niri-accepts-its-configuration`  | niri loads the files an account gets                      |

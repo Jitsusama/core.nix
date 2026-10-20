@@ -471,8 +471,21 @@ a tenth of the laptop's draw. It waits for a low battery because scrolling is
 less smooth at 60 Hz. Once the battery is under 30% it stays at 60 Hz until
 the charger is back, even if the reading climbs over 30% again, so the screen
 can't flick between the two. A rate picked by hand with niri holds until the
-next change. The panel can't vary its own rate yet (see VRR below), which
-would save the same power without the choice.
+next change.
+
+### The Panel's Variable Refresh
+
+The panel varies its rate from 20 to 120 Hz, as Windows uses it, but gives
+that range only in its EDID's DisplayID Adaptive Sync block, which the
+kernel doesn't read: it looks only for a range limits descriptor in the
+base block, so the Intel driver never offers variable refresh.
+`panel-variable-refresh.patch`, written here, reads the panel's native range
+from that block when the base block has none. On its own it changes nothing
+a person sees: the compositor still decides. In
+7.2 the Intel driver turns the panel's self refresh off while variable
+refresh is on, which Windows doesn't, so it's worth turning on only while
+a video or game is showing, as niri's on-demand setting does, rather than
+everywhere.
 
 ### The Touchpad's Click
 
@@ -493,7 +506,6 @@ type, which libinput reads as Windows reads the same flag.
 
 | Part         | Why it isn't here yet                                                 |
 | ------------ | --------------------------------------------------------------------- |
-| Panel VRR    | the panel's range comes from a DisplayID block Linux doesn't read yet |
 | Presence     | the camera bridge never senses anyone with the camera idle; see below |
 
 - **Presence.** The sensor hub's presence reading comes from the Synaptics
