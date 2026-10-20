@@ -255,6 +255,7 @@
         laptop = moduleFrom ./roles/laptop/nixos.nix { inherit (self) nixosModules; };
 
         dell-xps-14-da14260 = ./hardware/dell-xps-14-da14260/nixos.nix;
+        microsoft-surface-laptop-4-1958 = ./hardware/microsoft-surface-laptop-4-1958/nixos.nix;
       };
 
       # What core.nix builds that a cache can hold apart from any machine: the
