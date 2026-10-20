@@ -1957,6 +1957,26 @@ in
   # A machine that names a click strength sets it on each hidraw device as it
   # appears and again after every kind of sleep. One that names none runs
   # nothing.
+  # The XPS 14's camera takes Dell's tuning only for a module a machine names,
+  # and otherwise keeps Intel's, fetching nothing from Dell.
+  the-camera-takes-its-modules-tuning =
+    let
+      camera =
+        module:
+        (bareNixos [
+          self.nixosModules.dell-xps-14-da14260
+          { jitsusama.dellXps14.cameraModule = module; }
+        ]).config.systemd.services.camera.environment;
+      named = camera "CJFOE90";
+      unnamed = camera null;
+    in
+    holds "the-camera-takes-its-modules-tuning"
+      "The camera doesn't read Dell's tuning for the module named, or reads one unasked."
+      (
+        lib.hasSuffix "-camera-config-CJFOE90/" (named.CAMERA_CFG_PATH or "")
+        && !(unnamed ? CAMERA_CFG_PATH)
+      );
+
   the-click-strength-holds-after-sleep =
     let
       machine =
