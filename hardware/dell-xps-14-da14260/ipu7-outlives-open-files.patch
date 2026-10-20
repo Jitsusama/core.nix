@@ -1,0 +1,120 @@
+staging: media: ipu7: Keep the ISYS until its last node closes
+
+The ISYS and its CSI-2 ports are allocated with devm, so they're freed
+when the driver unbinds. A file still open on one of its video nodes,
+or on a sensor's subdevice node, holds that node and the V4L2 device
+past the unbind, and closing it reads the node, embedded in a CSI-2
+port, and the V4L2 device, embedded in the ISYS: freed memory. The
+kernel oopses in v4l2_release() as the file closes. WirePlumber holds
+the capture and sensor nodes open all the time, so an unbind and bind
+with it running oopsed as soon as it restarted.
+
+Allocate both with kzalloc() and free them in the V4L2 device's release
+callback, which runs once the last node holding it has gone, as the
+V4L2 core asks of every driver. The media device's cleanup moves there
+too, since a closing node still takes its request mutex, and the video
+nodes' mutexes are no longer destroyed at unbind, since a closing node
+takes those.
+
+--- a/drivers/staging/media/ipu7/ipu7-isys-video.c
++++ b/drivers/staging/media/ipu7/ipu7-isys-video.c
+@@ -1080,9 +1080,13 @@ out_mutex_destroy:
+ 	return ret;
+ }
+ 
++/*
++ * The mutex is left as it is: a file still open on the node takes it as it
++ * closes, after the ISYS has unbound, and it's freed with the ISYS once the
++ * last of those closes.
++ */
+ void ipu7_isys_video_cleanup(struct ipu7_isys_video *av)
+ {
+ 	vb2_video_unregister_device(&av->vdev);
+ 	media_entity_cleanup(&av->vdev.entity);
+-	mutex_destroy(&av->mutex);
+ }
+--- a/drivers/staging/media/ipu7/ipu7-isys.c
++++ b/drivers/staging/media/ipu7/ipu7-isys.c
+@@ -437,7 +437,23 @@ static void isys_unregister_devices(struct ipu7_isys *isys)
+ 	isys_csi2_unregister_subdevices(isys);
+ 	v4l2_device_unregister(&isys->v4l2_dev);
+ 	media_device_unregister(&isys->media_dev);
++}
++
++/*
++ * Every video and subdevice node holds the V4L2 device until the last file
++ * open on it closes, which can be after the ISYS has unbound, and closing
++ * one reaches the ISYS, and the CSI-2 port a capture node is part of,
++ * through it. So those are freed here, at its last reference, rather than
++ * with the auxiliary device.
++ */
++static void isys_v4l2_release(struct v4l2_device *v4l2_dev)
++{
++	struct ipu7_isys *isys =
++		container_of(v4l2_dev, struct ipu7_isys, v4l2_dev);
++
+ 	media_device_cleanup(&isys->media_dev);
++	kfree(isys->csi2);
++	kfree(isys);
+ }
+ 
+ static void enable_csi2_legacy_irq(struct ipu7_isys *isys, bool enable)
+@@ -597,6 +613,8 @@ static void isys_remove(struct auxiliary_device *auxdev)
+ 
+ 	mutex_destroy(&isys->stream_mutex);
+ 	mutex_destroy(&isys->mutex);
++
++	v4l2_device_put(&isys->v4l2_dev);
+ }
+ 
+ static int alloc_fw_msg_bufs(struct ipu7_isys *isys, int amount)
+@@ -743,13 +761,13 @@ static int isys_probe(struct auxiliary_device *auxdev,
+ 	if (!isp->ipu7_bus_ready_to_probe)
+ 		return -EPROBE_DEFER;
+ 
+-	isys = devm_kzalloc(&auxdev->dev, sizeof(*isys), GFP_KERNEL);
++	isys = kzalloc(sizeof(*isys), GFP_KERNEL);
+ 	if (!isys)
+ 		return -ENOMEM;
+ 
+ 	ret = pm_runtime_resume_and_get(&auxdev->dev);
+ 	if (ret < 0)
+-		return ret;
++		goto out_free;
+ 
+ 	adev->auxdrv_data =
+ 		(const struct ipu7_auxdrv_data *)auxdev_id->driver_data;
+@@ -760,8 +778,8 @@ static int isys_probe(struct auxiliary_device *auxdev,
+ 	INIT_LIST_HEAD(&isys->requests);
+ 	csi2_pdata = &isys->pdata->ipdata->csi2;
+ 
+-	isys->csi2 = devm_kcalloc(&auxdev->dev, csi2_pdata->nports,
+-				  sizeof(*isys->csi2), GFP_KERNEL);
++	isys->csi2 = kcalloc(csi2_pdata->nports, sizeof(*isys->csi2),
++			     GFP_KERNEL);
+ 	if (!isys->csi2) {
+ 		ret = -ENOMEM;
+ 		goto out_runtime_put;
+@@ -803,6 +821,7 @@ static int isys_probe(struct auxiliary_device *auxdev,
+ 	ret = isys_register_devices(isys);
+ 	if (ret)
+ 		goto out_cleanup_fw;
++	isys->v4l2_dev.release = isys_v4l2_release;
+ 
+ 	ret = isys_fw_log_init(isys);
+ 	if (ret)
+@@ -832,6 +851,14 @@ out_cleanup_isys:
+ out_runtime_put:
+ 	pm_runtime_put(&auxdev->dev);
+ 
++out_free:
++	if (isys->v4l2_dev.release) {
++		v4l2_device_put(&isys->v4l2_dev);
++	} else {
++		kfree(isys->csi2);
++		kfree(isys);
++	}
++
+ 	return ret;
+ }
+ 

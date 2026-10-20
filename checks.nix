@@ -2278,6 +2278,31 @@ in
           touch $out
         '';
 
+    # The capture side of the XPS 14's IPU, and the ports its video nodes sit
+    # in, are freed at the V4L2 device's last reference rather than with the
+    # device, since a file open on one of its nodes outlives an unbind and
+    # reaches them as it closes.
+    ipu7-outlives-its-open-files =
+      let
+        inherit ((bareNixos [ self.nixosModules.dell-xps-14-da14260 ]).config.boot.kernelPackages)
+          kernel
+          ;
+        isys = "drivers/staging/media/ipu7/ipu7-isys.c";
+        patches = lib.filter (patch: patch != null) (map (patch: patch.patch) kernel.kernelPatches);
+      in
+      pkgs.runCommandLocal "ipu7-outlives-its-open-files" { nativeBuildInputs = [ pkgs.patchutils ]; } ''
+        tar xf ${kernel.src} --strip-components=1 --wildcards '*/${isys}'
+        for patch in ${lib.escapeShellArgs (map (patch: "${patch}") patches)}; do
+          filterdiff -p1 -i ${isys} "$patch" | patch -p1 --forward --batch --silent
+        done
+        fail() { echo "The IPU7's capture side $1, so a node still open after an unbind reads freed memory as it closes."; exit 1; }
+        grep -q 'sizeof(\*isys)' ${isys} || fail "isn't allocated where this check looks"
+        ! grep -q 'devm_kzalloc(&auxdev->dev, sizeof(\*isys)' ${isys} || fail "is freed with its device"
+        ! grep -q 'devm_kcalloc' ${isys} || fail "has its CSI-2 ports freed with its device"
+        grep -q 'v4l2_dev.release = ' ${isys} || fail "sets no release for its V4L2 device"
+        touch $out
+      '';
+
     # niri reads back the files an account gets and rejects anything it
     # wouldn't load, from a misspelt action to a colour it can't parse.
     niri-accepts-its-configuration =
