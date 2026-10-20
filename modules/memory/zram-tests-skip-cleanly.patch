@@ -1,0 +1,19 @@
+--- a/tests/test_cases.rs
++++ b/tests/test_cases.rs
+@@ -27,7 +27,15 @@
+             }
+             r => r.expect("unshare(NEWUSER)"),
+         }
+-        fs::write("/proc/self/setgroups", b"deny").unwrap();
++        // Some hosts, GitHub's Ubuntu runners among them, let the namespace
++        // be made but refuse to set it up: skip there too.
++        if let Err(e) = fs::write("/proc/self/setgroups", b"deny") {
++            if e.kind() == std::io::ErrorKind::PermissionDenied {
++                eprintln!("user namespace without capabilities: skipping tests");
++                exit(0);
++            }
++            panic!("/proc/self/setgroups: {e}");
++        }
+         fs::write("/proc/self/uid_map", format!("0 {} 1", uid)).unwrap();
+         fs::write("/proc/self/gid_map", format!("0 {} 1", gid)).unwrap();
+     }
