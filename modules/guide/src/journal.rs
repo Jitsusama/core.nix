@@ -112,16 +112,9 @@ impl Journal {
 mod tests {
     use super::*;
 
-    fn scratch(name: &str) -> PathBuf {
-        let directory =
-            std::env::temp_dir().join(format!("guide-journal-{name}-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&directory);
-        directory
-    }
-
     #[test]
     fn a_fact_outlives_the_guide() {
-        let directory = scratch("outlives");
+        let directory = crate::Scratch::new("journal-outlives");
         let path = directory.join("state").join("journal");
         let mut journal = Journal::open(&path).unwrap();
         assert!(!journal.knows("recovery-key", "typed back"));
@@ -130,35 +123,32 @@ mod tests {
         let again = Journal::open(&path).unwrap();
         assert!(again.knows("recovery-key", "typed back"));
         assert!(!again.knows("recovery-key", "printed"));
-        fs::remove_dir_all(directory).unwrap();
     }
 
     #[test]
     fn a_fact_is_written_once() {
-        let directory = scratch("once");
+        let directory = crate::Scratch::new("journal-once");
         let path = directory.join("journal");
         let mut journal = Journal::open(&path).unwrap();
         journal.record("restore", "done").unwrap();
         journal.record("restore", "done").unwrap();
         assert_eq!(fs::read_to_string(&path).unwrap().lines().count(), 1);
-        fs::remove_dir_all(directory).unwrap();
     }
 
     #[test]
     fn the_journal_is_its_owners_alone() {
         use std::os::unix::fs::PermissionsExt;
-        let directory = scratch("owner");
+        let directory = crate::Scratch::new("journal-owner");
         let path = directory.join("state").join("journal");
         Journal::open(&path).unwrap().record("a", "b").unwrap();
         let mode = |path: &Path| fs::metadata(path).unwrap().permissions().mode() & 0o777;
         assert_eq!(mode(&directory.join("state")), 0o700);
         assert_eq!(mode(&path), 0o600);
-        fs::remove_dir_all(directory).unwrap();
     }
 
     #[test]
     fn a_damaged_journal_is_refused_by_its_line() {
-        let directory = scratch("damaged");
+        let directory = crate::Scratch::new("journal-damaged");
         fs::create_dir_all(&directory).unwrap();
         let path = directory.join("journal");
         fs::write(
@@ -170,6 +160,5 @@ mod tests {
             panic!("a damaged journal")
         };
         assert!(what.ends_with("line 2"), "{what}");
-        fs::remove_dir_all(directory).unwrap();
     }
 }

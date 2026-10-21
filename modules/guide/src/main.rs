@@ -7,7 +7,8 @@
 //! holding everything to install it, sealed to a recovery passphrase.
 //! `guide write-stick IMAGE FILE` does the same into a file the size of a
 //! stick, the passphrase read from standard input. `guide install` is
-//! what the stick runs on its console, as root.
+//! what the stick runs on its console, as root, and `guide installed`
+//! finishes the machine once it boots its own disk, as the person.
 
 use std::fs::{File, OpenOptions};
 use std::io::BufRead;
@@ -26,33 +27,41 @@ use guide::vault;
 use guide::vault::store::{Fat, Store};
 use guide::{Fault, Journal, Journey, Machine, Place, Secret, Tool};
 
-const USAGE: &str = "usage: guide observe | guide tools | guide install
-       guide host IMAGE [--sign-with DIRECTORY] [--install PAYLOAD]
-       guide write-stick IMAGE FILE [--sign-with DIRECTORY] [--install PAYLOAD]";
+const USAGE: &str = "usage: guide observe | guide tools | guide install | guide installed
+       guide host IMAGE [--sign-with DIRECTORY] [--install PAYLOAD [--secure-boot-keys DIRECTORY]]
+       guide write-stick IMAGE FILE [--sign-with DIRECTORY] [--install PAYLOAD [--secure-boot-keys DIRECTORY]]";
 
 fn main() -> ExitCode {
+    // age finds its plugins on PATH and takes no other, so the guide's own
+    // PATH is the one this build was given, and nothing a shell set can
+    // put another plugin in its place. The programs the guide runs get
+    // empty environments of their own (system.rs).
+    if let Some(plugins) = guide::tool::Path::AgePlugins.value() {
+        // SAFETY: the first thing main does, while no other thread is
+        // there to read the environment.
+        unsafe { std::env::set_var("PATH", plugins) };
+    }
     let args: Vec<String> = std::env::args().skip(1).collect();
     match args.iter().map(String::as_str).collect::<Vec<_>>()[..] {
         ["observe"] => observe(),
         ["tools"] => tools(),
         ["install"] => reported(install()),
-        ["host", image, ref options @ ..] => match written(options) {
-            Some((keys, payload)) => reported(
-                keys.map(|keys| Signer::open(Path::new(keys)))
-                    .transpose()
-                    .and_then(|signer| host(image, signer, payload)),
+        ["installed"] => reported(installed()),
+        ["host", image, ref options @ ..] => match Written::parse(options) {
+            Some(written) => reported(
+                written
+                    .open()
+                    .and_then(|(signer, payload)| host(image, signer, payload)),
             ),
             None => {
                 eprintln!("{USAGE}");
                 ExitCode::from(2)
             }
         },
-        ["write-stick", image, target, ref options @ ..] => match written(options) {
-            Some((keys, payload)) => reported(
-                keys.map(|keys| Signer::open(Path::new(keys)))
-                    .transpose()
-                    .and_then(|signer| write_stick(image, target, signer.as_ref(), payload)),
-            ),
+        ["write-stick", image, target, ref options @ ..] => match Written::parse(options) {
+            Some(written) => reported(written.open().and_then(|(signer, payload)| {
+                write_stick(image, target, signer.as_ref(), payload)
+            })),
             None => {
                 eprintln!("{USAGE}");
                 ExitCode::from(2)
@@ -65,19 +74,52 @@ fn main() -> ExitCode {
     }
 }
 
-/// write-stick's options: the db key directory and the payload, each
-/// given at most once.
-fn written<'a>(mut options: &[&'a str]) -> Option<(Option<&'a str>, Option<&'a str>)> {
-    let (mut keys, mut payload) = (None, None);
-    while let [option, value, rest @ ..] = options {
-        match *option {
-            "--sign-with" if keys.is_none() => keys = Some(*value),
-            "--install" if payload.is_none() => payload = Some(*value),
-            _ => return None,
+/// What a stick is written with, each given at most once: the db key
+/// directory its boot program is signed with, the machine's payload, and
+/// sbctl's directory of the machine's Secure Boot keys, which the stick
+/// carries for a reinstall and signs with when no other key is named.
+#[derive(Default)]
+struct Written<'a> {
+    sign_with: Option<&'a str>,
+    install: Option<&'a str>,
+    secure_boot_keys: Option<&'a str>,
+}
+
+impl<'a> Written<'a> {
+    fn parse(mut options: &[&'a str]) -> Option<Written<'a>> {
+        let mut written = Written::default();
+        while let [option, value, rest @ ..] = options {
+            let slot = match *option {
+                "--sign-with" => &mut written.sign_with,
+                "--install" => &mut written.install,
+                "--secure-boot-keys" => &mut written.secure_boot_keys,
+                _ => return None,
+            };
+            if slot.replace(*value).is_some() {
+                return None;
+            }
+            options = rest;
         }
-        options = rest;
+        (options.is_empty() && (written.secure_boot_keys.is_none() || written.install.is_some()))
+            .then_some(written)
     }
-    options.is_empty().then_some((keys, payload))
+
+    fn open(&self) -> Result<(Option<Signer>, Option<Payload>), Fault> {
+        let keys = self.secure_boot_keys.map(Path::new);
+        let signer = match (self.sign_with, keys) {
+            (Some(directory), _) => Some(Signer::open(Path::new(directory))?),
+            (None, Some(keys)) => Some(Signer::open(&keys.join("keys/db"))?),
+            (None, None) => None,
+        };
+        let payload = match (self.install, keys) {
+            (Some(payload), Some(keys)) => {
+                Some(Payload::open(Path::new(payload))?.with_secure_boot_keys(keys)?)
+            }
+            (Some(payload), None) => Some(Payload::open(Path::new(payload))?),
+            (None, _) => None,
+        };
+        Ok((signer, payload))
+    }
 }
 
 fn reported(result: Result<(), Fault>) -> ExitCode {
@@ -114,7 +156,7 @@ fn write_stick(
     image: &str,
     target: &str,
     signer: Option<&Signer>,
-    payload: Option<&str>,
+    payload: Option<Payload>,
 ) -> Result<(), Fault> {
     let kept = |why: std::io::Error| Fault::Unkept {
         path: target.into(),
@@ -131,9 +173,6 @@ fn write_stick(
         .write(true)
         .open(target)
         .map_err(kept)?;
-    let payload = payload
-        .map(|payload| Payload::open(Path::new(payload)))
-        .transpose()?;
     let passphrase = payload.as_ref().map(|_| passphrase()).transpose()?;
     let vault = host::write(
         Path::new(image),
@@ -155,13 +194,18 @@ fn write_stick(
     Ok(())
 }
 
-/// Where the host keeps its log: the person's own state, readable only by
-/// them.
-fn host_log() -> Option<File> {
+/// The person's own state for the guide, made readable only by them.
+fn own_state() -> Option<PathBuf> {
     let state = std::env::var_os("XDG_STATE_HOME")
         .map(PathBuf::from)
         .or_else(|| std::env::var_os("HOME").map(|home| Path::new(&home).join(".local/state")))?;
-    let directory = state.join("guide");
+    Some(state.join("guide"))
+}
+
+/// Where the host keeps its log: the person's own state, readable only by
+/// them.
+fn host_log() -> Option<File> {
+    let directory = own_state()?;
     std::os::unix::fs::DirBuilderExt::mode(std::fs::DirBuilder::new().recursive(true), 0o700)
         .create(&directory)
         .ok()?;
@@ -172,7 +216,7 @@ fn host_log() -> Option<File> {
 
 /// The host's journey: a stick written for a machine, or a repair stick,
 /// on the screen of whatever machine writes it, as the person, not root.
-fn host(image: &str, signer: Option<Signer>, payload: Option<&str>) -> Result<(), Fault> {
+fn host(image: &str, signer: Option<Signer>, payload: Option<Payload>) -> Result<(), Fault> {
     // SAFETY: getuid can't fail and touches no memory.
     if unsafe { libc::getuid() } == 0 {
         return Err(Fault::Blocked {
@@ -181,9 +225,6 @@ fn host(image: &str, signer: Option<Signer>, payload: Option<&str>) -> Result<()
                 .into(),
         });
     }
-    let payload = payload
-        .map(|payload| Payload::open(Path::new(payload)))
-        .transpose()?;
     let machine_name = payload
         .as_ref()
         .map(|payload| payload.target.machine.clone());
@@ -207,6 +248,7 @@ fn host(image: &str, signer: Option<Signer>, payload: Option<&str>) -> Result<()
         theme: &theme,
         log: None,
         whole: true,
+        last: Default::default(),
     };
     if walk.walk(&mut machine, &mut terminal)? != Ended::Finished {
         return Ok(());
@@ -218,6 +260,56 @@ fn host(image: &str, signer: Option<Signer>, payload: Option<&str>) -> Result<()
         None => "Start the machine to repair from the stick.".into(),
     };
     walk.card(&mut terminal, "The stick is written", &next, "finish")?;
+    Ok(())
+}
+
+/// The installed machine's journey, as the person who signs in there:
+/// Secure Boot checked, then the disk sealed to the TPM, then a restart to
+/// meet the TPM's PIN at the disk's prompt.
+fn installed() -> Result<(), Fault> {
+    // SAFETY: getuid can't fail and touches no memory.
+    if unsafe { libc::getuid() } == 0 {
+        return Err(Fault::Blocked {
+            step: "finish",
+            why: "the guide runs as yourself here, and asks for root where it needs it".into(),
+        });
+    }
+    // What's proven here has to outlive the restarts in between.
+    let journal = match own_state() {
+        Some(state) => Journal::open(&state.join("journal"))?,
+        None => Journal::in_memory(),
+    };
+    let mut machine = System::new(journal, host_log());
+    let name = machine
+        .read("/etc/hostname")?
+        .map(|bytes| String::from_utf8_lossy(&bytes).trim().to_string())
+        .unwrap_or_else(|| "this machine".into());
+    let title = format!("Finish {name}");
+    let journey = Journey::new(guide::installed::steps())
+        .map_err(|why| Fault::unreadable("the installed machine's steps", why))?;
+    let theme = Theme::built(Terminal::is_console());
+    let mut terminal = Terminal::open()?;
+    let walk = Walk {
+        journey: &journey,
+        here: Place::Installed,
+        name: &title,
+        theme: &theme,
+        log: None,
+        whole: true,
+        last: Default::default(),
+    };
+    if walk.walk(&mut machine, &mut terminal)? != Ended::Finished {
+        return Ok(());
+    }
+    let next = "Restart, and the disk asks for the TPM's PIN from now on. A YubiKey or the recovery key still opens it whenever the TPM won't.";
+    if walk.card(
+        &mut terminal,
+        &format!("{name} is finished"),
+        next,
+        "restart",
+    )? {
+        machine.run(Tool::Systemctl, &["reboot"])?.ok()?;
+    }
     Ok(())
 }
 
@@ -269,6 +361,7 @@ fn install() -> Result<(), Fault> {
         theme: &theme,
         log: Some(Path::new(LOG)),
         whole: false,
+        last: Default::default(),
     };
     if walk.walk(&mut machine, &mut terminal)? != Ended::Finished {
         return Ok(());
@@ -320,7 +413,7 @@ fn tools() -> ExitCode {
     }
     for absent in Theme::built(false).missing() {
         missing += 1;
-        println!("the theme: this build has no {absent}");
+        println!("the theme: {absent} isn't in this build");
     }
     for path in guide::tool::Path::ALL {
         let name = path.name();

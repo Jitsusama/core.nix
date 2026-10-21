@@ -10,6 +10,9 @@ use crate::{Fault, Machine, Tool};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Header {
     pub keyslots: BTreeSet<u32>,
+    /// The keyslots tried first, set with `cryptsetup config --priority
+    /// prefer`.
+    pub preferred: BTreeSet<u32>,
     pub tokens: Vec<Token>,
 }
 
@@ -68,11 +71,19 @@ pub fn parse(json: &str) -> Result<Header, Fault> {
     let unreadable = |why: &str| Fault::unreadable("a LUKS header", why);
     let root: Value =
         serde_json::from_str(json).map_err(|why| Fault::unreadable("a LUKS header", why))?;
-    let keyslots = root["keyslots"]
+    let slots = root["keyslots"]
         .as_object()
-        .ok_or_else(|| unreadable("it has no keyslots"))?
+        .ok_or_else(|| unreadable("it has no keyslots"))?;
+    let keyslots = slots
         .keys()
         .map(|slot| number(slot))
+        .collect::<Result<_, _>>()?;
+    // LUKS2 writes a keyslot's priority only when it isn't normal: 0 to
+    // ignore it, 2 to prefer it.
+    let preferred = slots
+        .iter()
+        .filter(|(_, slot)| slot["priority"].as_u64() == Some(2))
+        .map(|(id, _)| number(id))
         .collect::<Result<_, _>>()?;
     let mut tokens = vec![];
     if let Some(found) = root["tokens"].as_object() {
@@ -106,7 +117,11 @@ pub fn parse(json: &str) -> Result<Header, Fault> {
         }
     }
     tokens.sort_by_key(|token| token.id);
-    Ok(Header { keyslots, tokens })
+    Ok(Header {
+        keyslots,
+        preferred,
+        tokens,
+    })
 }
 
 pub fn observe(machine: &mut dyn Machine, device: &str) -> Result<Header, Fault> {
@@ -118,6 +133,20 @@ pub fn observe(machine: &mut dyn Machine, device: &str) -> Result<Header, Fault>
             )?
             .ok()?,
     )
+}
+
+/// The header as root reads it, on an installed machine whose disk a
+/// person can't read.
+pub fn observe_as_root(machine: &mut dyn Machine, device: &str) -> Result<Header, Fault> {
+    let ran = machine.run_given(
+        crate::Program::Tool(Tool::Cryptsetup),
+        &["luksDump", "--dump-json-metadata", device],
+        crate::Given {
+            as_root: true,
+            ..crate::Given::default()
+        },
+    )?;
+    parse(&ran.ok()?)
 }
 
 #[cfg(test)]

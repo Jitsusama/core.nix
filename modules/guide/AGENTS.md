@@ -71,10 +71,23 @@ driven on; the installed machine's steps come later.
   the stick's disk tools, its volume made with a key held only in memory.
   Each YubiKey is enrolled alone, told apart from the others by a silent
   assertion, and proven by opening the disk; then a recovery key, typed
-  back and proven. The Secure Boot keys are made where the install signs
-  with them, the system is copied in from the vault with no network, and
-  the key held in memory comes off the disk last. Every step stays done
+  back and proven. The Secure Boot keys are put back from the vault when
+  the stick carries the ones the firmware's db already trusts, so a
+  reinstall needs no firmware visit, and otherwise made where the install
+  signs with them, which only a firmware in setup mode will take. The
+  system is copied in from the vault with no network, and the key held in
+  memory comes off the disk last. A host gives the stick the keys with
+  `--secure-boot-keys`, sbctl's directory, and signs the stick with them. Every step stays done
   through the steps after it, since the journey runs the first that isn't.
+- **The installed machine.** Once it boots its own disk, the guide runs
+  there as the person, from core's `guide` NixOS module, which also writes
+  what it reads about the machine to `/etc/guide/machine.json`. It checks
+  Secure Boot enforces with the machine's own keys before anything is
+  sealed to it, then seals the disk to the TPM with a PIN under the
+  measured-boot policy, a YubiKey opening the disk to do so, prefers the
+  TPM's slot and proves it opens. What needs root goes through run0, which
+  asks polkit; its secrets go only as credentials loaded from files in
+  memory and on standard input, never on run0's command line.
 - **The screen.** One step at a time, and one thing asked at a time, each
   before the step starts. It's drawn in the theme's roles and marks as the
   build was given them (`theme.nix`), with the console's stand-ins on a
@@ -89,6 +102,12 @@ driven on; the installed machine's steps come later.
   file's SHA-256. `manifest.json` goes last, so a vault without one was
   never finished. Every file sits at the top, since fatfs 0.3.6 writes
   directories fsck.fat has to repair.
+- **Opening the vault.** The key's YubiKey copy goes through
+  age-plugin-fido2-hmac, which age finds only on PATH, so the guide sets
+  its own PATH to the plugin's store directory as it starts. Sealing needs
+  no key plugged in. On the stick one field takes either the plugged-in
+  key's PIN or, with none plugged in, the recovery passphrase; the plugin's
+  own prompts never reach the screen, since the PIN is handed to it.
 
 ## Where Things Live
 
@@ -109,6 +128,8 @@ driven on; the installed machine's steps come later.
 | `src/vault/`          | the vault's sealing and index, and where its files are kept |
 | `src/host/`           | writing a stick on a host, and what a reinstall stick carries |
 | `src/install/`        | installing a machine from its stick, a step to a file by what it touches |
+| `src/installed/`      | finishing the machine on itself: Secure Boot checked, the TPM sealed |
+| `nixos.nix`           | the guide on a machine it installed                       |
 | `src/screen/`         | the view, drawn as lines in roles; the terminal; the walk through a journey |
 | `payload.nix`         | what a reinstall stick carries for one machine            |
 | `stick.nix`           | the stick's own system                                    |
@@ -120,6 +141,7 @@ driven on; the installed machine's steps come later.
 | `tests/system.rs`     | secrets handed to a real program, and kept out of the log |
 | `tests/host.rs`       | the one stick written, never another disk              |
 | `../../tests/guide-host.nix` | a stick written on a host through UDisks2, as the person |
+| `../../tests/guide-vault.nix` | a vault opened by a YubiKey's PIN, then by the passphrase |
 | `../../tests/guide-install.nix` | a machine installed from its stick in a VM, by the guide's keys |
 
 ## Working on It

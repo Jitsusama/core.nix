@@ -2,8 +2,8 @@
 //! loader signs with them, the system installed from the vault with no
 //! network, and the account's password.
 
-use crate::install::{HELD, ROOT, SYSTEM_CACHE, target, vault_key};
-use crate::observe::efi::{Mode, SecureBoot};
+use crate::install::{HELD, ROOT, SYSTEM_CACHE, target, vault, vault_key};
+use crate::observe::efi::{self, Mode, SecureBoot};
 use crate::tool::Path;
 use crate::{
     Answer, Answers, Ask, Fault, Given, Machine, Place, Program, Secret, Standing, Step, Tool,
@@ -16,14 +16,33 @@ const CACHE: &str = "/mnt/var/cache/guide";
 const PROFILE: &str = "/mnt/nix/var/nix/profiles/system";
 const BOOT_LOADER: &str = "/mnt/boot/EFI/systemd/systemd-bootx64.efi";
 
-/// Secure Boot keys made on this machine, where the install's boot loader
-/// signs with them. The firmware enrols them on the first boot, which it
-/// can only do in setup mode.
-pub struct MakeSecureBootKeys;
+/// The machine's Secure Boot keys, where the install's boot loader signs
+/// with them: put back from the vault when the stick carries the ones the
+/// firmware already trusts, so a reinstall needs no visit to the firmware,
+/// or else made here, which the firmware takes only in setup mode. The
+/// first boot enrols them in setup mode, and restarts once either way.
+pub struct SecureBootKeys;
 
-impl Step for MakeSecureBootKeys {
+/// What the vault keeps them as: sbctl's own directory.
+const SBCTL_IN_VAULT: &str = "sbctl";
+
+/// The vault's db certificate as DER, when the stick carries the keys.
+fn carried_db(machine: &mut dyn Machine) -> Result<Option<Vec<u8>>, Fault> {
+    let mut vault = vault(machine)?;
+    let pem = format!("{SBCTL_IN_VAULT}/keys/db/db.pem");
+    if !vault.files().iter().any(|file| file.path == pem) {
+        return Ok(None);
+    }
+    let mut text = vec![];
+    vault.extract(&pem, &mut text)?;
+    let (_, der) = rsa::pkcs8::der::pem::decode_vec(&text)
+        .map_err(|why| Fault::unreadable("the vault's db certificate", why))?;
+    Ok(Some(der))
+}
+
+impl Step for SecureBootKeys {
     fn id(&self) -> &'static str {
-        "make-secure-boot-keys"
+        "secure-boot-keys"
     }
 
     fn place(&self) -> Place {
@@ -31,24 +50,33 @@ impl Step for MakeSecureBootKeys {
     }
 
     fn title(&self) -> &'static str {
-        "Make the machine's Secure Boot keys"
+        "Give the machine its Secure Boot keys"
     }
 
     fn observe(&self, machine: &mut dyn Machine) -> Result<Standing, Fault> {
-        let made = machine.read(&format!("{SBCTL}/keys/db/db.key"))?.is_some()
+        let there = machine.read(&format!("{SBCTL}/keys/db/db.key"))?.is_some()
             && machine.read(&format!("{SBCTL}/GUID"))?.is_some();
-        if made {
+        if there {
             return Ok(Standing::Done {
-                evidence: "the machine's own Secure Boot keys are made".into(),
+                evidence: "the machine's own Secure Boot keys are in place".into(),
             });
         }
-        Ok(match SecureBoot::observe(machine)? {
-            Some(SecureBoot { mode: Mode::Setup, .. }) => Standing::Needed { asks: vec![] },
-            Some(found) => Standing::Blocked {
+        let carried = carried_db(machine)?;
+        Ok(match (SecureBoot::observe(machine)?, carried) {
+            (Some(SecureBoot { mode: Mode::Setup, .. }), _) => Standing::Needed { asks: vec![] },
+            (Some(_), Some(db)) if efi::db_certificates(machine)?.contains(&db) => Standing::Needed { asks: vec![] },
+            (Some(found), Some(_)) => Standing::Blocked {
+                why: format!(
+                    "the firmware is in {} mode and trusts other keys than the ones this stick carries",
+                    found.mode
+                ),
+                remedy: "write the stick again with this machine's keys, or clear the firmware's Secure Boot keys in its setup and restart from the stick".into(),
+            },
+            (Some(found), None) => Standing::Blocked {
                 why: format!("the firmware's Secure Boot is in {} mode, so it won't take new keys", found.mode),
                 remedy: "clear the firmware's Secure Boot keys in its setup, as the firmware card shows, then restart from the stick".into(),
             },
-            None => Standing::Blocked {
+            (None, _) => Standing::Blocked {
                 why: "the firmware has no Secure Boot".into(),
                 remedy: "boot the stick in UEFI mode".into(),
             },
@@ -56,6 +84,14 @@ impl Step for MakeSecureBootKeys {
     }
 
     fn run(&self, machine: &mut dyn Machine, _answers: &Answers) -> Result<(), Fault> {
+        if carried_db(machine)?.is_some() {
+            let key = vault_key(machine)?.ok_or(Fault::Blocked {
+                step: self.id(),
+                why: "the vault isn't open".into(),
+            })?;
+            machine.unpack(key, SBCTL_IN_VAULT, SBCTL)?;
+            return Ok(());
+        }
         machine
             .run(
                 Tool::Sbctl,

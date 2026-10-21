@@ -36,6 +36,9 @@ pub struct Walk<'a> {
     /// Whether the journey is all its steps, so how far along it is can be
     /// said: not while it's only the steps that find out the rest.
     pub whole: bool,
+    /// What the last step done showed, kept from one journey to the next,
+    /// so the steps that found out the rest still say what they did.
+    pub last: std::cell::RefCell<Option<String>>,
 }
 
 fn number(journey: &Journey, step: &dyn Step) -> (usize, usize) {
@@ -193,7 +196,18 @@ impl Walk<'_> {
     }
 
     pub fn walk(&self, machine: &mut dyn Machine, io: &mut dyn Io) -> Result<Ended, Fault> {
-        let mut last: Option<String> = None;
+        let mut last = self.last.borrow_mut().take();
+        let ended = self.walking(machine, io, &mut last);
+        *self.last.borrow_mut() = last;
+        ended
+    }
+
+    fn walking(
+        &self,
+        machine: &mut dyn Machine,
+        io: &mut dyn Io,
+        last: &mut Option<String>,
+    ) -> Result<Ended, Fault> {
         loop {
             let next = match self.journey.next(self.here, machine) {
                 Ok(next) => next,
@@ -266,7 +280,7 @@ impl Walk<'_> {
                         },
                     )?;
                     match Journey::attempt(step, machine, &answers) {
-                        Ok(evidence) => last = Some(evidence),
+                        Ok(evidence) => *last = Some(evidence),
                         Err(fault) => loop {
                             let fault = fault.said();
                             self.show(

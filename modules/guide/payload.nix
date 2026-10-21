@@ -14,8 +14,10 @@
   # The machine's configuration, as nixosSystem's config or a NixOS test's
   # node gives it.
   config,
-  # Its YubiKeys by the names the person knows them by, in the order the
-  # guide enrols them.
+  # Its YubiKeys in the order the guide enrols them, each its name as the
+  # person knows it, or { name, recipient } with its age recipient
+  # (one beginning age1fido2-hmac1, from age-plugin-fido2-hmac -g) so the stick's
+  # vault opens with it. Name every one's recipient or none.
   yubikeys,
   # The account the person signs in with, when the machine has no greeter
   # to name it (jitsusama.login.account).
@@ -38,6 +40,8 @@ let
       named
     else
       throw "${config.networking.hostName} names no account for the guide to give a password: set jitsusama.login.account, or pass account";
+  keys = map (key: if builtins.isString key then { name = key; } else key) yubikeys;
+  recipients = map (key: key.recipient) (builtins.filter (key: key ? recipient) keys);
   target = writeText "target.json" (
     builtins.toJSON {
       machine = config.networking.hostName;
@@ -47,7 +51,12 @@ let
       layout_packages = map lib.getName (config.disko.devices._packages pkgs);
       system = "${system}";
       account = account';
-      inherit yubikeys;
+      yubikeys = map (key: key.name) keys;
+      recipients =
+        if recipients == [ ] || builtins.length recipients == builtins.length keys then
+          recipients
+        else
+          throw "${config.networking.hostName} names a recipient for some of its YubiKeys but not all";
     }
   );
   cache = mkBinaryCache { rootPaths = [ system ]; };

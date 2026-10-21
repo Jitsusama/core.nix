@@ -23,6 +23,46 @@ pub const MANIFEST: &str = "manifest.json";
 pub const KEY: &str = "key.age";
 pub const KEY_PASSPHRASE: &str = "key-passphrase.age";
 const INDEX: &str = "index.age";
+/// The age plugin a YubiKey seals and opens through, which age finds as
+/// `age-plugin-fido2-hmac` on the guide's own PATH (main.rs sets it).
+const FIDO2: &str = "fido2-hmac";
+
+/// What a plugin is told when it asks something while sealing: nothing,
+/// since sealing to a YubiKey's recipient asks for no key.
+#[derive(Clone)]
+struct Quiet;
+
+impl age::Callbacks for Quiet {
+    fn display_message(&self, _: &str) {}
+    fn confirm(&self, _: &str, _: &str, _: Option<&str>) -> Option<bool> {
+        None
+    }
+    fn request_public_string(&self, _: &str) -> Option<String> {
+        None
+    }
+    fn request_passphrase(&self, _: &str) -> Option<SecretString> {
+        None
+    }
+}
+
+/// The PIN a YubiKey asks for when it opens the vault's key, given the
+/// once the person typed it; anything else it asks gets no answer, so the
+/// plugin stops rather than waiting on a prompt nobody sees.
+#[derive(Clone)]
+struct Pin(std::sync::Arc<Zeroizing<String>>);
+
+impl age::Callbacks for Pin {
+    fn display_message(&self, _: &str) {}
+    fn confirm(&self, _: &str, _: &str, _: Option<&str>) -> Option<bool> {
+        None
+    }
+    fn request_public_string(&self, _: &str) -> Option<String> {
+        None
+    }
+    fn request_passphrase(&self, _: &str) -> Option<SecretString> {
+        Some(SecretString::from(self.0.as_str().to_string()))
+    }
+}
 /// The most an object holds.
 const OBJECT: u64 = 1 << 30;
 
@@ -96,6 +136,46 @@ impl VaultKey {
             .parse()
             .map_err(|why: &str| unopened("the vault's key", why))?;
         Ok(VaultKey(key))
+    }
+
+    /// The key, sealed to each of the machine's YubiKeys by its age
+    /// recipient, beginning `age1fido2-hmac1`, any one of which opens it. Sealing
+    /// needs no key plugged in, since such a recipient carries the public
+    /// half of what the key's secret makes.
+    pub fn seal_to_keys(&self, recipients: &[String]) -> Result<Vec<u8>, Fault> {
+        let parsed = recipients
+            .iter()
+            .map(|recipient| recipient.parse::<age::plugin::Recipient>())
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|why| unsealable("the vault's key", why))?;
+        if parsed.is_empty() || parsed.iter().any(|recipient| recipient.plugin() != FIDO2) {
+            return Err(unsealable(
+                "the vault's key",
+                "a YubiKey's recipient begins age1fido2-hmac1",
+            ));
+        }
+        let plugin = age::plugin::RecipientPluginV1::new(FIDO2, &parsed, &[], Quiet)
+            .map_err(|why| unsealable("the vault's key", why))?;
+        self.sealed(
+            age::Encryptor::with_recipients(std::iter::once(&plugin as &dyn age::Recipient))
+                .map_err(|why| unsealable("the vault's key", why))?,
+        )
+    }
+
+    /// The key from its copy sealed to the YubiKeys, with whichever one is
+    /// plugged in and its PIN, which the key asks for along with a touch.
+    pub fn open_with_key(sealed: &[u8], pin: &Secret) -> Result<VaultKey, Fault> {
+        let identity = age::plugin::Identity::default_for_plugin(FIDO2)
+            .map_err(|why| unopened("the vault's key", why))?;
+        let plugin = age::plugin::IdentityPluginV1::new(
+            FIDO2,
+            &[identity],
+            Pin(std::sync::Arc::new(Zeroizing::new(
+                pin.expose().to_string(),
+            ))),
+        )
+        .map_err(|why| unopened("the vault's key", why))?;
+        VaultKey::open(sealed, &plugin)
     }
 
     /// The key as text, to hold in memory once it's open, so each step
@@ -382,13 +462,6 @@ mod tests {
     use super::store::Directory;
     use super::*;
 
-    fn scratch(name: &str) -> std::path::PathBuf {
-        let directory =
-            std::env::temp_dir().join(format!("guide-vault-{name}-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&directory);
-        directory
-    }
-
     fn manifest() -> Manifest {
         Manifest {
             format: 1,
@@ -399,7 +472,7 @@ mod tests {
 
     #[test]
     fn what_was_packed_comes_back_across_objects() {
-        let directory = scratch("back");
+        let directory = crate::Scratch::new("vault-back");
         let mut store = Directory::new(&directory);
         let key = VaultKey::generate();
         let big: Vec<u8> = (0..10_000u32).flat_map(u32::to_le_bytes).collect();
@@ -422,12 +495,11 @@ mod tests {
         let mut empty = vec![];
         vault.extract("empty", &mut empty).unwrap();
         assert!(empty.is_empty());
-        std::fs::remove_dir_all(directory).unwrap();
     }
 
     #[test]
     fn no_name_shows_outside_the_manifest() {
-        let directory = scratch("names");
+        let directory = crate::Scratch::new("vault-names");
         let mut store = Directory::new(&directory);
         let key = VaultKey::generate();
         let mut packer = Packer::new(&mut store, &key);
@@ -445,7 +517,6 @@ mod tests {
         }
         assert!(!shown.contains("secure-boot"), "{shown}");
         assert!(!shown.contains("a private key"));
-        std::fs::remove_dir_all(directory).unwrap();
     }
 
     fn walk(directory: &std::path::Path) -> Vec<String> {
@@ -463,7 +534,7 @@ mod tests {
 
     #[test]
     fn a_changed_object_is_refused() {
-        let directory = scratch("changed");
+        let directory = crate::Scratch::new("vault-changed");
         let mut store = Directory::new(&directory);
         let key = VaultKey::generate();
         let mut packer = Packer::new(&mut store, &key);
@@ -480,12 +551,11 @@ mod tests {
             vault.extract("state", &mut vec![]),
             Err(Fault::Unopened { .. })
         ));
-        std::fs::remove_dir_all(directory).unwrap();
     }
 
     #[test]
     fn objects_swapped_between_files_are_refused() {
-        let directory = scratch("swapped");
+        let directory = crate::Scratch::new("vault-swapped");
         let mut store = Directory::new(&directory);
         let key = VaultKey::generate();
         let mut packer = Packer::new(&mut store, &key);
@@ -506,7 +576,6 @@ mod tests {
             vault.extract("first", &mut vec![]),
             Err(Fault::Unopened { why, .. }) if why == "it isn't what was packed"
         ));
-        std::fs::remove_dir_all(directory).unwrap();
     }
 
     #[test]
@@ -534,7 +603,7 @@ mod tests {
 
     #[test]
     fn a_vault_never_finished_wont_open() {
-        let directory = scratch("unfinished");
+        let directory = crate::Scratch::new("vault-unfinished");
         let mut store = Directory::new(&directory);
         let key = VaultKey::generate();
         let mut packer = Packer::new(&mut store, &key);
@@ -544,7 +613,6 @@ mod tests {
             Vault::open(&mut store, key),
             Err(Fault::Unopened { why, .. }) if why == "it was never finished"
         ));
-        std::fs::remove_dir_all(directory).unwrap();
     }
 
     #[test]

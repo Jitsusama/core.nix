@@ -66,10 +66,43 @@ impl Step for CheckKeyboard {
     }
 }
 
-/// The vault opened with its recovery passphrase, its key held in memory
-/// for the steps after. Opening it with a YubiKey comes with the age
-/// plugin's prompts.
+/// The vault opened by one of the machine's YubiKeys, plugged in and
+/// touched, with its PIN, or with none plugged in by the recovery
+/// passphrase, its key held in memory for the steps after. One field takes
+/// either, since which it is follows from whether a key is plugged in.
 pub struct OpenVault;
+
+/// The names, as a person says them: "the Nano", "the Nano or the 5Ci".
+fn either(names: &[String]) -> String {
+    match names {
+        [] => String::new(),
+        [one] => one.clone(),
+        [rest @ .., last] => format!("{} or {last}", rest.join(", ")),
+    }
+}
+
+/// The YubiKeys the vault says open it, the passphrase left out.
+fn keys(machine: &mut dyn Machine) -> Result<Vec<String>, Fault> {
+    let store = machine.vault()?;
+    if !store.has(vault::KEY)? {
+        return Ok(vec![]);
+    }
+    Ok(vault::manifest(store)?
+        .opened_by
+        .into_iter()
+        .filter(|name| name != "the recovery passphrase")
+        .collect())
+}
+
+fn sealed(machine: &mut dyn Machine, name: &str) -> Result<Vec<u8>, Fault> {
+    let mut sealed = vec![];
+    machine
+        .vault()?
+        .open(name)?
+        .read_to_end(&mut sealed)
+        .map_err(|why| Fault::unreadable("the vault's sealed key", why))?;
+    Ok(sealed)
+}
 
 impl Step for OpenVault {
     fn id(&self) -> &'static str {
@@ -91,36 +124,63 @@ impl Step for OpenVault {
                 evidence: format!("the vault is open, holding {} files", vault.files().len()),
             });
         }
-        let store = machine.vault()?;
-        if !store.has(vault::KEY_PASSPHRASE)? {
+        if !machine.vault()?.has(vault::KEY_PASSPHRASE)? {
             return Ok(Standing::Blocked {
                 why: "this vault has no copy of its key a passphrase opens".into(),
                 remedy: "write the stick again from a machine that has its recovery passphrase"
                     .into(),
             });
         }
+        let keys = keys(machine)?;
+        if keys.is_empty() {
+            return Ok(Standing::Needed {
+                asks: vec![Ask::Secret {
+                    id: "passphrase",
+                    name: "the vault's recovery passphrase".into(),
+                }],
+            });
+        }
+        let named = either(&keys);
         Ok(Standing::Needed {
-            asks: vec![Ask::Secret {
-                id: "passphrase",
-                name: "the vault's recovery passphrase".into(),
-            }],
+            asks: vec![
+                Ask::Act {
+                    id: "key",
+                    what: format!(
+                        "Plug in {named}, and touch it when it blinks. To use the recovery passphrase instead, leave it out."
+                    ),
+                },
+                Ask::Secret {
+                    id: "passphrase",
+                    name: format!(
+                        "the PIN of {named}, or with none plugged in, the recovery passphrase"
+                    ),
+                },
+            ],
         })
     }
 
     fn run(&self, machine: &mut dyn Machine, answers: &Answers) -> Result<(), Fault> {
-        let Some(Answer::Secret(passphrase)) = answers.get("passphrase") else {
+        let Some(Answer::Secret(typed)) = answers.get("passphrase") else {
             return Err(Fault::Unanswered {
                 step: self.id(),
                 ask: "passphrase",
             });
         };
-        let mut sealed = vec![];
-        machine
-            .vault()?
-            .open(vault::KEY_PASSPHRASE)?
-            .read_to_end(&mut sealed)
-            .map_err(|why| Fault::unreadable("the vault's sealed key", why))?;
-        let key = VaultKey::open_with_passphrase(&sealed, passphrase)?;
+        let plugged = if keys(machine)?.is_empty() {
+            vec![]
+        } else {
+            crate::observe::fido2::list(machine)?
+        };
+        let key = match plugged.len() {
+            0 => VaultKey::open_with_passphrase(&sealed(machine, vault::KEY_PASSPHRASE)?, typed)?,
+            1 => VaultKey::open_with_key(&sealed(machine, vault::KEY)?, typed)?,
+            many => {
+                return Err(Fault::Blocked {
+                    step: self.id(),
+                    why: format!("{many} keys are plugged in; leave only one"),
+                });
+            }
+        };
         machine.write(VAULT_KEY, key.to_secret().expose().as_bytes())
     }
 }

@@ -15,7 +15,7 @@ use std::sync::atomic::{AtomicU32, Ordering};
 
 use crate::vault::store::Store;
 use crate::vault::{Vault, VaultKey};
-use crate::{Fault, Given, Journal, Machine, Program, Ran};
+use crate::{Fault, Given, Journal, Machine, Program, Ran, Tool};
 
 pub struct System {
     journal: Journal,
@@ -113,6 +113,9 @@ impl System {
         // write is dropped here and the log is simply shorter.
         if let Some(log) = &mut self.log {
             let _ = writeln!(log, "$ {program} {}", args.join(" "));
+            if given.as_root {
+                let _ = writeln!(log, "-- as root, through run0");
+            }
             for (name, value) in &given.plain {
                 let _ = writeln!(log, "-- with {name}={value}");
             }
@@ -155,15 +158,13 @@ impl Machine for System {
                 });
             }
         };
-        let mut command = Command::new(path);
-        command.args(args).env_clear().env("LC_ALL", "C.UTF-8");
-        for (name, value) in &given.plain {
-            command.env(name, value);
+        if given.as_root && !given.env.is_empty() {
+            return Err(Fault::Unstarted {
+                program: path.into(),
+                why: "a secret in its environment would be on run0's command line".into(),
+            });
         }
-        for (name, secret) in &given.env {
-            command.env(name, secret.expose());
-        }
-        let _credentials = if given.credentials.is_empty() {
+        let credentials = if given.credentials.is_empty() {
             None
         } else {
             static CALLS: AtomicU32 = AtomicU32::new(0);
@@ -181,8 +182,43 @@ impl Machine for System {
             for (name, secret) in &given.credentials {
                 private_file(&credentials.0.join(name), secret.expose().as_bytes())?;
             }
-            command.env("CREDENTIALS_DIRECTORY", &credentials.0);
             Some(credentials)
+        };
+        let mut command = if given.as_root {
+            // run0 starts it as a service of its own, which loads each
+            // credential from where it's held here and is given only
+            // these variables.
+            let run0 = Tool::Run0.program().ok_or(Fault::Unbuilt {
+                tool: Tool::Run0.name(),
+            })?;
+            let mut command = Command::new(run0);
+            command.arg("--pipe").arg("--setenv=LC_ALL=C.UTF-8");
+            for (name, value) in &given.plain {
+                command.arg(format!("--setenv={name}={value}"));
+            }
+            if let Some(held) = &credentials {
+                for (name, _) in &given.credentials {
+                    command.arg(format!(
+                        "--property=LoadCredential={name}:{}",
+                        held.0.join(name).display()
+                    ));
+                }
+            }
+            command.arg("--").arg(path).args(args).env_clear();
+            command
+        } else {
+            let mut command = Command::new(path);
+            command.args(args).env_clear().env("LC_ALL", "C.UTF-8");
+            for (name, value) in &given.plain {
+                command.env(name, value);
+            }
+            for (name, secret) in &given.env {
+                command.env(name, secret.expose());
+            }
+            if let Some(held) = &credentials {
+                command.env("CREDENTIALS_DIRECTORY", &held.0);
+            }
+            command
         };
         command
             .stdin(if given.stdin.is_some() {

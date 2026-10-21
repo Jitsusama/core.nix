@@ -65,6 +65,8 @@ dependencies = [
  "sha2 0.10.9",
  "sha3",
  "subtle",
+ "which",
+ "wsl",
  "x25519-dalek",
  "zeroize",
 ]
@@ -86,6 +88,7 @@ dependencies = [
  "rand",
  "secrecy",
  "sha2 0.10.9",
+ "tempfile",
 ]
 
 [[package]]
@@ -2252,6 +2255,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "which"
+version = "8.0.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bae2f2b2b816647a1cab1acc91f5bd20812d53cb344382635ec2181940c8034f"
+dependencies = [
+ "libc",
+]
+
+[[package]]
 name = "winapi"
 version = "0.3.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2305,6 +2317,12 @@ checksum = "23b97319f7b8343df12cc98938e5c3eb436064524c8d2b4e30a1d3a36eecdf81"
 dependencies = [
  "memchr",
 ]
+
+[[package]]
+name = "wsl"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f8dab7ac864710bdea6594becbea5b5050333cf34fefb0dc319567eb347950d4"
 
 [[package]]
 name = "x25519-dalek"

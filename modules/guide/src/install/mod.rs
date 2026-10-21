@@ -57,6 +57,10 @@ pub struct Target {
     /// The YubiKeys that open the disk, by the names the person knows them
     /// by, in the order they're enrolled.
     pub yubikeys: Vec<String>,
+    /// Each YubiKey's age recipient, in the same order, which the stick's
+    /// vault key is sealed to; none means only the passphrase opens it.
+    #[serde(default)]
+    pub recipients: Vec<String>,
 }
 
 impl Target {
@@ -118,7 +122,7 @@ pub fn steps(yubikeys: &[String]) -> Vec<Box<dyn Step>> {
     }
     steps.push(Box::new(keys::MakeRecoveryKey));
     steps.push(Box::new(keys::KeepRecoveryKey));
-    steps.push(Box::new(system::MakeSecureBootKeys));
+    steps.push(Box::new(system::SecureBootKeys));
     steps.push(Box::new(system::InstallSystem));
     steps.push(Box::new(system::SetPassword));
     steps.push(Box::new(disk::WipeInstallKey {

@@ -14,6 +14,8 @@ that changes what it prints fails a test rather than a person's install.
 | `lsblk.json`                   | `lsblk -J -O -b`, the short form of the guide's `--json --output-all --bytes` |
 | `sbctl-status.json`            | `sbctl status --json`                             |
 | `sbctl-verify.json`            | `sbctl verify --json`, as root                    |
+| `efivar-db-<guid>`             | the firmware's db, which trusts its sbctl db certificate |
+| `sbctl-db.pem`                 | that certificate, `/var/lib/sbctl/keys/db/db.pem`, on the Surface |
 | `tpm2-properties-<kind>.txt`   | `tpm2_getcap properties-<kind>`, which prints the same with the guide's `-T device:/dev/tpmrm0` |
 
 A missing file is one the machine doesn't have: the Surface's firmware keeps
@@ -36,6 +38,7 @@ stick `/dev/sda`.
 | ------------------------------ | ------------------------------------------------- |
 | `luks-dump-before-wipe.json`   | `cryptsetup luksDump --dump-json-metadata`, with the random key's slot still there |
 | `luks-dump-installed.json`     | the same on the machine's disk once the guide's install took the random key's slot off |
+| `luks-dump-sealed.json`        | the same once the guide sealed it to the TPM and preferred that slot, parsed and written again by the test's Python |
 | `lsblk-blank.json`             | `lsblk --json --output-all --bytes`, the machine's disk blank |
 | `lsblk-laid-out.json`          | the same once the machine's layout made its volume and mounted it at /mnt |
 | `fido2-token-L.txt`            | `fido2-token -L`, one canokey plugged in          |

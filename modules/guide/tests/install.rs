@@ -4,11 +4,15 @@
 //! enrolled twice, and the install's key comes off only once every
 //! YubiKey and the recovery key can open the disk.
 
+mod common;
+
+use common::Scratch;
 use std::path::PathBuf;
 
 use guide::fake::Fake;
 use guide::install::disk::{ConfirmDisk, LayOutDisk, WipeInstallKey};
 use guide::install::keys::EnrolYubikey;
+use guide::install::system::SecureBootKeys;
 use guide::install::{INSTALL_KEY, TARGET, Target, VAULT_KEY};
 use guide::vault::store::Directory;
 use guide::vault::{Manifest, Packer, VaultKey};
@@ -34,20 +38,26 @@ fn target(disk: &str) -> Target {
         system: "/nix/store/abc-nixos-system-machine".into(),
         account: "alice".into(),
         yubikeys: vec!["the Nano".into(), "the 5C".into()],
+        recipients: vec![],
     }
 }
 
 /// A fake machine on the stick, its vault open and holding this target.
-fn stick(name: &str, target: &Target) -> Fake {
-    let directory =
-        std::env::temp_dir().join(format!("guide-install-{name}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&directory);
+fn stick(directory: &std::path::Path, target: &Target) -> Fake {
+    stick_carrying(directory, target, &[])
+}
+
+/// The same, its vault holding these files too.
+fn stick_carrying(directory: &std::path::Path, target: &Target, files: &[(&str, &[u8])]) -> Fake {
     let mut store = Directory::new(PathBuf::from(&directory));
     let key = VaultKey::generate();
     let mut packer = Packer::new(&mut store, &key);
     packer
         .add(TARGET, serde_json::to_vec(target).unwrap().as_slice())
         .unwrap();
+    for (path, bytes) in files {
+        packer.add(path, *bytes).unwrap();
+    }
     packer
         .finish(&Manifest {
             format: 1,
@@ -83,7 +93,8 @@ fn wiped(fake: &Fake) -> bool {
 #[test]
 fn the_disk_is_named_and_the_machine_typed_back_before_anything_is_wiped() {
     let target = target("/dev/disk/by-id/virtio-root");
-    let mut fake = stick("confirm", &target);
+    let scratch = Scratch::new("install-confirm");
+    let mut fake = stick(&scratch, &target);
     lsblk(&mut fake, fixture!("lsblk-blank.json"));
     let Standing::Needed { asks } = ConfirmDisk.observe(&mut fake).unwrap() else {
         panic!("the disk is still to confirm")
@@ -110,7 +121,8 @@ fn the_disk_is_named_and_the_machine_typed_back_before_anything_is_wiped() {
 fn a_removable_disk_is_never_the_one_installed_onto() {
     // The stick itself, which lsblk says is on USB.
     let target = target("/dev/disk/by-id/usb-stick");
-    let mut fake = stick("removable", &target);
+    let scratch = Scratch::new("install-removable");
+    let mut fake = stick(&scratch, &target);
     lsblk(&mut fake, fixture!("lsblk-blank.json"));
     let standing = ConfirmDisk.observe(&mut fake).unwrap();
     assert!(
@@ -122,7 +134,8 @@ fn a_removable_disk_is_never_the_one_installed_onto() {
 #[test]
 fn a_disk_laid_out_and_open_at_the_root_stays_done() {
     let target = target("/dev/disk/by-id/virtio-root");
-    let mut fake = stick("laid-out", &target);
+    let scratch = Scratch::new("install-laid-out");
+    let mut fake = stick(&scratch, &target);
     lsblk(&mut fake, fixture!("lsblk-laid-out.json"));
     fake.link("/dev/disk/by-partlabel/system", Some("/dev/vda2"))
         .link("/dev/mapper/system", Some("/dev/dm-1"))
@@ -142,7 +155,8 @@ fn a_disk_laid_out_and_open_at_the_root_stays_done() {
 #[test]
 fn a_key_plugged_in_beside_another_is_never_enrolled() {
     let target = target("/dev/disk/by-id/virtio-root");
-    let mut fake = stick("two-keys", &target);
+    let scratch = Scratch::new("install-two-keys");
+    let mut fake = stick(&scratch, &target);
     let one = fixture!("fido2-token-L.txt");
     fake.prints(
         Tool::Fido2Token,
@@ -180,7 +194,8 @@ fn a_key_plugged_in_beside_another_is_never_enrolled() {
 #[test]
 fn a_key_that_opens_the_disk_already_isnt_enrolled_again() {
     let target = target("/dev/disk/by-id/virtio-root");
-    let mut fake = stick("enrolled", &target);
+    let scratch = Scratch::new("install-enrolled");
+    let mut fake = stick(&scratch, &target);
     let header = fixture!("luks-dump-before-wipe.json");
     fake.prints(Tool::Fido2Token, &["-L"], fixture!("fido2-token-L.txt"))
         .prints(
@@ -236,7 +251,8 @@ fn the_install_key_comes_off_only_once_every_key_and_the_recovery_key_open_the_d
     ];
 
     // Three YubiKeys named, two enrolled: it waits.
-    let mut fake = stick("too-few", &target);
+    let scratch = Scratch::new("install-too-few");
+    let mut fake = stick(&scratch, &target);
     fake.prints(
         Tool::Cryptsetup,
         &dump,
@@ -256,7 +272,8 @@ fn the_install_key_comes_off_only_once_every_key_and_the_recovery_key_open_the_d
         .as_object_mut()
         .unwrap()
         .retain(|_, token| token["type"] != "systemd-recovery");
-    let mut fake = stick("no-recovery", &target);
+    let scratch = Scratch::new("install-no-recovery");
+    let mut fake = stick(&scratch, &target);
     fake.prints(Tool::Cryptsetup, &dump, &header.to_string());
     fake.file(INSTALL_KEY, b"0123");
     assert!(matches!(
@@ -265,7 +282,8 @@ fn the_install_key_comes_off_only_once_every_key_and_the_recovery_key_open_the_d
     ));
 
     // Both enrolled, the key's slot still there: it's next.
-    let mut fake = stick("ready", &target);
+    let scratch = Scratch::new("install-ready");
+    let mut fake = stick(&scratch, &target);
     fake.prints(
         Tool::Cryptsetup,
         &dump,
@@ -278,7 +296,8 @@ fn the_install_key_comes_off_only_once_every_key_and_the_recovery_key_open_the_d
     ));
 
     // Every slot a token's, and the key forgotten: done.
-    let mut fake = stick("wiped", &target);
+    let scratch = Scratch::new("install-wiped");
+    let mut fake = stick(&scratch, &target);
     fake.prints(
         Tool::Cryptsetup,
         &dump,
@@ -288,4 +307,119 @@ fn the_install_key_comes_off_only_once_every_key_and_the_recovery_key_open_the_d
         WipeInstallKey { yubikeys: 2 }.observe(&mut fake).unwrap(),
         Standing::Done { .. }
     ));
+}
+
+const GLOBAL: &str = "8be4df61-93ca-11d2-aa0d-00e098032b8c";
+const DB: &str = "/sys/firmware/efi/efivars/db-d719b2cb-3d3a-4596-a3bc-dad00e67656f";
+const SBCTL: &str = "/mnt/var/lib/sbctl";
+
+macro_rules! hardware {
+    ($machine:literal, $file:literal) => {
+        include_bytes!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/fixtures/",
+            $machine,
+            "/",
+            $file
+        ))
+    };
+}
+
+/// The Surface's firmware as it stands: user mode, enforcing with its own
+/// keys, and the db that trusts them.
+fn surface_firmware(fake: &mut Fake, db: &[u8]) {
+    fake.file(
+        &format!("/sys/firmware/efi/efivars/SecureBoot-{GLOBAL}"),
+        hardware!(
+            "microsoft-surface-laptop-4-1958",
+            "efivar-SecureBoot-8be4df61-93ca-11d2-aa0d-00e098032b8c"
+        ),
+    )
+    .file(
+        &format!("/sys/firmware/efi/efivars/SetupMode-{GLOBAL}"),
+        hardware!(
+            "microsoft-surface-laptop-4-1958",
+            "efivar-SetupMode-8be4df61-93ca-11d2-aa0d-00e098032b8c"
+        ),
+    )
+    .no_file(&format!("/sys/firmware/efi/efivars/AuditMode-{GLOBAL}"))
+    .no_file(&format!("/sys/firmware/efi/efivars/DeployedMode-{GLOBAL}"))
+    .file(DB, db)
+    .no_file(&format!("{SBCTL}/keys/db/db.key"))
+    .no_file(&format!("{SBCTL}/GUID"));
+}
+
+const SURFACE_DB: &[u8] = hardware!(
+    "microsoft-surface-laptop-4-1958",
+    "efivar-db-d719b2cb-3d3a-4596-a3bc-dad00e67656f"
+);
+const SURFACE_CERT: &[u8] = hardware!("microsoft-surface-laptop-4-1958", "sbctl-db.pem");
+
+#[test]
+fn the_keys_the_firmware_trusts_are_put_back_with_no_firmware_visit() {
+    let target = target("/dev/disk/by-id/virtio-root");
+    let scratch = Scratch::new("install-keys-back");
+    let carried: &[(&str, &[u8])] = &[
+        ("sbctl/GUID", b"22f0175f-c166-49d2-96ab-c61575cddac5"),
+        ("sbctl/keys/db/db.key", b"the db key"),
+        ("sbctl/keys/db/db.pem", SURFACE_CERT),
+    ];
+    let mut fake = stick_carrying(&scratch, &target, carried);
+    surface_firmware(&mut fake, SURFACE_DB);
+    assert!(matches!(
+        SecureBootKeys.observe(&mut fake).unwrap(),
+        Standing::Needed { .. }
+    ));
+    SecureBootKeys.run(&mut fake, &Answers::new()).unwrap();
+    assert_eq!(
+        fake.holds(&format!("{SBCTL}/keys/db/db.key")),
+        Some(&b"the db key"[..])
+    );
+    assert_eq!(
+        fake.holds(&format!("{SBCTL}/GUID")),
+        Some(&b"22f0175f-c166-49d2-96ab-c61575cddac5"[..])
+    );
+    assert!(
+        !fake.calls.iter().any(|call| call.starts_with("sbctl")),
+        "{:#?}",
+        fake.calls
+    );
+}
+
+#[test]
+fn keys_the_firmware_doesnt_trust_are_refused() {
+    let target = target("/dev/disk/by-id/virtio-root");
+    let scratch = Scratch::new("install-keys-other");
+    let carried: &[(&str, &[u8])] = &[
+        ("sbctl/GUID", b"guid"),
+        ("sbctl/keys/db/db.key", b"key"),
+        ("sbctl/keys/db/db.pem", SURFACE_CERT),
+    ];
+    let mut fake = stick_carrying(&scratch, &target, carried);
+    // The Surface's keys, but the XPS 14's db.
+    surface_firmware(
+        &mut fake,
+        hardware!(
+            "dell-xps-14-da14260",
+            "efivar-db-d719b2cb-3d3a-4596-a3bc-dad00e67656f"
+        ),
+    );
+    let standing = SecureBootKeys.observe(&mut fake).unwrap();
+    assert!(
+        matches!(&standing, Standing::Blocked { why, .. } if why.contains("trusts other keys")),
+        "{standing:?}"
+    );
+}
+
+#[test]
+fn with_no_keys_carried_a_firmware_in_user_mode_has_to_be_cleared_first() {
+    let target = target("/dev/disk/by-id/virtio-root");
+    let scratch = Scratch::new("install-keys-none");
+    let mut fake = stick(&scratch, &target);
+    surface_firmware(&mut fake, SURFACE_DB);
+    let standing = SecureBootKeys.observe(&mut fake).unwrap();
+    assert!(
+        matches!(&standing, Standing::Blocked { why, .. } if why.contains("won't take new keys")),
+        "{standing:?}"
+    );
 }
