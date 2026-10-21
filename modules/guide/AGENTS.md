@@ -83,7 +83,7 @@ driven on; the installed machine's steps come later.
   signs with them, which only a firmware in setup mode will take. The
   system is copied in from the vault with no network, and the key held in
   memory comes off the disk last. A host gives the stick the keys with
-  `--secure-boot-keys`, sbctl's directory, and signs the stick with them.
+  `--rescue-bundle`, opened in memory, and signs the stick with them.
   Every step stays done through the steps after it, since the journey runs
   the first that isn't.
 - **Recovering.** Any stick recovers a machine with its data left in
@@ -121,8 +121,21 @@ driven on; the installed machine's steps come later.
   fails. The disk then opens with a YubiKey, and the guide has
   systemd-pcrlock drop the stale policy and the unit make a new one
   before sealing again. What needs root goes through run0, which asks
-  polkit; its secrets go only as credentials loaded from files in
-  memory and on standard input, never on run0's command line.
+  polkit, unless the guide is root already; its secrets go only as
+  credentials loaded from files in memory and on standard input, never
+  on run0's command line.
+- **The rescue bundle.** A machine's Secure Boot keys, all seven files
+  sbctl keeps, sealed under a key of their own, which is sealed to the
+  machine's YubiKeys and apart to a recovery passphrase, as the vault's
+  is. `guide seal-keys` makes it on the machine the keys belong to,
+  reading them as root and sealing them in memory, and proves the
+  passphrase opens the same keys before anything's written. It's text
+  and ciphertext only, so it can live on every other machine and in
+  1Password, and it names the db certificate's fingerprint, so a machine
+  knows its bundle is current without opening it. A host writing the
+  machine's stick opens it with a YubiKey or the passphrase, holding the
+  keys only in memory, so plain Secure Boot keys are never an input
+  anywhere.
 - **The screen.** One step at a time, and one thing asked at a time, each
   before the step starts. It's drawn in the theme's roles and marks as the
   build was given them (`theme.nix`), with the console's stand-ins on a
@@ -162,6 +175,7 @@ driven on; the installed machine's steps come later.
 | `src/stick/`          | writing the stick and reading it back: its tables, and aligned blocks |
 | `src/vault/`          | the vault's sealing and index, and where its files are kept |
 | `src/host/`           | writing a stick on a host, and what a reinstall stick carries |
+| `src/rescue.rs`       | the rescue bundle: a machine's Secure Boot keys sealed, made and opened |
 | `src/install/`        | installing a machine from its stick, a step to a file by what it touches |
 | `src/installed/`      | finishing the machine on itself: Secure Boot checked, the TPM sealed |
 | `src/recover/`        | recovering a machine from a stick: found, opened, mounted |
@@ -176,6 +190,7 @@ driven on; the installed machine's steps come later.
 | `tests/sign.rs`       | signatures compared byte for byte with sbsign's           |
 | `tests/system.rs`     | secrets handed to a real program, and kept out of the log |
 | `tests/host.rs`       | the one stick written, never another disk              |
+| `tests/rescue.rs`     | a bundle read as root, sealed, proven, and refused when its keys aren't its own |
 | `../../tests/guide-host.nix` | a stick written on a host through UDisks2, as the person |
 | `../../tests/guide-vault.nix` | a vault opened by a YubiKey's PIN, then by the passphrase |
 | `tests/recover.rs`    | the machine found by its layout, and shown before anything's asked |

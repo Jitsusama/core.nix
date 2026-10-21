@@ -202,6 +202,33 @@ impl VaultKey {
     fn recipient(&self) -> age::x25519::Recipient {
         self.0.to_public()
     }
+
+    /// Bytes only this key opens, for what's small enough to hold whole,
+    /// such as a rescue bundle's keys.
+    pub fn encrypt(&self, bytes: &[u8]) -> Result<Vec<u8>, Fault> {
+        let recipient = self.recipient();
+        let encryptor =
+            age::Encryptor::with_recipients(std::iter::once(&recipient as &dyn age::Recipient))
+                .map_err(|why| unsealable("what the key seals", why))?;
+        let mut sealed = vec![];
+        let mut writer = encryptor
+            .wrap_output(&mut sealed)
+            .map_err(|why| unsealable("what the key seals", why))?;
+        writer
+            .write_all(bytes)
+            .and_then(|()| writer.finish().map(drop))
+            .map_err(|why| unsealable("what the key seals", why))?;
+        Ok(sealed)
+    }
+
+    /// What `encrypt` sealed.
+    pub fn decrypt(&self, sealed: &[u8]) -> Result<Zeroizing<Vec<u8>>, Fault> {
+        let mut bytes = Zeroizing::new(vec![]);
+        decrypt(sealed, &self.0, "what the key seals")?
+            .read_to_end(&mut bytes)
+            .map_err(|why| unopened("what the key seals", why))?;
+        Ok(bytes)
+    }
 }
 
 fn unsealable(what: &str, why: impl std::fmt::Display) -> Fault {

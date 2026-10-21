@@ -251,12 +251,20 @@ fn the_last_card_says_how_to_reach_the_machines_firmware() {
     );
 
     // Carrying them, nothing is cleared.
-    let keys = directory.join("sbctl");
-    fs::create_dir_all(keys.join("keys/db")).unwrap();
-    for file in ["GUID", "keys/db/db.key", "keys/db/db.pem"] {
-        fs::write(keys.join(file), "").unwrap();
-    }
-    let carrying = surface.with_secure_boot_keys(&keys).unwrap();
+    let keys = || {
+        let files = guide::rescue::KEYS
+            .iter()
+            .map(|name| (name.to_string(), zeroize::Zeroizing::new(vec![])))
+            .collect();
+        guide::rescue::Keys::new(files).unwrap()
+    };
+    let other = payload(
+        &directory,
+        r#"{"machine":"laptop","disk":"/dev/x","disk_name":"system","install_key":"/run/guide/install-key","layout_packages":[],"system":"/nix/store/abc","account":"alice","yubikeys":[],"recipients":[],"start_from_stick":null,"clear_secure_boot_keys":null}"#,
+    );
+    // Another machine's keys aren't carried.
+    assert!(other.with_secure_boot_keys("desktop", keys()).is_err());
+    let carrying = surface.with_secure_boot_keys("laptop", keys()).unwrap();
     assert!(
         !carrying.next().contains("Hold volume-up"),
         "{}",

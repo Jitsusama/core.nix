@@ -35,6 +35,7 @@ macro_rules! tools {
 tools! {
     Bash => "bash", "GUIDE_BASH";
     Bootctl => "bootctl", "GUIDE_BOOTCTL";
+    Cat => "cat", "GUIDE_CAT";
     Cryptsetup => "cryptsetup", "GUIDE_CRYPTSETUP";
     Fido2Assert => "fido2-assert", "GUIDE_FIDO2_ASSERT";
     Fido2Token => "fido2-token", "GUIDE_FIDO2_TOKEN";

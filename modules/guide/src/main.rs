@@ -4,20 +4,27 @@
 //! on whatever machine runs it, as the person: given `--sign-with` and
 //! sbctl's db key directory, its boot program signed for that machine;
 //! given `--install` and a machine's payload (payload.nix), its vault
-//! holding everything to install it, sealed to a recovery passphrase.
+//! holding everything to install it, sealed to a recovery passphrase;
+//! given `--rescue-bundle` too, the machine's Secure Boot keys, opened
+//! from its bundle, sign the boot program and go into the vault.
 //! `guide write-stick IMAGE FILE` does the same into a file the size of a
-//! stick, the passphrase read from standard input. `guide install` is
-//! what the stick runs on its console, as root, and `guide installed`
-//! finishes the machine once it boots its own disk, as the person.
+//! stick, the passphrases read from standard input. `guide seal-keys
+//! TARGET BUNDLE` makes a machine's rescue bundle, on that machine, from
+//! its payload's target.json. `guide install` is what the stick runs on
+//! its console, as root, and `guide installed` finishes the machine once
+//! it boots its own disk, as the person.
 
+use std::cell::RefCell;
 use std::fs::{File, OpenOptions};
-use std::io::BufRead;
+use std::io::{BufRead, IsTerminal};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
+use std::rc::Rc;
 
 use guide::host::{self, Payload, WriteStick};
 use guide::install;
 use guide::observe::{disks, efi, entries, fido2, sbctl, tpm};
+use guide::rescue::{Bundle, Keys, OpenRescueBundle, SealKeys};
 use guide::screen::Theme;
 use guide::screen::run::{Ended, Walk};
 use guide::screen::terminal::Terminal;
@@ -25,11 +32,12 @@ use guide::sign::Signer;
 use guide::system::System;
 use guide::vault;
 use guide::vault::store::{Fat, Store};
-use guide::{Fault, Journal, Journey, Machine, Place, Secret, Tool};
+use guide::{Fault, Journal, Journey, Machine, Place, Secret, Step, Tool};
 
 const USAGE: &str = "usage: guide observe | guide tools | guide install | guide installed | guide recover
-       guide host IMAGE [--sign-with DIRECTORY] [--install PAYLOAD [--secure-boot-keys DIRECTORY]]
-       guide write-stick IMAGE FILE [--sign-with DIRECTORY] [--install PAYLOAD [--secure-boot-keys DIRECTORY]]";
+       guide host IMAGE [--sign-with DIRECTORY] [--install PAYLOAD [--rescue-bundle BUNDLE]]
+       guide write-stick IMAGE FILE [--sign-with DIRECTORY] [--install PAYLOAD [--rescue-bundle BUNDLE]]
+       guide seal-keys TARGET BUNDLE";
 
 fn main() -> ExitCode {
     // age finds its plugins on PATH and takes no other, so the guide's own
@@ -48,11 +56,12 @@ fn main() -> ExitCode {
         ["install"] => reported(install()),
         ["installed"] => reported(installed()),
         ["recover"] => reported(recover()),
+        ["seal-keys", target, bundle] => reported(seal_keys(target, bundle)),
         ["host", image, ref options @ ..] => match Written::parse(options) {
             Some(written) => reported(
                 written
                     .open()
-                    .and_then(|(signer, payload)| host(image, signer, payload)),
+                    .and_then(|(signer, payload, bundle)| host(image, signer, payload, bundle)),
             ),
             None => {
                 eprintln!("{USAGE}");
@@ -60,8 +69,8 @@ fn main() -> ExitCode {
             }
         },
         ["write-stick", image, target, ref options @ ..] => match Written::parse(options) {
-            Some(written) => reported(written.open().and_then(|(signer, payload)| {
-                write_stick(image, target, signer.as_ref(), payload)
+            Some(written) => reported(written.open().and_then(|(signer, payload, bundle)| {
+                write_stick(image, target, signer, payload, bundle)
             })),
             None => {
                 eprintln!("{USAGE}");
@@ -77,13 +86,13 @@ fn main() -> ExitCode {
 
 /// What a stick is written with, each given at most once: the db key
 /// directory its boot program is signed with, the machine's payload, and
-/// sbctl's directory of the machine's Secure Boot keys, which the stick
-/// carries for a reinstall and signs with when no other key is named.
+/// the machine's rescue bundle, whose keys the stick carries for a
+/// reinstall and signs with when no other key is named.
 #[derive(Default)]
 struct Written<'a> {
     sign_with: Option<&'a str>,
     install: Option<&'a str>,
-    secure_boot_keys: Option<&'a str>,
+    rescue_bundle: Option<&'a str>,
 }
 
 impl<'a> Written<'a> {
@@ -93,7 +102,7 @@ impl<'a> Written<'a> {
             let slot = match *option {
                 "--sign-with" => &mut written.sign_with,
                 "--install" => &mut written.install,
-                "--secure-boot-keys" => &mut written.secure_boot_keys,
+                "--rescue-bundle" => &mut written.rescue_bundle,
                 _ => return None,
             };
             if slot.replace(*value).is_some() {
@@ -101,26 +110,51 @@ impl<'a> Written<'a> {
             }
             options = rest;
         }
-        (options.is_empty() && (written.secure_boot_keys.is_none() || written.install.is_some()))
+        (options.is_empty() && (written.rescue_bundle.is_none() || written.install.is_some()))
             .then_some(written)
     }
 
-    fn open(&self) -> Result<(Option<Signer>, Option<Payload>), Fault> {
-        let keys = self.secure_boot_keys.map(Path::new);
-        let signer = match (self.sign_with, keys) {
-            (Some(directory), _) => Some(Signer::open(Path::new(directory))?),
-            (None, Some(keys)) => Some(Signer::open(&keys.join("keys/db"))?),
-            (None, None) => None,
-        };
-        let payload = match (self.install, keys) {
-            (Some(payload), Some(keys)) => {
-                Some(Payload::open(Path::new(payload))?.with_secure_boot_keys(keys)?)
-            }
-            (Some(payload), None) => Some(Payload::open(Path::new(payload))?),
-            (None, _) => None,
-        };
-        Ok((signer, payload))
+    /// Each as it was given, the bundle read but not yet opened, since
+    /// opening it asks for a YubiKey or the passphrase.
+    fn open(&self) -> Result<Opened, Fault> {
+        let signer = self
+            .sign_with
+            .map(|directory| Signer::open(Path::new(directory)))
+            .transpose()?;
+        let payload = self
+            .install
+            .map(|payload| Payload::open(Path::new(payload)))
+            .transpose()?;
+        let bundle = self
+            .rescue_bundle
+            .map(|path| {
+                std::fs::read(path)
+                    .map_err(|why| Fault::unreadable(path, why))
+                    .and_then(|bytes| Bundle::read(&bytes))
+            })
+            .transpose()?;
+        Ok((signer, payload, bundle))
     }
+}
+
+type Opened = (Option<Signer>, Option<Payload>, Option<Bundle>);
+
+/// The keys a rescue bundle opened to: they sign the stick unless another
+/// key was named, and the payload carries them.
+fn carrying(
+    signer: Option<Signer>,
+    payload: Option<Payload>,
+    machine: &str,
+    keys: Keys,
+) -> Result<(Signer, Option<Payload>), Fault> {
+    let signer = match signer {
+        Some(signer) => signer,
+        None => keys.signer()?,
+    };
+    let payload = payload
+        .map(|payload| payload.with_secure_boot_keys(machine, keys))
+        .transpose()?;
+    Ok((signer, payload))
 }
 
 fn reported(result: Result<(), Fault>) -> ExitCode {
@@ -133,7 +167,7 @@ fn reported(result: Result<(), Fault>) -> ExitCode {
     }
 }
 
-/// The recovery passphrase, as the first line of standard input.
+/// A recovery passphrase, as the next line of standard input.
 fn passphrase() -> Result<Secret, Fault> {
     let mut line = zeroize::Zeroizing::new(String::new());
     std::io::stdin()
@@ -156,8 +190,9 @@ fn passphrase() -> Result<Secret, Fault> {
 fn write_stick(
     image: &str,
     target: &str,
-    signer: Option<&Signer>,
+    signer: Option<Signer>,
     payload: Option<Payload>,
+    bundle: Option<Bundle>,
 ) -> Result<(), Fault> {
     let kept = |why: std::io::Error| Fault::Unkept {
         path: target.into(),
@@ -175,10 +210,19 @@ fn write_stick(
         .open(target)
         .map_err(kept)?;
     let passphrase = payload.as_ref().map(|_| passphrase()).transpose()?;
+    // The bundle's passphrase follows the vault's, on the next line.
+    let (signer, payload) = match bundle {
+        Some(bundle) => {
+            let keys = bundle.open_with_passphrase(&self::passphrase()?)?;
+            let (signer, payload) = carrying(signer, payload, bundle.machine(), keys)?;
+            (Some(signer), payload)
+        }
+        None => (signer, payload),
+    };
     let vault = host::write(
         Path::new(image),
         &mut disk,
-        signer,
+        signer.as_ref(),
         payload.as_ref().zip(passphrase.as_ref()),
     )?;
     match &payload {
@@ -217,7 +261,12 @@ fn host_log() -> Option<File> {
 
 /// The host's journey: a stick written for a machine, or a repair stick,
 /// on the screen of whatever machine writes it, as the person, not root.
-fn host(image: &str, signer: Option<Signer>, payload: Option<Payload>) -> Result<(), Fault> {
+fn host(
+    image: &str,
+    signer: Option<Signer>,
+    payload: Option<Payload>,
+    bundle: Option<Bundle>,
+) -> Result<(), Fault> {
     // SAFETY: getuid can't fail and touches no memory.
     if unsafe { libc::getuid() } == 0 {
         return Err(Fault::Blocked {
@@ -229,13 +278,51 @@ fn host(image: &str, signer: Option<Signer>, payload: Option<Payload>) -> Result
     let machine_name = payload
         .as_ref()
         .map(|payload| payload.target.machine.clone());
-    let next = match &payload {
-        Some(payload) => payload.next(),
-        None => "Start the machine to repair from the stick.".into(),
-    };
     let title = match &machine_name {
         Some(name) => format!("Write {name}'s stick"),
         None => "Write a repair stick".into(),
+    };
+    let mut machine = System::new(Journal::in_memory(), host_log());
+    let theme = Theme::built(Terminal::is_console());
+    let mut terminal = Terminal::open()?;
+
+    // The rescue bundle opened first, its keys held only in memory.
+    let opened = Rc::new(RefCell::new(None));
+    let bundle_of = bundle.as_ref().map(|bundle| bundle.machine().to_string());
+    let steps: Vec<Box<dyn Step>> = match bundle {
+        Some(bundle) => vec![Box::new(OpenRescueBundle {
+            bundle,
+            opened: Rc::clone(&opened),
+        })],
+        None => vec![],
+    };
+    let opening = Journey::new(steps).map_err(|why| Fault::unreadable("the host's steps", why))?;
+    let mut walk = Walk {
+        journey: &opening,
+        here: Place::Host,
+        name: &title,
+        theme: &theme,
+        log: None,
+        whole: false,
+        last: Default::default(),
+    };
+    let (signer, payload) = match bundle_of {
+        Some(machine_of) => {
+            if walk.walk(&mut machine, &mut terminal)? != Ended::Finished {
+                return Ok(());
+            }
+            let Some(keys) = opened.take() else {
+                return Ok(());
+            };
+            let (signer, payload) = carrying(signer, payload, &machine_of, keys)?;
+            (Some(signer), payload)
+        }
+        None => (signer, payload),
+    };
+
+    let next = match &payload {
+        Some(payload) => payload.next(),
+        None => "Start the machine to repair from the stick.".into(),
     };
     let journey = Journey::new(vec![Box::new(WriteStick {
         image: PathBuf::from(image),
@@ -243,12 +330,47 @@ fn host(image: &str, signer: Option<Signer>, payload: Option<Payload>) -> Result
         signer,
     })])
     .map_err(|why| Fault::unreadable("the host's steps", why))?;
+    walk.journey = &journey;
+    walk.whole = true;
+    if walk.walk(&mut machine, &mut terminal)? != Ended::Finished {
+        return Ok(());
+    }
+    walk.card(&mut terminal, "The stick is written", &next, "finish")?;
+    Ok(())
+}
+
+/// A machine's rescue bundle, made on that machine from its payload's
+/// target.json: a walk on a terminal, or, when standard input is no
+/// terminal, the passphrase read from its first line, for a test.
+fn seal_keys(target: &str, bundle: &str) -> Result<(), Fault> {
+    let target: install::Target = serde_json::from_slice(
+        &std::fs::read(target).map_err(|why| Fault::unreadable(target, why))?,
+    )
+    .map_err(|why| Fault::unreadable("the payload's target.json", why))?;
     let mut machine = System::new(Journal::in_memory(), host_log());
+    if !std::io::stdin().is_terminal() {
+        let passphrase = passphrase()?;
+        let keys = Keys::read(&mut machine)?;
+        let bytes = Bundle::seal(&target, &keys, &passphrase, None)?;
+        machine.write(bundle, &bytes)?;
+        println!(
+            "{bundle}: {}'s rescue bundle, owned by {}",
+            target.machine,
+            keys.owner()
+        );
+        return Ok(());
+    }
+    let title = format!("Make {}'s rescue bundle", target.machine);
+    let journey = Journey::new(vec![Box::new(SealKeys {
+        target,
+        bundle: PathBuf::from(bundle),
+    })])
+    .map_err(|why| Fault::unreadable("the rescue bundle's steps", why))?;
     let theme = Theme::built(Terminal::is_console());
     let mut terminal = Terminal::open()?;
     let walk = Walk {
         journey: &journey,
-        here: Place::Host,
+        here: Place::Installed,
         name: &title,
         theme: &theme,
         log: None,
@@ -258,7 +380,14 @@ fn host(image: &str, signer: Option<Signer>, payload: Option<Payload>) -> Result
     if walk.walk(&mut machine, &mut terminal)? != Ended::Finished {
         return Ok(());
     }
-    walk.card(&mut terminal, "The stick is written", &next, "finish")?;
+    walk.card(
+        &mut terminal,
+        "The rescue bundle is made",
+        &format!(
+            "Keep {bundle} in 1Password and on your other machines. Writing a stick for this machine with it signs the stick for its firmware and carries its keys, so a reinstall never visits the firmware's setup."
+        ),
+        "finish",
+    )?;
     Ok(())
 }
 

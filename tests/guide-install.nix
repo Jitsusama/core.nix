@@ -23,6 +23,8 @@ let
   tpmPin = "24681357";
   password = "a password for alice";
   passphrase = "the stick's recovery passphrase";
+  # Typed into a shell as it is, so a word with nothing to quote.
+  bundlePassphrase = "the-bundles-recovery-passphrase";
 
   canokey = pkgs.canokey-qemu.overrideAttrs (old: {
     postPatch = old.postPatch + ''
@@ -179,7 +181,7 @@ pkgs.testers.runNixOSTest {
           '';
     in
     ''
-      import base64, io, json, os, re, shutil, subprocess, tarfile, tempfile
+      import base64, json, os, re, shutil, subprocess, tempfile
 
       keys = tempfile.mkdtemp()
       for name in ["nano", "fivec"]:
@@ -380,18 +382,28 @@ pkgs.testers.runNixOSTest {
           t.assertEqual(prompts, ["Please enter LUKS2 token PIN:"])
 
       with subtest("a stick carrying the machine's own Secure Boot keys is written on a host"):
-          # The keys as the machine keeps them, taken off it as a rescue
-          # bundle would carry them.
-          bundle = tempfile.mkdtemp()
-          archive = base64.b64decode(machine.succeed("tar -C /var/lib/sbctl -c . | base64 -w0"))
-          tarfile.open(fileobj=io.BytesIO(archive)).extractall(bundle, filter="data")
-          owner = open(f"{bundle}/GUID").read().strip()
+          # The machine makes its own rescue bundle, as root, with its
+          # installed guide, and only the sealed bundle leaves it.
+          target = base64.b64encode(open("${payload}/target.json", "rb").read()).decode()
+          machine.succeed(f"echo {target} | base64 -d > /root/target.json")
+          made = machine.succeed(
+              "echo ${bundlePassphrase} | guide seal-keys /root/target.json /root/rescue.json"
+          )
+          owner = machine.succeed("cat /var/lib/sbctl/GUID").strip()
+          t.assertIn(owner, made)
+          machine.succeed("test $(stat -c %a /root/rescue.json) = 600")
+          sealed = base64.b64decode(machine.succeed("base64 -w0 /root/rescue.json"))
+          t.assertNotIn(b"PRIVATE KEY", sealed)
+          bundle = os.path.join(tempfile.mkdtemp(), "rescue.json")
+          with open(bundle, "wb") as bundle_file:
+              bundle_file.write(sealed)
           again = os.path.join(tempfile.mkdtemp(), "reinstall.raw")
           with open(again, "wb") as stick_file:
               stick_file.truncate(os.path.getsize("${written}/stick.raw"))
+          # The stick's passphrase, then the bundle's.
           subprocess.run(
-              ["${guide}/bin/guide", "write-stick", "${image}", again, "--install", "${payload}", "--secure-boot-keys", bundle],
-              input=${builtins.toJSON passphrase}.encode() + b"\n", check=True,
+              ["${guide}/bin/guide", "write-stick", "${image}", again, "--install", "${payload}", "--rescue-bundle", bundle],
+              input=(${builtins.toJSON passphrase} + "\n${bundlePassphrase}\n").encode(), check=True,
           )
           reinstall = tempfile.NamedTemporaryFile(suffix=".qcow2")
           subprocess.run(["${qemu}/bin/qemu-img", "create", "-f", "qcow2", "-b", again, "-F", "raw", reinstall.name], check=True)

@@ -11,6 +11,7 @@ use std::path::{Path, PathBuf};
 
 use crate::install::{LAYOUT_SCRIPT, SYSTEM_CACHE, TARGET, Target};
 use crate::observe::disks::{self, Disk, Kind};
+use crate::rescue::Keys;
 use crate::sign::Signer;
 use crate::stick::{self, Image};
 use crate::vault::{self, Manifest, Packer, Vault, VaultKey};
@@ -26,9 +27,16 @@ pub struct Payload {
     pub target: Target,
     /// The cache's files, relative to it.
     cached: Vec<PathBuf>,
-    /// sbctl's directory of the machine's Secure Boot keys, and its files,
-    /// when the stick carries them, so a reinstall needs no firmware visit.
-    secure_boot: Option<(PathBuf, Vec<PathBuf>)>,
+    /// The machine's Secure Boot keys, opened from its rescue bundle, when
+    /// the stick carries them, so a reinstall needs no firmware visit.
+    secure_boot: Option<Keys>,
+}
+
+/// Where a file the vault gets is read from: a file of the payload's, or
+/// memory, for keys that are never written down in the plain.
+enum Source<'a> {
+    File(PathBuf),
+    Memory(&'a [u8]),
 }
 
 /// Every file under a directory, links followed, relative to it, in a
@@ -66,44 +74,41 @@ impl Payload {
         })
     }
 
-    /// The machine's Secure Boot keys too, from sbctl's directory (the
-    /// machine's /var/lib/sbctl, or a rescue bundle opened into one).
-    pub fn with_secure_boot_keys(mut self, directory: &Path) -> Result<Payload, Fault> {
-        let files = files_under(directory)?;
-        for needed in ["GUID", "keys/db/db.key", "keys/db/db.pem"] {
-            if !files.iter().any(|file| file == Path::new(needed)) {
-                return Err(Fault::Blocked {
-                    step: "write-stick",
-                    why: format!(
-                        "{} has no {needed}, so it isn't sbctl's directory",
-                        directory.display()
-                    ),
-                });
-            }
+    /// The machine's Secure Boot keys too, opened from its rescue bundle,
+    /// which has to be this machine's.
+    pub fn with_secure_boot_keys(mut self, machine: &str, keys: Keys) -> Result<Payload, Fault> {
+        if machine != self.target.machine {
+            return Err(Fault::Blocked {
+                step: "write-stick",
+                why: format!(
+                    "the rescue bundle is {machine}'s, and the stick is {}'s",
+                    self.target.machine
+                ),
+            });
         }
-        self.secure_boot = Some((directory.to_path_buf(), files));
+        self.secure_boot = Some(keys);
         Ok(self)
     }
 
     /// Every file the vault gets, by its path there and where it's read
     /// from.
-    fn files(&self) -> Vec<(String, PathBuf)> {
+    fn files(&self) -> Vec<(String, Source<'_>)> {
         let mut files = vec![
-            (TARGET.to_string(), self.root.join(TARGET)),
-            (LAYOUT_SCRIPT.to_string(), self.root.join("layout.sh")),
+            (TARGET.to_string(), Source::File(self.root.join(TARGET))),
+            (
+                LAYOUT_SCRIPT.to_string(),
+                Source::File(self.root.join("layout.sh")),
+            ),
         ];
         for relative in &self.cached {
             files.push((
                 format!("{SYSTEM_CACHE}/{}", relative.display()),
-                self.root.join("cache").join(relative),
+                Source::File(self.root.join("cache").join(relative)),
             ));
         }
-        if let Some((directory, keys)) = &self.secure_boot {
-            for relative in keys {
-                files.push((
-                    format!("sbctl/{}", relative.display()),
-                    directory.join(relative),
-                ));
+        if let Some(keys) = &self.secure_boot {
+            for (name, bytes) in keys.files() {
+                files.push((format!("sbctl/{name}"), Source::Memory(bytes)));
             }
         }
         files
@@ -147,7 +152,10 @@ impl Payload {
         let cluster = 32 << 10;
         let mut needed: u64 = 16 << 20;
         for (_, from) in self.files() {
-            let bytes = std::fs::metadata(&from).map_err(unread(&from))?.len();
+            let bytes = match from {
+                Source::File(path) => std::fs::metadata(&path).map_err(unread(&path))?.len(),
+                Source::Memory(bytes) => bytes.len() as u64,
+            };
             needed += (bytes + bytes / 1000 + 512).div_ceil(cluster) * cluster;
         }
         Ok(needed)
@@ -259,7 +267,12 @@ pub fn write(
         }
         let mut packer = Packer::new(store, &key);
         for (name, from) in payload.files() {
-            packer.add(&name, File::open(&from).map_err(unread(&from))?)?;
+            match from {
+                Source::File(path) => {
+                    packer.add(&name, File::open(&path).map_err(unread(&path))?)?
+                }
+                Source::Memory(bytes) => packer.add(&name, bytes)?,
+            }
         }
         packer.finish(&manifest)
     })?;
