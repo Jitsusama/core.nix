@@ -5,8 +5,11 @@
   dosfstools,
   lib,
   libfido2,
+  mtools,
+  openssl,
   rustPlatform,
   sbctl,
+  sbsigntool,
   # A machine gives its own, so bootctl matches the systemd-boot it installs.
   systemd,
   tpm2-tools,
@@ -26,11 +29,18 @@ rustPlatform.buildRustPackage {
     ];
   };
   cargoLock.lockFile = ./Cargo.lock;
-  # The stick's tests are judged by what a person would check it with.
+  # The stick's tests are judged by what a person would check it with, and
+  # its signatures by sbsign's for the programs systemd builds for EFI.
   nativeCheckInputs = [
     dosfstools
+    mtools
+    openssl
+    sbsigntool
     util-linux
   ];
+  preCheck = ''
+    export GUIDE_TEST_EFI=${systemd}/lib/systemd/boot/efi
+  '';
   env = {
     GUIDE_BOOTCTL = lib.getExe' systemd "bootctl";
     GUIDE_FIDO2_TOKEN = lib.getExe' libfido2 "fido2-token";

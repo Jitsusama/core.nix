@@ -19,6 +19,11 @@ const BASIC_DATA: [u8; 16] = [
     0xa2, 0xa0, 0xd0, 0xeb, 0xe5, 0xb9, 0x33, 0x44, 0x87, 0xc0, 0x68, 0xb6, 0xb7, 0x26, 0x99, 0xc7,
 ];
 
+/// An EFI system partition's type, C12A7328-F81F-11D2-BA4B-00A0C93EC93B.
+pub const EFI_SYSTEM: [u8; 16] = [
+    0x28, 0x73, 0x2a, 0xc1, 0x1f, 0xf8, 0xd2, 0x11, 0xba, 0x4b, 0x00, 0xa0, 0xc9, 0x3e, 0xc9, 0x3b,
+];
+
 /// A GPT's entries and its disk's GUID, as an image or a stick holds them.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Table {
@@ -31,6 +36,8 @@ pub struct Table {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Partition {
     pub slot: usize,
+    /// Its type's GUID, as the entry holds it.
+    pub kind: [u8; 16],
     pub name: String,
     pub first: u64,
     pub last: u64,
@@ -105,6 +112,7 @@ impl Table {
                     .collect();
                 Partition {
                     slot,
+                    kind: entry[..16].try_into().expect("sixteen bytes"),
                     name: String::from_utf16_lossy(&name),
                     first: le64(&entry[32..]),
                     last: le64(&entry[40..]),
@@ -174,6 +182,7 @@ impl Table {
         }
         Ok(Partition {
             slot,
+            kind: BASIC_DATA,
             name: name.into(),
             first,
             last: end - 1,

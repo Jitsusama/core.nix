@@ -1,7 +1,8 @@
 //! `guide observe` says what the guide sees on this machine and changes
 //! nothing; `guide tools` says where this build finds each program it
 //! runs, and fails when one is missing; `guide write-stick IMAGE FILE`
-//! writes a repair stick into a file the size of one.
+//! writes a repair stick into a file the size of one, its boot program
+//! signed with the db key in sbctl's `DIRECTORY` given `--sign-with`.
 
 use std::fs::OpenOptions;
 use std::io::Write;
@@ -9,28 +10,38 @@ use std::path::Path;
 use std::process::ExitCode;
 
 use guide::observe::{disks, efi, entries, fido2, sbctl, tpm};
+use guide::sign::Signer;
 use guide::stick::{self, Image};
 use guide::system::System;
 use guide::vault::{self, Manifest};
 use guide::{Fault, Journal, Tool};
 
-const USAGE: &str = "usage: guide observe | guide tools | guide write-stick IMAGE FILE";
+const USAGE: &str =
+    "usage: guide observe | guide tools | guide write-stick IMAGE FILE [--sign-with DIRECTORY]";
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     match args.iter().map(String::as_str).collect::<Vec<_>>()[..] {
         ["observe"] => observe(),
         ["tools"] => tools(),
-        ["write-stick", image, target] => match write_stick(image, target) {
-            Ok(()) => ExitCode::SUCCESS,
-            Err(fault) => {
-                eprintln!("{fault}");
-                ExitCode::FAILURE
-            }
-        },
+        ["write-stick", image, target] => reported(write_stick(image, target, None)),
+        ["write-stick", image, target, "--sign-with", keys] => reported(
+            Signer::open(Path::new(keys))
+                .and_then(|signer| write_stick(image, target, Some(&signer))),
+        ),
         _ => {
             eprintln!("{USAGE}");
             ExitCode::from(2)
+        }
+    }
+}
+
+fn reported(result: Result<(), Fault>) -> ExitCode {
+    match result {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(fault) => {
+            eprintln!("{fault}");
+            ExitCode::FAILURE
         }
     }
 }
@@ -48,7 +59,7 @@ fn repair_manifest() -> Manifest {
 /// A repair stick, into a file already the size of the stick it stands for.
 /// A disk is refused: writing one comes with the steps that find it and
 /// have the person confirm it.
-fn write_stick(image: &str, target: &str) -> Result<(), Fault> {
+fn write_stick(image: &str, target: &str, signer: Option<&Signer>) -> Result<(), Fault> {
     let kept = |why: std::io::Error| Fault::Unkept {
         path: target.into(),
         why: why.to_string(),
@@ -67,7 +78,7 @@ fn write_stick(image: &str, target: &str) -> Result<(), Fault> {
         .open(target)
         .map_err(kept)?;
     let manifest = repair_manifest();
-    let written = stick::write(&mut image, &mut disk, stick::new_guid()?, |store| {
+    let written = stick::write(&mut image, &mut disk, stick::new_guid()?, signer, |store| {
         let bytes = serde_json::to_vec_pretty(&manifest)
             .map_err(|why| Fault::unreadable("the manifest", why))?;
         store

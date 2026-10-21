@@ -43,6 +43,13 @@ the stick's writer and vault; the steps and the screens come later.
   Mac's raw disks need. Reading back forgets the system's cached copy first,
   then compares both tables, hashes each partition again and opens the
   vault.
+- **Signing.** A stick for one machine has its boot program signed with
+  that machine's db key, so it boots there with Secure Boot enforced. The
+  signature is byte for byte what sbsign makes from the same key at the same
+  moment, since sbsign's is what every machine here boots; sbsign itself is
+  Linux's alone. The ESP is signed in memory before anything reaches the
+  stick, so a key that won't sign leaves the stick as it was. Keys are
+  sbctl's file keys, a `db.key` and `db.pem` in one directory.
 - **The vault.** A FAT32 partition any machine can read, holding files
   sealed with age to a vault key made for it. The key is sealed to each
   YubiKey, and separately to the recovery passphrase, since age won't mix a
@@ -67,11 +74,13 @@ the stick's writer and vault; the steps and the screens come later.
 | `src/journal.rs`      | the facts observing can't show                            |
 | `src/fault.rs`        | what stops a step, in a person's words                    |
 | `src/observe/`        | one parser per thing the guide reads off a machine        |
+| `src/sign/`           | Authenticode: what a signature covers, and the signature sbsign would make |
 | `src/stick/`          | writing the stick and reading it back: its tables, and aligned blocks |
 | `src/vault/`          | the vault's sealing and index, and where its files are kept |
 | `fixtures/<hardware>/` | what each tool printed on a real machine, as it printed it |
 | `tests/journey.rs`    | the journey's promises, with toy steps                    |
-| `tests/stick.rs`      | whole sticks written into files, judged by sfdisk and fsck.fat |
+| `tests/stick.rs`      | whole sticks written into files, judged by sfdisk, fsck.fat and sbverify |
+| `tests/sign.rs`       | signatures compared byte for byte with sbsign's           |
 
 ## Working on It
 
@@ -81,7 +90,9 @@ tests again as it builds, then `guide tools`. `nix fmt` from the repository
 root formats the Rust. `guide observe` prints what the guide sees on the
 machine it runs on and changes nothing, which is how a parser meets a
 machine it hasn't seen. `guide write-stick IMAGE FILE` writes a repair stick
-into a file already the size of a stick, and refuses a disk.
+into a file already the size of a stick, and refuses a disk; given
+`--sign-with` and sbctl's db key directory, it signs the stick's boot
+program for that machine.
 
 - Parse what a tool printed on a real machine, never what its manual says it
   prints: capture it into `fixtures/<hardware>/`, named as core's hardware

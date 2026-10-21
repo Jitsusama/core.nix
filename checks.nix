@@ -4078,9 +4078,10 @@ in
         });
 
     # The guide's tests run as it builds: each step proven by observing it
-    # again, each parser reading what real machines printed, and each stick
-    # it writes read back by sfdisk and fsck.fat. Its install check then
-    # finds every program it runs at the path it was built with.
+    # again, each parser reading what real machines printed, each stick it
+    # writes read back by sfdisk and fsck.fat, and each signature compared
+    # with sbsign's. Its install check then finds every program it runs at
+    # the path it was built with.
     guide-proves-its-steps = pkgs.callPackage ./modules/guide/package.nix { };
 
     # clippy finds nothing in the guide, its tests included.

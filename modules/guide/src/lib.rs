@@ -45,6 +45,7 @@ pub mod journey;
 pub mod machine;
 pub mod observe;
 pub mod place;
+pub mod sign;
 pub mod step;
 pub mod stick;
 pub mod system;

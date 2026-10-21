@@ -292,12 +292,18 @@
             pkgs.rustfmt
             (pkgs.callPackage ./tests/shots-changed.nix { })
           ]
-          # The guide's stick tests check what they write with sfdisk and
-          # fsck.fat.
+          # The guide's tests check the sticks it writes with sfdisk,
+          # fsck.fat and mtools, and its signatures against sbsign's.
           ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [
             pkgs.dosfstools
+            pkgs.mtools
+            pkgs.openssl
+            pkgs.sbsigntool
             pkgs.util-linux
           ];
+          env = pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
+            GUIDE_TEST_EFI = "${pkgs.systemd}/lib/systemd/boot/efi";
+          };
         };
       });
 

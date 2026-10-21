@@ -17,9 +17,10 @@ use std::io::{self, Read, Seek, SeekFrom, Write};
 use sha2::{Digest, Sha256};
 
 use crate::Fault;
+use crate::sign::Signer;
 use crate::vault::store::{Fat, Store};
 use blocks::Partition;
-use gpt::{ALIGNMENT, SECTOR, Table};
+use gpt::{ALIGNMENT, EFI_SYSTEM, SECTOR, Table};
 
 /// The least a vault may be: a repair stick's needs only its manifest, and
 /// FAT32 needs 65,525 clusters.
@@ -93,6 +94,7 @@ pub fn write(
     image: &mut Image,
     disk: &mut File,
     vault_guid: [u8; 16],
+    signer: Option<&Signer>,
     fill: impl FnOnce(&mut dyn Store) -> Result<(), Fault>,
 ) -> Result<Written, Fault> {
     let bytes = disk.seek(SeekFrom::End(0)).map_err(unwritten)?;
@@ -105,6 +107,30 @@ pub fn write(
     let sectors = bytes / SECTOR;
     let mut table = image.table.clone();
     let vault = table.add_vault("vault", vault_guid, sectors, LEAST_VAULT / SECTOR)?;
+
+    // Signed before anything is written, so a key that won't sign leaves
+    // the stick as it was.
+    let mut signed = vec![];
+    if let Some(signer) = signer {
+        for partition in image.partitions() {
+            if partition.kind == EFI_SYSTEM {
+                let mut esp = vec![0u8; partition.bytes() as usize];
+                image
+                    .file
+                    .seek(SeekFrom::Start(partition.offset()))
+                    .and_then(|_| image.file.read_exact(&mut esp))
+                    .map_err(|why| Fault::unreadable("the stick's image", why))?;
+                sign_esp(&mut esp, signer)?;
+                signed.push((partition.slot, esp));
+            }
+        }
+        if signed.is_empty() {
+            return Err(Fault::unreadable(
+                "the stick's image",
+                "it has no EFI system partition to sign",
+            ));
+        }
+    }
 
     // The head holds the protective MBR and the primary table; the tail,
     // the backup. Clearing both first means nothing reads a table until
@@ -121,14 +147,19 @@ pub fn write(
 
     let mut copied = vec![];
     for partition in image.partitions() {
-        image
-            .file
-            .seek(SeekFrom::Start(partition.offset()))
-            .map_err(|why| Fault::unreadable("the stick's image", why))?;
         let mut region =
             Partition::new(disk, partition.offset(), partition.bytes()).map_err(unwritten)?;
-        let hash =
-            copy_hashed(&mut image.file, &mut region, partition.bytes()).map_err(unwritten)?;
+        let hash = match signed.iter().find(|(slot, _)| *slot == partition.slot) {
+            Some((_, esp)) => copy_hashed(&mut &esp[..], &mut region, partition.bytes()),
+            None => {
+                image
+                    .file
+                    .seek(SeekFrom::Start(partition.offset()))
+                    .map_err(|why| Fault::unreadable("the stick's image", why))?;
+                copy_hashed(&mut image.file, &mut region, partition.bytes())
+            }
+        }
+        .map_err(unwritten)?;
         region.flush().map_err(unwritten)?;
         copied.push((partition, hash));
     }
@@ -156,6 +187,47 @@ pub fn write(
         sectors,
         copied,
     })
+}
+
+/// Signs every boot program in an EFI system partition held in memory:
+/// each `.EFI` file in `EFI/BOOT`, where firmware looks on a removable disk.
+/// fatfs rewrites a file in place without the directory entries it gets
+/// wrong when it makes one.
+fn sign_esp(esp: &mut [u8], signer: &Signer) -> Result<(), Fault> {
+    let unsigned = |why: io::Error| Fault::unreadable("the stick's EFI system partition", why);
+    let filesystem =
+        fatfs::FileSystem::new(io::Cursor::new(esp), fatfs::FsOptions::new()).map_err(unsigned)?;
+    let mut count = 0;
+    {
+        let boot = filesystem
+            .root_dir()
+            .open_dir("EFI/BOOT")
+            .map_err(unsigned)?;
+        for entry in boot.iter() {
+            let entry = entry.map_err(unsigned)?;
+            if !entry.is_file() || !entry.file_name().to_ascii_uppercase().ends_with(".EFI") {
+                continue;
+            }
+            let mut file = entry.to_file();
+            let mut program = vec![];
+            file.read_to_end(&mut program).map_err(unsigned)?;
+            let program = signer.sign(program, std::time::SystemTime::now())?;
+            file.seek(SeekFrom::Start(0))
+                .and_then(|_| file.write_all(&program))
+                .and_then(|()| file.truncate())
+                .and_then(|()| file.flush())
+                .map_err(unsigned)?;
+            count += 1;
+        }
+    }
+    if count == 0 {
+        return Err(Fault::unreadable(
+            "the stick's EFI system partition",
+            "it has no boot program",
+        ));
+    }
+    filesystem.stats().map_err(unsigned)?;
+    filesystem.unmount().map_err(unsigned)
 }
 
 /// Forgets what the system cached of the disk, so what's read next comes

@@ -15,6 +15,13 @@ crc32fast = "1.5"
 fatfs = { version = "0.3.6", default-features = false, features = ["std", "alloc"] }
 getrandom = "0.4"
 libc = "0.2"
+# Blinds each RSA signature, as rsa wants a random source for.
+rand_core = { version = "0.6", features = ["getrandom"] }
+# Signs the stick's boot program. Pure Rust, so it builds for a Mac from
+# Linux. RUSTSEC-2023-0071 is a timing leak someone has to measure across
+# many signatures; the guide signs once, on the person's own machine, with
+# a key anyone able to time it could already read.
+rsa = "0.9"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 sha2 = "0.11"
