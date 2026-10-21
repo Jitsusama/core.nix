@@ -67,6 +67,7 @@ quietly stopped holding.
 | `a-faint-theme-is-refused`          | a theme with text under WCAG's 4.5:1 doesn't build        |
 | `quickshell-restarts-with-its-files` | a switch restarts the shell when a file it reads changes  |
 | `quickshell-opens-programs-through-niri` | programs the shell opens survive the shell restarting |
+| `one-niri` | the screens go off through the machine's patched niri, not a second one |
 | `the-overview-takes-its-pieces` | a machine moves, cuts, retunes and adds the overview's pieces |
 | `quickshell-takes-its-shape-from-the-theme` | every corner and border in the shell is the theme's |
 | `icon-marks-past-the-basic-plane` | an icon mark past U+FFFF reaches the shell whole |
