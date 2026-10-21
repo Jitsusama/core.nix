@@ -1,0 +1,2 @@
+Failed to read "/boot/EFI/systemd": Permission denied
+Failed to open '/boot/loader/loader.conf': Permission denied

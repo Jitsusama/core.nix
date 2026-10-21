@@ -1,0 +1,34 @@
+[
+  {
+    "file_name": "/boot/EFI/BOOT/BOOTX64.EFI",
+    "is_signed": 1
+  },
+  {
+    "file_name": "/boot/EFI/Linux/nixos-generation-12-2jraginctacagr4zrqagcp5gxl5emyx2zyvpxq327xw6fypcqd2q.efi",
+    "is_signed": 1
+  },
+  {
+    "file_name": "/boot/EFI/Linux/nixos-generation-13-m354uiema4jhmzsajqpynnfj5gqgnsvxtivp54n42vq6pi6elysq.efi",
+    "is_signed": 1
+  },
+  {
+    "file_name": "/boot/EFI/Linux/nixos-generation-14-6nxexgjjuzafv5ivu5pnki6sdotgw7kicz2l2pt3ebpfh2crqqjq.efi",
+    "is_signed": 1
+  },
+  {
+    "file_name": "/boot/EFI/Linux/nixos-generation-15-lblxyt7ike4b3w76z2sxh4qohfn4lzl5fxabqj4vv3vd5opz7akq.efi",
+    "is_signed": 1
+  },
+  {
+    "file_name": "/boot/EFI/nixos/kernel-6.18.5-4exj3k3r3bj7kan7femn7h7xnjkqgep4j3z5rudrp5dsodumtasq.efi",
+    "is_signed": 0
+  },
+  {
+    "file_name": "/boot/EFI/nixos/kernel-7.2.3-jl2cqxhf2rftv6tv7slctpfv5jugkc4t5ycpc2afuxvzadvqmzxq.efi",
+    "is_signed": 0
+  },
+  {
+    "file_name": "/boot/EFI/systemd/systemd-bootx64.efi",
+    "is_signed": 1
+  }
+]

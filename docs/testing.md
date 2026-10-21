@@ -167,6 +167,9 @@ kernel guide][2] says what that catches.
 | `disk-guard-passes-clippy`        | clippy finds nothing in the disk guard or its scenarios   |
 | `disk-guard-compiles-for-macos`   | the disk guard and its scenarios compile for macOS, clean |
 | `network-revive-passes-clippy`    | clippy finds nothing in network-revive or its tests       |
+| `guide-proves-its-steps`          | the guide counts a step done only once observing it again says so, reads what real machines' tools printed, writes sticks that sfdisk, fsck.fat and their own key read back whole, signs EFI programs byte for byte as sbsign does, and finds every program it runs |
+| `guide-passes-clippy`             | clippy finds nothing in the guide or its tests            |
+| `guide-compiles-for-macos`        | clippy finds nothing in the guide as macOS compiles it     |
 | `ir-camera-passes-clippy`         | clippy finds nothing in ir-camera or its tests            |
 | `record-window-passes-clippy`     | clippy finds nothing in record-window or its tests        |
 | `plymouth-waits-passes-clippy`    | clippy finds nothing in plymouth-waits or its tests       |
