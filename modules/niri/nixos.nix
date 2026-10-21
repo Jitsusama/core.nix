@@ -18,13 +18,26 @@
     # (modules/quickshell/record-window), takes them all as one moment.
     # Upstream's a30ca79, after 26.04, leaves the time unsaid, so each is
     # timed as it comes.
+    #
+    # niri 26.04 drops what it imported from a client's buffers only after
+    # drawing a frame, so with the monitors off every new buffer stayed, and
+    # a locked laptop's terminal piled up 66 GB in three hours. The patch
+    # (prune-imports.patch) clears them out as each new buffer arrives, and
+    # upstream's bb38b7e, after 26.04, stops asking clients to draw while
+    # the monitors are off.
     package = pkgs.niri.overrideAttrs (old: {
       patches = (old.patches or [ ]) ++ [
         ./touchscreen-gestures.patch
+        ./prune-imports.patch
         (pkgs.fetchpatch {
           name = "niri-screencast-pts-unknown.patch";
           url = "https://github.com/niri-wm/niri/commit/a30ca7983b2f1fc3ddeb209b3fe18fa78e0dbd25.patch";
           hash = "sha256-fywWXRRC7bFsX9uytntQLEWUNG1oyxUMn575hAG6Oow=";
+        })
+        (pkgs.fetchpatch {
+          name = "niri-no-frame-callbacks-without-monitors.patch";
+          url = "https://github.com/niri-wm/niri/commit/bb38b7e14f8f7bbef6584cf263bf36b0044d63d3.patch";
+          hash = "sha256-83i8Mpyc6k4BqBjPYEY/M4XnEbxBb4RKiFJ7tk4mXfM=";
         })
       ];
     });
