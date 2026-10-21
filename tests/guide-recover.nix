@@ -272,6 +272,17 @@ pkgs.testers.runNixOSTest {
           t.assertTrue(opens("kept"), "the kept key no longer opens the disk")
           t.assertFalse(opens("lost"), "the lost key still opens the disk")
 
+      with subtest("an ESP that lost its boot loader gets it again from the installed system"):
+          machine.succeed("rm -r /mnt/boot/EFI/systemd /mnt/boot/loader/entries")
+          for _ in range(3):
+              machine.send_key("down")
+          # What the menu looks like on a console, its keys drawn by its font.
+          machine.screenshot("menu")
+          type("")
+          on_screen("installed again", timeout=180)
+          machine.succeed("test -s /mnt/boot/EFI/systemd/systemd-bootx64.efi")
+          machine.succeed("ls /mnt/boot/loader/entries/*.conf")
+
       with subtest("Return gives a root shell inside the installed system"):
           type("")
           machine.sleep(3)

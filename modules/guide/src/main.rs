@@ -360,14 +360,14 @@ fn recover() -> Result<(), Fault> {
                 guide::recover::REPAIRS,
             )? {
                 Some(0) => break true,
-                Some(at @ (1 | 2)) => {
-                    let steps: Vec<Box<dyn guide::Step>> = if at == 1 {
-                        vec![Box::new(guide::recover::BootGeneration)]
-                    } else {
-                        vec![
+                Some(at @ 1..=3) => {
+                    let steps: Vec<Box<dyn guide::Step>> = match at {
+                        1 => vec![Box::new(guide::recover::BootGeneration)],
+                        2 => vec![
                             Box::new(guide::recover::IdentifyKeptKey),
                             Box::new(guide::recover::ReplaceLostKey),
-                        ]
+                        ],
+                        _ => vec![Box::new(guide::recover::InstallBootLoader)],
                     };
                     let repair = Journey::new(steps)
                         .map_err(|why| Fault::unreadable("the repair's steps", why))?;

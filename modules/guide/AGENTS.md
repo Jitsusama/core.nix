@@ -96,7 +96,8 @@ driven on; the installed machine's steps come later.
   lost YubiKey replaced: the key still had told apart by a silent
   assertion, the new one enrolled and proven with the recovery key, and
   only then the lost one's slots wiped, so the disk never has fewer ways
-  in. The kernel writes only errors on the stick's console, which the
+  in; or the boot loader installed again by the installed system's own
+  `switch-to-configuration boot`, which signs with the machine's keys. The kernel writes only errors on the stick's console, which the
   guide owns. A
   repair stick runs this when it boots; `guide recover` runs it from any
   stick's shell. The other repairs the plan lists are still to come.

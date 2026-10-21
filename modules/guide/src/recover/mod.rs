@@ -321,8 +321,66 @@ pub const REPAIRS: &[&str] = &[
     "Open a root shell inside it",
     "Choose which generation it boots next",
     "Replace a lost YubiKey",
+    "Install its boot loader again",
     "Restart",
 ];
+
+/// The boot loader the machine installs, which a damaged ESP lacks.
+const BOOT_LOADER: &str = "/mnt/boot/EFI/systemd/systemd-bootx64.efi";
+
+/// The boot loader and the generations' boot files written to the ESP
+/// again by the installed system itself, as it writes them whenever it
+/// switches, so lanzaboote signs them with the machine's own keys on its
+/// disk. For an ESP that was wiped, damaged or filled.
+pub struct InstallBootLoader;
+
+impl Step for InstallBootLoader {
+    fn id(&self) -> &'static str {
+        "install-boot-loader"
+    }
+
+    fn place(&self) -> Place {
+        Place::Stick
+    }
+
+    fn title(&self) -> &'static str {
+        "Install its boot loader again"
+    }
+
+    fn observe(&self, machine: &mut dyn Machine) -> Result<Standing, Fault> {
+        Ok(
+            if machine.journal().knows(self.id(), "installed")
+                && machine.read(BOOT_LOADER)?.is_some()
+            {
+                Standing::Done {
+                    evidence: "its boot loader is installed again".into(),
+                }
+            } else {
+                Standing::Needed { asks: vec![] }
+            },
+        )
+    }
+
+    fn run(&self, machine: &mut dyn Machine, _answers: &Answers) -> Result<(), Fault> {
+        let installed = machine.run_given(
+            Program::Tool(Tool::NixosEnter),
+            &[
+                "--root",
+                crate::install::ROOT,
+                "-c",
+                "NIXOS_INSTALL_BOOTLOADER=1 /nix/var/nix/profiles/system/bin/switch-to-configuration boot",
+            ],
+            Given {
+                plain: vec![("PATH", Path::Install.get()?)],
+                ..Given::default()
+            },
+        )?;
+        if installed.status != 0 {
+            return Err(installed.refusal());
+        }
+        machine.journal().record(self.id(), "installed")
+    }
+}
 
 /// The YubiKey the person still has, told apart from the disk's others by
 /// a silent assertion, so the ones it isn't are the lost ones.
