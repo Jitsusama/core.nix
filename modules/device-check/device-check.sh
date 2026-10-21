@@ -1,7 +1,10 @@
 # Names the devices that have stopped working: any whose runtime power
 # management failed, which the kernel then holds failed and won't wake until
 # the next boot, any the machine expects that isn't there, and any disk that
-# reported a fault to smartd this boot, which device-check-disk keeps.
+# reported a fault to smartd this boot, which device-check-disk keeps. And the
+# kernel itself, when it oopsed, locked up, heard of a hardware fault or had a
+# task stuck in it, since it can misbehave until the next boot and only says
+# so in its log.
 #
 #   device-check    names what has gone wrong since it last ran, and what
 #                   works again, in the journal and on the desktop
@@ -57,11 +60,41 @@ disk_faults() {
   done
 }
 
+# Each kind of trouble the kernel has had this boot, as "kernel", a tab, and
+# the kind. It marks the first four in its taint, by bit, and never clears
+# one; its other taints, a warning among them, are no sign of trouble.
+kernel_trouble() {
+  local tainted=0 stuck=0
+  read -r tainted 2> /dev/null < "$root/proc/sys/kernel/tainted" || true
+  read -r stuck 2> /dev/null < "$root/proc/sys/kernel/hung_task_detect_count" || true
+  if ((tainted & 1 << 7)); then printf 'kernel\toops\n'; fi
+  if ((tainted & 1 << 14)); then printf 'kernel\tlockup\n'; fi
+  if ((tainted & 1 << 4)); then printf 'kernel\tmachine check\n'; fi
+  if ((tainted & 1 << 5)); then printf 'kernel\tbad page\n'; fi
+  if ((stuck > 0)); then printf 'kernel\tstuck task\n'; fi
+}
+
 {
   failed_power
   missing
   disk_faults
+  kernel_trouble
 } | sort -u > "$now"
+
+# What the kernel's trouble of each kind means for the person at the machine.
+trouble() {
+  local waited=120
+  case $1 in
+    oops) echo "The kernel hit a fault and may misbehave until the next boot" ;;
+    lockup) echo "The kernel locked up a processor and may misbehave until the next boot" ;;
+    "machine check") echo "The processor reported a hardware error" ;;
+    "bad page") echo "The kernel found a damaged memory page" ;;
+    "stuck task")
+      read -r waited 2> /dev/null < "$root/proc/sys/kernel/hung_task_timeout_secs" || true
+      echo "A task was stuck in the kernel for over $waited seconds"
+      ;;
+  esac
+}
 
 # Says each finding, warnings for what broke and notices for what's fixed,
 # whose priority journald reads from the prefix.
@@ -76,6 +109,9 @@ tell() {
       missing/fixed) line="$subject is back" ;;
       disk/broke) line="The disk $subject" ;;
       disk/fixed) line="The disk ${subject/ reports / no longer reports }" ;;
+      kernel/broke) line=$(trouble "$subject") ;;
+      # Only a new boot clears the kernel's trouble, and nobody needs telling.
+      kernel/fixed) continue ;;
     esac
     echo "<$priority>$line" >&2
     "$notify" -u "$urgency" -a Devices "$line" || true

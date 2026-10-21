@@ -1,7 +1,9 @@
 # Boots the graphical role from an encrypted disk in a virtual machine and
 # answers the disk's passphrase on the keyboard, as Joel types his PIN: the
 # theme's screen asks for it, shows a dot for each key, says try again after
-# a wrong one in the alert frame, then lets the boot through. The test reads
+# a wrong one in the alert frame, then lets the boot through. A slow job is
+# named while the splash is up, a shutdown's last stage is said in the
+# theme's words, and a restart's screen lasts to its end. The test reads
 # the screen with OCR, so each step waits on what's drawn rather than on a
 # timer, and photographs each state for a person to judge.
 { self, pkgs }:
@@ -160,35 +162,53 @@ pkgs.testers.runNixOSTest {
           # as a splash that outlasts the graphics driver leaves it: a new
           # console takes that one's font until its login prompt sets its
           # own. While the greeter starts or stops, the first console can
-          # refuse to be opened for a moment.
+          # refuse to be opened for a moment. The switch is made directly:
+          # a chord sent as the compositor takes the first console is lost.
           machine.wait_until_succeeds("setfont -C /dev/tty1 default8x16", timeout=30)
-          machine.send_key("ctrl-alt-f3")
+          machine.succeed("chvt 3")
           machine.wait_until_tty_matches("3", "login: ")
           wears_the_face("/dev/tty3")
           photographed("console")
 
-      # The next boot is one whose initrd fails, set up while the system is
-      # whole. The encrypted disk is a new root with no profile of its own,
-      # so it's given one, as nix-env would.
-      machine.succeed(
-          "mkdir -p /nix/var/nix/profiles",
-          "ln -sfn ${stops} /nix/var/nix/profiles/system-1-link",
-          "ln -sfn system-1-link /nix/var/nix/profiles/system",
-          "${stops}/bin/switch-to-configuration boot",
-          "sync",
-      )
+      with subtest("a slow job is named while it runs, and goes when it ends"):
+          # The splash back up over the first console, as at boot, with
+          # nothing graphical holding it and logind kept from handing the
+          # console on, and the watch started as at boot.
+          machine.succeed(
+              "systemctl mask --runtime --now systemd-logind.service",
+              "systemctl stop greetd.service 'getty@*' 'autovt@*'",
+              "chvt 1",
+              "systemctl restart plymouth-start.service",
+              "systemctl start plymouth-waits.service",
+              "systemd-run --no-block --collect --unit=slow -p Type=oneshot"
+              " -p Description='Slow Hello' sleep 60",
+          )
+          machine.wait_for_text("waiting on Slow Hello", timeout=60)
+          photographed("waiting")
+          machine.succeed("systemctl stop slow.service")
+          retry(lambda _: "Slow" not in machine.get_screen_text(), 30)
+          # logind stays masked and the greeter stopped, as the emergency
+          # shell wants them next.
+          machine.succeed(
+              "systemctl stop plymouth-waits.service",
+              "systemd-run --wait --collect plymouth quit",
+          )
 
       with subtest("the emergency shell wears the face, and says what failed"):
           # As after a failed boot: a unit has failed, nothing graphical
           # holds a console and no login prompt runs, logind masked so none
           # starts again and sets the face itself, and the splash is up over
-          # consoles that have lost the face. The shell's own steps before it asks, Plymouth's
-          # quitting and then this module's, run in order on the console in
-          # front as the shell would run them. sulogin itself isn't started:
-          # it asks on every console, the test's serial line among them,
-          # and the test stops hearing the machine. The splash is started by
-          # systemd, as at boot: started from the test's own shell, it broke
-          # the driver's reading of that shell.
+          # consoles that have lost the face. The shell's own steps before it
+          # asks, Plymouth's quitting and then this module's, run in order on
+          # the console in front as the shell would run them. sulogin itself
+          # isn't started: it asks on every console, the test's serial line
+          # among them, and the test stops hearing the machine. The splash is
+          # started by systemd, as at boot: started from the test's own
+          # shell, it broke the driver's reading of that shell.
+          # The account's activation fails on this new root, which has no
+          # Nix profile for it, so failures from before are cleared, and the
+          # summary lists only the one made here.
+          machine.succeed("systemctl reset-failed")
           machine.execute(
               "systemd-run --unit=breaks --description='Breaks on purpose' "
               "sh -c 'echo the disk was not there; exit 1'"
@@ -218,6 +238,44 @@ pkgs.testers.runNixOSTest {
           for words in ["breaks.service  Breaks on purpose", "the disk was not there", "Ctrl+Alt+Delete"]:
               t.assertIn(words, said)
           photographed("emergency")
+
+      with subtest("a restart names a slow stop and keeps its screen to the end"):
+          # A service that takes its time to stop, and a program left out of
+          # every unit's stop that outlasts the last stage's kill and, as
+          # whatever bounds a shutdown would, says so a second later, once
+          # a splash that didn't survive the kill would have gone.
+          machine.succeed(
+              "systemd-run --unit=slowstop -p Description='Slow Goodbye'"
+              " -p ExecStop='${pkgs.coreutils}/bin/sleep 12' sleep infinity",
+              "systemd-run --unit=leftover -p KillMode=none sh -c \""
+              "trap '${pkgs.coreutils}/bin/sleep 1;"
+              " ${pkgs.plymouth}/bin/plymouth update --status=leftovers;"
+              " exec ${pkgs.coreutils}/bin/sleep 25' TERM;"
+              " ${pkgs.coreutils}/bin/sleep 25 & wait\"",
+          )
+          machine.reboot()
+          machine.wait_for_text("waiting on Slow Goodbye", timeout=60)
+          photographed("stopping-slowly")
+          machine.wait_for_console_text("Sending SIGTERM to remaining processes")
+          machine.wait_for_text("waiting on the last programs", timeout=15)
+          photographed("last-stage")
+          # The test's machine ends at a restart rather than starting again.
+          machine.wait_for_shutdown()
+          machine.start()
+          machine.wait_for_text("disk is locked", timeout=180)
+          machine.send_chars("${passphrase}\n")
+          machine.wait_for_unit("multi-user.target")
+
+      # The next boot is one whose initrd fails, set up while the system is
+      # whole. The encrypted disk is a new root with no profile of its own,
+      # so it's given one, as nix-env would.
+      machine.succeed(
+          "mkdir -p /nix/var/nix/profiles",
+          "ln -sfn ${stops} /nix/var/nix/profiles/system-1-link",
+          "ln -sfn system-1-link /nix/var/nix/profiles/system",
+          "${stops}/bin/switch-to-configuration boot",
+          "sync",
+      )
 
       with subtest("a failed initrd says what stopped it"):
           # Its shell can't be read through the test's own, which starts

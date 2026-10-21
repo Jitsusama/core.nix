@@ -134,8 +134,8 @@ device's form factor and the SPD probe skip soldered memory.
 ### Mainline's Fixes 7.2 Lacks
 
 Mainline's fixes since 7.2, for the drivers this laptop runs, were read
-against 7.2.11. Most were in 7.2.11 already under other subjects; three that
-matter here weren't:
+against 7.2.11. Most were in 7.2.11 already under other subjects; two that
+matter here weren't, and a third, mainline's 86c8360c97f6, came with 7.2.12:
 
 - `dm-crypt-status-after-last-reference.patch`, mainline's 148845aa1921.
   `crypt_dec_pending` read a request's error before dropping its reference,
@@ -145,11 +145,11 @@ matter here weren't:
   to 7.2's names. Suspending an amplifier before it first attached returned
   early, skipping `pm_runtime_force_suspend`, while resume always runs
   `pm_runtime_force_resume`, so its runtime power count went out of balance.
-- `cs35l56-ot25-dai.patch`, mainline's 86c8360c97f6 as the stable queue
-  holds it for 7.2.12. 7.2.11 took 4b7f393a01f8, which moves each
+- 7.2.12's OT25 DAI. 7.2.11 took 4b7f393a01f8, which moves each
   amplifier's feedback capture to the OT25 DAI on SoundWire's DP4, without
-  this one, which adds the DAI. The machine driver then names a DAI no
-  amplifier registers, and the sound card never binds.
+  the commit that adds the DAI. The machine driver then named a DAI no
+  amplifier registered, and the sound card never bound; core carried the
+  commit as a patch until 7.2.12.
 
 Once a stable release takes one, its patch no longer applies and the kernel
 build stops, which is the sign to drop it.
@@ -203,6 +203,25 @@ With the lid closed, Wi-Fi slows to a crawl even on a dock. Testing in
 [Omarchy's report][5] points to the antennas in the closed lid rather than to
 software, though nobody has proven it, and nothing here fixes it. On a dock,
 Ethernet avoids it.
+
+### Bluetooth's Power Limits
+
+The firmware gives Bluetooth two settings, as UEFI variables, where Windows'
+driver reads them: a SAR table, `UefiCnvBtBRDS`, with transmit limits for
+each of the chip's two chains on 2.4, 5.2 and 5.8 GHz, and the antenna gain
+setting, `IntelUefiCnvBtPpagSupport`, on for the EU and China. Linux's
+`btintel` reads both only from ACPI methods, `BRDS` and `PPAG`, which this
+firmware doesn't have, and 7.2 rejects a revision 2 SAR table wherever it
+comes from. So Bluetooth ran on the controller's own defaults, with neither.
+
+`bluetooth-sar-rev2.patch` is mainline's ad28b52441bc from 7.3, which reads
+revision 2. `bluetooth-uefi-power-tables.patch`, written here, reads the two
+variables when ACPI has no table and sends them as the ACPI path does. Only a
+revision 2 SAR table is read that way, the one layout known to be given
+there. This chip, Scorpius Peak with Whale Peak 2, is one the revision 2 code
+accepts, and the driver logs "Applying Bluetooth SAR Rev2" and "PPAG-BT:
+Enabled (Mode 3)" as it sends them. What the limits change in range wasn't
+measured: nothing here can measure transmit power.
 
 ### The Speaker Tuning
 
@@ -486,6 +505,21 @@ a person sees: the compositor still decides. In
 refresh is on, which Windows doesn't, so it's worth turning on only while
 a video or game is showing, as niri's on-demand setting does, rather than
 everywhere.
+
+### The Panel's Brightness
+
+The panel takes its brightness in nits over the display's AUX channel, as
+eDP 1.5 allows. The kernel sets that range from the panel's luminance, which
+it reads only from CTA HDR metadata, and this panel gives its luminance only
+in its EDID's DisplayID Display Parameters block: 400 nits over the whole
+screen. With no range found, the Intel driver guesses 0 to 512 nits, so the
+top 112 of the backlight's 512 steps ask for more light than the panel is
+rated for. Dell's Windows driver gives it 25 to 400 nits.
+`panel-luminance-range.patch`, written here, reads the range from that block
+when no CTA block gives one, so the backlight runs from 0 to 400 in steps of
+one nit, and a level keeps the same nits it had before. The panel answers 0
+when asked what it was last set to, so `actual_brightness` always reads 0;
+`brightness` holds the level set.
 
 ### The Touchpad's Click
 

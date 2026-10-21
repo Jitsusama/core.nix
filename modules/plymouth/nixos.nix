@@ -6,8 +6,9 @@
 # (theme.script). Every word but a message the boot sends is drawn here, at
 # one and two device pixels to a logical one, in the theme's faces and with
 # its shadows, so the initrd carries pictures rather than fonts and what the
-# screen shows is exactly what was drawn. A machine without such an account,
-# or without a theme for it, keeps the console.
+# screen shows is exactly what was drawn. A boot or shutdown that stalls
+# says what it's waiting on (./waits). A machine without such an account, or
+# without a theme for it, keeps the console.
 { wallpapers }:
 {
   config,
@@ -168,11 +169,52 @@ let
       magick lock.png -shave 0x${at space.l} -define trim:edges=east,west -trim +repage \
         ${file "lock"}
       ${lib.concatStrings (lib.mapAttrsToList hint hints)}
+      ${halo scale}
       ${words (file "dot") mono large roles.strong 0 "●"}
       # The caret in the accent, as tall as a line and two pixels wide.
       magick ${file "dot"} -fill '${roles.accent}' -colorize 100 \
         -channel A -fx 1 +channel -crop ${at 2}x+0+0 +repage ${file "caret"}
     '';
+
+  # The wide shadow under a line of words drawn as the boot goes, which
+  # Plymouth can't blur: a line's box blurred as the theme's widest shadow
+  # blurs its words, its ends kept whole and its middle a column the script
+  # stretches to the words' width. A box is denser than letters, so it's
+  # drawn at half the shadow's strength.
+  halo =
+    scale:
+    let
+      at = n: toString (n * scale);
+      inner = 4 * wide.blur;
+      sigma = toString (wide.blur * scale / 2.0);
+      file = name: "$out/${name}-${toString scale}.png";
+    in
+    ''
+      pango-view -q --no-display --dpi=${toString (96 * scale)} --margin=0 \
+        --background=transparent --font=${lib.escapeShellArg "${sans} ${toString (points "sans" "body")}"} \
+        --output=line.png --text=Hg
+      line=$(magick identify -format %h line.png)
+      magick -size ${at (inner + 2 * pad)}x$((line + ${at (2 * pad)})) xc:none \
+        -fill '${roles.shadow}' -draw "rectangle ${at pad},${at pad} ${at (pad + inner)},$((line + ${at pad} - 1))" \
+        -channel A -blur 0x${sigma} -evaluate multiply ${toString (number wide.opacity / 2)} +channel \
+        -roll +${at wide.x}+${at wide.y} halo.png
+      magick halo.png -crop ${at (pad + inner / 2)}x+0+0 +repage ${file "halo-left"}
+      magick halo.png -crop 1x+${at (pad + inner / 2)}+0 +repage ${file "halo-middle"}
+      magick halo.png -crop +${at (pad + inner / 2)}+0 +repage -crop +1+0 +repage ${file "halo-right"}
+    '';
+
+  # The theme's shadows by width: the tight one drawn under live words as a
+  # copy of them, the wide one as the halo.
+  byBlur = lib.sort (a: b: a.blur < b.blur) theme.wallpaper.shadows;
+  tight = lib.head byBlur;
+  wide = lib.last byBlur;
+
+  # The words a shutdown's last stage is said in. Whatever bounds the
+  # shutdown sends them as keywords, so they're said here, in one voice.
+  stages = {
+    forced = "ending what wouldn't stop";
+    leftovers = "waiting on the last programs";
+  };
 
   # What's booting, small at the bottom left.
   about =
@@ -188,7 +230,17 @@ let
     deepest = channels roles.deepest;
     textColour = channels roles.text;
     sansFamily = sans;
-    sansLarge = toString (points "sans" "large");
+    sansBody = toString (points "sans" "body");
+    shadowColour = channels roles.shadow;
+    tightX = tight.x;
+    tightY = tight.y;
+    tightOpacity = toString (number tight.opacity);
+    haloInner = 4 * wide.blur;
+    stages = lib.concatStrings (
+      lib.mapAttrsToList (key: text: ''
+        stages["${key}"] = "${text}";
+      '') stages
+    );
     apart = space.xl;
     said = space.xl;
     panelWidth = panel.width;
@@ -236,6 +288,18 @@ let
         EOF
       '';
 
+  waits = pkgs.callPackage ./waits/package.nix { };
+
+  # The shutdown's screens, which systemd's last stage would otherwise end
+  # with its first kill, the moment it starts waiting on what's left: the
+  # screen froze at a hung restart with nothing more to say.
+  shutdowns = [
+    "plymouth-halt"
+    "plymouth-kexec"
+    "plymouth-poweroff"
+    "plymouth-reboot"
+  ];
+
   # The face a message is set in, the one font the initrd needs.
   sansFile =
     pkgs.runCommand "plymouth-sans"
@@ -261,11 +325,40 @@ in
         DeviceScale=1
       '';
     };
-    # Plymouth's last frame stays on the screen until niri draws over it,
-    # rather than clearing to the console for the half second between.
-    systemd.services.plymouth-quit.serviceConfig.ExecStart = [
-      ""
-      "-${config.boot.plymouth.package}/bin/plymouth quit --retain-splash"
-    ];
+    # systemd writes a line for each unit to the console unless told
+    # otherwise, and the first woke the console over the firmware's logo,
+    # so its lines showed until the GPU's own screen came for Plymouth, 1.8 s
+    # later, and again as a shutdown began. A failure is still written.
+    boot.kernelParams = [ "systemd.show_status=error" ];
+
+    systemd.services =
+      lib.genAttrs shutdowns (_: {
+        unitConfig.SurviveFinalKillSignal = true;
+      })
+      // {
+        # Plymouth's last frame stays on the screen until niri draws over
+        # it, rather than clearing to the console for the half second
+        # between.
+        plymouth-quit.serviceConfig.ExecStart = [
+          ""
+          "-${config.boot.plymouth.package}/bin/plymouth quit --retain-splash"
+        ];
+
+        # From the switch to the disk's system until Plymouth quits, and
+        # from a shutdown's start to its end. It needs nothing started
+        # first, and stays out of the way of every other unit's order.
+        plymouth-waits = {
+          description = "Tell Plymouth what the boot or shutdown waits on";
+          wantedBy = [
+            "sysinit.target"
+            "halt.target"
+            "kexec.target"
+            "poweroff.target"
+            "reboot.target"
+          ];
+          unitConfig.DefaultDependencies = false;
+          serviceConfig.ExecStart = lib.getExe waits;
+        };
+      };
   };
 }

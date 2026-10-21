@@ -23,8 +23,13 @@ let
   # with a default route, so the route has to go by the uplink. Its --check
   # says whether it could start; --never that it never could. --reexec
   # checks as --check does, but the first time it passes it has the
-  # account's systemd execute itself again, without waiting for it to go, so
-  # the start that follows reaches systemd as it leaves.
+  # account's systemd execute itself again, holding it there a while, and
+  # returns once systemd stops answering, noting that it saw it go. systemd
+  # keeps its old bus connection open until it's back and only then closes
+  # it, so the start that follows waits on that connection and is told it
+  # went, as a start asked in a switch is. Sent without waiting, the start
+  # could overtake the request; unheld, systemd is back in a blink, and the
+  # start finds it there and is never asked again.
   standIn = pkgs.writeShellScript "stand-in" ''
     export PATH=${
       lib.makeBinPath [
@@ -44,8 +49,19 @@ let
         reaches || exit 1
         if [ ! -e "$HOME/reexecuted" ]; then
           touch "$HOME/reexecuted"
+          touch "$HOME/hold"
           busctl --user call --expect-reply=no org.freedesktop.systemd1 \
             /org/freedesktop/systemd1 org.freedesktop.systemd1.Manager Reexecute
+          # Asked with call, since get-property does not keep to --timeout.
+          looks=0
+          while busctl --user --timeout=0.5 call org.freedesktop.systemd1 \
+            /org/freedesktop/systemd1 org.freedesktop.DBus.Properties Get \
+            ss org.freedesktop.systemd1.Manager Version \
+            > /dev/null 2>&1; do
+            looks=$((looks + 1))
+            [ "$looks" -lt 1000 ] || { echo "systemd kept answering" >&2; exit 1; }
+          done
+          touch "$HOME/away"
         fi
         ;;
       --once) reaches || { echo "10.0.0.53 is out of reach" >&2; exit 1; } ;;
@@ -60,6 +76,16 @@ let
   # test can tell one reload from another.
   reloaded = pkgs.writeShellScript "reloaded" ''
     ${pkgs.systemd}/bin/resolvectl dns uplink | ${pkgs.gnused}/bin/sed "s/^.*: //" >> "$HOME/reloads"
+  '';
+
+  # Holds the account's systemd in the middle of executing itself again,
+  # once, when the stand-in asks for it. A user manager runs its generators
+  # at the start of starting up, before it closes its old bus connection.
+  holdReexec = pkgs.writeShellScript "hold-reexec" ''
+    if [ -e /home/joel/hold ]; then
+      ${pkgs.coreutils}/bin/rm /home/joel/hold
+      ${pkgs.coreutils}/bin/sleep 3
+    fi
   '';
 
   service = settings: {
@@ -79,6 +105,7 @@ pkgs.testers.runNixOSTest {
     ];
 
     virtualisation.vlans = [ ];
+    systemd.user.generators.hold-reexec = "${holdReexec}";
     systemd.network = {
       # Nothing waits for a network the test brings up itself.
       wait-online.enable = false;
@@ -275,6 +302,9 @@ pkgs.testers.runNixOSTest {
         machine.succeed("networkctl up uplink")
         wait_for_state("meets-reexec", "active", "running")
         machine.succeed("test -e /home/joel/reexecuted")
+        # The start was asked while systemd was held away, and it let go.
+        machine.succeed("test -e /home/joel/away")
+        machine.fail("test -e /home/joel/hold")
         machine.succeed("journalctl _UID=1000 _COMM=systemd -o cat | grep -qx Reexecuting.")
         t.assertIn(
             "started meets-reexec.service again, which had failed, as the network changed", said()

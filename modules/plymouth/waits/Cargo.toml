@@ -1,0 +1,13 @@
+# plymouth-waits: tells Plymouth what the boot or shutdown waits on
+# (src/main.rs says how).
+[package]
+name = "plymouth-waits"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[dependencies]
+# libdbus rather than zbus: systemd signs what it sends on its own socket
+# with its well-known name, which zbus can't read past.
+dbus = "0.9"
