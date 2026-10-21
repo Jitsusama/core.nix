@@ -303,6 +303,12 @@ in
       name = "ipu7-isys-skips-unread-log";
       patch = ./ipu7-isys-skips-unread-log.patch;
     }
+    {
+      # Each unbind, the recovery rebind included, left the capture side's
+      # firmware boot memory allocated. From linux-next.
+      name = "ipu7-isys-releases-firmware";
+      patch = ./ipu7-isys-releases-firmware.patch;
+    }
   ];
   jitsusama.kernel.packageOverlays = [ psys ];
 

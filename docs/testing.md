@@ -134,7 +134,7 @@ kernel guide][2] says what that catches.
 | `the-panel-offers-variable-refresh` | the XPS 14's kernel reads the panel's refresh range from DisplayID's Adaptive Sync block |
 | `platform-profiles-reach-the-legacy-file` | every profile Dell's driver offers, the XPS 14's SoC slider takes too |
 | `ipu7-outlives-its-open-files` | the XPS 14's capture side is freed when its last node closes, not when the IPU unbinds |
-| `the-camera-holds-no-unread-log` | neither half of the XPS 14's camera asks at probe for a firmware log only Intel's offline logger writes |
+| `the-camera-holds-no-memory-it-never-uses` | neither half of the XPS 14's camera asks at probe for a firmware log only Intel's offline logger writes, and the capture side frees its firmware's memory when it unbinds |
 | `niri-accepts-its-configuration`  | niri loads the files an account gets                      |
 | `niri-cursor-has-its-shapes`      | the cursor theme niri names has the shapes programs ask for |
 | `kitty-accepts-its-configuration` | kitty loads its files without a complaint                 |

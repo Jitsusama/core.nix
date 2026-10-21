@@ -2367,9 +2367,10 @@ in
 
     # Both halves of the XPS 14's camera asked for 4 MiB of contiguous memory
     # at probe, for a firmware log only Intel's offline logger writes, and the
-    # capture side failed its probe without it. Read from the patched sources,
-    # the logger's code taken out as it is when built.
-    the-camera-holds-no-unread-log =
+    # capture side failed its probe without it, and the capture side kept its
+    # firmware's boot memory after every unbind. Read from the patched
+    # sources, the logger's code taken out as it is when built.
+    the-camera-holds-no-memory-it-never-uses =
       let
         inherit ((bareNixos [ self.nixosModules.dell-xps-14-da14260 ]).config.boot.kernelPackages)
           kernel
@@ -2385,7 +2386,7 @@ in
           unifdef -m -UENABLE_FW_OFFLINE_LOGGER ${file} || [ $? = 1 ]
         '';
       in
-      pkgs.runCommandLocal "the-camera-holds-no-unread-log"
+      pkgs.runCommandLocal "the-camera-holds-no-memory-it-never-uses"
         {
           nativeBuildInputs = [
             pkgs.patchutils
@@ -2403,6 +2404,9 @@ in
           grep -q 'ipu7_psys_init_debugfs(psys)' ${psys} || moved processing
           ! grep -q 'FW_LOG_BUF_SIZE' ${isys} || asks capture
           ! grep -q 'psys_fw_log_init(psys)' ${psys} || asks processing
+          keeps() { echo "The camera keeps its firmware's memory past an unbind."; exit 1; }
+          awk '/^static void isys_remove\(/,/^}/' ${isys} > remove.c
+          grep -q 'ipu7_fw_isys_release(isys);' remove.c || keeps
           touch $out
         '';
 
