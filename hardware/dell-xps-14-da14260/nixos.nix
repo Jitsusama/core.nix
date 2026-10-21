@@ -40,9 +40,13 @@ let
   # power-profiles-daemon's performance profile asks the cores for the energy
   # preference performance. On this chip balance_performance idled at 3.0 to
   # 4.4 W against 7.0 to 9.5 W, ran a sixteen-thread load 9 to 11% faster,
-  # and woke and burst from idle as quickly; docs/hardware.md has the numbers. Its test of
-  # Intel's driver expects the value the profile writes, so it changes too.
+  # and woke and burst from idle as quickly; docs/hardware.md has the
+  # numbers. Its test of Intel's driver expects the value the profile writes,
+  # so it changes too. Built here rather than taken from the cache, the
+  # daemon runs its own tests, two of which read a value before it settles
+  # (power-profiles-tests-wait.patch).
   powerProfiles = pkgs.power-profiles-daemon.overrideAttrs (old: {
+    patches = (old.patches or [ ]) ++ [ ./power-profiles-tests-wait.patch ];
     postPatch = (old.postPatch or "") + ''
       substituteInPlace src/ppd-driver-intel-pstate.c \
         --replace-fail 'return "performance";' 'return "balance_performance";'
@@ -59,6 +63,7 @@ in
     ../../modules/kernel/nixos.nix
     ../../modules/keyboard/nixos.nix
     ../../modules/panel/nixos.nix
+    ../../modules/power-profiles-daemon/nixos.nix
     ../../modules/touchpad/nixos.nix
     ./camera.nix
     ./speakers.nix
@@ -202,18 +207,25 @@ in
       patch = ./dm-crypt-status-after-last-reference.patch;
     }
     {
+      # This chip's Bluetooth power limits come as a revision 2 table, which
+      # 7.2 rejects. Mainline's support for it, from 7.3.
+      name = "bluetooth-sar-rev2";
+      patch = ./bluetooth-sar-rev2.patch;
+    }
+    {
+      # The firmware gives Bluetooth's power limits and antenna gain setting
+      # only where Windows looks, not in ACPI where the kernel does, so
+      # Bluetooth ran without them. Written here; the patch says why. It
+      # needs the revision 2 patch before it.
+      name = "bluetooth-uefi-power-tables";
+      patch = ./bluetooth-uefi-power-tables.patch;
+    }
+    {
       # A suspend before an amplifier first attaches skipped a step its
       # resume always undoes, unbalancing its power management. Mainline's
       # fix, backported to 7.2's names.
       name = "cs35l56-suspend-before-attach";
       patch = ./cs35l56-suspend-before-attach.patch;
-    }
-    {
-      # 7.2.11 binds each amplifier's feedback capture to a DAI its driver
-      # doesn't register yet, so the sound card never binds. The DAI from
-      # mainline, as the stable queue holds it for 7.2.12.
-      name = "cs35l56-ot25-dai";
-      patch = ./cs35l56-ot25-dai.patch;
     }
     {
       # Dell's driver offers quiet and the SoC slider low-power, so the legacy
@@ -227,6 +239,14 @@ in
       # the patch says why.
       name = "panel-variable-refresh";
       patch = ./panel-variable-refresh.patch;
+    }
+    {
+      # The panel gives its 400 nit ceiling only where the kernel doesn't
+      # look, so the driver guessed 512 and the brightest fifth of the range
+      # asked for more than the panel is rated for. Written here; the patch
+      # says why. It needs the variable refresh patch before it.
+      name = "panel-luminance-range";
+      patch = ./panel-luminance-range.patch;
     }
   ];
 
@@ -341,7 +361,7 @@ in
   };
 
   # The profiles' energy preferences, with performance's eased; see above.
-  services.power-profiles-daemon.package = powerProfiles;
+  jitsusama.power-profiles-daemon.package = powerProfiles;
 
   # Each core's frequency and idle states and the package's power, which is
   # how the power limits and profiles here were measured.
@@ -375,11 +395,13 @@ in
     # thermal mode isn't one of them: it's the platform profile the power
     # profile follows (modules/power-profiles-daemon), so it's balanced's
     # Optimized after a boot on battery, and the charger puts back the
-    # Performance the power limits were measured in.
+    # Performance the power limits were measured in. Nor is the keyboard
+    # light: KeyboardIllumination is the level the light key sets, which
+    # dell::kbd_backlight writes straight through (1 reads back Dim, 2
+    # Bright), and systemd-backlight puts the last one back at each boot.
     # The memory's frequency drops when it's idle, which the battery
     # needs more than the memory's latency needs it pinned.
     IntelSagv = "Enabled";
-    KeyboardIllumination = "Dim";
     # No pause at power-on over a charger it thinks too weak.
     PowerWarn = "Disabled";
     # A bad BIOS can be rolled back.

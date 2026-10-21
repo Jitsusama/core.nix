@@ -60,6 +60,11 @@ pkgs.testers.runNixOSTest {
         # Its service manager starts at boot, as a lingering account's does.
         linger = true;
       };
+      # NixOS's test machines copy every journal line, debug included, to the
+      # serial console, which is slow enough that journald falls behind a
+      # burst of debug lines, and PID 1 drops any line journald won't take
+      # within 10 ms. The mount burst below lost its last line that way.
+      services.journald.settings.Journal.MaxLevelConsole = lib.mkForce "info";
       # Where the account's setup waits to be let go.
       systemd.tmpfiles.rules = [ "d /run/home-hold 0700 ${account} users -" ];
       home-manager.users.${account} = hm: {
@@ -178,8 +183,9 @@ pkgs.testers.runNixOSTest {
     # systemd-mount waits for its mount, so each is a change of its own, and
     # systemd says at debug level when the limit is reached. Debug goes only
     # to the journal, since the serial console slows systemd enough to spread
-    # the burst out, and the last mount's line in the journal means all that
-    # came before it is there too.
+    # the burst out, and journald keeps it off the console too, so it keeps
+    # up and the last mount's line in the journal means all that came before
+    # it is there too.
     with subtest("a burst of mounts doesn't wait on systemd's limit"):
         target = machine.succeed("systemd-analyze log-target").strip()
         machine.succeed("systemd-analyze log-target journal")

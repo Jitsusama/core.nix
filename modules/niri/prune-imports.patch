@@ -1,0 +1,37 @@
+Clears out niri 26.04's dead imports as each new client buffer arrives.
+
+The renderer keeps every buffer it imports until it cleans up, and it
+cleans up only after drawing a frame. With every monitor off, or with the
+screen locked and still, niri draws nothing while clients go on sending
+new buffers, and every one stays. On Intel's xe driver each import also
+holds a file descriptor, so a terminal redrawing a spinner piles up
+thousands of them: 6,686 buffers, 66 GB, after three hours of a locked
+laptop with its screen off. Cleaning up before each import keeps only
+the imports of buffers clients still hold.
+
+--- a/src/backend/tty.rs
++++ b/src/backend/tty.rs
+@@ -32,7 +32,7 @@
+ use smithay::backend::renderer::gles::GlesRenderer;
+ use smithay::backend::renderer::multigpu::gbm::GbmGlesBackend;
+ use smithay::backend::renderer::multigpu::{GpuManager, MultiFrame, MultiRenderer};
+-use smithay::backend::renderer::{DebugFlags, ImportDma, ImportEgl, RendererSuper};
++use smithay::backend::renderer::{DebugFlags, ImportDma, ImportEgl, Renderer, RendererSuper};
+ use smithay::backend::session::libseat::LibSeatSession;
+ use smithay::backend::session::{Event as SessionEvent, Session};
+ use smithay::backend::udev::{self, UdevBackend, UdevEvent};
+@@ -2039,6 +2039,14 @@
+             }
+         };
+ 
++        // The renderer keeps each import until it cleans up, which it does
++        // after drawing a frame. With every monitor off nothing is drawn,
++        // yet clients go on sending new buffers, so each new one first
++        // clears out the imports of buffers its clients have let go.
++        if let Err(err) = renderer.cleanup_texture_cache() {
++            debug!("error cleaning up the texture cache: {err:?}");
++        }
++
+         match renderer.import_dmabuf(dmabuf, None) {
+             Ok(_texture) => {
+                 dmabuf.set_node(Some(self.primary_render_node));
