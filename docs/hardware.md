@@ -204,6 +204,25 @@ With the lid closed, Wi-Fi slows to a crawl even on a dock. Testing in
 software, though nobody has proven it, and nothing here fixes it. On a dock,
 Ethernet avoids it.
 
+### Bluetooth's Power Limits
+
+The firmware gives Bluetooth two settings, as UEFI variables, where Windows'
+driver reads them: a SAR table, `UefiCnvBtBRDS`, with transmit limits for
+each of the chip's two chains on 2.4, 5.2 and 5.8 GHz, and the antenna gain
+setting, `IntelUefiCnvBtPpagSupport`, on for the EU and China. Linux's
+`btintel` reads both only from ACPI methods, `BRDS` and `PPAG`, which this
+firmware doesn't have, and 7.2 rejects a revision 2 SAR table wherever it
+comes from. So Bluetooth ran on the controller's own defaults, with neither.
+
+`bluetooth-sar-rev2.patch` is mainline's ad28b52441bc from 7.3, which reads
+revision 2. `bluetooth-uefi-power-tables.patch`, written here, reads the two
+variables when ACPI has no table and sends them as the ACPI path does. Only a
+revision 2 SAR table is read that way, the one layout known to be given
+there. This chip, Scorpius Peak with Whale Peak 2, is one the revision 2 code
+accepts, and the driver logs "Applying Bluetooth SAR Rev2" and "PPAG-BT:
+Enabled (Mode 3)" as it sends them. What the limits change in range wasn't
+measured: nothing here can measure transmit power.
+
 ### The Speaker Tuning
 
 Linux loads Dell's firmware for the amplifiers but has nothing in place of the

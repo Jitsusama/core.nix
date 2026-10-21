@@ -2565,6 +2565,40 @@ in
           touch $out
         '';
 
+    # The XPS 14's firmware gives Bluetooth's power limits and antenna gain
+    # setting only as UEFI variables, in a revision 2 table, so a kernel that
+    # reads only ACPI's, or rejects revision 2, runs Bluetooth without them.
+    # Read from the XPS 14's patched source.
+    bluetooth-keeps-its-power-limits =
+      let
+        inherit ((bareNixos [ self.nixosModules.dell-xps-14-da14260 ]).config.boot.kernelPackages)
+          kernel
+          ;
+        btintel = "drivers/bluetooth/btintel.c";
+        patches = lib.filter (patch: patch != null) (map (patch: patch.patch) kernel.kernelPatches);
+        without = what: "The kernel ${what}, so Bluetooth runs without its power limits.";
+      in
+      pkgs.runCommandLocal "bluetooth-keeps-its-power-limits" { nativeBuildInputs = [ pkgs.patchutils ]; }
+        ''
+          tar xf ${kernel.src} --strip-components=1 --wildcards '*/${btintel}'
+          for patch in ${lib.escapeShellArgs (map (patch: "${patch}") patches)}; do
+            filterdiff -p1 -i ${btintel} "$patch" | patch -p1 --forward --batch --silent
+          done
+          if ! grep -q 'btintel_set_sar_rev2(hdev, sar)' ${btintel}; then
+            echo "${without "rejects revision 2 Bluetooth SAR tables"}"
+            exit 1
+          fi
+          if ! grep -Eq '^[[:space:]]+ret = btintel_uefi_set_sar\(hdev, ver\);' ${btintel}; then
+            echo "${without "never reads Bluetooth's SAR table from UEFI"}"
+            exit 1
+          fi
+          if ! grep -Eq '^[[:space:]]+if \(!btintel_uefi_get_ppag\(&mode\)\)' ${btintel}; then
+            echo "${without "never reads Bluetooth's antenna gain setting from UEFI"}"
+            exit 1
+          fi
+          touch $out
+        '';
+
     # The XPS 14's panel gives its variable refresh range only in DisplayID's
     # Adaptive Sync block, so a kernel that doesn't read it never offers
     # variable refresh. Read from the XPS 14's patched source.
