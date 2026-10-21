@@ -76,6 +76,7 @@ quietly stopped holding.
 | `resolved-is-set-per-network` | a laptop leaves resolved's global DNS settings as they ship |
 | `the-shutdown-mark-cannot-stop-a-reboot` | the mark a healthy stop leaves can't fail the reboot, and what reads it outlives the last stage |
 | `thermald-starts-after-its-drivers` | the XPS 14's thermal drivers load before thermald starts, and a thermald that stops is restarted |
+| `firmware-leaves-the-keyboard-light` | the XPS 14 leaves the keyboard light to its key, still holding its other firmware settings |
 | `chromium-knows-the-panels-colours` | the XPS 14's Chrome, Slack and 1Password convert their colours to its panel's P3 |
 | `the-panel-slows-on-a-low-battery` | the XPS 14's panel drops to 60 Hz below 30% on battery, holds there, and comes back to its fastest rate on the charger |
 | `the-camera-takes-its-modules-tuning` | the XPS 14's camera reads Dell's tuning for the module a machine names, and Intel's otherwise |
@@ -156,6 +157,7 @@ kernel guide][2] says what that catches.
 | `btrfs-reclaims-its-chunks`       | tmpfiles turns Btrfs's reclaim on for data and metadata   |
 | `the-firmware-takes-what-is-declared` | `firmware-settings` names what differs, writes it with the password, then wipes it |
 | `devices-that-stop-working-are-named` | `device-check` names a failed or missing device, or a disk's fault, once, and again when it's fixed |
+| `kernel-trouble-is-named` | `device-check` names a kernel that oopsed, locked up, saw a hardware fault or held a task stuck, once, and not its harmless taints |
 | `disks-say-when-they-fail` | a workstation runs smartd on its disks and hands their faults to device-check, not to every terminal |
 | `smartd-stops-cleanly-without-disks` | the workstation's own smartd command, run with no disks, stops cleanly rather than failing |
 | `disk-guard-accepts-its-configuration` | the disk guard passes its scenarios and accepts the configs a workstation and its account get |

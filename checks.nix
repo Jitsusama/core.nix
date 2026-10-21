@@ -992,6 +992,67 @@ in
         touch $out
       '';
 
+  # device-check names a kernel that oopsed, locked up a processor, heard of a
+  # hardware error or found a bad page, and a task stuck in it, each once,
+  # since a kernel in that state can misbehave until the next boot. Its other
+  # taints, a warning among them, say nothing, and neither does a taint that
+  # somehow clears, since the kernel never clears one. Files stand in for
+  # /proc.
+  kernel-trouble-is-named =
+    pkgs.runCommandLocal "kernel-trouble-is-named"
+      { nativeBuildInputs = [ (pkgs.callPackage ./modules/device-check/package.nix { }) ]; }
+      ''
+        root=$PWD/root
+        fail() { echo "$1"; cat out; exit 1; }
+        kernel=$root/proc/sys/kernel
+        mkdir -p "$kernel"
+        printf '#!/bin/sh\necho "$*" >> %s/notified\n' "$PWD" > notify
+        chmod +x notify
+        export DEVICE_CHECK_ROOT=$root DEVICE_CHECK_EXPECTED=$PWD/none
+        export DEVICE_CHECK_STATE=$PWD/state DEVICE_CHECK_NOTIFY=$PWD/notify
+        echo 120 > "$kernel/hung_task_timeout_secs"
+        echo 0 > "$kernel/hung_task_detect_count"
+
+        # A warning, an out-of-tree module and a staging driver.
+        echo $((512 + 4096 + 1024)) > "$kernel/tainted"
+        device-check 2> out || fail "it failed on a kernel with harmless taints"
+        [ ! -s out ] || fail "it named a harmless taint"
+
+        echo $((128 + 512 + 4096 + 1024)) > "$kernel/tainted"
+        device-check 2> out || fail "it failed on a kernel that oopsed"
+        grep -qxF "<4>The kernel hit a fault and may misbehave until the next boot" out ||
+          fail "it didn't warn of the oops"
+        [ "$(wc -l < out)" = 1 ] || fail "it named more than the oops"
+        [ "$(grep -c '^-u critical -a Devices ' notified)" = 1 ] || fail "it didn't notify of the oops"
+
+        : > notified
+        device-check 2> out || fail "a second look failed"
+        [ ! -s out ] && [ ! -s notified ] || fail "it named the oops again"
+
+        echo 1 > "$kernel/hung_task_detect_count"
+        echo $((128 + 16384 + 16 + 32)) > "$kernel/tainted"
+        device-check 2> out || fail "it failed on a kernel in worse trouble"
+        grep -qxF "<4>The kernel locked up a processor and may misbehave until the next boot" out ||
+          fail "it didn't warn of the lockup"
+        grep -qxF "<4>The processor reported a hardware error" out ||
+          fail "it didn't warn of the machine check"
+        grep -qxF "<4>The kernel found a damaged memory page" out || fail "it didn't warn of the bad page"
+        grep -qxF "<4>A task was stuck in the kernel for over 120 seconds" out ||
+          fail "it didn't warn of the stuck task"
+        [ "$(wc -l < out)" = 4 ] || fail "it named the oops again, or more than what's new"
+
+        echo 2 > "$kernel/hung_task_detect_count"
+        device-check 2> out || fail "a look after a second stuck task failed"
+        [ ! -s out ] || fail "it named a second stuck task"
+
+        : > notified
+        echo 0 > "$kernel/tainted"
+        echo 0 > "$kernel/hung_task_detect_count"
+        device-check 2> out || fail "a look at a clean kernel failed"
+        [ ! -s out ] && [ ! -s notified ] || fail "it said the kernel's trouble had cleared"
+        touch $out
+      '';
+
   # A workstation hears from its disks before they fail: smartd reads each
   # disk's own warnings and hands them to device-check, which names them to
   # whoever is signed in, rather than writing to every terminal.
