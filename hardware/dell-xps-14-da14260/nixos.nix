@@ -209,13 +209,6 @@ in
       patch = ./cs35l56-suspend-before-attach.patch;
     }
     {
-      # 7.2.11 binds each amplifier's feedback capture to a DAI its driver
-      # doesn't register yet, so the sound card never binds. The DAI from
-      # mainline, as the stable queue holds it for 7.2.12.
-      name = "cs35l56-ot25-dai";
-      patch = ./cs35l56-ot25-dai.patch;
-    }
-    {
       # Dell's driver offers quiet and the SoC slider low-power, so the legacy
       # profile file offered neither, and power-saver ran as balanced.
       name = "soc-slider-takes-quiet";
