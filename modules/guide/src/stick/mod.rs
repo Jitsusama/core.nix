@@ -9,6 +9,7 @@
 //! was sent: a write that only looked done once booted a laptop to `grub>`.
 
 pub mod blocks;
+pub mod device;
 pub mod gpt;
 
 use std::fs::File;

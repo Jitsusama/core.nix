@@ -1,31 +1,33 @@
 //! `guide observe` says what the guide sees on this machine and changes
 //! nothing; `guide tools` says where this build finds each program it
-//! runs, and fails when one is missing. `guide write-stick IMAGE FILE`
-//! writes a stick into a file the size of one: given `--sign-with` and
+//! runs, and fails when one is missing. `guide host IMAGE` writes a stick
+//! on whatever machine runs it, as the person: given `--sign-with` and
 //! sbctl's db key directory, its boot program signed for that machine;
-//! given `--install` and a machine's payload (payload.nix), the vault
-//! holding everything to install it, sealed to the recovery passphrase
-//! read from standard input. `guide install` is what the stick runs on
-//! its console, as root.
+//! given `--install` and a machine's payload (payload.nix), its vault
+//! holding everything to install it, sealed to a recovery passphrase.
+//! `guide write-stick IMAGE FILE` does the same into a file the size of a
+//! stick, the passphrase read from standard input. `guide install` is
+//! what the stick runs on its console, as root.
 
 use std::fs::{File, OpenOptions};
-use std::io::{BufRead, Read, Write};
+use std::io::BufRead;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use guide::install::{self, LAYOUT_SCRIPT, SYSTEM_CACHE, TARGET, Target};
+use guide::host::{self, Payload, WriteStick};
+use guide::install;
 use guide::observe::{disks, efi, entries, fido2, sbctl, tpm};
 use guide::screen::Theme;
 use guide::screen::run::{Ended, Walk};
 use guide::screen::terminal::Terminal;
 use guide::sign::Signer;
-use guide::stick::{self, Image};
 use guide::system::System;
+use guide::vault;
 use guide::vault::store::{Fat, Store};
-use guide::vault::{self, Manifest, Packer, Vault, VaultKey};
 use guide::{Fault, Journal, Journey, Machine, Place, Secret, Tool};
 
 const USAGE: &str = "usage: guide observe | guide tools | guide install
+       guide host IMAGE [--sign-with DIRECTORY] [--install PAYLOAD]
        guide write-stick IMAGE FILE [--sign-with DIRECTORY] [--install PAYLOAD]";
 
 fn main() -> ExitCode {
@@ -34,6 +36,17 @@ fn main() -> ExitCode {
         ["observe"] => observe(),
         ["tools"] => tools(),
         ["install"] => reported(install()),
+        ["host", image, ref options @ ..] => match written(options) {
+            Some((keys, payload)) => reported(
+                keys.map(|keys| Signer::open(Path::new(keys)))
+                    .transpose()
+                    .and_then(|signer| host(image, signer, payload)),
+            ),
+            None => {
+                eprintln!("{USAGE}");
+                ExitCode::from(2)
+            }
+        },
         ["write-stick", image, target, ref options @ ..] => match written(options) {
             Some((keys, payload)) => reported(
                 keys.map(|keys| Signer::open(Path::new(keys)))
@@ -77,39 +90,6 @@ fn reported(result: Result<(), Fault>) -> ExitCode {
     }
 }
 
-/// What a repair stick's vault says: it's no one machine's, and nothing
-/// opens it, since it carries nothing secret.
-fn repair_manifest() -> Manifest {
-    Manifest {
-        format: 1,
-        machine: String::new(),
-        opened_by: vec![],
-    }
-}
-
-/// Every file under a directory, links followed, as paths relative to it,
-/// in a steady order.
-fn files_under(root: &Path) -> Result<Vec<PathBuf>, Fault> {
-    let mut found = vec![];
-    let mut pending = vec![PathBuf::new()];
-    while let Some(relative) = pending.pop() {
-        let here = root.join(&relative);
-        let entries = std::fs::read_dir(&here)
-            .map_err(|why| Fault::unreadable(here.display().to_string(), why))?;
-        for entry in entries {
-            let entry = entry.map_err(|why| Fault::unreadable(here.display().to_string(), why))?;
-            let path = relative.join(entry.file_name());
-            if root.join(&path).is_dir() {
-                pending.push(path);
-            } else {
-                found.push(path);
-            }
-        }
-    }
-    found.sort();
-    Ok(found)
-}
-
 /// The recovery passphrase, as the first line of standard input.
 fn passphrase() -> Result<Secret, Fault> {
     let mut line = zeroize::Zeroizing::new(String::new());
@@ -128,7 +108,7 @@ fn passphrase() -> Result<Secret, Fault> {
 }
 
 /// A stick, into a file already the size of the stick it stands for. A
-/// disk is refused: writing one comes with the steps that find it and have
+/// disk is written through `guide host`, which finds the stick and has
 /// the person confirm it.
 fn write_stick(
     image: &str,
@@ -143,129 +123,101 @@ fn write_stick(
     if !std::fs::metadata(target).map_err(kept)?.is_file() {
         return Err(Fault::Blocked {
             step: "write-stick",
-            why: format!("{target} isn't a file, and this only writes into files"),
+            why: format!("{target} isn't a file; a stick is written by guide host"),
         });
     }
-    let file = File::open(image).map_err(|why| Fault::unreadable(image, why))?;
-    let mut image = Image::open(file)?;
     let mut disk = OpenOptions::new()
         .read(true)
         .write(true)
         .open(target)
         .map_err(kept)?;
-
-    let Some(payload) = payload.map(Path::new) else {
-        let manifest = repair_manifest();
-        let written = stick::write(&mut image, &mut disk, stick::new_guid()?, signer, |store| {
-            let bytes = serde_json::to_vec_pretty(&manifest)
-                .map_err(|why| Fault::unreadable("the manifest", why))?;
-            store
-                .create(vault::MANIFEST)?
-                .write_all(&bytes)
-                .map_err(kept)
-        })?;
-        stick::verify(&written, &mut disk, |store| {
-            if vault::manifest(store)? == repair_manifest() {
-                Ok(())
-            } else {
-                Err(Fault::Unproven {
-                    step: "write-stick",
-                    standing: "the vault's manifest isn't what was written".into(),
-                })
-            }
-        })?;
-        println!(
+    let payload = payload
+        .map(|payload| Payload::open(Path::new(payload)))
+        .transpose()?;
+    let passphrase = payload.as_ref().map(|_| passphrase()).transpose()?;
+    let vault = host::write(
+        Path::new(image),
+        &mut disk,
+        signer,
+        payload.as_ref().zip(passphrase.as_ref()),
+    )?;
+    match &payload {
+        Some(payload) => println!(
+            "{target}: {}'s install in a {} MB vault, read back as written",
+            payload.target.machine,
+            vault / 1_000_000
+        ),
+        None => println!(
             "{target}: the image and a {} MB vault, read back as written",
-            written.vault.bytes() / 1_000_000
-        );
-        return Ok(());
-    };
-
-    let unread = |path: &Path| {
-        let shown = path.display().to_string();
-        move |why: std::io::Error| Fault::unreadable(shown.clone(), why)
-    };
-    let described: Target = serde_json::from_slice(
-        &std::fs::read(payload.join(TARGET)).map_err(unread(&payload.join(TARGET)))?,
-    )
-    .map_err(|why| Fault::unreadable("the payload's target.json", why))?;
-    let cache = payload.join("cache");
-    let cached = files_under(&cache)?;
-
-    // Each file takes whole clusters, FAT32's largest being 32 KiB, and
-    // age adds a little to each; refused before anything is written.
-    let cluster = 32 << 10;
-    let mut needed: u64 = 16 << 20;
-    for from in [payload.join(TARGET), payload.join("layout.sh")]
-        .into_iter()
-        .chain(cached.iter().map(|relative| cache.join(relative)))
-    {
-        let bytes = std::fs::metadata(&from).map_err(unread(&from))?.len();
-        needed += (bytes + bytes / 1000 + 512).div_ceil(cluster) * cluster;
+            vault / 1_000_000
+        ),
     }
-    let stick_bytes = std::fs::metadata(target).map_err(kept)?.len();
-    let room = stick::vault_room(&image, stick_bytes)?;
-    if room < needed {
+    Ok(())
+}
+
+/// Where the host keeps its log: the person's own state, readable only by
+/// them.
+fn host_log() -> Option<File> {
+    let state = std::env::var_os("XDG_STATE_HOME")
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|home| Path::new(&home).join(".local/state")))?;
+    let directory = state.join("guide");
+    std::os::unix::fs::DirBuilderExt::mode(std::fs::DirBuilder::new().recursive(true), 0o700)
+        .create(&directory)
+        .ok()?;
+    std::os::unix::fs::OpenOptionsExt::mode(OpenOptions::new().create(true).append(true), 0o600)
+        .open(directory.join("log"))
+        .ok()
+}
+
+/// The host's journey: a stick written for a machine, or a repair stick,
+/// on the screen of whatever machine writes it, as the person, not root.
+fn host(image: &str, signer: Option<Signer>, payload: Option<&str>) -> Result<(), Fault> {
+    // SAFETY: getuid can't fail and touches no memory.
+    if unsafe { libc::getuid() } == 0 {
         return Err(Fault::Blocked {
             step: "write-stick",
-            why: format!(
-                "the stick holds {} MB of vault, and {}'s install needs {} MB",
-                room / 1_000_000,
-                described.machine,
-                needed.div_ceil(1_000_000)
-            ),
+            why: "a stick is written as yourself, not root: the system asks for what it needs"
+                .into(),
         });
     }
-    let passphrase = passphrase()?;
-    let key = VaultKey::generate();
-    let sealed = key.seal_with_passphrase(&passphrase, None)?;
-    let manifest = Manifest {
-        format: 1,
-        machine: described.machine.clone(),
-        opened_by: vec!["the recovery passphrase".into()],
+    let payload = payload
+        .map(|payload| Payload::open(Path::new(payload)))
+        .transpose()?;
+    let machine_name = payload
+        .as_ref()
+        .map(|payload| payload.target.machine.clone());
+    let title = match &machine_name {
+        Some(name) => format!("Write {name}'s stick"),
+        None => "Write a repair stick".into(),
     };
-    let written = stick::write(&mut image, &mut disk, stick::new_guid()?, signer, |store| {
-        store
-            .create(vault::KEY_PASSPHRASE)?
-            .write_all(&sealed)
-            .map_err(kept)?;
-        let mut packer = Packer::new(store, &key);
-        for (name, from) in [
-            (TARGET, payload.join(TARGET)),
-            (LAYOUT_SCRIPT, payload.join("layout.sh")),
-        ] {
-            packer.add(name, File::open(&from).map_err(unread(&from))?)?;
-        }
-        for relative in &cached {
-            let from = cache.join(relative);
-            packer.add(
-                &format!("{SYSTEM_CACHE}/{}", relative.display()),
-                File::open(&from).map_err(unread(&from))?,
-            )?;
-        }
-        packer.finish(&manifest)
-    })?;
-    // Read back as the stick will open it: with the passphrase, every file
-    // extracted and checked.
-    stick::verify(&written, &mut disk, |store| {
-        let mut sealed = vec![];
-        store
-            .open(vault::KEY_PASSPHRASE)?
-            .read_to_end(&mut sealed)
-            .map_err(kept)?;
-        let mut vault = Vault::open(store, VaultKey::open_with_passphrase(&sealed, &passphrase)?)?;
-        let paths: Vec<String> = vault.files().iter().map(|file| file.path.clone()).collect();
-        for path in &paths {
-            vault.extract(path, std::io::sink())?;
-        }
-        Ok(())
-    })?;
-    println!(
-        "{target}: {}'s install, {} files in a {} MB vault, read back as written",
-        described.machine,
-        cached.len() + 2,
-        written.vault.bytes() / 1_000_000
-    );
+    let journey = Journey::new(vec![Box::new(WriteStick {
+        image: PathBuf::from(image),
+        payload,
+        signer,
+    })])
+    .map_err(|why| Fault::unreadable("the host's steps", why))?;
+    let mut machine = System::new(Journal::in_memory(), host_log());
+    let theme = Theme::built(Terminal::is_console());
+    let mut terminal = Terminal::open()?;
+    let walk = Walk {
+        journey: &journey,
+        here: Place::Host,
+        name: &title,
+        theme: &theme,
+        log: None,
+        whole: true,
+    };
+    if walk.walk(&mut machine, &mut terminal)? != Ended::Finished {
+        return Ok(());
+    }
+    let next = match &machine_name {
+        Some(name) => format!(
+            "Take the stick to {name} and start it from the stick. The guide carries on there, and asks for the recovery passphrase first."
+        ),
+        None => "Start the machine to repair from the stick.".into(),
+    };
+    walk.card(&mut terminal, "The stick is written", &next, "finish")?;
     Ok(())
 }
 

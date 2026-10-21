@@ -286,6 +286,10 @@ impl Machine for System {
         }
     }
 
+    fn open_disk(&mut self, device: &str, mounted: &[String]) -> Result<File, Fault> {
+        crate::stick::device::open(device, mounted)
+    }
+
     fn vault(&mut self) -> Result<&mut dyn Store, Fault> {
         match &mut self.vault {
             Some(vault) => Ok(vault.as_mut()),

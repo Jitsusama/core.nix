@@ -106,6 +106,10 @@ pub trait Machine {
     /// The stick's vault, its files sealed.
     fn vault(&mut self) -> Result<&mut dyn Store, Fault>;
 
+    /// A stick's whole disk, for writing, once what was mounted from it
+    /// (its partitions' devices) is unmounted.
+    fn open_disk(&mut self, device: &str, mounted: &[String]) -> Result<std::fs::File, Fault>;
+
     /// Unpacks every file the vault holds under `from` into the directory
     /// `into`, each checked as it's extracted, and says how many bytes.
     /// One call, since a cache is gigabytes and goes straight to the disk.

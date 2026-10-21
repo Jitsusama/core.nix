@@ -53,6 +53,7 @@ mod fixtures {
 
 pub mod fake;
 pub mod fault;
+pub mod host;
 pub mod install;
 pub mod journal;
 pub mod journey;

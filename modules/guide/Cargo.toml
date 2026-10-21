@@ -29,3 +29,8 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 sha2 = "0.11"
 zeroize = "1.9"
+
+# Opens a stick's whole disk for writing without root, through UDisks2,
+# which asks polkit; a Mac asks authopen instead.
+[target.'cfg(target_os = "linux")'.dependencies]
+zbus = "5.19"
