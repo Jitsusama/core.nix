@@ -63,12 +63,18 @@ driven on; the installed machine's steps come later.
   disk is opened through the system's own way of letting a person write
   one: UDisks2, which asks polkit, on Linux, and authopen on a Mac. A
   machine's repository offers `nix run .#guide`, core's `lib.guide` with
-  that machine's image and payload built in.
+  that machine's image and payload built in. The last card says how to
+  reach that machine's firmware, as its hardware module says in
+  `jitsusama.firmware.startFromStick` and `clearSecureBootKeys`: clearing
+  its keys first only when the stick carries none.
 - **The install.** On the stick, as root, from what the vault holds for the
   machine (`payload.nix`): its target, its disk's layout and its system as
-  a binary cache. The disk is wiped only once the machine's name is typed
-  back for it, then laid out by the machine's own disko script, run with
-  the stick's disk tools, its volume made with a key held only in memory.
+  a binary cache. Before the disk is touched, the firmware is checked to
+  take the keys the install will give the machine, so a machine is never
+  wiped only to be unbootable. The disk is wiped only once the machine's
+  name is typed back for it, then laid out by the machine's own disko
+  script, run with the stick's disk tools, its volume made with a key held
+  only in memory.
   Each YubiKey is enrolled alone, told apart from the others by a silent
   assertion, and proven by opening the disk; then a recovery key, typed
   back and proven. The Secure Boot keys are put back from the vault when
@@ -77,16 +83,45 @@ driven on; the installed machine's steps come later.
   signs with them, which only a firmware in setup mode will take. The
   system is copied in from the vault with no network, and the key held in
   memory comes off the disk last. A host gives the stick the keys with
-  `--secure-boot-keys`, sbctl's directory, and signs the stick with them. Every step stays done
-  through the steps after it, since the journey runs the first that isn't.
+  `--secure-boot-keys`, sbctl's directory, and signs the stick with them.
+  Every step stays done through the steps after it, since the journey runs
+  the first that isn't.
+- **Recovering.** Any stick recovers a machine with its data left in
+  place, since the disk says what it is: core's layout on an internal
+  disk, an encrypted partition beside its `<name>-boot`. The disk is shown
+  before anything is typed, opened with the plugged-in YubiKey's PIN or,
+  with none plugged in, the recovery key (never the TPM, whose seal a
+  stick's boot doesn't match), every subvolume and the ESP mounted under
+  /mnt. Then a choice, back after each: a root shell inside it; which
+  generation boots next, set in the firmware's `LoaderEntryDefault` as
+  `bootctl set-default` would, since from a stick bootctl refuses; or a
+  lost YubiKey replaced: the key still had told apart by a silent
+  assertion, the new one enrolled and proven with the recovery key, and
+  only then the lost one's slots wiped, so the disk never has fewer ways
+  in; or the boot loader installed again by the installed system's own
+  `switch-to-configuration boot`, which signs with the machine's keys.
+  The kernel writes only errors on the stick's console, which the guide
+  owns. A repair stick runs this when it boots; `guide recover` runs it
+  from any stick's shell. A machine's own stick asks first, when a disk
+  already holds a machine and the install hasn't been confirmed onto it
+  this boot, whether to recover it or install over it, so one stick does
+  both. The other repairs the plan lists are still to come.
+- **Choosing.** A choice is a list the arrows move through and Return
+  takes, the cursor mark in the accent on the one the keys are on.
 - **The installed machine.** Once it boots its own disk, the guide runs
   there as the person, from core's `guide` NixOS module, which also writes
   what it reads about the machine to `/etc/guide/machine.json`. It checks
   Secure Boot enforces with the machine's own keys before anything is
   sealed to it, then seals the disk to the TPM with a PIN under the
   measured-boot policy, a YubiKey opening the disk to do so, prefers the
-  TPM's slot and proves it opens. What needs root goes through run0, which
-  asks polkit; its secrets go only as credentials loaded from files in
+  TPM's slot and proves it opens. The seal counts as done only while the
+  policy follows the boot: the TPM holds its NV index, and lanzaboote's
+  unit remade it this boot. A cleared TPM loses the index, and a firmware
+  update changes PCR 0 past what the policy can follow, so that unit
+  fails. The disk then opens with a YubiKey, and the guide has
+  systemd-pcrlock drop the stale policy and the unit make a new one
+  before sealing again. What needs root goes through run0, which asks
+  polkit; its secrets go only as credentials loaded from files in
   memory and on standard input, never on run0's command line.
 - **The screen.** One step at a time, and one thing asked at a time, each
   before the step starts. It's drawn in the theme's roles and marks as the
@@ -129,6 +164,7 @@ driven on; the installed machine's steps come later.
 | `src/host/`           | writing a stick on a host, and what a reinstall stick carries |
 | `src/install/`        | installing a machine from its stick, a step to a file by what it touches |
 | `src/installed/`      | finishing the machine on itself: Secure Boot checked, the TPM sealed |
+| `src/recover/`        | recovering a machine from a stick: found, opened, mounted |
 | `nixos.nix`           | the guide on a machine it installed                       |
 | `src/screen/`         | the view, drawn as lines in roles; the terminal; the walk through a journey |
 | `payload.nix`         | what a reinstall stick carries for one machine            |
@@ -142,6 +178,8 @@ driven on; the installed machine's steps come later.
 | `tests/host.rs`       | the one stick written, never another disk              |
 | `../../tests/guide-host.nix` | a stick written on a host through UDisks2, as the person |
 | `../../tests/guide-vault.nix` | a vault opened by a YubiKey's PIN, then by the passphrase |
+| `tests/recover.rs`    | the machine found by its layout, and shown before anything's asked |
+| `../../tests/guide-recover.nix` | a machine recovered from a repair stick to a root shell inside it |
 | `../../tests/guide-install.nix` | a machine installed from its stick in a VM, by the guide's keys |
 
 ## Working on It

@@ -19,6 +19,8 @@ pub enum Press {
     Escape,
     Backspace,
     Tab,
+    Up,
+    Down,
     /// Ctrl+C: leave the guide.
     Leave,
 }
@@ -86,6 +88,8 @@ impl Keys for Terminal {
                 KeyCode::Esc => Press::Escape,
                 KeyCode::Backspace => Press::Backspace,
                 KeyCode::Tab => Press::Tab,
+                KeyCode::Up => Press::Up,
+                KeyCode::Down => Press::Down,
                 _ => continue,
             });
         }

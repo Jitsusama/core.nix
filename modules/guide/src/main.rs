@@ -27,7 +27,7 @@ use guide::vault;
 use guide::vault::store::{Fat, Store};
 use guide::{Fault, Journal, Journey, Machine, Place, Secret, Tool};
 
-const USAGE: &str = "usage: guide observe | guide tools | guide install | guide installed
+const USAGE: &str = "usage: guide observe | guide tools | guide install | guide installed | guide recover
        guide host IMAGE [--sign-with DIRECTORY] [--install PAYLOAD [--secure-boot-keys DIRECTORY]]
        guide write-stick IMAGE FILE [--sign-with DIRECTORY] [--install PAYLOAD [--secure-boot-keys DIRECTORY]]";
 
@@ -47,6 +47,7 @@ fn main() -> ExitCode {
         ["tools"] => tools(),
         ["install"] => reported(install()),
         ["installed"] => reported(installed()),
+        ["recover"] => reported(recover()),
         ["host", image, ref options @ ..] => match Written::parse(options) {
             Some(written) => reported(
                 written
@@ -228,6 +229,10 @@ fn host(image: &str, signer: Option<Signer>, payload: Option<Payload>) -> Result
     let machine_name = payload
         .as_ref()
         .map(|payload| payload.target.machine.clone());
+    let next = match &payload {
+        Some(payload) => payload.next(),
+        None => "Start the machine to repair from the stick.".into(),
+    };
     let title = match &machine_name {
         Some(name) => format!("Write {name}'s stick"),
         None => "Write a repair stick".into(),
@@ -253,12 +258,6 @@ fn host(image: &str, signer: Option<Signer>, payload: Option<Payload>) -> Result
     if walk.walk(&mut machine, &mut terminal)? != Ended::Finished {
         return Ok(());
     }
-    let next = match &machine_name {
-        Some(name) => format!(
-            "Take the stick to {name} and start it from the stick. The guide carries on there, and asks for the recovery passphrase first."
-        ),
-        None => "Start the machine to repair from the stick.".into(),
-    };
     walk.card(&mut terminal, "The stick is written", &next, "finish")?;
     Ok(())
 }
@@ -313,6 +312,108 @@ fn installed() -> Result<(), Fault> {
     Ok(())
 }
 
+/// Recovering the machine this stick boots on, its data left in place:
+/// its disk opened and mounted, then a root shell inside it.
+fn recover() -> Result<(), Fault> {
+    // SAFETY: getuid can't fail and touches no memory.
+    if unsafe { libc::getuid() } != 0 {
+        return Err(Fault::Blocked {
+            step: "recover",
+            why: "recovering runs as root, on the stick".into(),
+        });
+    }
+    let journal = Journal::open(Path::new(JOURNAL))?;
+    let log = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(LOG)
+        .map_err(|why| Fault::Unkept {
+            path: LOG.into(),
+            why: why.to_string(),
+        })?;
+    let mut machine = System::new(journal, Some(log));
+    let theme = Theme::built(Terminal::is_console());
+    let journey = Journey::new(guide::recover::steps())
+        .map_err(|why| Fault::unreadable("the recovery's steps", why))?;
+    let shell = {
+        let mut terminal = Terminal::open()?;
+        let walk = Walk {
+            journey: &journey,
+            here: Place::Stick,
+            name: "Recover a machine",
+            theme: &theme,
+            log: Some(Path::new(LOG)),
+            whole: true,
+            last: Default::default(),
+        };
+        if walk.walk(&mut machine, &mut terminal)? != Ended::Finished {
+            return Ok(());
+        }
+        // A repair at a time, back here after each, until the shell or a
+        // restart.
+        loop {
+            let question = "What should be done? A root shell inside it has its own tools: nixos-rebuild, sbctl, systemd-cryptenroll.";
+            match walk.choose(
+                &mut terminal,
+                "The machine's disk is open",
+                question,
+                guide::recover::REPAIRS,
+            )? {
+                Some(0) => break true,
+                Some(at @ 1..=3) => {
+                    let steps: Vec<Box<dyn guide::Step>> = match at {
+                        1 => vec![Box::new(guide::recover::BootGeneration)],
+                        2 => vec![
+                            Box::new(guide::recover::IdentifyKeptKey),
+                            Box::new(guide::recover::ReplaceLostKey),
+                        ],
+                        _ => vec![Box::new(guide::recover::InstallBootLoader)],
+                    };
+                    let repair = Journey::new(steps)
+                        .map_err(|why| Fault::unreadable("the repair's steps", why))?;
+                    let chosen = Walk {
+                        journey: &repair,
+                        here: Place::Stick,
+                        name: "Recover a machine",
+                        theme: &theme,
+                        log: Some(Path::new(LOG)),
+                        whole: false,
+                        last: Default::default(),
+                    };
+                    if chosen.walk(&mut machine, &mut terminal)? != Ended::Finished {
+                        return Ok(());
+                    }
+                    *walk.last.borrow_mut() = chosen.last.take();
+                }
+                Some(_) => {
+                    machine
+                        .run(Tool::Umount, &["--recursive", install::ROOT])?
+                        .ok()?;
+                    machine.run(Tool::Systemctl, &["reboot"])?.ok()?;
+                    return Ok(());
+                }
+                None => return Ok(()),
+            }
+        }
+    };
+    // The terminal is given back before the shell takes it.
+    if shell {
+        use std::os::unix::process::CommandExt;
+        let enter = Tool::NixosEnter.program().ok_or(Fault::Unbuilt {
+            tool: Tool::NixosEnter.name(),
+        })?;
+        let why = std::process::Command::new(enter)
+            .args(["--root", install::ROOT])
+            .env("PATH", guide::tool::Path::Install.get()?)
+            .exec();
+        return Err(Fault::Unstarted {
+            program: enter.into(),
+            why: why.to_string(),
+        });
+    }
+    Ok(())
+}
+
 /// Where the stick keeps its journal and log: memory, gone when it stops.
 const JOURNAL: &str = "/run/guide/journal";
 const LOG: &str = "/run/guide/log";
@@ -336,6 +437,10 @@ fn install() -> Result<(), Fault> {
         .map_err(|why| Fault::unreadable("the stick's vault", why))?;
     let mut vault: Box<dyn Store> = Box::new(Fat::open(partition)?);
     let machine_name = vault::manifest(vault.as_mut())?.machine;
+    // A repair stick is no one machine's and installs nothing.
+    if machine_name.is_empty() {
+        return recover();
+    }
     let journal = Journal::open(Path::new(JOURNAL))?;
     let log = OpenOptions::new()
         .create(true)
@@ -347,8 +452,41 @@ fn install() -> Result<(), Fault> {
         })?;
     let mut machine = System::new(journal, Some(log)).with_vault(vault);
     let theme = Theme::built(Terminal::is_console());
-    let mut terminal = Terminal::open()?;
     let title = format!("Install {machine_name}");
+
+    // One stick for everything: on a disk that already holds a machine, it
+    // asks first whether to recover it or install over it.
+    if let Some(question) = guide::recover::already_there(&mut machine, &machine_name)? {
+        let chosen = {
+            let mut terminal = Terminal::open()?;
+            let ask = Journey::new(vec![])
+                .map_err(|why| Fault::unreadable("the install's steps", why))?;
+            Walk {
+                journey: &ask,
+                here: Place::Stick,
+                name: &title,
+                theme: &theme,
+                log: Some(Path::new(LOG)),
+                whole: false,
+                last: Default::default(),
+            }
+            .choose(
+                &mut terminal,
+                "A machine is already here",
+                &question,
+                guide::recover::ALREADY_THERE,
+            )?
+        };
+        match chosen {
+            Some(0) => {
+                drop(machine);
+                return recover();
+            }
+            Some(_) => {}
+            None => return Ok(()),
+        }
+    }
+    let mut terminal = Terminal::open()?;
 
     // The steps before the vault opens, then, from what it holds, all of
     // them, those already done passed over.

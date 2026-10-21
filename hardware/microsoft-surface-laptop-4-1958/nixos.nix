@@ -6,6 +6,7 @@
 {
   imports = [
     ../../modules/device-check/nixos.nix
+    ../../modules/firmware-settings/nixos.nix
     ../../modules/gpu/nixos.nix
     ../../modules/kernel/nixos.nix
     ../../modules/keyboard/nixos.nix
@@ -28,6 +29,12 @@
   # The keyboard reaches the system through the Surface Aggregator, as
   # Microsoft's HID device 045e:09ae.
   jitsusama.keyboard.builtIn = [ "045e:09ae" ];
+
+  # Surface UEFI is reached by a held volume button rather than a key, for
+  # the guide to say when a stick is written for it. Other Surfaces enter
+  # setup mode when Secure Boot is set to None; this one hasn't been seen to.
+  jitsusama.firmware.startFromStick = "Hold volume-down, press and release power, and keep holding volume-down until the Surface logo has gone.";
+  jitsusama.firmware.clearSecureBootKeys = "Hold volume-up, press and release power, and keep holding until Surface UEFI opens. Under Security, set Secure Boot to None.";
 
   # The Radeon GPU, behind the PCIe bridge at 00:08.1.
   jitsusama.gpu.path = "pci-0000:03:00.0";

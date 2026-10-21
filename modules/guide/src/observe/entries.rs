@@ -19,6 +19,34 @@ pub struct Entry {
     pub default: bool,
     /// What the running system booted from.
     pub booted: bool,
+    /// What systemd-boot says of it beside its title: the generation and
+    /// its date for a UKI, the generation, release and kernel for an entry
+    /// file.
+    pub version: Option<String>,
+}
+
+impl Entry {
+    /// How a person tells it from the others: the generation, when, and
+    /// what it runs.
+    pub fn described(&self) -> String {
+        match (self.kind, &self.version) {
+            // "NixOS Zokor 26.11 (Linux 7.2.3) (Generation 15, 2026-10-12)"
+            (Kind::Uki, _) => self.title.clone(),
+            // "Generation 14 NixOS Yarara 26.05 (Linux 6.18.5), built on 2026-01-16"
+            (_, Some(version)) => version.clone(),
+            (_, None) => self.title.clone(),
+        }
+    }
+}
+
+/// The entries on a machine's ESP mounted elsewhere, as from a stick.
+pub fn list_at(machine: &mut dyn Machine, esp: &str) -> Result<Vec<Entry>, Fault> {
+    let path = format!("--esp-path={esp}");
+    parse_list(
+        &machine
+            .run(Tool::Bootctl, &[&path, "list", "--json=short"])?
+            .ok()?,
+    )
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -48,15 +76,21 @@ pub fn parse_list(json: &str) -> Result<Vec<Entry>, Fault> {
         #[serde(rename = "type")]
         kind: String,
         title: String,
-        is_default: bool,
-        is_selected: bool,
+        // Listed from outside the machine, as from a stick, bootctl gives
+        // isSelected as null, since nothing on that ESP is what booted.
+        #[serde(default)]
+        is_default: Option<bool>,
+        #[serde(default)]
+        is_selected: Option<bool>,
+        version: Option<String>,
     }
     let listed: Vec<Listed> =
         serde_json::from_str(json).map_err(|why| Fault::unreadable("bootctl's entries", why))?;
     Ok(listed
         .into_iter()
         .map(|entry| Entry {
-            generation: generation(&entry.id),
+            generation: generation(&entry.id)
+                .or_else(|| entry.version.as_deref().and_then(generation_in)),
             kind: match entry.kind.as_str() {
                 "type2" => Kind::Uki,
                 "type1" => Kind::Conf,
@@ -65,10 +99,23 @@ pub fn parse_list(json: &str) -> Result<Vec<Entry>, Fault> {
             },
             id: entry.id,
             title: entry.title,
-            default: entry.is_default,
-            booted: entry.is_selected,
+            default: entry.is_default.unwrap_or(false),
+            booted: entry.is_selected.unwrap_or(false),
+            version: entry.version,
         })
         .collect())
+}
+
+/// The generation a version names first, as NixOS's entries named only by
+/// a hash say it: "Generation 1 NixOS Zokor ...", or lanzaboote's
+/// "Generation 15, 2026-10-12".
+fn generation_in(version: &str) -> Option<u32> {
+    let rest = version.strip_prefix("Generation ")?;
+    rest.chars()
+        .take_while(char::is_ascii_digit)
+        .collect::<String>()
+        .parse()
+        .ok()
 }
 
 /// The generation in an id NixOS gives an entry: `nixos-generation-15.conf`
@@ -168,6 +215,16 @@ mod tests {
             .find(|entry| entry.kind == Kind::Automatic)
             .unwrap();
         assert_eq!(firmware.generation, None);
+    }
+
+    #[test]
+    fn an_entry_named_by_its_hash_and_listed_from_a_stick_still_has_its_generation() {
+        let entries = parse_list(qemu!("bootctl-list-from-the-stick.json")).unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(
+            (entries[0].generation, entries[0].default, entries[0].booted),
+            (Some(1), true, false)
+        );
     }
 
     #[test]

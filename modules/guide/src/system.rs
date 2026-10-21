@@ -76,6 +76,32 @@ fn private_file(path: &Path, bytes: &[u8]) -> Result<(), Fault> {
     file.write_all(bytes).map_err(unkept(path))
 }
 
+/// A file's inode flags, set to `set` when given, the ones before said
+/// back; none where they can't be read, as on a system with no efivarfs.
+fn flags(file: &File, set: Option<libc::c_long>) -> Option<libc::c_long> {
+    #[cfg(target_os = "linux")]
+    {
+        use std::os::fd::AsRawFd;
+        let mut current: libc::c_long = 0;
+        // SAFETY: the file is open and the flags are a long, as the ioctls
+        // take them.
+        unsafe {
+            if libc::ioctl(file.as_raw_fd(), libc::FS_IOC_GETFLAGS, &mut current) != 0 {
+                return None;
+            }
+            if let Some(set) = set {
+                libc::ioctl(file.as_raw_fd(), libc::FS_IOC_SETFLAGS, &set);
+            }
+        }
+        Some(current)
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = (file, set);
+        None
+    }
+}
+
 /// Credential files for one call, gone when it's dropped.
 struct Credentials(PathBuf);
 
@@ -279,6 +305,37 @@ impl Machine for System {
             .open(path)
             .map_err(unkept(path))?;
         Ok(Box::new(std::io::BufWriter::with_capacity(1 << 20, file)))
+    }
+
+    /// As systemd's efi_set_variable does (src/basic/efivars.c): efivarfs
+    /// marks most variables immutable, so the flag is dropped first and put
+    /// back after, and the attributes and value go in one write to a file
+    /// opened without truncating, which efivarfs doesn't do.
+    fn set_efi_variable(&mut self, name: &str, value: &[u8]) -> Result<(), Fault> {
+        let path = Path::new("/sys/firmware/efi/efivars").join(name);
+        let refused = |why: std::io::Error| Fault::Unkept {
+            path: path.display().to_string(),
+            why: why.to_string(),
+        };
+        const IMMUTABLE: libc::c_long = 0x10;
+        let held = File::open(&path).ok();
+        let before = held.as_ref().and_then(|file| flags(file, None));
+        if let (Some(file), Some(before)) = (&held, before) {
+            flags(file, Some(before & !IMMUTABLE));
+        }
+        let mut buffer = 0x07u32.to_le_bytes().to_vec();
+        buffer.extend_from_slice(value);
+        let written = OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .mode(0o644)
+            .open(&path)
+            .and_then(|mut file| file.write_all(&buffer));
+        if let (Some(file), Some(before)) = (&held, before) {
+            flags(file, Some(before));
+        }
+        written.map_err(refused)
     }
 
     fn remove(&mut self, path: &str) -> Result<(), Fault> {

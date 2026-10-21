@@ -17,6 +17,8 @@ that changes what it prints fails a test rather than a person's install.
 | `efivar-db-<guid>`             | the firmware's db, which trusts its sbctl db certificate |
 | `sbctl-db.pem`                 | that certificate, `/var/lib/sbctl/keys/db/db.pem`, on the Surface |
 | `tpm2-properties-<kind>.txt`   | `tpm2_getcap properties-<kind>`, which prints the same with the guide's `-T device:/dev/tpmrm0` |
+| `tpm2-handles-nv-index.txt`    | `tpm2_getcap handles-nv-index`, the same                      |
+| `pcrlock-nvindex.json`         | `jq -c '{nvIndex}' /var/lib/systemd/pcrlock.json`, the NV index in that list systemd-pcrlock keeps the disk's policy in; the rest of the file is sealed to that TPM and of no use to a test |
 
 A missing file is one the machine doesn't have: the Surface's firmware keeps
 no `AuditMode` or `DeployedMode`.
@@ -42,3 +44,4 @@ stick `/dev/sda`.
 | `lsblk-blank.json`             | `lsblk --json --output-all --bytes`, the machine's disk blank |
 | `lsblk-laid-out.json`          | the same once the machine's layout made its volume and mounted it at /mnt |
 | `fido2-token-L.txt`            | `fido2-token -L`, one canokey plugged in          |
+| `bootctl-list-from-the-stick.json` | `bootctl --esp-path=/mnt/boot list --json=short` on a repair stick, in `vm-guide-recovers`: an entry named by its hash, and `isSelected` null |

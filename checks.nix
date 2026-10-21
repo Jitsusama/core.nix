@@ -191,6 +191,9 @@ let
     # A vault sealed to a YubiKey opens with it only where the plugin, the
     # key and its PIN meet, and only a running machine has all three.
     vm-guide-opens-the-vault = import ./tests/guide-vault.nix { inherit pkgs; };
+    # Recovering is a stick, a laid-out disk and its subvolumes together,
+    # with nothing of the machine's on the stick.
+    vm-guide-recovers = import ./tests/guide-recover.nix { inherit self pkgs; };
     vm-commits-are-signed = import ./tests/signing.nix { inherit self pkgs; };
     # A passkey is the TPM, uhid, udev's seat rules and the shell's askpass
     # together, and only a running machine has them all.

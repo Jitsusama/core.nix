@@ -3,7 +3,10 @@
 # knows what its firmware offers. `firmware-settings check` names what
 # differs, and `run0 firmware-settings apply` writes it, asking for the
 # firmware's admin password, which nothing keeps. A check fails at boot
-# when the firmware holds anything else.
+# when the firmware holds anything else. The hardware's module also says how
+# a person reaches its firmware's screens, which the guide tells them when a
+# stick is written for the machine: how to start it from a stick, and how to
+# clear its Secure Boot keys.
 {
   config,
   lib,
@@ -25,6 +28,23 @@ in
       Firmware settings by the names the kernel's firmware-attributes class
       gives them, under /sys/class/firmware-attributes/*/attributes, with
       the values they should hold.
+    '';
+  };
+
+  options.jitsusama.firmware.startFromStick = lib.mkOption {
+    type = lib.types.nullOr lib.types.str;
+    default = null;
+    example = "Press F12 as it starts, and pick the stick.";
+    description = "How a person starts the machine from a USB stick, said as they'd do it.";
+  };
+
+  options.jitsusama.firmware.clearSecureBootKeys = lib.mkOption {
+    type = lib.types.nullOr lib.types.str;
+    default = null;
+    example = "Press F2 as it starts; under Secure Boot, delete all keys.";
+    description = ''
+      How a person clears the firmware's Secure Boot keys, putting it in
+      setup mode, said as they'd do it.
     '';
   };
 

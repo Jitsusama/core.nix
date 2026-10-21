@@ -52,6 +52,26 @@ impl Lockout {
     }
 }
 
+/// The NV indices the TPM holds, from `tpm2_getcap handles-nv-index`, one
+/// `- 0x...` line each. Clearing the TPM takes every index an owner made,
+/// systemd-pcrlock's policy among them.
+pub fn nv_indices(text: &str) -> Result<Vec<u32>, Fault> {
+    text.lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .map(|line| {
+            line.strip_prefix("- 0x")
+                .and_then(|hex| u32::from_str_radix(hex, 16).ok())
+                .ok_or_else(|| {
+                    Fault::unreadable("the TPM's NV indices", format!("a line reads {line:?}"))
+                })
+        })
+        .collect()
+}
+
+/// The arguments that list the TPM's NV indices.
+pub const NV_INDICES: &[&str] = &["-T", "device:/dev/tpmrm0", "handles-nv-index"];
+
 /// What the TPM says of itself that never changes.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Fixed {

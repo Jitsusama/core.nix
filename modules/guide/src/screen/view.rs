@@ -34,6 +34,8 @@ pub enum Moment<'a> {
         title: &'a str,
         ask: &'a Ask,
         typed: &'a str,
+        /// Which choice the cursor is on, for a choice.
+        chosen: usize,
         refused: Option<&'a str>,
     },
     /// A step at work, and what the person does meanwhile, if anything.
@@ -165,6 +167,7 @@ pub fn draw(theme: &Theme, at: &Where, moment: &Moment, width: u16, height: u16)
             title,
             ask,
             typed,
+            chosen,
             refused,
         } => {
             lines.extend(said(Role::Strong, title, inside));
@@ -189,6 +192,27 @@ pub fn draw(theme: &Theme, at: &Where, moment: &Moment, width: u16, height: u16)
                     lines.push(vec![]);
                     footer = keys(theme, &[(Key::Return, "go on")]);
                     Some((span(Role::Action, theme.mark("cursor")), typed.to_string()))
+                }
+                // The choices in a column, the one the keys are on led by
+                // the cursor in the accent and in strong, the rest a
+                // cursor's width in, so their words line up.
+                Ask::Choose {
+                    question, choices, ..
+                } => {
+                    lines.extend(said(Role::Text, question, inside));
+                    lines.push(vec![]);
+                    let cursor = theme.mark("cursor");
+                    let lead = " ".repeat(cursor.chars().count());
+                    for (at, choice) in choices.iter().enumerate() {
+                        let (mark, role) = if at == *chosen {
+                            (span(Role::Accent, cursor), Role::Strong)
+                        } else {
+                            (span(Role::Text, lead.clone()), Role::Text)
+                        };
+                        lines.extend(marked(mark, role, choice, inside));
+                    }
+                    footer = keys(theme, &[(Key::Arrows, "choose"), (Key::Return, "go on")]);
+                    None
                 }
             };
             if let Some((mark, shown)) = field {
@@ -329,6 +353,7 @@ mod tests {
             title: "Enrol a YubiKey",
             ask: &ask,
             typed: "123456",
+            chosen: 0,
             refused: None,
         };
         let drawn = draw(&theme(), &at(), &moment, 80, 24);
@@ -363,6 +388,7 @@ mod tests {
             title: "Enrol a YubiKey",
             ask: &ask,
             typed: "",
+            chosen: 0,
             refused: None,
         };
         let shown = text(&draw(&theme(), &at(), &moment, 40, 24));
@@ -383,6 +409,7 @@ mod tests {
             title: "Enrol a YubiKey",
             ask: &ask,
             typed: "",
+            chosen: 0,
             refused: None,
         };
         let medium = text(&draw(&theme(), &at(), &moment, 80, 14));
@@ -407,6 +434,7 @@ mod tests {
             title: "Confirm the disk to wipe",
             ask: &ask,
             typed: "pen",
+            chosen: 0,
             refused: Some("\"hedgehoge\" isn't hedgehog, so nothing was wiped"),
         };
         let drawn = draw(&theme(), &at(), &moment, 60, 30);
@@ -448,6 +476,33 @@ mod tests {
             "{shown:#?}"
         );
         assert_eq!(shown.last().unwrap(), "  Return look again");
+    }
+
+    #[test]
+    fn a_choice_leads_with_the_cursor_and_the_rest_line_up_under_its_words() {
+        let ask = Ask::Choose {
+            id: "repair",
+            question: "What should be done?".into(),
+            choices: vec!["Open a root shell inside it".into(), "Restart".into()],
+        };
+        let moment = Moment::Asking {
+            title: "The machine's disk is open",
+            ask: &ask,
+            typed: "",
+            chosen: 1,
+            refused: None,
+        };
+        let drawn = draw(&theme(), &at(), &moment, 60, 24);
+        let shown = text(&drawn);
+        assert!(
+            shown.contains(&"    Open a root shell inside it".to_string()),
+            "{shown:#?}"
+        );
+        assert!(shown.contains(&"  > Restart".to_string()), "{shown:#?}");
+        let row = shown.iter().position(|line| line == "  > Restart").unwrap();
+        assert_eq!(drawn.lines[row][1].role, Role::Accent);
+        assert_eq!(shown.last().unwrap(), "  ↑↓ choose    Return go on");
+        assert_eq!(drawn.caret, None);
     }
 
     #[test]

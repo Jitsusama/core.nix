@@ -63,12 +63,22 @@ pub enum Ask {
         expected: String,
         why: String,
     },
+    /// One of a few choices, said as a question, the first chosen until
+    /// the person moves.
+    Choose {
+        id: &'static str,
+        question: String,
+        choices: Vec<String>,
+    },
 }
 
 impl Ask {
     pub fn id(&self) -> &'static str {
         match self {
-            Ask::Secret { id, .. } | Ask::Act { id, .. } | Ask::TypeBack { id, .. } => id,
+            Ask::Secret { id, .. }
+            | Ask::Act { id, .. }
+            | Ask::TypeBack { id, .. }
+            | Ask::Choose { id, .. } => id,
         }
     }
 }
@@ -104,6 +114,8 @@ pub enum Answer {
     Done,
     /// What they typed, for an `Ask::TypeBack`.
     Typed(String),
+    /// Which they chose, by its place in the list, for an `Ask::Choose`.
+    Chosen(usize),
 }
 
 /// A secret the person typed: wiped from memory when it's dropped, and

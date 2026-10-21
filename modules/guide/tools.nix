@@ -36,9 +36,12 @@ in
   GUIDE_FIDO2_ASSERT = lib.getExe' pkgs.libfido2 "fido2-assert";
   GUIDE_FIDO2_TOKEN = lib.getExe' pkgs.libfido2 "fido2-token";
   GUIDE_LSBLK = lib.getExe' pkgs.util-linux "lsblk";
+  GUIDE_MOUNT = lib.getExe' pkgs.util-linux "mount";
   GUIDE_NIX = lib.getExe pkgs.nix;
   GUIDE_NIXOS_ENTER = lib.getExe pkgs.nixos-enter;
   GUIDE_NIXOS_INSTALL = lib.getExe pkgs.nixos-install;
+  # systemd keeps systemd-pcrlock with its private programs, not in bin.
+  GUIDE_PCRLOCK = "${systemd}/lib/systemd/systemd-pcrlock";
   GUIDE_RUN0 = lib.getExe' systemd "run0";
   GUIDE_SBCTL = lib.getExe pkgs.sbctl;
   GUIDE_SGDISK = lib.getExe' pkgs.gptfdisk "sgdisk";

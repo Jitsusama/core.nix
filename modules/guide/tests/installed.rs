@@ -5,7 +5,7 @@
 //! first and proven to open.
 
 use guide::fake::Fake;
-use guide::installed::{CheckSecureBoot, FACTS, SealTpm};
+use guide::installed::{CheckSecureBoot, FACTS, PCRLOCK, SealTpm};
 use guide::{Answer, Answers, Fault, Journey, Program, Secret, Standing, Step, Tool};
 
 const GLOBAL: &str = "8be4df61-93ca-11d2-aa0d-00e098032b8c";
@@ -137,10 +137,54 @@ fn secure_boot_switched_off_blocks_the_seal() {
     ));
 }
 
+/// tpm2_getcap's arguments for the TPM's NV indices.
+const NV: &[&str] = &["-T", "device:/dev/tpmrm0", "handles-nv-index"];
+
+/// The XPS 14's NV indices, its pcrlock policy's among them.
+fn held() -> &'static str {
+    std::str::from_utf8(fixture!("dell-xps-14-da14260", "tpm2-handles-nv-index.txt")).unwrap()
+}
+
+/// The same once the TPM was cleared: its owner's indices gone, the
+/// policy's with them, and the platform's left.
+fn cleared() -> String {
+    held()
+        .lines()
+        .filter(|line| !line.starts_with("- 0x1ACCCE4"))
+        .map(|line| format!("{line}\n"))
+        .collect()
+}
+
 fn machine() -> Fake {
     let mut fake = Fake::new();
     fake.file(FACTS, br#"{"disk_name":"system"}"#);
+    fake.file(
+        PCRLOCK,
+        fixture!("dell-xps-14-da14260", "pcrlock-nvindex.json"),
+    );
     fake
+}
+
+/// systemctl's arguments for how lanzaboote's policy unit last ended.
+const MADE: &[&str] = &[
+    "show",
+    "--property=Result",
+    "--value",
+    "systemd-pcrlock-make-policy.service",
+];
+
+/// The machine, its TPM holding these NV indices, and lanzaboote's policy
+/// unit having ended this way this boot: `success`, as it does on the XPS
+/// 14, or `exit-code`, as when the policy can't follow the boot.
+fn holding_after(indices: &str, made: &str) -> Fake {
+    let mut fake = machine();
+    fake.prints(Tool::Tpm2Getcap, NV, indices);
+    fake.prints(Tool::Systemctl, MADE, &format!("{made}\n"));
+    fake
+}
+
+fn holding(indices: &str) -> Fake {
+    holding_after(indices, "success")
 }
 
 fn answers(pin: &str, again: &str) -> Answers {
@@ -154,7 +198,7 @@ fn answers(pin: &str, again: &str) -> Answers {
 
 #[test]
 fn the_tpm_is_sealed_through_run0_its_slot_preferred_and_proven() {
-    let mut fake = machine();
+    let mut fake = holding(held());
     let installed =
         std::str::from_utf8(fixture!("qemu-canokey", "luks-dump-installed.json")).unwrap();
     let sealed = std::str::from_utf8(fixture!("qemu-canokey", "luks-dump-sealed.json")).unwrap();
@@ -210,7 +254,8 @@ fn the_tpm_is_sealed_through_run0_its_slot_preferred_and_proven() {
     let privileged: Vec<&String> = fake
         .calls
         .iter()
-        .filter(|call| !call.starts_with("reading"))
+        // Reading how a unit ended is anyone's to do.
+        .filter(|call| !call.starts_with("reading") && !call.starts_with("systemctl show"))
         .collect();
     assert!(
         privileged.iter().all(|call| call.ends_with("(as root)")),
@@ -278,4 +323,148 @@ fn a_tpm_slot_nothing_proved_is_still_to_do() {
         SealTpm.observe(&mut fake).unwrap(),
         Standing::Needed { .. }
     ));
+}
+
+#[test]
+fn a_seal_proven_once_holds_while_the_tpm_keeps_its_policy() {
+    let mut fake = holding(held());
+    fake.prints(
+        Tool::Cryptsetup,
+        DUMP,
+        std::str::from_utf8(fixture!("qemu-canokey", "luks-dump-sealed.json")).unwrap(),
+    );
+    use guide::Machine;
+    fake.journal().record("seal-tpm", "opened:0").unwrap();
+    assert!(matches!(
+        SealTpm.observe(&mut fake).unwrap(),
+        Standing::Done { .. }
+    ));
+}
+
+#[test]
+fn a_cleared_tpm_undoes_a_seal_proven_before() {
+    // lanzaboote's unit still ends well after a clear, as vm-guide-installs
+    // shows: its prediction is unchanged, so it never writes the index it
+    // would find gone. Only the TPM's own list tells.
+    let mut fake = holding_after(&cleared(), "success");
+    fake.prints(
+        Tool::Cryptsetup,
+        DUMP,
+        std::str::from_utf8(fixture!("qemu-canokey", "luks-dump-sealed.json")).unwrap(),
+    );
+    use guide::Machine;
+    fake.journal().record("seal-tpm", "opened:0").unwrap();
+    assert!(matches!(
+        SealTpm.observe(&mut fake).unwrap(),
+        Standing::Needed { .. }
+    ));
+}
+
+#[test]
+fn a_firmware_update_undoes_a_seal_proven_before() {
+    // The TPM still holds the policy, which no longer follows what this
+    // boot's firmware measured, so lanzaboote's unit couldn't remake it.
+    let mut fake = holding_after(held(), "exit-code");
+    fake.prints(
+        Tool::Cryptsetup,
+        DUMP,
+        std::str::from_utf8(fixture!("qemu-canokey", "luks-dump-sealed.json")).unwrap(),
+    );
+    use guide::Machine;
+    fake.journal().record("seal-tpm", "opened:0").unwrap();
+    assert!(matches!(
+        SealTpm.observe(&mut fake).unwrap(),
+        Standing::Needed { .. }
+    ));
+}
+
+#[test]
+fn a_cleared_tpm_gets_its_policy_made_again_before_the_disk_is_sealed_to_it() {
+    // Cleared when the step looks, then held once lanzaboote's unit made
+    // the policy again, from then on.
+    let mut fake = machine();
+    fake.prints(Tool::Tpm2Getcap, NV, &cleared());
+    fake.prints(Tool::Tpm2Getcap, NV, held());
+    // A TPM without the index needs no more asked of it, so the unit is
+    // first asked once it made the policy again.
+    fake.prints(Tool::Systemctl, MADE, "success\n");
+    let sealed = std::str::from_utf8(fixture!("qemu-canokey", "luks-dump-sealed.json")).unwrap();
+    fake.prints(Tool::Cryptsetup, DUMP, sealed);
+    // As pcrlock answers when the index it would remove is gone.
+    fake.answers(
+        Program::Tool(Tool::Pcrlock),
+        &["remove-policy"],
+        1,
+        "",
+        "Failed to remove NV index, assuming data out of date, removing policy file.",
+    );
+    fake.prints(
+        Tool::Systemctl,
+        &["restart", "systemd-pcrlock-make-policy.service"],
+        "",
+    );
+    fake.answers(
+        Program::Tool(Tool::SystemdCryptenroll),
+        &[
+            "--unlock-fido2-device=auto",
+            "--tpm2-device=auto",
+            "--tpm2-with-pin=yes",
+            "--tpm2-pcrlock=/var/lib/systemd/pcrlock.json",
+            "--wipe-slot=tpm2",
+            "/dev/disk/by-partlabel/system",
+        ],
+        0,
+        "",
+        "",
+    );
+    fake.prints(
+        Tool::Cryptsetup,
+        &[
+            "config",
+            "/dev/disk/by-partlabel/system",
+            "--key-slot",
+            "0",
+            "--priority",
+            "prefer",
+        ],
+        "",
+    );
+    fake.prints(
+        Tool::Cryptsetup,
+        &[
+            "open",
+            "--test-passphrase",
+            "--token-only",
+            "--token-type",
+            "systemd-tpm2",
+            "/dev/disk/by-partlabel/system",
+        ],
+        "",
+    );
+    Journey::attempt(&SealTpm, &mut fake, &answers("24681357", "24681357")).unwrap();
+
+    let at = |start: &str| {
+        fake.calls
+            .iter()
+            .position(|call| call.starts_with(start))
+            .unwrap_or_else(|| panic!("no {start} in {:#?}", fake.calls))
+    };
+    assert!(
+        at("systemd-pcrlock remove-policy")
+            < at("systemctl restart systemd-pcrlock-make-policy.service")
+    );
+    assert!(
+        at("systemctl restart") < at("systemd-cryptenroll"),
+        "{:#?}",
+        fake.calls
+    );
+    let renewing: Vec<&String> = fake
+        .calls
+        .iter()
+        .filter(|call| call.starts_with("systemd-pcrlock") || call.starts_with("systemctl restart"))
+        .collect();
+    assert!(
+        renewing.iter().all(|call| call.ends_with("(as root)")),
+        "{renewing:#?}"
+    );
 }

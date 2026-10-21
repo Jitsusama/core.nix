@@ -349,6 +349,36 @@ pkgs.testers.runNixOSTest {
           prompts = re.findall(r"Please enter [^:(]*:", machine.get_console_log()[before:])
           t.assertEqual(prompts, ["Please enter LUKS2 token PIN:"])
 
+      with subtest("a cleared TPM leaves a YubiKey to open the disk, and the guide seals it again"):
+          # The guide sees nothing to do, until the TPM is cleared, which
+          # takes the NV index the disk's pcrlock policy lives in.
+          on_screen("machine is finished")
+          machine.succeed("${pkgs.tpm2-tools}/bin/tpm2_clear -T device:/dev/tpmrm0 -c l")
+          type("")
+          machine.connected = False
+          unlock()
+          machine.connect()
+          machine.wait_for_unit("multi-user.target")
+          on_screen("a PIN for the TPM")
+          type("${tpmPin}")
+          on_screen("the same PIN again")
+          type("${tpmPin}")
+          on_screen("Plug in a YubiKey")
+          type("")
+          on_screen("the YubiKey's PIN")
+          type("${pin}")
+          on_screen("machine is finished", timeout=300)
+          header = json.loads(machine.succeed("cryptsetup luksDump --dump-json-metadata /dev/disk/by-partlabel/system"))
+          t.assertEqual(len([t for t in header["tokens"].values() if t["type"] == "systemd-tpm2"]), 1)
+          before = len(machine.get_console_log())
+          type("")
+          machine.connected = False
+          unlock("${tpmPin}")
+          machine.connect()
+          machine.wait_for_unit("multi-user.target")
+          prompts = re.findall(r"Please enter [^:(]*:", machine.get_console_log()[before:])
+          t.assertEqual(prompts, ["Please enter LUKS2 token PIN:"])
+
       with subtest("a stick carrying the machine's own Secure Boot keys is written on a host"):
           # The keys as the machine keeps them, taken off it as a rescue
           # bundle would carry them.
@@ -370,6 +400,11 @@ pkgs.testers.runNixOSTest {
 
       with subtest("the firmware boots it, enforcing, and the guide reinstalls with the keys put back"):
           machine.start(allow_reboot=True)
+          # The disk holds the machine, so its stick asks first.
+          on_screen("A machine is already here")
+          t.assertIn("install machine on it again", " ".join(screen().split()))
+          machine.send_key("down")
+          type("")
           on_screen("Check the keyboard types what you mean")
           type("keyboard")
           on_screen("recovery passphrase")

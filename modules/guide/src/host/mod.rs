@@ -109,6 +109,38 @@ impl Payload {
         files
     }
 
+    /// Whether the stick carries the machine's Secure Boot keys.
+    pub fn carries_keys(&self) -> bool {
+        self.secure_boot.is_some()
+    }
+
+    /// What the person does with the stick once it's written, from what
+    /// the machine's hardware says of its firmware: a card's words.
+    pub fn next(&self) -> String {
+        let target = &self.target;
+        let mut said = format!("Take the stick to {}.", target.machine);
+        if !self.carries_keys()
+            && let Some(clear) = &target.clear_secure_boot_keys
+        {
+            said.push_str(&format!(
+                " This stick carries none of its Secure Boot keys, so clear its firmware's first: {clear}"
+            ));
+        }
+        match &target.start_from_stick {
+            Some(start) => said.push_str(&format!(" To start it from the stick: {start}")),
+            None => said.push_str(" Start it from the stick."),
+        }
+        let opens = if target.recipients.is_empty() {
+            "the recovery passphrase"
+        } else {
+            "a YubiKey's PIN, or the recovery passphrase"
+        };
+        said.push_str(&format!(
+            " The guide carries on there, and asks for {opens} first."
+        ));
+        said
+    }
+
     /// How much vault it needs: each file in whole clusters, FAT32's
     /// largest being 32 KiB, with what age adds to each.
     pub fn needed(&self) -> Result<u64, Fault> {

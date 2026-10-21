@@ -8,7 +8,7 @@
 use serde::Deserialize;
 
 use crate::observe::efi::{Mode, SecureBoot};
-use crate::observe::luks;
+use crate::observe::{luks, tpm};
 use crate::tool::Path;
 use crate::{
     Answer, Answers, Ask, Fault, Given, Machine, Place, Program, Secret, Standing, Step, Tool,
@@ -43,6 +43,80 @@ fn as_root<'a>() -> Given<'a> {
         as_root: true,
         ..Given::default()
     }
+}
+
+/// The NV index systemd-pcrlock keeps the disk's policy in, as its policy
+/// file names it, or none when there's no policy file.
+fn policy_index(machine: &mut dyn Machine) -> Result<Option<u32>, Fault> {
+    #[derive(Deserialize)]
+    struct Policy {
+        #[serde(rename = "nvIndex")]
+        nv_index: u32,
+    }
+    let Some(bytes) = machine.read(PCRLOCK)? else {
+        return Ok(None);
+    };
+    let policy: Policy =
+        serde_json::from_slice(&bytes).map_err(|why| Fault::unreadable(PCRLOCK, why))?;
+    Ok(Some(policy.nv_index))
+}
+
+/// Whether the TPM still holds the policy the disk is sealed to. Clearing
+/// the TPM takes its NV index, and then no boot can open the TPM's slot
+/// again, whatever was proven before.
+fn policy_held(machine: &mut dyn Machine) -> Result<bool, Fault> {
+    let Some(index) = policy_index(machine)? else {
+        return Ok(false);
+    };
+    let listed = machine
+        .run_given(Program::Tool(Tool::Tpm2Getcap), tpm::NV_INDICES, as_root())?
+        .ok()?;
+    Ok(tpm::nv_indices(&listed)?.contains(&index))
+}
+
+/// The unit core's lanzaboote module has make the disk's policy at every
+/// boot. It fails when the policy it has can't follow what this boot
+/// measured: after a firmware update, which changes PCR 0, or once the TPM
+/// was cleared. Either way the TPM no longer opens the disk.
+pub const MAKE_POLICY: &str = "systemd-pcrlock-make-policy.service";
+
+/// Whether the disk's policy is one this boot's TPM opens with: the TPM
+/// holds its NV index, and lanzaboote's unit made it for this boot.
+fn policy_current(machine: &mut dyn Machine) -> Result<bool, Fault> {
+    if !policy_held(machine)? {
+        return Ok(false);
+    }
+    let result = machine
+        .run(
+            Tool::Systemctl,
+            &["show", "--property=Result", "--value", MAKE_POLICY],
+        )?
+        .ok()?;
+    Ok(result.trim() == "success")
+}
+
+/// A policy that no longer follows this boot, dropped by
+/// systemd-pcrlock itself and made again by the unit core's lanzaboote
+/// module runs it from at every boot, so the new one is the one it keeps.
+/// pcrlock exits non-zero when it can't remove an index that's gone, yet
+/// removes the file, so what counts is the end: a policy the TPM holds,
+/// which a stale file left behind would keep the new one from making.
+fn renew_policy(machine: &mut dyn Machine) -> Result<(), Fault> {
+    machine.run_given(Program::Tool(Tool::Pcrlock), &["remove-policy"], as_root())?;
+    machine
+        .run_given(
+            Program::Tool(Tool::Systemctl),
+            &["restart", MAKE_POLICY],
+            as_root(),
+        )?
+        .ok()?;
+    if !policy_current(machine)? {
+        return Err(Fault::Unproven {
+            step: "seal-tpm",
+            standing: "the TPM holds no current policy after systemd-pcrlock made one".into(),
+        });
+    }
+    Ok(())
 }
 
 /// Secure Boot enforcing with the machine's own keys, which the TPM's seal
@@ -140,7 +214,7 @@ impl Step for SealTpm {
                         .knows(self.id(), &format!("opened:{slot}"))
                 })
         });
-        if proven {
+        if proven && policy_current(machine)? {
             return Ok(Standing::Done {
                 evidence: "the TPM opens the disk with its PIN, tried before the others".into(),
             });
@@ -193,6 +267,11 @@ impl Step for SealTpm {
         let facts = facts(machine)?;
         let volume = volume(&facts);
         let before = luks::observe_as_root(machine, &volume)?;
+        // A policy this boot doesn't follow, after a firmware update or a
+        // cleared TPM, is made again before anything is sealed to it.
+        if policy_index(machine)?.is_some() && !policy_current(machine)? {
+            renew_policy(machine)?;
+        }
 
         let pcrlock = format!("--tpm2-pcrlock={PCRLOCK}");
         let mut args = vec![

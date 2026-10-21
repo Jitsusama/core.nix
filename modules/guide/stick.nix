@@ -89,6 +89,12 @@ in
 
   hardware.enableRedistributableFirmware = true;
 
+  # The guide owns the console, so the kernel writes only its errors
+  # there, and a YubiKey plugged in doesn't write over the guide's screen.
+  # NixOS's tests turn it up to 7 (testing/test-instrumentation.nix), and
+  # this holds above them, a step stronger than a plain setting.
+  boot.consoleLogLevel = lib.mkOverride 90 3;
+
   # The theme's sixteen colours, which the guide's roles name by slot, and
   # a large font, since the console's own is tiny on a laptop's screen.
   console = {

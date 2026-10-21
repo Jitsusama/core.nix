@@ -39,10 +39,12 @@ tools! {
     Fido2Assert => "fido2-assert", "GUIDE_FIDO2_ASSERT";
     Fido2Token => "fido2-token", "GUIDE_FIDO2_TOKEN";
     Lsblk => "lsblk", "GUIDE_LSBLK";
+    Mount => "mount", "GUIDE_MOUNT";
     Nix => "nix", "GUIDE_NIX";
     Run0 => "run0", "GUIDE_RUN0";
     NixosEnter => "nixos-enter", "GUIDE_NIXOS_ENTER";
     NixosInstall => "nixos-install", "GUIDE_NIXOS_INSTALL";
+    Pcrlock => "systemd-pcrlock", "GUIDE_PCRLOCK";
     Sbctl => "sbctl", "GUIDE_SBCTL";
     Sgdisk => "sgdisk", "GUIDE_SGDISK";
     SystemdCryptenroll => "systemd-cryptenroll", "GUIDE_SYSTEMD_CRYPTENROLL";

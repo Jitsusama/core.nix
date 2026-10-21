@@ -154,6 +154,8 @@ impl Theme {
             (Key::Return, false) => "↵",
             (Key::Return, true) => "Return",
             (Key::Tab, _) => "Tab",
+            // The console's font has the arrows (../../console/glyphs.txt).
+            (Key::Arrows, _) => "↑↓",
         }
     }
 }
@@ -163,6 +165,8 @@ impl Theme {
 pub enum Key {
     Return,
     Tab,
+    /// Up and down together, for moving through a list.
+    Arrows,
 }
 
 /// A run of text in one role.
