@@ -1959,6 +1959,18 @@ in
         && graphical.config.systemd.services.greetd.serviceConfig.Type == "idle"
       );
 
+  # The XPS 14's firmware holds its chosen settings at each boot, but not the
+  # keyboard light's: KeyboardIllumination is the level the light key sets,
+  # so holding it failed the boot's check whenever the key had been used.
+  firmware-leaves-the-keyboard-light =
+    let
+      xps = bareNixos [ self.nixosModules.dell-xps-14-da14260 ];
+      inherit (xps.config.jitsusama.firmware) settings;
+    in
+    holds "firmware-leaves-the-keyboard-light"
+      "The XPS 14 holds KeyboardIllumination, which its light key sets, or lost IntelSagv."
+      (settings ? IntelSagv && !(settings ? KeyboardIllumination));
+
   # thermald reads the XPS 14's tables, sensors and the CPU's power limits
   # once, as it starts, and stops if its adaptive mode finds no zone, which
   # it did when udev loaded their drivers after it started.
