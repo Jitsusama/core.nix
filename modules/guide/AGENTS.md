@@ -66,8 +66,10 @@ driven on; the installed machine's steps come later.
   that machine's image and payload built in.
 - **The install.** On the stick, as root, from what the vault holds for the
   machine (`payload.nix`): its target, its disk's layout and its system as
-  a binary cache. The disk is wiped only once the machine's name is typed
-  back for it, then laid out by the machine's own disko script, run with
+  a binary cache. Before the disk is touched, the firmware is checked to
+  take the keys the install will give the machine, so a machine is never
+  wiped only to be unbootable. The disk is wiped only once the machine's
+  name is typed back for it, then laid out by the machine's own disko script, run with
   the stick's disk tools, its volume made with a key held only in memory.
   Each YubiKey is enrolled alone, told apart from the others by a silent
   assertion, and proven by opening the disk; then a recovery key, typed

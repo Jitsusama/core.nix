@@ -16,6 +16,74 @@ const CACHE: &str = "/mnt/var/cache/guide";
 const PROFILE: &str = "/mnt/nix/var/nix/profiles/system";
 const BOOT_LOADER: &str = "/mnt/boot/EFI/systemd/systemd-bootx64.efi";
 
+/// Whether the firmware will boot with the keys the install gives the
+/// machine: any in setup mode, or the stick's own when its db already
+/// trusts them. Said back as how, or why not as the standing to stop on.
+fn firmware_takes_keys(machine: &mut dyn Machine) -> Result<Result<String, Standing>, Fault> {
+    let carried = carried_db(machine)?;
+    Ok(match (SecureBoot::observe(machine)?, carried) {
+        (Some(SecureBoot { mode: Mode::Setup, .. }), _) => {
+            Ok("the firmware is in setup mode, so it takes the machine's keys on its first boot".into())
+        }
+        (Some(found), Some(db)) if efi::db_certificates(machine)?.contains(&db) => Ok(format!(
+            "the firmware is in {} mode and trusts the keys this stick carries",
+            found.mode
+        )),
+        (Some(found), Some(_)) => Err(Standing::Blocked {
+            why: format!(
+                "the firmware is in {} mode and trusts other keys than the ones this stick carries",
+                found.mode
+            ),
+            remedy: "write the stick again with this machine's keys, or clear the firmware's Secure Boot keys in its setup and restart from the stick".into(),
+        }),
+        (Some(found), None) => Err(Standing::Blocked {
+            why: format!("the firmware's Secure Boot is in {} mode, so it won't take new keys", found.mode),
+            remedy: "clear the firmware's Secure Boot keys in its setup, or write the stick again with this machine's keys, then restart from the stick".into(),
+        }),
+        (None, _) => Err(Standing::Blocked {
+            why: "the firmware has no Secure Boot".into(),
+            remedy: "boot the stick in UEFI mode".into(),
+        }),
+    })
+}
+
+/// Before the disk is touched: the firmware will take the keys the install
+/// gives the machine, so a machine is never wiped to find out it can't be
+/// booted again.
+pub struct CheckFirmware;
+
+impl Step for CheckFirmware {
+    fn id(&self) -> &'static str {
+        "check-firmware"
+    }
+
+    fn place(&self) -> Place {
+        Place::Stick
+    }
+
+    fn title(&self) -> &'static str {
+        "Check the firmware will boot what's installed"
+    }
+
+    fn observe(&self, machine: &mut dyn Machine) -> Result<Standing, Fault> {
+        // Once the machine's keys are in place the install has passed this.
+        if machine.read(&format!("{SBCTL}/keys/db/db.key"))?.is_some() {
+            return Ok(Standing::Done {
+                evidence: "the machine's own Secure Boot keys are in place".into(),
+            });
+        }
+        Ok(match firmware_takes_keys(machine)? {
+            Ok(evidence) => Standing::Done { evidence },
+            Err(standing) => standing,
+        })
+    }
+
+    fn run(&self, _machine: &mut dyn Machine, _answers: &Answers) -> Result<(), Fault> {
+        // Nothing to do here: observing says whether it's ready.
+        Ok(())
+    }
+}
+
 /// The machine's Secure Boot keys, where the install's boot loader signs
 /// with them: put back from the vault when the stick carries the ones the
 /// firmware already trusts, so a reinstall needs no visit to the firmware,
@@ -61,25 +129,9 @@ impl Step for SecureBootKeys {
                 evidence: "the machine's own Secure Boot keys are in place".into(),
             });
         }
-        let carried = carried_db(machine)?;
-        Ok(match (SecureBoot::observe(machine)?, carried) {
-            (Some(SecureBoot { mode: Mode::Setup, .. }), _) => Standing::Needed { asks: vec![] },
-            (Some(_), Some(db)) if efi::db_certificates(machine)?.contains(&db) => Standing::Needed { asks: vec![] },
-            (Some(found), Some(_)) => Standing::Blocked {
-                why: format!(
-                    "the firmware is in {} mode and trusts other keys than the ones this stick carries",
-                    found.mode
-                ),
-                remedy: "write the stick again with this machine's keys, or clear the firmware's Secure Boot keys in its setup and restart from the stick".into(),
-            },
-            (Some(found), None) => Standing::Blocked {
-                why: format!("the firmware's Secure Boot is in {} mode, so it won't take new keys", found.mode),
-                remedy: "clear the firmware's Secure Boot keys in its setup, as the firmware card shows, then restart from the stick".into(),
-            },
-            (None, _) => Standing::Blocked {
-                why: "the firmware has no Secure Boot".into(),
-                remedy: "boot the stick in UEFI mode".into(),
-            },
+        Ok(match firmware_takes_keys(machine)? {
+            Ok(_) => Standing::Needed { asks: vec![] },
+            Err(standing) => standing,
         })
     }
 

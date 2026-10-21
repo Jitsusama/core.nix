@@ -115,6 +115,7 @@ pub fn opening() -> Vec<Box<dyn Step>> {
 /// vault's target names them, in the order they're enrolled.
 pub fn steps(yubikeys: &[String]) -> Vec<Box<dyn Step>> {
     let mut steps = opening();
+    steps.push(Box::new(system::CheckFirmware));
     steps.push(Box::new(disk::ConfirmDisk));
     steps.push(Box::new(disk::LayOutDisk));
     for name in yubikeys {

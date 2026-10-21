@@ -12,7 +12,7 @@ use std::path::PathBuf;
 use guide::fake::Fake;
 use guide::install::disk::{ConfirmDisk, LayOutDisk, WipeInstallKey};
 use guide::install::keys::EnrolYubikey;
-use guide::install::system::SecureBootKeys;
+use guide::install::system::{CheckFirmware, SecureBootKeys};
 use guide::install::{INSTALL_KEY, TARGET, Target, VAULT_KEY};
 use guide::vault::store::Directory;
 use guide::vault::{Manifest, Packer, VaultKey};
@@ -420,6 +420,45 @@ fn with_no_keys_carried_a_firmware_in_user_mode_has_to_be_cleared_first() {
     let standing = SecureBootKeys.observe(&mut fake).unwrap();
     assert!(
         matches!(&standing, Standing::Blocked { why, .. } if why.contains("won't take new keys")),
+        "{standing:?}"
+    );
+}
+
+#[test]
+fn a_firmware_that_wont_take_the_keys_stops_the_install_before_the_disk_is_touched() {
+    let target = target("/dev/disk/by-id/virtio-root");
+    let scratch = Scratch::new("install-firmware-first");
+    let mut fake = stick(&scratch, &target);
+    // A Surface enforcing its own keys, with none carried.
+    surface_firmware(&mut fake, SURFACE_DB);
+    assert!(matches!(
+        CheckFirmware.observe(&mut fake).unwrap(),
+        Standing::Blocked { .. }
+    ));
+
+    let ids: Vec<&str> = guide::install::steps(&["the Nano".into()])
+        .iter()
+        .map(|step| step.id())
+        .collect();
+    let at = |id: &str| ids.iter().position(|found| *found == id).unwrap();
+    assert!(at("check-firmware") < at("confirm-disk"), "{ids:?}");
+    assert!(at("confirm-disk") < at("lay-out-disk"), "{ids:?}");
+}
+
+#[test]
+fn a_firmware_trusting_the_carried_keys_lets_the_install_go_on() {
+    let target = target("/dev/disk/by-id/virtio-root");
+    let scratch = Scratch::new("install-firmware-trusts");
+    let carried: &[(&str, &[u8])] = &[
+        ("sbctl/GUID", b"guid"),
+        ("sbctl/keys/db/db.key", b"key"),
+        ("sbctl/keys/db/db.pem", SURFACE_CERT),
+    ];
+    let mut fake = stick_carrying(&scratch, &target, carried);
+    surface_firmware(&mut fake, SURFACE_DB);
+    let standing = CheckFirmware.observe(&mut fake).unwrap();
+    assert!(
+        matches!(&standing, Standing::Done { evidence } if evidence.contains("trusts the keys this stick carries")),
         "{standing:?}"
     );
 }
