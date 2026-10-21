@@ -29,12 +29,15 @@ let
       disk.installKey
     else
       throw "${config.networking.hostName} needs jitsusama.disk.installKey set for the guide to lay out its disk";
+  # The option is there with nothing in it on a machine whose greeter
+  # isn't told whom it signs in, so an empty one is refused as a missing
+  # one is.
+  named = if account != null then account else config.jitsusama.login.account or null;
   account' =
-    if account != null then
-      account
+    if named != null then
+      named
     else
-      config.jitsusama.login.account
-        or (throw "${config.networking.hostName} names no account for the guide to give a password: set jitsusama.login.account, or pass account");
+      throw "${config.networking.hostName} names no account for the guide to give a password: set jitsusama.login.account, or pass account";
   target = writeText "target.json" (
     builtins.toJSON {
       machine = config.networking.hostName;

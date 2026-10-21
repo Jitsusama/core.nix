@@ -19,6 +19,7 @@ pub struct Fake {
     links: BTreeMap<String, Option<String>>,
     pointers: BTreeMap<String, String>,
     vault: Option<Box<dyn Store>>,
+    disks: BTreeMap<String, std::path::PathBuf>,
     journal: Journal,
     /// Every call made, in order, as `program arg arg`, followed by the
     /// names of the secrets it was given in brackets.
@@ -95,6 +96,13 @@ impl Fake {
     /// A link and what it holds, for following one step at a time.
     pub fn pointer(&mut self, path: &str, to: &str) -> &mut Fake {
         self.pointers.insert(path.into(), to.into());
+        self
+    }
+
+    /// A disk a step may open for writing, standing in for a device by a
+    /// file the test made.
+    pub fn disk(&mut self, device: &str, file: &std::path::Path) -> &mut Fake {
+        self.disks.insert(device.into(), file.into());
         self
     }
 
@@ -230,6 +238,21 @@ impl Machine for Fake {
                 call: "opening the vault".into(),
             }),
         }
+    }
+
+    fn open_disk(&mut self, device: &str, mounted: &[String]) -> Result<std::fs::File, Fault> {
+        self.calls.push(format!(
+            "opening {device} for writing, unmounting [{}]",
+            mounted.join(" ")
+        ));
+        let file = self.disks.get(device).ok_or_else(|| Fault::Unscripted {
+            call: format!("opening {device}"),
+        })?;
+        std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(file)
+            .map_err(|why| Fault::unreadable(device, why))
     }
 
     fn journal(&mut self) -> &mut Journal {

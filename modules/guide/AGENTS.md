@@ -57,6 +57,13 @@ driven on; the installed machine's steps come later.
   Linux's alone. The ESP is signed in memory before anything reaches the
   stick, so a key that won't sign leaves the stick as it was. Keys are
   sbctl's file keys, a `db.key` and `db.pem` in one directory.
+- **The host.** A stick is written on whatever machine writes it, as the
+  person and never root. Only a whole USB or removable disk counts, and
+  only one may be plugged in; what's mounted from it is unmounted, and its
+  disk is opened through the system's own way of letting a person write
+  one: UDisks2, which asks polkit, on Linux, and authopen on a Mac. A
+  machine's repository offers `nix run .#guide`, core's `lib.guide` with
+  that machine's image and payload built in.
 - **The install.** On the stick, as root, from what the vault holds for the
   machine (`payload.nix`): its target, its disk's layout and its system as
   a binary cache. The disk is wiped only once the machine's name is typed
@@ -100,6 +107,7 @@ driven on; the installed machine's steps come later.
 | `src/sign/`           | Authenticode: what a signature covers, and the signature sbsign would make |
 | `src/stick/`          | writing the stick and reading it back: its tables, and aligned blocks |
 | `src/vault/`          | the vault's sealing and index, and where its files are kept |
+| `src/host/`           | writing a stick on a host, and what a reinstall stick carries |
 | `src/install/`        | installing a machine from its stick, a step to a file by what it touches |
 | `src/screen/`         | the view, drawn as lines in roles; the terminal; the walk through a journey |
 | `payload.nix`         | what a reinstall stick carries for one machine            |
@@ -110,6 +118,8 @@ driven on; the installed machine's steps come later.
 | `tests/stick.rs`      | whole sticks written into files, judged by sfdisk, fsck.fat and sbverify |
 | `tests/sign.rs`       | signatures compared byte for byte with sbsign's           |
 | `tests/system.rs`     | secrets handed to a real program, and kept out of the log |
+| `tests/host.rs`       | the one stick written, never another disk              |
+| `../../tests/guide-host.nix` | a stick written on a host through UDisks2, as the person |
 | `../../tests/guide-install.nix` | a machine installed from its stick in a VM, by the guide's keys |
 
 ## Working on It

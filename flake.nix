@@ -104,6 +104,14 @@
         key = toString file;
         imports = [ (nixpkgs.lib.modules.importApply file given) ];
       };
+
+      # The stick's own system, which installs and repairs a machine.
+      stick = nixpkgs.lib.nixosSystem {
+        modules = [
+          self.nixosModules.guide-stick
+          { nixpkgs.hostPlatform = "x86_64-linux"; }
+        ];
+      };
     in
     {
       homeModules = {
@@ -270,18 +278,41 @@
       # kernel from the same file, for its CPU.
       packages.x86_64-linux = {
         guide = nixpkgs.legacyPackages.x86_64-linux.callPackage ./modules/guide/package.nix { };
-        stick =
-          (nixpkgs.lib.nixosSystem {
-            modules = [
-              self.nixosModules.guide-stick
-              { nixpkgs.hostPlatform = "x86_64-linux"; }
-            ];
-          }).config.system.build.image;
+        stick = stick.config.system.build.image;
         kernel = import ./modules/kernel/package.nix nixpkgs.legacyPackages.x86_64-linux {
           cpu = null;
           profile = null;
         };
       };
+
+      # A machine's guide, for its own repository to offer as `nix run
+      # .#guide`: the stick's image and the machine's payload built in, so
+      # writing its stick on a host needs nothing more than plugging one in.
+      # The host is an x86-64 Linux machine; a Mac's guide is to come.
+      lib.guide =
+        {
+          # The machine's configuration, nixosSystem's config.
+          config,
+          # Its YubiKeys by the names the person knows them by.
+          yubikeys,
+          # The account the person signs in with, when it has no greeter
+          # to name it.
+          account ? null,
+        }:
+        let
+          pkgs = nixpkgs.legacyPackages.x86_64-linux;
+          guide = pkgs.callPackage ./modules/guide/package.nix { };
+          payload = pkgs.callPackage ./modules/guide/payload.nix { } { inherit config yubikeys account; };
+          image = "${stick.config.system.build.image}/${stick.config.image.filePath}";
+        in
+        pkgs.runCommand "guide-${config.networking.hostName}"
+          {
+            nativeBuildInputs = [ pkgs.makeBinaryWrapper ];
+            meta.mainProgram = "guide";
+          }
+          ''
+            makeBinaryWrapper ${pkgs.lib.getExe guide} $out/bin/guide --add-flags "host ${image} --install ${payload}"
+          '';
 
       formatter = forEachSystem (pkgs: (treefmt pkgs).config.build.wrapper);
       # The tools for working on core's own programs, the disk guard and
