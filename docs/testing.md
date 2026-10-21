@@ -134,6 +134,7 @@ kernel guide][2] says what that catches.
 | `kernel-settings-hold`            | the kernel's patches apply and every setting holds        |
 | `kernel-settings-hold-<model>`    | the same for the kernel that hardware builds              |
 | `speaker-amps-have-every-dai-named` | the XPS 14's SoundWire machine driver names only DAIs its amplifiers register |
+| `bluetooth-keeps-its-power-limits` | the XPS 14's kernel reads Bluetooth's revision 2 SAR table and antenna gain setting from UEFI |
 | `the-panel-offers-variable-refresh` | the XPS 14's kernel reads the panel's refresh range from DisplayID's Adaptive Sync block |
 | `the-panel-knows-its-luminance` | the XPS 14's kernel reads the panel's luminance range from DisplayID's Display Parameters block |
 | `platform-profiles-reach-the-legacy-file` | every profile Dell's driver offers, the XPS 14's SoC slider takes too |

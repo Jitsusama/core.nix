@@ -203,6 +203,20 @@ in
       patch = ./dm-crypt-status-after-last-reference.patch;
     }
     {
+      # This chip's Bluetooth power limits come as a revision 2 table, which
+      # 7.2 rejects. Mainline's support for it, from 7.3.
+      name = "bluetooth-sar-rev2";
+      patch = ./bluetooth-sar-rev2.patch;
+    }
+    {
+      # The firmware gives Bluetooth's power limits and antenna gain setting
+      # only where Windows looks, not in ACPI where the kernel does, so
+      # Bluetooth ran without them. Written here; the patch says why. It
+      # needs the revision 2 patch before it.
+      name = "bluetooth-uefi-power-tables";
+      patch = ./bluetooth-uefi-power-tables.patch;
+    }
+    {
       # A suspend before an amplifier first attaches skipped a step its
       # resume always undoes, unbalancing its power management. Mainline's
       # fix, backported to 7.2's names.
