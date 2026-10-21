@@ -52,6 +52,9 @@ let
       system = "${system}";
       account = account';
       yubikeys = map (key: key.name) keys;
+      # How a person reaches its firmware, as its hardware module says.
+      start_from_stick = config.jitsusama.firmware.startFromStick or null;
+      clear_secure_boot_keys = config.jitsusama.firmware.clearSecureBootKeys or null;
       recipients =
         if recipients == [ ] || builtins.length recipients == builtins.length keys then
           recipients

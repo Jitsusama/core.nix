@@ -82,6 +82,11 @@ in
   # PS/2 keyboard.
   jitsusama.keyboard.builtIn = [ "0001:0001" ];
 
+  # Its firmware's boot menu and setup, for the guide to say when a stick is
+  # written for it.
+  jitsusama.firmware.startFromStick = "Press F12 as it starts, and pick the stick from the boot menu.";
+  jitsusama.firmware.clearSecureBootKeys = "Press F2 as it starts. Under Secure Boot, Expert Key Management, choose custom mode and delete all keys, then turn Secure Boot on.";
+
   # The Arc GPU. Its driver takes the firmware framebuffer's card away as it
   # starts, and has its own ready about 1.6 s later, so for that long there's
   # no card at all.

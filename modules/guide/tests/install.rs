@@ -39,6 +39,8 @@ fn target(disk: &str) -> Target {
         account: "alice".into(),
         yubikeys: vec!["the Nano".into(), "the 5C".into()],
         recipients: vec![],
+        start_from_stick: None,
+        clear_secure_boot_keys: None,
     }
 }
 

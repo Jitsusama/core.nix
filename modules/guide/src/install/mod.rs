@@ -61,6 +61,12 @@ pub struct Target {
     /// vault key is sealed to; none means only the passphrase opens it.
     #[serde(default)]
     pub recipients: Vec<String>,
+    /// How a person starts the machine from a stick, and clears its
+    /// firmware's Secure Boot keys, as its hardware module says.
+    #[serde(default)]
+    pub start_from_stick: Option<String>,
+    #[serde(default)]
+    pub clear_secure_boot_keys: Option<String>,
 }
 
 impl Target {

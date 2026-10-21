@@ -229,6 +229,10 @@ fn host(image: &str, signer: Option<Signer>, payload: Option<Payload>) -> Result
     let machine_name = payload
         .as_ref()
         .map(|payload| payload.target.machine.clone());
+    let next = match &payload {
+        Some(payload) => payload.next(),
+        None => "Start the machine to repair from the stick.".into(),
+    };
     let title = match &machine_name {
         Some(name) => format!("Write {name}'s stick"),
         None => "Write a repair stick".into(),
@@ -254,12 +258,6 @@ fn host(image: &str, signer: Option<Signer>, payload: Option<Payload>) -> Result
     if walk.walk(&mut machine, &mut terminal)? != Ended::Finished {
         return Ok(());
     }
-    let next = match &machine_name {
-        Some(name) => format!(
-            "Take the stick to {name} and start it from the stick. The guide carries on there, and asks for the recovery passphrase first."
-        ),
-        None => "Start the machine to repair from the stick.".into(),
-    };
     walk.card(&mut terminal, "The stick is written", &next, "finish")?;
     Ok(())
 }

@@ -221,3 +221,45 @@ fn passphrases_that_differ_open_nothing() {
         fake.calls
     );
 }
+
+/// A payload of nothing but its target, which is all the card reads.
+fn payload(directory: &Path, target: &str) -> guide::host::Payload {
+    let payload = directory.join("payload");
+    fs::create_dir_all(payload.join("cache")).unwrap();
+    fs::write(payload.join("target.json"), target).unwrap();
+    fs::write(payload.join("layout.sh"), "").unwrap();
+    guide::host::Payload::open(&payload).unwrap()
+}
+
+#[test]
+fn the_last_card_says_how_to_reach_the_machines_firmware() {
+    let directory = Scratch::new("host-card");
+    let surface = payload(
+        &directory,
+        r#"{"machine":"laptop","disk":"/dev/x","disk_name":"system","install_key":"/run/guide/install-key","layout_packages":[],"system":"/nix/store/abc","account":"alice","yubikeys":["the Nano"],"recipients":["age1fido2-hmac1x"],"start_from_stick":"Hold volume-down, press and release power.","clear_secure_boot_keys":"Hold volume-up; set Secure Boot to None."}"#,
+    );
+    let said = surface.next();
+    // Carrying no keys, the firmware is cleared first, then started.
+    let clear = said.find("Hold volume-up").expect("how to clear the keys");
+    let start = said
+        .find("Hold volume-down")
+        .expect("how to start from the stick");
+    assert!(clear < start, "{said}");
+    assert!(
+        said.ends_with("asks for a YubiKey's PIN, or the recovery passphrase first."),
+        "{said}"
+    );
+
+    // Carrying them, nothing is cleared.
+    let keys = directory.join("sbctl");
+    fs::create_dir_all(keys.join("keys/db")).unwrap();
+    for file in ["GUID", "keys/db/db.key", "keys/db/db.pem"] {
+        fs::write(keys.join(file), "").unwrap();
+    }
+    let carrying = surface.with_secure_boot_keys(&keys).unwrap();
+    assert!(
+        !carrying.next().contains("Hold volume-up"),
+        "{}",
+        carrying.next()
+    );
+}
