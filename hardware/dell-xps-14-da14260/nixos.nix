@@ -375,11 +375,13 @@ in
     # thermal mode isn't one of them: it's the platform profile the power
     # profile follows (modules/power-profiles-daemon), so it's balanced's
     # Optimized after a boot on battery, and the charger puts back the
-    # Performance the power limits were measured in.
+    # Performance the power limits were measured in. Nor is the keyboard
+    # light: KeyboardIllumination is the level the light key sets, which
+    # dell::kbd_backlight writes straight through (1 reads back Dim, 2
+    # Bright), and systemd-backlight puts the last one back at each boot.
     # The memory's frequency drops when it's idle, which the battery
     # needs more than the memory's latency needs it pinned.
     IntelSagv = "Enabled";
-    KeyboardIllumination = "Dim";
     # No pause at power-on over a charger it thinks too weak.
     PowerWarn = "Disabled";
     # A bad BIOS can be rolled back.
