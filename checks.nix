@@ -1416,6 +1416,21 @@ in
         touch $out
       '';
 
+  # The splash keeps systemd's lines off the console, so nothing shows
+  # between the firmware's logo and the splash, which a test machine can't
+  # show: its kernel writes everything to the screen, and systemd writes to
+  # its serial line. A machine without the splash keeps the lines.
+  the-splash-keeps-systemd-quiet =
+    let
+      lines =
+        modules:
+        !lib.elem "systemd.show_status=error"
+          (bareNixos ([ self.nixosModules.graphical ] ++ modules)).config.boot.kernelParams;
+    in
+    holds "the-splash-keeps-systemd-quiet"
+      "systemd writes its lines over the splash, or a machine without one lost them."
+      (!lines [ { jitsusama.login.account = "someone"; } ] && lines [ ]);
+
   # A failed boot's shell says what stopped it, as tests/boot-stopped.sh
   # says, with stand-ins for systemctl and journalctl. The boot test shows it
   # on a real console, in minutes; this holds what it says, in seconds.
@@ -3943,6 +3958,22 @@ in
       (pkgs.callPackage ./modules/backlight/package.nix { }).overrideAttrs
         (old: {
           pname = "backlight-passes-clippy";
+          nativeBuildInputs = old.nativeBuildInputs ++ [ pkgs.clippy ];
+          buildPhase = ''
+            cargo clippy --all-targets --offline -- -D warnings
+          '';
+          doCheck = false;
+          installPhase = ''
+            touch $out
+          '';
+        });
+
+    # clippy finds nothing in what tells Plymouth of a slow boot or
+    # shutdown, its tests included.
+    plymouth-waits-passes-clippy =
+      (pkgs.callPackage ./modules/plymouth/waits/package.nix { }).overrideAttrs
+        (old: {
+          pname = "plymouth-waits-passes-clippy";
           nativeBuildInputs = old.nativeBuildInputs ++ [ pkgs.clippy ];
           buildPhase = ''
             cargo clippy --all-targets --offline -- -D warnings

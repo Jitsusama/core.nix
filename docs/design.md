@@ -820,6 +820,22 @@ as an exception with the reason.
 
 What each studio round settled, newest first, with the reason.
 
+- **The splash says what it waits on** (2026-10-21, judged against the
+  taste without a round). A boot or shutdown that stalled said starting or
+  shutting down and nothing more, and a restart's screen froze when its last
+  stage began. Once a job has run three seconds, the line under those words
+  names it, in the body face and in the description systemd gives it:
+  waiting on Docker Application Container Engine. One is named at a time,
+  the longest running, until it ends, so the line never flits; a job that
+  ends in time is never named, so a calm boot shows nothing new. A
+  shutdown's last stage says what it's doing in the theme's words, sent as
+  keywords. The line sits in the prompt's place, a step under the words it
+  adds to, and goes while something is asked. Live words are lifted as the
+  pictures' are, the wide shadow drawn once as a halo stretched to their
+  width, since Plymouth can't blur, so the boot's own messages now share the
+  body face and the lift. systemd's status lines are kept off the console,
+  which they woke over the firmware's logo before the splash could draw.
+
 - **A failed boot says what stopped it** (2026-10-18, judged against the
   taste without a round). A boot that drops to the emergency shell, the
   initrd's or the system's, showed systemd's status lines and sulogin's

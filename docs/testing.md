@@ -162,6 +162,8 @@ kernel guide][2] says what that catches.
 | `network-revive-passes-clippy`    | clippy finds nothing in network-revive or its tests       |
 | `ir-camera-passes-clippy`         | clippy finds nothing in ir-camera or its tests            |
 | `record-window-passes-clippy`     | clippy finds nothing in record-window or its tests        |
+| `plymouth-waits-passes-clippy`    | clippy finds nothing in plymouth-waits or its tests       |
+| `the-splash-keeps-systemd-quiet`  | with the splash, systemd writes only failures to the console |
 | `spend-watch-accepts-its-configuration` | spend-watch passes its tests and accepts the config an account gets, a feed and a cap among it |
 | `spend-watch-passes-clippy`       | clippy finds nothing in spend-watch or its tests          |
 
@@ -173,6 +175,7 @@ a running system shows.
 | Check                             | Proves                                                  |
 | --------------------------------- | ------------------------------------------------------- |
 | `vm-secure-boot-installs`         | the whole install works, and the disk opens only for it |
+| `vm-boot-asks-in-the-theme`       | the splash asks for the disk, names a slow job, and lasts a restart to its end |
 | `vm-commits-are-signed`           | commits are signed with the TPM's keys, PINs asked for  |
 | `vm-passkeys-come-from-the-tpm`   | passkeys and security keys are made in the TPM, each after a yes |
 | `vm-keyring-opens-without-asking` | the keyring opens with its TPM-sealed password, unasked |
