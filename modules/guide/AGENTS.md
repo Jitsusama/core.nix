@@ -71,9 +71,13 @@ driven on; the installed machine's steps come later.
   the stick's disk tools, its volume made with a key held only in memory.
   Each YubiKey is enrolled alone, told apart from the others by a silent
   assertion, and proven by opening the disk; then a recovery key, typed
-  back and proven. The Secure Boot keys are made where the install signs
-  with them, the system is copied in from the vault with no network, and
-  the key held in memory comes off the disk last. Every step stays done
+  back and proven. The Secure Boot keys are put back from the vault when
+  the stick carries the ones the firmware's db already trusts, so a
+  reinstall needs no firmware visit, and otherwise made where the install
+  signs with them, which only a firmware in setup mode will take. The
+  system is copied in from the vault with no network, and the key held in
+  memory comes off the disk last. A host gives the stick the keys with
+  `--secure-boot-keys`, sbctl's directory, and signs the stick with them. Every step stays done
   through the steps after it, since the journey runs the first that isn't.
 - **The installed machine.** Once it boots its own disk, the guide runs
   there as the person, from core's `guide` NixOS module, which also writes

@@ -26,6 +26,9 @@ pub struct Payload {
     pub target: Target,
     /// The cache's files, relative to it.
     cached: Vec<PathBuf>,
+    /// sbctl's directory of the machine's Secure Boot keys, and its files,
+    /// when the stick carries them, so a reinstall needs no firmware visit.
+    secure_boot: Option<(PathBuf, Vec<PathBuf>)>,
 }
 
 /// Every file under a directory, links followed, relative to it, in a
@@ -59,7 +62,27 @@ impl Payload {
             cached: files_under(&root.join("cache"))?,
             root: root.to_path_buf(),
             target,
+            secure_boot: None,
         })
+    }
+
+    /// The machine's Secure Boot keys too, from sbctl's directory (the
+    /// machine's /var/lib/sbctl, or a rescue bundle opened into one).
+    pub fn with_secure_boot_keys(mut self, directory: &Path) -> Result<Payload, Fault> {
+        let files = files_under(directory)?;
+        for needed in ["GUID", "keys/db/db.key", "keys/db/db.pem"] {
+            if !files.iter().any(|file| file == Path::new(needed)) {
+                return Err(Fault::Blocked {
+                    step: "write-stick",
+                    why: format!(
+                        "{} has no {needed}, so it isn't sbctl's directory",
+                        directory.display()
+                    ),
+                });
+            }
+        }
+        self.secure_boot = Some((directory.to_path_buf(), files));
+        Ok(self)
     }
 
     /// Every file the vault gets, by its path there and where it's read
@@ -74,6 +97,14 @@ impl Payload {
                 format!("{SYSTEM_CACHE}/{}", relative.display()),
                 self.root.join("cache").join(relative),
             ));
+        }
+        if let Some((directory, keys)) = &self.secure_boot {
+            for relative in keys {
+                files.push((
+                    format!("sbctl/{}", relative.display()),
+                    directory.join(relative),
+                ));
+            }
         }
         files
     }

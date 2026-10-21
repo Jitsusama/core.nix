@@ -28,8 +28,8 @@ use guide::vault::store::{Fat, Store};
 use guide::{Fault, Journal, Journey, Machine, Place, Secret, Tool};
 
 const USAGE: &str = "usage: guide observe | guide tools | guide install | guide installed
-       guide host IMAGE [--sign-with DIRECTORY] [--install PAYLOAD]
-       guide write-stick IMAGE FILE [--sign-with DIRECTORY] [--install PAYLOAD]";
+       guide host IMAGE [--sign-with DIRECTORY] [--install PAYLOAD [--secure-boot-keys DIRECTORY]]
+       guide write-stick IMAGE FILE [--sign-with DIRECTORY] [--install PAYLOAD [--secure-boot-keys DIRECTORY]]";
 
 fn main() -> ExitCode {
     // age finds its plugins on PATH and takes no other, so the guide's own
@@ -47,23 +47,21 @@ fn main() -> ExitCode {
         ["tools"] => tools(),
         ["install"] => reported(install()),
         ["installed"] => reported(installed()),
-        ["host", image, ref options @ ..] => match written(options) {
-            Some((keys, payload)) => reported(
-                keys.map(|keys| Signer::open(Path::new(keys)))
-                    .transpose()
-                    .and_then(|signer| host(image, signer, payload)),
+        ["host", image, ref options @ ..] => match Written::parse(options) {
+            Some(written) => reported(
+                written
+                    .open()
+                    .and_then(|(signer, payload)| host(image, signer, payload)),
             ),
             None => {
                 eprintln!("{USAGE}");
                 ExitCode::from(2)
             }
         },
-        ["write-stick", image, target, ref options @ ..] => match written(options) {
-            Some((keys, payload)) => reported(
-                keys.map(|keys| Signer::open(Path::new(keys)))
-                    .transpose()
-                    .and_then(|signer| write_stick(image, target, signer.as_ref(), payload)),
-            ),
+        ["write-stick", image, target, ref options @ ..] => match Written::parse(options) {
+            Some(written) => reported(written.open().and_then(|(signer, payload)| {
+                write_stick(image, target, signer.as_ref(), payload)
+            })),
             None => {
                 eprintln!("{USAGE}");
                 ExitCode::from(2)
@@ -76,19 +74,52 @@ fn main() -> ExitCode {
     }
 }
 
-/// write-stick's options: the db key directory and the payload, each
-/// given at most once.
-fn written<'a>(mut options: &[&'a str]) -> Option<(Option<&'a str>, Option<&'a str>)> {
-    let (mut keys, mut payload) = (None, None);
-    while let [option, value, rest @ ..] = options {
-        match *option {
-            "--sign-with" if keys.is_none() => keys = Some(*value),
-            "--install" if payload.is_none() => payload = Some(*value),
-            _ => return None,
+/// What a stick is written with, each given at most once: the db key
+/// directory its boot program is signed with, the machine's payload, and
+/// sbctl's directory of the machine's Secure Boot keys, which the stick
+/// carries for a reinstall and signs with when no other key is named.
+#[derive(Default)]
+struct Written<'a> {
+    sign_with: Option<&'a str>,
+    install: Option<&'a str>,
+    secure_boot_keys: Option<&'a str>,
+}
+
+impl<'a> Written<'a> {
+    fn parse(mut options: &[&'a str]) -> Option<Written<'a>> {
+        let mut written = Written::default();
+        while let [option, value, rest @ ..] = options {
+            let slot = match *option {
+                "--sign-with" => &mut written.sign_with,
+                "--install" => &mut written.install,
+                "--secure-boot-keys" => &mut written.secure_boot_keys,
+                _ => return None,
+            };
+            if slot.replace(*value).is_some() {
+                return None;
+            }
+            options = rest;
         }
-        options = rest;
+        (options.is_empty() && (written.secure_boot_keys.is_none() || written.install.is_some()))
+            .then_some(written)
     }
-    options.is_empty().then_some((keys, payload))
+
+    fn open(&self) -> Result<(Option<Signer>, Option<Payload>), Fault> {
+        let keys = self.secure_boot_keys.map(Path::new);
+        let signer = match (self.sign_with, keys) {
+            (Some(directory), _) => Some(Signer::open(Path::new(directory))?),
+            (None, Some(keys)) => Some(Signer::open(&keys.join("keys/db"))?),
+            (None, None) => None,
+        };
+        let payload = match (self.install, keys) {
+            (Some(payload), Some(keys)) => {
+                Some(Payload::open(Path::new(payload))?.with_secure_boot_keys(keys)?)
+            }
+            (Some(payload), None) => Some(Payload::open(Path::new(payload))?),
+            (None, _) => None,
+        };
+        Ok((signer, payload))
+    }
 }
 
 fn reported(result: Result<(), Fault>) -> ExitCode {
@@ -125,7 +156,7 @@ fn write_stick(
     image: &str,
     target: &str,
     signer: Option<&Signer>,
-    payload: Option<&str>,
+    payload: Option<Payload>,
 ) -> Result<(), Fault> {
     let kept = |why: std::io::Error| Fault::Unkept {
         path: target.into(),
@@ -142,9 +173,6 @@ fn write_stick(
         .write(true)
         .open(target)
         .map_err(kept)?;
-    let payload = payload
-        .map(|payload| Payload::open(Path::new(payload)))
-        .transpose()?;
     let passphrase = payload.as_ref().map(|_| passphrase()).transpose()?;
     let vault = host::write(
         Path::new(image),
@@ -188,7 +216,7 @@ fn host_log() -> Option<File> {
 
 /// The host's journey: a stick written for a machine, or a repair stick,
 /// on the screen of whatever machine writes it, as the person, not root.
-fn host(image: &str, signer: Option<Signer>, payload: Option<&str>) -> Result<(), Fault> {
+fn host(image: &str, signer: Option<Signer>, payload: Option<Payload>) -> Result<(), Fault> {
     // SAFETY: getuid can't fail and touches no memory.
     if unsafe { libc::getuid() } == 0 {
         return Err(Fault::Blocked {
@@ -197,9 +225,6 @@ fn host(image: &str, signer: Option<Signer>, payload: Option<&str>) -> Result<()
                 .into(),
         });
     }
-    let payload = payload
-        .map(|payload| Payload::open(Path::new(payload)))
-        .transpose()?;
     let machine_name = payload
         .as_ref()
         .map(|payload| payload.target.machine.clone());

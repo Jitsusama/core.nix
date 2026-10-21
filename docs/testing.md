@@ -176,7 +176,7 @@ a running system shows.
 | Check                             | Proves                                                  |
 | --------------------------------- | ------------------------------------------------------- |
 | `vm-secure-boot-installs`         | the whole install works, and the disk opens only for it |
-| `vm-guide-installs`               | the guide, driven by its keys, installs a machine from its stick: two keys and a recovery key, Secure Boot enforcing with its keys, then seals the disk to the TPM with a PIN, which opens it at the next boot |
+| `vm-guide-installs`               | the guide, driven by its keys, installs a machine from its stick: two keys and a recovery key, Secure Boot enforcing with its keys, then seals the disk to the TPM with a PIN, which opens it at the next boot; then reinstalls from a stick carrying the machine's own keys, the firmware still enforcing them |
 | `vm-guide-writes-a-stick`         | the guide writes a stick as the person, through UDisks2, unmounting what was mounted from it |
 | `vm-guide-opens-the-vault`        | a stick's vault sealed to a FIDO2 key opens with its PIN, and without it by the passphrase |
 | `vm-commits-are-signed`           | commits are signed with the TPM's keys, PINs asked for  |

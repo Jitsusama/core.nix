@@ -14,6 +14,8 @@ that changes what it prints fails a test rather than a person's install.
 | `lsblk.json`                   | `lsblk -J -O -b`, the short form of the guide's `--json --output-all --bytes` |
 | `sbctl-status.json`            | `sbctl status --json`                             |
 | `sbctl-verify.json`            | `sbctl verify --json`, as root                    |
+| `efivar-db-<guid>`             | the firmware's db, which trusts its sbctl db certificate |
+| `sbctl-db.pem`                 | that certificate, `/var/lib/sbctl/keys/db/db.pem`, on the Surface |
 | `tpm2-properties-<kind>.txt`   | `tpm2_getcap properties-<kind>`, which prints the same with the guide's `-T device:/dev/tpmrm0` |
 
 A missing file is one the machine doesn't have: the Surface's firmware keeps

@@ -12,6 +12,7 @@ use std::path::PathBuf;
 use guide::fake::Fake;
 use guide::install::disk::{ConfirmDisk, LayOutDisk, WipeInstallKey};
 use guide::install::keys::EnrolYubikey;
+use guide::install::system::SecureBootKeys;
 use guide::install::{INSTALL_KEY, TARGET, Target, VAULT_KEY};
 use guide::vault::store::Directory;
 use guide::vault::{Manifest, Packer, VaultKey};
@@ -43,12 +44,20 @@ fn target(disk: &str) -> Target {
 
 /// A fake machine on the stick, its vault open and holding this target.
 fn stick(directory: &std::path::Path, target: &Target) -> Fake {
+    stick_carrying(directory, target, &[])
+}
+
+/// The same, its vault holding these files too.
+fn stick_carrying(directory: &std::path::Path, target: &Target, files: &[(&str, &[u8])]) -> Fake {
     let mut store = Directory::new(PathBuf::from(&directory));
     let key = VaultKey::generate();
     let mut packer = Packer::new(&mut store, &key);
     packer
         .add(TARGET, serde_json::to_vec(target).unwrap().as_slice())
         .unwrap();
+    for (path, bytes) in files {
+        packer.add(path, *bytes).unwrap();
+    }
     packer
         .finish(&Manifest {
             format: 1,
@@ -298,4 +307,119 @@ fn the_install_key_comes_off_only_once_every_key_and_the_recovery_key_open_the_d
         WipeInstallKey { yubikeys: 2 }.observe(&mut fake).unwrap(),
         Standing::Done { .. }
     ));
+}
+
+const GLOBAL: &str = "8be4df61-93ca-11d2-aa0d-00e098032b8c";
+const DB: &str = "/sys/firmware/efi/efivars/db-d719b2cb-3d3a-4596-a3bc-dad00e67656f";
+const SBCTL: &str = "/mnt/var/lib/sbctl";
+
+macro_rules! hardware {
+    ($machine:literal, $file:literal) => {
+        include_bytes!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/fixtures/",
+            $machine,
+            "/",
+            $file
+        ))
+    };
+}
+
+/// The Surface's firmware as it stands: user mode, enforcing with its own
+/// keys, and the db that trusts them.
+fn surface_firmware(fake: &mut Fake, db: &[u8]) {
+    fake.file(
+        &format!("/sys/firmware/efi/efivars/SecureBoot-{GLOBAL}"),
+        hardware!(
+            "microsoft-surface-laptop-4-1958",
+            "efivar-SecureBoot-8be4df61-93ca-11d2-aa0d-00e098032b8c"
+        ),
+    )
+    .file(
+        &format!("/sys/firmware/efi/efivars/SetupMode-{GLOBAL}"),
+        hardware!(
+            "microsoft-surface-laptop-4-1958",
+            "efivar-SetupMode-8be4df61-93ca-11d2-aa0d-00e098032b8c"
+        ),
+    )
+    .no_file(&format!("/sys/firmware/efi/efivars/AuditMode-{GLOBAL}"))
+    .no_file(&format!("/sys/firmware/efi/efivars/DeployedMode-{GLOBAL}"))
+    .file(DB, db)
+    .no_file(&format!("{SBCTL}/keys/db/db.key"))
+    .no_file(&format!("{SBCTL}/GUID"));
+}
+
+const SURFACE_DB: &[u8] = hardware!(
+    "microsoft-surface-laptop-4-1958",
+    "efivar-db-d719b2cb-3d3a-4596-a3bc-dad00e67656f"
+);
+const SURFACE_CERT: &[u8] = hardware!("microsoft-surface-laptop-4-1958", "sbctl-db.pem");
+
+#[test]
+fn the_keys_the_firmware_trusts_are_put_back_with_no_firmware_visit() {
+    let target = target("/dev/disk/by-id/virtio-root");
+    let scratch = Scratch::new("install-keys-back");
+    let carried: &[(&str, &[u8])] = &[
+        ("sbctl/GUID", b"22f0175f-c166-49d2-96ab-c61575cddac5"),
+        ("sbctl/keys/db/db.key", b"the db key"),
+        ("sbctl/keys/db/db.pem", SURFACE_CERT),
+    ];
+    let mut fake = stick_carrying(&scratch, &target, carried);
+    surface_firmware(&mut fake, SURFACE_DB);
+    assert!(matches!(
+        SecureBootKeys.observe(&mut fake).unwrap(),
+        Standing::Needed { .. }
+    ));
+    SecureBootKeys.run(&mut fake, &Answers::new()).unwrap();
+    assert_eq!(
+        fake.holds(&format!("{SBCTL}/keys/db/db.key")),
+        Some(&b"the db key"[..])
+    );
+    assert_eq!(
+        fake.holds(&format!("{SBCTL}/GUID")),
+        Some(&b"22f0175f-c166-49d2-96ab-c61575cddac5"[..])
+    );
+    assert!(
+        !fake.calls.iter().any(|call| call.starts_with("sbctl")),
+        "{:#?}",
+        fake.calls
+    );
+}
+
+#[test]
+fn keys_the_firmware_doesnt_trust_are_refused() {
+    let target = target("/dev/disk/by-id/virtio-root");
+    let scratch = Scratch::new("install-keys-other");
+    let carried: &[(&str, &[u8])] = &[
+        ("sbctl/GUID", b"guid"),
+        ("sbctl/keys/db/db.key", b"key"),
+        ("sbctl/keys/db/db.pem", SURFACE_CERT),
+    ];
+    let mut fake = stick_carrying(&scratch, &target, carried);
+    // The Surface's keys, but the XPS 14's db.
+    surface_firmware(
+        &mut fake,
+        hardware!(
+            "dell-xps-14-da14260",
+            "efivar-db-d719b2cb-3d3a-4596-a3bc-dad00e67656f"
+        ),
+    );
+    let standing = SecureBootKeys.observe(&mut fake).unwrap();
+    assert!(
+        matches!(&standing, Standing::Blocked { why, .. } if why.contains("trusts other keys")),
+        "{standing:?}"
+    );
+}
+
+#[test]
+fn with_no_keys_carried_a_firmware_in_user_mode_has_to_be_cleared_first() {
+    let target = target("/dev/disk/by-id/virtio-root");
+    let scratch = Scratch::new("install-keys-none");
+    let mut fake = stick(&scratch, &target);
+    surface_firmware(&mut fake, SURFACE_DB);
+    let standing = SecureBootKeys.observe(&mut fake).unwrap();
+    assert!(
+        matches!(&standing, Standing::Blocked { why, .. } if why.contains("won't take new keys")),
+        "{standing:?}"
+    );
 }

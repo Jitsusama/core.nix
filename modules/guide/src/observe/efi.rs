@@ -9,6 +9,60 @@ use crate::{Fault, Machine};
 
 /// The vendor GUID UEFI keeps its global variables under.
 const GLOBAL: &str = "8be4df61-93ca-11d2-aa0d-00e098032b8c";
+/// Where the firmware keeps db, the keys it trusts boot files from.
+const IMAGE_SECURITY: &str = "d719b2cb-3d3a-4596-a3bc-dad00e67656f";
+/// EFI_CERT_X509_GUID, as it's laid out in a signature list.
+const X509: [u8; 16] = [
+    0xa1, 0x59, 0xc0, 0xa5, 0xe4, 0x94, 0xa7, 0x4a, 0x87, 0xb5, 0xab, 0x15, 0x5c, 0x2b, 0xf0, 0x72,
+];
+
+/// The X.509 certificates the firmware's db trusts, each as DER, or none
+/// when it keeps no db, as in setup mode.
+pub fn db_certificates(machine: &mut dyn Machine) -> Result<Vec<Vec<u8>>, Fault> {
+    match machine.read(&format!("/sys/firmware/efi/efivars/db-{IMAGE_SECURITY}"))? {
+        Some(bytes) => certificates(&bytes),
+        None => Ok(vec![]),
+    }
+}
+
+/// The X.509 certificates in a signature database variable as efivarfs
+/// gives it: four bytes of attributes, then EFI_SIGNATURE_LISTs, each a
+/// type, its sizes, a header, and signatures that are an owner GUID and
+/// the data (UEFI 2.10, section 32.4.1).
+pub fn certificates(variable: &[u8]) -> Result<Vec<Vec<u8>>, Fault> {
+    let unreadable = |why: &str| Fault::unreadable("the firmware's db", why);
+    let u32_at = |bytes: &[u8], at: usize| -> Result<usize, Fault> {
+        bytes
+            .get(at..at + 4)
+            .map(|b| u32::from_le_bytes(b.try_into().expect("four bytes")) as usize)
+            .ok_or_else(|| unreadable("it ends inside a signature list's header"))
+    };
+    let mut found = vec![];
+    let mut rest = variable
+        .get(4..)
+        .ok_or_else(|| unreadable("it has no attributes"))?;
+    while !rest.is_empty() {
+        let list = u32_at(rest, 16)?;
+        let header = u32_at(rest, 20)?;
+        let size = u32_at(rest, 24)?;
+        if list < 28 + header || list > rest.len() || size <= 16 {
+            return Err(unreadable("a signature list's sizes don't fit it"));
+        }
+        if rest[..16] == X509 {
+            let signatures = &rest[28 + header..list];
+            if !signatures.len().is_multiple_of(size) {
+                return Err(unreadable("a signature list doesn't hold whole signatures"));
+            }
+            found.extend(
+                signatures
+                    .chunks(size)
+                    .map(|signature| signature[16..].to_vec()),
+            );
+        }
+        rest = &rest[list..];
+    }
+    Ok(found)
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SecureBoot {
@@ -180,5 +234,27 @@ mod tests {
             panic!("refused")
         };
         assert_eq!(what, "the firmware's SecureBoot");
+    }
+
+    #[test]
+    fn db_holds_the_certificate_sbctl_made_for_the_machine() {
+        let db =
+            std::fs::read(format!("{}/efivar-db-{IMAGE_SECURITY}", fixtures::SURFACE)).unwrap();
+        let pem = std::fs::read_to_string(format!("{}/sbctl-db.pem", fixtures::SURFACE)).unwrap();
+        let (_, der) = rsa::pkcs8::der::pem::decode_vec(pem.as_bytes()).unwrap();
+        assert_eq!(certificates(&db).unwrap(), [der]);
+        // The XPS 14 holds one of its own, and not the Surface's.
+        let xps = std::fs::read(format!("{}/efivar-db-{IMAGE_SECURITY}", fixtures::XPS)).unwrap();
+        let theirs = certificates(&xps).unwrap();
+        assert_eq!(theirs.len(), 1);
+        assert_ne!(theirs, certificates(&db).unwrap());
+    }
+
+    #[test]
+    fn a_signature_list_that_overruns_is_refused() {
+        let mut db =
+            std::fs::read(format!("{}/efivar-db-{IMAGE_SECURITY}", fixtures::SURFACE)).unwrap();
+        db.truncate(db.len() - 1);
+        assert!(certificates(&db).is_err());
     }
 }

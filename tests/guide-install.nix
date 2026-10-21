@@ -179,7 +179,7 @@ pkgs.testers.runNixOSTest {
           '';
     in
     ''
-      import json, os, re, shutil, subprocess, tempfile
+      import base64, io, json, os, re, shutil, subprocess, tarfile, tempfile
 
       keys = tempfile.mkdtemp()
       for name in ["nano", "fivec"]:
@@ -348,5 +348,63 @@ pkgs.testers.runNixOSTest {
           # that, so only the TPM's slot could have opened the disk.
           prompts = re.findall(r"Please enter [^:(]*:", machine.get_console_log()[before:])
           t.assertEqual(prompts, ["Please enter LUKS2 token PIN:"])
+
+      with subtest("a stick carrying the machine's own Secure Boot keys is written on a host"):
+          # The keys as the machine keeps them, taken off it as a rescue
+          # bundle would carry them.
+          bundle = tempfile.mkdtemp()
+          archive = base64.b64decode(machine.succeed("tar -C /var/lib/sbctl -c . | base64 -w0"))
+          tarfile.open(fileobj=io.BytesIO(archive)).extractall(bundle, filter="data")
+          owner = open(f"{bundle}/GUID").read().strip()
+          again = os.path.join(tempfile.mkdtemp(), "reinstall.raw")
+          with open(again, "wb") as stick_file:
+              stick_file.truncate(os.path.getsize("${written}/stick.raw"))
+          subprocess.run(
+              ["${guide}/bin/guide", "write-stick", "${image}", again, "--install", "${payload}", "--secure-boot-keys", bundle],
+              input=${builtins.toJSON passphrase}.encode() + b"\n", check=True,
+          )
+          reinstall = tempfile.NamedTemporaryFile(suffix=".qcow2")
+          subprocess.run(["${qemu}/bin/qemu-img", "create", "-f", "qcow2", "-b", again, "-F", "raw", reinstall.name], check=True)
+          machine.shutdown()
+          os.environ["STICK_IMAGE"] = reinstall.name
+
+      with subtest("the firmware boots it, enforcing, and the guide reinstalls with the keys put back"):
+          machine.start(allow_reboot=True)
+          on_screen("Check the keyboard types what you mean")
+          type("keyboard")
+          on_screen("recovery passphrase")
+          type(${builtins.toJSON passphrase})
+          on_screen("Confirm the disk to wipe")
+          type("machine")
+          for name, state in [("the Nano", "nano"), ("the 5C", "fivec")]:
+              on_screen(f"Plug in {name}", timeout=300)
+              plug(state)
+              type("")
+              on_screen(f"{name}'s PIN")
+              type("${pin}")
+          on_screen("Keep the recovery key", timeout=300)
+          (key,) = re.findall(r"(?:[a-z]{8}-){7}[a-z]{8}", "".join(screen().split()))
+          type(key)
+          on_screen("a password for alice", timeout=1800)
+          type(${builtins.toJSON password})
+          on_screen("the same password again")
+          type(${builtins.toJSON password})
+          on_screen("shut down", timeout=300)
+          machine.succeed(f"grep -qx {owner} /mnt/var/lib/sbctl/GUID")
+          type("")
+          machine.wait_for_shutdown()
+
+      with subtest("the reinstalled machine enforces with the same keys, the firmware never visited"):
+          os.environ["STICK_IMAGE"] = blank.name
+          machine.start(allow_reboot=True)
+          unlock()
+          machine.connect()
+          machine.wait_for_console_text("Linux version", timeout=300)
+          machine.connected = False
+          unlock()
+          machine.connect()
+          machine.wait_for_unit("multi-user.target")
+          t.assertIn("Secure Boot: enabled (user)", machine.succeed("bootctl status"))
+          t.assertIn(owner, machine.succeed("sbctl status"))
     '';
 }
