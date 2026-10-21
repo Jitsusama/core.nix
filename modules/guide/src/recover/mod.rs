@@ -314,6 +314,117 @@ fn capitalised(text: &str) -> String {
     }
 }
 
+/// The repairs a person chooses from once the machine's disk is open,
+/// with what each says, in the order they're offered.
+pub const REPAIRS: &[&str] = &[
+    "Open a root shell inside it",
+    "Choose which generation it boots next",
+    "Restart",
+];
+
+/// Where the machine's ESP is mounted.
+const ESP: &str = "/mnt/boot";
+
+/// The generations on the machine's ESP, newest first.
+fn generations(machine: &mut dyn Machine) -> Result<Vec<crate::observe::entries::Entry>, Fault> {
+    let mut found: Vec<_> = crate::observe::entries::list_at(machine, ESP)?
+        .into_iter()
+        .filter(|entry| entry.generation.is_some())
+        .collect();
+    found.sort_by_key(|entry| std::cmp::Reverse(entry.generation));
+    Ok(found)
+}
+
+/// The firmware variable systemd-boot reads its default from before
+/// loader.conf, under the Boot Loader Interface's vendor GUID.
+const ENTRY_DEFAULT: &str = "LoaderEntryDefault-4a67b082-0a4c-41cf-b6c7-440b29bb8c4f";
+
+/// An entry's id as the variable holds it: UTF-16, with its terminator.
+fn utf16(text: &str) -> Vec<u8> {
+    text.encode_utf16()
+        .chain(std::iter::once(0))
+        .flat_map(u16::to_le_bytes)
+        .collect()
+}
+
+/// The generation the machine boots next, chosen from those on its ESP,
+/// for a machine whose newest won't start. Nothing is removed: the
+/// firmware's boot default is set, as `bootctl set-default` sets it but
+/// from a stick, where bootctl refuses since systemd-boot didn't boot it,
+/// and the menu still offers the rest.
+pub struct BootGeneration;
+
+impl Step for BootGeneration {
+    fn id(&self) -> &'static str {
+        "boot-generation"
+    }
+
+    fn place(&self) -> Place {
+        Place::Stick
+    }
+
+    fn title(&self) -> &'static str {
+        "Choose which generation boots next"
+    }
+
+    fn observe(&self, machine: &mut dyn Machine) -> Result<Standing, Fault> {
+        let found = generations(machine)?;
+        let set = machine
+            .read(&format!("/sys/firmware/efi/efivars/{ENTRY_DEFAULT}"))?
+            .filter(|stored| stored.len() > 4)
+            .map(|stored| stored[4..].to_vec());
+        if let Some(chosen) = found.iter().find(|entry| {
+            set.as_deref() == Some(utf16(&entry.id).as_slice())
+                && machine.journal().knows(self.id(), &entry.id)
+        }) {
+            return Ok(Standing::Done {
+                evidence: format!(
+                    "it boots generation {} next",
+                    chosen.generation.unwrap_or_default()
+                ),
+            });
+        }
+        if found.is_empty() {
+            return Ok(Standing::Blocked {
+                why: "the machine's ESP holds no generation to boot".into(),
+                remedy: "open a root shell inside it and install its boot loader again".into(),
+            });
+        }
+        Ok(Standing::Needed {
+            asks: vec![Ask::Choose {
+                id: "generation",
+                question: "Which should it boot next? The newest is first.".into(),
+                choices: found
+                    .iter()
+                    .map(|entry| {
+                        let mut said = entry.described();
+                        if entry.default {
+                            said.push_str(", which it boots now");
+                        }
+                        said
+                    })
+                    .collect(),
+            }],
+        })
+    }
+
+    fn run(&self, machine: &mut dyn Machine, answers: &Answers) -> Result<(), Fault> {
+        let Some(Answer::Chosen(at)) = answers.get("generation") else {
+            return Err(Fault::Unanswered {
+                step: self.id(),
+                ask: "generation",
+            });
+        };
+        let found = generations(machine)?;
+        let entry = found.get(*at).ok_or(Fault::Blocked {
+            step: self.id(),
+            why: "that generation isn't on the ESP any more".into(),
+        })?;
+        machine.set_efi_variable(ENTRY_DEFAULT, &utf16(&entry.id))?;
+        machine.journal().record(self.id(), &entry.id)
+    }
+}
+
 /// Every step of recovering, in order.
 pub fn steps() -> Vec<Box<dyn Step>> {
     vec![

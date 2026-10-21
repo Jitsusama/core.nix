@@ -85,9 +85,13 @@ driven on; the installed machine's steps come later.
   before anything is typed, opened with the plugged-in YubiKey's PIN or,
   with none plugged in, the recovery key (never the TPM, whose seal a
   stick's boot doesn't match), every subvolume and the ESP mounted under
-  /mnt, and then a root shell inside it. A repair stick runs this when it
-  boots; `guide recover` runs it from any stick's shell. The repairs the
-  plan lists beyond the shell are still to come.
+  /mnt. Then a choice, back after each: a root shell inside it, or which
+  generation boots next, set in the firmware's `LoaderEntryDefault` as
+  `bootctl set-default` would, since from a stick bootctl refuses. A
+  repair stick runs this when it boots; `guide recover` runs it from any
+  stick's shell. The other repairs the plan lists are still to come.
+- **Choosing.** A choice is a list the arrows move through and Return
+  takes, the cursor mark in the accent on the one the keys are on.
 - **The installed machine.** Once it boots its own disk, the guide runs
   there as the person, from core's `guide` NixOS module, which also writes
   what it reads about the machine to `/etc/guide/machine.json`. It checks

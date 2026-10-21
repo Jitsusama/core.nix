@@ -209,6 +209,14 @@ impl Machine for Fake {
         }))
     }
 
+    fn set_efi_variable(&mut self, name: &str, value: &[u8]) -> Result<(), Fault> {
+        self.calls.push(format!("setting the firmware's {name}"));
+        let mut stored = vec![0x07, 0, 0, 0];
+        stored.extend_from_slice(value);
+        self.file(&format!("/sys/firmware/efi/efivars/{name}"), &stored);
+        Ok(())
+    }
+
     fn remove(&mut self, path: &str) -> Result<(), Fault> {
         self.calls.push(format!("removing {path}"));
         self.no_file(path);

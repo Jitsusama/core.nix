@@ -75,6 +75,11 @@ pub trait Machine {
     /// kept as `write` keeps one.
     fn create(&mut self, path: &str) -> Result<Box<dyn Write + '_>, Fault>;
 
+    /// Sets a firmware variable through efivarfs, its value after the
+    /// attributes systemd gives the boot loader's own: non-volatile, and
+    /// read at boot and at run time.
+    fn set_efi_variable(&mut self, name: &str, value: &[u8]) -> Result<(), Fault>;
+
     /// Takes a file away; one already gone is no fault.
     fn remove(&mut self, path: &str) -> Result<(), Fault>;
 

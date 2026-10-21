@@ -351,13 +351,44 @@ fn recover() -> Result<(), Fault> {
         if walk.walk(&mut machine, &mut terminal)? != Ended::Finished {
             return Ok(());
         }
-        let said = "Press Return for a root shell inside it, where its own tools work: nixos-rebuild, sbctl, systemd-cryptenroll. Leave the shell with exit, then restart.";
-        walk.card(
-            &mut terminal,
-            "The machine's disk is open",
-            said,
-            "open a shell",
-        )?
+        // A repair at a time, back here after each, until the shell or a
+        // restart.
+        loop {
+            let question = "What should be done? A root shell inside it has its own tools: nixos-rebuild, sbctl, systemd-cryptenroll.";
+            match walk.choose(
+                &mut terminal,
+                "The machine's disk is open",
+                question,
+                guide::recover::REPAIRS,
+            )? {
+                Some(0) => break true,
+                Some(1) => {
+                    let repair = Journey::new(vec![Box::new(guide::recover::BootGeneration)])
+                        .map_err(|why| Fault::unreadable("the repair's steps", why))?;
+                    let chosen = Walk {
+                        journey: &repair,
+                        here: Place::Stick,
+                        name: "Recover a machine",
+                        theme: &theme,
+                        log: Some(Path::new(LOG)),
+                        whole: false,
+                        last: Default::default(),
+                    };
+                    if chosen.walk(&mut machine, &mut terminal)? != Ended::Finished {
+                        return Ok(());
+                    }
+                    *walk.last.borrow_mut() = chosen.last.take();
+                }
+                Some(_) => {
+                    machine
+                        .run(Tool::Umount, &["--recursive", install::ROOT])?
+                        .ok()?;
+                    machine.run(Tool::Systemctl, &["reboot"])?.ok()?;
+                    return Ok(());
+                }
+                None => return Ok(()),
+            }
+        }
     };
     // The terminal is given back before the shell takes it.
     if shell {

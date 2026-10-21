@@ -156,8 +156,25 @@ pkgs.testers.runNixOSTest {
           for at in ["/mnt", "/mnt/nix", "/mnt/home", "/mnt/var/log", "/mnt/boot"]:
               machine.succeed(f"findmnt {at}")
           machine.succeed("test -e /mnt/etc/NIXOS")
+          # What bootctl lists from outside the machine, for the guide's
+          # fixtures (qemu-canokey).
+          listed = machine.succeed("bootctl --esp-path=/mnt/boot list --json=short")
+          print("FIXTURE bootctl-list-from-the-stick.json " + listed.replace("\n", "\\n"))
+
+      with subtest("a generation chosen is set to boot next, and the menu comes back"):
+          on_screen("What should be done")
+          machine.send_key("down")
+          type("")
+          on_screen("Which should it boot next")
+          t.assertIn("Generation 1", screen())
+          type("")
+          on_screen("What should be done")
+          t.assertIn("boots generation 1 next", screen())
+          # The firmware's own default, which systemd-boot reads first.
+          machine.succeed("test -e /sys/firmware/efi/efivars/LoaderEntryDefault-4a67b082-0a4c-41cf-b6c7-440b29bb8c4f")
 
       with subtest("Return gives a root shell inside the installed system"):
+          machine.send_key("up")
           type("")
           machine.sleep(3)
           type("cat /etc/hostname > /recovered && nixos-version >> /recovered")

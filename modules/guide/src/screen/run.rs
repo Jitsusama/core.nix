@@ -126,6 +126,7 @@ impl Walk<'_> {
         let mut given: Vec<Option<Answer>> = asks.iter().map(|_| None).collect();
         let mut at = 0;
         let mut typed = Zeroizing::new(String::new());
+        let mut chosen = 0;
         let mut refused: Option<String> = None;
         while at < asks.len() {
             let ask = &asks[at];
@@ -137,12 +138,21 @@ impl Walk<'_> {
                     title: step.title(),
                     ask,
                     typed: &typed,
+                    chosen,
                     refused: refused.as_deref(),
                 },
             )?;
             match io.press()? {
                 Press::Leave => return Ok(None),
-                Press::Char(c) if !matches!(ask, Ask::Act { .. }) => typed.push(c),
+                Press::Char(c) if !matches!(ask, Ask::Act { .. } | Ask::Choose { .. }) => {
+                    typed.push(c)
+                }
+                Press::Up if matches!(ask, Ask::Choose { .. }) => chosen = chosen.saturating_sub(1),
+                Press::Down => {
+                    if let Ask::Choose { choices, .. } = ask {
+                        chosen = (chosen + 1).min(choices.len().saturating_sub(1));
+                    }
+                }
                 Press::Backspace => {
                     typed.pop();
                 }
@@ -150,11 +160,13 @@ impl Walk<'_> {
                     at -= 1;
                     given[at] = None;
                     typed.clear();
+                    chosen = 0;
                     refused = None;
                 }
                 Press::Return => {
                     let answer = match ask {
                         Ask::Act { .. } => Some(Answer::Done),
+                        Ask::Choose { .. } => Some(Answer::Chosen(chosen)),
                         Ask::Secret { .. } if typed.is_empty() => None,
                         Ask::Secret { .. } => Some(Answer::Secret(Secret::new(typed.to_string()))),
                         Ask::TypeBack { expected, .. } if typed.trim() == expected => {
@@ -169,6 +181,7 @@ impl Walk<'_> {
                         given[at] = Some(answer);
                         at += 1;
                         typed.clear();
+                        chosen = 0;
                         refused = None;
                     }
                 }
@@ -180,6 +193,45 @@ impl Walk<'_> {
             answers.give(ask.id(), answer.expect("every ask answered"));
         }
         Ok(Some(answers))
+    }
+
+    /// One of a few choices, asked on its own under a title, the arrows
+    /// moving and Return choosing; none when the person leaves.
+    pub fn choose(
+        &self,
+        io: &mut dyn Io,
+        title: &str,
+        question: &str,
+        choices: &[&str],
+    ) -> Result<Option<usize>, Fault> {
+        let ask = Ask::Choose {
+            id: "choice",
+            question: question.into(),
+            choices: choices.iter().map(|choice| choice.to_string()).collect(),
+        };
+        let mut chosen = 0;
+        loop {
+            let last = self.last.borrow().clone();
+            self.show(
+                io,
+                None,
+                last.as_deref(),
+                Moment::Asking {
+                    title,
+                    ask: &ask,
+                    typed: "",
+                    chosen,
+                    refused: None,
+                },
+            )?;
+            match io.press()? {
+                Press::Up => chosen = chosen.saturating_sub(1),
+                Press::Down => chosen = (chosen + 1).min(choices.len().saturating_sub(1)),
+                Press::Return => return Ok(Some(chosen)),
+                Press::Leave => return Ok(None),
+                _ => {}
+            }
+        }
     }
 
     /// A card for what happens next away from the guide, until Return,

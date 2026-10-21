@@ -42,3 +42,4 @@ stick `/dev/sda`.
 | `lsblk-blank.json`             | `lsblk --json --output-all --bytes`, the machine's disk blank |
 | `lsblk-laid-out.json`          | the same once the machine's layout made its volume and mounted it at /mnt |
 | `fido2-token-L.txt`            | `fido2-token -L`, one canokey plugged in          |
+| `bootctl-list-from-the-stick.json` | `bootctl --esp-path=/mnt/boot list --json=short` on a repair stick, in `vm-guide-recovers`: an entry named by its hash, and `isSelected` null |

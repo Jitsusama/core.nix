@@ -179,7 +179,7 @@ a running system shows.
 | `vm-guide-installs`               | the guide, driven by its keys, installs a machine from its stick: two keys and a recovery key, Secure Boot enforcing with its keys, then seals the disk to the TPM with a PIN, which opens it at the next boot; then reinstalls from a stick carrying the machine's own keys, the firmware still enforcing them |
 | `vm-guide-writes-a-stick`         | the guide writes a stick as the person, through UDisks2, unmounting what was mounted from it |
 | `vm-guide-opens-the-vault`        | a stick's vault sealed to a FIDO2 key opens with its PIN, and without it by the passphrase |
-| `vm-guide-recovers`               | a repair stick finds a machine's disk, opens it with the recovery key, mounts it whole and gives a root shell inside |
+| `vm-guide-recovers`               | a repair stick finds a machine's disk, opens it with the recovery key, mounts it whole, sets which generation boots next, and gives a root shell inside |
 | `vm-commits-are-signed`           | commits are signed with the TPM's keys, PINs asked for  |
 | `vm-passkeys-come-from-the-tpm`   | passkeys and security keys are made in the TPM, each after a yes |
 | `vm-keyring-opens-without-asking` | the keyring opens with its TPM-sealed password, unasked |
