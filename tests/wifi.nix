@@ -950,11 +950,9 @@ pkgs.testers.runNixOSTest {
         nameless = {"name": "Nameless", "security": "personal"}
         refused("Save", {"network": nameless}, "NeedsPassword")
 
-    # On a laptop, a card whose access point didn't answer asked for another
-    # look, heard nothing back for half a minute with a saved network in
-    # range, and joined only when told to. A radio here never hangs a look,
-    # so the card is stopped where it stands, which wpa_supplicant then
-    # leaves alone, and said to be scanning, in the signal wifid hears.
+    # A radio here never hangs a look, so the card is stopped where it
+    # stands, which wpa_supplicant then leaves alone, and said to be
+    # scanning, in the signal wifid hears.
     with subtest("a card scanning too long with a saved network in range is told to join it"):
         machine.succeed("wpa_cli -i wlan2 disconnect")
         machine.wait_until_succeeds(
@@ -981,6 +979,48 @@ pkgs.testers.runNixOSTest {
         machine.wait_until_succeeds(
             "wpa_cli -i wlan2 status | grep -qx wpa_state=COMPLETED", timeout=30
         )
+
+    # On a laptop at boot, the access point wpa_supplicant picked didn't
+    # answer, and the card then sat off every network, with nothing pending,
+    # until Joel joined by hand. Here the card starts off every network, as
+    # at boot, with every saved one on and Lantern ranked first, and Lantern
+    # stops answering while the card's last look still holds it.
+    with subtest("a card whose access point doesn't answer moves on to another network"):
+        lantern = machine.succeed(
+            "wpa_cli -i wlan2 list_networks | awk -F'\\t' '$2 == \"Lantern\" {print $1}'"
+        ).strip()
+        ranked = machine.succeed(f"wpa_cli -i wlan2 get_network {lantern} priority").strip()
+        machine.succeed(
+            "wpa_cli -i wlan2 disconnect"
+            " && wpa_cli -i wlan2 enable_network all"
+            f" && wpa_cli -i wlan2 set_network {lantern} priority 100"
+        )
+        machine.wait_until_succeeds(
+            "wpa_cli -i wlan2 status | grep -qx wpa_state=DISCONNECTED", timeout=30
+        )
+        retry(lambda _: hears("Lantern"), timeout_seconds=60)
+        since = journal_now()
+        machine.succeed("systemctl stop lantern && wpa_cli -i wlan2 reconnect")
+        machine.wait_until_succeeds(
+            f"journalctl -k -o cat --after-cursor='{since}'"
+            " | grep -q 'wlan2: authentication with 02:00:00:00:00:00 timed out'",
+            timeout=30,
+        )
+        machine.wait_until_succeeds(
+            "wpa_cli -i wlan2 status | grep -qx wpa_state=COMPLETED", timeout=30
+        )
+        machine.succeed(
+            f"wpa_cli -i wlan2 set_network {lantern} priority {ranked}"
+            " && systemctl start lantern"
+        )
+
+    with subtest("and says each step of the join and each look, for a join that dawdles"):
+        for said in ["wlan2 is scanning", "wlan2 is completed", "wlan2 is done looking"]:
+            machine.wait_until_succeeds(
+                "journalctl -o cat _PID=$(systemctl show -P MainPID wifid)"
+                f" | grep -qx '{said}'",
+                timeout=30,
+            )
 
   '';
 }

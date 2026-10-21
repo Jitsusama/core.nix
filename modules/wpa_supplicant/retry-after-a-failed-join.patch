@@ -1,0 +1,182 @@
+Try another access point after one doesn't answer.
+
+When an access point doesn't answer authentication or association,
+wpa_supplicant calls wpas_connection_failed() and only then marks the
+interface disconnected. On a first failure that function picks a BSS from
+the last scan straight away. With more than one network enabled, the ignore
+list lets the BSS just tried be picked again, and wpa_supplicant_connect()
+sees the interface still authenticating with that very BSS, says "Already
+associated or trying to connect with the selected AP", and does nothing.
+The pick still counts as done, so no scan is asked for either. The caller
+then marks the interface disconnected, and it stays that way, with nothing
+pending, until something outside asks it to look or join.
+
+This picks from the last scan once the caller has finished, from the event
+loop, so the attempt is over when the pick is made. Where nothing can be
+picked, it asks for a scan just as a later failure does.
+--- a/wpa_supplicant/wpa_supplicant_i.h
++++ b/wpa_supplicant/wpa_supplicant_i.h
+@@ -920,6 +920,7 @@
+ 
+ 	/* Number of connection failures since last successful connection */
+ 	unsigned int consecutive_conn_failures;
++	u8 retry_failed_bssid[ETH_ALEN];
+ 
+ 	/**
+ 	 * scan_req - Type of the scan request
+--- a/wpa_supplicant/wpa_supplicant.c
++++ b/wpa_supplicant/wpa_supplicant.c
+@@ -618,6 +618,9 @@
+ #endif /* CONFIG_TESTING_OPTIONS */
+ 
+ 
++static void wpas_retry_failed_bss(void *eloop_ctx, void *timeout_ctx);
++
++
+ static void wpa_supplicant_cleanup(struct wpa_supplicant *wpa_s)
+ {
+ 	int i;
+@@ -709,6 +712,7 @@
+ 
+ 	eloop_cancel_timeout(wpas_network_reenabled, wpa_s, NULL);
+ 	eloop_cancel_timeout(wpas_clear_disabled_interface, wpa_s, NULL);
++	eloop_cancel_timeout(wpas_retry_failed_bss, wpa_s, NULL);
+ 	eloop_cancel_timeout(wpas_verify_ssid_beacon, wpa_s, NULL);
+ 	eloop_cancel_timeout(wpas_wfa_capab_tx, wpa_s, NULL);
+ 
+@@ -9100,10 +9104,78 @@
+ }
+ 
+ 
++static void wpas_scan_after_failure(struct wpa_supplicant *wpa_s,
++				    const u8 *bssid)
++{
++	int timeout;
++
++	wpa_s->consecutive_conn_failures++;
++
++	if (wpa_s->consecutive_conn_failures > 3 && wpa_s->current_ssid) {
++		wpa_printf(MSG_DEBUG, "Continuous association failures - "
++			   "consider temporary network disabling");
++		wpas_auth_failed(wpa_s, "CONN_FAILED", bssid);
++	}
++	/*
++	 * Multiple consecutive connection failures mean that other APs are
++	 * either not available or have already been tried, so we can start
++	 * increasing the delay here to avoid constant scanning.
++	 */
++	switch (wpa_s->consecutive_conn_failures) {
++	case 1:
++		timeout = 100;
++		break;
++	case 2:
++		timeout = 500;
++		break;
++	case 3:
++		timeout = 1000;
++		break;
++	case 4:
++		timeout = 5000;
++		break;
++	default:
++		timeout = 10000;
++		break;
++	}
++
++	wpa_dbg(wpa_s, MSG_DEBUG,
++		"Consecutive connection failures: %d --> request scan in %d ms",
++		wpa_s->consecutive_conn_failures, timeout);
++
++	/* speed up the connection attempt with normal scan */
++	wpa_s->normal_scans = 0;
++	wpa_supplicant_req_scan(wpa_s, timeout / 1000,
++				1000 * (timeout % 1000));
++}
++
++
++/*
++ * Picks the next BSS from the last scan once the caller has marked the
++ * failed attempt over. Picked while it still stands, the BSS just tried
++ * reads as the one being joined, so nothing is tried, no scan is asked for
++ * either, and the interface waits with nothing pending. Nothing is picked
++ * if the interface was disconnected or another attempt began meanwhile.
++ */
++static void wpas_retry_failed_bss(void *eloop_ctx, void *timeout_ctx)
++{
++	struct wpa_supplicant *wpa_s = eloop_ctx;
++
++	if (wpa_s->disconnected || wpa_s->connect_work ||
++	    radio_work_pending(wpa_s, "sme-connect") ||
++	    radio_work_pending(wpa_s, "connect"))
++		return;
++	if (wpa_supplicant_fast_associate(wpa_s) == 1)
++		return;
++	wpas_scan_after_failure(wpa_s,
++				is_zero_ether_addr(wpa_s->retry_failed_bssid) ?
++				NULL : wpa_s->retry_failed_bssid);
++}
++
++
+ void wpas_connection_failed(struct wpa_supplicant *wpa_s, const u8 *bssid,
+ 			    const u8 **link_bssids)
+ {
+-	int timeout;
+ 	int count;
+ 
+ 	wpas_connect_work_done(wpa_s);
+@@ -9148,47 +9220,17 @@
+ 	 * next. Otherwise, we may as well try this one once more
+ 	 * before allowing other, likely worse, ESSes to be considered.
+ 	 */
+-	if (count == 1 && wpa_supplicant_fast_associate(wpa_s) == 1)
++	if (count == 1) {
++		if (bssid)
++			os_memcpy(wpa_s->retry_failed_bssid, bssid, ETH_ALEN);
++		else
++			os_memset(wpa_s->retry_failed_bssid, 0, ETH_ALEN);
++		eloop_cancel_timeout(wpas_retry_failed_bss, wpa_s, NULL);
++		eloop_register_timeout(0, 0, wpas_retry_failed_bss, wpa_s, NULL);
+ 		return;
+-
+-	wpa_s->consecutive_conn_failures++;
+-
+-	if (wpa_s->consecutive_conn_failures > 3 && wpa_s->current_ssid) {
+-		wpa_printf(MSG_DEBUG, "Continuous association failures - "
+-			   "consider temporary network disabling");
+-		wpas_auth_failed(wpa_s, "CONN_FAILED", bssid);
+-	}
+-	/*
+-	 * Multiple consecutive connection failures mean that other APs are
+-	 * either not available or have already been tried, so we can start
+-	 * increasing the delay here to avoid constant scanning.
+-	 */
+-	switch (wpa_s->consecutive_conn_failures) {
+-	case 1:
+-		timeout = 100;
+-		break;
+-	case 2:
+-		timeout = 500;
+-		break;
+-	case 3:
+-		timeout = 1000;
+-		break;
+-	case 4:
+-		timeout = 5000;
+-		break;
+-	default:
+-		timeout = 10000;
+-		break;
+ 	}
+ 
+-	wpa_dbg(wpa_s, MSG_DEBUG,
+-		"Consecutive connection failures: %d --> request scan in %d ms",
+-		wpa_s->consecutive_conn_failures, timeout);
+-
+-	/* speed up the connection attempt with normal scan */
+-	wpa_s->normal_scans = 0;
+-	wpa_supplicant_req_scan(wpa_s, timeout / 1000,
+-				1000 * (timeout % 1000));
++	wpas_scan_after_failure(wpa_s, bssid);
+ }
+ 
+ 

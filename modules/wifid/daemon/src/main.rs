@@ -632,9 +632,15 @@ impl Air<'_> {
             }
             "PskMismatch" => self.troubled(bus, path, Trouble::WrongPassword).await,
             // What a card heard is said before it says it's done looking.
-            "ScanDone" if body.deserialize::<bool>().unwrap_or(false) => {
-                if let Some(card) = self.named(bus, path).await {
+            "ScanDone" => {
+                let Some(card) = self.named(bus, path).await else {
+                    return;
+                };
+                if body.deserialize::<bool>().unwrap_or(false) {
+                    println!("<7>{card} is done looking");
                     change(&self.state, |state| state.looked(&card));
+                } else {
+                    println!("<7>{card}'s look failed");
                 }
             }
             // How an enterprise network's join went: the server proving
@@ -689,6 +695,11 @@ impl Air<'_> {
                                 }
                                 if step == "completed" && before != "completed" {
                                     self.joined(bus, path).await;
+                                }
+                                // Each step said, so a join that dawdles
+                                // shows where.
+                                if step != before {
+                                    println!("<7>{card} is {step}");
                                 }
                                 self.stalls.step(&card, &step, Instant::now());
                                 self.cards.insert(path.to_string(), (card, step));
