@@ -27,7 +27,7 @@ use guide::vault;
 use guide::vault::store::{Fat, Store};
 use guide::{Fault, Journal, Journey, Machine, Place, Secret, Tool};
 
-const USAGE: &str = "usage: guide observe | guide tools | guide install | guide installed
+const USAGE: &str = "usage: guide observe | guide tools | guide install | guide installed | guide recover
        guide host IMAGE [--sign-with DIRECTORY] [--install PAYLOAD [--secure-boot-keys DIRECTORY]]
        guide write-stick IMAGE FILE [--sign-with DIRECTORY] [--install PAYLOAD [--secure-boot-keys DIRECTORY]]";
 
@@ -47,6 +47,7 @@ fn main() -> ExitCode {
         ["tools"] => tools(),
         ["install"] => reported(install()),
         ["installed"] => reported(installed()),
+        ["recover"] => reported(recover()),
         ["host", image, ref options @ ..] => match Written::parse(options) {
             Some(written) => reported(
                 written
@@ -313,6 +314,69 @@ fn installed() -> Result<(), Fault> {
     Ok(())
 }
 
+/// Recovering the machine this stick boots on, its data left in place:
+/// its disk opened and mounted, then a root shell inside it.
+fn recover() -> Result<(), Fault> {
+    // SAFETY: getuid can't fail and touches no memory.
+    if unsafe { libc::getuid() } != 0 {
+        return Err(Fault::Blocked {
+            step: "recover",
+            why: "recovering runs as root, on the stick".into(),
+        });
+    }
+    let journal = Journal::open(Path::new(JOURNAL))?;
+    let log = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(LOG)
+        .map_err(|why| Fault::Unkept {
+            path: LOG.into(),
+            why: why.to_string(),
+        })?;
+    let mut machine = System::new(journal, Some(log));
+    let theme = Theme::built(Terminal::is_console());
+    let journey = Journey::new(guide::recover::steps())
+        .map_err(|why| Fault::unreadable("the recovery's steps", why))?;
+    let shell = {
+        let mut terminal = Terminal::open()?;
+        let walk = Walk {
+            journey: &journey,
+            here: Place::Stick,
+            name: "Recover a machine",
+            theme: &theme,
+            log: Some(Path::new(LOG)),
+            whole: true,
+            last: Default::default(),
+        };
+        if walk.walk(&mut machine, &mut terminal)? != Ended::Finished {
+            return Ok(());
+        }
+        let said = "Press Return for a root shell inside it, where its own tools work: nixos-rebuild, sbctl, systemd-cryptenroll. Leave the shell with exit, then restart.";
+        walk.card(
+            &mut terminal,
+            "The machine's disk is open",
+            said,
+            "open a shell",
+        )?
+    };
+    // The terminal is given back before the shell takes it.
+    if shell {
+        use std::os::unix::process::CommandExt;
+        let enter = Tool::NixosEnter.program().ok_or(Fault::Unbuilt {
+            tool: Tool::NixosEnter.name(),
+        })?;
+        let why = std::process::Command::new(enter)
+            .args(["--root", install::ROOT])
+            .env("PATH", guide::tool::Path::Install.get()?)
+            .exec();
+        return Err(Fault::Unstarted {
+            program: enter.into(),
+            why: why.to_string(),
+        });
+    }
+    Ok(())
+}
+
 /// Where the stick keeps its journal and log: memory, gone when it stops.
 const JOURNAL: &str = "/run/guide/journal";
 const LOG: &str = "/run/guide/log";
@@ -336,6 +400,10 @@ fn install() -> Result<(), Fault> {
         .map_err(|why| Fault::unreadable("the stick's vault", why))?;
     let mut vault: Box<dyn Store> = Box::new(Fat::open(partition)?);
     let machine_name = vault::manifest(vault.as_mut())?.machine;
+    // A repair stick is no one machine's and installs nothing.
+    if machine_name.is_empty() {
+        return recover();
+    }
     let journal = Journal::open(Path::new(JOURNAL))?;
     let log = OpenOptions::new()
         .create(true)

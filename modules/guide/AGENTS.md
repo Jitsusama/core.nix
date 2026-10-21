@@ -79,6 +79,15 @@ driven on; the installed machine's steps come later.
   memory comes off the disk last. A host gives the stick the keys with
   `--secure-boot-keys`, sbctl's directory, and signs the stick with them. Every step stays done
   through the steps after it, since the journey runs the first that isn't.
+- **Recovering.** Any stick recovers a machine with its data left in
+  place, since the disk says what it is: core's layout on an internal
+  disk, an encrypted partition beside its `<name>-boot`. The disk is shown
+  before anything is typed, opened with the plugged-in YubiKey's PIN or,
+  with none plugged in, the recovery key (never the TPM, whose seal a
+  stick's boot doesn't match), every subvolume and the ESP mounted under
+  /mnt, and then a root shell inside it. A repair stick runs this when it
+  boots; `guide recover` runs it from any stick's shell. The repairs the
+  plan lists beyond the shell are still to come.
 - **The installed machine.** Once it boots its own disk, the guide runs
   there as the person, from core's `guide` NixOS module, which also writes
   what it reads about the machine to `/etc/guide/machine.json`. It checks
@@ -129,6 +138,7 @@ driven on; the installed machine's steps come later.
 | `src/host/`           | writing a stick on a host, and what a reinstall stick carries |
 | `src/install/`        | installing a machine from its stick, a step to a file by what it touches |
 | `src/installed/`      | finishing the machine on itself: Secure Boot checked, the TPM sealed |
+| `src/recover/`        | recovering a machine from a stick: found, opened, mounted |
 | `nixos.nix`           | the guide on a machine it installed                       |
 | `src/screen/`         | the view, drawn as lines in roles; the terminal; the walk through a journey |
 | `payload.nix`         | what a reinstall stick carries for one machine            |
@@ -142,6 +152,8 @@ driven on; the installed machine's steps come later.
 | `tests/host.rs`       | the one stick written, never another disk              |
 | `../../tests/guide-host.nix` | a stick written on a host through UDisks2, as the person |
 | `../../tests/guide-vault.nix` | a vault opened by a YubiKey's PIN, then by the passphrase |
+| `tests/recover.rs`    | the machine found by its layout, and shown before anything's asked |
+| `../../tests/guide-recover.nix` | a machine recovered from a repair stick to a root shell inside it |
 | `../../tests/guide-install.nix` | a machine installed from its stick in a VM, by the guide's keys |
 
 ## Working on It
