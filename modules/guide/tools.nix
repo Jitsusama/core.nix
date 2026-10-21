@@ -32,6 +32,7 @@ in
 {
   GUIDE_BASH = lib.getExe pkgs.bash;
   GUIDE_BOOTCTL = lib.getExe' systemd "bootctl";
+  GUIDE_CAT = lib.getExe' pkgs.coreutils "cat";
   GUIDE_CRYPTSETUP = lib.getExe' pkgs.cryptsetup "cryptsetup";
   GUIDE_FIDO2_ASSERT = lib.getExe' pkgs.libfido2 "fido2-assert";
   GUIDE_FIDO2_TOKEN = lib.getExe' pkgs.libfido2 "fido2-token";

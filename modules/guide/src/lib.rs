@@ -106,6 +106,7 @@ pub mod machine;
 pub mod observe;
 pub mod place;
 pub mod recover;
+pub mod rescue;
 pub mod screen;
 pub mod sign;
 pub mod step;

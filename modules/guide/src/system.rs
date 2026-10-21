@@ -139,8 +139,11 @@ impl System {
         // write is dropped here and the log is simply shorter.
         if let Some(log) = &mut self.log {
             let _ = writeln!(log, "$ {program} {}", args.join(" "));
-            if given.as_root {
+            // SAFETY: geteuid can't fail and touches no memory.
+            if given.as_root && unsafe { libc::geteuid() } != 0 {
                 let _ = writeln!(log, "-- as root, through run0");
+            } else if given.as_root {
+                let _ = writeln!(log, "-- as root, which it already is");
             }
             for (name, value) in &given.plain {
                 let _ = writeln!(log, "-- with {name}={value}");
@@ -184,7 +187,11 @@ impl Machine for System {
                 });
             }
         };
-        if given.as_root && !given.env.is_empty() {
+        // Root already, it runs as it is: run0 would only start a service
+        // to be what this process already is.
+        // SAFETY: geteuid can't fail and touches no memory.
+        let through_run0 = given.as_root && unsafe { libc::geteuid() } != 0;
+        if through_run0 && !given.env.is_empty() {
             return Err(Fault::Unstarted {
                 program: path.into(),
                 why: "a secret in its environment would be on run0's command line".into(),
@@ -210,7 +217,7 @@ impl Machine for System {
             }
             Some(credentials)
         };
-        let mut command = if given.as_root {
+        let mut command = if through_run0 {
             // run0 starts it as a service of its own, which loads each
             // credential from where it's held here and is given only
             // these variables.
