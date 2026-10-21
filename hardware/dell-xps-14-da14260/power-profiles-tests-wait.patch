@@ -1,0 +1,35 @@
+power-profiles-daemon: wait for degradation rather than reading it once
+
+Two tests write no_turbo, wait for the daemon to log the file's change,
+then read PerformanceDegraded once. The daemon logs every change event
+but updates the property only on the hint that the changes are done,
+which comes after, so a test that reads between the two sees it unset:
+'' != 'high-operating-temperature' in test_multi_degredation, once in a
+CI run. Each now waits up to five seconds for the value.
+
+--- a/tests/integration_test.py
++++ b/tests/integration_test.py
+@@ -633,8 +633,9 @@
+             lambda: self.have_text_in_log("File monitor change happened for ")
+         )
+ 
+-        self.assertEqual(
+-            self.get_dbus_property("PerformanceDegraded"), "high-operating-temperature"
++        self.assert_eventually(
++            lambda: self.get_dbus_property("PerformanceDegraded")
++            == "high-operating-temperature"
+         )
+ 
+         # Degraded DYTC
+@@ -729,8 +730,9 @@
+             lambda: self.have_text_in_log("File monitor change happened for ")
+         )
+         self.assertEqual(self.get_dbus_property("ActiveProfile"), "performance")
+-        self.assertEqual(
+-            self.get_dbus_property("PerformanceDegraded"), "high-operating-temperature"
++        self.assert_eventually(
++            lambda: self.get_dbus_property("PerformanceDegraded")
++            == "high-operating-temperature"
+         )
+ 
+         self.stop_daemon()

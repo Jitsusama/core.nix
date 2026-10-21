@@ -1,0 +1,153 @@
+Bluetooth: btintel: read SAR and PPAG from UEFI when ACPI has none
+
+Some firmware gives Bluetooth's SAR (BRDS) and PPAG tables only as UEFI
+variables, UefiCnvBtBRDS and IntelUefiCnvBtPpagSupport, with no ACPI
+methods for them; Windows' driver reads the variables. The XPS 14
+DA14260 is one: a revision 2 BRDS that sets both chains' limits on
+2.4, 5.2 and 5.8 GHz, and PPAG enabled for the EU and China. Linux
+looked only in ACPI, so it applied neither, and the controller ran
+without the limits its firmware sets for it. When ACPI has no
+table, the driver reads the variable instead; only a revision 2 BRDS is
+read that way, since that's the only layout known to be given there.
+
+diff --git a/drivers/bluetooth/btintel.c b/drivers/bluetooth/btintel.c
+--- a/drivers/bluetooth/btintel.c
++++ b/drivers/bluetooth/btintel.c
+@@ -29,6 +29,8 @@
+ #define ECDSA_HEADER_LEN	320
+ 
+ #define BTINTEL_EFI_DSBR	L"UefiCnvCommonDSBR"
++#define BTINTEL_EFI_BRDS	L"UefiCnvBtBRDS"
++#define BTINTEL_EFI_PPAG	L"IntelUefiCnvBtPpagSupport"
+ 
+ enum {
+ 	DSM_SET_WDISABLE2_DELAY = 1,
+@@ -2587,6 +2589,46 @@
+ 	return err;
+ }
+ 
++/* Some firmware gives Bluetooth's SAR and PPAG tables only as UEFI
++ * variables, where Windows' driver reads them, with no ACPI methods.
++ */
++static int btintel_uefi_get_bt_var(efi_char16_t *name, void *data,
++				   unsigned long size)
++{
++	efi_guid_t guid = EFI_GUID(0x42780dd5, 0x9a7d, 0x404c, 0x80, 0xe4,
++				   0x7f, 0x70, 0x94, 0x36, 0x03, 0x94);
++	unsigned long data_size = size;
++	efi_status_t status;
++
++	if (!IS_ENABLED(CONFIG_EFI))
++		return -EOPNOTSUPP;
++
++	if (!efi_rt_services_supported(EFI_RT_SUPPORTED_GET_VARIABLE))
++		return -EOPNOTSUPP;
++
++	status = efi.get_variable(name, &guid, NULL, &data_size, data);
++	if (status != EFI_SUCCESS || data_size != size)
++		return -ENOENT;
++
++	return 0;
++}
++
++static int btintel_uefi_get_ppag(u32 *mode)
++{
++	struct {
++		u8 revision;
++		__le32 mode;
++	} __packed data;
++	int ret;
++
++	ret = btintel_uefi_get_bt_var(BTINTEL_EFI_PPAG, &data, sizeof(data));
++	if (ret)
++		return ret;
++
++	*mode = le32_to_cpu(data.mode);
++	return 0;
++}
++
+ static void btintel_set_ppag(struct hci_dev *hdev, struct intel_version_tlv *ver)
+ {
+ 	struct sk_buff *skb;
+@@ -2617,6 +2659,8 @@
+ 	if (ACPI_FAILURE(status)) {
+ 		if (status == AE_NOT_FOUND) {
+ 			bt_dev_dbg(hdev, "PPAG-BT: ACPI entry not found");
++			if (!btintel_uefi_get_ppag(&mode))
++				goto enable;
+ 			return;
+ 		}
+ 		bt_dev_warn(hdev, "PPAG-BT: ACPI Failure: %s", acpi_format_exception(status));
+@@ -2645,6 +2689,7 @@
+ 		return;
+ 	}
+ 
++enable:
+ 	/* PPAG mode
+ 	 * BIT 0 : 0 Disabled in EU
+ 	 *         1 Enabled in EU
+@@ -3431,13 +3476,63 @@
+ 	kfree(buffer);
+ 	return ret;
+ }
++
++/* Only revision 2 is known to be given as a UEFI variable. */
++static int btintel_uefi_set_sar(struct hci_dev *hdev, struct intel_version_tlv *ver)
++{
++	struct {
++		u8 revision;
++		__le32 bt_sar_bios;
++		__le32 inc_power_mode;
++		struct btintel_sar_band_limits chain_a;
++		struct btintel_sar_band_limits chain_b;
++	} __packed data;
++	struct btintel_sar_rev2 sar;
++	int ret;
++
++	ret = btintel_uefi_get_bt_var(BTINTEL_EFI_BRDS, &data, sizeof(data));
++	if (ret)
++		return ret;
++
++	if (data.revision != BTINTEL_SAR_REV2) {
++		bt_dev_dbg(hdev, "BT SAR UEFI: revision 0x%2.2x not supported",
++			   data.revision);
++		return -EOPNOTSUPP;
++	}
++
++	if (le32_to_cpu(data.bt_sar_bios) != 1) {
++		bt_dev_dbg(hdev, "BT SAR UEFI: not enabled in firmware");
++		return -EOPNOTSUPP;
++	}
++
++	memset(&sar, 0, sizeof(sar));
++	sar.revision = data.revision;
++	sar.bt_sar_bios = le32_to_cpu(data.bt_sar_bios);
++	sar.inc_power_mode = le32_to_cpu(data.inc_power_mode);
++	sar.chain_a = data.chain_a;
++	sar.chain_b = data.chain_b;
++
++	bt_dev_dbg(hdev, "BT SAR UEFI: inc_power_mode=%u 2g4=%u/%u 5g2=%u/%u 5g8_5g9=%u/%u",
++		   sar.inc_power_mode, sar.chain_a.subband_2g4,
++		   sar.chain_b.subband_2g4, sar.chain_a.subband_5g2,
++		   sar.chain_b.subband_5g2, sar.chain_a.subband_5g8_5g9,
++		   sar.chain_b.subband_5g8_5g9);
++
++	return btintel_sar_rev2_send_to_device(hdev, &sar, ver);
++}
+ #endif /* CONFIG_ACPI */
+ 
+ static int btintel_set_specific_absorption_rate(struct hci_dev *hdev,
+ 						struct intel_version_tlv *ver)
+ {
+ #ifdef CONFIG_ACPI
+-	return btintel_acpi_set_sar(hdev, ver);
++	int ret = btintel_acpi_set_sar(hdev, ver);
++
++	/* -ENOENT: ACPI has no Bluetooth SAR table, so try UEFI's. */
++	if (ret == -ENOENT)
++		ret = btintel_uefi_set_sar(hdev, ver);
++
++	return ret;
+ #endif
+ 	return 0;
+ }

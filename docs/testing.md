@@ -67,13 +67,16 @@ quietly stopped holding.
 | `a-faint-theme-is-refused`          | a theme with text under WCAG's 4.5:1 doesn't build        |
 | `quickshell-restarts-with-its-files` | a switch restarts the shell when a file it reads changes  |
 | `quickshell-opens-programs-through-niri` | programs the shell opens survive the shell restarting |
+| `one-niri` | the screens go off through the machine's patched niri, not a second one |
 | `the-overview-takes-its-pieces` | a machine moves, cuts, retunes and adds the overview's pieces |
 | `quickshell-takes-its-shape-from-the-theme` | every corner and border in the shell is the theme's |
 | `icon-marks-past-the-basic-plane` | an icon mark past U+FFFF reaches the shell whole |
 | `nix-builds-yield-to-the-user` | Nix's builds run at a lower weight than the user's programs |
 | `nix-collects-before-the-disk-fills` | Nix collects garbage during a build that fills the disk |
 | `resolved-is-set-per-network` | a laptop leaves resolved's global DNS settings as they ship |
+| `the-shutdown-mark-cannot-stop-a-reboot` | the mark a healthy stop leaves can't fail the reboot, and what reads it outlives the last stage |
 | `thermald-starts-after-its-drivers` | the XPS 14's thermal drivers load before thermald starts, and a thermald that stops is restarted |
+| `firmware-leaves-the-keyboard-light` | the XPS 14 leaves the keyboard light to its key, still holding its other firmware settings |
 | `chromium-knows-the-panels-colours` | the XPS 14's Chrome, Slack and 1Password convert their colours to its panel's P3 |
 | `the-panel-slows-on-a-low-battery` | the XPS 14's panel drops to 60 Hz below 30% on battery, holds there, and comes back to its fastest rate on the charger |
 | `the-camera-takes-its-modules-tuning` | the XPS 14's camera reads Dell's tuning for the module a machine names, and Intel's otherwise |
@@ -131,9 +134,12 @@ kernel guide][2] says what that catches.
 | `kernel-settings-hold`            | the kernel's patches apply and every setting holds        |
 | `kernel-settings-hold-<model>`    | the same for the kernel that hardware builds              |
 | `speaker-amps-have-every-dai-named` | the XPS 14's SoundWire machine driver names only DAIs its amplifiers register |
+| `bluetooth-keeps-its-power-limits` | the XPS 14's kernel reads Bluetooth's revision 2 SAR table and antenna gain setting from UEFI |
 | `the-panel-offers-variable-refresh` | the XPS 14's kernel reads the panel's refresh range from DisplayID's Adaptive Sync block |
+| `the-panel-knows-its-luminance` | the XPS 14's kernel reads the panel's luminance range from DisplayID's Display Parameters block |
 | `platform-profiles-reach-the-legacy-file` | every profile Dell's driver offers, the XPS 14's SoC slider takes too |
 | `ipu7-outlives-its-open-files` | the XPS 14's capture side is freed when its last node closes, not when the IPU unbinds |
+| `the-camera-holds-no-memory-it-never-uses` | neither half of the XPS 14's camera asks at probe for a firmware log only Intel's offline logger writes, and the capture side frees its firmware's memory when it unbinds |
 | `niri-accepts-its-configuration`  | niri loads the files an account gets                      |
 | `niri-cursor-has-its-shapes`      | the cursor theme niri names has the shapes programs ask for |
 | `kitty-accepts-its-configuration` | kitty loads its files without a complaint                 |
@@ -154,6 +160,7 @@ kernel guide][2] says what that catches.
 | `btrfs-reclaims-its-chunks`       | tmpfiles turns Btrfs's reclaim on for data and metadata   |
 | `the-firmware-takes-what-is-declared` | `firmware-settings` names what differs, writes it with the password, then wipes it |
 | `devices-that-stop-working-are-named` | `device-check` names a failed or missing device, or a disk's fault, once, and again when it's fixed |
+| `kernel-trouble-is-named` | `device-check` names a kernel that oopsed, locked up, saw a hardware fault or held a task stuck, once, and not its harmless taints |
 | `disks-say-when-they-fail` | a workstation runs smartd on its disks and hands their faults to device-check, not to every terminal |
 | `smartd-stops-cleanly-without-disks` | the workstation's own smartd command, run with no disks, stops cleanly rather than failing |
 | `disk-guard-accepts-its-configuration` | the disk guard passes its scenarios and accepts the configs a workstation and its account get |
@@ -165,6 +172,8 @@ kernel guide][2] says what that catches.
 | `guide-compiles-for-macos`        | clippy finds nothing in the guide as macOS compiles it     |
 | `ir-camera-passes-clippy`         | clippy finds nothing in ir-camera or its tests            |
 | `record-window-passes-clippy`     | clippy finds nothing in record-window or its tests        |
+| `plymouth-waits-passes-clippy`    | clippy finds nothing in plymouth-waits or its tests       |
+| `the-splash-keeps-systemd-quiet`  | with the splash, systemd writes only failures to the console |
 | `spend-watch-accepts-its-configuration` | spend-watch passes its tests and accepts the config an account gets, a feed and a cap among it |
 | `spend-watch-passes-clippy`       | clippy finds nothing in spend-watch or its tests          |
 
@@ -176,6 +185,7 @@ a running system shows.
 | Check                             | Proves                                                  |
 | --------------------------------- | ------------------------------------------------------- |
 | `vm-secure-boot-installs`         | the whole install works, and the disk opens only for it |
+| `vm-boot-asks-in-the-theme`       | the splash asks for the disk, names a slow job, and lasts a restart to its end |
 | `vm-guide-installs`               | the guide, driven by its keys, installs a machine from its stick: two keys and a recovery key, Secure Boot enforcing with its keys, then seals the disk to the TPM with a PIN, which opens it at the next boot; clears the TPM, opens with a YubiKey and seals again; then reinstalls from a stick carrying the machine's own keys, the firmware still enforcing them |
 | `vm-guide-writes-a-stick`         | the guide writes a stick as the person, through UDisks2, unmounting what was mounted from it |
 | `vm-guide-opens-the-vault`        | a stick's vault sealed to a FIDO2 key opens with its PIN, and without it by the passphrase |
@@ -186,13 +196,14 @@ a running system shows.
 | `vm-speakers-are-tuned`           | the XPS 14's speakers hear the tuning, headphones don't |
 | `vm-desktop-works`                | it boots clean; the desktop shows, opens, locks and asks |
 | `vm-greeter-signs-in`             | the greeter signs in and out, not waiting on the account's setup |
-| `vm-wifi-joins`                   | wifid joins, finds sign-ins, keeps others' routing rules |
+| `vm-wifi-joins`                   | wifid joins, nudges a stuck look, finds sign-ins, keeps others' routing rules |
 | `vm-disk-guard-keeps-the-disk`    | the guards answer each band, sparing what's in use       |
 | `vm-network-revives-units`        | what the network let down starts, and reloads on change  |
 | `vm-clock-keeps-time`             | the clock sets from the machine's servers past a network's silent one |
 | `vm-libvirt-stops-quickly`        | libvirt's daemon stops at once, its udev thread starved  |
 | `vm-ir-camera-opens-for-readers`  | the IR camera waits for udev and its loopback, opens only while read, its frames grey, no frame from before a reader opened |
 | `vm-swap-comes-down-while-probed` | the compressed swap comes down, its reset waiting out udev's probe |
+| `vm-reboot-cannot-hang`           | a reboot forces on after a minute of a service not stopping, the watchdog resets a stuck last stage, and Plymouth hears which |
 
 The install test builds a disk image with disko and boots it with a software
 TPM, then follows [the install guide][3] step by step: the keys are made and

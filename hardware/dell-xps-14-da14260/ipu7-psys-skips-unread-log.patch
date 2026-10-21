@@ -1,0 +1,42 @@
+media: pci: intel: ipu7: psys: Keep the firmware log for its logger
+
+Probe allocates the firmware's log buffer whenever debugfs is built,
+but only the offline logger, built with ENABLE_FW_OFFLINE_LOGGER,
+writes to it; without it the debugfs file reads an empty log. It asks
+for 2 MiB plus devres's header, which the page allocator rounds up to
+4 MiB of contiguous pages, so a rebind's probe on fragmented memory
+fails that allocation and warns. Allocate it only with the logger.
+
+--- a/drivers/media/pci/intel/ipu7/psys/ipu-psys.c
++++ b/drivers/media/pci/intel/ipu7/psys/ipu-psys.c
+@@ -1296,6 +1296,12 @@
+ };
+ 
+ #ifdef CONFIG_DEBUG_FS
++/*
++ * The firmware's log is copied out only by the offline logger, so
++ * without it the 2 MiB buffer is never written, and a probe that
++ * can't find that much contiguous memory warns for nothing.
++ */
++#ifdef ENABLE_FW_OFFLINE_LOGGER
+ static int psys_fw_log_init(struct ipu7_psys *psys)
+ {
+ 	struct device *dev = &psys->adev->auxdev.dev;
+@@ -1324,6 +1330,7 @@
+ 
+ 	return 0;
+ }
++#endif
+ 
+ static ssize_t fwlog_read(struct file *file, char __user *userbuf, size_t size,
+ 			  loff_t *pos)
+@@ -1497,7 +1504,9 @@
+ 		ipu7_psys_get_running_fw_task_count;
+ 	mutex_unlock(&ipu7_psys_mutex);
+ #ifdef CONFIG_DEBUG_FS
++#ifdef ENABLE_FW_OFFLINE_LOGGER
+ 	psys_fw_log_init(psys);
++#endif
+ 	ipu7_psys_init_debugfs(psys);
+ #endif
+ 	dev_info(dev, "IPU psys probe done.\n");

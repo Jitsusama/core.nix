@@ -8,8 +8,17 @@
 # showing the desktop. The lock command returns once Quickshell says niri has
 # drawn it (Lock.qml), and swayidle holds the sleep until it does, for up to
 # three seconds, well inside logind's five.
-{ lib, pkgs, ... }:
+#
+# The screens go off through the system's niri, the one with core's patches,
+# so the machine doesn't carry a second niri just to ask.
+{
+  lib,
+  pkgs,
+  osConfig ? { },
+  ...
+}:
 let
+  niri = osConfig.programs.niri.package or pkgs.niri;
   lock = pkgs.writeShellApplication {
     name = "lock-screen";
     runtimeInputs = [
@@ -56,7 +65,7 @@ in
       }
       {
         timeout = 600;
-        command = "${lib.getExe pkgs.niri} msg action power-off-monitors";
+        command = "${lib.getExe niri} msg action power-off-monitors";
       }
     ];
   };

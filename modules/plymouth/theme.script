@@ -119,8 +119,86 @@ step = dot.GetWidth() + @dotSpacing@ * scale;
 caret.image = drawn("caret");
 caret.sprite = placed(caret.image, typed, centre - caret.image.GetHeight() / 2, 22);
 
+# Words drawn as the boot goes, centred on a height, in the body face and
+# lifted as the pictures' words are: over the halo drawn with the theme
+# (./nixos.nix), stretched to their width, and a copy of them in the
+# shadow's colour for the tight shadow.
+halo.left = drawn("halo-left");
+halo.middle = drawn("halo-middle");
+halo.right = drawn("halo-right");
+halo.inner = @haloInner@ * scale;
+
+fun lifted(text, centre)
+  {
+    local.face = "@sansFamily@ " + @sansBody@ * global.scale;
+    local.ink = Image.Text(text, @textColour@, 1, face);
+    local.shade = Image.Text(text, @shadowColour@, 1, face);
+    local.x = global.middle - ink.GetWidth() / 2;
+    local.y = centre - ink.GetHeight() / 2;
+
+    local.box = Math.Max(ink.GetWidth(), global.halo.inner + 1);
+    local.left = global.middle - box / 2 + global.halo.inner / 2;
+    local.stretch = global.halo.middle.Scale(Math.Int(box - global.halo.inner),
+                                             global.halo.middle.GetHeight());
+    local.top = y - global.pad;
+    local.drawn.halo[0] = placed(global.halo.left, left - global.halo.left.GetWidth(), top, 10);
+    local.drawn.halo[1] = placed(stretch, left, top, 10);
+    local.drawn.halo[2] = placed(global.halo.right, left + stretch.GetWidth(), top, 10);
+    local.drawn.shade = placed(shade, x + @tightX@ * global.scale, y + @tightY@ * global.scale, 11);
+    local.drawn.shade.SetOpacity(@tightOpacity@);
+    local.drawn.ink = placed(ink, x, y, 12);
+    return drawn;
+  }
+
+# What the boot or shutdown is waiting on, in the panel's place, which is
+# empty but while something is asked. A job that runs long is named with
+# the description systemd gives it (./waits); a shutdown's last stage is
+# sent as a keyword, and says what it's doing until the end. Each unit
+# systemd starts is sent too, and passes unsaid.
+@stages@
+status.waiting = "";
+status.stage = "";
+status.said = "";
+asked = 0;
+
+fun status_shown()
+  {
+    if (global.status.stage != "")
+      local.text = global.stages[global.status.stage];
+    else if (global.status.waiting != "")
+      local.text = "waiting on " + global.status.waiting;
+    else
+      local.text = "";
+
+    if (global.asked || text == "")
+      {
+        global.status.words = NULL;
+        global.status.said = "";
+      }
+    else if (text != global.status.said)
+      {
+        global.status.words = lifted(text, global.panel.top + @panelHeight@ * global.scale / 2);
+        global.status.said = text;
+      }
+  }
+
+fun status_callback(text)
+  {
+    if (global.stages[text])
+      global.status.stage = text;
+    else if (text.SubString(0, 8) == "waiting:")
+      global.status.waiting = text.SubString(8, text.Length());
+    else
+      return;
+    status_shown();
+  }
+
+Plymouth.SetUpdateStatusFunction(status_callback);
+
 fun asking(shown)
   {
+    global.asked = shown;
+    status_shown();
     global.panel.sprite.SetOpacity(shown);
     global.lock.sprite.SetOpacity(shown);
     global.hint.sprite.SetOpacity(shown);
@@ -201,15 +279,12 @@ Plymouth.SetDisplayNormalFunction(normal_callback);
 # panel, which nothing else uses.
 fun message_callback(text)
   {
-    local.image = Image.Text(text, @textColour@, 1, "@sansFamily@ " + @sansLarge@ * scale);
-    local.line = @said@ * global.scale;
-    global.said.sprite = placed(image, global.middle - image.GetWidth() / 2,
-                                global.said.top + (line - image.GetHeight()) / 2, 10);
+    global.said.words = lifted(text, global.said.top + @said@ * global.scale / 2);
   }
 
 fun hide_message_callback(text)
   {
-    global.said.sprite = NULL;
+    global.said.words = NULL;
   }
 
 Plymouth.SetDisplayMessageFunction(message_callback);

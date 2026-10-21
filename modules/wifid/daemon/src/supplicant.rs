@@ -273,6 +273,10 @@ pub trait Interface {
     /// Joins this network now, turning every other the card holds off.
     fn select_network(&self, path: &ObjectPath<'_>) -> zbus::Result<()>;
 
+    /// Joins the best of the networks it holds, from what it heard last if
+    /// that's fresh and from a new look if not.
+    fn reassociate(&self) -> zbus::Result<()>;
+
     /// What the card's driver reads of its link now: signal, noise, rates,
     /// as a dictionary inside a variant.
     fn signal_poll(&self) -> zbus::Result<OwnedValue>;
