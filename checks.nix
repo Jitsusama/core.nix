@@ -475,6 +475,40 @@ in
           }
       );
 
+  # pi's settings file gets core's settings at every switch and keeps every
+  # key pi wrote there; a file that isn't JSON is left alone and the switch
+  # says so; and a file already holding them isn't written again.
+  pi-keeps-its-own-settings =
+    let
+      home = account workstation;
+      program = lib.getExe (import ./modules/pi/settings.nix { inherit pkgs; });
+    in
+    assert lib.assertMsg (lib.hasInfix (builtins.unsafeDiscardStringContext program) (
+      builtins.unsafeDiscardStringContext home.home.activation.piTakesCoresSettings.data
+    )) "pi's activation doesn't run the settings program the check tests.";
+    pkgs.runCommandLocal "pi-keeps-its-own-settings" { nativeBuildInputs = [ pkgs.jq ]; } ''
+      file=$TMPDIR/agent/settings.json
+      mkdir -p $TMPDIR/agent
+      # As pi writes it, with a reserve of its own that core's replaces.
+      echo '{"theme":"jitsusama","lastChangelogVersion":"1.3.0","compaction":{"enabled":true,"reserveTokens":16384}}' >$file
+      ${program} $file
+      jq -e '.theme == "jitsusama" and .lastChangelogVersion == "1.3.0"' $file
+      jq -e '.compaction == {"enabled": true, "reserveTokens": 64000}' $file
+
+      touch -d 2000-01-01 $file
+      ${program} $file
+      [ "$(stat -c %Y $file)" = "$(date -d 2000-01-01 +%s)" ]
+
+      echo '{"theme":' >$file
+      if ${program} $file; then exit 1; fi
+      [ "$(cat $file)" = '{"theme":' ]
+
+      rm $file
+      ${program} $file
+      jq -e '.compaction.reserveTokens == 64000' $file
+      touch $out
+    '';
+
   # The prompt starts nothing once the shell is up: across a run of prompts
   # in and out of a repository, with git-engine answering, the shell itself
   # forks and executes nothing, and its reads of HEAD show the prompts ran.
