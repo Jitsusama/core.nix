@@ -1,7 +1,8 @@
 # pi, the coding agent in the terminal: a theme drawn from the machine's, so
 # its messages, tools, diffs and code wear the same colours as everything
 # else. pi keeps which theme it uses in a settings file of its own, so this
-# only puts the theme where pi finds it, for Joel to pick in /settings. Its
+# only puts the theme where pi finds it, for Joel to pick in /settings, and
+# merges into that file the few settings core holds pi to (settings.nix). Its
 # keys come from keys.nix, written where pi reads them and into the key map.
 # Its status line tells a folder and git as the prompt does, by the prompt's
 # root markers, its git-engine and the theme's marks.
@@ -118,6 +119,12 @@ in
   ];
 
   home.file.".pi/agent/themes/jitsusama.json".text = builtins.toJSON theme;
+
+  home.activation.piTakesCoresSettings = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+    run ${
+      lib.getExe (import ./settings.nix { inherit pkgs; })
+    } ${lib.escapeShellArg "${config.home.homeDirectory}/.pi/agent/settings.json"}
+  '';
 
   # Where the harness's status line learns the folder and git; its README
   # says what each field means.
