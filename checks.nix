@@ -2365,6 +2365,47 @@ in
         touch $out
       '';
 
+    # Both halves of the XPS 14's camera asked for 4 MiB of contiguous memory
+    # at probe, for a firmware log only Intel's offline logger writes, and the
+    # capture side failed its probe without it. Read from the patched sources,
+    # the logger's code taken out as it is when built.
+    the-camera-holds-no-unread-log =
+      let
+        inherit ((bareNixos [ self.nixosModules.dell-xps-14-da14260 ]).config.boot.kernelPackages)
+          kernel
+          ipu7-drivers
+          ;
+        isys = "drivers/staging/media/ipu7/ipu7-isys.c";
+        psys = "drivers/media/pci/intel/ipu7/psys/ipu-psys.c";
+        patches = lib.filter (patch: patch != null) (map (patch: patch.patch) kernel.kernelPatches);
+        apply = file: patches: ''
+          for patch in ${lib.escapeShellArgs (map (patch: "${patch}") patches)}; do
+            filterdiff -p1 -i ${file} "$patch" | patch -p1 --forward --batch --silent
+          done
+          unifdef -m -UENABLE_FW_OFFLINE_LOGGER ${file} || [ $? = 1 ]
+        '';
+      in
+      pkgs.runCommandLocal "the-camera-holds-no-unread-log"
+        {
+          nativeBuildInputs = [
+            pkgs.patchutils
+            pkgs.unifdef
+          ];
+        }
+        ''
+          tar xf ${kernel.src} --strip-components=1 --wildcards '*/${isys}'
+          install -D -m 644 ${ipu7-drivers.src}/${psys} ${psys}
+          ${apply isys patches}
+          ${apply psys ipu7-drivers.patches}
+          moved() { echo "The camera's $1 side isn't probed where this check looks."; exit 1; }
+          asks() { echo "The camera's $1 side asks for 4 MiB for a log nothing reads."; exit 1; }
+          grep -q 'isys_register_devices(isys)' ${isys} || moved capture
+          grep -q 'ipu7_psys_init_debugfs(psys)' ${psys} || moved processing
+          ! grep -q 'FW_LOG_BUF_SIZE' ${isys} || asks capture
+          ! grep -q 'psys_fw_log_init(psys)' ${psys} || asks processing
+          touch $out
+        '';
+
     # The XPS 14's panel gives its variable refresh range only in DisplayID's
     # Adaptive Sync block, so a kernel that doesn't read it never offers
     # variable refresh. Read from the XPS 14's patched source.
