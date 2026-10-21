@@ -47,6 +47,15 @@ impl Image {
     }
 }
 
+/// How many bytes of vault a stick of this many bytes would hold after the
+/// image, or why it can't hold one at all.
+pub fn vault_room(image: &Image, bytes: u64) -> Result<u64, Fault> {
+    let mut table = image.table.clone();
+    Ok(table
+        .add_vault("vault", [0; 16], bytes / SECTOR, LEAST_VAULT / SECTOR)?
+        .bytes())
+}
+
 /// What was written, for reading it back.
 pub struct Written {
     pub vault: gpt::Partition,

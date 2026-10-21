@@ -28,6 +28,19 @@ macro_rules! surface {
     };
 }
 
+/// What a tool printed in a NixOS test's QEMU with canokey keys
+/// (`fixtures/`).
+#[cfg(test)]
+macro_rules! qemu {
+    ($file:literal) => {
+        include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/fixtures/qemu-canokey/",
+            $file
+        ))
+    };
+}
+
 /// The fixtures' directories, for a test that reads files by name.
 #[cfg(test)]
 mod fixtures {
@@ -40,11 +53,13 @@ mod fixtures {
 
 pub mod fake;
 pub mod fault;
+pub mod install;
 pub mod journal;
 pub mod journey;
 pub mod machine;
 pub mod observe;
 pub mod place;
+pub mod screen;
 pub mod sign;
 pub mod step;
 pub mod stick;
@@ -55,7 +70,7 @@ pub mod vault;
 pub use fault::Fault;
 pub use journal::Journal;
 pub use journey::{Journey, Next};
-pub use machine::{Machine, Ran};
+pub use machine::{Given, Machine, Program, Ran};
 pub use place::Place;
 pub use step::{Answer, Answers, Ask, Secret, Standing, Step};
 pub use tool::Tool;

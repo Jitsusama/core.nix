@@ -42,6 +42,18 @@ in
       example = "64G";
       description = "The size of the swap file, at least the memory's, so the machine can hibernate.";
     };
+    installKey = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      example = "/run/guide/install-key";
+      description = ''
+        A file the layout reads the encrypted volume's first key from when
+        it formats the disk, rather than asking for a passphrase. The guide
+        makes it in memory and takes its slot off the disk once the
+        YubiKeys and the recovery key are enrolled. Only formatting reads
+        it; the installed machine never does.
+      '';
+    };
   };
 
   # Btrfs checks a block's checksum only when something reads it, so damage
@@ -95,6 +107,7 @@ in
                 "fido2-device=auto"
               ];
             };
+            passwordFile = lib.mkIf (cfg.installKey != null) cfg.installKey;
             content = {
               type = "btrfs";
               extraArgs = [ "-f" ];

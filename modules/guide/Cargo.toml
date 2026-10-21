@@ -9,7 +9,10 @@ publish = false
 
 [dependencies]
 age = "0.12"
+base64 = "0.22"
 crc32fast = "1.5"
+# The screen: raw keys and the terminal's size, on a console as anywhere.
+crossterm = "0.29"
 # Without chrono a file's times are FAT's earliest, so a vault written twice
 # from the same files is the same bytes.
 fatfs = { version = "0.3.6", default-features = false, features = ["std", "alloc"] }

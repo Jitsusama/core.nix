@@ -189,7 +189,7 @@ mod tests {
     fn status_is_read_though_bootctl_couldnt_reach_the_esp() {
         let mut fake = Fake::new();
         fake.answers(
-            Tool::Bootctl,
+            crate::Program::Tool(Tool::Bootctl),
             &["status"],
             1,
             xps!("bootctl-status.txt"),
