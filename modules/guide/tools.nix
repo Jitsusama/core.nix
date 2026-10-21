@@ -58,5 +58,7 @@ in
     pkgs.nix
   ];
   GUIDE_TOKEN_PLUGINS = "${systemd}/lib/cryptsetup";
+  # age finds its plugins on PATH, so the guide's own PATH is this alone.
+  GUIDE_AGE_PLUGINS = lib.makeBinPath [ pkgs.age-plugin-fido2-hmac ];
 }
 // (import ./theme.nix { inherit lib; }).env

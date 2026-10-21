@@ -8,7 +8,9 @@ license = "MIT"
 publish = false
 
 [dependencies]
-age = "0.12"
+# With its plugins, for the vault's key sealed to each YubiKey through
+# age-plugin-fido2-hmac.
+age = { version = "0.12", features = ["plugin"] }
 base64 = "0.22"
 crc32fast = "1.5"
 # The screen: raw keys and the terminal's size, on a console as anywhere.

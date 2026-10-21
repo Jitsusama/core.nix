@@ -156,16 +156,44 @@ pub fn write(
     }
     let key = VaultKey::generate();
     let sealed = key.seal_with_passphrase(passphrase, None)?;
+    // Sealed to the YubiKeys too when the machine names their recipients,
+    // so one touch opens it and the passphrase stays for when none can.
+    let target = &payload.target;
+    if !target.recipients.is_empty() && target.recipients.len() != target.yubikeys.len() {
+        return Err(Fault::Blocked {
+            step: "write-stick",
+            why: format!(
+                "{} names {} YubiKeys and {} recipients for them",
+                target.machine,
+                target.yubikeys.len(),
+                target.recipients.len()
+            ),
+        });
+    }
+    let to_keys = if target.recipients.is_empty() {
+        None
+    } else {
+        Some(key.seal_to_keys(&target.recipients)?)
+    };
+    let mut opened_by = if to_keys.is_some() {
+        target.yubikeys.clone()
+    } else {
+        vec![]
+    };
+    opened_by.push("the recovery passphrase".into());
     let manifest = Manifest {
         format: 1,
-        machine: payload.target.machine.clone(),
-        opened_by: vec!["the recovery passphrase".into()],
+        machine: target.machine.clone(),
+        opened_by,
     };
     let written = stick::write(&mut image, disk, stick::new_guid()?, signer, |store| {
         store
             .create(vault::KEY_PASSPHRASE)?
             .write_all(&sealed)
             .map_err(kept)?;
+        if let Some(to_keys) = &to_keys {
+            store.create(vault::KEY)?.write_all(to_keys).map_err(kept)?;
+        }
         let mut packer = Packer::new(store, &key);
         for (name, from) in payload.files() {
             packer.add(&name, File::open(&from).map_err(unread(&from))?)?;

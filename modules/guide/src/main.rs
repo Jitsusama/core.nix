@@ -32,6 +32,15 @@ const USAGE: &str = "usage: guide observe | guide tools | guide install | guide 
        guide write-stick IMAGE FILE [--sign-with DIRECTORY] [--install PAYLOAD]";
 
 fn main() -> ExitCode {
+    // age finds its plugins on PATH and takes no other, so the guide's own
+    // PATH is the one this build was given, and nothing a shell set can
+    // put another plugin in its place. The programs the guide runs get
+    // empty environments of their own (system.rs).
+    if let Some(plugins) = guide::tool::Path::AgePlugins.value() {
+        // SAFETY: the first thing main does, while no other thread is
+        // there to read the environment.
+        unsafe { std::env::set_var("PATH", plugins) };
+    }
     let args: Vec<String> = std::env::args().skip(1).collect();
     match args.iter().map(String::as_str).collect::<Vec<_>>()[..] {
         ["observe"] => observe(),
@@ -214,6 +223,7 @@ fn host(image: &str, signer: Option<Signer>, payload: Option<&str>) -> Result<()
         theme: &theme,
         log: None,
         whole: true,
+        last: Default::default(),
     };
     if walk.walk(&mut machine, &mut terminal)? != Ended::Finished {
         return Ok(());
@@ -261,6 +271,7 @@ fn installed() -> Result<(), Fault> {
         theme: &theme,
         log: None,
         whole: true,
+        last: Default::default(),
     };
     if walk.walk(&mut machine, &mut terminal)? != Ended::Finished {
         return Ok(());
@@ -325,6 +336,7 @@ fn install() -> Result<(), Fault> {
         theme: &theme,
         log: Some(Path::new(LOG)),
         whole: false,
+        last: Default::default(),
     };
     if walk.walk(&mut machine, &mut terminal)? != Ended::Finished {
         return Ok(());

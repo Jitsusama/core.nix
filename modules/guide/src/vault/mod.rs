@@ -23,6 +23,46 @@ pub const MANIFEST: &str = "manifest.json";
 pub const KEY: &str = "key.age";
 pub const KEY_PASSPHRASE: &str = "key-passphrase.age";
 const INDEX: &str = "index.age";
+/// The age plugin a YubiKey seals and opens through, which age finds as
+/// `age-plugin-fido2-hmac` on the guide's own PATH (main.rs sets it).
+const FIDO2: &str = "fido2-hmac";
+
+/// What a plugin is told when it asks something while sealing: nothing,
+/// since sealing to a YubiKey's recipient asks for no key.
+#[derive(Clone)]
+struct Quiet;
+
+impl age::Callbacks for Quiet {
+    fn display_message(&self, _: &str) {}
+    fn confirm(&self, _: &str, _: &str, _: Option<&str>) -> Option<bool> {
+        None
+    }
+    fn request_public_string(&self, _: &str) -> Option<String> {
+        None
+    }
+    fn request_passphrase(&self, _: &str) -> Option<SecretString> {
+        None
+    }
+}
+
+/// The PIN a YubiKey asks for when it opens the vault's key, given the
+/// once the person typed it; anything else it asks gets no answer, so the
+/// plugin stops rather than waiting on a prompt nobody sees.
+#[derive(Clone)]
+struct Pin(std::sync::Arc<Zeroizing<String>>);
+
+impl age::Callbacks for Pin {
+    fn display_message(&self, _: &str) {}
+    fn confirm(&self, _: &str, _: &str, _: Option<&str>) -> Option<bool> {
+        None
+    }
+    fn request_public_string(&self, _: &str) -> Option<String> {
+        None
+    }
+    fn request_passphrase(&self, _: &str) -> Option<SecretString> {
+        Some(SecretString::from(self.0.as_str().to_string()))
+    }
+}
 /// The most an object holds.
 const OBJECT: u64 = 1 << 30;
 
@@ -96,6 +136,46 @@ impl VaultKey {
             .parse()
             .map_err(|why: &str| unopened("the vault's key", why))?;
         Ok(VaultKey(key))
+    }
+
+    /// The key, sealed to each of the machine's YubiKeys by its age
+    /// recipient, beginning `age1fido2-hmac1`, any one of which opens it. Sealing
+    /// needs no key plugged in, since such a recipient carries the public
+    /// half of what the key's secret makes.
+    pub fn seal_to_keys(&self, recipients: &[String]) -> Result<Vec<u8>, Fault> {
+        let parsed = recipients
+            .iter()
+            .map(|recipient| recipient.parse::<age::plugin::Recipient>())
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|why| unsealable("the vault's key", why))?;
+        if parsed.is_empty() || parsed.iter().any(|recipient| recipient.plugin() != FIDO2) {
+            return Err(unsealable(
+                "the vault's key",
+                "a YubiKey's recipient begins age1fido2-hmac1",
+            ));
+        }
+        let plugin = age::plugin::RecipientPluginV1::new(FIDO2, &parsed, &[], Quiet)
+            .map_err(|why| unsealable("the vault's key", why))?;
+        self.sealed(
+            age::Encryptor::with_recipients(std::iter::once(&plugin as &dyn age::Recipient))
+                .map_err(|why| unsealable("the vault's key", why))?,
+        )
+    }
+
+    /// The key from its copy sealed to the YubiKeys, with whichever one is
+    /// plugged in and its PIN, which the key asks for along with a touch.
+    pub fn open_with_key(sealed: &[u8], pin: &Secret) -> Result<VaultKey, Fault> {
+        let identity = age::plugin::Identity::default_for_plugin(FIDO2)
+            .map_err(|why| unopened("the vault's key", why))?;
+        let plugin = age::plugin::IdentityPluginV1::new(
+            FIDO2,
+            &[identity],
+            Pin(std::sync::Arc::new(Zeroizing::new(
+                pin.expose().to_string(),
+            ))),
+        )
+        .map_err(|why| unopened("the vault's key", why))?;
+        VaultKey::open(sealed, &plugin)
     }
 
     /// The key as text, to hold in memory once it's open, so each step

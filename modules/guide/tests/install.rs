@@ -37,6 +37,7 @@ fn target(disk: &str) -> Target {
         system: "/nix/store/abc-nixos-system-machine".into(),
         account: "alice".into(),
         yubikeys: vec!["the Nano".into(), "the 5C".into()],
+        recipients: vec![],
     }
 }
 

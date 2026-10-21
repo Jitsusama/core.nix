@@ -65,16 +65,20 @@ pub enum Path {
     /// Where cryptsetup finds systemd's token plugins, which open a disk
     /// by its FIDO2 and TPM tokens.
     Tokens,
+    /// Where age finds the plugin a YubiKey seals and opens the vault's
+    /// key through: the guide's own PATH, set as it starts.
+    AgePlugins,
 }
 
 impl Path {
-    pub const ALL: &[Path] = &[Path::Disk, Path::Install, Path::Tokens];
+    pub const ALL: &[Path] = &[Path::Disk, Path::Install, Path::Tokens, Path::AgePlugins];
 
     pub fn name(self) -> &'static str {
         match self {
             Path::Disk => "the disk tools",
             Path::Install => "the install's tools",
             Path::Tokens => "cryptsetup's token plugins",
+            Path::AgePlugins => "age's plugins",
         }
     }
 
@@ -83,6 +87,7 @@ impl Path {
             Path::Disk => option_env!("GUIDE_DISK_TOOLS"),
             Path::Install => option_env!("GUIDE_INSTALL_TOOLS"),
             Path::Tokens => option_env!("GUIDE_TOKEN_PLUGINS"),
+            Path::AgePlugins => option_env!("GUIDE_AGE_PLUGINS"),
         }
     }
 

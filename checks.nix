@@ -188,6 +188,9 @@ let
     # Writing a stick on a host is UDisks2, polkit and a USB disk together,
     # as the person rather than root.
     vm-guide-writes-a-stick = import ./tests/guide-host.nix { inherit self pkgs; };
+    # A vault sealed to a YubiKey opens with it only where the plugin, the
+    # key and its PIN meet, and only a running machine has all three.
+    vm-guide-opens-the-vault = import ./tests/guide-vault.nix { inherit pkgs; };
     vm-commits-are-signed = import ./tests/signing.nix { inherit self pkgs; };
     # A passkey is the TPM, uhid, udev's seat rules and the shell's askpass
     # together, and only a running machine has them all.

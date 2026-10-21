@@ -98,6 +98,12 @@ driven on; the installed machine's steps come later.
   file's SHA-256. `manifest.json` goes last, so a vault without one was
   never finished. Every file sits at the top, since fatfs 0.3.6 writes
   directories fsck.fat has to repair.
+- **Opening the vault.** The key's YubiKey copy goes through
+  age-plugin-fido2-hmac, which age finds only on PATH, so the guide sets
+  its own PATH to the plugin's store directory as it starts. Sealing needs
+  no key plugged in. On the stick one field takes either the plugged-in
+  key's PIN or, with none plugged in, the recovery passphrase; the plugin's
+  own prompts never reach the screen, since the PIN is handed to it.
 
 ## Where Things Live
 
@@ -131,6 +137,7 @@ driven on; the installed machine's steps come later.
 | `tests/system.rs`     | secrets handed to a real program, and kept out of the log |
 | `tests/host.rs`       | the one stick written, never another disk              |
 | `../../tests/guide-host.nix` | a stick written on a host through UDisks2, as the person |
+| `../../tests/guide-vault.nix` | a vault opened by a YubiKey's PIN, then by the passphrase |
 | `../../tests/guide-install.nix` | a machine installed from its stick in a VM, by the guide's keys |
 
 ## Working on It
