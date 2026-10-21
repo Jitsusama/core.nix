@@ -74,6 +74,7 @@ quietly stopped holding.
 | `nix-builds-yield-to-the-user` | Nix's builds run at a lower weight than the user's programs |
 | `nix-collects-before-the-disk-fills` | Nix collects garbage during a build that fills the disk |
 | `resolved-is-set-per-network` | a laptop leaves resolved's global DNS settings as they ship |
+| `the-shutdown-mark-cannot-stop-a-reboot` | the mark a healthy stop leaves can't fail the reboot, and what reads it outlives the last stage |
 | `thermald-starts-after-its-drivers` | the XPS 14's thermal drivers load before thermald starts, and a thermald that stops is restarted |
 | `chromium-knows-the-panels-colours` | the XPS 14's Chrome, Slack and 1Password convert their colours to its panel's P3 |
 | `the-panel-slows-on-a-low-battery` | the XPS 14's panel drops to 60 Hz below 30% on battery, holds there, and comes back to its fastest rate on the charger |
@@ -190,6 +191,7 @@ a running system shows.
 | `vm-libvirt-stops-quickly`        | libvirt's daemon stops at once, its udev thread starved  |
 | `vm-ir-camera-opens-for-readers`  | the IR camera waits for udev and its loopback, opens only while read, its frames grey, no frame from before a reader opened |
 | `vm-swap-comes-down-while-probed` | the compressed swap comes down, its reset waiting out udev's probe |
+| `vm-reboot-cannot-hang`           | a reboot forces on after a minute of a service not stopping, the watchdog resets a stuck last stage, and Plymouth hears which |
 
 The install test builds a disk image with disko and boots it with a software
 TPM, then follows [the install guide][3] step by step: the keys are made and

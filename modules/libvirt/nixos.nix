@@ -88,6 +88,11 @@ in
     # Machines start only when asked, and shut down cleanly with the host.
     onBoot = "ignore";
     onShutdown = "shutdown";
+    # All at once, and within 45 seconds between them, inside the minute the
+    # host gives its own services to stop (modules/systemd). One at a time,
+    # each was given five minutes.
+    parallelShutdown = 16;
+    shutdownTimeout = 45;
   };
 
   # Session machines get a daemon of their own, started by its socket, which

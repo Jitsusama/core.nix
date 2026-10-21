@@ -212,6 +212,9 @@ let
     # Whether the swap comes down while udev probes its device shows only with
     # the device there and held open.
     vm-swap-comes-down-while-probed = import ./tests/zram.nix { inherit self pkgs; };
+    # Whether a reboot gets past what won't stop shows only by rebooting, with
+    # a watchdog there to reset the machine.
+    vm-reboot-cannot-hang = import ./tests/shutdown.nix { inherit self pkgs; };
   };
 in
 {
@@ -2034,6 +2037,33 @@ in
     holds "firmware-leaves-the-keyboard-light"
       "The XPS 14 holds KeyboardIllumination, which its light key sets, or lost IntelSagv."
       (settings ? IntelSagv && !(settings ? KeyboardIllumination));
+
+  # The services that end a healthy stop leave shutdown-status its mark, but a
+  # mark that couldn't be written must never stop the reboot, so each ignores
+  # its failure. shutdown-status itself has to outlive the last stage's kills,
+  # or it can't say what's left, and systemd reads that setting from [Unit]
+  # alone, ignoring it anywhere else.
+  the-shutdown-mark-cannot-stop-a-reboot =
+    let
+      machine = bareNixos [
+        self.nixosModules.systemd
+        { boot.plymouth.enable = true; }
+      ];
+      inherit (machine.config.systemd) services;
+      ends = [
+        "reboot"
+        "poweroff"
+        "halt"
+        "kexec"
+      ];
+      marks = end: services."systemd-${end}".serviceConfig.ExecStartPre;
+    in
+    holds "the-shutdown-mark-cannot-stop-a-reboot"
+      "shutdown-status dies at the last stage, or a shutdown fails when it can't leave a mark."
+      (
+        services.shutdown-status.unitConfig.SurviveFinalKillSignal or false
+        && lib.all (end: lib.hasPrefix "-" (marks end)) ends
+      );
 
   # thermald reads the XPS 14's tables, sensors and the CPU's power limits
   # once, as it starts, and stops if its adaptive mode finds no zone, which
