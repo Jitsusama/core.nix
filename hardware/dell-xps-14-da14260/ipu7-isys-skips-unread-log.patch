@@ -1,0 +1,68 @@
+staging: media: ipu7: Drop the firmware log buffer nothing reads
+
+Probe allocates a buffer for the firmware's log and fails if it can't
+have it, but nothing in the driver reads or writes that buffer: the
+code that would copy the log into it isn't in this tree. It asks for
+2 MiB plus devres's header, which the page allocator rounds up to
+4 MiB of contiguous pages. Once memory has fragmented after days of
+use, a rebind can't find that in one piece, and the camera is lost to
+a buffer it never uses. Drop the allocation, and the cleanup only its
+failure reached.
+
+--- a/drivers/staging/media/ipu7/ipu7-isys.c
++++ b/drivers/staging/media/ipu7/ipu7-isys.c
+@@ -110,35 +110,6 @@
+ 	}
+ }
+ 
+-static int isys_fw_log_init(struct ipu7_isys *isys)
+-{
+-	struct device *dev = &isys->adev->auxdev.dev;
+-	struct isys_fw_log *fw_log;
+-	void *log_buf;
+-
+-	if (isys->fw_log)
+-		return 0;
+-
+-	fw_log = devm_kzalloc(dev, sizeof(*fw_log), GFP_KERNEL);
+-	if (!fw_log)
+-		return -ENOMEM;
+-
+-	mutex_init(&fw_log->mutex);
+-
+-	log_buf = devm_kzalloc(dev, FW_LOG_BUF_SIZE, GFP_KERNEL);
+-	if (!log_buf)
+-		return -ENOMEM;
+-
+-	fw_log->head = log_buf;
+-	fw_log->addr = log_buf;
+-	fw_log->count = 0;
+-	fw_log->size = 0;
+-
+-	isys->fw_log = fw_log;
+-
+-	return 0;
+-}
+-
+ /* The .bound() notifier callback when a match is found */
+ static int isys_notifier_bound(struct v4l2_async_notifier *notifier,
+ 			       struct v4l2_subdev *sd,
+@@ -823,18 +794,11 @@
+ 		goto out_cleanup_fw;
+ 	isys->v4l2_dev.release = isys_v4l2_release;
+ 
+-	ret = isys_fw_log_init(isys);
+-	if (ret)
+-		goto out_cleanup;
+-
+ 	ipu7_mmu_hw_cleanup(adev->mmu);
+ 	pm_runtime_put(&auxdev->dev);
+ 
+ 	return 0;
+ 
+-out_cleanup:
+-	isys_notifier_cleanup(isys);
+-	isys_unregister_devices(isys);
+ out_cleanup_fw:
+ 	ipu7_fw_isys_release(isys);
+ out_cleanup_isys:

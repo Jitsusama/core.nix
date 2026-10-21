@@ -111,6 +111,10 @@ let
         # unstarted on every open, and the camera dark, until the next boot.
         # Written here; the patch says why.
         ./ipu7-psys-authenticates.patch
+        # The same 4 MiB for a log only Intel's offline logger writes, which
+        # warns whenever a rebind can't find it. Written here; the patch says
+        # why.
+        ./ipu7-psys-skips-unread-log.patch
       ];
       postPatch = old.postPatch or "" + ''
         mkdir kernel
@@ -291,6 +295,19 @@ in
       # here; the patch says why.
       name = "ipu7-outlives-open-files";
       patch = ./ipu7-outlives-open-files.patch;
+    }
+    {
+      # The capture side's probe fails without 4 MiB of contiguous memory for
+      # a firmware log nothing reads, so a rebind on fragmented memory loses
+      # the camera. Written here; the patch says why.
+      name = "ipu7-isys-skips-unread-log";
+      patch = ./ipu7-isys-skips-unread-log.patch;
+    }
+    {
+      # Each unbind, the recovery rebind included, left the capture side's
+      # firmware boot memory allocated. From linux-next.
+      name = "ipu7-isys-releases-firmware";
+      patch = ./ipu7-isys-releases-firmware.patch;
     }
   ];
   jitsusama.kernel.packageOverlays = [ psys ];

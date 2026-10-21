@@ -1,0 +1,18 @@
+media: staging/ipu7: release ISYS firmware resources on remove
+
+Mainline 628a575c99e7, in linux-next and not yet in a release: the
+ISYS's remove never released what its firmware setup allocated (the
+boot config and the syscom queues), which its probe error path does,
+so each unbind left them allocated. Intel's own driver releases them
+there too. Regenerated against this tree, after the patches above.
+
+--- a/drivers/staging/media/ipu7/ipu7-isys.c
++++ b/drivers/staging/media/ipu7/ipu7-isys.c
+@@ -579,6 +579,7 @@
+ 
+ 	isys_notifier_cleanup(isys);
+ 	isys_unregister_devices(isys);
++	ipu7_fw_isys_release(isys);
+ 
+ 	cpu_latency_qos_remove_request(&isys->pm_qos);
+ 
