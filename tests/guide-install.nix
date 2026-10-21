@@ -20,6 +20,7 @@
 let
   inherit (pkgs) lib;
   pin = "123456";
+  tpmPin = "24681357";
   password = "a password for alice";
   passphrase = "the stick's recovery passphrase";
 
@@ -89,6 +90,7 @@ pkgs.testers.runNixOSTest {
     {
       imports = [
         self.nixosModules.disko
+        self.nixosModules.guide
         self.nixosModules.lanzaboote
       ];
       jitsusama.disk = {
@@ -104,6 +106,22 @@ pkgs.testers.runNixOSTest {
         isNormalUser = true;
         uid = 1000;
       };
+      # alice signs in on the first console into the guide, which finishes
+      # the machine. polkit lets her through run0 without the password a
+      # desktop's agent would ask for, since a test has no agent.
+      services.getty.autologinUser = "alice";
+      environment.loginShellInit = ''
+        if [ "$(tty)" = /dev/tty1 ]; then
+          guide installed
+        fi
+      '';
+      security.polkit.extraConfig = ''
+        polkit.addRule(function(action, subject) {
+          if (subject.user == "alice" && action.id == "org.freedesktop.systemd1.manage-units") {
+            return polkit.Result.YES;
+          }
+        });
+      '';
       boot.loader.timeout = 0;
       system.switch.enable = true;
       system.stateVersion = "26.05";
@@ -161,7 +179,7 @@ pkgs.testers.runNixOSTest {
           '';
     in
     ''
-      import os, re, shutil, subprocess, tempfile
+      import json, os, re, shutil, subprocess, tempfile
 
       keys = tempfile.mkdtemp()
       for name in ["nano", "fivec"]:
@@ -188,7 +206,16 @@ pkgs.testers.runNixOSTest {
                   raise Exception("the guide stopped:\n" + text)
               return re.search("(?i)" + pattern, text) is not None
           with machine.nested(f"waiting for {pattern} on the guide's screen"):
-              retry(shown, timeout)
+              try:
+                  retry(shown, timeout)
+              except Exception:
+                  # What the machine was at when the wait ran out: the
+                  # screen, the guide's raw log, and the journal's last.
+                  print("SCREEN\n" + screen())
+                  for where in ["/run/guide/log", "/home/alice/.local/state/guide/log"]:
+                      print(f"LOG {where}\n" + machine.execute(f"tail -n 60 {where}")[1])
+                  print("JOURNAL\n" + machine.execute("journalctl -b -n 80 -o cat")[1])
+                  raise
 
       def type(text):
           machine.send_chars(text + "\n")
@@ -267,10 +294,10 @@ pkgs.testers.runNixOSTest {
           # first and then its own FIDO2 code, and a key that's not there
           # yet at the first leaves the second asking, so each prompt is
           # answered until the disk opens.
-          def unlock():
+          def unlock(secret="${pin}"):
               machine.wait_for_console_text("Please enter")
               for _ in range(4):
-                  machine.send_console("${pin}\n")
+                  machine.send_console(secret + "\n")
                   try:
                       machine.wait_for_console_text("Finished .*Cryptography Setup for system", timeout=30)
                       return
@@ -292,5 +319,34 @@ pkgs.testers.runNixOSTest {
           print(status)
           t.assertIn("Secure Boot: enabled (user)", status)
           machine.succeed("grep -q '^alice:\\$' /etc/shadow")
+
+      with subtest("the guide seals the disk to the TPM with a PIN, a YubiKey opening it to do so"):
+          on_screen("a PIN for the TPM")
+          type("${tpmPin}")
+          on_screen("the same PIN again")
+          type("${tpmPin}")
+          on_screen("Plug in a YubiKey")
+          type("")
+          on_screen("the YubiKey's PIN")
+          type("${pin}")
+          on_screen("machine is finished", timeout=300)
+          header = json.loads(machine.succeed("cryptsetup luksDump --dump-json-metadata /dev/disk/by-partlabel/system"))
+          (sealed,) = [t["keyslots"][0] for t in header["tokens"].values() if t["type"] == "systemd-tpm2"]
+          t.assertEqual(header["keyslots"][sealed].get("priority"), 2)
+          print("FIXTURE luks-dump-sealed.json " + json.dumps(header))
+          # Written by alice's guide, root only for what needed it.
+          machine.fail("pgrep -u root -f 'guide installed'")
+
+      with subtest("after the restart the disk asks once, and opens with the TPM's PIN"):
+          before = len(machine.get_console_log())
+          type("")
+          machine.connected = False
+          unlock("${tpmPin}")
+          machine.connect()
+          machine.wait_for_unit("multi-user.target")
+          # One prompt, which the TPM's PIN answered: no YubiKey's PIN is
+          # that, so only the TPM's slot could have opened the disk.
+          prompts = re.findall(r"Please enter [^:(]*:", machine.get_console_log()[before:])
+          t.assertEqual(prompts, ["Please enter LUKS2 token PIN:"])
     '';
 }

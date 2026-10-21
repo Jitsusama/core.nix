@@ -46,6 +46,11 @@ pub struct Given<'a> {
     /// What it prints is itself a secret, such as a recovery key, so the
     /// log leaves it out.
     pub prints_secret: bool,
+    /// It runs as root, through run0, which asks polkit, for what a person
+    /// on an installed machine can't do as themself, such as enrolling the
+    /// TPM. Its secrets go only as credentials and standard input, since
+    /// an environment variable would be on run0's command line.
+    pub as_root: bool,
 }
 
 pub trait Machine {

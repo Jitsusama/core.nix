@@ -22,7 +22,8 @@ pub struct Fake {
     disks: BTreeMap<String, std::path::PathBuf>,
     journal: Journal,
     /// Every call made, in order, as `program arg arg`, followed by the
-    /// names of the secrets it was given in brackets.
+    /// names of the secrets it was given in brackets, and `(as root)` for
+    /// one run through run0.
     pub calls: Vec<String>,
     /// Each secret given, as where it went (`PIN`, `cryptenroll.fido2-pin`,
     /// `stdin`) and what it was, in order.
@@ -165,6 +166,9 @@ impl Machine for Fake {
         }
         if !handed.is_empty() {
             call = format!("{call} [{}]", handed.join(" "));
+        }
+        if given.as_root {
+            call = format!("{call} (as root)");
         }
         self.calls.push(call.clone());
         let queued = self

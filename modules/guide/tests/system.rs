@@ -48,6 +48,7 @@ fn each_secret_reaches_its_program_and_no_log() {
                 stdin: Some(&typed),
                 // It prints them back, for the test to see they arrived.
                 prints_secret: true,
+                as_root: false,
             },
         )
         .unwrap();
@@ -105,6 +106,25 @@ fn what_it_keeps_only_its_owner_can_read() {
     machine.remove(file.to_str().unwrap()).unwrap();
     machine.remove(file.to_str().unwrap()).unwrap();
     assert!(!file.exists());
+}
+
+#[test]
+fn a_secret_never_rides_on_run0s_command_line() {
+    let mut machine = System::new(Journal::in_memory(), None);
+    let pin = Secret::new("24681357".into());
+    let refused = machine.run_given(
+        Program::Carried(&shell()),
+        &["-c", "true"],
+        Given {
+            env: vec![("NEWPIN", &pin)],
+            as_root: true,
+            ..Given::default()
+        },
+    );
+    assert!(
+        matches!(&refused, Err(guide::Fault::Unstarted { why, .. }) if why.contains("run0's command line")),
+        "{refused:?}"
+    );
 }
 
 #[test]

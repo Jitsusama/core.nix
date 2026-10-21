@@ -217,6 +217,7 @@
         gnome-keyring = ./modules/gnome-keyring/nixos.nix;
         gpu = ./modules/gpu/nixos.nix;
         greetd = ./modules/greetd/nixos.nix;
+        guide = ./modules/guide/nixos.nix;
         home-manager = moduleFrom ./modules/home-manager/nixos.nix { inherit home-manager; };
         ir-camera = ./modules/ir-camera/nixos.nix;
         kernel = ./modules/kernel/nixos.nix;
@@ -345,9 +346,13 @@
             pkgs.sbsigntool
             pkgs.util-linux
           ];
-          env = pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
-            GUIDE_TEST_EFI = "${pkgs.systemd}/lib/systemd/boot/efi";
-          };
+          # A guide built here finds its tools as the package's does.
+          env = pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux (
+            {
+              GUIDE_TEST_EFI = "${pkgs.systemd}/lib/systemd/boot/efi";
+            }
+            // import ./modules/guide/tools.nix { inherit pkgs; }
+          );
         };
       });
 

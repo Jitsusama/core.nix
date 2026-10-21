@@ -36,6 +36,7 @@ stick `/dev/sda`.
 | ------------------------------ | ------------------------------------------------- |
 | `luks-dump-before-wipe.json`   | `cryptsetup luksDump --dump-json-metadata`, with the random key's slot still there |
 | `luks-dump-installed.json`     | the same on the machine's disk once the guide's install took the random key's slot off |
+| `luks-dump-sealed.json`        | the same once the guide sealed it to the TPM and preferred that slot, parsed and written again by the test's Python |
 | `lsblk-blank.json`             | `lsblk --json --output-all --bytes`, the machine's disk blank |
 | `lsblk-laid-out.json`          | the same once the machine's layout made its volume and mounted it at /mnt |
 | `fido2-token-L.txt`            | `fido2-token -L`, one canokey plugged in          |

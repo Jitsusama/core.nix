@@ -75,6 +75,15 @@ driven on; the installed machine's steps come later.
   with them, the system is copied in from the vault with no network, and
   the key held in memory comes off the disk last. Every step stays done
   through the steps after it, since the journey runs the first that isn't.
+- **The installed machine.** Once it boots its own disk, the guide runs
+  there as the person, from core's `guide` NixOS module, which also writes
+  what it reads about the machine to `/etc/guide/machine.json`. It checks
+  Secure Boot enforces with the machine's own keys before anything is
+  sealed to it, then seals the disk to the TPM with a PIN under the
+  measured-boot policy, a YubiKey opening the disk to do so, prefers the
+  TPM's slot and proves it opens. What needs root goes through run0, which
+  asks polkit; its secrets go only as credentials loaded from files in
+  memory and on standard input, never on run0's command line.
 - **The screen.** One step at a time, and one thing asked at a time, each
   before the step starts. It's drawn in the theme's roles and marks as the
   build was given them (`theme.nix`), with the console's stand-ins on a
@@ -109,6 +118,8 @@ driven on; the installed machine's steps come later.
 | `src/vault/`          | the vault's sealing and index, and where its files are kept |
 | `src/host/`           | writing a stick on a host, and what a reinstall stick carries |
 | `src/install/`        | installing a machine from its stick, a step to a file by what it touches |
+| `src/installed/`      | finishing the machine on itself: Secure Boot checked, the TPM sealed |
+| `nixos.nix`           | the guide on a machine it installed                       |
 | `src/screen/`         | the view, drawn as lines in roles; the terminal; the walk through a journey |
 | `payload.nix`         | what a reinstall stick carries for one machine            |
 | `stick.nix`           | the stick's own system                                    |

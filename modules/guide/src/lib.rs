@@ -99,6 +99,7 @@ pub mod fake;
 pub mod fault;
 pub mod host;
 pub mod install;
+pub mod installed;
 pub mod journal;
 pub mod journey;
 pub mod machine;

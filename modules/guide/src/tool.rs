@@ -40,6 +40,7 @@ tools! {
     Fido2Token => "fido2-token", "GUIDE_FIDO2_TOKEN";
     Lsblk => "lsblk", "GUIDE_LSBLK";
     Nix => "nix", "GUIDE_NIX";
+    Run0 => "run0", "GUIDE_RUN0";
     NixosEnter => "nixos-enter", "GUIDE_NIXOS_ENTER";
     NixosInstall => "nixos-install", "GUIDE_NIXOS_INSTALL";
     Sbctl => "sbctl", "GUIDE_SBCTL";

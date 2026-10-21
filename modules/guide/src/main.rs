@@ -7,7 +7,8 @@
 //! holding everything to install it, sealed to a recovery passphrase.
 //! `guide write-stick IMAGE FILE` does the same into a file the size of a
 //! stick, the passphrase read from standard input. `guide install` is
-//! what the stick runs on its console, as root.
+//! what the stick runs on its console, as root, and `guide installed`
+//! finishes the machine once it boots its own disk, as the person.
 
 use std::fs::{File, OpenOptions};
 use std::io::BufRead;
@@ -26,7 +27,7 @@ use guide::vault;
 use guide::vault::store::{Fat, Store};
 use guide::{Fault, Journal, Journey, Machine, Place, Secret, Tool};
 
-const USAGE: &str = "usage: guide observe | guide tools | guide install
+const USAGE: &str = "usage: guide observe | guide tools | guide install | guide installed
        guide host IMAGE [--sign-with DIRECTORY] [--install PAYLOAD]
        guide write-stick IMAGE FILE [--sign-with DIRECTORY] [--install PAYLOAD]";
 
@@ -36,6 +37,7 @@ fn main() -> ExitCode {
         ["observe"] => observe(),
         ["tools"] => tools(),
         ["install"] => reported(install()),
+        ["installed"] => reported(installed()),
         ["host", image, ref options @ ..] => match written(options) {
             Some((keys, payload)) => reported(
                 keys.map(|keys| Signer::open(Path::new(keys)))
@@ -155,13 +157,18 @@ fn write_stick(
     Ok(())
 }
 
-/// Where the host keeps its log: the person's own state, readable only by
-/// them.
-fn host_log() -> Option<File> {
+/// The person's own state for the guide, made readable only by them.
+fn own_state() -> Option<PathBuf> {
     let state = std::env::var_os("XDG_STATE_HOME")
         .map(PathBuf::from)
         .or_else(|| std::env::var_os("HOME").map(|home| Path::new(&home).join(".local/state")))?;
-    let directory = state.join("guide");
+    Some(state.join("guide"))
+}
+
+/// Where the host keeps its log: the person's own state, readable only by
+/// them.
+fn host_log() -> Option<File> {
+    let directory = own_state()?;
     std::os::unix::fs::DirBuilderExt::mode(std::fs::DirBuilder::new().recursive(true), 0o700)
         .create(&directory)
         .ok()?;
@@ -218,6 +225,55 @@ fn host(image: &str, signer: Option<Signer>, payload: Option<&str>) -> Result<()
         None => "Start the machine to repair from the stick.".into(),
     };
     walk.card(&mut terminal, "The stick is written", &next, "finish")?;
+    Ok(())
+}
+
+/// The installed machine's journey, as the person who signs in there:
+/// Secure Boot checked, then the disk sealed to the TPM, then a restart to
+/// meet the TPM's PIN at the disk's prompt.
+fn installed() -> Result<(), Fault> {
+    // SAFETY: getuid can't fail and touches no memory.
+    if unsafe { libc::getuid() } == 0 {
+        return Err(Fault::Blocked {
+            step: "finish",
+            why: "the guide runs as yourself here, and asks for root where it needs it".into(),
+        });
+    }
+    // What's proven here has to outlive the restarts in between.
+    let journal = match own_state() {
+        Some(state) => Journal::open(&state.join("journal"))?,
+        None => Journal::in_memory(),
+    };
+    let mut machine = System::new(journal, host_log());
+    let name = machine
+        .read("/etc/hostname")?
+        .map(|bytes| String::from_utf8_lossy(&bytes).trim().to_string())
+        .unwrap_or_else(|| "this machine".into());
+    let title = format!("Finish {name}");
+    let journey = Journey::new(guide::installed::steps())
+        .map_err(|why| Fault::unreadable("the installed machine's steps", why))?;
+    let theme = Theme::built(Terminal::is_console());
+    let mut terminal = Terminal::open()?;
+    let walk = Walk {
+        journey: &journey,
+        here: Place::Installed,
+        name: &title,
+        theme: &theme,
+        log: None,
+        whole: true,
+    };
+    if walk.walk(&mut machine, &mut terminal)? != Ended::Finished {
+        return Ok(());
+    }
+    let next = "Restart, and the disk asks for the TPM's PIN from now on. A YubiKey or the recovery key still opens it whenever the TPM won't.";
+    if walk.card(
+        &mut terminal,
+        &format!("{name} is finished"),
+        next,
+        "restart",
+    )? {
+        machine.run(Tool::Systemctl, &["reboot"])?.ok()?;
+    }
     Ok(())
 }
 
@@ -320,7 +376,7 @@ fn tools() -> ExitCode {
     }
     for absent in Theme::built(false).missing() {
         missing += 1;
-        println!("the theme: this build has no {absent}");
+        println!("the theme: {absent} isn't in this build");
     }
     for path in guide::tool::Path::ALL {
         let name = path.name();
