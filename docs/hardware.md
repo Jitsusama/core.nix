@@ -700,6 +700,45 @@ upstream as it is and the override can then come out.
   all as unsupported. The mute key's light comes from `dell-laptop`, which is
   in.
 
+## Microsoft Surface Laptop 4 (1958)
+
+[`hardware/microsoft-surface-laptop-4-1958/nixos.nix`][19]. The 13.5" model
+with AMD: a Ryzen 5 Microsoft Surface Edition (six Zen 2 cores, Renoir) with
+Radeon graphics, Intel's AX200 Wi-Fi 6, a Nuvoton TPM 2.0, and Surface's own
+embedded controller, the Surface Aggregator Module, behind which sit the
+keyboard, the battery and the charger. The stock kernel drives all of what's
+below, so the module adds no patches.
+
+| Part     | What the module does                                                      |
+| -------- | ------------------------------------------------------------------------- |
+| CPU      | the kernel compiled for `znver2`, microcode, KVM                          |
+| Keyboard | named as the built-in one, `045e:09ae`, and its drivers in the initrd     |
+| Boot     | NVMe and USB drivers in the initrd                                        |
+| Graphics | named as the GPU the desktop waits for                                    |
+| Devices  | Wi-Fi, Bluetooth, the battery, the charger and the camera, as expected    |
+
+### The Keyboard at the Disk Prompt
+
+The keyboard isn't on USB or PS/2: it's a HID device the Surface Aggregator
+presents over a UART. So an initrd with only the usual keyboard drivers
+asks for the disk's PIN with no keyboard to type it on. The module puts the
+whole path in the initrd, as the [linux-surface wiki][20] lists it: the
+UART's driver (`8250_dw`), the Aggregator's driver, its registry and hub, and
+the HID drivers. The UART's GPIO driver, `pinctrl_amd`, is built into the
+kernel. A USB stick whose initrd held that set typed on this keyboard,
+under Secure Boot with the owner's keys, before any disk was open.
+
+### What's Left
+
+| Part       | Why it isn't here yet                                                          |
+| ---------- | ------------------------------------------------------------------------------ |
+| Clock      | its NixOS ran with `tsc=unstable` on HPET, unexplained; it needs a measurement |
+| Sleep      | suspend and resume aren't measured yet                                         |
+| Audio      | the speakers and microphones aren't checked yet                                |
+| Camera     | the front camera is listed; its picture isn't checked yet                      |
+| Firmware   | Microsoft ships firmware updates only for Windows                              |
+| Touch, pen | linux-surface lists the touchscreen and pen as unsupported on this model      |
+
 [1]: kernel.md
 [2]: ../hardware/dell-xps-14-da14260/nixos.nix
 [3]: https://patchwork.linuxtv.org/project/linux-media/patch/20260913133017.624919-1-junjie.cao@intel.com/
@@ -718,3 +757,5 @@ upstream as it is and the override can then come out.
 [16]: ../modules/ir-camera/nixos.nix
 [17]: https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/commit/?id=8a2941fae0d02364d8ae6542ba890fd496681b55
 [18]: ../modules/v4l2loopback/nixos.nix
+[19]: ../hardware/microsoft-surface-laptop-4-1958/nixos.nix
+[20]: https://github.com/linux-surface/linux-surface/wiki/Disk-Encryption
