@@ -1,0 +1,81 @@
+System:
+      Firmware: UEFI 2.70 (Dell 1.00)
+ Firmware Arch: x64
+   Secure Boot: enabled (deployed)
+  TPM2 Support: yes
+  Measured UKI: yes
+   Measured OS: yes
+  Boot into FW: supported
+ Platform Lang: en_US.UTF-8
+
+Current Boot Loader:
+        Product: systemd-boot 261.3
+       Features: ✓ Boot counting
+                 ✓ Menu timeout control
+                 ✓ One-shot menu timeout control
+                 ✓ Default entry control
+                 ✓ One-shot entry control
+                 ✓ Support for XBOOTLDR partition
+                 ✓ Support for passing random seed to OS
+                 ✓ Load drop-in drivers
+                 ✓ Support Type #1 sort-key field
+                 ✓ Support @saved pseudo-entry
+                 ✓ Support Type #1 devicetree field
+                 ✓ Enroll SecureBoot keys
+                 ✓ Retain SHIM protocols
+                 ✓ Menu can be disabled
+                 ✓ Multi-Profile UKIs are supported
+                 ✓ Loader reports network boot URL
+                 ✓ Support Type #1 uki field
+                 ✓ Support Type #1 uki-url field
+                 ✓ Loader reports active TPM2 PCR banks
+                 ✓ Loader reports firmware keyboard layout
+                 ✓ Loader measures SMBIOS information
+      Partition: /dev/disk/by-partuuid/52c04837-731d-4a51-a7fb-6dd8f2beb456
+         Loader: └─/boot//EFI/Boot/BootX64.efi
+Keyboard Layout: n/a (not reported by firmware)
+  Current Entry: nixos-generation-142-enwyrylvvtqksv32o6kvmr63ophipyvip7xjcldqoa3xjbo3vota.efi
+
+Current Stub:
+        Product: lanzastub 1.2.0
+       Features: ✓ Stub reports loader partition information
+                 ✗ Stub reports stub partition information
+                 ✗ Stub reports network boot URL
+                 ✗ Picks up credentials from boot partition
+                 ✗ Picks up system extension images from boot partition
+                 ✗ Picks up configuration extension images from boot partition
+                 ✗ Measures kernel+command line+sysexts
+                 ✗ Support for passing random seed to OS
+                 ✗ Pick up .cmdline from addons
+                 ✗ Pick up .cmdline from SMBIOS Type 11
+                 ✗ Pick up .dtb from addons
+                 ✗ Stub understands profile selector
+                 ✗ Stub measures SMBIOS information
+
+Random Seed:
+ System Token: set
+       Exists: Can't access /boot/loader/random-seed (Permission denied)
+
+Available Boot Loaders on ESP:
+          ESP: /boot (/dev/disk/by-partuuid/52c04837-731d-4a51-a7fb-6dd8f2beb456)
+         File: (can't access /boot: Permission denied)
+
+Boot Loaders Listed in EFI Variables:
+        Title: UEFI PVC10 SK hynix 1024GB 5MF7N000513007E6O 1
+           ID: 0x0000
+       Status: active, boot-order
+    Partition: /dev/disk/by-partuuid/52c04837-731d-4a51-a7fb-6dd8f2beb456
+         File: └─/boot//EFI/Boot/BootX64.efi
+
+        Title: Limine
+           ID: 0x0003
+       Status: active, boot-order
+    Partition: /dev/disk/by-partuuid/d1035731-6e21-4faf-b4cd-c9d86a6db736
+         File: └─/boot//EFI/limine/limine_x64.efi
+
+        Title: Ubuntu
+           ID: 0x0006
+       Status: inactive, boot-order
+    Partition: /dev/disk/by-partuuid/9fa20e65-c83f-43af-8984-6d079c0bc7c8
+         File: └─/boot//EFI/ubuntu/shimx64.efi
+

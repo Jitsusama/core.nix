@@ -4077,6 +4077,25 @@ in
           '';
         });
 
+    # The guide's tests run as it builds: each step proven by observing it
+    # again, and each parser reading what real machines printed. Its install
+    # check then finds every program it runs at the path it was built with.
+    guide-proves-its-steps = pkgs.callPackage ./modules/guide/package.nix { };
+
+    # clippy finds nothing in the guide, its tests included.
+    guide-passes-clippy = (pkgs.callPackage ./modules/guide/package.nix { }).overrideAttrs (old: {
+      pname = "guide-passes-clippy";
+      nativeBuildInputs = old.nativeBuildInputs ++ [ pkgs.clippy ];
+      buildPhase = ''
+        cargo clippy --all-targets --offline -- -D warnings
+      '';
+      doCheck = false;
+      doInstallCheck = false;
+      installPhase = ''
+        touch $out
+      '';
+    });
+
     # clippy finds nothing in ir-camera, its tests included.
     ir-camera-passes-clippy =
       (pkgs.callPackage ./modules/ir-camera/package.nix { }).overrideAttrs

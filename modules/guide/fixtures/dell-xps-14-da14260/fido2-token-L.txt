@@ -1,0 +1,1 @@
+/dev/hidraw6: vendor=0x15d9, product=0x0a37 ( linux-id)

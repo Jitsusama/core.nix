@@ -160,6 +160,8 @@ kernel guide][2] says what that catches.
 | `disk-guard-passes-clippy`        | clippy finds nothing in the disk guard or its scenarios   |
 | `disk-guard-compiles-for-macos`   | the disk guard and its scenarios compile for macOS, clean |
 | `network-revive-passes-clippy`    | clippy finds nothing in network-revive or its tests       |
+| `guide-proves-its-steps`          | the guide counts a step done only once observing it again says so, reads what real machines' tools printed, and finds every program it runs |
+| `guide-passes-clippy`             | clippy finds nothing in the guide or its tests            |
 | `ir-camera-passes-clippy`         | clippy finds nothing in ir-camera or its tests            |
 | `record-window-passes-clippy`     | clippy finds nothing in record-window or its tests        |
 | `spend-watch-accepts-its-configuration` | spend-watch passes its tests and accepts the config an account gets, a feed and a cap among it |

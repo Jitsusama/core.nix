@@ -1,0 +1,13 @@
+# The guide: walks a person from a blank laptop to a sealed machine, and
+# through its repairs, one step at a time (AGENTS.md says how).
+[package]
+name = "guide"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+zeroize = "1.9"

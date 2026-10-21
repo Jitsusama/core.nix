@@ -259,9 +259,11 @@
       };
 
       # What core.nix builds that a cache can hold apart from any machine: the
-      # kernel for any x86-64 machine. A machine builds its own from the same
-      # file, for its CPU.
+      # kernel for any x86-64 machine, and the guide that installs and
+      # repairs one. A machine builds its own kernel from the same file, for
+      # its CPU.
       packages.x86_64-linux = {
+        guide = nixpkgs.legacyPackages.x86_64-linux.callPackage ./modules/guide/package.nix { };
         kernel = import ./modules/kernel/package.nix nixpkgs.legacyPackages.x86_64-linux {
           cpu = null;
           profile = null;
