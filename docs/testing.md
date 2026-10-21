@@ -182,7 +182,7 @@ a running system shows.
 | `vm-speakers-are-tuned`           | the XPS 14's speakers hear the tuning, headphones don't |
 | `vm-desktop-works`                | it boots clean; the desktop shows, opens, locks and asks |
 | `vm-greeter-signs-in`             | the greeter signs in and out, not waiting on the account's setup |
-| `vm-wifi-joins`                   | wifid joins, finds sign-ins, keeps others' routing rules |
+| `vm-wifi-joins`                   | wifid joins, nudges a stuck look, finds sign-ins, keeps others' routing rules |
 | `vm-disk-guard-keeps-the-disk`    | the guards answer each band, sparing what's in use       |
 | `vm-network-revives-units`        | what the network let down starts, and reloads on change  |
 | `vm-clock-keeps-time`             | the clock sets from the machine's servers past a network's silent one |

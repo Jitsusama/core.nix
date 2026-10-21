@@ -950,5 +950,37 @@ pkgs.testers.runNixOSTest {
         nameless = {"name": "Nameless", "security": "personal"}
         refused("Save", {"network": nameless}, "NeedsPassword")
 
+    # On a laptop, a card whose access point didn't answer asked for another
+    # look, heard nothing back for half a minute with a saved network in
+    # range, and joined only when told to. A radio here never hangs a look,
+    # so the card is stopped where it stands, which wpa_supplicant then
+    # leaves alone, and said to be scanning, in the signal wifid hears.
+    with subtest("a card scanning too long with a saved network in range is told to join it"):
+        machine.succeed("wpa_cli -i wlan2 disconnect")
+        machine.wait_until_succeeds(
+            "wpa_cli -i wlan2 status | grep -qx wpa_state=DISCONNECTED", timeout=30
+        )
+        held = machine.succeed(
+            "busctl call fi.w1.wpa_supplicant1 /fi/w1/wpa_supplicant1"
+            " fi.w1.wpa_supplicant1 GetInterface s wlan2"
+        ).split('"')[1]
+        machine.succeed(
+            f"busctl emit {held} org.freedesktop.DBus.Properties PropertiesChanged"
+            " 'sa{sv}as' fi.w1.wpa_supplicant1.Interface 1 State s scanning 0"
+        )
+        # Nothing else joins it: a card stopped so stays stopped.
+        machine.sleep(10)
+        machine.succeed("wpa_cli -i wlan2 status | grep -qx wpa_state=DISCONNECTED")
+        # Which saved network it hears best varies from run to run among
+        # the several here, and the card joins whichever it can.
+        machine.wait_until_succeeds(
+            "journalctl -o cat _PID=$(systemctl show -P MainPID wifid) | grep -qxE"
+            " 'wlan2 looked for networks for 20 s with .+ in range; asking it to join'",
+            timeout=30,
+        )
+        machine.wait_until_succeeds(
+            "wpa_cli -i wlan2 status | grep -qx wpa_state=COMPLETED", timeout=30
+        )
+
   '';
 }
