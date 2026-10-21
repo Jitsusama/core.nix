@@ -2595,6 +2595,35 @@ in
           touch $out
         '';
 
+    # The XPS 14's panel gives its luminance only in DisplayID's Display
+    # Parameters block, so a kernel that doesn't read it guesses the panel's
+    # brightness range. Read from the XPS 14's patched source.
+    the-panel-knows-its-luminance =
+      let
+        inherit ((bareNixos [ self.nixosModules.dell-xps-14-da14260 ]).config.boot.kernelPackages)
+          kernel
+          ;
+        edid = "drivers/gpu/drm/drm_edid.c";
+        displayid = "drivers/gpu/drm/drm_displayid_internal.h";
+        patches = lib.filter (patch: patch != null) (map (patch: patch.patch) kernel.kernelPatches);
+      in
+      pkgs.runCommandLocal "the-panel-knows-its-luminance" { nativeBuildInputs = [ pkgs.patchutils ]; } ''
+        guess() {
+          echo "The kernel $1, so the panel's brightness range is a guess."
+          exit 1
+        }
+        tar xf ${kernel.src} --strip-components=1 --wildcards '*/${edid}' '*/${displayid}'
+        for patch in ${lib.escapeShellArgs (map (patch: "${patch}") patches)}; do
+          filterdiff -p1 -i ${edid} -i ${displayid} "$patch" |
+            patch -p1 --forward --batch --silent
+        done
+        grep -q 'block->tag != DATA_BLOCK_2_DISPLAY_PARAMETERS' ${edid} ||
+          guess "reads no luminance from DisplayID's Display Parameters block"
+        grep -Eq '^[[:space:]]+drm_get_luminance_range_displayid\(connector,' ${edid} ||
+          guess "never asks DisplayID for the panel's luminance"
+        touch $out
+      '';
+
     # niri reads back the files an account gets and rejects anything it
     # wouldn't load, from a misspelt action to a colour it can't parse.
     niri-accepts-its-configuration =

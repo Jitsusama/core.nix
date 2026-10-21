@@ -229,6 +229,14 @@ in
       name = "panel-variable-refresh";
       patch = ./panel-variable-refresh.patch;
     }
+    {
+      # The panel gives its 400 nit ceiling only where the kernel doesn't
+      # look, so the driver guessed 512 and the brightest fifth of the range
+      # asked for more than the panel is rated for. Written here; the patch
+      # says why. It needs the variable refresh patch before it.
+      name = "panel-luminance-range";
+      patch = ./panel-luminance-range.patch;
+    }
   ];
 
   # The disk, and the USB and Thunderbolt ports a dock's keyboard arrives
