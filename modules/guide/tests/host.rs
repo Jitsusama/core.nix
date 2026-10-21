@@ -3,6 +3,9 @@
 //! only ever the one stick plugged in, what's mounted from it handed over
 //! to be unmounted, and a stick that sfdisk reads back whole.
 
+mod common;
+
+use common::Scratch;
 use std::fs::{self, File};
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -21,13 +24,6 @@ macro_rules! fixture {
             $file
         ))
     };
-}
-
-fn scratch(name: &str) -> PathBuf {
-    let directory = std::env::temp_dir().join(format!("guide-host-{name}-{}", std::process::id()));
-    let _ = fs::remove_dir_all(&directory);
-    fs::create_dir_all(&directory).unwrap();
-    directory
 }
 
 /// An image laid out as core's is, 8 MiB, its three partitions filled.
@@ -94,7 +90,7 @@ fn lsblk(fake: &mut Fake, json: &str) {
 
 #[test]
 fn with_no_stick_plugged_in_it_waits_for_one() {
-    let directory = scratch("none");
+    let directory = Scratch::new("none");
     let mut fake = Fake::new();
     lsblk(
         &mut fake,
@@ -109,7 +105,7 @@ fn with_no_stick_plugged_in_it_waits_for_one() {
 
 #[test]
 fn two_sticks_plugged_in_are_both_named_and_neither_is_written() {
-    let directory = scratch("two");
+    let directory = Scratch::new("two");
     let mut value: serde_json::Value = serde_json::from_str(fixture!("lsblk-blank.json")).unwrap();
     let devices = value["blockdevices"].as_array_mut().unwrap();
     let mut second = devices
@@ -140,7 +136,7 @@ fn two_sticks_plugged_in_are_both_named_and_neither_is_written() {
 
 #[test]
 fn the_one_stick_is_written_whole_and_what_was_mounted_from_it_is_handed_over() {
-    let directory = scratch("written");
+    let directory = Scratch::new("written");
     let stick = stick_file(&directory);
     let mut fake = Fake::new();
     // The stick's own partitions are mounted here, as the VM's booted
@@ -182,12 +178,11 @@ fn the_one_stick_is_written_whole_and_what_was_mounted_from_it_is_handed_over() 
         step.observe(&mut fake).unwrap(),
         Standing::Done { .. }
     ));
-    fs::remove_dir_all(directory).unwrap();
 }
 
 #[test]
 fn passphrases_that_differ_open_nothing() {
-    let directory = scratch("passphrases");
+    let directory = Scratch::new("passphrases");
     let mut fake = Fake::new();
     lsblk(&mut fake, fixture!("lsblk-blank.json"));
     fake.disk("/dev/sda", &stick_file(&directory));
@@ -225,5 +220,4 @@ fn passphrases_that_differ_open_nothing() {
         "{:#?}",
         fake.calls
     );
-    fs::remove_dir_all(directory).unwrap();
 }

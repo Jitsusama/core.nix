@@ -382,13 +382,6 @@ mod tests {
     use super::store::Directory;
     use super::*;
 
-    fn scratch(name: &str) -> std::path::PathBuf {
-        let directory =
-            std::env::temp_dir().join(format!("guide-vault-{name}-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&directory);
-        directory
-    }
-
     fn manifest() -> Manifest {
         Manifest {
             format: 1,
@@ -399,7 +392,7 @@ mod tests {
 
     #[test]
     fn what_was_packed_comes_back_across_objects() {
-        let directory = scratch("back");
+        let directory = crate::Scratch::new("vault-back");
         let mut store = Directory::new(&directory);
         let key = VaultKey::generate();
         let big: Vec<u8> = (0..10_000u32).flat_map(u32::to_le_bytes).collect();
@@ -422,12 +415,11 @@ mod tests {
         let mut empty = vec![];
         vault.extract("empty", &mut empty).unwrap();
         assert!(empty.is_empty());
-        std::fs::remove_dir_all(directory).unwrap();
     }
 
     #[test]
     fn no_name_shows_outside_the_manifest() {
-        let directory = scratch("names");
+        let directory = crate::Scratch::new("vault-names");
         let mut store = Directory::new(&directory);
         let key = VaultKey::generate();
         let mut packer = Packer::new(&mut store, &key);
@@ -445,7 +437,6 @@ mod tests {
         }
         assert!(!shown.contains("secure-boot"), "{shown}");
         assert!(!shown.contains("a private key"));
-        std::fs::remove_dir_all(directory).unwrap();
     }
 
     fn walk(directory: &std::path::Path) -> Vec<String> {
@@ -463,7 +454,7 @@ mod tests {
 
     #[test]
     fn a_changed_object_is_refused() {
-        let directory = scratch("changed");
+        let directory = crate::Scratch::new("vault-changed");
         let mut store = Directory::new(&directory);
         let key = VaultKey::generate();
         let mut packer = Packer::new(&mut store, &key);
@@ -480,12 +471,11 @@ mod tests {
             vault.extract("state", &mut vec![]),
             Err(Fault::Unopened { .. })
         ));
-        std::fs::remove_dir_all(directory).unwrap();
     }
 
     #[test]
     fn objects_swapped_between_files_are_refused() {
-        let directory = scratch("swapped");
+        let directory = crate::Scratch::new("vault-swapped");
         let mut store = Directory::new(&directory);
         let key = VaultKey::generate();
         let mut packer = Packer::new(&mut store, &key);
@@ -506,7 +496,6 @@ mod tests {
             vault.extract("first", &mut vec![]),
             Err(Fault::Unopened { why, .. }) if why == "it isn't what was packed"
         ));
-        std::fs::remove_dir_all(directory).unwrap();
     }
 
     #[test]
@@ -534,7 +523,7 @@ mod tests {
 
     #[test]
     fn a_vault_never_finished_wont_open() {
-        let directory = scratch("unfinished");
+        let directory = crate::Scratch::new("vault-unfinished");
         let mut store = Directory::new(&directory);
         let key = VaultKey::generate();
         let mut packer = Packer::new(&mut store, &key);
@@ -544,7 +533,6 @@ mod tests {
             Vault::open(&mut store, key),
             Err(Fault::Unopened { why, .. }) if why == "it was never finished"
         ));
-        std::fs::remove_dir_all(directory).unwrap();
     }
 
     #[test]

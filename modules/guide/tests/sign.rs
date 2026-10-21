@@ -5,6 +5,9 @@
 //! made as sbctl makes them, by openssl, from the package's check inputs
 //! or the dev shell's.
 
+mod common;
+
+use common::Scratch;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -13,13 +16,6 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use guide::Fault;
 use guide::sign::Signer;
-
-fn scratch(name: &str) -> PathBuf {
-    let directory = std::env::temp_dir().join(format!("guide-sign-{name}-{}", std::process::id()));
-    let _ = fs::remove_dir_all(&directory);
-    fs::create_dir_all(&directory).unwrap();
-    directory
-}
 
 fn run(program: &str, args: &[&std::ffi::OsStr]) -> std::process::Output {
     let output = Command::new(program).args(args).output().unwrap();
@@ -60,7 +56,11 @@ fn make_key(directory: &Path, bits: u32) -> (PathBuf, PathBuf) {
 /// One db key for every test, since making an RSA-4096 key takes seconds.
 fn db_key() -> &'static (PathBuf, PathBuf) {
     static KEY: OnceLock<(PathBuf, PathBuf)> = OnceLock::new();
-    KEY.get_or_init(|| make_key(&scratch("db"), 4096))
+    KEY.get_or_init(|| {
+        let directory = Path::new(env!("CARGO_TARGET_TMPDIR")).join("guide-sign-db");
+        fs::create_dir_all(&directory).unwrap();
+        make_key(&directory, 4096)
+    })
 }
 
 fn programs() -> Vec<PathBuf> {
@@ -101,7 +101,7 @@ fn signing_time(signed: &[u8]) -> SystemTime {
 
 #[test]
 fn every_signature_is_byte_for_byte_what_sbsign_makes() {
-    let directory = scratch("sbsign");
+    let directory = Scratch::new("sbsign");
     let (key, certificate) = db_key();
     let signer = Signer::open(key.parent().unwrap()).unwrap();
     for program in programs() {
@@ -139,12 +139,11 @@ fn every_signature_is_byte_for_byte_what_sbsign_makes() {
             ],
         );
     }
-    fs::remove_dir_all(directory).unwrap();
 }
 
 #[test]
 fn a_certificate_that_isnt_the_keys_is_refused() {
-    let other = scratch("other");
+    let other = Scratch::new("other");
     let (_, other_certificate) = make_key(&other, 2048);
     let (key, _) = db_key();
     let result = Signer::new(
@@ -156,7 +155,6 @@ fn a_certificate_that_isnt_the_keys_is_refused() {
         "{:?}",
         result.err()
     );
-    fs::remove_dir_all(other).unwrap();
 }
 
 #[test]

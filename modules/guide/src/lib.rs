@@ -41,6 +41,50 @@ macro_rules! qemu {
     };
 }
 
+/// A unit test's scratch directory, made by the test and gone when this
+/// drops, so a failing test leaves nothing behind either.
+#[cfg(test)]
+pub(crate) struct Scratch(std::path::PathBuf);
+
+#[cfg(test)]
+impl Scratch {
+    pub(crate) fn new(name: &str) -> Scratch {
+        let directory = std::env::temp_dir().join(format!("guide-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&directory);
+        Scratch(directory)
+    }
+}
+
+#[cfg(test)]
+impl std::ops::Deref for Scratch {
+    type Target = std::path::Path;
+
+    fn deref(&self) -> &std::path::Path {
+        &self.0
+    }
+}
+
+#[cfg(test)]
+impl AsRef<std::path::Path> for Scratch {
+    fn as_ref(&self) -> &std::path::Path {
+        &self.0
+    }
+}
+
+#[cfg(test)]
+impl From<&Scratch> for std::path::PathBuf {
+    fn from(scratch: &Scratch) -> std::path::PathBuf {
+        scratch.0.clone()
+    }
+}
+
+#[cfg(test)]
+impl Drop for Scratch {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
 /// The fixtures' directories, for a test that reads files by name.
 #[cfg(test)]
 mod fixtures {

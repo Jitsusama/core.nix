@@ -1,19 +1,13 @@
 //! The real machine handing secrets to a real program: each where that
 //! program reads it, gone once it's done, and never in the log.
 
+mod common;
+
+use common::Scratch;
 use std::fs;
-use std::path::PathBuf;
 
 use guide::system::System;
 use guide::{Given, Journal, Machine, Program, Secret};
-
-fn scratch(name: &str) -> PathBuf {
-    let directory =
-        std::env::temp_dir().join(format!("guide-system-{name}-{}", std::process::id()));
-    let _ = fs::remove_dir_all(&directory);
-    fs::create_dir_all(&directory).unwrap();
-    directory
-}
 
 /// The shell, by its store path, as a carried program is named.
 fn shell() -> String {
@@ -30,7 +24,7 @@ fn shell() -> String {
 
 #[test]
 fn each_secret_reaches_its_program_and_no_log() {
-    let directory = scratch("given");
+    let directory = Scratch::new("given");
     let log = directory.join("log");
     let secrets = directory.join("secrets");
     let mut machine = System::new(Journal::in_memory(), Some(fs::File::create(&log).unwrap()))
@@ -76,12 +70,11 @@ fn each_secret_reaches_its_program_and_no_log() {
         !logged.contains("pin-in-a-credential") && !logged.contains("pin-in-the-environment"),
         "{logged}"
     );
-    fs::remove_dir_all(directory).unwrap();
 }
 
 #[test]
 fn what_a_program_prints_as_a_secret_stays_out_of_the_log() {
-    let directory = scratch("printed");
+    let directory = Scratch::new("printed");
     let log = directory.join("log");
     let mut machine = System::new(Journal::in_memory(), Some(fs::File::create(&log).unwrap()));
     let ran = machine
@@ -98,13 +91,12 @@ fn what_a_program_prints_as_a_secret_stays_out_of_the_log() {
     let logged = fs::read_to_string(&log).unwrap();
     assert!(!logged.contains("the-42-key"), "{logged}");
     assert!(logged.contains("isn't kept"), "{logged}");
-    fs::remove_dir_all(directory).unwrap();
 }
 
 #[test]
 fn what_it_keeps_only_its_owner_can_read() {
     use std::os::unix::fs::PermissionsExt;
-    let directory = scratch("kept");
+    let directory = Scratch::new("kept");
     let mut machine = System::new(Journal::in_memory(), None);
     let file = directory.join("guide/install-key");
     machine.write(file.to_str().unwrap(), b"key").unwrap();
@@ -113,7 +105,6 @@ fn what_it_keeps_only_its_owner_can_read() {
     machine.remove(file.to_str().unwrap()).unwrap();
     machine.remove(file.to_str().unwrap()).unwrap();
     assert!(!file.exists());
-    fs::remove_dir_all(directory).unwrap();
 }
 
 #[test]

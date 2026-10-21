@@ -4,6 +4,9 @@
 //! opens with its key. They come from the package's check inputs or the
 //! dev shell's, with systemd's EFI programs in `GUIDE_TEST_EFI`.
 
+mod common;
+
+use common::Scratch;
 use std::ffi::OsStr;
 use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Seek, SeekFrom, Write};
@@ -16,13 +19,6 @@ use guide::stick::{self, Image};
 use guide::vault::store::Store;
 use guide::vault::{self, Manifest, Packer, Vault, VaultKey};
 use guide::{Fault, Secret};
-
-fn scratch(name: &str) -> PathBuf {
-    let directory = std::env::temp_dir().join(format!("guide-stick-{name}-{}", std::process::id()));
-    let _ = fs::remove_dir_all(&directory);
-    fs::create_dir_all(&directory).unwrap();
-    directory
-}
 
 fn try_run(program: &str, args: &[&OsStr]) -> Output {
     Command::new(program)
@@ -215,7 +211,7 @@ fn db_key(directory: &Path) -> PathBuf {
 
 #[test]
 fn a_written_stick_is_whole_to_sfdisk_fsck_and_its_key() {
-    let directory = scratch("whole");
+    let directory = Scratch::new("whole");
     let mut image = image(&directory);
     // A stick's size is whole sectors but rarely whole mebibytes.
     let path = stick_file(&directory, (100 << 20) + 7 * SECTOR);
@@ -263,12 +259,11 @@ fn a_written_stick_is_whole_to_sfdisk_fsck_and_its_key() {
     let vault_copy = directory.join("vault.fat");
     copy_out(&mut disk, &written.vault, &vault_copy);
     run("fsck.fat", &["-n".as_ref(), vault_copy.as_os_str()]);
-    fs::remove_dir_all(directory).unwrap();
 }
 
 #[test]
 fn the_images_partitions_are_copied_byte_for_byte() {
-    let directory = scratch("copied");
+    let directory = Scratch::new("copied");
     let image_path = make_image(&directory, Some(&boot_program()));
     let mut image = Image::open(File::open(&image_path).unwrap()).unwrap();
     let path = stick_file(&directory, 100 << 20);
@@ -294,12 +289,11 @@ fn the_images_partitions_are_copied_byte_for_byte() {
     let original = Table::read(&source).unwrap();
     assert_eq!(table.disk_guid, original.disk_guid);
     assert_eq!(table.slots[..3], original.slots[..3]);
-    fs::remove_dir_all(directory).unwrap();
 }
 
 #[test]
 fn a_signed_sticks_boot_program_verifies_with_the_machines_db_key() {
-    let directory = scratch("signed");
+    let directory = Scratch::new("signed");
     let keys = db_key(&directory);
     let signer = Signer::open(&keys).unwrap();
     let mut image = image(&directory);
@@ -343,12 +337,11 @@ fn a_signed_sticks_boot_program_verifies_with_the_machines_db_key() {
             program.as_os_str(),
         ],
     );
-    fs::remove_dir_all(directory).unwrap();
 }
 
 #[test]
 fn an_image_with_nothing_to_sign_is_refused_with_nothing_written() {
-    let directory = scratch("unsignable");
+    let directory = Scratch::new("unsignable");
     let keys = db_key(&directory);
     let signer = Signer::open(&keys).unwrap();
     let mut image = Image::open(File::open(make_image(&directory, None)).unwrap()).unwrap();
@@ -367,12 +360,11 @@ fn an_image_with_nothing_to_sign_is_refused_with_nothing_written() {
         result.err()
     );
     assert!(fs::read(&path).unwrap().iter().all(|byte| *byte == 0xee));
-    fs::remove_dir_all(directory).unwrap();
 }
 
 #[test]
 fn a_byte_that_didnt_reach_the_stick_is_caught() {
-    let directory = scratch("caught");
+    let directory = Scratch::new("caught");
     let mut image = image(&directory);
     let path = stick_file(&directory, 100 << 20);
     let mut disk = open(&path);
@@ -401,12 +393,11 @@ fn a_byte_that_didnt_reach_the_stick_is_caught() {
         matches!(&result, Err(Fault::Unproven { standing, .. }) if standing.contains("the store partition")),
         "{result:?}"
     );
-    fs::remove_dir_all(directory).unwrap();
 }
 
 #[test]
 fn a_write_that_stops_part_way_leaves_no_partition_table() {
-    let directory = scratch("stops");
+    let directory = Scratch::new("stops");
     let mut image = image(&directory);
     let path = stick_file(&directory, 100 << 20);
     let mut disk = open(&path);
@@ -446,12 +437,11 @@ fn a_write_that_stops_part_way_leaves_no_partition_table() {
     assert!(Table::read(&stick).is_err());
     let backup = &stick[stick.len() - SECTOR as usize..];
     assert_ne!(&backup[..8], b"EFI PART");
-    fs::remove_dir_all(directory).unwrap();
 }
 
 #[test]
 fn a_stick_too_small_is_refused_with_nothing_written() {
-    let directory = scratch("small");
+    let directory = Scratch::new("small");
     let mut image = image(&directory);
     let path = stick_file(&directory, 32 << 20);
     let mut disk = open(&path);
@@ -468,12 +458,11 @@ fn a_stick_too_small_is_refused_with_nothing_written() {
         result.err()
     );
     assert!(fs::read(&path).unwrap().iter().all(|byte| *byte == 0xee));
-    fs::remove_dir_all(directory).unwrap();
 }
 
 #[test]
 fn the_passphrase_opens_a_vault_on_the_stick_when_no_yubikey_will() {
-    let directory = scratch("passphrase");
+    let directory = Scratch::new("passphrase");
     let mut image = image(&directory);
     let path = stick_file(&directory, 100 << 20);
     let mut disk = open(&path);
@@ -509,5 +498,4 @@ fn the_passphrase_opens_a_vault_on_the_stick_when_no_yubikey_will() {
         Ok(())
     })
     .unwrap();
-    fs::remove_dir_all(directory).unwrap();
 }
