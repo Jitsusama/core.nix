@@ -5,7 +5,9 @@
 //! lets it choose which to join. It gives a card networkd finds later the
 //! same, and every card again whenever wpa_supplicant starts again. A card
 //! that already holds a network as wanted keeps it, so wifid starting
-//! again never takes a card off the network it's on.
+//! again never takes a card off the network it's on. A card that's been
+//! looking for networks too long with a saved one in range is told to join
+//! it (stall.rs).
 //!
 //! Once a card's network reaches beyond itself, as networkd sees it, wifid
 //! checks whether it really does or wants a sign-in first. It checks again
@@ -31,6 +33,7 @@ mod rfkill;
 mod secret;
 mod seen;
 mod service;
+mod stall;
 mod state;
 mod store;
 mod supplicant;
@@ -68,6 +71,7 @@ use network::{Account, Address, Inner, Method, Network, Security};
 use secret::{Credentials, Secrets};
 use seen::Seen;
 use service::{Ask, Refused, Stage, Wifi};
+use stall::Stalls;
 use state::{Progress, Reach, State, Trouble};
 use store::{Saved, Store};
 use supplicant::{InterfaceProxy, JoinableProxy, Step, SupplicantProxy};
@@ -190,6 +194,7 @@ async fn run() -> Result<(), Box<dyn Error>> {
         state: state.clone(),
         cards: HashMap::new(),
         seen: &seen,
+        stalls: Stalls::default(),
     };
     air.hear_all(&bus, &supplicant).await;
 
@@ -235,6 +240,7 @@ async fn run() -> Result<(), Box<dyn Error>> {
     let following = async {
         loop {
             let deadline = joining.as_ref().map(|joining| joining.deadline);
+            let stalled = air.stalls.due();
             tokio::select! {
                 Some(change) = changes.recv() => {
                     let Ok(args) = change.args() else { continue };
@@ -325,6 +331,14 @@ async fn run() -> Result<(), Box<dyn Error>> {
                 () = until(deadline), if joining.is_some() => {
                     if let Some(late) = joining.take() {
                         wifid.settle(late, Err(Refused::TimedOut)).await;
+                    }
+                }
+                // A join the shell asked for is followed on its own.
+                () = until(stalled), if stalled.is_some() => {
+                    for (card, looked) in air.stalls.nudge(Instant::now()) {
+                        if joining.is_none() {
+                            wifid.nudge(&card, looked, &air).await;
+                        }
                     }
                 }
                 _ = polling.tick(), if *asking.borrow() > 0 => {
@@ -553,6 +567,8 @@ struct Air<'a> {
     /// joining a network, by its path.
     cards: HashMap<String, (String, String)>,
     seen: &'a RefCell<Seen>,
+    /// Which cards have been looking for networks too long.
+    stalls: Stalls,
 }
 
 impl Air<'_> {
@@ -674,6 +690,7 @@ impl Air<'_> {
                                 if step == "completed" && before != "completed" {
                                     self.joined(bus, path).await;
                                 }
+                                self.stalls.step(&card, &step, Instant::now());
                                 self.cards.insert(path.to_string(), (card, step));
                             }
                         }
@@ -758,8 +775,29 @@ impl Air<'_> {
         change(&self.state, |state| state.heard(path, heard));
     }
 
+    /// The saved network of these the card hears most strongly, if it hears
+    /// any.
+    fn best_heard(&self, card: &str, saved: &[&str]) -> Option<String> {
+        let (at, _) = self.cards.iter().find(|(_, (named, _))| named == card)?;
+        let under = format!("{at}/BSSs/");
+        let heard = self
+            .points
+            .iter()
+            .filter(|(path, _)| path.starts_with(&under));
+        let heard = heard.filter_map(|(_, point)| point.heard());
+        let heard = heard.filter(|heard| saved.contains(&heard.name.as_str()));
+        heard
+            .max_by_key(|heard| heard.signal)
+            .map(|heard| heard.name)
+    }
+
     /// Forgets every access point whose path starts so.
     fn gone_under(&mut self, path: &str) {
+        for (card, (name, _)) in &self.cards {
+            if card.starts_with(path) {
+                self.stalls.gone(name);
+            }
+        }
         self.points.retain(|point, _| !point.starts_with(path));
         change(&self.state, |state| state.unheard_under(path));
     }
@@ -1444,6 +1482,49 @@ impl Wifid<'_> {
             .into_iter()
             .next()
             .ok_or_else(|| failed("there's no Wi-Fi card".into()))
+    }
+
+    /// Has a card that's been looking for networks too long, with a saved
+    /// one in range, join what it can: wpa_supplicant is asked to join as a
+    /// join from the launcher asks, which got a card on a laptop going again
+    /// once Joel joined by hand, from what it heard last if that's fresh and
+    /// from a new look if not. It picks among every saved network, all turned on
+    /// first, rather than this naming one: a network still heard of may
+    /// have gone, and joining only it would hold the card there.
+    async fn nudge(&self, name: &str, looked: Duration, air: &Air<'_>) {
+        let listing = match self.store.networks() {
+            Ok(listing) => listing,
+            Err(error) => return eprintln!("<4>can't list the saved networks: {error}"),
+        };
+        let names: Vec<&str> = listing
+            .saved
+            .iter()
+            .map(|saved| saved.network.name.as_str())
+            .collect();
+        let Some(network) = air.best_heard(name, &names) else {
+            return;
+        };
+        let cards = card::all(Path::new("/sys")).unwrap_or_default();
+        let Some(card) = cards.into_iter().find(|card| card.name == name) else {
+            return;
+        };
+        if let Err(error) = self.add_card(&card, &listing.saved).await {
+            return eprintln!("<4>can't give {name} its networks: {error}");
+        }
+        let asked = match self.supplicant.get_interface(name).await {
+            Ok(at) => match interface(self.bus, at).await {
+                Ok(interface) => interface.reassociate().await,
+                Err(error) => Err(error),
+            },
+            Err(error) => Err(error),
+        };
+        match asked {
+            Ok(()) => println!(
+                "<5>{name} looked for networks for {} s with {network} in range; asking it to join",
+                looked.as_secs()
+            ),
+            Err(error) => eprintln!("<4>{name} wasn't asked to join: {error}"),
+        }
     }
 
     /// Says how far the join has got, if that's news, and settles it once
