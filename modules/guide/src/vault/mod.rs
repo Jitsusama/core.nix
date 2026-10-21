@@ -38,7 +38,8 @@ pub struct Manifest {
 }
 
 /// The key every file in a vault is encrypted to, made in memory and only
-/// ever written down sealed.
+/// ever written down sealed. age wipes each copy's secret when it drops.
+#[derive(Clone)]
 pub struct VaultKey(age::x25519::Identity);
 
 impl VaultKey {
@@ -95,6 +96,21 @@ impl VaultKey {
             .parse()
             .map_err(|why: &str| unopened("the vault's key", why))?;
         Ok(VaultKey(key))
+    }
+
+    /// The key as text, to hold in memory once it's open, so each step
+    /// after opens the vault without asking again.
+    pub fn to_secret(&self) -> Secret {
+        Secret::new(self.0.to_string().expose_secret().to_string())
+    }
+
+    /// The key from the text `to_secret` gave.
+    pub fn from_secret(text: &Secret) -> Result<VaultKey, Fault> {
+        text.expose()
+            .trim()
+            .parse()
+            .map(VaultKey)
+            .map_err(|why: &str| unopened("the vault's key", why))
     }
 
     pub fn open_with_passphrase(sealed: &[u8], passphrase: &Secret) -> Result<VaultKey, Fault> {

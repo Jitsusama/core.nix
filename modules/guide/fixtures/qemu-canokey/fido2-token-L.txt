@@ -1,0 +1,1 @@
+/dev/hidraw1: vendor=0x20a0, product=0x42d4 (canokeys.org CanoKey)

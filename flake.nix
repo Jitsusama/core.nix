@@ -254,16 +254,29 @@
         };
         laptop = moduleFrom ./roles/laptop/nixos.nix { inherit (self) nixosModules; };
 
+        # The stick's own system, which installs and repairs a machine.
+        guide-stick = moduleFrom ./modules/guide/stick.nix {
+          inherit (self) nixosModules;
+          inherit nixpkgs;
+        };
+
         dell-xps-14-da14260 = ./hardware/dell-xps-14-da14260/nixos.nix;
         microsoft-surface-laptop-4-1958 = ./hardware/microsoft-surface-laptop-4-1958/nixos.nix;
       };
 
       # What core.nix builds that a cache can hold apart from any machine: the
-      # kernel for any x86-64 machine, and the guide that installs and
-      # repairs one. A machine builds its own kernel from the same file, for
-      # its CPU.
+      # kernel for any x86-64 machine, the guide that installs and repairs
+      # one, and the image of the stick it runs on. A machine builds its own
+      # kernel from the same file, for its CPU.
       packages.x86_64-linux = {
         guide = nixpkgs.legacyPackages.x86_64-linux.callPackage ./modules/guide/package.nix { };
+        stick =
+          (nixpkgs.lib.nixosSystem {
+            modules = [
+              self.nixosModules.guide-stick
+              { nixpkgs.hostPlatform = "x86_64-linux"; }
+            ];
+          }).config.system.build.image;
         kernel = import ./modules/kernel/package.nix nixpkgs.legacyPackages.x86_64-linux {
           cpu = null;
           profile = null;

@@ -67,6 +67,19 @@ impl fmt::Display for Fault {
 impl std::error::Error for Fault {}
 
 impl Fault {
+    /// What happened, said under the step's own title, so it doesn't name
+    /// the step again by its id, which the log and the journal use.
+    pub fn said(&self) -> String {
+        match self {
+            Fault::Unproven { .. } => {
+                "it finished, but looking at the machine again shows it isn't done".into()
+            }
+            Fault::Blocked { why, .. } => why.clone(),
+            Fault::Unanswered { .. } => "it needs an answer it wasn't given".into(),
+            fault => fault.to_string(),
+        }
+    }
+
     /// Something a tool or a file said that the guide can't read.
     pub fn unreadable(what: impl Into<String>, why: impl fmt::Display) -> Fault {
         Fault::Unreadable {

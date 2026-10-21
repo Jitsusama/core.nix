@@ -53,6 +53,11 @@ impl Journey {
 
     /// The first step here that isn't done. Steps at a place the journey
     /// has left are behind it, and can't be observed from here.
+    /// The steps in their order.
+    pub fn steps(&self) -> impl Iterator<Item = &dyn Step> {
+        self.steps.iter().map(|step| step.as_ref())
+    }
+
     pub fn next(&self, here: Place, machine: &mut dyn Machine) -> Result<Next<'_>, Fault> {
         for step in self.steps.iter().filter(|step| step.place() == here) {
             match step.observe(machine)? {

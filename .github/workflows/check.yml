@@ -48,6 +48,7 @@ jobs:
       matrix:
         test:
           - vm-secure-boot-installs
+          - vm-guide-installs
           - vm-commits-are-signed
           - vm-passkeys-come-from-the-tpm
           - vm-keyring-opens-without-asking

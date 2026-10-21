@@ -5,8 +5,9 @@ the stick that installs it, installing it with its disk encrypted and Secure
 Boot on, sealing it to the TPM with YubiKeys as the way back in, and every
 repair after. It's for someone who won't remember any of it, so it says
 everything it needs before it starts and never leaves them guessing what
-happened. This crate holds the step engine, what the guide observes, and
-the stick's writer and vault; the steps and the screens come later.
+happened. This crate holds the step engine, what the guide observes, the
+stick's writer and vault, the install from the stick and the screen it's
+driven on; the installed machine's steps come later.
 
 ## How It Decides
 
@@ -29,6 +30,12 @@ the stick's writer and vault; the steps and the screens come later.
 - **Journal.** What observing can't show, such as a recovery key proven by
   being typed back, goes in the journal: a line of JSON per fact, on the disk
   before the step goes on, readable only by its owner.
+- **Secrets.** None is ever an argument. A program is given each the way it
+  reads it: an environment variable (`PIN`, `PASSWORD`), a credential file
+  under /run, which is memory, made for that one call
+  (`cryptenroll.fido2-pin`), or standard input. The log names where each
+  went and never what it was, and leaves out what a program prints when
+  that's a secret too, such as a recovery key.
 - **Tools.** Every program runs by the store path `package.nix` gave it, with
   an empty environment but for `LC_ALL=C.UTF-8`, so no PATH can swap one in
   and what it prints is what the parsers were written against. Every call is
@@ -50,6 +57,22 @@ the stick's writer and vault; the steps and the screens come later.
   Linux's alone. The ESP is signed in memory before anything reaches the
   stick, so a key that won't sign leaves the stick as it was. Keys are
   sbctl's file keys, a `db.key` and `db.pem` in one directory.
+- **The install.** On the stick, as root, from what the vault holds for the
+  machine (`payload.nix`): its target, its disk's layout and its system as
+  a binary cache. The disk is wiped only once the machine's name is typed
+  back for it, then laid out by the machine's own disko script, run with
+  the stick's disk tools, its volume made with a key held only in memory.
+  Each YubiKey is enrolled alone, told apart from the others by a silent
+  assertion, and proven by opening the disk; then a recovery key, typed
+  back and proven. The Secure Boot keys are made where the install signs
+  with them, the system is copied in from the vault with no network, and
+  the key held in memory comes off the disk last. Every step stays done
+  through the steps after it, since the journey runs the first that isn't.
+- **The screen.** One step at a time, and one thing asked at a time, each
+  before the step starts. It's drawn in the theme's roles and marks as the
+  build was given them (`theme.nix`), with the console's stand-ins on a
+  console, and follows docs/design.md's row for it. Return goes on, Escape
+  goes back one ask, Ctrl+C leaves; on the stick that's a root shell.
 - **The vault.** A FAT32 partition any machine can read, holding files
   sealed with age to a vault key made for it. The key is sealed to each
   YubiKey, and separately to the recovery passphrase, since age won't mix a
@@ -77,10 +100,17 @@ the stick's writer and vault; the steps and the screens come later.
 | `src/sign/`           | Authenticode: what a signature covers, and the signature sbsign would make |
 | `src/stick/`          | writing the stick and reading it back: its tables, and aligned blocks |
 | `src/vault/`          | the vault's sealing and index, and where its files are kept |
+| `src/install/`        | installing a machine from its stick, a step to a file by what it touches |
+| `src/screen/`         | the view, drawn as lines in roles; the terminal; the walk through a journey |
+| `payload.nix`         | what a reinstall stick carries for one machine            |
+| `stick.nix`           | the stick's own system                                    |
+| `theme.nix`           | the theme as the guide and the stick's console draw it    |
 | `fixtures/<hardware>/` | what each tool printed on a real machine, as it printed it |
 | `tests/journey.rs`    | the journey's promises, with toy steps                    |
 | `tests/stick.rs`      | whole sticks written into files, judged by sfdisk, fsck.fat and sbverify |
 | `tests/sign.rs`       | signatures compared byte for byte with sbsign's           |
+| `tests/system.rs`     | secrets handed to a real program, and kept out of the log |
+| `../../tests/guide-install.nix` | a machine installed from its stick in a VM, by the guide's keys |
 
 ## Working on It
 

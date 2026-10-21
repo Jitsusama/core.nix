@@ -1,22 +1,144 @@
 //! The machine a step observes and acts on: the programs it runs, the
-//! files it reads, and the journal of what can't be observed. The real one
-//! is `system::System`; tests give steps `fake::Fake`.
+//! files it reads and writes, and the journal of what can't be observed.
+//! The real one is `system::System`; tests give steps `fake::Fake`.
 
-use crate::{Fault, Journal, Tool};
+use std::io::Write;
+
+use crate::vault::store::Store;
+use crate::vault::{Vault, VaultKey};
+use crate::{Fault, Journal, Secret, Tool};
+
+/// What a step runs: one of the guide's own tools, or a program the
+/// system being installed carries, by its store path, such as that
+/// machine's disko script.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Program<'a> {
+    Tool(Tool),
+    Carried(&'a str),
+}
+
+impl Program<'_> {
+    /// How the log and a fault name it.
+    pub fn name(&self) -> &str {
+        match self {
+            Program::Tool(tool) => tool.name(),
+            Program::Carried(path) => path.rsplit('/').next().unwrap_or(path),
+        }
+    }
+}
+
+/// Secrets a program is given, each the way that program takes it, never
+/// as an argument, so no process list or log shows one.
+#[derive(Default)]
+pub struct Given<'a> {
+    /// Environment variables that aren't secret, logged as they are: the
+    /// disk tools a disk script finds on `PATH`, cryptsetup's plugins.
+    pub plain: Vec<(&'static str, &'a str)>,
+    /// Environment variables, as systemd's tools read `PIN`, `NEWPIN` and
+    /// `PASSWORD`.
+    pub env: Vec<(&'static str, &'a Secret)>,
+    /// Files in `$CREDENTIALS_DIRECTORY`, as systemd-cryptenroll reads a
+    /// FIDO2 enrolment PIN from `cryptenroll.fido2-pin`. They're kept in
+    /// memory and gone once the program is.
+    pub credentials: Vec<(&'static str, &'a Secret)>,
+    /// What it reads on its standard input.
+    pub stdin: Option<&'a Secret>,
+    /// What it prints is itself a secret, such as a recovery key, so the
+    /// log leaves it out.
+    pub prints_secret: bool,
+}
 
 pub trait Machine {
-    /// Runs a tool with these arguments and says what it answered, whatever
-    /// its status. `Ran::ok` turns a refusal into a fault.
-    fn run(&mut self, tool: Tool, args: &[&str]) -> Result<Ran, Fault>;
+    /// Runs a program with these arguments and the secrets it's given, and
+    /// says what it answered, whatever its status. `Ran::ok` turns a
+    /// refusal into a fault.
+    fn run_given(&mut self, program: Program, args: &[&str], given: Given) -> Result<Ran, Fault>;
+
+    /// Runs a tool with these arguments and nothing else.
+    fn run(&mut self, tool: Tool, args: &[&str]) -> Result<Ran, Fault> {
+        self.run_given(Program::Tool(tool), args, Given::default())
+    }
 
     /// A file's bytes, or nothing when there's no such file.
     fn read(&mut self, path: &str) -> Result<Option<Vec<u8>>, Fault>;
+
+    /// Keeps a file only its owner can read, its directories made only
+    /// they can enter. Anything secret goes only where it's held in memory.
+    fn write(&mut self, path: &str, bytes: &[u8]) -> Result<(), Fault>;
+
+    /// A file to write a lot to, such as a cache unpacked from the vault,
+    /// kept as `write` keeps one.
+    fn create(&mut self, path: &str) -> Result<Box<dyn Write + '_>, Fault>;
+
+    /// Takes a file away; one already gone is no fault.
+    fn remove(&mut self, path: &str) -> Result<(), Fault>;
+
+    /// Takes a directory away with all it holds, such as a cache unpacked
+    /// for an install; one already gone is no fault.
+    fn remove_tree(&mut self, path: &str) -> Result<(), Fault>;
+
+    /// Where a link leads in the end, or nothing when there's nothing
+    /// there.
+    fn resolve(&mut self, path: &str) -> Result<Option<String>, Fault>;
+
+    /// What a link holds, one step, or nothing when it isn't a link.
+    fn read_link(&mut self, path: &str) -> Result<Option<String>, Fault>;
+
+    /// Where a link leads in the end inside a system mounted at `root`,
+    /// whose absolute links mean that system's own paths, not this one's,
+    /// as that system names it. Whether anything's there isn't asked.
+    fn resolve_inside(&mut self, root: &str, path: &str) -> Result<Option<String>, Fault> {
+        let mut at = path.to_string();
+        for _ in 0..40 {
+            let Some(target) = self.read_link(&at)? else {
+                return Ok(Some(at.strip_prefix(root).unwrap_or(&at).to_string()));
+            };
+            at = if target.starts_with('/') {
+                format!("{root}{target}")
+            } else {
+                let directory = at.rsplit_once('/').map_or("", |(directory, _)| directory);
+                format!("{directory}/{target}")
+            };
+        }
+        Err(Fault::unreadable(path, "its links go round in a loop"))
+    }
+
+    /// The stick's vault, its files sealed.
+    fn vault(&mut self) -> Result<&mut dyn Store, Fault>;
+
+    /// Unpacks every file the vault holds under `from` into the directory
+    /// `into`, each checked as it's extracted, and says how many bytes.
+    /// One call, since a cache is gigabytes and goes straight to the disk.
+    fn unpack(&mut self, key: VaultKey, from: &str, into: &str) -> Result<u64, Fault> {
+        let mut held = vec![];
+        {
+            let mut vault = Vault::open(self.vault()?, key)?;
+            let paths: Vec<String> = vault
+                .files()
+                .iter()
+                .filter(|file| file.path.starts_with(from))
+                .map(|file| file.path.clone())
+                .collect();
+            for path in paths {
+                let mut bytes = vec![];
+                vault.extract(&path, &mut bytes)?;
+                held.push((path, bytes));
+            }
+        }
+        let mut total = 0;
+        for (path, bytes) in held {
+            let to = format!("{into}/{}", path[from.len()..].trim_start_matches('/'));
+            self.write(&to, &bytes)?;
+            total += bytes.len() as u64;
+        }
+        Ok(total)
+    }
 
     /// What earlier steps recorded that observing can't show.
     fn journal(&mut self) -> &mut Journal;
 }
 
-/// What a tool answered.
+/// What a program answered.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Ran {
     pub program: String,
@@ -33,11 +155,16 @@ impl Ran {
                 Fault::unreadable(format!("what {} printed", self.program), "not UTF-8")
             })
         } else {
-            Err(Fault::Refused {
-                program: self.program,
-                status: self.status,
-                said: last_line(&self.stderr),
-            })
+            Err(self.refusal())
+        }
+    }
+
+    /// Why it stopped, from the last it said.
+    pub fn refusal(&self) -> Fault {
+        Fault::Refused {
+            program: self.program.clone(),
+            status: self.status,
+            said: last_line(&self.stderr),
         }
     }
 }
@@ -88,5 +215,35 @@ mod tests {
             panic!("a refusal")
         };
         assert_eq!(said, "it said nothing");
+    }
+
+    #[test]
+    fn a_profile_is_followed_inside_the_system_it_belongs_to() {
+        let mut fake = crate::fake::Fake::new();
+        // An absolute link to another link, which only the installed
+        // system's root holds.
+        fake.pointer("/mnt/nix/var/nix/profiles/system", "system-1-link")
+            .pointer(
+                "/mnt/nix/var/nix/profiles/system-1-link",
+                "/nix/var/nix/gcroots/booted",
+            )
+            .pointer(
+                "/mnt/nix/var/nix/gcroots/booted",
+                "/nix/store/abc-nixos-system-machine",
+            );
+        assert_eq!(
+            fake.resolve_inside("/mnt", "/mnt/nix/var/nix/profiles/system")
+                .unwrap()
+                .as_deref(),
+            Some("/nix/store/abc-nixos-system-machine")
+        );
+    }
+
+    #[test]
+    fn a_carried_program_is_named_by_its_file() {
+        assert_eq!(
+            Program::Carried("/nix/store/abc-disko/bin/disko-format").name(),
+            "disko-format"
+        );
     }
 }

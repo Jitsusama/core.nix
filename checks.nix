@@ -182,6 +182,9 @@ let
   vmTests = {
     # The disk layout and Secure Boot decide whether a machine starts at all.
     vm-secure-boot-installs = import ./tests/secure-boot.nix { inherit self pkgs; };
+    # The guide's install is a stick, a disk, FIDO2 keys, the firmware and
+    # a TPM together, driven by its keys as a person drives it.
+    vm-guide-installs = import ./tests/guide-install.nix { inherit self pkgs; };
     vm-commits-are-signed = import ./tests/signing.nix { inherit self pkgs; };
     # A passkey is the TPM, uhid, udev's seat rules and the shell's askpass
     # together, and only a running machine has them all.
