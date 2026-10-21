@@ -2,12 +2,14 @@
 //! them.
 //!
 //! wpa_supplicant says a card is scanning from the moment it asks for a look
-//! until the look is done, and a look over every channel takes about five
-//! seconds. One that once failed to reach an access point asked for another
-//! look and heard nothing back for half a minute, while a saved network was
-//! in range, until it was told to join that network, as the launcher does.
-//! A card scanning this long is nudged the same way. A card that keeps
-//! failing is nudged ever less often, until it joins something.
+//! until the look is done, and a look over every channel takes about six
+//! seconds. A card still scanning after far longer, with a saved network in
+//! range, is told to join what it can, as the launcher does. A card that
+//! keeps failing is nudged ever less often, until it joins something.
+//!
+//! A card that sat off every network at boot, after an access point didn't
+//! answer, wasn't scanning: wpa_supplicant had nothing pending at all. The
+//! wpa_supplicant module patches that where it starts.
 //!
 //! A card left on purpose, or whose radio is off, isn't scanning, so it's
 //! never nudged.

@@ -14,6 +14,14 @@
   pkgs,
   ...
 }:
+let
+  # After an access point doesn't answer, upstream's wpa_supplicant can pick
+  # that same one again while still marked as joining it, do nothing, and
+  # then wait with no look asked for. The patch's header says how.
+  wpa_supplicant = pkgs.wpa_supplicant.overrideAttrs (old: {
+    patches = (old.patches or [ ]) ++ [ ./retry-after-a-failed-join.patch ];
+  });
+in
 {
   # What every card wifid adds starts from. wpa_cli reaches a card through
   # its control socket, for root and the wpa_supplicant group, since it can
@@ -47,9 +55,9 @@
   users.groups.wpa_supplicant = { };
 
   # Its D-Bus policy, and the file that has D-Bus start it as the unit below.
-  services.dbus.packages = [ pkgs.wpa_supplicant ];
+  services.dbus.packages = [ wpa_supplicant ];
   environment.systemPackages = [
-    pkgs.wpa_supplicant
+    wpa_supplicant
     pkgs.iw
   ];
 
@@ -66,7 +74,7 @@
     serviceConfig = {
       Type = "dbus";
       BusName = "fi.w1.wpa_supplicant1";
-      ExecStart = "${lib.getExe' pkgs.wpa_supplicant "wpa_supplicant"} -u -s";
+      ExecStart = "${lib.getExe' wpa_supplicant "wpa_supplicant"} -u -s";
       User = "wpa_supplicant";
       Group = "wpa_supplicant";
       # Each card's control socket, and wpa_cli's own beside it, for root
