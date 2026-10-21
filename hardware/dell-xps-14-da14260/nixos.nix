@@ -59,6 +59,7 @@ in
     ../../modules/kernel/nixos.nix
     ../../modules/keyboard/nixos.nix
     ../../modules/panel/nixos.nix
+    ../../modules/power-profiles-daemon/nixos.nix
     ../../modules/touchpad/nixos.nix
     ./camera.nix
     ./speakers.nix
@@ -341,7 +342,7 @@ in
   };
 
   # The profiles' energy preferences, with performance's eased; see above.
-  services.power-profiles-daemon.package = powerProfiles;
+  jitsusama.power-profiles-daemon.package = powerProfiles;
 
   # Each core's frequency and idle states and the package's power, which is
   # how the power limits and profiles here were measured.
