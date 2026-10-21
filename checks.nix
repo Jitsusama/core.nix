@@ -218,6 +218,9 @@ let
     # Whether the swap comes down while udev probes its device shows only with
     # the device there and held open.
     vm-swap-comes-down-while-probed = import ./tests/zram.nix { inherit self pkgs; };
+    # Whether a reboot gets past what won't stop shows only by rebooting, with
+    # a watchdog there to reset the machine.
+    vm-reboot-cannot-hang = import ./tests/shutdown.nix { inherit self pkgs; };
   };
 in
 {
@@ -750,6 +753,18 @@ in
       "These start programs themselves rather than through Niri.spawn: ${lib.concatStringsSep ", " culprits}"
       (qml != [ ] && culprits == [ ]);
 
+  # The screens go off through the machine's own niri, the one with core's
+  # patches, so the account doesn't carry a second one just to ask.
+  one-niri =
+    let
+      niri = lib.getExe graphical.config.programs.niri.package;
+      commands = map (timeout: timeout.command) (account graphical).services.swayidle.timeouts;
+    in
+    holds "one-niri" "swayidle calls a niri other than the machine's." (
+      lib.any (lib.hasInfix "/bin/niri ") commands
+      && lib.all (command: !lib.hasInfix "/bin/niri " command || lib.hasPrefix niri command) commands
+    );
+
   # The launcher finds what's meant: for each query in tests/fuzzy.qml the
   # right thing comes first, few rows are left, or nothing answers, and a
   # query keeps within its budget in at least one of five processes, all in
@@ -980,6 +995,67 @@ in
         grep -qxF "<5>The disk /dev/nvme0 no longer reports Critical Warning (0x04): Reliability" out ||
           fail "it didn't say the disk's fault cleared"
         [ "$(grep -c '^-u normal -a Devices ' notified)" = 3 ] || fail "it didn't notify of the fixes"
+        touch $out
+      '';
+
+  # device-check names a kernel that oopsed, locked up a processor, heard of a
+  # hardware error or found a bad page, and a task stuck in it, each once,
+  # since a kernel in that state can misbehave until the next boot. Its other
+  # taints, a warning among them, say nothing, and neither does a taint that
+  # somehow clears, since the kernel never clears one. Files stand in for
+  # /proc.
+  kernel-trouble-is-named =
+    pkgs.runCommandLocal "kernel-trouble-is-named"
+      { nativeBuildInputs = [ (pkgs.callPackage ./modules/device-check/package.nix { }) ]; }
+      ''
+        root=$PWD/root
+        fail() { echo "$1"; cat out; exit 1; }
+        kernel=$root/proc/sys/kernel
+        mkdir -p "$kernel"
+        printf '#!/bin/sh\necho "$*" >> %s/notified\n' "$PWD" > notify
+        chmod +x notify
+        export DEVICE_CHECK_ROOT=$root DEVICE_CHECK_EXPECTED=$PWD/none
+        export DEVICE_CHECK_STATE=$PWD/state DEVICE_CHECK_NOTIFY=$PWD/notify
+        echo 120 > "$kernel/hung_task_timeout_secs"
+        echo 0 > "$kernel/hung_task_detect_count"
+
+        # A warning, an out-of-tree module and a staging driver.
+        echo $((512 + 4096 + 1024)) > "$kernel/tainted"
+        device-check 2> out || fail "it failed on a kernel with harmless taints"
+        [ ! -s out ] || fail "it named a harmless taint"
+
+        echo $((128 + 512 + 4096 + 1024)) > "$kernel/tainted"
+        device-check 2> out || fail "it failed on a kernel that oopsed"
+        grep -qxF "<4>The kernel hit a fault and may misbehave until the next boot" out ||
+          fail "it didn't warn of the oops"
+        [ "$(wc -l < out)" = 1 ] || fail "it named more than the oops"
+        [ "$(grep -c '^-u critical -a Devices ' notified)" = 1 ] || fail "it didn't notify of the oops"
+
+        : > notified
+        device-check 2> out || fail "a second look failed"
+        [ ! -s out ] && [ ! -s notified ] || fail "it named the oops again"
+
+        echo 1 > "$kernel/hung_task_detect_count"
+        echo $((128 + 16384 + 16 + 32)) > "$kernel/tainted"
+        device-check 2> out || fail "it failed on a kernel in worse trouble"
+        grep -qxF "<4>The kernel locked up a processor and may misbehave until the next boot" out ||
+          fail "it didn't warn of the lockup"
+        grep -qxF "<4>The processor reported a hardware error" out ||
+          fail "it didn't warn of the machine check"
+        grep -qxF "<4>The kernel found a damaged memory page" out || fail "it didn't warn of the bad page"
+        grep -qxF "<4>A task was stuck in the kernel for over 120 seconds" out ||
+          fail "it didn't warn of the stuck task"
+        [ "$(wc -l < out)" = 4 ] || fail "it named the oops again, or more than what's new"
+
+        echo 2 > "$kernel/hung_task_detect_count"
+        device-check 2> out || fail "a look after a second stuck task failed"
+        [ ! -s out ] || fail "it named a second stuck task"
+
+        : > notified
+        echo 0 > "$kernel/tainted"
+        echo 0 > "$kernel/hung_task_detect_count"
+        device-check 2> out || fail "a look at a clean kernel failed"
+        [ ! -s out ] && [ ! -s notified ] || fail "it said the kernel's trouble had cleared"
         touch $out
       '';
 
@@ -1422,6 +1498,21 @@ in
         touch $out
       '';
 
+  # The splash keeps systemd's lines off the console, so nothing shows
+  # between the firmware's logo and the splash, which a test machine can't
+  # show: its kernel writes everything to the screen, and systemd writes to
+  # its serial line. A machine without the splash keeps the lines.
+  the-splash-keeps-systemd-quiet =
+    let
+      lines =
+        modules:
+        !lib.elem "systemd.show_status=error"
+          (bareNixos ([ self.nixosModules.graphical ] ++ modules)).config.boot.kernelParams;
+    in
+    holds "the-splash-keeps-systemd-quiet"
+      "systemd writes its lines over the splash, or a machine without one lost them."
+      (!lines [ { jitsusama.login.account = "someone"; } ] && lines [ ]);
+
   # A failed boot's shell says what stopped it, as tests/boot-stopped.sh
   # says, with stand-ins for systemctl and journalctl. The boot test shows it
   # on a real console, in minutes; this holds what it says, in seconds.
@@ -1826,6 +1917,43 @@ in
       "UPower acts below 5% or by sleeping, so a laptop under load goes flat first."
       (upower.enable && upower.percentageAction >= 5 && upower.criticalPowerAction == "PowerOff");
 
+  # The power profile daemon starts whenever it's asked, without waiting for
+  # the boot to finish, which waits for the network: the shell asks it for the
+  # profile as it starts, so the boot's slowest network held the shell. Read
+  # from the unit each machine installs, which keeps the rest of upstream's
+  # and runs the daemon that machine chose, as the XPS 14 patches its own.
+  the-power-profile-answers-before-the-network =
+    let
+      runs =
+        machine:
+        let
+          inherit (machine.config) services jitsusama;
+        in
+        ''
+          unit=${services.power-profiles-daemon.package}/lib/systemd/system/power-profiles-daemon.service
+          if grep -E '^After=.*(multi-user|network)' "$unit"; then
+            echo "The power profile daemon waits for the boot to finish." >&2
+            exit 1
+          fi
+          grep -q '^BusName=org.freedesktop.UPower.PowerProfiles$' "$unit" ||
+            { echo "The daemon's unit lost upstream's settings." >&2; exit 1; }
+          grep -qxF 'ExecStart=${jitsusama.power-profiles-daemon.package}/libexec/power-profiles-daemon' "$unit" ||
+            { echo "The unit doesn't run the daemon the machine chose." >&2; exit 1; }
+        '';
+      xps = bareNixos [ self.nixosModules.dell-xps-14-da14260 ];
+      patched =
+        xps.config.jitsusama.power-profiles-daemon.package.outPath != pkgs.power-profiles-daemon.outPath;
+    in
+    pkgs.runCommandLocal "the-power-profile-answers-before-the-network" { } ''
+      ${runs (bareNixos [ self.nixosModules.power-profiles-daemon ])}
+      ${runs xps}
+      ${lib.optionalString (!patched) ''
+        echo "The XPS 14 runs the daemon unpatched." >&2
+        exit 1
+      ''}
+      touch $out
+    '';
+
   # The profile follows the charger: performance on mains, balanced on
   # battery, and power saver once the battery falls below UPower's low mark,
   # staying there while the battery reads above it again, until the charger is
@@ -1963,6 +2091,45 @@ in
         && lib.elem jitsusama.gpu.unit greetd.after
         && lib.hasInfix ''ENV{ID_PATH}=="${jitsusama.gpu.path}", TAG+="systemd"'' services.udev.extraRules
         && graphical.config.systemd.services.greetd.serviceConfig.Type == "idle"
+      );
+
+  # The XPS 14's firmware holds its chosen settings at each boot, but not the
+  # keyboard light's: KeyboardIllumination is the level the light key sets,
+  # so holding it failed the boot's check whenever the key had been used.
+  firmware-leaves-the-keyboard-light =
+    let
+      xps = bareNixos [ self.nixosModules.dell-xps-14-da14260 ];
+      inherit (xps.config.jitsusama.firmware) settings;
+    in
+    holds "firmware-leaves-the-keyboard-light"
+      "The XPS 14 holds KeyboardIllumination, which its light key sets, or lost IntelSagv."
+      (settings ? IntelSagv && !(settings ? KeyboardIllumination));
+
+  # The services that end a healthy stop leave shutdown-status its mark, but a
+  # mark that couldn't be written must never stop the reboot, so each ignores
+  # its failure. shutdown-status itself has to outlive the last stage's kills,
+  # or it can't say what's left, and systemd reads that setting from [Unit]
+  # alone, ignoring it anywhere else.
+  the-shutdown-mark-cannot-stop-a-reboot =
+    let
+      machine = bareNixos [
+        self.nixosModules.systemd
+        { boot.plymouth.enable = true; }
+      ];
+      inherit (machine.config.systemd) services;
+      ends = [
+        "reboot"
+        "poweroff"
+        "halt"
+        "kexec"
+      ];
+      marks = end: services."systemd-${end}".serviceConfig.ExecStartPre;
+    in
+    holds "the-shutdown-mark-cannot-stop-a-reboot"
+      "shutdown-status dies at the last stage, or a shutdown fails when it can't leave a mark."
+      (
+        services.shutdown-status.unitConfig.SurviveFinalKillSignal or false
+        && lib.all (end: lib.hasPrefix "-" (marks end)) ends
       );
 
   # thermald reads the XPS 14's tables, sensors and the CPU's power limits
@@ -2359,6 +2526,85 @@ in
         touch $out
       '';
 
+    # Both halves of the XPS 14's camera asked for 4 MiB of contiguous memory
+    # at probe, for a firmware log only Intel's offline logger writes, and the
+    # capture side failed its probe without it, and the capture side kept its
+    # firmware's boot memory after every unbind. Read from the patched
+    # sources, the logger's code taken out as it is when built.
+    the-camera-holds-no-memory-it-never-uses =
+      let
+        inherit ((bareNixos [ self.nixosModules.dell-xps-14-da14260 ]).config.boot.kernelPackages)
+          kernel
+          ipu7-drivers
+          ;
+        isys = "drivers/staging/media/ipu7/ipu7-isys.c";
+        psys = "drivers/media/pci/intel/ipu7/psys/ipu-psys.c";
+        patches = lib.filter (patch: patch != null) (map (patch: patch.patch) kernel.kernelPatches);
+        apply = file: patches: ''
+          for patch in ${lib.escapeShellArgs (map (patch: "${patch}") patches)}; do
+            filterdiff -p1 -i ${file} "$patch" | patch -p1 --forward --batch --silent
+          done
+          unifdef -m -UENABLE_FW_OFFLINE_LOGGER ${file} || [ $? = 1 ]
+        '';
+      in
+      pkgs.runCommandLocal "the-camera-holds-no-memory-it-never-uses"
+        {
+          nativeBuildInputs = [
+            pkgs.patchutils
+            pkgs.unifdef
+          ];
+        }
+        ''
+          tar xf ${kernel.src} --strip-components=1 --wildcards '*/${isys}'
+          install -D -m 644 ${ipu7-drivers.src}/${psys} ${psys}
+          ${apply isys patches}
+          ${apply psys ipu7-drivers.patches}
+          moved() { echo "The camera's $1 side isn't probed where this check looks."; exit 1; }
+          asks() { echo "The camera's $1 side asks for 4 MiB for a log nothing reads."; exit 1; }
+          grep -q 'isys_register_devices(isys)' ${isys} || moved capture
+          grep -q 'ipu7_psys_init_debugfs(psys)' ${psys} || moved processing
+          ! grep -q 'FW_LOG_BUF_SIZE' ${isys} || asks capture
+          ! grep -q 'psys_fw_log_init(psys)' ${psys} || asks processing
+          keeps() { echo "The camera keeps its firmware's memory past an unbind."; exit 1; }
+          awk '/^static void isys_remove\(/,/^}/' ${isys} > remove.c
+          grep -q 'ipu7_fw_isys_release(isys);' remove.c || keeps
+          touch $out
+        '';
+
+    # The XPS 14's firmware gives Bluetooth's power limits and antenna gain
+    # setting only as UEFI variables, in a revision 2 table, so a kernel that
+    # reads only ACPI's, or rejects revision 2, runs Bluetooth without them.
+    # Read from the XPS 14's patched source.
+    bluetooth-keeps-its-power-limits =
+      let
+        inherit ((bareNixos [ self.nixosModules.dell-xps-14-da14260 ]).config.boot.kernelPackages)
+          kernel
+          ;
+        btintel = "drivers/bluetooth/btintel.c";
+        patches = lib.filter (patch: patch != null) (map (patch: patch.patch) kernel.kernelPatches);
+        without = what: "The kernel ${what}, so Bluetooth runs without its power limits.";
+      in
+      pkgs.runCommandLocal "bluetooth-keeps-its-power-limits" { nativeBuildInputs = [ pkgs.patchutils ]; }
+        ''
+          tar xf ${kernel.src} --strip-components=1 --wildcards '*/${btintel}'
+          for patch in ${lib.escapeShellArgs (map (patch: "${patch}") patches)}; do
+            filterdiff -p1 -i ${btintel} "$patch" | patch -p1 --forward --batch --silent
+          done
+          if ! grep -q 'btintel_set_sar_rev2(hdev, sar)' ${btintel}; then
+            echo "${without "rejects revision 2 Bluetooth SAR tables"}"
+            exit 1
+          fi
+          if ! grep -Eq '^[[:space:]]+ret = btintel_uefi_set_sar\(hdev, ver\);' ${btintel}; then
+            echo "${without "never reads Bluetooth's SAR table from UEFI"}"
+            exit 1
+          fi
+          if ! grep -Eq '^[[:space:]]+if \(!btintel_uefi_get_ppag\(&mode\)\)' ${btintel}; then
+            echo "${without "never reads Bluetooth's antenna gain setting from UEFI"}"
+            exit 1
+          fi
+          touch $out
+        '';
+
     # The XPS 14's panel gives its variable refresh range only in DisplayID's
     # Adaptive Sync block, so a kernel that doesn't read it never offers
     # variable refresh. Read from the XPS 14's patched source.
@@ -2388,6 +2634,35 @@ in
           fi
           touch $out
         '';
+
+    # The XPS 14's panel gives its luminance only in DisplayID's Display
+    # Parameters block, so a kernel that doesn't read it guesses the panel's
+    # brightness range. Read from the XPS 14's patched source.
+    the-panel-knows-its-luminance =
+      let
+        inherit ((bareNixos [ self.nixosModules.dell-xps-14-da14260 ]).config.boot.kernelPackages)
+          kernel
+          ;
+        edid = "drivers/gpu/drm/drm_edid.c";
+        displayid = "drivers/gpu/drm/drm_displayid_internal.h";
+        patches = lib.filter (patch: patch != null) (map (patch: patch.patch) kernel.kernelPatches);
+      in
+      pkgs.runCommandLocal "the-panel-knows-its-luminance" { nativeBuildInputs = [ pkgs.patchutils ]; } ''
+        guess() {
+          echo "The kernel $1, so the panel's brightness range is a guess."
+          exit 1
+        }
+        tar xf ${kernel.src} --strip-components=1 --wildcards '*/${edid}' '*/${displayid}'
+        for patch in ${lib.escapeShellArgs (map (patch: "${patch}") patches)}; do
+          filterdiff -p1 -i ${edid} -i ${displayid} "$patch" |
+            patch -p1 --forward --batch --silent
+        done
+        grep -q 'block->tag != DATA_BLOCK_2_DISPLAY_PARAMETERS' ${edid} ||
+          guess "reads no luminance from DisplayID's Display Parameters block"
+        grep -Eq '^[[:space:]]+drm_get_luminance_range_displayid\(connector,' ${edid} ||
+          guess "never asks DisplayID for the panel's luminance"
+        touch $out
+      '';
 
     # niri reads back the files an account gets and rejects anything it
     # wouldn't load, from a misspelt action to a colour it can't parse.
@@ -3937,6 +4212,22 @@ in
       (pkgs.callPackage ./modules/backlight/package.nix { }).overrideAttrs
         (old: {
           pname = "backlight-passes-clippy";
+          nativeBuildInputs = old.nativeBuildInputs ++ [ pkgs.clippy ];
+          buildPhase = ''
+            cargo clippy --all-targets --offline -- -D warnings
+          '';
+          doCheck = false;
+          installPhase = ''
+            touch $out
+          '';
+        });
+
+    # clippy finds nothing in what tells Plymouth of a slow boot or
+    # shutdown, its tests included.
+    plymouth-waits-passes-clippy =
+      (pkgs.callPackage ./modules/plymouth/waits/package.nix { }).overrideAttrs
+        (old: {
+          pname = "plymouth-waits-passes-clippy";
           nativeBuildInputs = old.nativeBuildInputs ++ [ pkgs.clippy ];
           buildPhase = ''
             cargo clippy --all-targets --offline -- -D warnings

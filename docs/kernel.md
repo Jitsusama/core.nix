@@ -22,8 +22,10 @@ x86-64 machine as `packages.x86_64-linux.kernel`.
 - **The series:** 7.2, at whichever point release nixpkgs pins, or a newer
   one `package.nix` names in `stable` while nixpkgs catches up. Taking a new
   nixpkgs takes the latest 7.2 release with its fixes, and `stable` stops
-  applying once nixpkgs's release is as new. It names 7.2.11, newer than the
-  pinned nixpkgs's 7.2.9, for its fixes to what the XPS 14 runs: the Intel
+  applying once nixpkgs's release is as new. It names 7.2.12, newer than the
+  pinned nixpkgs's 7.2.9, for its fixes to what the XPS 14 runs. 7.2.12 adds
+  the speaker amplifiers' OT25 DAI, without which 7.2.11's sound card never
+  binds. 7.2.11 brought these: the Intel
   Bluetooth driver resetting the chip for a clean start and bounding its
   transmit ring, races in Bluetooth's RFCOMM, SCO and ISO sockets, the Xe
   graphics driver's register waits and shrinker, device-mapper reading freed
@@ -54,7 +56,7 @@ are fixes written here, kept until the kernel has its own:
 | `bore.patch`              | the BORE scheduler             | [BORE's author][1] |
 | `irq-resend-nested.patch` | no bad IRQ trap on resume      | written here       |
 | `edp-sdp-caps.patch`      | a single eDP modeset at boot   | written here       |
-| `cfg80211-ssid-without-country.patch` | the joined network's name | written here |
+| `cfg80211-ssid-without-country.patch` | the joined network's name | written here; [linux-next][3] since |
 
 BORE is a small change to the kernel's own EEVDF scheduler: it favours tasks
 that run in short bursts, such as the compositor, terminal and editor, over
@@ -369,3 +371,4 @@ if less; record a new one after moving to a new series.
 [crashes]: hardware.md#the-two-crashes
 [1]: https://github.com/firelzrd/bore-scheduler
 [2]: https://git.kernel.org/torvalds/c/a6036a41bffb
+[3]: https://git.kernel.org/pub/scm/linux/kernel/git/next/linux-next.git/commit/?id=577f690ce5dc
