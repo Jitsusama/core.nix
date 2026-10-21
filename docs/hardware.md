@@ -487,6 +487,21 @@ refresh is on, which Windows doesn't, so it's worth turning on only while
 a video or game is showing, as niri's on-demand setting does, rather than
 everywhere.
 
+### The Panel's Brightness
+
+The panel takes its brightness in nits over the display's AUX channel, as
+eDP 1.5 allows. The kernel sets that range from the panel's luminance, which
+it reads only from CTA HDR metadata, and this panel gives its luminance only
+in its EDID's DisplayID Display Parameters block: 400 nits over the whole
+screen. With no range found, the Intel driver guesses 0 to 512 nits, so the
+top 112 of the backlight's 512 steps ask for more light than the panel is
+rated for. Dell's Windows driver gives it 25 to 400 nits.
+`panel-luminance-range.patch`, written here, reads the range from that block
+when no CTA block gives one, so the backlight runs from 0 to 400 in steps of
+one nit, and a level keeps the same nits it had before. The panel answers 0
+when asked what it was last set to, so `actual_brightness` always reads 0;
+`brightness` holds the level set.
+
 ### The Touchpad's Click
 
 The touchpad is a `2C2F` haptic pad on `hid-multitouch`: it has no button,
