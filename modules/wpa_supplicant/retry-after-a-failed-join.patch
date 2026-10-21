@@ -14,6 +14,12 @@ pending, until something outside asks it to look or join.
 This picks from the last scan once the caller has finished, from the event
 loop, so the attempt is over when the pick is made. Where nothing can be
 picked, it asks for a scan just as a later failure does.
+
+Where the last scan heard another BSS of the same ESS, the pick skips the
+one that just failed rather than trying it once more. Some access points
+ignore a station's first authentication after it boots, and trying the same
+one again fails too, after which a full scan, about six seconds on a card
+with 6 GHz, comes before its neighbour is tried.
 --- a/wpa_supplicant/wpa_supplicant_i.h
 +++ b/wpa_supplicant/wpa_supplicant_i.h
 @@ -920,6 +920,7 @@
@@ -44,7 +50,7 @@ picked, it asks for a scan just as a later failure does.
  	eloop_cancel_timeout(wpas_verify_ssid_beacon, wpa_s, NULL);
  	eloop_cancel_timeout(wpas_wfa_capab_tx, wpa_s, NULL);
  
-@@ -9100,10 +9104,78 @@
+@@ -9100,10 +9104,115 @@
  }
  
  
@@ -95,11 +101,41 @@ picked, it asks for a scan just as a later failure does.
 +
 +
 +/*
++ * Whether the last scan heard another BSS with the SSID of the one that
++ * failed, and that BSS isn't being ignored itself.
++ */
++static bool wpas_ess_has_another_bss(struct wpa_supplicant *wpa_s,
++				     const u8 *failed_bssid)
++{
++	struct wpa_bss *failed = wpa_bss_get_bssid_latest(wpa_s, failed_bssid);
++	size_t i;
++
++	if (!failed)
++		return false;
++	for (i = 0; i < wpa_s->last_scan_res_used; i++) {
++		struct wpa_bss *bss = wpa_s->last_scan_res[i];
++
++		if (bss == failed || bss->ssid_len != failed->ssid_len ||
++		    os_memcmp(bss->ssid, failed->ssid, failed->ssid_len) != 0 ||
++		    wpa_bssid_ignore_is_listed(wpa_s, bss->bssid))
++			continue;
++		return true;
++	}
++	return false;
++}
++
++
++/*
 + * Picks the next BSS from the last scan once the caller has marked the
 + * failed attempt over. Picked while it still stands, the BSS just tried
 + * reads as the one being joined, so nothing is tried, no scan is asked for
 + * either, and the interface waits with nothing pending. Nothing is picked
 + * if the interface was disconnected or another attempt began meanwhile.
++ *
++ * Where the last scan heard another BSS of the same ESS, that one is tried
++ * rather than the one that just failed: an access point that ignores a
++ * station's first authentication after a boot otherwise costs a second
++ * failure and a full scan before its neighbour is tried.
 + */
 +static void wpas_retry_failed_bss(void *eloop_ctx, void *timeout_ctx)
 +{
@@ -109,6 +145,13 @@ picked, it asks for a scan just as a later failure does.
 +	    radio_work_pending(wpa_s, "sme-connect") ||
 +	    radio_work_pending(wpa_s, "connect"))
 +		return;
++	if (!is_zero_ether_addr(wpa_s->retry_failed_bssid) &&
++	    wpas_ess_has_another_bss(wpa_s, wpa_s->retry_failed_bssid)) {
++		wpa_dbg(wpa_s, MSG_DEBUG,
++			"Another BSS of the ESS was heard; trying it before "
++			MACSTR " again", MAC2STR(wpa_s->retry_failed_bssid));
++		wpa_bssid_ignore_add(wpa_s, wpa_s->retry_failed_bssid);
++	}
 +	if (wpa_supplicant_fast_associate(wpa_s) == 1)
 +		return;
 +	wpas_scan_after_failure(wpa_s,
@@ -124,7 +167,7 @@ picked, it asks for a scan just as a later failure does.
  	int count;
  
  	wpas_connect_work_done(wpa_s);
-@@ -9148,47 +9220,17 @@
+@@ -9148,47 +9257,17 @@
  	 * next. Otherwise, we may as well try this one once more
  	 * before allowing other, likely worse, ESSes to be considered.
  	 */
