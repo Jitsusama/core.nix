@@ -40,9 +40,13 @@ let
   # power-profiles-daemon's performance profile asks the cores for the energy
   # preference performance. On this chip balance_performance idled at 3.0 to
   # 4.4 W against 7.0 to 9.5 W, ran a sixteen-thread load 9 to 11% faster,
-  # and woke and burst from idle as quickly; docs/hardware.md has the numbers. Its test of
-  # Intel's driver expects the value the profile writes, so it changes too.
+  # and woke and burst from idle as quickly; docs/hardware.md has the
+  # numbers. Its test of Intel's driver expects the value the profile writes,
+  # so it changes too. Built here rather than taken from the cache, the
+  # daemon runs its own tests, two of which read a value before it settles
+  # (power-profiles-tests-wait.patch).
   powerProfiles = pkgs.power-profiles-daemon.overrideAttrs (old: {
+    patches = (old.patches or [ ]) ++ [ ./power-profiles-tests-wait.patch ];
     postPatch = (old.postPatch or "") + ''
       substituteInPlace src/ppd-driver-intel-pstate.c \
         --replace-fail 'return "performance";' 'return "balance_performance";'
