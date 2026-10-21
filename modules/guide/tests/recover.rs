@@ -2,8 +2,9 @@
 //! guide's VM (fixtures/qemu-canokey/): core's layout found on the
 //! internal disk and never on the stick, and nothing found on a blank one.
 
+use guide::Machine;
 use guide::fake::Fake;
-use guide::recover::{BootGeneration, FindMachine, the_machine};
+use guide::recover::{BootGeneration, FindMachine, already_there, the_machine};
 use guide::{Answer, Answers, Ask, Journey, Standing, Step, Tool};
 
 macro_rules! fixture {
@@ -34,6 +35,32 @@ fn the_machine_is_the_internal_disk_with_cores_layout() {
         ("/dev/vda", "system")
     );
     assert_eq!(found.volume(), "/dev/disk/by-partlabel/system");
+}
+
+#[test]
+fn a_machines_stick_asks_before_installing_over_a_machine() {
+    let mut fake = lsblk(fixture!("lsblk-laid-out.json"));
+    let question = already_there(&mut fake, "laptop")
+        .unwrap()
+        .expect("a question");
+    assert!(question.contains("serial root"), "{question}");
+    assert!(
+        question.contains("install laptop on it again"),
+        "{question}"
+    );
+}
+
+#[test]
+fn a_blank_disk_is_installed_on_without_asking() {
+    let mut fake = lsblk(fixture!("lsblk-blank.json"));
+    assert_eq!(already_there(&mut fake, "laptop").unwrap(), None);
+}
+
+#[test]
+fn an_install_confirmed_this_boot_is_not_asked_about_again() {
+    let mut fake = lsblk(fixture!("lsblk-laid-out.json"));
+    fake.journal().record("confirm-disk", "/dev/vda").unwrap();
+    assert_eq!(already_there(&mut fake, "laptop").unwrap(), None);
 }
 
 #[test]

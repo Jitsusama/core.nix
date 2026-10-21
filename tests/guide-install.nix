@@ -370,6 +370,11 @@ pkgs.testers.runNixOSTest {
 
       with subtest("the firmware boots it, enforcing, and the guide reinstalls with the keys put back"):
           machine.start(allow_reboot=True)
+          # The disk holds the machine, so its stick asks first.
+          on_screen("A machine is already here")
+          t.assertIn("install machine on it again", " ".join(screen().split()))
+          machine.send_key("down")
+          type("")
           on_screen("Check the keyboard types what you mean")
           type("keyboard")
           on_screen("recovery passphrase")

@@ -452,8 +452,41 @@ fn install() -> Result<(), Fault> {
         })?;
     let mut machine = System::new(journal, Some(log)).with_vault(vault);
     let theme = Theme::built(Terminal::is_console());
-    let mut terminal = Terminal::open()?;
     let title = format!("Install {machine_name}");
+
+    // One stick for everything: on a disk that already holds a machine, it
+    // asks first whether to recover it or install over it.
+    if let Some(question) = guide::recover::already_there(&mut machine, &machine_name)? {
+        let chosen = {
+            let mut terminal = Terminal::open()?;
+            let ask = Journey::new(vec![])
+                .map_err(|why| Fault::unreadable("the install's steps", why))?;
+            Walk {
+                journey: &ask,
+                here: Place::Stick,
+                name: &title,
+                theme: &theme,
+                log: Some(Path::new(LOG)),
+                whole: false,
+                last: Default::default(),
+            }
+            .choose(
+                &mut terminal,
+                "A machine is already here",
+                &question,
+                guide::recover::ALREADY_THERE,
+            )?
+        };
+        match chosen {
+            Some(0) => {
+                drop(machine);
+                return recover();
+            }
+            Some(_) => {}
+            None => return Ok(()),
+        }
+    }
+    let mut terminal = Terminal::open()?;
 
     // The steps before the vault opens, then, from what it holds, all of
     // them, those already done passed over.

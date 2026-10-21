@@ -72,6 +72,29 @@ pub fn the_machine(machine: &mut dyn Machine) -> Result<Result<Found, Standing>,
     })
 }
 
+/// What a machine's own stick offers when this computer's disk already
+/// holds a machine: to recover it, or to install over it. The install's
+/// own confirmation still asks for the name typed back before any wipe.
+pub const ALREADY_THERE: &[&str] = &["Recover it", "Install it again, wiping the disk"];
+
+/// Whether a machine's own stick should ask before installing: when a disk
+/// here already holds a machine and the install hasn't yet been confirmed
+/// onto it this boot, the question to ask; otherwise none, and the install
+/// goes on as it would.
+pub fn already_there(machine: &mut dyn Machine, installing: &str) -> Result<Option<String>, Fault> {
+    let found = machines(machine)?;
+    let confirmed = found
+        .iter()
+        .any(|found| machine.journal().knows("confirm-disk", &found.disk.path));
+    Ok(match found.first() {
+        Some(found) if !confirmed => Some(format!(
+            "This computer's disk already holds a machine: {}. Recover it, or install {installing} on it again?",
+            described(&found.disk)
+        )),
+        _ => None,
+    })
+}
+
 /// The machine found, shown to the person before any secret is typed for
 /// it, so they know which disk they're opening.
 pub struct FindMachine;

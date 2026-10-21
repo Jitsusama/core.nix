@@ -72,8 +72,9 @@ driven on; the installed machine's steps come later.
   a binary cache. Before the disk is touched, the firmware is checked to
   take the keys the install will give the machine, so a machine is never
   wiped only to be unbootable. The disk is wiped only once the machine's
-  name is typed back for it, then laid out by the machine's own disko script, run with
-  the stick's disk tools, its volume made with a key held only in memory.
+  name is typed back for it, then laid out by the machine's own disko
+  script, run with the stick's disk tools, its volume made with a key held
+  only in memory.
   Each YubiKey is enrolled alone, told apart from the others by a silent
   assertion, and proven by opening the disk; then a recovery key, typed
   back and proven. The Secure Boot keys are put back from the vault when
@@ -82,8 +83,9 @@ driven on; the installed machine's steps come later.
   signs with them, which only a firmware in setup mode will take. The
   system is copied in from the vault with no network, and the key held in
   memory comes off the disk last. A host gives the stick the keys with
-  `--secure-boot-keys`, sbctl's directory, and signs the stick with them. Every step stays done
-  through the steps after it, since the journey runs the first that isn't.
+  `--secure-boot-keys`, sbctl's directory, and signs the stick with them.
+  Every step stays done through the steps after it, since the journey runs
+  the first that isn't.
 - **Recovering.** Any stick recovers a machine with its data left in
   place, since the disk says what it is: core's layout on an internal
   disk, an encrypted partition beside its `<name>-boot`. The disk is shown
@@ -97,10 +99,13 @@ driven on; the installed machine's steps come later.
   assertion, the new one enrolled and proven with the recovery key, and
   only then the lost one's slots wiped, so the disk never has fewer ways
   in; or the boot loader installed again by the installed system's own
-  `switch-to-configuration boot`, which signs with the machine's keys. The kernel writes only errors on the stick's console, which the
-  guide owns. A
-  repair stick runs this when it boots; `guide recover` runs it from any
-  stick's shell. The other repairs the plan lists are still to come.
+  `switch-to-configuration boot`, which signs with the machine's keys.
+  The kernel writes only errors on the stick's console, which the guide
+  owns. A repair stick runs this when it boots; `guide recover` runs it
+  from any stick's shell. A machine's own stick asks first, when a disk
+  already holds a machine and the install hasn't been confirmed onto it
+  this boot, whether to recover it or install over it, so one stick does
+  both. The other repairs the plan lists are still to come.
 - **Choosing.** A choice is a list the arrows move through and Return
   takes, the cursor mark in the accent on the one the keys are on.
 - **The installed machine.** Once it boots its own disk, the guide runs
