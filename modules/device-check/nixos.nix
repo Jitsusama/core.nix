@@ -8,6 +8,11 @@
 # minutes after every resume. It names each finding once, in the journal and
 # as a notification, and again when it's fixed.
 #
+# The kernel counts as a device too. Once it oopses, locks up a processor,
+# hears of a hardware fault or finds a task stuck in it, it can misbehave until
+# the next boot: an oops once left two tasks no signal could end, and the
+# reboot that followed hung. It marks each in /proc, which anyone can read.
+#
 # A disk that's failing says so before it fails: its spare blocks run low,
 # it overheats, it finds errors in what it stored, or it turns read-only. On
 # NVMe those are the critical warning flags (-H), new media errors or wear
