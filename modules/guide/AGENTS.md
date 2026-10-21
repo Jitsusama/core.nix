@@ -85,9 +85,14 @@ driven on; the installed machine's steps come later.
   before anything is typed, opened with the plugged-in YubiKey's PIN or,
   with none plugged in, the recovery key (never the TPM, whose seal a
   stick's boot doesn't match), every subvolume and the ESP mounted under
-  /mnt. Then a choice, back after each: a root shell inside it, or which
+  /mnt. Then a choice, back after each: a root shell inside it; which
   generation boots next, set in the firmware's `LoaderEntryDefault` as
-  `bootctl set-default` would, since from a stick bootctl refuses. A
+  `bootctl set-default` would, since from a stick bootctl refuses; or a
+  lost YubiKey replaced: the key still had told apart by a silent
+  assertion, the new one enrolled and proven with the recovery key, and
+  only then the lost one's slots wiped, so the disk never has fewer ways
+  in. The kernel writes only errors on the stick's console, which the
+  guide owns. A
   repair stick runs this when it boots; `guide recover` runs it from any
   stick's shell. The other repairs the plan lists are still to come.
 - **Choosing.** A choice is a list the arrows move through and Return

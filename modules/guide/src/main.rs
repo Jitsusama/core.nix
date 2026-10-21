@@ -362,8 +362,16 @@ fn recover() -> Result<(), Fault> {
                 guide::recover::REPAIRS,
             )? {
                 Some(0) => break true,
-                Some(1) => {
-                    let repair = Journey::new(vec![Box::new(guide::recover::BootGeneration)])
+                Some(at @ (1 | 2)) => {
+                    let steps: Vec<Box<dyn guide::Step>> = if at == 1 {
+                        vec![Box::new(guide::recover::BootGeneration)]
+                    } else {
+                        vec![
+                            Box::new(guide::recover::IdentifyKeptKey),
+                            Box::new(guide::recover::ReplaceLostKey),
+                        ]
+                    };
+                    let repair = Journey::new(steps)
                         .map_err(|why| Fault::unreadable("the repair's steps", why))?;
                     let chosen = Walk {
                         journey: &repair,
