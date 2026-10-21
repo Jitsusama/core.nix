@@ -8,6 +8,14 @@ license = "MIT"
 publish = false
 
 [dependencies]
+age = "0.12"
+crc32fast = "1.5"
+# Without chrono a file's times are FAT's earliest, so a vault written twice
+# from the same files is the same bytes.
+fatfs = { version = "0.3.6", default-features = false, features = ["std", "alloc"] }
+getrandom = "0.4"
+libc = "0.2"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+sha2 = "0.11"
 zeroize = "1.9"

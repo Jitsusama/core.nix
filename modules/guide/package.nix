@@ -2,6 +2,7 @@
 # program it runs is fixed here by its store path, so nothing on a PATH can
 # take one's place, and `guide tools` proves each is there once it's built.
 {
+  dosfstools,
   lib,
   libfido2,
   rustPlatform,
@@ -25,6 +26,11 @@ rustPlatform.buildRustPackage {
     ];
   };
   cargoLock.lockFile = ./Cargo.lock;
+  # The stick's tests are judged by what a person would check it with.
+  nativeCheckInputs = [
+    dosfstools
+    util-linux
+  ];
   env = {
     GUIDE_BOOTCTL = lib.getExe' systemd "bootctl";
     GUIDE_FIDO2_TOKEN = lib.getExe' libfido2 "fido2-token";

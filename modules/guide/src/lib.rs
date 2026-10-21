@@ -46,8 +46,10 @@ pub mod machine;
 pub mod observe;
 pub mod place;
 pub mod step;
+pub mod stick;
 pub mod system;
 pub mod tool;
+pub mod vault;
 
 pub use fault::Fault;
 pub use journal::Journal;

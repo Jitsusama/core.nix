@@ -20,6 +20,8 @@ pub enum Fault {
     Unreadable { what: String, why: String },
     /// A file the guide keeps couldn't be read or written.
     Unkept { path: String, why: String },
+    /// Something sealed wouldn't open: the wrong key, or it was changed.
+    Unopened { what: String, why: String },
     /// A step ran, and observing it again says it isn't done.
     Unproven {
         step: &'static str,
@@ -48,6 +50,7 @@ impl fmt::Display for Fault {
             Fault::Unbuilt { tool } => write!(f, "this guide was built without {tool}"),
             Fault::Unreadable { what, why } => write!(f, "couldn't read {what}: {why}"),
             Fault::Unkept { path, why } => write!(f, "couldn't keep {path}: {why}"),
+            Fault::Unopened { what, why } => write!(f, "{what} wouldn't open: {why}"),
             Fault::Unproven { step, standing } => {
                 write!(
                     f,

@@ -5,8 +5,8 @@ the stick that installs it, installing it with its disk encrypted and Secure
 Boot on, sealing it to the TPM with YubiKeys as the way back in, and every
 repair after. It's for someone who won't remember any of it, so it says
 everything it needs before it starts and never leaves them guessing what
-happened. This crate holds the step engine and what the guide observes; the
-steps, the screens and the stick's writer come later.
+happened. This crate holds the step engine, what the guide observes, and
+the stick's writer and vault; the steps and the screens come later.
 
 ## How It Decides
 
@@ -34,6 +34,24 @@ steps, the screens and the stick's writer come later.
   and what it prints is what the parsers were written against. Every call is
   logged raw. tpm2-tools always names `/dev/tpmrm0`, since otherwise it tries
   a D-Bus broker first.
+- **The stick.** The image's partitions are copied byte for byte and its
+  partition entries and disk GUID kept, since the stick's system finds its
+  store by them. A vault partition fills the rest, and both tables are
+  written for the stick's size. Both are cleared first and written last, so
+  a write that stops part way leaves no table rather than one pointing at
+  half a stick. Everything reaches the stick in aligned 64 KiB blocks, as a
+  Mac's raw disks need. Reading back forgets the system's cached copy first,
+  then compares both tables, hashes each partition again and opens the
+  vault.
+- **The vault.** A FAT32 partition any machine can read, holding files
+  sealed with age to a vault key made for it. The key is sealed to each
+  YubiKey, and separately to the recovery passphrase, since age won't mix a
+  passphrase with other recipients. Files are split into objects of at most
+  1 GiB, under FAT32's limit, with numbered names; only the sealed index
+  says what they hold, and extracting checks every object's size and each
+  file's SHA-256. `manifest.json` goes last, so a vault without one was
+  never finished. Every file sits at the top, since fatfs 0.3.6 writes
+  directories fsck.fat has to repair.
 
 ## Where Things Live
 
@@ -49,8 +67,11 @@ steps, the screens and the stick's writer come later.
 | `src/journal.rs`      | the facts observing can't show                            |
 | `src/fault.rs`        | what stops a step, in a person's words                    |
 | `src/observe/`        | one parser per thing the guide reads off a machine        |
+| `src/stick/`          | writing the stick and reading it back: its tables, and aligned blocks |
+| `src/vault/`          | the vault's sealing and index, and where its files are kept |
 | `fixtures/<hardware>/` | what each tool printed on a real machine, as it printed it |
 | `tests/journey.rs`    | the journey's promises, with toy steps                    |
+| `tests/stick.rs`      | whole sticks written into files, judged by sfdisk and fsck.fat |
 
 ## Working on It
 
@@ -59,7 +80,8 @@ clippy and rustfmt. `cargo test` runs in a second, and the package runs the
 tests again as it builds, then `guide tools`. `nix fmt` from the repository
 root formats the Rust. `guide observe` prints what the guide sees on the
 machine it runs on and changes nothing, which is how a parser meets a
-machine it hasn't seen.
+machine it hasn't seen. `guide write-stick IMAGE FILE` writes a repair stick
+into a file already the size of a stick, and refuses a disk.
 
 - Parse what a tool printed on a real machine, never what its manual says it
   prints: capture it into `fixtures/<hardware>/`, named as core's hardware

@@ -1,26 +1,95 @@
 //! `guide observe` says what the guide sees on this machine and changes
 //! nothing; `guide tools` says where this build finds each program it
-//! runs, and fails when one is missing.
+//! runs, and fails when one is missing; `guide write-stick IMAGE FILE`
+//! writes a repair stick into a file the size of one.
 
+use std::fs::OpenOptions;
+use std::io::Write;
 use std::path::Path;
 use std::process::ExitCode;
 
 use guide::observe::{disks, efi, entries, fido2, sbctl, tpm};
+use guide::stick::{self, Image};
 use guide::system::System;
+use guide::vault::{self, Manifest};
 use guide::{Fault, Journal, Tool};
 
-const USAGE: &str = "usage: guide observe | guide tools";
+const USAGE: &str = "usage: guide observe | guide tools | guide write-stick IMAGE FILE";
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     match args.iter().map(String::as_str).collect::<Vec<_>>()[..] {
         ["observe"] => observe(),
         ["tools"] => tools(),
+        ["write-stick", image, target] => match write_stick(image, target) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(fault) => {
+                eprintln!("{fault}");
+                ExitCode::FAILURE
+            }
+        },
         _ => {
             eprintln!("{USAGE}");
             ExitCode::from(2)
         }
     }
+}
+
+/// What a repair stick's vault says: it's no one machine's, and nothing
+/// opens it, since it carries nothing secret.
+fn repair_manifest() -> Manifest {
+    Manifest {
+        format: 1,
+        machine: String::new(),
+        opened_by: vec![],
+    }
+}
+
+/// A repair stick, into a file already the size of the stick it stands for.
+/// A disk is refused: writing one comes with the steps that find it and
+/// have the person confirm it.
+fn write_stick(image: &str, target: &str) -> Result<(), Fault> {
+    let kept = |why: std::io::Error| Fault::Unkept {
+        path: target.into(),
+        why: why.to_string(),
+    };
+    if !std::fs::metadata(target).map_err(kept)?.is_file() {
+        return Err(Fault::Blocked {
+            step: "write-stick",
+            why: format!("{target} isn't a file, and this only writes into files"),
+        });
+    }
+    let file = std::fs::File::open(image).map_err(|why| Fault::unreadable(image, why))?;
+    let mut image = Image::open(file)?;
+    let mut disk = OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(target)
+        .map_err(kept)?;
+    let manifest = repair_manifest();
+    let written = stick::write(&mut image, &mut disk, stick::new_guid()?, |store| {
+        let bytes = serde_json::to_vec_pretty(&manifest)
+            .map_err(|why| Fault::unreadable("the manifest", why))?;
+        store
+            .create(vault::MANIFEST)?
+            .write_all(&bytes)
+            .map_err(kept)
+    })?;
+    stick::verify(&written, &mut disk, |store| {
+        if vault::manifest(store)? == repair_manifest() {
+            Ok(())
+        } else {
+            Err(Fault::Unproven {
+                step: "write-stick",
+                standing: "the vault's manifest isn't what was written".into(),
+            })
+        }
+    })?;
+    println!(
+        "{target}: the image and a {} MB vault, read back as written",
+        written.vault.bytes() / 1_000_000
+    );
+    Ok(())
 }
 
 fn tools() -> ExitCode {

@@ -291,6 +291,12 @@
             pkgs.rustc
             pkgs.rustfmt
             (pkgs.callPackage ./tests/shots-changed.nix { })
+          ]
+          # The guide's stick tests check what they write with sfdisk and
+          # fsck.fat.
+          ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [
+            pkgs.dosfstools
+            pkgs.util-linux
           ];
         };
       });
