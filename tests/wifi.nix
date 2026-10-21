@@ -48,18 +48,29 @@ let
       ${settings}
     '';
 
-  lantern = accessPoint "lantern" ''
-    interface=wlan0
+  # WPA2 and WPA3 both, as a home network's often is; the card takes WPA3,
+  # by hash-to-element.
+  lanternKey = ''
     ssid=Lantern
-    channel=6
-    # WPA2 and WPA3 both, as a home network's often is; the card takes
-    # WPA3, by hash-to-element.
     wpa=2
     wpa_key_mgmt=WPA-PSK SAE
     rsn_pairwise=CCMP
     ieee80211w=1
     sae_pwe=2
     wpa_passphrase=glowing in the dark
+  '';
+
+  lantern = accessPoint "lantern" ''
+    interface=wlan0
+    channel=6
+    ${lanternKey}
+  '';
+
+  # Lantern's second access point, heard only when a test starts it.
+  lanternTwo = accessPoint "lantern-two" ''
+    interface=wlan5
+    channel=9
+    ${lanternKey}
   '';
 
   inn = accessPoint "inn" ''
@@ -209,12 +220,12 @@ pkgs.testers.runNixOSTest {
         ''
       );
 
-      # Five stand-in radios: two access points, the laptop's card, a USB
-      # card in a drawer, and the Office's access point.
+      # Six stand-in radios: two access points, the laptop's card, a USB
+      # card in a drawer, the Office's access point and Lantern's second.
       boot.kernelModules = [ "mac80211_hwsim" ];
-      boot.extraModprobeConfig = "options mac80211_hwsim radios=5";
+      boot.extraModprobeConfig = "options mac80211_hwsim radios=6";
 
-      # The first two radios and the last move to the access points'
+      # The first two radios and the last two move to the access points'
       # namespace and the fourth to the drawer's before anything joins,
       # leaving wlan2 as the laptop's only card.
       systemd.services.air = {
@@ -231,9 +242,9 @@ pkgs.testers.runNixOSTest {
           RemainAfterExit = true;
         };
         script = ''
-          until [ -e /sys/class/net/wlan4/phy80211/name ]; do sleep 0.1; done
+          until [ -e /sys/class/net/wlan5/phy80211/name ]; do sleep 0.1; done
           ip netns add air
-          for card in wlan0 wlan1 wlan4; do
+          for card in wlan0 wlan1 wlan4 wlan5; do
             iw phy "$(cat /sys/class/net/$card/phy80211/name)" set netns name air
           done
           ip netns add drawer
@@ -247,6 +258,14 @@ pkgs.testers.runNixOSTest {
       systemd.services.lantern = inAir // {
         serviceConfig = inAir.serviceConfig // {
           ExecStart = "${lib.getExe' pkgs.hostapd "hostapd"} ${lantern}";
+        };
+      };
+      # Weaker than the first, so a card hearing both picks the first.
+      systemd.services.lantern-two = inAir // {
+        wantedBy = [ ];
+        serviceConfig = inAir.serviceConfig // {
+          ExecStartPre = "${lib.getExe' pkgs.iw "iw"} dev wlan5 set txpower fixed 500";
+          ExecStart = "${lib.getExe' pkgs.hostapd "hostapd"} ${lanternTwo}";
         };
       };
       systemd.services.inn = inAir // {
@@ -1021,6 +1040,69 @@ pkgs.testers.runNixOSTest {
                 f" | grep -qx '{said}'",
                 timeout=30,
             )
+
+    # On a laptop at boot, the access point first picked ignored the first
+    # join, while another of the same network answered. Trying the silent
+    # one again failed too, and a full look came before the other was
+    # tried, six seconds there. Here Lantern has a second, weaker access
+    # point, so the card picks the first, which stops answering; the card
+    # goes to the second from its last look, without looking again.
+    with subtest("a card whose access point doesn't answer moves to another of its network at once"):
+        lantern = machine.succeed(
+            "wpa_cli -i wlan2 list_networks | awk -F'\\t' '$2 == \"Lantern\" {print $1}'"
+        ).strip()
+        ranked = machine.succeed(f"wpa_cli -i wlan2 get_network {lantern} priority").strip()
+        machine.succeed("systemctl start lantern-two")
+        machine.succeed(
+            "wpa_cli -i wlan2 disconnect"
+            " && wpa_cli -i wlan2 enable_network all"
+            f" && wpa_cli -i wlan2 set_network {lantern} priority 100"
+        )
+        machine.wait_until_succeeds(
+            "wpa_cli -i wlan2 status | grep -qx wpa_state=DISCONNECTED", timeout=30
+        )
+
+        def hears_both(_):
+            """Whether the last look heard both of Lantern's, the first louder."""
+            if not hears("Lantern"):
+                return False
+            levels: dict[str, int] = {}
+            for line in machine.succeed("wpa_cli -i wlan2 scan_results").splitlines():
+                fields = line.split("\t")
+                if len(fields) == 5 and fields[4] == "Lantern":
+                    levels[fields[0]] = int(fields[2])
+            first, second = levels.get("02:00:00:00:00:00"), levels.get("02:00:00:00:05:00")
+            return first is not None and second is not None and first > second
+
+        retry(hears_both, timeout_seconds=60)
+        since = journal_now()
+        machine.succeed("systemctl stop lantern && wpa_cli -i wlan2 reconnect")
+        machine.wait_until_succeeds(
+            f"journalctl -k -o cat --after-cursor='{since}'"
+            " | grep -q 'wlan2: authentication with 02:00:00:00:00:00 timed out'",
+            timeout=30,
+        )
+        machine.wait_until_succeeds(
+            "s=$(wpa_cli -i wlan2 status)"
+            " && echo \"$s\" | grep -qx wpa_state=COMPLETED"
+            " && echo \"$s\" | grep -qx bssid=02:00:00:00:05:00",
+            timeout=30,
+        )
+        said = machine.succeed(
+            f"journalctl -o cat --after-cursor='{since}'"
+            " _TRANSPORT=kernel + _PID=$(systemctl show -P MainPID wifid)"
+        ).splitlines()
+        failed = next(
+            i for i, line in enumerate(said) if "authentication with 02:00:00:00:00:00 timed out" in line
+        )
+        completed = next(
+            i for i, line in enumerate(said) if i > failed and line == "wlan2 is completed"
+        )
+        assert "wlan2 is scanning" not in said[failed:completed], "\n".join(said[failed:])
+        machine.succeed(
+            f"wpa_cli -i wlan2 set_network {lantern} priority {ranked}"
+            " && systemctl stop lantern-two && systemctl start lantern"
+        )
 
   '';
 }
