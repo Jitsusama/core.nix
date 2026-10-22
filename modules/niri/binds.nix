@@ -1,5 +1,6 @@
-# niri's shortcuts, as data: each chord, what it does in plain words, and
-# niri's action for it. home.nix renders them into binds.kdl, names each in
+# niri's shortcuts, as data: each chord, what it does in plain words, the
+# other words a person might type for it (also), which the launcher finds it
+# by too, and niri's action for it. home.nix renders them into binds.kdl, names each in
 # niri's own list of shortcuts with its words, and adds them to the keyboard
 # map, which checks them against every layer below (modules/keys).
 #
@@ -40,6 +41,7 @@ in
   {
     chord = "Super+Return";
     does = "Open a terminal";
+    also = "kitty shell console command line new window";
     action = ''spawn "kitty";'';
   }
   {
@@ -55,6 +57,7 @@ in
   {
     chord = "Super+Space";
     does = "Find a program or an action";
+    also = "launcher search run app";
     action = ''spawn "qs" "ipc" "call" "launcher" "toggle";'';
   }
   # The margin's drawer: what's on, Keep Awake or do not disturb or the mic
@@ -63,6 +66,7 @@ in
   {
     chord = "Super+O";
     does = "Show what's on";
+    also = "margin status drawer";
     action = ''spawn "qs" "ipc" "call" "margin" "toggle";'';
   }
   # The launcher's largest collections, each opened straight. Tab is the one
@@ -71,27 +75,32 @@ in
   {
     chord = "Super+Tab";
     does = "Find a window";
+    also = "switch alt tab windows";
     action = ''spawn "qs" "ipc" "call" "launcher" "collection" "windows";'';
   }
   {
     chord = "Super+V";
     does = "Find something copied earlier";
+    also = "clipboard paste history copies";
     action = ''spawn "qs" "ipc" "call" "launcher" "collection" "clipboard";'';
   }
   {
     chord = "Super+E";
     does = "Find an emoji";
+    also = "smiley emoticon symbol character";
     action = ''spawn "qs" "ipc" "call" "launcher" "collection" "emoji";'';
   }
   {
     chord = "Super+N";
     does = "Take the notices by the keys, or find one that came earlier";
+    also = "notifications alerts messages";
     action = ''spawn "qs" "ipc" "call" "notices" "take";'';
   }
   # What AI use cost (modules/spend-watch). U for usage.
   {
     chord = "Super+U";
     does = "Find what AI use cost";
+    also = "spend money tokens usage bill claude pi";
     action = ''spawn "qs" "ipc" "call" "launcher" "collection" "spend";'';
   }
   # The cards on screen put away, as a click on each would: each stays
@@ -99,16 +108,19 @@ in
   {
     chord = "Super+Shift+N";
     does = "Put the notices away";
+    also = "dismiss clear notifications";
     action = ''spawn "qs" "ipc" "call" "notices" "putAway";'';
   }
   {
     chord = "Super+L";
     does = "Lock the screen";
+    also = "lock away leave";
     action = ''spawn "qs" "ipc" "call" "lock" "lock";'';
   }
   {
     chord = "Super+Shift+Slash";
     does = "Show these shortcuts";
+    also = "keys hotkeys keybindings chords help cheat sheet";
     # The launcher's collection of every layer's shortcuts, searchable, in
     # place of niri's own overlay of only its own.
     action = ''spawn "qs" "ipc" "call" "launcher" "collection" "shortcuts";'';
@@ -118,6 +130,7 @@ in
   {
     chord = "Super+K";
     does = "Show the keyboard's layout";
+    also = "keymap layers ergodox";
     action = ''spawn "qs" "ipc" "call" "keyboard" "toggle";'';
   }
 
@@ -126,6 +139,7 @@ in
   {
     chord = "Super+W";
     does = "Close the window";
+    also = "quit kill exit";
     action = "close-window;";
     flags.repeat = "false";
   }
@@ -354,6 +368,7 @@ in
   {
     chord = "Super+A";
     does = "Show every workspace";
+    also = "overview expose mission control desktops";
     action = "toggle-overview;";
     flags.repeat = "false";
   }
@@ -454,11 +469,13 @@ in
   {
     chord = "Super+F";
     does = "Fill the screen with the window, or put it back";
+    also = "fullscreen full screen";
     action = "fullscreen-window;";
   }
   {
     chord = "Super+G";
     does = "Float the window, or tile it again";
+    also = "floating";
     action = "toggle-window-floating;";
   }
   {
@@ -496,24 +513,28 @@ in
   {
     chord = "XF86AudioRaiseVolume";
     does = "Turn the volume up";
+    also = "louder sound";
     action = ''spawn-sh "wpctl set-volume -l 1.0 @DEFAULT_AUDIO_SINK@ 5%+";'';
     flags = locked;
   }
   {
     chord = "XF86AudioLowerVolume";
     does = "Turn the volume down";
+    also = "quieter softer sound";
     action = ''spawn-sh "wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%-";'';
     flags = locked;
   }
   {
     chord = "XF86AudioMute";
     does = "Mute the speakers, or unmute them";
+    also = "silence sound audio";
     action = ''spawn-sh "wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle";'';
     flags = locked;
   }
   {
     chord = "XF86AudioMicMute";
     does = "Mute the microphone, or unmute it";
+    also = "mic";
     action = ''spawn-sh "wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle";'';
     flags = locked;
   }
@@ -522,6 +543,7 @@ in
     # shows, and show what they did.
     chord = "XF86AudioPlay";
     does = "Play or pause the music";
+    also = "media song track resume stop";
     action = ''spawn "qs" "ipc" "call" "music" "toggle";'';
     flags = locked;
   }
@@ -540,12 +562,14 @@ in
   {
     chord = "XF86MonBrightnessUp";
     does = "Brighten the screen";
+    also = "brightness brighter";
     action = ''spawn "brightnessctl" "--class=backlight" "set" "+5%";'';
     flags = locked;
   }
   {
     chord = "XF86MonBrightnessDown";
     does = "Dim the screen";
+    also = "brightness darker";
     action = ''spawn "brightnessctl" "--class=backlight" "set" "5%-";'';
     flags = locked;
   }
@@ -560,6 +584,7 @@ in
     # pressed again, as macOS's Focus key does (Quiet.qml).
     chord = "XF86DoNotDisturb";
     does = "Hold notices, or let them show";
+    also = "do not disturb dnd quiet focus silence";
     action = ''spawn "qs" "ipc" "call" "quiet" "toggle";'';
   }
 
@@ -584,11 +609,13 @@ in
   {
     chord = "Shift+Print";
     does = "Take a screenshot of the screen";
+    also = "screen shot capture picture print";
     action = "screenshot-screen;";
   }
   {
     chord = "Alt+Print";
     does = "Take a screenshot of the window";
+    also = "screen shot capture picture";
     action = "screenshot-window;";
   }
 
@@ -598,6 +625,7 @@ in
   {
     chord = "Ctrl+Print";
     does = "Record the screen, or stop recording";
+    also = "screencast video capture";
     action = ''spawn "qs" "ipc" "call" "recording" "screen";'';
   }
   {

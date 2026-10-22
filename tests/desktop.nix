@@ -1264,6 +1264,15 @@ pkgs.testers.runNixOSTest {
               )
               machine.send_key("esc")
               machine.wait_until_fails(in_session("niri msg layers | grep -qw launcher"), timeout=10)
+          # A key's action, by the other words its bind lists.
+          answer("fullscreen")
+          launcher_until(
+              lambda shown: (shown["selected"] or {}).get("name")
+              == "Fill the screen with the window, or put it back"
+              and shown["kind"] == "shortcut"
+          )
+          machine.send_key("esc")
+          machine.wait_until_fails(in_session("niri msg layers | grep -qw launcher"), timeout=10)
           # The keyboards QEMU gives it, however many, and caps lock.
           answer("keyboards")
           photograph("launcher-keyboards")

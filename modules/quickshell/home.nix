@@ -364,7 +364,7 @@ let
   actions =
     map
       (b: {
-        inherit (b) does run;
+        inherit (b) does run also;
         glyph = actionGlyph b.run;
         chord = map face' (lib.splitString "+" b.chord);
         # Super+N takes the notices on screen, and opens their collection

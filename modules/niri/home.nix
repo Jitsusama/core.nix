@@ -49,6 +49,11 @@ let
         type = lib.types.str;
         description = "What it does in plain words, shown in niri's list and the launcher.";
       };
+      also = lib.mkOption {
+        type = lib.types.str;
+        default = "";
+        description = "Other words a person might type for it, by which the launcher finds it too.";
+      };
       action = lib.mkOption {
         type = lib.types.str;
         description = ''niri's action, as config.kdl would spell it: spawn "kitty";'';
@@ -176,6 +181,7 @@ in
     in
     {
       inherit (b) chord does;
+      inherit (b) also;
       run =
         if name == "spawn" then
           arguments
