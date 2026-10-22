@@ -1190,6 +1190,14 @@ pkgs.testers.runNixOSTest {
           )
           # Rounded half up, as JavaScript's Math.round does.
           copied("brightness", f"{int(now * 100 / most + 0.5)}% bright")
+          # The keyboards QEMU gives it, however many, and caps lock.
+          answer("keyboards")
+          photograph("launcher-keyboards")
+          machine.send_key("ret")
+          machine.wait_until_fails(in_session("niri msg layers | grep -qw launcher"), timeout=10)
+          t.assertRegex(
+              as_account("wl-paste --no-newline"), r"^(one keyboard|\d+ keyboards), caps lock off$"
+          )
           answer("350 f in c")
           photograph("launcher-units")
           machine.send_key("esc")

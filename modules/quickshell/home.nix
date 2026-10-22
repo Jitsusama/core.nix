@@ -470,6 +470,7 @@ let
     heat = ./launcher/Heat.qml;
     today = ./launcher/Today.qml;
     light = ./launcher/Light.qml;
+    keyboards = ./launcher/Keyboards.qml;
     emoji = ./launcher/Emoji.qml;
     shortcuts = ./launcher/KeyMap.qml;
     keyboard = ./launcher/Keyboard.qml;
@@ -834,6 +835,13 @@ in
       light = {
         order = 96;
         source = "light";
+      };
+      # Which keyboards are plugged in, and caps lock.
+      keyboards = {
+        order = 94;
+        source = "keyboards";
+        # How a held key repeats, which every keyboard shares.
+        repeat = import ../keyboard/repeat.nix;
       };
       # Collections, each shown as one row below the rest. Wi-Fi's networks
       # are one, and turning Wi-Fi off is found as an action.
