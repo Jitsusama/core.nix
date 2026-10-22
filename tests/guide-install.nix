@@ -111,22 +111,8 @@ pkgs.testers.runNixOSTest {
         isNormalUser = true;
         uid = 1000;
       };
-      # alice signs in on the first console into the guide, which finishes
-      # the machine. polkit lets her through run0 without the password a
-      # desktop's agent would ask for, since a test has no agent.
-      services.getty.autologinUser = "alice";
-      environment.loginShellInit = ''
-        if [ "$(tty)" = /dev/tty1 ]; then
-          guide installed
-        fi
-      '';
-      security.polkit.extraConfig = ''
-        polkit.addRule(function(action, subject) {
-          if (subject.user == "alice" && action.id == "org.freedesktop.systemd1.manage-units") {
-            return polkit.Result.YES;
-          }
-        });
-      '';
+      # Nothing starts the guide but core's module, and nothing lets anyone
+      # past polkit: what a machine of its own would have.
       boot.loader.timeout = 0;
       system.switch.enable = true;
       system.stateVersion = "26.05";
@@ -217,7 +203,7 @@ pkgs.testers.runNixOSTest {
                   # What the machine was at when the wait ran out: the
                   # screen, the guide's raw log, and the journal's last.
                   print("SCREEN\n" + screen())
-                  for where in ["/run/guide/log", "/home/alice/.local/state/guide/log"]:
+                  for where in ["/run/guide/log", "/var/lib/guide/log"]:
                       print(f"LOG {where}\n" + machine.execute(f"tail -n 60 {where}")[1])
                   print("JOURNAL\n" + machine.execute("journalctl -b -n 80 -o cat")[1])
                   raise
@@ -341,7 +327,8 @@ pkgs.testers.runNixOSTest {
           machine.connected = False
           unlock()
           machine.connect()
-          machine.wait_for_unit("multi-user.target")
+          # The guide, at boot, holds multi-user.target back until it's done.
+          machine.wait_until_succeeds("systemctl show -P ActiveState guide-installed | grep -qx activating")
           status = machine.succeed("bootctl status")
           print(status)
           t.assertIn("Secure Boot: enabled (user)", status)
@@ -361,16 +348,24 @@ pkgs.testers.runNixOSTest {
           (sealed,) = [t["keyslots"][0] for t in header["tokens"].values() if t["type"] == "systemd-tpm2"]
           t.assertEqual(header["keyslots"][sealed].get("priority"), 2)
           print("FIXTURE luks-dump-sealed.json " + json.dumps(header))
-          # Written by alice's guide, root only for what needed it.
-          machine.fail("pgrep -u root -f 'guide installed'")
+          # Root from the boot, with no password, and the sign-in waits.
+          machine.succeed("pgrep -u root -xf '.*/guide installed'")
+          t.assertEqual(machine.succeed("systemctl show -P ActiveState getty@tty1").strip(), "inactive")
+          # Return signs in, rather than restarting a boot not yet counted.
+          type("")
+          machine.wait_for_unit("getty@tty1.service")
+          t.assertEqual(machine.succeed("systemctl show -P Result guide-installed").strip(), "success")
 
       with subtest("after the restart the disk asks once, and opens with the TPM's PIN"):
           before = len(machine.get_console_log())
-          type("")
-          machine.connected = False
+          machine.reboot()
           unlock("${tpmPin}")
           machine.connect()
           machine.wait_for_unit("multi-user.target")
+          # With nothing to do, the guide showed nothing and left.
+          machine.wait_for_unit("getty@tty1.service")
+          t.assertNotIn("Finish machine", screen())
+          t.assertEqual(machine.succeed("systemctl show -P Result guide-installed").strip(), "success")
           # One prompt, which the TPM's PIN answered: no YubiKey's PIN is
           # that, so only the TPM's slot could have opened the disk.
           prompts = re.findall(r"Please enter [^:(]*:", machine.get_console_log()[before:])
@@ -379,13 +374,10 @@ pkgs.testers.runNixOSTest {
       with subtest("a cleared TPM leaves a YubiKey to open the disk, and the guide seals it again"):
           # The guide sees nothing to do, until the TPM is cleared, which
           # takes the NV index the disk's pcrlock policy lives in.
-          on_screen("machine is finished")
           machine.succeed("${pkgs.tpm2-tools}/bin/tpm2_clear -T device:/dev/tpmrm0 -c l")
-          type("")
-          machine.connected = False
+          machine.reboot()
           unlock()
           machine.connect()
-          machine.wait_for_unit("multi-user.target")
           on_screen("a PIN for the TPM")
           type("${tpmPin}")
           on_screen("the same PIN again")
@@ -397,9 +389,10 @@ pkgs.testers.runNixOSTest {
           on_screen("machine is finished", timeout=300)
           header = json.loads(machine.succeed("cryptsetup luksDump --dump-json-metadata /dev/disk/by-partlabel/system"))
           t.assertEqual(len([t for t in header["tokens"].values() if t["type"] == "systemd-tpm2"]), 1)
-          before = len(machine.get_console_log())
           type("")
-          machine.connected = False
+          machine.wait_for_unit("getty@tty1.service")
+          before = len(machine.get_console_log())
+          machine.reboot()
           unlock("${tpmPin}")
           machine.connect()
           machine.wait_for_unit("multi-user.target")
@@ -493,6 +486,10 @@ pkgs.testers.runNixOSTest {
           machine.connected = False
           unlock()
           machine.connect()
+          # Its new disk isn't sealed to the TPM yet, so the guide asks;
+          # Ctrl+C leaves that for another boot.
+          on_screen("a PIN for the TPM")
+          machine.send_key("ctrl-c")
           machine.wait_for_unit("multi-user.target")
           t.assertIn("Secure Boot: enabled (user)", machine.succeed("bootctl status"))
           t.assertIn(owner, machine.succeed("sbctl status"))

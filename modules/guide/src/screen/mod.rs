@@ -156,6 +156,7 @@ impl Theme {
             (Key::Tab, _) => "Tab",
             // The console's font has the arrows (../../console/glyphs.txt).
             (Key::Arrows, _) => "↑↓",
+            (Key::Leave, _) => "Ctrl+C",
         }
     }
 }
@@ -167,6 +168,8 @@ pub enum Key {
     Tab,
     /// Up and down together, for moving through a list.
     Arrows,
+    /// Ctrl+C, which leaves the guide.
+    Leave,
 }
 
 /// A run of text in one role.

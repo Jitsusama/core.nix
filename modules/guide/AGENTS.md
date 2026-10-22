@@ -133,8 +133,19 @@ driven on; the installed machine's steps come later.
 - **Choosing.** A choice is a list the arrows move through and Return
   takes, the cursor mark in the accent on the one the keys are on.
 - **The installed machine.** Once it boots its own disk, the guide runs
-  there as the person, from core's `guide` NixOS module, which also writes
-  what it reads about the machine to `/etc/guide/machine.json`. It checks
+  there from core's `guide` NixOS module, which also writes what it reads
+  about the machine to `/etc/guide/machine.json`. The module's
+  `guide-installed` unit runs it as root on the first console at every
+  boot, before the sign-in, so nothing has to be remembered: it shows
+  only when something needs doing, and otherwise leaves at once. It's
+  after lanzaboote's unit that restarts the first boot to enrol the keys
+  and the one that makes the disk's policy. Its last card signs in rather
+  than restarting, since a boot it holds back hasn't counted as good and
+  a restart would spend one of a new generation's tries. Run by hand, it
+  asks for root once through run0, before taking the screen: asked for
+  each program, run0 couldn't ask at all, since the guide holds their
+  input and output. A step that stops shows Ctrl+C beside Return, since
+  at boot it holds the sign-in back. It checks
   Secure Boot enforces with the machine's own keys before anything is
   sealed to it, then seals the disk to the TPM with a PIN under the
   measured-boot policy, a YubiKey opening the disk to do so, prefers the
@@ -144,10 +155,8 @@ driven on; the installed machine's steps come later.
   update changes PCR 0 past what the policy can follow, so that unit
   fails. The disk then opens with a YubiKey, and the guide has
   systemd-pcrlock drop the stale policy and the unit make a new one
-  before sealing again. What needs root goes through run0, which asks
-  polkit, unless the guide is root already; its secrets go only as
-  credentials loaded from files in memory and on standard input, never
-  on run0's command line.
+  before sealing again. Its secrets go only as files in memory and on
+  standard input, never on a command line.
 - **The rescue bundle.** A machine's Secure Boot keys, all seven files
   sbctl keeps, sealed under a key of their own, which is sealed to the
   machine's YubiKeys and apart to a recovery passphrase of seven words,
