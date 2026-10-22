@@ -1,7 +1,8 @@
 //! A machine's rescue bundle: its Secure Boot keys as sbctl keeps them,
 //! sealed so either of its YubiKeys opens them, or the recovery passphrase
 //! when neither can. It's a few KB of text and nothing but ciphertext, so
-//! it can go anywhere: another machine, 1Password, the stick itself. With
+//! it can go anywhere: another machine, a stick's vault beside its sealed
+//! files, anyone's disk. With
 //! it, a host signs a stick the machine's firmware boots while enforcing
 //! its own keys, and the stick puts those keys back on a reinstall, so the
 //! firmware's setup screens are never visited. It's made on the machine
@@ -44,6 +45,12 @@ pub const KEYS: [&str; 7] = [
 /// Where an installed machine keeps its own bundle, made by its install.
 /// It's ciphertext, so its being on the machine gives nothing away.
 pub const KEPT: &str = "/var/lib/guide/rescue-bundle.json";
+
+/// What a machine's rescue bundle is called on a stick's vault, beside
+/// its sealed files, where any host writing a stick can read it.
+pub fn carried_as(machine: &str) -> String {
+    format!("{machine}-rescue-bundle.json")
+}
 
 /// What opens a bundle besides its YubiKeys: a passphrase chosen for it,
 /// or, for one an install made, the disk's recovery key.
@@ -163,7 +170,8 @@ impl Keys {
             .map(|(name, bytes)| (name.as_str(), bytes.as_slice()))
     }
 
-    fn file(&self, name: &str) -> &[u8] {
+    /// One of the keys' files, by its name in `KEYS`.
+    pub(crate) fn file(&self, name: &str) -> &[u8] {
         self.files[name].as_slice()
     }
 

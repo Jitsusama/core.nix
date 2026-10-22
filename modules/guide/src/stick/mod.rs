@@ -240,6 +240,45 @@ fn sign_esp(esp: &mut [u8], signer: &Signer) -> Result<(), Fault> {
     filesystem.unmount().map_err(unsigned)
 }
 
+/// Signs the boot programs in the EFI system partition `esp`, a stick's
+/// own on a disk, in place of whatever signed them before: read whole,
+/// signed in memory, then only the blocks that changed written back, so a
+/// stick that stops part way loses as little as can be, and read back.
+pub fn sign_in_place(esp: &mut File, signer: &Signer) -> Result<(), Fault> {
+    let unwritten = |why: io::Error| Fault::Unkept {
+        path: "the stick's EFI system partition".into(),
+        why: why.to_string(),
+    };
+    let bytes = esp.seek(SeekFrom::End(0)).map_err(unwritten)?;
+    let mut was = vec![0u8; bytes as usize];
+    Partition::new(esp, 0, bytes)
+        .and_then(|mut region| region.read_exact(&mut was))
+        .map_err(unwritten)?;
+    let mut signed = was.clone();
+    sign_esp(&mut signed, signer)?;
+    let block = blocks::BLOCK as usize;
+    for (at, (new, old)) in signed.chunks(block).zip(was.chunks(block)).enumerate() {
+        if new != old {
+            Partition::new(esp, (at * block) as u64, new.len() as u64)
+                .and_then(|mut region| region.write_all(new).and_then(|()| region.flush()))
+                .map_err(unwritten)?;
+        }
+    }
+    esp.sync_all().map_err(unwritten)?;
+    drop_cache(esp)?;
+    let mut back = vec![0u8; bytes as usize];
+    Partition::new(esp, 0, bytes)
+        .and_then(|mut region| region.read_exact(&mut back))
+        .map_err(unwritten)?;
+    if back != signed {
+        return Err(Fault::Unproven {
+            step: "sign-the-stick",
+            standing: "the stick's EFI system partition isn't what was written".into(),
+        });
+    }
+    Ok(())
+}
+
 /// Forgets what the system cached of the disk, so what's read next comes
 /// from the disk itself. macOS's raw disks cache nothing, and its image
 /// files are read past the cache once it's told to.

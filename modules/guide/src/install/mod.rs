@@ -29,6 +29,9 @@ pub const LAYOUT: &str = "/run/guide/layout";
 pub const RECOVERY_KEY: &str = "/run/guide/recovery-key";
 /// Where the new system is mounted while it's installed.
 pub const ROOT: &str = "/mnt";
+/// The stick's own partitions, by the names its image gives them.
+pub const STICK_ESP: &str = "/dev/disk/by-partlabel/esp";
+pub const STICK_VAULT: &str = "/dev/disk/by-partlabel/vault";
 
 /// What's in the vault for an install, by its path there.
 pub const TARGET: &str = "target.json";
@@ -134,6 +137,7 @@ pub fn steps(yubikeys: &[String]) -> Vec<Box<dyn Step>> {
     steps.push(Box::new(system::SealRescueBundle));
     steps.push(Box::new(keys::KeepRecoveryKey));
     steps.push(Box::new(system::InstallSystem));
+    steps.push(Box::new(system::KeepOnStick));
     steps.push(Box::new(system::SetPassword));
     steps.push(Box::new(disk::WipeInstallKey {
         yubikeys: yubikeys.len(),

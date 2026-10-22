@@ -124,6 +124,18 @@ pub trait Machine {
     /// (its partitions' devices) is unmounted.
     fn open_disk(&mut self, device: &str, mounted: &[String]) -> Result<std::fs::File, Fault>;
 
+    /// Changes the stick's vault, all of it written back to the stick
+    /// before this returns, since the machine may be shut down or the stick
+    /// pulled straight after.
+    fn change_vault(
+        &mut self,
+        change: &mut dyn FnMut(&mut dyn Store) -> Result<(), Fault>,
+    ) -> Result<(), Fault>;
+
+    /// A partition nothing has mounted, opened as root for changing in
+    /// place, such as the stick's own EFI system partition.
+    fn open_partition(&mut self, device: &str) -> Result<std::fs::File, Fault>;
+
     /// Unpacks every file the vault holds under `from` into the directory
     /// `into`, each checked as it's extracted, and says how many bytes.
     /// One call, since a cache is gigabytes and goes straight to the disk.

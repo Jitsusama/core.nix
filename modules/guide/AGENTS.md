@@ -63,8 +63,12 @@ driven on; the installed machine's steps come later.
   signature is byte for byte what sbsign makes from the same key at the same
   moment, since sbsign's is what every machine here boots; sbsign itself is
   Linux's alone. The ESP is signed in memory before anything reaches the
-  stick, so a key that won't sign leaves the stick as it was. Keys are
-  sbctl's file keys, a `db.key` and `db.pem` in one directory.
+  stick, so a key that won't sign leaves the stick as it was. A program
+  signed already, its signature at its end as sbsign leaves it, is signed
+  again in place of that signature, which at the same moment is exactly
+  what signing it the first time made; a signature anywhere else is
+  refused. Keys are sbctl's file keys, a `db.key` and `db.pem` in one
+  directory.
 - **The host.** A stick is written on whatever machine writes it, as the
   person and never root. Only a whole USB or removable disk counts, and
   only one may be plugged in; what's mounted from it is unmounted, and its
@@ -95,7 +99,8 @@ driven on; the installed machine's steps come later.
   already trusts, so a reinstall needs no firmware visit, and otherwise
   made where the install signs with them, which only a firmware in setup
   mode will take. The system is copied in from the vault with no
-  network, and the key held in memory comes off the disk last. A host gives the stick the keys with
+  network, then the stick is made the machine's own (below), and the key
+  held in memory comes off the disk last. A host gives the stick the keys with
   `--rescue-bundle`, opened in memory, and signs the stick with them.
   Every step stays done through the steps after it, since the journey runs
   the first that isn't.
@@ -143,16 +148,24 @@ driven on; the installed machine's steps come later.
   as the vault's is. `guide seal-keys` makes it on the machine the keys belong to,
   reading them as root and sealing them in memory, and proves the
   passphrase opens the same keys before anything's written. It's text
-  and ciphertext only, so it can live on every other machine and in
-  1Password, and it names the db certificate's fingerprint, so a machine
-  knows its bundle is current without opening it. The install seals one
-  to the disk's recovery key in place of a passphrase, kept at
-  `/var/lib/guide/rescue-bundle.json` where anyone can read it, and the
-  installed guide copies it into the person's home and has them keep it
-  in 1Password and on their other machines, once for each bundle. A
-  host writing the machine's stick opens it with a YubiKey or what its
+  and ciphertext only, so it can live on every machine and stick, and it
+  names the db certificate's fingerprint, so a machine knows its bundle
+  is current without opening it. The install seals one to the disk's
+  recovery key in place of a passphrase, kept at
+  `/var/lib/guide/rescue-bundle.json` where anyone can read it. A host
+  writing the machine's stick opens it with a YubiKey or what its
   passphrase is, holding the keys only in memory, so plain Secure Boot
   keys are never an input anywhere.
+- **The machine's own stick.** Once the install has the machine's keys,
+  it puts them into the stick's vault under `sbctl/`, where a reinstall
+  takes them from, and the bundle beside the vault's sealed files as
+  `<machine>-rescue-bundle.json`. Then it signs the stick's boot program
+  with the machine's db key, in place of whatever signed it, writing back
+  only the blocks that changed and reading them back. Pulled out, the
+  stick boots under the machine's own keys and reinstalls it with no
+  visit to the firmware. It changes only the boot partition on the disk
+  its vault is on, and the vault through a handle of its own, written back
+  before the step ends, while the install's other handle only reads.
 - **The screen.** One step at a time, and one thing asked at a time, each
   before the step starts. It's drawn in the theme's roles and marks as the
   build was given them (`theme.nix`), with the console's stand-ins on a
@@ -196,7 +209,7 @@ driven on; the installed machine's steps come later.
 | `src/host/`           | writing a stick on a host, and what a reinstall stick carries |
 | `src/rescue.rs`       | the rescue bundle: a machine's Secure Boot keys sealed, made and opened |
 | `src/install/`        | installing a machine from its stick, a step to a file by what it touches |
-| `src/installed/`      | finishing the machine on itself: Secure Boot checked, the TPM sealed, the rescue bundle handed on |
+| `src/installed/`      | finishing the machine on itself: Secure Boot checked, the TPM sealed |
 | `src/recover/`        | recovering a machine from a stick: found, opened, mounted |
 | `nixos.nix`           | the guide on a machine it installed                       |
 | `src/screen/`         | the view, drawn as lines in roles; the terminal; the walk through a journey |

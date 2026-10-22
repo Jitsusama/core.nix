@@ -2,10 +2,17 @@
 //! loader signs with them, the system installed from the vault with no
 //! network, and the account's password.
 
-use crate::install::{HELD, RECOVERY_KEY, ROOT, SYSTEM_CACHE, held, target, vault, vault_key};
+use std::io::Write;
+
+use crate::install::{
+    HELD, RECOVERY_KEY, ROOT, STICK_ESP, STICK_VAULT, SYSTEM_CACHE, held, target, vault, vault_key,
+};
 use crate::observe::efi::{self, Mode, SecureBoot};
 use crate::rescue::{self, Bundle, Keys};
+use crate::sign::Signer;
+use crate::stick;
 use crate::tool::Path;
+use crate::vault::Vault;
 use crate::{
     Answer, Answers, Ask, Fault, Given, Machine, Place, Program, Secret, Standing, Step, Tool,
 };
@@ -101,10 +108,10 @@ fn bundle_path() -> String {
 /// The machine's rescue bundle, made as soon as it has its Secure Boot
 /// keys and its recovery key, so no machine leaves its install without
 /// one: the keys sealed to its YubiKeys and to the recovery key the
-/// person keeps in 1Password, kept on the machine for the installed guide
-/// to hand on. Anyone there can read it, since it's sealed, so the guide
-/// hands it on as the person, without asking for root. A reinstall, which puts the keys back, makes it again with
-/// the new recovery key.
+/// person keeps on their phone, kept on the machine and on the stick.
+/// Anyone can read it, since it's sealed, so the guide reads it as the
+/// person, without asking for root. A reinstall, which puts the keys
+/// back, makes it again with the new recovery key.
 pub struct SealRescueBundle;
 
 impl Step for SealRescueBundle {
@@ -322,6 +329,109 @@ impl Step for InstallSystem {
     }
 }
 
+/// The disk a partition's device is on: `/dev/sda` for `/dev/sda4`, and
+/// `/dev/nvme0n1` for `/dev/nvme0n1p1`.
+fn disk_of(partition: &str) -> &str {
+    let disk = partition.trim_end_matches(|c: char| c.is_ascii_digit());
+    match disk.strip_suffix('p') {
+        Some(before) if before.ends_with(|c: char| c.is_ascii_digit()) => before,
+        _ => disk,
+    }
+}
+
+/// The stick made the machine's own once its install has its keys: the
+/// keys sealed into the stick's vault, where a reinstall takes them from,
+/// the machine's rescue bundle beside them, where a host writing a stick
+/// finds it, and the stick's boot program signed with the machine's db
+/// key. Pulled out, it's the machine's repair stick: the firmware boots it
+/// once it enforces the machine's keys, and reinstalling from it needs no
+/// visit to the firmware and no other machine.
+pub struct KeepOnStick;
+
+impl Step for KeepOnStick {
+    fn id(&self) -> &'static str {
+        "keep-on-stick"
+    }
+
+    fn place(&self) -> Place {
+        Place::Stick
+    }
+
+    fn title(&self) -> &'static str {
+        "Make the stick this machine's own"
+    }
+
+    fn observe(&self, machine: &mut dyn Machine) -> Result<Standing, Fault> {
+        let Some(certificate) = machine.read(&format!("{SBCTL}/keys/db/db.pem"))? else {
+            return Ok(Standing::Blocked {
+                why: "the machine has no Secure Boot keys yet".into(),
+                remedy: "restart from the stick, which gives it them".into(),
+            });
+        };
+        let target = target(machine)?;
+        Ok(
+            if machine
+                .journal()
+                .knows(self.id(), &rescue::fingerprint(&certificate))
+            {
+                Standing::Done {
+                    evidence: format!(
+                        "the stick carries {}'s keys and rescue bundle, and boots with its keys",
+                        target.machine
+                    ),
+                }
+            } else {
+                Standing::Needed { asks: vec![] }
+            },
+        )
+    }
+
+    fn run(&self, machine: &mut dyn Machine, _answers: &Answers) -> Result<(), Fault> {
+        let target = target(machine)?;
+        let keys = Keys::read_in(machine, SBCTL)?;
+        let bundle = machine.read(&bundle_path())?.ok_or(Fault::Blocked {
+            step: self.id(),
+            why: "the machine has no rescue bundle yet".into(),
+        })?;
+        let key = vault_key(machine)?.ok_or(Fault::Blocked {
+            step: self.id(),
+            why: "the vault isn't open".into(),
+        })?;
+        // Only this stick's own boot partition, never one beside it.
+        let (esp, vault) = (machine.resolve(STICK_ESP)?, machine.resolve(STICK_VAULT)?);
+        match (&esp, &vault) {
+            (Some(esp), Some(vault)) if disk_of(esp) == disk_of(vault) => {}
+            _ => {
+                return Err(Fault::Blocked {
+                    step: self.id(),
+                    why: "the stick's boot partition isn't on the disk its vault is on".into(),
+                });
+            }
+        }
+        let carried = rescue::carried_as(&target.machine);
+        machine.change_vault(&mut |store| {
+            let mut vault = Vault::open(&mut *store, key.clone())?;
+            for (name, bytes) in keys.files() {
+                vault.put(&format!("{SBCTL_IN_VAULT}/{name}"), bytes)?;
+            }
+            drop(vault);
+            store
+                .create(&carried)?
+                .write_all(&bundle)
+                .map_err(|why| Fault::Unkept {
+                    path: carried.clone(),
+                    why: why.to_string(),
+                })
+        })?;
+        let text = |name: &str| String::from_utf8_lossy(keys.file(name)).into_owned();
+        let signer = Signer::new(&text("keys/db/db.key"), &text("keys/db/db.pem"))?;
+        stick::sign_in_place(&mut machine.open_partition(STICK_ESP)?, &signer)?;
+        machine
+            .journal()
+            .record(self.id(), &rescue::fingerprint(keys.file("keys/db/db.pem")))
+    }
+}
+
 /// Whether the account has a password it can sign in with, in a shadow
 /// file's text.
 fn has_password(shadow: &str, account: &str) -> bool {
@@ -419,6 +529,15 @@ impl Step for SetPassword {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_partition_is_on_the_disk_its_name_starts_with() {
+        assert_eq!(disk_of("/dev/sda1"), "/dev/sda");
+        assert_eq!(disk_of("/dev/sdb12"), "/dev/sdb");
+        assert_eq!(disk_of("/dev/nvme0n1p1"), "/dev/nvme0n1");
+        assert_eq!(disk_of("/dev/mmcblk0p2"), "/dev/mmcblk0");
+        assert_ne!(disk_of("/dev/sda1"), disk_of("/dev/sdb4"));
+    }
 
     #[test]
     fn only_a_real_hash_is_a_password() {

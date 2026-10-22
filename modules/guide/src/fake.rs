@@ -258,6 +258,27 @@ impl Machine for Fake {
         }
     }
 
+    fn change_vault(
+        &mut self,
+        change: &mut dyn FnMut(&mut dyn Store) -> Result<(), Fault>,
+    ) -> Result<(), Fault> {
+        self.calls.push("changing the vault".into());
+        change(self.vault()?)
+    }
+
+    fn open_partition(&mut self, device: &str) -> Result<std::fs::File, Fault> {
+        self.calls
+            .push(format!("opening {device} to change in place"));
+        let file = self.disks.get(device).ok_or_else(|| Fault::Unscripted {
+            call: format!("opening {device}"),
+        })?;
+        std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(file)
+            .map_err(|why| Fault::unreadable(device, why))
+    }
+
     fn open_disk(&mut self, device: &str, mounted: &[String]) -> Result<std::fs::File, Fault> {
         self.calls.push(format!(
             "opening {device} for writing, unmounting [{}]",

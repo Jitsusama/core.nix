@@ -35,8 +35,9 @@ fn padded(length: usize) -> usize {
     length.div_ceil(8) * 8
 }
 
-/// An unsigned program whose sections lie end to end after its headers,
-/// as ukify and systemd lay theirs out.
+/// A program whose sections lie end to end after its headers, as ukify and
+/// systemd lay theirs out, with no signature: one it had at its end, as
+/// sbsign and this signer put it, is taken off, so it can be signed again.
 #[derive(Debug)]
 pub struct Program {
     /// The program, padded with zeros to eight bytes.
@@ -68,8 +69,16 @@ impl Program {
         if directories <= CERTIFICATE_TABLE || optional_size < 112 + 8 * (CERTIFICATE_TABLE + 1) {
             return Err(refused("it has nowhere to put a signature"));
         }
-        if u32_at(&bytes, table)? != 0 || u32_at(&bytes, table + 4)? != 0 {
-            return Err(refused("it's signed already"));
+        let (start, length) = (
+            u32_at(&bytes, table)? as usize,
+            u32_at(&bytes, table + 4)? as usize,
+        );
+        if (start, length) != (0, 0) {
+            if start == 0 || start.checked_add(length) != Some(bytes.len()) {
+                return Err(refused("its signature isn't at its end"));
+            }
+            bytes.truncate(start);
+            bytes[table..table + 8].fill(0);
         }
         let first_section = optional + optional_size;
         if headers > bytes.len() || first_section + sections * SECTION_HEADER > headers {
@@ -218,11 +227,19 @@ mod tests {
     }
 
     #[test]
-    fn a_program_signed_already_is_refused() {
+    fn a_program_signed_already_is_read_as_it_was_before() {
         let bytes = program(0x400, 0);
-        let signed = Program::parse(bytes).unwrap().signed(&[1; 8]);
+        let signed = Program::parse(bytes.clone()).unwrap().signed(&[1; 8]);
+        let again = Program::parse(signed).unwrap();
+        assert_eq!(again.covered(), Program::parse(bytes).unwrap().covered());
+    }
+
+    #[test]
+    fn a_signature_anywhere_but_the_end_is_refused() {
+        let mut signed = Program::parse(program(0x400, 0)).unwrap().signed(&[1; 8]);
+        signed.extend([0; 8]);
         assert!(
-            matches!(Program::parse(signed), Err(Fault::Unreadable { why, .. }) if why == "it's signed already")
+            matches!(Program::parse(signed), Err(Fault::Unreadable { why, .. }) if why == "its signature isn't at its end")
         );
     }
 
