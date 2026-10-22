@@ -34,7 +34,9 @@ Provider {
             key: `agent:${session.address}`,
             verb: "switch",
             name: session.title,
-            keywords: `${session.address} ${session.folder} ${quest}`,
+            // Its address, folder and quest's id, made ready to match, since
+            // a member keeps its words as given.
+            also: Fuzzy.prepare(`${session.address} ${session.folder} ${quest}`),
             glyph: Theme.glyph.agent,
             hue: "program",
             side: [session.address, doing, session.folder].filter(part => part !== "").join(" \u00b7 "),
@@ -74,8 +76,8 @@ Provider {
         for (const row of all) {
             const byName = (row.prepared.mask & need) === need
                 ? Fuzzy.match(row.prepared, words, false) : { score: -1 };
-            const byWord = row.keywords && (row.keywords.mask & need) === need
-                ? Fuzzy.match(row.keywords, words, false) : { score: -1 };
+            const byWord = (row.also.mask & need) === need
+                ? Fuzzy.match(row.also, words, false) : { score: -1 };
             const best = byName.score >= byWord.score ? byName : byWord;
             if (best.score >= 0)
                 found.push({ score: best.score, grade: best.grade, row: row });

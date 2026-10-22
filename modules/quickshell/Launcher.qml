@@ -557,8 +557,9 @@ Scope {
     // The rest of the selected name from where what's typed starts a word in
     // it, so the command line can finish the thought.
     readonly property string completion: {
+        // An answer that does something says what, rather than equalling it.
         if (current === -1 && answer)
-            return ` = ${answer.headline}`;
+            return answer.run ? ` \u2192 ${answer.headline}` : ` = ${answer.headline}`;
         const choice = matches[current];
         if (!choice || typed === "")
             return "";
@@ -804,7 +805,9 @@ Scope {
                                 text = root.example;
                             else if (root.current !== -1 || !root.answer)
                                 text = text + root.completion;
-                            else if ((root.answer.copy ?? root.answer.headline) !== "")
+                            // An answer that does something has nothing to
+                            // put in the question's place.
+                            else if (!root.answer.run && (root.answer.copy ?? root.answer.headline) !== "")
                                 text = root.answer.copy ?? root.answer.headline;
                         }
                         onCancelled: root.open = false

@@ -1053,6 +1053,9 @@ in
         label = "camera";
         tier = "when";
         mark = "camera";
+        # The cameras whose holders the machine names, as v4l2loopback
+        # writes them under /run/camera-holders.
+        holders = lib.attrNames (osConfig.jitsusama.v4l2loopback.holders or { });
       };
       # The least of them, since music never needs Joel.
       playing = {

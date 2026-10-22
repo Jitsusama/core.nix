@@ -130,9 +130,11 @@ in
     console = "R";
     means = "the screen is being recorded";
   };
+  # A webcam, unlike the camera that stands for taking a picture, and its
+  # console letter K, since C is awake's.
   camera = {
-    glyph = nerd "f0100";
-    console = "C";
+    glyph = nerd "f05a0";
+    console = "K";
     means = "a program has a camera open";
   };
   playing = {

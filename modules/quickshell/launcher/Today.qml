@@ -32,7 +32,9 @@ Provider {
     function told(now) {
         const glyph = String.fromCodePoint(0xf00ed);
         const start = new Date(now.getFullYear(), 0, 1);
-        const day = Math.floor((new Date(now.getFullYear(), now.getMonth(), now.getDate()) - start)
+        // Rounded, since local midnights either side of a change to or from
+        // summer time are an hour more or less than whole days apart.
+        const day = Math.round((new Date(now.getFullYear(), now.getMonth(), now.getDate()) - start)
             / 86400000) + 1;
         const days = new Date(now.getFullYear(), 1, 29).getMonth() === 1 ? 366 : 365;
         const offset = -now.getTimezoneOffset();

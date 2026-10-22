@@ -1851,11 +1851,17 @@ in
     pkgs.runCommandLocal "the-shell-speaks-its-javascript" { nativeBuildInputs = [ pkgs.ripgrep ]; }
       ''
         cd ${./.}
-        if rg --line-number --no-heading --glob '*.qml' --glob '*.js' \
-          -e '\.(flatMap|flat|findLast|findLastIndex|toSorted|toReversed|toSpliced)\(' modules/quickshell; then
+        # ripgrep answers 0 for a match, 1 for none and 2 when it can't
+        # search, and only none passes.
+        status=0
+        rg --line-number --no-heading --glob '*.qml' --glob '*.js' \
+          -e '\.(flatMap|flat|findLast|findLastIndex|toSorted|toReversed|toSpliced)\(' \
+          -e '\b(structuredClone|Object\.groupBy|Object\.hasOwn)\(' modules/quickshell || status=$?
+        if [ $status = 0 ]; then
           echo "The lines above call a method Quickshell's JavaScript doesn't have."
           exit 1
         fi
+        [ $status = 1 ]
         touch $out
       '';
 
