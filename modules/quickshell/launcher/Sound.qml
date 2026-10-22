@@ -195,16 +195,18 @@ Provider {
         const out = Pipewire.defaultAudioSink;
         const into = Pipewire.defaultAudioSource;
         const rows = [];
+        // Each device by name, its level beside it, so a long name is what
+        // the row is rather than what gets cut.
         if (out)
             rows.push(copyRow({
-                name: level(out),
-                side: `out, through ${named(out)}`,
+                name: named(out),
+                side: `out \u00b7 ${level(out)}`,
                 glyph: glyph(kind(out))
             }));
         if (into)
             rows.push(copyRow({
-                name: level(into),
-                side: `in, through ${named(into)}`,
+                name: named(into),
+                side: `in \u00b7 ${level(into)}`,
                 glyph: glyph(kind(into))
             }));
         // The track playing, as the music mark has it (Music.qml), then
