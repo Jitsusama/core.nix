@@ -24,15 +24,40 @@ const CACHE: &str = "/mnt/var/cache/guide";
 const PROFILE: &str = "/mnt/nix/var/nix/profiles/system";
 const BOOT_LOADER: &str = "/mnt/boot/EFI/systemd/systemd-bootx64.efi";
 
+/// Whether the install puts back the keys the stick carries: only when
+/// the firmware has a platform key and its db trusts them already. A
+/// firmware without one would enrol whatever keys it's given, and the
+/// stick's could come from a bundle anyone can seal, so the install makes
+/// new ones instead.
+fn puts_keys_back(machine: &mut dyn Machine) -> Result<bool, Fault> {
+    let Some(db) = carried_db(machine)? else {
+        return Ok(false);
+    };
+    Ok(match SecureBoot::observe(machine)? {
+        Some(SecureBoot {
+            mode: Mode::Setup | Mode::Audit,
+            ..
+        })
+        | None => false,
+        Some(_) => efi::db_certificates(machine)?.contains(&db),
+    })
+}
+
 /// Whether the firmware will boot with the keys the install gives the
-/// machine: any in setup mode, or the stick's own when its db already
+/// machine: new ones in setup mode, or the stick's own when its db already
 /// trusts them. Said back as how, or why not as the standing to stop on.
 fn firmware_takes_keys(machine: &mut dyn Machine) -> Result<Result<String, Standing>, Fault> {
     let carried = carried_db(machine)?;
     Ok(match (SecureBoot::observe(machine)?, carried) {
-        (Some(SecureBoot { mode: Mode::Setup, .. }), _) => {
-            Ok("the firmware is in setup mode, so it takes the machine's keys on its first boot".into())
-        }
+        (
+            Some(SecureBoot {
+                mode: mode @ (Mode::Setup | Mode::Audit),
+                ..
+            }),
+            _,
+        ) => Ok(format!(
+            "the firmware is in {mode} mode, so it takes the keys made here on its first boot"
+        )),
         (Some(found), Some(db)) if efi::db_certificates(machine)?.contains(&db) => Ok(format!(
             "the firmware is in {} mode and trusts the keys this stick carries",
             found.mode
@@ -94,8 +119,9 @@ impl Step for CheckFirmware {
 
 /// The machine's Secure Boot keys, where the install's boot loader signs
 /// with them: put back from the vault when the stick carries the ones the
-/// firmware already trusts, so a reinstall needs no visit to the firmware,
-/// or else made here, which the firmware takes only in setup mode. The
+/// firmware's db trusts already while it has a platform key, so a
+/// reinstall needs no visit to the firmware, or else made here, which the firmware takes only in setup
+/// mode. The
 /// first boot enrols them in setup mode, and restarts once either way.
 pub struct SecureBootKeys;
 
@@ -211,7 +237,7 @@ impl Step for SecureBootKeys {
     }
 
     fn run(&self, machine: &mut dyn Machine, _answers: &Answers) -> Result<(), Fault> {
-        if carried_db(machine)?.is_some() {
+        if puts_keys_back(machine)? {
             let key = vault_key(machine)?.ok_or(Fault::Blocked {
                 step: self.id(),
                 why: "the vault isn't open".into(),

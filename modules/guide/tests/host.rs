@@ -311,23 +311,30 @@ fn carried(machine: &str, sealed: Option<u64>) -> Carried {
     Carried::read(bundle(machine, sealed), None).unwrap()
 }
 
+/// The host's clock, in seconds since 1970, as the tests have it.
+const NOW: u64 = 1_000_000;
+
 #[test]
 fn a_host_keeps_each_machines_newest_bundle_and_never_an_older_one() {
     let directory = Scratch::new("host-keeps-newest");
     let mut store = Directory::new(directory.join("rescue"));
     carried::keep(
         &mut store,
+        None,
         vec![carried("laptop", Some(100)), carried("desktop", None)],
+        NOW,
     )
     .unwrap();
     let kept = carried::keep(
         &mut store,
+        None,
         vec![
             carried("laptop", Some(200)),
             carried("laptop", Some(90)),
             carried("laptop", None),
             carried("desktop", Some(5)),
         ],
+        NOW,
     )
     .unwrap();
     assert_eq!(
@@ -337,8 +344,88 @@ fn a_host_keeps_each_machines_newest_bundle_and_never_an_older_one() {
     // Nothing older replaces it later, either, nor one from before
     // bundles said when they were sealed.
     for older in [Some(150), None] {
-        let kept = carried::keep(&mut store, vec![carried("laptop", older)]).unwrap();
+        let kept = carried::keep(&mut store, None, vec![carried("laptop", older)], NOW).unwrap();
         assert_eq!(kept[1], carried("laptop", Some(200)));
+    }
+    // Nor anything but whole bundles is left beside them.
+    let mut names: Vec<_> = fs::read_dir(directory.join("rescue"))
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name().into_string().unwrap())
+        .collect();
+    names.sort();
+    assert_eq!(
+        names,
+        ["desktop-rescue-bundle.json", "laptop-rescue-bundle.json"]
+    );
+}
+
+#[test]
+fn the_hosts_own_machines_bundle_is_kept_over_any_a_stick_carries_for_it() {
+    let directory = Scratch::new("host-keeps-own");
+    let mut store = Directory::new(directory.join("rescue"));
+    carried::keep(&mut store, None, vec![carried("laptop", Some(500))], NOW).unwrap();
+    // Its own, from before bundles said when they were sealed, against a
+    // stick's that says it's newer.
+    let own = carried("laptop", None);
+    let kept = carried::keep(
+        &mut store,
+        Some(own.clone()),
+        vec![carried("laptop", Some(900))],
+        NOW,
+    )
+    .unwrap();
+    assert_eq!(kept, vec![own.clone()]);
+    // And it stays, however new a stick's says it is.
+    let kept = carried::keep(&mut store, None, vec![carried("laptop", Some(NOW))], NOW).unwrap();
+    assert_eq!(kept, vec![carried("laptop", Some(NOW))]);
+    let kept = carried::keep(
+        &mut store,
+        Some(own.clone()),
+        vec![carried("laptop", Some(NOW))],
+        NOW,
+    )
+    .unwrap();
+    assert_eq!(kept, vec![own]);
+}
+
+#[test]
+fn a_bundle_said_to_be_sealed_more_than_a_day_ahead_is_never_kept() {
+    let directory = Scratch::new("host-keeps-ahead");
+    let mut store = Directory::new(directory.join("rescue"));
+    let kept = carried::keep(
+        &mut store,
+        None,
+        vec![
+            carried("laptop", Some(NOW + 60 * 60)),
+            carried("desktop", Some(NOW + 2 * 24 * 60 * 60)),
+            carried("laptop", Some(u64::MAX)),
+        ],
+        NOW,
+    )
+    .unwrap();
+    assert_eq!(kept, vec![carried("laptop", Some(NOW + 60 * 60))]);
+}
+
+#[test]
+fn a_host_keeps_bundles_for_only_so_many_machines_each_named_plainly() {
+    let directory = Scratch::new("host-keeps-few");
+    let mut store = Directory::new(directory.join("rescue"));
+    let found: Vec<Carried> = (0..carried::MACHINES + 8)
+        .map(|n| carried(&format!("machine-{n:02}"), Some(1)))
+        .collect();
+    let kept = carried::keep(&mut store, None, found, NOW).unwrap();
+    assert_eq!(kept.len(), carried::MACHINES);
+    assert_eq!(
+        fs::read_dir(directory.join("rescue")).unwrap().count(),
+        carried::MACHINES
+    );
+    // Names FAT would mix up, or couldn't hold, aren't bundles' names.
+    for machine in ["Laptop", "lap/top", "-laptop", "", &"a".repeat(64)] {
+        assert_eq!(
+            Carried::read(bundle(machine, Some(1)), None),
+            None,
+            "{machine}"
+        );
     }
 }
 
@@ -390,6 +477,19 @@ fn a_stick_carries_every_bundle_on_and_the_next_host_keeps_them_off_it() {
     let step = repair(&directory).carrying(bundles);
     let mut answers = Answers::new();
     answers.give("stick", Answer::Done);
+    // Only the stick whose bundles were kept is written over.
+    let standing = step.observe(&mut fake).unwrap();
+    assert!(
+        matches!(&standing, Standing::Blocked { why, .. } if why.contains("isn't the stick whose rescue bundles were kept")),
+        "{standing:?}"
+    );
+    fake.no_file(guide::rescue::KEPT);
+    Journey::attempt(
+        &GatherBundles::new(directory.join("first-host")),
+        &mut fake,
+        &Answers::new(),
+    )
+    .unwrap();
     Journey::attempt(&step, &mut fake, &answers).unwrap();
     let on_it = carried::on_stick(&mut File::open(&stick).unwrap());
     assert_eq!(
@@ -400,14 +500,12 @@ fn a_stick_carries_every_bundle_on_and_the_next_host_keeps_them_off_it() {
     // Another host, about to write over it, keeps them first, and its
     // own machine's beside them, the vault mounted as the stick holds it.
     let mounted = directory.join("mounted");
-    carried::keep(&mut Directory::new(&mounted), on_it).unwrap();
+    carried::keep(&mut Directory::new(&mounted), None, on_it, NOW).unwrap();
     let mut host = Fake::new();
     lsblk(&mut host, fixture!("lsblk-laid-out.json"));
     host.mount("/dev/sda4", &mounted)
         .file(guide::rescue::KEPT, &bundle("tower", Some(9)));
-    let gather = GatherBundles {
-        kept: directory.join("host"),
-    };
+    let gather = GatherBundles::new(directory.join("host"));
     assert!(matches!(
         gather.observe(&mut host).unwrap(),
         Standing::Needed { .. }
@@ -465,9 +563,7 @@ fn a_vault_a_desktop_mounted_is_read_where_it_is_and_the_disk_never_opened() {
     let mut host = Fake::new();
     lsblk(&mut host, &seen.to_string());
     host.no_file(guide::rescue::KEPT);
-    let gather = GatherBundles {
-        kept: directory.join("host"),
-    };
+    let gather = GatherBundles::new(directory.join("host"));
     Journey::attempt(&gather, &mut host, &Answers::new()).unwrap();
     assert!(
         !host
@@ -491,12 +587,16 @@ fn a_vault_that_wont_mount_carries_nothing_and_stops_nothing() {
     // Nothing scripted for mounting it, so it fails as a vault that
     // isn't one would.
     host.no_file(guide::rescue::KEPT);
-    let gather = GatherBundles {
-        kept: directory.join("host"),
-    };
+    let gather = GatherBundles::new(directory.join("host"));
     Journey::attempt(&gather, &mut host, &Answers::new()).unwrap();
     assert_eq!(
         carried::kept(&mut Directory::new(directory.join("host"))),
         vec![]
+    );
+    // Which it says, so the person knows the stick's copies are gone.
+    let standing = gather.observe(&mut host).unwrap();
+    assert!(
+        matches!(&standing, Standing::Done { evidence } if evidence.contains("its vault couldn't be read")),
+        "{standing:?}"
     );
 }

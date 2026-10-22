@@ -97,9 +97,11 @@ driven on; the installed machine's steps come later.
   phone, typed back and proven, so no
   machine leaves its install without one. The Secure Boot keys are put
   back from the vault when the stick carries the ones the firmware's db
-  already trusts, so a reinstall needs no firmware visit, and otherwise
-  made where the install signs with them, which only a firmware in setup
-  mode will take. The system is copied in from the vault with no
+  already trusts and the firmware has a platform key, so a reinstall
+  needs no firmware visit, and otherwise made where the install signs
+  with them, which only a firmware in setup mode will take. In setup mode
+  they're always made, whatever the stick carries, since the firmware
+  would enrol any keys it's given. The system is copied in from the vault with no
   network, the account given its password and the key held in memory
   taken off the disk, and the stick is made the machine's own (below)
   last, since it needs none of those and a stick that won't take it
@@ -164,14 +166,22 @@ driven on; the installed machine's steps come later.
   every bundle the stick's vault carries, read where a desktop mounted it
   or else mounted only for reading, which needs no password as opening
   the disk would, and its own machine's,
-  under `$XDG_STATE_HOME/guide/rescue/`. Of two bundles for one machine
-  the one sealed later stays. Every stick it writes carries all it keeps
-  beside the vault's sealed files, read back as written, and a stick for a
-  machine it keeps a bundle for is signed from that bundle unless
-  `--rescue-bundle` names another. So a bundle reaches every laptop and
-  stick by their being used. A forged one does no harm: an install puts
-  keys back only when the firmware already trusts them, or is in setup
-  mode and takes any. Nothing that won't read stops a stick being written.
+  under `$XDG_STATE_HOME/guide/rescue/`, each written whole before it
+  takes an older one's place. The host's own machine's always stays for
+  that machine; of two others for one machine the one sealed later stays,
+  never one said to be sealed more than a day past the host's clock, for
+  at most 32 machines, each named as a hostname is. Every stick it writes
+  carries all it keeps beside the vault's sealed files, read back as
+  written, and a stick for a machine it keeps a bundle for is signed from
+  that bundle unless `--rescue-bundle`, `--sign-with` or
+  `--no-rescue-bundle` is given; one that isn't opened says where it is.
+  Only the stick gathered from is written over. So a bundle reaches every
+  laptop and stick by their being used. A forged one does no harm to a
+  machine: an install puts keys back only when the firmware has a
+  platform key and its db trusts them already, so a stick signed from one
+  only fails to boot. A vault
+  that won't be read doesn't stop a stick being written, and the host
+  says its bundles weren't kept; failing to keep what was read does.
 - **The machine's own stick.** Once the install has the machine's keys,
   it puts them into the stick's vault under `sbctl/`, where a reinstall
   takes them from, and the bundle beside the vault's sealed files as

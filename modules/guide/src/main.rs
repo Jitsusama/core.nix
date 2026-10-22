@@ -6,7 +6,9 @@
 //! given `--install` and a machine's payload (payload.nix), its vault
 //! holding everything to install it, sealed to a recovery passphrase;
 //! given `--rescue-bundle` too, the machine's Secure Boot keys, opened
-//! from its bundle, sign the boot program and go into the vault.
+//! from its bundle, sign the boot program and go into the vault, as the
+//! bundle the host keeps for the machine does when neither that nor
+//! `--sign-with` is given, unless `--no-rescue-bundle` is.
 //! `guide write-stick IMAGE FILE` does the same into a file the size of a
 //! stick, the passphrases read from standard input. `guide seal-keys
 //! TARGET BUNDLE` makes a machine's rescue bundle, on that machine, from
@@ -36,7 +38,7 @@ use guide::vault::store::{Directory, Fat, Store};
 use guide::{Fault, Journal, Journey, Machine, Place, Secret, Step, Tool};
 
 const USAGE: &str = "usage: guide observe | guide tools | guide install | guide installed | guide recover
-       guide host IMAGE [--sign-with DIRECTORY] [--install PAYLOAD [--rescue-bundle BUNDLE]]
+       guide host IMAGE [--sign-with DIRECTORY] [--install PAYLOAD [--rescue-bundle BUNDLE | --no-rescue-bundle]]
        guide write-stick IMAGE FILE [--sign-with DIRECTORY] [--install PAYLOAD [--rescue-bundle BUNDLE]]
        guide seal-keys TARGET BUNDLE";
 
@@ -59,11 +61,9 @@ fn main() -> ExitCode {
         ["recover"] => reported(recover()),
         ["seal-keys", target, bundle] => reported(seal_keys(target, bundle)),
         ["host", image, ref options @ ..] => match Written::parse(options) {
-            Some(written) => reported(
-                written
-                    .open()
-                    .and_then(|(signer, payload, bundle)| host(image, signer, payload, bundle)),
-            ),
+            Some(written) => reported(written.open().and_then(|(signer, payload, bundle)| {
+                host(image, signer, payload, bundle, written.uses_kept())
+            })),
             None => {
                 eprintln!("{USAGE}");
                 ExitCode::from(2)
@@ -94,12 +94,24 @@ struct Written<'a> {
     sign_with: Option<&'a str>,
     install: Option<&'a str>,
     rescue_bundle: Option<&'a str>,
+    /// Whether no bundle the host keeps may be used.
+    no_rescue_bundle: bool,
 }
 
 impl<'a> Written<'a> {
     fn parse(mut options: &[&'a str]) -> Option<Written<'a>> {
         let mut written = Written::default();
-        while let [option, value, rest @ ..] = options {
+        while !options.is_empty() {
+            if let ["--no-rescue-bundle", rest @ ..] = options {
+                if std::mem::replace(&mut written.no_rescue_bundle, true) {
+                    return None;
+                }
+                options = rest;
+                continue;
+            }
+            let [option, value, rest @ ..] = options else {
+                return None;
+            };
             let slot = match *option {
                 "--sign-with" => &mut written.sign_with,
                 "--install" => &mut written.install,
@@ -111,8 +123,16 @@ impl<'a> Written<'a> {
             }
             options = rest;
         }
-        (options.is_empty() && (written.rescue_bundle.is_none() || written.install.is_some()))
+        let bundled = written.rescue_bundle.is_some() || written.no_rescue_bundle;
+        (!bundled || written.install.is_some())
             .then_some(written)
+            .filter(|written| !(written.rescue_bundle.is_some() && written.no_rescue_bundle))
+    }
+
+    /// Whether the bundle the host keeps for the machine signs its stick:
+    /// only when no bundle or key is named, nor none asked for.
+    fn uses_kept(&self) -> bool {
+        !self.no_rescue_bundle && self.sign_with.is_none() && self.rescue_bundle.is_none()
     }
 
     /// Each as it was given, the bundle read but not yet opened, since
@@ -268,6 +288,7 @@ fn host(
     signer: Option<Signer>,
     payload: Option<Payload>,
     bundle: Option<Bundle>,
+    uses_kept: bool,
 ) -> Result<(), Fault> {
     // SAFETY: getuid can't fail and touches no memory.
     if unsafe { libc::getuid() } == 0 {
@@ -292,7 +313,7 @@ fn host(
     // writes over them, where the person's own state is.
     let kept = own_state().map(|state| state.join("rescue"));
     let gathering = Journey::new(match &kept {
-        Some(kept) => vec![Box::new(GatherBundles { kept: kept.clone() }) as Box<dyn Step>],
+        Some(kept) => vec![Box::new(GatherBundles::new(kept.clone())) as Box<dyn Step>],
         None => vec![],
     })
     .map_err(|why| Fault::unreadable("the host's steps", why))?;
@@ -313,8 +334,25 @@ fn host(
         .map(|kept| carried::kept(&mut Directory::new(kept)))
         .unwrap_or_default();
     // A machine whose bundle the host keeps has its stick signed with it,
-    // unless another was given.
-    let bundle = carried::bundle_for(bundle, machine_name.as_deref(), &bundles)?;
+    // unless another, a key, or none was given.
+    let given = bundle.is_some();
+    let bundle = if uses_kept {
+        carried::bundle_for(bundle, machine_name.as_deref(), &bundles)?
+    } else {
+        bundle
+    };
+    // One the person didn't name that isn't opened says where it is, and
+    // how to write the stick without it.
+    let unopened = |machine: &str| match (given, &kept) {
+        (false, Some(kept)) => Err(Fault::Blocked {
+            step: "write-stick",
+            why: format!(
+                "the rescue bundle this host keeps for {machine}, {}, wasn't opened; to write the stick without it, run this again with --no-rescue-bundle",
+                kept.join(guide::rescue::carried_as(machine)).display()
+            ),
+        }),
+        _ => Ok(()),
+    };
 
     // The rescue bundle opened next, its keys held only in memory.
     let opened = Rc::new(RefCell::new(None));
@@ -330,11 +368,12 @@ fn host(
     walk.journey = &opening;
     let (signer, payload) = match bundle_of {
         Some(machine_of) => {
+            // The terminal is put back as it was before this is said.
             if walk.walk(&mut machine, &mut terminal)? != Ended::Finished {
-                return Ok(());
+                return unopened(&machine_of);
             }
             let Some(keys) = opened.take() else {
-                return Ok(());
+                return unopened(&machine_of);
             };
             let (signer, payload) = carrying(signer, payload, &machine_of, keys)?;
             (Some(signer), payload)
@@ -346,10 +385,15 @@ fn host(
         Some(payload) => payload.next(),
         None => "Start the machine to repair from the stick.".into(),
     };
-    let journey = Journey::new(vec![Box::new(
-        WriteStick::new(PathBuf::from(image), payload, signer).carrying(bundles),
-    )])
-    .map_err(|why| Fault::unreadable("the host's steps", why))?;
+    // Only a host that gathered bundles carries them, and then writes over
+    // only the stick it gathered them from.
+    let write = WriteStick::new(PathBuf::from(image), payload, signer);
+    let write = match &kept {
+        Some(_) => write.carrying(bundles),
+        None => write,
+    };
+    let journey = Journey::new(vec![Box::new(write) as Box<dyn Step>])
+        .map_err(|why| Fault::unreadable("the host's steps", why))?;
     walk.journey = &journey;
     walk.whole = true;
     if walk.walk(&mut machine, &mut terminal)? != Ended::Finished {
@@ -848,5 +892,51 @@ fn observe() -> ExitCode {
         ExitCode::SUCCESS
     } else {
         ExitCode::FAILURE
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Written;
+
+    fn uses_kept(options: &[&str]) -> Option<bool> {
+        Written::parse(options).map(|written| written.uses_kept())
+    }
+
+    #[test]
+    fn the_bundle_the_host_keeps_is_used_only_when_nothing_else_is_named() {
+        assert_eq!(uses_kept(&["--install", "p"]), Some(true));
+        assert_eq!(uses_kept(&[]), Some(true));
+        assert_eq!(
+            uses_kept(&["--install", "p", "--no-rescue-bundle"]),
+            Some(false)
+        );
+        assert_eq!(
+            uses_kept(&["--install", "p", "--rescue-bundle", "b"]),
+            Some(false)
+        );
+        assert_eq!(
+            uses_kept(&["--sign-with", "d", "--install", "p"]),
+            Some(false)
+        );
+    }
+
+    #[test]
+    fn a_bundle_and_none_together_or_either_without_a_payload_is_refused() {
+        for options in [
+            &[
+                "--install",
+                "p",
+                "--rescue-bundle",
+                "b",
+                "--no-rescue-bundle",
+            ][..],
+            &["--no-rescue-bundle"],
+            &["--rescue-bundle", "b"],
+            &["--install", "p", "--no-rescue-bundle", "--no-rescue-bundle"],
+            &["--install"],
+        ] {
+            assert_eq!(uses_kept(options), None, "{options:?}");
+        }
     }
 }
