@@ -65,6 +65,14 @@ Scope {
         return Fuzzy.plainly(typed);
     }
 
+    // Which of its questions what's typed asks, read plainly, or its
+    // plural ("fans" asks "fan"), or "", so an answer asked by words
+    // answers exactly the words its start is found by.
+    function asks(typed) {
+        const text = Fuzzy.plainly(typed);
+        return questions.find(question => question === text || `${question}s` === text) ?? "";
+    }
+
     // What it puts on the home screen, with nothing typed, before the
     // likeliest picks: the windows' provider gives the focused window.
     function home() {

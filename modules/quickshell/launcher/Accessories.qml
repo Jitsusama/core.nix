@@ -47,7 +47,7 @@ Provider {
         key: "bluetooth:radio",
         verb: on ? "turn off" : "turn on",
         name: on ? "Turn Bluetooth Off" : "Turn Bluetooth On",
-        keywords: "bluetooth radio headphones airplane",
+        keywords: "bluetooth bt radio headphones airplane mode flight",
         glyph: glyph(on ? 0xf00b2 : 0xf00af),
         hue: "machine",
         run: () => provider.adapter.enabled = !provider.on

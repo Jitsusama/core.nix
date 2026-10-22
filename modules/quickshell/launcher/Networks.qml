@@ -35,9 +35,15 @@ Provider {
         return bits <= 52 ? grouped(Math.pow(2, bits)) : `2^${bits}`;
     }
 
+    // The words that ask this machine's own addresses, best first. Their
+    // start asks them too, and the answer asks ipify, so the rest, whose
+    // start other words share ("add", "pub", "wha"), are whole words only.
+    questions: ["ip", "ip address", "ip addresses", "my ip", "my ip address"]
+    readonly property var wholly: ["addresses", "what's my ip", "whats my ip", "public ip"]
+
     function answer(typed) {
         const text = typed.trim();
-        if (/^(?:my\s+)?(?:ip|ips|ip\s+address(?:es)?|addresses)$/i.test(text))
+        if (asks(text) !== "" || wholly.includes(plainly(text)))
             return mine();
         const read = Addresses.read(text);
         return read ? about(read) : null;

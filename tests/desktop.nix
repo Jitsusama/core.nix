@@ -1360,6 +1360,14 @@ pkgs.testers.runNixOSTest {
           machine.send_key("ret")
           machine.wait_until_fails(in_session("niri msg layers | grep -qw launcher"), timeout=10)
           t.assertTrue(as_account("wl-paste --no-newline").startswith(f"{charge}%, "))
+          # The words a poor memory reaches for ask the same answers.
+          for typed, said in [("battery life", f"{charge}%"), ("how hot", ""), ("ram", "")]:
+              answer(typed)
+              launcher_until(
+                  lambda shown: shown["kind"] == "answer"
+                  and (shown["selected"] or {}).get("name", "").startswith(said)
+              )
+              machine.send_key("esc")
           # A name starting the same way is chosen over an answer only
           # started: "pow" is Power Off, the battery's answer above it.
           answer("pow")
@@ -1774,10 +1782,14 @@ pkgs.testers.runNixOSTest {
               machine.wait_until_fails(in_session("niri msg layers | grep -q launcher"), timeout=10)
 
       with subtest("the launcher sets the power profile"):
-          for typed, profile in [("power saver", "power-saver"), ("balanced power", "balanced")]:
+          # By its name, or a word a person would call it.
+          for typed, profile, name in [
+              ("eco", "power-saver", "Power Saver"),
+              ("balanced power", "balanced", "Balanced Power"),
+          ]:
               as_account("qs ipc call launcher toggle")
               launcher_ready()
-              type_in(typed)
+              type_in(typed, selecting=name)
               machine.send_key("ret")
               machine.wait_until_succeeds(f"powerprofilesctl get | grep -qx {profile}", timeout=10)
               machine.wait_until_fails(in_session("niri msg layers | grep -q launcher"), timeout=10)

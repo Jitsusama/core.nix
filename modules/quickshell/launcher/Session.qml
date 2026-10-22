@@ -15,7 +15,7 @@ Provider {
         key: "session:awake",
         verb: Caffeinate.on ? "let it sleep" : "keep awake",
         name: Caffeinate.on ? "Let It Sleep" : "Keep Awake",
-        keywords: "caffeinate awake sleep lid",
+        keywords: "caffeinate awake stay awake keep on no sleep coffee insomnia presentation lid",
         side: !Caffeinate.on ? "" : Caffeinate.lid ? "awake, lid shut too" : "awake while open",
         glyph: String.fromCodePoint(0xf0176),
         hue: "machine",
@@ -29,7 +29,7 @@ Provider {
         key: "session:quiet",
         verb: Quiet.on ? "end it" : "hold notices",
         name: Quiet.on ? "End Do Not Disturb" : "Do Not Disturb",
-        keywords: "quiet focus dnd silence notifications notices hold",
+        keywords: "quiet focus dnd silence mute snooze pause notifications notices alerts hold",
         side: Quiet.on ? Quiet.lasts : "for an hour",
         glyph: String.fromCodePoint(0xf00a0),
         hue: "voice",
@@ -46,15 +46,18 @@ Provider {
     // Each power profile is found by its own name, the one in use saying
     // so; the charger's coming and going picks one again.
     readonly property var profiles: [
-        { profile: PowerProfile.PowerSaver, name: "Power Saver", glyph: 0xf032a },
-        { profile: PowerProfile.Balanced, name: "Balanced Power", glyph: 0xf05d1 },
-        { profile: PowerProfile.Performance, name: "Performance", glyph: 0xf04c5 }
+        { profile: PowerProfile.PowerSaver, name: "Power Saver", glyph: 0xf032a,
+            words: "eco low power battery saver slow cool" },
+        { profile: PowerProfile.Balanced, name: "Balanced Power", glyph: 0xf05d1,
+            words: "normal default" },
+        { profile: PowerProfile.Performance, name: "Performance", glyph: 0xf04c5,
+            words: "turbo fast boost max speed" }
     ].filter(choice => choice.profile !== PowerProfile.Performance
         || PowerProfiles.hasPerformanceProfile).map(choice => thing({
         key: `session:power:${choice.name}`,
         verb: "use",
         name: choice.name,
-        keywords: "power profile energy battery speed",
+        keywords: `power profile mode energy ${choice.words}`,
         side: PowerProfiles.profile === choice.profile ? "in use" : "",
         glyph: String.fromCodePoint(choice.glyph),
         hue: "machine",
@@ -77,13 +80,13 @@ Provider {
     things: [awake, quiet].concat(Recorder.recording ? [recording] : [], profiles, [
         {
             name: "Lock",
-            words: "lock screen away leave",
+            words: "lock screen lockscreen away leave",
             glyph: 0xf023,
             run: () => provider.launcher.lock.lock()
         },
         {
             name: "Suspend",
-            words: "sleep hibernate nap standby",
+            words: "sleep sleep now hibernate nap standby",
             glyph: 0xf04b2,
             run: () => Niri.spawn(["systemctl", "suspend"])
         },
@@ -96,14 +99,14 @@ Provider {
         },
         {
             name: "Reboot",
-            words: "restart reset",
+            words: "restart reset relaunch",
             glyph: 0xf0453,
             sure: "Yes, reboot now",
             run: () => Niri.spawn(["systemctl", "reboot"])
         },
         {
             name: "Power Off",
-            words: "shutdown shut down turn off halt",
+            words: "shutdown shut down poweroff power down turn off halt",
             glyph: 0xf011,
             sure: "Yes, power off now",
             run: () => Niri.spawn(["systemctl", "poweroff"])

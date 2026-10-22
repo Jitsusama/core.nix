@@ -36,7 +36,7 @@ Provider {
         key: "copies:forget",
         verb: "forget",
         name: "Forget the Clipboard",
-        keywords: "clipboard copies history clear erase wipe",
+        keywords: "clipboard copies history clear empty erase wipe",
         glyph: String.fromCodePoint(0xf01fe),
         hue: "action",
         run: () => provider.tell("clear")

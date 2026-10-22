@@ -14,11 +14,11 @@ Provider {
     examples: ["date", "epoch"]
 
     // The words it answers whole, and by their start (Provider.qml).
-    questions: ["date", "today", "week", "week number", "utc", "epoch", "unix time", "timestamp", "what day is it"]
+    questions: ["date", "today", "day", "week", "week number", "what day is it", "what's the date",
+        "day of the year", "utc", "gmt", "epoch", "unix time", "unix", "timestamp"]
 
     function answer(typed) {
-        const text = typed.trim().toLowerCase().replace(/\?$/, "");
-        if (!/^(date|today|day|week|week number|utc|gmt|epoch|unix( time)?|timestamp|what day is it)$/.test(text))
+        if (asks(typed) === "")
             return null;
         return told(new Date());
     }
