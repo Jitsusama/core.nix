@@ -6,6 +6,7 @@
 // the clock, so nothing is asked.
 import QtQuick
 import "Numbers.js" as Numbers
+import "Zones.js" as Zones
 
 Provider {
     id: provider
@@ -37,10 +38,6 @@ Provider {
         const day = Math.round((new Date(now.getFullYear(), now.getMonth(), now.getDate()) - start)
             / 86400000) + 1;
         const days = new Date(now.getFullYear(), 1, 29).getMonth() === 1 ? 366 : 365;
-        const offset = -now.getTimezoneOffset();
-        const sign = offset < 0 ? "\u2212" : "+";
-        const hours = String(Math.floor(Math.abs(offset) / 60)).padStart(2, "0");
-        const minutes = String(Math.abs(offset) % 60).padStart(2, "0");
         const zone = settings.zone ?? "";
         const two = n => String(n).padStart(2, "0");
         const row = (name, side) => copyRow({ name: name, side: side, glyph: glyph });
@@ -50,7 +47,8 @@ Provider {
                 row(`week ${week(now)}`, "of the year, Monday first"),
                 row(`day ${day}`, `of ${days}, ${days - day} left`),
                 row(`${two(now.getUTCHours())}:${two(now.getUTCMinutes())}`, "UTC"),
-                row(`UTC${sign}${hours}:${minutes}`, zone !== "" ? zone : "the zone here"),
+                // As the clocks write it, "UTC\u22124".
+                row(Zones.offset(-now.getTimezoneOffset()), zone !== "" ? zone : "the zone here"),
                 row(Numbers.format(Math.floor(now.getTime() / 1000), 0, "", "."), "seconds since 1970")
             ],
             note: "from the clock"
