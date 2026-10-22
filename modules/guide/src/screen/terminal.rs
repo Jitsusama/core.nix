@@ -33,6 +33,18 @@ pub trait Screen {
     /// Its width and height, in characters.
     fn size(&self) -> (u16, u16);
     fn show(&mut self, drawn: &Drawn, theme: &Theme) -> Result<(), Fault>;
+
+    /// Something that draws on the same screen from another thread, for a
+    /// step at work, or none where nothing can.
+    fn painter(&self) -> Option<Box<dyn Paint>> {
+        None
+    }
+}
+
+/// Draws on a screen from a thread of its own.
+pub trait Paint: Send {
+    fn size(&self) -> (u16, u16);
+    fn paint(&mut self, drawn: &Drawn, theme: &Theme) -> Result<(), Fault>;
 }
 
 /// Where keys come from and lines go: one terminal, or a test's stand-in.
@@ -102,31 +114,58 @@ impl Screen for Terminal {
     }
 
     fn show(&mut self, drawn: &Drawn, theme: &Theme) -> Result<(), Fault> {
-        queue!(self.out, cursor::Hide, cursor::MoveTo(0, 0)).map_err(broken)?;
-        for (row, line) in drawn.lines.iter().enumerate() {
-            queue!(
-                self.out,
-                cursor::MoveTo(0, row as u16),
-                terminal::Clear(terminal::ClearType::CurrentLine)
-            )
-            .map_err(broken)?;
-            for span in line {
-                match theme.sgr(span.role) {
-                    Some(code) => write!(self.out, "\x1b[{code}m{}\x1b[0m", span.text),
-                    None => write!(self.out, "{}", span.text),
-                }
-                .map_err(broken)?;
-            }
-        }
+        paint(&mut self.out, drawn, theme)
+    }
+
+    fn painter(&self) -> Option<Box<dyn Paint>> {
+        Some(Box::new(Painter { out: stdout() }))
+    }
+}
+
+/// The terminal's screen, drawn from another thread. Stdout's own lock
+/// keeps each frame whole.
+struct Painter {
+    out: Stdout,
+}
+
+impl Paint for Painter {
+    fn size(&self) -> (u16, u16) {
+        terminal::size().unwrap_or((80, 24))
+    }
+
+    fn paint(&mut self, drawn: &Drawn, theme: &Theme) -> Result<(), Fault> {
+        paint(&mut self.out, drawn, theme)
+    }
+}
+
+/// Lines drawn from the top, each in its role's colour, the rest of the
+/// screen cleared, and the caret put where something's typed.
+fn paint(out: &mut Stdout, drawn: &Drawn, theme: &Theme) -> Result<(), Fault> {
+    let mut out = out.lock();
+    queue!(out, cursor::Hide, cursor::MoveTo(0, 0)).map_err(broken)?;
+    for (row, line) in drawn.lines.iter().enumerate() {
         queue!(
-            self.out,
-            cursor::MoveTo(0, drawn.lines.len() as u16),
-            terminal::Clear(terminal::ClearType::FromCursorDown)
+            out,
+            cursor::MoveTo(0, row as u16),
+            terminal::Clear(terminal::ClearType::CurrentLine)
         )
         .map_err(broken)?;
-        if let Some((row, column)) = drawn.caret {
-            queue!(self.out, cursor::MoveTo(column, row), cursor::Show).map_err(broken)?;
+        for span in line {
+            match theme.sgr(span.role) {
+                Some(code) => write!(out, "\x1b[{code}m{}\x1b[0m", span.text),
+                None => write!(out, "{}", span.text),
+            }
+            .map_err(broken)?;
         }
-        self.out.flush().map_err(broken)
     }
+    queue!(
+        out,
+        cursor::MoveTo(0, drawn.lines.len() as u16),
+        terminal::Clear(terminal::ClearType::FromCursorDown)
+    )
+    .map_err(broken)?;
+    if let Some((row, column)) = drawn.caret {
+        queue!(out, cursor::MoveTo(column, row), cursor::Show).map_err(broken)?;
+    }
+    out.flush().map_err(broken)
 }

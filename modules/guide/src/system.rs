@@ -24,6 +24,7 @@ pub struct System {
     vault: Option<Box<dyn Store>>,
     /// The vault's partition, for changing it through a handle of its own.
     vault_partition: Option<PathBuf>,
+    meter: crate::progress::Meter,
 }
 
 /// Where secrets a program reads from files are kept for as long as it
@@ -121,6 +122,7 @@ impl System {
             secrets: None,
             vault: None,
             vault_partition: None,
+            meter: crate::progress::Meter::new(),
         }
     }
 
@@ -454,6 +456,10 @@ impl Machine for System {
             .custom_flags(libc::O_EXCL)
             .open(device)
             .map_err(|why| Fault::unreadable(device, why))
+    }
+
+    fn meter(&mut self) -> crate::progress::Meter {
+        self.meter.clone()
     }
 
     fn vault(&mut self) -> Result<&mut dyn Store, Fault> {

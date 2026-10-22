@@ -120,6 +120,13 @@ pub trait Machine {
     /// The stick's vault, its files sealed.
     fn vault(&mut self) -> Result<&mut dyn Store, Fault>;
 
+    /// The meter long work feeds as it goes, which the screen reads while
+    /// a step runs; by default one nothing feeds, so the screen says only
+    /// how long the step has been running.
+    fn meter(&mut self) -> crate::progress::Meter {
+        crate::progress::Meter::new()
+    }
+
     /// A stick's whole disk, for writing, once what was mounted from it
     /// (its partitions' devices) is unmounted.
     fn open_disk(&mut self, device: &str, mounted: &[String]) -> Result<std::fs::File, Fault>;

@@ -22,6 +22,7 @@ pub struct Fake {
     disks: BTreeMap<String, std::path::PathBuf>,
     mounts: BTreeMap<String, std::path::PathBuf>,
     journal: Journal,
+    meter: crate::progress::Meter,
     /// Every call made, in order, as `program arg arg`, followed by the
     /// names of the secrets it was given in brackets, and `(as root)` for
     /// one run through run0.
@@ -255,6 +256,10 @@ impl Machine for Fake {
 
     fn read_link(&mut self, path: &str) -> Result<Option<String>, Fault> {
         Ok(self.pointers.get(path).cloned())
+    }
+
+    fn meter(&mut self) -> crate::progress::Meter {
+        self.meter.clone()
     }
 
     fn vault(&mut self) -> Result<&mut dyn Store, Fault> {
