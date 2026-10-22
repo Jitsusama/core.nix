@@ -53,7 +53,7 @@ pub fn keeping(what: &str, name: &str, why: &str) -> String {
          1. On your iPhone, open the Camera and point it at the words.\n\
          2. Tap the Live Text button when it shows in the corner, then tap Copy All.\n\
          3. Open 1Password, tap +, then Password.\n\
-         4. Name it \"{name}\", paste the words as its password, and tap Save.\n\
+         4. Name it \"{name}\", paste the words as its password, and tap Save. If an earlier install left one by that name, open it instead, tap Edit, paste the words over its password, and tap Save.\n\
          5. Press Return here, and type {what} back, reading it off your phone."
     )
 }
@@ -96,6 +96,20 @@ mod tests {
         assert!(words.iter().all(|word| list().contains(word)), "{words:?}");
         assert!((list().len() as f64).log2() * COUNT as f64 > 90.0);
         assert_ne!(made.expose(), super::made().unwrap().expose());
+    }
+
+    #[test]
+    fn a_reinstall_says_to_write_over_the_item_it_already_kept() {
+        let how = keeping(
+            "the recovery key",
+            "a disk recovery key",
+            "It opens the disk",
+        );
+        assert!(how.contains("Name it \"a disk recovery key\""), "{how}");
+        assert!(
+            how.contains("If an earlier install left one by that name"),
+            "{how}"
+        );
     }
 
     #[test]

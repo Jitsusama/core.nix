@@ -73,7 +73,7 @@ pub fn refusal(said: &str) -> Option<&'static str> {
         Some("it isn't the PIN of the key plugged in")
     } else if said.contains("pin auth blocked") {
         Some("the key plugged in refuses its PIN until it's unplugged and plugged back in")
-    } else if said.contains("no credentials") {
+    } else if said.contains("no credentials") || said.contains("No matching keys found") {
         Some("the key plugged in isn't one it was sealed to")
     } else {
         None
@@ -150,6 +150,12 @@ mod tests {
         assert_eq!(
             refusal(said),
             Some("it isn't the PIN of the key plugged in")
+        );
+        // What age itself says when no stanza is the plugged-in key's,
+        // as the vault said it on a stick sealed to other keys.
+        assert_eq!(
+            refusal("No matching keys found"),
+            Some("the key plugged in isn't one it was sealed to")
         );
         assert_eq!(refusal("failed to open the file"), None);
     }
