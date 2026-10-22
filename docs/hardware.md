@@ -374,6 +374,22 @@ Secure Boot's settings stay out: recovering those is the enrolment's job.
 - **Option ROMs for Secure Boot.** The firmware runs none, so its TPM event
   log holds no checksums and the keys go in alone, as lanzaboote enrols them
   unless a machine says otherwise.
+- **The IPSE HECI** (`00:13.0`, `8086:e462`) has no driver. Dell's chipset
+  pack names it "Intel(R) IPSE HECI #1" and gives it a null driver, so
+  Windows drives it no more than Linux does.
+- **The overclocking watchdog** (`INTC109D`, `\_SB.PC00.LPCB.CWDT`).
+  `intel_oc_wdt` knows its siblings, not this ID, and made to bind it fails
+  with -13: the firmware locks it off at power-on. The TCO watchdog stays
+  the watchdog.
+- **The sensor hub's own sensors.** Beside the light sensors, the hinge and
+  the presence sensor it offers in the standard way, the hub offers fourteen
+  of its own through `hid-sensor-custom`, with no driver for each. Switched
+  on, the colour light sensor and both accelerometers, the lid's and the
+  base's, give live readings; ten more hold steady values or zeros, as
+  sensors that report only on an event do, and one offers nothing to read.
+  Their readings are in sysfs for anything that wants them; the hinge
+  already gives the lid's angle, and making the accelerometers IIO devices
+  would need a driver change nothing here needs.
 
 ### Measured, and Left as It Is
 
@@ -548,9 +564,10 @@ type, which libinput reads as Windows reads the same flag.
 
 ### What's Left
 
-| Part         | Why it isn't here yet                                                 |
-| ------------ | --------------------------------------------------------------------- |
-| Presence     | the camera bridge never senses anyone with the camera idle; see below |
+| Part            | Why it isn't here yet                                                 |
+| --------------- | --------------------------------------------------------------------- |
+| Presence        | the camera bridge never senses anyone with the camera idle; see below |
+| Security engine | Linux 7.2 has no driver for it; see below                             |
 
 - **Presence.** The sensor hub's presence reading comes from the Synaptics
   camera bridge, which the hub asks for results every 2 s once face
@@ -565,6 +582,11 @@ type, which libinput reads as Windows reads the same flag.
   was the first where the bridge never answered the driver handing the
   camera's link back as the camera closed, so the setting stays
   Microsoft's, the one the camera was proven on.
+- **The security engine** (`00:18.0`, `8086:e45d`). Windows binds Dell's
+  `issei.sys` to it, Intel's Silicon Security Engine Interface, for SPDM and
+  other services. Linux 7.3's `drivers/misc/issei` lists this device; 7.2
+  has none. It comes with the 7.3 kernel, with `INTEL_SSEI` and
+  `INTEL_SSEI_HW_HECI` built as modules.
 
 ### Expected in the Journal
 
