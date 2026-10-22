@@ -63,11 +63,13 @@ Provider {
         }
     }
 
-    // How long ago an ISO time was, as a clock reads it: minutes, or hours
-    // and minutes.
-    function since(at) {
+    // How long a job has run, as a clock reads it: minutes, or hours and
+    // minutes.
+    function ran(at) {
         const minutes = Math.max(0, Math.floor((Date.now() - Date.parse(at)) / 60000));
-        return minutes < 60 ? `${minutes} min` : `${Math.floor(minutes / 60)}:${String(minutes % 60).padStart(2, "0")}`;
+        return minutes === 0 ? "just begun"
+            : minutes < 60 ? `for ${minutes} min`
+            : `for ${Math.floor(minutes / 60)}:${String(minutes % 60).padStart(2, "0")}`;
     }
 
     readonly property var kindNames: ({
@@ -86,11 +88,14 @@ Provider {
         const rows = Jobs.jobs.map(job => {
             const session = windowed(job);
             const kind = kindNames[job.kind] ?? job.kind;
+            const waiting = job.state === "waiting";
+            // Its place in line or how long it's run at a glance, its glyph
+            // saying which; since when below, on asking.
             const fields = {
                 name: job.what,
-                side: job.state === "waiting"
-                    ? `${kind} \u00b7 waiting ${since(job.since)}, ${Numbers.ordinal(job.place)} in line`
-                    : `${kind} \u00b7 ${since(job.since)}`,
+                side: waiting ? `${kind} \u00b7 ${Numbers.ordinal(job.place)} in line`
+                    : `${kind} \u00b7 ${ran(job.since)}`,
+                note: `${waiting ? "waiting" : "running"} since ${Qt.formatDateTime(new Date(job.since), "HH:mm")}`,
                 glyph: Theme.glyph[job.state === "waiting" ? "queued" : "running"],
                 hue: job.state === "waiting" ? "muted" : "action",
                 plain: true
