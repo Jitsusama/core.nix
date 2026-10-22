@@ -1278,6 +1278,108 @@ in
       touch $out
     '';
 
+  # The launcher's quests find pi's quests in a store written here, as the
+  # real pi-quests reads it, and open pi on one or go to its session
+  # (tests/quests.qml), with niri and pi's sessions stood in.
+  the-launcher-finds-the-quests =
+    let
+      singleton =
+        name: body:
+        pkgs.writeText name ''
+          pragma Singleton
+          import Quickshell
+          import QtQuick
+          Singleton { ${body} }
+        '';
+      niri = singleton "Niri.qml" ''
+        property var spawned: []
+        property var acted: null
+        function spawn(command) { spawned = command; }
+        function act(request) { acted = request; }
+      '';
+      sessions = singleton "Sessions.qml" ''
+        readonly property string home: Quickshell.env("HOME")
+        readonly property string quests: Quickshell.env("QUESTS")
+        property var running: []
+      '';
+      quests = pkgs.callPackage ./modules/quickshell/pi-quests.nix { };
+    in
+    pkgs.runCommandLocal "the-launcher-finds-the-quests" { } ''
+      mkdir -p store/QEST-20261005-NOTES store/QEST-20261006-PLAIN launcher \
+        older newer session later/QEST-20261020-NEWONE
+      quest() {
+        mkdir -p store/$1
+        { echo ---; echo id: $1; cat; echo ---; echo; echo "# $2"; echo; echo "# Not the title"; } \
+          > store/$1/README.md
+      }
+      quest QEST-20261001-LAPTOP "Bootstrap the laptop" <<EOF
+      kind: quest
+      parent: null
+      status: active
+      priority: driving
+      rank: 1
+      updated: 2026-10-22
+      trees:
+        - path: $PWD/older
+        - path: $PWD/newer
+          providerId: dev-tree
+      EOF
+      quest QEST-20261003-PROMPT "Retune the prompt" <<EOF
+      kind: subquest
+      parent: QEST-20261001-LAPTOP
+      status: active
+      priority: queued
+      rank: 2
+      updated: 2026-10-21
+      sessions:
+        - id: one
+          cwd: $PWD/session
+          started: 2026-10-03T10:00:00.000Z
+        - id: two
+          cwd: $PWD/gone
+          started: 2026-10-04T10:00:00.000Z
+      trees:
+        - path: $PWD/missing
+      EOF
+      quest QEST-20261004-STICK "Wait on the stick" <<EOF
+      kind: quest
+      status: blocked
+      priority: bench
+      rank: 1
+      updated: 2026-10-04
+      EOF
+      quest QEST-20250105-BANNER "Tune the banner" <<EOF
+      kind: quest
+      status: concluded
+      priority: someday
+      updated: 2025-01-05
+      EOF
+      echo "# No front matter" > store/QEST-20261006-PLAIN/README.md
+      quest QEST-20261020-NEWONE "Newly made" <<EOF
+      kind: quest
+      status: active
+      priority: someday
+      updated: 2026-10-20
+      EOF
+      mv store/QEST-20261020-NEWONE/README.md later/QEST-20261020-NEWONE/
+      rmdir store/QEST-20261020-NEWONE
+      cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
+      cp ${./modules/quickshell/Fuzzy.js} Fuzzy.js
+      cp ${./modules/quickshell/launcher/Provider.qml} launcher/Provider.qml
+      cp ${./modules/quickshell/launcher/Asking.js} launcher/Asking.js
+      cp ${./modules/quickshell/launcher/Quests.qml} launcher/Quests.qml
+      cp ${./tests/quests.qml} shell.qml
+      cp ${niri} Niri.qml
+      cp ${sessions} Sessions.qml
+      export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
+      # At home here, so a folder here reads from ~.
+      export HOME=$PWD QUESTS=$PWD/store PATH=${quests}/bin:$PATH
+      mkdir -m 700 $XDG_RUNTIME_DIR
+      export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+      timeout 60 ${lib.getExe' pkgs.quickshell "qs"} -p shell.qml
+      touch $out
+    '';
+
   # A FileView told not to print errors says nothing of a file that opens
   # and then refuses every read, as some sysfs files do, in the Quickshell
   # the machine runs (fileview-quiet.patch); /proc/self/mem is one, since

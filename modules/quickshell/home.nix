@@ -490,6 +490,7 @@ let
     capture = ./launcher/Capture.qml;
     spend = ./launcher/Spend.qml;
     agents = ./launcher/Agents.qml;
+    quests = ./launcher/Quests.qml;
     byhand = ./launcher/ByHand.qml;
   };
 
@@ -941,6 +942,13 @@ in
         source = "agents";
         weight = 0.9;
       };
+      # pi's quests, found by their titles and ids, which go to the session
+      # on one or open pi on it.
+      quests = {
+        order = 111;
+        source = "quests";
+        weight = 0.9;
+      };
       # Opened by its own chord, not shown in a search.
       shortcuts = {
         order = 120;
@@ -1114,6 +1122,7 @@ in
       pkgs.quickshell
       pkgs.wf-recorder
       (pkgs.callPackage ./record-window/package.nix { })
+      (pkgs.callPackage ./pi-quests.nix { })
       pkgs.grim
       pkgs.wl-clipboard
       pkgs.libnotify

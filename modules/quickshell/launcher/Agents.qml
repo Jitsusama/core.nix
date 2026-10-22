@@ -24,7 +24,7 @@ Provider {
     collection: ({
         noun: "sessions",
         title: "Agents",
-        words: ["pi", "sessions", "agents", "quests", "claude", "ai"],
+        words: ["pi", "sessions", "agents", "claude", "ai"],
         glyph: Theme.glyph.agent,
         ask: "which session?",
         empty: "No pi running."
