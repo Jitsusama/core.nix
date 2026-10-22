@@ -2304,6 +2304,23 @@ in
       touch $out
     '';
 
+  # The GPU's security controller waits 20 s from xe's start for its link
+  # to the CSME and never tries again, so the link's drivers load in the
+  # initrd with xe rather than after the disk's PIN.
+  the-gpu-security-link-loads-with-the-gpu =
+    let
+      inherit ((bareNixos [ self.nixosModules.dell-xps-14-da14260 ]).config.boot.initrd) kernelModules;
+    in
+    holds "the-gpu-security-link-loads-with-the-gpu"
+      "The GPU's link to the CSME doesn't load with xe, so a slow PIN leaves the GPU's security controller without it."
+      (
+        lib.all (module: lib.elem module kernelModules) [
+          "xe"
+          "mei_me"
+          "mei_gsc_proxy"
+        ]
+      );
+
   # The profile follows the charger: performance on mains, balanced on
   # battery, and power saver once the battery falls below UPower's low mark,
   # staying there while the battery reads above it again, until the charger is

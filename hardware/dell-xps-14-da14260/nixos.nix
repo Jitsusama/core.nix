@@ -284,7 +284,18 @@ in
   # from the firmware's framebuffer before the disk's PIN is asked for rather
   # than just after, which blanked the screen, and the greeter, which waits
   # for the GPU, starts as soon as the disk is open.
-  boot.initrd.kernelModules = [ "xe" ];
+  #
+  # The GPU's security controller then waits 20 s for its link to the
+  # CSME, which mei_gsc_proxy makes once mei_me has found the CSME, and
+  # gives up for the whole boot if it isn't there: binding later doesn't
+  # start it again (xe_gsc_proxy.c in 7.2 and 7.3). Loaded after the disk
+  # opens, they missed the 20 s whenever the PIN took longer, so they load
+  # with xe instead.
+  boot.initrd.kernelModules = [
+    "xe"
+    "mei_me"
+    "mei_gsc_proxy"
+  ];
   # The boot menu in the firmware's text mode 1, picked by eye on the panel
   # as the most readable of the modes its r key steps through.
   boot.loader.systemd-boot.consoleMode = "1";
