@@ -622,6 +622,9 @@ Scope {
                         Text {
                             width: parent.width
                             text: card.modelData.summary
+                            // Plain, as the spec has a summary: only the
+                            // body carries markup.
+                            textFormat: Text.PlainText
                             color: Theme.strong
                             wrapMode: Text.Wrap
                             lineHeight: root.line

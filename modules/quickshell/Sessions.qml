@@ -82,7 +82,7 @@ Singleton {
             if (session.window.id === Niri.current || (since < began))
                 continue;
             Niri.spawn(["pi-wants-you", String(session.window.id), known,
-                plain(`${session.title} ${wanted(session.presence.wants)}`),
+                `${session.title} ${wanted(session.presence.wants)}`,
                 plain(session.presence.wants.said ?? "")]);
         }
     }
@@ -107,8 +107,8 @@ Singleton {
         }
     }
 
-    // Words as a notice draws them, which reads markup, so pi's own say
-    // what they say.
+    // Words as a notice's body draws them, which reads markup, so pi's own
+    // say what they say. A summary is plain text, as the spec has it.
     function plain(text) {
         return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
     }
