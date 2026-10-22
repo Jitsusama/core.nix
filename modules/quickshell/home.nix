@@ -78,6 +78,7 @@ let
     "Fuzzy.js"
     "Picks.qml"
     "Notices.qml"
+    "Sessions.qml"
     "Caffeinate.qml"
     "Recorder.qml"
     "Picker.qml"
@@ -436,6 +437,7 @@ let
     layer = ./pieces/Layer.qml;
     sharing = ./pieces/Sharing.qml;
     camera = ./pieces/Camera.qml;
+    pi = ./pieces/Pi.qml;
     recording = ./pieces/Recording.qml;
     playing = ./pieces/Playing.qml;
   };
@@ -974,6 +976,15 @@ in
         label = "ai";
         collapse = 5;
         mark = "spend";
+      };
+      # How many pi sessions run and how many are working. It gives way
+      # after the volume and the day's spend, which have homes elsewhere,
+      # and before the network.
+      pi = {
+        order = 53;
+        source = "pi";
+        label = "pi";
+        collapse = 6;
       };
       # What's on only now and then, each also a pull in the margin while
       # it's true (Margin.qml), in the order the overview gives them.

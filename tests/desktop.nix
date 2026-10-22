@@ -956,9 +956,16 @@ pkgs.testers.runNixOSTest {
           machine.wait_until_succeeds(
               in_session("niri msg --json windows | grep -q TESTQA"), timeout=30
           )
-          others = [w for w in json.loads(as_account("niri msg --json windows")) if "TESTQA" not in w["title"]]
-          as_account(f"niri msg action focus-window --id {others[0]['id']}")
+          # Another window to be in, so going to the session's means a move.
+          as_account("niri msg action spawn -- kitty --title Elsewhere")
+          machine.wait_until_succeeds(
+              in_session("niri msg --json windows | grep -q '\"Elsewhere\"'"), timeout=30
+          )
+          as_account(f"niri msg action focus-window --id {window_titled('Elsewhere')['id']}")
+          # The launcher's foot counts it.
+          since = mark()
           as_account("qs ipc call launcher toggle")
+          reported("stands ", lambda rest: "pi 1 running" in rest, since)
           launcher_ready()
           # Its collection by what it's called, then the session by its
           # quest, named whole and not as its window's title.
@@ -974,8 +981,11 @@ pkgs.testers.runNixOSTest {
           machine.wait_until_succeeds(
               in_session("niri msg --json focused-window | grep -q TESTQA"), timeout=10
           )
-          as_account(f"niri msg action close-window --id {window_titled(agent)['id']}")
-          machine.wait_until_fails(in_session("niri msg --json windows | grep -q TESTQA"), timeout=30)
+          for title in [agent, "Elsewhere"]:
+              as_account(f"niri msg action close-window --id {window_titled(title)['id']}")
+          machine.wait_until_fails(
+              in_session("niri msg --json windows | grep -q 'TESTQA\\|\"Elsewhere\"'"), timeout=30
+          )
 
       with subtest("the launcher sets the volume to a number, and says how loud it is"):
           as_account("qs ipc call launcher toggle")

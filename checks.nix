@@ -704,6 +704,7 @@ in
           "battery"
           "volume"
           "spend"
+          "pi"
           "notices"
           "quiet"
           "disk"
