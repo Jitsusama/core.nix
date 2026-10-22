@@ -945,6 +945,24 @@ pkgs.testers.runNixOSTest {
           machine.send_key("esc")
           machine.wait_until_fails(in_session("niri msg layers | grep -qw launcher"), timeout=10)
 
+      with subtest("the launcher sets the volume to a number, and says how loud it is"):
+          as_account("qs ipc call launcher toggle")
+          launcher_ready()
+          type_in("volume 40")
+          launcher_until(lambda shown: (shown["selected"] or {}).get("name", "").endswith(" to 40%"))
+          machine.send_key("ret")
+          machine.wait_until_succeeds(
+              in_session("wpctl get-volume @DEFAULT_AUDIO_SINK@ | grep -qx 'Volume: 0.40'"), timeout=10
+          )
+          machine.wait_until_fails(in_session("niri msg layers | grep -qw launcher"), timeout=10)
+          as_account("qs ipc call launcher toggle")
+          launcher_ready()
+          type_in("volume")
+          launcher_until(lambda shown: (shown["selected"] or {}).get("name", "").startswith("40%, through "))
+          photograph("launcher-volume-told")
+          machine.send_key("esc")
+          machine.wait_until_fails(in_session("niri msg layers | grep -qw launcher"), timeout=10)
+
       with subtest("the launcher finds and opens kitty, and learns that kitty was meant"):
           as_account("qs ipc call launcher toggle")
           launcher_ready()
@@ -1199,6 +1217,7 @@ pkgs.testers.runNixOSTest {
           machine.wait_until_succeeds(
               f"test $(cat /sys/class/backlight/stand-in/brightness) -eq {most * 30 // 100}", timeout=10
           )
+          machine.wait_until_fails(in_session("niri msg layers | grep -qw launcher"), timeout=10)
           # The session's actions answer to what people call them; Escape,
           # never Return, since Return would do them.
           for typed, action in [("shut down", "Power Off"), ("restart", "Reboot"), ("sign out", "Log Out")]:
