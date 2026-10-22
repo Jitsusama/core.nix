@@ -5,8 +5,9 @@
 use std::io::Write;
 
 use crate::install::{
-    HELD, RECOVERY_KEY, ROOT, STICK_ESP, STICK_VAULT, SYSTEM_CACHE, held, target, vault, vault_key,
+    HELD, RECOVERY_KEY, ROOT, STICK_VAULT, SYSTEM_CACHE, held, target, vault, vault_key,
 };
+use crate::observe::disks;
 use crate::observe::efi::{self, Mode, SecureBoot};
 use crate::rescue::{self, Bundle, Keys};
 use crate::sign::Signer;
@@ -329,15 +330,8 @@ impl Step for InstallSystem {
     }
 }
 
-/// The disk a partition's device is on: `/dev/sda` for `/dev/sda4`, and
-/// `/dev/nvme0n1` for `/dev/nvme0n1p1`.
-fn disk_of(partition: &str) -> &str {
-    let disk = partition.trim_end_matches(|c: char| c.is_ascii_digit());
-    match disk.strip_suffix('p') {
-        Some(before) if before.ends_with(|c: char| c.is_ascii_digit()) => before,
-        _ => disk,
-    }
-}
+/// What the stick's image names its EFI system partition.
+const ESP_NAME: &str = "esp";
 
 /// The stick made the machine's own once its install has its keys: the
 /// keys sealed into the stick's vault, where a reinstall takes them from,
@@ -397,17 +391,26 @@ impl Step for KeepOnStick {
             step: self.id(),
             why: "the vault isn't open".into(),
         })?;
-        // Only this stick's own boot partition, never one beside it.
-        let (esp, vault) = (machine.resolve(STICK_ESP)?, machine.resolve(STICK_VAULT)?);
-        match (&esp, &vault) {
-            (Some(esp), Some(vault)) if disk_of(esp) == disk_of(vault) => {}
-            _ => {
-                return Err(Fault::Blocked {
-                    step: self.id(),
-                    why: "the stick's boot partition isn't on the disk its vault is on".into(),
-                });
-            }
-        }
+        // Only this stick's own boot partition: the one named for it on the
+        // disk its vault is on, never one on a disk beside it.
+        let no_esp = || Fault::Blocked {
+            step: "keep-on-stick",
+            why: "the stick's vault is on a disk with no boot partition beside it".into(),
+        };
+        let vault = machine.resolve(STICK_VAULT)?.ok_or_else(no_esp)?;
+        let esp = disks::observe(machine)?
+            .into_iter()
+            .find(|disk| {
+                disk.partitions
+                    .iter()
+                    .any(|partition| partition.path == vault)
+            })
+            .and_then(|disk| {
+                disk.partitions
+                    .into_iter()
+                    .find(|partition| partition.label.as_deref() == Some(ESP_NAME))
+            })
+            .ok_or_else(no_esp)?;
         let carried = rescue::carried_as(&target.machine);
         machine.change_vault(&mut |store| {
             let mut vault = Vault::open(&mut *store, key.clone())?;
@@ -425,7 +428,12 @@ impl Step for KeepOnStick {
         })?;
         let text = |name: &str| String::from_utf8_lossy(keys.file(name)).into_owned();
         let signer = Signer::new(&text("keys/db/db.key"), &text("keys/db/db.pem"))?;
-        stick::sign_in_place(&mut machine.open_partition(STICK_ESP)?, &signer)?;
+        // The stick mounts its own boot partition at /boot as it starts, and
+        // nothing may read it there while it's changed underneath.
+        for mounted in &esp.mounted {
+            machine.run(Tool::Umount, &[mounted])?.ok()?;
+        }
+        stick::sign_in_place(&mut machine.open_partition(&esp.path)?, &signer)?;
         machine
             .journal()
             .record(self.id(), &rescue::fingerprint(keys.file("keys/db/db.pem")))
@@ -529,15 +537,6 @@ impl Step for SetPassword {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn a_partition_is_on_the_disk_its_name_starts_with() {
-        assert_eq!(disk_of("/dev/sda1"), "/dev/sda");
-        assert_eq!(disk_of("/dev/sdb12"), "/dev/sdb");
-        assert_eq!(disk_of("/dev/nvme0n1p1"), "/dev/nvme0n1");
-        assert_eq!(disk_of("/dev/mmcblk0p2"), "/dev/mmcblk0");
-        assert_ne!(disk_of("/dev/sda1"), disk_of("/dev/sdb4"));
-    }
 
     #[test]
     fn only_a_real_hash_is_a_password() {

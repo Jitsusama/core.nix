@@ -29,8 +29,7 @@ pub const LAYOUT: &str = "/run/guide/layout";
 pub const RECOVERY_KEY: &str = "/run/guide/recovery-key";
 /// Where the new system is mounted while it's installed.
 pub const ROOT: &str = "/mnt";
-/// The stick's own partitions, by the names its image gives them.
-pub const STICK_ESP: &str = "/dev/disk/by-partlabel/esp";
+/// The stick's vault, by the name its image gives it.
 pub const STICK_VAULT: &str = "/dev/disk/by-partlabel/vault";
 
 /// What's in the vault for an install, by its path there.

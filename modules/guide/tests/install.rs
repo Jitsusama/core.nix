@@ -13,9 +13,7 @@ use guide::fake::Fake;
 use guide::install::disk::{ConfirmDisk, LayOutDisk, WipeInstallKey};
 use guide::install::keys::EnrolYubikey;
 use guide::install::system::{CheckFirmware, KeepOnStick, SealRescueBundle, SecureBootKeys};
-use guide::install::{
-    INSTALL_KEY, RECOVERY_KEY, STICK_ESP, STICK_VAULT, TARGET, Target, VAULT_KEY,
-};
+use guide::install::{INSTALL_KEY, RECOVERY_KEY, STICK_VAULT, TARGET, Target, VAULT_KEY};
 use guide::rescue::{self, Bundle};
 use guide::vault::store::Directory;
 use guide::vault::{Manifest, Packer, Vault, VaultKey};
@@ -643,8 +641,18 @@ fn boots_with(directory: &std::path::Path, esp: &std::path::Path, pem: &str) -> 
 }
 
 /// A stick whose install has made the machine's keys and sealed its
-/// bundle, its partitions where the image puts them.
+/// bundle, its partitions as lsblk saw them in the guide's VM: its own
+/// boot partition mounted at /boot, as the stick mounts it.
 fn installed_on_stick(scratch: &std::path::Path, key: &str, pem: &str) -> (Fake, PathBuf) {
+    installed_on_stick_seen(scratch, key, pem, fixture!("lsblk-laid-out.json"))
+}
+
+fn installed_on_stick_seen(
+    scratch: &std::path::Path,
+    key: &str,
+    pem: &str,
+    lsblk_json: &str,
+) -> (Fake, PathBuf) {
     let vault = scratch.join("vault");
     std::fs::create_dir_all(&vault).unwrap();
     let mut fake = stick(&vault, &target("/dev/disk/by-id/virtio-root"));
@@ -660,9 +668,10 @@ fn installed_on_stick(scratch: &std::path::Path, key: &str, pem: &str) -> (Fake,
     let esp = stick_esp(scratch);
     fake.file(&format!("{SBCTL}/keys/db/db.pem"), pem.as_bytes())
         .file(BUNDLE, b"the sealed bundle")
-        .link(STICK_ESP, Some("/dev/sda1"))
         .link(STICK_VAULT, Some("/dev/sda4"))
-        .disk(STICK_ESP, &esp);
+        .disk("/dev/sda1", &esp)
+        .prints(Tool::Umount, &["/boot"], "");
+    lsblk(&mut fake, lsblk_json);
     (fake, vault)
 }
 
@@ -697,6 +706,13 @@ fn the_stick_carries_the_machines_keys_and_bundle_and_boots_with_its_key() {
         b"the sealed bundle"
     );
     assert!(boots_with(&scratch, &scratch.join("esp.fat"), &pem));
+    // Unmounted from /boot before it's opened to be changed.
+    let at = |call: &str| fake.calls.iter().position(|made| made.starts_with(call));
+    assert!(
+        at("umount /boot").unwrap() < at("opening /dev/sda1 to change in place").unwrap(),
+        "{:#?}",
+        fake.calls
+    );
     assert!(matches!(
         KeepOnStick.observe(&mut fake).unwrap(),
         Standing::Done { .. }
@@ -717,8 +733,24 @@ fn the_stick_carries_the_machines_keys_and_bundle_and_boots_with_its_key() {
 fn a_boot_partition_on_another_disk_than_the_vaults_is_never_signed() {
     let scratch = Scratch::new("install-keep-on-stick-elsewhere");
     let (key, pem) = db_key(&scratch);
-    let (mut fake, vault) = installed_on_stick(&scratch, &key, &pem);
-    fake.link(STICK_ESP, Some("/dev/nvme0n1p1"));
+    // Named as the stick names its own, but on the disk installed onto.
+    let mut seen: serde_json::Value =
+        serde_json::from_str(fixture!("lsblk-laid-out.json")).unwrap();
+    for disk in seen["blockdevices"].as_array_mut().unwrap() {
+        let partitions = disk
+            .get_mut("children")
+            .and_then(|found| found.as_array_mut());
+        for partition in partitions.into_iter().flatten() {
+            let label = match partition["path"].as_str() {
+                Some("/dev/sda1") => "boot",
+                Some("/dev/vda1") => "esp",
+                _ => continue,
+            };
+            partition["partlabel"] = label.into();
+        }
+    }
+    let (mut fake, vault) = installed_on_stick_seen(&scratch, &key, &pem, &seen.to_string());
+    fake.disk("/dev/vda1", &scratch.join("esp.fat"));
     let before = std::fs::read(scratch.join("esp.fat")).unwrap();
     let result = KeepOnStick.run(&mut fake, &Answers::new());
     assert!(matches!(result, Err(Fault::Blocked { .. })), "{result:?}");

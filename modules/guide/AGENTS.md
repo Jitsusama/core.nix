@@ -163,9 +163,11 @@ driven on; the installed machine's steps come later.
   with the machine's db key, in place of whatever signed it, writing back
   only the blocks that changed and reading them back. Pulled out, the
   stick boots under the machine's own keys and reinstalls it with no
-  visit to the firmware. It changes only the boot partition on the disk
-  its vault is on, and the vault through a handle of its own, written back
-  before the step ends, while the install's other handle only reads.
+  visit to the firmware. It changes only the partition named `esp` on the
+  disk its vault is on, as lsblk sees it, unmounted first from `/boot`,
+  where the stick mounts it as it starts, and the vault through a handle
+  of its own, written back before the step ends, while the install's
+  other handle only reads.
 - **The screen.** One step at a time, and one thing asked at a time, each
   before the step starts. It's drawn in the theme's roles and marks as the
   build was given them (`theme.nix`), with the console's stand-ins on a
