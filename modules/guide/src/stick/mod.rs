@@ -211,7 +211,8 @@ const BOOT_PROGRAM: &str = "EFI/BOOT/BOOTX64.EFI";
 fn sign_esp(esp: &mut [u8], signer: &Signer) -> Result<bool, Fault> {
     let unsigned = |why: io::Error| Fault::unreadable("the stick's EFI system partition", why);
     let filesystem =
-        fatfs::FileSystem::new(io::Cursor::new(esp), fatfs::FsOptions::new()).map_err(unsigned)?;
+        fatfs::FileSystem::new(io::Cursor::new(esp), crate::vault::store::fat_options())
+            .map_err(unsigned)?;
     {
         let mut file = filesystem
             .root_dir()

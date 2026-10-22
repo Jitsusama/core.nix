@@ -13,6 +13,65 @@ use std::path::PathBuf;
 
 use crate::Fault;
 
+/// How the guide opens a FAT partition: with files stamped by the clock.
+/// Left to itself fatfs 0.3.6, without its chrono feature, stamps every
+/// file with a zero date, which reads as month 0, day 0, a date DOS
+/// doesn't have, though its docs promise 1980-01-01.
+pub fn fat_options() -> fatfs::FsOptions {
+    fatfs::FsOptions::new().time_provider(&CLOCK)
+}
+
+static CLOCK: Clock = Clock;
+
+/// The time now, in UTC, since a stick has no time zone of its own.
+#[derive(Debug)]
+struct Clock;
+
+impl fatfs::TimeProvider for Clock {
+    fn get_current_date(&self) -> fatfs::Date {
+        self.get_current_date_time().date
+    }
+
+    fn get_current_date_time(&self) -> fatfs::DateTime {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |since| since.as_secs());
+        dos_time(now)
+    }
+}
+
+/// Seconds since 1970 as a DOS date and time, held to the years FAT can
+/// say, 1980 to 2107. The calendar is Howard Hinnant's civil_from_days.
+fn dos_time(seconds: u64) -> fatfs::DateTime {
+    const FIRST: u64 = 315_532_800; // 1980-01-01
+    const LAST: u64 = 4_354_819_199; // 2107-12-31 23:59:59
+    let seconds = seconds.clamp(FIRST, LAST);
+    let (days, time) = (seconds / 86_400, seconds % 86_400);
+    let z = days + 719_468;
+    let era = z / 146_097;
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let day = doy - (153 * mp + 2) / 5 + 1;
+    let month = if mp < 10 { mp + 3 } else { mp - 9 };
+    let year = yoe + era * 400 + u64::from(month <= 2);
+    let small = |n: u64| u16::try_from(n).unwrap_or(u16::MAX);
+    fatfs::DateTime {
+        date: fatfs::Date {
+            year: small(year),
+            month: small(month),
+            day: small(day),
+        },
+        time: fatfs::Time {
+            hour: small(time / 3600),
+            min: small(time / 60 % 60),
+            sec: small(time % 60),
+            millis: 0,
+        },
+    }
+}
+
 pub trait Store {
     /// A new file, replacing one of that name. Names have no `/`.
     fn create(&mut self, name: &str) -> Result<Box<dyn Write + '_>, Fault>;
@@ -139,7 +198,7 @@ impl<IO: fatfs::ReadWriteSeek> Fat<IO> {
 
     pub fn open(partition: IO) -> Result<Fat<IO>, Fault> {
         Ok(Fat {
-            filesystem: fatfs::FileSystem::new(partition, fatfs::FsOptions::new())
+            filesystem: fatfs::FileSystem::new(partition, fat_options())
                 .map_err(|why| Fault::unreadable("the vault's partition", why))?,
         })
     }
@@ -245,5 +304,44 @@ mod tests {
         drop(file);
         fat.replace("index-new.age", "other.age").unwrap();
         assert_eq!(read(&mut fat, "other.age"), b"newer");
+    }
+
+    fn said(time: fatfs::DateTime) -> String {
+        let (d, t) = (time.date, time.time);
+        format!(
+            "{}-{:02}-{:02} {:02}:{:02}:{:02}",
+            d.year, d.month, d.day, t.hour, t.min, t.sec
+        )
+    }
+
+    #[test]
+    fn the_clock_says_a_date_fat_can_hold() {
+        assert_eq!(said(dos_time(951_868_799)), "2000-02-29 23:59:59");
+        assert_eq!(said(dos_time(1_792_657_945)), "2026-10-22 08:32:25");
+        assert_eq!(said(dos_time(4_354_819_198)), "2107-12-31 23:59:58");
+        assert_eq!(said(dos_time(0)), "1980-01-01 00:00:00");
+        assert_eq!(said(dos_time(u64::MAX)), "2107-12-31 23:59:59");
+    }
+
+    #[test]
+    fn a_file_written_to_fat_carries_a_real_date() {
+        let mut fat = Fat::format(std::io::Cursor::new(vec![0u8; 40 << 20])).unwrap();
+        let mut file = fat.create("index.age").unwrap();
+        file.write_all(b"index")
+            .and_then(|()| file.flush())
+            .unwrap();
+        drop(file);
+        let entry = fat
+            .filesystem
+            .root_dir()
+            .iter()
+            .map(Result::unwrap)
+            .find(|entry| entry.file_name() == "index.age")
+            .unwrap();
+        let date = entry.modified().date;
+        assert!(
+            date.year >= 2026 && (1..=12).contains(&date.month),
+            "{date:?}"
+        );
     }
 }

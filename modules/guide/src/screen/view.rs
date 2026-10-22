@@ -324,7 +324,9 @@ pub fn draw(theme: &Theme, at: &Where, moment: &Moment, width: u16, height: u16)
                 &format!("{}.", capitalised(remedy)),
                 inside,
             ));
-            footer = keys(theme, &[(Key::Return, "look again")]);
+            // A step that stops can hold a boot back, so the way out is
+            // shown beside the way on.
+            footer = keys(theme, &[(Key::Return, "look again"), (Key::Leave, "leave")]);
         }
         Moment::Failed { title, fault } => {
             lines.extend(said(Role::Strong, title, inside));
@@ -335,7 +337,14 @@ pub fn draw(theme: &Theme, at: &Where, moment: &Moment, width: u16, height: u16)
                 &capitalised(fault),
                 inside,
             ));
-            footer = keys(theme, &[(Key::Return, "try again"), (Key::Tab, "the log")]);
+            footer = keys(
+                theme,
+                &[
+                    (Key::Return, "try again"),
+                    (Key::Tab, "the log"),
+                    (Key::Leave, "leave"),
+                ],
+            );
         }
         // Drawn alone, above.
         Moment::Showing { .. } => footer = vec![],
@@ -546,7 +555,7 @@ mod tests {
             shown.iter().all(|line| line.chars().count() <= 48),
             "{shown:#?}"
         );
-        assert_eq!(shown.last().unwrap(), "  Return look again");
+        assert_eq!(shown.last().unwrap(), "  Return look again    Ctrl+C leave");
     }
 
     #[test]

@@ -143,9 +143,10 @@ impl Step for FindMachine {
     }
 }
 
-/// The machine's disk opened, by the YubiKey plugged in and its PIN or,
-/// with none plugged in, the recovery key. The TPM isn't tried: booted
-/// from a stick, the measurements it was sealed to differ.
+/// The machine's disk opened, by the recovery key or the YubiKey plugged
+/// in and its PIN, tried in that order so the recovery key typed with a
+/// key plugged in never spends one of the key's PIN tries. The TPM isn't
+/// tried: booted from a stick, the measurements it was sealed to differ.
 pub struct OpenDisk;
 
 impl Step for OpenDisk {
@@ -175,11 +176,11 @@ impl Step for OpenDisk {
             asks: vec![
                 Ask::Act {
                     id: "key",
-                    what: "Plug in a YubiKey that opens the disk, and touch it when it blinks. To use the recovery key instead, leave them out.".into(),
+                    what: "Plug in a YubiKey that opens the disk, and touch it when it blinks, or use the recovery key instead.".into(),
                 },
                 Ask::Secret {
                     id: "secret",
-                    name: "the YubiKey's PIN, or with none plugged in, the recovery key".into(),
+                    name: "the YubiKey's PIN, or the recovery key".into(),
                 },
             ],
         })
@@ -198,18 +199,28 @@ impl Step for OpenDisk {
         })?;
         let volume = found.volume();
         let line = Secret::new(format!("{}\n", typed.expose()));
-        // With no key plugged in it's the recovery key, read as the words
-        // it says, so a doubled space or a capital doesn't count against it.
+        // The recovery key, read as the words it says, so a doubled space
+        // or a capital doesn't count against it.
         let recovery = Secret::new(crate::words::typed(typed.expose()));
-        let opened = match crate::observe::fido2::list(machine)?.len() {
-            0 => machine.run_given(
-                Program::Tool(Tool::Cryptsetup),
-                &["open", "--key-file=-", &volume, &found.name],
-                Given {
-                    stdin: Some(&recovery),
-                    ..Given::default()
-                },
-            )?,
+        let by_recovery_key = machine.run_given(
+            Program::Tool(Tool::Cryptsetup),
+            &["open", "--key-file=-", &volume, &found.name],
+            Given {
+                stdin: Some(&recovery),
+                ..Given::default()
+            },
+        )?;
+        // cryptsetup's status when no slot takes what it was given
+        // (lib/libcryptsetup.h, EPERM): anything else is the disk refusing.
+        const NO_SLOT_TAKES_IT: i32 = 2;
+        if by_recovery_key.status != NO_SLOT_TAKES_IT {
+            return match by_recovery_key.status {
+                0 => Ok(()),
+                _ => Err(by_recovery_key.refusal()),
+            };
+        }
+        let opened = match crate::observe::fido2::plugged(machine)?.len() {
+            0 => return Err(by_recovery_key.refusal()),
             1 => machine.run_given(
                 Program::Tool(Tool::Cryptsetup),
                 &[
@@ -424,7 +435,7 @@ fn credentials(machine: &mut dyn Machine) -> Result<(Found, Vec<String>, luks::H
 
 /// The one key plugged in, or why there isn't one.
 fn plugged(machine: &mut dyn Machine, step: &'static str) -> Result<String, Fault> {
-    let plugged = crate::observe::fido2::list(machine)?;
+    let plugged = crate::observe::fido2::plugged(machine)?;
     match plugged.as_slice() {
         [one] => Ok(one.path.clone()),
         [] => Err(Fault::Blocked {

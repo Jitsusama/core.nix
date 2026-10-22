@@ -2,8 +2,8 @@
 //! own disk: Secure Boot checked to enforce with its own keys, then the
 //! disk sealed to the TPM with a PIN and its slot tried first, so every
 //! boot asks for that PIN, and a YubiKey or the recovery key opens it when
-//! the TPM won't. The guide runs as the person; what needs root goes
-//! through run0, which asks polkit.
+//! the TPM won't. The guide runs as root here, at boot from core's guide
+//! module, or by hand through run0.
 
 use serde::Deserialize;
 

@@ -14,7 +14,7 @@
 //! TARGET BUNDLE` makes a machine's rescue bundle, on that machine, from
 //! its payload's target.json. `guide install` is what the stick runs on
 //! its console, as root, and `guide installed` finishes the machine once
-//! it boots its own disk, as the person.
+//! it boots its own disk, as root on its first console at every boot.
 
 use std::cell::RefCell;
 use std::fs::{File, OpenOptions};
@@ -263,6 +263,10 @@ fn write_stick(
 
 /// The person's own state for the guide, made readable only by them.
 fn own_state() -> Option<PathBuf> {
+    // A service's own, which systemd names for it.
+    if let Some(state) = std::env::var_os("STATE_DIRECTORY") {
+        return Some(PathBuf::from(state));
+    }
     let state = std::env::var_os("XDG_STATE_HOME")
         .map(PathBuf::from)
         .or_else(|| std::env::var_os("HOME").map(|home| Path::new(&home).join(".local/state")))?;
@@ -458,16 +462,32 @@ fn seal_keys(target: &str, bundle: &str) -> Result<(), Fault> {
     Ok(())
 }
 
-/// The installed machine's journey, as the person who signs in there:
-/// Secure Boot checked, then the disk sealed to the TPM, then a restart to
-/// meet the TPM's PIN at the disk's prompt.
+/// The installed machine's journey, before anyone signs in there: Secure
+/// Boot checked, then the disk sealed to the TPM, whose PIN the disk's
+/// prompt asks for from the next start.
 fn installed() -> Result<(), Fault> {
-    // SAFETY: getuid can't fail and touches no memory.
-    if unsafe { libc::getuid() } == 0 {
-        return Err(Fault::Blocked {
-            step: "finish",
-            why: "the guide runs as yourself here, and asks for root where it needs it".into(),
-        });
+    // Everything here needs root. Core's guide module runs it as root at
+    // boot; run by hand, run0 asks for it once, on this terminal, before
+    // the guide takes the screen. Asked for each program instead, run0
+    // couldn't ask at all: the guide holds their input and output.
+    // SAFETY: geteuid can't fail and touches no memory.
+    if unsafe { libc::geteuid() } != 0 {
+        use std::os::unix::process::CommandExt;
+        let run0 = Tool::Run0.program().ok_or(Fault::Unbuilt {
+            tool: Tool::Run0.name(),
+        })?;
+        let unstarted = |why: std::io::Error| Fault::Unstarted {
+            program: run0.into(),
+            why: why.to_string(),
+        };
+        let guide = std::env::current_exe().map_err(unstarted)?;
+        // An empty background keeps run0 from tinting the guide's colours.
+        let why = std::process::Command::new(run0)
+            .arg("--background=")
+            .arg(guide)
+            .arg("installed")
+            .exec();
+        return Err(unstarted(why));
     }
     // What's proven here has to outlive the restarts in between.
     let journal = match own_state() {
@@ -475,13 +495,21 @@ fn installed() -> Result<(), Fault> {
         None => Journal::in_memory(),
     };
     let mut machine = System::new(journal, host_log());
+    // At boot it's looked at every time, so a machine with nothing to do
+    // shows nothing, and the sign-in follows at once.
+    let journey = Journey::new(guide::installed::steps())
+        .map_err(|why| Fault::unreadable("the installed machine's steps", why))?;
+    if matches!(
+        journey.next(Place::Installed, &mut machine),
+        Ok(guide::Next::Finished)
+    ) {
+        return Ok(());
+    }
     let name = machine
         .read("/etc/hostname")?
         .map(|bytes| String::from_utf8_lossy(&bytes).trim().to_string())
         .unwrap_or_else(|| "this machine".into());
     let title = format!("Finish {name}");
-    let journey = Journey::new(guide::installed::steps())
-        .map_err(|why| Fault::unreadable("the installed machine's steps", why))?;
     let theme = Theme::built(Terminal::is_console());
     let mut terminal = Terminal::open()?;
     let walk = Walk {
@@ -496,15 +524,16 @@ fn installed() -> Result<(), Fault> {
     if walk.walk(&mut machine, &mut terminal)? != Ended::Finished {
         return Ok(());
     }
-    let next = "Restart, and the disk asks for the TPM's PIN from now on. A YubiKey or the recovery key still opens it whenever the TPM won't.";
-    if walk.card(
+    // No restart: at boot the guide holds the boot back from counting as
+    // good, so restarting from here would spend one of a new generation's
+    // tries.
+    let next = "From the next start, the disk asks for the TPM's PIN. A YubiKey or the recovery key still opens it whenever the TPM won't.";
+    walk.card(
         &mut terminal,
         &format!("{name} is finished"),
         next,
-        "restart",
-    )? {
-        machine.run(Tool::Systemctl, &["reboot"])?.ok()?;
-    }
+        "sign in",
+    )?;
     Ok(())
 }
 
@@ -716,8 +745,8 @@ fn install() -> Result<(), Fault> {
     // of a machine that's off.
     let installed = format!("{} is installed", target.machine);
     let next = format!(
-        "Press Return to shut down. Take the stick out, then turn {} on: its disk asks for a security token PIN, so type a YubiKey's PIN and touch the key when it blinks.",
-        target.machine
+        "Press Return to shut down. Take the stick out, then turn {} on: its disk asks for a security token PIN, so type a YubiKey's PIN and touch the key when it blinks. The guide then finishes {} before you sign in.",
+        target.machine, target.machine
     );
     if !walk.card(&mut terminal, &installed, &next, "shut down")? {
         return Ok(());

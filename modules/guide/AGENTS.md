@@ -113,9 +113,9 @@ driven on; the installed machine's steps come later.
 - **Recovering.** Any stick recovers a machine with its data left in
   place, since the disk says what it is: core's layout on an internal
   disk, an encrypted partition beside its `<name>-boot`. The disk is shown
-  before anything is typed, opened with the plugged-in YubiKey's PIN or,
-  with none plugged in, the recovery key (never the TPM, whose seal a
-  stick's boot doesn't match), every subvolume and the ESP mounted under
+  before anything is typed, opened with the recovery key or the plugged-in
+  YubiKey's PIN (never the TPM, whose seal a stick's boot doesn't match),
+  every subvolume and the ESP mounted under
   /mnt. Then a choice, back after each: a root shell inside it; which
   generation boots next, set in the firmware's `LoaderEntryDefault` as
   `bootctl set-default` would, since from a stick bootctl refuses; or a
@@ -133,8 +133,19 @@ driven on; the installed machine's steps come later.
 - **Choosing.** A choice is a list the arrows move through and Return
   takes, the cursor mark in the accent on the one the keys are on.
 - **The installed machine.** Once it boots its own disk, the guide runs
-  there as the person, from core's `guide` NixOS module, which also writes
-  what it reads about the machine to `/etc/guide/machine.json`. It checks
+  there from core's `guide` NixOS module, which also writes what it reads
+  about the machine to `/etc/guide/machine.json`. The module's
+  `guide-installed` unit runs it as root on the first console at every
+  boot, before the sign-in, so nothing has to be remembered: it shows
+  only when something needs doing, and otherwise leaves at once. It's
+  after lanzaboote's unit that restarts the first boot to enrol the keys
+  and the one that makes the disk's policy. Its last card signs in rather
+  than restarting, since a boot it holds back hasn't counted as good and
+  a restart would spend one of a new generation's tries. Run by hand, it
+  asks for root once through run0, before taking the screen: asked for
+  each program, run0 couldn't ask at all, since the guide holds their
+  input and output. A step that stops shows Ctrl+C beside Return, since
+  at boot it holds the sign-in back. It checks
   Secure Boot enforces with the machine's own keys before anything is
   sealed to it, then seals the disk to the TPM with a PIN under the
   measured-boot policy, a YubiKey opening the disk to do so, prefers the
@@ -144,10 +155,8 @@ driven on; the installed machine's steps come later.
   update changes PCR 0 past what the policy can follow, so that unit
   fails. The disk then opens with a YubiKey, and the guide has
   systemd-pcrlock drop the stale policy and the unit make a new one
-  before sealing again. What needs root goes through run0, which asks
-  polkit, unless the guide is root already; its secrets go only as
-  credentials loaded from files in memory and on standard input, never
-  on run0's command line.
+  before sealing again. Its secrets go only as files in memory and on
+  standard input, never on a command line.
 - **The rescue bundle.** A machine's Secure Boot keys, all seven files
   sbctl keeps, sealed under a key of their own, which is sealed to the
   machine's YubiKeys and apart to a recovery passphrase of seven words,
@@ -217,9 +226,19 @@ driven on; the installed machine's steps come later.
 - **Opening the vault.** The key's YubiKey copy goes through
   age-plugin-fido2-hmac, which age finds only on PATH, so the guide sets
   its own PATH to the plugin's store directory as it starts. Sealing needs
-  no key plugged in. On the stick one field takes either the plugged-in
-  key's PIN or, with none plugged in, the recovery passphrase; the plugin's
-  own prompts never reach the screen, since the PIN is handed to it.
+  no key plugged in. On the stick one field takes either the recovery
+  passphrase or the plugged-in key's PIN; the plugin's own prompts never
+  reach the screen, since the PIN is handed to it.
+- **Passphrase before PIN.** Wherever one field takes a passphrase or a
+  key's PIN (the vault, a rescue bundle, recovering the disk), what's
+  typed is tried as the passphrase or recovery key first, which costs the
+  key nothing; only then is it the plugged-in key's PIN. Typed the other
+  way round, a passphrase with the Nano plugged in would spend one of the
+  PIN's eight tries, and a key whose PIN is used up opens nothing until
+  it's reset, which wipes what it opened. A key counts as plugged in only
+  when `fido2-token -I` says it has hmac-secret and a PIN, set or not, so
+  a laptop's virtual key such as linux-id, listed with no key plugged in,
+  is never asked for a PIN.
 
 ## Where Things Live
 
