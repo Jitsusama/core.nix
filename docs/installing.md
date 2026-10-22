@@ -111,9 +111,10 @@ in setup mode; otherwise turn it on after step 4.
 ## 4. Let the First Boot Make and Enrol the Keys
 
 Boot the disk and type the passphrase. lanzaboote makes the keys in
-`/var/lib/sbctl`, signs the boot loader, leaves the keys on the boot partition
-for systemd-boot and reboots. systemd-boot enrols them into the firmware and
-reboots again. Type the passphrase once more, then check:
+`/var/lib/sbctl`, signs the boot loader and leaves the keys on the boot
+partition for systemd-boot. Then, since Secure Boot is off in setup mode,
+`secure-boot-enrol-restart.service` reboots. systemd-boot enrols them into
+the firmware and reboots again. Type the passphrase once more, then check:
 
 ```sh
 bootctl status | grep 'Secure Boot'   # Secure Boot: enabled (user)
@@ -125,12 +126,16 @@ platform key, so `enabled (deployed)` is as good as `enabled (user)`.
 
 If it still says setup or audit mode, the keys never reached the firmware.
 lanzaboote leaves them for systemd-boot only when
-`prepare-sb-auto-enroll.service` succeeds, so look there:
+`prepare-sb-auto-enroll.service` succeeds, and restarts for them only while
+the firmware isn't enforcing, so look at both:
 
 ```sh
 systemctl status prepare-sb-auto-enroll
-journalctl -b -u prepare-sb-auto-enroll
+journalctl -b -u prepare-sb-auto-enroll -u secure-boot-enrol-restart
 ```
+
+A firmware already enforcing with these keys, as on a reinstall that carried
+them, gets the files and no restart.
 
 `Found OptionROM in the bootchain` means the firmware runs an option ROM that
 the keys alone would stop. Set
@@ -280,6 +285,14 @@ the change:
   `systemd-pcrlock unlock-secureboot-policy` first, in the same way.
 - **After too many wrong PINs.** The TPM locks itself for a while to stop
   guessing; the YubiKey still works.
+- **After a boot through the firmware's boot menu.** Choosing the disk from
+  the firmware's own menu, or from its setup screen, measures that menu
+  program into PCR 4 before the boot loader, which the policy leaves out.
+  The TPM refuses that boot alone, so open it with the YubiKey and enrol
+  nothing: the next ordinary boot opens with the PIN. Sealing again here
+  would seal the disk to boots through the menu, and refuse every ordinary
+  one. The guide tells this boot from the event log and leaves the seal
+  alone.
 
 When a change got there first, unlock with the YubiKey, then replace the
 policy and enrol the TPM again. The last command checks the new slot opens

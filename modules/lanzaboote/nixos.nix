@@ -134,7 +134,8 @@ in
       autoGenerateKeys.enable = true;
       autoEnrollKeys = {
         enable = true;
-        autoReboot = true;
+        # Restarting only when the firmware is in setup mode, below.
+        autoReboot = false;
         # Only Joel's keys, so nothing Microsoft ever signed boots here, such as
         # a shim that shows a fake disk prompt to learn the PIN. lanzaboote
         # calls leaving Microsoft's keys out a risk of bricking, because a
@@ -224,13 +225,35 @@ in
       };
     };
 
-    # Without checksums or Microsoft's keys, the firmware would stop running
-    # any option ROM it runs now, so enrolment goes ahead only when it runs
-    # none. A machine that does run one keeps its factory keys and is told
-    # what to set.
-    systemd.services.prepare-sb-auto-enroll.preStart = lib.mkIf (
-      enrolment.enable && !enrolment.includeMicrosoftKeys && !enrolment.includeChecksumsFromTPM
-    ) (lib.getExe optionRomCheck);
+    # systemd-boot enrols the keys it's given only while the firmware is in
+    # setup mode, with Secure Boot off, so the machine restarts for it then.
+    # A firmware that already enforces, as one keeping the keys a reinstall
+    # carried does, needs no restart: its new ESP only gets the files, which
+    # would enrol the keys again if the firmware were ever reset.
+    systemd.services.prepare-sb-auto-enroll = lib.mkIf enrolment.enable {
+      # OnSuccess only follows a unit that ends.
+      serviceConfig.RemainAfterExit = lib.mkForce false;
+      unitConfig.OnSuccess = [ "secure-boot-enrol-restart.service" ];
+      # Without checksums or Microsoft's keys, the firmware would stop
+      # running any option ROM it runs now, so enrolment goes ahead only when
+      # it runs none. A machine that does run one keeps its factory keys and
+      # is told what to set.
+      preStart = lib.mkIf (!enrolment.includeMicrosoftKeys && !enrolment.includeChecksumsFromTPM) (
+        lib.getExe optionRomCheck
+      );
+    };
+    systemd.services.secure-boot-enrol-restart = lib.mkIf enrolment.enable {
+      description = "Restart for systemd-boot to enrol the Secure Boot keys";
+      unitConfig = {
+        ConditionSecurity = "!uefi-secureboot";
+        SuccessAction = "reboot";
+      };
+      serviceConfig = {
+        Type = "oneshot";
+        ExecStart = "${pkgs.coreutils}/bin/true";
+      };
+    };
+
     # The install check runs it on a machine with checksums on, to see it
     # refuse an option ROM.
     system.build.optionRomCheck = optionRomCheck;

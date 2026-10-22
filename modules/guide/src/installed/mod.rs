@@ -8,7 +8,7 @@
 use serde::Deserialize;
 
 use crate::observe::efi::{Mode, SecureBoot};
-use crate::observe::{luks, tpm};
+use crate::observe::{luks, pcrlock, tpm};
 use crate::tool::Path;
 use crate::{
     Answer, Answers, Ask, Fault, Given, Machine, Place, Program, Secret, Standing, Step, Tool,
@@ -93,6 +93,39 @@ fn policy_current(machine: &mut dyn Machine) -> Result<bool, Fault> {
         )?
         .ok()?;
     Ok(result.trim() == "success")
+}
+
+/// Whether the TPM refused this boot only for the firmware programs it
+/// started first, such as its boot menu, which the next ordinary boot
+/// won't (`observe::pcrlock`).
+fn through_firmware(machine: &mut dyn Machine) -> Result<bool, Fault> {
+    let Some(bytes) = machine.read(PCRLOCK)? else {
+        return Ok(false);
+    };
+    let policy = pcrlock::Policy::parse(&bytes)?;
+    if !policy.may_explain() {
+        return Ok(false);
+    }
+    let log = machine
+        .run_given(
+            Program::Tool(Tool::Pcrlock),
+            &["log", "--json=short"],
+            as_root(),
+        )?
+        .ok()?;
+    let log = pcrlock::parse_log(&log)?;
+    let mut current = std::collections::BTreeMap::new();
+    for pcr in policy.covers().collect::<Vec<_>>() {
+        if let Some(value) = machine
+            .read(&pcrlock::pcr_path(pcr))?
+            .and_then(|text| pcrlock::parse_pcr(&String::from_utf8_lossy(&text)))
+        {
+            current.insert(pcr, value);
+        }
+    }
+    Ok(pcrlock::through_firmware(&policy, &log, |pcr| {
+        current.get(&pcr).cloned()
+    }))
 }
 
 /// A policy that no longer follows this boot, dropped by
@@ -217,6 +250,13 @@ impl Step for SealTpm {
         if proven && policy_current(machine)? {
             return Ok(Standing::Done {
                 evidence: "the TPM opens the disk with its PIN, tried before the others".into(),
+            });
+        }
+        // Sealing again now would lock this boot's firmware programs in,
+        // and the next ordinary boot would be refused instead.
+        if proven && policy_held(machine)? && through_firmware(machine)? {
+            return Ok(Standing::Done {
+                evidence: "this boot went through the firmware's own menu, which the TPM's policy leaves out, so the next ordinary boot opens with the TPM's PIN again".into(),
             });
         }
         Ok(Standing::Needed {

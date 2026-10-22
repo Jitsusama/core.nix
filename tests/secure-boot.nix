@@ -164,6 +164,18 @@ pkgs.testers.runNixOSTest {
           t.assertIn("Secure Boot: enabled (user)", status)
           print(machine.succeed("sbctl verify"))
 
+      with subtest("a firmware already enforcing gets the files without a restart"):
+          # As a reinstall's new ESP leaves it, its keys carried and enrolled.
+          boot = machine.succeed("cat /proc/sys/kernel/random/boot_id")
+          machine.succeed("rm /boot/loader/keys/auto/{PK,KEK,db}.auth")
+          machine.succeed("systemctl start prepare-sb-auto-enroll.service")
+          machine.succeed("test -s /boot/loader/keys/auto/db.auth")
+          machine.wait_until_succeeds(
+              "journalctl -b -u secure-boot-enrol-restart.service | grep -q 'unmet condition'"
+          )
+          machine.sleep(5)
+          t.assertEqual(machine.succeed("cat /proc/sys/kernel/random/boot_id"), boot)
+
       with subtest("without checksums, a firmware option ROM stops enrolment"):
           check = "${nodes.machine.system.build.optionRomCheck}/bin/option-rom-check"
           code, output = machine.execute(f"{check} 2>&1")

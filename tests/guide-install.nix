@@ -491,15 +491,16 @@ pkgs.testers.runNixOSTest {
           machine.start(allow_reboot=True)
           unlock()
           machine.connect()
-          machine.wait_for_console_text("Linux version", timeout=300)
-          machine.connected = False
-          unlock()
-          machine.connect()
           # Its new disk isn't sealed to the TPM yet, so the guide asks;
           # Ctrl+C leaves that for another boot.
           on_screen("a PIN for the TPM")
           machine.send_key("ctrl-c")
           machine.wait_for_unit("multi-user.target")
+          # The firmware already enforces with the keys it carried, so the
+          # first boot writes them for systemd-boot and doesn't restart: one
+          # PIN reached the guide, where a restart would have asked again.
+          machine.succeed("journalctl -b -u secure-boot-enrol-restart | grep -q 'unmet condition'")
+          machine.succeed("test -s /boot/loader/keys/auto/db.auth")
           t.assertIn("Secure Boot: enabled (user)", machine.succeed("bootctl status"))
           t.assertIn(owner, machine.succeed("sbctl status"))
     '';
