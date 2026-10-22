@@ -76,13 +76,15 @@ driven on; the installed machine's steps come later.
   script, run with the stick's disk tools, its volume made with a key held
   only in memory.
   Each YubiKey is enrolled alone, told apart from the others by a silent
-  assertion, and proven by opening the disk; then a recovery key, typed
-  back and proven. The Secure Boot keys are put back from the vault when
-  the stick carries the ones the firmware's db already trusts, so a
-  reinstall needs no firmware visit, and otherwise made where the install
-  signs with them, which only a firmware in setup mode will take. The
-  system is copied in from the vault with no network, and the key held in
-  memory comes off the disk last. A host gives the stick the keys with
+  assertion, and proven by opening the disk. The Secure Boot keys come
+  next, then a recovery key, which seals the machine's rescue bundle
+  while it's still held, before it's typed back and proven, so no
+  machine leaves its install without one. The Secure Boot keys are put
+  back from the vault when the stick carries the ones the firmware's db
+  already trusts, so a reinstall needs no firmware visit, and otherwise
+  made where the install signs with them, which only a firmware in setup
+  mode will take. The system is copied in from the vault with no
+  network, and the key held in memory comes off the disk last. A host gives the stick the keys with
   `--rescue-bundle`, opened in memory, and signs the stick with them.
   Every step stays done through the steps after it, since the journey runs
   the first that isn't.
@@ -132,10 +134,14 @@ driven on; the installed machine's steps come later.
   passphrase opens the same keys before anything's written. It's text
   and ciphertext only, so it can live on every other machine and in
   1Password, and it names the db certificate's fingerprint, so a machine
-  knows its bundle is current without opening it. A host writing the
-  machine's stick opens it with a YubiKey or the passphrase, holding the
-  keys only in memory, so plain Secure Boot keys are never an input
-  anywhere.
+  knows its bundle is current without opening it. The install seals one
+  to the disk's recovery key in place of a passphrase, kept at
+  `/var/lib/guide/rescue-bundle.json` where anyone can read it, and the
+  installed guide copies it into the person's home and has them keep it
+  in 1Password and on their other machines, once for each bundle. A
+  host writing the machine's stick opens it with a YubiKey or what its
+  passphrase is, holding the keys only in memory, so plain Secure Boot
+  keys are never an input anywhere.
 - **The screen.** One step at a time, and one thing asked at a time, each
   before the step starts. It's drawn in the theme's roles and marks as the
   build was given them (`theme.nix`), with the console's stand-ins on a
@@ -177,7 +183,7 @@ driven on; the installed machine's steps come later.
 | `src/host/`           | writing a stick on a host, and what a reinstall stick carries |
 | `src/rescue.rs`       | the rescue bundle: a machine's Secure Boot keys sealed, made and opened |
 | `src/install/`        | installing a machine from its stick, a step to a file by what it touches |
-| `src/installed/`      | finishing the machine on itself: Secure Boot checked, the TPM sealed |
+| `src/installed/`      | finishing the machine on itself: Secure Boot checked, the TPM sealed, the rescue bundle handed on |
 | `src/recover/`        | recovering a machine from a stick: found, opened, mounted |
 | `nixos.nix`           | the guide on a machine it installed                       |
 | `src/screen/`         | the view, drawn as lines in roles; the terminal; the walk through a journey |

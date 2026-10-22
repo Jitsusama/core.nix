@@ -2,8 +2,9 @@
 //! loader signs with them, the system installed from the vault with no
 //! network, and the account's password.
 
-use crate::install::{HELD, ROOT, SYSTEM_CACHE, target, vault, vault_key};
+use crate::install::{HELD, RECOVERY_KEY, ROOT, SYSTEM_CACHE, held, target, vault, vault_key};
 use crate::observe::efi::{self, Mode, SecureBoot};
+use crate::rescue::{self, Bundle, Keys};
 use crate::tool::Path;
 use crate::{
     Answer, Answers, Ask, Fault, Given, Machine, Place, Program, Secret, Standing, Step, Tool,
@@ -90,6 +91,73 @@ impl Step for CheckFirmware {
 /// or else made here, which the firmware takes only in setup mode. The
 /// first boot enrols them in setup mode, and restarts once either way.
 pub struct SecureBootKeys;
+
+/// Where the installed machine keeps its rescue bundle, under the
+/// install's root.
+fn bundle_path() -> String {
+    format!("{ROOT}{}", rescue::KEPT)
+}
+
+/// The machine's rescue bundle, made as soon as it has its Secure Boot
+/// keys and its recovery key, so no machine leaves its install without
+/// one: the keys sealed to its YubiKeys and to the recovery key the
+/// person keeps in 1Password, kept on the machine for the installed guide
+/// to hand on. Anyone there can read it, since it's sealed, so the guide
+/// hands it on as the person, without asking for root. A reinstall, which puts the keys back, makes it again with
+/// the new recovery key.
+pub struct SealRescueBundle;
+
+impl Step for SealRescueBundle {
+    fn id(&self) -> &'static str {
+        "seal-rescue-bundle"
+    }
+
+    fn place(&self) -> Place {
+        Place::Stick
+    }
+
+    fn title(&self) -> &'static str {
+        "Seal its Secure Boot keys into a rescue bundle"
+    }
+
+    fn observe(&self, machine: &mut dyn Machine) -> Result<Standing, Fault> {
+        let bundle = machine
+            .read(&bundle_path())?
+            .and_then(|bytes| Bundle::read(&bytes).ok());
+        let certificate = machine.read(&format!("{SBCTL}/keys/db/db.pem"))?;
+        if let (Some(bundle), Some(certificate)) = (bundle, certificate)
+            && bundle.holds(&certificate)
+            && bundle.passphrase() == rescue::RECOVERY_KEY
+        {
+            return Ok(Standing::Done {
+                evidence: format!(
+                    "{} holds its Secure Boot keys, opened by a YubiKey or the recovery key",
+                    rescue::KEPT
+                ),
+            });
+        }
+        Ok(if machine.read(RECOVERY_KEY)?.is_some() {
+            Standing::Needed { asks: vec![] }
+        } else {
+            Standing::Blocked {
+                why: "the recovery key isn't held any more, so the bundle can't be sealed to it"
+                    .into(),
+                remedy: "restart from the stick, which makes another".into(),
+            }
+        })
+    }
+
+    fn run(&self, machine: &mut dyn Machine, _answers: &Answers) -> Result<(), Fault> {
+        let recovery = held(machine, RECOVERY_KEY)?.ok_or(Fault::Blocked {
+            step: self.id(),
+            why: "the recovery key isn't held any more".into(),
+        })?;
+        let target = target(machine)?;
+        let keys = Keys::read_in(machine, SBCTL)?;
+        let bytes = Bundle::seal(&target, &keys, &recovery, rescue::RECOVERY_KEY, None)?;
+        machine.publish(&bundle_path(), &bytes)
+    }
+}
 
 /// What the vault keeps them as: sbctl's own directory.
 const SBCTL_IN_VAULT: &str = "sbctl";

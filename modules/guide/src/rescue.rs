@@ -41,7 +41,14 @@ pub const KEYS: [&str; 7] = [
     "keys/db/db.pem",
 ];
 
-const PASSPHRASE: &str = "the recovery passphrase";
+/// Where an installed machine keeps its own bundle, made by its install.
+/// It's ciphertext, so its being on the machine gives nothing away.
+pub const KEPT: &str = "/var/lib/guide/rescue-bundle.json";
+
+/// What opens a bundle besides its YubiKeys: a passphrase chosen for it,
+/// or, for one an install made, the disk's recovery key.
+pub const RECOVERY_PASSPHRASE: &str = "the recovery passphrase";
+pub const RECOVERY_KEY: &str = "the disk's recovery key";
 
 /// A bundle as it's written: who it's for and what opens it, in the
 /// plain, and the keys sealed under a key of its own, which is sealed in
@@ -50,8 +57,8 @@ const PASSPHRASE: &str = "the recovery passphrase";
 struct Written {
     format: u32,
     machine: String,
-    /// The YubiKeys by the names the person knows them by, then the
-    /// passphrase.
+    /// The YubiKeys by the names the person knows them by, then what the
+    /// passphrase is.
     opened_by: Vec<String>,
     /// The owner GUID the keys were made under, which isn't secret.
     owner: String,
@@ -69,7 +76,8 @@ pub struct Keys {
     files: BTreeMap<String, Zeroizing<Vec<u8>>>,
 }
 
-fn fingerprint(bytes: &[u8]) -> String {
+/// The SHA-256 of some bytes, in hex.
+pub fn fingerprint(bytes: &[u8]) -> String {
     Sha256::digest(bytes)
         .iter()
         .map(|byte| format!("{byte:02x}"))
@@ -117,9 +125,14 @@ impl Keys {
     /// The machine's own keys, each read as root, since sbctl lets no one
     /// else read them.
     pub fn read(machine: &mut dyn Machine) -> Result<Keys, Fault> {
+        Keys::read_in(machine, SBCTL)
+    }
+
+    /// sbctl's keys from another directory, such as an install's.
+    pub fn read_in(machine: &mut dyn Machine, directory: &str) -> Result<Keys, Fault> {
         let mut files = BTreeMap::new();
         for name in KEYS {
-            let path = format!("{SBCTL}/{name}");
+            let path = format!("{directory}/{name}");
             let ran = machine.run_given(
                 Program::Tool(Tool::Cat),
                 &[&path],
@@ -133,7 +146,7 @@ impl Keys {
                 return Err(Fault::Blocked {
                     step: "seal-keys",
                     why: format!(
-                        "this machine has no Secure Boot keys of its own at {SBCTL}: {}",
+                        "there are no Secure Boot keys at {directory}: {}",
                         ran.refusal()
                     ),
                 });
@@ -223,13 +236,15 @@ pub struct Bundle {
 
 impl Bundle {
     /// The keys sealed for a machine: to each YubiKey's age recipient when
-    /// it names them, and to the passphrase. `work` is scrypt's log₂ N, left
-    /// to age but for tests. Refused unless the passphrase opens what was
-    /// sealed and gives back the same keys.
+    /// it names them, and to the passphrase, `called` what it is to the
+    /// person. `work` is scrypt's log₂ N, left to age but for tests.
+    /// Refused unless the passphrase opens what was sealed and gives back
+    /// the same keys.
     pub fn seal(
         target: &Target,
         keys: &Keys,
         passphrase: &Secret,
+        called: &str,
         work: Option<u8>,
     ) -> Result<Vec<u8>, Fault> {
         if !target.recipients.is_empty() && target.recipients.len() != target.yubikeys.len() {
@@ -254,7 +269,7 @@ impl Bundle {
         } else {
             vec![]
         };
-        opened_by.push(PASSPHRASE.into());
+        opened_by.push(called.into());
         let written = Written {
             format: 1,
             machine: target.machine.clone(),
@@ -294,16 +309,19 @@ impl Bundle {
 
     /// The YubiKeys that open it, by name, the passphrase left out.
     pub fn yubikeys(&self) -> Vec<String> {
-        match self.written.to_keys {
-            Some(_) => self
-                .written
-                .opened_by
-                .iter()
-                .filter(|name| *name != PASSPHRASE)
-                .cloned()
-                .collect(),
-            None => vec![],
+        match (&self.written.to_keys, self.written.opened_by.split_last()) {
+            (Some(_), Some((_, keys))) => keys.to_vec(),
+            _ => vec![],
         }
+    }
+
+    /// What its passphrase is: the recovery passphrase, or the disk's
+    /// recovery key.
+    pub fn passphrase(&self) -> &str {
+        self.written
+            .opened_by
+            .last()
+            .map_or(RECOVERY_PASSPHRASE, String::as_str)
     }
 
     /// Whether it holds these keys, which a machine can tell without
@@ -440,7 +458,7 @@ impl Step for SealKeys {
     fn run(&self, machine: &mut dyn Machine, answers: &Answers) -> Result<(), Fault> {
         let passphrase = chosen(self.id(), answers)?;
         let keys = Keys::read(machine)?;
-        let bytes = Bundle::seal(&self.target, &keys, passphrase, None)?;
+        let bytes = Bundle::seal(&self.target, &keys, passphrase, RECOVERY_PASSPHRASE, None)?;
         machine.write(&self.bundle.display().to_string(), &bytes)
     }
 }
@@ -477,11 +495,12 @@ impl Step for OpenRescueBundle {
             });
         }
         let keys = self.bundle.yubikeys();
+        let passphrase = self.bundle.passphrase();
         if keys.is_empty() {
             return Ok(Standing::Needed {
                 asks: vec![Ask::Secret {
                     id: "passphrase",
-                    name: "the rescue bundle's recovery passphrase".into(),
+                    name: format!("{passphrase}, which opens the rescue bundle"),
                 }],
             });
         }
@@ -491,14 +510,12 @@ impl Step for OpenRescueBundle {
                 Ask::Act {
                     id: "key",
                     what: format!(
-                        "Plug in {named}, and touch it when it blinks. To use the recovery passphrase instead, leave it out."
+                        "Plug in {named}, and touch it when it blinks. To use {passphrase} instead, leave it out."
                     ),
                 },
                 Ask::Secret {
                     id: "passphrase",
-                    name: format!(
-                        "the PIN of {named}, or with none plugged in, the bundle's recovery passphrase"
-                    ),
+                    name: format!("the PIN of {named}, or with none plugged in, {passphrase}"),
                 },
             ],
         })

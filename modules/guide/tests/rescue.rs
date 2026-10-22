@@ -15,7 +15,9 @@ use zeroize::Zeroizing;
 
 use guide::fake::Fake;
 use guide::install::Target;
-use guide::rescue::{Bundle, KEYS, Keys, OpenRescueBundle, SBCTL, SealKeys};
+use guide::rescue::{
+    Bundle, KEYS, Keys, OpenRescueBundle, RECOVERY_KEY, RECOVERY_PASSPHRASE, SBCTL, SealKeys,
+};
 use guide::{Answer, Answers, Ask, Fault, Secret, Standing, Step, Tool};
 
 const OWNER: &str = "22f0175f-c166-49d2-96ab-c61575cddac5";
@@ -60,7 +62,14 @@ fn passphrase() -> Secret {
 }
 
 fn sealed(keys: &Keys) -> Vec<u8> {
-    Bundle::seal(&target("laptop"), keys, &passphrase(), Some(10)).unwrap()
+    Bundle::seal(
+        &target("laptop"),
+        keys,
+        &passphrase(),
+        RECOVERY_PASSPHRASE,
+        Some(10),
+    )
+    .unwrap()
 }
 
 #[test]
@@ -246,6 +255,30 @@ fn a_bundle_of_old_keys_is_made_again() {
     };
     let standing = step.observe(&mut fake).unwrap();
     assert!(matches!(&standing, Standing::Needed { .. }), "{standing:?}");
+}
+
+#[test]
+fn a_bundle_says_which_passphrase_opens_it() {
+    let keys = Keys::new(files("bundle-called")).unwrap();
+    let bytes = Bundle::seal(
+        &target("laptop"),
+        &keys,
+        &passphrase(),
+        RECOVERY_KEY,
+        Some(10),
+    )
+    .unwrap();
+    let bundle = Bundle::read(&bytes).unwrap();
+    assert_eq!(bundle.passphrase(), RECOVERY_KEY);
+    let step = OpenRescueBundle {
+        bundle,
+        opened: Default::default(),
+    };
+    let standing = step.observe(&mut Fake::new()).unwrap();
+    assert!(
+        matches!(&standing, Standing::Needed { asks } if matches!(asks.as_slice(), [Ask::Secret { name, .. }] if name.starts_with(RECOVERY_KEY))),
+        "{standing:?}"
+    );
 }
 
 #[test]

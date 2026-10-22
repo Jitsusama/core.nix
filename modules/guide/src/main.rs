@@ -351,7 +351,13 @@ fn seal_keys(target: &str, bundle: &str) -> Result<(), Fault> {
     if !std::io::stdin().is_terminal() {
         let passphrase = passphrase()?;
         let keys = Keys::read(&mut machine)?;
-        let bytes = Bundle::seal(&target, &keys, &passphrase, None)?;
+        let bytes = Bundle::seal(
+            &target,
+            &keys,
+            &passphrase,
+            guide::rescue::RECOVERY_PASSPHRASE,
+            None,
+        )?;
         machine.write(bundle, &bytes)?;
         println!(
             "{bundle}: {}'s rescue bundle, owned by {}",
@@ -392,8 +398,8 @@ fn seal_keys(target: &str, bundle: &str) -> Result<(), Fault> {
 }
 
 /// The installed machine's journey, as the person who signs in there:
-/// Secure Boot checked, then the disk sealed to the TPM, then a restart to
-/// meet the TPM's PIN at the disk's prompt.
+/// Secure Boot checked, then the disk sealed to the TPM, the rescue bundle
+/// handed on, then a restart to meet the TPM's PIN at the disk's prompt.
 fn installed() -> Result<(), Fault> {
     // SAFETY: getuid can't fail and touches no memory.
     if unsafe { libc::getuid() } == 0 {
@@ -413,7 +419,13 @@ fn installed() -> Result<(), Fault> {
         .map(|bytes| String::from_utf8_lossy(&bytes).trim().to_string())
         .unwrap_or_else(|| "this machine".into());
     let title = format!("Finish {name}");
-    let journey = Journey::new(guide::installed::steps())
+    let home = std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .ok_or(Fault::Blocked {
+            step: "finish",
+            why: "there's no HOME to copy the rescue bundle into".into(),
+        })?;
+    let journey = Journey::new(guide::installed::steps(&home))
         .map_err(|why| Fault::unreadable("the installed machine's steps", why))?;
     let theme = Theme::built(Terminal::is_console());
     let mut terminal = Terminal::open()?;
