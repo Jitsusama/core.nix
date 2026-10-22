@@ -15,6 +15,7 @@ Provider {
     collection: ({
         noun: "keys",
         title: "Keyboard",
+        words: ["layout", "layers", "ergodox", "colemak", "keymap", "typing", "backlight"],
         glyph: glyph(0xf030c),
         ask: "which key?"
     })

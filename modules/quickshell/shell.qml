@@ -16,7 +16,6 @@ ShellRoot {
     Brightness {}
     KeyboardMap {}
     Power {}
-    Status {}
 
     OpenBelow {
         id: grid

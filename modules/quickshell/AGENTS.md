@@ -1,7 +1,7 @@
 # The Shell
 
 Quickshell draws everything on the desktop that isn't a window: the
-launcher, notifications, the margin and the overview's status, meters,
+launcher, notifications, the margin, meters,
 prompts, the lock screen. [`home.nix`][home] installs these files as the
 account's Quickshell config and writes the ones that come from settings
 beside them: `Theme.qml` from `jitsusama.theme`, `Providers.qml`,
@@ -39,8 +39,8 @@ Joel sees.
 - [`launcher/`][launcher]: one provider per kind of thing the launcher finds,
   each starting from [`Provider.qml`][provider], whose header says what a
   row holds.
-- [`pieces/`][pieces]: the margin's and the overview's pieces, each starting
-  from `Piece.qml`.
+- [`pieces/`][pieces]: the pieces the margin and the launcher's foot show,
+  each starting from `Piece.qml`.
 - [`clipboard/`][clipboard]: the clipboard's history, a Rust daemon.
 
 ## QML

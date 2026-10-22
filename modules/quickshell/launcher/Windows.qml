@@ -21,6 +21,7 @@ Provider {
     collection: ({
         noun: "windows",
         title: "Windows",
+        words: ["apps", "open", "running", "switch", "tasks"],
         glyph: String.fromCodePoint(0xf05b2),
         ask: "which window?",
         empty: "No other windows.",

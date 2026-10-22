@@ -122,7 +122,7 @@ GitHub Next, so they share proportions, x-height and voice.
   | body    | 0     | 10.5      | almost everything: notices, meters, menus |
   | large   | 1     | 13.1      | the launcher and every prompt             |
   | title   | 2     | 16.4      | a heading in a menu or dialog             |
-  | display | 6     | 40.1      | the clock in the overview                 |
+  | display | 6     | 40.1      | a clock shown large                       |
   | hero    | 8     | 62.6      | the clock on the lock screen              |
 
 Each surface names which face it uses and why, in the surfaces table.
@@ -179,7 +179,7 @@ Nothing else gets the accent, so it always means "here". The wallpaper is
 never dimmed or faded to make room for text: text set straight on a picture
 is lifted off it by the theme's text shadows (`wallpaper.shadows`), a crisp
 one set off down and right and a soft one around it. Text that may lie over a
-window as well, the overview's status, gets no box either: the theme's halo
+window as well gets no box either: the theme's halo
 (`wallpaper.halo`) holds it off whatever is behind, shadows of the letters
 in the shadow colour, centred, stacked from tight to wide so the shade is all
 but solid at the ink and feathers out with no edge of its own. Muted text
@@ -318,8 +318,8 @@ how it stands, then what can be done to it in the launcher's own rows, and
 the launcher's footer. Super+O opens on what wants Joel, or else the thing nearest the corner.
 The left and right arrows move between things, up and down between actions,
 Return does one, and Escape or Super+O puts it away. Notices below make way
-for it, so the two never cover each other, and while the overview is open
-the drawer goes, since the overview's status says the same.
+for it, so the two never cover each other, and it stays while the overview
+is open, which draws nothing of the shell's own.
 
 What takes the keys appears on the next frame, a notice slides in from its
 corner, and a prompt's scrim fades in.
@@ -380,27 +380,32 @@ it. Owners go by layer:
   tabs that aren't in view. An editor names a file once. Old prompts in
   scrollback collapse to their folder and glyph.
 
-| Fact                                                                   | Outside the overview                               | In the overview              |
+| Fact                                                                   | At a glance                                        | In detail, in the launcher   |
 | ---------------------------------------------------------------------- | -------------------------------------------------- | ---------------------------- |
-| Time, date                                                             | the lock screen and greeter, when they're up       | the overview's status        |
-| Battery, power                                                         | the margin mark, only when low or charging matters | the overview's status        |
-| Network, Bluetooth, audio devices                                      | the margin mark, only when something's wrong       | the overview's status        |
-| Volume, brightness                                                     | an overlay while it changes                        | the overview's status        |
-| Do not disturb, caffeinate, recording, sharing, mic muted, caps lock   | the margin mark, while true                        | the same mark, in the status |
-| Keyboard layer                                                         | the margin mark, while locked; nothing while a key holds it | the layer, in the status |
-| Music playing                                                          | the margin mark while it plays; a notice for a moment when the track changes or a media key is pressed | the same mark, in the status |
-| In a call                                                              | the margin mark, while in one                      | the same mark, in the status |
-| Notifications waiting                                                  | the margin mark, as a count                        | the overview's status        |
-| Disk space                                                             | the margin mark, only while a disk is short of room, a writer is frozen or nothing watches it; a notice when the guard acts | the same mark, in the status |
-| AI spend and its caps                                                  | the margin mark, only while a finding wants a look or nothing watches it; a notice once when one starts to; a line each morning | the overview's status, as the "ai" row |
+| Time, date                                                             | the launcher's foot; the lock screen and greeter, when they're up | "time", a place's time |
+| Battery, power                                                         | the margin mark, only when low or charging matters; the launcher's foot | "battery", "charger" |
+| Network, Bluetooth, audio devices                                      | the margin mark, only when something's wrong; the network in the launcher's foot | Wi-Fi, Bluetooth and Sound |
+| Volume, brightness                                                     | an overlay while it changes; the volume in the launcher's foot | Sound                |
+| Do not disturb, caffeinate, recording, sharing, mic muted, caps lock   | the margin mark, while true                        | the mark's panel; the session's rows |
+| Keyboard layer                                                         | the margin mark, while locked; nothing while a key holds it | Keyboard            |
+| Music playing                                                          | the margin mark while it plays; a notice for a moment when the track changes or a media key is pressed | the mark's panel |
+| In a call                                                              | the margin mark, while in one                      | the mark's panel             |
+| Notifications waiting                                                  | the margin mark, as a count                        | Notices (Super+N)            |
+| Disk space                                                             | the margin mark, only while a disk is short of room, a writer is frozen or nothing watches it; a notice when the guard acts | the mark's panel |
+| AI spend and its caps                                                  | the margin mark, only while a finding wants a look or nothing watches it; a notice once when one starts to; a line each morning; the launcher's foot | AI spend (Super+U) |
 | Directory, repository, branch, git state                               | the program running the window                     | nobody                       |
 | Window titles                                                          | a terminal's unseen tabs; the launcher's windows   | the launcher's windows       |
 
 The margin mark is the one always-visible desktop element: the drawer's
 pulls at the top right (Shape and Kinds), nothing at all when nothing is
-true, so the screen is calm by default. When the overview opens, it becomes
-part of the overview's status: one element in two states, not two copies.
-Both draw from the same pieces, so a piece with a mark is in each.
+true, so the screen is calm by default. The launcher's foot is the other
+glance: whenever it's open, a line of what's always true, the time, the
+date, the battery, the network, the volume and the day's AI spend, giving
+way by collapse rank as space runs short. Both draw from the same pieces,
+so a piece with a mark is in each. The overview draws nothing of the
+shell's own: it's for finding windows (2026-10-21, at Joel's word: "having
+any widgets on Super A can be abolished, it is fucking annoying relying on
+it for anything i care about outside of cool window navigation shit.").
 
 ## Collapsing
 
@@ -487,7 +492,7 @@ works the same way everywhere.
   sleeping so work left running goes on, and with power it keeps running
   with the lid shut. Without power the lid is let go, since a laptop shut in
   a bag on its battery would cook. While it holds, Let It Sleep comes after
-  the focused window at home, and the overview's status says so.
+  the focused window at home, and the margin's mark says so.
 - **What's shown is the door to its detail.** The battery opens the power
   menu, the network opens its list, a notification count opens the history.
   Nothing keeps its detail somewhere else.
@@ -614,7 +619,7 @@ anything.
 - **Options, not edits.** What a surface shows, the order, each piece's tier,
   its collapse rank, its threshold, its glyph and its colour role are
   `jitsusama.*` options with documented defaults. The prompt's pieces, the
-  overview's status, the margin mark, the editors' status lines, the boot
+  launcher's foot, the margin mark, the editors' status lines, the boot
   splash's lines and every chord are lists that can be reordered, extended or
   cut. A new piece is a small function in the same shape as the built-in ones.
 - **One shape for every surface's pieces.** `modules/theme/pieces.nix` gives
@@ -625,7 +630,8 @@ anything.
   its `mark`, its `source` (a built-in piece by name, or a file of the same
   shape) and settings of its own, such as a format or a threshold. The
   built-in settings are defaults, so a machine's own win without a fight. The
-  overview's status is the first, `jitsusama.quickshell.overview.pieces`.
+  launcher's foot and the margin's are the first,
+  `jitsusama.quickshell.overview.pieces`, named for where they once stood.
 - **The launcher's kinds of thing are named the same way.**
   `jitsusama.quickshell.launcher.providers` lists what it finds (windows,
   applications, actions, the session), each a file of its own with an
@@ -783,7 +789,7 @@ by them isn't done.
 | The greeter                               | Quickshell, greetd       | both           | the time, the date, who's signing in, the session it starts | a refused password, what PAM says | Tab to the next account | the lock screen's | the boot's timings; the time stays |
 | The compositor                            | niri                     | none           |        |        |           |         |          |
 | The wallpaper                             | Quickshell, niri         | none           |        |        |           |         |          |
-| The overview's status and the margin mark | Quickshell               | both           | the time, the date, the battery with its time and watts, the network, the volume | the battery running low, offline, a network wanting a sign-in, muted | step 2's doors | step 2 | volume, network, battery, date; the time stays |
+| The launcher's foot and the margin mark   | Quickshell               | both           | the time, the date, the battery with its time and watts, the network, the volume | the battery running low, offline, a network wanting a sign-in, muted | step 2's doors | step 2 | volume, network, battery, date; the time stays |
 | The launcher and palette                  | Quickshell               | monospace      |        |        |           |         |          |
 | Notifications                             | Quickshell               | both           |        |        |           |         |          |
 | Menus and overlays                        | Quickshell               | both           |        |        |           |         |          |
@@ -794,7 +800,7 @@ by them isn't done.
 | Documents                                 | zathura                  | proportional   | nothing | nothing | nothing | zathura's own keys | its bar and command line show only while they're asked for |
 | Music                                     | spotify, Quickshell      | both           | nothing | a note in the margin while any player plays; for a moment, the track as a notice | the mark's panel: the track, artist, album and player; pause, next, previous, the player's window, and pausing a second player | Play or pause the music, Play the next track, Play the previous track, on the media keys | the mark carries no words; a title wraps to two lines, then gives way |
 | Pairing                                   | tuple, Quickshell, niri  | both           | nothing | a phone in the margin while in a call, and wanting Joel while one rings; for a moment, who joined or left, and that he's the only one left; a ring, and a missed call kept | the mark's panel: how long, and who with or who's sharing; leave, share the screen, mute him in Tuple, copy the room's link; while ringing, show the call | the launcher's rows: show a ringing call, first at home; open the room and copy its link; join a copied call's link, first at home once copied; leave, share, mute; a tuple: link from the browser joins its room | the mark carries no words; its panel says how long and who with |
-| AI spend                                  | spend-watch, Quickshell  | both           | the overview's row, "ai": today's spend against usual ("$214 today · usual") | the margin's pull while a finding wants a look: a cap near, over or refused, an override ending, a cap lowered or lapsed, a credential nobody knew spending, a source signed out, or the watch stopped or on hold; a notice once for each, at most three a week beside a cap's, and one line each morning | the mark's panel: how it stands, the day's likely end, the week, and how the figures were got; go to the session, ask for more, sign in, it's expected, read the week's report, show where it went | the launcher's rows: "spend", "cap" and a report by its words ("spend last week by quest"), Return copying it as markdown and the right arrow stepping into its rows; Super+U opens the collection: what wants a look first, then today, each cap longer than a day and earlier, a day's cap behind today and the next seven days behind the week's cap, each a figure of a few words with the rest in the footer and its parts a step in (a period's cuts and their rows, a cap's changes and its sign-in), then what was found | the row gives way before the network; the mark carries only its badge; while sharing, every amount gives way and the words stay; a source that can't be read says nothing for its first fifteen minutes, as a machine waking finds its network, and no more than a note unless only a sign-in fixes it; a history a newer watch keeps, as when an older system boots again, is left as it is, the watch on hold and saying so until that one runs; a cap's allowance that changes for one reading and comes back says nothing, a change being told once it has stood ten minutes unless the cap warns or refuses at it, and a fall stops asking once the cap is back |
+| AI spend                                  | spend-watch, Quickshell  | both           | the launcher's foot: today's spend against usual ("$214 today · usual") | the margin's pull while a finding wants a look: a cap near, over or refused, an override ending, a cap lowered or lapsed, a credential nobody knew spending, a source signed out, or the watch stopped or on hold; a notice once for each, at most three a week beside a cap's, and one line each morning | the mark's panel: how it stands, the day's likely end, the week, and how the figures were got; go to the session, ask for more, sign in, it's expected, read the week's report, show where it went | the launcher's rows: "spend", "cap" and a report by its words ("spend last week by quest"), Return copying it as markdown and the right arrow stepping into its rows; Super+U opens the collection: what wants a look first, then today, each cap longer than a day and earlier, a day's cap behind today and the next seven days behind the week's cap, each a figure of a few words with the rest in the footer and its parts a step in (a period's cuts and their rows, a cap's changes and its sign-in), then what was found | the row gives way before the network; the mark carries only its badge; while sharing, every amount gives way and the words stay; a source that can't be read says nothing for its first fifteen minutes, as a machine waking finds its network, and no more than a note unless only a sign-in fixes it; a history a newer watch keeps, as when an older system boots again, is left as it is, the watch on hold and saying so until that one runs; a cap's allowance that changes for one reading and comes back says nothing, a change being told once it has stood ten minutes unless the cap warns or refuses at it, and a fall stops asking once the cap is back |
 | Chat, passwords, calls                    | their own settings       | proportional   |        |        |           |         |          |
 | The terminal                              | kitty                    | monospace      |        |        |           |         |          |
 | The prompt                                | prompt, kitty            | monospace      | where Joel is, told from the nearest root (the root in text, the folders between muted, the folder he's in strong); the glyph where his keys go, in the accent, red after a failure, # in gold as root | another machine, @ and its name; a rebase, merge or pick under way, a rebase drawn as its steps, red while a conflict waits; a development shell and jobs as glyphs; a long command's time; the branch, muted, with a mark for unsaved work and one for unpushed; over ssh in kitty, the window a little towards the machine hue | git status, and a wider window | nothing | laid out per prompt, never per keystroke: a long run's time, the shell's glyphs, the branch's middle, the path's middle, the branch to its glyph, the right side, then what's under way to its glyph, the more mark wherever something's hidden; the left keeps to a third of the window; zsh clears the right side once typing reaches it |
@@ -1054,7 +1060,7 @@ What each studio round settled, newest first, with the reason.
 
 - **What AI use costs** (2026-10-14, chosen without a round, to be seen).
   The question is asked at a glance and answered when something's wrong,
-  so today's spend is one row of the overview, against what a usual day
+  so today's spend is in the launcher's foot, against what a usual day
   had spent by this hour, and reaches the margin only when a finding wants
   a look: a cap close or reached, a raise about to end, a burn. The daemon
   works out every string, the shell draws them, and while the screen is

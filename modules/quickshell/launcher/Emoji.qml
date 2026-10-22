@@ -15,6 +15,7 @@ Provider {
     collection: ({
         noun: "emoji",
         title: "Emoji",
+        words: ["emoticons", "smileys", "faces", "symbols", "characters", "unicode"],
         glyph: String.fromCodePoint(0xf01f5),
         ask: "which emoji?"
     })

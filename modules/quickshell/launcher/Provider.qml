@@ -66,7 +66,9 @@ Scope {
 
     // A provider with too many things to mix into the main search, such as
     // emoji, is a collection: { noun, title, glyph, ask }, its title naming it
-    // on the home screen, `empty` saying what it says with nothing in it,
+    // on the home screen, `words` the others a person might type for it, by
+    // which and by its title and noun a search goes straight to it whole,
+    // `empty` saying what it says with nothing in it,
     // and searched false if it adds no row to a search, only opened by its
     // chord or from home. Its members stay out of the main list, though its
     // `things` don't. In the main search the launcher asks `gather(typed)`

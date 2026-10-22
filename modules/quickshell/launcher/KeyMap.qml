@@ -18,6 +18,7 @@ Provider {
     collection: ({
         noun: "shortcuts",
         title: "Shortcuts",
+        words: ["hotkeys", "chords", "bindings", "keybindings", "key combos"],
         glyph: String.fromCodePoint(0xf097b),
         ask: "which shortcut?",
         searched: false

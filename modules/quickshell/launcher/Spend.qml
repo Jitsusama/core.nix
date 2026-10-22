@@ -36,6 +36,7 @@ Provider {
     collection: said === null ? null : {
         noun: "spend",
         title: "AI spend",
+        words: ["cost", "money", "usage", "tokens", "bill", "budget", "claude", "pi"],
         glyph: String.fromCodePoint(0xf01c1),
         ask: "which?",
         empty: "nothing spent yet"

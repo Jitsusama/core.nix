@@ -67,7 +67,6 @@ let
     "Power.qml"
     "Brightness.qml"
     "Meter.qml"
-    "Status.qml"
     "Facts.qml"
     "Wallpaper.qml"
     "Lifted.qml"
@@ -452,6 +451,7 @@ let
     time = ./launcher/Clocks.qml;
     weather = ./launcher/Weather.qml;
     machine = ./launcher/Machine.qml;
+    power = ./launcher/Power.qml;
     emoji = ./launcher/Emoji.qml;
     shortcuts = ./launcher/KeyMap.qml;
     keyboard = ./launcher/Keyboard.qml;
@@ -795,6 +795,11 @@ in
       machine = {
         order = 100;
         source = "machine";
+      };
+      # The battery, the charger and the power profile, in detail.
+      power = {
+        order = 99;
+        source = "power";
       };
       # Collections, each shown as one row below the rest. Wi-Fi's networks
       # are one, and turning Wi-Fi off is found as an action.

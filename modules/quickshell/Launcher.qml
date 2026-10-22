@@ -119,9 +119,24 @@ Scope {
     readonly property var selected: current === -1 ? headline : matches[current] ?? null
 
     // A collection's members stay out of the main search, but a thing it
-    // offers beside them, such as turning Wi-Fi off, is found like any.
+    // offers beside them, such as turning Wi-Fi off, is found like any, and
+    // so is the collection itself, by its title or any of its words, so
+    // typing what it holds goes straight to it.
     readonly property var choices: sources.reduce((all, source) => all.concat(source.things), [])
+        .concat(collections.map(named))
     readonly property var collections: sources.filter(source => source.collection)
+
+    // A collection as a row the search finds: as it is at home, but for its
+    // count, which would read all of it at every change.
+    function named(source) {
+        const collection = source.collection;
+        const row = Object.assign(whole(source, false, false), { weight: source.weight });
+        row.prepared = Fuzzy.prepare(row.name);
+        row.keywords = Fuzzy.prepare([collection.noun].concat(collection.words ?? []).join(" "));
+        // Its words are what a person calls it, so they count as its name.
+        row.named = true;
+        return row;
+    }
 
     // A row for each collection that has matches: its best, with what's been
     // picked for this query before put first, and a count of the rest. Its
@@ -204,7 +219,7 @@ Scope {
 
     // A collection as one row at home: Return or the right arrow opens all
     // of it.
-    function whole(source, gap) {
+    function whole(source, gap, counted = true) {
         const collection = source.collection;
         const name = source.settings.name;
         const opener = Shortcuts.actions.find(action => action.opens === name);
@@ -213,7 +228,7 @@ Scope {
             verb: "open",
             name: collection.title ?? collection.noun,
             plain: true,
-            count: source.counted(),
+            count: counted ? source.counted() : "",
             glyph: collection.glyph,
             hue: "voice",
             chord: opener ? opener.chord : [],
@@ -426,7 +441,8 @@ Scope {
     // what was picked for this query before leaning on the order (Picks.qml
     // says how); a thing picked before is shown even when it matches more
     // loosely than the rest. One found only by what it is, its keywords,
-    // ranks well below those found by name.
+    // ranks well below those found by name, but for a collection's own
+    // words, which are what it's called.
     function search(letters) {
         const narrowing = typed !== "" && letters.startsWith(typed);
         typed = letters;
@@ -491,7 +507,7 @@ Scope {
                 if (byWord.score >= 0)
                     found.push({
                         item: choice.prepared,
-                        score: byWord.score * choice.weight / 4,
+                        score: byWord.score * choice.weight / (choice.named ? 1 : 4),
                         grade: byWord.grade,
                         choice: choice,
                         byWord: true
@@ -701,6 +717,7 @@ Scope {
             held = [];
             tried += 1;
             restart("");
+            Report.say(`stands ${standing.said}`);
         }
     }
 
@@ -979,6 +996,81 @@ Scope {
                             : inside
                                 ? inside.collection.empty ?? `No ${inside.collection.noun} yet.`
                             : "A window, a program, an action, or what a key does."
+                    }
+                }
+
+                // How things stand, always, at the foot: the facts the
+                // margin's pieces hold that are always true (the time, the
+                // date, the battery, the network, the volume), as the
+                // greeter says how the boot went, in small monospace with a
+                // dot between each, a muted label before each value that
+                // has one so a number says what it's of. When they don't
+                // fit, they give way by their collapse rank, lowest first,
+                // as they did in the overview.
+                Rectangle {
+                    width: parent.width
+                    height: Theme.border
+                    color: Theme.edge
+                }
+
+                Item {
+                    id: standing
+
+                    readonly property var facts: Facts.all
+                        .filter(fact => fact.entry.tier !== "when" && fact.piece
+                            && fact.piece.present && fact.piece.value !== "")
+                    readonly property real room: width - 2 * Theme.space.l
+                    readonly property string gap: "  \u00b7  "
+                    // The facts that fit, each its label and value.
+                    readonly property var kept: {
+                        let kept = facts.map(fact => ({
+                            entry: fact.entry,
+                            label: fact.entry.label ?? "",
+                            value: fact.piece.value
+                        }));
+                        for (;;) {
+                            const text = kept.map(fact => (fact.label !== "" ? `${fact.label} ` : "")
+                                + fact.value).join(gap);
+                            const ranks = kept.map(fact => fact.entry.collapse)
+                                .filter(rank => rank !== null && rank !== undefined);
+                            if (measure.advanceWidth(text) <= room || ranks.length === 0)
+                                return kept;
+                            const lowest = Math.min(...ranks);
+                            kept = kept.filter(fact => fact.entry.collapse !== lowest);
+                        }
+                    }
+                    readonly property string said: kept
+                        .map(fact => (fact.label !== "" ? `${fact.label} ` : "") + fact.value).join(gap)
+                    // As styled text reads it, a network's name kept as it is.
+                    function plain(text) {
+                        return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+                    }
+                    function muted(text) {
+                        return `<font color="${Theme.muted}">${plain(text)}</font>`;
+                    }
+
+                    width: parent.width
+                    height: Theme.space.xxl + Theme.space.s
+
+                    FontMetrics {
+                        id: measure
+                        font: line.font
+                    }
+
+                    Text {
+                        id: line
+                        x: Theme.space.l
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: standing.kept.map(fact => (fact.label !== ""
+                            ? standing.muted(`${fact.label} `) : "") + standing.plain(fact.value))
+                            // Styled text runs spaces together, so the
+                            // dot's are spaces that don't.
+                            .join(standing.muted(standing.gap.replace(/ /g, "\u00a0")))
+                        textFormat: Text.StyledText
+                        color: Theme.text
+                        font.family: Theme.mono.family
+                        font.pointSize: Theme.mono.small
+                        font.features: { "tnum": 1 }
                     }
                 }
             }
