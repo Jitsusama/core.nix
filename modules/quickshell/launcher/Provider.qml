@@ -25,7 +25,8 @@
 //
 // A provider can answer rather than find: `answer(typed)` gives what's
 // typed plainly asks for, { headline, copy, rows, note }, or null. The
-// headline is drawn after what's typed and copied by Return; the rows,
+// headline is drawn after what's typed and copied by Return, or, for an
+// answer that does something, done by its `run` under its `verb`; the rows,
 // made with copyRow, carry the detail. One that has to ask the network
 // answers at once with what it has, `asking` true while it waits, and says
 // `answered` when more arrives, so the launcher asks again; `ask` keeps

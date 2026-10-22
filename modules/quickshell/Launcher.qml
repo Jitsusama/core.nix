@@ -103,18 +103,20 @@ Scope {
             compose(false);
     }
 
-    // The headline as a row of its own, for Return and the footer.
+    // The headline as a row of its own, for Return and the footer. Return
+    // copies it, unless the answer says what it does instead, as setting
+    // the brightness to what was typed does.
     readonly property var headline: !answer ? null : {
         name: answer.headline,
         // An answer still being asked for has nothing to copy yet.
-        verb: (answer.copy ?? answer.headline) === "" ? "close" : "copy",
+        verb: answer.verb ?? ((answer.copy ?? answer.headline) === "" ? "close" : "copy"),
         now: true,
         note: answer.note ?? "",
-        run: () => {
+        run: answer.run ?? (() => {
             const copy = answer.copy ?? answer.headline;
             if (copy !== "")
                 Quickshell.clipboardText = copy;
-        }
+        })
     }
     readonly property var selected: current === -1 ? headline : matches[current] ?? null
 

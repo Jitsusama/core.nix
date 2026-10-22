@@ -1190,6 +1190,15 @@ pkgs.testers.runNixOSTest {
           )
           # Rounded half up, as JavaScript's Math.round does.
           copied("brightness", f"{int(now * 100 / most + 0.5)}% bright")
+          # With a number, Return sets it, as the brightness keys do.
+          answer("brightness 30")
+          launcher_until(
+              lambda shown: (shown["selected"] or {}).get("name") == "set the screen to 30%"
+          )
+          machine.send_key("ret")
+          machine.wait_until_succeeds(
+              f"test $(cat /sys/class/backlight/stand-in/brightness) -eq {most * 30 // 100}", timeout=10
+          )
           # The session's actions answer to what people call them; Escape,
           # never Return, since Return would do them.
           for typed, action in [("shut down", "Power Off"), ("restart", "Reboot"), ("sign out", "Log Out")]:
