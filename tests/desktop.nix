@@ -1236,6 +1236,72 @@ pkgs.testers.runNixOSTest {
               timeout=30,
           )
           as_account(f"rm -rf {another} ~/hallway $XDG_RUNTIME_DIR/pi-opened")
+
+      with subtest("the launcher finds pi's runs, going to the session that started one and reading an answer"):
+          # A fleet as the harness keeps one, started by the session, whose
+          # window's process stands in for pi's: one member still at work,
+          # its process the other window's, and one done with its answer.
+          leader = window_titled(agent)["pid"]
+          crew = "~/.local/state/pi/agentic-harness.pi/subagent-workflow/runs/paint-crew/reviewers"
+
+          def keeps(path, said):
+              as_account(f"mkdir -p {crew}/{path.split('/')[0]} && echo '{json.dumps(said)}' > {crew}/{path}")
+
+          asked = {"cwd": "/src/house", "args": ["cli.js", "--model", "anthropic/opus"]}
+          for member, child, stands in [("brush", window_titled("Elsewhere")["pid"], "running"), ("roller", 1, "complete")]:
+              keeps(f"{member}/request.json", asked)
+              keeps(f"{member}/lease.json", {"parentPid": leader, "childPid": child})
+              keeps(f"{member}/progress.json", {"state": stands, "activity": "painting the trim" if stands == "running" else ""})
+          stamp = machine.succeed("date -u +%FT%T.000Z").strip()
+          keeps("roller/result.json", {"state": "complete", "startedAt": stamp, "completedAt": stamp,
+                                       "usage": {"cost": {"total": 2.5}}, "finalAssistantText": "Two coats."})
+          presence_says({"addresses": ["TESTQA"], "busy": False, "owner": {"pid": leader}})
+          as_account(f"niri msg action focus-window --id {window_titled('Elsewhere')['id']}")
+          as_account("qs ipc call launcher toggle")
+          launcher_ready()
+          type_in("runs")
+          launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Runs")
+          machine.send_key("ret")
+          launcher_until(
+              lambda shown: shown["held"] == ["runs"]
+              and (shown["selected"] or {}).get("name") == "paint-crew"
+              and re.fullmatch(r"fleet \u00b7 1 of 2 done \u00b7 (<1|\d+) min \u00b7 TESTQA",
+                               shown["selected"]["side"])
+          )
+          photograph("launcher-runs")
+          # Stepped into, its members after the way to its session.
+          step_in()
+          launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Go to its session")
+          machine.send_key("down")
+          launcher_until(
+              lambda shown: (shown["selected"] or {}).get("name") == "brush"
+              and shown["selected"]["side"].startswith("painting the trim \u00b7 opus")
+          )
+          machine.send_key("down")
+          launcher_until(
+              lambda shown: (shown["selected"] or {}).get("name") == "roller"
+              and shown["selected"]["side"] == "opus \u00b7 $2.50 \u00b7 <1 min"
+          )
+          photograph("launcher-run-members")
+          # Its answer, read in a terminal named for the run and the member.
+          machine.send_key("ret")
+          reading = "paint-crew \u00b7 roller"
+          machine.wait_until_succeeds(in_session(f"niri msg --json windows | grep -q '{reading}'"), timeout=30)
+          # Still open a moment on, so the pager holds the answer.
+          time.sleep(1)
+          as_account(f"niri msg action close-window --id {window_titled(reading)['id']}")
+          # Return on the run itself goes to its session.
+          as_account("qs ipc call launcher toggle")
+          launcher_ready()
+          type_in("runs")
+          launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Runs")
+          machine.send_key("ret")
+          launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "paint-crew")
+          machine.send_key("ret")
+          machine.wait_until_succeeds(
+              in_session("niri msg --json focused-window | grep -q TESTQA"), timeout=10
+          )
+          as_account("rm -rf ~/.local/state/pi/agentic-harness.pi/subagent-workflow/runs/paint-crew")
           for title in [agent, "Elsewhere"]:
               as_account(f"niri msg action close-window --id {window_titled(title)['id']}")
           as_account(f"rm -rf {quest} {presence}/testqa.json")

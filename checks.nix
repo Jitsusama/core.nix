@@ -1305,7 +1305,10 @@ in
         readonly property string quests: Quickshell.env("QUESTS")
         property var running: []
       '';
-      quests = pkgs.callPackage ./modules/quickshell/pi-quests.nix { };
+      quests = pkgs.callPackage ./modules/quickshell/pi-helper.nix {
+        name = "pi-quests";
+        source = ./modules/quickshell/quests.rs;
+      };
     in
     pkgs.runCommandLocal "the-launcher-finds-the-quests" { } ''
       mkdir -p store/QEST-20261005-NOTES store/QEST-20261006-PLAIN launcher \
@@ -1380,6 +1383,95 @@ in
       mkdir -m 700 $XDG_RUNTIME_DIR
       export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
       timeout 60 ${lib.getExe' pkgs.quickshell "qs"} -p shell.qml
+      touch $out
+    '';
+
+  # The launcher's runs find pi's fleets and review rounds in a harness's
+  # state written here, as the real pi-runs reads it, and go to the session
+  # that started one or read a participant's answer (tests/runs.qml), with
+  # niri, pi's sessions and the screen's sharing stood in. pi-runs gives
+  # the answer whole, for the pager.
+  the-launcher-finds-the-runs =
+    let
+      singleton =
+        name: body:
+        pkgs.writeText name ''
+          pragma Singleton
+          import Quickshell
+          import QtQuick
+          Singleton { ${body} }
+        '';
+      niri = singleton "Niri.qml" ''
+        property var spawned: []
+        property var acted: null
+        function spawn(command) { spawned = command; }
+        function act(request) { acted = request; }
+      '';
+      sessions = singleton "Sessions.qml" ''
+        readonly property string state: Quickshell.env("PI_STATE")
+        property var running: []
+      '';
+      runs = pkgs.callPackage ./modules/quickshell/pi-helper.nix {
+        name = "pi-runs";
+        source = ./modules/quickshell/runs.rs;
+      };
+    in
+    pkgs.runCommandLocal "the-launcher-finds-the-runs" { } ''
+      state=$PWD/state
+      fleets=$state/subagent-workflow/runs
+      rounds=$state/review/transcripts/runs
+      at() { date -u -d "$1" +%FT%T.000Z; }
+      # One still at work, its process this sleep, beside one done.
+      sleep 300 &
+      live=$!
+      member() {
+        mkdir -p $1
+        echo '{"cwd":"/src/thing","args":["cli.js","--model","anthropic/opus","--thinking","high"]}' \
+          > $1/request.json
+        echo "{\"parentPid\":4242,\"childPid\":$2}" > $1/lease.json
+        echo "{\"state\":\"$3\",\"activity\":\"$4\"}" > $1/progress.json
+      }
+      result() {
+        printf '{"state":"complete","startedAt":"%s","completedAt":"%s",%s,"finalAssistantText":"%s"}' \
+          "$2" "$3" "\"usage\":{\"cost\":{\"total\":$4}}" "$5" > $1/result.json
+      }
+      member $fleets/fleet-live/reviewers/a $live running "reading checks.nix"
+      member $fleets/fleet-live/reviewers/b 1 complete ""
+      result $fleets/fleet-live/reviewers/b "$(at '-10 min')" "$(at now)" 1.25 'All good.\n\n- One \"finding\".'
+      # One whose process is gone, and one older than a day.
+      member $fleets/fleet-dead/reviewers/y 4000000000 running ""
+      member $fleets/fleet-old/reviewers/x 1 complete ""
+      result $fleets/fleet-old/reviewers/x "$(at '-3 days')" "$(at '-3 days')" 1 ""
+      touch -d '2 days ago' $fleets/fleet-old/reviewers/x/*
+      # A council, named for its change by the review file listing it.
+      council=council-20261022T100000000-000001
+      for who in tests safety; do member $rounds/$council/reviewers/$who 1 complete ""; done
+      result $rounds/$council/reviewers/tests 2026-10-22T10:00:00.000Z 2026-10-22T10:02:00.000Z 0.5 ""
+      result $rounds/$council/reviewers/safety 2026-10-22T10:00:30.000Z 2026-10-22T10:03:00.000Z 0.75 ""
+      mkdir -p $state/review/runs
+      echo "{\"runs\":[{\"id\":\"$council\",\"round\":\"council\"}]}" \
+        > $state/review/runs/github_github_Jitsusama_core.nix_380.json
+
+      printf 'All good.\n\n- One "finding".\n' > expected
+      ${lib.getExe' runs "pi-runs"} answer $fleets/fleet-live/reviewers/b/result.json > answered
+      cmp expected answered
+
+      mkdir launcher
+      cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
+      cp ${./modules/quickshell/Fuzzy.js} Fuzzy.js
+      cp ${./modules/quickshell/launcher/Provider.qml} launcher/Provider.qml
+      cp ${./modules/quickshell/launcher/Asking.js} launcher/Asking.js
+      cp ${./modules/quickshell/launcher/Runs.qml} launcher/Runs.qml
+      cp ${./tests/runs.qml} shell.qml
+      cp ${niri} Niri.qml
+      cp ${sessions} Sessions.qml
+      cp ${singleton "Quiet.qml" "property bool sharing: false"} Quiet.qml
+      export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
+      export PI_STATE=$state PATH=${runs}/bin:$PATH
+      mkdir -m 700 $XDG_RUNTIME_DIR
+      export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+      timeout 60 ${lib.getExe' pkgs.quickshell "qs"} -p shell.qml
+      kill $live
       touch $out
     '';
 

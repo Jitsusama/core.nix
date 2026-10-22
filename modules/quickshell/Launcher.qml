@@ -271,6 +271,10 @@ Scope {
             const choice = byKey[key];
             if (!choice || shown.has(key))
                 continue;
+            // A collection with nothing in it is no likely pick, since
+            // nothing can be stepped into; it stays below with the rest.
+            if (choice.from && choice.from.collection && choice.from.everything().length === 0)
+                continue;
             rows.push(choice);
             shown.add(key);
             if (++added === likely)
