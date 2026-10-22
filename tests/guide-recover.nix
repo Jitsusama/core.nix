@@ -228,7 +228,9 @@ pkgs.testers.runNixOSTest {
           type("${pin}")
 
       with subtest("everything the machine mounts is mounted under /mnt"):
-          on_screen("disk is open")
+          # The menu, which comes only once every mount is done: "disk is
+          # open" is shown as soon as the disk opens, before they are.
+          on_screen("What should be done")
           for at in ["/mnt", "/mnt/nix", "/mnt/home", "/mnt/var/log", "/mnt/boot"]:
               machine.succeed(f"findmnt {at}")
           machine.succeed("test -e /mnt/etc/NIXOS")
