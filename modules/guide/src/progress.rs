@@ -4,6 +4,7 @@
 //! that moves nothing it can count is still said to be running, and for
 //! how long, so a wait never looks like a hang.
 
+use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -11,8 +12,16 @@ use std::time::{Duration, Instant};
 #[derive(Clone, Debug, Default)]
 struct Reading {
     started: Option<Instant>,
+    /// The part of the work under way, said before how far along it is,
+    /// and when it began, so its pace is its own.
+    stage: Option<(String, Instant)>,
     done: u64,
     total: Option<u64>,
+    /// Whether the stage is counted by what the program it runs reads,
+    /// for work done by a program the guide only waits on.
+    by_reads: bool,
+    /// The program running now, by its process id.
+    program: Option<u32>,
 }
 
 /// A step's meter, shared between the step feeding it and the screen
@@ -33,6 +42,30 @@ impl Meter {
         };
     }
 
+    /// Begins a part of the work, counted afresh: what it is, as the
+    /// person would say it, and how many bytes it comes to where that's
+    /// known.
+    pub fn stage(&self, name: &str, total: Option<u64>) {
+        let mut reading = self.reading();
+        reading.stage = Some((name.to_string(), Instant::now()));
+        reading.done = 0;
+        reading.total = total;
+        reading.by_reads = false;
+    }
+
+    /// Begins a part of the work a program does, counted by how many bytes
+    /// it has read, which for one that copies files is how far along it
+    /// is.
+    pub fn stage_by_reads(&self, name: &str, total: Option<u64>) {
+        self.stage(name, total);
+        self.reading().by_reads = true;
+    }
+
+    /// The program running now, or that none is.
+    pub fn running(&self, program: Option<u32>) {
+        self.reading().program = program;
+    }
+
     /// How many bytes the work comes to, once it's known.
     pub fn total(&self, bytes: u64) {
         self.reading().total = Some(bytes);
@@ -48,17 +81,104 @@ impl Meter {
         self.reading().done = bytes;
     }
 
+    /// The bytes counted in the stage under way.
+    pub fn counted(&self) -> u64 {
+        self.reading().done
+    }
+
     /// What the screen says about it now.
     pub fn said(&self) -> String {
-        let reading = self.reading().clone();
-        let elapsed = reading.started.map(|started| started.elapsed());
-        said(reading.done, reading.total, elapsed.unwrap_or_default())
+        let reading = {
+            let mut reading = self.reading();
+            if let (true, Some(program)) = (reading.by_reads, reading.program)
+                && let Some(read) = read_by(program)
+            {
+                reading.done = read;
+            }
+            reading.clone()
+        };
+        let elapsed =
+            |since: Option<Instant>| since.map(|since| since.elapsed()).unwrap_or_default();
+        match reading.stage {
+            Some((stage, since)) => {
+                let pace = said(reading.done, reading.total, elapsed(Some(since)));
+                // Before a byte of it is counted, how long the whole step has
+                // been running says more than how long this part has.
+                let pace = if reading.done == 0 {
+                    said(0, None, elapsed(reading.started))
+                } else {
+                    pace
+                };
+                format!("{stage}: {}", lowered(&pace))
+            }
+            None => said(reading.done, reading.total, elapsed(reading.started)),
+        }
     }
 
     fn reading(&self) -> std::sync::MutexGuard<'_, Reading> {
         self.0
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+}
+
+/// How many bytes a running program has read, every read it made counted
+/// whether or not it reached a disk, as Linux says in /proc; none where
+/// it doesn't.
+fn read_by(program: u32) -> Option<u64> {
+    let io = std::fs::read_to_string(format!("/proc/{program}/io")).ok()?;
+    io.lines()
+        .find_map(|line| line.strip_prefix("rchar:"))
+        .and_then(|count| count.trim().parse().ok())
+}
+
+fn lowered(said: &str) -> String {
+    let mut chars = said.chars();
+    match chars.next() {
+        Some(first) => first.to_lowercase().chain(chars).collect(),
+        None => String::new(),
+    }
+}
+
+/// Something read or written through, every byte that passes counted on
+/// a meter.
+pub struct Counted<T> {
+    inner: T,
+    meter: Meter,
+}
+
+impl<T> Counted<T> {
+    pub fn new(inner: T, meter: &Meter) -> Counted<T> {
+        Counted {
+            inner,
+            meter: meter.clone(),
+        }
+    }
+}
+
+impl<T: Read> Read for Counted<T> {
+    fn read(&mut self, into: &mut [u8]) -> io::Result<usize> {
+        let count = self.inner.read(into)?;
+        self.meter.advance(count as u64);
+        Ok(count)
+    }
+}
+
+impl<T: Write> Write for Counted<T> {
+    fn write(&mut self, from: &[u8]) -> io::Result<usize> {
+        let count = self.inner.write(from)?;
+        self.meter.advance(count as u64);
+        Ok(count)
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        self.inner.flush()
+    }
+}
+
+impl<T: Seek> Seek for Counted<T> {
+    fn seek(&mut self, to: SeekFrom) -> io::Result<u64> {
+        self.inner.seek(to)
     }
 }
 
@@ -201,6 +321,72 @@ mod tests {
         std::thread::spawn(move || fed.advance(400)).join().unwrap();
         assert!(
             meter.said().starts_with("400 bytes of 1 KB"),
+            "{}",
+            meter.said()
+        );
+    }
+
+    #[test]
+    fn each_stage_is_named_and_counted_afresh() {
+        let meter = Meter::new();
+        meter.start();
+        meter.stage("Writing the stick", Some(2000));
+        assert!(
+            meter.said().starts_with("Writing the stick: running for "),
+            "{}",
+            meter.said()
+        );
+        meter.advance(2000);
+        meter.stage("Reading it back", Some(1000));
+        meter.advance(250);
+        assert!(
+            meter
+                .said()
+                .starts_with("Reading it back: 250 bytes of 1 KB"),
+            "{}",
+            meter.said()
+        );
+    }
+
+    #[test]
+    fn a_stage_a_program_does_is_counted_by_what_it_has_read() {
+        let meter = Meter::new();
+        meter.start();
+        meter.stage_by_reads("Copying", Some(1 << 30));
+        // sha256sum reads as Nix does, a read at a time; cat would splice,
+        // which isn't counted as reading.
+        let mut program = std::process::Command::new("sha256sum")
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::null())
+            .spawn()
+            .unwrap();
+        meter.running(Some(program.id()));
+        let mut stdin = program.stdin.take().unwrap();
+        stdin.write_all(&vec![0u8; 300_000]).unwrap();
+        stdin.flush().unwrap();
+        let mut waited = 0;
+        while meter.counted() < 300_000 && waited < 50 {
+            let _ = meter.said();
+            std::thread::sleep(Duration::from_millis(20));
+            waited += 1;
+        }
+        assert!(meter.counted() >= 300_000, "{}", meter.said());
+        drop(stdin);
+        program.wait().unwrap();
+        meter.running(None);
+    }
+
+    #[test]
+    fn what_passes_through_is_counted_both_ways() {
+        let meter = Meter::new();
+        meter.start();
+        let mut counted = Counted::new(io::Cursor::new(vec![0u8; 100]), &meter);
+        counted.write_all(&[1; 30]).unwrap();
+        let mut back = vec![];
+        counted.read_to_end(&mut back).unwrap();
+        assert_eq!(back.len(), 70);
+        assert!(
+            meter.said().starts_with("100 bytes so far"),
             "{}",
             meter.said()
         );

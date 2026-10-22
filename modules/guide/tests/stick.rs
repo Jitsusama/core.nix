@@ -13,6 +13,7 @@ use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
+use guide::progress::Meter;
 use guide::sign::Signer;
 use guide::stick::gpt::{EFI_SYSTEM, SECTOR, Table};
 use guide::stick::{self, Image};
@@ -223,11 +224,12 @@ fn a_written_stick_is_whole_to_sfdisk_fsck_and_its_key() {
         &mut disk,
         stick::new_guid().unwrap(),
         None,
+        &Meter::new(),
         fill(&key, &nano),
     )
     .unwrap();
 
-    stick::verify(&written, &mut disk, |store| {
+    stick::verify(&written, &mut disk, &Meter::new(), |store| {
         assert_eq!(vault::manifest(store)?, manifest());
         let mut sealed = vec![];
         store.open(vault::KEY)?.read_to_end(&mut sealed).unwrap();
@@ -270,14 +272,27 @@ fn the_images_partitions_are_copied_byte_for_byte() {
     let mut disk = open(&path);
     let key = VaultKey::generate();
     let nano = age::x25519::Identity::generate();
-    stick::write(
+    let meter = Meter::new();
+    let written = stick::write(
         &mut image,
         &mut disk,
         stick::new_guid().unwrap(),
         None,
+        &meter,
         fill(&key, &nano),
     )
     .unwrap();
+    // Every byte of the image's partitions is counted as it's written, and
+    // as it's read back.
+    let imaged: u64 = image
+        .partitions()
+        .iter()
+        .map(|partition| partition.bytes())
+        .sum();
+    assert!(meter.counted() >= imaged, "{} of {imaged}", meter.counted());
+    let meter = Meter::new();
+    stick::verify(&written, &mut disk, &meter, |_| Ok(())).unwrap();
+    assert!(meter.counted() >= imaged, "{} of {imaged}", meter.counted());
     let source = fs::read(&image_path).unwrap();
     let stick = fs::read(&path).unwrap();
     for partition in image.partitions() {
@@ -408,10 +423,11 @@ fn a_signed_sticks_boot_program_verifies_with_the_machines_db_key() {
         &mut disk,
         stick::new_guid().unwrap(),
         Some(&signer),
+        &Meter::new(),
         fill(&key, &nano),
     )
     .unwrap();
-    stick::verify(&written, &mut disk, |_| Ok(())).unwrap();
+    stick::verify(&written, &mut disk, &Meter::new(), |_| Ok(())).unwrap();
 
     let esp = image
         .partitions()
@@ -454,6 +470,7 @@ fn an_image_with_nothing_to_sign_is_refused_with_nothing_written() {
         &mut disk,
         stick::new_guid().unwrap(),
         Some(&signer),
+        &Meter::new(),
         |_| Ok(()),
     );
     assert!(
@@ -477,6 +494,7 @@ fn a_byte_that_didnt_reach_the_stick_is_caught() {
         &mut disk,
         stick::new_guid().unwrap(),
         None,
+        &Meter::new(),
         fill(&key, &nano),
     )
     .unwrap();
@@ -490,7 +508,7 @@ fn a_byte_that_didnt_reach_the_stick_is_caught() {
     other.write_all(&[0]).unwrap();
     other.sync_all().unwrap();
 
-    let result = stick::verify(&written, &mut disk, |_| Ok(()));
+    let result = stick::verify(&written, &mut disk, &Meter::new(), |_| Ok(()));
     assert!(
         matches!(&result, Err(Fault::Unproven { standing, .. }) if standing.contains("the store partition")),
         "{result:?}"
@@ -512,6 +530,7 @@ fn a_write_that_stops_part_way_leaves_no_partition_table() {
         &mut disk,
         stick::new_guid().unwrap(),
         None,
+        &Meter::new(),
         fill(&key, &nano),
     )
     .unwrap();
@@ -521,6 +540,7 @@ fn a_write_that_stops_part_way_leaves_no_partition_table() {
         &mut disk,
         stick::new_guid().unwrap(),
         None,
+        &Meter::new(),
         |_| {
             Err(Fault::Unkept {
                 path: "the vault".into(),
@@ -552,6 +572,7 @@ fn a_stick_too_small_is_refused_with_nothing_written() {
         &mut disk,
         stick::new_guid().unwrap(),
         None,
+        &Meter::new(),
         |_| Ok(()),
     );
     assert!(
@@ -576,6 +597,7 @@ fn the_passphrase_opens_a_vault_on_the_stick_when_no_yubikey_will() {
         &mut disk,
         stick::new_guid().unwrap(),
         None,
+        &Meter::new(),
         |store| {
             store
                 .create(vault::KEY_PASSPHRASE)?
@@ -587,7 +609,7 @@ fn the_passphrase_opens_a_vault_on_the_stick_when_no_yubikey_will() {
         },
     )
     .unwrap();
-    stick::verify(&written, &mut disk, |store| {
+    stick::verify(&written, &mut disk, &Meter::new(), |store| {
         let mut sealed = vec![];
         store
             .open(vault::KEY_PASSPHRASE)?

@@ -246,6 +246,7 @@ fn write_stick(
         signer.as_ref(),
         payload.as_ref().zip(passphrase.as_ref()),
         &[],
+        &guide::progress::Meter::new(),
     )?;
     match &payload {
         Some(payload) => println!(

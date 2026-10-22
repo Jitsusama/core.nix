@@ -277,12 +277,15 @@ impl Machine for System {
             why: why.to_string(),
         };
         let mut child = command.spawn().map_err(unstarted)?;
+        self.meter.running(Some(child.id()));
         if let Some(secret) = given.stdin {
             let mut stdin = child.stdin.take().expect("a piped stdin");
             // A program that stops reading early still gets to say why.
             let _ = stdin.write_all(secret.expose().as_bytes());
         }
-        let output = child.wait_with_output().map_err(unstarted)?;
+        let output = child.wait_with_output();
+        self.meter.running(None);
+        let output = output.map_err(unstarted)?;
         let ran = Ran {
             program: program.name().into(),
             // A program killed by a signal has no status; -1 says so.
@@ -475,6 +478,7 @@ impl Machine for System {
     /// Streamed: each file goes from the vault to the disk a block at a
     /// time, never whole in memory.
     fn unpack(&mut self, key: VaultKey, from: &str, into: &str) -> Result<u64, Fault> {
+        let meter = self.meter.clone();
         let mut vault = Vault::open(self.vault()?, key)?;
         let files: Vec<(String, u64)> = vault
             .files()
@@ -482,6 +486,10 @@ impl Machine for System {
             .filter(|file| file.path.starts_with(from))
             .map(|file| (file.path.clone(), file.bytes))
             .collect();
+        meter.stage(
+            "Copying it off the stick",
+            Some(files.iter().map(|(_, bytes)| bytes).sum()),
+        );
         let mut total = 0;
         for (path, bytes) in files {
             let to = Path::new(into).join(path[from.len()..].trim_start_matches('/'));
@@ -495,7 +503,10 @@ impl Machine for System {
                 .mode(0o600)
                 .open(&to)
                 .map_err(unkept(&to))?;
-            let mut out = std::io::BufWriter::with_capacity(1 << 20, file);
+            let mut out = std::io::BufWriter::with_capacity(
+                1 << 20,
+                crate::progress::Counted::new(file, &meter),
+            );
             vault.extract(&path, &mut out)?;
             out.flush().map_err(unkept(&to))?;
             total += bytes;

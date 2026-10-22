@@ -154,6 +154,9 @@ fn the_one_stick_is_written_whole_and_what_was_mounted_from_it_is_handed_over() 
     let mut answers = Answers::new();
     answers.give("stick", Answer::Done);
     Journey::attempt(&step, &mut fake, &answers).unwrap();
+    // The screen was told what the write was doing, last reading it back.
+    let said = guide::Machine::meter(&mut fake).said();
+    assert!(said.starts_with("Reading it back to check it: "), "{said}");
 
     let opened = fake
         .calls

@@ -303,7 +303,12 @@ impl Step for InstallSystem {
         })?;
         // The cache goes onto the new disk, never into memory, since it's
         // the whole system.
-        machine.unpack(key, SYSTEM_CACHE, CACHE)?;
+        let cached = machine.unpack(key, SYSTEM_CACHE, CACHE)?;
+        // Nix reads every file of the cache once as it copies the system,
+        // so what it has read says how far along it is.
+        machine
+            .meter()
+            .stage_by_reads("Copying it onto the disk", Some(cached));
         let from = format!("file://{CACHE}");
         let to = format!("local?root={ROOT}");
         // The cache carries no Nix signatures, since the vault already
@@ -333,6 +338,7 @@ impl Step for InstallSystem {
         if copied.status != 0 {
             return Err(copied.refusal());
         }
+        machine.meter().stage("Installing its boot loader", None);
         let installed = machine.run_given(
             Program::Tool(Tool::NixosInstall),
             &[
