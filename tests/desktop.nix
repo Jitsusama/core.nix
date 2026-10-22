@@ -263,17 +263,21 @@ pkgs.testers.runNixOSTest {
         self.nixosModules.wifid
       ];
 
-      # The VM has no backlight, light sensor or sound card, so it gets one of
-      # each that drives nothing, which the kernel and PipeWire report as they
-      # do the laptop's.
+      # The VM has no backlight, light sensor, lid or sound card, so it gets
+      # one of each that drives nothing, which the kernel and PipeWire report
+      # as they do the laptop's. The lid shut asks nothing of logind, which
+      # would otherwise suspend the machine.
+      services.logind.settings.Login.HandleLidSwitch = "ignore";
       boot.extraModulePackages = [
         (config.boot.kernelPackages.callPackage ./stand-in-backlight { })
         (config.boot.kernelPackages.callPackage ./stand-in-light { })
+        (config.boot.kernelPackages.callPackage ./stand-in-lid { })
         config.boot.kernelPackages.v4l2loopback
       ];
       boot.kernelModules = [
         "stand-in-backlight"
         "stand-in-light"
+        "stand-in-lid"
         # A stand-in camera, a loopback as the laptop's is, fed a test
         # picture as the laptop's relay feeds it the sensor's.
         "v4l2loopback"
@@ -961,6 +965,27 @@ pkgs.testers.runNixOSTest {
           after = f"--after-cursor={shlex.quote(since)}"
           shell = as_account(f"journalctl --user --unit=quickshell --no-pager --output=cat {after}")
           t.assertNotIn("drawn brightness", shell, "the bar showed for the light")
+
+          # The sensor sits in the lid, so with the lid shut its dark is the
+          # lid's and the screen keeps its brightness; opened, it follows
+          # the room again.
+          def lid_says(said):
+              machine.wait_until_succeeds(
+                  in_session(f"journalctl --user --unit=backlight --no-pager --output=cat | grep -qF '{said}'"),
+                  timeout=10,
+              )
+
+          machine.succeed("echo 1 > /sys/module/stand_in_lid/parameters/shut")
+          lid_says("the lid is shut")
+          held_at = brightness()
+          light(0)
+          # Longer than dimmer light waits to be followed, with room.
+          time.sleep(8)
+          t.assertEqual(brightness(), held_at, "the screen followed the shut lid's dark")
+          machine.succeed("echo 0 > /sys/module/stand_in_lid/parameters/shut")
+          lid_says("the lid is open")
+          light(1)
+          retry(lambda _: brightness() < held_at, timeout_seconds=30)
 
       with subtest("the charge shows when power goes and comes back, then goes"):
           # The kernel's stand-in has two supplies, mains and USB, and UPower

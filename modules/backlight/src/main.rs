@@ -7,6 +7,10 @@
 //! (steer.rs) the brightness moves there through logind, which lets the
 //! session set its own backlight.
 //!
+//! The sensor sits in the lid, so while the lid is shut the light it hears
+//! is the lid's: nothing follows it and nothing is learned from it until
+//! the lid opens, as logind says it does.
+//!
 //! Whatever else writes the brightness, which is Joel with the keys, teaches
 //! the curve: that brightness, in this light, is the one he wants. The first
 //! light heard teaches it the brightness the screen already has, so starting
@@ -28,9 +32,12 @@ use std::error::Error;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
+use std::pin::Pin;
 use std::process::ExitCode;
 use std::time::{Duration, Instant};
 
+use zbus::export::futures_core::Stream;
+use zbus::proxy::PropertyStream;
 use zbus::{Connection, proxy};
 
 use curve::Curve;
@@ -49,6 +56,31 @@ const STEP: Duration = Duration::from_millis(16);
 )]
 trait Session {
     fn set_brightness(&self, subsystem: &str, name: &str, brightness: u32) -> zbus::Result<()>;
+}
+
+/// logind itself, which says whether the lid is shut and when that changes.
+#[proxy(
+    interface = "org.freedesktop.login1.Manager",
+    default_service = "org.freedesktop.login1",
+    default_path = "/org/freedesktop/login1"
+)]
+trait Manager {
+    #[zbus(property)]
+    fn lid_closed(&self) -> zbus::Result<bool>;
+}
+
+/// Waits for the lid to open or shut, or forever once logind stops saying.
+async fn lid_moved(lid: &mut Option<Pin<Box<PropertyStream<'_, bool>>>>) -> zbus::Result<bool> {
+    let Some(stream) = lid else {
+        return std::future::pending().await;
+    };
+    match std::future::poll_fn(|cx| stream.as_mut().poll_next(cx)).await {
+        Some(changed) => changed.get().await,
+        None => {
+            *lid = None;
+            std::future::pending().await
+        }
+    }
 }
 
 #[tokio::main(flavor = "current_thread")]
@@ -147,6 +179,10 @@ async fn run() -> Result<(), Box<dyn Error>> {
 
     let bus = Connection::system().await?;
     let session = SessionProxy::new(&bus).await?;
+    let manager = ManagerProxy::new(&bus).await?;
+    // Heard before it's read, so a change between the two isn't missed.
+    let mut lid = Some(Box::pin(manager.receive_lid_closed_changed().await));
+    let shut = manager.lid_closed().await?;
     let mut watch = screen.watch()?;
     let seen = screen.brightness()?;
     let mut backlight = Backlight {
@@ -161,7 +197,9 @@ async fn run() -> Result<(), Box<dyn Error>> {
         lux: None,
         seen,
         wrote: None,
+        shut: false,
     };
+    backlight.lid(shut);
     let (mut readings, now) = listen().unzip();
     if let Some(lux) = now {
         eprintln!("<6>hears {lux:.0} lux");
@@ -179,6 +217,7 @@ async fn run() -> Result<(), Box<dyn Error>> {
                 backlight.screen_changed()?;
             }
             lux = light(&mut readings) => backlight.heard(lux?),
+            shut = lid_moved(&mut lid) => backlight.lid(shut?),
             () = until(wake) => backlight.step().await,
         }
     }
@@ -208,13 +247,15 @@ struct Backlight<'a> {
     seen: u32,
     /// The brightness this daemon last set, in steps.
     wrote: Option<u32>,
+    /// Whether the lid is shut, so the light heard is the lid's.
+    shut: bool,
 }
 
 impl Backlight<'_> {
     /// The light changed. The first light heard teaches the curve the
     /// brightness the screen already has.
     fn heard(&mut self, lux: f64) {
-        if !lux.is_finite() || lux < 0.0 {
+        if !lux.is_finite() || lux < 0.0 || self.shut {
             return;
         }
         self.lux = Some(lux);
@@ -226,6 +267,22 @@ impl Backlight<'_> {
             .map_or_else(|| self.screen.level_of(self.seen), |ramp| ramp.to());
         self.steer
             .heard(self.curve.level_at(lux), shown, Instant::now());
+    }
+
+    /// The lid opened or shut. Shut, any move the light asked for stops; the
+    /// light heard once it opens is followed again.
+    fn lid(&mut self, shut: bool) {
+        if shut == self.shut {
+            return;
+        }
+        self.shut = shut;
+        if shut {
+            eprintln!("<6>the lid is shut, so the light it hears is its own");
+            self.ramp = None;
+            self.steer.forget();
+        } else {
+            eprintln!("<6>the lid is open");
+        }
     }
 
     /// The brightness was written. Unless this daemon wrote it, Joel picked
@@ -242,13 +299,13 @@ impl Backlight<'_> {
     }
 
     /// Joel picked this brightness: any move stops, the curve learns it for
-    /// the light there is, and the shell is told.
+    /// the light there is, unless the lid is shut, and the shell is told.
     fn chose(&mut self, steps: u32) {
         self.ramp = None;
         self.steer.forget();
         self.wrote = None;
         let level = self.screen.level_of(steps);
-        if let Some(lux) = self.lux {
+        if let Some(lux) = self.lux.filter(|_| !self.shut) {
             self.learn(lux, level);
             eprintln!("<6>learns {:.0}% for {lux:.0} lux", level * 100.0);
         }
