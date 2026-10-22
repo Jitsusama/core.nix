@@ -3,7 +3,9 @@
 # desktop mounted from it is unmounted, and UDisks2 opens its whole disk,
 # which the guide writes with a machine's payload sealed to a passphrase of
 # seven words it made, shown alone for a phone and typed back, then reads
-# back. polkit lets the person open a
+# back. The rescue bundles the old stick carried, read off its disk before
+# it's written over, and the host's own machine's, go onto the new stick
+# and stay with the person. polkit lets the person open a
 # removable disk without the password a desktop's agent would ask for,
 # since a test has no agent to answer it.
 { self, pkgs }:
@@ -29,6 +31,45 @@ let
     yubikeys = [ "the Nano" ];
     account = "alice";
   };
+  # Rescue bundles as far as a host reads one it carries on: which
+  # machine's it is, and when it was sealed.
+  bundle =
+    machine:
+    pkgs.writeText "${machine}-rescue-bundle.json" (
+      builtins.toJSON {
+        format = 1;
+        inherit machine;
+        opened_by = [ "the Nano" ];
+        owner = "22f0175f-c166-49d2-96ab-c61575cddac5";
+        db = "ab";
+        to_keys = "a";
+        to_passphrase = "b";
+        keys = "c";
+        sealed = 1761100000;
+      }
+    );
+  # A stick used before: a partition of the person's, and a vault carrying
+  # another machine's bundle.
+  used =
+    pkgs.runCommand "used-stick"
+      {
+        nativeBuildInputs = [
+          pkgs.dosfstools
+          pkgs.gptfdisk
+          pkgs.mtools
+        ];
+      }
+      ''
+        mkdir $out
+        dd if=/dev/zero of=$out/stick.raw bs=1M count=160
+        sgdisk --new=1:2048:+64M --typecode=1:0700 --change-name=1:data \
+          --new=2:133120:+64M --typecode=2:0700 --change-name=2:vault $out/stick.raw
+        mkfs.vfat -C data.fat 65536
+        mkfs.vfat -C vault.fat 65536
+        MTOOLS_SKIP_CHECK=1 mcopy -i vault.fat ${bundle "desktop"} ::desktop-rescue-bundle.json
+        dd if=data.fat of=$out/stick.raw bs=512 seek=2048 conv=notrunc
+        dd if=vault.fat of=$out/stick.raw bs=512 seek=133120 conv=notrunc
+      '';
 in
 pkgs.testers.runNixOSTest {
   name = "guide-host";
@@ -48,6 +89,11 @@ pkgs.testers.runNixOSTest {
         }
       });
     '';
+    # The bundle this host's own install left for anyone to read.
+    systemd.tmpfiles.rules = [
+      "d /var/lib/guide 0755 root root -"
+      "C /var/lib/guide/rescue-bundle.json 0644 root root - ${bundle "tower"}"
+    ];
     services.getty.autologinUser = "alice";
     environment.loginShellInit = ''
       if [ "$(tty)" = /dev/tty1 ]; then
@@ -72,7 +118,7 @@ pkgs.testers.runNixOSTest {
     import json, os, re, subprocess, tempfile
 
     stick = tempfile.NamedTemporaryFile(suffix=".qcow2")
-    subprocess.run(["${pkgs.qemu}/bin/qemu-img", "create", "-f", "qcow2", stick.name, "6G"], check=True)
+    subprocess.run(["${pkgs.qemu}/bin/qemu-img", "create", "-f", "qcow2", "-b", "${used}/stick.raw", "-F", "raw", stick.name, "6G"], check=True)
     os.environ["STICK_IMAGE"] = stick.name
 
     def screen():
@@ -93,8 +139,7 @@ pkgs.testers.runNixOSTest {
     host.wait_for_unit("multi-user.target")
 
     with subtest("the stick, once used, has a partition the desktop mounted"):
-        host.succeed("sgdisk --new=1:0:+64M --typecode=1:0700 /dev/sda && udevadm settle")
-        host.succeed("mkfs.vfat /dev/sda1")
+        host.succeed("udevadm settle")
         host.succeed("su alice -c 'udisksctl mount --block-device /dev/sda1'")
         host.succeed("findmnt /dev/sda1")
 
@@ -134,5 +179,14 @@ pkgs.testers.runNixOSTest {
         listed = json.loads(host.succeed("sfdisk --json /dev/sda"))
         names = [p.get("name") for p in listed["partitiontable"]["partitions"]]
         assert names == ["esp", "store-verity", "store", "vault"], names
+
+    with subtest("the old stick's bundles and the host's own are kept, and carried on"):
+        host.succeed("udevadm settle && mkdir -p /run/vault && mount -o ro /dev/sda4 /run/vault")
+        kept = "/home/alice/.local/state/guide/rescue"
+        for machine, bundle in [("desktop", "${bundle "desktop"}"), ("tower", "${bundle "tower"}")]:
+            host.succeed(f"cmp {bundle} /run/vault/{machine}-rescue-bundle.json")
+            host.succeed(f"cmp {bundle} {kept}/{machine}-rescue-bundle.json")
+        host.succeed(f"test $(stat -c %U {kept}) = alice")
+        host.succeed("umount /run/vault")
   '';
 }

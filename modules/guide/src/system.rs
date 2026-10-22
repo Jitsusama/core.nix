@@ -441,6 +441,10 @@ impl Machine for System {
         synced.sync_all().map_err(unkept)
     }
 
+    fn read_disk(&mut self, device: &str) -> Result<File, Fault> {
+        crate::stick::device::open_for_reading(device)
+    }
+
     /// Exclusive, which Linux refuses for a block device something has
     /// mounted, so nothing reads it while it's changed.
     fn open_partition(&mut self, device: &str) -> Result<File, Fault> {

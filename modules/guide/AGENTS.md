@@ -100,8 +100,9 @@ driven on; the installed machine's steps come later.
   made where the install signs with them, which only a firmware in setup
   mode will take. The system is copied in from the vault with no
   network, then the stick is made the machine's own (below), and the key
-  held in memory comes off the disk last. A host gives the stick the keys with
-  `--rescue-bundle`, opened in memory, and signs the stick with them.
+  held in memory comes off the disk last. A host gives the stick the keys
+  from the machine's bundle, the one it keeps or one `--rescue-bundle`
+  names, opened in memory, and signs the stick with them.
   Every step stays done through the steps after it, since the journey runs
   the first that isn't.
 - **Recovering.** Any stick recovers a machine with its data left in
@@ -156,6 +157,17 @@ driven on; the installed machine's steps come later.
   writing the machine's stick opens it with a YubiKey or what its
   passphrase is, holding the keys only in memory, so plain Secure Boot
   keys are never an input anywhere.
+- **Spreading the bundles.** Before a host writes over a stick, it keeps
+  every bundle the stick's vault carries, read where a desktop mounted it
+  or else off the disk opened only for reading, and its own machine's,
+  under `$XDG_STATE_HOME/guide/rescue/`. Of two bundles for one machine
+  the one sealed later stays. Every stick it writes carries all it keeps
+  beside the vault's sealed files, read back as written, and a stick for a
+  machine it keeps a bundle for is signed from that bundle unless
+  `--rescue-bundle` names another. So a bundle reaches every laptop and
+  stick by their being used. A forged one does no harm: an install puts
+  keys back only when the firmware already trusts them, or is in setup
+  mode and takes any. Nothing that won't read stops a stick being written.
 - **The machine's own stick.** Once the install has the machine's keys,
   it puts them into the stick's vault under `sbctl/`, where a reinstall
   takes them from, and the bundle beside the vault's sealed files as

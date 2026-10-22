@@ -12,8 +12,11 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use guide::fake::Fake;
-use guide::host::WriteStick;
+use guide::host::carried::{self, Carried};
+use guide::host::{GatherBundles, WriteStick};
+use guide::rescue::Bundle;
 use guide::stick::gpt::{SECTOR, Table};
+use guide::vault::store::Directory;
 use guide::{Answer, Answers, Ask, Fault, Journey, Standing, Step, Tool};
 
 macro_rules! fixture {
@@ -289,5 +292,205 @@ fn the_last_card_says_how_to_reach_the_machines_firmware() {
         !carrying.next().contains("Hold volume-up"),
         "{}",
         carrying.next()
+    );
+}
+
+/// A bundle as a machine's install seals it, as far as a host reads one
+/// it carries on: which machine's it is, and when it was sealed.
+fn bundle(machine: &str, sealed: Option<u64>) -> Vec<u8> {
+    let sealed = sealed
+        .map(|at| format!(r#","sealed":{at}"#))
+        .unwrap_or_default();
+    format!(
+        r#"{{"format":1,"machine":"{machine}","opened_by":["the Nano"],"owner":"22f0175f-c166-49d2-96ab-c61575cddac5","db":"ab","to_keys":"a","to_passphrase":"b","keys":"c"{sealed}}}"#
+    )
+    .into_bytes()
+}
+
+fn carried(machine: &str, sealed: Option<u64>) -> Carried {
+    Carried::read(bundle(machine, sealed), None).unwrap()
+}
+
+#[test]
+fn a_host_keeps_each_machines_newest_bundle_and_never_an_older_one() {
+    let directory = Scratch::new("host-keeps-newest");
+    let mut store = Directory::new(directory.join("rescue"));
+    carried::keep(
+        &mut store,
+        vec![carried("laptop", Some(100)), carried("desktop", None)],
+    )
+    .unwrap();
+    let kept = carried::keep(
+        &mut store,
+        vec![
+            carried("laptop", Some(200)),
+            carried("laptop", Some(90)),
+            carried("laptop", None),
+            carried("desktop", Some(5)),
+        ],
+    )
+    .unwrap();
+    assert_eq!(
+        kept,
+        vec![carried("desktop", Some(5)), carried("laptop", Some(200))]
+    );
+    // Nothing older replaces it later, either, nor one from before
+    // bundles said when they were sealed.
+    for older in [Some(150), None] {
+        let kept = carried::keep(&mut store, vec![carried("laptop", older)]).unwrap();
+        assert_eq!(kept[1], carried("laptop", Some(200)));
+    }
+}
+
+#[test]
+fn a_stick_for_a_machine_whose_bundle_the_host_keeps_is_signed_from_it_unless_another_is_given() {
+    let kept = vec![carried("desktop", Some(3)), carried("laptop", Some(7))];
+    let chosen = |given: Option<&str>, machine: Option<&str>| {
+        carried::bundle_for(
+            given.map(|machine| Bundle::read(&bundle(machine, Some(1))).unwrap()),
+            machine,
+            &kept,
+        )
+        .unwrap()
+        .map(|bundle| (bundle.machine().to_string(), bundle.sealed()))
+    };
+    assert_eq!(chosen(None, Some("laptop")), Some(("laptop".into(), 7)));
+    assert_eq!(
+        chosen(Some("laptop"), Some("laptop")),
+        Some(("laptop".into(), 1))
+    );
+    assert_eq!(chosen(None, Some("tower")), None);
+    // A repair stick is for no machine, so none of the host's is used.
+    assert_eq!(chosen(None, None), None);
+}
+
+#[test]
+fn a_bundle_kept_under_another_machines_name_or_none_is_left_unread() {
+    let directory = Scratch::new("host-keeps-named");
+    let root = directory.join("rescue");
+    fs::create_dir_all(&root).unwrap();
+    fs::write(
+        root.join("desktop-rescue-bundle.json"),
+        bundle("laptop", Some(1)),
+    )
+    .unwrap();
+    fs::write(root.join("laptop-rescue-bundle.json"), b"not a bundle").unwrap();
+    fs::write(root.join("notes.json"), bundle("laptop", Some(1))).unwrap();
+    assert_eq!(carried::kept(&mut Directory::new(&root)), vec![]);
+}
+
+#[test]
+fn a_stick_carries_every_bundle_on_and_the_next_host_keeps_them_off_it() {
+    let directory = Scratch::new("host-carries");
+    let stick = stick_file(&directory);
+    let mut fake = Fake::new();
+    lsblk(&mut fake, fixture!("lsblk-laid-out.json"));
+    fake.disk("/dev/sda", &stick);
+    let bundles = vec![carried("laptop", Some(7)), carried("desktop", Some(3))];
+    let step = repair(&directory).carrying(bundles);
+    let mut answers = Answers::new();
+    answers.give("stick", Answer::Done);
+    Journey::attempt(&step, &mut fake, &answers).unwrap();
+    let on_it = carried::on_stick(&mut File::open(&stick).unwrap());
+    assert_eq!(
+        on_it,
+        vec![carried("desktop", Some(3)), carried("laptop", Some(7))]
+    );
+
+    // Another host, about to write over it, keeps them first, and its
+    // own machine's beside them.
+    let mut host = Fake::new();
+    lsblk(&mut host, fixture!("lsblk-laid-out.json"));
+    host.disk("/dev/sda", &stick)
+        .file(guide::rescue::KEPT, &bundle("tower", Some(9)));
+    let gather = GatherBundles {
+        kept: directory.join("host"),
+    };
+    assert!(matches!(
+        gather.observe(&mut host).unwrap(),
+        Standing::Needed { .. }
+    ));
+    Journey::attempt(&gather, &mut host, &Answers::new()).unwrap();
+    assert!(
+        host.calls
+            .iter()
+            .any(|call| call == "opening /dev/sda for reading"),
+        "{:#?}",
+        host.calls
+    );
+    assert!(
+        !host.calls.iter().any(|call| call.contains("for writing")),
+        "{:#?}",
+        host.calls
+    );
+    assert_eq!(
+        carried::kept(&mut Directory::new(directory.join("host"))),
+        vec![
+            carried("desktop", Some(3)),
+            carried("laptop", Some(7)),
+            carried("tower", Some(9)),
+        ]
+    );
+    assert!(matches!(
+        gather.observe(&mut host).unwrap(),
+        Standing::Done { .. }
+    ));
+}
+
+#[test]
+fn a_vault_a_desktop_mounted_is_read_where_it_is_and_the_disk_never_opened() {
+    let directory = Scratch::new("host-gathers-mounted");
+    let mounted = directory.join("mounted");
+    fs::create_dir_all(&mounted).unwrap();
+    fs::write(
+        mounted.join("laptop-rescue-bundle.json"),
+        bundle("laptop", Some(4)),
+    )
+    .unwrap();
+    let mut seen: serde_json::Value =
+        serde_json::from_str(fixture!("lsblk-laid-out.json")).unwrap();
+    for disk in seen["blockdevices"].as_array_mut().unwrap() {
+        let partitions = disk
+            .get_mut("children")
+            .and_then(|found| found.as_array_mut());
+        for partition in partitions.into_iter().flatten() {
+            if partition["path"] == "/dev/sda4" {
+                partition["mountpoints"] = serde_json::json!([mounted.to_str().unwrap()]);
+            }
+        }
+    }
+    let mut host = Fake::new();
+    lsblk(&mut host, &seen.to_string());
+    host.no_file(guide::rescue::KEPT);
+    let gather = GatherBundles {
+        kept: directory.join("host"),
+    };
+    Journey::attempt(&gather, &mut host, &Answers::new()).unwrap();
+    assert!(
+        !host.calls.iter().any(|call| call.starts_with("opening")),
+        "{:#?}",
+        host.calls
+    );
+    assert_eq!(
+        carried::kept(&mut Directory::new(directory.join("host"))),
+        vec![carried("laptop", Some(4))]
+    );
+}
+
+#[test]
+fn a_stick_that_cant_be_read_carries_nothing_and_stops_nothing() {
+    let directory = Scratch::new("host-gathers-unread");
+    let mut host = Fake::new();
+    lsblk(&mut host, fixture!("lsblk-laid-out.json"));
+    // A stick the guide never wrote: no table at all.
+    host.disk("/dev/sda", &stick_file(&directory))
+        .no_file(guide::rescue::KEPT);
+    let gather = GatherBundles {
+        kept: directory.join("host"),
+    };
+    Journey::attempt(&gather, &mut host, &Answers::new()).unwrap();
+    assert_eq!(
+        carried::kept(&mut Directory::new(directory.join("host"))),
+        vec![]
     );
 }

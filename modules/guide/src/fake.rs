@@ -266,6 +266,14 @@ impl Machine for Fake {
         change(self.vault()?)
     }
 
+    fn read_disk(&mut self, device: &str) -> Result<std::fs::File, Fault> {
+        self.calls.push(format!("opening {device} for reading"));
+        let file = self.disks.get(device).ok_or_else(|| Fault::Unscripted {
+            call: format!("opening {device}"),
+        })?;
+        std::fs::File::open(file).map_err(|why| Fault::unreadable(device, why))
+    }
+
     fn open_partition(&mut self, device: &str) -> Result<std::fs::File, Fault> {
         self.calls
             .push(format!("opening {device} to change in place"));

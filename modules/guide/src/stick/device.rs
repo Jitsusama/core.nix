@@ -52,6 +52,27 @@ mod udisks {
             .ok_or_else(|| refused(device, "UDisks2 doesn't know it"))
     }
 
+    /// Only for reading, with nothing unmounted, which polkit lets the
+    /// person at the machine do to a stick.
+    pub fn open_for_reading(device: &str) -> Result<File, Fault> {
+        let connection = Connection::system().map_err(|why| refused(device, why))?;
+        let options = HashMap::from([("flags", Value::from(libc::O_CLOEXEC))]);
+        let reply = connection
+            .call_method(
+                Some(UDISKS),
+                &object(&connection, device)?,
+                Some("org.freedesktop.UDisks2.Block"),
+                "OpenDevice",
+                &("r", options),
+            )
+            .map_err(|why| refused(device, why))?;
+        let fd: OwnedFd = reply
+            .body()
+            .deserialize()
+            .map_err(|why| refused(device, why))?;
+        Ok(File::from(std::os::fd::OwnedFd::from(fd)))
+    }
+
     pub fn open(device: &str, mounted: &[String]) -> Result<File, Fault> {
         let connection = Connection::system().map_err(|why| refused(device, why))?;
         for partition in mounted {
@@ -158,6 +179,18 @@ mod authopen {
         }
         Ok(File::from(fd?))
     }
+}
+
+/// The stick's whole disk, only for reading, nothing unmounted. A Mac
+/// mounts a stick's vault itself, so reading it there needs no disk open.
+pub fn open_for_reading(device: &str) -> Result<File, Fault> {
+    #[cfg(target_os = "linux")]
+    return udisks::open_for_reading(device);
+    #[cfg(not(target_os = "linux"))]
+    Err(refused(
+        device,
+        "this system reads a stick where it mounts it",
+    ))
 }
 
 /// The stick's whole disk, for reading and writing, once whatever was
