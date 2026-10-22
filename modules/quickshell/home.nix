@@ -482,6 +482,7 @@ let
     displays = ./launcher/Displays.qml;
     capture = ./launcher/Capture.qml;
     spend = ./launcher/Spend.qml;
+    agents = ./launcher/Agents.qml;
     byhand = ./launcher/ByHand.qml;
   };
 
@@ -898,6 +899,12 @@ in
       spend = {
         order = 108;
         source = "spend";
+        weight = 0.9;
+      };
+      # The pi sessions running, each found by its quest.
+      agents = {
+        order = 109;
+        source = "agents";
         weight = 0.9;
       };
       # Opened by its own chord, not shown in a search.

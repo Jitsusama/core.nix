@@ -945,6 +945,35 @@ pkgs.testers.runNixOSTest {
           machine.send_key("esc")
           machine.wait_until_fails(in_session("niri msg layers | grep -qw launcher"), timeout=10)
 
+      with subtest("the launcher finds a pi session by its quest, and goes to its window"):
+          # A window titled as pi titles its own: its address, its quest
+          # cut short, its folder.
+          agent = "\u03c0 - TESTQA A quest of its own - home"
+          as_account(f"niri msg action spawn -- kitty --title '{agent}'")
+          machine.wait_until_succeeds(
+              in_session("niri msg --json windows | grep -q TESTQA"), timeout=30
+          )
+          others = [w for w in json.loads(as_account("niri msg --json windows")) if "TESTQA" not in w["title"]]
+          as_account(f"niri msg action focus-window --id {others[0]['id']}")
+          as_account("qs ipc call launcher toggle")
+          launcher_ready()
+          # Its collection by what it's called, then the session by its
+          # quest, named whole and not as its window's title.
+          type_in("agents")
+          launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Agents")
+          machine.send_key("ret")
+          launcher_until(
+              lambda shown: shown["held"] == ["sessions"]
+              and (shown["selected"] or {}).get("name") == "A quest of its own"
+          )
+          photograph("launcher-agents")
+          machine.send_key("ret")
+          machine.wait_until_succeeds(
+              in_session("niri msg --json focused-window | grep -q TESTQA"), timeout=10
+          )
+          as_account(f"niri msg action close-window --id {window_titled(agent)['id']}")
+          machine.wait_until_fails(in_session("niri msg --json windows | grep -q TESTQA"), timeout=30)
+
       with subtest("the launcher sets the volume to a number, and says how loud it is"):
           as_account("qs ipc call launcher toggle")
           launcher_ready()

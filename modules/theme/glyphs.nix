@@ -223,7 +223,7 @@ in
   agent = {
     glyph = "π";
     console = "p";
-    means = "an agent is paired with this editor";
+    means = "an agent: a pi session, or one paired with this editor";
   };
   thinking = {
     glyph = nerd "f09d1";
