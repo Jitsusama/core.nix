@@ -246,6 +246,7 @@
         swayimg = ./modules/swayimg/nixos.nix;
         systemd = ./modules/systemd/nixos.nix;
         systemd-networkd = ./modules/systemd-networkd/nixos.nix;
+        tcp = ./modules/tcp/nixos.nix;
         timesyncd = ./modules/timesyncd/nixos.nix;
         touchpad = ./modules/touchpad/nixos.nix;
         tpm = ./modules/tpm/nixos.nix;

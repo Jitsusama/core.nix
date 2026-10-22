@@ -226,7 +226,11 @@ in the first four, and the graphical role the last:
 - **[`perf`][perf]:** perf itself, and the settings that let Joel profile his
   own programs, kernel included, without root.
 - **[`slices`][slices]:** the compositor and sound get ten times anyone
-  else's share of the CPU, and a floor of memory a build can't reclaim.
+  else's share of the CPU, and a floor of memory a build can't reclaim; the
+  work pi and terminals start, virtual machines and containers run behind
+  what Joel uses; and a call's audio may run in real time.
+- **[`tcp`][tcp]:** BBR paces what the machine uploads, so a call isn't
+  stuck behind a full queue on a slow home connection.
 
 ## How It's Checked
 
@@ -367,6 +371,7 @@ if less; record a new one after moving to a new series.
 [nix-daemon]: ../modules/nix-daemon/nixos.nix
 [perf]: ../modules/perf/nixos.nix
 [slices]: ../modules/slices/nixos.nix
+[tcp]: ../modules/tcp/nixos.nix
 [hw]: hardware.md
 [crashes]: hardware.md#the-two-crashes
 [1]: https://github.com/firelzrd/bore-scheduler

@@ -1971,6 +1971,21 @@ in
   # user.slice and session machines in its machine.slice, where their daemon
   # runs, are idle. A machine anywhere else takes an app's weight, and
   # nothing says so.
+  # Uploads pace themselves only while every new connection takes BBR, and
+  # a connection asks for it only from a kernel that has it loaded: with the
+  # module missing, the setting fails at boot and Cubic stays, and nothing
+  # says so.
+  uploads-pace-themselves =
+    let
+      inherit (workstation.config) boot;
+    in
+    holds "uploads-pace-themselves"
+      "New connections don't take BBR, or the kernel isn't told to load it before the setting asks for it."
+      (
+        (boot.kernel.sysctl."net.ipv4.tcp_congestion_control" or null) == "bbr"
+        && lib.elem "tcp_bbr" boot.kernelModules
+      );
+
   machines-yield-to-what-the-user-works-in =
     let
       inherit
