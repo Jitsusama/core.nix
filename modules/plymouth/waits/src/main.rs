@@ -9,7 +9,9 @@
 //! says it in its own words.
 //!
 //! It ends when Plymouth quits after a boot, and with everything else at a
-//! shutdown. Nothing here is asked of systemd but at a job's few moments:
+//! shutdown. Started while the system is up with no splash to tell, as
+//! switching to a new configuration starts what the boot wants, it ends at
+//! once. Nothing here is asked of systemd but at a job's few moments:
 //! it sleeps on the socket until a signal comes, or a deadline it armed on
 //! one.
 
@@ -66,7 +68,14 @@ fn watch() -> Result<(), Box<dyn Error>> {
     // asked or not, so a job that starts while this lists them is heard of
     // as well.
     let now = Instant::now();
-    for (id, unit, _, step, _, _) in listed(&bus)? {
+    let found = listed(&bus)?;
+    // Asked only once systemd has answered, since its first question can go
+    // unread (listed).
+    let state: Option<String> = property(&bus, ROOT, MANAGER, "SystemState");
+    if state.as_deref().is_some_and(up) && !listening() {
+        return Ok(());
+    }
+    for (id, unit, _, step, _, _) in found {
         jobs.added(id, &unit, now, OWN);
         jobs.stepped(id, step == "running", now);
     }
@@ -180,6 +189,12 @@ fn listed(bus: &Channel) -> Result<Vec<Listed>, Box<dyn Error>> {
     }
 }
 
+/// Whether systemd's SystemState says the system is up, neither booting
+/// nor shutting down.
+fn up(state: &str) -> bool {
+    matches!(state, "running" | "degraded")
+}
+
 /// A job's id from its path, /org/freedesktop/systemd1/job/<id>.
 fn job_id(path: &str) -> Option<u32> {
     path.strip_prefix("/org/freedesktop/systemd1/job/")?
@@ -237,9 +252,17 @@ fn tell(status: &str) {
 }
 
 fn told(status: &str) -> io::Result<()> {
+    plymouth()?.write_all(&update(status))
+}
+
+fn plymouth() -> io::Result<UnixStream> {
     let address = SocketAddr::from_abstract_name(b"/org/freedesktop/plymouthd")?;
-    let mut plymouth = UnixStream::connect_addr(&address)?;
-    plymouth.write_all(&update(status))
+    UnixStream::connect_addr(&address)
+}
+
+/// Whether Plymouth is there to be told anything.
+fn listening() -> bool {
+    plymouth().is_ok()
 }
 
 /// Plymouth's update request: U, a byte saying an argument follows, the
@@ -276,6 +299,15 @@ mod tests {
         assert_eq!(message[2] as usize, message.len() - 3);
         assert!(message.len() - 3 <= 255);
         assert!(std::str::from_utf8(&message[3..message.len() - 1]).is_ok());
+    }
+
+    #[test]
+    fn only_a_boot_or_a_shutdown_is_told_of() {
+        assert!(up("running"));
+        assert!(up("degraded"));
+        for state in ["initializing", "starting", "stopping", "maintenance"] {
+            assert!(!up(state), "{state}");
+        }
     }
 
     #[test]
