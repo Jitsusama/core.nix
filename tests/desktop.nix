@@ -1513,6 +1513,39 @@ pkgs.testers.runNixOSTest {
           machine.send_key("esc")
           machine.wait_until_fails(in_session("niri msg layers | grep -qw launcher"), timeout=10)
           machine.succeed("rm /run/disk-guard/status.json")
+          # The machine's queue as pi's harness writes it, replaced whole:
+          # what runs, then what waits in turn, and the room to spare.
+          queued_at = machine.succeed("date -u +%Y-%m-%dT%H:%M:%SZ").strip()
+          queued = {
+              "v": 1,
+              "heartbeat": float(machine.succeed("date +%s")),
+              "machine": {"cores": 4, "availableGib": 3, "pressure": {"cpu": 12.5, "memory": 0, "io": 0}},
+              "quiet": None,
+              "jobs": [
+                  {"id": "a", "class": "bulk", "kind": "build", "state": "running",
+                   "owner": {"session": "elsewhere", "pid": 1}, "what": "Build the desktop",
+                   "since": queued_at, "slice": "jobs.slice"},
+                  {"id": "b", "class": "timed", "kind": "vm-test", "state": "waiting",
+                   "owner": {"session": "elsewhere", "pid": 1}, "what": "Test the camera",
+                   "since": queued_at, "place": 1},
+              ],
+              "wasted": {"today": 0},
+          }
+          as_account(
+              f"echo '{json.dumps(queued)}' > $XDG_RUNTIME_DIR/jobs/.q && mv $XDG_RUNTIME_DIR/jobs/.q $XDG_RUNTIME_DIR/jobs/queue.json"
+          )
+          answer("what's running")
+          launcher_until(
+              lambda shown: (shown["selected"] or {}).get("name") == "1 running, 1 waiting"
+              and shown["footer"] == "3 GiB to spare \u00b7 the processors 13% held up"
+          )
+          for name in ["Build the desktop", "Test the camera"]:
+              machine.send_key("down")
+              launcher_until(lambda shown: (shown["selected"] or {}).get("name") == name)
+          photograph("launcher-queue")
+          machine.send_key("esc")
+          machine.wait_until_fails(in_session("niri msg layers | grep -qw launcher"), timeout=10)
+          as_account("rm $XDG_RUNTIME_DIR/jobs/queue.json")
           # The keyboards QEMU gives it, however many, and caps lock.
           answer("keyboards")
           photograph("launcher-keyboards")
