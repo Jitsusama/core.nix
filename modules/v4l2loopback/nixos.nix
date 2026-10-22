@@ -6,8 +6,10 @@
 # Nothing says which program has a loopback camera open: PipeWire doesn't
 # offer these cameras, and a relay hears only that a reader came or went.
 # So for each camera in holders, a service watches its node, and on every
-# open and close writes the programs holding it to a file a shell can watch,
-# one name a line and empty while none does.
+# open and close writes the programs holding it to /run/camera-holders/<name>
+# for a shell to watch, one name a line and empty while none does or the
+# camera is down. The folder lasts the boot, since a shell's watch on it
+# would be lost with it.
 {
   config,
   lib,
@@ -17,6 +19,7 @@
 let
   cfg = config.jitsusama.v4l2loopback;
   holders = pkgs.writers.writePython3Bin "loopback-holders" { } (builtins.readFile ./holders.py);
+  holdersDir = "/run/camera-holders";
 in
 {
   options.jitsusama.v4l2loopback = {
@@ -41,10 +44,6 @@ in
               type = lib.types.str;
               description = "The camera's node, or a file naming it.";
             };
-            output = lib.mkOption {
-              type = lib.types.str;
-              description = "The file naming the programs that hold it open.";
-            };
             unit = lib.mkOption {
               type = lib.types.str;
               description = "The service that makes the camera, whose life this one shares.";
@@ -62,13 +61,15 @@ in
         {
           camera = {
             device = "/run/camera/device";
-            output = "/run/camera/in-use";
             unit = "camera.service";
             ignore = [ "v4l2-relayd" ];
           };
         }
       '';
-      description = "Loopback cameras to say the holders of, by a name for each.";
+      description = ''
+        Loopback cameras to say the holders of, each in
+        /run/camera-holders/<name>.
+      '';
     };
   };
 
@@ -79,8 +80,15 @@ in
       options v4l2loopback devices=0
     '';
 
+    # The files' folder lasts the boot, so a shell watching it keeps its
+    # watch however often a camera's service starts again.
+    systemd.tmpfiles.rules = lib.optional (cfg.holders != { }) "d ${holdersDir} 0755 root root -";
+
     systemd.services = lib.mapAttrs' (
       name: camera:
+      let
+        output = "${holdersDir}/${name}";
+      in
       lib.nameValuePair "${name}-holders" {
         description = "Says which programs have ${name} open";
         # It starts once the camera's service has made the loopback, and
@@ -93,15 +101,17 @@ in
             [
               (lib.getExe holders)
               camera.device
-              camera.output
+              output
             ]
             ++ camera.ignore
           );
+          # Stopped with its camera, it may not get to say nobody itself.
+          ExecStopPost = "${pkgs.coreutils}/bin/truncate -s 0 ${output}";
           Restart = "on-failure";
           RestartSec = 1;
           # It lists every process's open files, which takes reading past
           # their owners' permissions and root's ptrace reading, and writes
-          # only beside its output.
+          # only in its folder.
           CapabilityBoundingSet = [
             "CAP_DAC_READ_SEARCH"
             "CAP_SYS_PTRACE"
@@ -110,7 +120,7 @@ in
           PrivateNetwork = true;
           ProtectSystem = "strict";
           ProtectHome = true;
-          ReadWritePaths = [ (dirOf camera.output) ];
+          ReadWritePaths = [ holdersDir ];
         };
       }
     ) cfg.holders;

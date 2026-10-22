@@ -2,8 +2,9 @@
 # only with a real loopback and programs of another account holding it: the
 # file names each one, by its program's own name even when Nix wraps it,
 # leaves out the relay that fills the camera, empties when they close it,
-# follows the camera when its service makes a new loopback, and waits
-# rather than failing while the camera it's pointed at isn't there.
+# follows the camera when its service makes a new loopback, stays in a
+# folder that outlives that service and says nobody while it's down, and
+# waits rather than failing while the camera it's pointed at isn't there.
 { self, pkgs }:
 let
   # Holds the loopback it's given open as a relay would, writing nothing.
@@ -33,6 +34,8 @@ let
 
   # Runs a program, as someone else, with the camera it's given held open.
   holding = program: device: "${pkgs.bash}/bin/bash -c 'exec 3< ${device}; exec ${program} 300'";
+
+  file = "/run/camera-holders/stand-in";
 in
 pkgs.testers.runNixOSTest {
   name = "loopback-holders";
@@ -48,7 +51,6 @@ pkgs.testers.runNixOSTest {
         enable = true;
         holders.stand-in = {
           device = "/run/stand-in/device";
-          output = "/run/stand-in/in-use";
           unit = "stand-in.service";
           ignore = [ "stand-in-relay" ];
         };
@@ -72,12 +74,12 @@ pkgs.testers.runNixOSTest {
 
   testScript = ''
     machine.wait_for_unit("stand-in-holders.service")
-    machine.wait_for_file("/run/stand-in/in-use")
+    machine.wait_for_file("${file}")
     device = machine.succeed("cat /run/stand-in/device").strip()
     machine.succeed(f"udevadm wait --timeout 10 {device}")
 
     def holders():
-        return machine.succeed("cat /run/stand-in/in-use").split()
+        return machine.succeed("cat ${file}").split()
 
     def hold(unit, command):
         machine.succeed(
@@ -90,14 +92,28 @@ pkgs.testers.runNixOSTest {
     with subtest("each program another account has it open with is named"):
         hold("held", f"${holding "${pkgs.coreutils}/bin/sleep" "{device}"}")
         hold("dozing", f"${holding "${doze}/bin/doze" "{device}"}")
-        machine.wait_until_succeeds("grep -q -x doze /run/stand-in/in-use", timeout=10)
+        machine.wait_until_succeeds("grep -q -x doze ${file}", timeout=10)
         t.assertEqual(holders(), ["doze", "sleep"])
-        mode = machine.succeed("stat -c %a /run/stand-in/in-use").strip()
+        mode = machine.succeed("stat -c %a ${file}").strip()
         t.assertEqual(mode, "644")
 
     with subtest("it empties once they close it"):
         machine.succeed("systemctl stop held.service dozing.service")
-        machine.wait_until_succeeds("! test -s /run/stand-in/in-use", timeout=10)
+        machine.wait_until_succeeds("! test -s ${file}", timeout=10)
+
+    with subtest("its folder outlives the camera's service, and says nobody while it's down"):
+        folder = machine.succeed("stat -c %i /run/camera-holders").strip()
+        hold("stopping", f"${holding "${pkgs.coreutils}/bin/sleep" "{device}"}")
+        machine.wait_until_succeeds("grep -q -x sleep ${file}", timeout=10)
+        # The camera stops while the program still holds it, so only the
+        # service's stopping can empty the file.
+        machine.succeed("systemctl stop stand-in.service")
+        machine.wait_until_fails("systemctl is-active stand-in-holders.service", timeout=10)
+        t.assertEqual(machine.succeed("cat ${file}"), "")
+        machine.succeed("systemctl stop stopping.service")
+        machine.succeed("systemctl start stand-in.service")
+        machine.wait_for_unit("stand-in-holders.service")
+        t.assertEqual(machine.succeed("stat -c %i /run/camera-holders").strip(), folder)
 
     with subtest("it follows the camera to the next loopback"):
         machine.succeed("systemctl restart stand-in.service")
@@ -105,7 +121,7 @@ pkgs.testers.runNixOSTest {
         device = machine.succeed("cat /run/stand-in/device").strip()
         machine.succeed(f"udevadm wait --timeout 10 {device}")
         hold("again", f"${holding "${pkgs.coreutils}/bin/sleep" "{device}"}")
-        machine.wait_until_succeeds("grep -q -x sleep /run/stand-in/in-use", timeout=10)
+        machine.wait_until_succeeds("grep -q -x sleep ${file}", timeout=10)
         machine.succeed("systemctl stop again.service")
 
     with subtest("it waits while the camera isn't there, and finds it when it is"):
@@ -119,7 +135,7 @@ pkgs.testers.runNixOSTest {
         t.assertEqual(holders(), [])
         machine.succeed(f"echo {device} > /run/stand-in/device")
         hold("found", f"${holding "${pkgs.coreutils}/bin/sleep" "{device}"}")
-        machine.wait_until_succeeds("grep -q -x sleep /run/stand-in/in-use", timeout=10)
+        machine.wait_until_succeeds("grep -q -x sleep ${file}", timeout=10)
         machine.succeed("systemctl stop found.service")
   '';
 }

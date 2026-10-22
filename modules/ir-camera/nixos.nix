@@ -104,7 +104,6 @@ in
     # the shell to show; the relay that fills it isn't one.
     jitsusama.v4l2loopback.holders.ir-camera = {
       device = sink;
-      output = "/run/ir-camera-loopback/in-use";
       unit = "ir-camera-loopback.service";
       ignore = [ "ir-camera" ];
     };
