@@ -31,7 +31,6 @@ Singleton {
     // presence file says, or null.
     readonly property var running: {
         Niri.revision;
-        listed;
         const when = window => {
             const stamp = window.focus_timestamp;
             return stamp ? stamp.secs * 1e9 + stamp.nanos : 0;
@@ -43,7 +42,7 @@ Singleton {
                 return said ? {
                     window: window,
                     address: said.address,
-                    title: titled(said.address, said.cut),
+                    title: titles[said.address] || said.cut || said.address,
                     folder: said.folder,
                     presence: present[said.address] ?? null
                 } : null;
@@ -145,14 +144,29 @@ Singleton {
 
     // A quest's whole title, by the address its id ends in, read once it's
     // found; until then, and while its quest isn't listed, the window's
-    // cut-short one, looked for again as the quests change.
+    // cut-short one, looked for again as the windows and the quests change.
+    // It's learned outside the list's binding, since reading each README
+    // through one file view moves what the binding has just read.
     property var titles: ({})
-    readonly property bool listed: folders.status === FolderListModel.Ready && folders.count >= 0
-    function titled(address, cut) {
-        if (titles[address])
-            return titles[address];
+    function learn() {
         if (folders.status !== FolderListModel.Ready)
-            return cut || address;
+            return;
+        const next = Object.assign({}, titles);
+        let changed = false;
+        for (const window of Object.values(Niri.windows)) {
+            const said = parsed(window.title ?? "");
+            if (!said || next[said.address])
+                continue;
+            const title = read(said.address);
+            if (title !== "") {
+                next[said.address] = title;
+                changed = true;
+            }
+        }
+        if (changed)
+            titles = next;
+    }
+    function read(address) {
         for (let i = 0; i < folders.count; i++) {
             const name = folders.get(i, "fileName");
             // A folder Qt fell back to when the quests' own isn't there.
@@ -161,12 +175,16 @@ Singleton {
             readme.path = `${quests}/${name}/README.md`;
             readme.reload();
             readme.waitForJob();
-            const title = heading(readme.text());
-            if (title !== "")
-                titles[address] = title;
-            return title || cut || address;
+            return heading(readme.text());
         }
-        return cut || address;
+        return "";
+    }
+
+    Connections {
+        target: Niri
+        function onRevisionChanged() {
+            root.learn();
+        }
     }
 
     // The first heading of a README, past any front matter.
@@ -185,6 +203,8 @@ Singleton {
         folder: `file://${root.quests}`
         showFiles: false
         showDotAndDotDot: false
+        onStatusChanged: root.learn()
+        onCountChanged: root.learn()
     }
 
     FileView {

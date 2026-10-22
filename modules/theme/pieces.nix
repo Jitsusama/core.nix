@@ -43,6 +43,16 @@ let
           default = null;
           description = "The theme's glyph it wears while it's true, by name.";
         };
+        sign = lib.mkOption {
+          type = lib.types.nullOr (lib.types.enum (lib.attrNames glyphs));
+          default = null;
+          description = ''
+            The theme's glyph its value is read by at a glance, by name, so
+            a number says what it's of without a word; null for a value that
+            says it itself, as a time does. A piece may choose its own while
+            it runs, as the network does between a cable and the air.
+          '';
+        };
         source = lib.mkOption {
           type = lib.types.either (lib.types.enum (lib.attrNames sources)) lib.types.path;
           description = "What draws it: a built-in piece by name, or a file of the same shape.";

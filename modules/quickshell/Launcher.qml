@@ -73,7 +73,7 @@ Scope {
     // What the search found, below an answer's rows.
     property var found: []
 
-    function answering(letters) {
+    function answering(letters, fresh) {
         if (held.length > 0 || letters.trim() === "")
             return null;
         for (const source of sources) {
@@ -81,7 +81,50 @@ Scope {
             if (said)
                 return said;
         }
+        // Typed so far, a question's start asks it, as `question` says.
+        const text = Fuzzy.plainly(letters);
+        if (text.length < 3)
+            return null;
+        for (const source of sources) {
+            const question = source.questions.find(asked => asked.startsWith(text));
+            if (question === undefined)
+                continue;
+            const said = started(source, question, fresh);
+            if (said)
+                return Object.assign({}, said, { question: question });
+        }
         return null;
+    }
+
+    // The question the answer was asked by when what's typed only starts
+    // it, as "batt" starts "battery", or nothing. Its headline is chosen
+    // only when nothing found starts a word the same way (compose), and
+    // Tab finishes the question.
+    readonly property string question: answer ? answer.question ?? "" : ""
+
+    // Each letter of a question's start asks the same question, so its
+    // answer is kept a moment rather than read again, as sensors are, on
+    // every key. A late answer is always asked afresh.
+    property var lastStarted: null
+    function started(source, question, fresh) {
+        const now = Date.now();
+        const last = lastStarted;
+        if (fresh && last && last.source === source && last.question === question && now - last.at < 2000)
+            return last.said;
+        const said = source.answer(question);
+        lastStarted = { source: source, question: question, said: said, at: now };
+        return said;
+    }
+
+    // Whether a name has a word starting with what's typed, as a row the
+    // search found for that reason would.
+    function startsAWord(name, letters) {
+        const text = Fuzzy.plainly(letters);
+        const folded = String(name).toLowerCase();
+        for (let at = folded.indexOf(text); at >= 0; at = folded.indexOf(text, at + 1))
+            if (at === 0 || !/[a-z0-9]/.test(folded[at - 1]))
+                return true;
+        return false;
     }
 
     // An answer's rows above what was found. Asked afresh, the selection
@@ -89,11 +132,14 @@ Scope {
     // moved stays on the row it was on.
     function compose(fresh) {
         const before = answer ? answer.rows.length : 0;
-        answer = answering(typed);
+        answer = answering(typed, fresh);
         const rows = answer ? answer.rows : [];
-        matches = rows.concat(placed(found, gathered));
+        const below = placed(found, gathered);
+        matches = rows.concat(below);
+        // An answer only started gives way to a name that starts the same.
+        const meant = answer && !(answer.question && below.length > 0 && startsAWord(below[0].name, typed));
         if (fresh || (current === -1 && !answer))
-            current = answer ? -1 : 0;
+            current = meant ? -1 : answer ? rows.length : 0;
         else if (current >= 0)
             current = Math.max(0, Math.min(current + rows.length - before, matches.length - 1));
     }
@@ -560,8 +606,10 @@ Scope {
     // it, so the command line can finish the thought.
     readonly property string completion: {
         // An answer that does something says what, rather than equalling it.
-        if (current === -1 && answer)
-            return answer.run ? ` \u2192 ${answer.headline}` : ` = ${answer.headline}`;
+        if (current === -1 && answer) {
+            const rest = answer.question ? answer.question.slice(Fuzzy.plainly(typed).length) : "";
+            return rest + (answer.run ? ` \u2192 ${answer.headline}` : ` = ${answer.headline}`);
+        }
         const choice = matches[current];
         if (!choice || typed === "")
             return "";
@@ -685,7 +733,8 @@ Scope {
                 settled: row !== root.headline || !root.answer.asking
             },
             kind: root.kind,
-            footer: note.text
+            footer: foot.glancing ? "" : note.said,
+            glance: foot.glancing ? standing.said : ""
         });
     }
 
@@ -812,6 +861,9 @@ Scope {
                                 text = root.example;
                             else if (root.current !== -1 || !root.answer)
                                 text = text + root.completion;
+                            // A question only started is finished first.
+                            else if (root.question !== "")
+                                text = root.question;
                             // An answer that does something has nothing to
                             // put in the question's place.
                             else if (!root.answer.run && (root.answer.copy ?? root.answer.headline) !== "")
@@ -948,19 +1000,45 @@ Scope {
                         }
                     }
 
-                    // What Return does here, Shift+Return where it can, and
-                    // where the arrows step, with why the row is first when
-                    // learning put it there, where a held thing is, or the
-                    // chord a target has: the one place that teaches, so the
-                    // rows stay clean.
+                    // With nothing typed, the shell says what it can do, or an
+                    // empty collection says it's empty in its own words; with
+                    // nothing found, it says so. A field asking for words has
+                    // only the footer below it.
+                    Choice {
+                        readonly property var inside: root.held.length > 0
+                            ? root.held[root.held.length - 1].row.from ?? null : null
+                        visible: root.matches.length === 0 && root.answer === null
+                            && root.asking === null
+                        glyph: root.typed === "" ? root.sparkle : root.ghost
+                        hue: Theme.voice
+                        quiet: true
+                        name: root.typed !== "" ? `Nothing answers to \u201c${root.typed}\u201d.`
+                            : inside
+                                ? inside.collection.empty ?? `No ${inside.collection.noun} yet.`
+                            : "A window, a program, an action, or what a key does."
+                    }
+
+                    // The foot, one line, the one place that teaches, so the
+                    // rows stay clean. On the right, what Return does here,
+                    // Shift+Return where it can, and where the arrows step.
+                    // On the left, what the selection has to say: why it's
+                    // first when learning put it there, where a held thing
+                    // is, where an answer came from; and when it says
+                    // nothing, how things stand, which is the launcher's
+                    // glance at the desktop.
                     Item {
                         id: foot
 
                         readonly property var choice: root.selected ?? root.asking
+                        // The glance while nothing's typed, held or asked,
+                        // and whenever the selection has nothing to say.
+                        readonly property bool glancing: note.said === ""
+                            || (root.typed === "" && root.held.length === 0 && root.asking === null)
+                        // The room the left has, short of the keys.
+                        readonly property real room: keys.x - Theme.space.xl - Theme.space.l
 
                         width: parent.width
                         height: Theme.space.xxl + Theme.space.s
-                        visible: choice !== null
 
                         Text {
                             id: note
@@ -972,16 +1050,122 @@ Scope {
                             readonly property int times: foot.choice ? foot.choice.times ?? 0 : 0
 
                             // An answer's footer says where it came from.
-                            text: !foot.choice ? ""
+                            readonly property string said: !foot.choice ? ""
                                 : foot.choice.state ? foot.choice.state()
                                 : (foot.choice.note ?? "") !== "" ? foot.choice.note
                                 : foot.choice.plain && root.answer ? root.answer.note ?? ""
                                 : root.held.length > 0 ? root.held[0].row.context ?? ""
                                 : times === 0 ? "" : `you picked this for \u201c${asked}\u201d ${
                                     times === 1 ? "once" : `${times} times`}`
+                            // What it said last, kept while it fades out.
+                            property string drawn: ""
+                            onSaidChanged: {
+                                if (note.said !== "")
+                                    note.drawn = note.said;
+                            }
+                            Component.onCompleted: {
+                                note.drawn = note.said;
+                            }
+
+                            text: note.drawn
                             color: Theme.muted
                             font.family: Theme.mono.family
                             font.pointSize: Theme.mono.large
+                            opacity: foot.glancing ? 0 : 1
+
+                            Behavior on opacity {
+                                NumberAnimation {
+                                    duration: Theme.motion.short
+                                }
+                            }
+                        }
+
+                        // How things stand, the quietest thing here: the
+                        // facts the margin's pieces hold that are always
+                        // true (the time, the date, the battery, the
+                        // network, the volume, the day's AI spend, pi),
+                        // each its glyph and the least that tells Joel
+                        // something, as a key hint is its key and what it
+                        // does, at the hints' size and step, all muted
+                        // but a fact that wants him, which wears its
+                        // colour. At home it's the whole glance; with
+                        // something typed, held or asked, only what never
+                        // gives way and what wants him, so it never pulls
+                        // the eye from the rows. The rest give way by
+                        // collapse rank, lowest first, as room runs short.
+                        Row {
+                            id: standing
+
+                            readonly property bool home: root.typed === "" && root.held.length === 0
+                                && root.asking === null
+                            readonly property var facts: Facts.all
+                                .filter(fact => fact.entry.tier !== "when" && fact.piece
+                                    && fact.piece.present && fact.piece.value !== ""
+                                    && (home || fact.piece.wants || fact.entry.collapse === null))
+                                .map(fact => {
+                                    const sign = fact.piece.sign !== "" ? Theme.glyph[fact.piece.sign] ?? "" : "";
+                                    const told = words => [sign, words].filter(part => part !== "").join(" ");
+                                    return {
+                                        entry: fact.entry,
+                                        said: told(fact.piece.glance),
+                                        least: told(fact.piece.least),
+                                        piece: fact.piece
+                                    };
+                                })
+                                .filter(fact => fact.said !== "")
+                            // Short of room, every fact says its least before
+                            // any gives way.
+                            readonly property var kept: {
+                                const wide = facts => facts.reduce((sum, fact) => sum + measure.advanceWidth(fact.said), 0)
+                                    + Math.max(0, facts.length - 1) * spacing;
+                                if (wide(facts) <= foot.room)
+                                    return facts;
+                                let kept = facts.map(fact => Object.assign({}, fact, { said: fact.least }));
+                                for (;;) {
+                                    const ranks = kept.map(fact => fact.entry.collapse)
+                                        .filter(rank => rank !== null && rank !== undefined);
+                                    if (wide(kept) <= foot.room || ranks.length === 0)
+                                        return kept;
+                                    const lowest = Math.min(...ranks);
+                                    kept = kept.filter(fact => fact.entry.collapse !== lowest);
+                                }
+                            }
+                            // As it's drawn, for a test.
+                            readonly property string said: kept.map(fact => fact.said).join("  ")
+
+                            x: Theme.space.l
+                            anchors.verticalCenter: parent.verticalCenter
+                            spacing: keys.spacing
+                            opacity: foot.glancing ? 1 : 0
+
+                            Behavior on opacity {
+                                NumberAnimation {
+                                    duration: Theme.motion.short
+                                }
+                            }
+
+                            FontMetrics {
+                                id: measure
+                                font.family: Theme.mono.family
+                                font.pointSize: Theme.mono.large
+                                font.features: { "tnum": 1 }
+                            }
+
+                            Repeater {
+                                model: standing.kept
+
+                                Text {
+                                    required property var modelData
+
+                                    text: modelData.said
+                                    textFormat: Text.PlainText
+                                    // As the margin's mark wears it (Margin.qml).
+                                    color: !modelData.piece.wants ? Theme.muted
+                                        : modelData.piece.role !== "text" ? Theme[modelData.piece.role]
+                                        : Theme[modelData.piece.hue]
+                                    font: measure.font
+                                }
+                            }
                         }
 
                         KeyHints {
@@ -1005,99 +1189,6 @@ Scope {
                                 return keys;
                             }
                         }
-                    }
-
-                    // With nothing typed, the shell says what it can do, or an
-                    // empty collection says it's empty in its own words; with
-                    // nothing found, it says so. A field asking for words has
-                    // only the footer below it.
-                    Choice {
-                        readonly property var inside: root.held.length > 0
-                            ? root.held[root.held.length - 1].row.from ?? null : null
-                        visible: root.matches.length === 0 && root.answer === null
-                            && root.asking === null
-                        glyph: root.typed === "" ? root.sparkle : root.ghost
-                        hue: Theme.voice
-                        quiet: true
-                        name: root.typed !== "" ? `Nothing answers to \u201c${root.typed}\u201d.`
-                            : inside
-                                ? inside.collection.empty ?? `No ${inside.collection.noun} yet.`
-                            : "A window, a program, an action, or what a key does."
-                    }
-                }
-
-                // How things stand, always, at the foot: the facts the
-                // margin's pieces hold that are always true (the time, the
-                // date, the battery, the network, the volume), as the
-                // greeter says how the boot went, in small monospace with a
-                // dot between each, a muted label before each value that
-                // has one so a number says what it's of. When they don't
-                // fit, they give way by their collapse rank, lowest first,
-                // as they did in the overview.
-                Rectangle {
-                    width: parent.width
-                    height: Theme.border
-                    color: Theme.edge
-                }
-
-                Item {
-                    id: standing
-
-                    readonly property var facts: Facts.all
-                        .filter(fact => fact.entry.tier !== "when" && fact.piece
-                            && fact.piece.present && fact.piece.value !== "")
-                    readonly property real room: width - 2 * Theme.space.l
-                    readonly property string gap: "  \u00b7  "
-                    // The facts that fit, each its label and value.
-                    readonly property var kept: {
-                        let kept = facts.map(fact => ({
-                            entry: fact.entry,
-                            label: fact.entry.label ?? "",
-                            value: fact.piece.value
-                        }));
-                        for (;;) {
-                            const text = kept.map(fact => (fact.label !== "" ? `${fact.label} ` : "")
-                                + fact.value).join(gap);
-                            const ranks = kept.map(fact => fact.entry.collapse)
-                                .filter(rank => rank !== null && rank !== undefined);
-                            if (measure.advanceWidth(text) <= room || ranks.length === 0)
-                                return kept;
-                            const lowest = Math.min(...ranks);
-                            kept = kept.filter(fact => fact.entry.collapse !== lowest);
-                        }
-                    }
-                    readonly property string said: kept
-                        .map(fact => (fact.label !== "" ? `${fact.label} ` : "") + fact.value).join(gap)
-                    // As styled text reads it, a network's name kept as it is.
-                    function plain(text) {
-                        return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-                    }
-                    function muted(text) {
-                        return `<font color="${Theme.muted}">${plain(text)}</font>`;
-                    }
-
-                    width: parent.width
-                    height: Theme.space.xxl + Theme.space.s
-
-                    FontMetrics {
-                        id: measure
-                        font: line.font
-                    }
-
-                    Text {
-                        id: line
-                        x: Theme.space.l
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: standing.kept.map(fact => (fact.label !== ""
-                            ? standing.muted(`${fact.label} `) : "") + standing.plain(fact.value))
-                            // Styled text runs spaces together, so the
-                            // dot's are spaces that don't.
-                            .join(standing.muted(standing.gap.replace(/ /g, "\u00a0")))
-                        textFormat: Text.StyledText
-                        color: Theme.text
-                        font.family: Theme.mono.family
-                        font.pointSize: Theme.mono.small
-                        font.features: { "tnum": 1 }
                     }
                 }
             }

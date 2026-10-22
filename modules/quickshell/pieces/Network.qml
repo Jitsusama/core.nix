@@ -14,6 +14,11 @@ Piece {
     active: !Wifi.wired && (card === null || reach === "signIn" || reach === "limited")
     role: active ? "warning" : "text"
     wants: !Wifi.wired && reach === "signIn"
+    sign: Wifi.wired ? "wired" : card === null ? "offline" : settings.sign ?? ""
+    // Only what's wrong: joined is the glyph alone, and its name is in
+    // Wi-Fi.
+    glance: Wifi.wired || card === null ? ""
+        : reach === "signIn" ? "sign in" : reach === "limited" ? "limited" : ""
     value: {
         if (Wifi.wired)
             return "wired";

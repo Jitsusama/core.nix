@@ -30,6 +30,9 @@ Provider {
         return `${Math.round(part * 100)}%`;
     }
 
+    // The words it answers whole, and by their start (Provider.qml).
+    questions: ["memory", "processors", "cpu", "load", "swap", "uptime", "disk", "storage", "free space", "disk space"]
+
     function answer(typed) {
         const text = typed.trim().toLowerCase();
         if (/^(cpu|cpus|load|processors?)$/.test(text))

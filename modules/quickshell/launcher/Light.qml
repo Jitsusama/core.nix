@@ -21,6 +21,9 @@ Provider {
         return read(probe).trim();
     }
 
+    // The words it answers whole, and by their start (Provider.qml).
+    questions: ["brightness", "backlight", "screen brightness", "keyboard light", "keyboard backlight", "dim"]
+
     function answer(typed) {
         const text = typed.trim().toLowerCase();
         const asked = /^(?:brightness|backlight|screen (?:light|brightness))\s+(?:to\s+)?(\d{1,3})\s*%?$/

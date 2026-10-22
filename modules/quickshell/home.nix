@@ -55,6 +55,7 @@ let
     "KeyHints.qml"
     "Launcher.qml"
     "Choice.qml"
+    "Chord.qml"
     "Margin.qml"
     "Notifications.qml"
     "Music.qml"
@@ -962,13 +963,14 @@ in
       date = {
         order = 20;
         source = "clock";
-        format = "dddd d MMMM";
+        format = "ddd d MMM";
         collapse = 30;
       };
       battery = {
         order = 30;
         source = "battery";
         label = "battery";
+        sign = "charge";
         low = 20;
         critical = 10;
         collapse = 20;
@@ -978,12 +980,14 @@ in
         order = 40;
         source = "network";
         label = "network";
+        sign = "wireless";
         collapse = 10;
       };
       volume = {
         order = 50;
         source = "volume";
         label = "volume";
+        sign = "volume";
         collapse = 0;
       };
       # A mode, so it never gives way.
@@ -1001,6 +1005,7 @@ in
         order = 52;
         source = "spend";
         label = "ai";
+        sign = "cost";
         collapse = 5;
         mark = "spend";
       };
@@ -1011,6 +1016,7 @@ in
         order = 53;
         source = "pi";
         label = "pi";
+        sign = "agent";
         collapse = 6;
         # In the margin while a session wants Joel.
         mark = "agent";

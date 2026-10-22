@@ -44,6 +44,9 @@ Provider {
         return `${Math.floor(minutes / 60)}:${String(minutes % 60).padStart(2, "0")}`;
     }
 
+    // The words it answers whole, and by their start (Provider.qml).
+    questions: ["battery", "power", "charge", "charging", "charger", "plugged in", "energy", "watts"]
+
     function answer(typed) {
         const text = typed.trim().toLowerCase();
         if (battery === null || !/^(battery|batteries|power|charge|charging|charger|plugged( in)?|energy|watts?)$/.test(text))

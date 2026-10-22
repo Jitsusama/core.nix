@@ -288,6 +288,12 @@ function wholeIn(item, word) {
     return false;
 }
 
+// What's typed as a question is read: in lower case, its spaces single,
+// without a closing question mark.
+function plainly(typed) {
+    return String(typed).trim().toLowerCase().replace(/\s+/g, " ").replace(/\s*\?$/, "");
+}
+
 // The words of a query, in lower case.
 function words(query) {
     return String(query).toLowerCase().split(/\s+/).filter(w => w.length > 0);

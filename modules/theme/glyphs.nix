@@ -167,6 +167,48 @@ in
     console = "$";
     means = "AI spend wants a look: a cap near or reached, a burn, or nothing watching it";
   };
+  # What a glance at the desktop reads each value by (the launcher's foot),
+  # so a number says what it's of without a word.
+  charge = {
+    glyph = nerd "f0079";
+    console = "+";
+    means = "the battery's charge";
+  };
+  charging = {
+    glyph = nerd "f0084";
+    console = "=";
+    means = "the battery charging";
+  };
+  wireless = {
+    glyph = nerd "f05a9";
+    console = "w";
+    means = "joined to a network through the air";
+  };
+  wired = {
+    glyph = nerd "f0200";
+    console = "e";
+    means = "joined to a network by a cable";
+  };
+  offline = {
+    glyph = nerd "f05aa";
+    console = "X";
+    means = "joined to no network";
+  };
+  volume = {
+    glyph = nerd "f057e";
+    console = "s";
+    means = "how loud sound goes out";
+  };
+  silent = {
+    glyph = nerd "f0581";
+    console = "_";
+    means = "sound goes nowhere: muted, or nothing to play it";
+  };
+  cost = {
+    glyph = nerd "f0114";
+    console = "c";
+    means = "what AI use has cost";
+  };
   more = {
     glyph = "…";
     console = "~";

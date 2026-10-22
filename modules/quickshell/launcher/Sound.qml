@@ -181,6 +181,9 @@ Provider {
             : node.audio.muted ? "muted" : `${Math.round(node.audio.volume * 100)}%`;
     }
 
+    // The words it answers whole, and by their start (Provider.qml).
+    questions: ["volume", "what's playing", "now playing", "loudness", "how loud"]
+
     function answer(typed) {
         const text = typed.trim().toLowerCase().replace(/\?$/, "");
         const asked = /^(?:volume|vol|sound)\s+(?:to\s+)?(\d{1,3})\s*%?$/.exec(text);
