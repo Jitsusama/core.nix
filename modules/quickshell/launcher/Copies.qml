@@ -164,6 +164,12 @@ Provider {
             Report.say("forgot the copies");
             return;
         }
+        // Pictures the helper let go to make room, whose files are gone.
+        if (said.gone) {
+            all = all.filter(row => row.picture === undefined || !said.gone.includes(row.id));
+            Report.say(`let go ${said.gone.length === 1 ? "a picture" : `${said.gone.length} pictures`}`);
+            return;
+        }
         const picture = said.picture !== undefined;
         const kept = all.filter(row => picture ? row.id !== said.picture : row.text !== said.text);
         const row = picture ? pictured(said) : made(said);
