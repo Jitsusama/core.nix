@@ -3,7 +3,10 @@
 // what's in use, and "uptime" for how long it's been up, all read from the
 // kernel's files under /proc; and "disk", "storage" or "free space" for
 // each disk's room and how the disk guard stands, from the margin's disk
-// piece (pieces/Disk.qml), so that fact has one home. Nothing is spawned.
+// piece (pieces/Disk.qml), so that fact has one home; and "queue" or
+// "what's running" for the heavy work the machine's queue runs and holds,
+// each job a row going to its session's window, from what the harness
+// writes (Jobs.qml). Nothing is spawned.
 import qs
 import Quickshell.Io
 import QtQuick
@@ -36,7 +39,9 @@ Provider {
         memory: ["memory", "ram", "mem", "swap", "free memory", "memory use"],
         cpu: ["processor", "cpu", "cores", "load", "load average", "cpu use"],
         uptime: ["uptime", "since boot", "how long up", "boot time"],
-        disks: ["disk", "storage", "free space", "disk space", "space", "drive", "ssd", "how full"]
+        disks: ["disk", "storage", "free space", "disk space", "space", "drive", "ssd", "how full"],
+        queue: ["queue", "jobs", "what's running", "whats running", "what's waiting", "whats waiting", "waiting",
+            "heavy work", "builds", "vm tests", "machine queue"]
     })
     questions: Object.keys(kinds).reduce((all, kind) => all.concat(kinds[kind]), [])
 
@@ -51,9 +56,70 @@ Provider {
             return uptime();
         case "disks":
             return disks();
+        case "queue":
+            return queue();
         default:
             return null;
         }
+    }
+
+    // How long ago an ISO time was, as a clock reads it: minutes, or hours
+    // and minutes.
+    function since(at) {
+        const minutes = Math.max(0, Math.floor((Date.now() - Date.parse(at)) / 60000));
+        return minutes < 60 ? `${minutes} min` : `${Math.floor(minutes / 60)}:${String(minutes % 60).padStart(2, "0")}`;
+    }
+
+    // A place in line as it's said: 1st, 2nd, 3rd, 11th, 22nd.
+    function ordinal(place) {
+        const tens = place % 100;
+        const suffix = tens >= 11 && tens <= 13 ? "th" : ["th", "st", "nd", "rd"][place % 10] ?? "th";
+        return `${place}${suffix}`;
+    }
+
+    readonly property var kindNames: ({
+        "vm-test": "VM test",
+        "vm-check": "VM check",
+        "benchmark": "benchmark",
+        "build": "build"
+    })
+
+    // The queue: what runs and what waits, each going to the window of the
+    // session it's for, or copying what it is when none is open.
+    function queue() {
+        if (Jobs.said === null)
+            return null;
+        const windowed = job => Sessions.running.find(session => session.presence?.session === job.owner?.session) ?? null;
+        const rows = Jobs.jobs.map(job => {
+            const session = windowed(job);
+            const kind = kindNames[job.kind] ?? job.kind;
+            const fields = {
+                name: job.what,
+                side: job.state === "waiting"
+                    ? `${kind} \u00b7 waiting ${since(job.since)}, ${ordinal(job.place)} in line`
+                    : `${kind} \u00b7 ${since(job.since)}`,
+                glyph: Theme.glyph[job.state === "waiting" ? "queued" : "running"],
+                hue: job.state === "waiting" ? "muted" : "action",
+                plain: true
+            };
+            return session === null ? copyRow(fields) : thing(Object.assign(fields, {
+                verb: "switch",
+                later: true,
+                run: () => Niri.act({ FocusWindow: { id: session.window.id } })
+            }));
+        });
+        const room = Jobs.said.machine ?? {};
+        const counted = [Jobs.running.length > 0 ? `${Jobs.running.length} running` : "",
+            Jobs.waiting.length > 0 ? `${Jobs.waiting.length} waiting` : ""].filter(part => part !== "").join(", ");
+        const wasted = Jobs.said.wasted?.today ?? 0;
+        return {
+            headline: counted === "" ? "nothing queued" : counted,
+            rows: rows,
+            note: Jobs.silent ? "the queue has stopped saying"
+                : [room.availableGib !== undefined ? `${room.availableGib} GiB to spare` : "",
+                    room.pressure?.cpu !== undefined ? `the processors ${Math.round(room.pressure.cpu)}% held up` : "",
+                    wasted > 0 ? `${wasted} min waited with room today` : ""].filter(part => part !== "").join(" \u00b7 ")
+        };
     }
 
     function disks() {
