@@ -256,7 +256,7 @@ that does. The kinds that follow from it:
 | window  | a program              | the accent when focused, the edge otherwise | tiled | its own | opaque |
 | palette | the launcher           | the accent                | a quarter down        | large, monospace  | a command line over a list |
 | prompt  | polkit, the lock screen | the accent, the alert after a wrong answer | dead centre | large | a scrim stops what's behind it; who asks and why, in words, then the padlock beside the dots |
-| notice  | a notification         | the edge, the alert when critical | the top right corner | body, Mona Sans | takes no keys itself, since Super+N gathers it into the launcher; who first, then the message, then a footer of where from and when |
+| notice  | a notification         | the edge, the accent while it holds the keys, the alert when critical | a step inside the window at the top right | body, Mona Sans | who first, then the message, then a footer of where from and when; Super+N gives it the launcher's keys, the footer saying them where it said when |
 | meter   | the volume, the microphone, the brightness, the charge when power comes or goes | the edge | bottom centre | body, monospace | reads a level back while it changes |
 | map     | the keyboard's layout  | the edge                  | bottom centre         | body, monospace   | the keys where they sit, their layer named, following the board while typing carries on |
 | drawer  | the margin: Keep Awake, do not disturb, the mic muted, notices waiting | the rule, with no top | hanging from the top edge, at the top right | body, monospace | pulls at rest, glyphs once drawn out, and the launcher holding what's chosen |
@@ -401,9 +401,19 @@ it. Owners go by layer:
 The margin mark is the one always-visible desktop element: the drawer's
 pulls at the top right (Shape and Kinds), nothing at all when nothing is
 true, so the screen is calm by default. The launcher's foot is the other
-glance: whenever it's open, a line of what's always true, the time, the
-date, the battery, the network, the volume and the day's AI spend, giving
-way by collapse rank as space runs short. Both draw from the same pieces,
+glance: one line, its keys on the right, and on the left what the
+selection has to say or, when it says nothing, how things stand. It's the
+quietest thing in the launcher, below the field, the rows and the keys:
+all muted but a fact that wants Joel, each fact its glyph and the least
+that tells him something, as a key hint is its key and what it does, at
+the hints' size and step. The battery is its charge, and its time left
+while it drains; the network and the volume are their glyph alone while
+all is well; pi is what's moving. At home it's the whole glance, the
+time, the date, the battery, the network, the volume, the day's AI spend
+and pi; with something typed, held or asked, only the time and what wants
+him. Short of room, each says its least first, the battery its charge
+alone, and then the rest give way by collapse rank, and each
+fact's detail is a word away ("battery", Wi-Fi, Sound, Agents). Both draw from the same pieces,
 so a piece with a mark is in each. The overview draws nothing of the
 shell's own: it's for finding windows (2026-10-21, at Joel's word: "having
 any widgets on Super A can be abolished, it is fucking annoying relying on
@@ -591,10 +601,11 @@ with its chord and where it works. Inside a layer its own "what's here"
 shows only its keys: Ctrl+Shift+/ in the terminal, Space ? in Neovim.
 
 Nothing the shell shows is reached only by pointing. Super+O brings out the
-margin's drawer with what's on, and Super+N gathers the notices, those still
-on screen too, into the launcher, where Return goes to who sent one and the
-right arrow offers its own actions (Reply, Mark as read), copying what it
-said, and letting it go.
+margin's drawer with what's on, and Super+N takes the notices on screen by
+the launcher's keys, then gathers every notice into the launcher. Either
+way Return goes to who sent one, and the right arrow steps into its verbs:
+its own actions (Reply, Mark as read), copying what it said, and letting it
+go; Up and Down choose, Left steps back.
 
 On the desktop, windows sit in a grid: columns side by side, each holding
 windows stacked above and below. Super with the arrows moves focus through
@@ -803,7 +814,7 @@ by them isn't done.
 | The greeter                               | Quickshell, greetd       | both           | the time, the date, who's signing in, the session it starts | a refused password, what PAM says | Tab to the next account | the lock screen's | the boot's timings; the time stays |
 | The compositor                            | niri                     | none           |        |        |           |         |          |
 | The wallpaper                             | Quickshell, niri         | none           |        |        |           |         |          |
-| The launcher's foot and the margin mark   | Quickshell               | both           | the time, the date, the battery with its time and watts, the network, the volume | the battery running low, offline, a network wanting a sign-in, muted | step 2's doors | step 2 | volume, network, battery, date; the time stays |
+| The launcher's foot and the margin mark   | Quickshell               | both           | the foot, when the selection says nothing: the time, the date, the battery with its time and watts, the network, the volume, the day's AI spend, pi, each after its glyph | the battery running low, offline, a network wanting a sign-in, muted | step 2's doors | step 2 | volume, network, battery, date; the time stays |
 | The launcher and palette                  | Quickshell               | monospace      |        |        |           |         |          |
 | Notifications                             | Quickshell               | both           |        |        |           |         |          |
 | Menus and overlays                        | Quickshell               | both           |        |        |           |         |          |
@@ -845,6 +856,25 @@ as an exception with the reason.
 ## Decisions
 
 What each studio round settled, newest first, with the reason.
+
+- **The launcher has one foot, and a held notice speaks its keys**
+  (2026-10-22, at Joel's word: "i don't like losing the context hints in
+  the status bar, the look of the status bar breaks my aesthetics hard.
+  some of the new interactions feel slightly out of place with the other
+  ones that i have been liking."). A second line under a hairline, in
+  small type, with a word before every value and dots between, was a
+  second foot and a busy line, and took the hints' place. The foot is one
+  line again: the keys on the right, the selection's note on the left, and
+  when it has none, the glance, each fact its glyph and the least that
+  tells something, at the hints' size and step and all muted, the two
+  crossfading; at Joel's word ("it needs to feel fucking polished ... and
+  also not steal visual focus"; "feel free to reduce what it shows
+  depending on context"), it's whole only at home, and mid-task only the
+  time and what wants him. The held
+  notice chose its offers with the side arrows, which in the launcher step
+  in and out, and said its keys in a second footer; now the right arrow
+  steps into its verbs as rows, the history's own, and the one footer
+  says the keys where it said when.
 
 - **The splash says what it waits on** (2026-10-21, judged against the
   taste without a round). A boot or shutdown that stalled said starting or

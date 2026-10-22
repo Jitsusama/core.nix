@@ -839,13 +839,25 @@ pkgs.testers.runNixOSTest {
           photograph("overview")
           machine.fail(in_session("niri msg layers | grep -qw status"))
           as_account("niri msg action close-overview")
-          # The time and the battery's charge, at least, always.
+          # The time, the battery's charge and the cable, at least, as
+          # drawn once the keys beside them are: each read by its glyph
+          # rather than a word, the battery saying its least, its charge,
+          # before the network gives way.
           charge = machine.succeed("cat /sys/class/power_supply/test_battery/capacity").strip()
-          since = mark()
           as_account("qs ipc call launcher toggle")
-          reported("stands ", lambda rest: re.match(r"\d\d:\d\d  ", rest) and f"{charge}%" in rest, since)
           launcher_ready()
+          launcher_until(
+              lambda shown: re.match(r"\d\d:\d\d  ", shown["glance"])
+              and f"\U000f0079 {charge}%  " in shown["glance"]
+              and "\U000f0200" in shown["glance"]
+          )
           photograph("launcher-standing")
+          # Typing narrows it to what never gives way, the time, so it
+          # never pulls the eye from the rows; here what's typed finds
+          # nothing, so no row's note takes its place.
+          type_in("zqxj")
+          launcher_until(lambda shown: re.fullmatch(r"\d\d:\d\d", shown["glance"]))
+          photograph("launcher-glance-typing")
           machine.send_key("esc")
           machine.wait_until_fails(in_session("niri msg layers | grep -qw launcher"), timeout=10)
 
@@ -981,7 +993,7 @@ pkgs.testers.runNixOSTest {
           # The launcher's foot counts it, working, as its presence says.
           since = mark()
           as_account("qs ipc call launcher toggle")
-          reported("stands ", lambda rest: "pi 1 running, 1 working" in rest, since)
+          reported("stands ", lambda rest: "\u03c0 1 working" in rest, since)
           launcher_ready()
           # Its collection by what it's called, then the session named
           # whole, as its README is, not as its window's title.
@@ -999,6 +1011,10 @@ pkgs.testers.runNixOSTest {
           machine.wait_until_succeeds(
               in_session("niri msg --json focused-window | grep -q TESTQA"), timeout=10
           )
+          # Its title is read once, outside what's drawn, so nothing drawn
+          # reads it again as it changes.
+          log = as_account("journalctl --user -u quickshell --no-pager -o cat")
+          assert "Binding loop" not in log, "a session's title is read inside a binding"
           # It comes to want Joel, its presence replaced by rename as pi's
           # is: the margin hangs pi's mark, and lets it go once answered.
           def presence_says(said):
@@ -1958,15 +1974,24 @@ pkgs.testers.runNixOSTest {
           assert "polish() loop" not in log, "a notice's layout never settles"
           # Super+N takes the stack, which waits while it holds the keys.
           # The newer notice waits behind the older; Down brings it to the
-          # front, the right arrow chooses what it offers, and Return does
-          # it, with a token to come forward.
+          # front, the right arrow steps into its verbs, what it offers
+          # first, as a launcher row's are, Down chooses the next and Left
+          # steps back, and Return does the one chosen, with a token to
+          # come forward.
           listen()
           with told("keys notices"):
               machine.send_key("meta_l-n")
           photograph("notices-held")
           machine.send_key("down")
-          machine.send_key("right")
-          photograph("notices-held-offer")
+          with told("notice verb Play it"):
+              machine.send_key("right")
+          with told("notice verb Copy what it said"):
+              machine.send_key("down")
+          photograph("notices-held-verbs")
+          with told("notice back"):
+              machine.send_key("left")
+          with told("notice verb Play it"):
+              machine.send_key("right")
           machine.send_key("ret")
           machine.wait_until_succeeds("grep -qx play /tmp/answer", timeout=15)
           tokened()
@@ -2977,6 +3002,12 @@ pkgs.testers.runNixOSTest {
           machine.succeed("timeout 15 systemctl stop bluetooth-agent")
           machine.succeed("journalctl -u bluetooth-agent | grep -q 'unregistering agent'")
           machine.fail("systemctl is-failed --quiet bluetooth-agent")
+
+      # A binding that throws or assigns the wrong type only warns, and
+      # only once a surface draws it, which can be long after the start.
+      with subtest("Quickshell warned of nothing it drew all along"):
+          log = as_account("journalctl --user -u quickshell --no-pager -o cat | grep -F 'WARN scene' || true")
+          assert log.strip() == "", f"Quickshell warned of a scene: {log}"
 
       photograph("desktop")
     '';

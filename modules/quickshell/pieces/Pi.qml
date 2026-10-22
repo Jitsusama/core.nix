@@ -19,6 +19,10 @@ Piece {
         Sessions.working > 0 ? `${Sessions.working} working` : "",
         wanting.length > 0 ? `${wanting.length} ${wanting.length === 1 ? "wants" : "want"} you` : ""]
         .filter(part => part !== "").join(", ")
+    // What's moving: those wanting Joel, else those working, else the
+    // glyph alone while sessions sit idle.
+    glance: wanting.length > 0 ? `${wanting.length} ${wanting.length === 1 ? "wants" : "want"} you`
+        : Sessions.working > 0 ? `${Sessions.working} working` : ""
     title: "pi"
     badge: wanting.length > 0 ? String(wanting.length) : ""
     hint: !first ? value : `${first.title} ${Sessions.wanted(first.presence.wants)}`

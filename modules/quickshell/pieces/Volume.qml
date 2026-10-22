@@ -10,6 +10,9 @@ Piece {
 
     active: !sink || sink.audio.muted
     value: !sink ? "none" : sink.audio.muted ? "muted" : Math.round(sink.audio.volume * 100) + "%"
+    sign: active ? "silent" : settings.sign ?? ""
+    // Silence is the glyph alone.
+    glance: active ? "" : value
 
     // Pipewire reports a node's volume only once something binds it.
     PwObjectTracker {

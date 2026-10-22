@@ -6,9 +6,12 @@
 // itself when its time is up, unless it's critical. While notices are held
 // (Quiet.qml), only a critical one shows.
 //
-// Super+N gives the stack the keys while there are notices (`pressed` says
-// what each does, and the front card's footer shows them), and opens the
-// history in the launcher when there are none or it's pressed again.
+// Super+N gives the stack the keys while there are notices, and opens the
+// history in the launcher when there are none or it's pressed again. The
+// keys are the launcher's (`pressed` says what each does): Return does the
+// front one, and the right arrow steps into its verbs, the same ones its
+// past self has in the history. While the stack holds them, the front
+// card's footer shows them where it said when the notice came.
 //
 // The notices sit a step inside the window under the top right corner, so
 // a notice lies on one window rather than across a border, or a step inside
@@ -19,8 +22,7 @@
 // the launcher to find later, where the ones still here can be answered
 // or let go, and while it's open the corner leaves them to it. A notice
 // offering something to do (Reply, Play it) lists it above its footer with
-// the chord that takes the stack beside it, and the right arrow chooses
-// one.
+// the chord that takes the stack beside it, and its verbs lead with it.
 //
 // It's the notice kind (docs/design.md, Shape and Kinds): the edge frame,
 // the accent's while the stack holds the keys, or the alert's when
@@ -137,16 +139,75 @@ Scope {
     property real frontHeight: 0
 
     // Whether the stack holds the keys, which Super+N gives it while there
-    // are notices, and which of the front one's offers is chosen, -1 for
-    // the notice itself.
+    // are notices; whether they've stepped into the front one's verbs, as
+    // the right arrow does into a launcher row's; and which verb is chosen.
     property bool holding: false
-    property int chosen: -1
+    property bool stepped: false
+    property int chosen: 0
     onShownChanged: {
-        chosen = -1;
+        stepped = false;
         if (shown.length === 0)
             holding = false;
     }
-    onHoldingChanged: Report.say(holding ? "holds notices" : "lets notices go")
+    onHoldingChanged: {
+        stepped = false;
+        Report.say(holding ? "holds notices" : "lets notices go");
+    }
+    onSteppedChanged: if (!stepped) Report.say("notice back")
+    onChosenChanged: if (stepped) Report.say(`notice verb ${verbs[chosen]?.name ?? ""}`)
+
+    // What can be done with the front one besides what Return does, the
+    // same as its past self in the launcher (launcher/PastNotices.qml):
+    // what it offers, copying what it said, letting it go, letting them
+    // all go, and the rest of the notices; each with the key that does it
+    // straight away, where there is one.
+    readonly property var verbs: {
+        const notification = front;
+        if (!notification)
+            return [];
+        const done = run => () => {
+            Notices.mark(notification.id, true);
+            run();
+        };
+        return offers(notification).map(offer => ({
+            glyph: /reply/i.test(offer.text) ? 0xf045a : 0xf0ce0,
+            name: offer.text,
+            chord: [],
+            run: done(() => offer.invoke())
+        })).concat([{
+            glyph: 0xf018f,
+            name: "Copy what it said",
+            chord: [],
+            run: done(() => {
+                Quickshell.clipboardText = root.said(notification);
+            })
+        }, {
+            glyph: 0xf0a91,
+            name: "Let it go",
+            // Keys drawn as the desktop draws them (home.nix, keyFaces),
+            // Backspace by its name, since it has no glyph of its own.
+            chord: [{ text: "Backspace" }],
+            run: () => notification.dismiss()
+        }, {
+            glyph: 0xf0a91,
+            name: "Let them all go",
+            chord: [{ text: "\u21e7" }, { text: "Backspace" }],
+            run: () => root.putAway()
+        }, {
+            glyph: 0xf009c,
+            name: "All the notices",
+            chord: [{ text: "Tab" }],
+            run: () => root.history()
+        }]);
+    }
+
+    // What a notice said, as plain text: its summary, and its body without
+    // the markup it may carry.
+    function said(notification) {
+        const body = notification.body.replace(/<[^>]*>/g, "").replace(/&lt;/g, "<")
+            .replace(/&gt;/g, ">").replace(/&amp;/g, "&");
+        return body === "" ? notification.summary : `${notification.summary}\n${body}`;
+    }
 
     // What a notice's sender does when it's chosen, or null, and what else
     // it offers, which its card lists.
@@ -157,14 +218,21 @@ Scope {
         return notification.actions.filter(action => action.identifier !== "default");
     }
 
-    // The front one done with, by its offer chosen, or what it's about, or
-    // let go when it's about nothing to open.
+    // The front one done with: the verb chosen, or what it's about, or let
+    // go when it's about nothing to open.
     function run() {
         const notification = front;
         if (!notification)
             return;
+        if (stepped) {
+            const verb = verbs[chosen] ?? null;
+            stepped = false;
+            if (verb)
+                verb.run();
+            return;
+        }
         Notices.mark(notification.id, true);
-        const offer = chosen >= 0 ? offers(notification)[chosen] ?? null : opens(notification);
+        const offer = opens(notification);
         if (offer)
             offer.invoke();
         else
@@ -179,10 +247,12 @@ Scope {
         order = by > 0 ? ids.slice(1).concat(ids.slice(0, 1)) : ids.slice(-1).concat(ids.slice(0, -1));
     }
 
-    // The keys while the stack holds them: Return does the front one,
-    // the arrows choose among what it offers and move through the stack,
-    // Delete or Backspace lets it go and with Shift all of them, Tab hands
-    // on to the history, and Escape gives the keys back.
+    // The keys while the stack holds them, as the launcher's are: Return
+    // does the front one, the right arrow steps into its verbs, where Up
+    // and Down choose one and the left arrow or Escape steps back, and
+    // otherwise Up and Down move through the stack. Delete or Backspace
+    // lets it go and with Shift all of them, Tab hands on to the history,
+    // and Escape gives the keys back.
     function pressed(event) {
         const all = (event.modifiers & Qt.ShiftModifier) !== 0;
         switch (event.key) {
@@ -191,16 +261,26 @@ Scope {
             run();
             break;
         case Qt.Key_Right:
-            chosen = Math.min(chosen + 1, front ? offers(front).length - 1 : -1);
+            if (!stepped && verbs.length > 0) {
+                chosen = 0;
+                stepped = true;
+                Report.say(`notice verb ${verbs[0].name}`);
+            }
             break;
         case Qt.Key_Left:
-            chosen = Math.max(chosen - 1, -1);
+            stepped = false;
             break;
         case Qt.Key_Down:
-            turn(1);
+            if (stepped)
+                chosen = Math.min(chosen + 1, verbs.length - 1);
+            else
+                turn(1);
             break;
         case Qt.Key_Up:
-            turn(-1);
+            if (stepped)
+                chosen = Math.max(chosen - 1, 0);
+            else
+                turn(-1);
             break;
         case Qt.Key_Delete:
         case Qt.Key_Backspace:
@@ -213,7 +293,10 @@ Scope {
             history();
             break;
         case Qt.Key_Escape:
-            holding = false;
+            if (stepped)
+                stepped = false;
+            else
+                holding = false;
             break;
         default:
             return;
@@ -649,9 +732,9 @@ Scope {
                             font.pointSize: Theme.sans.body
                         }
 
-                        // What the sender offers, each run by a click or by
-                        // the keys: the chord on the right opens the
-                        // launcher on them, the first held for Return.
+                        // What the sender offers, each run by a click, or
+                        // by the keys among the verbs: the chord on the
+                        // right gives the stack the keys.
                         Item {
                             id: offering
                             width: parent.width
@@ -659,7 +742,7 @@ Scope {
                             // The default is the card's own click, not one
                             // of these.
                             readonly property var offers: root.offers(card.modelData)
-                            visible: offers.length > 0
+                            visible: offers.length > 0 && !(card.keys && root.stepped)
 
                             Row {
                                 anchors.bottom: parent.bottom
@@ -677,18 +760,6 @@ Scope {
                                         required property int index
                                         width: face.width
                                         height: face.height
-
-                                        // Chosen by the arrows: a part's
-                                        // fill, a step round the words.
-                                        Rectangle {
-                                            anchors.fill: parent
-                                            anchors.margins: -Theme.space.xs
-                                            anchors.leftMargin: -Theme.space.s
-                                            anchors.rightMargin: -Theme.space.s
-                                            radius: Theme.inner
-                                            color: Theme.selection
-                                            visible: card.keys && root.chosen === offer.index
-                                        }
 
                                         Row {
                                             id: face
@@ -737,7 +808,82 @@ Scope {
                             }
                         }
 
-                        // Where it came from and when, a step below the message.
+                        // Its verbs, once the right arrow steps into them:
+                        // a launcher row's shape at the card's size, the
+                        // glyph in a column of its own, the name, the key
+                        // that does it straight away on the right, muted,
+                        // and the chosen one filled a step round its words.
+                        Column {
+                            width: parent.width
+                            topPadding: Theme.space.s
+                            visible: card.keys && root.stepped
+
+                            Repeater {
+                                model: card.keys && root.stepped ? root.verbs : []
+
+                                Item {
+                                    id: verb
+
+                                    required property var modelData
+                                    required property int index
+                                    readonly property bool chosen: root.chosen === index
+
+                                    width: parent.width
+                                    height: root.line + Theme.space.xs
+
+                                    Rectangle {
+                                        anchors.fill: parent
+                                        anchors.leftMargin: -Theme.space.s
+                                        anchors.rightMargin: -Theme.space.s
+                                        radius: Theme.inner
+                                        color: Qt.alpha(Theme.selection, Theme.floating.selection)
+                                        visible: verb.chosen
+                                    }
+
+                                    Text {
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        text: String.fromCodePoint(verb.modelData.glyph)
+                                        color: Theme.action
+                                        font.family: Theme.mono.family
+                                        font.pointSize: Theme.mono.body
+                                    }
+
+                                    Text {
+                                        x: Theme.space.xl
+                                        width: chord.x - x - Theme.space.l
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        text: verb.modelData.name
+                                        textFormat: Text.PlainText
+                                        elide: Text.ElideRight
+                                        color: verb.chosen ? Theme.strong : Theme.text
+                                        font.family: Theme.mono.family
+                                        font.pointSize: Theme.mono.body
+                                        font.weight: verb.chosen ? Font.Medium : Font.Normal
+                                    }
+
+                                    Chord {
+                                        id: chord
+                                        anchors.right: parent.right
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        keys: verb.modelData.chord
+                                        size: Theme.mono.body
+                                    }
+
+                                    MouseArea {
+                                        anchors.fill: parent
+                                        onClicked: {
+                                            root.chosen = verb.index;
+                                            root.run();
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // Where it came from, a step below the message,
+                        // and on the right when it came; or while the stack
+                        // holds the keys, what they do here, as a prompt's
+                        // footer says it, in this footer's size.
                         Item {
                             width: parent.width
                             height: root.line + Theme.space.xs
@@ -756,7 +902,7 @@ Scope {
                             Text {
                                 anchors.left: mark.right
                                 anchors.leftMargin: Theme.space.s
-                                anchors.right: time.left
+                                anchors.right: card.keys ? hints.left : time.left
                                 anchors.rightMargin: Theme.space.l
                                 anchors.bottom: parent.bottom
                                 height: root.line
@@ -779,31 +925,22 @@ Scope {
                                 readonly property int more: root.shown.length - 1
                                 text: (more > 0 ? `${more} more \u00b7 ` : "")
                                     + root.since(root.arrived[card.modelData.id] ?? now, now)
+                                visible: !card.keys
                                 color: Theme.muted
                                 font.family: Theme.mono.family
                                 font.pointSize: Theme.mono.body
                                 font.features: { "tnum": 1 }
                             }
-                        }
-
-                        // While the stack holds the keys, what they do here,
-                        // as a prompt's footer says, a step below where it
-                        // came from, in that footer's size.
-                        Item {
-                            width: parent.width
-                            height: root.line + Theme.space.xs
-                            visible: card.keys
 
                             KeyHints {
+                                id: hints
                                 anchors.right: parent.right
                                 anchors.bottom: parent.bottom
+                                height: root.line
+                                visible: card.keys
                                 size: Theme.mono.body
-                                keys: [
-                                    ["\u21b5", root.chosen >= 0 ? "do it" : card.opens ? "open" : "let go"],
-                                    ["\u232b", "let go"],
-                                    ["\u21e7\u232b", "all"],
-                                    ["\u21e5", "all notices"]
-                                ]
+                                keys: root.stepped ? [["\u21b5", "do it"], ["\u2190", "back"]]
+                                    : [["\u21b5", card.opens ? "open" : "let go"], ["\u2192", "more"]]
                             }
                         }
                     }

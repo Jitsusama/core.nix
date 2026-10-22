@@ -1278,6 +1278,7 @@ in
     pkgs.runCommandLocal "palette-rows-keep-their-words-apart" { } ''
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
       cp ${./modules/quickshell/Choice.qml} Choice.qml
+      cp ${./modules/quickshell/Chord.qml} Chord.qml
       cp ${./modules/quickshell/Prompt.qml} Prompt.qml
       cp ${lights} Lights.qml
       cp ${./tests/rows.qml} shell.qml

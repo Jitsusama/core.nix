@@ -30,6 +30,14 @@ Item {
     property bool active: false
     property string value: ""
     property string role: "text"
+    // The theme's glyph its value is read by at a glance, by name, or none,
+    // and what a glance needs said after it: the least that tells Joel
+    // something, or nothing when the glyph says it all. Where to look for
+    // more is the piece's own collection.
+    property string sign: settings.sign ?? ""
+    property string glance: value
+    // Its glance cut to the least of all, for a glance short of room.
+    property string least: glance
 
     property string badge: ""
     property string hint: value

@@ -18,6 +18,11 @@ Piece {
     active: draining && charge <= (settings.low ?? 20)
     role: !active ? "text" : critical ? "alert" : "warning"
     wants: critical
+    sign: battery.state === UPowerDeviceState.Charging ? "charging" : settings.sign ?? ""
+    // The charge, and the time left while it drains.
+    least: charge + "%"
+    glance: charge + "%" + (draining && battery.timeToEmpty > 0
+        ? " " + duration(battery.timeToEmpty) + " left" : "")
     value: {
         const parts = [charge + "%"];
         if (battery.state === UPowerDeviceState.Charging)

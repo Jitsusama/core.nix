@@ -63,53 +63,35 @@ Rectangle {
         font.pointSize: Theme.mono.large
     }
 
-    // The chord key by key, joined by +, or what the row is. In a sequence a
-    // key pressed after the one before stands a space apart, with no +.
+    // The chord, or what the row is.
     Item {
         id: right
         anchors.right: parent.right
         anchors.rightMargin: Theme.space.l
         anchors.verticalCenter: parent.verticalCenter
-        width: keys.width
-        height: keys.height
+        readonly property bool chorded: row.chord.length > 0
+        readonly property bool sided: !chorded && row.side !== ""
 
-        Flow {
+        width: chorded ? keys.width : sided ? side.width : 0
+        height: chorded ? keys.height : side.height
+
+        Chord {
             id: keys
+            visible: right.chorded
+            keys: row.chord
+        }
 
-            Repeater {
-                model: row.chord.length > 0 ? row.chord
-                    : row.side === "" ? [] : [{ text: row.side, wide: false }]
-
-                Text {
-                    required property var modelData
-                    required property int index
-
-                    // A part takes the room its glyph draws into, and each
-                    // + keeps the same distance from both its keys.
-                    leftPadding: index === 0 ? 0 : plus.width
-                    rightPadding: modelData.wide ? Theme.space.xs : 0
-                    // What a row is never takes more than its share of the
-                    // row, so however long it runs it can't reach the name.
-                    width: row.chord.length > 0 ? implicitWidth
-                        : Math.min(implicitWidth, row.width * 0.45)
-                    elide: Text.ElideRight
-                    text: modelData.text
-                    color: Theme.muted
-                    font.family: Theme.mono.family
-                    font.pointSize: Theme.mono.large
-
-                    Text {
-                        id: plus
-                        visible: parent.index > 0
-                        width: parent.modelData.after === true ? Theme.space.l
-                            : implicitWidth + 2 * Theme.space.xs * 3 / 2
-                        horizontalAlignment: Text.AlignHCenter
-                        text: parent.modelData.after === true ? "" : "+"
-                        color: Theme.muted
-                        font: parent.font
-                    }
-                }
-            }
+        Text {
+            id: side
+            visible: right.sided
+            // What a row is never takes more than its share of the row, so
+            // however long it runs it can't reach the name.
+            width: Math.min(implicitWidth, row.width * 0.45)
+            elide: Text.ElideRight
+            text: row.side
+            color: Theme.muted
+            font.family: Theme.mono.family
+            font.pointSize: Theme.mono.large
         }
     }
 
