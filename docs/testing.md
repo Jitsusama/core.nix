@@ -108,6 +108,7 @@ written beside each in `tests/`.
 | `a-claimed-chord-is-refused`        | a chord two layers claim, or one claims twice, is refused |
 | `a-theme-changes-everything`        | another theme leaves none of the first's colours behind   |
 | `nothing-names-its-own-look`        | no module but the theme's names a colour or a face        |
+| `the-shell-speaks-its-javascript`   | the shell calls no method Quickshell's JavaScript lacks   |
 | `formatting`                        | everything is formatted and passes the linters            |
 | `stands-alone`                      | nothing here names a machine, its repository or employer  |
 | `ci-runs-every-vm-test`             | CI's workflow runs every virtual machine test             |

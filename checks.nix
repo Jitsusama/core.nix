@@ -1844,6 +1844,21 @@ in
       touch $out
     '';
 
+  # Quickshell's JavaScript lacks some of the language's newer methods, which
+  # qmllint lets through and the shell fails on only as it runs, so the
+  # shell's code calls none of them.
+  the-shell-speaks-its-javascript =
+    pkgs.runCommandLocal "the-shell-speaks-its-javascript" { nativeBuildInputs = [ pkgs.ripgrep ]; }
+      ''
+        cd ${./.}
+        if rg --line-number --no-heading --glob '*.qml' --glob '*.js' \
+          -e '\.(flatMap|flat|findLast|findLastIndex|toSorted|toReversed|toSpliced)\(' modules/quickshell; then
+          echo "The lines above call a method Quickshell's JavaScript doesn't have."
+          exit 1
+        fi
+        touch $out
+      '';
+
   # A disk's partitions and its open volume go by its name, so a machine's
   # drive and a stick attached beside it are never taken for each other.
   disks-go-by-their-name =
