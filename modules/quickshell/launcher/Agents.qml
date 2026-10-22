@@ -3,8 +3,10 @@
 // address, whether it's working or waiting, what it spent today as
 // spend-watch says (SpendWatch.qml), never while the screen is shared, and
 // the folder it works in.
-// Return goes to its window; the right arrow offers copying its address or
-// its quest's id. What runs, and how each is doing, is Sessions.qml's.
+// Return goes to its window; the right arrow steps into what's known of it,
+// each fact a row Return copies: its quest, its addresses, when it started,
+// what it spent today, what it works on and what it hears. What runs, and
+// how each is doing, is Sessions.qml's.
 import qs
 import Quickshell
 import QtQuick
@@ -54,30 +56,43 @@ Provider {
                 : presence && presence.worksOn ? presence.worksOn : "",
             later: true,
             run: () => Niri.act({ FocusWindow: { id: session.window.id } }),
-            verbs: () => provider.verbs(session, quest)
+            verbs: () => provider.verbs(session, quest, spent)
         });
     }
 
-    function verbs(session, quest) {
-        const copy = (key, name, text) => thing({
-            key: key,
+    // When a session started, as a clock says it, with its day when that
+    // wasn't today.
+    function started(at) {
+        const when = new Date(at);
+        const today = new Date().toDateString() === when.toDateString();
+        return Qt.formatDateTime(when, today ? "HH:mm" : "ddd d MMM, HH:mm");
+    }
+
+    function verbs(session, quest, spent) {
+        const presence = session.presence ?? {};
+        const fact = (key, name, side) => copyRow({
+            key: `fact:agent:${key}`,
             name: name,
-            glyph: String.fromCodePoint(0xf018f),
-            hue: "action",
-            now: true,
-            run: () => Quickshell.clipboardText = text
+            side: side,
+            glyph: Theme.glyph.agent
         });
-        return [
-            thing({
-                key: "verb:agent:switch",
-                name: "Go to its window",
-                glyph: String.fromCodePoint(0xf05b2),
-                hue: "action",
-                later: true,
-                run: () => Niri.act({ FocusWindow: { id: session.window.id } })
-            }),
-            copy("verb:agent:address", `Copy its address, ${session.address}`, session.address)
-        ].concat(quest !== "" ? [copy("verb:agent:quest", `Copy its quest, ${quest}`, quest)] : []);
+        const addresses = presence.addresses ?? [session.address];
+        const facts = [
+            quest !== "" ? fact("quest", quest, "its quest") : null,
+            fact("address", addresses.join(", "), addresses.length === 1 ? "its address" : "its addresses"),
+            presence.owner?.startedAt ? fact("started", started(presence.owner.startedAt), "started") : null,
+            spent !== "" ? fact("spent", spent, "spent today") : null,
+            presence.worksOn ? fact("works", presence.worksOn, "works on") : null,
+            (presence.groups ?? []).length > 0 ? fact("hears", presence.groups.join(", "), "hears") : null
+        ].filter(row => row !== null);
+        return [thing({
+            key: "verb:agent:switch",
+            name: "Go to its window",
+            glyph: String.fromCodePoint(0xf05b2),
+            hue: "action",
+            later: true,
+            run: () => Niri.act({ FocusWindow: { id: session.window.id } })
+        })].concat(facts);
     }
 
     function search(typed) {

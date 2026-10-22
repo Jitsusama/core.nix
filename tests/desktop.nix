@@ -974,7 +974,9 @@ pkgs.testers.runNixOSTest {
           presence = "~/.local/state/pi/agentic-harness.pi/mesh-workflow/presence"
           as_account(
               f"mkdir -p {quest} {presence} && printf '%s\\n' '---' 'title: no' '---' '# A quest of its own & whole'"
-              f" > {quest}/README.md && echo '{{\"session\":\"01a1face-test\",\"addresses\":[\"TESTQA\"],\"busy\":true}}'"
+              f" > {quest}/README.md && echo '{{\"session\":\"01a1face-test\",\"addresses\":[\"TESTQA\"],\"busy\":true,"
+              f"\"owns\":[\"QEST-20261022-TESTQA\"],\"worksOn\":\"Tidy the tests\",\"groups\":[\"#desk\"],"
+              f"\"owner\":{{\"startedAt\":'$(date +%s%3N)'}}}}'"
               f" > {presence}/testqa.json"
           )
           # What it spent today, as spend-watch writes it, replaced whole.
@@ -1012,6 +1014,25 @@ pkgs.testers.runNixOSTest {
               and "$12.50 today" in shown["selected"]["side"]
           )
           photograph("launcher-agents")
+          # Stepped into, what's known of it, each a row of its own.
+          step_in()
+          launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Go to its window")
+          for name, side in [
+              (r"QEST-20261022-TESTQA", "its quest"),
+              (r"TESTQA", "its address"),
+              (r"\d\d:\d\d", "started"),
+              (r"\$12\.50", "spent today"),
+              (r"Tidy the tests", "works on"),
+              (r"#desk", "hears"),
+          ]:
+              machine.send_key("down")
+              launcher_until(
+                  lambda shown: re.fullmatch(name, (shown["selected"] or {}).get("name", ""))
+                  and shown["selected"]["side"] == side
+              )
+          photograph("launcher-agent-facts")
+          machine.send_key("left")
+          launcher_until(lambda shown: shown["held"] == ["sessions"])
           as_account("rm $XDG_RUNTIME_DIR/spend-watch/collection.json")
           # Found by its address too.
           type_in("testqa", selecting="A quest of its own & whole")
