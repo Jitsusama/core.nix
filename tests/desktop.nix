@@ -961,7 +961,7 @@ pkgs.testers.runNixOSTest {
           quest = "~/.local/share/pi/agentic-harness.pi/quest-workflow/quests/QEST-20261022-TESTQA"
           presence = "~/.local/state/pi/agentic-harness.pi/mesh-workflow/presence"
           as_account(
-              f"mkdir -p {quest} {presence} && printf '%s\\n' '---' 'title: no' '---' '# A quest of its own, whole'"
+              f"mkdir -p {quest} {presence} && printf '%s\\n' '---' 'title: no' '---' '# A quest of its own & whole'"
               f" > {quest}/README.md && echo '{{\"addresses\":[\"TESTQA\"],\"busy\":true}}'"
               f" > {presence}/testqa.json"
           )
@@ -990,11 +990,11 @@ pkgs.testers.runNixOSTest {
           machine.send_key("ret")
           launcher_until(
               lambda shown: shown["held"] == ["sessions"]
-              and (shown["selected"] or {}).get("name") == "A quest of its own, whole"
+              and (shown["selected"] or {}).get("name") == "A quest of its own & whole"
           )
           photograph("launcher-agents")
           # Found by its address too.
-          type_in("testqa", selecting="A quest of its own, whole")
+          type_in("testqa", selecting="A quest of its own & whole")
           machine.send_key("ret")
           machine.wait_until_succeeds(
               in_session("niri msg --json focused-window | grep -q TESTQA"), timeout=10
@@ -1017,14 +1017,15 @@ pkgs.testers.runNixOSTest {
 
           question = {"kind": "question", "since": begun(), "said": "Which <way> & why?"}
           since = mark()
-          with told("shows card A quest of its own, whole asks you"):
+          # Said as written: the summary is plain, so its & isn't escaped.
+          with told("shows card A quest of its own & whole asks you"):
               presence_says({"addresses": ["TESTQA"], "busy": False, "wants": question})
           reported("holds margin ", lambda rest: "agent" in rest.split(), since)
           photograph("margin-pi-wants")
           # The same want, its file replaced again, says nothing new.
           presence_says({"addresses": ["TESTQA"], "busy": False, "wants": question})
           time.sleep(3)
-          cards = "journalctl --user --unit=quickshell --no-pager --output=cat | grep -c 'report\\[shows card A quest of its own, whole asks you'"
+          cards = "journalctl --user --unit=quickshell --no-pager --output=cat | grep -c 'report\\[shows card A quest of its own & whole asks you'"
           t.assertEqual(as_account(cards).strip(), "1", "the same want was said twice")
           with told("keys notices"):
               machine.send_key("meta_l-n")
@@ -1046,7 +1047,7 @@ pkgs.testers.runNixOSTest {
           if "waiting" in held.split()[2:]:
               reported("holds margin ", lambda rest: "waiting" not in rest.split(), since)
           as_account(f"niri msg action focus-window --id {window_titled('Elsewhere')['id']}")
-          with told("shows card A quest of its own, whole wants your yes"):
+          with told("shows card A quest of its own & whole wants your yes"):
               presence_says({
                   "addresses": ["TESTQA"],
                   "busy": False,
@@ -1058,7 +1059,7 @@ pkgs.testers.runNixOSTest {
           machine.wait_until_fails(in_session("niri msg layers | grep -q notifications"), timeout=5)
           # A third, left to time out while its want stands: it isn't
           # missed, since pi's mark says the want; ended, the mark goes.
-          with told("shows card A quest of its own, whole is stuck without you"):
+          with told("shows card A quest of its own & whole is stuck without you"):
               presence_says({
                   "addresses": ["TESTQA"],
                   "busy": False,
