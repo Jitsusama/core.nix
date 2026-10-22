@@ -314,7 +314,7 @@ fn step(theme: &Theme, moment: &Moment, inside: usize) -> (Vec<Line>, Option<(us
                         inside,
                     ));
                     lines.push(vec![]);
-                    footer = foot("go on");
+                    footer = foot("enter it");
                     Some((
                         span(Role::Machine, theme.mark("locked")),
                         hidden(theme, typed),
@@ -329,7 +329,7 @@ fn step(theme: &Theme, moment: &Moment, inside: usize) -> (Vec<Line>, Option<(us
                     lines.push(vec![]);
                     lines.extend(said(Role::Text, &format!("Or {or}."), inside));
                     lines.push(vec![]);
-                    footer = foot("go on");
+                    footer = foot("enter it");
                     Some((
                         span(Role::Machine, theme.mark("locked")),
                         hidden(theme, typed),
@@ -347,7 +347,7 @@ fn step(theme: &Theme, moment: &Moment, inside: usize) -> (Vec<Line>, Option<(us
                     lines.push(vec![]);
                     lines.extend(said(Role::Strong, expected, inside));
                     lines.push(vec![]);
-                    footer = foot("go on");
+                    footer = foot("enter it");
                     typing(typed)
                 }
                 Ask::Show { how, .. } => {
@@ -362,7 +362,7 @@ fn step(theme: &Theme, moment: &Moment, inside: usize) -> (Vec<Line>, Option<(us
                         inside,
                     ));
                     lines.push(vec![]);
-                    footer = foot("go on");
+                    footer = foot("enter it");
                     typing(typed)
                 }
                 // The choices in a column, the one the keys are on led by
@@ -383,7 +383,7 @@ fn step(theme: &Theme, moment: &Moment, inside: usize) -> (Vec<Line>, Option<(us
                         };
                         lines.extend(marked(mark, role, choice, inside));
                     }
-                    let mut shown = vec![(Key::Arrows, "choose"), (Key::Return, "go on")];
+                    let mut shown = vec![(Key::Arrows, "move"), (Key::Return, "choose")];
                     if *back {
                         shown.push((Key::Escape, "back"));
                     }
@@ -580,7 +580,7 @@ mod tests {
                 10
             ))
         );
-        assert_eq!(shown.last().unwrap(), "  Return go on    Ctrl+C leave");
+        assert_eq!(shown.last().unwrap(), "  Return enter it    Ctrl+C leave");
         assert_eq!(shown.len(), 23, "the keys sit a line above the foot");
     }
 
@@ -653,11 +653,11 @@ mod tests {
             back,
         };
         let first = text(&draw(&theme(), &at(), &moment(false), 80, 24));
-        assert_eq!(first.last().unwrap(), "  Return go on    Ctrl+C leave");
+        assert_eq!(first.last().unwrap(), "  Return enter it    Ctrl+C leave");
         let later = text(&draw(&theme(), &at(), &moment(true), 80, 24));
         assert_eq!(
             later.last().unwrap(),
-            "  Return go on    Esc back    Ctrl+C leave"
+            "  Return enter it    Esc back    Ctrl+C leave"
         );
     }
 
@@ -819,7 +819,7 @@ mod tests {
         assert_eq!(drawn.lines[row][1].role, Role::Accent);
         assert_eq!(
             shown.last().unwrap(),
-            "  ↑↓ choose    Return go on    Ctrl+C leave"
+            "  ↑↓ move    Return choose    Ctrl+C leave"
         );
         assert_eq!(drawn.caret, None);
     }

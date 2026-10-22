@@ -229,7 +229,8 @@ driven on; the installed machine's steps come later.
   goes back one ask, Ctrl+C leaves; on the stick that's a root shell.
   Every screen says in words what to do, ending with the key that does it
   ("Type the Nano's PIN, then press Return."), and its foot names every
-  key that works there, Esc only where it goes back. Keys are drawn by the
+  key that works there and what it does (Return enter it, Return choose,
+  never a bare "go on"), Esc only where it goes back. Keys are drawn by the
   name on their keycap on a console and in a terminal alike, so the guide
   reads the same wherever it runs. A secret with another way in (a
   passphrase, or a YubiKey and its PIN) is one field under both, never
