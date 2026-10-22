@@ -226,7 +226,10 @@ in the first four, and the graphical role the last:
 - **[`perf`][perf]:** perf itself, and the settings that let Joel profile his
   own programs, kernel included, without root.
 - **[`slices`][slices]:** the compositor and sound get ten times anyone
-  else's share of the CPU, and a floor of memory a build can't reclaim.
+  else's share of the CPU, and a floor of memory a build can't reclaim; the
+  work pi and terminals start, virtual machines and containers run behind
+  what Joel uses; a call's audio may run in real time; and the work's disk
+  writes give way while a save of his waits on the disk.
 
 ## How It's Checked
 
@@ -337,8 +340,11 @@ if less; record a new one after moving to a new series.
 - **An I/O scheduler.** NVMe runs without one. On the XPS 14, BFQ cut a
   desktop read's p99 from 3 ms to 0.15 ms behind a build's I/O, but lost up
   to nine tenths of the disk's throughput when uncontended; mq-deadline and
-  Kyber changed nothing, nor did `io.latency`. `io.cost` needs a model of the
-  disk, and the one it guesses is out by an order of magnitude.
+  Kyber changed nothing. `io.cost` needs a model of the disk, and the one it
+  guesses is out by an order of magnitude. Behind a build's writes, a
+  synced write waits out the drive's cache, and an `io.latency` target,
+  which needs no scheduler, holds the build back for it (the
+  [`slices`][slices] module).
 - **Building in every module a boot loads.** See
   [Built In or a Module](#built-in-or-a-module): only the ones the boot waits
   for earn it.

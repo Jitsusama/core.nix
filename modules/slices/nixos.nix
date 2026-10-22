@@ -56,12 +56,31 @@ let
     LimitNICE = "-10";
     LimitRTTIME = "200ms:400ms";
   };
+
+  # A build's writes mustn't hold up a save. The disk caches what it's given,
+  # so a synced write, as an editor's save or a browser's database makes,
+  # waits for everything ahead of it. Beside 2.1 to 2.6 GiB/s of writes from
+  # jobs, a synced 4 KiB write from an app took 9 to 18 ms at the median and
+  # up to 282 ms, against 1.9 ms with the disk quiet. A latency target says
+  # how long an app's disk work may take: when a tenth of it takes longer, the
+  # kernel lets less of jobs' work onto the disk, and lets it back as the
+  # app's work meets the target again. Slices with no target give way, jobs,
+  # background and the account's containers among them; app.slice and
+  # session.slice, at the same target, never hold each other back. At 1 ms the
+  # same write took 3 ms at the median and at most 27 ms. The build pays:
+  # about half its writing speed while an app saves ten times a second, and
+  # about a tenth while the apps Joel has open only idle. The disk is
+  # whichever holds /home: systemd follows it through dm-crypt to the drive.
+  disk = "/home 1ms";
 in
 {
   systemd.user.slices.session.sliceConfig = {
     CPUWeight = 1000;
     MemoryMin = "1G";
+    IODeviceLatencyTargetSec = disk;
   };
+
+  systemd.user.slices.app.sliceConfig.IODeviceLatencyTargetSec = disk;
 
   # Beside app.slice and session.slice, so it yields to both.
   systemd.user.slices.jobs.sliceConfig.CPUWeight = "idle";
