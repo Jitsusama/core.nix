@@ -151,6 +151,13 @@ function format(value, decimals, group, point) {
     return sign + grouped + (fraction ? (point ?? ".") + fraction : "");
 }
 
+// A place in a line as it's said: 1 as "1st", 12 as "12th", 22 as "22nd".
+function ordinal(place) {
+    const tens = place % 100;
+    const suffix = tens >= 11 && tens <= 13 ? "th" : ["th", "st", "nd", "rd"][place % 10] ?? "th";
+    return `${place}${suffix}`;
+}
+
 // A whole number in a base, with its prefix: 255 in 16 as "0xff".
 function inBase(value, base) {
     const sign = value < 0 ? "-" : "";

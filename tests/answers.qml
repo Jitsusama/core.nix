@@ -171,6 +171,14 @@ QtObject {
                 failures.push(`${value} to ${places} places was written "${got}", `
                     + `not "${written}"`);
         }
+        // Places in a line, the teens apart.
+        for (const [place, said] of [[1, "1st"], [2, "2nd"], [3, "3rd"], [4, "4th"], [11, "11th"],
+                [12, "12th"], [13, "13th"], [21, "21st"], [22, "22nd"], [111, "111th"]]) {
+            asked++;
+            const got = Numbers.ordinal(place);
+            if (got !== said)
+                failures.push(`place ${place} was said "${got}", not "${said}"`);
+        }
         const bases = Numbers.answer("0x1f");
         asked++;
         if (!bases || quoted(bases.rows.map(r => r.text)) !== quoted(["0x1f", "0o37", "0b11111"]))
