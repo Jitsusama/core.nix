@@ -98,9 +98,13 @@ in
       serviceConfig = {
         ExecStart = "${lib.getExe package} system --config ${configFile}";
         # The socket every account's guard asks, and the status file
-        # `disk-guard status` reads, both open to every account.
+        # `disk-guard status` reads, both open to every account. It's kept
+        # while the guard is down, so its last status, heartbeat and all,
+        # says the guard stopped rather than vanishing; the guard replaces
+        # the socket left behind as it starts.
         RuntimeDirectory = "disk-guard";
         RuntimeDirectoryMode = "0755";
+        RuntimeDirectoryPreserve = "yes";
         StateDirectory = "disk-guard";
         StateDirectoryMode = "0700";
         # The guard holds 35 MiB itself, but root's Nix lists and describes

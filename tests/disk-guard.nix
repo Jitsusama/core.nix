@@ -215,6 +215,17 @@ pkgs.testers.runNixOSTest {
               "jq -e '.filesystems | length > 0' /run/user/1000/disk-guard/status.json"
           )
 
+      # The shell tells a stopped guard by its last heartbeat ageing, so the
+      # status stays while the guard is down, and the guard takes its socket
+      # back as it starts.
+      with subtest("the machine's guard leaves its status while it's down"):
+          machine.succeed("systemctl stop disk-guard")
+          machine.succeed("jq -e '.filesystems | length > 0' /run/disk-guard/status.json")
+          machine.succeed("systemctl start disk-guard")
+          machine.wait_for_unit("disk-guard.service")
+          machine.wait_until_succeeds("test -S /run/disk-guard/socket")
+          t.assertEqual(machine.succeed("stat -c %a /run/disk-guard/socket").strip(), "666")
+
       with subtest("the account's guard takes the test's bands"):
           machine.succeed("chown joel:users /srv/small")
           as_joel("mkdir -p ~/src ~/.cache/thing ~/.config/systemd/user/disk-guard.service.d")

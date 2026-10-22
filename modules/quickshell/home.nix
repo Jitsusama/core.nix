@@ -1302,10 +1302,10 @@ in
     # itself, while the clipboard collection is on: text in memory, and
     # pictures in the runtime directory, which is memory too.
     # pi makes its quests, presence and machine queue folders only as it
-    # first needs them, and spend-watch its own as it starts, and a folder
-    # that isn't there can't be watched, so Sessions.qml, Jobs.qml and the
-    # spend readers would never hear them; they're made at login, before
-    # the shell.
+    # first needs them, and spend-watch its own as it starts. Sessions.qml
+    # lists the first two, and a folder that isn't there can't be listed,
+    # so they're made at login, before the shell, with the other two
+    # beside them so the shell's first look finds each.
     systemd.user.tmpfiles.rules = [
       "d %t/spend-watch - - - -"
       "d %t/jobs 0700 - - -"
