@@ -905,10 +905,19 @@ pkgs.testers.runNixOSTest {
 
       # niri runs the brightness keys' command inside Joel's session, which is
       # the one logind lets change a backlight, so the test has niri run it too.
+      # Twice, so the bar must say the pick just made, as the backlight
+      # daemon wrote it, not the one before.
       with subtest("the brightness shows when the keys' command changes it, then goes"):
-          with told("drawn brightness"):
-              as_account("niri msg action spawn -- brightnessctl --class=backlight set 80%")
-          machine.succeed("grep -qx 80 /sys/class/backlight/stand-in/brightness")
+
+          def as_chosen(rest):
+              level = float(as_account("cat $XDG_RUNTIME_DIR/backlight-chosen"))
+              return rest == f"{round(level * 100)}%"
+
+          for share in [80, 30]:
+              since = mark()
+              as_account(f"niri msg action spawn -- brightnessctl --class=backlight set {share}%")
+              machine.wait_until_succeeds(f"grep -qx {share} /sys/class/backlight/stand-in/brightness")
+              reported("level brightness ", as_chosen, since)
           photograph("brightness")
           machine.wait_until_fails(in_session("niri msg layers | grep -q brightness"), timeout=10)
 

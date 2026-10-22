@@ -16,7 +16,9 @@ Scope {
     FileView {
         path: Quickshell.env("XDG_RUNTIME_DIR") + "/backlight-chosen"
         watchChanges: true
-        blockLoading: true
+        // Every read blocks: a reload otherwise reads in the background,
+        // and text() would still say the pick before.
+        blockAllReads: true
         printErrors: false
         // The pick already made when the shell starts isn't news.
         onFileChanged: {
