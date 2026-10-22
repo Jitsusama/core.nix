@@ -244,9 +244,10 @@ pkgs.testers.runNixOSTest {
           t.assertRegex(table, r" verity 1 7:\d+ 7:\d+ ", "the store reads from the copies")
           type("keyboard")
 
-      with subtest("the vault opens with the stick's passphrase, on one screen"):
-          on_screen("the stick's passphrase")
-          on_screen("Or plug in the Nano or the 5C beside the stick")
+      with subtest("the vault opens with the stick's passphrase, named as it's kept on the phone"):
+          # This stick was written before any key was enrolled, so only the
+          # passphrase opens it; the vault test has a stick keys open too.
+          on_screen("the stick's passphrase, the seven words in 1Password on your phone named \"machine stick passphrase\"")
           type(${builtins.toJSON passphrase})
 
       # What the tools print here, for the guide's fixtures (qemu-canokey).
