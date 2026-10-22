@@ -92,6 +92,7 @@ let
     "Report.qml"
     "Reported.qml"
     "pieces/Piece.qml"
+    "pieces/StatusFile.qml"
     "launcher/Provider.qml"
     "launcher/Numbers.js"
     "launcher/Addresses.js"
@@ -1299,9 +1300,11 @@ in
     # itself, while the clipboard collection is on: text in memory, and
     # pictures in the runtime directory, which is memory too.
     # pi makes its quests and presence folders only as it first needs them,
-    # and a folder that isn't there can't be watched, so Sessions.qml would
-    # never hear them; they're made at login, before the shell.
+    # and spend-watch its own as it starts, and a folder that isn't there
+    # can't be watched, so Sessions.qml and the spend readers would never
+    # hear them; they're made at login, before the shell.
     systemd.user.tmpfiles.rules = [
+      "d %t/spend-watch - - - -"
       "d ${config.xdg.stateHome}/pi/agentic-harness.pi/mesh-workflow/presence - - - -"
       "d ${config.xdg.dataHome}/pi/agentic-harness.pi/quest-workflow/quests - - - -"
     ];

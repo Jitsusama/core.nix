@@ -127,7 +127,7 @@ ShellRoot {
 
     Spend {
         id: piece
-        settings: ({ status: `${root.runtime}/status.json`, every: 50 })
+        settings: ({ status: `${root.runtime}/status.json` })
     }
 
     Launcher.Spend {

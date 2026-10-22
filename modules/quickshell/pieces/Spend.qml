@@ -15,11 +15,10 @@ Piece {
     id: piece
 
     readonly property string runtime: Quickshell.env("XDG_RUNTIME_DIR")
-    readonly property var said: file.said
+    readonly property var said: status.said
     // The daemon writes its heartbeat at least every 30 seconds while it
-    // runs, and counts them again from waking after a suspend.
-    readonly property bool silent: said !== null
-        && clock.now - Math.max(said.heartbeat ?? 0, clock.woke) > (settings.silence ?? 120)
+    // runs.
+    readonly property bool silent: status.silent
     // The chord that opens the collection, beside the action that does.
     readonly property var opening: Shortcuts.actions
         .find(action => action.opens === "spend") ?? { chord: [] }
@@ -70,34 +69,10 @@ Piece {
         }
     }
 
-    // The daemon writes its file anew, which a watch can miss, and may start
-    // after the shell, so the file is read again every few seconds too.
-    Timer {
-        id: clock
-        property real now: Date.now() / 1000
-        // When the machine last woke: a tick far later than the one before
-        // it is a suspend, which stopped the daemon's clock too.
-        property real woke: 0
-        interval: piece.settings.every ?? 5000
-        running: true
-        repeat: true
-        onTriggered: {
-            const then = now;
-            now = Date.now() / 1000;
-            if (now - then > 60)
-                woke = now;
-            file.reload();
-        }
-    }
-
-    FileView {
-        id: file
-        property var said: null
+    StatusFile {
+        id: status
         path: piece.settings.status ?? `${piece.runtime}/spend-watch/status.json`
-        watchChanges: true
-        printErrors: false
-        onFileChanged: reload()
-        onLoaded: said = piece.parsed(text())
-        onLoadFailed: said = null
+        silence: piece.settings.silence ?? 120
+        parse: text => piece.parsed(text)
     }
 }

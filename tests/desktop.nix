@@ -1461,6 +1461,23 @@ pkgs.testers.runNixOSTest {
           launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "20.0 GiB free")
           machine.send_key("esc")
           machine.wait_until_fails(in_session("niri msg layers | grep -qw launcher"), timeout=10)
+          # A guard that stops writing is silent once its last heartbeat is
+          # two minutes old, by a deadline that heartbeat set, with nothing
+          # read again in between.
+          status["heartbeat"] = float(machine.succeed("date +%s")) - 100
+          machine.succeed(
+              f"echo '{json.dumps(status)}' > /run/disk-guard/.status"
+              " && mv /run/disk-guard/.status /run/disk-guard/status.json"
+          )
+          answer("disk")
+          launcher_until(lambda shown: shown["footer"] == "from the disk guard")
+          machine.send_key("esc")
+          machine.wait_until_fails(in_session("niri msg layers | grep -qw launcher"), timeout=10)
+          time.sleep(25)
+          answer("disk")
+          launcher_until(lambda shown: shown["footer"] == "the disk guard has stopped saying")
+          machine.send_key("esc")
+          machine.wait_until_fails(in_session("niri msg layers | grep -qw launcher"), timeout=10)
           machine.succeed("rm /run/disk-guard/status.json")
           # The keyboards QEMU gives it, however many, and caps lock.
           answer("keyboards")

@@ -6,8 +6,9 @@
 // of the two guards' words wins for a disk both watch, a disk only the
 // machine's guard watches counts, a writer frozen wants Joel with a way to let
 // it go on, a guard that stopped writing is a warning
-// of its own with a way to start it, and a guard that never wrote leaves no
-// piece. It exits 0 once every case holds, and otherwise 1, saying which
+// of its own with a way to start it, as is one whose heartbeat ages past
+// silence with nothing written after it, and a guard that never wrote
+// leaves no piece. It exits 0 once every case holds, and otherwise 1, saying which
 // case didn't.
 import qs
 import Quickshell
@@ -83,6 +84,14 @@ ShellRoot {
             && piece.hint === "dd was frozen for filling /"
             && piece.actions[0].name === "Let it go on"
     }, {
+        // After one that isn't silent, so only this one's heartbeat can
+        // make it so: a second short of silence, and nothing after it, so
+        // only the deadline it set can say so.
+        what: "a guard that falls silent",
+        account: () => status([disk("/", "healthy", 400)], null, Date.now() / 1000 - 119),
+        machine: status([disk("/", "healthy", 400)]),
+        holds: piece => piece.active && piece.value === "not watching"
+    }, {
         what: "a guard that stopped",
         account: status([disk("/", "healthy", 400)], null, root.now - 600),
         machine: status([disk("/", "healthy", 400)]),
@@ -98,8 +107,7 @@ ShellRoot {
         id: piece
         settings: ({
             account: `${root.runtime}/account.json`,
-            machine: `${root.runtime}/machine.json`,
-            every: 50
+            machine: `${root.runtime}/machine.json`
         })
     }
 
@@ -122,7 +130,8 @@ ShellRoot {
 
     function begin() {
         const step = cases[at];
-        write(account, step.account);
+        // A guard's words may be reckoned as its case begins.
+        write(account, typeof step.account === "function" ? step.account() : step.account);
         write(machine, step.machine);
         left = 100;
         waiting.start();

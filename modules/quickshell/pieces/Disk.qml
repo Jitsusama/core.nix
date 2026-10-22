@@ -31,8 +31,7 @@ Piece {
     readonly property bool short: worst !== null && worst.band !== "healthy"
     readonly property bool critical: short && worst.band === "critical"
     // Each guard writes its status at least every 30 seconds while it runs.
-    readonly property bool silent: said.some(
-        status => clock.now - status.heartbeat > (settings.silence ?? 120))
+    readonly property bool silent: account.silent || machine.silent
     readonly property var last: account.said?.last ?? null
     // What the account's guard froze for filling a disk, if anything.
     readonly property var frozen: account.said?.frozen ?? []
@@ -103,50 +102,16 @@ Piece {
         return Math.floor(minutes / 60) + ":" + String(minutes % 60).padStart(2, "0");
     }
 
-    // Says the status a guard wrote, or nothing when it wrote none that reads.
-    function parsed(text) {
-        try {
-            const status = JSON.parse(text);
-            return typeof status === "object" && status !== null ? status : null;
-        } catch (error) {
-            return null;
-        }
-    }
-
-    // A guard writes its file anew, which a watch can miss, and may start
-    // after the shell, so the files are read again every few seconds too.
-    Timer {
-        id: clock
-        property real now: Date.now() / 1000
-        interval: piece.settings.every ?? 5000
-        running: true
-        repeat: true
-        onTriggered: {
-            now = Date.now() / 1000;
-            account.reload();
-            machine.reload();
-        }
-    }
-
-    FileView {
+    // Each guard's status, the account's and the machine's.
+    StatusFile {
         id: account
-        property var said: null
         path: piece.settings.account ?? `${piece.runtime}/disk-guard/status.json`
-        watchChanges: true
-        printErrors: false
-        onFileChanged: reload()
-        onLoaded: said = piece.parsed(text())
-        onLoadFailed: said = null
+        silence: piece.settings.silence ?? 120
     }
 
-    FileView {
+    StatusFile {
         id: machine
-        property var said: null
         path: piece.settings.machine ?? "/run/disk-guard/status.json"
-        watchChanges: true
-        printErrors: false
-        onFileChanged: reload()
-        onLoaded: said = piece.parsed(text())
-        onLoadFailed: said = null
+        silence: piece.settings.silence ?? 120
     }
 }

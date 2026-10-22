@@ -256,16 +256,10 @@ Provider {
         }
     }
 
-    // The daemon writes the file anew only when something in it changed,
-    // which a watch can miss, and may start after the shell, so it's read
-    // again every little while too.
-    Timer {
-        interval: provider.settings.every ?? 30000
-        running: true
-        repeat: true
-        onTriggered: file.reload()
-    }
-
+    // The daemon replaces the file whole when something in it changed,
+    // which the watch hears, since it watches the folder as well; the
+    // folder is made at login (home.nix), so the watch hears the daemon
+    // start after the shell too.
     FileView {
         id: file
         path: provider.settings.collection ?? `${provider.runtime}/spend-watch/collection.json`
