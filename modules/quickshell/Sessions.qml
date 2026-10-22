@@ -50,6 +50,38 @@ Singleton {
             .filter(session => session !== null);
     }
     readonly property int working: running.filter(session => session.presence && session.presence.busy).length
+    // Those waiting on Joel, as each says while it does: { kind, since,
+    // said }, kind a question, an approval or blocked. The oldest first.
+    readonly property var wanting: running
+        .filter(session => session.presence && session.presence.wants)
+        .sort((a, b) => String(a.presence.wants.since ?? "").localeCompare(String(b.presence.wants.since ?? "")))
+
+    // A want new to this shell is said once as a notice from pi, whose
+    // Return goes to the session's window (pi-wants-you, home.nix), unless
+    // Joel is in that window already. Each is known by its session and
+    // when it began, and kept known: a presence file replaced by rename
+    // leaves its folder for a moment, which would otherwise make a want
+    // that never ended look new.
+    property var told: ({})
+    onWantingChanged: {
+        for (const session of wanting) {
+            const key = `${session.address} ${session.presence.wants.since ?? ""}`;
+            if (told[key])
+                continue;
+            told[key] = true;
+            if (session.window.id === Niri.focused)
+                continue;
+            Niri.spawn(["pi-wants-you", String(session.window.id),
+                `${session.title} ${wanted(session.presence.wants)}`,
+                session.presence.wants.said ?? ""]);
+        }
+    }
+
+    // What a want is, in words after the session's name.
+    function wanted(wants) {
+        return wants.kind === "approval" ? "wants your yes"
+            : wants.kind === "blocked" ? "is stuck without you" : "asks you";
+    }
 
     // A pi window's title: "π - ", its address, its quest's title cut
     // short, and " - " its folder, split at the last " - ", since a quest's

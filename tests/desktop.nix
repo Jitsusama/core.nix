@@ -999,6 +999,38 @@ pkgs.testers.runNixOSTest {
           machine.wait_until_succeeds(
               in_session("niri msg --json focused-window | grep -q TESTQA"), timeout=10
           )
+          # It comes to want Joel, its presence replaced by rename as pi's
+          # is: the margin hangs pi's mark, and lets it go once answered.
+          def presence_says(said):
+              as_account(
+                  f"echo '{json.dumps(said)}' > {presence}/.testqa && mv {presence}/.testqa {presence}/testqa.json"
+              )
+
+          # From another window, so it's said as a notice too, whose
+          # Return goes to the session's window.
+          as_account(f"niri msg action focus-window --id {window_titled('Elsewhere')['id']}")
+          # The margin may hold other marks, a notice missed earlier among
+          # them, so it's pi's own that's waited on.
+          since = mark()
+          with told("shows card A quest of its own, whole asks you"):
+              presence_says({
+                  "addresses": ["TESTQA"],
+                  "busy": False,
+                  "wants": {"kind": "question", "since": "2026-10-22T07:00:00Z", "said": "Which way?"},
+              })
+          reported("holds margin ", lambda rest: "agent" in rest.split(), since)
+          photograph("margin-pi-wants")
+          with told("keys notices"):
+              machine.send_key("meta_l-n")
+          machine.send_key("ret")
+          machine.wait_until_succeeds(
+              in_session("niri msg --json focused-window | grep -q TESTQA"), timeout=10
+          )
+          # Said once: no second notice of the same want is left behind.
+          machine.wait_until_fails(in_session("niri msg layers | grep -q notifications"), timeout=10)
+          since = mark()
+          presence_says({"addresses": ["TESTQA"], "busy": False})
+          reported("holds margin ", lambda rest: "agent" not in rest.split(), since)
           for title in [agent, "Elsewhere"]:
               as_account(f"niri msg action close-window --id {window_titled(title)['id']}")
           as_account(f"rm -rf {quest} {presence}/testqa.json")
