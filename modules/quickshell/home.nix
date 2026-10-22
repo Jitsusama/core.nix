@@ -491,6 +491,7 @@ let
     spend = ./launcher/Spend.qml;
     agents = ./launcher/Agents.qml;
     quests = ./launcher/Quests.qml;
+    runs = ./launcher/Runs.qml;
     byhand = ./launcher/ByHand.qml;
   };
 
@@ -949,6 +950,14 @@ in
         source = "quests";
         weight = 0.9;
       };
+      # pi's fleets and review rounds of the last day, and those running,
+      # each going to the session that started it, its participants'
+      # answers read in a terminal.
+      runs = {
+        order = 112;
+        source = "runs";
+        weight = 0.9;
+      };
       # Opened by its own chord, not shown in a search.
       shortcuts = {
         order = 120;
@@ -1115,14 +1124,24 @@ in
 
     # The recorder's tools (Recorder.qml): wf-recorder records the screen
     # and record-window a window, grim takes a region's picture and wl-copy
-    # copies it, and notify-send says where the file went.
+    # copies it, and notify-send says where the file went. The launcher's
+    # quests and runs read pi through pi-quests and pi-runs
+    # (launcher/Quests.qml, launcher/Runs.qml), and a terminal shows a
+    # run's answer through pi-runs too.
     home.packages = [
       askpass
       piWants
       pkgs.quickshell
       pkgs.wf-recorder
       (pkgs.callPackage ./record-window/package.nix { })
-      (pkgs.callPackage ./pi-quests.nix { })
+      (pkgs.callPackage ./pi-helper.nix {
+        name = "pi-quests";
+        source = ./quests.rs;
+      })
+      (pkgs.callPackage ./pi-helper.nix {
+        name = "pi-runs";
+        source = ./runs.rs;
+      })
       pkgs.grim
       pkgs.wl-clipboard
       pkgs.libnotify

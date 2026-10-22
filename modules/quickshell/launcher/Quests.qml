@@ -182,6 +182,8 @@ Provider {
 
     function counted() {
         const open = everything();
+        if (open.length === 0)
+            return "empty";
         const driving = quests.filter(quest => isOpen(quest) && quest.priority === "driving").length;
         return [`${open.length} open`, driving > 0 ? `${driving} driving` : ""]
             .filter(part => part !== "").join(", ");
