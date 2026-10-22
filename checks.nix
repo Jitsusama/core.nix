@@ -1191,6 +1191,7 @@ in
       mkdir runtime && chmod 700 runtime
       cp ${./modules/quickshell/pieces/Piece.qml} Piece.qml
       cp ${./modules/quickshell/pieces/Disk.qml} Disk.qml
+      cp ${./modules/quickshell/pieces/StatusFile.qml} StatusFile.qml
       cp ${./tests/disk.qml} shell.qml
       cp ${niri} Niri.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
@@ -1247,6 +1248,7 @@ in
       ${lib.getExe watch} --config config.json show collection > runtime/written/collection.json
       cp ${./modules/quickshell/pieces/Piece.qml} Piece.qml
       cp ${./modules/quickshell/pieces/Spend.qml} Spend.qml
+      cp ${./modules/quickshell/pieces/StatusFile.qml} StatusFile.qml
       cp ${./modules/quickshell/Fuzzy.js} Fuzzy.js
       cp ${./modules/quickshell/launcher/Provider.qml} launcher/Provider.qml
       cp ${./modules/quickshell/launcher/Asking.js} launcher/Asking.js
