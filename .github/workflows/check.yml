@@ -63,6 +63,7 @@ jobs:
           - vm-clock-keeps-time
           - vm-greeter-signs-in
           - vm-boot-asks-in-the-theme
+          - vm-boot-asks-on-every-screen
           - vm-libvirt-stops-quickly
           - vm-ir-camera-opens-for-readers
           - vm-loopback-says-who-holds-it
