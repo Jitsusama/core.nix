@@ -1264,6 +1264,43 @@ in
       touch $out
     '';
 
+  # A FileView told not to print errors says nothing of a file that opens
+  # and then refuses every read, as some sysfs files do, in the Quickshell
+  # the machine runs (fileview-quiet.patch); /proc/self/mem is one, since
+  # its first page is never mapped. One that may print does warn, so the
+  # check would see the warning if the patch were gone.
+  a-quiet-file-says-nothing =
+    let
+      shell = pkgs.writeText "shell.qml" ''
+        import Quickshell
+        import Quickshell.Io
+        import QtQuick
+        ShellRoot {
+            FileView { id: quiet; path: "/proc/self/mem"; blockLoading: true; printErrors: false }
+            FileView { id: loud; path: "/proc/self/mem"; blockLoading: true }
+            Component.onCompleted: {
+                quiet.text();
+                loud.text();
+                Qt.exit(0);
+            }
+        }
+      '';
+    in
+    pkgs.runCommandLocal "a-quiet-file-says-nothing" { } ''
+      mkdir runtime && chmod 700 runtime
+      cp ${shell} shell.qml
+      export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
+      timeout 60 ${lib.getExe' graphical.pkgs.quickshell "qs"} -p shell.qml > log 2>&1 || true
+      cat log
+      # Each warning names the line its FileView is on: the quiet one's
+      # 5, the loud one's 6.
+      if grep -q 'shell.qml\[5:.*read() failed' log; then
+        echo "a FileView told not to print errors warned of a failed read"; exit 1
+      fi
+      grep -q 'shell.qml\[6:.*read() failed' log || { echo "the loud FileView never warned"; exit 1; }
+      touch $out
+    '';
+
   # A palette's row and its field keep their words apart and inside their
   # edges however long they run, ending what doesn't fit in an ellipsis, as
   # tests/rows.qml draws them through Quickshell in the theme's own face and

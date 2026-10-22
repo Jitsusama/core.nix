@@ -1,0 +1,84 @@
+From: Joel Gerber <Jitsusama@users.noreply.github.com>
+Subject: [PATCH] io/fileview: say nothing of a failed read when told not to
+
+printErrors is documented as whether a FileView warns when a read or a
+write fails, and the checks before a file is opened honour it, but the
+warnings for a file that opens and then fails to read, or fails to open,
+write or commit, were printed regardless. A shell reading sysfs, where a
+present file can refuse every read (dell_smm's fan labels answer EINVAL),
+filled its log with warnings it had asked not to have.
+
+Each of those warnings now waits on printErrors, as the others do. What
+the FileView reports as its error is unchanged.
+
+---
+diff --git a/src/io/fileview.cpp b/src/io/fileview.cpp
+index 0230069..2b4da9f 100644
+--- a/src/io/fileview.cpp
++++ b/src/io/fileview.cpp
+@@ -142,7 +142,10 @@ void FileViewReader::read(
+ 	auto file = QFile(state.path);
+ 
+ 	if (!file.open(QFile::ReadOnly)) {
+-		qmlWarning(view) << "Read of " << state.path << " failed: Unknown failure when opening file.";
++		if (state.printErrors) {
++			qmlWarning(view) << "Read of " << state.path << " failed: Unknown failure when opening file.";
++		}
++
+ 		state.error = FileViewError::Unknown;
+ 		return;
+ 	}
+@@ -159,7 +162,9 @@ void FileViewReader::read(
+ 			auto r = file.read(data.data() + i, data.length() - i); // NOLINT
+ 
+ 			if (r == -1) {
+-				qmlWarning(view) << "Read of " << state.path << " failed: read() failed.";
++				if (state.printErrors) {
++					qmlWarning(view) << "Read of " << state.path << " failed: read() failed.";
++				}
+ 
+ 				state.error = FileViewError::Unknown;
+ 				return;
+@@ -182,7 +187,9 @@ void FileViewReader::read(
+ 			auto r = file.read(buf.data(), buf.size()); // NOLINT
+ 
+ 			if (r == -1) {
+-				qmlWarning(view) << "Read of " << state.path << " failed: read() failed.";
++				if (state.printErrors) {
++					qmlWarning(view) << "Read of " << state.path << " failed: read() failed.";
++				}
+ 
+ 				state.error = FileViewError::Unknown;
+ 				return;
+@@ -256,7 +263,10 @@ void FileViewWriter::write(
+ 	}
+ 
+ 	if (!file->open(QFile::WriteOnly)) {
+-		qmlWarning(view) << "Write of " << state.path << " failed: Unknown error when opening file.";
++		if (state.printErrors) {
++			qmlWarning(view) << "Write of " << state.path << " failed: Unknown error when opening file.";
++		}
++
+ 		state.error = FileViewError::Unknown;
+ 		return;
+ 	}
+@@ -272,7 +282,9 @@ void FileViewWriter::write(
+ 		auto r = file->write(data.data() + i, data.length() - i); // NOLINT
+ 
+ 		if (r == -1) {
+-			qmlWarning(view) << "Write of " << state.path << " failed: write() failed.";
++			if (state.printErrors) {
++				qmlWarning(view) << "Write of " << state.path << " failed: write() failed.";
++			}
+ 
+ 			state.error = FileViewError::Unknown;
+ 			return;
+@@ -285,7 +297,7 @@ void FileViewWriter::write(
+ 	if (shouldCancel.loadAcquire()) return;
+ 
+ 	if (doAtomicWrite) {
+-		if (!reinterpret_cast<QSaveFile*>(file.get())->commit()) {
++		if (!reinterpret_cast<QSaveFile*>(file.get())->commit() && state.printErrors) {
+ 			qmlWarning(view) << "Write of " << state.path << " failed: Atomic commit failed.";
+ 		}
+ 	}

@@ -9,8 +9,11 @@
 # take Joel to the conversation or tab it was about. The patch
 # (activation-token.patch says how) asks the compositor for one tied to the
 # click or key that chose the action, and sends it first, as version 1.2 of
-# the notifications specification has it. It's laid over the machine's
-# packages, so the shell, the greeter and the lock all run it.
+# the notifications specification has it. A FileView told not to print
+# errors still warned of a file that opened and then refused to be read,
+# as sysfs files do, so fileview-quiet.patch keeps it to its word. Both
+# are laid over the machine's packages, so the shell, the greeter and the
+# lock all run them.
 #
 # The watcher (keyboard-lights.rs) reads the keyboards, which is what a
 # keylogger needs, so it gets nothing else: an account of its own, the input
@@ -36,7 +39,10 @@ in
   nixpkgs.overlays = [
     (_: prev: {
       quickshell = prev.quickshell.overrideAttrs (old: {
-        patches = (old.patches or [ ]) ++ [ ./activation-token.patch ];
+        patches = (old.patches or [ ]) ++ [
+          ./activation-token.patch
+          ./fileview-quiet.patch
+        ];
       });
     })
   ];
