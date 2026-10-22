@@ -233,6 +233,9 @@ Provider {
         return Recorder.recording ? "recording" : "";
     }
 
+    // The words it answers whole, and by their start (Provider.qml).
+    questions: ["camera", "webcam", "camera in use", "who has the camera"]
+
     function answer(typed) {
         const text = typed.trim().toLowerCase().replace(/\?$/, "");
         if (!/^(camera|cameras|webcam|camera in use|is the camera on|who has the camera)$/.test(text))

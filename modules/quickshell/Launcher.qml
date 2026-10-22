@@ -73,7 +73,7 @@ Scope {
     // What the search found, below an answer's rows.
     property var found: []
 
-    function answering(letters) {
+    function answering(letters, fresh) {
         if (held.length > 0 || letters.trim() === "")
             return null;
         for (const source of sources) {
@@ -81,7 +81,50 @@ Scope {
             if (said)
                 return said;
         }
+        // Typed so far, a question's start asks it, as `question` says.
+        const text = Fuzzy.plainly(letters);
+        if (text.length < 3)
+            return null;
+        for (const source of sources) {
+            const question = source.questions.find(asked => asked.startsWith(text));
+            if (question === undefined)
+                continue;
+            const said = started(source, question, fresh);
+            if (said)
+                return Object.assign({}, said, { question: question });
+        }
         return null;
+    }
+
+    // The question the answer was asked by when what's typed only starts
+    // it, as "batt" starts "battery", or nothing. Its headline is chosen
+    // only when nothing found starts a word the same way (compose), and
+    // Tab finishes the question.
+    readonly property string question: answer ? answer.question ?? "" : ""
+
+    // Each letter of a question's start asks the same question, so its
+    // answer is kept a moment rather than read again, as sensors are, on
+    // every key. A late answer is always asked afresh.
+    property var lastStarted: null
+    function started(source, question, fresh) {
+        const now = Date.now();
+        const last = lastStarted;
+        if (fresh && last && last.source === source && last.question === question && now - last.at < 2000)
+            return last.said;
+        const said = source.answer(question);
+        lastStarted = { source: source, question: question, said: said, at: now };
+        return said;
+    }
+
+    // Whether a name has a word starting with what's typed, as a row the
+    // search found for that reason would.
+    function startsAWord(name, letters) {
+        const text = Fuzzy.plainly(letters);
+        const folded = String(name).toLowerCase();
+        for (let at = folded.indexOf(text); at >= 0; at = folded.indexOf(text, at + 1))
+            if (at === 0 || !/[a-z0-9]/.test(folded[at - 1]))
+                return true;
+        return false;
     }
 
     // An answer's rows above what was found. Asked afresh, the selection
@@ -89,11 +132,14 @@ Scope {
     // moved stays on the row it was on.
     function compose(fresh) {
         const before = answer ? answer.rows.length : 0;
-        answer = answering(typed);
+        answer = answering(typed, fresh);
         const rows = answer ? answer.rows : [];
-        matches = rows.concat(placed(found, gathered));
+        const below = placed(found, gathered);
+        matches = rows.concat(below);
+        // An answer only started gives way to a name that starts the same.
+        const meant = answer && !(answer.question && below.length > 0 && startsAWord(below[0].name, typed));
         if (fresh || (current === -1 && !answer))
-            current = answer ? -1 : 0;
+            current = meant ? -1 : answer ? rows.length : 0;
         else if (current >= 0)
             current = Math.max(0, Math.min(current + rows.length - before, matches.length - 1));
     }
@@ -560,8 +606,10 @@ Scope {
     // it, so the command line can finish the thought.
     readonly property string completion: {
         // An answer that does something says what, rather than equalling it.
-        if (current === -1 && answer)
-            return answer.run ? ` \u2192 ${answer.headline}` : ` = ${answer.headline}`;
+        if (current === -1 && answer) {
+            const rest = answer.question ? answer.question.slice(Fuzzy.plainly(typed).length) : "";
+            return rest + (answer.run ? ` \u2192 ${answer.headline}` : ` = ${answer.headline}`);
+        }
         const choice = matches[current];
         if (!choice || typed === "")
             return "";
@@ -812,6 +860,9 @@ Scope {
                                 text = root.example;
                             else if (root.current !== -1 || !root.answer)
                                 text = text + root.completion;
+                            // A question only started is finished first.
+                            else if (root.question !== "")
+                                text = root.question;
                             // An answer that does something has nothing to
                             // put in the question's place.
                             else if (!root.answer.run && (root.answer.copy ?? root.answer.headline) !== "")

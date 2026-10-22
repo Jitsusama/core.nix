@@ -1332,6 +1332,26 @@ pkgs.testers.runNixOSTest {
                   and shown["kind"] == "collection"
               )
               machine.send_key("esc")
+          # Half a word asks its question too: "batt" is the battery, and
+          # Tab finishes the word.
+          answer("batt")
+          launcher_until(
+              lambda shown: shown["kind"] == "answer"
+              and (shown["selected"] or {}).get("name", "").startswith(f"{charge}%")
+          )
+          machine.send_key("tab")
+          launcher_until(lambda shown: shown["typed"] == "battery")
+          machine.send_key("ret")
+          machine.wait_until_fails(in_session("niri msg layers | grep -qw launcher"), timeout=10)
+          t.assertTrue(as_account("wl-paste --no-newline").startswith(f"{charge}%, "))
+          # A name starting the same way is chosen over an answer only
+          # started: "pow" is Power Off, the battery's answer above it.
+          answer("pow")
+          launcher_until(
+              lambda shown: shown["kind"] not in ("", "answer")
+              and (shown["selected"] or {}).get("name", "").lower().startswith("pow")
+          )
+          machine.send_key("esc")
           # The hottest part, from the sensors the kernel lists, of which
           # the stand-in battery is one.
           print(machine.succeed("grep -H . /sys/class/hwmon/*/name"))

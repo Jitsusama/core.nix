@@ -455,11 +455,15 @@ works the same way everywhere.
   answered in grey right after what's typed, and that's the answer's only
   home. So is the machine itself, in its own words: "battery" or
   "charger", "temperature" or "fans", "date" or "epoch", "brightness",
-  "volume", "keyboards". A colour's first row wears it, and so does the
-  theme's nearest pigment. Return copies it, Tab puts it in place of the
-  question, and Down walks its detail, each row copied the same way. A
-  level typed after its name, "brightness 40" or "volume 40", is an answer
-  that does: Return sets it. The footer says where an answer came from.
+  "volume", "keyboards". The start of one of those words, three letters
+  or more, asks it too: "batt" shows the battery, the rest of the word in
+  grey, and Tab finishes it. A row whose name starts the same way is
+  chosen first, so "pow" is still Power Off. A colour's first row wears
+  it, and so does the theme's nearest pigment. Return copies it, Tab puts
+  it in place of the question, and Down walks its detail, each row copied
+  the same way. A level typed after its name, "brightness 40" or "volume
+  40", is an answer that does: Return sets it. The footer says where an
+  answer came from.
   Nothing leaves the machine unless the question needs the network, never
   for a private address, and never with the launcher's `lookups` off.
 - **Large sets are one row each.** Emoji, the clipboard's history, past

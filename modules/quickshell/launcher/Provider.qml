@@ -30,7 +30,10 @@
 // made with copyRow, carry the detail. One that has to ask the network
 // answers at once with what it has, `asking` true while it waits, and says
 // `answered` when more arrives, so the launcher asks again; `ask` keeps
-// what a URL said for a while.
+// what a URL said for a while. One asked by words rather than a pattern
+// lists them as its `questions`, best first, and answers each read
+// plainly; the start of one, three letters or more, shows its answer too,
+// asked by the first it starts, so a word half remembered still finds it.
 import Quickshell
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
@@ -53,6 +56,13 @@ Scope {
 
     function answer(typed) {
         return null;
+    }
+
+    property var questions: []
+
+    // What's typed, read as answers read it.
+    function plainly(typed) {
+        return Fuzzy.plainly(typed);
     }
 
     // What it puts on the home screen, with nothing typed, before the

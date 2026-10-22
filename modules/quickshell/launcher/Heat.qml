@@ -50,6 +50,9 @@ Provider {
         return Numbers.format(value, 0, settings.group, settings.point);
     }
 
+    // The words it answers whole, and by their start (Provider.qml).
+    questions: ["temperature", "temperatures", "temps", "heat", "thermals", "sensors", "fans", "cooling"]
+
     function answer(typed) {
         const text = typed.trim().toLowerCase();
         if (!/^(temperatures?|temps?|heat|hot|thermals?|sensors?|fans?|cooling)$/.test(text))
