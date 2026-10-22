@@ -807,6 +807,14 @@ timer in 3 of 3, by between 0.8 ms behind and 1.7 ms ahead. Kernels 6.17 and
 6.18 threw it out in 4 of 5. The [ThinkPad T14 AMD Gen 1][21], on the same
 Renoir platform, does the same.
 
+The graphics driver isn't the cause: it loads seven seconds after the TSC is
+thrown out, and with it kept from loading the TSC went in 3 of 3 boots all
+the same. In those boots the disagreement came earlier. The refined
+calibration, at about 1.5 s, measured the TSC at 2199.42 MHz, and half a
+second later the watchdog found it 0.16% slow against HPET: exactly that
+calibration's error. So for a stretch before about two seconds the TSC and
+the chipset's timers disagree, by up to 0.35% either way, then agree.
+
 Turning the watchdog off with `tsc=nowatchdog` keeps the TSC, but the
 kernel's refined calibration measures it over that same stretch of the boot,
 and came out at 2199.456 MHz in one boot and 2199.648 in another. That's
@@ -817,12 +825,30 @@ only a frequency the CPU reports skips it, which AMD's don't. So the module
 marks the TSC unstable and the clock runs on HPET, which costs every read of
 the time a system call.
 
+### Sleep
+
+The laptop sleeps only in s2idle, and it sleeps soundly: one night on the
+charger, `/sys/power/suspend_stats/last_hw_sleep` counted 12,327 s of
+hardware sleep in the 12,328 s between suspend entry and exit, so the SoC
+sat in its deepest state throughout. The graphics and Wi-Fi came back within
+two seconds.
+
+No timer can wake it from s2idle, though. A 15-second `rtcwake` alarm on the
+CMOS clock never fired: its interrupt counted nothing, and the laptop slept
+for three and a half hours until the GPIO controller that carries the lid,
+the power button and the Aggregator woke it. The CMOS clock says it can wake
+the machine only from S4. The ACPI time-and-alarm device reports
+capabilities 0x1F4, which set only its S4 and S5 wake bits, so the kernel
+offers no alarm on it, and reading its clock fails with an I/O error. A
+suspend test on this laptop needs someone to open the lid or press the
+power button.
+
 ### What's Left
 
 | Part       | Why it isn't here yet                                                          |
 | ---------- | ------------------------------------------------------------------------------ |
-| Clock      | what moves the TSC early in the boot isn't found, so it stays off the TSC      |
-| Sleep      | suspend and resume aren't measured yet                                         |
+| Clock      | what parts the TSC from the chipset's timers early on isn't found              |
+| Sleep      | the drain on battery overnight isn't measured yet                              |
 | Audio      | the speakers and microphones aren't checked yet                                |
 | Camera     | the front camera is listed; its picture isn't checked yet                      |
 | Firmware   | Microsoft ships firmware updates only for Windows                              |
