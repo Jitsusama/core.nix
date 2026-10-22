@@ -5,7 +5,8 @@
 // the folder it works in.
 // Return goes to its window; the right arrow steps into what's known of it,
 // each fact a row Return copies: its quest, its addresses, when it started,
-// what it spent today, what it works on and what it hears. What runs, and
+// what it spent today and what of that its councils and fleets cost, what
+// it works on and what it hears. What runs, and
 // how each is doing, is Sessions.qml's.
 import qs
 import Quickshell
@@ -77,14 +78,19 @@ Provider {
             glyph: Theme.glyph.agent
         });
         const addresses = presence.addresses ?? [session.address];
+        // What of its spend went on its councils and fleets, hidden with it.
+        const helpers = spent === "" ? []
+            : (SpendWatch.helpers[presence.session] ?? [])
+                .map(helper => fact(`on:${helper.on}`, helper.spent, `on ${helper.on}`));
         const facts = [
             quest !== "" ? fact("quest", quest, "its quest") : null,
             fact("address", addresses.join(", "), addresses.length === 1 ? "its address" : "its addresses"),
             presence.owner?.startedAt ? fact("started", started(presence.owner.startedAt), "started") : null,
-            spent !== "" ? fact("spent", spent, "spent today") : null,
+            spent !== "" ? fact("spent", spent, "spent today") : null
+        ].concat(helpers, [
             presence.worksOn ? fact("works", presence.worksOn, "works on") : null,
             (presence.groups ?? []).length > 0 ? fact("hears", presence.groups.join(", "), "hears") : null
-        ].filter(row => row !== null);
+        ]).filter(row => row !== null);
         return [thing({
             key: "verb:agent:switch",
             name: "Go to its window",

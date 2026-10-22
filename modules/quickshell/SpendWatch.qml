@@ -20,6 +20,9 @@ Singleton {
     property var said: null
     // What each pi session spent today, by its whole id.
     readonly property var sessions: said?.sessions ?? {}
+    // What each one's councils, judges and fleets cost today, costliest
+    // first: [{ on, spent }].
+    readonly property var helpers: said?.helpers ?? {}
 
     function parsed(text) {
         try {

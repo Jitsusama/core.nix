@@ -352,6 +352,61 @@ pub fn by_session(picture: &Picture, period: Period) -> std::collections::BTreeM
         .collect()
 }
 
+/// What a pi session's helpers cost in a period: each kind of run it
+/// started (its councils, judges, fleets) by its plural, costliest first,
+/// by the session's whole id. A session whose spend was all its own has
+/// none, and a kind under a cent is left out.
+pub fn helpers_by_session(
+    picture: &Picture,
+    period: Period,
+) -> std::collections::BTreeMap<String, Vec<Helper>> {
+    let (from, to) = period.days(&picture.zone, picture.now);
+    let mut spent: HashMap<(&str, &str), (f64, bool)> = HashMap::new();
+    let pieces = picture.between(from, to);
+    for piece in &pieces {
+        let Some(kind) = piece.kind.strip_prefix("subagent:") else {
+            continue;
+        };
+        if piece.session.is_empty() || piece.session == "elsewhere" {
+            continue;
+        }
+        let entry = spent
+            .entry((piece.session.as_str(), kind))
+            .or_insert((0.0, false));
+        entry.0 += piece.dollars;
+        entry.1 |= piece.source.estimated() && piece.dollars > 0.005;
+    }
+    let mut by: std::collections::BTreeMap<String, Vec<(f64, Helper)>> = Default::default();
+    for ((session, kind), (dollars_spent, estimated)) in spent {
+        if dollars_spent < 0.005 {
+            continue;
+        }
+        by.entry(session.to_owned()).or_default().push((
+            dollars_spent,
+            Helper {
+                on: format!("{kind}s"),
+                spent: crate::money::maybe_about(dollars(dollars_spent), estimated),
+            },
+        ));
+    }
+    by.into_iter()
+        .map(|(session, mut helpers)| {
+            helpers.sort_by(|(one, a), (other, b)| other.total_cmp(one).then(a.on.cmp(&b.on)));
+            (
+                session,
+                helpers.into_iter().map(|(_, helper)| helper).collect(),
+            )
+        })
+        .collect()
+}
+
+/// One kind of run a session started, and what it cost.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Helper {
+    pub on: String,
+    pub spent: String,
+}
+
 /// The week at a glance: where it stands, the forecast, the caps, the
 /// findings and where money went to waste.
 pub fn summary(picture: &Picture, findings: &[Finding]) -> Report {

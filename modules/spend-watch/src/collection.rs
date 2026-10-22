@@ -111,6 +111,9 @@ pub struct Collection {
     /// launcher's Agents to say beside it. While the screen is shared the
     /// shell shows none of it.
     pub sessions: BTreeMap<String, String>,
+    /// What each pi session's councils, judges and fleets cost today, by
+    /// its whole id, costliest first; part of what it spent.
+    pub helpers: BTreeMap<String, Vec<report::Helper>>,
     pub periods: Vec<Words>,
     pub cuts: Vec<Words>,
     pub examples: Vec<String>,
@@ -692,6 +695,7 @@ pub fn collection(
             .map(|(id, (_, shown))| (id, shown))
             .collect(),
         sessions: report::by_session(picture, Period::Today),
+        helpers: report::helpers_by_session(picture, Period::Today),
         periods: Period::ALL
             .iter()
             .map(|period| Words {
@@ -747,6 +751,7 @@ pub fn held(shape: i64) -> Collection {
         quiet: vec![made],
         reports: BTreeMap::from([("summary".to_owned(), summary)]),
         sessions: BTreeMap::new(),
+        helpers: BTreeMap::new(),
         periods: Vec::new(),
         cuts: Vec::new(),
         examples: Vec::new(),
@@ -1061,6 +1066,67 @@ mod tests {
                 ("01a1271f-aaaa".to_owned(), crate::money::dollars(12.5)),
                 ("01a1271f-bbbb".to_owned(), crate::money::dollars(3.25)),
             ])
+        );
+    }
+
+    // A session's councils and fleets today are its helpers, costliest
+    // first, by its whole id; yesterday's and its own turns aren't.
+    #[test]
+    fn each_session_says_what_its_helpers_cost_today() {
+        use crate::logs::{Cost, Event, Kind, Tokens, Turn};
+        let history = History::memory();
+        history
+            .add_event(&Event::Turn(Turn {
+                session: "01a1271f-aaaa".into(),
+                at: NOW - 3600.0,
+                model: "m".into(),
+                provider: "p".into(),
+                kind: Kind::Agent,
+                tokens: Tokens::default(),
+                cost: Cost {
+                    total: 10.0,
+                    ..Cost::default()
+                },
+                quest: None,
+                gap: None,
+                rebuilt: 0.0,
+                rebuilt_cost: 0.0,
+                cause: None,
+            }))
+            .unwrap();
+        let runs = [
+            ("c1", "council", NOW - 1800.0, 4.0),
+            ("c2", "council", NOW - 900.0, 3.0),
+            ("f1", "fleet", NOW - 600.0, 2.5),
+            ("f0", "fleet", NOW - crate::time::DAY, 9.0),
+        ];
+        for (run, kind, started, cost) in runs {
+            history
+                .db
+                .execute(
+                    "INSERT INTO runs VALUES (?1, 'a1', ?2, 'opus', 'critic', '01a1271f-aaaa', ?3, NULL, ?4,
+                     0, 0, 0, 0, '[]')",
+                    rusqlite::params![run, kind, started, cost],
+                )
+                .unwrap();
+        }
+        let config = config();
+        let picture = Picture::read(&history, &config, NOW).unwrap();
+        let collected = collection(&picture, &[], &config);
+        let said: Vec<(String, String)> = collected.helpers["01a1271f-aaaa"]
+            .iter()
+            .map(|helper| (helper.on.clone(), helper.spent.clone()))
+            .collect();
+        assert_eq!(
+            said,
+            [
+                ("councils".to_owned(), crate::money::dollars(7.0)),
+                ("fleets".to_owned(), crate::money::dollars(2.5)),
+            ]
+        );
+        assert_eq!(
+            collected.sessions["01a1271f-aaaa"],
+            crate::money::dollars(19.5)
         );
     }
 

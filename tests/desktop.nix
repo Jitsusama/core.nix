@@ -980,7 +980,11 @@ pkgs.testers.runNixOSTest {
               f" > {presence}/testqa.json"
           )
           # What it spent today, as spend-watch writes it, replaced whole.
-          spent = {"v": 2, "sessions": {"01a1face-test": "$12.50"}}
+          spent = {
+              "v": 2,
+              "sessions": {"01a1face-test": "$12.50"},
+              "helpers": {"01a1face-test": [{"on": "councils", "spent": "$4.00"}]},
+          }
           as_account(
               f"mkdir -p $XDG_RUNTIME_DIR/spend-watch && echo '{json.dumps(spent)}' > $XDG_RUNTIME_DIR/spend-watch/.c"
               " && mv $XDG_RUNTIME_DIR/spend-watch/.c $XDG_RUNTIME_DIR/spend-watch/collection.json"
@@ -1022,6 +1026,7 @@ pkgs.testers.runNixOSTest {
               (r"TESTQA", "its address"),
               (r"\d\d:\d\d", "started"),
               (r"\$12\.50", "spent today"),
+              (r"\$4\.00", "on councils"),
               (r"Tidy the tests", "works on"),
               (r"#desk", "hears"),
           ]:
