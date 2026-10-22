@@ -2,11 +2,8 @@
 //! own disk: Secure Boot checked to enforce with its own keys, then the
 //! disk sealed to the TPM with a PIN and its slot tried first, so every
 //! boot asks for that PIN, and a YubiKey or the recovery key opens it when
-//! the TPM won't. Then the rescue bundle the install made is handed on.
-//! The guide runs as the person; what needs root goes through run0, which
-//! asks polkit.
-
-pub mod rescue;
+//! the TPM won't. The guide runs as the person; what needs root goes
+//! through run0, which asks polkit.
 
 use serde::Deserialize;
 
@@ -369,13 +366,7 @@ impl Step for SealTpm {
     }
 }
 
-/// Every step on the installed machine, in order, the rescue bundle
-/// handed on into `home`.
-pub fn steps(home: &std::path::Path) -> Vec<Box<dyn Step>> {
-    vec![
-        Box::new(CheckSecureBoot),
-        Box::new(SealTpm),
-        Box::new(rescue::CopyRescueBundle { home: home.into() }),
-        Box::new(rescue::KeepRescueBundle { home: home.into() }),
-    ]
+/// Every step on the installed machine, in order.
+pub fn steps() -> Vec<Box<dyn Step>> {
+    vec![Box::new(CheckSecureBoot), Box::new(SealTpm)]
 }

@@ -12,11 +12,11 @@ use std::path::PathBuf;
 use guide::fake::Fake;
 use guide::install::disk::{ConfirmDisk, LayOutDisk, WipeInstallKey};
 use guide::install::keys::EnrolYubikey;
-use guide::install::system::{CheckFirmware, SealRescueBundle, SecureBootKeys};
-use guide::install::{INSTALL_KEY, RECOVERY_KEY, TARGET, Target, VAULT_KEY};
+use guide::install::system::{CheckFirmware, KeepOnStick, SealRescueBundle, SecureBootKeys};
+use guide::install::{INSTALL_KEY, RECOVERY_KEY, STICK_VAULT, TARGET, Target, VAULT_KEY};
 use guide::rescue::{self, Bundle};
 use guide::vault::store::Directory;
-use guide::vault::{Manifest, Packer, VaultKey};
+use guide::vault::{Manifest, Packer, Vault, VaultKey};
 use guide::{Answer, Answers, Fault, Journey, Program, Secret, Standing, Step, Tool};
 
 macro_rules! fixture {
@@ -541,6 +541,221 @@ fn the_install_seals_the_keys_to_the_recovery_key_before_its_typed_back() {
         at("seal-rescue-bundle") < at("keep-recovery-key"),
         "{ids:?}"
     );
+}
+
+fn run(program: &str, args: &[&std::ffi::OsStr]) -> std::process::Output {
+    let output = std::process::Command::new(program)
+        .args(args)
+        .env("MTOOLS_SKIP_CHECK", "1")
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{program}: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    output
+}
+
+/// A machine's db key and certificate, made as sbctl makes them.
+fn db_key(directory: &std::path::Path) -> (String, String) {
+    let (key, pem) = (directory.join("db.key"), directory.join("db.pem"));
+    let mut args: Vec<&std::ffi::OsStr> = [
+        "req",
+        "-new",
+        "-x509",
+        "-newkey",
+        "rsa:2048",
+        "-nodes",
+        "-days",
+        "3650",
+        "-subj",
+        "/CN=Database Key",
+        "-keyout",
+    ]
+    .iter()
+    .map(|arg| arg.as_ref())
+    .collect();
+    args.extend([key.as_os_str(), "-out".as_ref(), pem.as_os_str()]);
+    run("openssl", &args);
+    (
+        std::fs::read_to_string(key).unwrap(),
+        std::fs::read_to_string(pem).unwrap(),
+    )
+}
+
+/// The stick's EFI system partition, holding systemd-boot where firmware
+/// boots a removable disk from, unsigned as the image has it.
+fn stick_esp(directory: &std::path::Path) -> PathBuf {
+    let esp = directory.join("esp.fat");
+    let boot = PathBuf::from(std::env::var("GUIDE_TEST_EFI").unwrap()).join("systemd-bootx64.efi");
+    run(
+        "mkfs.fat",
+        &["-C".as_ref(), esp.as_os_str(), "1024".as_ref()],
+    );
+    run(
+        "mmd",
+        &[
+            "-i".as_ref(),
+            esp.as_os_str(),
+            "::EFI".as_ref(),
+            "::EFI/BOOT".as_ref(),
+        ],
+    );
+    run(
+        "mcopy",
+        &[
+            "-i".as_ref(),
+            esp.as_os_str(),
+            boot.as_os_str(),
+            "::EFI/BOOT/BOOTX64.EFI".as_ref(),
+        ],
+    );
+    esp
+}
+
+/// Whether the stick's boot program verifies with this certificate.
+fn boots_with(directory: &std::path::Path, esp: &std::path::Path, pem: &str) -> bool {
+    let (program, certificate) = (directory.join("BOOTX64.EFI"), directory.join("check.pem"));
+    let _ = std::fs::remove_file(&program);
+    std::fs::write(&certificate, pem).unwrap();
+    run(
+        "mcopy",
+        &[
+            "-i".as_ref(),
+            esp.as_os_str(),
+            "::EFI/BOOT/BOOTX64.EFI".as_ref(),
+            program.as_os_str(),
+        ],
+    );
+    std::process::Command::new("sbverify")
+        .args([
+            "--cert".as_ref(),
+            certificate.as_os_str(),
+            program.as_os_str(),
+        ])
+        .output()
+        .unwrap()
+        .status
+        .success()
+}
+
+/// A stick whose install has made the machine's keys and sealed its
+/// bundle, its partitions as lsblk saw them in the guide's VM: its own
+/// boot partition mounted at /boot, as the stick mounts it.
+fn installed_on_stick(scratch: &std::path::Path, key: &str, pem: &str) -> (Fake, PathBuf) {
+    installed_on_stick_seen(scratch, key, pem, fixture!("lsblk-laid-out.json"))
+}
+
+fn installed_on_stick_seen(
+    scratch: &std::path::Path,
+    key: &str,
+    pem: &str,
+    lsblk_json: &str,
+) -> (Fake, PathBuf) {
+    let vault = scratch.join("vault");
+    std::fs::create_dir_all(&vault).unwrap();
+    let mut fake = stick(&vault, &target("/dev/disk/by-id/virtio-root"));
+    for name in rescue::KEYS {
+        let text = match name {
+            "keys/db/db.key" => key.to_string(),
+            "keys/db/db.pem" => pem.to_string(),
+            "GUID" => "22f0175f-c166-49d2-96ab-c61575cddac5\n".to_string(),
+            other => format!("the {other}"),
+        };
+        fake.prints(Tool::Cat, &[&format!("{SBCTL}/{name}")], &text);
+    }
+    let esp = stick_esp(scratch);
+    fake.file(&format!("{SBCTL}/keys/db/db.pem"), pem.as_bytes())
+        .file(BUNDLE, b"the sealed bundle")
+        .link(STICK_VAULT, Some("/dev/sda4"))
+        .disk("/dev/sda1", &esp)
+        .prints(Tool::Umount, &["/boot"], "");
+    lsblk(&mut fake, lsblk_json);
+    (fake, vault)
+}
+
+#[test]
+fn the_stick_carries_the_machines_keys_and_bundle_and_boots_with_its_key() {
+    let scratch = Scratch::new("install-keep-on-stick");
+    let (key, pem) = db_key(&scratch);
+    let (mut fake, vault) = installed_on_stick(&scratch, &key, &pem);
+    assert!(matches!(
+        KeepOnStick.observe(&mut fake).unwrap(),
+        Standing::Needed { .. }
+    ));
+    KeepOnStick.run(&mut fake, &Answers::new()).unwrap();
+
+    let opened = VaultKey::from_secret(&Secret::new(
+        String::from_utf8(fake.holds(VAULT_KEY).unwrap().to_vec()).unwrap(),
+    ))
+    .unwrap();
+    let mut store = Directory::new(vault.clone());
+    let mut carried = Vault::open(&mut store, opened).unwrap();
+    for name in rescue::KEYS {
+        let mut bytes = vec![];
+        carried
+            .extract(&format!("sbctl/{name}"), &mut bytes)
+            .unwrap();
+        if name == "keys/db/db.key" {
+            assert_eq!(bytes, key.as_bytes());
+        }
+    }
+    assert_eq!(
+        std::fs::read(vault.join("machine-rescue-bundle.json")).unwrap(),
+        b"the sealed bundle"
+    );
+    assert!(boots_with(&scratch, &scratch.join("esp.fat"), &pem));
+    // Unmounted from /boot before it's opened to be changed.
+    let at = |call: &str| fake.calls.iter().position(|made| made.starts_with(call));
+    assert!(
+        at("umount /boot").unwrap() < at("opening /dev/sda1 to change in place").unwrap(),
+        "{:#?}",
+        fake.calls
+    );
+    assert!(matches!(
+        KeepOnStick.observe(&mut fake).unwrap(),
+        Standing::Done { .. }
+    ));
+
+    // Keys made again, as a second install from the stick does, make it
+    // that machine's again.
+    let other = Scratch::new("install-keep-on-stick-other");
+    let (_, another) = db_key(&other);
+    fake.file(&format!("{SBCTL}/keys/db/db.pem"), another.as_bytes());
+    assert!(matches!(
+        KeepOnStick.observe(&mut fake).unwrap(),
+        Standing::Needed { .. }
+    ));
+}
+
+#[test]
+fn a_boot_partition_on_another_disk_than_the_vaults_is_never_signed() {
+    let scratch = Scratch::new("install-keep-on-stick-elsewhere");
+    let (key, pem) = db_key(&scratch);
+    // Named as the stick names its own, but on the disk installed onto.
+    let mut seen: serde_json::Value =
+        serde_json::from_str(fixture!("lsblk-laid-out.json")).unwrap();
+    for disk in seen["blockdevices"].as_array_mut().unwrap() {
+        let partitions = disk
+            .get_mut("children")
+            .and_then(|found| found.as_array_mut());
+        for partition in partitions.into_iter().flatten() {
+            let label = match partition["path"].as_str() {
+                Some("/dev/sda1") => "boot",
+                Some("/dev/vda1") => "esp",
+                _ => continue,
+            };
+            partition["partlabel"] = label.into();
+        }
+    }
+    let (mut fake, vault) = installed_on_stick_seen(&scratch, &key, &pem, &seen.to_string());
+    fake.disk("/dev/vda1", &scratch.join("esp.fat"));
+    let before = std::fs::read(scratch.join("esp.fat")).unwrap();
+    let result = KeepOnStick.run(&mut fake, &Answers::new());
+    assert!(matches!(result, Err(Fault::Blocked { .. })), "{result:?}");
+    assert_eq!(std::fs::read(scratch.join("esp.fat")).unwrap(), before);
+    assert!(!vault.join("machine-rescue-bundle.json").exists());
 }
 
 const VOLUME: &str = "/dev/disk/by-partlabel/system";

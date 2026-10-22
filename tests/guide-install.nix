@@ -5,6 +5,9 @@
 # recovery key typed back, Secure Boot keys made and the system installed
 # from the vault with no network. Then the stick comes out, and the machine
 # boots its own disk, opened by a key's PIN, and enrols its Secure Boot keys.
+# By then the stick is the machine's own, carrying its keys and signed with
+# them, so it boots again with Secure Boot enforced and reinstalls the
+# machine with its keys put back, the firmware never visited.
 #
 # One machine plays the whole of it, as a laptop does, since lanzaboote
 # predicts the TPM's policy as it installs and the stick runs on the
@@ -297,6 +300,12 @@ pkgs.testers.runNixOSTest {
           t.assertEqual(made["machine"], "machine")
           t.assertEqual(made["opened_by"][-1], "the disk's recovery key")
           t.assertEqual(machine.succeed("stat -c %a /mnt/var/lib/guide/rescue-bundle.json").strip(), "644")
+          # The stick is the machine's own now: its bundle beside the
+          # vault's sealed files, the keys sealed among them.
+          machine.succeed("mkdir -p /run/vault && mount -o ro /dev/disk/by-partlabel/vault /run/vault")
+          machine.succeed("cmp /run/vault/machine-rescue-bundle.json /mnt/var/lib/guide/rescue-bundle.json")
+          machine.fail("grep -rq 'PRIVATE KEY' /run/vault")
+          machine.succeed("umount /run/vault")
 
       with subtest("the card says what the disk will ask, and the machine shuts down"):
           on_screen("security token PIN")
@@ -347,10 +356,6 @@ pkgs.testers.runNixOSTest {
           type("")
           on_screen("the YubiKey's PIN")
           type("${pin}")
-          # The install's bundle, handed on into alice's home.
-          on_screen("in 1Password", timeout=300)
-          machine.succeed("cmp /var/lib/guide/rescue-bundle.json /home/alice/machine-rescue-bundle.json")
-          type("")
           on_screen("machine is finished", timeout=300)
           header = json.loads(machine.succeed("cryptsetup luksDump --dump-json-metadata /dev/disk/by-partlabel/system"))
           (sealed,) = [t["keyslots"][0] for t in header["tokens"].values() if t["type"] == "systemd-tpm2"]
@@ -403,7 +408,7 @@ pkgs.testers.runNixOSTest {
 
       with subtest("a stick carrying the machine's own Secure Boot keys is written on a host"):
           # The bundle the install made, taken off as alice can, sealed.
-          sealed = base64.b64decode(machine.succeed("base64 -w0 /home/alice/machine-rescue-bundle.json"))
+          sealed = base64.b64decode(machine.succeed("su alice -c 'base64 -w0 /var/lib/guide/rescue-bundle.json'"))
           t.assertNotIn(b"PRIVATE KEY", sealed)
           installed = json.loads(sealed)
           owner = machine.succeed("cat /var/lib/sbctl/GUID").strip()
@@ -431,12 +436,18 @@ pkgs.testers.runNixOSTest {
               ["${guide}/bin/guide", "write-stick", "${image}", again, "--install", "${payload}", "--rescue-bundle", bundle],
               input=(${builtins.toJSON passphrase} + "\n" + key + "\n").encode(), check=True,
           )
-          reinstall = tempfile.NamedTemporaryFile(suffix=".qcow2")
-          subprocess.run(["${qemu}/bin/qemu-img", "create", "-f", "qcow2", "-b", again, "-F", "raw", reinstall.name], check=True)
+          written_on_host = tempfile.NamedTemporaryFile(suffix=".qcow2")
+          subprocess.run(["${qemu}/bin/qemu-img", "create", "-f", "qcow2", "-b", again, "-F", "raw", written_on_host.name], check=True)
           machine.shutdown()
-          os.environ["STICK_IMAGE"] = reinstall.name
+          os.environ["STICK_IMAGE"] = written_on_host.name
+          # The firmware, enforcing the machine's keys, boots it.
+          machine.start(allow_reboot=True)
+          on_screen("A machine is already here")
+          machine.shutdown()
 
-      with subtest("the firmware boots it, enforcing, and the guide reinstalls with the keys put back"):
+      with subtest("the install's own stick boots, enforcing, and reinstalls with the keys put back"):
+          # The stick the machine was installed from, which it made its own.
+          os.environ["STICK_IMAGE"] = stick.name
           machine.start(allow_reboot=True)
           # The disk holds the machine, so its stick asks first.
           on_screen("A machine is already here")
@@ -466,6 +477,10 @@ pkgs.testers.runNixOSTest {
           remade = json.loads(machine.succeed("cat /mnt/var/lib/guide/rescue-bundle.json"))
           t.assertEqual(remade["db"], installed["db"])
           t.assertNotEqual(remade["to_passphrase"], installed["to_passphrase"])
+          # The stick carries the new one on.
+          machine.succeed("mkdir -p /run/vault && mount -o ro /dev/disk/by-partlabel/vault /run/vault")
+          machine.succeed("cmp /run/vault/machine-rescue-bundle.json /mnt/var/lib/guide/rescue-bundle.json")
+          machine.succeed("umount /run/vault")
           type("")
           machine.wait_for_shutdown()
 

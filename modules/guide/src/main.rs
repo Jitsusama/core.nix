@@ -387,7 +387,7 @@ fn seal_keys(target: &str, bundle: &str) -> Result<(), Fault> {
         &mut terminal,
         "The rescue bundle is made",
         &format!(
-            "Keep {bundle} in 1Password and on your other machines. Writing a stick for this machine with it signs the stick for its firmware and carries its keys, so a reinstall never visits the firmware's setup."
+            "Write this machine's stick with {bundle}, and the stick is signed for its firmware and carries its keys, so a reinstall never visits the firmware's setup. The stick carries the bundle on from there."
         ),
         "finish",
     )?;
@@ -395,8 +395,8 @@ fn seal_keys(target: &str, bundle: &str) -> Result<(), Fault> {
 }
 
 /// The installed machine's journey, as the person who signs in there:
-/// Secure Boot checked, then the disk sealed to the TPM, the rescue bundle
-/// handed on, then a restart to meet the TPM's PIN at the disk's prompt.
+/// Secure Boot checked, then the disk sealed to the TPM, then a restart to
+/// meet the TPM's PIN at the disk's prompt.
 fn installed() -> Result<(), Fault> {
     // SAFETY: getuid can't fail and touches no memory.
     if unsafe { libc::getuid() } == 0 {
@@ -416,13 +416,7 @@ fn installed() -> Result<(), Fault> {
         .map(|bytes| String::from_utf8_lossy(&bytes).trim().to_string())
         .unwrap_or_else(|| "this machine".into());
     let title = format!("Finish {name}");
-    let home = std::env::var_os("HOME")
-        .map(PathBuf::from)
-        .ok_or(Fault::Blocked {
-            step: "finish",
-            why: "there's no HOME to copy the rescue bundle into".into(),
-        })?;
-    let journey = Journey::new(guide::installed::steps(&home))
+    let journey = Journey::new(guide::installed::steps())
         .map_err(|why| Fault::unreadable("the installed machine's steps", why))?;
     let theme = Theme::built(Terminal::is_console());
     let mut terminal = Terminal::open()?;
@@ -555,7 +549,6 @@ fn recover() -> Result<(), Fault> {
 /// Where the stick keeps its journal and log: memory, gone when it stops.
 const JOURNAL: &str = "/run/guide/journal";
 const LOG: &str = "/run/guide/log";
-const VAULT: &str = "/dev/disk/by-partlabel/vault";
 
 /// The install, on the stick's console: the vault opened, then every step
 /// it holds for the machine, then the stick taken out and the machine
@@ -568,10 +561,11 @@ fn install() -> Result<(), Fault> {
             why: "the install runs as root, on the stick".into(),
         });
     }
+    // Only read through this handle: what the install changes in the vault
+    // goes through one of its own, written back before the step ends.
     let partition = OpenOptions::new()
         .read(true)
-        .write(true)
-        .open(VAULT)
+        .open(install::STICK_VAULT)
         .map_err(|why| Fault::unreadable("the stick's vault", why))?;
     let mut vault: Box<dyn Store> = Box::new(Fat::open(partition)?);
     let machine_name = vault::manifest(vault.as_mut())?.machine;
@@ -588,7 +582,9 @@ fn install() -> Result<(), Fault> {
             path: LOG.into(),
             why: why.to_string(),
         })?;
-    let mut machine = System::new(journal, Some(log)).with_vault(vault);
+    let mut machine = System::new(journal, Some(log))
+        .with_vault(vault)
+        .with_vault_partition(install::STICK_VAULT);
     let theme = Theme::built(Terminal::is_console());
     let title = format!("Install {machine_name}");
 

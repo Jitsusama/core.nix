@@ -482,6 +482,72 @@ impl<'s, S: Store + ?Sized> Vault<'s, S> {
         }
         out.flush().map_err(|why| unopened(path, why))
     }
+
+    /// Holds `bytes` as `path` from now on, in place of what it held there
+    /// before, such as the machine's own Secure Boot keys once its install
+    /// has them. Its objects go first, under numbers none has yet, then the
+    /// index naming them, so until the index is written the vault is still
+    /// what it was. Holding the same bytes already, it changes nothing.
+    pub fn put(&mut self, path: &str, bytes: &[u8]) -> Result<(), Fault> {
+        let path = checked(path)?.to_string();
+        let sha256 = hex(&Sha256::digest(bytes));
+        if self
+            .files
+            .iter()
+            .any(|file| file.path == path && file.sha256 == sha256)
+        {
+            return Ok(());
+        }
+        let next = self
+            .files
+            .iter()
+            .flat_map(|file| &file.objects)
+            .filter_map(|object| object.name.strip_suffix(".age")?.parse::<u64>().ok())
+            .max()
+            .map_or(0, |last| last + 1);
+        let recipient = self.key.recipient();
+        let mut objects = vec![];
+        for (number, part) in (next..).zip(bytes.chunks(OBJECT as usize)) {
+            let name = format!("{number:08}.age");
+            sealed_into(self.store, &recipient, &name, &path, part)?;
+            objects.push(Object {
+                name,
+                bytes: part.len() as u64,
+            });
+        }
+        self.files.retain(|file| file.path != path);
+        self.files.push(File {
+            path,
+            bytes: bytes.len() as u64,
+            sha256,
+            objects,
+        });
+        let index = serde_json::to_vec(&Index {
+            files: self.files.clone(),
+        })
+        .map_err(|why| unsealable("the vault's index", why))?;
+        sealed_into(self.store, &recipient, INDEX, "the vault's index", &index)
+    }
+}
+
+/// Bytes sealed to the vault's key, written as `name`.
+fn sealed_into<S: Store + ?Sized>(
+    store: &mut S,
+    recipient: &age::x25519::Recipient,
+    name: &str,
+    what: &str,
+    bytes: &[u8],
+) -> Result<(), Fault> {
+    let encryptor =
+        age::Encryptor::with_recipients(std::iter::once(recipient as &dyn age::Recipient))
+            .map_err(|why| unsealable(what, why))?;
+    let mut writer = encryptor
+        .wrap_output(store.create(name)?)
+        .map_err(|why| unsealable(what, why))?;
+    writer
+        .write_all(bytes)
+        .and_then(|()| writer.finish().map(drop))
+        .map_err(|why| unsealable(what, why))
 }
 
 #[cfg(test)]
@@ -522,6 +588,46 @@ mod tests {
         let mut empty = vec![];
         vault.extract("empty", &mut empty).unwrap();
         assert!(empty.is_empty());
+    }
+
+    #[test]
+    fn a_finished_vault_takes_a_file_and_one_in_place_of_another() {
+        let directory = crate::Scratch::new("vault-put");
+        let mut store = Directory::new(&directory);
+        let key = VaultKey::generate();
+        let again = || VaultKey::from_secret(&key.to_secret()).unwrap();
+        let mut packer = Packer::new(&mut store, &key);
+        packer.add("target.json", &b"{}"[..]).unwrap();
+        packer.add("sbctl/GUID", &b"old"[..]).unwrap();
+        packer.finish(&manifest()).unwrap();
+
+        let mut vault = Vault::open(&mut store, again()).unwrap();
+        vault.put("sbctl/GUID", b"new").unwrap();
+        vault.put("sbctl/keys/db/db.pem", b"the db").unwrap();
+        // Put again unchanged, nothing is written.
+        let before = std::fs::read_dir(&*directory).unwrap().count();
+        vault.put("sbctl/keys/db/db.pem", b"the db").unwrap();
+        assert_eq!(std::fs::read_dir(&*directory).unwrap().count(), before);
+
+        let mut vault = Vault::open(&mut store, again()).unwrap();
+        let mut paths: Vec<&str> = vault
+            .files()
+            .iter()
+            .map(|file| file.path.as_str())
+            .collect();
+        paths.sort();
+        assert_eq!(paths, ["sbctl/GUID", "sbctl/keys/db/db.pem", "target.json"]);
+        for (path, expected) in [
+            ("target.json", &b"{}"[..]),
+            ("sbctl/GUID", b"new"),
+            ("sbctl/keys/db/db.pem", b"the db"),
+        ] {
+            let mut bytes = vec![];
+            vault.extract(path, &mut bytes).unwrap();
+            assert_eq!(bytes, expected, "{path}");
+        }
+        // The manifest still says whose vault it is.
+        assert_eq!(super::manifest(&mut store).unwrap(), manifest());
     }
 
     #[test]

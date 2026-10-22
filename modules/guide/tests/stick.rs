@@ -291,6 +291,53 @@ fn the_images_partitions_are_copied_byte_for_byte() {
     assert_eq!(table.slots[..3], original.slots[..3]);
 }
 
+/// The boot program an EFI system partition holds, copied out.
+fn boot_program_in(directory: &Path, esp: &Path) -> PathBuf {
+    let program = directory.join("BOOTX64.EFI");
+    let _ = fs::remove_file(&program);
+    run(
+        "mcopy",
+        &[
+            "-i".as_ref(),
+            esp.as_os_str(),
+            "::EFI/BOOT/BOOTX64.EFI".as_ref(),
+            program.as_os_str(),
+        ],
+    );
+    program
+}
+
+#[test]
+fn a_sticks_own_boot_program_is_signed_again_in_place_by_the_machines_key() {
+    let directory = Scratch::new("signed-in-place");
+    let esp = directory.join("esp-in-place.fat");
+    fs::write(&esp, make_esp(&directory, Some(&boot_program()))).unwrap();
+    let first = db_key(&directory.join("first"));
+    let second = db_key(&directory.join("second"));
+
+    // Unsigned as the image made it, then signed by one machine's key and
+    // again by another's, as a stick is once an install has the keys.
+    for keys in [&first, &second] {
+        stick::sign_in_place(&mut open(&esp), &Signer::open(keys).unwrap()).unwrap();
+    }
+    run("fsck.fat", &["-n".as_ref(), esp.as_os_str()]);
+    let program = boot_program_in(&directory, &esp);
+    let verify = |keys: &Path| {
+        try_run(
+            "sbverify",
+            &[
+                "--cert".as_ref(),
+                keys.join("db.pem").as_os_str(),
+                program.as_os_str(),
+            ],
+        )
+        .status
+        .success()
+    };
+    assert!(verify(&second), "the last key's signature doesn't verify");
+    assert!(!verify(&first), "the first key's signature is still there");
+}
+
 #[test]
 fn a_signed_sticks_boot_program_verifies_with_the_machines_db_key() {
     let directory = Scratch::new("signed");

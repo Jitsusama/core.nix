@@ -2,10 +2,18 @@
 //! loader signs with them, the system installed from the vault with no
 //! network, and the account's password.
 
-use crate::install::{HELD, RECOVERY_KEY, ROOT, SYSTEM_CACHE, held, target, vault, vault_key};
+use std::io::Write;
+
+use crate::install::{
+    HELD, RECOVERY_KEY, ROOT, STICK_VAULT, SYSTEM_CACHE, held, target, vault, vault_key,
+};
+use crate::observe::disks;
 use crate::observe::efi::{self, Mode, SecureBoot};
 use crate::rescue::{self, Bundle, Keys};
+use crate::sign::Signer;
+use crate::stick;
 use crate::tool::Path;
+use crate::vault::Vault;
 use crate::{
     Answer, Answers, Ask, Fault, Given, Machine, Place, Program, Secret, Standing, Step, Tool,
 };
@@ -101,10 +109,10 @@ fn bundle_path() -> String {
 /// The machine's rescue bundle, made as soon as it has its Secure Boot
 /// keys and its recovery key, so no machine leaves its install without
 /// one: the keys sealed to its YubiKeys and to the recovery key the
-/// person keeps in 1Password, kept on the machine for the installed guide
-/// to hand on. Anyone there can read it, since it's sealed, so the guide
-/// hands it on as the person, without asking for root. A reinstall, which puts the keys back, makes it again with
-/// the new recovery key.
+/// person keeps on their phone, kept on the machine and on the stick.
+/// Anyone can read it, since it's sealed, so the guide reads it as the
+/// person, without asking for root. A reinstall, which puts the keys
+/// back, makes it again with the new recovery key.
 pub struct SealRescueBundle;
 
 impl Step for SealRescueBundle {
@@ -319,6 +327,116 @@ impl Step for InstallSystem {
             return Err(installed.refusal());
         }
         machine.remove_tree(CACHE)
+    }
+}
+
+/// What the stick's image names its EFI system partition.
+const ESP_NAME: &str = "esp";
+
+/// The stick made the machine's own once its install has its keys: the
+/// keys sealed into the stick's vault, where a reinstall takes them from,
+/// the machine's rescue bundle beside them, where a host writing a stick
+/// finds it, and the stick's boot program signed with the machine's db
+/// key. Pulled out, it's the machine's repair stick: the firmware boots it
+/// once it enforces the machine's keys, and reinstalling from it needs no
+/// visit to the firmware and no other machine.
+pub struct KeepOnStick;
+
+impl Step for KeepOnStick {
+    fn id(&self) -> &'static str {
+        "keep-on-stick"
+    }
+
+    fn place(&self) -> Place {
+        Place::Stick
+    }
+
+    fn title(&self) -> &'static str {
+        "Make the stick this machine's own"
+    }
+
+    fn observe(&self, machine: &mut dyn Machine) -> Result<Standing, Fault> {
+        let Some(certificate) = machine.read(&format!("{SBCTL}/keys/db/db.pem"))? else {
+            return Ok(Standing::Blocked {
+                why: "the machine has no Secure Boot keys yet".into(),
+                remedy: "restart from the stick, which gives it them".into(),
+            });
+        };
+        let target = target(machine)?;
+        Ok(
+            if machine
+                .journal()
+                .knows(self.id(), &rescue::fingerprint(&certificate))
+            {
+                Standing::Done {
+                    evidence: format!(
+                        "the stick carries {}'s keys and rescue bundle, and boots with its keys",
+                        target.machine
+                    ),
+                }
+            } else {
+                Standing::Needed { asks: vec![] }
+            },
+        )
+    }
+
+    fn run(&self, machine: &mut dyn Machine, _answers: &Answers) -> Result<(), Fault> {
+        let target = target(machine)?;
+        let keys = Keys::read_in(machine, SBCTL)?;
+        let bundle = machine.read(&bundle_path())?.ok_or(Fault::Blocked {
+            step: self.id(),
+            why: "the machine has no rescue bundle yet".into(),
+        })?;
+        let key = vault_key(machine)?.ok_or(Fault::Blocked {
+            step: self.id(),
+            why: "the vault isn't open".into(),
+        })?;
+        // Only this stick's own boot partition: the one named for it on the
+        // disk its vault is on, never one on a disk beside it.
+        let no_esp = || Fault::Blocked {
+            step: "keep-on-stick",
+            why: "the stick's vault is on a disk with no boot partition beside it".into(),
+        };
+        let vault = machine.resolve(STICK_VAULT)?.ok_or_else(no_esp)?;
+        let esp = disks::observe(machine)?
+            .into_iter()
+            .find(|disk| {
+                disk.partitions
+                    .iter()
+                    .any(|partition| partition.path == vault)
+            })
+            .and_then(|disk| {
+                disk.partitions
+                    .into_iter()
+                    .find(|partition| partition.label.as_deref() == Some(ESP_NAME))
+            })
+            .ok_or_else(no_esp)?;
+        let carried = rescue::carried_as(&target.machine);
+        machine.change_vault(&mut |store| {
+            let mut vault = Vault::open(&mut *store, key.clone())?;
+            for (name, bytes) in keys.files() {
+                vault.put(&format!("{SBCTL_IN_VAULT}/{name}"), bytes)?;
+            }
+            drop(vault);
+            store
+                .create(&carried)?
+                .write_all(&bundle)
+                .map_err(|why| Fault::Unkept {
+                    path: carried.clone(),
+                    why: why.to_string(),
+                })
+        })?;
+        let text = |name: &str| String::from_utf8_lossy(keys.file(name)).into_owned();
+        let signer = Signer::new(&text("keys/db/db.key"), &text("keys/db/db.pem"))?;
+        // The stick mounts its own boot partition at /boot as it starts, and
+        // nothing may read it there while it's changed underneath.
+        for mounted in &esp.mounted {
+            machine.run(Tool::Umount, &[mounted])?.ok()?;
+        }
+        stick::sign_in_place(&mut machine.open_partition(&esp.path)?, &signer)?;
+        machine
+            .journal()
+            .record(self.id(), &rescue::fingerprint(keys.file("keys/db/db.pem")))
     }
 }
 

@@ -22,6 +22,8 @@ pub struct System {
     log: Option<File>,
     secrets: Option<PathBuf>,
     vault: Option<Box<dyn Store>>,
+    /// The vault's partition, for changing it through a handle of its own.
+    vault_partition: Option<PathBuf>,
 }
 
 /// Where secrets a program reads from files are kept for as long as it
@@ -118,12 +120,19 @@ impl System {
             log,
             secrets: None,
             vault: None,
+            vault_partition: None,
         }
     }
 
     /// The stick's vault, for the steps that read or fill it.
     pub fn with_vault(mut self, vault: Box<dyn Store>) -> System {
         self.vault = Some(vault);
+        self
+    }
+
+    /// The partition the stick's vault is on, so a step can change it.
+    pub fn with_vault_partition(mut self, partition: impl Into<PathBuf>) -> System {
+        self.vault_partition = Some(partition.into());
         self
     }
 
@@ -403,6 +412,44 @@ impl Machine for System {
 
     fn open_disk(&mut self, device: &str, mounted: &[String]) -> Result<File, Fault> {
         crate::stick::device::open(device, mounted)
+    }
+
+    /// Through its own handle, unmounted and synced before it returns. The
+    /// vault's other handle only reads, so it never writes anything back
+    /// over what this one wrote.
+    fn change_vault(
+        &mut self,
+        change: &mut dyn FnMut(&mut dyn Store) -> Result<(), Fault>,
+    ) -> Result<(), Fault> {
+        let device = self.vault_partition.clone().ok_or(Fault::Blocked {
+            step: "changing the vault",
+            why: "the guide found no vault here".into(),
+        })?;
+        let unkept = |why: std::io::Error| Fault::Unkept {
+            path: device.display().to_string(),
+            why: why.to_string(),
+        };
+        let partition = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(&device)
+            .map_err(unkept)?;
+        let synced = partition.try_clone().map_err(unkept)?;
+        let mut fat = crate::vault::store::Fat::open(partition)?;
+        change(&mut fat)?;
+        fat.close()?;
+        synced.sync_all().map_err(unkept)
+    }
+
+    /// Exclusive, which Linux refuses for a block device something has
+    /// mounted, so nothing reads it while it's changed.
+    fn open_partition(&mut self, device: &str) -> Result<File, Fault> {
+        OpenOptions::new()
+            .read(true)
+            .write(true)
+            .custom_flags(libc::O_EXCL)
+            .open(device)
+            .map_err(|why| Fault::unreadable(device, why))
     }
 
     fn vault(&mut self) -> Result<&mut dyn Store, Fault> {

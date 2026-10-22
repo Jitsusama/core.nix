@@ -128,6 +128,17 @@ fn every_signature_is_byte_for_byte_what_sbsign_makes() {
             program.display()
         );
 
+        // Signed again, as a stick written for a machine is once its
+        // install has its keys, it's what signing it the first time made.
+        let again = signer
+            .sign(signed.clone(), signing_time(&expected))
+            .unwrap();
+        assert!(
+            again == expected,
+            "{} signed again differs",
+            program.display()
+        );
+
         let by_guide = directory.join("guide.efi");
         fs::write(&by_guide, &signed).unwrap();
         run(
