@@ -1,0 +1,24 @@
+platform/x86: dell-wmi: ignore type 0x0012 code 0x0000
+
+The XPS 14 DA14260's EC sends an event of type 0x0012 with code
+0x0000 about once an hour while the laptop is in use, carrying five
+words of extended data (seen: 003c 0008 000d 004b 0001). The keymap
+has no entry for it, so each one logs "Unknown key with type 0x0012
+and code 0x0000 pressed". Nothing acts on it on Linux, and Dell has
+not said what it means, so ignore it rather than report it as a key.
+
+--- a/drivers/platform/x86/dell/dell-wmi-base.c
++++ b/drivers/platform/x86/dell/dell-wmi-base.c
+@@ -369,6 +369,12 @@
+  * They are events with extended data
+  */
+ static const struct key_entry dell_wmi_keymap_type_0012[] = {
++	/*
++	 * Sent by the XPS 14 DA14260's EC about hourly while it is in use,
++	 * with five words of extended data whose meaning Dell hasn't given
++	 */
++	{ KE_IGNORE, 0x0000, { KEY_RESERVED } },
++
+ 	/* Backlight brightness change event */
+ 	{ KE_IGNORE, 0x0003, { KEY_RESERVED } },
+ 

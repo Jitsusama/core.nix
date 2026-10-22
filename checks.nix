@@ -2723,6 +2723,41 @@ in
     # firmware says it isn't. The bridge reports 180 degrees for a sensor in
     # its upside-down table that matches the machine, whatever the firmware
     # says, and nothing else says so. Read from the XPS 14's patched source.
+    # The XPS 14's EC sends type 0x0012 events with code 0x0000 about hourly,
+    # and dell-wmi logs each as an unknown key unless its keymap for that
+    # type ignores the code. Read from the XPS 14's patched source.
+    dell-events-are-known =
+      let
+        inherit ((bareNixos [ self.nixosModules.dell-xps-14-da14260 ]).config.boot.kernelPackages)
+          kernel
+          ;
+        driver = "drivers/platform/x86/dell/dell-wmi-base.c";
+        patches = lib.filter (patch: patch != null) (map (patch: patch.patch) kernel.kernelPatches);
+      in
+      pkgs.runCommandLocal "dell-events-are-known"
+        {
+          nativeBuildInputs = [
+            pkgs.patchutils
+            pkgs.python3
+          ];
+        }
+        ''
+          tar xf ${kernel.src} --strip-components=1 --wildcards '*/${driver}'
+          for patch in ${lib.escapeShellArgs (map (patch: "${patch}") patches)}; do
+            filterdiff -p1 -i ${driver} "$patch" | patch -p1 --forward --batch --silent
+          done
+          python3 - ${driver} <<'EOF'
+          import re, sys
+          source = open(sys.argv[1]).read()
+          keymap = re.search(r"dell_wmi_keymap_type_0012\[\] = \{(.*?)\n\};", source, re.S)
+          if not keymap:
+              sys.exit("dell-wmi has no keymap for type 0x0012 events.")
+          if not re.search(r"\{ KE_IGNORE, 0x0000,", keymap.group(1)):
+              sys.exit("dell-wmi logs the XPS 14's hourly type 0x0012 event as an unknown key.")
+          EOF
+          touch $out
+        '';
+
     the-colour-camera-says-it-is-upside-down =
       let
         inherit ((bareNixos [ self.nixosModules.dell-xps-14-da14260 ]).config.boot.kernelPackages)

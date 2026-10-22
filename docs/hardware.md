@@ -372,6 +372,18 @@ adapter warnings stay off, so a charger the BIOS thinks too weak doesn't
 hold the boot; and downgrades stay allowed, so a bad BIOS can be rolled back.
 Secure Boot's settings stay out: recovering those is the enrolment's job.
 
+### Dell's Hourly Event
+
+About once an hour while the laptop is in use, the EC sends `dell-wmi` an
+event of type 0x0012 with code 0x0000 and five words of extended data, seen
+as 003c 0008 000d 004b 0001. The driver's keymap has no entry for it, so each
+one logged "Unknown key with type 0x0012 and code 0x0000 pressed". It comes
+from the EC's own buffer, which the firmware's WMI method passes on, and Dell
+hasn't said what it means, so nothing on Linux acts on it.
+`dell-wmi-ignore-0012-0000.patch`, written here, gives the keymap an entry
+that ignores it. The firmware also sends empty events many times an hour,
+from a branch with nothing behind it; the driver already drops those.
+
 ### Nothing to Add
 
 - **The Synaptics USB device** (`06cb:0701`) is the camera's USB-IO bridge,

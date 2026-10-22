@@ -258,6 +258,13 @@ in
       name = "panel-luminance-range";
       patch = ./panel-luminance-range.patch;
     }
+    {
+      # The EC sends an event Dell's driver has no key for about hourly,
+      # and each one logged an unknown key. Nothing acts on it; written
+      # here, and the patch says what's known of it.
+      name = "dell-wmi-ignore-0012-0000";
+      patch = ./dell-wmi-ignore-0012-0000.patch;
+    }
   ];
 
   # The disk, and the USB and Thunderbolt ports a dock's keyboard arrives
