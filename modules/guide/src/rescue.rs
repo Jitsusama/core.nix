@@ -339,13 +339,14 @@ impl Bundle {
             .map_or(RECOVERY_PASSPHRASE, String::as_str)
     }
 
-    /// Whether it holds these keys, which a machine can tell without
-    /// opening it, from the db certificate's fingerprint.
     /// When it was sealed, in seconds since 1970, or 0 when it doesn't say.
+    /// Nothing vouches for it: whoever seals a bundle says it.
     pub fn sealed(&self) -> u64 {
         self.written.sealed
     }
 
+    /// Whether it holds these keys, which a machine can tell without
+    /// opening it, from the db certificate's fingerprint.
     pub fn holds(&self, db_certificate: &[u8]) -> bool {
         self.written.db == fingerprint(db_certificate)
     }

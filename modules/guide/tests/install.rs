@@ -390,6 +390,54 @@ fn the_keys_the_firmware_trusts_are_put_back_with_no_firmware_visit() {
 }
 
 #[test]
+fn a_firmware_in_setup_mode_gets_new_keys_whatever_the_stick_carries() {
+    let target = target("/dev/disk/by-id/virtio-root");
+    let scratch = Scratch::new("install-keys-setup");
+    // Keys a forged bundle could have put on the stick, its db one the
+    // firmware's db still trusts, as it may once only the platform key
+    // is cleared.
+    let carried: &[(&str, &[u8])] = &[
+        ("sbctl/GUID", b"22f0175f-c166-49d2-96ab-c61575cddac5"),
+        ("sbctl/keys/db/db.key", b"the db key"),
+        ("sbctl/keys/db/db.pem", SURFACE_CERT),
+    ];
+    let mut fake = stick_carrying(&scratch, &target, carried);
+    surface_firmware(&mut fake, SURFACE_DB);
+    // Secure Boot off and setup mode on, as clearing the keys leaves it,
+    // each variable's attributes and then its one byte.
+    fake.file(
+        &format!("/sys/firmware/efi/efivars/SecureBoot-{GLOBAL}"),
+        &[6, 0, 0, 0, 0],
+    )
+    .file(
+        &format!("/sys/firmware/efi/efivars/SetupMode-{GLOBAL}"),
+        &[6, 0, 0, 0, 1],
+    );
+    let create = [
+        "--disable-landlock".to_string(),
+        "create-keys".into(),
+        "--export".into(),
+        format!("{SBCTL}/keys"),
+        "--database-path".into(),
+        format!("{SBCTL}/GUID"),
+    ];
+    let create: Vec<&str> = create.iter().map(String::as_str).collect();
+    fake.prints(Tool::Sbctl, &create, "");
+    let standing = SecureBootKeys.observe(&mut fake).unwrap();
+    assert!(matches!(standing, Standing::Needed { .. }), "{standing:?}");
+    SecureBootKeys.run(&mut fake, &Answers::new()).unwrap();
+    assert!(
+        fake.calls.iter().any(|call| call.starts_with("sbctl")),
+        "{:#?}",
+        fake.calls
+    );
+    assert_ne!(
+        fake.holds(&format!("{SBCTL}/keys/db/db.key")),
+        Some(&b"the db key"[..])
+    );
+}
+
+#[test]
 fn keys_the_firmware_doesnt_trust_are_refused() {
     let target = target("/dev/disk/by-id/virtio-root");
     let scratch = Scratch::new("install-keys-other");

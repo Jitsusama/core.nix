@@ -7,8 +7,12 @@
 //! stick with it, a YubiKey's touch opening it.
 //!
 //! They're ciphertext, so they can go anywhere, and a forged one does no
-//! harm: an install puts keys back only when the firmware already trusts
-//! them, so a stick signed from one only fails to boot.
+//! harm to a machine: an install puts keys back only when the firmware
+//! enforces Secure Boot and its db already trusts them, so a stick signed
+//! from one only fails to boot. What a forged one could cost is a host's
+//! copy of a real one, so a bundle can't displace the host's own
+//! machine's, one sealed later than a day from now isn't kept, and a host
+//! keeps at most `MACHINES` machines' bundles.
 
 use std::collections::BTreeMap;
 use std::fs::File;
@@ -22,6 +26,26 @@ use crate::vault::store::{Fat, Store};
 
 /// A bundle is a few KB; anything far bigger isn't one.
 const MOST: u64 = 1 << 20;
+
+/// How many machines' bundles a host keeps and a stick carries, which is
+/// more than one person has machines and few enough that the most they
+/// could all be fits easily in a stick's vault.
+pub const MACHINES: usize = 32;
+
+/// How far past the host's clock a bundle may say it was sealed, for a
+/// clock set a little wrong, before it's taken for one stamped to win.
+const AHEAD: u64 = 24 * 60 * 60;
+
+/// Whether a machine's name makes a bundle's file name every vault and
+/// host keeps apart from every other: lowercase, as a hostname is, so no
+/// two differ only in case, which FAT doesn't tell apart.
+fn named_plainly(machine: &str) -> bool {
+    (1..=63).contains(&machine.len())
+        && machine
+            .bytes()
+            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
+        && !machine.starts_with('-')
+}
 
 /// How much of a disk holds its partition table: its first MiB, where
 /// every partition the guide's images lay out starts after.
@@ -40,7 +64,9 @@ impl Carried {
     /// says, when it's read from a file named for one.
     pub fn read(bytes: Vec<u8>, named: Option<&str>) -> Option<Carried> {
         let bundle = Bundle::read(&bytes).ok()?;
-        if named.is_some_and(|name| name != rescue::carried_as(bundle.machine())) {
+        if !named_plainly(bundle.machine())
+            || named.is_some_and(|name| name != rescue::carried_as(bundle.machine()))
+        {
             return None;
         }
         Some(Carried {
@@ -69,8 +95,8 @@ pub fn bundle_for(
 }
 
 /// Every bundle a store keeps beside whatever else it holds, each read
-/// as a bundle for the machine its name says. One that won't read is left
-/// where it is, unread.
+/// as a bundle for the machine its name says, the first `MACHINES` of
+/// them by name. One that won't read is left where it is, unread.
 pub fn kept(store: &mut dyn Store) -> Vec<Carried> {
     let Ok(names) = store.names() else {
         return vec![];
@@ -93,6 +119,7 @@ pub fn kept(store: &mut dyn Store) -> Vec<Carried> {
         })
         .collect();
     found.sort_by(|one, other| one.machine.cmp(&other.machine));
+    found.truncate(MACHINES);
     found
 }
 
@@ -121,28 +148,57 @@ pub fn on_stick(disk: &mut File) -> Vec<Carried> {
     read().unwrap_or_default()
 }
 
-/// Keeps each bundle in `store` unless it keeps a newer one for that
-/// machine already, and says what it keeps afterwards.
-pub fn keep(store: &mut dyn Store, mut found: Vec<Carried>) -> Result<Vec<Carried>, Fault> {
-    let mut sealed: BTreeMap<String, u64> = kept(store)
-        .into_iter()
-        .map(|kept| (kept.machine, kept.sealed))
+/// Keeps the host's `own` machine's bundle, the one its install left on
+/// its disk, in place of any other for it, and each `found` on a stick
+/// unless the host keeps a newer one for that machine already, it's for
+/// the host's own, it says it was sealed more than a day past `now`, or
+/// the host keeps `MACHINES` others already. Says what it keeps
+/// afterwards.
+pub fn keep(
+    store: &mut dyn Store,
+    own: Option<Carried>,
+    mut found: Vec<Carried>,
+    now: u64,
+) -> Result<Vec<Carried>, Fault> {
+    let held = kept(store);
+    let mut sealed: BTreeMap<String, u64> = held
+        .iter()
+        .map(|kept| (kept.machine.clone(), kept.sealed))
         .collect();
+    if let Some(own) = own {
+        if !held.contains(&own) {
+            replace(store, &own)?;
+        }
+        found.retain(|bundle| bundle.machine != own.machine);
+        sealed.insert(own.machine.clone(), own.sealed);
+    }
+    found.retain(|bundle| bundle.sealed <= now.saturating_add(AHEAD));
     found.sort_by_key(|bundle| bundle.sealed);
     for bundle in found {
-        if sealed
-            .get(&bundle.machine)
-            .is_none_or(|held| *held < bundle.sealed)
-        {
+        let newer = match sealed.get(&bundle.machine) {
+            Some(held) => *held < bundle.sealed,
+            None => sealed.len() < MACHINES,
+        };
+        if newer {
             sealed.insert(bundle.machine.clone(), bundle.sealed);
-            store
-                .create(&rescue::carried_as(&bundle.machine))?
-                .write_all(&bundle.bytes)
-                .map_err(|why| Fault::Unkept {
-                    path: rescue::carried_as(&bundle.machine),
-                    why: why.to_string(),
-                })?;
+            replace(store, &bundle)?;
         }
     }
     Ok(kept(store))
+}
+
+/// The bundle written whole under a name of its own, then put in place of
+/// the one kept for its machine, so a write that fails leaves that one.
+fn replace(store: &mut dyn Store, bundle: &Carried) -> Result<(), Fault> {
+    let name = rescue::carried_as(&bundle.machine);
+    let new = format!("{name}.new");
+    let mut file = store.create(&new)?;
+    file.write_all(&bundle.bytes)
+        .and_then(|()| file.flush())
+        .map_err(|why| Fault::Unkept {
+            path: name.clone(),
+            why: why.to_string(),
+        })?;
+    drop(file);
+    store.replace(&new, &name)
 }

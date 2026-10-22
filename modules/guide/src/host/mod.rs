@@ -355,12 +355,24 @@ fn the_stick(machine: &mut dyn Machine) -> Result<Result<Disk, Standing>, Fault>
 
 /// The rescue bundles the plugged-in stick carries, kept on the host
 /// before anything is written over them, with the host's own machine's
-/// too, which its install left where anyone can read it. Nothing here
-/// stops a stick being written: a stick the guide never wrote, or one
-/// that can't be read, has none.
+/// too, which its install left where anyone can read it. A stick the
+/// guide never wrote has none, and one whose vault won't be read doesn't
+/// stop it being written, which is said; failing to keep what was read
+/// does, since the stick's copies would be lost.
 pub struct GatherBundles {
     /// Where the host keeps them, the person's own.
     pub kept: PathBuf,
+    /// Why the stick's vault couldn't be read, when it couldn't.
+    pub unread: std::cell::RefCell<Option<String>>,
+}
+
+impl GatherBundles {
+    pub fn new(kept: PathBuf) -> GatherBundles {
+        GatherBundles {
+            kept,
+            unread: Default::default(),
+        }
+    }
 }
 
 impl Step for GatherBundles {
@@ -382,11 +394,14 @@ impl Step for GatherBundles {
             Err(standing) => return Ok(standing),
         };
         Ok(if machine.journal().knows(self.id(), &named(&stick)) {
+            let count = carried::kept(&mut vault::store::Directory::new(&self.kept)).len();
             Standing::Done {
-                evidence: format!(
-                    "the host keeps {} rescue bundles",
-                    carried::kept(&mut vault::store::Directory::new(&self.kept)).len()
-                ),
+                evidence: match self.unread.borrow().as_deref() {
+                    None => format!("the host keeps {count} rescue bundles"),
+                    Some(why) => format!(
+                        "the host keeps {count} rescue bundles, but none of the stick's, since its vault couldn't be read: {why}"
+                    ),
+                },
             }
         } else {
             Standing::Needed { asks: vec![] }
@@ -411,19 +426,29 @@ impl Step for GatherBundles {
         if let Some(vault) = vault {
             match vault.mounted.first() {
                 Some(mounted) => read(Path::new(mounted)),
-                // One that won't mount carries nothing to keep.
-                None => machine.read_partition(&vault.path, &mut read).unwrap_or(()),
+                // One that won't mount carries nothing to keep, which is
+                // said as the step is done.
+                None => {
+                    if let Err(why) = machine.read_partition(&vault.path, &mut read) {
+                        self.unread.replace(Some(why.to_string()));
+                    }
+                }
             }
         }
-        if let Some(own) = machine
+        let own = machine
             .read(rescue::KEPT)
             .ok()
             .flatten()
-            .and_then(|bytes| Carried::read(bytes, None))
-        {
-            found.push(own);
-        }
-        carried::keep(&mut vault::store::Directory::new(&self.kept), found)?;
+            .and_then(|bytes| Carried::read(bytes, None));
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |since| since.as_secs());
+        carried::keep(
+            &mut vault::store::Directory::new(&self.kept),
+            own,
+            found,
+            now,
+        )?;
         machine.journal().record(self.id(), &named(&stick))
     }
 }
@@ -441,6 +466,9 @@ pub struct WriteStick {
     pub signer: Option<Signer>,
     /// The rescue bundles the stick carries on, beside its vault.
     pub bundles: Vec<Carried>,
+    /// Whether they were gathered from a stick first, which is then the
+    /// only one this may write over.
+    pub gathered: bool,
     /// The passphrase's words, made once, so those shown are those typed
     /// back and those the vault is sealed to.
     pub words: std::cell::OnceCell<Secret>,
@@ -453,14 +481,32 @@ impl WriteStick {
             payload,
             signer,
             bundles: vec![],
+            gathered: false,
             words: std::cell::OnceCell::new(),
         }
     }
 
-    /// Carrying these rescue bundles on too.
+    /// Carrying these rescue bundles on too, gathered from the stick it
+    /// writes over.
     pub fn carrying(mut self, bundles: Vec<Carried>) -> WriteStick {
         self.bundles = bundles;
+        self.gathered = true;
         self
+    }
+
+    /// Whether the stick is one this may write over: any, unless bundles
+    /// were gathered, when only the one they were gathered from, so a
+    /// stick swapped in afterwards never loses its own.
+    fn may_write(&self, machine: &mut dyn Machine, stick: &Disk) -> Option<Standing> {
+        (self.gathered && !machine.journal().knows("gather-bundles", &named(stick))).then(|| {
+            Standing::Blocked {
+                why: format!(
+                    "{} isn't the stick whose rescue bundles were kept",
+                    described(stick)
+                ),
+                remedy: "plug that stick back in, or start again with this one".into(),
+            }
+        })
     }
 
     fn words(&self) -> Result<&Secret, Fault> {
@@ -494,10 +540,20 @@ impl Step for WriteStick {
                 evidence: format!("{} is written, and read back as written", described(&stick)),
             });
         }
+        if let Some(standing) = self.may_write(machine, &stick) {
+            return Ok(standing);
+        }
         let image = std::fs::metadata(&self.image)
             .map_err(unread(&self.image))?
             .len();
+        // The bundles beside the vault's files, a cluster each at least.
+        let carried: u64 = self
+            .bundles
+            .iter()
+            .map(|bundle| bundle.bytes.len() as u64 + 64 * 1024)
+            .sum();
         let needed = image
+            + carried
             + self
                 .payload
                 .as_ref()
@@ -547,6 +603,12 @@ impl Step for WriteStick {
             step: self.id(),
             why: standing.to_string(),
         })?;
+        if let Some(standing) = self.may_write(machine, &stick) {
+            return Err(Fault::Blocked {
+                step: self.id(),
+                why: standing.to_string(),
+            });
+        }
         let passphrase = match (&self.payload, answers.get("passphrase")) {
             (None, _) => None,
             (Some(_), Some(Answer::Typed(typed))) => {
