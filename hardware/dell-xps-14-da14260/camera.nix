@@ -289,6 +289,13 @@ in
       patch = ./ipu-bridge-hm1092.patch;
     }
     {
+      # The colour sensor is mounted upside down, but the firmware says 0,
+      # so its rotation control said so too. Written here, after the quirk
+      # linux-next has for the Pro 14 Premium, the same sensor.
+      name = "ipu-bridge-da14260-upside-down";
+      patch = ./ipu-bridge-da14260-upside-down.patch;
+    }
+    {
       # The sensor's driver, which no release has yet.
       name = "hm1092-ir-sensor";
       patch = ./hm1092-ir-sensor.patch;

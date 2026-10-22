@@ -251,6 +251,11 @@ from its main branch, which knows the bridge. A patch routes this sensor's graph
 through the bridge, as [Intel's own change][6] does for the next IPU. Programs
 open a loopback camera, "Built-in Camera", which a relay fills from the image
 processor at 1080p, turned upright: the sensor is mounted upside down.
+The firmware says it isn't, so a patch adds the laptop to the bridge's
+upside-down table, as linux-next does for the Pro 14 Premium, and the sensor's
+rotation control reads 180. Nothing reads that control yet: Intel's camera
+software ignores it and libcamera has no IPU7 support, so the relay still
+turns the picture itself.
 PipeWire hides the raw capture nodes and the bare sensor libcamera offers,
 which it would otherwise rank above the loopback as the default camera.
 
