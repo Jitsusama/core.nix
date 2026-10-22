@@ -73,6 +73,7 @@ quietly stopped holding.
 | `icon-marks-past-the-basic-plane` | an icon mark past U+FFFF reaches the shell whole |
 | `nix-builds-yield-to-the-user` | Nix's builds run at a lower weight than the user's programs |
 | `work-yields-to-what-the-user-works-in` | jobs is idle beside app.slice, pi finds it, and a window's scope is not idle |
+| `call-audio-runs-in-real-time` | an app's audio thread can take SCHED_RR 8, below PipeWire's, for at most 200 ms at a time |
 | `nix-collects-before-the-disk-fills` | Nix collects garbage during a build that fills the disk |
 | `resolved-is-set-per-network` | a laptop leaves resolved's global DNS settings as they ship |
 | `the-shutdown-mark-cannot-stop-a-reboot` | the mark a healthy stop leaves can't fail the reboot, and what reads it outlives the last stage |

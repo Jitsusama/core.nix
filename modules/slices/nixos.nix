@@ -38,9 +38,24 @@
 # kernel protects a slice only as far as each slice above it is protected, so
 # every one on the way down claims the same floor, and none of it goes
 # anywhere else.
+#
+# A call's sound must never wait for work at all, and only real time does
+# that: an RT thread runs ahead of every cgroup's weight. Chrome and every
+# Electron app ask for SCHED_RR 8 on their audio threads, and fall back to
+# nice -10, but only when the account may: with no real-time or nice limit,
+# both fail and a call's audio runs as any build does. So the account may go
+# to real-time priority 10 and nice -10. Ten stays under PipeWire's 11, the
+# least it takes from the limit before asking rtkit, so its own threads keep
+# rtkit's 20, and keyd its 49. A real-time thread that runs 200 ms without
+# resting is stopped, so one that spins can't take the machine.
 { pkgs, ... }:
 let
   sorter = pkgs.callPackage ./jobs-sorter/package.nix { };
+  limits = {
+    LimitRTPRIO = "10";
+    LimitNICE = "-10";
+    LimitRTTIME = "200ms:400ms";
+  };
 in
 {
   systemd.user.slices.session.sliceConfig = {
@@ -89,5 +104,15 @@ in
     sliceConfig.MemoryMin = "1G";
   };
 
-  systemd.services."user@".serviceConfig.MemoryMin = "1G";
+  systemd.services."user@".serviceConfig = limits // {
+    MemoryMin = "1G";
+  };
+
+  # What the account's own units start with, said outright rather than
+  # left to whatever the manager inherited.
+  systemd.user.settings.Manager = {
+    DefaultLimitRTPRIO = limits.LimitRTPRIO;
+    DefaultLimitNICE = limits.LimitNICE;
+    DefaultLimitRTTIME = limits.LimitRTTIME;
+  };
 }
