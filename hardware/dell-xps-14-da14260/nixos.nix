@@ -29,6 +29,8 @@ let
     '';
   });
 
+  npuCompiler = pkgs.callPackage ./npu-compiler.nix { };
+
   # turbostat's Makefile calls the compiler gcc, and the kernel's packages
   # build with clang, which has no gcc, so nixpkgs's turbostat fails to
   # build. cc is whichever compiler the set uses. Take the flag out once
@@ -309,19 +311,31 @@ in
   ];
 
   # Video decoding and encoding through VA-API and oneVPL, and OpenCL and
-  # Level Zero for compute, all on the Arc GPU.
+  # Level Zero for compute, all on the Arc GPU; and the NPU's compiler, below.
   hardware.graphics = {
     enable = true;
     extraPackages = [
       pkgs.intel-media-driver
       pkgs.vpl-gpu-rt
       computeRuntime
+      npuCompiler
     ];
   };
   environment.sessionVariables.LIBVA_DRIVER_NAME = "iHD";
 
-  # The NPU, through Level Zero.
+  # The NPU, through Level Zero, with the compiler that turns a model into
+  # its program, which nixpkgs's driver lacks. The driver looks for the
+  # compiler beside itself, so both go in the graphics driver directory.
   hardware.cpu.intel.npu.enable = true;
+  assertions = [
+    {
+      assertion = npuCompiler.version == pkgs.intel-npu-driver.version;
+      message =
+        "The NPU driver is ${pkgs.intel-npu-driver.version} and its compiler "
+        + "${npuCompiler.version}: take the compiler from the driver's release.";
+    }
+  ];
+
   # Level Zero's loader checks a driver's file exists before it loads it,
   # and looks everywhere but where NixOS links the drivers, so without this
   # no program finds the GPU's or the NPU's driver unless LD_LIBRARY_PATH

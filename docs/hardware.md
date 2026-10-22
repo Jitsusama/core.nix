@@ -49,7 +49,7 @@ behind Intel's CVS bridge, and Intel's BE211 Wi-Fi 7.
 | Keyboard | named as the built-in one: the embedded controller's PS/2 keyboard     |
 | Boot     | NVMe, USB and Thunderbolt drivers in the initrd, so a dock can unlock  |
 | Graphics | Mesa, with VA-API (iHD), oneVPL, OpenCL and Level Zero for the Arc GPU |
-| NPU      | `intel_vpu` with Level Zero                                            |
+| NPU      | `intel_vpu` with Level Zero, and Intel's graph compiler; see below     |
 | Audio    | the firmware Sound Open Firmware runs on the DSP                       |
 | Speakers | Omarchy's tuning, as a smart filter; see below                         |
 | Camera   | Intel's camera software, with the CVS bridge in its graph; see below   |
@@ -802,6 +802,18 @@ upstream as it is and the override can then come out.
   unstable, which they are. Upstream bolt's 3a38c237, after its 0.9.11,
   adds them; the patch adds the same four lines to
   `boltd/bolt-sysfs.c`'s `nhi_table`.
+
+- **The NPU's compiler.** A model runs on the NPU only once a compiler has
+  turned it into the NPU's program, and nixpkgs's `intel-npu-driver` is
+  built without one, so every model failed with
+  `ZE_RESULT_ERROR_UNSUPPORTED_FEATURE`, from OpenVINO or anything else.
+  Intel releases the compiler prebuilt beside each driver release, of the
+  same version; the driver loads `libopenvino_intel_npu_compiler_loader.so`
+  from its own directory, so `npu-compiler.nix` puts both libraries in the
+  graphics driver directory beside it. With it, OpenVINO 2026.4 compiled a
+  test network of eight convolutions for the NPU in half a second, and one
+  pass ran in 3.7 ms there, against 6.8 ms on the GPU. nixpkgs could carry
+  the same package, or build the driver with its compiler from source.
 
 ### Left Out on Purpose
 

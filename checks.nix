@@ -2238,6 +2238,24 @@ in
       touch $out
     '';
 
+  # A model runs on the NPU only once its compiler has turned it into the
+  # NPU's program, and the driver looks for the compiler in its own
+  # directory, so both have to be in the graphics driver directory that
+  # /run/opengl-driver links to. Anywhere else, the driver never finds it.
+  the-npu-finds-its-compiler =
+    let
+      inherit ((bareNixos [ self.nixosModules.dell-xps-14-da14260 ]).config.systemd.tmpfiles) settings;
+      drivers = settings.graphics-driver."/run/opengl-driver"."L+".argument;
+    in
+    pkgs.runCommandLocal "the-npu-finds-its-compiler" { } ''
+      for f in libze_intel_npu.so.1 libopenvino_intel_npu_compiler_loader.so \
+        libopenvino_intel_npu_compiler.so; do
+        [ -e ${drivers}/lib/$f ] ||
+          { echo "The graphics drivers lack $f, so the NPU can't compile a model." >&2; exit 1; }
+      done
+      touch $out
+    '';
+
   # The profile follows the charger: performance on mains, balanced on
   # battery, and power saver once the battery falls below UPower's low mark,
   # staying there while the battery reads above it again, until the charger is
