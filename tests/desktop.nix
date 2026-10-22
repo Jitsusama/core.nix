@@ -402,7 +402,11 @@ pkgs.testers.runNixOSTest {
       services.upower.enable = true;
       # Where a laptop's camera module says which programs read it, for
       # the test to write in its place.
-      systemd.tmpfiles.rules = [ "d /run/camera-holders 0755 root root -" ];
+      # And where a machine's disk guard says how its disks stand.
+      systemd.tmpfiles.rules = [
+        "d /run/camera-holders 0755 root root -"
+        "d /run/disk-guard 0755 root root -"
+      ];
       services.pipewire.extraConfig.pipewire."90-stand-in-speakers"."context.objects" = [
         {
           factory = "adapter";
@@ -1283,6 +1287,28 @@ pkgs.testers.runNixOSTest {
           )
           machine.send_key("esc")
           machine.wait_until_fails(in_session("niri msg layers | grep -qw launcher"), timeout=10)
+          # Each disk's room, as a disk guard says it, the tightest first.
+          status = {
+              "version": 1,
+              "heartbeat": time.time() + 3600,
+              "filesystems": [
+                  {"path": "/", "band": "healthy", "free": 300 * 2**30, "total": 900 * 2**30},
+                  {"path": "/nix", "band": "pressure", "free": 20 * 2**30, "total": 900 * 2**30},
+              ],
+              "frozen": [],
+          }
+          machine.succeed(
+              f"echo '{json.dumps(status)}' > /run/disk-guard/.status"
+              " && mv /run/disk-guard/.status /run/disk-guard/status.json"
+          )
+          answer("disk")
+          launcher_until(
+              lambda shown: (shown["selected"] or {}).get("name", "").endswith(" free on /nix")
+          )
+          photograph("launcher-disks")
+          machine.send_key("esc")
+          machine.wait_until_fails(in_session("niri msg layers | grep -qw launcher"), timeout=10)
+          machine.succeed("rm /run/disk-guard/status.json")
           # The keyboards QEMU gives it, however many, and caps lock.
           answer("keyboards")
           photograph("launcher-keyboards")
