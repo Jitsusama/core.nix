@@ -128,6 +128,9 @@ in
       # It exits two minutes after its last machine and client are gone.
       ExecStart = "${config.virtualisation.libvirtd.package}/sbin/virtqemud --timeout 120";
       KillMode = "process";
+      # Its machines run in its cgroup, so they take its slice's weight:
+      # behind what Joel uses, as a build is (modules/slices).
+      Slice = "machine.slice";
       Restart = "on-failure";
     };
   };

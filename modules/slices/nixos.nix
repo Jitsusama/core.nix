@@ -97,6 +97,22 @@ in
     };
   };
 
+  # Machines are work too, however long they run, so a virtual machine or a
+  # container yields to what Joel uses as a build does. libvirt's system
+  # machines and systemd-nspawn's run in machine.slice, beside build.slice,
+  # and take its weight. Inside the account, a weight buys nothing: with a
+  # container spinning sixteen threads in the account's own user.slice, an
+  # app's wakeup waited up to 15 ms and a 10 ms stream of sound broke up 46
+  # times in 20 s at weight 10, and 4.9 ms and 58 times at 100. Idle, as
+  # jobs is, the wakeup waited at most 2.0 ms and the sound never broke. So
+  # there machines are idle: rootless Podman's containers in user.slice,
+  # and libvirt's session machines in the account's machine.slice
+  # (modules/libvirt). A guest then waits only while what Joel uses takes
+  # every core, and catches up after.
+  systemd.slices.machine.sliceConfig.CPUWeight = 10;
+  systemd.user.slices.user.sliceConfig.CPUWeight = "idle";
+  systemd.user.slices.machine.sliceConfig.CPUWeight = "idle";
+
   # Where pi, and anything else that wants to, finds jobs: a path under the
   # account's own user@<uid>.service.
   environment.sessionVariables.JOBS_CGROUP = "jobs.slice/jobs.service";

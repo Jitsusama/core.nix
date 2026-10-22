@@ -1962,6 +1962,36 @@ in
         && (units.DefaultLimitRTTIME or null) == manager.LimitRTTIME
       );
 
+  # A machine runs behind what the user works in only while libvirt's system
+  # machines in machine.slice are weighed as a build is, and inside the
+  # account, where a weight buys nothing, rootless containers in its
+  # user.slice and session machines in its machine.slice, where their daemon
+  # runs, are idle. A machine anywhere else takes an app's weight, and
+  # nothing says so.
+  machines-yield-to-what-the-user-works-in =
+    let
+      inherit
+        ((bareNixos [
+          self.nixosModules.nix-daemon
+          self.nixosModules.slices
+          self.nixosModules.libvirt
+        ]).config
+        )
+        systemd
+        ;
+      daemon = systemd.user.services.virtqemud.serviceConfig;
+      build = systemd.slices.build.sliceConfig.CPUWeight or 100;
+    in
+    holds "machines-yield-to-what-the-user-works-in"
+      "A machine or container runs at an app's weight: machine.slice isn't weighed as a build is, the account's user.slice or machine.slice isn't idle, or session machines run outside it."
+      (
+        build < 100
+        && (systemd.slices.machine.sliceConfig.CPUWeight or 100) == build
+        && (systemd.user.slices.user.sliceConfig.CPUWeight or 100) == "idle"
+        && (systemd.user.slices.machine.sliceConfig.CPUWeight or 100) == "idle"
+        && (daemon.Slice or "") == "machine.slice"
+      );
+
   # The sorter's tests run as it builds: a busy process group moves after two
   # busy seconds and not one, the shell's group and pi's never move, a busy
   # process inside them moves alone, and a process first seen counts nothing.
