@@ -188,9 +188,9 @@ pkgs.testers.runNixOSTest {
             host.succeed(f"cmp {bundle} {kept}/{machine}-rescue-bundle.json")
         host.succeed(f"test $(stat -c %U {kept}) = alice")
         host.succeed("umount /run/vault")
-        # The old vault was mounted as alice to be read, not its disk
-        # opened, and unmounted before the stick was written.
-        host.succeed("journalctl -u udisks2 --grep 'Mounted /dev/sda2 .*on behalf of uid 1000'")
-        host.succeed("journalctl -u udisks2 --grep 'Unmounted /dev/sda2 on behalf of uid 1000'")
+        # The old vault was mounted for alice to be read, not its disk
+        # opened, and unmounted again: UDisks2 says so only as it takes
+        # the mount point away.
+        host.succeed("journalctl -u udisks2 --grep 'Cleaning up mount point /run/media/alice/.* \\(device 8:2 is not mounted\\)'")
   '';
 }
