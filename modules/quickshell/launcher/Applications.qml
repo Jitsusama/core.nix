@@ -8,6 +8,8 @@ import QtQuick
 Provider {
     id: provider
 
+    what: "program"
+
     things: DesktopEntries.applications.values
         .filter(entry => !entry.noDisplay)
         .map(entry => {

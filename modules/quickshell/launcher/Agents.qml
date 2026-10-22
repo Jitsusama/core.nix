@@ -22,6 +22,8 @@ import "../Fuzzy.js" as Fuzzy
 Provider {
     id: provider
 
+    what: "pi session"
+
     readonly property string state: `${Quickshell.env("HOME")}/.local/state/pi/agentic-harness.pi`
     readonly property string quests: `${Quickshell.env("HOME")}/.local/share/pi/agentic-harness.pi/quest-workflow/quests`
 

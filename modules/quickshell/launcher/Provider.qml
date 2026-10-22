@@ -106,10 +106,17 @@ Scope {
     function opened() {
     }
 
+    // What one of its rows is, in a word, said beside the field while one
+    // is selected so a completion says what sort of thing it is: "window",
+    // "program", "emoji". An answer's rows are called answers wherever they
+    // come from, so a provider that only answers leaves it empty.
+    property string what: ""
+
     // A collection's row: a thing whose name is made ready to match only
     // when it's first drawn, since a collection has thousands.
     function member(fields) {
         const made = Object.assign({
+            what: provider.what,
             chord: [],
             side: "",
             count: "",
@@ -232,6 +239,7 @@ Scope {
     // prepared for matching once rather than on every key.
     function thing(fields) {
         const made = Object.assign({
+            what: provider.what,
             chord: [],
             side: "",
             count: "",

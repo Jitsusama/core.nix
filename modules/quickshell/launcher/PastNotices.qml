@@ -21,6 +21,8 @@ import "../Fuzzy.js" as Fuzzy
 Provider {
     id: provider
 
+    what: "notice"
+
     collection: ({
         noun: "notices",
         title: "Notices",

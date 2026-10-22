@@ -9,6 +9,8 @@ import QtQuick
 Provider {
     id: provider
 
+    what: "session"
+
     readonly property var awake: thing({
         key: "session:awake",
         verb: Caffeinate.on ? "let it sleep" : "keep awake",

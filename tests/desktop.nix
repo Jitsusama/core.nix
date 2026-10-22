@@ -1209,9 +1209,13 @@ pkgs.testers.runNixOSTest {
           machine.send_key("esc")
           # A collection is found by what a person calls it, not only its
           # title, and Return goes straight into it.
+          # Beside the field, it says what sort of thing each is.
           for typed, collection in [("audio", "Sound"), ("notifications", "Notices")]:
               answer(typed)
-              launcher_until(lambda shown: (shown["selected"] or {}).get("name") == collection)
+              launcher_until(
+                  lambda shown: (shown["selected"] or {}).get("name") == collection
+                  and shown["kind"] == "collection"
+              )
               machine.send_key("esc")
           # The hottest part, from the sensors the kernel lists, of which
           # the stand-in battery is one.
@@ -1251,7 +1255,10 @@ pkgs.testers.runNixOSTest {
           # never Return, since Return would do them.
           for typed, action in [("shut down", "Power Off"), ("restart", "Reboot"), ("sign out", "Log Out")]:
               answer(typed)
-              launcher_until(lambda shown: (shown["selected"] or {}).get("name") == action)
+              launcher_until(
+                  lambda shown: (shown["selected"] or {}).get("name") == action
+                  and shown["kind"] == "session"
+              )
               machine.send_key("esc")
               machine.wait_until_fails(in_session("niri msg layers | grep -qw launcher"), timeout=10)
           # The keyboards QEMU gives it, however many, and caps lock.

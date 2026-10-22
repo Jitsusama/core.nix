@@ -6,6 +6,7 @@ import qs
 import QtQuick
 
 Provider {
+    what: "shortcut"
     things: Shortcuts.actions.map(action => thing({
         key: `action:${action.does}`,
         verb: action.opens === "" ? "run" : "open",

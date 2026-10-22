@@ -16,6 +16,8 @@ import "../Fuzzy.js" as Fuzzy
 Provider {
     id: provider
 
+    what: "Bluetooth"
+
     readonly property var adapter: Bluetooth.defaultAdapter
     readonly property bool on: adapter !== null && adapter.enabled
 

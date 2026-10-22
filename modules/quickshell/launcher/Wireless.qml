@@ -20,6 +20,8 @@ import "../Fuzzy.js" as Fuzzy
 Provider {
     id: provider
 
+    what: "Wi-Fi"
+
     // A machine without wifid, or without a card, has no Wi-Fi to show.
     readonly property bool present: Wifi.described && Wifi.cards.length > 0
     readonly property bool on: present && Wifi.radio
