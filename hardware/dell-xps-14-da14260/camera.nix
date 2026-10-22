@@ -139,15 +139,32 @@ let
   loopback = lib.getExe' config.jitsusama.v4l2loopback.package.bin "v4l2loopback-ctl";
   device = "/run/camera/device";
 
+  # Dell's tuning has the image processor send full-range video, Y from 0 to
+  # 255, but Chrome and every Electron app ignore a camera's colour label and
+  # read its frames as BT.601 limited range, 16 to 235, so they clip about a
+  # tenth of the picture to black or white. Squeezing the picture into limited
+  # range makes it what they read. This is exactly Y 16 + 219y/255 and chroma
+  # 128 + 224(c - 128)/255, for about 3% of a core. The label says so from the
+  # start, so neither videoconvert has anything to convert.
+  limited = "colorimetry=(string)2:4:7:1";
+  squeeze = "videobalance contrast=0.858824 brightness=0.053887 saturation=0.878431";
+
   # The sensor is mounted upside down. Turning the picture around, rather than
   # mirroring it, keeps it the way others should see it; calls mirror Joel's
   # own preview themselves.
-  input = "icamerasrc ! videoconvert ! videoscale ! videoflip method=rotate-180";
+  input = lib.concatStringsSep " ! " [
+    "icamerasrc"
+    "capssetter caps=video/x-raw,${limited}"
+    "videoconvert"
+    "videoscale"
+    "videoflip method=rotate-180"
+    squeeze
+  ];
   # The ISP scales for free, and 1080p moves a quarter of 4K's bytes through
   # the loopback. A leaky queue drops a stale frame rather than delaying the
   # next one.
   output = lib.concatStringsSep " ! " [
-    "appsrc name=appsrc caps=video/x-raw,format=NV12,width=1920,height=1080,framerate=30/1"
+    "appsrc name=appsrc caps=video/x-raw,format=NV12,width=1920,height=1080,framerate=30/1,${limited}"
     "queue leaky=downstream max-size-buffers=3"
     "videoconvert"
     "v4l2sink name=v4l2sink device=$(cat ${device}) sync=false"

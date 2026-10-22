@@ -82,6 +82,7 @@ quietly stopped holding.
 | `chromium-knows-the-panels-colours` | the XPS 14's Chrome, Slack and 1Password convert their colours to its panel's P3 |
 | `the-panel-slows-on-a-low-battery` | the XPS 14's panel drops to 60 Hz below 30% on battery, holds there, and comes back to its fastest rate on the charger |
 | `the-camera-takes-its-modules-tuning` | the XPS 14's camera reads Dell's tuning for the module a machine names, and Intel's otherwise |
+| `the-camera-gives-limited-range` | the XPS 14's camera relay, run on a full-range ramp, squeezes it exactly into limited range and neither of its converters changes it after |
 | `the-surface-keyboard-types-at-the-disk-prompt` | the Surface Laptop 4's initrd has every driver on its keyboard's path, and keyd lays that keyboard out there |
 | `the-click-strength-holds-after-sleep` | a machine naming a click strength sets it as each hidraw device appears and after every sleep, and one naming none runs nothing |
 | `disk-guard-stays-in-the-background` | the disk guard yields to the account, and a command overrunning its memory never stops it |
