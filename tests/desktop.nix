@@ -3129,7 +3129,9 @@ pkgs.testers.runNixOSTest {
       # A binding that throws or assigns the wrong type only warns, and
       # only once a surface draws it, which can be long after the start.
       with subtest("Quickshell warned of nothing it drew all along"):
-          log = as_account("journalctl --user -u quickshell --no-pager -o cat | grep -F 'WARN scene' || true")
+          # Quickshell colours its levels and categories even in the journal,
+          # so a colour code may stand between the two words.
+          log = as_account("journalctl --user -u quickshell --no-pager -o cat | grep -a -E 'WARN[^ ]* scene' || true")
           assert log.strip() == "", f"Quickshell warned of a scene: {log}"
 
       photograph("desktop")
