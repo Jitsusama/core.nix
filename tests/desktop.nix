@@ -1625,16 +1625,44 @@ pkgs.testers.runNixOSTest {
 
           retry(told_again, timeout_seconds=10)
           machine.wait_until_fails(in_session("niri msg layers | grep -q launcher"), timeout=10)
-          # Super+N opens all of them, which counts them seen.
+          # With none on screen, Super+N opens all of them, which counts
+          # them seen.
+          machine.wait_until_fails(in_session("niri msg layers | grep -q notifications"), timeout=30)
           machine.send_key("meta_l-n")
           launcher_ready()
           photograph("launcher-notices-all")
           machine.send_key("esc")
 
+      # What the notification server says to programs, as they hear it.
+      def listen():
+          as_account(
+              "${pkgs.dbus}/bin/dbus-monitor --session"
+              " \"type='signal',interface='org.freedesktop.Notifications'\""
+              " > /tmp/signals 2>&1 < /dev/null & echo $! > /tmp/listening"
+          )
+          # It's listening once it hears a signal of its own.
+          probe = (
+              "${pkgs.dbus}/bin/dbus-send --session --type=signal"
+              " /probe org.freedesktop.Notifications.Probe"
+          )
+          machine.wait_until_succeeds(
+              in_session(f"{probe}; grep -q member=Probe /tmp/signals"), timeout=10
+          )
+
+      # The program was sent a token to bring its window forward, and then
+      # told what was chosen: the order a compositor needs.
+      def tokened():
+          said = machine.succeed("cat /tmp/signals")
+          machine.succeed("kill $(cat /tmp/listening)")
+          token = re.search(r"member=ActivationToken\n\s+uint32 \d+\n\s+string \"([^\"]+)\"", said)
+          t.assertIsNotNone(token, said)
+          t.assertLess(said.index("member=ActivationToken"), said.index("member=ActionInvoked"), said)
+
       with subtest("a notice's action is done by the keys, and one not acted on stays unread"):
           machine.wait_until_fails(in_session("niri msg layers | grep -q launcher"), timeout=10)
+          # It stays a minute, so it's still at the front when the keys come.
           with told("shows card Lunch"):
-              as_account("notify-send 'Lunch' 'at noon'")
+              as_account("notify-send --expire-time=60000 'Lunch' 'at noon'")
           # notify-send waits for the answer, so it runs on its own. The
           # photograph waits for its card's frames to settle, which is when
           # Qt would have warned of a layout that never does.
@@ -1648,17 +1676,24 @@ pkgs.testers.runNixOSTest {
           # card's words piled at its top.
           log = as_account("journalctl --user -u quickshell --no-pager -o cat")
           assert "polish() loop" not in log, "a notice's layout never settles"
-          # Super+N opens on what it offers, so Return does the first. Its
-          # card stops counting down while the launcher holds it, so what it
-          # offers still answers however long the keys take.
-          with told("waits card Recording saved"):
+          # Super+N takes the stack, which waits while it holds the keys.
+          # The newer notice waits behind the older; Down brings it to the
+          # front, the right arrow chooses what it offers, and Return does
+          # it, with a token to come forward.
+          listen()
+          with told("keys notices"):
               machine.send_key("meta_l-n")
-          launcher_ready()
-          launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Play it")
-          photograph("launcher-notice-actions")
+          photograph("notices-held")
+          machine.send_key("down")
+          machine.send_key("right")
+          photograph("notices-held-offer")
           machine.send_key("ret")
           machine.wait_until_succeeds("grep -qx play /tmp/answer", timeout=15)
-          machine.wait_until_fails(in_session("niri msg layers | grep -q launcher"), timeout=10)
+          tokened()
+          # Shift+Backspace lets the rest go, which gives the keys back.
+          with told("lets notices go"):
+              machine.send_key("shift-backspace")
+          machine.wait_until_fails(in_session("niri msg layers | grep -q notifications"), timeout=10)
           # The history is kept on disk, the one acted on read and the one
           # that only arrived still unread.
           kept = "cat ~/.local/state/quickshell/by-shell/*/notices.json"
@@ -1745,31 +1780,6 @@ pkgs.testers.runNixOSTest {
           )
           t.assertNotIn("holds margin waiting", said, "the margin flashed a waiting notice")
 
-      # What the notification server says to programs, as they hear it.
-      def listen():
-          as_account(
-              "${pkgs.dbus}/bin/dbus-monitor --session"
-              " \"type='signal',interface='org.freedesktop.Notifications'\""
-              " > /tmp/signals 2>&1 < /dev/null & echo $! > /tmp/listening"
-          )
-          # It's listening once it hears a signal of its own.
-          probe = (
-              "${pkgs.dbus}/bin/dbus-send --session --type=signal"
-              " /probe org.freedesktop.Notifications.Probe"
-          )
-          machine.wait_until_succeeds(
-              in_session(f"{probe}; grep -q member=Probe /tmp/signals"), timeout=10
-          )
-
-      # The program was sent a token to bring its window forward, and then
-      # told what was chosen: the order a compositor needs.
-      def tokened():
-          said = machine.succeed("cat /tmp/signals")
-          machine.succeed("kill $(cat /tmp/listening)")
-          token = re.search(r"member=ActivationToken\n\s+uint32 \d+\n\s+string \"([^\"]+)\"", said)
-          t.assertIsNotNone(token, said)
-          t.assertLess(said.index("member=ActivationToken"), said.index("member=ActionInvoked"), said)
-
       with subtest("a click on a notice opens what it's about, with a token to come forward"):
           listen()
           # Its default is the card's click, so the one glyph is Play it's.
@@ -1786,6 +1796,9 @@ pkgs.testers.runNixOSTest {
                   "notify-send --expire-time=60000 --action=default=Open 'Thread with Sam' 'see it'"
                   " > /tmp/answer 2>&1 < /dev/null &"
               )
+          # Super+N takes the stack, and again hands on to the history.
+          with told("keys notices"):
+              machine.send_key("meta_l-n")
           machine.send_key("meta_l-n")
           launcher_ready()
           launcher_until(
@@ -1964,7 +1977,10 @@ pkgs.testers.runNixOSTest {
           machine.succeed(offered.format("leave"))
           photograph("notice-alone")
           # Leaving runs tuple end, which starts the stopped daemon, whose
-          # new log ends the call.
+          # new log ends the call. Super+N takes the stack, and again opens
+          # the history on the newest notice's offers.
+          with told("keys notices"):
+              machine.send_key("meta_l-n")
           machine.send_key("meta_l-n")
           launcher_ready()
           launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Leave the call")
