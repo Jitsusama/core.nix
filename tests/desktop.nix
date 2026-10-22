@@ -226,6 +226,15 @@ let
       sed -n -e 's/^-- cursor: /cursor\t/p' -e 's/.*report\[\(.*\)\]$/said\t\1/p' <<< "$said"
     '';
   };
+
+  # pi, as the launcher's quests open it: where it started and the quest
+  # it was told to load, written down, since the VM has no pi.
+  piStandIn = pkgs.writeShellApplication {
+    name = "pi";
+    text = ''
+      echo "$PWD ''${QUEST_WORKFLOW_AUTOLOAD_ID:-}" > "$XDG_RUNTIME_DIR/pi-opened"
+    '';
+  };
 in
 pkgs.testers.runNixOSTest {
   name = "desktop";
@@ -521,6 +530,7 @@ pkgs.testers.runNixOSTest {
       };
       environment.systemPackages = [
         reports
+        piStandIn
         pkgs.libnotify
         # A player that tells the desktop what it plays, as Spotify does.
         (pkgs.mpv.override { scripts = [ pkgs.mpvScripts.mpris ]; })
@@ -1153,6 +1163,54 @@ pkgs.testers.runNixOSTest {
           presence_says({"addresses": ["TESTQA"], "busy": False})
           reported("holds margin ", lambda rest: "agent" not in rest.split(), since)
           t.assertNotIn("waiting", margin_holds(), "pi's notice counted as missed")
+
+      with subtest("the launcher finds pi's quests, going to the session on one and opening pi on another"):
+          # Their READMEs as pi keeps them, front matter first: the session's
+          # quest, and another in a tree of its own with no session on it.
+          another = "~/.local/share/pi/agentic-harness.pi/quest-workflow/quests/QEST-20261022-HALLWY"
+          as_account(
+              f"printf '%s\\n' '---' 'id: QEST-20261022-TESTQA' 'kind: quest' 'status: active'"
+              f" 'priority: driving' 'rank: 1' '---' '# A quest of its own & whole' > {quest}/README.md"
+              f" && mkdir -p {another} ~/hallway && printf '%s\\n' '---' 'id: QEST-20261022-HALLWY'"
+              f" 'kind: quest' 'status: active' 'priority: queued' 'rank: 1' 'trees:' \"  - path: $HOME/hallway\""
+              f" '---' '# Paint the hallway' > {another}/README.md"
+          )
+          presence_says({"addresses": ["TESTQA"], "busy": False, "owns": ["QEST-20261022-TESTQA"]})
+          as_account(f"niri msg action focus-window --id {window_titled('Elsewhere')['id']}")
+          as_account("qs ipc call launcher toggle")
+          launcher_ready()
+          type_in("quests")
+          launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Quests")
+          machine.send_key("ret")
+          # The one driving first, naming the session that has it loaded.
+          launcher_until(
+              lambda shown: shown["held"] == ["quests"]
+              and (shown["selected"] or {}).get("name") == "A quest of its own & whole"
+              and shown["selected"]["side"] == "driving \u00b7 TESTQA"
+          )
+          machine.send_key("down")
+          launcher_until(
+              lambda shown: (shown["selected"] or {}).get("name") == "Paint the hallway"
+              and shown["selected"]["side"] == "queued"
+          )
+          photograph("launcher-quests")
+          machine.send_key("up")
+          launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "A quest of its own & whole")
+          machine.send_key("ret")
+          machine.wait_until_succeeds(
+              in_session("niri msg --json focused-window | grep -q TESTQA"), timeout=10
+          )
+          # One with no session, found by a word of its title, opens pi on
+          # it in its tree.
+          as_account("qs ipc call launcher toggle")
+          launcher_ready()
+          type_in("hallway", selecting="Paint the hallway")
+          machine.send_key("ret")
+          machine.wait_until_succeeds(
+              in_session('grep -qx "$HOME/hallway QEST-20261022-HALLWY" $XDG_RUNTIME_DIR/pi-opened'),
+              timeout=30,
+          )
+          as_account(f"rm -rf {another} ~/hallway $XDG_RUNTIME_DIR/pi-opened")
           for title in [agent, "Elsewhere"]:
               as_account(f"niri msg action close-window --id {window_titled(title)['id']}")
           as_account(f"rm -rf {quest} {presence}/testqa.json")
