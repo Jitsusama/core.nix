@@ -142,6 +142,7 @@ kernel guide][2] says what that catches.
 | `bluetooth-keeps-its-power-limits` | the XPS 14's kernel reads Bluetooth's revision 2 SAR table and antenna gain setting from UEFI |
 | `the-panel-offers-variable-refresh` | the XPS 14's kernel reads the panel's refresh range from DisplayID's Adaptive Sync block |
 | `the-panel-knows-its-luminance` | the XPS 14's kernel reads the panel's luminance range from DisplayID's Display Parameters block |
+| `dell-events-are-known` | the XPS 14's dell-wmi ignores the EC's hourly type 0x0012 event rather than log an unknown key |
 | `the-colour-camera-says-it-is-upside-down` | the XPS 14's camera bridge reports its colour sensor rotated 180 degrees |
 | `platform-profiles-reach-the-legacy-file` | every profile Dell's driver offers, the XPS 14's SoC slider takes too |
 | `ipu7-outlives-its-open-files` | the XPS 14's capture side is freed when its last node closes, not when the IPU unbinds |
