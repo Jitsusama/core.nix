@@ -3,7 +3,9 @@
 // its time is up, unless it's critical. While notices are held (Quiet.qml),
 // only a critical one shows.
 //
-// The corner's right edge sits a step inside the windows' (Margin.qml), and
+// The corner sits a step inside the windows' own corner, its right edge as
+// the margin's does (Margin.qml) and its top as far below theirs, so a
+// notice lies within the window under it rather than across its border, and
 // the notices make way below the margin's drawer while it's out.
 //
 // Each is kept in the session's history as it arrives (Notices.qml), for
@@ -171,8 +173,15 @@ Scope {
         Column {
             id: stack
             x: Theme.floating.reach
-            y: Theme.space.m + Notices.below
+            // A window's top is a gap from the screen's, and this a step
+            // below it.
+            y: Theme.space.m + Theme.space.s + Notices.below
             onHeightChanged: reported.changed()
+            // Where the pointer reaches and what niri blurs follow a card
+            // only as it moves within the column, so they're gathered again
+            // as the column moves, or they'd stay behind as a shadow where
+            // it was.
+            onYChanged: window.gather()
 
             Behavior on y {
                 NumberAnimation {
