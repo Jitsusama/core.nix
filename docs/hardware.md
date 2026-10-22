@@ -760,6 +760,7 @@ below, so the module adds no patches.
 | Boot     | NVMe and USB drivers in the initrd                                        |
 | Graphics | named as the GPU the desktop waits for                                    |
 | Devices  | Wi-Fi, Bluetooth, the battery, the charger and the camera, as expected    |
+| Clock    | HPET as the clocksource, since the TSC can't be trusted at boot           |
 
 ### The Keyboard at the Disk Prompt
 
@@ -772,11 +773,33 @@ the HID drivers. The UART's GPIO driver, `pinctrl_amd`, is built into the
 kernel. A USB stick whose initrd held that set typed on this keyboard,
 under Secure Boot with the owner's keys, before any disk was open.
 
+### The Clock
+
+Once the laptop is up, its TSC is sound: all 12 threads read within 22
+cycles of each other, and against HPET it counts 2195.875 MHz, steady to
+0.01 MHz second by second. Early in the boot it isn't. On kernel 7.2.3
+without `tsc=unstable`, the clocksource watchdog threw the TSC out in 5 of 5
+boots, about half a second after switching to it, with the TSC 1.7 ms ahead
+of HPET over 0.5 s. With HPET disabled it did the same against the ACPI PM
+timer in 3 of 3, by between 0.8 ms behind and 1.7 ms ahead. Kernels 6.17 and
+6.18 threw it out in 4 of 5. The [ThinkPad T14 AMD Gen 1][21], on the same
+Renoir platform, does the same.
+
+Turning the watchdog off with `tsc=nowatchdog` keeps the TSC, but the
+kernel's refined calibration measures it over that same stretch of the boot,
+and came out at 2199.456 MHz in one boot and 2199.648 in another. That's
+0.16% fast, past the 500 ppm NTP can steer, so the clock would lose about two
+minutes a day. A frequency given with `tsc_early_khz` doesn't help: the
+refined calibration replaces it whenever HPET or the PM timer is there, and
+only a frequency the CPU reports skips it, which AMD's don't. So the module
+marks the TSC unstable and the clock runs on HPET, which costs every read of
+the time a system call.
+
 ### What's Left
 
 | Part       | Why it isn't here yet                                                          |
 | ---------- | ------------------------------------------------------------------------------ |
-| Clock      | its NixOS ran with `tsc=unstable` on HPET, unexplained; it needs a measurement |
+| Clock      | what moves the TSC early in the boot isn't found, so it stays off the TSC      |
 | Sleep      | suspend and resume aren't measured yet                                         |
 | Audio      | the speakers and microphones aren't checked yet                                |
 | Camera     | the front camera is listed; its picture isn't checked yet                      |
@@ -803,3 +826,4 @@ under Secure Boot with the owner's keys, before any disk was open.
 [18]: ../modules/v4l2loopback/nixos.nix
 [19]: ../hardware/microsoft-surface-laptop-4-1958/nixos.nix
 [20]: https://github.com/linux-surface/linux-surface/wiki/Disk-Encryption
+[21]: https://wiki.archlinux.org/title/Lenovo_ThinkPad_T14_(AMD)_Gen_1#Time_stamp_counter

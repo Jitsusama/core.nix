@@ -64,4 +64,10 @@
     "surface_hid"
   ];
   boot.kernelModules = [ "kvm-amd" ];
+
+  # The clock runs on HPET. Early in each boot the TSC and the platform's
+  # timers disagree by up to 0.35%, so the kernel's watchdog throws the TSC
+  # out, and with the watchdog off its calibration can come out 0.16% fast,
+  # more than NTP can steer. docs/hardware.md has the measurements.
+  boot.kernelParams = [ "tsc=unstable" ];
 }
