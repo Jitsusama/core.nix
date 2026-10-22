@@ -451,20 +451,28 @@ works the same way everywhere.
   colour in its other forms, an address or network, a hardware address,
   money, the time or the weather somewhere, or how the machine is doing is
   answered in grey right after what's typed, and that's the answer's only
-  home. A colour's first row wears it, and so does the theme's nearest
-  pigment. Return copies it, Tab puts it in place of the question, and Down
-  walks its detail, each row copied the same way. The footer says where an
-  answer came from. Nothing leaves the machine unless the question needs the
-  network, never for a private address, and never with the launcher's
-  `lookups` off.
+  home. So is the machine itself, in its own words: "battery" or
+  "charger", "temperature" or "fans", "date" or "epoch", "brightness",
+  "volume", "keyboards". A colour's first row wears it, and so does the
+  theme's nearest pigment. Return copies it, Tab puts it in place of the
+  question, and Down walks its detail, each row copied the same way. A
+  level typed after its name, "brightness 40" or "volume 40", is an answer
+  that does: Return sets it. The footer says where an answer came from.
+  Nothing leaves the machine unless the question needs the network, never
+  for a private address, and never with the launcher's `lookups` off.
 - **Large sets are one row each.** Emoji, the clipboard's history, past
   notices and the Wi-Fi networks in reach are too many to mix into the
   search: each that has a match adds one row, its best match with a count of
   the rest, so there's no haystack and no mode to enter first. Return uses
   that match; the right arrow sees all of them, with what was typed still
   searching. The row sits below the matches as tidy as its own and above any
-  scattered ones. Each is whole at home, and most have a chord that opens
-  them: Super+V the copies, Super+E the emoji, Super+N the notices, Super+Shift+/ the shortcuts.
+  scattered ones. A collection is found whole by its name or what a person
+  would call it ("audio" is Sound, "notifications" the Notices), and Return
+  steps into it. Beside the field, a word says what the selection is: an
+  answer, a collection, a window, a program, a shortcut, a pi session.
+  Each is whole at home, and most have a chord that opens them: Super+V the
+  copies, Super+E the emoji, Super+N the notices (the stack on screen
+  first, by the keys, then the history), Super+Shift+/ the shortcuts.
 - **Copies stay in memory.** One program hears every copy for the session,
   text and pictures, and the shell asks it for them, so none is written to
   disk, a picture's file sitting in the runtime directory, and none is kept
