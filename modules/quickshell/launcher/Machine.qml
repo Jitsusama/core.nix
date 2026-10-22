@@ -70,13 +70,6 @@ Provider {
         return minutes < 60 ? `${minutes} min` : `${Math.floor(minutes / 60)}:${String(minutes % 60).padStart(2, "0")}`;
     }
 
-    // A place in line as it's said: 1st, 2nd, 3rd, 11th, 22nd.
-    function ordinal(place) {
-        const tens = place % 100;
-        const suffix = tens >= 11 && tens <= 13 ? "th" : ["th", "st", "nd", "rd"][place % 10] ?? "th";
-        return `${place}${suffix}`;
-    }
-
     readonly property var kindNames: ({
         "vm-test": "VM test",
         "vm-check": "VM check",
@@ -96,7 +89,7 @@ Provider {
             const fields = {
                 name: job.what,
                 side: job.state === "waiting"
-                    ? `${kind} \u00b7 waiting ${since(job.since)}, ${ordinal(job.place)} in line`
+                    ? `${kind} \u00b7 waiting ${since(job.since)}, ${Numbers.ordinal(job.place)} in line`
                     : `${kind} \u00b7 ${since(job.since)}`,
                 glyph: Theme.glyph[job.state === "waiting" ? "queued" : "running"],
                 hue: job.state === "waiting" ? "muted" : "action",

@@ -1,17 +1,20 @@
 // pi's sessions, a collection: every pi running in a window, the one used
 // last first, each named by the quest it has loaded and beside it its
-// address, whether it's working or waiting, what it spent today as
-// spend-watch says (SpendWatch.qml), never while the screen is shared, and
-// the folder it works in.
+// address, whether it's working, waiting on Joel or its turn in the
+// machine's queue (Jobs.qml), what it spent today as spend-watch says
+// (SpendWatch.qml), never while the screen is shared, and the folder it
+// works in.
 // Return goes to its window; the right arrow steps into what's known of it,
 // each fact a row Return copies: its quest, its addresses, when it started,
-// what it spent today and what of that its councils and fleets cost, what
-// it works on and what it hears. What runs, and
+// what it spent today and what of that its councils and fleets cost, the
+// heavy work it has running or waiting, what it works on and what it
+// hears. What runs, and
 // how each is doing, is Sessions.qml's.
 import qs
 import Quickshell
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
+import "Numbers.js" as Numbers
 
 Provider {
     id: provider
@@ -33,10 +36,19 @@ Provider {
         .map(session => made(session))
     onAllChanged: changed()
 
+    // Where a session's first job waiting for its turn stands in line.
+    function inLine(presence) {
+        const waiting = presence && presence.session
+            ? Jobs.of(presence.session).find(job => job.state === "waiting") : undefined;
+        return waiting ? `${Numbers.ordinal(waiting.place)} in line` : "";
+    }
+
     function made(session) {
         const presence = session.presence;
+        const queued = inLine(presence);
         const doing = presence === null ? ""
             : presence.wants ? Sessions.wanted(presence.wants)
+            : queued !== "" ? queued
             : presence.busy ? "working" : "waiting";
         const quest = presence && presence.owns
             ? presence.owns.find(owned => /^QEST-/.test(owned)) ?? "" : "";
@@ -82,12 +94,19 @@ Provider {
         const helpers = spent === "" ? []
             : (SpendWatch.helpers[presence.session] ?? [])
                 .map(helper => fact(`on:${helper.on}`, helper.spent, `on ${helper.on}`));
+        // Its heavy work, what runs and then what waits, as the queue says.
+        const jobs = presence.session ? Jobs.of(presence.session).map(job => copyRow({
+            key: `fact:agent:job:${job.id}`,
+            name: job.what,
+            side: job.state === "waiting" ? `${Numbers.ordinal(job.place)} in line` : "running",
+            glyph: Theme.glyph[job.state === "waiting" ? "queued" : "running"]
+        })) : [];
         const facts = [
             quest !== "" ? fact("quest", quest, "its quest") : null,
             fact("address", addresses.join(", "), addresses.length === 1 ? "its address" : "its addresses"),
             presence.owner?.startedAt ? fact("started", started(presence.owner.startedAt), "started") : null,
             spent !== "" ? fact("spent", spent, "spent today") : null
-        ].concat(helpers, [
+        ].concat(helpers, jobs, [
             presence.worksOn ? fact("works", presence.worksOn, "works on") : null,
             (presence.groups ?? []).length > 0 ? fact("hears", presence.groups.join(", "), "hears") : null
         ]).filter(row => row !== null);

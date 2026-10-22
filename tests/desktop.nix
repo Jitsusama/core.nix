@@ -989,6 +989,19 @@ pkgs.testers.runNixOSTest {
               f"mkdir -p $XDG_RUNTIME_DIR/spend-watch && echo '{json.dumps(spent)}' > $XDG_RUNTIME_DIR/spend-watch/.c"
               " && mv $XDG_RUNTIME_DIR/spend-watch/.c $XDG_RUNTIME_DIR/spend-watch/collection.json"
           )
+          # A VM test of its waiting its turn in the machine's queue.
+          lined = {
+              "v": 1,
+              "heartbeat": float(machine.succeed("date +%s")),
+              "machine": {},
+              "jobs": [
+                  {"id": "t", "kind": "vm-test", "state": "waiting", "owner": {"session": "01a1face-test"},
+                   "what": "Test the shell", "since": machine.succeed("date -u +%FT%TZ").strip(), "place": 2},
+              ],
+          }
+          as_account(
+              f"echo '{json.dumps(lined)}' > $XDG_RUNTIME_DIR/jobs/.q && mv $XDG_RUNTIME_DIR/jobs/.q $XDG_RUNTIME_DIR/jobs/queue.json"
+          )
           # Its window, titled as pi titles its own: its address, its
           # quest cut short, its folder, which a hyphen doesn't end.
           agent = "\u03c0 - TESTQA A quest of\u2026 - my-tree"
@@ -1016,6 +1029,7 @@ pkgs.testers.runNixOSTest {
               lambda shown: shown["held"] == ["sessions"]
               and (shown["selected"] or {}).get("name") == "A quest of its own & whole"
               and "$12.50 today" in shown["selected"]["side"]
+              and "2nd in line" in shown["selected"]["side"]
           )
           photograph("launcher-agents")
           # Stepped into, what's known of it, each a row of its own.
@@ -1027,6 +1041,7 @@ pkgs.testers.runNixOSTest {
               (r"\d\d:\d\d", "started"),
               (r"\$12\.50", "spent today"),
               (r"\$4\.00", "on councils"),
+              (r"Test the shell", "2nd in line"),
               (r"Tidy the tests", "works on"),
               (r"#desk", "hears"),
           ]:
@@ -1038,7 +1053,7 @@ pkgs.testers.runNixOSTest {
           photograph("launcher-agent-facts")
           machine.send_key("left")
           launcher_until(lambda shown: shown["held"] == ["sessions"])
-          as_account("rm $XDG_RUNTIME_DIR/spend-watch/collection.json")
+          as_account("rm $XDG_RUNTIME_DIR/spend-watch/collection.json $XDG_RUNTIME_DIR/jobs/queue.json")
           # Found by its address too.
           type_in("testqa", selecting="A quest of its own & whole")
           machine.send_key("ret")
