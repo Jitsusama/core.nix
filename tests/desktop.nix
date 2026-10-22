@@ -1174,6 +1174,22 @@ pkgs.testers.runNixOSTest {
           machine.send_key("ret")
           machine.wait_until_fails(in_session("niri msg layers | grep -qw launcher"), timeout=10)
           t.assertRegex(as_account("wl-paste --no-newline"), r"^-?\d+ \u00b0C at the ")
+          # The date in full, as the machine's clock has it; the day may
+          # turn while it's asked, so either will do.
+          before = machine.succeed("date '+%A %-d %B %Y'").strip()
+          answer("date")
+          photograph("launcher-date")
+          machine.send_key("ret")
+          machine.wait_until_fails(in_session("niri msg layers | grep -qw launcher"), timeout=10)
+          after = machine.succeed("date '+%A %-d %B %Y'").strip()
+          t.assertIn(as_account("wl-paste --no-newline"), [before, after])
+          # The stand-in backlight's share, as its files say.
+          now, most = (
+              int(machine.succeed(f"cat /sys/class/backlight/stand-in/{f}"))
+              for f in ("brightness", "max_brightness")
+          )
+          # Rounded half up, as JavaScript's Math.round does.
+          copied("brightness", f"{int(now * 100 / most + 0.5)}% bright")
           answer("350 f in c")
           photograph("launcher-units")
           machine.send_key("esc")

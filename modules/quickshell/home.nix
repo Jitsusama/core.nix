@@ -468,6 +468,8 @@ let
     machine = ./launcher/Machine.qml;
     power = ./launcher/Power.qml;
     heat = ./launcher/Heat.qml;
+    today = ./launcher/Today.qml;
+    light = ./launcher/Light.qml;
     emoji = ./launcher/Emoji.qml;
     shortcuts = ./launcher/KeyMap.qml;
     keyboard = ./launcher/Keyboard.qml;
@@ -821,6 +823,17 @@ in
       heat = {
         order = 98;
         source = "heat";
+      };
+      # The date's week, day of the year, UTC, zone and epoch.
+      today = {
+        order = 97;
+        source = "today";
+        zone = osConfig.time.timeZone or null;
+      };
+      # How bright the screen and the keyboard are.
+      light = {
+        order = 96;
+        source = "light";
       };
       # Collections, each shown as one row below the rest. Wi-Fi's networks
       # are one, and turning Wi-Fi off is found as an action.
