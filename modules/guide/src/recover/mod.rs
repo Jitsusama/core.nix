@@ -198,12 +198,15 @@ impl Step for OpenDisk {
         })?;
         let volume = found.volume();
         let line = Secret::new(format!("{}\n", typed.expose()));
+        // With no key plugged in it's the recovery key, read as the words
+        // it says, so a doubled space or a capital doesn't count against it.
+        let recovery = Secret::new(crate::words::typed(typed.expose()));
         let opened = match crate::observe::fido2::list(machine)?.len() {
             0 => machine.run_given(
                 Program::Tool(Tool::Cryptsetup),
                 &["open", "--key-file=-", &volume, &found.name],
                 Given {
-                    stdin: Some(typed),
+                    stdin: Some(&recovery),
                     ..Given::default()
                 },
             )?,
@@ -550,7 +553,7 @@ impl Step for ReplaceLostKey {
     }
 
     fn run(&self, machine: &mut dyn Machine, answers: &Answers) -> Result<(), Fault> {
-        let (Some(Answer::Secret(pin)), Some(Answer::Secret(recovery))) =
+        let (Some(Answer::Secret(pin)), Some(Answer::Secret(typed))) =
             (answers.get("pin"), answers.get("recovery"))
         else {
             return Err(Fault::Unanswered {
@@ -558,6 +561,7 @@ impl Step for ReplaceLostKey {
                 ask: "pin",
             });
         };
+        let recovery = &Secret::new(crate::words::typed(typed.expose()));
         let (found, before, header) = credentials(machine)?;
         let volume = found.volume();
         let kept = before

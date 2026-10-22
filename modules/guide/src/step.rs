@@ -63,6 +63,22 @@ pub enum Ask {
         expected: String,
         why: String,
     },
+    /// Something to keep on the person's phone: how, step by step, each
+    /// step a line of its own, then, once they're ready, the secret alone
+    /// on the screen for its camera to read, with nothing else there for
+    /// it to copy.
+    Show {
+        id: &'static str,
+        how: String,
+        shown: String,
+    },
+    /// Something kept away from the screen, typed back from where it's
+    /// kept without being shown, so it's known to have got there whole.
+    Recall {
+        id: &'static str,
+        expected: String,
+        why: String,
+    },
     /// One of a few choices, said as a question, the first chosen until
     /// the person moves.
     Choose {
@@ -78,6 +94,8 @@ impl Ask {
             Ask::Secret { id, .. }
             | Ask::Act { id, .. }
             | Ask::TypeBack { id, .. }
+            | Ask::Show { id, .. }
+            | Ask::Recall { id, .. }
             | Ask::Choose { id, .. } => id,
         }
     }

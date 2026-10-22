@@ -261,11 +261,22 @@ pkgs.testers.runNixOSTest {
               on_screen(f"{name}'s PIN")
               type("${pin}")
 
-      with subtest("the recovery key is shown, typed back, and opens the disk"):
+      # The recovery key, kept as a person keeps it on their phone: the
+      # steps, then its seven words alone on the screen for the phone's
+      # camera, nothing else there for it to copy, then typed back.
+      def keep_the_recovery_key():
           on_screen("Keep the recovery key", timeout=300)
-          # Read as a person reads it, its groups perhaps on two lines.
-          (key,) = re.findall(r"(?:[a-z]{8}-){7}[a-z]{8}", "".join(screen().split()))
-          type(key)
+          on_screen("Copy All")
+          type("")
+          retry(lambda _: len(screen().split()) == 7, 30)
+          words = " ".join(screen().split())
+          type("")
+          on_screen("reading it off your phone")
+          type(words)
+          return words
+
+      with subtest("the recovery key is shown, typed back, and opens the disk"):
+          key = keep_the_recovery_key()
 
       with subtest("the system installs from the vault, and the account gets its password"):
           on_screen("a password for alice", timeout=1800)
@@ -444,9 +455,7 @@ pkgs.testers.runNixOSTest {
               type("")
               on_screen(f"{name}'s PIN")
               type("${pin}")
-          on_screen("Keep the recovery key", timeout=300)
-          (key,) = re.findall(r"(?:[a-z]{8}-){7}[a-z]{8}", "".join(screen().split()))
-          type(key)
+          key = keep_the_recovery_key()
           on_screen("a password for alice", timeout=1800)
           type(${builtins.toJSON password})
           on_screen("the same password again")

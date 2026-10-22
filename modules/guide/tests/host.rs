@@ -14,7 +14,7 @@ use std::process::Command;
 use guide::fake::Fake;
 use guide::host::WriteStick;
 use guide::stick::gpt::{SECTOR, Table};
-use guide::{Answer, Answers, Fault, Journey, Secret, Standing, Step, Tool};
+use guide::{Answer, Answers, Ask, Fault, Journey, Standing, Step, Tool};
 
 macro_rules! fixture {
     ($file:literal) => {
@@ -77,11 +77,7 @@ fn listing(json: &str, keep: impl Fn(&str) -> bool) -> String {
 }
 
 fn repair(directory: &Path) -> WriteStick {
-    WriteStick {
-        image: image(directory),
-        payload: None,
-        signer: None,
-    }
+    WriteStick::new(image(directory), None, None)
 }
 
 fn lsblk(fake: &mut Fake, json: &str) {
@@ -181,7 +177,7 @@ fn the_one_stick_is_written_whole_and_what_was_mounted_from_it_is_handed_over() 
 }
 
 #[test]
-fn passphrases_that_differ_open_nothing() {
+fn the_sticks_passphrase_is_seven_words_shown_for_the_phone_and_typed_back() {
     let directory = Scratch::new("passphrases");
     let mut fake = Fake::new();
     lsblk(&mut fake, fixture!("lsblk-blank.json"));
@@ -195,24 +191,48 @@ fn passphrases_that_differ_open_nothing() {
     )
     .unwrap();
     fs::write(payload.join("layout.sh"), "").unwrap();
-    let step = WriteStick {
-        image: image(&directory),
-        payload: Some(guide::host::Payload::open(&payload).unwrap()),
-        signer: None,
+    let step = WriteStick::new(
+        image(&directory),
+        Some(guide::host::Payload::open(&payload).unwrap()),
+        None,
+    );
+    let asked = |fake: &mut Fake| match step.observe(fake).unwrap() {
+        Standing::Needed { asks } => asks,
+        standing => panic!("{standing:?}"),
     };
+    let asks = asked(&mut fake);
+    let [
+        Ask::Act { .. },
+        Ask::Show { how, shown, .. },
+        Ask::Recall {
+            id: "passphrase",
+            expected,
+            ..
+        },
+    ] = asks.as_slice()
+    else {
+        panic!("{asks:#?}");
+    };
+    assert_eq!(shown.split(' ').count(), 7, "{shown}");
+    assert_eq!(expected, shown);
+    assert!(how.contains("\"laptop stick passphrase\""), "{how}");
+    // Looked at again, it's the same words, or the phone would keep
+    // words the vault isn't sealed to.
+    assert!(matches!(
+        asked(&mut fake).as_slice(),
+        [_, Ask::Show { shown: again, .. }, _] if again == shown
+    ));
+
     let mut answers = Answers::new();
     answers.give("stick", Answer::Done);
+    answers.give("shown", Answer::Done);
     answers.give(
         "passphrase",
-        Answer::Secret(Secret::new("one long passphrase".into())),
-    );
-    answers.give(
-        "again",
-        Answer::Secret(Secret::new("another long passphrase".into())),
+        Answer::Typed("abacus abdomen abdominal abide abiding ability ablaze".into()),
     );
     let refused = step.run(&mut fake, &answers);
     assert!(
-        matches!(&refused, Err(Fault::Blocked { why, .. }) if why.contains("weren't the same")),
+        matches!(&refused, Err(Fault::Blocked { why, .. }) if why.contains("isn't the stick's passphrase")),
         "{refused:?}"
     );
     assert!(

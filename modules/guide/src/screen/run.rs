@@ -11,7 +11,7 @@ use zeroize::Zeroizing;
 use crate::screen::Theme;
 use crate::screen::terminal::{Io, Press};
 use crate::screen::view::{Moment, Where, draw};
-use crate::{Answer, Answers, Ask, Fault, Journey, Machine, Next, Place, Secret, Step};
+use crate::{Answer, Answers, Ask, Fault, Journey, Machine, Next, Place, Secret, Step, words};
 
 /// How a walk ended.
 #[derive(Debug, PartialEq, Eq)]
@@ -128,25 +128,30 @@ impl Walk<'_> {
         let mut typed = Zeroizing::new(String::new());
         let mut chosen = 0;
         let mut refused: Option<String> = None;
+        // Whether what's shown for the person's phone is on the screen alone.
+        let mut alone = false;
         while at < asks.len() {
             let ask = &asks[at];
-            self.show(
-                io,
-                Some(step),
-                last,
-                Moment::Asking {
+            let moment = match ask {
+                Ask::Show { shown, .. } if alone => Moment::Showing { shown },
+                _ => Moment::Asking {
                     title: step.title(),
                     ask,
                     typed: &typed,
                     chosen,
                     refused: refused.as_deref(),
                 },
-            )?;
+            };
+            self.show(io, Some(step), last, moment)?;
             match io.press()? {
                 Press::Leave => return Ok(None),
-                Press::Char(c) if !matches!(ask, Ask::Act { .. } | Ask::Choose { .. }) => {
+                Press::Char(c)
+                    if !matches!(ask, Ask::Act { .. } | Ask::Choose { .. } | Ask::Show { .. }) =>
+                {
                     typed.push(c)
                 }
+                Press::Return if matches!(ask, Ask::Show { .. }) && !alone => alone = true,
+                Press::Escape if alone => alone = false,
                 Press::Up if matches!(ask, Ask::Choose { .. }) => chosen = chosen.saturating_sub(1),
                 Press::Down => {
                     if let Ask::Choose { choices, .. } = ask {
@@ -176,6 +181,16 @@ impl Walk<'_> {
                             refused = Some("what was typed isn't what's shown above".into());
                             None
                         }
+                        Ask::Show { .. } => Some(Answer::Done),
+                        Ask::Recall { expected, .. }
+                            if words::typed(&typed) == words::typed(expected) =>
+                        {
+                            Some(Answer::Typed(words::typed(&typed)))
+                        }
+                        Ask::Recall { .. } => {
+                            refused = Some("that isn't it: read it off your phone again, or press Escape to see it on the screen again".into());
+                            None
+                        }
                     };
                     if let Some(answer) = answer {
                         given[at] = Some(answer);
@@ -183,6 +198,7 @@ impl Walk<'_> {
                         typed.clear();
                         chosen = 0;
                         refused = None;
+                        alone = false;
                     }
                 }
                 _ => {}

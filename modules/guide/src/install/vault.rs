@@ -3,7 +3,7 @@
 
 use crate::install::{VAULT_KEY, vault_key};
 use crate::vault::{self, Vault, VaultKey};
-use crate::{Answer, Answers, Ask, Fault, Machine, Place, Standing, Step};
+use crate::{Answer, Answers, Ask, Fault, Machine, Place, Secret, Standing, Step};
 
 /// A word that comes out different on every common layout but Colemak's,
 /// so what arrives shows which layout the keyboard types in.
@@ -172,7 +172,20 @@ impl Step for OpenVault {
             crate::observe::fido2::list(machine)?
         };
         let key = match plugged.len() {
-            0 => VaultKey::open_with_passphrase(&sealed(machine, vault::KEY_PASSPHRASE)?, typed)?,
+            0 => {
+                let sealed = sealed(machine, vault::KEY_PASSPHRASE)?;
+                // A host makes the passphrase as words, read as the words they
+                // say; one chosen by hand, for a test, is taken as typed.
+                match VaultKey::open_with_passphrase(&sealed, typed) {
+                    Err(_) if crate::words::typed(typed.expose()) != typed.expose() => {
+                        VaultKey::open_with_passphrase(
+                            &sealed,
+                            &Secret::new(crate::words::typed(typed.expose())),
+                        )?
+                    }
+                    opened => opened?,
+                }
+            }
             1 => VaultKey::open_with_key(&sealed(machine, vault::KEY)?, typed)?,
             many => {
                 return Err(Fault::Blocked {
