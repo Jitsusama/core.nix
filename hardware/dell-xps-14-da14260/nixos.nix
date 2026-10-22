@@ -29,6 +29,8 @@ let
     '';
   });
 
+  npuCompiler = pkgs.callPackage ./npu-compiler.nix { };
+
   # turbostat's Makefile calls the compiler gcc, and the kernel's packages
   # build with clang, which has no gcc, so nixpkgs's turbostat fails to
   # build. cc is whichever compiler the set uses. Take the flag out once
@@ -66,6 +68,7 @@ in
     ../../modules/panel/nixos.nix
     ../../modules/power-profiles-daemon/nixos.nix
     ../../modules/touchpad/nixos.nix
+    ./backports.nix
     ./camera.nix
     ./speakers.nix
   ];
@@ -258,6 +261,13 @@ in
       name = "panel-luminance-range";
       patch = ./panel-luminance-range.patch;
     }
+    {
+      # The EC sends an event Dell's driver has no key for about hourly,
+      # and each one logged an unknown key. Nothing acts on it; written
+      # here, and the patch says what's known of it.
+      name = "dell-wmi-ignore-0012-0000";
+      patch = ./dell-wmi-ignore-0012-0000.patch;
+    }
   ];
 
   # The disk, and the USB and Thunderbolt ports a dock's keyboard arrives
@@ -301,19 +311,31 @@ in
   ];
 
   # Video decoding and encoding through VA-API and oneVPL, and OpenCL and
-  # Level Zero for compute, all on the Arc GPU.
+  # Level Zero for compute, all on the Arc GPU; and the NPU's compiler, below.
   hardware.graphics = {
     enable = true;
     extraPackages = [
       pkgs.intel-media-driver
       pkgs.vpl-gpu-rt
       computeRuntime
+      npuCompiler
     ];
   };
   environment.sessionVariables.LIBVA_DRIVER_NAME = "iHD";
 
-  # The NPU, through Level Zero.
+  # The NPU, through Level Zero, with the compiler that turns a model into
+  # its program, which nixpkgs's driver lacks. The driver looks for the
+  # compiler beside itself, so both go in the graphics driver directory.
   hardware.cpu.intel.npu.enable = true;
+  assertions = [
+    {
+      assertion = npuCompiler.version == pkgs.intel-npu-driver.version;
+      message =
+        "The NPU driver is ${pkgs.intel-npu-driver.version} and its compiler "
+        + "${npuCompiler.version}: take the compiler from the driver's release.";
+    }
+  ];
+
   # Level Zero's loader checks a driver's file exists before it loads it,
   # and looks everywhere but where NixOS links the drivers, so without this
   # no program finds the GPU's or the NPU's driver unless LD_LIBRARY_PATH

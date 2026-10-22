@@ -1,0 +1,262 @@
+drm/i915: program the real vtotal on Panther Lake (7.3)
+
+Mainline's, in 7.3, for 7.2, which lacks them. In order:
+
+485356a428b0 drm/i915/display: Handle VSYNC timing in LRR path
+d671b9328d1f drm/i915/display: Pass target transcoder to intel_set_trans
+0423aeb70d0a drm/i915/display: Rename cpu_transcoder parameter to transc
+a0c780e6ef0d drm/i915/display: Pass transcoder to intel_set_transcoder_t
+61f1ed0d7119 drm/i915/display: Rename cpu_transcoder parameter to transc
+f26a8df8dff9 drm/i915/display: Program TRANS_VTOTAL from mode vtotal
+
+diff --git a/drivers/gpu/drm/i915/display/intel_display.c b/drivers/gpu/drm/i915/display/intel_display.c
+index b5f6ef5dd30c..1cc7f87411bb 100644
+--- a/drivers/gpu/drm/i915/display/intel_display.c
++++ b/drivers/gpu/drm/i915/display/intel_display.c
+@@ -132,7 +132,8 @@
+ #include "vlv_dsi_pll.h"
+ #include "vlv_dsi_regs.h"
+ 
+-static void intel_set_transcoder_timings(const struct intel_crtc_state *crtc_state);
++static void intel_set_transcoder_timings(const struct intel_crtc_state *crtc_state,
++					 enum transcoder transcoder);
+ static void intel_set_pipe_src_size(const struct intel_crtc_state *crtc_state);
+ static void hsw_set_transconf(const struct intel_crtc_state *crtc_state);
+ static void bdw_set_pipe_misc(struct intel_dsb *dsb,
+@@ -1504,7 +1505,7 @@ static void ilk_configure_cpu_transcoder(const struct intel_crtc_state *crtc_sta
+ 					       &crtc_state->dp_m2_n2);
+ 	}
+ 
+-	intel_set_transcoder_timings(crtc_state);
++	intel_set_transcoder_timings(crtc_state, crtc_state->cpu_transcoder);
+ 
+ 	ilk_set_pipeconf(crtc_state);
+ }
+@@ -1635,7 +1636,7 @@ static void hsw_configure_cpu_transcoder(const struct intel_crtc_state *crtc_sta
+ 					       &crtc_state->dp_m2_n2);
+ 	}
+ 
+-	intel_set_transcoder_timings(crtc_state);
++	intel_set_transcoder_timings(crtc_state, crtc_state->cpu_transcoder);
+ 
+ 	if (cpu_transcoder != TRANSCODER_EDP)
+ 		intel_de_write(display, TRANS_MULT(display, cpu_transcoder),
+@@ -2048,7 +2049,7 @@ static void i9xx_configure_cpu_transcoder(const struct intel_crtc_state *crtc_st
+ 					       &crtc_state->dp_m2_n2);
+ 	}
+ 
+-	intel_set_transcoder_timings(crtc_state);
++	intel_set_transcoder_timings(crtc_state, crtc_state->cpu_transcoder);
+ 
+ 	i9xx_set_pipeconf(crtc_state);
+ }
+@@ -2677,17 +2678,17 @@ transcoder_has_vrr(const struct intel_crtc_state *crtc_state)
+ 	return HAS_VRR(display) && !transcoder_is_dsi(cpu_transcoder);
+ }
+ 
+-static void intel_set_transcoder_timings(const struct intel_crtc_state *crtc_state)
++static void intel_set_transcoder_timings(const struct intel_crtc_state *crtc_state,
++					 enum transcoder transcoder)
+ {
+ 	struct intel_display *display = to_intel_display(crtc_state);
+ 	struct intel_crtc *crtc = to_intel_crtc(crtc_state->uapi.crtc);
+ 	enum pipe pipe = crtc->pipe;
+-	enum transcoder cpu_transcoder = crtc_state->cpu_transcoder;
+ 	const struct drm_display_mode *adjusted_mode = &crtc_state->hw.adjusted_mode;
+ 	u32 crtc_vdisplay, crtc_vtotal, crtc_vblank_start, crtc_vblank_end;
+ 	int vsyncshift = 0;
+ 
+-	drm_WARN_ON(display->drm, transcoder_is_dsi(cpu_transcoder));
++	drm_WARN_ON(display->drm, transcoder_is_dsi(transcoder));
+ 
+ 	/* We need to be careful not to changed the adjusted mode, for otherwise
+ 	 * the hw state checker will get angry at the mismatch. */
+@@ -2716,7 +2717,7 @@ static void intel_set_transcoder_timings(const struct intel_crtc_state *crtc_sta
+ 	 */
+ 	if (DISPLAY_VER(display) >= 13) {
+ 		intel_de_write(display,
+-			       TRANS_SET_CONTEXT_LATENCY(display, cpu_transcoder),
++			       TRANS_SET_CONTEXT_LATENCY(display, transcoder),
+ 			       crtc_state->set_context_latency);
+ 
+ 		/*
+@@ -2731,35 +2732,26 @@ static void intel_set_transcoder_timings(const struct intel_crtc_state *crtc_sta
+ 
+ 	if (DISPLAY_VER(display) >= 4 && DISPLAY_VER(display) < 35)
+ 		intel_de_write(display,
+-			       TRANS_VSYNCSHIFT(display, cpu_transcoder),
++			       TRANS_VSYNCSHIFT(display, transcoder),
+ 			       vsyncshift);
+ 
+-	intel_de_write(display, TRANS_HTOTAL(display, cpu_transcoder),
++	intel_de_write(display, TRANS_HTOTAL(display, transcoder),
+ 		       HACTIVE(adjusted_mode->crtc_hdisplay - 1) |
+ 		       HTOTAL(adjusted_mode->crtc_htotal - 1));
+-	intel_de_write(display, TRANS_HBLANK(display, cpu_transcoder),
++	intel_de_write(display, TRANS_HBLANK(display, transcoder),
+ 		       HBLANK_START(adjusted_mode->crtc_hblank_start - 1) |
+ 		       HBLANK_END(adjusted_mode->crtc_hblank_end - 1));
+-	intel_de_write(display, TRANS_HSYNC(display, cpu_transcoder),
++	intel_de_write(display, TRANS_HSYNC(display, transcoder),
+ 		       HSYNC_START(adjusted_mode->crtc_hsync_start - 1) |
+ 		       HSYNC_END(adjusted_mode->crtc_hsync_end - 1));
+ 
+-	/*
+-	 * For platforms that always use VRR Timing Generator, the VTOTAL.Vtotal
+-	 * bits are not required. Since the support for these bits is going to
+-	 * be deprecated in upcoming platforms, avoid writing these bits for the
+-	 * platforms that do not use legacy Timing Generator.
+-	 */
+-	if (intel_vrr_always_use_vrr_tg(display))
+-		crtc_vtotal = 1;
+-
+-	intel_de_write(display, TRANS_VTOTAL(display, cpu_transcoder),
++	intel_de_write(display, TRANS_VTOTAL(display, transcoder),
+ 		       VACTIVE(crtc_vdisplay - 1) |
+ 		       VTOTAL(crtc_vtotal - 1));
+-	intel_de_write(display, TRANS_VBLANK(display, cpu_transcoder),
++	intel_de_write(display, TRANS_VBLANK(display, transcoder),
+ 		       VBLANK_START(crtc_vblank_start - 1) |
+ 		       VBLANK_END(crtc_vblank_end - 1));
+-	intel_de_write(display, TRANS_VSYNC(display, cpu_transcoder),
++	intel_de_write(display, TRANS_VSYNC(display, transcoder),
+ 		       VSYNC_START(adjusted_mode->crtc_vsync_start - 1) |
+ 		       VSYNC_END(adjusted_mode->crtc_vsync_end - 1));
+ 
+@@ -2767,7 +2759,7 @@ static void intel_set_transcoder_timings(const struct intel_crtc_state *crtc_sta
+ 	 * programmed with the VTOTAL_EDP value. Same for VTOTAL_C. This is
+ 	 * documented on the DDI_FUNC_CTL register description, EDP Input Select
+ 	 * bits. */
+-	if (display->platform.haswell && cpu_transcoder == TRANSCODER_EDP &&
++	if (display->platform.haswell && transcoder == TRANSCODER_EDP &&
+ 	    (pipe == PIPE_B || pipe == PIPE_C))
+ 		intel_de_write(display, TRANS_VTOTAL(display, pipe),
+ 			       VACTIVE(crtc_vdisplay - 1) |
+@@ -2782,19 +2774,19 @@ static void intel_set_transcoder_timings(const struct intel_crtc_state *crtc_sta
+ 		 * followed by BE which DPRX devices are unable to handle.
+ 		 * https://groups.vesa.org/wg/DP/document/20494
+ 		 */
+-		intel_de_write(display, DP_MIN_HBLANK_CTL(cpu_transcoder),
++		intel_de_write(display, DP_MIN_HBLANK_CTL(transcoder),
+ 			       crtc_state->min_hblank);
+ 	}
+ }
+ 
+-static void intel_set_transcoder_timings_lrr(const struct intel_crtc_state *crtc_state)
++static void intel_set_transcoder_timings_lrr(const struct intel_crtc_state *crtc_state,
++					     enum transcoder transcoder)
+ {
+ 	struct intel_display *display = to_intel_display(crtc_state);
+-	enum transcoder cpu_transcoder = crtc_state->cpu_transcoder;
+ 	const struct drm_display_mode *adjusted_mode = &crtc_state->hw.adjusted_mode;
+ 	u32 crtc_vdisplay, crtc_vtotal, crtc_vblank_start, crtc_vblank_end;
+ 
+-	drm_WARN_ON(display->drm, transcoder_is_dsi(cpu_transcoder));
++	drm_WARN_ON(display->drm, transcoder_is_dsi(transcoder));
+ 
+ 	crtc_vdisplay = adjusted_mode->crtc_vdisplay;
+ 	crtc_vtotal = adjusted_mode->crtc_vtotal;
+@@ -2809,7 +2801,7 @@ static void intel_set_transcoder_timings_lrr(const struct intel_crtc_state *crtc
+ 
+ 	if (DISPLAY_VER(display) >= 13) {
+ 		intel_de_write(display,
+-			       TRANS_SET_CONTEXT_LATENCY(display, cpu_transcoder),
++			       TRANS_SET_CONTEXT_LATENCY(display, transcoder),
+ 			       crtc_state->set_context_latency);
+ 
+ 		/*
+@@ -2826,28 +2818,27 @@ static void intel_set_transcoder_timings_lrr(const struct intel_crtc_state *crtc
+ 	 * The hardware actually ignores TRANS_VBLANK.VBLANK_END in DP mode.
+ 	 * But let's write it anyway to keep the state checker happy.
+ 	 */
+-	intel_de_write(display, TRANS_VBLANK(display, cpu_transcoder),
++	intel_de_write(display, TRANS_VBLANK(display, transcoder),
+ 		       VBLANK_START(crtc_vblank_start - 1) |
+ 		       VBLANK_END(crtc_vblank_end - 1));
++
+ 	/*
+-	 * For platforms that always use VRR Timing Generator, the VTOTAL.Vtotal
+-	 * bits are not required. Since the support for these bits is going to
+-	 * be deprecated in upcoming platforms, avoid writing these bits for the
+-	 * platforms that do not use legacy Timing Generator.
++	 * DP doesn't have vertical sync, so TRANS_VSYNC only affects
++	 * the position of the vsync interrupt (and does so even when
++	 * using the VRR timing generator!). Thus updating TRANS_VSYNC
++	 * here seems fine even if it isn't double buffered.
+ 	 */
+-	if (intel_vrr_always_use_vrr_tg(display))
+-		crtc_vtotal = 1;
++	intel_de_write(display, TRANS_VSYNC(display, transcoder),
++		       VSYNC_START(adjusted_mode->crtc_vsync_start - 1) |
++		       VSYNC_END(adjusted_mode->crtc_vsync_end - 1));
+ 
+ 	/*
+ 	 * The double buffer latch point for TRANS_VTOTAL
+ 	 * is the transcoder's undelayed vblank.
+ 	 */
+-	intel_de_write(display, TRANS_VTOTAL(display, cpu_transcoder),
++	intel_de_write(display, TRANS_VTOTAL(display, transcoder),
+ 		       VACTIVE(crtc_vdisplay - 1) |
+ 		       VTOTAL(crtc_vtotal - 1));
+-
+-	intel_vrr_set_fixed_rr_timings(crtc_state);
+-	intel_vrr_transcoder_enable(crtc_state);
+ }
+ 
+ static void intel_set_pipe_src_size(const struct intel_crtc_state *crtc_state)
+@@ -5202,9 +5193,9 @@ intel_pipe_config_compare(const struct intel_crtc_state *current_config,
+ 	PIPE_CONF_CHECK_I(name.crtc_vdisplay); \
+ 	if (!fastset || !allow_vblank_delay_fastset(current_config)) \
+ 		PIPE_CONF_CHECK_I(name.crtc_vblank_start); \
+-	PIPE_CONF_CHECK_I(name.crtc_vsync_start); \
+-	PIPE_CONF_CHECK_I(name.crtc_vsync_end); \
+ 	if (!fastset || !pipe_config->update_lrr) { \
++		PIPE_CONF_CHECK_I(name.crtc_vsync_start); \
++		PIPE_CONF_CHECK_I(name.crtc_vsync_end); \
+ 		PIPE_CONF_CHECK_I(name.crtc_vtotal); \
+ 		PIPE_CONF_CHECK_I(name.crtc_vblank_end); \
+ 	} \
+@@ -5818,6 +5809,8 @@ static bool lrr_params_changed(const struct intel_crtc_state *old_crtc_state,
+ 
+ 	return old_adjusted_mode->crtc_vblank_start != new_adjusted_mode->crtc_vblank_start ||
+ 		old_adjusted_mode->crtc_vblank_end != new_adjusted_mode->crtc_vblank_end ||
++		old_adjusted_mode->crtc_vsync_start != new_adjusted_mode->crtc_vsync_start ||
++		old_adjusted_mode->crtc_vsync_end != new_adjusted_mode->crtc_vsync_end ||
+ 		old_adjusted_mode->crtc_vtotal != new_adjusted_mode->crtc_vtotal ||
+ 		old_crtc_state->set_context_latency != new_crtc_state->set_context_latency;
+ }
+@@ -6684,8 +6677,11 @@ static void intel_pipe_fastset(const struct intel_crtc_state *old_crtc_state,
+ 		intel_cpu_transcoder_set_m1_n1(crtc, new_crtc_state->cpu_transcoder,
+ 					       &new_crtc_state->dp_m_n);
+ 
+-	if (new_crtc_state->update_lrr)
+-		intel_set_transcoder_timings_lrr(new_crtc_state);
++	if (new_crtc_state->update_lrr) {
++		intel_set_transcoder_timings_lrr(new_crtc_state, new_crtc_state->cpu_transcoder);
++		intel_vrr_set_fixed_rr_timings(new_crtc_state);
++		intel_vrr_transcoder_enable(new_crtc_state);
++	}
+ }
+ 
+ static void commit_pipe_pre_planes(struct intel_atomic_state *state,
+diff --git a/drivers/gpu/drm/i915/display/intel_vrr.c b/drivers/gpu/drm/i915/display/intel_vrr.c
+index 69647d3f116c..8f8b061a2809 100644
+--- a/drivers/gpu/drm/i915/display/intel_vrr.c
++++ b/drivers/gpu/drm/i915/display/intel_vrr.c
+@@ -1103,16 +1103,6 @@ void intel_vrr_get_config(struct intel_crtc_state *crtc_state)
+ 			crtc_state->vrr.vmin += intel_vrr_vmin_flipline_offset(display);
+ 		}
+ 
+-		/*
+-		 * For platforms that always use VRR Timing Generator, the VTOTAL.Vtotal
+-		 * bits are not filled. Since for these platforms TRAN_VMIN is always
+-		 * filled with crtc_vtotal, use TRAN_VRR_VMIN to get the vtotal for
+-		 * adjusted_mode.
+-		 */
+-		if (intel_vrr_always_use_vrr_tg(display))
+-			crtc_state->hw.adjusted_mode.crtc_vtotal =
+-				intel_vrr_vmin_vtotal(crtc_state);
+-
+ 		if (HAS_AS_SDP(display)) {
+ 			trans_vrr_vsync =
+ 				intel_de_read(display,

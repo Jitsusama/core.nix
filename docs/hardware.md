@@ -49,7 +49,7 @@ behind Intel's CVS bridge, and Intel's BE211 Wi-Fi 7.
 | Keyboard | named as the built-in one: the embedded controller's PS/2 keyboard     |
 | Boot     | NVMe, USB and Thunderbolt drivers in the initrd, so a dock can unlock  |
 | Graphics | Mesa, with VA-API (iHD), oneVPL, OpenCL and Level Zero for the Arc GPU |
-| NPU      | `intel_vpu` with Level Zero                                            |
+| NPU      | `intel_vpu` with Level Zero, and Intel's graph compiler; see below     |
 | Audio    | the firmware Sound Open Firmware runs on the DSP                       |
 | Speakers | Omarchy's tuning, as a smart filter; see below                         |
 | Camera   | Intel's camera software, with the CVS bridge in its graph; see below   |
@@ -154,6 +154,52 @@ matter here weren't, and a third, mainline's 86c8360c97f6, came with 7.2.12:
 Once a stable release takes one, its patch no longer applies and the kernel
 build stops, which is the sign to drop it.
 
+### 7.3's Fixes, Taken Early
+
+7.3 adds and fixes a good deal for this laptop's parts, and none of it is
+tagged for 7.2's stable releases. Rather than wait for the kernel to move,
+`backports.nix` carries what matters here: 18 patches in `backports/`, 87
+mainline commits, each patch naming its commits in order. They were picked
+from every commit between 7.2 and 7.3 touching a driver this laptop binds or
+could bind, and apply to 7.2.12 after the kernel's own patches with no
+offset or fuzz. One, the Thunderbolt fix, had a hunk moved onto 7.2's
+context, which its header says.
+
+| Patch                           | What it gives                                       |
+| ------------------------------- | --------------------------------------------------- |
+| `xe-flips-in-the-vrr-window`    | flips on time with variable refresh always on       |
+| `xe-real-vtotal`                | the real vertical total, which USB-C monitors need  |
+| `xe-refresh-without-modeset`    | refresh rate changes without blanking the panel     |
+| `xe-peak-bandwidth`             | Xe3's bandwidth point, so less memory power         |
+| `xe-cdclk-for-downscaling`      | no underruns or flicker on a downscaled plane       |
+| `xe-small-fixes`                | fbdev, resume hotplug, UHBR DP audio, four GT fixes |
+| `sof-dsp-and-dma`               | the DSP's DMA, its period on a high-priority queue  |
+| `amp-feedback-channels`         | the amplifiers' feedback on the right channels      |
+| `hdmi-jack-after-resume`        | a jack plugged in during suspend is seen            |
+| `sdca-hid-lifetime`             | the headset buttons' device leaves with its codec   |
+| `iwlwifi-core-107`              | Wi-Fi firmware 107 and per-country puncturing       |
+| `iwlmld-resume-fixes`           | Wi-Fi resumes cleanly after being powered off       |
+| `btintel-pcie-reset`            | Bluetooth resets without races, and `vendor_reset`  |
+| `bluetooth-le-fixes`            | LE Audio broadcast reports and advertising          |
+| `ish-sensors`                   | the sensor hub's sensors, ready and scaled right    |
+| `haptic-ff-before-register`     | the touchpad's force feedback from the start        |
+| `thunderbolt-reset-at-shutdown` | a TB3 dock is told it's unplugged at shutdown       |
+| `issei`                         | a driver for the security engine                    |
+
+`sdca-hid-lifetime` brings the RT766 codec's driver, which nothing here uses,
+because one of its commits edits it. The headset buttons' input device takes a
+new name with it, from `HID sdw:0:0:01fa:4245:01` to one starting `SDCA HID`,
+which no rule here matches on. `iwlwifi-core-107` loads
+`iwlwifi-sc-a0-wh-b0-c107`, which linux-firmware has shipped since 20260916;
+without that file the driver falls back to 106. `issei` binds the security
+engine at `00:18.0` (`8086:e45d`), as Dell's `issei.sys` does on Windows, with
+`INTEL_SSEI` and `INTEL_SSEI_HW_HECI` built as modules; it gives
+`/dev/issei0` and the engine's firmware version in `/sys/class/issei`, and
+nothing in userspace talks to it yet.
+
+An assertion fails once the kernel is 7.3, which has them all, and the way
+through is to drop `backports.nix` and its directory.
+
 ### The Boot Clock
 
 The firmware hands over to the boot loader at 400 MHz with HWP off, and holds
@@ -251,6 +297,11 @@ from its main branch, which knows the bridge. A patch routes this sensor's graph
 through the bridge, as [Intel's own change][6] does for the next IPU. Programs
 open a loopback camera, "Built-in Camera", which a relay fills from the image
 processor at 1080p, turned upright: the sensor is mounted upside down.
+The firmware says it isn't, so a patch adds the laptop to the bridge's
+upside-down table, as linux-next does for the Pro 14 Premium, and the sensor's
+rotation control reads 180. Nothing reads that control yet: Intel's camera
+software ignores it and libcamera has no IPU7 support, so the relay still
+turns the picture itself.
 PipeWire hides the raw capture nodes and the bare sensor libcamera offers,
 which it would otherwise rank above the loopback as the default camera.
 
@@ -366,6 +417,18 @@ memory slows when idle, for the battery; the keyboard's light stays dim; the
 adapter warnings stay off, so a charger the BIOS thinks too weak doesn't
 hold the boot; and downgrades stay allowed, so a bad BIOS can be rolled back.
 Secure Boot's settings stay out: recovering those is the enrolment's job.
+
+### Dell's Hourly Event
+
+About once an hour while the laptop is in use, the EC sends `dell-wmi` an
+event of type 0x0012 with code 0x0000 and five words of extended data, seen
+as 003c 0008 000d 004b 0001. The driver's keymap has no entry for it, so each
+one logged "Unknown key with type 0x0012 and code 0x0000 pressed". It comes
+from the EC's own buffer, which the firmware's WMI method passes on, and Dell
+hasn't said what it means, so nothing on Linux acts on it.
+`dell-wmi-ignore-0012-0000.patch`, written here, gives the keymap an entry
+that ignores it. The firmware also sends empty events many times an hour,
+from a branch with nothing behind it; the driver already drops those.
 
 ### Nothing to Add
 
@@ -564,10 +627,9 @@ type, which libinput reads as Windows reads the same flag.
 
 ### What's Left
 
-| Part            | Why it isn't here yet                                                 |
-| --------------- | --------------------------------------------------------------------- |
-| Presence        | the camera bridge never senses anyone with the camera idle; see below |
-| Security engine | Linux 7.2 has no driver for it; see below                             |
+| Part     | Why it isn't here yet                                                 |
+| -------- | --------------------------------------------------------------------- |
+| Presence | the camera bridge never senses anyone with the camera idle; see below |
 
 - **Presence.** The sensor hub's presence reading comes from the Synaptics
   camera bridge, which the hub asks for results every 2 s once face
@@ -582,11 +644,6 @@ type, which libinput reads as Windows reads the same flag.
   was the first where the bridge never answered the driver handing the
   camera's link back as the camera closed, so the setting stays
   Microsoft's, the one the camera was proven on.
-- **The security engine** (`00:18.0`, `8086:e45d`). Windows binds Dell's
-  `issei.sys` to it, Intel's Silicon Security Engine Interface, for SPDM and
-  other services. Linux 7.3's `drivers/misc/issei` lists this device; 7.2
-  has none. It comes with the 7.3 kernel, with `INTEL_SSEI` and
-  `INTEL_SSEI_HW_HECI` built as modules.
 
 ### Expected in the Journal
 
@@ -745,6 +802,18 @@ upstream as it is and the override can then come out.
   unstable, which they are. Upstream bolt's 3a38c237, after its 0.9.11,
   adds them; the patch adds the same four lines to
   `boltd/bolt-sysfs.c`'s `nhi_table`.
+
+- **The NPU's compiler.** A model runs on the NPU only once a compiler has
+  turned it into the NPU's program, and nixpkgs's `intel-npu-driver` is
+  built without one, so every model failed with
+  `ZE_RESULT_ERROR_UNSUPPORTED_FEATURE`, from OpenVINO or anything else.
+  Intel releases the compiler prebuilt beside each driver release, of the
+  same version; the driver loads `libopenvino_intel_npu_compiler_loader.so`
+  from its own directory, so `npu-compiler.nix` puts both libraries in the
+  graphics driver directory beside it. With it, OpenVINO 2026.4 compiled a
+  test network of eight convolutions for the NPU in half a second, and one
+  pass ran in 3.7 ms there, against 6.8 ms on the GPU. nixpkgs could carry
+  the same package, or build the driver with its compiler from source.
 
 ### Left Out on Purpose
 

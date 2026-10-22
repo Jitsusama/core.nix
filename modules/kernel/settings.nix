@@ -46,6 +46,11 @@ in
   TRANSPARENT_HUGEPAGE_ALWAYS = yes;
   TRANSPARENT_HUGEPAGE_MADVISE = no;
 
+  # Tell userspace when the firmware changes a light on its own, as a laptop's
+  # keyboard backlight key does, through the LED's brightness_hw_changed file,
+  # which can be watched. Without it the change can be found only by polling.
+  LEDS_BRIGHTNESS_HW_CHANGED = yes;
+
   # Build in what every boot loads, so it's there before anything asks for
   # it. The rest stay modules, since built in they'd cost their start-up at
   # every boot whether used or not; docs/kernel.md has the measurements.

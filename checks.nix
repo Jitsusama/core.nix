@@ -2238,6 +2238,24 @@ in
       touch $out
     '';
 
+  # A model runs on the NPU only once its compiler has turned it into the
+  # NPU's program, and the driver looks for the compiler in its own
+  # directory, so both have to be in the graphics driver directory that
+  # /run/opengl-driver links to. Anywhere else, the driver never finds it.
+  the-npu-finds-its-compiler =
+    let
+      inherit ((bareNixos [ self.nixosModules.dell-xps-14-da14260 ]).config.systemd.tmpfiles) settings;
+      drivers = settings.graphics-driver."/run/opengl-driver"."L+".argument;
+    in
+    pkgs.runCommandLocal "the-npu-finds-its-compiler" { } ''
+      for f in libze_intel_npu.so.1 libopenvino_intel_npu_compiler_loader.so \
+        libopenvino_intel_npu_compiler.so; do
+        [ -e ${drivers}/lib/$f ] ||
+          { echo "The graphics drivers lack $f, so the NPU can't compile a model." >&2; exit 1; }
+      done
+      touch $out
+    '';
+
   # The profile follows the charger: performance on mains, balanced on
   # battery, and power saver once the battery falls below UPower's low mark,
   # staying there while the battery reads above it again, until the charger is
@@ -2823,6 +2841,81 @@ in
             echo "The SoundWire machine driver names DAIs no amplifier registers:$missing"
             exit 1
           fi
+          touch $out
+        '';
+
+    # The XPS 14's EC sends type 0x0012 events with code 0x0000 about hourly,
+    # and dell-wmi logs each as an unknown key unless its keymap for that
+    # type ignores the code. Read from the XPS 14's patched source.
+    dell-events-are-known =
+      let
+        inherit ((bareNixos [ self.nixosModules.dell-xps-14-da14260 ]).config.boot.kernelPackages)
+          kernel
+          ;
+        driver = "drivers/platform/x86/dell/dell-wmi-base.c";
+        patches = lib.filter (patch: patch != null) (map (patch: patch.patch) kernel.kernelPatches);
+      in
+      pkgs.runCommandLocal "dell-events-are-known"
+        {
+          nativeBuildInputs = [
+            pkgs.patchutils
+            pkgs.python3
+          ];
+        }
+        ''
+          tar xf ${kernel.src} --strip-components=1 --wildcards '*/${driver}'
+          for patch in ${lib.escapeShellArgs (map (patch: "${patch}") patches)}; do
+            filterdiff -p1 -i ${driver} "$patch" | patch -p1 --forward --batch --silent
+          done
+          python3 - ${driver} <<'EOF'
+          import re, sys
+          source = open(sys.argv[1]).read()
+          keymap = re.search(r"dell_wmi_keymap_type_0012\[\] = \{(.*?)\n\};", source, re.S)
+          if not keymap:
+              sys.exit("dell-wmi has no keymap for type 0x0012 events.")
+          if not re.search(r"\{ KE_IGNORE, 0x0000,", keymap.group(1)):
+              sys.exit("dell-wmi logs the XPS 14's hourly type 0x0012 event as an unknown key.")
+          EOF
+          touch $out
+        '';
+
+    # The XPS 14's colour sensor, OVTI08F4, is mounted upside down, and its
+    # firmware says it isn't. The bridge reports 180 degrees for a sensor in
+    # its upside-down table that matches the machine, whatever the firmware
+    # says, and nothing else says so. Read from the XPS 14's patched source.
+    the-colour-camera-says-it-is-upside-down =
+      let
+        inherit ((bareNixos [ self.nixosModules.dell-xps-14-da14260 ]).config.boot.kernelPackages)
+          kernel
+          ;
+        bridge = "drivers/media/pci/intel/ipu-bridge.c";
+        patches = lib.filter (patch: patch != null) (map (patch: patch.patch) kernel.kernelPatches);
+      in
+      pkgs.runCommandLocal "the-colour-camera-says-it-is-upside-down"
+        {
+          nativeBuildInputs = [
+            pkgs.patchutils
+            pkgs.python3
+          ];
+        }
+        ''
+          tar xf ${kernel.src} --strip-components=1 --wildcards '*/${bridge}'
+          for patch in ${lib.escapeShellArgs (map (patch: "${patch}") patches)}; do
+            filterdiff -p1 -i ${bridge} "$patch" | patch -p1 --forward --batch --silent
+          done
+          python3 - ${bridge} <<'EOF'
+          import re, sys
+          source = open(sys.argv[1]).read()
+          table = re.search(r"upside_down_sensor_dmi_ids\[\] = \{(.*?)\n\};", source, re.S)
+          if not table:
+              sys.exit("The bridge has no upside-down sensor table.")
+          ours = [
+              entry for entry in re.split(r"\n\t\{\n", table.group(1))
+              if '"Dell Inc."' in entry and '"XPS 14 DA14260"' in entry
+          ]
+          if not any('.driver_data = "OVTI08F4"' in entry for entry in ours):
+              sys.exit("The bridge doesn't know the XPS 14's colour sensor is upside down.")
+          EOF
           touch $out
         '';
 
