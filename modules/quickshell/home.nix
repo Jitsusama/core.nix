@@ -467,6 +467,7 @@ let
     weather = ./launcher/Weather.qml;
     machine = ./launcher/Machine.qml;
     power = ./launcher/Power.qml;
+    heat = ./launcher/Heat.qml;
     emoji = ./launcher/Emoji.qml;
     shortcuts = ./launcher/KeyMap.qml;
     keyboard = ./launcher/Keyboard.qml;
@@ -815,6 +816,11 @@ in
       power = {
         order = 99;
         source = "power";
+      };
+      # How hot each part runs, and the fans.
+      heat = {
+        order = 98;
+        source = "heat";
       };
       # Collections, each shown as one row below the rest. Wi-Fi's networks
       # are one, and turning Wi-Fi off is found as an action.

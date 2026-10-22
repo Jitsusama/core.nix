@@ -1166,6 +1166,14 @@ pkgs.testers.runNixOSTest {
               answer(typed)
               launcher_until(lambda shown: (shown["selected"] or {}).get("name") == collection)
               machine.send_key("esc")
+          # The hottest part, from the sensors the kernel lists, of which
+          # the stand-in battery is one.
+          print(machine.succeed("grep -H . /sys/class/hwmon/*/name"))
+          answer("temperature")
+          photograph("launcher-heat")
+          machine.send_key("ret")
+          machine.wait_until_fails(in_session("niri msg layers | grep -qw launcher"), timeout=10)
+          t.assertRegex(as_account("wl-paste --no-newline"), r"^-?\d+ \u00b0C at the ")
           answer("350 f in c")
           photograph("launcher-units")
           machine.send_key("esc")
