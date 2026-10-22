@@ -863,6 +863,8 @@ in
       cp ${./tests/colour-cases.js} colour-cases.js
       cp ${import ./modules/quickshell/launcher/zones.nix { inherit lib pkgs; }} zones.jsonl
       export QML_XHR_ALLOW_FILE_READ=1
+      # A zone with summer time, for the day of the year.
+      export TZ=America/Toronto TZDIR=${pkgs.tzdata}/share/zoneinfo
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
       QML_IMPORT_PATH=${qt}/lib/qt-6/qml ${qt}/bin/qml answers.qml
