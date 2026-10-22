@@ -15,7 +15,7 @@ use crate::rescue::Keys;
 use crate::sign::Signer;
 use crate::stick::{self, Image};
 use crate::vault::{self, Manifest, Packer, Vault, VaultKey};
-use crate::{Answer, Answers, Ask, Fault, Machine, Place, Secret, Standing, Step};
+use crate::{Answer, Answers, Ask, Fault, Machine, Place, Secret, Standing, Step, words};
 
 fn unread(path: &Path) -> impl Fn(std::io::Error) -> Fault + '_ {
     move |why| Fault::unreadable(path.display().to_string(), why)
@@ -326,12 +326,33 @@ fn named(disk: &Disk) -> String {
     disk.serial.clone().unwrap_or_else(|| disk.path.clone())
 }
 
-/// The stick written for a machine and read back, after its passphrase
-/// is chosen.
+/// The stick written for a machine and read back, once its passphrase,
+/// seven words made for it, is kept on the person's phone.
 pub struct WriteStick {
     pub image: PathBuf,
     pub payload: Option<Payload>,
     pub signer: Option<Signer>,
+    /// The passphrase's words, made once, so those shown are those typed
+    /// back and those the vault is sealed to.
+    pub words: std::cell::OnceCell<Secret>,
+}
+
+impl WriteStick {
+    pub fn new(image: PathBuf, payload: Option<Payload>, signer: Option<Signer>) -> WriteStick {
+        WriteStick {
+            image,
+            payload,
+            signer,
+            words: std::cell::OnceCell::new(),
+        }
+    }
+
+    fn words(&self) -> Result<&Secret, Fault> {
+        if self.words.get().is_none() {
+            let _ = self.words.set(words::made()?);
+        }
+        Ok(self.words.get().expect("made just now"))
+    }
 }
 
 impl Step for WriteStick {
@@ -385,14 +406,21 @@ impl Step for WriteStick {
                 described(&stick)
             ),
         }];
-        if self.payload.is_some() {
-            asks.push(Ask::Secret {
-                id: "passphrase",
-                name: "a recovery passphrase for the stick's vault, to keep in 1Password".into(),
+        if let Some(payload) = &self.payload {
+            let words = self.words()?.expose();
+            asks.push(Ask::Show {
+                id: "shown",
+                how: words::keeping(
+                    "the stick's passphrase",
+                    &format!("{} stick passphrase", payload.target.machine),
+                    "The stick's passphrase opens its vault when no YubiKey is plugged in",
+                ),
+                shown: words.into(),
             });
-            asks.push(Ask::Secret {
-                id: "again",
-                name: "the same passphrase again".into(),
+            asks.push(Ask::Recall {
+                id: "passphrase",
+                expected: words.into(),
+                why: "type the stick's passphrase, reading it off your phone".into(),
             });
         }
         Ok(Standing::Needed { asks })
@@ -403,26 +431,17 @@ impl Step for WriteStick {
             step: self.id(),
             why: standing.to_string(),
         })?;
-        let passphrase = match (
-            &self.payload,
-            answers.get("passphrase"),
-            answers.get("again"),
-        ) {
-            (None, ..) => None,
-            (Some(_), Some(Answer::Secret(passphrase)), Some(Answer::Secret(again))) => {
-                if passphrase != again {
+        let passphrase = match (&self.payload, answers.get("passphrase")) {
+            (None, _) => None,
+            (Some(_), Some(Answer::Typed(typed))) => {
+                let words = self.words()?;
+                if words::typed(typed) != words::typed(words.expose()) {
                     return Err(Fault::Blocked {
                         step: self.id(),
-                        why: "the two passphrases weren't the same".into(),
+                        why: "what was typed isn't the stick's passphrase".into(),
                     });
                 }
-                if passphrase.expose().chars().count() < 12 {
-                    return Err(Fault::Blocked {
-                        step: self.id(),
-                        why: "a recovery passphrase has to be at least 12 characters".into(),
-                    });
-                }
-                Some(passphrase)
+                Some(words)
             }
             _ => {
                 return Err(Fault::Unanswered {

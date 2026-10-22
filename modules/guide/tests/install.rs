@@ -542,3 +542,170 @@ fn the_install_seals_the_keys_to_the_recovery_key_before_its_typed_back() {
         "{ids:?}"
     );
 }
+
+const VOLUME: &str = "/dev/disk/by-partlabel/system";
+const TEST: [&str; 5] = [
+    "open",
+    "--test-passphrase",
+    "--verbose",
+    "--key-file=-",
+    VOLUME,
+];
+const IMPORT: [&str; 4] = ["token", "import", "--json-file=-", VOLUME];
+
+/// The install's disk with both keys enrolled and no recovery key yet: the
+/// real header, its recovery token taken out.
+fn without_a_recovery_key(fake: &mut Fake) {
+    let mut header: serde_json::Value =
+        serde_json::from_str(fixture!("luks-dump-before-wipe.json")).unwrap();
+    header["tokens"]
+        .as_object_mut()
+        .unwrap()
+        .retain(|_, token| token["type"] != "systemd-recovery");
+    fake.prints(
+        Tool::Cryptsetup,
+        &["luksDump", "--dump-json-metadata", VOLUME],
+        &header.to_string(),
+    );
+}
+
+fn handed<'a>(fake: &'a Fake, place: &str) -> Vec<&'a str> {
+    fake.secrets
+        .iter()
+        .filter(|(at, _)| at == place)
+        .map(|(_, secret)| secret.as_str())
+        .collect()
+}
+
+#[test]
+fn the_recovery_key_is_seven_words_held_before_theyre_enrolled_then_marked_as_one() {
+    use guide::install::keys::MakeRecoveryKey;
+    let target = target("/dev/disk/by-id/virtio-root");
+    let scratch = Scratch::new("install-recovery-words");
+    let mut fake = stick(&scratch, &target);
+    without_a_recovery_key(&mut fake);
+    fake.no_file(RECOVERY_KEY);
+    // The words open nothing until they're enrolled, then slot 3.
+    fake.refuses(
+        Tool::Cryptsetup,
+        &TEST,
+        2,
+        "No key available with this passphrase.",
+    )
+    .prints(
+        Tool::Cryptsetup,
+        &TEST,
+        "Key slot 3 unlocked.\nCommand successful.\n",
+    );
+    let unlock = format!("--unlock-key-file={INSTALL_KEY}");
+    fake.prints(
+        Tool::SystemdCryptenroll,
+        &[&unlock, "--password", VOLUME],
+        "",
+    )
+    .prints(Tool::Cryptsetup, &IMPORT, "");
+    assert!(matches!(
+        MakeRecoveryKey.observe(&mut fake).unwrap(),
+        Standing::Needed { .. }
+    ));
+    MakeRecoveryKey.run(&mut fake, &Answers::new()).unwrap();
+
+    let words = String::from_utf8(fake.holds(RECOVERY_KEY).unwrap().to_vec()).unwrap();
+    let each: Vec<&str> = words.split(' ').collect();
+    assert_eq!(each.len(), 7, "{words}");
+    assert!(each.iter().all(|word| guide::words::list().contains(word)));
+    assert_eq!(handed(&fake, "NEWPASSWORD"), [words.as_str()]);
+    // Marked in the slot the words opened, as systemd marks its own.
+    assert!(handed(&fake, "stdin").contains(&r#"{"type":"systemd-recovery","keyslots":["3"]}"#));
+    let at = |start: &str| {
+        fake.calls
+            .iter()
+            .position(|call| call.starts_with(start))
+            .unwrap_or_else(|| panic!("no {start} in {:#?}", fake.calls))
+    };
+    assert!(at("writing /run/guide/recovery-key") < at("systemd-cryptenroll"));
+    assert!(at("systemd-cryptenroll") < at("cryptsetup token import"));
+}
+
+#[test]
+fn a_recovery_key_cut_short_keeps_its_words_and_enrols_no_second_slot() {
+    use guide::install::keys::MakeRecoveryKey;
+    let target = target("/dev/disk/by-id/virtio-root");
+    let scratch = Scratch::new("install-recovery-again");
+    let mut fake = stick(&scratch, &target);
+    without_a_recovery_key(&mut fake);
+    let held = "abacus abdomen abdominal abide abiding ability ablaze";
+    fake.file(RECOVERY_KEY, held.as_bytes());
+    fake.prints(Tool::Cryptsetup, &TEST, "Key slot 5 unlocked.\n")
+        .prints(Tool::Cryptsetup, &IMPORT, "");
+    MakeRecoveryKey.run(&mut fake, &Answers::new()).unwrap();
+    assert_eq!(fake.holds(RECOVERY_KEY), Some(held.as_bytes()));
+    assert!(
+        !fake
+            .calls
+            .iter()
+            .any(|call| call.starts_with("systemd-cryptenroll")),
+        "{:#?}",
+        fake.calls
+    );
+    assert!(handed(&fake, "stdin").contains(&r#"{"type":"systemd-recovery","keyslots":["5"]}"#));
+}
+
+#[test]
+fn the_recovery_key_is_shown_alone_for_the_phone_then_typed_back_from_it() {
+    use guide::install::keys::KeepRecoveryKey;
+    let target = target("/dev/disk/by-id/virtio-root");
+    let scratch = Scratch::new("install-recovery-kept");
+    let mut fake = stick(&scratch, &target);
+    let held = "abacus abdomen abdominal abide abiding ability ablaze";
+    fake.file(RECOVERY_KEY, held.as_bytes());
+    let standing = KeepRecoveryKey.observe(&mut fake).unwrap();
+    let Standing::Needed { asks } = &standing else {
+        panic!("{standing:?}");
+    };
+    let [
+        guide::Ask::Show { how, shown, .. },
+        guide::Ask::Recall { expected, .. },
+    ] = asks.as_slice()
+    else {
+        panic!("{asks:#?}");
+    };
+    assert_eq!((shown.as_str(), expected.as_str()), (held, held));
+    assert!(how.contains("\"machine disk recovery key\""), "{how}");
+    assert!(
+        how.contains("Copy All") && how.contains("1Password"),
+        "{how}"
+    );
+    // The steps say nothing of the words themselves.
+    assert!(!how.contains("abacus"), "{how}");
+
+    // Typed back with a capital and a doubled space, it's the same key,
+    // and the key as it's held is what's tried on the disk.
+    fake.prints(
+        Tool::Cryptsetup,
+        &["open", "--test-passphrase", "--key-file=-", VOLUME],
+        "",
+    );
+    let mut answers = Answers::new();
+    answers.give("shown", Answer::Done);
+    answers.give(
+        "key",
+        Answer::Typed("Abacus abdomen  abdominal abide abiding ability ablaze".into()),
+    );
+    KeepRecoveryKey.run(&mut fake, &answers).unwrap();
+    assert_eq!(handed(&fake, "stdin"), [held]);
+    assert_eq!(fake.holds(RECOVERY_KEY), None);
+
+    // A word off by a letter isn't it.
+    let mut fake = stick(&scratch, &target);
+    fake.file(RECOVERY_KEY, held.as_bytes());
+    let mut answers = Answers::new();
+    answers.give(
+        "key",
+        Answer::Typed("abacus abdomen abdominal abide abiding ability ablase".into()),
+    );
+    assert!(matches!(
+        KeepRecoveryKey.run(&mut fake, &answers),
+        Err(Fault::Blocked { .. })
+    ));
+}

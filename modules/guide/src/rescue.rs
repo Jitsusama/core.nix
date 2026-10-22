@@ -343,7 +343,16 @@ impl Bundle {
         let sealed = STANDARD
             .decode(&self.written.to_passphrase)
             .map_err(unreadable)?;
-        self.opened(VaultKey::open_with_passphrase(&sealed, passphrase).map_err(of_the_bundle)?)
+        // Tried as it's typed, then as the words it says, since the guide
+        // makes every passphrase it seals to as words.
+        let opened = match VaultKey::open_with_passphrase(&sealed, passphrase) {
+            Err(_) if crate::words::typed(passphrase.expose()) != passphrase.expose() => {
+                let read = Secret::new(crate::words::typed(passphrase.expose()));
+                VaultKey::open_with_passphrase(&sealed, &read)
+            }
+            opened => opened,
+        };
+        self.opened(opened.map_err(of_the_bundle)?)
     }
 
     /// With whichever of its YubiKeys is plugged in, and its PIN, which the
@@ -369,41 +378,34 @@ fn either(names: &[String]) -> String {
     }
 }
 
-/// The passphrase typed twice, the same both times and long enough.
-fn chosen<'a>(step: &'static str, answers: &'a Answers) -> Result<&'a Secret, Fault> {
-    match (answers.get("passphrase"), answers.get("again")) {
-        (Some(Answer::Secret(passphrase)), Some(Answer::Secret(again))) => {
-            if passphrase != again {
-                return Err(Fault::Blocked {
-                    step,
-                    why: "the two passphrases weren't the same".into(),
-                });
-            }
-            if passphrase.expose().chars().count() < 12 {
-                return Err(Fault::Blocked {
-                    step,
-                    why: "a recovery passphrase has to be at least 12 characters".into(),
-                });
-            }
-            Ok(passphrase)
-        }
-        _ => Err(Fault::Unanswered {
-            step,
-            ask: "passphrase",
-        }),
-    }
-}
-
 /// The machine's rescue bundle made where it can be taken from: its keys
-/// read as root, sealed in memory and proven to open again, then written
-/// out as the person. Done once a bundle there holds the keys the machine
-/// has now.
+/// read as root, sealed in memory to seven words kept on the person's
+/// phone and proven to open again, then written out as the person. Done
+/// once a bundle there holds the keys the machine has now.
 pub struct SealKeys {
     pub target: Target,
     pub bundle: PathBuf,
+    /// The passphrase's words, made once, so those shown are those typed
+    /// back and those the bundle is sealed to.
+    pub words: std::cell::OnceCell<Secret>,
 }
 
 impl SealKeys {
+    pub fn new(target: Target, bundle: PathBuf) -> SealKeys {
+        SealKeys {
+            target,
+            bundle,
+            words: std::cell::OnceCell::new(),
+        }
+    }
+
+    fn words(&self) -> Result<&Secret, Fault> {
+        if self.words.get().is_none() {
+            let _ = self.words.set(crate::words::made()?);
+        }
+        Ok(self.words.get().expect("made just now"))
+    }
+
     fn written(&self, machine: &mut dyn Machine) -> Result<Option<Bundle>, Fault> {
         match machine.read(&self.bundle.display().to_string())? {
             Some(bytes) => Ok(Bundle::read(&bytes).ok()),
@@ -441,22 +443,48 @@ impl Step for SealKeys {
                 });
             }
         }
+        let words = self.words()?.expose();
         Ok(Standing::Needed {
             asks: vec![
-                Ask::Secret {
-                    id: "passphrase",
-                    name: "a recovery passphrase for the bundle, to keep in 1Password".into(),
+                Ask::Show {
+                    id: "shown",
+                    how: crate::words::keeping(
+                        "the bundle's passphrase",
+                        &format!("{} rescue bundle passphrase", self.target.machine),
+                        &format!(
+                            "The bundle's passphrase opens {}'s Secure Boot keys when no YubiKey will",
+                            self.target.machine
+                        ),
+                    ),
+                    shown: words.into(),
                 },
-                Ask::Secret {
-                    id: "again",
-                    name: "the same passphrase again".into(),
+                Ask::Recall {
+                    id: "passphrase",
+                    expected: words.into(),
+                    why: "type the bundle's passphrase, reading it off your phone".into(),
                 },
             ],
         })
     }
 
     fn run(&self, machine: &mut dyn Machine, answers: &Answers) -> Result<(), Fault> {
-        let passphrase = chosen(self.id(), answers)?;
+        let passphrase = self.words()?;
+        match answers.get("passphrase") {
+            Some(Answer::Typed(typed))
+                if crate::words::typed(typed) == crate::words::typed(passphrase.expose()) => {}
+            Some(Answer::Typed(_)) => {
+                return Err(Fault::Blocked {
+                    step: self.id(),
+                    why: "what was typed isn't the bundle's passphrase".into(),
+                });
+            }
+            _ => {
+                return Err(Fault::Unanswered {
+                    step: self.id(),
+                    ask: "passphrase",
+                });
+            }
+        }
         let keys = Keys::read(machine)?;
         let bytes = Bundle::seal(&self.target, &keys, passphrase, RECOVERY_PASSPHRASE, None)?;
         machine.write(&self.bundle.display().to_string(), &bytes)

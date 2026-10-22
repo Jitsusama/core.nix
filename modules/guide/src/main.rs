@@ -324,11 +324,11 @@ fn host(
         Some(payload) => payload.next(),
         None => "Start the machine to repair from the stick.".into(),
     };
-    let journey = Journey::new(vec![Box::new(WriteStick {
-        image: PathBuf::from(image),
+    let journey = Journey::new(vec![Box::new(WriteStick::new(
+        PathBuf::from(image),
         payload,
         signer,
-    })])
+    ))])
     .map_err(|why| Fault::unreadable("the host's steps", why))?;
     walk.journey = &journey;
     walk.whole = true;
@@ -367,11 +367,8 @@ fn seal_keys(target: &str, bundle: &str) -> Result<(), Fault> {
         return Ok(());
     }
     let title = format!("Make {}'s rescue bundle", target.machine);
-    let journey = Journey::new(vec![Box::new(SealKeys {
-        target,
-        bundle: PathBuf::from(bundle),
-    })])
-    .map_err(|why| Fault::unreadable("the rescue bundle's steps", why))?;
+    let journey = Journey::new(vec![Box::new(SealKeys::new(target, PathBuf::from(bundle)))])
+        .map_err(|why| Fault::unreadable("the rescue bundle's steps", why))?;
     let theme = Theme::built(Terminal::is_console());
     let mut terminal = Terminal::open()?;
     let walk = Walk {

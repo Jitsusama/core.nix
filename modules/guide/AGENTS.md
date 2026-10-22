@@ -27,6 +27,14 @@ driven on; the installed machine's steps come later.
   plugged in, a disk's name typed back) before it starts, and the journey
   refuses to run it until each is answered. A secret is wiped from memory
   when dropped, and Debug never shows it.
+- **Kept secrets.** A secret the person has to keep (the disk's recovery
+  key, a stick's passphrase, a rescue bundle's) is seven words the guide
+  makes from EFF's large list, about 90 bits, never one they invent. The
+  steps for keeping it in 1Password on their iPhone come first, then the
+  words alone on the screen, so the Camera's Live Text copies nothing
+  else, then the words typed back without being shown. Typed words are
+  read as the words they say, whatever their case or spacing, wherever
+  they're typed.
 - **Journal.** What observing can't show, such as a recovery key proven by
   being typed back, goes in the journal: a line of JSON per fact, on the disk
   before the step goes on, readable only by its owner.
@@ -77,8 +85,11 @@ driven on; the installed machine's steps come later.
   only in memory.
   Each YubiKey is enrolled alone, told apart from the others by a silent
   assertion, and proven by opening the disk. The Secure Boot keys come
-  next, then a recovery key, which seals the machine's rescue bundle
-  while it's still held, before it's typed back and proven, so no
+  next, then a recovery key, its words held before they're enrolled so a
+  rerun enrols no second slot, enrolled with the volume's own key
+  derivation and marked as systemd marks a recovery key. It seals the
+  machine's rescue bundle while it's still held, before it's kept on the
+  phone, typed back and proven, so no
   machine leaves its install without one. The Secure Boot keys are put
   back from the vault when the stick carries the ones the firmware's db
   already trusts, so a reinstall needs no firmware visit, and otherwise
@@ -128,8 +139,8 @@ driven on; the installed machine's steps come later.
   on run0's command line.
 - **The rescue bundle.** A machine's Secure Boot keys, all seven files
   sbctl keeps, sealed under a key of their own, which is sealed to the
-  machine's YubiKeys and apart to a recovery passphrase, as the vault's
-  is. `guide seal-keys` makes it on the machine the keys belong to,
+  machine's YubiKeys and apart to a recovery passphrase of seven words,
+  as the vault's is. `guide seal-keys` makes it on the machine the keys belong to,
   reading them as root and sealing them in memory, and proves the
   passphrase opens the same keys before anything's written. It's text
   and ciphertext only, so it can live on every other machine and in
@@ -176,6 +187,8 @@ driven on; the installed machine's steps come later.
 | `src/tool.rs`         | every program the guide runs, and where this build finds it |
 | `src/journal.rs`      | the facts observing can't show                            |
 | `src/fault.rs`        | what stops a step, in a person's words                    |
+| `src/words.rs`        | the secrets a person keeps, as seven words, and how they're kept |
+| `src/words.txt`       | EFF's large wordlist, verbatim, its SHA-256 checked by a test |
 | `src/observe/`        | one parser per thing the guide reads off a machine        |
 | `src/sign/`           | Authenticode: what a signature covers, and the signature sbsign would make |
 | `src/stick/`          | writing the stick and reading it back: its tables, and aligned blocks |

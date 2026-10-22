@@ -194,10 +194,10 @@ fn a_machine_with_no_keys_of_its_own_is_told_so() {
     );
 }
 
-fn typed(passphrase: &str, again: &str) -> Answers {
+fn typed(passphrase: &str) -> Answers {
     let mut answers = Answers::new();
-    answers.give("passphrase", Answer::Secret(Secret::new(passphrase.into())));
-    answers.give("again", Answer::Secret(Secret::new(again.into())));
+    answers.give("shown", Answer::Done);
+    answers.give("passphrase", Answer::Typed(passphrase.into()));
     answers
 }
 
@@ -207,31 +207,31 @@ fn the_bundle_is_written_privately_and_then_done() {
     let mut fake = fake_holding(&files);
     let path = "/home/alice/laptop-rescue.json";
     fake.no_file(path);
-    let step = SealKeys {
-        target: target("laptop"),
-        bundle: PathBuf::from(path),
-    };
+    let step = SealKeys::new(target("laptop"), PathBuf::from(path));
     let standing = step.observe(&mut fake).unwrap();
-    assert!(
-        matches!(&standing, Standing::Needed { asks } if asks.len() == 2),
-        "{standing:?}"
-    );
+    let Standing::Needed { asks } = &standing else {
+        panic!("{standing:?}");
+    };
+    let [Ask::Show { how, shown, .. }, Ask::Recall { expected, .. }] = asks.as_slice() else {
+        panic!("{asks:#?}");
+    };
+    assert_eq!(shown.split(' ').count(), 7, "{shown}");
+    assert_eq!(expected, shown);
+    assert!(how.contains("\"laptop rescue bundle passphrase\""), "{how}");
+    let words = shown.clone();
 
-    // Two passphrases that differ, or a short one, write nothing.
-    let mismatched = typed("a passphrase for it", "another passphrase");
-    assert!(step.run(&mut fake, &mismatched).is_err());
-    assert!(
-        step.run(&mut fake, &typed("too short", "too short"))
-            .is_err()
-    );
+    // Words that aren't these write nothing.
+    let other = "abacus abdomen abdominal abide abiding ability ablaze";
+    assert!(step.run(&mut fake, &typed(other)).is_err());
     assert!(fake.holds(path).is_none());
 
-    let chosen = "a passphrase for the bundle";
-    step.run(&mut fake, &typed(chosen, chosen)).unwrap();
+    // Typed back with capitals, they're the same words, and those shown
+    // are those the bundle opens with.
+    step.run(&mut fake, &typed(&words.to_uppercase())).unwrap();
     let written = fake.holds(path).expect("the bundle").to_vec();
     let opened = Bundle::read(&written)
         .unwrap()
-        .open_with_passphrase(&passphrase())
+        .open_with_passphrase(&Secret::new(words))
         .unwrap();
     assert_eq!(opened, Keys::new(files).unwrap());
     let standing = step.observe(&mut fake).unwrap();
@@ -249,10 +249,7 @@ fn a_bundle_of_old_keys_is_made_again() {
     let mut fake = fake_holding(&files("bundle-new"));
     let path = "/home/alice/laptop-rescue.json";
     fake.file(path, &sealed(&old));
-    let step = SealKeys {
-        target: target("laptop"),
-        bundle: PathBuf::from(path),
-    };
+    let step = SealKeys::new(target("laptop"), PathBuf::from(path));
     let standing = step.observe(&mut fake).unwrap();
     assert!(matches!(&standing, Standing::Needed { .. }), "{standing:?}");
 }
@@ -270,6 +267,12 @@ fn a_bundle_says_which_passphrase_opens_it() {
     .unwrap();
     let bundle = Bundle::read(&bytes).unwrap();
     assert_eq!(bundle.passphrase(), RECOVERY_KEY);
+    // Typed with a capital and a doubled space, it's read as the words it
+    // says; a word that differs isn't it.
+    let sloppy = Secret::new("A passphrase  for the bundle ".into());
+    assert_eq!(bundle.open_with_passphrase(&sloppy).unwrap(), keys);
+    let wrong = Secret::new("a passphrase for the bundles".into());
+    assert!(bundle.open_with_passphrase(&wrong).is_err());
     let step = OpenRescueBundle {
         bundle,
         opened: Default::default(),

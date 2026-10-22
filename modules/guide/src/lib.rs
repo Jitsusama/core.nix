@@ -114,6 +114,7 @@ pub mod stick;
 pub mod system;
 pub mod tool;
 pub mod vault;
+pub mod words;
 
 pub use fault::Fault;
 pub use journal::Journal;

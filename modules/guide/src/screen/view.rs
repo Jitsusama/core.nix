@@ -10,6 +10,8 @@
 //!
 //! Everything sits two columns in from the edge, and as the screen gets
 //! short what the step before showed goes first, then how far along.
+//! Something shown for a phone's camera is the one exception: it's alone
+//! in the middle of the screen, since the camera copies whatever it sees.
 
 use crate::Ask;
 use crate::screen::{Key, Line, Role, Span, Theme, span};
@@ -48,6 +50,8 @@ pub enum Moment<'a> {
     },
     /// A step that ran and didn't finish, and why.
     Failed { title: &'a str, fault: &'a str },
+    /// Something for the person's phone, alone on the screen.
+    Showing { shown: &'a str },
     /// Every step done.
     Finished { said: &'a str },
     /// What comes next away from the guide, said before it happens, with
@@ -137,7 +141,61 @@ fn keys(theme: &Theme, keys: &[(Key, &str)]) -> Line {
     indent(spans)
 }
 
+/// Lines in strong, each in the middle of the screen's width, the whole in
+/// the middle of its height.
+fn alone(shown: &str, width: usize, height: usize) -> Drawn {
+    let shown = wrap(shown, width.saturating_sub(2 * MARGIN));
+    let mut lines: Vec<Line> = vec![vec![]; height.saturating_sub(shown.len()) / 2];
+    for words in shown {
+        let lead = width.saturating_sub(words.chars().count()) / 2;
+        lines.push(vec![
+            span(Role::Text, " ".repeat(lead)),
+            span(Role::Strong, words),
+        ]);
+    }
+    Drawn { lines, caret: None }
+}
+
+/// A step's steps for the person, each a line of its own. Those that open
+/// with their number wrap to lines lined up after it, unlike a mark's, so
+/// where one step ends and the next starts is plain; the words before
+/// them sit a line apart.
+fn steps(how: &str, width: usize) -> Vec<Line> {
+    let mut lines = vec![];
+    let mut numbered = false;
+    for paragraph in how.lines() {
+        match paragraph.split_once(". ") {
+            Some((number, rest)) if number.chars().all(|c| c.is_ascii_digit()) => {
+                if !numbered && !lines.is_empty() {
+                    lines.push(vec![]);
+                }
+                numbered = true;
+                let lead = number.chars().count() + 2;
+                for (at, words) in wrap(rest, width.saturating_sub(lead))
+                    .into_iter()
+                    .enumerate()
+                {
+                    let before = if at == 0 {
+                        format!("{number}. ")
+                    } else {
+                        " ".repeat(lead)
+                    };
+                    lines.push(indent(vec![
+                        span(Role::Text, before),
+                        span(Role::Text, words),
+                    ]));
+                }
+            }
+            _ => lines.extend(said(Role::Text, paragraph, width)),
+        }
+    }
+    lines
+}
+
 pub fn draw(theme: &Theme, at: &Where, moment: &Moment, width: u16, height: u16) -> Drawn {
+    if let Moment::Showing { shown } = moment {
+        return alone(shown, width as usize, height as usize);
+    }
     let width = width as usize;
     let inside = width.saturating_sub(2 * MARGIN);
     let mut lines: Vec<Line> = vec![vec![]];
@@ -189,6 +247,17 @@ pub fn draw(theme: &Theme, at: &Where, moment: &Moment, width: u16, height: u16)
                     lines.extend(said(Role::Text, &format!("{}.", capitalised(why)), inside));
                     lines.push(vec![]);
                     lines.extend(said(Role::Strong, expected, inside));
+                    lines.push(vec![]);
+                    footer = keys(theme, &[(Key::Return, "go on")]);
+                    Some((span(Role::Action, theme.mark("cursor")), typed.to_string()))
+                }
+                Ask::Show { how, .. } => {
+                    lines.extend(steps(how, inside));
+                    footer = keys(theme, &[(Key::Return, "show it")]);
+                    None
+                }
+                Ask::Recall { why, .. } => {
+                    lines.extend(said(Role::Text, &format!("{}.", capitalised(why)), inside));
                     lines.push(vec![]);
                     footer = keys(theme, &[(Key::Return, "go on")]);
                     Some((span(Role::Action, theme.mark("cursor")), typed.to_string()))
@@ -268,6 +337,8 @@ pub fn draw(theme: &Theme, at: &Where, moment: &Moment, width: u16, height: u16)
             ));
             footer = keys(theme, &[(Key::Return, "try again"), (Key::Tab, "the log")]);
         }
+        // Drawn alone, above.
+        Moment::Showing { .. } => footer = vec![],
         Moment::Finished { said: text } => {
             lines.extend(marked(
                 span(Role::Success, theme.mark("done")),
@@ -503,6 +574,55 @@ mod tests {
         assert_eq!(drawn.lines[row][1].role, Role::Accent);
         assert_eq!(shown.last().unwrap(), "  ↑↓ choose    Return go on");
         assert_eq!(drawn.caret, None);
+    }
+
+    #[test]
+    fn what_a_phone_reads_is_alone_in_the_middle_of_the_screen() {
+        let words = "abacus abdomen abdominal abide abiding ability ablaze";
+        let drawn = draw(&theme(), &at(), &Moment::Showing { shown: words }, 80, 20);
+        let shown = text(&drawn);
+        let inked: Vec<&String> = shown.iter().filter(|line| !line.is_empty()).collect();
+        assert_eq!(inked, [&format!("{}{words}", " ".repeat((80 - 53) / 2))]);
+        assert_eq!(shown.len(), 10);
+        assert_eq!(drawn.lines[9][1].role, Role::Strong);
+        assert_eq!(drawn.caret, None);
+    }
+
+    #[test]
+    fn steps_for_the_phone_are_a_line_each_their_words_after_their_number() {
+        let ask = Ask::Show {
+            id: "shown",
+            how: crate::words::keeping(
+                "the recovery key",
+                "hedgehog disk recovery key",
+                "It opens the disk",
+            ),
+            shown: "abacus abdomen abdominal abide abiding ability ablaze".into(),
+        };
+        let moment = Moment::Asking {
+            title: "Keep the recovery key",
+            ask: &ask,
+            typed: "",
+            chosen: 0,
+            refused: None,
+        };
+        let shown = text(&draw(&theme(), &at(), &moment, 60, 40));
+        let first = shown
+            .iter()
+            .position(|line| line.starts_with("  1. On your iPhone"))
+            .unwrap_or_else(|| panic!("{shown:#?}"));
+        assert_eq!(shown[first - 1], "", "{shown:#?}");
+        assert_eq!(shown[first + 1], "     words.", "{shown:#?}");
+        for number in 1..=5 {
+            assert!(
+                shown
+                    .iter()
+                    .any(|line| line.starts_with(&format!("  {number}. "))),
+                "{shown:#?}"
+            );
+        }
+        assert!(!shown.concat().contains("abacus"), "{shown:#?}");
+        assert_eq!(shown.last().unwrap(), "  Return show it");
     }
 
     #[test]

@@ -1,14 +1,14 @@
 # A stick written on a Linux host by the guide, as the person signed in
 # there and not root: the one USB stick plugged in is named, a partition a
 # desktop mounted from it is unmounted, and UDisks2 opens its whole disk,
-# which the guide writes with a machine's payload sealed to the recovery
-# passphrase typed twice, then reads back. polkit lets the person open a
+# which the guide writes with a machine's payload sealed to a passphrase of
+# seven words it made, shown alone for a phone and typed back, then reads
+# back. polkit lets the person open a
 # removable disk without the password a desktop's agent would ask for,
 # since a test has no agent to answer it.
 { self, pkgs }:
 let
   inherit (pkgs) lib;
-  passphrase = "the stick's recovery passphrase";
   guide = pkgs.callPackage ../modules/guide/package.nix { };
   image = "${self.packages.x86_64-linux.stick}/stick_1.raw";
   # The machine the stick installs, small, as its repository would say it.
@@ -75,9 +75,12 @@ pkgs.testers.runNixOSTest {
     subprocess.run(["${pkgs.qemu}/bin/qemu-img", "create", "-f", "qcow2", stick.name, "6G"], check=True)
     os.environ["STICK_IMAGE"] = stick.name
 
+    def screen():
+        return host.get_tty_text("1")
+
     def on_screen(pattern, timeout=120):
         def shown(_):
-            text = host.get_tty_text("1")
+            text = screen()
             if re.search(r"(?i)(try again|look again)", text):
                 raise Exception("the guide stopped:\n" + text)
             return re.search("(?i)" + pattern, text) is not None
@@ -100,11 +103,24 @@ pkgs.testers.runNixOSTest {
         on_screen("is the stick to write")
         type("")
 
-    with subtest("the recovery passphrase is typed twice"):
-        on_screen("recovery passphrase for the stick's vault")
-        type(${builtins.toJSON passphrase})
-        on_screen("the same passphrase again")
-        type(${builtins.toJSON passphrase})
+    with subtest("the passphrase is seven words shown alone for a phone, then typed back"):
+        on_screen("Copy All")
+        type("")
+        retry(lambda _: len(screen().split()) == 7, 30)
+        words = " ".join(screen().split())
+        type("")
+        on_screen("reading it off your phone")
+        # Another's words are refused and left to be put right, and
+        # nothing is written.
+        other = "abacus abdomen abdominal abide abiding ability ablaze"
+        type(other)
+        on_screen("that isn't it")
+        assert other in screen(), screen()
+        host.fail("sfdisk --json /dev/sda | grep -q vault")
+        for _ in other:
+            host.send_key("backspace")
+        # The words are read whatever their case.
+        type(words.upper())
 
     with subtest("the stick is written as the person, and read back"):
         on_screen("The stick is written", timeout=900)
