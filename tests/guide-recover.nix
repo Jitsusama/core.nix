@@ -222,9 +222,7 @@ pkgs.testers.runNixOSTest {
           on_screen("holds the machine")
           t.assertIn("named system", screen())
           type("")
-          on_screen("Plug in a YubiKey")
-          type("")
-          on_screen("the YubiKey's PIN")
+          on_screen("Or plug in a YubiKey")
           type("${pin}")
 
       with subtest("everything the machine mounts is mounted under /mnt"):

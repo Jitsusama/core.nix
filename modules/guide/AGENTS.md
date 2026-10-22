@@ -78,8 +78,11 @@ driven on; the installed machine's steps come later.
   machine's repository offers `nix run .#guide`, core's `lib.guide` with
   that machine's image and payload built in. The last card says how to
   reach that machine's firmware, as its hardware module says in
-  `jitsusama.firmware.startFromStick` and `clearSecureBootKeys`: clearing
-  its keys first only when the stick carries none.
+  `jitsusama.firmware.startFromStick` and `clearSecureBootKeys`: plugging
+  the stick in with the machine off, and clearing its keys first only
+  when the stick carries none, switched off as the firmware's setup is
+  left, so a system already on its disk never starts and puts its keys
+  back.
 - **The install.** On the stick, as root, from what the vault holds for the
   machine (`payload.nix`): its target, its disk's layout and its system as
   a binary cache. Before the disk is touched, the firmware is checked to
@@ -224,6 +227,40 @@ driven on; the installed machine's steps come later.
   build was given them (`theme.nix`), with the console's stand-ins on a
   console, and follows docs/design.md's row for it. Return goes on, Escape
   goes back one ask, Ctrl+C leaves; on the stick that's a root shell.
+  Every screen says in words what to do, ending with the key that does it
+  ("Type the Nano's PIN, then press Return."), and its foot names every
+  key that works there, Esc only where it goes back. Keys are drawn by the
+  name on their keycap on a console and in a terminal alike, so the guide
+  reads the same wherever it runs. A secret with another way in (a
+  passphrase, or a YubiKey and its PIN) is one field under both, never
+  two screens. Each step done stays listed above the step at hand with
+  what showed it done, the latest nearest, the earliest giving way on a
+  short screen. A step at work is drawn again once a second, from a
+  thread of its own, with what the machine's meter says (`progress.rs`):
+  the bytes done of how many, how fast and how long is left, where the
+  step feeds it, and otherwise how long it has run, so a wait never looks
+  like a hang. The stick's write and read-back count every byte through
+  the disk; copying off the stick counts what it writes; a copy a program
+  does, as `nix copy` onto the disk, is counted by what that program has
+  read, from /proc. A screen saying what's in the way looks at the machine
+  again every two seconds, so it goes on by itself once that's done.
+- **Running from memory.** A laptop may have one port both the stick and a
+  YubiKey fit, so the stick's system is copied into memory before the
+  keyboard is checked, and the stick can come out for each key. Its store
+  is a dm-verity device, `usr`, over two partitions; both are copied into
+  a tmpfs of their own, checked whole with veritysetup against the root
+  hash the stick booted with, and handed to the kernel as read-only loop
+  devices. `dmsetup resume` swaps the table in one call, suspended around
+  the swap, so nothing reads the store while it moves, and every block
+  read after is proved by the same hash. A machine without the memory for
+  the copies and a gibibyte beside them runs from the stick, and the key
+  steps say to keep it in. The vault is named by its partition's GUID once
+  opened, and opened again whenever its device node is made afresh, which
+  a stick put back always is. What the steps only read (the target, the
+  db certificate the firmware is checked against) is held under
+  /run/guide when the vault opens, so they go on with the stick out; a
+  step that needs the vault itself says to put the stick back, and goes
+  on once it's in.
 - **The vault.** A FAT32 partition any machine can read, holding files
   sealed with age to a vault key made for it. The key is sealed to each
   YubiKey, and separately to the recovery passphrase, since age won't mix a
@@ -236,9 +273,10 @@ driven on; the installed machine's steps come later.
 - **Opening the vault.** The key's YubiKey copy goes through
   age-plugin-fido2-hmac, which age finds only on PATH, so the guide sets
   its own PATH to the plugin's store directory as it starts. Sealing needs
-  no key plugged in. On the stick one field takes either the recovery
-  passphrase or the plugged-in key's PIN; the plugin's own prompts never
-  reach the screen, since the PIN is handed to it.
+  no key plugged in. On the stick one field takes either the stick's
+  passphrase, named as the host had the person save it on their phone, or
+  the plugged-in key's PIN; the plugin's own prompts never reach the
+  screen, since the PIN is handed to it.
 - **Passphrase before PIN.** Wherever one field takes a passphrase or a
   key's PIN (the vault, a rescue bundle, recovering the disk), what's
   typed is tried as the passphrase or recovery key first, which costs the

@@ -128,7 +128,8 @@ pkgs.testers.runNixOSTest {
         useEFIBoot = true;
         tpm.enable = true;
         diskSize = 8192;
-        memorySize = 4096;
+        # Room for the stick's system in memory beside the install.
+        memorySize = 6144;
         # Typed keys go to the keyboard QEMU added last, a USB one keyd
         # doesn't lay out, and the disk's prompt is answered on the serial
         # console.
@@ -191,15 +192,15 @@ pkgs.testers.runNixOSTest {
       def screen():
           return machine.get_tty_text("1")
 
-      # The screen as a person reads it, whatever's capitalised; phrases
-      # short enough that no wrap splits them. A step that stops says so at
-      # once, rather than after the wait for what it would have shown.
-      def on_screen(pattern, timeout=120):
+      # The screen as a person reads it, whatever's capitalised and however
+      # its lines wrap. A step that stops says so at once, rather than after
+      # the wait for what it would have shown.
+      def on_screen(pattern, timeout=120, stopped=r"try again|look again"):
           def shown(_):
               text = screen()
-              if re.search(r"(?i)(try again|look again)", text):
+              if re.search(f"(?i)({stopped})", text):
                   raise Exception("the guide stopped:\n" + text)
-              return re.search("(?i)" + pattern, text) is not None
+              return re.search("(?i)" + pattern, " ".join(text.split())) is not None
           with machine.nested(f"waiting for {pattern} on the guide's screen"):
               try:
                   retry(shown, timeout)
@@ -221,14 +222,31 @@ pkgs.testers.runNixOSTest {
           machine.send_monitor_command(f"device_add canokey,id=key,bus=xhci.0,file={keys}/{name}")
           machine.wait_until_succeeds('test -n "$(fido2-token -L)"', timeout=30)
 
+      # The stick out of its port and back, as on a laptop with one port
+      # both it and a YubiKey fit. QEMU drops a drive with its device, so
+      # the drive is made again before the stick goes back.
+      def unplug_stick():
+          machine.send_monitor_command("device_del stickdev")
+          machine.wait_until_succeeds("test ! -e /dev/disk/by-partlabel/vault", timeout=30)
+
+      def plug_stick_back():
+          print(machine.send_monitor_command(f"drive_add 0 if=none,id=stick,format=qcow2,file={os.environ['STICK_IMAGE']}"))
+          print(machine.send_monitor_command("device_add usb-storage,bus=xhci.0,drive=stick,id=stickdev"))
+          machine.wait_until_succeeds("test -e /dev/disk/by-partlabel/vault", timeout=30)
+
       machine.start(allow_reboot=True)
 
-      with subtest("the stick boots into the guide, which checks the keyboard first"):
-          on_screen("Check the keyboard types what you mean")
+      with subtest("the stick boots into the guide, which runs its system from memory and checks the keyboard"):
+          on_screen("Check the keyboard types what you mean", timeout=300)
+          # Done before the keyboard, and said so above it.
+          on_screen("The stick's system runs from memory")
+          table = machine.succeed("dmsetup table usr")
+          t.assertRegex(table, r" verity 1 7:\d+ 7:\d+ ", "the store reads from the copies")
           type("keyboard")
 
-      with subtest("the vault opens with the recovery passphrase"):
-          on_screen("recovery passphrase")
+      with subtest("the vault opens with the stick's passphrase, on one screen"):
+          on_screen("the stick's passphrase")
+          on_screen("Or plug in the Nano or the 5C beside the stick")
           type(${builtins.toJSON passphrase})
 
       # What the tools print here, for the guide's fixtures (qemu-canokey).
@@ -242,11 +260,13 @@ pkgs.testers.runNixOSTest {
           type("machine")
 
       for name, state in [("the Nano", "nano"), ("the 5C", "fivec")]:
-          with subtest(f"{name} is enrolled by name, and opens the disk"):
+          with subtest(f"{name} is enrolled by name with the stick out, and opens the disk"):
               on_screen(f"Plug in {name}", timeout=300)
+              on_screen("take the stick out first")
               if state == "nano":
                   fixture("lsblk-laid-out.json", "lsblk --json --output-all --bytes")
                   fixture("fido2-token-L.txt", "fido2-token -L")
+                  unplug_stick()
               else:
                   plug(state)
               machine.succeed("set-pin ${pin}")
@@ -270,6 +290,11 @@ pkgs.testers.runNixOSTest {
 
       with subtest("the recovery key is shown, typed back, and opens the disk"):
           key = keep_the_recovery_key()
+
+      with subtest("the install asks for the stick back, goes on once it's in, and says how far along it is"):
+          on_screen("Put the stick back in", timeout=300, stopped="try again")
+          plug_stick_back()
+          on_screen(r"Copying it off the stick: [0-9.]+ [KMG]B of ", timeout=300)
 
       with subtest("the system installs from the vault, and the account gets its password"):
           on_screen("a password for alice", timeout=1800)
@@ -458,7 +483,7 @@ pkgs.testers.runNixOSTest {
           type("")
           on_screen("Check the keyboard types what you mean")
           type("keyboard")
-          on_screen("recovery passphrase")
+          on_screen("the stick's passphrase")
           type(${builtins.toJSON passphrase})
           on_screen("Confirm the disk to wipe")
           type("machine")
@@ -497,10 +522,11 @@ pkgs.testers.runNixOSTest {
           machine.send_key("ctrl-c")
           machine.wait_for_unit("multi-user.target")
           # The firmware already enforces with the keys it carried, so the
-          # first boot writes them for systemd-boot and doesn't restart: one
-          # PIN reached the guide, where a restart would have asked again.
-          machine.succeed("journalctl -b -u secure-boot-enrol-restart | grep -q 'unmet condition'")
-          machine.succeed("test -s /boot/loader/keys/auto/db.auth")
+          # first boot leaves nothing for systemd-boot to enrol and doesn't
+          # restart: one PIN reached the guide, where a restart would have
+          # asked again.
+          machine.succeed("journalctl -b -u prepare-sb-auto-enroll | grep -q 'unmet condition'")
+          machine.succeed("test ! -e /boot/loader/keys/auto")
           t.assertIn("Secure Boot: enabled (user)", machine.succeed("bootctl status"))
           t.assertIn(owner, machine.succeed("sbctl status"))
     '';

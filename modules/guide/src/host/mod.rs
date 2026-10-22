@@ -129,25 +129,28 @@ impl Payload {
     /// the machine's hardware says of its firmware: a card's words.
     pub fn next(&self) -> String {
         let target = &self.target;
-        let mut said = format!("Take the stick to {}.", target.machine);
+        let machine = &target.machine;
+        let mut said = format!("Take the stick to {machine}, switched off, and plug it in.");
         if !self.carries_keys()
             && let Some(clear) = &target.clear_secure_boot_keys
         {
+            // A system already there may put its old keys back the moment
+            // it starts, so it's never let start once they're cleared.
             said.push_str(&format!(
-                " This stick carries none of its Secure Boot keys, so clear its firmware's first: {clear}"
+                " This stick carries none of its Secure Boot keys, so clear its firmware's first: {clear} As you leave the firmware's setup, hold the power button until {machine} is off, so its old system never starts and puts its keys back."
             ));
         }
         match &target.start_from_stick {
-            Some(start) => said.push_str(&format!(" To start it from the stick: {start}")),
-            None => said.push_str(" Start it from the stick."),
+            Some(start) => said.push_str(&format!(" Then start it from the stick: {start}")),
+            None => said.push_str(" Then start it from the stick."),
         }
         let opens = if target.recipients.is_empty() {
-            "the recovery passphrase"
+            "the stick's passphrase, the seven words you saved on your phone"
         } else {
-            "a YubiKey's PIN, or the recovery passphrase"
+            "the stick's passphrase, the seven words you saved on your phone, or a YubiKey's PIN"
         };
         said.push_str(&format!(
-            " The guide carries on there, and asks for {opens} first."
+            " The guide carries on there, and asks first for {opens}."
         ));
         said
     }

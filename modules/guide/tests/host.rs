@@ -272,7 +272,16 @@ fn the_last_card_says_how_to_reach_the_machines_firmware() {
         .expect("how to start from the stick");
     assert!(clear < start, "{said}");
     assert!(
-        said.ends_with("asks for a YubiKey's PIN, or the recovery passphrase first."),
+        said.starts_with("Take the stick to laptop, switched off, and plug it in."),
+        "{said}"
+    );
+    // Nothing on the disk is let start between the two.
+    let off = said
+        .find("hold the power button until laptop is off")
+        .expect("switched off");
+    assert!(clear < off && off < start, "{said}");
+    assert!(
+        said.ends_with("asks first for the stick's passphrase, the seven words you saved on your phone, or a YubiKey's PIN."),
         "{said}"
     );
 
