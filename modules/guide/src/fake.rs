@@ -200,6 +200,12 @@ impl Machine for Fake {
         Ok(())
     }
 
+    fn publish(&mut self, path: &str, bytes: &[u8]) -> Result<(), Fault> {
+        self.calls.push(format!("publishing {path}"));
+        self.file(path, bytes);
+        Ok(())
+    }
+
     fn create(&mut self, path: &str) -> Result<Box<dyn Write + '_>, Fault> {
         self.calls.push(format!("writing {path}"));
         Ok(Box::new(Writing {

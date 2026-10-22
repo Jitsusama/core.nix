@@ -71,6 +71,10 @@ pub trait Machine {
     /// they can enter. Anything secret goes only where it's held in memory.
     fn write(&mut self, path: &str, bytes: &[u8]) -> Result<(), Fault>;
 
+    /// Keeps a file anyone can read, for what's sealed or public, such as
+    /// a rescue bundle, which the person reads without asking for root.
+    fn publish(&mut self, path: &str, bytes: &[u8]) -> Result<(), Fault>;
+
     /// A file to write a lot to, such as a cache unpacked from the vault,
     /// kept as `write` keeps one.
     fn create(&mut self, path: &str) -> Result<Box<dyn Write + '_>, Fault>;

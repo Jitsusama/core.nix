@@ -299,6 +299,21 @@ impl Machine for System {
         private_file(path, bytes)
     }
 
+    fn publish(&mut self, path: &str, bytes: &[u8]) -> Result<(), Fault> {
+        use std::os::unix::fs::PermissionsExt;
+        let path = Path::new(path);
+        if let Some(directory) = path.parent() {
+            DirBuilder::new()
+                .recursive(true)
+                .mode(0o755)
+                .create(directory)
+                .map_err(unkept(directory))?;
+        }
+        fs::write(path, bytes).map_err(unkept(path))?;
+        // A file there before keeps its mode through a write, so it's set.
+        fs::set_permissions(path, fs::Permissions::from_mode(0o644)).map_err(unkept(path))
+    }
+
     fn create(&mut self, path: &str) -> Result<Box<dyn Write + '_>, Fault> {
         let path = Path::new(path);
         if let Some(directory) = path.parent() {

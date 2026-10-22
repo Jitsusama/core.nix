@@ -12,8 +12,9 @@ use std::path::PathBuf;
 use guide::fake::Fake;
 use guide::install::disk::{ConfirmDisk, LayOutDisk, WipeInstallKey};
 use guide::install::keys::EnrolYubikey;
-use guide::install::system::{CheckFirmware, SecureBootKeys};
-use guide::install::{INSTALL_KEY, TARGET, Target, VAULT_KEY};
+use guide::install::system::{CheckFirmware, SealRescueBundle, SecureBootKeys};
+use guide::install::{INSTALL_KEY, RECOVERY_KEY, TARGET, Target, VAULT_KEY};
+use guide::rescue::{self, Bundle};
 use guide::vault::store::Directory;
 use guide::vault::{Manifest, Packer, VaultKey};
 use guide::{Answer, Answers, Fault, Journey, Program, Secret, Standing, Step, Tool};
@@ -462,5 +463,82 @@ fn a_firmware_trusting_the_carried_keys_lets_the_install_go_on() {
     assert!(
         matches!(&standing, Standing::Done { evidence } if evidence.contains("trusts the keys this stick carries")),
         "{standing:?}"
+    );
+}
+
+const BUNDLE: &str = "/mnt/var/lib/guide/rescue-bundle.json";
+const RECOVERY: &str = "fkhvbicb-urbtgcbh-gdbbcbkf-ekdjvcrg-jhcvdbbe-jtbifkkv-ncdvurrb-tutbkbcl";
+
+/// The install's root holding the keys it made, its recovery key held.
+fn keys_made(fake: &mut Fake, db: &str) {
+    for name in rescue::KEYS {
+        let path = format!("{SBCTL}/{name}");
+        let text = match name {
+            "keys/db/db.pem" => db.to_string(),
+            "GUID" => "22f0175f-c166-49d2-96ab-c61575cddac5\n".to_string(),
+            other => format!("the {other}"),
+        };
+        fake.prints(Tool::Cat, &[&path], &text);
+    }
+    fake.file(&format!("{SBCTL}/keys/db/db.pem"), db.as_bytes())
+        .file(RECOVERY_KEY, RECOVERY.as_bytes());
+}
+
+#[test]
+fn the_install_seals_the_keys_to_the_recovery_key_before_its_typed_back() {
+    let target = target("/dev/disk/by-id/virtio-root");
+    let scratch = Scratch::new("install-rescue-bundle");
+    let mut fake = stick(&scratch, &target);
+    keys_made(&mut fake, "the db certificate");
+    fake.no_file(BUNDLE);
+    assert!(matches!(
+        SealRescueBundle.observe(&mut fake).unwrap(),
+        Standing::Needed { .. }
+    ));
+    SealRescueBundle.run(&mut fake, &Answers::new()).unwrap();
+
+    let bundle = Bundle::read(fake.holds(BUNDLE).expect("the bundle")).unwrap();
+    assert_eq!(bundle.machine(), "machine");
+    assert_eq!(bundle.passphrase(), rescue::RECOVERY_KEY);
+    let keys = bundle
+        .open_with_passphrase(&Secret::new(RECOVERY.into()))
+        .unwrap();
+    assert_eq!(keys.owner(), "22f0175f-c166-49d2-96ab-c61575cddac5");
+    let standing = SealRescueBundle.observe(&mut fake).unwrap();
+    assert!(
+        matches!(&standing, Standing::Done { evidence } if evidence.contains("recovery key")),
+        "{standing:?}"
+    );
+
+    // Keys made again, as a second install does, need a bundle again.
+    fake.file(
+        &format!("{SBCTL}/keys/db/db.pem"),
+        b"another db certificate",
+    );
+    assert!(matches!(
+        SealRescueBundle.observe(&mut fake).unwrap(),
+        Standing::Needed { .. }
+    ));
+
+    // With the recovery key gone there's nothing to seal it to.
+    fake.no_file(RECOVERY_KEY);
+    assert!(matches!(
+        SealRescueBundle.observe(&mut fake).unwrap(),
+        Standing::Blocked { .. }
+    ));
+
+    let ids: Vec<&str> = guide::install::steps(&["the Nano".into()])
+        .iter()
+        .map(|step| step.id())
+        .collect();
+    let at = |id: &str| ids.iter().position(|found| *found == id).unwrap();
+    assert!(at("secure-boot-keys") < at("seal-rescue-bundle"), "{ids:?}");
+    assert!(
+        at("make-recovery-key") < at("seal-rescue-bundle"),
+        "{ids:?}"
+    );
+    assert!(
+        at("seal-rescue-bundle") < at("keep-recovery-key"),
+        "{ids:?}"
     );
 }

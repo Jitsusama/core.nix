@@ -281,6 +281,11 @@ pkgs.testers.runNixOSTest {
           assert system == "${nodes.machine.system.build.toplevel}", system
           machine.fail("test -e /run/guide/install-key")
           machine.succeed("test -s /mnt/var/lib/sbctl/keys/db/db.key")
+          # The rescue bundle, sealed, readable without root.
+          made = json.loads(machine.succeed("cat /mnt/var/lib/guide/rescue-bundle.json"))
+          t.assertEqual(made["machine"], "machine")
+          t.assertEqual(made["opened_by"][-1], "the disk's recovery key")
+          t.assertEqual(machine.succeed("stat -c %a /mnt/var/lib/guide/rescue-bundle.json").strip(), "644")
 
       with subtest("the card says what the disk will ask, and the machine shuts down"):
           on_screen("security token PIN")
@@ -331,6 +336,10 @@ pkgs.testers.runNixOSTest {
           type("")
           on_screen("the YubiKey's PIN")
           type("${pin}")
+          # The install's bundle, handed on into alice's home.
+          on_screen("in 1Password", timeout=300)
+          machine.succeed("cmp /var/lib/guide/rescue-bundle.json /home/alice/machine-rescue-bundle.json")
+          type("")
           on_screen("machine is finished", timeout=300)
           header = json.loads(machine.succeed("cryptsetup luksDump --dump-json-metadata /dev/disk/by-partlabel/system"))
           (sealed,) = [t["keyslots"][0] for t in header["tokens"].values() if t["type"] == "systemd-tpm2"]
@@ -382,28 +391,34 @@ pkgs.testers.runNixOSTest {
           t.assertEqual(prompts, ["Please enter LUKS2 token PIN:"])
 
       with subtest("a stick carrying the machine's own Secure Boot keys is written on a host"):
-          # The machine makes its own rescue bundle, as root, with its
-          # installed guide, and only the sealed bundle leaves it.
-          target = base64.b64encode(open("${payload}/target.json", "rb").read()).decode()
-          machine.succeed(f"echo {target} | base64 -d > /root/target.json")
-          made = machine.succeed(
-              "echo ${bundlePassphrase} | guide seal-keys /root/target.json /root/rescue.json"
-          )
-          owner = machine.succeed("cat /var/lib/sbctl/GUID").strip()
-          t.assertIn(owner, made)
-          machine.succeed("test $(stat -c %a /root/rescue.json) = 600")
-          sealed = base64.b64decode(machine.succeed("base64 -w0 /root/rescue.json"))
+          # The bundle the install made, taken off as alice can, sealed.
+          sealed = base64.b64decode(machine.succeed("base64 -w0 /home/alice/machine-rescue-bundle.json"))
           t.assertNotIn(b"PRIVATE KEY", sealed)
+          installed = json.loads(sealed)
+          owner = machine.succeed("cat /var/lib/sbctl/GUID").strip()
+          t.assertEqual(installed["owner"], owner)
           bundle = os.path.join(tempfile.mkdtemp(), "rescue.json")
           with open(bundle, "wb") as bundle_file:
               bundle_file.write(sealed)
+          # A machine makes one with a passphrase of its own too, as root,
+          # holding the same keys.
+          target = base64.b64encode(open("${payload}/target.json", "rb").read()).decode()
+          machine.succeed(f"echo {target} | base64 -d > /root/target.json")
+          t.assertIn(owner, machine.succeed(
+              "echo ${bundlePassphrase} | guide seal-keys /root/target.json /root/rescue.json"
+          ))
+          machine.succeed("test $(stat -c %a /root/rescue.json) = 600")
+          own = json.loads(machine.succeed("cat /root/rescue.json"))
+          t.assertEqual((own["owner"], own["db"]), (installed["owner"], installed["db"]))
+          t.assertEqual(own["opened_by"][-1], "the recovery passphrase")
           again = os.path.join(tempfile.mkdtemp(), "reinstall.raw")
           with open(again, "wb") as stick_file:
               stick_file.truncate(os.path.getsize("${written}/stick.raw"))
-          # The stick's passphrase, then the bundle's.
+          # The stick's passphrase, then the disk's recovery key, which
+          # opens the bundle the install sealed to it.
           subprocess.run(
               ["${guide}/bin/guide", "write-stick", "${image}", again, "--install", "${payload}", "--rescue-bundle", bundle],
-              input=(${builtins.toJSON passphrase} + "\n${bundlePassphrase}\n").encode(), check=True,
+              input=(${builtins.toJSON passphrase} + "\n" + key + "\n").encode(), check=True,
           )
           reinstall = tempfile.NamedTemporaryFile(suffix=".qcow2")
           subprocess.run(["${qemu}/bin/qemu-img", "create", "-f", "qcow2", "-b", again, "-F", "raw", reinstall.name], check=True)
@@ -438,6 +453,10 @@ pkgs.testers.runNixOSTest {
           type(${builtins.toJSON password})
           on_screen("shut down", timeout=300)
           machine.succeed(f"grep -qx {owner} /mnt/var/lib/sbctl/GUID")
+          # A new bundle for the same keys, sealed to the new recovery key.
+          remade = json.loads(machine.succeed("cat /mnt/var/lib/guide/rescue-bundle.json"))
+          t.assertEqual(remade["db"], installed["db"])
+          t.assertNotEqual(remade["to_passphrase"], installed["to_passphrase"])
           type("")
           machine.wait_for_shutdown()
 
