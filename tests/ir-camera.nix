@@ -183,7 +183,14 @@ pkgs.testers.runNixOSTest {
         machine.sleep(7)
         restarts = machine.succeed("systemctl show -P NRestarts ir-camera.service").strip()
         t.assertEqual(restarts, "0", "The relay kept retrying a loopback that had gone")
+        holders = machine.succeed("systemctl show -P NRestarts ir-camera-holders.service")
+        t.assertEqual(holders.strip(), "0", "Saying who holds the camera failed while it was gone")
         machine.succeed("systemctl restart ir-camera-loopback.service ir-camera.service")
         machine.wait_for_unit("ir-camera.service")
+        machine.wait_for_unit("ir-camera-holders.service")
+        # The loopback's unit makes its directory afresh, so the file comes
+        # back a moment after.
+        machine.wait_for_file("/run/ir-camera-loopback/in-use")
+        t.assertEqual(machine.succeed("cat /run/ir-camera-loopback/in-use"), "")
   '';
 }
