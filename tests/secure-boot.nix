@@ -164,15 +164,18 @@ pkgs.testers.runNixOSTest {
           t.assertIn("Secure Boot: enabled (user)", status)
           print(machine.succeed("sbctl verify"))
 
-      with subtest("a firmware already enforcing gets the files without a restart"):
+      with subtest("once the firmware enforces, the keys' files leave the ESP, and none are written again"):
+          # Left there, a firmware cleared for a fresh install would have the
+          # keys put back by systemd-boot before any disk asked for a PIN.
+          machine.wait_until_succeeds("test ! -e /boot/loader/keys/auto", timeout=60)
+          machine.succeed("journalctl -b -u secure-boot-enrolled.service | grep -q 'Finished'")
           # As a reinstall's new ESP leaves it, its keys carried and enrolled.
           boot = machine.succeed("cat /proc/sys/kernel/random/boot_id")
-          machine.succeed("rm /boot/loader/keys/auto/{PK,KEK,db}.auth")
           machine.succeed("systemctl start prepare-sb-auto-enroll.service")
-          machine.succeed("test -s /boot/loader/keys/auto/db.auth")
-          machine.wait_until_succeeds(
-              "journalctl -b -u secure-boot-enrol-restart.service | grep -q 'unmet condition'"
+          machine.succeed(
+              "journalctl -b -u prepare-sb-auto-enroll.service | grep -q 'unmet condition'"
           )
+          machine.succeed("test ! -e /boot/loader/keys/auto")
           machine.sleep(5)
           t.assertEqual(machine.succeed("cat /proc/sys/kernel/random/boot_id"), boot)
 
