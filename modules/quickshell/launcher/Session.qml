@@ -73,19 +73,41 @@ Provider {
     })
 
     things: [awake, quiet].concat(Recorder.recording ? [recording] : [], profiles, [
-        { name: "Lock", glyph: 0xf023, run: () => provider.launcher.lock.lock() },
-        { name: "Suspend", glyph: 0xf04b2, run: () => Niri.spawn(["systemctl", "suspend"]) },
+        {
+            name: "Lock",
+            words: "lock screen away leave",
+            glyph: 0xf023,
+            run: () => provider.launcher.lock.lock()
+        },
+        {
+            name: "Suspend",
+            words: "sleep hibernate nap standby",
+            glyph: 0xf04b2,
+            run: () => Niri.spawn(["systemctl", "suspend"])
+        },
         {
             name: "Log Out",
+            words: "logout sign out signout quit niri end session",
             glyph: 0xf0343,
             run: () => Niri.act({ Quit: { skip_confirmation: true } })
         },
-        { name: "Reboot", glyph: 0xf0453, run: () => Niri.spawn(["systemctl", "reboot"]) },
-        { name: "Power Off", glyph: 0xf011, run: () => Niri.spawn(["systemctl", "poweroff"]) }
+        {
+            name: "Reboot",
+            words: "restart reset",
+            glyph: 0xf0453,
+            run: () => Niri.spawn(["systemctl", "reboot"])
+        },
+        {
+            name: "Power Off",
+            words: "shutdown shut down turn off halt",
+            glyph: 0xf011,
+            run: () => Niri.spawn(["systemctl", "poweroff"])
+        }
     ].map(action => thing({
         key: `session:${action.name}`,
         verb: action.name.toLowerCase(),
         name: action.name,
+        keywords: action.words,
         glyph: String.fromCodePoint(action.glyph),
         hue: "machine",
         run: action.run

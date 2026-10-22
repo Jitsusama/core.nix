@@ -1190,6 +1190,13 @@ pkgs.testers.runNixOSTest {
           )
           # Rounded half up, as JavaScript's Math.round does.
           copied("brightness", f"{int(now * 100 / most + 0.5)}% bright")
+          # The session's actions answer to what people call them; Escape,
+          # never Return, since Return would do them.
+          for typed, action in [("shut down", "Power Off"), ("restart", "Reboot"), ("sign out", "Log Out")]:
+              answer(typed)
+              launcher_until(lambda shown: (shown["selected"] or {}).get("name") == action)
+              machine.send_key("esc")
+              machine.wait_until_fails(in_session("niri msg layers | grep -qw launcher"), timeout=10)
           # The keyboards QEMU gives it, however many, and caps lock.
           answer("keyboards")
           photograph("launcher-keyboards")
