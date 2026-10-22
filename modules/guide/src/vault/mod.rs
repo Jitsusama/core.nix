@@ -249,6 +249,7 @@ impl VaultKey {
 
 /// What `comm` reads for every program age starts as a plugin, cut to
 /// the kernel's fifteen characters.
+#[cfg(target_os = "linux")]
 const PLUGIN: &str = "age-plugin-";
 
 /// Waits on every age plugin this process started that has since ended.
