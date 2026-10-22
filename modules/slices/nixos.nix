@@ -136,7 +136,17 @@ in
   # account's own user@<uid>.service.
   environment.sessionVariables.JOBS_CGROUP = "jobs.slice/jobs.service";
 
-  systemd.slices.user.sliceConfig.MemoryMin = "1G";
+  # The Nix daemon's builds run outside the account, in build.slice beside
+  # user.slice, where the account's own targets don't reach. Beside 1.5 GiB/s
+  # of writes from there, an app's synced 4 KiB write took 26 ms at the
+  # median and up to 2 s. With user.slice at the same target it took 3.9 ms
+  # and at most 205 ms, and the build wrote 974 MiB/s while the app saved
+  # ten times a second. Its siblings, build.slice, machine.slice and
+  # system.slice, give way.
+  systemd.slices.user.sliceConfig = {
+    MemoryMin = "1G";
+    IODeviceLatencyTargetSec = disk;
+  };
 
   # Every account's user-<uid>.slice, which logind makes as it logs in.
   systemd.slices."user-" = {

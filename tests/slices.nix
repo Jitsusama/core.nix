@@ -1,4 +1,5 @@
-# Asks the kernel what disk latency each of the account's slices was given.
+# Asks the kernel what disk latency each slice was given, the account's and
+# the system's.
 # The target is written by systemd as a slice starts, for the drive it finds
 # behind /home, and the kernel takes it only for a drive whose queue it can
 # watch, so reading the module's settings back would prove neither.
@@ -34,8 +35,14 @@ pkgs.testers.runNixOSTest {
     drive = parent or source.removeprefix("/dev/")
     number = machine.succeed(f"cat /sys/class/block/{drive}/dev").strip()
 
-    def latency(name):
-        return machine.succeed(f"cat {account}/{name}.slice/io.latency").strip()
+    machine.succeed(
+        "systemd-run --slice=machine.slice --unit=in-machine"
+        " ${pkgs.coreutils}/bin/sleep infinity"
+    )
+    machine.wait_for_unit("in-machine.service")
+
+    def latency(name, under=account):
+        return machine.succeed(f"cat {under}/{name}.slice/io.latency").strip()
 
     with subtest("what Joel uses has a millisecond on the drive behind /home"):
         t.assertEqual(latency("app"), f"{number} target=1000")
@@ -44,5 +51,10 @@ pkgs.testers.runNixOSTest {
     with subtest("the work it starts has none, so it gives way"):
         t.assertEqual(latency("jobs"), "")
         t.assertEqual(latency("background"), "")
+
+    with subtest("among the system's, every account has it, and machines none"):
+        t.assertEqual(latency("user", "/sys/fs/cgroup"), f"{number} target=1000")
+        t.assertEqual(latency("machine", "/sys/fs/cgroup"), "")
+        t.assertEqual(latency("system", "/sys/fs/cgroup"), "")
   '';
 }
