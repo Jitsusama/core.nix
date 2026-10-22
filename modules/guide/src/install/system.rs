@@ -10,7 +10,6 @@ use crate::install::{
 use crate::observe::disks;
 use crate::observe::efi::{self, Mode, SecureBoot};
 use crate::rescue::{self, Bundle, Keys};
-use crate::sign::Signer;
 use crate::stick;
 use crate::tool::Path;
 use crate::vault::Vault;
@@ -412,22 +411,23 @@ impl Step for KeepOnStick {
             })
             .ok_or_else(no_esp)?;
         let carried = rescue::carried_as(&target.machine);
+        // Refused before the stick is touched, if the keys can't sign.
+        let signer = keys.signer()?;
         machine.change_vault(&mut |store| {
             let mut vault = Vault::open(&mut *store, key.clone())?;
-            for (name, bytes) in keys.files() {
-                vault.put(&format!("{SBCTL_IN_VAULT}/{name}"), bytes)?;
-            }
+            vault.put_all(
+                keys.files()
+                    .map(|(name, bytes)| (format!("{SBCTL_IN_VAULT}/{name}"), bytes)),
+            )?;
             drop(vault);
-            store
-                .create(&carried)?
-                .write_all(&bundle)
+            let mut file = store.create(&carried)?;
+            file.write_all(&bundle)
+                .and_then(|()| file.flush())
                 .map_err(|why| Fault::Unkept {
                     path: carried.clone(),
                     why: why.to_string(),
                 })
         })?;
-        let text = |name: &str| String::from_utf8_lossy(keys.file(name)).into_owned();
-        let signer = Signer::new(&text("keys/db/db.key"), &text("keys/db/db.pem"))?;
         // The stick mounts its own boot partition at /boot as it starts, and
         // nothing may read it there while it's changed underneath.
         for mounted in &esp.mounted {

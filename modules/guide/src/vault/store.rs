@@ -25,6 +25,10 @@ pub trait Store {
 
     /// The names of every file it keeps.
     fn names(&mut self) -> Result<Vec<String>, Fault>;
+
+    /// Puts the file `from` in place of `to`, whatever `to` held: in one
+    /// rename where the store can, else `to` taken away just before.
+    fn replace(&mut self, from: &str, to: &str) -> Result<(), Fault>;
 }
 
 /// A vault in a directory, every file its owner's alone.
@@ -104,6 +108,11 @@ impl Store for Directory {
             }
         }
         Ok(names)
+    }
+
+    fn replace(&mut self, from: &str, to: &str) -> Result<(), Fault> {
+        let to = self.root.join(flat(to)?);
+        fs::rename(self.root.join(flat(from)?), &to).map_err(unkept(&to))
     }
 }
 
@@ -189,5 +198,52 @@ impl<IO: fatfs::ReadWriteSeek> Store for Fat<IO> {
             }
         }
         Ok(names)
+    }
+
+    /// FAT has no rename over a file, so `to` goes first, and a reader that
+    /// finds no `to` has to look for `from`.
+    fn replace(&mut self, from: &str, to: &str) -> Result<(), Fault> {
+        let fault = |why: std::io::Error| Fault::Unkept {
+            path: format!("{to} in the vault"),
+            why: why.to_string(),
+        };
+        let root = self.filesystem.root_dir();
+        if let Err(why) = root.remove(flat(to)?)
+            && why.kind() != std::io::ErrorKind::NotFound
+        {
+            return Err(fault(why));
+        }
+        root.rename(flat(from)?, &root, to).map_err(fault)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn read(store: &mut dyn Store, name: &str) -> Vec<u8> {
+        let mut bytes = vec![];
+        store.open(name).unwrap().read_to_end(&mut bytes).unwrap();
+        bytes
+    }
+
+    #[test]
+    fn a_file_replaces_another_on_fat_which_has_no_rename_over_one() {
+        let mut fat = Fat::format(std::io::Cursor::new(vec![0u8; 40 << 20])).unwrap();
+        for (name, bytes) in [("index.age", b"old"), ("index-new.age", b"new")] {
+            let mut file = fat.create(name).unwrap();
+            file.write_all(bytes).and_then(|()| file.flush()).unwrap();
+        }
+        fat.replace("index-new.age", "index.age").unwrap();
+        assert_eq!(read(&mut fat, "index.age"), b"new");
+        assert!(!fat.has("index-new.age").unwrap());
+        // With nothing to replace, it's only named.
+        let mut file = fat.create("index-new.age").unwrap();
+        file.write_all(b"newer")
+            .and_then(|()| file.flush())
+            .unwrap();
+        drop(file);
+        fat.replace("index-new.age", "other.age").unwrap();
+        assert_eq!(read(&mut fat, "other.age"), b"newer");
     }
 }

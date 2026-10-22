@@ -136,10 +136,13 @@ pub fn steps(yubikeys: &[String]) -> Vec<Box<dyn Step>> {
     steps.push(Box::new(system::SealRescueBundle));
     steps.push(Box::new(keys::KeepRecoveryKey));
     steps.push(Box::new(system::InstallSystem));
-    steps.push(Box::new(system::KeepOnStick));
     steps.push(Box::new(system::SetPassword));
     steps.push(Box::new(disk::WipeInstallKey {
         yubikeys: yubikeys.len(),
     }));
+    // The stick last, once the machine is finished, since it needs only
+    // the keys on the disk and the vault's key, and a stick that won't
+    // take them should cost only the stick.
+    steps.push(Box::new(system::KeepOnStick));
     steps
 }

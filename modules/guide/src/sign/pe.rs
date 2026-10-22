@@ -74,7 +74,9 @@ impl Program {
             u32_at(&bytes, table + 4)? as usize,
         );
         if (start, length) != (0, 0) {
-            if start == 0 || start.checked_add(length) != Some(bytes.len()) {
+            // Past the headers, which hold the table's own entry, and
+            // ending where the program does.
+            if start < headers.max(table + 8) || start.checked_add(length) != Some(bytes.len()) {
                 return Err(refused("its signature isn't at its end"));
             }
             bytes.truncate(start);
@@ -141,6 +143,16 @@ impl Program {
         self.bytes[self.checksum..self.checksum + 4].copy_from_slice(&sum.to_le_bytes());
         self.bytes
     }
+}
+
+/// The certificate table a program carries at its end, as sbsign and this
+/// signer put it, if it carries one.
+pub fn signature(bytes: &[u8]) -> Option<&[u8]> {
+    let pe = u32_at(bytes, 0x3c).ok()? as usize;
+    let table = pe + 24 + 112 + 8 * CERTIFICATE_TABLE;
+    let start = u32_at(bytes, table).ok()? as usize;
+    let length = u32_at(bytes, table + 4).ok()? as usize;
+    (start >= table + 8 && start.checked_add(length) == Some(bytes.len())).then(|| &bytes[start..])
 }
 
 /// The PE checksum: the file's 16-bit words summed with their carries
@@ -241,6 +253,29 @@ mod tests {
         assert!(
             matches!(Program::parse(signed), Err(Fault::Unreadable { why, .. }) if why == "its signature isn't at its end")
         );
+    }
+
+    #[test]
+    fn a_signature_said_to_start_inside_the_headers_is_refused() {
+        let mut bytes = program(0x400, 0);
+        let table = 0x98 + 112 + 32;
+        bytes[table..table + 4].copy_from_slice(&4u32.to_le_bytes());
+        let length = bytes.len() as u32 - 4;
+        bytes[table + 4..table + 8].copy_from_slice(&length.to_le_bytes());
+        assert!(
+            matches!(Program::parse(bytes.clone()), Err(Fault::Unreadable { why, .. }) if why == "its signature isn't at its end")
+        );
+        assert_eq!(signature(&bytes), None);
+    }
+
+    #[test]
+    fn the_signature_at_a_programs_end_is_read() {
+        let bytes = program(0x400, 0);
+        assert_eq!(signature(&bytes), None);
+        let signed = Program::parse(bytes.clone()).unwrap().signed(&[0xab; 13]);
+        let table = signature(&signed).unwrap();
+        assert_eq!(table.len(), 24);
+        assert_eq!(table[8..21], [0xab; 13]);
     }
 
     #[test]

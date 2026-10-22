@@ -20,6 +20,15 @@ use crate::Fault;
 use der::{OCTET_STRING, algorithm, oid, sequence, set_of, small_integer, value};
 use pe::Program;
 
+/// The program's Authenticode digest, over what its signature covers.
+fn digest(program: &Program) -> [u8; 32] {
+    let mut hash = Sha256::new();
+    for part in program.covered() {
+        hash.update(part);
+    }
+    hash.finalize().into()
+}
+
 const SHA256: &[u64] = &[2, 16, 840, 1, 101, 3, 4, 2, 1];
 const RSA_ENCRYPTION: &[u64] = &[1, 2, 840, 113_549, 1, 1, 1];
 const SIGNED_DATA: &[u64] = &[1, 2, 840, 113_549, 1, 7, 2];
@@ -134,14 +143,24 @@ impl Signer {
         Signer::new(&read("db.key")?, &read("db.pem")?)
     }
 
+    /// Whether the signature `program` carries is this signer's, over the
+    /// program as it is now: it holds this signer's certificate and the
+    /// program's digest. The firmware checks the rest as it boots it.
+    pub fn has_signed(&self, program: &[u8]) -> bool {
+        let Some(signature) = pe::signature(program) else {
+            return false;
+        };
+        let Ok(parsed) = Program::parse(program.to_vec()) else {
+            return false;
+        };
+        let holds = |part: &[u8]| signature.windows(part.len()).any(|window| window == part);
+        holds(&self.certificate) && holds(&digest(&parsed))
+    }
+
     /// The program signed, as of `at`.
     pub fn sign(&self, program: Vec<u8>, at: SystemTime) -> Result<Vec<u8>, Fault> {
         let program = Program::parse(program)?;
-        let mut hash = Sha256::new();
-        for part in program.covered() {
-            hash.update(part);
-        }
-        let digest = hash.finalize();
+        let digest = digest(&program);
 
         let content = sequence(&[
             &sequence(&[

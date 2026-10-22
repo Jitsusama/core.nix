@@ -336,6 +336,61 @@ fn a_sticks_own_boot_program_is_signed_again_in_place_by_the_machines_key() {
     };
     assert!(verify(&second), "the last key's signature doesn't verify");
     assert!(!verify(&first), "the first key's signature is still there");
+
+    // The same key again, as a reinstall from the machine's own stick
+    // finds it, writes nothing, a second on so a new signature would
+    // differ.
+    let before = fs::read(&esp).unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(1100));
+    stick::sign_in_place(&mut open(&esp), &Signer::open(&second).unwrap()).unwrap();
+    assert!(
+        fs::read(&esp).unwrap() == before,
+        "the partition was written"
+    );
+}
+
+#[test]
+fn only_the_boot_program_firmware_boots_is_signed_in_place() {
+    let directory = Scratch::new("signed-in-place-only");
+    let esp = directory.join("esp-in-place.fat");
+    fs::write(&esp, make_esp(&directory, Some(&boot_program()))).unwrap();
+    // Another program, as anyone who could write the stick's partition
+    // might leave beside the one firmware boots.
+    run(
+        "mcopy",
+        &[
+            "-i".as_ref(),
+            esp.as_os_str(),
+            boot_program().as_os_str(),
+            "::EFI/BOOT/OTHER.EFI".as_ref(),
+        ],
+    );
+    let keys = db_key(&directory.join("keys"));
+    stick::sign_in_place(&mut open(&esp), &Signer::open(&keys).unwrap()).unwrap();
+    let other = directory.join("OTHER.EFI");
+    run(
+        "mcopy",
+        &[
+            "-i".as_ref(),
+            esp.as_os_str(),
+            "::EFI/BOOT/OTHER.EFI".as_ref(),
+            other.as_os_str(),
+        ],
+    );
+    let verify = |program: &Path| {
+        try_run(
+            "sbverify",
+            &[
+                "--cert".as_ref(),
+                keys.join("db.pem").as_os_str(),
+                program.as_os_str(),
+            ],
+        )
+        .status
+        .success()
+    };
+    assert!(verify(&boot_program_in(&directory, &esp)));
+    assert!(!verify(&other), "the other program was signed");
 }
 
 #[test]

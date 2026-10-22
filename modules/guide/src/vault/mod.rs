@@ -5,7 +5,9 @@
 //! in `key-passphrase.age`, as quest-backup seals a chain's key. Files are
 //! split into numbered objects of at most a gibibyte, under FAT32's limit
 //! of four, and an encrypted index says which objects make which file, so
-//! nothing but `manifest.json` shows a name.
+//! no sealed file shows its name. Only `manifest.json` and the rescue
+//! bundles carried beside the sealed files, ciphertext named for their
+//! machines, show one.
 
 pub mod store;
 
@@ -23,6 +25,8 @@ pub const MANIFEST: &str = "manifest.json";
 pub const KEY: &str = "key.age";
 pub const KEY_PASSPHRASE: &str = "key-passphrase.age";
 const INDEX: &str = "index.age";
+/// A changed index, written whole before it takes the index's place.
+const INDEX_NEW: &str = "index-new.age";
 /// The age plugin a YubiKey seals and opens through, which age finds as
 /// `age-plugin-fido2-hmac` on the guide's own PATH (main.rs sets it).
 const FIDO2: &str = "fido2-hmac";
@@ -442,8 +446,11 @@ impl<'s, S: Store + ?Sized> Vault<'s, S> {
         if !store.has(MANIFEST)? {
             return Err(unopened("the vault", "it was never finished"));
         }
+        // A change stopped as its index took the old one's place leaves
+        // only the new one, whole.
+        let name = if store.has(INDEX)? { INDEX } else { INDEX_NEW };
         let index: Index =
-            serde_json::from_reader(decrypt(store.open(INDEX)?, &key.0, "the vault's index")?)
+            serde_json::from_reader(decrypt(store.open(name)?, &key.0, "the vault's index")?)
                 .map_err(|why| unopened("the vault's index", why))?;
         for file in &index.files {
             checked(&file.path)?;
@@ -484,21 +491,24 @@ impl<'s, S: Store + ?Sized> Vault<'s, S> {
     }
 
     /// Holds `bytes` as `path` from now on, in place of what it held there
-    /// before, such as the machine's own Secure Boot keys once its install
-    /// has them. Its objects go first, under numbers none has yet, then the
-    /// index naming them, so until the index is written the vault is still
-    /// what it was. Holding the same bytes already, it changes nothing.
+    /// before.
     pub fn put(&mut self, path: &str, bytes: &[u8]) -> Result<(), Fault> {
-        let path = checked(path)?.to_string();
-        let sha256 = hex(&Sha256::digest(bytes));
-        if self
-            .files
-            .iter()
-            .any(|file| file.path == path && file.sha256 == sha256)
-        {
-            return Ok(());
-        }
-        let next = self
+        self.put_all([(path.to_string(), bytes)])
+    }
+
+    /// Holds each file's bytes as its path from now on, in place of what it
+    /// held there before, such as the machine's own Secure Boot keys once
+    /// its install has them. Their objects go first, under numbers none has
+    /// yet, then one index naming them all, written whole under a name of
+    /// its own before it takes the old one's place, so a vault stopped at
+    /// any point opens as it was or as it is now. A file it holds the same
+    /// bytes of already changes nothing, and with nothing changed, nothing
+    /// is written.
+    pub fn put_all<'b>(
+        &mut self,
+        files: impl IntoIterator<Item = (String, &'b [u8])>,
+    ) -> Result<(), Fault> {
+        let mut next = self
             .files
             .iter()
             .flat_map(|file| &file.objects)
@@ -506,27 +516,51 @@ impl<'s, S: Store + ?Sized> Vault<'s, S> {
             .max()
             .map_or(0, |last| last + 1);
         let recipient = self.key.recipient();
-        let mut objects = vec![];
-        for (number, part) in (next..).zip(bytes.chunks(OBJECT as usize)) {
-            let name = format!("{number:08}.age");
-            sealed_into(self.store, &recipient, &name, &path, part)?;
-            objects.push(Object {
-                name,
-                bytes: part.len() as u64,
+        let mut changed = false;
+        for (path, bytes) in files {
+            let path = checked(&path)?.to_string();
+            let sha256 = hex(&Sha256::digest(bytes));
+            if self
+                .files
+                .iter()
+                .any(|file| file.path == path && file.sha256 == sha256)
+            {
+                continue;
+            }
+            let mut objects = vec![];
+            for part in bytes.chunks(OBJECT as usize) {
+                let name = format!("{next:08}.age");
+                next += 1;
+                sealed_into(self.store, &recipient, &name, &path, part)?;
+                objects.push(Object {
+                    name,
+                    bytes: part.len() as u64,
+                });
+            }
+            self.files.retain(|file| file.path != path);
+            self.files.push(File {
+                path,
+                bytes: bytes.len() as u64,
+                sha256,
+                objects,
             });
+            changed = true;
         }
-        self.files.retain(|file| file.path != path);
-        self.files.push(File {
-            path,
-            bytes: bytes.len() as u64,
-            sha256,
-            objects,
-        });
+        if !changed {
+            return Ok(());
+        }
         let index = serde_json::to_vec(&Index {
             files: self.files.clone(),
         })
         .map_err(|why| unsealable("the vault's index", why))?;
-        sealed_into(self.store, &recipient, INDEX, "the vault's index", &index)
+        sealed_into(
+            self.store,
+            &recipient,
+            INDEX_NEW,
+            "the vault's index",
+            &index,
+        )?;
+        self.store.replace(INDEX_NEW, INDEX)
     }
 }
 
@@ -544,9 +578,12 @@ fn sealed_into<S: Store + ?Sized>(
     let mut writer = encryptor
         .wrap_output(store.create(name)?)
         .map_err(|why| unsealable(what, why))?;
+    // Flushed by hand, since a file dropped unflushed only logs what
+    // failed.
     writer
         .write_all(bytes)
-        .and_then(|()| writer.finish().map(drop))
+        .and_then(|()| writer.finish())
+        .and_then(|mut file| file.flush())
         .map_err(|why| unsealable(what, why))
 }
 
@@ -604,10 +641,20 @@ mod tests {
         let mut vault = Vault::open(&mut store, again()).unwrap();
         vault.put("sbctl/GUID", b"new").unwrap();
         vault.put("sbctl/keys/db/db.pem", b"the db").unwrap();
-        // Put again unchanged, nothing is written.
-        let before = std::fs::read_dir(&*directory).unwrap().count();
+        // Put again unchanged, nothing is written: no object, and not the
+        // index, which sealing again would change.
+        let listed = || {
+            let mut names: Vec<_> = std::fs::read_dir(&*directory)
+                .unwrap()
+                .map(|entry| entry.unwrap().file_name())
+                .collect();
+            names.sort();
+            names
+        };
+        let (names, index) = (listed(), std::fs::read(directory.join(INDEX)).unwrap());
         vault.put("sbctl/keys/db/db.pem", b"the db").unwrap();
-        assert_eq!(std::fs::read_dir(&*directory).unwrap().count(), before);
+        assert_eq!(listed(), names);
+        assert_eq!(std::fs::read(directory.join(INDEX)).unwrap(), index);
 
         let mut vault = Vault::open(&mut store, again()).unwrap();
         let mut paths: Vec<&str> = vault
@@ -628,6 +675,33 @@ mod tests {
         }
         // The manifest still says whose vault it is.
         assert_eq!(super::manifest(&mut store).unwrap(), manifest());
+    }
+
+    #[test]
+    fn a_vault_stopped_as_its_new_index_takes_the_old_ones_place_opens_as_it_is_now() {
+        let directory = crate::Scratch::new("vault-put-stopped");
+        let mut store = Directory::new(&directory);
+        let key = VaultKey::generate();
+        let again = || VaultKey::from_secret(&key.to_secret()).unwrap();
+        let mut packer = Packer::new(&mut store, &key);
+        packer.add("sbctl/GUID", &b"old"[..]).unwrap();
+        packer.finish(&manifest()).unwrap();
+        let mut vault = Vault::open(&mut store, again()).unwrap();
+        vault
+            .put_all([
+                ("sbctl/GUID".to_string(), &b"new"[..]),
+                ("sbctl/keys/db/db.pem".to_string(), &b"the db"[..]),
+            ])
+            .unwrap();
+        assert!(!directory.join(INDEX_NEW).exists());
+
+        // As FAT leaves it between taking the old index away and naming
+        // the new one.
+        std::fs::rename(directory.join(INDEX), directory.join(INDEX_NEW)).unwrap();
+        let mut vault = Vault::open(&mut store, again()).unwrap();
+        let mut bytes = vec![];
+        vault.extract("sbctl/GUID", &mut bytes).unwrap();
+        assert_eq!(bytes, b"new");
     }
 
     #[test]
