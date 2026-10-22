@@ -974,8 +974,14 @@ pkgs.testers.runNixOSTest {
           presence = "~/.local/state/pi/agentic-harness.pi/mesh-workflow/presence"
           as_account(
               f"mkdir -p {quest} {presence} && printf '%s\\n' '---' 'title: no' '---' '# A quest of its own & whole'"
-              f" > {quest}/README.md && echo '{{\"addresses\":[\"TESTQA\"],\"busy\":true}}'"
+              f" > {quest}/README.md && echo '{{\"session\":\"01a1face-test\",\"addresses\":[\"TESTQA\"],\"busy\":true}}'"
               f" > {presence}/testqa.json"
+          )
+          # What it spent today, as spend-watch writes it, replaced whole.
+          spent = {"v": 2, "sessions": {"01a1face-test": "$12.50"}}
+          as_account(
+              f"mkdir -p $XDG_RUNTIME_DIR/spend-watch && echo '{json.dumps(spent)}' > $XDG_RUNTIME_DIR/spend-watch/.c"
+              " && mv $XDG_RUNTIME_DIR/spend-watch/.c $XDG_RUNTIME_DIR/spend-watch/collection.json"
           )
           # Its window, titled as pi titles its own: its address, its
           # quest cut short, its folder, which a hyphen doesn't end.
@@ -1003,8 +1009,10 @@ pkgs.testers.runNixOSTest {
           launcher_until(
               lambda shown: shown["held"] == ["sessions"]
               and (shown["selected"] or {}).get("name") == "A quest of its own & whole"
+              and "$12.50 today" in shown["selected"]["side"]
           )
           photograph("launcher-agents")
+          as_account("rm $XDG_RUNTIME_DIR/spend-watch/collection.json")
           # Found by its address too.
           type_in("testqa", selecting="A quest of its own & whole")
           machine.send_key("ret")

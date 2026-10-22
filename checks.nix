@@ -1228,7 +1228,7 @@ in
         + ''"cost":{"total":1.5}}}}\n'';
     in
     pkgs.runCommandLocal "the-shell-reads-the-spend-watch" { } ''
-      mkdir -p runtime/written sessions/thing state launcher && chmod 700 runtime
+      mkdir -p runtime/written runtime/spend-watch sessions/thing state launcher && chmod 700 runtime
       log=sessions/thing/session.jsonl
       now=$(date -u +%s)
       at() { date -u -d @$((now - $1)) +%FT%TZ; }
@@ -1253,6 +1253,7 @@ in
       cp ${./modules/quickshell/launcher/Provider.qml} launcher/Provider.qml
       cp ${./modules/quickshell/launcher/Asking.js} launcher/Asking.js
       cp ${./modules/quickshell/launcher/Spend.qml} launcher/Spend.qml
+      cp ${./modules/quickshell/SpendWatch.qml} SpendWatch.qml
       cp ${./tests/spend.qml} shell.qml
       cp ${niri} Niri.qml
       cp ${singleton "Quiet.qml" "property bool sharing: false"} Quiet.qml

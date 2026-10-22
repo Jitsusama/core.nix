@@ -730,6 +730,7 @@ Scope {
                 name: row.name,
                 verb: row.verb ?? "",
                 chord: (row.chord ?? []).map(key => key.text).join(" "),
+                side: row.side ?? "",
                 settled: row !== root.headline || !root.answer.asking
             },
             kind: root.kind,

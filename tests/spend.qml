@@ -132,7 +132,7 @@ ShellRoot {
 
     Launcher.Spend {
         id: spend
-        settings: ({ name: "spend", collection: `${root.runtime}/collection.json` })
+        settings: ({ name: "spend" })
     }
 
     FileView {
@@ -153,7 +153,8 @@ ShellRoot {
 
     FileView {
         id: collectionFile
-        path: `${root.runtime}/collection.json`
+        // Where spend-watch writes it, as SpendWatch reads it.
+        path: `${root.runtime}/spend-watch/collection.json`
         printErrors: false
     }
 
@@ -243,6 +244,9 @@ ShellRoot {
     function answers() {
         try {
             expect("a collection", spend.collection?.noun === "spend", "none");
+            // The session that spent it, by its whole id, for Agents.
+            expect("each session's day", /^\$\d/.test(SpendWatch.sessions.s1 ?? ""),
+                JSON.stringify(SpendWatch.sessions));
             const today = spend.answer("spend");
             expect("spend", today !== null && /^Today: /.test(today.headline)
                 && today.copy.startsWith("## AI spend"), JSON.stringify(today));
@@ -299,7 +303,7 @@ ShellRoot {
                 gathered.map(row => row.name).join(", "));
             expect("no row beside its answer", spend.gather("spend").rows.length === 0,
                 spend.gather("spend").rows.map(row => row.name).join(", "));
-            expect("an older file draws nothing", spend.parsed('{"v":1}') === null, "drawn");
+            expect("an older file draws nothing", SpendWatch.parsed('{"v":1}') === null, "drawn");
 
             // While sharing, no row and no answer holds an amount.
             Quiet.sharing = true;
@@ -322,7 +326,7 @@ ShellRoot {
                 run: ["spend-watch", "go", "s1"], verb: "go",
                 expect: ["spend-watch", "findings", "expect", "burn:s1"]
             }];
-            spend.said = shown;
+            SpendWatch.said = shown;
             const burn = spend.everything()[0];
             expect("a finding first", burn.name === "A burn in Aquifer" && burn.verb === "go"
                 && burn.hue === "alert", burn.name);

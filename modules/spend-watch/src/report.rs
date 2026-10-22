@@ -323,6 +323,35 @@ pub fn cut(picture: &Picture, period: Period, cut: Cut, top: usize) -> Report {
     }
 }
 
+/// What each pi session has spent in a period, by its whole id, as a
+/// figure ready to draw beside it, so the shell can say what a session it
+/// sees costs without reading a report's names. Another tool's spend and
+/// spend no log knows have no session, and a session that spent less than
+/// a cent says nothing.
+pub fn by_session(picture: &Picture, period: Period) -> std::collections::BTreeMap<String, String> {
+    let (from, to) = period.days(&picture.zone, picture.now);
+    let mut spent: HashMap<&str, (f64, bool)> = HashMap::new();
+    let pieces = picture.between(from, to);
+    for piece in &pieces {
+        if piece.session.is_empty() || piece.session == "elsewhere" {
+            continue;
+        }
+        let entry = spent.entry(piece.session.as_str()).or_insert((0.0, false));
+        entry.0 += piece.dollars;
+        entry.1 |= piece.source.estimated() && piece.dollars > 0.005;
+    }
+    spent
+        .into_iter()
+        .filter(|(_, (dollars_spent, _))| *dollars_spent >= 0.005)
+        .map(|(session, (dollars_spent, estimated))| {
+            (
+                session.to_owned(),
+                crate::money::maybe_about(dollars(dollars_spent), estimated),
+            )
+        })
+        .collect()
+}
+
 /// The week at a glance: where it stands, the forecast, the caps, the
 /// findings and where money went to waste.
 pub fn summary(picture: &Picture, findings: &[Finding]) -> Report {

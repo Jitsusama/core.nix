@@ -80,6 +80,7 @@ let
     "Picks.qml"
     "Notices.qml"
     "Sessions.qml"
+    "SpendWatch.qml"
     "Caffeinate.qml"
     "Recorder.qml"
     "Picker.qml"

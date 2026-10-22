@@ -107,6 +107,10 @@ pub struct Collection {
     /// Each report by its id, "<period>/<cut>" or a focused one's name,
     /// for the rows that stand for one and the answers to what's typed.
     pub reports: BTreeMap<String, Shown>,
+    /// What each pi session spent today, by its whole id, for the
+    /// launcher's Agents to say beside it. While the screen is shared the
+    /// shell shows none of it.
+    pub sessions: BTreeMap<String, String>,
     pub periods: Vec<Words>,
     pub cuts: Vec<Words>,
     pub examples: Vec<String>,
@@ -687,6 +691,7 @@ pub fn collection(
             .into_iter()
             .map(|(id, (_, shown))| (id, shown))
             .collect(),
+        sessions: report::by_session(picture, Period::Today),
         periods: Period::ALL
             .iter()
             .map(|period| Words {
@@ -741,6 +746,7 @@ pub fn held(shape: i64) -> Collection {
         more: Vec::new(),
         quiet: vec![made],
         reports: BTreeMap::from([("summary".to_owned(), summary)]),
+        sessions: BTreeMap::new(),
         periods: Vec::new(),
         cuts: Vec::new(),
         examples: Vec::new(),
@@ -1010,6 +1016,52 @@ mod tests {
         assert_eq!(down.note, "the warehouse couldn't be reached");
         assert_eq!(down.role, "found");
         assert!(down.copy.contains("Name or service not known"));
+    }
+
+    // Each pi session that spent today is there by its whole id, even two
+    // whose ids start alike, as the report's names cut them, with what it
+    // spent today and nothing from before.
+    #[test]
+    fn each_session_says_what_it_spent_today() {
+        use crate::logs::{Cost, Event, Kind, Tokens, Turn};
+        let history = History::memory();
+        let turns = [
+            ("01a1271f-aaaa", NOW - 3600.0, 12.0),
+            ("01a1271f-aaaa", NOW - 1800.0, 0.5),
+            ("01a1271f-bbbb", NOW - 600.0, 3.25),
+            ("01a1271f-cccc", NOW - crate::time::DAY, 40.0),
+        ];
+        for (session, at, total) in turns {
+            history
+                .add_event(&Event::Turn(Turn {
+                    session: session.into(),
+                    at,
+                    model: "m".into(),
+                    provider: "p".into(),
+                    kind: Kind::Agent,
+                    tokens: Tokens::default(),
+                    cost: Cost {
+                        total,
+                        ..Cost::default()
+                    },
+                    quest: None,
+                    gap: None,
+                    rebuilt: 0.0,
+                    rebuilt_cost: 0.0,
+                    cause: None,
+                }))
+                .unwrap();
+        }
+        let config = config();
+        let picture = Picture::read(&history, &config, NOW).unwrap();
+        let collected = collection(&picture, &[], &config);
+        assert_eq!(
+            collected.sessions,
+            BTreeMap::from([
+                ("01a1271f-aaaa".to_owned(), crate::money::dollars(12.5)),
+                ("01a1271f-bbbb".to_owned(), crate::money::dollars(3.25)),
+            ])
+        );
     }
 
     // While the screen is shared nothing says an amount, at any depth.

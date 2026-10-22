@@ -1,6 +1,8 @@
 // pi's sessions, a collection: every pi running in a window, the one used
 // last first, each named by the quest it has loaded and beside it its
-// address, whether it's working or waiting, and the folder it works in.
+// address, whether it's working or waiting, what it spent today as
+// spend-watch says (SpendWatch.qml), never while the screen is shared, and
+// the folder it works in.
 // Return goes to its window; the right arrow offers copying its address or
 // its quest's id. What runs, and how each is doing, is Sessions.qml's.
 import qs
@@ -35,6 +37,8 @@ Provider {
             : presence.busy ? "working" : "waiting";
         const quest = presence && presence.owns
             ? presence.owns.find(owned => /^QEST-/.test(owned)) ?? "" : "";
+        const spent = presence && presence.session && !Quiet.sharing
+            ? SpendWatch.sessions[presence.session] ?? "" : "";
         return member({
             key: `agent:${session.address}`,
             verb: "switch",
@@ -44,7 +48,8 @@ Provider {
             also: Fuzzy.prepare(`${session.address} ${session.folder} ${quest}`),
             glyph: Theme.glyph.agent,
             hue: "program",
-            side: [session.address, doing, session.folder].filter(part => part !== "").join(" \u00b7 "),
+            side: [session.address, doing, spent !== "" ? `${spent} today` : "", session.folder]
+                .filter(part => part !== "").join(" \u00b7 "),
             note: presence && presence.wants && presence.wants.said ? presence.wants.said
                 : presence && presence.worksOn ? presence.worksOn : "",
             later: true,
