@@ -1,4 +1,4 @@
-From: Joel Gerber <joel.gerber@shopify.com>
+From: Joel Gerber <Jitsusama@users.noreply.github.com>
 Subject: [PATCH] service/notifications: send an activation token before an action
 
 Clicking a notification's action is meant to bring the program's window
