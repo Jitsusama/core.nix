@@ -165,6 +165,7 @@ kernel guide][2] says what that catches.
 | `the-ergodox-layout-builds`       | the layout fits the board and answers with its own serial |
 | `the-ergodox-command-reaches-the-board` | `ergodox` writes each command whole to the board's channel alone |
 | `the-pinentry-asks-the-shell` | linux-id's pinentry asks the askpass in the program's words |
+| `the-litra-follows-the-cameras` | `litra` finds the lights by their ids, speaks their reports, and counts a camera streaming only by a whole file naming a program |
 | `the-ergodox-watch-tells-the-layer` | the layer watcher finds the board and says only what it's told |
 | `the-click-strength-finds-the-intensity` | the click strength's setter finds a haptic pad's intensity, the XPS 14's among them, and writes only it, only when it differs |
 | `btrfs-reclaims-its-chunks`       | tmpfiles turns Btrfs's reclaim on for data and metadata   |

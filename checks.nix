@@ -5037,6 +5037,18 @@ in
           touch $out
         '';
 
+    # The Litra's command finds the lights by their HID ids, builds the
+    # reports they read and reads their answers, maps brightness and warmth
+    # to the light's range, and counts a camera streaming only by a file
+    # that names a program, never one half-written.
+    the-litra-follows-the-cameras =
+      pkgs.runCommandCC "the-litra-follows-the-cameras" { nativeBuildInputs = [ pkgs.rustc ]; }
+        ''
+          rustc --edition 2024 --test -D warnings -o tests ${./modules/litra/litra.rs}
+          ./tests
+          touch $out
+        '';
+
     the-ergodox-watch-tells-the-layer =
       pkgs.runCommandCC "the-ergodox-watch-tells-the-layer" { nativeBuildInputs = [ pkgs.rustc ]; }
         ''
