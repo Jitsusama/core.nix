@@ -161,7 +161,7 @@ pkgs.testers.runNixOSTest {
         type(other)
         on_screen("that isn't it")
         assert other in screen(), screen()
-        host.fail("sfdisk --json /dev/sda | grep -q vault")
+        host.fail("sfdisk --json /dev/sda | grep -q store-verity")
         for _ in other:
             host.send_key("backspace")
         # The words are read whatever their case.
