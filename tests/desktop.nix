@@ -413,13 +413,10 @@ pkgs.testers.runNixOSTest {
       # The launcher reads the battery from UPower, which the laptop role
       # brings.
       services.upower.enable = true;
-      # Where a laptop's camera module says which programs read it, and
-      # where a machine's disk guard says how its disks stand, for the
-      # test to write in their place.
-      systemd.tmpfiles.rules = [
-        "d /run/camera-holders 0755 root root -"
-        "d /run/disk-guard 0755 root root -"
-      ];
+      # Where a machine's disk guard says how its disks stand, for the test
+      # to write in its place. Where cameras' holders are said the graphical
+      # role makes itself (usb-camera-holders).
+      systemd.tmpfiles.rules = [ "d /run/disk-guard 0755 root root -" ];
       services.pipewire.extraConfig.pipewire."90-stand-in-speakers"."context.objects" = [
         {
           factory = "adapter";
@@ -2497,6 +2494,21 @@ pkgs.testers.runNixOSTest {
           machine.succeed(
               ": > /run/camera-holders/.camera && mv /run/camera-holders/.camera /run/camera-holders/camera"
           )
+          machine.wait_until_fails(in_session(margin), timeout=10)
+
+      with subtest("a USB camera's stream shows in the margin too, and leaves with the camera"):
+          # A camera the machine doesn't name, written as usb-camera-holders
+          # writes one: a file named for the camera, there only while it is.
+          usb = "/run/camera-holders/MX Brio 705 for Business"
+          with told("drawn margin"):
+              machine.succeed(f"echo zoom > '{usb}.1' && mv '{usb}.1' '{usb}'")
+          as_account("qs ipc call launcher toggle")
+          launcher_ready()
+          type_in("camera")
+          launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "in use by zoom")
+          machine.send_key("esc")
+          machine.wait_until_fails(in_session("niri msg layers | grep -qw launcher"), timeout=10)
+          machine.succeed(f"rm '{usb}'")
           machine.wait_until_fails(in_session(margin), timeout=10)
 
       with subtest("Super+O shows Keep Awake in the margin, and Return lets it sleep"):
