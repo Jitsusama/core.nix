@@ -274,6 +274,16 @@ taken from Dell's driver pack as the system builds, since it can't be shared.
 On a sheet of white paper, Dell's tuning for CJFOE90 lit the corners to 86%
 of the centre and Intel's to 76%, at the same signal to noise.
 
+That tuning has the image processor send full-range video, brightness from 0
+to 255, but Chrome and the apps built on it read a camera's frames as
+limited range, 16 to 235, whatever the camera says they are: their V4L2
+capture passes no colour space on. So they clipped about a tenth of the
+picture to black or white. The relay squeezes each frame into limited range
+and labels it so, which every program then reads the same way. It used to
+convert every frame from one colour standard to another as well, from a
+label nobody had set, which it no longer does. Over 150 frames it took 18% of
+a core before and 14% after, the squeeze's 4% included.
+
 The IR camera beside it, an HM1092 that Windows signs in with, has no driver in
 any kernel release yet. Three patches from the media list bring it up: its
 `ipu-bridge` entry from mainline, the sensor's driver from the [v7

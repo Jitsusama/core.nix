@@ -2355,6 +2355,87 @@ in
         && !(unnamed ? CAMERA_CFG_PATH)
       );
 
+  # The image processor sends full-range video, and Chrome reads a camera's
+  # frames as limited range whatever they're labelled, so the relay has to
+  # squeeze them exactly, and neither of its converters may touch them after.
+  # The relay's own two pipelines run here on a full-range ramp, the camera
+  # swapped for a file with no colour label, as the camera gives none. Each
+  # file's caps are pinned as given, as the camera's and the relay's appsrc
+  # are, since a file source would otherwise take whatever label is asked of
+  # it.
+  the-camera-gives-limited-range =
+    let
+      xps = bareNixos [
+        self.nixosModules.dell-xps-14-da14260
+        { nixpkgs.config.allowUnfree = true; }
+      ];
+      halves = builtins.match ''.* -i "([^"]*)" -o "([^"]*)".*'' xps.config.systemd.services.camera.script;
+      input = builtins.elemAt halves 0;
+      output = builtins.elemAt halves 1;
+      caps = builtins.head (builtins.match "appsrc name=appsrc caps=([^ ]*) .*" output);
+      size = "format=NV12,width=1920,height=1080,framerate=30/1";
+      pinned =
+        file: caps:
+        "multifilesrc location=${file} num-buffers=1 caps=${caps} ! capssetter replace=true caps=${caps}";
+      ramp = pinned "ramp.nv12" "video/x-raw,${size}";
+      relayed = builtins.replaceStrings [ "icamerasrc" ] [ ramp ] input;
+      written = builtins.head (
+        builtins.match "appsrc name=appsrc caps=[^ ]* ! (.*) ! v4l2sink .*" output
+      );
+      # What the loopback asks a writer for: BT.601 limited, V4L2's default.
+      loopback = "video/x-raw,colorimetry=(string)2:4:7:1";
+      plugins = lib.makeSearchPathOutput "lib" "lib/gstreamer-1.0" [
+        pkgs.gst_all_1.gstreamer.out
+        pkgs.gst_all_1.gst-plugins-base
+        pkgs.gst_all_1.gst-plugins-good
+      ];
+      launch = lib.getExe' pkgs.gst_all_1.gstreamer.bin "gst-launch-1.0";
+    in
+    assert halves != null;
+    pkgs.runCommandLocal "the-camera-gives-limited-range"
+      {
+        nativeBuildInputs = [ pkgs.python3 ];
+        GST_PLUGIN_SYSTEM_PATH_1_0 = plugins;
+        GST_REGISTRY = "registry.bin";
+      }
+      ''
+        python3 - <<'EOF'
+        w, h = 1920, 1080
+        y = bytes(x * 256 // w for x in range(w)) * h
+        uv = bytes(
+            v for r in range(h // 2) for x in range(w // 2)
+            for v in (x * 256 // (w // 2), r * 256 // (h // 2))
+        )
+        open("ramp.nv12", "wb").write(y + uv)
+        EOF
+        # gst-launch takes each argument as one word, so the pipelines are
+        # split at their spaces, which parses them as the relay's own
+        # gst_parse_launch does.
+        relayed=${lib.escapeShellArg "${relayed} ! ${caps} ! filesink location=relayed.nv12"}
+        written=${lib.escapeShellArg "${pinned "relayed.nv12" caps} ! ${written} ! ${loopback} ! filesink location=written.nv12"}
+        ${launch} -q $relayed 2> relayed.log || { cat relayed.log; exit 1; }
+        ${launch} -q $written 2> written.log || { cat written.log; exit 1; }
+        python3 - <<'EOF'
+        import sys
+        w, h = 1920, 1080
+        ramp = open("ramp.nv12", "rb").read()
+        relayed = open("relayed.nv12", "rb").read()
+        written = open("written.nv12", "rb").read()
+        # The relay turns the picture around, so compare against it turned.
+        y = ramp[: w * h][::-1]
+        uv = ramp[w * h :]
+        pairs = [uv[i : i + 2] for i in range(0, len(uv), 2)][::-1]
+        want = bytes(round(16 + v * 219 / 255) for v in y) + bytes(
+            round(128 + (v - 128) * 224 / 255) for p in pairs for v in p
+        )
+        if relayed != want:
+            sys.exit("The relay doesn't squeeze full range into limited range exactly.")
+        if written != relayed:
+            sys.exit("The relay's output side changes the frames it's given.")
+        EOF
+        touch $out
+      '';
+
   the-click-strength-holds-after-sleep =
     let
       machine =
