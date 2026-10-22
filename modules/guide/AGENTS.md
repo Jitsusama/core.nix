@@ -139,7 +139,11 @@ driven on; the installed machine's steps come later.
   boot, before the sign-in, so nothing has to be remembered: it shows
   only when something needs doing, and otherwise leaves at once. It's
   after lanzaboote's unit that restarts the first boot to enrol the keys
-  and the one that makes the disk's policy. Its last card signs in rather
+  and the one that makes the disk's policy. While it runs, systemd holds
+  its lines about the units still starting, which would otherwise land
+  across the guide wherever the console is the screen, as on a laptop.
+  NixOS's test driver turns those lines off, so the install test turns
+  them back on, as a laptop has them. Its last card signs in rather
   than restarting, since a boot it holds back hasn't counted as good and
   a restart would spend one of a new generation's tries. Run by hand, it
   asks for root once through run0, before taking the screen: asked for

@@ -114,6 +114,10 @@ pkgs.testers.runNixOSTest {
       # Nothing starts the guide but core's module, and nothing lets anyone
       # past polkit: what a machine of its own would have.
       boot.loader.timeout = 0;
+      # The test driver turns systemd's status lines off, which a laptop
+      # has on, and which would land across the guide where the console
+      # is its screen.
+      systemd.settings.Manager.ShowStatus = lib.mkForce true;
       system.switch.enable = true;
       system.stateVersion = "26.05";
       virtualisation = {
@@ -336,6 +340,8 @@ pkgs.testers.runNixOSTest {
 
       with subtest("the guide seals the disk to the TPM with a PIN, a YubiKey opening it to do so"):
           on_screen("a PIN for the TPM")
+          # The units still starting don't write across it.
+          t.assertEqual(machine.succeed("systemctl show -P ShowStatus").strip(), "no")
           type("${tpmPin}")
           on_screen("the same PIN again")
           type("${tpmPin}")
@@ -355,6 +361,8 @@ pkgs.testers.runNixOSTest {
           type("")
           machine.wait_for_unit("getty@tty1.service")
           t.assertEqual(machine.succeed("systemctl show -P Result guide-installed").strip(), "success")
+          # And they show again once it's gone, as the machine had them.
+          t.assertEqual(machine.succeed("systemctl show -P ShowStatus").strip(), "yes")
 
       with subtest("after the restart the disk asks once, and opens with the TPM's PIN"):
           before = len(machine.get_console_log())
@@ -365,6 +373,7 @@ pkgs.testers.runNixOSTest {
           # With nothing to do, the guide showed nothing and left.
           machine.wait_for_unit("getty@tty1.service")
           t.assertNotIn("Finish machine", screen())
+          t.assertEqual(machine.succeed("systemctl show -P ShowStatus").strip(), "yes")
           t.assertEqual(machine.succeed("systemctl show -P Result guide-installed").strip(), "success")
           # One prompt, which the TPM's PIN answered: no YubiKey's PIN is
           # that, so only the TPM's slot could have opened the disk.
