@@ -120,6 +120,21 @@ pub trait Machine {
     /// The stick's vault, its files sealed.
     fn vault(&mut self) -> Result<&mut dyn Store, Fault>;
 
+    /// Copies the first `bytes` of a file or a device into a file kept as
+    /// `write` keeps one, counting them on the meter as they go.
+    fn copy(&mut self, from: &str, to: &str, bytes: u64) -> Result<(), Fault> {
+        let mut read = self
+            .read(from)?
+            .ok_or_else(|| Fault::unreadable(from, "it isn't there"))?;
+        if (read.len() as u64) < bytes {
+            return Err(Fault::unreadable(from, "it's shorter than what's copied"));
+        }
+        read.truncate(bytes as usize);
+        self.write(to, &read)?;
+        self.meter().advance(bytes);
+        Ok(())
+    }
+
     /// The meter long work feeds as it goes, which the screen reads while
     /// a step runs; by default one nothing feeds, so the screen says only
     /// how long the step has been running.

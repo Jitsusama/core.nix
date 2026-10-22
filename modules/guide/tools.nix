@@ -34,8 +34,10 @@ in
   GUIDE_BOOTCTL = lib.getExe' systemd "bootctl";
   GUIDE_CAT = lib.getExe' pkgs.coreutils "cat";
   GUIDE_CRYPTSETUP = lib.getExe' pkgs.cryptsetup "cryptsetup";
+  GUIDE_DMSETUP = lib.getExe' pkgs.lvm2 "dmsetup";
   GUIDE_FIDO2_ASSERT = lib.getExe' pkgs.libfido2 "fido2-assert";
   GUIDE_FIDO2_TOKEN = lib.getExe' pkgs.libfido2 "fido2-token";
+  GUIDE_LOSETUP = lib.getExe' pkgs.util-linux "losetup";
   GUIDE_LSBLK = lib.getExe' pkgs.util-linux "lsblk";
   GUIDE_MOUNT = lib.getExe' pkgs.util-linux "mount";
   GUIDE_NIX = lib.getExe pkgs.nix;
@@ -51,6 +53,7 @@ in
   GUIDE_TPM2_GETCAP = lib.getExe' pkgs.tpm2-tools "tpm2_getcap";
   GUIDE_UDEVADM = lib.getExe' systemd "udevadm";
   GUIDE_UMOUNT = lib.getExe' pkgs.util-linux "umount";
+  GUIDE_VERITYSETUP = lib.getExe' pkgs.cryptsetup "veritysetup";
   GUIDE_WIPEFS = lib.getExe' pkgs.util-linux "wipefs";
 
   GUIDE_DISK_TOOLS = lib.makeBinPath diskTools;

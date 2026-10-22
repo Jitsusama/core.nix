@@ -8,7 +8,7 @@
 
 use std::fs::{self, DirBuilder, File, OpenOptions};
 use std::io::Write;
-use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
+use std::os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -24,7 +24,28 @@ pub struct System {
     vault: Option<Box<dyn Store>>,
     /// The vault's partition, for changing it through a handle of its own.
     vault_partition: Option<PathBuf>,
+    /// The device node the vault was read through, by its device number
+    /// and inode, so a stick taken out and put back is opened again: its
+    /// node is made afresh, even where its number comes back the same.
+    vault_node: Option<(u64, u64)>,
     meter: crate::progress::Meter,
+}
+
+/// A device node's number and inode, through any link to it.
+fn node(path: &Path) -> Option<(u64, u64)> {
+    fs::metadata(path)
+        .ok()
+        .map(|metadata| (metadata.rdev(), metadata.ino()))
+}
+
+/// The link udev makes to a partition by its GUID, where it has one.
+fn by_partuuid(partition: &Path) -> Option<PathBuf> {
+    let device = fs::canonicalize(partition).ok()?;
+    fs::read_dir("/dev/disk/by-partuuid")
+        .ok()?
+        .flatten()
+        .map(|entry| entry.path())
+        .find(|link| fs::canonicalize(link).ok().as_ref() == Some(&device))
 }
 
 /// Where secrets a program reads from files are kept for as long as it
@@ -122,6 +143,7 @@ impl System {
             secrets: None,
             vault: None,
             vault_partition: None,
+            vault_node: None,
             meter: crate::progress::Meter::new(),
         }
     }
@@ -133,8 +155,14 @@ impl System {
     }
 
     /// The partition the stick's vault is on, so a step can change it.
+    ///
+    /// It's named from then on by its partition's GUID, which a stick
+    /// written once keeps and no other stick has, so one plugged back in is
+    /// known for the same stick, and another's vault is never taken for it.
     pub fn with_vault_partition(mut self, partition: impl Into<PathBuf>) -> System {
-        self.vault_partition = Some(partition.into());
+        let partition = partition.into();
+        self.vault_node = node(&partition);
+        self.vault_partition = Some(by_partuuid(&partition).unwrap_or(partition));
         self
     }
 
@@ -434,11 +462,12 @@ impl Machine for System {
             path: device.display().to_string(),
             why: why.to_string(),
         };
-        let partition = OpenOptions::new()
-            .read(true)
-            .write(true)
-            .open(&device)
-            .map_err(unkept)?;
+        let partition = match OpenOptions::new().read(true).write(true).open(&device) {
+            Err(why) if why.kind() == std::io::ErrorKind::NotFound => {
+                return Err(Fault::StickOut);
+            }
+            opened => opened.map_err(unkept)?,
+        };
         let synced = partition.try_clone().map_err(unkept)?;
         let mut fat = crate::vault::store::Fat::open(partition)?;
         change(&mut fat)?;
@@ -465,7 +494,43 @@ impl Machine for System {
         self.meter.clone()
     }
 
+    /// Streamed, a mebibyte at a time, never whole in memory but where
+    /// it's kept.
+    fn copy(&mut self, from: &str, to: &str, bytes: u64) -> Result<(), Fault> {
+        use std::io::Read;
+        let source = File::open(from).map_err(|why| Fault::unreadable(from, why))?;
+        let file = OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .mode(0o600)
+            .open(to)
+            .map_err(unkept(Path::new(to)))?;
+        let mut out = crate::progress::Counted::new(file, &self.meter);
+        let copied = std::io::copy(&mut source.take(bytes), &mut out)
+            .map_err(|why| Fault::unreadable(from, why))?;
+        if copied != bytes {
+            return Err(Fault::unreadable(from, "it's shorter than what's copied"));
+        }
+        out.flush().map_err(unkept(Path::new(to)))
+    }
+
     fn vault(&mut self) -> Result<&mut dyn Store, Fault> {
+        if let Some(partition) = &self.vault_partition {
+            let now = match fs::metadata(partition) {
+                Ok(metadata) => (metadata.rdev(), metadata.ino()),
+                Err(why) if why.kind() == std::io::ErrorKind::NotFound => {
+                    return Err(Fault::StickOut);
+                }
+                Err(why) => return Err(Fault::unreadable("the stick's vault", why)),
+            };
+            if self.vault_node != Some(now) {
+                let file = File::open(partition)
+                    .map_err(|why| Fault::unreadable("the stick's vault", why))?;
+                self.vault = Some(Box::new(crate::vault::store::Fat::open(file)?));
+                self.vault_node = Some(now);
+            }
+        }
         match &mut self.vault {
             Some(vault) => Ok(vault.as_mut()),
             None => Err(Fault::Blocked {

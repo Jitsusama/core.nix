@@ -27,6 +27,12 @@ pub enum Press {
 
 pub trait Keys {
     fn press(&mut self) -> Result<Press, Fault>;
+
+    /// A key pressed within this long, or none, for a screen that looks at
+    /// the machine again by itself; by default it waits for a key.
+    fn press_within(&mut self, _wait: std::time::Duration) -> Result<Option<Press>, Fault> {
+        self.press().map(Some)
+    }
 }
 
 pub trait Screen {
@@ -84,26 +90,46 @@ impl Drop for Terminal {
     }
 }
 
+/// What a key event means here, if anything.
+fn pressed(event: Event) -> Option<Press> {
+    let Event::Key(key) = event else {
+        return None;
+    };
+    if key.kind != KeyEventKind::Press {
+        return None;
+    }
+    Some(match key.code {
+        KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => Press::Leave,
+        KeyCode::Char(c) => Press::Char(c),
+        KeyCode::Enter => Press::Return,
+        KeyCode::Esc => Press::Escape,
+        KeyCode::Backspace => Press::Backspace,
+        KeyCode::Tab => Press::Tab,
+        KeyCode::Up => Press::Up,
+        KeyCode::Down => Press::Down,
+        _ => return None,
+    })
+}
+
 impl Keys for Terminal {
     fn press(&mut self) -> Result<Press, Fault> {
         loop {
-            let Event::Key(key) = event::read().map_err(broken)? else {
-                continue;
-            };
-            if key.kind != KeyEventKind::Press {
-                continue;
+            if let Some(press) = pressed(event::read().map_err(broken)?) {
+                return Ok(press);
             }
-            return Ok(match key.code {
-                KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => Press::Leave,
-                KeyCode::Char(c) => Press::Char(c),
-                KeyCode::Enter => Press::Return,
-                KeyCode::Esc => Press::Escape,
-                KeyCode::Backspace => Press::Backspace,
-                KeyCode::Tab => Press::Tab,
-                KeyCode::Up => Press::Up,
-                KeyCode::Down => Press::Down,
-                _ => continue,
-            });
+        }
+    }
+
+    fn press_within(&mut self, wait: std::time::Duration) -> Result<Option<Press>, Fault> {
+        let until = std::time::Instant::now() + wait;
+        loop {
+            let left = until.saturating_duration_since(std::time::Instant::now());
+            if left.is_zero() || !event::poll(left).map_err(broken)? {
+                return Ok(None);
+            }
+            if let Some(press) = pressed(event::read().map_err(broken)?) {
+                return Ok(Some(press));
+            }
         }
     }
 }

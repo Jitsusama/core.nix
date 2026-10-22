@@ -23,6 +23,8 @@ pub struct Fake {
     mounts: BTreeMap<String, std::path::PathBuf>,
     journal: Journal,
     meter: crate::progress::Meter,
+    /// Whether the stick is out, its vault out of reach.
+    stick_out: bool,
     /// Every call made, in order, as `program arg arg`, followed by the
     /// names of the secrets it was given in brackets, and `(as root)` for
     /// one run through run0.
@@ -82,6 +84,12 @@ impl Fake {
     pub fn no_file(&mut self, path: &str) -> &mut Fake {
         self.files.remove(path);
         self.absent.push(path.into());
+        self
+    }
+
+    /// Takes the stick out, or puts it back, its vault with it.
+    pub fn stick_out(&mut self, out: bool) -> &mut Fake {
+        self.stick_out = out;
         self
     }
 
@@ -263,6 +271,9 @@ impl Machine for Fake {
     }
 
     fn vault(&mut self) -> Result<&mut dyn Store, Fault> {
+        if self.stick_out {
+            return Err(Fault::StickOut);
+        }
         match &mut self.vault {
             Some(vault) => Ok(vault.as_mut()),
             None => Err(Fault::Unscripted {

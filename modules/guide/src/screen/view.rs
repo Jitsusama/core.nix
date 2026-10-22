@@ -327,11 +327,7 @@ fn step(theme: &Theme, moment: &Moment, inside: usize) -> (Vec<Line>, Option<(us
                         inside,
                     ));
                     lines.push(vec![]);
-                    lines.extend(said(
-                        Role::Text,
-                        &format!("Or {or}, then press Return."),
-                        inside,
-                    ));
+                    lines.extend(said(Role::Text, &format!("Or {or}."), inside));
                     lines.push(vec![]);
                     footer = foot("go on");
                     Some((
@@ -670,7 +666,7 @@ mod tests {
         let ask = Ask::SecretOr {
             id: "passphrase",
             name: "the stick's passphrase, the seven words in 1Password on your phone".into(),
-            or: "plug in the Nano or the 5Ci, touch it when it blinks, and type its PIN".into(),
+            or: "plug in the Nano or the 5Ci, type its PIN and press Return, then touch the key when it blinks".into(),
         };
         let moment = Moment::Asking {
             title: "Open the stick's vault",
@@ -680,10 +676,10 @@ mod tests {
             refused: None,
             back: false,
         };
-        let drawn = draw(&theme(), &at(), &moment, 100, 24);
+        let drawn = draw(&theme(), &at(), &moment, 120, 24);
         let shown = text(&drawn);
         assert!(shown.contains(&"  Type the stick's passphrase, the seven words in 1Password on your phone, then press Return.".to_string()), "{shown:#?}");
-        assert!(shown.contains(&"  Or plug in the Nano or the 5Ci, touch it when it blinks, and type its PIN, then press Return.".to_string()), "{shown:#?}");
+        assert!(shown.contains(&"  Or plug in the Nano or the 5Ci, type its PIN and press Return, then touch the key when it blinks.".to_string()), "{shown:#?}");
         let field = shown
             .iter()
             .position(|line| line == "  % **")

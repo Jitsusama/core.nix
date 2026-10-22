@@ -37,8 +37,10 @@ tools! {
     Bootctl => "bootctl", "GUIDE_BOOTCTL";
     Cat => "cat", "GUIDE_CAT";
     Cryptsetup => "cryptsetup", "GUIDE_CRYPTSETUP";
+    Dmsetup => "dmsetup", "GUIDE_DMSETUP";
     Fido2Assert => "fido2-assert", "GUIDE_FIDO2_ASSERT";
     Fido2Token => "fido2-token", "GUIDE_FIDO2_TOKEN";
+    Losetup => "losetup", "GUIDE_LOSETUP";
     Lsblk => "lsblk", "GUIDE_LSBLK";
     Mount => "mount", "GUIDE_MOUNT";
     Nix => "nix", "GUIDE_NIX";
@@ -53,6 +55,7 @@ tools! {
     Tpm2Getcap => "tpm2_getcap", "GUIDE_TPM2_GETCAP";
     Udevadm => "udevadm", "GUIDE_UDEVADM";
     Umount => "umount", "GUIDE_UMOUNT";
+    Veritysetup => "veritysetup", "GUIDE_VERITYSETUP";
     Wipefs => "wipefs", "GUIDE_WIPEFS";
 }
 

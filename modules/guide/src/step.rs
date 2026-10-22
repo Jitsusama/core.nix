@@ -57,7 +57,8 @@ pub enum Ask {
     Secret { id: &'static str, name: String },
     /// A secret they type, or another way in typed into the same field,
     /// said on the one screen: a passphrase kept on their phone, or a
-    /// YubiKey plugged in and its PIN.
+    /// YubiKey plugged in and its PIN. `or` is the whole of the other way,
+    /// pressing Return and all, as it reads after "Or".
     SecretOr {
         id: &'static str,
         name: String,

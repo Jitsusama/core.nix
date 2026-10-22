@@ -92,12 +92,14 @@ impl Step for EnrolYubikey {
                 evidence: format!("{} opens the disk", self.name),
             }
         } else {
+            // A laptop may have one port both fit, which the stick holds.
+            let port = crate::install::memory::port_words(machine);
             Standing::Needed {
                 asks: vec![
                     Ask::Act {
                         id: "plugged",
                         what: format!(
-                            "Plug in {}, and only {}. Touch it each time it blinks.",
+                            "Plug in {}, and only {}.{port} Touch the key each time it blinks.",
                             self.name, self.name
                         ),
                     },

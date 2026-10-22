@@ -56,6 +56,10 @@ fn number(journey: &Journey, step: &dyn Step) -> (usize, usize) {
 /// How often a step at work is drawn again.
 const TICK: Duration = Duration::from_secs(1);
 
+/// How often a screen saying what's in the way looks at the machine again,
+/// so it goes on by itself once the person has done what it said.
+const LOOK_AGAIN: Duration = Duration::from_secs(2);
+
 /// A step at work, drawn again once a second from a thread of its own,
 /// until it's stopped.
 struct Ticking {
@@ -172,6 +176,35 @@ impl Walk<'_> {
             stop,
             thread: Some(thread),
         })
+    }
+
+    /// Waits for Return, or for the machine to change, looking at it again
+    /// every so often by itself, or for Ctrl+C. Says whether to go on.
+    fn wait_or_look(&self, io: &mut dyn Io) -> Result<bool, Fault> {
+        match io.press_within(LOOK_AGAIN)? {
+            Some(Press::Leave) => Ok(false),
+            _ => Ok(true),
+        }
+    }
+
+    /// Says to put the stick back in, until it is.
+    fn stick_out(
+        &self,
+        io: &mut dyn Io,
+        step: Option<&dyn Step>,
+        done: &[String],
+    ) -> Result<bool, Fault> {
+        self.show(
+            io,
+            step,
+            done,
+            Moment::Blocked {
+                title: "Put the stick back in",
+                why: "the next step needs what's on the stick",
+                remedy: "plug the stick back in, into any port: the guide carries on by itself once it's in",
+            },
+        )?;
+        self.wait_or_look(io)
     }
 
     /// Waits for Return, or Ctrl+C. Says whether to go on.
@@ -387,6 +420,12 @@ impl Walk<'_> {
         loop {
             let next = match self.journey.next(self.here, machine) {
                 Ok(next) => next,
+                Err(Fault::StickOut) => {
+                    if !self.stick_out(io, None, done)? {
+                        return Ok(Ended::Left);
+                    }
+                    continue;
+                }
                 // A machine that can't be read yet, as a key not plugged
                 // in, is said and looked at again.
                 Err(fault) => {
@@ -401,7 +440,7 @@ impl Walk<'_> {
                             fault: &fault,
                         },
                     )?;
-                    if !self.wait(io)? {
+                    if !self.wait_or_look(io)? {
                         return Ok(Ended::Left);
                     }
                     continue;
@@ -433,7 +472,7 @@ impl Walk<'_> {
                             remedy: &remedy,
                         },
                     )?;
-                    if !self.wait(io)? {
+                    if !self.wait_or_look(io)? {
                         return Ok(Ended::Left);
                     }
                 }
@@ -455,6 +494,11 @@ impl Walk<'_> {
                     ticking.stop();
                     match attempt {
                         Ok(evidence) => done.push(evidence),
+                        Err(Fault::StickOut) => {
+                            if !self.stick_out(io, Some(step), done)? {
+                                return Ok(Ended::Left);
+                            }
+                        }
                         Err(fault) => loop {
                             let fault = fault.said();
                             self.show(
@@ -515,6 +559,11 @@ mod tests {
     impl Keys for Stand {
         fn press(&mut self) -> Result<Press, Fault> {
             Ok(self.keys.pop_front().unwrap_or(Press::Leave))
+        }
+
+        /// No key pressed in time, once the keys run out.
+        fn press_within(&mut self, _wait: Duration) -> Result<Option<Press>, Fault> {
+            Ok(self.keys.pop_front())
         }
     }
 
@@ -615,6 +664,74 @@ mod tests {
         fn run(&self, machine: &mut dyn Machine, _answers: &Answers) -> Result<(), Fault> {
             machine.write("/pin", b"given")
         }
+    }
+
+    /// Needs the stick, which is out for the first few looks.
+    struct NeedsStick {
+        looks: std::cell::Cell<u32>,
+    }
+
+    impl Step for NeedsStick {
+        fn id(&self) -> &'static str {
+            "needs-stick"
+        }
+
+        fn place(&self) -> Place {
+            Place::Stick
+        }
+
+        fn title(&self) -> &'static str {
+            "Read the stick"
+        }
+
+        fn observe(&self, _machine: &mut dyn Machine) -> Result<Standing, Fault> {
+            self.looks.set(self.looks.get() + 1);
+            if self.looks.get() < 3 {
+                Err(Fault::StickOut)
+            } else {
+                Ok(Standing::Done {
+                    evidence: "the stick was read".into(),
+                })
+            }
+        }
+
+        fn run(&self, _machine: &mut dyn Machine, _answers: &Answers) -> Result<(), Fault> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn with_the_stick_out_it_says_to_put_it_back_and_goes_on_by_itself_once_it_is() {
+        let journey = Journey::new(vec![Box::new(NeedsStick {
+            looks: Default::default(),
+        })])
+        .unwrap();
+        let theme = Theme::from("", "", true);
+        let mut stand = Stand::default();
+        let ended = walk(&journey, &theme)
+            .walk(&mut fake(), &mut stand)
+            .unwrap();
+        assert_eq!(ended, Ended::Finished, "no key was pressed");
+        let shown = stand.shown.lock().unwrap().clone();
+        let out = shown
+            .iter()
+            .filter(|lines| lines.iter().any(|line| line == "  Put the stick back in"))
+            .count();
+        assert_eq!(out, 2, "{shown:#?}");
+        assert!(
+            shown[0]
+                .iter()
+                .any(|line| line.contains("Plug the stick back in, into any port")),
+            "{shown:#?}"
+        );
+        assert!(
+            shown
+                .last()
+                .unwrap()
+                .iter()
+                .any(|line| line.to_lowercase().contains("everything is done")),
+            "{shown:#?}"
+        );
     }
 
     fn walk<'a>(journey: &'a Journey, theme: &'a Theme) -> Walk<'a> {
