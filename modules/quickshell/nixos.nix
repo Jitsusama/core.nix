@@ -11,9 +11,12 @@
 # click or key that chose the action, and sends it first, as version 1.2 of
 # the notifications specification has it. A FileView told not to print
 # errors still warned of a file that opened and then refused to be read,
-# as sysfs files do, so fileview-quiet.patch keeps it to its word. Both
-# are laid over the machine's packages, so the shell, the greeter and the
-# lock all run them.
+# as sysfs files do, so fileview-quiet.patch keeps it to its word. A
+# FileView watching a file lost it for good once the file's directory went
+# or if it wasn't there yet, as a service's runtime directory is each time
+# systemd restarts the service, so fileview-watch-nearest.patch watches the
+# nearest directory that is. All three are laid over the machine's
+# packages, so the shell, the greeter and the lock all run them.
 #
 # The watcher (keyboard-lights.rs) reads the keyboards, which is what a
 # keylogger needs, so it gets nothing else: an account of its own, the input
@@ -21,11 +24,10 @@
 # system but for its directory. It asks the kernel for the caps lock light
 # and nothing more, so a keystroke never reaches it.
 #
-# Its directory is made at boot and stays until shutdown: Quickshell watches
-# the file through its directory, and loses the watch for good if the
-# directory goes or isn't there yet. A runtime directory of systemd's would
-# go each time the watcher restarted, and one it keeps, with an account it
-# makes, moves where Quickshell can't read.
+# Its directory is made at boot and stays until shutdown. A runtime
+# directory of systemd's would go each time the watcher restarted, taking
+# the file with it, and one it keeps, with an account it makes, moves where
+# Quickshell can't read.
 { pkgs, ... }:
 let
   # The standard library alone, so it builds with rustc and no crates.
@@ -42,6 +44,7 @@ in
         patches = (old.patches or [ ]) ++ [
           ./activation-token.patch
           ./fileview-quiet.patch
+          ./fileview-watch-nearest.patch
         ];
       });
     })

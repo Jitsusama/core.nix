@@ -6,9 +6,9 @@ pragma Singleton
 // a version it doesn't know.
 //
 // The daemon replaces the file whole when something in it changed, which
-// the watch hears, since it watches the folder as well; the folder is made
-// at login (home.nix), so the watch hears the daemon start after the shell
-// too. A file from a daemon of another shape draws nothing rather than
+// the watch hears, since it watches the folder as well, or the nearest one
+// above it that's there (nixos.nix's patch), so it hears the daemon start
+// after the shell too. A file from a daemon of another shape draws nothing rather than
 // something wrong.
 import Quickshell
 import Quickshell.Io

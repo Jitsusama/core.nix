@@ -1,0 +1,108 @@
+From: Joel Gerber <Jitsusama@users.noreply.github.com>
+Subject: [PATCH] io/fileview: keep hearing a file whose directory comes and goes
+
+A FileView watching changes watched its file and the file's directory,
+so a file made later in that directory was heard. But a directory that
+was removed took its watch with it, and one that didn't exist yet when
+the watch began couldn't be watched at all, so the file went unheard
+until the FileView's path changed. A runtime directory systemd removes
+whenever its service restarts is one such: the status file in it was
+never heard again.
+
+The FileView now watches the nearest directory above the file that
+exists, and each change to it moves the watch down as directories are
+made, or up as they're removed, so a file made with or after its
+directories is heard. When the file's directory exists, what it watches
+is what it watched before.
+
+---
+diff --git a/src/io/fileview.cpp b/src/io/fileview.cpp
+index 2b4da9f..f8dd16f 100644
+--- a/src/io/fileview.cpp
++++ b/src/io/fileview.cpp
+@@ -515,15 +515,7 @@ void FileView::updateWatchedFiles() {
+ 	if (!this->targetPath.isEmpty() && this->bWatchChanges) {
+ 		qCDebug(logFileView) << "Creating watcher for" << this << "at" << this->targetPath;
+ 		this->watcher = new QFileSystemWatcher(this);
+-		this->watcher->addPath(this->targetPath);
+-
+-		auto dirPath = this->targetPath;
+-		if (!dirPath.contains("/")) dirPath = "./" % dirPath;
+-
+-		if (auto lastIndex = dirPath.lastIndexOf('/'); lastIndex != -1) {
+-			dirPath = dirPath.sliced(0, lastIndex);
+-			this->watcher->addPath(dirPath);
+-		}
++		this->watchNearest();
+ 
+ 		QObject::connect(
+ 		    this->watcher,
+@@ -541,6 +533,28 @@ void FileView::updateWatchedFiles() {
+ 	}
+ }
+ 
++// Watches the file, when it exists, and the nearest directory above it that does. A removed
++// directory takes its watch with it, and a missing one can't be watched, so until the file's own
++// directory exists an ancestor's changes move the watch down to it.
++void FileView::watchNearest() {
++	auto dirPath = QFileInfo(this->targetPath).absolutePath();
++	while (!QFileInfo(dirPath).isDir()) {
++		auto parent = QFileInfo(dirPath).absolutePath();
++		if (parent == dirPath) break;
++		dirPath = parent;
++	}
++
++	for (const auto& watched: this->watcher->directories()) {
++		if (watched != dirPath) this->watcher->removePath(watched);
++	}
++
++	if (!this->watcher->directories().contains(dirPath)) this->watcher->addPath(dirPath);
++
++	if (!this->watcher->files().contains(this->targetPath) && QFileInfo::exists(this->targetPath)) {
++		this->watcher->addPath(this->targetPath);
++	}
++}
++
+ void FileView::onWatchedFileChanged() {
+ 	if (!this->watcher->files().contains(this->targetPath)) {
+ 		this->watcher->addPath(this->targetPath);
+@@ -550,11 +564,11 @@ void FileView::onWatchedFileChanged() {
+ }
+ 
+ void FileView::onWatchedDirectoryChanged() {
+-	if (!this->watcher->files().contains(this->targetPath) && QFileInfo(this->targetPath).exists()) {
+-		// the file was just created
+-		this->watcher->addPath(this->targetPath);
+-		emit this->fileChanged();
+-	}
++	auto wasWatched = this->watcher->files().contains(this->targetPath);
++	this->watchNearest();
++
++	// the file was just created, perhaps with the directories above it
++	if (!wasWatched && this->watcher->files().contains(this->targetPath)) emit this->fileChanged();
+ }
+ 
+ bool FileView::shouldBlockRead() const {
+diff --git a/src/io/fileview.hpp b/src/io/fileview.hpp
+index 18b6ecb..b0981d9 100644
+--- a/src/io/fileview.hpp
++++ b/src/io/fileview.hpp
+@@ -209,7 +209,9 @@ class FileView: public QObject {
+ 	/// If false, all known errors will not be printed.
+ 	QSDOC_PROPERTY_OVERRIDE(bool printErrors READ default WRITE default NOTIFY printErrorsChanged);
+ 	/// If true (defaule false), @@fileChanged() will be called whenever the content of the file
+-	/// changes on disk, including when @@setText() or @@setData() are used.
++	/// changes on disk, including when @@setText() or @@setData() are used. A file that does not
++	/// exist yet, or whose directory does not, is heard once it is made, and again if its
++	/// directory is removed and made again.
+ 	///
+ 	/// > [!NOTE] You can reload the file's content whenever it changes on disk like so:
+ 	/// > ```qml
+@@ -375,6 +377,7 @@ private:
+ 	void updateState(FileViewState& newState);
+ 	void updatePath();
+ 	void updateWatchedFiles();
++	void watchNearest();
+ 	void onWatchedFileChanged();
+ 	void onWatchedDirectoryChanged();
+ 

@@ -1315,6 +1315,21 @@ in
       touch $out
     '';
 
+  # A status file is heard again once its folder is made again, and when
+  # its folder is made only after the shell starts, as tests/watched.qml
+  # drives it, in the Quickshell the machine runs
+  # (fileview-watch-nearest.patch): a guard's runtime folder goes each time
+  # systemd restarts the guard.
+  a-watched-file-comes-back = pkgs.runCommandLocal "a-watched-file-comes-back" { } ''
+    mkdir runtime && chmod 700 runtime
+    cp ${./modules/quickshell/pieces/StatusFile.qml} StatusFile.qml
+    cp ${./tests/watched.qml} shell.qml
+    export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
+    export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+    timeout 60 ${lib.getExe' graphical.pkgs.quickshell "qs"} -p shell.qml
+    touch $out
+  '';
+
   # A palette's row and its field keep their words apart and inside their
   # edges however long they run, ending what doesn't fit in an ellipsis, as
   # tests/rows.qml draws them through Quickshell in the theme's own face and
