@@ -229,7 +229,7 @@ let
     vm-swap-comes-down-while-probed = import ./tests/zram.nix { inherit self pkgs; };
     # Whether the kernel took a slice's disk latency shows only with the
     # account's manager starting it on a real drive.
-    vm-apps-come-first-on-the-disk = import ./tests/slices.nix { inherit self pkgs; };
+    vm-apps-come-first = import ./tests/slices.nix { inherit self pkgs; };
     # Whether a reboot gets past what won't stop shows only by rebooting, with
     # a watchdog there to reset the machine.
     vm-reboot-cannot-hang = import ./tests/shutdown.nix { inherit self pkgs; };
@@ -1911,23 +1911,28 @@ in
       autoScrub.enable && autoScrub.fileSystems == [ "/" ]
     );
 
-  # The kernel protects session.slice's memory only as far as every slice
-  # above it is protected, so a floor one of them lacks is a floor nobody has,
-  # and nothing says so. Only a hard floor counts: the kernel takes a soft one
-  # back under pressure, and the compositor reads keys late.
+  # The kernel protects session.slice's and app.slice's memory only as far as
+  # every slice above them is protected, so a floor one of them lacks is a
+  # floor nobody has, and nothing says so. Only a hard floor counts: the
+  # kernel takes a soft one back under pressure, and the compositor reads keys
+  # late. Whether the parents' floor covers both is the VM test's to say,
+  # since one is a share of memory and the other a size.
   session-memory-is-protected =
     let
       inherit (graphical.config) systemd;
-      floors = [
-        systemd.user.slices.session.sliceConfig.MemoryMin or null
+      parents = [
         systemd.slices.user.sliceConfig.MemoryMin or null
         systemd.slices."user-".sliceConfig.MemoryMin or null
         systemd.services."user@".serviceConfig.MemoryMin or null
       ];
+      floors = parents ++ [
+        systemd.user.slices.session.sliceConfig.MemoryMin or null
+        systemd.user.slices.app.sliceConfig.MemoryMin or null
+      ];
     in
     holds "session-memory-is-protected"
-      "A slice above session.slice lacks its hard memory floor, so session.slice has none."
-      (lib.all (floor: floor != null && floor == lib.head floors) floors);
+      "A slice above session.slice or app.slice lacks its hard memory floor, so they have none."
+      (lib.all (floor: floor != null) floors && lib.all (floor: floor == lib.head parents) parents);
 
   # Nix's builds yield to the user's programs only if their slice sits beside
   # user.slice, at a lower weight. A dash in its name nests it in a parent at

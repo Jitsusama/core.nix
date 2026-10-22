@@ -36,8 +36,8 @@
 # them at most 728 ms late under a 5 GB hog and 5.3 s under a 6 GB one with
 # the soft floor, and at most 7.3 ms under either with the hard one. The
 # kernel protects a slice only as far as each slice above it is protected, so
-# every one on the way down claims the same floor, and none of it goes
-# anywhere else.
+# every one on the way down claims enough for what the floors below it hold,
+# app.slice's as well (see apps below).
 #
 # A call's sound must never wait for work at all, and only real time does
 # that: an RT thread runs ahead of every cgroup's weight. Chrome and every
@@ -72,6 +72,21 @@ let
   # about a tenth while the apps Joel has open only idle. The disk is
   # whichever holds /home: systemd follows it through dm-crypt to the drive.
   disk = "/home 1ms";
+
+  # The programs Joel works in keep their memory while a build fills the
+  # rest. With a build taking all but 2 GiB of a 62 GiB laptop, a program in
+  # app.slice walking 2 GiB of its own took 45 ms a pass at the median and up
+  # to 338 ms, against 24 ms and 26 ms with memory free. A soft floor of
+  # 8 GiB, MemoryLow, brought that to 32 ms and 143 ms: the kernel still took
+  # it back. A hard one, MemoryMin, to 26 ms and 68 ms, and nothing was
+  # ended. The floor is a share of memory, about 8 GiB there, so it scales
+  # with the machine. Every slice above app.slice claims a little more, to
+  # cover session.slice's few hundred MiB beside it; what the floors below
+  # leave unused the kernel shares among the account's other slices. Work in
+  # jobs, background and containers has the rest of memory, and when that
+  # runs out, it's what swaps.
+  apps = "13%";
+  account = "15%";
 in
 {
   systemd.user.slices.session.sliceConfig = {
@@ -80,7 +95,10 @@ in
     IODeviceLatencyTargetSec = disk;
   };
 
-  systemd.user.slices.app.sliceConfig.IODeviceLatencyTargetSec = disk;
+  systemd.user.slices.app.sliceConfig = {
+    MemoryMin = apps;
+    IODeviceLatencyTargetSec = disk;
+  };
 
   # Beside app.slice and session.slice, so it yields to both.
   systemd.user.slices.jobs.sliceConfig.CPUWeight = "idle";
@@ -144,18 +162,18 @@ in
   # ten times a second. Its siblings, build.slice, machine.slice and
   # system.slice, give way.
   systemd.slices.user.sliceConfig = {
-    MemoryMin = "1G";
+    MemoryMin = account;
     IODeviceLatencyTargetSec = disk;
   };
 
   # Every account's user-<uid>.slice, which logind makes as it logs in.
   systemd.slices."user-" = {
     overrideStrategy = "asDropin";
-    sliceConfig.MemoryMin = "1G";
+    sliceConfig.MemoryMin = account;
   };
 
   systemd.services."user@".serviceConfig = limits // {
-    MemoryMin = "1G";
+    MemoryMin = account;
   };
 
   # What the account's own units start with, said outright rather than

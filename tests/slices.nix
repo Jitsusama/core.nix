@@ -56,5 +56,22 @@ pkgs.testers.runNixOSTest {
         t.assertEqual(latency("user", "/sys/fs/cgroup"), f"{number} target=1000")
         t.assertEqual(latency("machine", "/sys/fs/cgroup"), "")
         t.assertEqual(latency("system", "/sys/fs/cgroup"), "")
+
+    # systemd turns a share into bytes of the memory the kernel reports.
+    total = int(machine.succeed("awk '/MemTotal/ {print $2}' /proc/meminfo")) * 1024
+
+    def floor(path):
+        return int(machine.succeed(f"cat {path}/memory.min"))
+
+    def near(path, share):
+        t.assertAlmostEqual(floor(path), total * share, delta=2**20, msg=path)
+
+    with subtest("apps keep a hard share of memory, and every slice above more"):
+        near(f"{account}/app.slice", 0.13)
+        t.assertEqual(floor(f"{account}/session.slice"), 2**30)
+        near(account, 0.15)
+        near("/sys/fs/cgroup/user.slice/user-1000.slice", 0.15)
+        near("/sys/fs/cgroup/user.slice", 0.15)
+        t.assertEqual(floor(f"{account}/jobs.slice"), 0)
   '';
 }
