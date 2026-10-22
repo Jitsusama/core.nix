@@ -25,7 +25,8 @@
 //
 // A provider can answer rather than find: `answer(typed)` gives what's
 // typed plainly asks for, { headline, copy, rows, note }, or null. The
-// headline is drawn after what's typed and copied by Return; the rows,
+// headline is drawn after what's typed and copied by Return, or, for an
+// answer that does something, done by its `run` under its `verb`; the rows,
 // made with copyRow, carry the detail. One that has to ask the network
 // answers at once with what it has, `asking` true while it waits, and says
 // `answered` when more arrives, so the launcher asks again; `ask` keeps
@@ -105,10 +106,17 @@ Scope {
     function opened() {
     }
 
+    // What one of its rows is, in a word, said beside the field while one
+    // is selected so a completion says what sort of thing it is: "window",
+    // "program", "emoji". An answer's rows are called answers wherever they
+    // come from, so a provider that only answers leaves it empty.
+    property string what: ""
+
     // A collection's row: a thing whose name is made ready to match only
     // when it's first drawn, since a collection has thousands.
     function member(fields) {
         const made = Object.assign({
+            what: provider.what,
             chord: [],
             side: "",
             count: "",
@@ -231,6 +239,7 @@ Scope {
     // prepared for matching once rather than on every key.
     function thing(fields) {
         const made = Object.assign({
+            what: provider.what,
             chord: [],
             side: "",
             count: "",

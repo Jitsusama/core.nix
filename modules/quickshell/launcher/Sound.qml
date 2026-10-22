@@ -2,6 +2,12 @@
 // outputs then inputs, the one in use first in each, every glyph saying
 // what kind of device it is and the footer its volume. Return uses one, or
 // mutes or unmutes the one in use, and the right arrow offers the rest.
+//
+// It answers too: "volume" or "what's playing" says how loud the output in
+// use is and through what, then the input, and each program playing; with
+// a number, "volume 40", Return sets the output to it, and unmutes it,
+// since a level asked for is one to be heard.
+//
 // Everything comes from PipeWire through Quickshell, so nothing is asked
 // and nothing is spawned.
 import qs
@@ -12,6 +18,8 @@ import "../Fuzzy.js" as Fuzzy
 
 Provider {
     id: provider
+
+    what: "sound"
 
     collection: ({
         noun: "devices",
@@ -163,5 +171,69 @@ Provider {
 
     function counted() {
         return `${outputs.length} out, ${inputs.length} in`;
+    }
+
+    examples: ["volume", "volume 40"]
+
+    // How loud a device is, in words.
+    function level(node) {
+        return !node || !node.audio ? "none"
+            : node.audio.muted ? "muted" : `${Math.round(node.audio.volume * 100)}%`;
+    }
+
+    function answer(typed) {
+        const text = typed.trim().toLowerCase().replace(/\?$/, "");
+        const asked = /^(?:volume|vol|sound)\s+(?:to\s+)?(\d{1,3})\s*%?$/.exec(text);
+        if (asked)
+            return set(Math.min(100, Number(asked[1])));
+        if (!/^(volume|vol|how loud|loudness|what'?s playing|now playing|playing)$/.test(text))
+            return null;
+        return told();
+    }
+
+    function told() {
+        const out = Pipewire.defaultAudioSink;
+        const into = Pipewire.defaultAudioSource;
+        const rows = [];
+        if (out)
+            rows.push(copyRow({
+                name: level(out),
+                side: `out, through ${named(out)}`,
+                glyph: glyph(kind(out))
+            }));
+        if (into)
+            rows.push(copyRow({
+                name: level(into),
+                side: `in, through ${named(into)}`,
+                glyph: glyph(kind(into))
+            }));
+        // Each program playing, by the name it gives.
+        const playing = Pipewire.nodes.values
+            .filter(node => node.isStream && node.isSink && (node.type & PwNodeType.Audio))
+            .map(node => node.properties["application.name"] ?? node.name)
+            .filter((name, i, all) => name && all.indexOf(name) === i);
+        for (const name of playing)
+            rows.push(copyRow({ name: name, side: "playing", glyph: Theme.glyph.playing }));
+        return {
+            headline: out ? `${level(out)}, through ${named(out)}` : "nothing to play through",
+            rows: rows,
+            note: playing.length === 0 ? "nothing playing" : "from PipeWire"
+        };
+    }
+
+    function set(share) {
+        const out = Pipewire.defaultAudioSink;
+        if (!out || !out.audio)
+            return null;
+        return {
+            headline: `set ${named(out)} to ${share}%`,
+            verb: "set",
+            run: () => {
+                out.audio.volume = share / 100;
+                out.audio.muted = false;
+            },
+            rows: told().rows,
+            note: `now ${level(out)}`
+        };
     }
 }

@@ -19,6 +19,8 @@ import "../Fuzzy.js" as Fuzzy
 Provider {
     id: provider
 
+    what: "copy"
+
     collection: ({
         noun: "copies",
         title: "Clipboard",

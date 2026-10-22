@@ -103,20 +103,35 @@ Scope {
             compose(false);
     }
 
-    // The headline as a row of its own, for Return and the footer.
+    // The headline as a row of its own, for Return and the footer. Return
+    // copies it, unless the answer says what it does instead, as setting
+    // the brightness to what was typed does.
     readonly property var headline: !answer ? null : {
         name: answer.headline,
         // An answer still being asked for has nothing to copy yet.
-        verb: (answer.copy ?? answer.headline) === "" ? "close" : "copy",
+        verb: answer.verb ?? ((answer.copy ?? answer.headline) === "" ? "close" : "copy"),
         now: true,
         note: answer.note ?? "",
-        run: () => {
+        run: answer.run ?? (() => {
             const copy = answer.copy ?? answer.headline;
             if (copy !== "")
                 Quickshell.clipboardText = copy;
-        }
+        })
     }
     readonly property var selected: current === -1 ? headline : matches[current] ?? null
+
+    // What sort of thing the selection is, in a word, while something is
+    // typed: an answer, a collection, or its provider's kind. Inside a
+    // collection or a thing's verbs, what's held already says it.
+    readonly property string kind: {
+        if (typed === "" || held.length > 0 || !selected)
+            return "";
+        if (selected === headline || (answer && answer.rows.includes(selected)))
+            return "answer";
+        if (selected.opens)
+            return "collection";
+        return selected.what ?? "";
+    }
 
     // A collection's members stay out of the main search, but a thing it
     // offers beside them, such as turning Wi-Fi off, is found like any, and
@@ -661,6 +676,7 @@ Scope {
                 chord: (row.chord ?? []).map(key => key.text).join(" "),
                 settled: row !== root.headline || !root.answer.asking
             },
+            kind: root.kind,
             footer: note.text
         });
     }
@@ -773,8 +789,9 @@ Scope {
                         // At home, something to try; elsewhere, where the
                         // selection is, once there's more than fits.
                         aside: root.atHome && root.example !== "" ? `try  ${root.example}`
-                            : root.matches.length > root.rows && root.current >= 0
-                            ? `${root.current + 1} of ${root.matches.length}` : ""
+                            : [root.kind, root.matches.length > root.rows && root.current >= 0
+                                ? `${root.current + 1} of ${root.matches.length}` : ""]
+                                .filter(part => part !== "").join("  \u00b7  ")
                         onTextChanged: root.search(text)
                         onAccepted: below => root.asking ? root.give()
                             : root.run(root.selected, below)

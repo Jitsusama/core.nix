@@ -12,6 +12,8 @@ import "Emoji.js" as Emoji
 Provider {
     id: provider
 
+    what: "emoji"
+
     collection: ({
         noun: "emoji",
         title: "Emoji",

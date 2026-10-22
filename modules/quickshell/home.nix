@@ -78,6 +78,7 @@ let
     "Fuzzy.js"
     "Picks.qml"
     "Notices.qml"
+    "Sessions.qml"
     "Caffeinate.qml"
     "Recorder.qml"
     "Picker.qml"
@@ -364,7 +365,7 @@ let
   actions =
     map
       (b: {
-        inherit (b) does run;
+        inherit (b) does run also;
         glyph = actionGlyph b.run;
         chord = map face' (lib.splitString "+" b.chord);
         # Super+N takes the notices on screen, and opens their collection
@@ -435,6 +436,8 @@ let
     capslock = ./pieces/CapsLock.qml;
     layer = ./pieces/Layer.qml;
     sharing = ./pieces/Sharing.qml;
+    camera = ./pieces/Camera.qml;
+    pi = ./pieces/Pi.qml;
     recording = ./pieces/Recording.qml;
     playing = ./pieces/Playing.qml;
   };
@@ -467,6 +470,10 @@ let
     weather = ./launcher/Weather.qml;
     machine = ./launcher/Machine.qml;
     power = ./launcher/Power.qml;
+    heat = ./launcher/Heat.qml;
+    today = ./launcher/Today.qml;
+    light = ./launcher/Light.qml;
+    keyboards = ./launcher/Keyboards.qml;
     emoji = ./launcher/Emoji.qml;
     shortcuts = ./launcher/KeyMap.qml;
     keyboard = ./launcher/Keyboard.qml;
@@ -478,6 +485,7 @@ let
     displays = ./launcher/Displays.qml;
     capture = ./launcher/Capture.qml;
     spend = ./launcher/Spend.qml;
+    agents = ./launcher/Agents.qml;
     byhand = ./launcher/ByHand.qml;
   };
 
@@ -816,6 +824,29 @@ in
         order = 99;
         source = "power";
       };
+      # How hot each part runs, and the fans.
+      heat = {
+        order = 98;
+        source = "heat";
+      };
+      # The date's week, day of the year, UTC, zone and epoch.
+      today = {
+        order = 97;
+        source = "today";
+        zone = osConfig.time.timeZone or null;
+      };
+      # How bright the screen and the keyboard are.
+      light = {
+        order = 96;
+        source = "light";
+      };
+      # Which keyboards are plugged in, and caps lock.
+      keyboards = {
+        order = 94;
+        source = "keyboards";
+        # How a held key repeats, which every keyboard shares.
+        repeat = import ../keyboard/repeat.nix;
+      };
       # Collections, each shown as one row below the rest. Wi-Fi's networks
       # are one, and turning Wi-Fi off is found as an action.
       wifi = {
@@ -871,6 +902,12 @@ in
       spend = {
         order = 108;
         source = "spend";
+        weight = 0.9;
+      };
+      # The pi sessions running, each found by its quest.
+      agents = {
+        order = 109;
+        source = "agents";
         weight = 0.9;
       };
       # Opened by its own chord, not shown in a search.
@@ -940,6 +977,15 @@ in
         collapse = 5;
         mark = "spend";
       };
+      # How many pi sessions run and how many are working. It gives way
+      # after the volume and the day's spend, which have homes elsewhere,
+      # and before the network.
+      pi = {
+        order = 53;
+        source = "pi";
+        label = "pi";
+        collapse = 6;
+      };
       # What's on only now and then, each also a pull in the margin while
       # it's true (Margin.qml), in the order the overview gives them.
       notices = {
@@ -999,6 +1045,14 @@ in
         label = "recording";
         tier = "when";
         mark = "recording";
+      };
+      # A program with a camera open, where the machine says which.
+      camera = {
+        order = 85;
+        source = "camera";
+        label = "camera";
+        tier = "when";
+        mark = "camera";
       };
       # The least of them, since music never needs Joel.
       playing = {

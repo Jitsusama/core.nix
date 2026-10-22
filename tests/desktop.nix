@@ -400,6 +400,13 @@ pkgs.testers.runNixOSTest {
       # The launcher reads the battery from UPower, which the laptop role
       # brings.
       services.upower.enable = true;
+      # Where a laptop's camera module says which programs read it, for
+      # the test to write in its place.
+      # And where a machine's disk guard says how its disks stand.
+      systemd.tmpfiles.rules = [
+        "d /run/camera-holders 0755 root root -"
+        "d /run/disk-guard 0755 root root -"
+      ];
       services.pipewire.extraConfig.pipewire."90-stand-in-speakers"."context.objects" = [
         {
           factory = "adapter";
@@ -945,6 +952,63 @@ pkgs.testers.runNixOSTest {
           machine.send_key("esc")
           machine.wait_until_fails(in_session("niri msg layers | grep -qw launcher"), timeout=10)
 
+      with subtest("the launcher finds a pi session by its quest, and goes to its window"):
+          # A window titled as pi titles its own: its address, its quest
+          # cut short, its folder.
+          agent = "\u03c0 - TESTQA A quest of its own - home"
+          as_account(f"niri msg action spawn -- kitty --title '{agent}'")
+          machine.wait_until_succeeds(
+              in_session("niri msg --json windows | grep -q TESTQA"), timeout=30
+          )
+          # Another window to be in, so going to the session's means a move.
+          as_account("niri msg action spawn -- kitty --title Elsewhere")
+          machine.wait_until_succeeds(
+              in_session("niri msg --json windows | grep -q '\"Elsewhere\"'"), timeout=30
+          )
+          as_account(f"niri msg action focus-window --id {window_titled('Elsewhere')['id']}")
+          # The launcher's foot counts it.
+          since = mark()
+          as_account("qs ipc call launcher toggle")
+          reported("stands ", lambda rest: "pi 1 running" in rest, since)
+          launcher_ready()
+          # Its collection by what it's called, then the session by its
+          # quest, named whole and not as its window's title.
+          type_in("agents")
+          launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Agents")
+          machine.send_key("ret")
+          launcher_until(
+              lambda shown: shown["held"] == ["sessions"]
+              and (shown["selected"] or {}).get("name") == "A quest of its own"
+          )
+          photograph("launcher-agents")
+          machine.send_key("ret")
+          machine.wait_until_succeeds(
+              in_session("niri msg --json focused-window | grep -q TESTQA"), timeout=10
+          )
+          for title in [agent, "Elsewhere"]:
+              as_account(f"niri msg action close-window --id {window_titled(title)['id']}")
+          machine.wait_until_fails(
+              in_session("niri msg --json windows | grep -q 'TESTQA\\|\"Elsewhere\"'"), timeout=30
+          )
+
+      with subtest("the launcher sets the volume to a number, and says how loud it is"):
+          as_account("qs ipc call launcher toggle")
+          launcher_ready()
+          type_in("volume 40")
+          launcher_until(lambda shown: (shown["selected"] or {}).get("name", "").endswith(" to 40%"))
+          machine.send_key("ret")
+          machine.wait_until_succeeds(
+              in_session("wpctl get-volume @DEFAULT_AUDIO_SINK@ | grep -qx 'Volume: 0.40'"), timeout=10
+          )
+          machine.wait_until_fails(in_session("niri msg layers | grep -qw launcher"), timeout=10)
+          as_account("qs ipc call launcher toggle")
+          launcher_ready()
+          type_in("volume")
+          launcher_until(lambda shown: (shown["selected"] or {}).get("name", "").startswith("40%, through "))
+          photograph("launcher-volume-told")
+          machine.send_key("esc")
+          machine.wait_until_fails(in_session("niri msg layers | grep -qw launcher"), timeout=10)
+
       with subtest("the launcher finds and opens kitty, and learns that kitty was meant"):
           as_account("qs ipc call launcher toggle")
           launcher_ready()
@@ -1162,10 +1226,97 @@ pkgs.testers.runNixOSTest {
           machine.send_key("esc")
           # A collection is found by what a person calls it, not only its
           # title, and Return goes straight into it.
+          # Beside the field, it says what sort of thing each is.
           for typed, collection in [("audio", "Sound"), ("notifications", "Notices")]:
               answer(typed)
-              launcher_until(lambda shown: (shown["selected"] or {}).get("name") == collection)
+              launcher_until(
+                  lambda shown: (shown["selected"] or {}).get("name") == collection
+                  and shown["kind"] == "collection"
+              )
               machine.send_key("esc")
+          # The hottest part, from the sensors the kernel lists, of which
+          # the stand-in battery is one.
+          print(machine.succeed("grep -H . /sys/class/hwmon/*/name"))
+          answer("temperature")
+          photograph("launcher-heat")
+          machine.send_key("ret")
+          machine.wait_until_fails(in_session("niri msg layers | grep -qw launcher"), timeout=10)
+          t.assertRegex(as_account("wl-paste --no-newline"), r"^-?\d+ \u00b0C at the ")
+          # The date in full, as the machine's clock has it; the day may
+          # turn while it's asked, so either will do.
+          before = machine.succeed("date '+%A %-d %B %Y'").strip()
+          answer("date")
+          photograph("launcher-date")
+          machine.send_key("ret")
+          machine.wait_until_fails(in_session("niri msg layers | grep -qw launcher"), timeout=10)
+          after = machine.succeed("date '+%A %-d %B %Y'").strip()
+          t.assertIn(as_account("wl-paste --no-newline"), [before, after])
+          # The stand-in backlight's share, as its files say.
+          now, most = (
+              int(machine.succeed(f"cat /sys/class/backlight/stand-in/{f}"))
+              for f in ("brightness", "max_brightness")
+          )
+          # Rounded half up, as JavaScript's Math.round does.
+          copied("brightness", f"{int(now * 100 / most + 0.5)}% bright")
+          # With a number, Return sets it, as the brightness keys do.
+          answer("brightness 30")
+          launcher_until(
+              lambda shown: (shown["selected"] or {}).get("name") == "set the screen to 30%"
+          )
+          machine.send_key("ret")
+          machine.wait_until_succeeds(
+              f"test $(cat /sys/class/backlight/stand-in/brightness) -eq {most * 30 // 100}", timeout=10
+          )
+          machine.wait_until_fails(in_session("niri msg layers | grep -qw launcher"), timeout=10)
+          # The session's actions answer to what people call them; Escape,
+          # never Return, since Return would do them.
+          for typed, action in [("shut down", "Power Off"), ("restart", "Reboot"), ("sign out", "Log Out")]:
+              answer(typed)
+              launcher_until(
+                  lambda shown: (shown["selected"] or {}).get("name") == action
+                  and shown["kind"] == "session"
+              )
+              machine.send_key("esc")
+              machine.wait_until_fails(in_session("niri msg layers | grep -qw launcher"), timeout=10)
+          # A key's action, by the other words its bind lists.
+          answer("fullscreen")
+          launcher_until(
+              lambda shown: (shown["selected"] or {}).get("name")
+              == "Fill the screen with the window, or put it back"
+              and shown["kind"] == "shortcut"
+          )
+          machine.send_key("esc")
+          machine.wait_until_fails(in_session("niri msg layers | grep -qw launcher"), timeout=10)
+          # Each disk's room, as a disk guard says it, the tightest first.
+          status = {
+              "version": 1,
+              "heartbeat": time.time() + 3600,
+              "filesystems": [
+                  {"path": "/", "band": "healthy", "free": 300 * 2**30, "total": 900 * 2**30},
+                  {"path": "/nix", "band": "pressure", "free": 20 * 2**30, "total": 900 * 2**30},
+              ],
+              "frozen": [],
+          }
+          machine.succeed(
+              f"echo '{json.dumps(status)}' > /run/disk-guard/.status"
+              " && mv /run/disk-guard/.status /run/disk-guard/status.json"
+          )
+          answer("disk")
+          launcher_until(
+              lambda shown: (shown["selected"] or {}).get("name", "").endswith(" free on /nix")
+          )
+          photograph("launcher-disks")
+          machine.send_key("esc")
+          machine.wait_until_fails(in_session("niri msg layers | grep -qw launcher"), timeout=10)
+          machine.succeed("rm /run/disk-guard/status.json")
+          # The keyboards QEMU gives it, however many, and caps lock.
+          answer("keyboards")
+          photograph("launcher-keyboards")
+          machine.send_key("ret")
+          machine.wait_until_fails(in_session("niri msg layers | grep -qw launcher"), timeout=10)
+          t.assertRegex(
+              as_account("wl-paste --no-newline"), r"^(one keyboard|\d+ keyboards), caps lock off$"
+          )
           answer("350 f in c")
           photograph("launcher-units")
           machine.send_key("esc")
@@ -1893,6 +2044,25 @@ pkgs.testers.runNixOSTest {
       # Joel selected, the arrows move, Return does the action.
       margin = "niri msg layers | grep -q margin"
       notices = "niri msg layers | grep -q notifications"
+
+      with subtest("a camera open shows in the margin, and the launcher says by what"):
+          machine.wait_until_fails(in_session(margin), timeout=10)
+          # Written whole, as the camera's module writes it.
+          with told("drawn margin"):
+              machine.succeed(
+                  "echo chrome > /run/camera-holders/.camera && mv /run/camera-holders/.camera /run/camera-holders/camera"
+              )
+          photograph("margin-camera")
+          as_account("qs ipc call launcher toggle")
+          launcher_ready()
+          type_in("camera")
+          launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "in use by chrome")
+          machine.send_key("esc")
+          machine.wait_until_fails(in_session("niri msg layers | grep -qw launcher"), timeout=10)
+          machine.succeed(
+              ": > /run/camera-holders/.camera && mv /run/camera-holders/.camera /run/camera-holders/camera"
+          )
+          machine.wait_until_fails(in_session(margin), timeout=10)
 
       with subtest("Super+O shows Keep Awake in the margin, and Return lets it sleep"):
           # Keep Awake was just let go, and the margin leaves as it fades.

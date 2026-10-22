@@ -28,6 +28,8 @@ import "../Fuzzy.js" as Fuzzy
 Provider {
     id: provider
 
+    what: "AI spend"
+
     readonly property string runtime: Quickshell.env("XDG_RUNTIME_DIR")
     property var said: null
     readonly property bool sharing: Quiet.sharing

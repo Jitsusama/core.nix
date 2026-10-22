@@ -1,7 +1,10 @@
 // How this machine is doing, answered in the field: "cpu" or "load" for how
 // busy its processors have been since last asked, "memory" or "ram" for
-// what's in use, and "uptime" for how long it's been up. All of it is read
-// from the kernel's files under /proc, so nothing is spawned.
+// what's in use, and "uptime" for how long it's been up, all read from the
+// kernel's files under /proc; and "disk", "storage" or "free space" for
+// each disk's room and how the disk guard stands, from the margin's disk
+// piece (pieces/Disk.qml), so that fact has one home. Nothing is spawned.
+import qs
 import Quickshell.Io
 import QtQuick
 import "Numbers.js" as Numbers
@@ -35,7 +38,30 @@ Provider {
             return memory();
         if (text === "uptime")
             return uptime();
+        if (/^(disks?|storage|space|free space|disk space|drive|ssd)$/.test(text))
+            return disks();
         return null;
+    }
+
+    function disks() {
+        const fact = Facts.all.find(fact => fact.entry.name === "disk");
+        const disk = fact ? fact.piece : null;
+        if (!disk || !disk.present)
+            return null;
+        const chip = glyph(0xf02ca);
+        const rows = disk.disks
+            .slice()
+            .sort((a, b) => a.free - b.free)
+            .map(each => copyRow({
+                name: `${disk.shown(each.free)} free`,
+                side: each.band === "healthy" ? each.path : `${each.path} \u00b7 ${each.band}`,
+                glyph: chip
+            }));
+        return {
+            headline: disk.worst === null ? "nothing watched" : `${disk.shown(disk.worst.free)} free on ${disk.worst.path}`,
+            rows: rows,
+            note: disk.silent ? "the disk guard has stopped saying" : "from the disk guard"
+        };
     }
 
     function cpu() {

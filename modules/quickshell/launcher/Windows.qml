@@ -18,6 +18,8 @@ import "../Fuzzy.js" as Fuzzy
 Provider {
     id: provider
 
+    what: "window"
+
     collection: ({
         noun: "windows",
         title: "Windows",

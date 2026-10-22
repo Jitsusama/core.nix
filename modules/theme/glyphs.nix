@@ -130,6 +130,11 @@ in
     console = "R";
     means = "the screen is being recorded";
   };
+  camera = {
+    glyph = nerd "f0100";
+    console = "C";
+    means = "a program has a camera open";
+  };
   playing = {
     glyph = nerd "f075a";
     console = "P";
@@ -223,7 +228,7 @@ in
   agent = {
     glyph = "π";
     console = "p";
-    means = "an agent is paired with this editor";
+    means = "an agent: a pi session, or one paired with this editor";
   };
   thinking = {
     glyph = nerd "f09d1";

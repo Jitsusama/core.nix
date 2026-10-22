@@ -73,6 +73,15 @@ let
           type = lib.types.str;
           description = "What the chord does, in plain words, as the launcher finds it.";
         };
+        also = lib.mkOption {
+          type = lib.types.str;
+          default = "";
+          example = "kitty shell console";
+          description = ''
+            Other words a person might type for it, by which the launcher
+            finds it too, as a terminal is found by "kitty" or "shell".
+          '';
+        };
         run = lib.mkOption {
           type = lib.types.listOf lib.types.str;
           default = [ ];
