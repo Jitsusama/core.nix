@@ -220,7 +220,8 @@ idea holds everywhere now: a mark is looked up by meaning, never typed.
 The console's font holds 256 glyphs, since a font of more costs the console its
 bright colours, and none of Nerd Fonts' marks, so each glyph also has a
 stand-in the console can draw, and a surface running on a console (the prompt
-in an emergency shell) uses those.
+in an emergency shell) uses those. The consoles signed in on are kmscon's,
+which draws the face itself, so the prompt there has its real marks.
 
 The table is `jitsusama.theme.glyphs`, each mark with what it means and its
 stand-in. Every program that can read it is given it: Quickshell as
@@ -774,6 +775,7 @@ by them isn't done.
 | The boot menu                             | lanzaboote, systemd-boot | the firmware's |        |        |           |         |          |
 | The boot splash and unlock prompts        | Plymouth                 | both           | the machine's name, what's happening (the disk is locked, starting, restarting, shutting down), the prompt and what it wants: PIN, passphrase or recovery key | a refused one, framed in the alert colour, saying try again; a message the boot sends | Escape, Plymouth's log of the boot | nothing | nothing gives way; drawn at one or two to one by the screen's height, so the type stays sharp |
 | The console and emergency shell           | the console font         | console        |        |        |           |         |          |
+| The consoles signed in on                 | kmscon                   | monospace      |        |        |           |         |          |
 | The guide                                 | guide                    | monospace, the console's stand-ins on a console | the journey's name and how far along it is, muted at the right; the step's title; the one thing it asks now, in words, with its field: the padlock beside dots for a secret, the cursor for a word typed back, which stands strong above it, or a list of choices, the cursor in the accent beside the one the keys are on, in strong; the keys that work now, muted, at the foot | what the step before showed, muted, under the name; a refusal under the field, by the failure mark in alert; a step that can't run, by the caution mark, with what to do under it; what to do while a step works, such as touching a key | the raw log, by Tab once a step fails | nothing | what the step before showed, then how far along; words wrap between themselves, and a mark's text wraps under its ink |
 | The greeter                               | Quickshell, greetd       | both           | the time, the date, who's signing in, the session it starts | a refused password, what PAM says | Tab to the next account | the lock screen's | the boot's timings; the time stays |
 | The compositor                            | niri                     | none           |        |        |           |         |          |
@@ -863,6 +865,19 @@ What each studio round settled, newest first, with the reason.
   some letters and two in others, where Medium's stay at two. Box drawing is
   the face's, carried to the cell's edges so lines join; the blocks are
   drawn exact. It's loaded in the initrd, so the disk's prompt wears it too.
+- **The consoles signed in on are kmscon's** (2026-10-21, at Joel's word:
+  "the glyphs aren't working on console, so the prompt looks like shit,
+  also, the font looks very dissimilar and ideally would be slightly
+  larger. also there is no padding on the edges of the screen"). The
+  kernel's console can't hold the prompt's marks, draws a bitmap that only
+  approaches the face, and runs its text to the screen's edge. kmscon draws
+  the face with Pango at the terminal's size, padded as the terminal is and
+  in its colours, so a console reads as the terminal does. The kernel's
+  console keeps the boot, the disk's prompt and the emergency shell, where
+  kmscon can't run. Above the login prompt, either console greets the
+  account as the greeter does and gives the keys back to the desktop, drawn
+  as the failed boot's are, in place of NixOS's banner, whose console name
+  kmscon gives as its pseudo-terminal.
 - **niri's own screens never show** (2026-10-17, judged against the taste
   without a round). niri draws its screenshot screen, its key list, its
   question before quitting and its banner for a configuration it can't

@@ -62,6 +62,7 @@ in
     ../../modules/gpu/nixos.nix
     ../../modules/kernel/nixos.nix
     ../../modules/keyboard/nixos.nix
+    ../../modules/kmscon/nixos.nix
     ../../modules/panel/nixos.nix
     ../../modules/power-profiles-daemon/nixos.nix
     ../../modules/touchpad/nixos.nix
@@ -103,6 +104,10 @@ in
   # so Windows only lets the programs that convert colours use it. P3 is the
   # nearest space Chromium names.
   jitsusama.panel.colourSpace = "display-p3-d65";
+
+  # The panel is 2880 by 1800 at 14 inches, which the desktop draws at twice
+  # its logical size, so the sign-in consoles draw at twice too.
+  jitsusama.kmscon.scale = 2;
 
   # Microcode, and the firmware for Wi-Fi, Bluetooth, the GPU and the audio
   # DSP, which Sound Open Firmware runs.

@@ -1,0 +1,121 @@
+Keep the text off the screen's edge, and sit letters at the face's advance.
+
+kmscon fills the screen with as many cells as fit, so text runs to its
+edge. Two options, --padding-x and --padding-y, keep that many pixels clear
+beside the text and above and below it: the columns and rows are counted
+in what's left, and the renderers already centre the cells, so the clear
+space comes out even on both sides. A padding that would leave no room for
+a single cell is dropped rather than leaving the screen empty.
+
+Pango's cell was the face's average advance, rounded down, and a pixel
+more, so a monospace face sat a pixel looser than in other terminals. It is
+now the advance rounded up, which is what they draw.
+
+--- a/src/config.c
++++ b/src/config.c
+@@ -187,6 +187,10 @@
+ 		"\t                                     This option is incompatible with\n"
+ 		"\t                                     --use-original-mode.\n"
+ 		"\t    --rotate <orientation>  [normal] normal, right, upside-down, left\n"
++		"\t    --padding-x <pixels>    [0]      Space kept clear left and right\n"
++		"\t                                     of the text\n"
++		"\t    --padding-y <pixels>    [0]      Space kept clear above and below\n"
++		"\t                                     the text\n"
+ 		"\n"
+ 		"Font Options:\n"
+ 		"\t    --font-engine <engine>  [pango]\n"
+@@ -798,6 +802,8 @@
+ 		CONF_OPTION_STRING(0, "mode", &conf->mode, NULL),
+ 		CONF_OPTION_STRING(0, "multi-monitor", &conf->multi_monitor, "scaled"),
+ 		CONF_OPTION_STRING(0, "rotate", &conf->rotate, "normal"),
++		CONF_OPTION_UINT(0, "padding-x", &conf->padding_x, 0),
++		CONF_OPTION_UINT(0, "padding-y", &conf->padding_y, 0),
+ 
+ 		/* Font Options */
+ 		CONF_OPTION_STRING(0, "font-engine", &conf->font_engine, NULL),
+--- a/src/config.h
++++ b/src/config.h
+@@ -177,6 +177,10 @@
+ 	char *multi_monitor;
+ 	/* orientation/rotation of output */
+ 	char *rotate;
++	/* space kept clear beside the text, left and right, in pixels */
++	unsigned int padding_x;
++	/* space kept clear above and below the text, in pixels */
++	unsigned int padding_y;
+ 
+ 	/* Font Options */
+ 	/* font engine */
+--- a/src/font/font_pango.c
++++ b/src/font/font_pango.c
+@@ -298,7 +298,8 @@
+ 	pango_layout_get_pixel_extents(layout, NULL, &rec);
+ 
+ 	font->height = rec.height;
+-	font->width = rec.width / num + 1;
++	/* The advance, rounded up, as other terminals take it. */
++	font->width = (rec.width + num - 1) / num;
+ 	face->baseline = PANGO_PIXELS_CEIL(pango_layout_get_baseline(layout));
+ 
+ 	print_font(layout, height, font->width, font->height);
+--- a/src/render/text.c
++++ b/src/render/text.c
+@@ -332,12 +332,25 @@
+ 		return display_get_width(txt->disp);
+ }
+ 
++/*
++ * The room left for cells once the padding is kept clear on both sides. A
++ * padding that would leave no room for a cell is dropped rather than
++ * leaving the screen empty. The renderers centre the cells in the whole
++ * screen, so what's left over beside the padding is shared out evenly.
++ */
++static unsigned int padded(unsigned int length, unsigned int padding, unsigned int cell)
++{
++	if (length < 2 * padding + cell)
++		return length;
++	return length - 2 * padding;
++}
++
+ unsigned int kmscon_text_get_cols(struct kmscon_text *txt, unsigned int font_width)
+ {
+ 	if (!txt || !font_width)
+ 		return 0;
+ 
+-	return kmscon_text_get_width(txt) / font_width;
++	return padded(kmscon_text_get_width(txt), txt->padding_x, font_width) / font_width;
+ }
+ 
+ unsigned int kmscon_text_get_rows(struct kmscon_text *txt, unsigned int font_height)
+@@ -345,7 +358,7 @@
+ 	if (!txt || !font_height)
+ 		return 0;
+ 
+-	return kmscon_text_get_height(txt) / font_height;
++	return padded(kmscon_text_get_height(txt), txt->padding_y, font_height) / font_height;
+ }
+ 
+ /**
+--- a/src/render/text.h
++++ b/src/render/text.h
+@@ -64,6 +64,9 @@
+ 	unsigned int rows;
+ 	unsigned int max_cols;
+ 	unsigned int max_rows;
++	/* space kept clear on each side of the text, in pixels */
++	unsigned int padding_x;
++	unsigned int padding_y;
+ 	bool rendering;
+ 	enum Orientation orientation;
+ 	bool blinking;
+--- a/src/terminal.c
++++ b/src/terminal.c
+@@ -807,6 +807,8 @@
+ 		log_error("cannot create text-renderer");
+ 		goto err_cb;
+ 	}
++	scr->txt->padding_x = term->conf->padding_x;
++	scr->txt->padding_y = term->conf->padding_y;
+ 
+ 	dlist_link(&term->screens, &scr->list);
+ 	/* Update default font size if not set */
