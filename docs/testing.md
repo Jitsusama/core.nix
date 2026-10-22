@@ -179,6 +179,8 @@ kernel guide][2] says what that catches.
 | `network-revive-passes-clippy`    | clippy finds nothing in network-revive or its tests       |
 | `jobs-sorter-sorts-by-behaviour`  | the sorter moves a group busy two seconds running, never the shell's or pi's |
 | `jobs-sorter-passes-clippy`       | clippy finds nothing in the jobs sorter or its tests      |
+| `vm-first-finds-the-vms`          | vm-first reads a thread's nice and policy, knows qemu by its name and nothing else |
+| `vm-first-passes-clippy`          | clippy finds nothing in vm-first or its tests             |
 | `guide-proves-its-steps`          | the guide counts a step done only once observing it again says so, reads what real machines' tools printed, writes sticks that sfdisk, fsck.fat and their own key read back whole, signs EFI programs byte for byte as sbsign does, and finds every program it runs |
 | `guide-passes-clippy`             | clippy finds nothing in the guide or its tests            |
 | `guide-compiles-for-macos`        | clippy finds nothing in the guide as macOS compiles it     |
@@ -217,6 +219,7 @@ a running system shows.
 | `vm-loopback-says-who-holds-it`   | a loopback camera's file names each program another account holds it with, not its relay's unit however a program names itself, one line a name, catches a holder that forks, empties when they close it or the camera stops, keeps its folder, follows a new loopback, and takes no loopback of another name |
 | `vm-swap-comes-down-while-probed` | the compressed swap comes down, its reset waiting out udev's probe |
 | `vm-apps-come-first`              | the account's app and session slices, and the system's user.slice, hold a 1 ms latency on the drive behind /home, through the kernel (jobs, background, machine and system none); app.slice holds a hard 13% of memory and every slice above it 15%; timed work sits at 10000 inside idle jobs, and work in jobs can move itself there |
+| `vm-checks-go-first`              | a build user's qemu in the daemon's cgroup goes from batch at nice 5 to normal at nice -10, every thread and a later one, and a compiler beside it doesn't |
 | `vm-reboot-cannot-hang`           | a reboot forces on after a minute of a service not stopping, the watchdog resets a stuck last stage, and Plymouth hears which |
 
 The install test builds a disk image with disko and boots it with a software

@@ -230,6 +230,9 @@ let
     # Whether the kernel took a slice's disk latency shows only with the
     # account's manager starting it on a real drive.
     vm-apps-come-first = import ./tests/slices.nix { inherit self pkgs; };
+    # Whether a check's VM goes ahead of the builds shows only with a build
+    # user's process in the daemon's own cgroup and the service's real rights.
+    vm-checks-go-first = import ./tests/vm-first.nix { inherit self pkgs; };
     # Whether a reboot gets past what won't stop shows only by rebooting, with
     # a watchdog there to reset the machine.
     vm-reboot-cannot-hang = import ./tests/shutdown.nix { inherit self pkgs; };
@@ -2223,6 +2226,11 @@ in
   # busy seconds and not one, the shell's group and pi's never move, a busy
   # process inside them moves alone, and a process first seen counts nothing.
   jobs-sorter-sorts-by-behaviour = pkgs.callPackage ./modules/slices/jobs-sorter/package.nix { };
+
+  # vm-first's tests run as it builds: it reads a thread's nice and policy
+  # past any name, knows qemu wrapped or not and nothing else, and counts a
+  # thread behind until it is both normal and at the nice asked for.
+  vm-first-finds-the-vms = pkgs.callPackage ./modules/nix-daemon/vm-first/package.nix { };
 
   # Nix collects garbage during a build once free space falls under min-free,
   # and stops at max-free. A max-free at or under min-free stops it before it
@@ -4989,6 +4997,21 @@ in
       (pkgs.callPackage ./modules/slices/jobs-sorter/package.nix { }).overrideAttrs
         (old: {
           pname = "jobs-sorter-passes-clippy";
+          nativeBuildInputs = old.nativeBuildInputs ++ [ pkgs.clippy ];
+          buildPhase = ''
+            cargo clippy --all-targets --offline -- -D warnings
+          '';
+          doCheck = false;
+          installPhase = ''
+            touch $out
+          '';
+        });
+
+    # clippy finds nothing in vm-first, its tests included.
+    vm-first-passes-clippy =
+      (pkgs.callPackage ./modules/nix-daemon/vm-first/package.nix { }).overrideAttrs
+        (old: {
+          pname = "vm-first-passes-clippy";
           nativeBuildInputs = old.nativeBuildInputs ++ [ pkgs.clippy ];
           buildPhase = ''
             cargo clippy --all-targets --offline -- -D warnings
