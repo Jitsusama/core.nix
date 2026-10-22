@@ -25,10 +25,17 @@
     # (prune-imports.patch) clears them out as each new buffer arrives, and
     # upstream's bb38b7e, after 26.04, stops asking clients to draw while
     # the monitors are off.
+    #
+    # niri tells clients where a floating window sits but not a tiled one,
+    # so the shell couldn't keep a notice inside the window under it. The
+    # patch (tiled-positions.patch) reports a tiled window's place too,
+    # where the view comes to rest, so a scroll sends one change, not one a
+    # frame.
     package = pkgs.niri.overrideAttrs (old: {
       patches = (old.patches or [ ]) ++ [
         ./touchscreen-gestures.patch
         ./prune-imports.patch
+        ./tiled-positions.patch
         (pkgs.fetchpatch {
           name = "niri-screencast-pts-unknown.patch";
           url = "https://github.com/niri-wm/niri/commit/a30ca7983b2f1fc3ddeb209b3fe18fa78e0dbd25.patch";
