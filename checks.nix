@@ -1606,6 +1606,41 @@ in
       "The console's colours aren't the account's theme, in the console's order."
       (follows "osaka-jade" && follows "flexoki-light" && graphical.config.console.colors == [ ]);
 
+  # Above a console's login prompt, the account is greeted by the first word
+  # of its description, or by its name without one, as the greeter calls it,
+  # with the keys back to the desktop, in place of NixOS's banner, which a
+  # machine that names no account keeps.
+  the-console-greets-the-account =
+    let
+      issue =
+        description:
+        let
+          text =
+            (bareNixos [
+              self.nixosModules.workstation
+              self.nixosModules.graphical
+              {
+                jitsusama.login.account = "someone";
+                users.users.someone.description = description;
+              }
+            ]).config.environment.etc.issue.text;
+        in
+        if text == null then "" else text;
+      greets =
+        description: called:
+        lib.hasInfix "Hello," (issue description)
+        && lib.hasInfix "m${called}" (issue description)
+        && lib.hasInfix "Ctrl+Alt+F1" (issue description)
+        && !lib.hasInfix "Welcome" (issue description);
+    in
+    holds "the-console-greets-the-account"
+      "A console doesn't greet the account as the greeter calls it, with the keys back to the desktop."
+      (
+        greets "Sam Rivera" "Sam"
+        && greets "" "someone"
+        && graphical.config.environment.etc.issue.text == null
+      );
+
   # The console's font is the account's monospace face at Medium, drawn into
   # the kernel's 16 by 32 cell: a PSF 2 font of at most 256 glyphs, so the
   # console keeps its bright colours, naming what each glyph stands for, with
@@ -1645,6 +1680,57 @@ in
         done
         touch $out
       '';
+
+  # The consoles signed in on are kmscon's, in the account's monospace face
+  # at the terminal's size, with the terminal's padding and colours, all
+  # times the screen's scale, and the terminal's keys for larger and smaller
+  # text. A machine that names no account keeps the kernel's console.
+  the-sign-in-consoles-wear-the-theme =
+    let
+      signingIn =
+        extra:
+        (bareNixos (
+          [
+            self.nixosModules.workstation
+            self.nixosModules.graphical
+            { jitsusama.login.account = "someone"; }
+          ]
+          ++ extra
+        )).config;
+      plain = signingIn [ ];
+      laptop = signingIn [ self.nixosModules.dell-xps-14-da14260 ];
+      home = plain.home-manager.users.someone.jitsusama.theme;
+      settings = machine: machine.services.kmscon.config;
+      rgb =
+        colour:
+        lib.concatMapStringsSep ", " (at: toString (lib.fromHexString (lib.substring at 2 colour))) [
+          1
+          3
+          5
+        ];
+    in
+    holds "the-sign-in-consoles-wear-the-theme"
+      "The sign-in consoles aren't kmscon in the account's face, size, padding and colours."
+      (
+        !graphical.config.services.kmscon.enable
+        && plain.services.kmscon.enable
+        && lib.hasInfix "padding.patch" (
+          lib.concatStringsSep " " (map toString plain.services.kmscon.package.patches)
+        )
+        && (settings plain).font-engine == "pango"
+        && (settings plain).font-name == home.font.mono.family
+        && (settings plain).font-size == 14
+        && (settings plain).padding-x == home.space.xl
+        && (settings plain).padding-y == home.space.l
+        && (settings laptop).font-size == 28
+        && (settings laptop).padding-x == 2 * home.space.xl
+        && (settings laptop).padding-y == 2 * home.space.l
+        && (settings plain).palette-background == rgb home.terminal.background
+        && (settings plain).palette-foreground == rgb home.terminal.foreground
+        && (settings plain).palette-white == rgb home.terminal.bright_white
+        && (settings plain).grab-zoom-in == "<Ctrl><Shift>plus"
+        && (settings plain).grab-rotate-cw == ""
+      );
 
   # The panic screen wears the theme of the account the machine signs in, its
   # text on its background, and follows it when the theme changes. A machine

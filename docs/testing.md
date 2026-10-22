@@ -185,7 +185,7 @@ a running system shows.
 | Check                             | Proves                                                  |
 | --------------------------------- | ------------------------------------------------------- |
 | `vm-secure-boot-installs`         | the whole install works, and the disk opens only for it |
-| `vm-boot-asks-in-the-theme`       | the splash asks for the disk, names a slow job, and lasts a restart to its end |
+| `vm-boot-asks-in-the-theme`       | the splash asks for the disk, names a slow job, and lasts a restart to its end; a sign-in console greets the account, draws the theme's face, padded, signs in to a shell told it's kmscon, greets again once it's left, and its keys go back to the desktop; one kmscon can't draw falls back to the login prompt, greeting included |
 | `vm-guide-installs`               | the guide, driven by its keys, installs a machine from its stick: two keys and a recovery key, Secure Boot enforcing with its keys, then seals the disk to the TPM with a PIN, which opens it at the next boot; clears the TPM, opens with a YubiKey and seals again; hands on the rescue bundle its install sealed to the recovery key; then a host writes a stick from that bundle, and the machine reinstalls from it carrying its own keys, the firmware still enforcing them |
 | `vm-guide-writes-a-stick`         | the guide writes a stick as the person, through UDisks2, unmounting what was mounted from it |
 | `vm-guide-opens-the-vault`        | a stick's vault sealed to a FIDO2 key opens with its PIN, and without it by the passphrase |

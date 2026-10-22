@@ -10,6 +10,7 @@
 let
   account = "jitsusama";
   passphrase = "4815";
+  password = "a console's password";
 in
 pkgs.testers.runNixOSTest {
   name = "plymouth";
@@ -43,7 +44,10 @@ pkgs.testers.runNixOSTest {
       boot.kernelParams = [ "plymouth.ignore-serial-consoles" ];
 
       jitsusama.login.account = account;
-      users.users.${account}.isNormalUser = true;
+      users.users.${account} = {
+        isNormalUser = true;
+        initialPassword = password;
+      };
       home-manager.users.${account}.home.stateVersion = "26.05";
 
       specialisation.encrypted.configuration = {
@@ -79,8 +83,10 @@ pkgs.testers.runNixOSTest {
     let
       encrypted = nodes.machine.specialisation.encrypted.configuration.system.build.toplevel;
       stops = nodes.machine.specialisation.stops.configuration.system.build.toplevel;
-      alert = nodes.machine.home-manager.users.${account}.jitsusama.theme.roles.alert;
+      theme = nodes.machine.home-manager.users.${account}.jitsusama.theme;
+      alert = theme.roles.alert;
       inherit (nodes.machine.console) font;
+      kmscon = nodes.machine.services.kmscon.config;
     in
     ''
       import filecmp
@@ -157,18 +163,106 @@ pkgs.testers.runNixOSTest {
           machine.wait_for_unit("multi-user.target")
           t.assertIn("/dev/mapper/root on / ", machine.succeed("mount"))
 
-      with subtest("the console draws in the theme's face"):
-          # Even when the console it's switched from has lost the face,
-          # as a splash that outlasts the graphics driver leaves it: a new
-          # console takes that one's font until its login prompt sets its
-          # own. While the greeter starts or stops, the first console can
-          # refuse to be opened for a moment. The switch is made directly:
-          # a chord sent as the compositor takes the first console is lost.
-          machine.wait_until_succeeds("setfont -C /dev/tty1 default8x16", timeout=30)
+      with subtest("a console signed in on draws the theme's face, with room round it"):
+          # kmscon draws it, so the kernel's text of it is empty, and what
+          # it drew is read from the screen and from what it says. The
+          # switch is made directly: a chord sent as the compositor takes
+          # the first console is lost.
           machine.succeed("chvt 3")
-          machine.wait_until_tty_matches("3", "login: ")
-          wears_the_face("/dev/tty3")
-          photographed("console")
+          machine.wait_for_unit("kmsconvt@tty3.service")
+          machine.wait_for_text("login:", timeout=60)
+          said = machine.succeed("journalctl -o cat -u kmsconvt@tty3.service")
+          t.assertRegex(said, r"font engine \[pango\]")
+          used = re.search(r"Using \[(.*)\] size (\d+) -> cell size (\d+)x(\d+)", said)
+          assert used, said
+          # A face goes by more than one name, and Pango says any of them.
+          names = machine.succeed(
+              "${pkgs.fontconfig.bin}/bin/fc-match -f '%{family}' '${theme.font.mono.family}'"
+          ).split(",")
+          t.assertIn("${theme.font.mono.family}", names)
+          t.assertTrue(any(used[1].startswith(f"{name} ") for name in names), used[1])
+          t.assertEqual(int(used[2]), ${toString kmscon.font-size})
+          width, height = int(used[3]), int(used[4])
+          grid = re.findall(r"Resized terminal to (\d+)x(\d+)", said)
+          t.assertEqual(
+              grid[-1],
+              (str((1280 - 2 * ${toString kmscon.padding-x}) // width),
+               str((800 - 2 * ${toString kmscon.padding-y}) // height)),
+          )
+          # The padding is clear on all four sides: nothing but the
+          # background in it, though the prompt sits at the left and top.
+          shot = photographed("console")
+          for crop in [
+              "${toString kmscon.padding-x}x800+0+0",
+              "${toString kmscon.padding-x}x800+${toString (1280 - kmscon.padding-x)}+0",
+              "1280x${toString kmscon.padding-y}+0+0",
+              "1280x${toString kmscon.padding-y}+0+${toString (800 - kmscon.padding-y)}",
+          ]:
+              inked = subprocess.check_output([
+                  "${pkgs.imagemagick}/bin/magick", shot, "-crop", crop, "+repage",
+                  "-fuzz", "4%", "-fill", "black", "-opaque", "${theme.terminal.background}",
+                  "-fill", "white", "+opaque", "black",
+                  "-format", "%[fx:round(mean*w*h)]", "info:",
+              ], text=True)
+              t.assertEqual(int(inked), 0, f"the padding at {crop} has ink")
+
+      with subtest("a console greets by name, and signs in to a shell told it's kmscon"):
+          # The encrypted root has no Nix database, so Home Manager can't
+          # activate there, and the account has no shell files: an empty
+          # one stands in, so zsh asks nothing of a new user.
+          machine.succeed("install -o ${account} -m 600 /dev/null /home/${account}/.zshrc")
+          machine.wait_for_text("Hello", timeout=30)
+          machine.send_chars("${account}\n")
+          machine.wait_for_text("Password", timeout=30)
+          machine.send_chars("${password}\n")
+          machine.wait_until_succeeds("pgrep -u ${account} -x zsh", timeout=30)
+          # The prompt draws stand-ins only on a console that calls itself
+          # linux, whose font can't hold its marks; kmscon calls itself by
+          # its own name, which the machine's terminfo describes.
+          told = machine.succeed(
+              "tr '\\0' '\\n' < /proc/$(pgrep -u ${account} -x zsh | head -n 1)/environ"
+          ).splitlines()
+          t.assertIn("TERM=kmscon", told)
+          machine.succeed(
+              "${pkgs.ncurses}/bin/infocmp -A /run/current-system/sw/share/terminfo kmscon"
+          )
+          # Signing out clears the console and greets again, ready for the
+          # next, and the restarts below stop no more than they did before.
+          machine.send_chars("exit\n")
+          machine.wait_until_fails("pgrep -u ${account} -x zsh", timeout=30)
+
+          def greeted_afresh(_):
+              shown = machine.get_screen_text()
+              return "Hello" in shown and "Password" not in shown
+
+          retry(greeted_afresh, 30)
+
+      with subtest("the keys the greeting gives go back to the desktop"):
+          machine.send_key("ctrl-alt-f1")
+          machine.wait_until_succeeds("grep -qx tty1 /sys/class/tty/tty0/active", timeout=10)
+
+      with subtest("a console kmscon can't draw still asks, in the theme's face"):
+          # A new console takes the font of the one it's switched from until
+          # its login prompt sets its own, so it's switched to from the
+          # first, which loses the face first. While the greeter starts or
+          # stops, the first console can refuse to be opened for a moment.
+          machine.succeed("chvt 1")
+          machine.wait_until_succeeds("setfont -C /dev/tty1 default8x16", timeout=30)
+          # Drop-ins apply in their names' order, so this one comes after
+          # the one that sets kmscon's command.
+          machine.succeed(
+              "mkdir -p /run/systemd/system/kmsconvt@tty4.service.d",
+              "printf '[Service]\\nExecStart=\\nExecStart=/bin/false\\n'"
+              " > /run/systemd/system/kmsconvt@tty4.service.d/zz-fails.conf",
+              "systemctl daemon-reload",
+              "chvt 4",
+          )
+          machine.wait_for_unit("getty@tty4.service")
+          machine.fail("systemctl is-active kmsconvt@tty4.service")
+          machine.wait_until_tty_matches("4", "login: ")
+          machine.wait_until_tty_matches("4", "Hello, ${account}")
+          wears_the_face("/dev/tty4")
+          machine.succeed("chvt 3")
 
       with subtest("a slow job is named while it runs, and goes when it ends"):
           # The splash back up over the first console, as at boot, with
@@ -176,7 +270,7 @@ pkgs.testers.runNixOSTest {
           # console on, and the watch started as at boot.
           machine.succeed(
               "systemctl mask --runtime --now systemd-logind.service",
-              "systemctl stop greetd.service 'getty@*' 'autovt@*'",
+              "systemctl stop greetd.service 'getty@*' 'autovt@*' 'kmsconvt@*'",
               "chvt 1",
               "systemctl restart plymouth-start.service",
               "systemctl start plymouth-waits.service",
@@ -216,7 +310,7 @@ pkgs.testers.runNixOSTest {
           machine.wait_until_succeeds("systemctl is-failed breaks.service", timeout=30)
           machine.succeed(
               "systemctl mask --runtime --now systemd-logind.service",
-              "systemctl stop greetd.service 'getty@*' 'autovt@*'",
+              "systemctl stop greetd.service 'getty@*' 'autovt@*' 'kmsconvt@*'",
           )
           # A boot has one console, the first, which the splash draws on.
           machine.succeed("chvt 1")

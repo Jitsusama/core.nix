@@ -223,6 +223,7 @@
         kernel = ./modules/kernel/nixos.nix;
         keyboard = ./modules/keyboard/nixos.nix;
         keyd = ./modules/keyd/nixos.nix;
+        kmscon = ./modules/kmscon/nixos.nix;
         lanzaboote = moduleFrom ./modules/lanzaboote/nixos.nix { inherit lanzaboote; };
         libvirt = ./modules/libvirt/nixos.nix;
         linux-id = ./modules/linux-id/nixos.nix;

@@ -1,7 +1,8 @@
 # A NixOS machine with a screen in front of Joel: fonts, sound, Bluetooth for
 # headphones and mice, a keyring the TPM unlocks, 1Password, and niri, started
-# at boot by greetd, with the console, and Plymouth, which asks for the
-# disk's PIN, in the theme of the account it signs in. Every account gets
+# at boot by greetd, with the console, the consoles signed in on, and
+# Plymouth, which asks for the disk's PIN, in the theme of the account it
+# signs in. Every account gets
 # niri's configuration, kitty, Quickshell for the launcher, notifications
 # and lock screen, which swayidle locks, a backlight that follows the
 # light, and GTK programs and the monospace default in the theme. It also
@@ -21,6 +22,7 @@
     nixosModules.fonts
     nixosModules.gnome-keyring
     nixosModules.greetd
+    nixosModules.kmscon
     nixosModules.mpv
     nixosModules.niri
     nixosModules.onepassword

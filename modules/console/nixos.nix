@@ -5,8 +5,11 @@
 # line. Its font is the theme's monospace face at Medium, found among the
 # machine's fonts and drawn into the 16 by 32 cell the kernel picks for a
 # large screen, from the glyphs in glyphs.txt (font/ says how), and loaded
-# in the initrd, so the disk's prompt has it too. A failed boot's shell says
-# what stopped it first (stopped.sh). A machine without such an account, or
+# in the initrd, so the disk's prompt has it too. Above each login prompt, a
+# console greets the account as the greeter does and says the way back to
+# the desktop, which kmscon's consoles read too (../kmscon/nixos.nix). A
+# failed boot's shell says what stopped it first (stopped.sh). A machine
+# without such an account, or
 # without a theme for it, keeps the kernel's own.
 {
   config,
@@ -53,6 +56,28 @@ let
       ) null names;
     in
     if at == null then "39" else toString (if at < 8 then 30 + at else 82 + at);
+
+  # A piece of text in a role's colour.
+  escape = builtins.fromJSON ''"\u001b"'';
+  paint = role: words: "${escape}[${slot role}m${words}${escape}[0m";
+
+  # The account by the first word of its description, as the greeter calls
+  # it (../greetd/nixos.nix).
+  called =
+    let
+      description = config.users.users.${account}.description or "";
+    in
+    if description == "" then account else builtins.head (lib.splitString " " description);
+
+  # What a console says above its login prompt, in place of NixOS's banner:
+  # the greeter's greeting, and the keys back to it, drawn as the failed
+  # boot's keys are. Nothing in it names the console, which a console
+  # kmscon draws would name by its pseudo-terminal.
+  issue = lib.concatLines [
+    "${paint "text" "Hello,"} ${paint "strong" called}"
+    "${paint "strong" "Ctrl+Alt+F1"} ${paint "muted" "goes back to the desktop."}"
+    ""
+  ];
 
   # Says what stopped the boot (stopped.sh), in the theme's colours.
   stopped = pkgs.writeShellApplication {
@@ -130,6 +155,7 @@ in
     # A failed boot's emergency shell says what stopped it, after the face
     # is set, which comes after Plymouth lets go; the initrd's says so too,
     # since it carries the shell, coreutils and systemd the summary runs on.
+    (lib.mkIf (terminal != null) { environment.etc.issue.text = issue; })
     (lib.mkIf (terminal != null) {
       systemd.services.emergency.serviceConfig.ExecStartPre = lib.mkOrder 1600 [
         "-${lib.getExe stopped}"
