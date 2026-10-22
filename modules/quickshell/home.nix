@@ -435,6 +435,7 @@ let
     capslock = ./pieces/CapsLock.qml;
     layer = ./pieces/Layer.qml;
     sharing = ./pieces/Sharing.qml;
+    camera = ./pieces/Camera.qml;
     recording = ./pieces/Recording.qml;
     playing = ./pieces/Playing.qml;
   };
@@ -1033,6 +1034,14 @@ in
         label = "recording";
         tier = "when";
         mark = "recording";
+      };
+      # A program with a camera open, where the machine says which.
+      camera = {
+        order = 85;
+        source = "camera";
+        label = "camera";
+        tier = "when";
+        mark = "camera";
       };
       # The least of them, since music never needs Joel.
       playing = {

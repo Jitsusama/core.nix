@@ -400,6 +400,9 @@ pkgs.testers.runNixOSTest {
       # The launcher reads the battery from UPower, which the laptop role
       # brings.
       services.upower.enable = true;
+      # Where a laptop's camera module says which programs read it, for
+      # the test to write in its place.
+      systemd.tmpfiles.rules = [ "d /run/camera-holders 0755 root root -" ];
       services.pipewire.extraConfig.pipewire."90-stand-in-speakers"."context.objects" = [
         {
           factory = "adapter";
@@ -1996,6 +1999,25 @@ pkgs.testers.runNixOSTest {
       # Joel selected, the arrows move, Return does the action.
       margin = "niri msg layers | grep -q margin"
       notices = "niri msg layers | grep -q notifications"
+
+      with subtest("a camera open shows in the margin, and the launcher says by what"):
+          machine.wait_until_fails(in_session(margin), timeout=10)
+          # Written whole, as the camera's module writes it.
+          with told("drawn margin"):
+              machine.succeed(
+                  "echo chrome > /run/camera-holders/.camera && mv /run/camera-holders/.camera /run/camera-holders/camera"
+              )
+          photograph("margin-camera")
+          as_account("qs ipc call launcher toggle")
+          launcher_ready()
+          type_in("camera")
+          launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "in use by chrome")
+          machine.send_key("esc")
+          machine.wait_until_fails(in_session("niri msg layers | grep -qw launcher"), timeout=10)
+          machine.succeed(
+              ": > /run/camera-holders/.camera && mv /run/camera-holders/.camera /run/camera-holders/camera"
+          )
+          machine.wait_until_fails(in_session(margin), timeout=10)
 
       with subtest("Super+O shows Keep Awake in the margin, and Return lets it sleep"):
           # Keep Awake was just let go, and the margin leaves as it fades.

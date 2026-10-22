@@ -714,6 +714,7 @@ in
           "layer"
           "call"
           "sharing"
+          "camera"
           "recording"
           "playing"
         ]

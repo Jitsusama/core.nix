@@ -12,6 +12,11 @@
 // (Picker.qml), and Escape there comes back here. The camera's rows open its
 // viewfinder (modules/camera), and are left out where there's no camera.
 // Each waits for the launcher to be gone, so it's never in the picture.
+//
+// It answers whether a camera is open, too: "camera", "webcam" or "who has
+// the camera" says which programs read it, each a row by the camera it
+// reads, from the margin's camera piece (pieces/Camera.qml), so the fact
+// has one home. A machine whose cameras say nothing of it gets no answer.
 import qs
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
@@ -226,5 +231,26 @@ Provider {
 
     function counted() {
         return Recorder.recording ? "recording" : "";
+    }
+
+    function answer(typed) {
+        const text = typed.trim().toLowerCase().replace(/\?$/, "");
+        if (!/^(camera|cameras|webcam|camera in use|is the camera on|who has the camera)$/.test(text))
+            return null;
+        const fact = Facts.all.find(fact => fact.entry.name === "camera");
+        const camera = fact ? fact.piece : null;
+        if (!camera || !camera.present)
+            return null;
+        // Quickshell's JavaScript has no flatMap.
+        const rows = camera.reading.reduce((all, seen) => all.concat(seen.programs.map(program => copyRow({
+            name: program,
+            side: `has ${seen.name} open`,
+            glyph: Theme.glyph.camera
+        }))), []);
+        return {
+            headline: camera.active ? `in use by ${camera.programs.join(", ")}` : "not in use",
+            rows: rows,
+            note: "from the cameras' own records"
+        };
     }
 }

@@ -130,6 +130,11 @@ in
     console = "R";
     means = "the screen is being recorded";
   };
+  camera = {
+    glyph = nerd "f0100";
+    console = "C";
+    means = "a program has a camera open";
+  };
   playing = {
     glyph = nerd "f075a";
     console = "P";
