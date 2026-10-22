@@ -14,7 +14,7 @@ rustPlatform.buildRustPackage {
   };
   cargoLock.lockFile = ./Cargo.lock;
   meta = {
-    description = "Keeps the clipboard's text copies for the launcher";
+    description = "Keeps the clipboard's copies, text and pictures, for the launcher";
     license = lib.licenses.mit;
     mainProgram = "clipboard-history";
   };

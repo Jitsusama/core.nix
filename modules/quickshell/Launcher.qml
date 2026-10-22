@@ -22,6 +22,7 @@ import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
 import QtQuick
+import QtQuick.Effects
 // Quickshell makes a folder's files types only once something imports it,
 // and the providers are made from launcher/ by name, so it's imported here.
 import qs.launcher
@@ -839,6 +840,66 @@ Scope {
                                 count: entry.modelData.count ?? ""
                                 onClicked: root.run(entry.modelData, false)
                                 onPointed: at => root.pointed(entry.index, at)
+                            }
+                        }
+                    }
+
+                    // A picture copied, as it is, while its row is selected:
+                    // in its own shape, no wider than the rows nor taller
+                    // than six of them, aligned with the footer's words, its
+                    // corners a part's, and the raised colour until it's
+                    // drawn, as a song's cover is in a notice.
+                    Item {
+                        id: preview
+
+                        readonly property var row: root.selected
+                        readonly property string picture: row ? row.picture ?? "" : ""
+                        readonly property real room: width - 2 * Theme.space.l
+                        readonly property real most: 6 * Theme.space.xxxl
+                        // Its own width and height, or a square for one whose
+                        // type didn't say them.
+                        readonly property real across: row && row.across > 0 ? row.across : most
+                        readonly property real down: row && row.down > 0 ? row.down : most
+                        readonly property real shrunk: Math.min(1, room / across, most / down)
+
+                        width: parent.width
+                        height: visible ? frame.height + Theme.space.m : 0
+                        visible: picture !== ""
+
+                        Rectangle {
+                            id: frame
+                            x: Theme.space.l
+                            y: Theme.space.m
+                            width: Math.round(preview.across * preview.shrunk)
+                            height: Math.round(preview.down * preview.shrunk)
+                            radius: Theme.inner
+                            color: drawn.status === Image.Ready ? "transparent" : Theme.raised
+
+                            Image {
+                                id: drawn
+                                anchors.fill: parent
+                                source: preview.picture === "" ? "" : `file://${preview.picture}`
+                                asynchronous: true
+                                fillMode: Image.PreserveAspectFit
+                                sourceSize.width: 2 * width
+                                sourceSize.height: 2 * height
+                                layer.enabled: true
+                                layer.effect: MultiEffect {
+                                    maskEnabled: true
+                                    maskSource: corners
+                                }
+                                onStatusChanged: {
+                                    if (status === Image.Ready)
+                                        Report.say(`showed ${preview.row.name}`);
+                                }
+                            }
+
+                            Rectangle {
+                                id: corners
+                                anchors.fill: parent
+                                radius: Theme.inner
+                                visible: false
+                                layer.enabled: true
                             }
                         }
                     }

@@ -1182,8 +1182,9 @@ in
         '';
       };
 
-    # Keeps the clipboard's text copies for the launcher, which can't hear
-    # them itself, while the clipboard collection is on.
+    # Keeps the clipboard's copies for the launcher, which can't hear them
+    # itself, while the clipboard collection is on: text in memory, and
+    # pictures in the runtime directory, which is memory too.
     systemd.user.services.clipboard-history = lib.mkIf keepsCopies {
       Unit = {
         Description = "The clipboard's history, kept in memory for the launcher";
@@ -1196,6 +1197,7 @@ in
           (lib.getExe clipboardHistory)
           "--socket %t/clipboard-history.sock"
           "--keep ${toString launcher.providers.clipboard.keep}"
+          "--pictures %t/clipboard-history"
         ];
         Restart = "on-failure";
         RestartSec = 1;

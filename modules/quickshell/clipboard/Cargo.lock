@@ -22,6 +22,7 @@ dependencies = [
 name = "clipboard-history"
 version = "0.1.0"
 dependencies = [
+ "rustix",
  "wayland-client",
  "wayland-protocols",
 ]
