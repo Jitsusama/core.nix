@@ -460,11 +460,14 @@ works the same way everywhere.
   searching. The row sits below the matches as tidy as its own and above any
   scattered ones. Each is whole at home, and most have a chord that opens
   them: Super+V the copies, Super+E the emoji, Super+N the notices, Super+Shift+/ the shortcuts.
-- **Copies stay in memory.** One program hears every text copy for the
-  session and the shell asks it for them, so none is written to disk and
-  none is kept that a password manager marks secret. A copy's glyph says
-  what it is: several lines, a link, an address, a path and a number each
-  wear their own, and plain text the clipboard's.
+- **Copies stay in memory.** One program hears every copy for the session,
+  text and pictures, and the shell asks it for them, so none is written to
+  disk, a picture's file sitting in the runtime directory, and none is kept
+  that a password manager marks secret. A copy's glyph says what it is:
+  several lines, a link, an address, a path and a number each wear their
+  own, plain text the clipboard's, and a picture a picture's. A picture's
+  row is named by its size, and the picture itself shows below the rows
+  while it's selected, in its own shape with a part's corners.
 - **A notice gone is not lost.** Every notice of the session stays in the
   shell's memory. One clicked, or withdrawn by its program because it was
   read there, was seen; one that left by itself was missed, and the notices'

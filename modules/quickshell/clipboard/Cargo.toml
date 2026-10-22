@@ -1,6 +1,6 @@
 # The clipboard's history for the launcher: one resident program that hears
-# every text copy through the compositor's data-control protocol and hands
-# it to the shell over a socket (src/main.rs says how).
+# every copy, text or picture, through the compositor's data-control
+# protocol and hands it to the shell over a socket (src/main.rs says how).
 [package]
 name = "clipboard-history"
 version = "0.1.0"
@@ -11,3 +11,5 @@ publish = false
 [dependencies]
 wayland-client = "0.31"
 wayland-protocols = { version = "0.32", features = ["client", "staging"] }
+# poll(2), to wait on the compositor and the shell at once.
+rustix = { version = "1", features = ["event"] }

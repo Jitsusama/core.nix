@@ -1311,6 +1311,36 @@ pkgs.testers.runNixOSTest {
           machine.sleep(1)
           t.assertEqual(as_account("wl-paste --no-newline"), "copied meanwhile")
 
+      def pasted_the_picture(_):
+          pasted = in_session("wl-paste --type image/png | cmp -s - ${picture}")
+          return machine.execute(pasted)[0] == 0
+
+      with subtest("a picture copied is kept, shown as it is, and copied again"):
+          with told("heard copy Image 256 \u00d7 256"):
+              as_account("wl-copy --type image/png < ${picture} > /dev/null 2>&1")
+          with told("heard copy something after the picture"):
+              as_account("echo -n 'something after the picture' | wl-copy > /dev/null 2>&1")
+          machine.send_key("meta_l-v")
+          launcher_ready()
+          with told("showed Image 256 \u00d7 256"):
+              type_in("image", selecting="Image 256 \u00d7 256")
+          photograph("launcher-copies-picture")
+          machine.send_key("ret")
+          retry(pasted_the_picture, timeout_seconds=10)
+
+      with subtest("a picture outlives the program that copied it"):
+          # The helper holds the same picture already, so wl-copy serves it
+          # once the clipboard's types no longer include the helper's own.
+          with told("heard copy Image 256 \u00d7 256"):
+              as_account(
+                  "wl-copy --foreground --type image/png < ${picture} > /dev/null 2>&1 & p=$!; "
+                  "for i in $(seq 100); do t=$(wl-paste --list-types 2>/dev/null); "
+                  "echo \"$t\" | grep -qx image/png && "
+                  "! echo \"$t\" | grep -qx application/x-clipboard-history-kept && break; "
+                  "sleep 0.1; done; kill $p"
+              )
+          retry(pasted_the_picture, timeout_seconds=10)
+
       with subtest("Forget the Clipboard forgets every copy, and what it held"):
           with told("heard copy kept until forgotten"):
               copied_then_closed("kept until forgotten")
@@ -1326,6 +1356,8 @@ pkgs.testers.runNixOSTest {
           with told("forgot the copies"):
               machine.send_key("ret")
           t.assertEqual(as_account("wl-paste --no-newline 2>&1 || true"), "")
+          # The pictures' files go with them.
+          t.assertEqual(as_account("ls -A $XDG_RUNTIME_DIR/clipboard-history"), "")
 
       with subtest("the launcher's home shows each collection, and opens it"):
           windows = len(json.loads(as_account("niri msg --json windows")))

@@ -1,11 +1,14 @@
-// The clipboard's history, a collection: every text copy made this session,
-// newest first, as clipboard-history hears them (clipboard/src/main.rs).
-// One connection to its socket brings every copy kept, then each new one,
-// so nothing is started per copy and nothing is written to disk. A search
-// with a match adds one row; the right arrow, or Super+V, shows them all.
-// Return puts the copy back on the clipboard. Forget the Clipboard, found
-// by its words while there's something to forget, has the helper forget
-// every copy, and what the clipboard holds with them.
+// The clipboard's history, a collection: every copy made this session, text
+// and pictures, newest first, as clipboard-history hears them
+// (clipboard/src/main.rs). One connection to its socket brings every copy
+// kept, then each new one, so nothing is started per copy and nothing is
+// written to disk. A search with a match adds one row; the right arrow, or
+// Super+V, shows them all. A picture's row is named by its size, and the
+// launcher shows the picture itself while it's selected (`picture`, its
+// file). Return puts the copy back on the clipboard, a picture by asking
+// the helper, which holds it. Forget the Clipboard, found by its words
+// while there's something to forget, has the helper forget every copy, and
+// what the clipboard holds with them.
 pragma ComponentBehavior: Bound
 import qs
 import Quickshell
@@ -33,14 +36,17 @@ Provider {
         keywords: "clipboard copies history clear erase wipe",
         glyph: String.fromCodePoint(0xf01fe),
         hue: "action",
-        run: () => {
-            const socket = link.item as Socket;
-            if (socket !== null) {
-                socket.write("clear\n");
-                socket.flush();
-            }
-        }
+        run: () => provider.tell("clear")
     })
+
+    // Asks the helper for something, a line at a time.
+    function tell(line) {
+        const socket = link.item as Socket;
+        if (socket !== null) {
+            socket.write(`${line}\n`);
+            socket.flush();
+        }
+    }
 
     things: all.length > 0 ? [forget] : []
 
@@ -92,7 +98,7 @@ Provider {
             hue: "text",
             at: copy.at,
             text: copy.text,
-            lines: lines,
+            about: lines > 1 ? `${lines} lines` : "",
             // Copied while the launcher holds the keys, which the clipboard
             // needs.
             now: true,
@@ -102,10 +108,46 @@ Provider {
         });
     }
 
-    // Each row's age, as of now, and how many lines it has.
+    // A picture's type and size, in the fewest words.
+    readonly property var kinds: ({
+        "image/png": "PNG",
+        "image/jpeg": "JPEG",
+        "image/webp": "WebP",
+        "image/gif": "GIF"
+    })
+
+    function weighed(bytes) {
+        if (bytes < 1024)
+            return `${bytes} B`;
+        if (bytes < 1024 * 1024)
+            return `${Math.round(bytes / 1024)} KB`;
+        return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+    }
+
+    // A picture's row, named by its width and height when its type says
+    // them, which a search for "image" finds.
+    function pictured(copy) {
+        const size = copy.width ? ` ${copy.width} \u00d7 ${copy.height}` : "";
+        return member({
+            key: `picture:${copy.picture}`,
+            verb: "copy",
+            name: `Image${size}`,
+            glyph: String.fromCodePoint(0xf02e9),
+            hue: "text",
+            at: copy.at,
+            id: copy.picture,
+            picture: copy.path,
+            across: copy.width ?? 0,
+            down: copy.height ?? 0,
+            about: `${kinds[copy.type] ?? "Picture"} \u00b7 ${weighed(copy.bytes)}`,
+            run: () => provider.tell(`copy ${copy.picture}`)
+        });
+    }
+
+    // Each row's age, as of now, after what it is.
     function aged(rows) {
         for (const row of rows)
-            row.side = row.lines > 1 ? `${row.lines} lines · ${ago(row.at)}` : ago(row.at);
+            row.side = row.about !== "" ? `${row.about} \u00b7 ${ago(row.at)}` : ago(row.at);
         return rows;
     }
 
@@ -121,10 +163,12 @@ Provider {
             Report.say("forgot the copies");
             return;
         }
-        const kept = all.filter(row => row.text !== said.text);
-        kept.unshift(made(said));
+        const picture = said.picture !== undefined;
+        const kept = all.filter(row => picture ? row.id !== said.picture : row.text !== said.text);
+        const row = picture ? pictured(said) : made(said);
+        kept.unshift(row);
         all = kept.slice(0, settings.keep ?? 200);
-        Report.say(`heard copy ${said.text.split("\n")[0]}`);
+        Report.say(`heard copy ${picture ? row.name : said.text.split("\n")[0]}`);
     }
 
     function search(typed) {
