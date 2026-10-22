@@ -20,6 +20,16 @@ PanelWindow {
     // Wide enough for the bar to read as a scale at a glance.
     readonly property int length: 320
     readonly property real shown: Math.max(0, Math.min(level, 1))
+    readonly property string figure: `${Math.round(shown * 100)}%`
+
+    // The figure it shows, said to the desktop test while reports are on.
+    function tell() {
+        if (Options.reports && meter.visible)
+            Report.say(`level ${meter.name} ${meter.figure}`);
+    }
+
+    onFigureChanged: tell()
+    onVisibleChanged: tell()
 
     anchors.bottom: true
     implicitWidth: length + 2 * Theme.floating.reach
@@ -85,7 +95,7 @@ PanelWindow {
                 anchors.right: parent.right
                 anchors.rightMargin: Theme.space.l - Theme.border
                 anchors.verticalCenter: parent.verticalCenter
-                text: `${Math.round(meter.shown * 100)}%`
+                text: meter.figure
                 color: meter.off ? Theme.muted : Theme.text
                 font.family: Theme.mono.family
                 font.pointSize: Theme.mono.body
