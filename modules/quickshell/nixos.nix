@@ -1,7 +1,16 @@
 # What Quickshell needs from the system: a PAM service of its own for the
 # lock screen, which checks the account's password and nothing else (its
-# polkit prompt goes through polkit's own service), and a watcher that says
-# whether caps lock is on, which nothing else tells it.
+# polkit prompt goes through polkit's own service), a watcher that says
+# whether caps lock is on, which nothing else tells it, and its build.
+#
+# Quickshell 0.3.1's notification server never sends a program the
+# activation token a compositor asks before it lets the program bring its
+# window forward, so a notice's action reached the program but couldn't
+# take Joel to the conversation or tab it was about. The patch
+# (activation-token.patch says how) asks the compositor for one tied to the
+# click or key that chose the action, and sends it first, as version 1.2 of
+# the notifications specification has it. It's laid over the machine's
+# packages, so the shell, the greeter and the lock all run it.
 #
 # The watcher (keyboard-lights.rs) reads the keyboards, which is what a
 # keylogger needs, so it gets nothing else: an account of its own, the input
@@ -24,6 +33,14 @@ let
   '';
 in
 {
+  nixpkgs.overlays = [
+    (_: prev: {
+      quickshell = prev.quickshell.overrideAttrs (old: {
+        patches = (old.patches or [ ]) ++ [ ./activation-token.patch ];
+      });
+    })
+  ];
+
   security.pam.services.quickshell = { };
 
   users.users.keyboard-lights = {

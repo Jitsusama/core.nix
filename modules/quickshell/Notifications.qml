@@ -349,13 +349,27 @@ Scope {
 
                     Component.onCompleted: Report.say(`shows card ${modelData.summary}`)
 
-                    // A click anywhere on the card puts it away. It lies
-                    // beneath the words, so an action's own area, drawn
-                    // later, takes the click on the action.
+                    // What its sender does when the notice itself is
+                    // chosen, such as opening the conversation it's about,
+                    // or null for one that offers nothing.
+                    readonly property var opens: card.modelData.actions
+                        .find(action => action.identifier === "default") ?? null
+
+                    // A click anywhere on the card opens what it's about,
+                    // or puts it away when it's about nothing to open. It
+                    // lies beneath the words, so an action's own area,
+                    // drawn later, takes the click on the action.
                     MouseArea {
                         width: parent.width
                         height: words.height
-                        onClicked: card.modelData.dismiss()
+                        onClicked: {
+                            if (card.opens) {
+                                Notices.mark(card.modelData.id, true);
+                                card.opens.invoke();
+                            } else {
+                                card.modelData.dismiss();
+                            }
+                        }
                     }
 
                     Column {
@@ -400,16 +414,21 @@ Scope {
                         // the keys: the chord on the right opens the
                         // launcher on them, the first held for Return.
                         Item {
+                            id: offering
                             width: parent.width
                             height: root.line + Theme.space.s
-                            visible: card.modelData.actions.length > 0
+                            // The default is the card's own click, not one
+                            // of these.
+                            readonly property var offers: card.modelData.actions
+                                .filter(action => action.identifier !== "default")
+                            visible: offers.length > 0
 
                             Row {
                                 anchors.bottom: parent.bottom
                                 spacing: Theme.space.m
 
                                 Repeater {
-                                    model: card.modelData.actions
+                                    model: offering.offers
 
                                     // The pointer's area beside the words,
                                     // not among them, so the Row never

@@ -1,0 +1,327 @@
+From: Joel Gerber <joel.gerber@shopify.com>
+Subject: [PATCH] service/notifications: send an activation token before an action
+
+Clicking a notification's action is meant to bring the program's window
+forward, but Wayland compositors refuse to let a program raise itself
+without an activation token tied to recent input. Version 1.2 of the
+notifications specification has the server send one through the
+ActivationToken signal just before ActionInvoked, which the interface
+already declares but the server never emitted, so programs heard the
+click and couldn't act on it.
+
+core gains ActivationTokens, through which code that knows nothing of the
+windowing system asks for a token, as the platform menu hook lets the
+Wayland plugin shape menus. The Wayland plugin answers it with
+xdg_activation_v1, using the serial, seat and window of the last input
+Qt saw, which is what compositors check. An invoked action now asks for a
+token, then sends ActivationToken and ActionInvoked, and closes the
+notification as before. With no handler, or no xdg_activation_v1 global,
+no token is sent and the action is invoked as it was.
+
+---
+diff --git a/src/core/CMakeLists.txt b/src/core/CMakeLists.txt
+index 4824965..3889f85 100644
+--- a/src/core/CMakeLists.txt
++++ b/src/core/CMakeLists.txt
+@@ -27,6 +27,7 @@ qt_add_library(quickshell-core STATIC
+ 	desktopentry.cpp
+ 	desktopentrymonitor.cpp
+ 	platformmenu.cpp
++	activation.cpp
+ 	qsmenu.cpp
+ 	retainable.cpp
+ 	popupanchor.cpp
+diff --git a/b/src/core/activation.cpp b/src/core/activation.cpp
+new file mode 100644
+index 0000000..0403ae5
+--- /dev/null
++++ b/src/core/activation.cpp
+@@ -0,0 +1,20 @@
++#include "activation.hpp"
++
++#include <utility>
++
++#include <qstring.h>
++
++namespace qs::core {
++
++namespace {
++ActivationTokens::Handler HANDLER; // NOLINT
++}
++
++void ActivationTokens::request(Callback callback) {
++	if (HANDLER) HANDLER(std::move(callback));
++	else callback(QString());
++}
++
++void ActivationTokens::setHandler(Handler handler) { HANDLER = std::move(handler); }
++
++} // namespace qs::core
+diff --git a/b/src/core/activation.hpp b/src/core/activation.hpp
+new file mode 100644
+index 0000000..a47b564
+--- /dev/null
++++ b/src/core/activation.hpp
+@@ -0,0 +1,28 @@
++#pragma once
++
++#include <functional>
++
++#include <qstring.h>
++
++namespace qs::core {
++
++/// Requests activation tokens from the windowing system.
++///
++/// An activation token lets another program bring one of its windows forward as
++/// if the user's most recent input had been directed at it, which compositors
++/// otherwise refuse to prevent focus stealing. Platform integrations provide the
++/// implementation with setHandler; without one every request yields no token.
++class ActivationTokens {
++public:
++	using Callback = std::function<void(const QString& token)>;
++	using Handler = std::function<void(Callback callback)>;
++
++	/// Requests a token for the user's most recent input. The callback receives the
++	/// token, or an empty string if none could be made, and may run before this
++	/// function returns.
++	static void request(Callback callback);
++
++	static void setHandler(Handler handler);
++};
++
++} // namespace qs::core
+diff --git a/src/services/notifications/notification.cpp b/src/services/notifications/notification.cpp
+index d048bde..9ac0deb 100644
+--- a/src/services/notifications/notification.cpp
++++ b/src/services/notifications/notification.cpp
+@@ -6,10 +6,13 @@
+ #include <qlogging.h>
+ #include <qloggingcategory.h>
+ #include <qobject.h>
++#include <qpointer.h>
+ #include <qproperty.h>
++#include <qstring.h>
+ #include <qtmetamacros.h>
+ #include <qtypes.h>
+ 
++#include "../../core/activation.hpp"
+ #include "../../core/desktopentry.hpp"
+ #include "../../core/iconimageprovider.hpp"
+ #include "../../core/logcat.hpp"
+@@ -48,11 +51,23 @@ void NotificationAction::invoke() {
+ 		return;
+ 	}
+ 
+-	NotificationServer::instance()->ActionInvoked(this->notification->id(), this->mIdentifier);
++	// Activation token, then action, then close, as the specification orders them, so
++	// the program can bring the window the action concerns forward.
++	auto id = this->notification->id();
++	auto identifier = this->mIdentifier;
++	auto notification = QPointer(this->notification);
+ 
+-	if (!this->notification->bindableResident().value()) {
+-		this->notification->close(NotificationCloseReason::Dismissed);
+-	}
++	qs::core::ActivationTokens::request([=](const QString& token) {
++		auto* server = NotificationServer::instance();
++		if (!token.isEmpty()) server->ActivationToken(id, token);
++		server->ActionInvoked(id, identifier);
++
++		if (notification && !notification->isRetained()
++		    && !notification->bindableResident().value())
++		{
++			notification->close(NotificationCloseReason::Dismissed);
++		}
++	});
+ }
+ 
+ void NotificationAction::setText(const QString& text) {
+diff --git a/src/services/notifications/server.hpp b/src/services/notifications/server.hpp
+index 8bd92a3..73912aa 100644
+--- a/src/services/notifications/server.hpp
++++ b/src/services/notifications/server.hpp
+@@ -62,6 +62,7 @@ signals:
+ 	void NotificationClosed(quint32 id, quint32 reason);
+ 	void ActionInvoked(quint32 id, QString action);
+ 	void NotificationReplied(quint32 id, QString replyText);
++	void ActivationToken(quint32 id, QString activationToken);
+ 	// NOLINTEND
+ 
+ private slots:
+diff --git a/src/wayland/CMakeLists.txt b/src/wayland/CMakeLists.txt
+index 509fd91..7bd6c15 100644
+--- a/src/wayland/CMakeLists.txt
++++ b/src/wayland/CMakeLists.txt
+@@ -78,10 +78,14 @@ qt_add_library(quickshell-wayland STATIC
+ 	platformmenu.cpp
+ 	popupanchor.cpp
+ 	xdgshell.cpp
++	xdg_activation.cpp
+ 	util.cpp
+ 	output_tracking.cpp
+ )
+ 
++wl_proto(wlp-xdg-activation xdg-activation-v1 "${WAYLAND_PROTOCOLS}/staging/xdg-activation")
++target_link_libraries(quickshell-wayland PRIVATE wlp-xdg-activation)
++
+ # required for wl_proxy_safe_deref
+ target_link_libraries(quickshell-wayland PRIVATE ${CMAKE_DL_LIBS})
+ target_link_options(quickshell PRIVATE "LINKER:--export-dynamic-symbol=wl_proxy_get_listener")
+diff --git a/src/wayland/init.cpp b/src/wayland/init.cpp
+index 579e42a..89f57e3 100644
+--- a/src/wayland/init.cpp
++++ b/src/wayland/init.cpp
+@@ -13,6 +13,7 @@
+ void installWlProxySafeDeref(); // NOLINT(misc-use-internal-linkage)
+ void installPlatformMenuHook(); // NOLINT(misc-use-internal-linkage)
+ void installPopupPositioner();  // NOLINT(misc-use-internal-linkage)
++void installXdgActivation();    // NOLINT(misc-use-internal-linkage)
+ 
+ namespace {
+ 
+@@ -38,6 +39,7 @@ class WaylandPlugin: public QsEnginePlugin {
+ 	void init() override {
+ 		installPlatformMenuHook();
+ 		installPopupPositioner();
++		installXdgActivation();
+ 	}
+ 
+ 	void registerTypes() override {
+diff --git a/b/src/wayland/xdg_activation.cpp b/src/wayland/xdg_activation.cpp
+new file mode 100644
+index 0000000..f579a00
+--- /dev/null
++++ b/src/wayland/xdg_activation.cpp
+@@ -0,0 +1,82 @@
++#include "xdg_activation.hpp"
++
++#include <utility>
++
++#include <private/qwaylanddisplay_p.h>
++#include <private/qwaylandinputdevice_p.h>
++#include <private/qwaylandintegration_p.h>
++#include <private/qwaylandwindow_p.h>
++#include <qlogging.h>
++#include <qloggingcategory.h>
++#include <qstring.h>
++#include <qwaylandclientextension.h>
++
++#include "../core/activation.hpp"
++#include "../core/logcat.hpp"
++
++namespace qs::wayland::xdg_activation {
++
++namespace {
++QS_LOGGING_CATEGORY(logXdgActivation, "quickshell.wayland.xdg_activation", QtWarningMsg);
++}
++
++XdgActivation::XdgActivation(): QWaylandClientExtensionTemplate(1) { this->initialize(); }
++
++XdgActivation::~XdgActivation() {
++	if (this->isInitialized()) this->destroy();
++}
++
++XdgActivation* XdgActivation::instance() {
++	static auto* instance = new XdgActivation(); // NOLINT
++	return instance->isInitialized() ? instance : nullptr;
++}
++
++void XdgActivation::requestToken(qs::core::ActivationTokens::Callback callback) {
++	auto* token = new XdgActivationToken(this->get_activation_token(), std::move(callback));
++
++	// Compositors only honor a token tied to recent input, so it carries the serial
++	// of the last input event Qt saw and the surface that event went to.
++	auto* display = QtWaylandClient::QWaylandIntegration::instance()->display();
++
++	if (auto* device = display->lastInputDevice()) {
++		token->set_serial(display->lastInputSerial(), device->wl_seat());
++	}
++
++	if (auto* window = display->lastInputWindow()) {
++		if (auto* surface = window->wlSurface()) token->set_surface(surface);
++	}
++
++	token->commit();
++	qCDebug(logXdgActivation) << "Requested activation token" << token;
++}
++
++XdgActivationToken::XdgActivationToken(
++    ::xdg_activation_token_v1* token,
++    qs::core::ActivationTokens::Callback callback
++)
++    : QtWayland::xdg_activation_token_v1(token)
++    , callback(std::move(callback)) {}
++
++XdgActivationToken::~XdgActivationToken() {
++	if (this->isInitialized()) this->destroy();
++}
++
++void XdgActivationToken::xdg_activation_token_v1_done(const QString& token) {
++	qCDebug(logXdgActivation) << "Received activation token for" << this;
++	auto callback = std::move(this->callback);
++	delete this;
++	callback(token);
++}
++
++} // namespace qs::wayland::xdg_activation
++
++// NOLINTNEXTLINE(misc-use-internal-linkage)
++void installXdgActivation() {
++	qs::core::ActivationTokens::setHandler([](qs::core::ActivationTokens::Callback callback) {
++		if (auto* activation = qs::wayland::xdg_activation::XdgActivation::instance()) {
++			activation->requestToken(std::move(callback));
++		} else {
++			callback(QString());
++		}
++	});
++}
+diff --git a/b/src/wayland/xdg_activation.hpp b/src/wayland/xdg_activation.hpp
+new file mode 100644
+index 0000000..b3b3774
+--- /dev/null
++++ b/src/wayland/xdg_activation.hpp
+@@ -0,0 +1,43 @@
++#pragma once
++
++#include <qtclasshelpermacros.h>
++#include <qwayland-xdg-activation-v1.h>
++#include <qwaylandclientextension.h>
++
++#include "../core/activation.hpp"
++#include "wayland-xdg-activation-v1-client-protocol.h"
++
++namespace qs::wayland::xdg_activation {
++
++class XdgActivation
++    : public QWaylandClientExtensionTemplate<XdgActivation>
++    , public QtWayland::xdg_activation_v1 {
++public:
++	explicit XdgActivation();
++	~XdgActivation() override;
++	Q_DISABLE_COPY_MOVE(XdgActivation);
++
++	/// Requests a token for the most recent input Qt has seen, on the window it went to.
++	void requestToken(qs::core::ActivationTokens::Callback callback);
++
++	static XdgActivation* instance();
++};
++
++class XdgActivationToken: public QtWayland::xdg_activation_token_v1 {
++public:
++	explicit XdgActivationToken(
++	    ::xdg_activation_token_v1* token,
++	    qs::core::ActivationTokens::Callback callback
++	);
++
++	~XdgActivationToken() override;
++	Q_DISABLE_COPY_MOVE(XdgActivationToken);
++
++protected:
++	void xdg_activation_token_v1_done(const QString& token) override;
++
++private:
++	qs::core::ActivationTokens::Callback callback;
++};
++
++} // namespace qs::wayland::xdg_activation
