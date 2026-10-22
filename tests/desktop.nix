@@ -1554,9 +1554,18 @@ pkgs.testers.runNixOSTest {
               lambda shown: (shown["selected"] or {}).get("name") == "1 running, 1 waiting"
               and shown["footer"] == "3 GiB to spare \u00b7 the processors 13% held up"
           )
-          for name in ["Build the desktop", "Test the camera"]:
+          # At a glance its place in line or how long it's run, a minute
+          # turning over allowed for; since when below it.
+          for name, side, footer in [
+              ("Build the desktop", r"build \u00b7 (just begun|for 1 min)", r"running since \d\d:\d\d"),
+              ("Test the camera", r"VM test \u00b7 1st in line", r"waiting since \d\d:\d\d"),
+          ]:
               machine.send_key("down")
-              launcher_until(lambda shown: (shown["selected"] or {}).get("name") == name)
+              launcher_until(
+                  lambda shown: (shown["selected"] or {}).get("name") == name
+                  and re.fullmatch(side, shown["selected"]["side"]) is not None
+                  and re.fullmatch(footer, shown["footer"]) is not None
+              )
           photograph("launcher-queue")
           machine.send_key("esc")
           machine.wait_until_fails(in_session("niri msg layers | grep -qw launcher"), timeout=10)
