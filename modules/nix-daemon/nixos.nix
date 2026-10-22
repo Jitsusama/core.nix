@@ -35,8 +35,21 @@
 # most of it disk images of up to 9 GiB each. 24 GiB leaves room for two of
 # those to finish while the collection runs, and 40 GiB more keeps it from
 # running again with the next build.
+#
+# A check's virtual machine is a build too, and on a busy machine it shared
+# each CPU evenly with the compilers beside it, as batch, which never
+# preempts as it wakes: its guest's timers fired late and the check's
+# timeouts failed, so other sessions held their builds while one ran. Inside
+# the daemon's one cgroup the CPU goes by nice, so vm-first puts every qemu
+# thread there back to the normal policy at nice -10 within a second of it
+# starting. On one CPU, a spinner at nice -10 took 81% of it against one at
+# 0. Everything outside the daemon, what Joel uses, keeps its lead. Nix's own
+# use-cgroups would give each build a cgroup, but never hands them the CPU
+# controller, and turning it on restarts the daemon under every build.
+{ pkgs, ... }:
 let
   gib = 1024 * 1024 * 1024;
+  vmFirst = pkgs.callPackage ./vm-first/package.nix { };
 in
 {
   nix.daemonCPUSchedPolicy = "batch";
@@ -51,5 +64,25 @@ in
     Slice = "build.slice";
     ManagedOOMMemoryPressure = "kill";
     ManagedOOMMemoryPressureLimit = "80%";
+  };
+
+  systemd.services.vm-first = {
+    description = "Puts the VMs of Nix's checks ahead of its other builds";
+    wantedBy = [ "multi-user.target" ];
+    serviceConfig = {
+      ExecStart = "${vmFirst}/bin/vm-first";
+      Restart = "on-failure";
+      RestartSec = 5;
+      DynamicUser = true;
+      # Only to change another user's threads' policy and nice.
+      AmbientCapabilities = [ "CAP_SYS_NICE" ];
+      CapabilityBoundingSet = [ "CAP_SYS_NICE" ];
+      NoNewPrivileges = true;
+      PrivateNetwork = true;
+      ProtectHome = true;
+      ProtectSystem = "strict";
+      MemoryDenyWriteExecute = true;
+      SystemCallArchitectures = "native";
+    };
   };
 }

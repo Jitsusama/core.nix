@@ -1,0 +1,10 @@
+# vm-first: puts the VMs of Nix's checks ahead of the builds beside them
+# (src/main.rs says how).
+[package]
+name = "vm-first"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[dependencies]
