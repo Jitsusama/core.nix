@@ -1917,10 +1917,10 @@ in
       );
 
   # Work yields to what the user works in only while jobs is idle beside
-  # app.slice, the sorter runs outside both, pi is told where jobs is, and a
-  # window's own scope, where the shell and pi live, isn't idle as well. A
-  # dash in the slice's name would nest it under a parent at the default
-  # weight, and nothing says so.
+  # app.slice, the sorter runs outside both, pi is told where jobs is, jobs
+  # comes back after systemd-oomd ends it, and a window's own scope, where
+  # the shell and pi live, isn't idle as well. A dash in the slice's name
+  # would nest it under a parent at the default weight, and nothing says so.
   work-yields-to-what-the-user-works-in =
     let
       inherit (graphical.config) systemd environment;
@@ -1929,11 +1929,12 @@ in
       scope = systemd.user.units."kitty-.scope".text or "";
     in
     holds "work-yields-to-what-the-user-works-in"
-      "jobs isn't idle beside app.slice, its sorter runs inside what it sorts, pi can't find it, or a window's own scope is idle."
+      "jobs isn't idle beside app.slice, its sorter runs inside what it sorts, pi can't find it, it stays gone once stopped, or a window's own scope is idle."
       (
         systemd.user.slices.jobs.sliceConfig.CPUWeight == "idle"
         && jobs.Slice == "jobs.slice"
         && jobs.Delegate
+        && (jobs.Restart or "no") == "always"
         && sorter.Slice == "session.slice"
         && environment.sessionVariables.JOBS_CGROUP == "jobs.slice/jobs.service"
         && !(lib.hasInfix "idle" scope)

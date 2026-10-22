@@ -76,6 +76,11 @@ in
       Slice = "jobs.slice";
       Delegate = true;
       ExecStart = "${pkgs.coreutils}/bin/sleep infinity";
+      # systemd-oomd ends the whole cgroup when work in it runs memory out,
+      # holder and all, and pi's writes would find nowhere to go until the
+      # next login. Coming back at once restarts the sorter with it.
+      Restart = "always";
+      RestartSec = 1;
     };
   };
 
