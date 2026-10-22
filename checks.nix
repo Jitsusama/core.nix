@@ -2017,6 +2017,25 @@ in
         && !(lib.hasInfix "idle" scope)
       );
 
+  # Timed work goes ahead of other work only from inside jobs, so it still
+  # yields to the apps, at a weight above jobs' own holder, held by a unit
+  # that comes back and takes what's written into it, where pi is told.
+  # Named any other way, the slice would sit beside the apps instead.
+  timed-work-goes-ahead-of-other-work =
+    let
+      inherit (graphical.config) systemd environment;
+      timed = systemd.user.services.timed.serviceConfig;
+    in
+    holds "timed-work-goes-ahead-of-other-work"
+      "Timed work isn't inside jobs above its holder's weight, its holder doesn't take what's written into it or stays gone, or pi can't find it."
+      (
+        lib.hasPrefix "jobs-" timed.Slice
+        && systemd.user.slices.jobs-timed.sliceConfig.CPUWeight > 100
+        && timed.Delegate
+        && (timed.Restart or "no") == "always"
+        && environment.sessionVariables.TIMED_CGROUP == "jobs.slice/${timed.Slice}/timed.service"
+      );
+
   # A call's audio thread asks for SCHED_RR 8 in Chrome and Electron apps,
   # and gets it only if the account's limit reaches 8. At 11 or more,
   # PipeWire takes its priority from the limit rather than rtkit's 20, so

@@ -121,6 +121,29 @@ in
     };
   };
 
+  # Work whose result depends on its timing, as a VM test's timeouts and a
+  # benchmark's numbers do, takes jobs' share ahead of bulk work and still
+  # gives way to what Joel uses. So it runs inside jobs, idle as that is,
+  # rather than beside the apps: there, a VM's or a container's threads at
+  # any weight but idle made apps wait, and call audio break up (see
+  # machines below). On one CPU shared with a spinner in jobs, a spinner here
+  # took 92 to 94% of it in three runs, against an even split in jobs. pi's
+  # queue moves timed work here, from the waiting shell; TIMED_CGROUP names
+  # the place, held as jobs is.
+  systemd.user.slices.jobs-timed.sliceConfig.CPUWeight = 10000;
+
+  systemd.user.services.timed = {
+    description = "The place timed work runs, ahead of other work";
+    wantedBy = [ "default.target" ];
+    serviceConfig = {
+      Slice = "jobs-timed.slice";
+      Delegate = true;
+      ExecStart = "${pkgs.coreutils}/bin/sleep infinity";
+      Restart = "always";
+      RestartSec = 1;
+    };
+  };
+
   systemd.user.services.jobs-sorter = {
     description = "Moves a terminal's busy work into jobs";
     wantedBy = [ "default.target" ];
@@ -152,7 +175,10 @@ in
 
   # Where pi, and anything else that wants to, finds jobs: a path under the
   # account's own user@<uid>.service.
-  environment.sessionVariables.JOBS_CGROUP = "jobs.slice/jobs.service";
+  environment.sessionVariables = {
+    JOBS_CGROUP = "jobs.slice/jobs.service";
+    TIMED_CGROUP = "jobs.slice/jobs-timed.slice/timed.service";
+  };
 
   # The Nix daemon's builds run outside the account, in build.slice beside
   # user.slice, where the account's own targets don't reach. Beside 1.5 GiB/s

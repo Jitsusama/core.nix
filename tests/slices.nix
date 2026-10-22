@@ -73,5 +73,27 @@ pkgs.testers.runNixOSTest {
         near("/sys/fs/cgroup/user.slice/user-1000.slice", 0.15)
         near("/sys/fs/cgroup/user.slice", 0.15)
         t.assertEqual(floor(f"{account}/jobs.slice"), 0)
+
+    jobs = f"{account}/jobs.slice"
+    timed = f"{jobs}/jobs-timed.slice"
+
+    with subtest("timed work is inside idle jobs, far above its holder"):
+        machine.wait_until_succeeds(
+            "systemctl -M alice@ --user is-active timed.service", timeout=30
+        )
+        t.assertEqual(machine.succeed(f"cat {jobs}/cpu.idle").strip(), "1")
+        t.assertEqual(machine.succeed(f"cat {timed}/cpu.weight").strip(), "10000")
+        t.assertEqual(
+            machine.succeed(f"cat {jobs}/jobs.service/cpu.weight").strip(), "100"
+        )
+
+    with subtest("work in jobs moves itself in, as pi's waiting shell does"):
+        machine.succeed(
+            "systemd-run -M alice@ --user --slice=jobs.slice --unit=mover"
+            " --expand-environment=no -p KillMode=process ${pkgs.bash}/bin/bash -c"
+            f" 'echo $$ > {timed}/timed.service/cgroup.procs;"
+            " cat /proc/self/cgroup > /tmp/moved; exec sleep infinity'"
+        )
+        machine.wait_until_succeeds("grep -q timed.service /tmp/moved", timeout=30)
   '';
 }
