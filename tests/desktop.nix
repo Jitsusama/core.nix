@@ -1293,6 +1293,24 @@ pkgs.testers.runNixOSTest {
           machine.wait_until_fails(in_session("wl-paste --list-types > /dev/null 2>&1"), timeout=10)
           machine.fail(in_session("wl-paste --list-types > /dev/null 2>&1"))
 
+      with subtest("a copy made as another's program closes is the one kept"):
+          # The helper reads one event at a time, so the clipboard emptying
+          # can wait behind a newer copy, as it does while a slow program
+          # hands over what it copied. Paused, it hears both late.
+          with told("heard copy closing as another copies"):
+              as_account(
+                  "systemd-run --user --unit=closing sh -c "
+                  "\"printf %s 'closing as another copies' | wl-copy --foreground\""
+              )
+          as_account("systemctl --user kill --signal=SIGSTOP clipboard-history")
+          as_account("systemctl --user stop closing")
+          as_account("echo -n 'copied meanwhile' | wl-copy > /dev/null 2>&1")
+          with told("heard copy copied meanwhile"):
+              as_account("systemctl --user kill --signal=SIGCONT clipboard-history")
+          # Nothing takes it back a moment later.
+          machine.sleep(1)
+          t.assertEqual(as_account("wl-paste --no-newline"), "copied meanwhile")
+
       with subtest("Forget the Clipboard forgets every copy, and what it held"):
           with told("heard copy kept until forgotten"):
               copied_then_closed("kept until forgotten")

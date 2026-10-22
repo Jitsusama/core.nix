@@ -16,7 +16,11 @@
 //! because that program let go of it, as one does when it closes, this one
 //! offers the same text in its place, if it kept it. A secret, or anything
 //! else it didn't keep, is let go with its program, and once the history is
-//! forgotten, what it offers is nothing.
+//! forgotten, what it offers is nothing. Offering it takes the clipboard
+//! from whatever holds it, so it waits until every event already sent has
+//! been read and the compositor has answered a round trip: a copy made
+//! since the clipboard emptied, which the compositor has taken, is then
+//! known, and kept rather than replaced.
 //!
 //! Usage: clipboard-history --socket PATH [--keep N] [--largest BYTES]
 
@@ -164,6 +168,8 @@ struct State {
     manager: ExtDataControlManagerV1,
     device: ExtDataControlDeviceV1,
     held: Option<ExtDataControlSourceV1>,
+    // The clipboard emptied, and nothing has been copied since.
+    emptied: bool,
 }
 
 impl State {
@@ -270,13 +276,14 @@ impl Dispatch<ExtDataControlDeviceV1, ()> for State {
         event: ext_data_control_device_v1::Event,
         _: &(),
         connection: &Connection,
-        handle: &QueueHandle<Self>,
+        _: &QueueHandle<Self>,
     ) {
         match event {
             ext_data_control_device_v1::Event::DataOffer { id } => {
                 state.offers.insert(id.id(), Vec::new());
             }
             ext_data_control_device_v1::Event::Selection { id: Some(offer) } => {
+                state.emptied = false;
                 let types = state.offers.remove(&offer.id()).unwrap_or_default();
                 // Its own offer, heard back: the clipboard holds what it did.
                 if types.iter().any(|kind| kind == OURS) {
@@ -291,11 +298,10 @@ impl Dispatch<ExtDataControlDeviceV1, ()> for State {
                     history.tell(&copy.line());
                 }
             }
-            // The program holding the clipboard let go of it.
+            // The program holding the clipboard let go of it: what it held
+            // is offered once the events after this are read (run).
             ext_data_control_device_v1::Event::Selection { id: None } => {
-                if state.history.lock().unwrap().current.is_some() {
-                    state.hold(handle);
-                }
+                state.emptied = true;
             }
             // The selection a middle click pastes isn't kept.
             ext_data_control_device_v1::Event::PrimarySelection { id: Some(offer) } => {
@@ -443,11 +449,20 @@ fn run() -> Result<(), String> {
         manager,
         device,
         held: None,
+        emptied: false,
     };
     loop {
         queue
             .blocking_dispatch(&mut state)
             .map_err(|e| format!("lost Wayland: {e}"))?;
+        if state.emptied {
+            queue
+                .roundtrip(&mut state)
+                .map_err(|e| format!("lost Wayland: {e}"))?;
+        }
+        if std::mem::take(&mut state.emptied) && state.history.lock().unwrap().current.is_some() {
+            state.hold(&handle);
+        }
     }
 }
 
