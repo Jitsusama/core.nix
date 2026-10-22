@@ -1,4 +1,5 @@
 // What AI use cost, a collection, from the file spend-watch writes
+// (SpendWatch.qml)
 // (modules/spend-watch). It's laid out as the other collections are: each
 // row a short name with a few muted words beside it, what else is known of
 // it in the footer while it's picked, and the rest a right arrow away,
@@ -21,7 +22,6 @@
 // amounts, and no report, and answers only that the amounts are hidden.
 import qs
 import Quickshell
-import Quickshell.Io
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
 
@@ -30,8 +30,8 @@ Provider {
 
     what: "AI spend"
 
-    readonly property string runtime: Quickshell.env("XDG_RUNTIME_DIR")
-    property var said: null
+    readonly property var said: SpendWatch.said
+    onSaidChanged: changed()
     readonly property bool sharing: Quiet.sharing
     readonly property var reports: said?.reports ?? {}
 
@@ -243,41 +243,5 @@ Provider {
             rows: shown.rows.map(build),
             note: "Return copies the report"
         };
-    }
-
-    // A file from a daemon of another shape draws nothing rather than
-    // something wrong.
-    function parsed(text) {
-        try {
-            const value = JSON.parse(text);
-            return typeof value === "object" && value !== null && value.v === 2 ? value : null;
-        } catch (error) {
-            return null;
-        }
-    }
-
-    // The daemon replaces the file whole when something in it changed,
-    // which the watch hears, since it watches the folder as well; the
-    // folder is made at login (home.nix), so the watch hears the daemon
-    // start after the shell too.
-    FileView {
-        id: file
-        path: provider.settings.collection ?? `${provider.runtime}/spend-watch/collection.json`
-        watchChanges: true
-        printErrors: false
-        onFileChanged: reload()
-        // What was read last, so a reading that changed nothing says nothing.
-        property string read: ""
-        onLoaded: {
-            if (text() === read)
-                return;
-            read = text();
-            provider.said = provider.parsed(read);
-            provider.changed();
-        }
-        onLoadFailed: {
-            read = "";
-            provider.said = null;
-        }
     }
 }
