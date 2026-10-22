@@ -1,7 +1,8 @@
 pragma Singleton
 // pi's sessions, for the launcher's Agents and the pi piece: every pi
 // running in a window, the one used last first, with its quest's whole
-// title, and whether it's working, as each says.
+// title, and whether it's working or wants Joel, as each says; and a
+// notice once for each want, withdrawn when the want ends.
 //
 // What runs comes from niri's windows, whose titles pi sets to "π -", its
 // address, its quest's title cut short, and its folder, so a session is
@@ -9,8 +10,8 @@ pragma Singleton
 // whole title is the first line of the quest's README, read once the quests
 // are listed. Whether it's working comes from the file each session keeps
 // in the mesh's presence folder while it runs, watched for changes; a
-// session that keeps none says neither. Nothing is spawned and nothing is
-// asked of pi.
+// session that keeps none says neither. Nothing is asked of pi; a want is
+// said by starting pi-wants-you (home.nix), which posts its notice.
 import Qt.labs.folderlistmodel
 import Quickshell
 import Quickshell.Io
@@ -58,23 +59,58 @@ Singleton {
 
     // A want new to this shell is said once as a notice from pi, whose
     // Return goes to the session's window (pi-wants-you, home.nix), unless
-    // Joel is in that window already. Each is known by its session and
-    // when it began, and kept known: a presence file replaced by rename
-    // leaves its folder for a moment, which would otherwise make a want
-    // that never ended look new.
+    // Joel is in that window already, and one that stood before the shell
+    // began isn't, since the margin's mark says it. Each is known by its
+    // session, when it began and what it said, and kept known: a presence
+    // file replaced by rename leaves its folder for a moment, which would
+    // otherwise make a want that never ended look new. Its notice carries
+    // that key, and is withdrawn once the want ends or its session goes.
+    readonly property real began: Date.now()
     property var told: ({})
+    function key(session) {
+        const wants = session.presence.wants;
+        return `${session.address} ${wants.since ?? ""} ${wants.said ?? ""}`;
+    }
     onWantingChanged: {
+        withdrawing.restart();
         for (const session of wanting) {
-            const key = `${session.address} ${session.presence.wants.since ?? ""}`;
-            if (told[key])
+            const known = key(session);
+            if (told[known])
                 continue;
-            told[key] = true;
-            if (session.window.id === Niri.focused)
+            told[known] = true;
+            const since = Date.parse(session.presence.wants.since ?? "");
+            if (session.window.id === Niri.current || (since < began))
                 continue;
-            Niri.spawn(["pi-wants-you", String(session.window.id),
-                `${session.title} ${wanted(session.presence.wants)}`,
-                session.presence.wants.said ?? ""]);
+            Niri.spawn(["pi-wants-you", String(session.window.id), known,
+                plain(`${session.title} ${wanted(session.presence.wants)}`),
+                plain(session.presence.wants.said ?? "")]);
         }
+    }
+
+    // A want's notice goes a moment after the want does, so a presence
+    // file's rename, which takes it away for an instant, doesn't.
+    Timer {
+        id: withdrawing
+        interval: 1000
+        onTriggered: {
+            const standing = {};
+            for (const session of root.wanting)
+                standing[root.key(session)] = true;
+            for (const id in Notices.live) {
+                const notice = Notices.live[id];
+                const want = notice.hints["x-pi-want"];
+                if (notice.appName === "pi" && want !== undefined && !standing[want]) {
+                    Notices.mark(notice.id, true);
+                    notice.dismiss();
+                }
+            }
+        }
+    }
+
+    // Words as a notice draws them, which reads markup, so pi's own say
+    // what they say.
+    function plain(text) {
+        return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
     }
 
     // What a want is, in words after the session's name.

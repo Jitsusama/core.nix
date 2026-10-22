@@ -270,6 +270,12 @@ Scope {
             else
                 root.holding = true;
         }
+
+        // Every notice missed counted as seen, as the margin's Let Them Go
+        // does.
+        function seen(): void {
+            Notices.seen();
+        }
     }
 
     // A keyboard's Do Not Disturb key holds notices until it's pressed

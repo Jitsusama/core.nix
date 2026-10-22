@@ -547,6 +547,33 @@ let
     provider:
     if isBuiltInProvider provider then builtInProviders.${provider.source} else provider.source;
 
+  # A pi session that has come to want Joel, said as a notice from pi
+  # (Sessions.qml starts it once a want): its quest and what it wants, and
+  # Return or a click on it goes to the session's window. A notice's action
+  # reaches only a sender still waiting, so this waits until the notice
+  # closes, which the shell does when the want ends, and no more than an
+  # hour, so one a restarted shell forgot can't linger. Its want's key goes
+  # with it as a hint, for the shell to know which notice is whose. niri is
+  # the one the session runs, from the path.
+  piWants = pkgs.writeShellApplication {
+    name = "pi-wants-you";
+    runtimeInputs = [
+      pkgs.coreutils
+      pkgs.libnotify
+    ];
+    text = ''
+      window=$1
+      want=$2
+      title=$3
+      body=$4
+      action=$(timeout 1h notify-send --app-name=pi --action=default="Go to it" \
+        --hint=string:x-pi-want:"$want" --wait -- "$title" "$body" || true)
+      if [ "$action" = default ]; then
+        niri msg action focus-window --id "$window"
+      fi
+    '';
+  };
+
   # OpenSSH's askpass, asked through the shell (Askpass.qml): the prompt is
   # the only argument, SSH_ASKPASS_PROMPT says whether it's a secret, a yes
   # ("confirm") or a notice that waits on a touch ("none"), the answer goes
@@ -558,28 +585,6 @@ let
   # the shell still has it: a shell that restarted is asked again, and once
   # no shell has answered for 20 seconds the askpass refuses. Otherwise the
   # program would wait on it forever, and ssh-tpm-agent every key with it.
-  # A pi session that has come to want Joel, said as a notice from pi
-  # (Sessions.qml starts it once a want): its quest and what it wants, and
-  # Return or a click on it goes to the session's window. A notice's action
-  # reaches only a sender still waiting, so this waits until the notice
-  # closes, and no longer.
-  piWants = pkgs.writeShellApplication {
-    name = "pi-wants-you";
-    runtimeInputs = [
-      pkgs.libnotify
-      pkgs.niri
-    ];
-    text = ''
-      window=$1
-      title=$2
-      body=$3
-      action=$(notify-send --app-name=pi --action=default="Go to it" --wait -- "$title" "$body" || true)
-      if [ "$action" = default ]; then
-        niri msg action focus-window --id "$window"
-      fi
-    '';
-  };
-
   askpass = pkgs.writeShellApplication {
     name = "ssh-askpass";
     runtimeInputs = [

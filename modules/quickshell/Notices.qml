@@ -36,7 +36,6 @@ Singleton {
     readonly property int unread: history.filter(notice => !notice.read).length
     // Those missed and gone from the screen, which wait for Joel.
     readonly property var waiting: history.filter(notice => notice.missed && !(notice.id in live))
-    onWaitingChanged: Report.say(`waiting ${waiting.map(notice => `${notice.app}: ${notice.summary}`).join("; ")}`)
 
     // How far down the notices make way for the margin's drawer while it's
     // out, so neither covers the other (Margin.qml).
@@ -58,8 +57,9 @@ Singleton {
         "google chrome": { glyph: 0xf268, hue: "program" },
         "chromium": { glyph: 0xf268, hue: "program" },
         "niri": { glyph: 0xf0e51, hue: "machine" },
-        // A pi session wanting Joel (Sessions.qml), in its mark, \u03c0.
-        "pi": { glyph: 0x3c0, hue: "program" },
+        // A pi session wanting Joel (Sessions.qml), in its mark. It's
+        // never missed, since the margin's mark says it while it holds.
+        "pi": { glyph: Theme.glyph.agent.codePointAt(0), hue: "program", answers: true },
         "recorder": { glyph: 0xf0ec2, hue: "machine", answers: true }
     })
 

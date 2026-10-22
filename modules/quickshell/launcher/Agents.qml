@@ -24,7 +24,7 @@ Provider {
 
     // Those that want Joel first, then the one used last.
     readonly property var all: Sessions.wanting
-        .concat(Sessions.running.filter(session => !Sessions.wanting.includes(session)))
+        .concat(Sessions.running.filter(session => !(session.presence && session.presence.wants)))
         .map(session => made(session))
     onAllChanged: changed()
 
@@ -98,7 +98,11 @@ Provider {
     }
 
     function counted() {
-        const running = Sessions.running.length;
-        return Sessions.working > 0 ? `${running} running, ${Sessions.working} working` : `${running} running`;
+        // As the launcher's foot says it (pieces/Pi.qml).
+        const wanting = Sessions.wanting.length;
+        return [`${Sessions.running.length} running`,
+            Sessions.working > 0 ? `${Sessions.working} working` : "",
+            wanting > 0 ? `${wanting} ${wanting === 1 ? "wants" : "want"} you` : ""]
+            .filter(part => part !== "").join(", ");
     }
 }
