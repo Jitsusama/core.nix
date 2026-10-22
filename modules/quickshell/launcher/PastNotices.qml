@@ -2,13 +2,17 @@
 // newest first, from the shell's own history (Notices.qml), so nothing is
 // asked of another program. A search with a match adds one row; the right
 // arrow, or its row at home, shows them all, and its row at home says how
-// many were missed until it's opened. Return goes to the program that sent
-// one, its window if it has one open, or copies what it said when nothing
-// sent it that can be gone to. The right arrow steps into what else can be
-// done: copying what it said, marking it read or unread, and while it's
-// still on screen, its own actions (Reply, Mark as read) and letting it go,
-// so a notice is driven by the keys as well as by the pointer. Each says
-// whether it's unread beside its age; acting on one reads it.
+// many were missed until it's opened. Return on one still on screen does
+// what its sender does when it's chosen, as clicking it does, which takes
+// Joel to the very conversation or tab it's about; on one gone, it goes to
+// the program that sent it, its window if it has one open, or copies what
+// it said when nothing sent it that can be gone to. Whatever a sender is
+// asked to do runs while the launcher holds the keys, since that's what
+// lets it bring its window forward. The right arrow steps into what else
+// can be done: copying what it said, marking it read or unread, and while
+// it's still on screen, its own actions (Reply, Mark as read) and letting
+// it go, so a notice is driven by the keys as well as by the pointer. Each
+// says whether it's unread beside its age; acting on one reads it.
 import qs
 import Quickshell
 import QtQuick
@@ -54,12 +58,19 @@ Provider {
             Niri.spawn(command(now.entry));
     }
 
+    // What its sender does when a notice still on screen is chosen, or null.
+    function opens(notice) {
+        const live = Notices.live[notice.id] ?? null;
+        return live ? live.actions.find(action => action.identifier === "default") ?? null : null;
+    }
+
     function made(notice) {
         const said = notice.body === "" ? notice.summary : `${notice.summary}\n${notice.body}`;
         const from = source(notice.app);
+        const opened = opens(notice) !== null;
         return member({
             key: `notice:${notice.app}:${notice.summary}`,
-            verb: from.window ? "switch" : from.entry ? "open" : "copy",
+            verb: opened || (!from.window && from.entry) ? "open" : from.window ? "switch" : "copy",
             name: notice.body === "" ? notice.summary
                 : `${notice.summary} · ${notice.body.replace(/\s+/g, " ")}`,
             glyph: String.fromCodePoint(notice.glyph),
@@ -68,13 +79,18 @@ Provider {
             at: notice.at,
             unread: !notice.read,
             // The clipboard takes text only while the launcher holds the
-            // keys; going to a window waits for the launcher to be gone.
-            now: !from.window && !from.entry,
-            later: true,
+            // keys, and a sender can raise its window only from a token
+            // asked for while it does; going to a window niri focuses
+            // waits for the launcher to be gone.
+            now: opened || (!from.window && !from.entry),
+            later: !opened,
             verbs: () => provider.verbs(notice, said),
             run: () => {
                 Notices.mark(notice.id, true);
-                if (!from.window && !from.entry)
+                const opening = provider.opens(notice);
+                if (opening)
+                    opening.invoke();
+                else if (!from.window && !from.entry)
                     Quickshell.clipboardText = said;
                 else
                     provider.go(notice.app);
@@ -89,7 +105,9 @@ Provider {
     // one whose notice has gone by then goes to its program instead.
     function verbs(notice, said) {
         const live = Notices.live[notice.id] ?? null;
-        const offered = live ? live.actions.map(action => ({
+        // The default is Return's on the notice itself, not one of these.
+        const offered = live ? live.actions.filter(action => action.identifier !== "default")
+            .map(action => ({
             identifier: action.identifier,
             text: action.text
         })).map(action => thing({
@@ -97,7 +115,7 @@ Provider {
             name: action.text,
             glyph: String.fromCodePoint(/reply/i.test(action.text) ? 0xf045a : 0xf0ce0),
             hue: "action",
-            later: true,
+            now: true,
             run: () => {
                 Notices.mark(notice.id, true);
                 const still = Notices.live[notice.id] ?? null;
@@ -186,7 +204,7 @@ Provider {
     // card says.
     function leading() {
         const index = Notices.history.findIndex(notice => notice.id in Notices.live
-            && Notices.live[notice.id].actions.length > 0);
+            && Notices.live[notice.id].actions.some(action => action.identifier !== "default"));
         return index < 0 ? null : all[index];
     }
 

@@ -1661,11 +1661,11 @@ pkgs.testers.runNixOSTest {
       # a fraction of the screen. The glyph is the only thing in the action
       # colour. notify-send waits for the answer, so it runs on its own, and
       # the notice stays a minute, so only a click closes it sooner.
-      def offer_to_play(picture):
+      def offer_to_play(picture, offers=""):
           machine.wait_until_fails(in_session("niri msg layers | grep -q notifications"), timeout=30)
           with told(f"shows card {picture}"):
               as_account(
-                  f"notify-send --expire-time=60000 --action=play='Play it' '{picture}' 'y.mp4'"
+                  f"notify-send --expire-time=60000 {offers} --action=play='Play it' '{picture}' 'y.mp4'"
                   " > /tmp/answer 2>&1 < /dev/null &"
               )
           action = [int("${roles.action}"[i : i + 2], 16) for i in (1, 3, 5)]
@@ -1733,6 +1733,56 @@ pkgs.testers.runNixOSTest {
               f" --after-cursor={shlex.quote(since)}"
           )
           t.assertNotIn("holds margin waiting", said, "the margin flashed a waiting notice")
+
+      # What the notification server says to programs, as they hear it.
+      def listen():
+          as_account(
+              "${pkgs.dbus}/bin/dbus-monitor --session"
+              " \"type='signal',interface='org.freedesktop.Notifications'\""
+              " > /tmp/signals 2>&1 < /dev/null & echo $! > /tmp/listening"
+          )
+          # It's listening once it hears a signal of its own.
+          probe = (
+              "${pkgs.dbus}/bin/dbus-send --session --type=signal"
+              " /probe org.freedesktop.Notifications.Probe"
+          )
+          machine.wait_until_succeeds(
+              in_session(f"{probe}; grep -q member=Probe /tmp/signals"), timeout=10
+          )
+
+      # The program was sent a token to bring its window forward, and then
+      # told what was chosen: the order a compositor needs.
+      def tokened():
+          said = machine.succeed("cat /tmp/signals")
+          machine.succeed("kill $(cat /tmp/listening)")
+          token = re.search(r"member=ActivationToken\n\s+uint32 \d+\n\s+string \"([^\"]+)\"", said)
+          t.assertIsNotNone(token, said)
+          t.assertLess(said.index("member=ActivationToken"), said.index("member=ActionInvoked"), said)
+
+      with subtest("a click on a notice opens what it's about, with a token to come forward"):
+          listen()
+          # Its default is the card's click, so the one glyph is Play it's.
+          x, y = offer_to_play("notice-to-open", offers="--action=default=Open")
+          click(x, y - 0.04)
+          assert answered() == "default", "a click on the message didn't open what it's about"
+          tokened()
+
+      with subtest("Return on a notice in the launcher opens what it's about, with a token"):
+          machine.wait_until_fails(in_session("niri msg layers | grep -q notifications"), timeout=30)
+          listen()
+          with told("shows card Thread with Sam"):
+              as_account(
+                  "notify-send --expire-time=60000 --action=default=Open 'Thread with Sam' 'see it'"
+                  " > /tmp/answer 2>&1 < /dev/null &"
+              )
+          machine.send_key("meta_l-n")
+          launcher_ready()
+          launcher_until(
+              lambda shown: (shown["selected"] or {}).get("name", "").startswith("Thread with Sam")
+          )
+          machine.send_key("ret")
+          machine.wait_until_succeeds("grep -qx default /tmp/answer", timeout=15)
+          tokened()
 
       with subtest("the launcher keeps the machine awake, lid shut too, then lets it sleep"):
           held = "systemd-inhibit --list --no-pager | grep Caffeinate"
