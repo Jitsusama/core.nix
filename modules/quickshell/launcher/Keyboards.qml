@@ -19,11 +19,11 @@ Provider {
     examples: ["keyboards"]
 
     // The words it answers whole, and by their start (Provider.qml).
-    questions: ["keyboards", "keyboard state", "connected keyboards", "which keyboards", "caps lock"]
+    questions: ["keyboards", "keyboard state", "connected keyboards", "which keyboard", "which keyboards",
+        "caps lock", "capslock", "is caps lock on"]
 
     function answer(typed) {
-        const text = typed.trim().toLowerCase();
-        if (!/^(keyboards|keyboard state|connected keyboards|which keyboards?|caps ?lock)$/.test(text))
+        if (asks(typed) === "")
             return null;
         return told();
     }

@@ -182,14 +182,15 @@ Provider {
     }
 
     // The words it answers whole, and by their start (Provider.qml).
-    questions: ["volume", "what's playing", "now playing", "loudness", "how loud"]
+    questions: ["volume", "vol", "how loud", "loudness", "what's playing", "now playing", "playing",
+        "what song is this", "song", "track", "music"]
 
     function answer(typed) {
         const text = typed.trim().toLowerCase().replace(/\?$/, "");
         const asked = /^(?:volume|vol|sound)\s+(?:to\s+)?(\d{1,3})\s*%?$/.exec(text);
         if (asked)
             return set(Math.min(100, Number(asked[1])));
-        if (!/^(volume|vol|how loud|loudness|what'?s playing|now playing|playing)$/.test(text))
+        if (asks(text.replace(/^whats /, "what's ")) === "")
             return null;
         return told();
     }

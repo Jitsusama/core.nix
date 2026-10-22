@@ -45,11 +45,12 @@ Provider {
     }
 
     // The words it answers whole, and by their start (Provider.qml).
-    questions: ["battery", "power", "charge", "charging", "charger", "plugged in", "energy", "watts"]
+    questions: ["battery", "batteries", "power", "charge", "charging", "charger", "plugged in", "plugged",
+        "battery life", "battery left", "how much battery", "time left", "on battery", "is it charging",
+        "power supply", "adapter", "energy", "watt", "ac"]
 
     function answer(typed) {
-        const text = typed.trim().toLowerCase();
-        if (battery === null || !/^(battery|batteries|power|charge|charging|charger|plugged( in)?|energy|watts?)$/.test(text))
+        if (battery === null || asks(typed) === "")
             return null;
         return told();
     }

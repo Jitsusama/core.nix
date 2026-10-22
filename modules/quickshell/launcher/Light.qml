@@ -22,7 +22,8 @@ Provider {
     }
 
     // The words it answers whole, and by their start (Provider.qml).
-    questions: ["brightness", "backlight", "screen brightness", "keyboard light", "keyboard backlight", "dim"]
+    questions: ["brightness", "backlight", "screen brightness", "screen light", "display brightness", "bright",
+        "brighter", "dim", "dimmer", "keyboard light", "keyboard backlight", "keyboard brightness", "key light"]
 
     function answer(typed) {
         const text = typed.trim().toLowerCase();
@@ -30,7 +31,7 @@ Provider {
             .exec(text);
         if (asked)
             return set(Math.min(100, Number(asked[1])));
-        if (!/^(brightness|bright|backlight|screen (light|brightness)|(keyboard|key) (light|lights|backlight|brightness)|dim)$/.test(text))
+        if (asks(text) === "")
             return null;
         return told();
     }

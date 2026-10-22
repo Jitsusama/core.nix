@@ -31,19 +31,29 @@ Provider {
     }
 
     // The words it answers whole, and by their start (Provider.qml).
-    questions: ["memory", "processors", "cpu", "load", "swap", "uptime", "disk", "storage", "free space", "disk space"]
+    // Each answer and the words that ask it, best first.
+    readonly property var kinds: ({
+        memory: ["memory", "ram", "mem", "swap", "free memory", "memory use"],
+        cpu: ["processor", "cpu", "cores", "load", "load average", "cpu use"],
+        uptime: ["uptime", "since boot", "how long up", "boot time"],
+        disks: ["disk", "storage", "free space", "disk space", "space", "drive", "ssd", "how full"]
+    })
+    questions: Object.keys(kinds).reduce((all, kind) => all.concat(kinds[kind]), [])
 
     function answer(typed) {
-        const text = typed.trim().toLowerCase();
-        if (/^(cpu|cpus|load|processors?)$/.test(text))
+        const question = asks(typed);
+        switch (Object.keys(kinds).find(kind => kinds[kind].includes(question))) {
+        case "cpu":
             return cpu();
-        if (/^(memory|ram|mem|swap)$/.test(text))
+        case "memory":
             return memory();
-        if (text === "uptime")
+        case "uptime":
             return uptime();
-        if (/^(disks?|storage|space|free space|disk space|drive|ssd)$/.test(text))
+        case "disks":
             return disks();
-        return null;
+        default:
+            return null;
+        }
     }
 
     function disks() {

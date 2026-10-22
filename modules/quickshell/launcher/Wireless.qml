@@ -53,7 +53,7 @@ Provider {
         key: "wifi:radio",
         verb: on ? "turn off" : "turn on",
         name: on ? "Turn Wi-Fi Off" : "Turn Wi-Fi On",
-        keywords: "wifi wireless radio network airplane",
+        keywords: "wifi wlan wireless radio network internet airplane mode flight",
         glyph: glyph(on ? 0xf05aa : 0xf05a9),
         hue: "machine",
         run: () => Wifi.turn(!provider.on)
@@ -66,7 +66,7 @@ Provider {
         key: "wifi:sign-in",
         verb: "sign in",
         name: `Sign In to ${SignIn.network}`,
-        keywords: "wifi portal captive login hotel",
+        keywords: "wifi portal captive login log in hotel airport cafe",
         glyph: glyph(0xf05a9),
         hue: "machine",
         run: () => SignIn.open()

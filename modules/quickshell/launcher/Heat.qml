@@ -51,11 +51,11 @@ Provider {
     }
 
     // The words it answers whole, and by their start (Provider.qml).
-    questions: ["temperature", "temperatures", "temps", "heat", "thermals", "sensors", "fans", "cooling"]
+    questions: ["temperature", "temp", "heat", "hot", "how hot", "thermal", "sensor", "fan", "fan speed",
+        "cooling", "cpu temperature", "cpu temp"]
 
     function answer(typed) {
-        const text = typed.trim().toLowerCase();
-        if (!/^(temperatures?|temps?|heat|hot|thermals?|sensors?|fans?|cooling)$/.test(text))
+        if (asks(typed) === "")
             return null;
         return told();
     }
