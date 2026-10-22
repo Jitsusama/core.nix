@@ -402,16 +402,19 @@ impl Step for GatherBundles {
             .partitions
             .iter()
             .find(|partition| partition.label.as_deref() == Some("vault"));
-        // Where a desktop mounted the vault it's read as the person; else
-        // from the disk, only for reading.
-        let mut found = match vault.and_then(|vault| vault.mounted.first()) {
-            Some(mounted) => carried::kept(&mut vault::store::Directory::new(mounted)),
-            None if vault.is_some() => match machine.read_disk(&stick.path) {
-                Ok(mut disk) => carried::on_stick(&mut disk),
-                Err(_) => vec![],
-            },
-            None => vec![],
+        // Read where a desktop mounted the vault, else mounted only for
+        // reading, which needs no password as opening the disk would.
+        let mut found = vec![];
+        let mut read = |mounted: &Path| {
+            found = carried::kept(&mut vault::store::Directory::new(mounted));
         };
+        if let Some(vault) = vault {
+            match vault.mounted.first() {
+                Some(mounted) => read(Path::new(mounted)),
+                // One that won't mount carries nothing to keep.
+                None => machine.read_partition(&vault.path, &mut read).unwrap_or(()),
+            }
+        }
         if let Some(own) = machine
             .read(rescue::KEPT)
             .ok()

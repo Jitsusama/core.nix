@@ -3,9 +3,13 @@
 //! descriptor, and on a Mac through authopen, which asks for an
 //! administrator's password and hands one back over a socket. Whatever a
 //! desktop mounted from the stick is unmounted first, since the disk is
-//! opened exclusively. Nothing else on a host ever needs root.
+//! opened exclusively. Reading what an old stick carries needs no
+//! password: its partition is mounted only for reading, which polkit lets
+//! the person at the machine do, as it doesn't for opening the disk.
+//! Nothing else on a host ever needs root.
 
 use std::fs::File;
+use std::path::Path;
 
 use crate::Fault;
 
@@ -20,6 +24,7 @@ fn refused(device: &str, why: impl std::fmt::Display) -> Fault {
 mod udisks {
     use std::collections::HashMap;
     use std::fs::File;
+    use std::path::Path;
 
     use zbus::blocking::Connection;
     use zbus::zvariant::{OwnedFd, OwnedObjectPath, Value};
@@ -52,25 +57,35 @@ mod udisks {
             .ok_or_else(|| refused(device, "UDisks2 doesn't know it"))
     }
 
-    /// Only for reading, with nothing unmounted, which polkit lets the
-    /// person at the machine do to a stick.
-    pub fn open_for_reading(device: &str) -> Result<File, Fault> {
-        let connection = Connection::system().map_err(|why| refused(device, why))?;
-        let options = HashMap::from([("flags", Value::from(libc::O_CLOEXEC))]);
+    /// Mounted only for reading while `read` looks inside, then
+    /// unmounted.
+    pub fn read_partition(device: &str, read: &mut dyn FnMut(&Path)) -> Result<(), Fault> {
+        let unread = |why: zbus::Error| Fault::unreadable(device, why);
+        let connection = Connection::system().map_err(unread)?;
+        let partition = object(&connection, device)?;
+        let options = HashMap::from([("options", Value::from("ro"))]);
         let reply = connection
             .call_method(
                 Some(UDISKS),
-                &object(&connection, device)?,
-                Some("org.freedesktop.UDisks2.Block"),
-                "OpenDevice",
-                &("r", options),
+                &partition,
+                Some("org.freedesktop.UDisks2.Filesystem"),
+                "Mount",
+                &(options,),
             )
-            .map_err(|why| refused(device, why))?;
-        let fd: OwnedFd = reply
-            .body()
-            .deserialize()
-            .map_err(|why| refused(device, why))?;
-        Ok(File::from(std::os::fd::OwnedFd::from(fd)))
+            .map_err(unread)?;
+        let mounted: String = reply.body().deserialize().map_err(unread)?;
+        read(Path::new(&mounted));
+        let options: HashMap<&str, Value> = HashMap::new();
+        connection
+            .call_method(
+                Some(UDISKS),
+                &partition,
+                Some("org.freedesktop.UDisks2.Filesystem"),
+                "Unmount",
+                &(options,),
+            )
+            .map_err(unread)?;
+        Ok(())
     }
 
     pub fn open(device: &str, mounted: &[String]) -> Result<File, Fault> {
@@ -181,16 +196,20 @@ mod authopen {
     }
 }
 
-/// The stick's whole disk, only for reading, nothing unmounted. A Mac
-/// mounts a stick's vault itself, so reading it there needs no disk open.
-pub fn open_for_reading(device: &str) -> Result<File, Fault> {
+/// A stick's partition, mounted only for reading while `read` looks
+/// inside it. A Mac mounts a stick's partitions itself, so there it's read
+/// where it's mounted.
+pub fn read_partition(device: &str, read: &mut dyn FnMut(&Path)) -> Result<(), Fault> {
     #[cfg(target_os = "linux")]
-    return udisks::open_for_reading(device);
+    return udisks::read_partition(device, read);
     #[cfg(not(target_os = "linux"))]
-    Err(refused(
-        device,
-        "this system reads a stick where it mounts it",
-    ))
+    {
+        let _ = read;
+        Err(Fault::unreadable(
+            device,
+            "this system reads a stick where it mounts it",
+        ))
+    }
 }
 
 /// The stick's whole disk, for reading and writing, once whatever was

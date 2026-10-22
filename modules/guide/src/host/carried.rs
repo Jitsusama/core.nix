@@ -96,9 +96,9 @@ pub fn kept(store: &mut dyn Store) -> Vec<Carried> {
     found
 }
 
-/// Every bundle the stick on `disk` carries, read before it's written
-/// over. A disk the guide never wrote carries none, and nothing read here
-/// can stop a stick being written.
+/// Every bundle the stick on `disk` carries, read from its vault's
+/// partition straight off the disk, such as an image of one. A disk the
+/// guide never wrote carries none.
 pub fn on_stick(disk: &mut File) -> Vec<Carried> {
     let mut read = || -> Result<Vec<Carried>, Fault> {
         let unread = |why: std::io::Error| Fault::unreadable("the stick", why);
