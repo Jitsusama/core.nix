@@ -1294,6 +1294,13 @@ pkgs.testers.runNixOSTest {
                   lambda shown: (shown["selected"] or {}).get("name") == action
                   and shown["kind"] == "session"
               )
+              # Return asks rather than doing it: it holds the action, its
+              # one verb saying what a second Return would do.
+              machine.send_key("ret")
+              launcher_until(
+                  lambda shown: shown["held"] == [action]
+                  and (shown["selected"] or {}).get("name", "").startswith("Yes, ")
+              )
               machine.send_key("esc")
               machine.wait_until_fails(in_session("niri msg layers | grep -qw launcher"), timeout=10)
           # A key's action, by the other words its bind lists.

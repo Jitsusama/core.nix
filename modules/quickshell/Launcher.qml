@@ -601,6 +601,11 @@ Scope {
             ask(choice);
             return;
         }
+        // One that can't be taken back, such as powering off, steps into
+        // its verbs, which say what it does, so a second Return does it and
+        // Escape or the left arrow backs out.
+        if (choice.confirm && held.length === 0 && enter(choice))
+            return;
         // One whose outcome takes a while keeps the launcher, which says how
         // it's going.
         if (choice.stays) {

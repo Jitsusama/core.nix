@@ -91,18 +91,21 @@ Provider {
             name: "Log Out",
             words: "logout sign out signout quit niri end session",
             glyph: 0xf0343,
+            sure: "Yes, log out, closing every window",
             run: () => Niri.act({ Quit: { skip_confirmation: true } })
         },
         {
             name: "Reboot",
             words: "restart reset",
             glyph: 0xf0453,
+            sure: "Yes, reboot now",
             run: () => Niri.spawn(["systemctl", "reboot"])
         },
         {
             name: "Power Off",
             words: "shutdown shut down turn off halt",
             glyph: 0xf011,
+            sure: "Yes, power off now",
             run: () => Niri.spawn(["systemctl", "poweroff"])
         }
     ].map(action => thing({
@@ -112,7 +115,18 @@ Provider {
         keywords: action.words,
         glyph: String.fromCodePoint(action.glyph),
         hue: "machine",
-        run: action.run
+        run: action.run,
+        // Those that end the session ask once, as a second Return, since
+        // everyday words now find them.
+        confirm: !!action.sure,
+        verbs: action.sure ? () => [thing({
+            key: `session:${action.name}:sure`,
+            verb: action.name.toLowerCase(),
+            name: action.sure,
+            glyph: String.fromCodePoint(action.glyph),
+            hue: "alert",
+            run: action.run
+        })] : null
     })))
 
     function home() {
