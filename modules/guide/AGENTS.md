@@ -58,8 +58,9 @@ driven on; the installed machine's steps come later.
   Mac's raw disks need. Reading back forgets the system's cached copy first,
   then compares both tables, hashes each partition again and opens the
   vault.
-- **Signing.** A stick for one machine has its boot program signed with
-  that machine's db key, so it boots there with Secure Boot enforced. The
+- **Signing.** A stick for one machine has its boot program,
+  `EFI/BOOT/BOOTX64.EFI` and nothing else on its ESP, signed with that
+  machine's db key, so it boots there with Secure Boot enforced. The
   signature is byte for byte what sbsign makes from the same key at the same
   moment, since sbsign's is what every machine here boots; sbsign itself is
   Linux's alone. The ESP is signed in memory before anything reaches the
@@ -99,8 +100,10 @@ driven on; the installed machine's steps come later.
   already trusts, so a reinstall needs no firmware visit, and otherwise
   made where the install signs with them, which only a firmware in setup
   mode will take. The system is copied in from the vault with no
-  network, then the stick is made the machine's own (below), and the key
-  held in memory comes off the disk last. A host gives the stick the keys
+  network, the account given its password and the key held in memory
+  taken off the disk, and the stick is made the machine's own (below)
+  last, since it needs none of those and a stick that won't take it
+  should cost only the stick. A host gives the stick the keys
   from the machine's bundle, the one it keeps or one `--rescue-bundle`
   names, opened in memory, and signs the stick with them.
   Every step stays done through the steps after it, since the journey runs
@@ -172,9 +175,15 @@ driven on; the installed machine's steps come later.
 - **The machine's own stick.** Once the install has the machine's keys,
   it puts them into the stick's vault under `sbctl/`, where a reinstall
   takes them from, and the bundle beside the vault's sealed files as
-  `<machine>-rescue-bundle.json`. Then it signs the stick's boot program
-  with the machine's db key, in place of whatever signed it, writing back
-  only the blocks that changed and reading them back. Pulled out, the
+  `<machine>-rescue-bundle.json`, so the vault's passphrase now guards
+  the machine's PK, KEK and db keys. The keys' objects go first, then one
+  index naming them, written whole under a name of its own before it
+  takes the old index's place, so a stick pulled part way opens as it was
+  or as it is now. Then it signs the stick's boot program with the
+  machine's db key, in place of whatever signed it, writing back only the
+  blocks that changed and reading them back. One the machine's key signed
+  already, as a reinstall from its own stick finds it, isn't written to
+  at all. Pulled out, the
   stick boots under the machine's own keys and reinstalls it with no
   visit to the firmware. It changes only the partition named `esp` on the
   disk its vault is on, as lsblk sees it, unmounted first from `/boot`,
@@ -254,7 +263,8 @@ machine it runs on and changes nothing, which is how a parser meets a
 machine it hasn't seen. `guide write-stick IMAGE FILE` writes a repair stick
 into a file already the size of a stick, and refuses a disk; given
 `--sign-with` and sbctl's db key directory, it signs the stick's boot
-program for that machine.
+program for that machine. It carries no rescue bundles, which only
+`guide host` gathers and spreads.
 
 - Parse what a tool printed on a real machine, never what its manual says it
   prints: capture it into `fixtures/<hardware>/`, named as core's hardware

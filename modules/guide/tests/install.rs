@@ -718,6 +718,21 @@ fn the_stick_carries_the_machines_keys_and_bundle_and_boots_with_its_key() {
         Standing::Done { .. }
     ));
 
+    // Run again with the same keys and a newer bundle, as a step tried
+    // again finds the stick: the bundle is the new one, the vault holds no
+    // more files than it did, and the boot partition isn't written to.
+    let listed = || std::fs::read_dir(&vault).unwrap().count();
+    let (files, esp) = (listed(), std::fs::read(scratch.join("esp.fat")).unwrap());
+    fake.file(BUNDLE, b"a newer sealed bundle");
+    KeepOnStick.run(&mut fake, &Answers::new()).unwrap();
+    assert_eq!(
+        std::fs::read(vault.join("machine-rescue-bundle.json")).unwrap(),
+        b"a newer sealed bundle"
+    );
+    assert_eq!(listed(), files);
+    assert!(std::fs::read(scratch.join("esp.fat")).unwrap() == esp);
+    assert!(boots_with(&scratch, &scratch.join("esp.fat"), &pem));
+
     // Keys made again, as a second install from the stick does, make it
     // that machine's again.
     let other = Scratch::new("install-keep-on-stick-other");
@@ -753,9 +768,24 @@ fn a_boot_partition_on_another_disk_than_the_vaults_is_never_signed() {
     fake.disk("/dev/vda1", &scratch.join("esp.fat"));
     let before = std::fs::read(scratch.join("esp.fat")).unwrap();
     let result = KeepOnStick.run(&mut fake, &Answers::new());
-    assert!(matches!(result, Err(Fault::Blocked { .. })), "{result:?}");
+    assert!(
+        matches!(&result, Err(Fault::Blocked { why, .. }) if why.contains("no boot partition")),
+        "{result:?}"
+    );
     assert_eq!(std::fs::read(scratch.join("esp.fat")).unwrap(), before);
     assert!(!vault.join("machine-rescue-bundle.json").exists());
+}
+
+#[test]
+fn the_stick_is_made_the_machines_own_only_once_the_machine_is_finished() {
+    let ids: Vec<&str> = guide::install::steps(&["the Nano".into()])
+        .iter()
+        .map(|step| step.id())
+        .collect();
+    let at = |id: &str| ids.iter().position(|found| *found == id).unwrap();
+    assert!(at("set-password") < at("keep-on-stick"), "{ids:?}");
+    assert!(at("wipe-install-key") < at("keep-on-stick"), "{ids:?}");
+    assert_eq!(ids.last(), Some(&"keep-on-stick"), "{ids:?}");
 }
 
 const VOLUME: &str = "/dev/disk/by-partlabel/system";

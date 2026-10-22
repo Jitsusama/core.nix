@@ -199,51 +199,52 @@ pub fn write(
     })
 }
 
-/// Signs every boot program in an EFI system partition held in memory:
-/// each `.EFI` file in `EFI/BOOT`, where firmware looks on a removable disk.
+/// Where firmware looks for a removable disk's boot program.
+const BOOT_PROGRAM: &str = "EFI/BOOT/BOOTX64.EFI";
+
+/// Signs the boot program in an EFI system partition held in memory, the
+/// one file there firmware boots on its own, so nothing else that lands on
+/// a stick's partition is ever signed with a machine's key. One this
+/// signer signed as it is now is left alone, and says nothing changed.
 /// fatfs rewrites a file in place without the directory entries it gets
 /// wrong when it makes one.
-fn sign_esp(esp: &mut [u8], signer: &Signer) -> Result<(), Fault> {
+fn sign_esp(esp: &mut [u8], signer: &Signer) -> Result<bool, Fault> {
     let unsigned = |why: io::Error| Fault::unreadable("the stick's EFI system partition", why);
     let filesystem =
         fatfs::FileSystem::new(io::Cursor::new(esp), fatfs::FsOptions::new()).map_err(unsigned)?;
-    let mut count = 0;
     {
-        let boot = filesystem
+        let mut file = filesystem
             .root_dir()
-            .open_dir("EFI/BOOT")
-            .map_err(unsigned)?;
-        for entry in boot.iter() {
-            let entry = entry.map_err(unsigned)?;
-            if !entry.is_file() || !entry.file_name().to_ascii_uppercase().ends_with(".EFI") {
-                continue;
-            }
-            let mut file = entry.to_file();
-            let mut program = vec![];
-            file.read_to_end(&mut program).map_err(unsigned)?;
-            let program = signer.sign(program, std::time::SystemTime::now())?;
-            file.seek(SeekFrom::Start(0))
-                .and_then(|_| file.write_all(&program))
-                .and_then(|()| file.truncate())
-                .and_then(|()| file.flush())
-                .map_err(unsigned)?;
-            count += 1;
+            .open_file(BOOT_PROGRAM)
+            .map_err(|why| match why.kind() {
+                io::ErrorKind::NotFound => {
+                    Fault::unreadable("the stick's EFI system partition", "it has no boot program")
+                }
+                _ => unsigned(why),
+            })?;
+        let mut program = vec![];
+        file.read_to_end(&mut program).map_err(unsigned)?;
+        if signer.has_signed(&program) {
+            return Ok(false);
         }
-    }
-    if count == 0 {
-        return Err(Fault::unreadable(
-            "the stick's EFI system partition",
-            "it has no boot program",
-        ));
+        let program = signer.sign(program, std::time::SystemTime::now())?;
+        file.seek(SeekFrom::Start(0))
+            .and_then(|_| file.write_all(&program))
+            .and_then(|()| file.truncate())
+            .and_then(|()| file.flush())
+            .map_err(unsigned)?;
     }
     filesystem.stats().map_err(unsigned)?;
-    filesystem.unmount().map_err(unsigned)
+    filesystem.unmount().map_err(unsigned)?;
+    Ok(true)
 }
 
-/// Signs the boot programs in the EFI system partition `esp`, a stick's
-/// own on a disk, in place of whatever signed them before: read whole,
+/// Signs the boot program in the EFI system partition `esp`, a stick's
+/// own on a disk, in place of whatever signed it before: read whole,
 /// signed in memory, then only the blocks that changed written back, so a
 /// stick that stops part way loses as little as can be, and read back.
+/// One this signer signed already, as a reinstall from a machine's own
+/// stick finds it, is never written to at all.
 pub fn sign_in_place(esp: &mut File, signer: &Signer) -> Result<(), Fault> {
     let unwritten = |why: io::Error| Fault::Unkept {
         path: "the stick's EFI system partition".into(),
@@ -255,7 +256,9 @@ pub fn sign_in_place(esp: &mut File, signer: &Signer) -> Result<(), Fault> {
         .and_then(|mut region| region.read_exact(&mut was))
         .map_err(unwritten)?;
     let mut signed = was.clone();
-    sign_esp(&mut signed, signer)?;
+    if !sign_esp(&mut signed, signer)? {
+        return Ok(());
+    }
     let block = blocks::BLOCK as usize;
     for (at, (new, old)) in signed.chunks(block).zip(was.chunks(block)).enumerate() {
         if new != old {
