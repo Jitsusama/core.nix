@@ -334,7 +334,8 @@ in
   jitsusama.v4l2loopback.holders.camera = {
     inherit device;
     unit = "camera.service";
-    ignore = [ "v4l2-relayd" ];
+    card = "Built-in Camera";
+    ignoreUnits = [ "camera.service" ];
   };
   # The bridge carries the sensor's I2C over USB, so its drivers have to be up
   # before the IPU looks for the sensor; otherwise the bridge resets under it,

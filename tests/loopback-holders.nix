@@ -1,10 +1,12 @@
 # Says which programs have a loopback camera open. What has to hold shows
 # only with a real loopback and programs of another account holding it: the
 # file names each one, by its program's own name even when Nix wraps it,
-# leaves out the relay that fills the camera, empties when they close it,
-# follows the camera when its service makes a new loopback, stays in a
-# folder that outlives that service and says nobody while it's down, and
-# waits rather than failing while the camera it's pointed at isn't there.
+# leaves out the relay that fills the camera by its unit, however a program
+# names itself, keeps each name to one line, catches a holder that changes
+# without an open or close, empties when they close it, stays in a folder
+# that outlives the camera's service and says nobody while it's down,
+# follows the camera to its next loopback, takes no loopback of another
+# name for it, and waits rather than failing while the camera isn't there.
 { self, pkgs }:
 let
   # Holds the loopback it's given open as a relay would, writing nothing.
@@ -14,6 +16,21 @@ let
     import time
 
     device = os.open(sys.argv[1], os.O_RDWR)
+    while True:
+        time.sleep(60)
+  '';
+
+  # Takes the name it's given, any bytes, then holds the camera open.
+  renamed = pkgs.writers.writePython3Bin "renamed" { } ''
+    import ctypes
+    import os
+    import sys
+    import time
+
+    PR_SET_NAME = 15
+    name = sys.argv[1].encode().decode("unicode_escape").encode("latin-1")
+    ctypes.CDLL(None).prctl(PR_SET_NAME, ctypes.c_char_p(name), 0, 0, 0)
+    device = os.open(sys.argv[2], os.O_RDONLY)
     while True:
         time.sleep(60)
   '';
@@ -52,7 +69,8 @@ pkgs.testers.runNixOSTest {
         holders.stand-in = {
           device = "/run/stand-in/device";
           unit = "stand-in.service";
-          ignore = [ "stand-in-relay" ];
+          card = "Stand-in";
+          ignoreUnits = [ "stand-in.service" ];
         };
       };
       systemd.services.stand-in = {
@@ -69,7 +87,10 @@ pkgs.testers.runNixOSTest {
         isNormalUser = true;
         extraGroups = [ "video" ];
       };
-      environment.systemPackages = [ pkgs.v4l-utils ];
+      environment.systemPackages = [
+        pkgs.v4l-utils
+        config.jitsusama.v4l2loopback.package.bin
+      ];
     };
 
   testScript = ''
@@ -79,14 +100,19 @@ pkgs.testers.runNixOSTest {
     machine.succeed(f"udevadm wait --timeout 10 {device}")
 
     def holders():
-        return machine.succeed("cat ${file}").split()
+        return machine.succeed("cat ${file}").split("\n")[:-1]
 
-    def hold(unit, command):
+    def hold(unit, command, extra=""):
         machine.succeed(
-            f"systemd-run --unit={unit} --uid=someone -p Type=exec -- {command}"
+            f"systemd-run --unit={unit} --uid=someone -p Type=exec {extra} -- {command}"
         )
 
     with subtest("the relay holding the camera isn't named"):
+        relay = machine.succeed("systemctl show -P MainPID stand-in.service").strip()
+        machine.wait_until_succeeds(
+            f"readlink /proc/{relay}/fd/* | grep -q -x -F {device}", timeout=10
+        )
+        machine.sleep(1)
         t.assertEqual(holders(), [])
 
     with subtest("each program another account has it open with is named"):
@@ -99,6 +125,30 @@ pkgs.testers.runNixOSTest {
 
     with subtest("it empties once they close it"):
         machine.succeed("systemctl stop held.service dozing.service")
+        machine.wait_until_succeeds("! test -s ${file}", timeout=10)
+
+    with subtest("a program named as the relay is named, and a name is one line"):
+        hold("posing", f"${pkgs.lib.getExe renamed} stand-in-relay {device}")
+        hold("odd", f"'${pkgs.lib.getExe renamed}' 'a\\nb\\xff' {device}")
+        machine.wait_until_succeeds("grep -q -x stand-in-relay ${file}", timeout=10)
+        machine.wait_until_succeeds("grep -q '^a?b' ${file}", timeout=10)
+        named = holders()
+        t.assertEqual(len(named), 2, named)
+        t.assertIn("stand-in-relay", named)
+        machine.succeed("systemctl stop posing.service odd.service")
+        machine.wait_until_succeeds("! test -s ${file}", timeout=10)
+
+    with subtest("a holder that leaves the camera to its child is replaced by it"):
+        hold(
+            "forking",
+            f"${pkgs.bash}/bin/bash -c 'exec 3< {device}; ${doze}/bin/doze & ${pkgs.coreutils}/bin/sleep 1'",
+            # So the child outlives the parent's unit, as it would its shell.
+            "-p KillMode=process",
+        )
+        machine.wait_until_succeeds("grep -q -x doze ${file}", timeout=10)
+        machine.wait_until_succeeds("! grep -q -x bash ${file}", timeout=10)
+        t.assertEqual(holders(), ["doze"])
+        machine.succeed("pkill -u someone -x .doze-wrapped")
         machine.wait_until_succeeds("! test -s ${file}", timeout=10)
 
     with subtest("its folder outlives the camera's service, and says nobody while it's down"):
@@ -123,6 +173,18 @@ pkgs.testers.runNixOSTest {
         hold("again", f"${holding "${pkgs.coreutils}/bin/sleep" "{device}"}")
         machine.wait_until_succeeds("grep -q -x sleep ${file}", timeout=10)
         machine.succeed("systemctl stop again.service")
+
+    with subtest("another camera's loopback isn't taken for it"):
+        other = machine.succeed("v4l2loopback-ctl add -n 'Other'").strip()
+        machine.succeed(f"udevadm wait --timeout 10 {other}")
+        machine.succeed("systemctl stop stand-in-holders.service")
+        machine.succeed(f"echo {other} > /run/stand-in/device")
+        machine.succeed("systemctl start stand-in-holders.service")
+        hold("elsewhere", f"${holding "${pkgs.coreutils}/bin/sleep" "{other}"}")
+        machine.sleep(4)
+        t.assertEqual(holders(), [])
+        machine.succeed("systemctl stop elsewhere.service")
+        machine.succeed(f"echo {device} > /run/stand-in/device")
 
     with subtest("it waits while the camera isn't there, and finds it when it is"):
         machine.succeed("systemctl stop stand-in-holders.service")
