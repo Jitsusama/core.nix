@@ -24,6 +24,7 @@ Provider {
     collection: ({
         noun: "notices",
         title: "Notices",
+        words: ["notifications", "alerts", "messages", "missed"],
         glyph: String.fromCodePoint(0xf009c),
         ask: "which notice?"
     })

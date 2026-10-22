@@ -15,8 +15,8 @@
 // selects it and opens its panel.
 //
 // A mark wears its kind's colour only while its thing wants Joel, so what
-// has colour is what matters. While the overview is open the margin goes,
-// and its pieces are rows of the overview's status instead.
+// has colour is what matters. The overview draws nothing of its own, so the
+// margin stays while it's open, the one place that says what's on.
 pragma ComponentBehavior: Bound
 import Quickshell
 import Quickshell.Io
@@ -173,7 +173,7 @@ Scope {
                 readonly property real drawerWidth: marks.width + 2 * Theme.space.m
 
                 screen: here.modelData
-                visible: !Niri.overview && (root.on.length > 0 || here.keyed)
+                visible: root.on.length > 0 || here.keyed
                 anchors.top: true
                 anchors.right: true
                 implicitWidth: 440 + root.corner + reach

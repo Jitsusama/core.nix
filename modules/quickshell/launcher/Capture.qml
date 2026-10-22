@@ -22,6 +22,7 @@ Provider {
     collection: ({
         noun: "captures",
         title: "Capture",
+        words: ["screenshot", "screen shot", "record", "recording", "video", "photo", "camera", "webcam", "print", "grab"],
         glyph: glyph(0xf0100),
         ask: "of what?"
     })

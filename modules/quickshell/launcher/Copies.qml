@@ -22,6 +22,7 @@ Provider {
     collection: ({
         noun: "copies",
         title: "Clipboard",
+        words: ["paste", "pasted", "copied", "history", "yank", "pictures", "images"],
         glyph: String.fromCodePoint(0xf0a38),
         ask: "which copy?"
     })

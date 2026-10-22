@@ -27,6 +27,7 @@ Provider {
     collection: !present ? null : {
         noun: "networks",
         title: "Wi-Fi",
+        words: ["wifi", "wireless", "internet", "network", "ssid", "hotspot"],
         glyph: glyph(0xf05a9),
         ask: "which network?",
         empty: on ? "Listening for networks\u2026" : "Wi-Fi is off"

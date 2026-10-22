@@ -16,6 +16,7 @@ Provider {
     collection: ({
         noun: "devices",
         title: "Sound",
+        words: ["audio", "speakers", "headphones", "headset", "microphone", "mic", "output", "input"],
         glyph: glyph(0xf057e),
         ask: "which device?",
         empty: "No sound devices"

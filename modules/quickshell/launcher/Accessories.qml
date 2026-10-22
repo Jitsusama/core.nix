@@ -22,6 +22,7 @@ Provider {
     collection: adapter === null ? null : {
         noun: "devices",
         title: "Bluetooth",
+        words: ["bt", "headphones", "earbuds", "mouse", "pair", "pairing", "accessories"],
         glyph: glyph(0xf00af),
         ask: "which device?",
         empty: on ? "Looking for devices\u2026" : "Bluetooth is off"

@@ -1,8 +1,8 @@
 pragma Singleton
 // The desktop's facts: every overview piece (Overview.qml), loaded once from
 // its file with its settings, for the two places that show them, the
-// overview's status and the margin. They're one element in two states, so
-// each fact is heard once, however many screens there are.
+// launcher's foot and the margin, so each fact is heard once, however many
+// screens there are.
 import Quickshell
 import QtQuick
 // Quickshell finds a folder's types only once a file it loads imports it,

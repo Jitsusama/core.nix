@@ -1,6 +1,7 @@
 # Starts the graphical role's desktop in a virtual machine and uses it the
 # way Joel does: the wallpaper stands behind the workspaces, the overview
-# shows the time and status, a notification appears, the volume and
+# draws nothing of the shell's and the launcher says how things stand, a
+# notification appears, the volume and
 # brightness bars come and go as those change, the launcher finds and opens
 # kitty and remembers it was picked, a terminal opens below the focused
 # window, the launcher switches to a window by its title, the lock screen
@@ -396,8 +397,8 @@ pkgs.testers.runNixOSTest {
       };
       jitsusama.camera.device = "/dev/video9";
 
-      # The overview's status reads the battery from UPower, which the laptop
-      # role brings.
+      # The launcher reads the battery from UPower, which the laptop role
+      # brings.
       services.upower.enable = true;
       services.pipewire.extraConfig.pipewire."90-stand-in-speakers"."context.objects" = [
         {
@@ -789,17 +790,6 @@ pkgs.testers.runNixOSTest {
           print(log)
           assert "ERROR" not in log and "Error:" not in log, "Quickshell reported an error"
 
-      # How much of the theme's foreground the left quarter of the screen draws,
-      # which the overview leaves free of workspaces.
-      def foreground_on_the_left(picture):
-          machine.screenshot(picture)
-          image = Image.open(os.path.join(machine.out_dir, picture + ".png")).convert("RGB")
-          left = image.crop((0, 0, image.width // 4, image.height))
-          counts = left.getcolors(left.width * left.height)
-          assert counts is not None
-          foreground = tuple(int("${roles.text}"[i : i + 2], 16) for i in (1, 3, 5))
-          return sum(count for count, colour in counts if colour == foreground)
-
       # The screen, and how many colours a part of it holds, which a flat
       # colour has one of, and how bright that part is, from 0 to 255. The part
       # is a box of fractions of the screen, left, top, right and bottom.
@@ -831,20 +821,23 @@ pkgs.testers.runNixOSTest {
           machine.wait_until_fails(in_session("niri msg layers | grep -q microphone"), timeout=30)
           photograph("workspace")
 
-      with subtest("the overview shows the time and status, and only the overview"):
-          machine.fail(in_session("niri msg layers | grep -qw status"))
+      with subtest("the overview draws nothing of the shell's, and the launcher says how things stand"):
           as_account("niri msg action open-overview")
-          wait_for_surface("status")
-
-          def shown(last):
-              drawn = foreground_on_the_left("overview")
-              if last:
-                  t.assertGreater(drawn, 100, "the overview shows no status")
-              return drawn > 100
-
-          retry(shown, timeout_seconds=30)
+          machine.wait_until_succeeds(
+              in_session("niri msg --json overview-state | grep -q '\"is_open\":true'"), timeout=10
+          )
+          photograph("overview")
+          machine.fail(in_session("niri msg layers | grep -qw status"))
           as_account("niri msg action close-overview")
-          machine.wait_until_fails(in_session("niri msg layers | grep -qw status"), timeout=10)
+          # The time and the battery's charge, at least, always.
+          charge = machine.succeed("cat /sys/class/power_supply/test_battery/capacity").strip()
+          since = mark()
+          as_account("qs ipc call launcher toggle")
+          reported("stands ", lambda rest: re.match(r"\d\d:\d\d  ", rest) and f"{charge}%" in rest, since)
+          launcher_ready()
+          photograph("launcher-standing")
+          machine.send_key("esc")
+          machine.wait_until_fails(in_session("niri msg layers | grep -qw launcher"), timeout=10)
 
       with subtest("a notification appears"):
           with told("drawn notifications"):
@@ -1155,6 +1148,24 @@ pkgs.testers.runNixOSTest {
           # The vendor comes from the list built from hwdata, so this proves it's there.
           copied("3c:22:fb:12:34:56", "Apple, Inc.")
           copied("5 km in mi", "3.10686")
+          # The battery's charge leads, as the kernel's stand-in has it.
+          charge = machine.succeed("cat /sys/class/power_supply/test_battery/capacity").strip()
+          answer("battery")
+          photograph("launcher-battery")
+          machine.send_key("ret")
+          machine.wait_until_fails(in_session("niri msg layers | grep -qw launcher"), timeout=10)
+          t.assertTrue(as_account("wl-paste --no-newline").startswith(f"{charge}%, "))
+          # Then what feeds it: the stand-in's mains, plugged in.
+          answer("charger")
+          machine.send_key("down")
+          launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "mains")
+          machine.send_key("esc")
+          # A collection is found by what a person calls it, not only its
+          # title, and Return goes straight into it.
+          for typed, collection in [("audio", "Sound"), ("notifications", "Notices")]:
+              answer(typed)
+              launcher_until(lambda shown: (shown["selected"] or {}).get("name") == collection)
+              machine.send_key("esc")
           answer("350 f in c")
           photograph("launcher-units")
           machine.send_key("esc")
@@ -1797,11 +1808,6 @@ pkgs.testers.runNixOSTest {
           # Kept awake, a suspend asked for by the power key or the launcher
           # still goes through, and so does the lid's on battery.
           machine.fail(f"{held} | grep -q sleep")
-          # The overview's status says so while it holds, and so does home.
-          with told("drawn status"):
-              as_account("niri msg action open-overview")
-          photograph("overview-awake")
-          as_account("niri msg action close-overview")
           # Without power the lid is let go, and taken again when it's back.
           power("off")
           machine.wait_until_fails(f"{held} | grep -q handle-lid-switch", timeout=10)
