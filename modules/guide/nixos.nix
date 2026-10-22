@@ -5,6 +5,7 @@
 { config, pkgs, ... }:
 let
   guide = pkgs.callPackage ./package.nix { systemd = config.systemd.package; };
+  showStatus = "${config.systemd.package}/bin/busctl call org.freedesktop.systemd1 /org/freedesktop/systemd1 org.freedesktop.systemd1.Manager SetShowStatus s";
 in
 {
   # Run by hand, the guide asks for root once through run0, which systemd
@@ -25,6 +26,12 @@ in
   # the first boot to enrol the keys, and Plymouth's quitting, whose
   # splash would hide it, and holds the sign-in back until it's done;
   # Ctrl+C leaves it for the next boot.
+  #
+  # Where the console is the screen the guide draws on, systemd's lines
+  # about the units still starting would land across it, so it asks the
+  # manager to hold them while it runs and to go back to the machine's own
+  # setting however it leaves, as org.freedesktop.systemd1(5) suggests for
+  # SetShowStatus.
   systemd.services.guide-installed = {
     description = "Finish the machine the guide installed";
     wantedBy = [ "multi-user.target" ];
@@ -40,7 +47,9 @@ in
     ];
     serviceConfig = {
       Type = "oneshot";
+      ExecStartPre = "${showStatus} no";
       ExecStart = "${guide}/bin/guide installed";
+      ExecStopPost = "${showStatus} ''";
       StandardInput = "tty";
       StandardOutput = "tty";
       StandardError = "journal";
