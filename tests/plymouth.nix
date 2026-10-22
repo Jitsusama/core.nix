@@ -264,6 +264,15 @@ pkgs.testers.runNixOSTest {
           wears_the_face("/dev/tty4")
           machine.succeed("chvt 3")
 
+      with subtest("started on a running system with no splash, the watch ends at once"):
+          # As a switch to a new configuration starts it.
+          machine.succeed("systemctl start plymouth-waits.service")
+          machine.wait_until_fails("systemctl is-active plymouth-waits.service", timeout=10)
+          ended = machine.succeed(
+              "systemctl show -p Result -p ExecMainStatus --value plymouth-waits.service"
+          ).split()
+          t.assertEqual(ended, ["success", "0"])
+
       with subtest("a slow job is named while it runs, and goes when it ends"):
           # The splash back up over the first console, as at boot, with
           # nothing graphical holding it and logind kept from handing the
