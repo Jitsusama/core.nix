@@ -23,7 +23,7 @@ Provider {
 
     function answer(typed) {
         const text = typed.trim().toLowerCase();
-        const asked = /^(?:brightness|backlight|screen(?: light| brightness)?)\s+(?:to\s+)?(\d{1,3})\s*%?$/
+        const asked = /^(?:brightness|backlight|screen (?:light|brightness))\s+(?:to\s+)?(\d{1,3})\s*%?$/
             .exec(text);
         if (asked)
             return set(Math.min(100, Number(asked[1])));

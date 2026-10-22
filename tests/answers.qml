@@ -247,6 +247,15 @@ QtObject {
             if (got)
                 failures.push(`"${typed}" told ${quoted(got)}, but nothing should`);
         }
+        // The day of the year, in a zone with summer time (the check runs
+        // in Toronto's): either side of the spring change, and the last.
+        for (const [year, month, date, day] of [[2026, 0, 1, 1], [2026, 2, 7, 66],
+                [2026, 2, 9, 68], [2026, 9, 22, 295], [2024, 11, 31, 366]]) {
+            asked++;
+            const got = Zones.dayOfYear(new Date(year, month, date));
+            if (got !== day)
+                failures.push(`${year}-${month + 1}-${date} was day ${got}, not ${day}`);
+        }
         const told = Zones.answer("time in auckland", zones, at("2026-01-15T12:00"),
             "America/Toronto", 0);
         asked++;

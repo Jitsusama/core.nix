@@ -1053,6 +1053,9 @@ in
         label = "camera";
         tier = "when";
         mark = "camera";
+        # The cameras whose holders the machine names, as v4l2loopback
+        # writes them under /run/camera-holders.
+        holders = lib.attrNames (osConfig.jitsusama.v4l2loopback.holders or { });
       };
       # The least of them, since music never needs Joel.
       playing = {
@@ -1259,6 +1262,14 @@ in
     # Keeps the clipboard's copies for the launcher, which can't hear them
     # itself, while the clipboard collection is on: text in memory, and
     # pictures in the runtime directory, which is memory too.
+    # pi makes its quests and presence folders only as it first needs them,
+    # and a folder that isn't there can't be watched, so Sessions.qml would
+    # never hear them; they're made at login, before the shell.
+    systemd.user.tmpfiles.rules = [
+      "d ${config.xdg.stateHome}/pi/agentic-harness.pi/mesh-workflow/presence - - - -"
+      "d ${config.xdg.dataHome}/pi/agentic-harness.pi/quest-workflow/quests - - - -"
+    ];
+
     systemd.user.services.clipboard-history = lib.mkIf keepsCopies {
       Unit = {
         Description = "The clipboard's history, kept in memory for the launcher";

@@ -400,9 +400,9 @@ pkgs.testers.runNixOSTest {
       # The launcher reads the battery from UPower, which the laptop role
       # brings.
       services.upower.enable = true;
-      # Where a laptop's camera module says which programs read it, for
-      # the test to write in its place.
-      # And where a machine's disk guard says how its disks stand.
+      # Where a laptop's camera module says which programs read it, and
+      # where a machine's disk guard says how its disks stand, for the
+      # test to write in their place.
       systemd.tmpfiles.rules = [
         "d /run/camera-holders 0755 root root -"
         "d /run/disk-guard 0755 root root -"
@@ -489,6 +489,9 @@ pkgs.testers.runNixOSTest {
         # rather than catching its fade wherever it happens to be.
         xdg.configFile."kitty/kitty.conf".text = lib.mkAfter "cursor_blink_interval 0";
         jitsusama.quickshell.reports = true;
+        # A camera whose holders a module would name, for the test to
+        # write in its place, since the VM has none.
+        jitsusama.quickshell.overview.pieces.camera.holders = [ "camera" ];
         # No key repeats. A key the test presses is let go when the host gets
         # round to it, which on a busy host is past the delay a held key
         # repeats after, so a letter typed once arrived twice.
@@ -953,9 +956,18 @@ pkgs.testers.runNixOSTest {
           machine.wait_until_fails(in_session("niri msg layers | grep -qw launcher"), timeout=10)
 
       with subtest("the launcher finds a pi session by its quest, and goes to its window"):
-          # A window titled as pi titles its own: its address, its quest
-          # cut short, its folder.
-          agent = "\u03c0 - TESTQA A quest of its own - home"
+          # A session as pi keeps one: its quest's README, front matter
+          # first, and its presence while it runs.
+          quest = "~/.local/share/pi/agentic-harness.pi/quest-workflow/quests/QEST-20261022-TESTQA"
+          presence = "~/.local/state/pi/agentic-harness.pi/mesh-workflow/presence"
+          as_account(
+              f"mkdir -p {quest} {presence} && printf '%s\\n' '---' 'title: no' '---' '# A quest of its own, whole'"
+              f" > {quest}/README.md && echo '{{\"addresses\":[\"TESTQA\"],\"busy\":true}}'"
+              f" > {presence}/testqa.json"
+          )
+          # Its window, titled as pi titles its own: its address, its
+          # quest cut short, its folder, which a hyphen doesn't end.
+          agent = "\u03c0 - TESTQA A quest of\u2026 - my-tree"
           as_account(f"niri msg action spawn -- kitty --title '{agent}'")
           machine.wait_until_succeeds(
               in_session("niri msg --json windows | grep -q TESTQA"), timeout=30
@@ -966,37 +978,43 @@ pkgs.testers.runNixOSTest {
               in_session("niri msg --json windows | grep -q '\"Elsewhere\"'"), timeout=30
           )
           as_account(f"niri msg action focus-window --id {window_titled('Elsewhere')['id']}")
-          # The launcher's foot counts it.
+          # The launcher's foot counts it, working, as its presence says.
           since = mark()
           as_account("qs ipc call launcher toggle")
-          reported("stands ", lambda rest: "pi 1 running" in rest, since)
+          reported("stands ", lambda rest: "pi 1 running, 1 working" in rest, since)
           launcher_ready()
-          # Its collection by what it's called, then the session by its
-          # quest, named whole and not as its window's title.
+          # Its collection by what it's called, then the session named
+          # whole, as its README is, not as its window's title.
           type_in("agents")
           launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Agents")
           machine.send_key("ret")
           launcher_until(
               lambda shown: shown["held"] == ["sessions"]
-              and (shown["selected"] or {}).get("name") == "A quest of its own"
+              and (shown["selected"] or {}).get("name") == "A quest of its own, whole"
           )
           photograph("launcher-agents")
+          # Found by its address too.
+          type_in("testqa", selecting="A quest of its own, whole")
           machine.send_key("ret")
           machine.wait_until_succeeds(
               in_session("niri msg --json focused-window | grep -q TESTQA"), timeout=10
           )
           for title in [agent, "Elsewhere"]:
               as_account(f"niri msg action close-window --id {window_titled(title)['id']}")
+          as_account(f"rm -rf {quest} {presence}/testqa.json")
           machine.wait_until_fails(
               in_session("niri msg --json windows | grep -q 'TESTQA\\|\"Elsewhere\"'"), timeout=30
           )
 
       with subtest("the launcher sets the volume to a number, and says how loud it is"):
+          # Muted first, since a level asked for is one to be heard.
+          as_account("wpctl set-mute @DEFAULT_AUDIO_SINK@ 1")
           as_account("qs ipc call launcher toggle")
           launcher_ready()
           type_in("volume 40")
           launcher_until(lambda shown: (shown["selected"] or {}).get("name", "").endswith(" to 40%"))
           machine.send_key("ret")
+          # Exactly that, and no longer muted.
           machine.wait_until_succeeds(
               in_session("wpctl get-volume @DEFAULT_AUDIO_SINK@ | grep -qx 'Volume: 0.40'"), timeout=10
           )
@@ -1276,6 +1294,13 @@ pkgs.testers.runNixOSTest {
                   lambda shown: (shown["selected"] or {}).get("name") == action
                   and shown["kind"] == "session"
               )
+              # Return asks rather than doing it: it holds the action, its
+              # one verb saying what a second Return would do.
+              machine.send_key("ret")
+              launcher_until(
+                  lambda shown: shown["held"] == [action]
+                  and (shown["selected"] or {}).get("name", "").startswith("Yes, ")
+              )
               machine.send_key("esc")
               machine.wait_until_fails(in_session("niri msg layers | grep -qw launcher"), timeout=10)
           # A key's action, by the other words its bind lists.
@@ -1292,7 +1317,8 @@ pkgs.testers.runNixOSTest {
               "version": 1,
               "heartbeat": time.time() + 3600,
               "filesystems": [
-                  {"path": "/", "band": "healthy", "free": 300 * 2**30, "total": 900 * 2**30},
+                  # Less room than /nix, but healthy, so /nix still leads.
+                  {"path": "/", "band": "healthy", "free": 10 * 2**30, "total": 30 * 2**30},
                   {"path": "/nix", "band": "pressure", "free": 20 * 2**30, "total": 900 * 2**30},
               ],
               "frozen": [],
@@ -1306,6 +1332,9 @@ pkgs.testers.runNixOSTest {
               lambda shown: (shown["selected"] or {}).get("name", "").endswith(" free on /nix")
           )
           photograph("launcher-disks")
+          # Its first row is the headline's disk.
+          machine.send_key("down")
+          launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "20.0 GiB free")
           machine.send_key("esc")
           machine.wait_until_fails(in_session("niri msg layers | grep -qw launcher"), timeout=10)
           machine.succeed("rm /run/disk-guard/status.json")
@@ -1315,7 +1344,7 @@ pkgs.testers.runNixOSTest {
           machine.send_key("ret")
           machine.wait_until_fails(in_session("niri msg layers | grep -qw launcher"), timeout=10)
           t.assertRegex(
-              as_account("wl-paste --no-newline"), r"^(one keyboard|\d+ keyboards), caps lock off$"
+              as_account("wl-paste --no-newline"), r"^(one keyboard|[1-9]\d* keyboards), caps lock off$"
           )
           answer("350 f in c")
           photograph("launcher-units")

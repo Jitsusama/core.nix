@@ -128,9 +128,11 @@ Scope {
             return "";
         if (selected === headline || (answer && answer.rows.includes(selected)))
             return "answer";
-        if (selected.opens)
-            return "collection";
-        return selected.what ?? "";
+        // A collection's own row has no provider's kind; a shortcut that
+        // opens one is still a shortcut.
+        if (selected.what)
+            return selected.what;
+        return selected.opens ? "collection" : "";
     }
 
     // A collection's members stay out of the main search, but a thing it
@@ -557,8 +559,9 @@ Scope {
     // The rest of the selected name from where what's typed starts a word in
     // it, so the command line can finish the thought.
     readonly property string completion: {
+        // An answer that does something says what, rather than equalling it.
         if (current === -1 && answer)
-            return ` = ${answer.headline}`;
+            return answer.run ? ` \u2192 ${answer.headline}` : ` = ${answer.headline}`;
         const choice = matches[current];
         if (!choice || typed === "")
             return "";
@@ -600,6 +603,11 @@ Scope {
             ask(choice);
             return;
         }
+        // One that can't be taken back, such as powering off, steps into
+        // its verbs, which say what it does, so a second Return does it and
+        // Escape or the left arrow backs out.
+        if (choice.confirm && held.length === 0 && enter(choice))
+            return;
         // One whose outcome takes a while keeps the launcher, which says how
         // it's going.
         if (choice.stays) {
@@ -804,7 +812,9 @@ Scope {
                                 text = root.example;
                             else if (root.current !== -1 || !root.answer)
                                 text = text + root.completion;
-                            else if ((root.answer.copy ?? root.answer.headline) !== "")
+                            // An answer that does something has nothing to
+                            // put in the question's place.
+                            else if (!root.answer.run && (root.answer.copy ?? root.answer.headline) !== "")
                                 text = root.answer.copy ?? root.answer.headline;
                         }
                         onCancelled: root.open = false

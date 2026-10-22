@@ -74,6 +74,14 @@ function day(date) {
     return `${days[date.getUTCDay()]} ${date.getUTCDate()} ${months[date.getUTCMonth()]}`;
 }
 
+// Which day of its year a local date is, 1 for the first of January,
+// counted in UTC, since local midnights either side of a change to or from
+// summer time are an hour more or less than whole days apart.
+function dayOfYear(date) {
+    return (Date.UTC(date.getFullYear(), date.getMonth(), date.getDate())
+        - Date.UTC(date.getFullYear(), 0, 1)) / 86400000 + 1;
+}
+
 // "UTC+5:45", "UTC−4", "UTC".
 function offset(minutes) {
     if (minutes === 0)

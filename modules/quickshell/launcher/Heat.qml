@@ -57,19 +57,22 @@ Provider {
         return told();
     }
 
-    // Each sensor a chip has, read until a run of numbers says nothing.
-    function sensors(dir, kind) {
+    // Each sensor a chip has, of those its folder lists, so only sensors
+    // that are there are read: some chips answer every read through the
+    // firmware, which is slow, and it's the shell's own thread that waits.
+    function sensors(dir, listed, kind) {
         const found = [];
-        for (let n = 1, missed = 0; missed < 16 && n < 128; n++) {
-            const value = said(`${dir}/${kind}${n}_input`);
-            if (value === "") {
-                missed++;
+        for (let i = 0; i < listed.count; i++) {
+            const file = listed.get(i, "fileName");
+            const n = new RegExp(`^${kind}(\\d+)_input$`).exec(file);
+            if (!n)
                 continue;
-            }
-            missed = 0;
-            found.push({ label: said(`${dir}/${kind}${n}_label`), value: Number(value) });
+            const value = said(`${dir}/${file}`);
+            if (value === "")
+                continue;
+            found.push({ n: Number(n[1]), label: said(`${dir}/${kind}${n[1]}_label`), value: Number(value) });
         }
-        return found;
+        return found.sort((a, b) => a.n - b.n);
     }
 
     function told() {
@@ -80,9 +83,12 @@ Provider {
         const seen = new Set();
         for (let i = 0; i < chips.count; i++) {
             const dir = `/sys/class/hwmon/${chips.get(i, "fileName")}`;
+            const listed = files.objectAt(i);
+            if (!listed)
+                continue;
             const name = said(`${dir}/name`);
-            const temps = sensors(dir, "temp").filter(s => s.value > -40000 && s.value < 150000);
-            for (const s of sensors(dir, "fan"))
+            const temps = sensors(dir, listed, "temp").filter(s => s.value > -40000 && s.value < 150000);
+            for (const s of sensors(dir, listed, "fan"))
                 if (s.label === "" || !seen.has(s.label)) {
                     seen.add(s.label);
                     fans.push({ name: s.label || "fan", rpm: s.value });
@@ -142,6 +148,20 @@ Provider {
         showDotAndDotDot: false
         showHidden: false
         sortField: FolderListModel.Name
+    }
+
+    // Each chip's sensor readings, listed once by Qt.
+    Instantiator {
+        id: files
+        model: chips
+
+        FolderListModel {
+            required property string fileName
+            folder: `file:///sys/class/hwmon/${fileName}`
+            showDirs: false
+            showDotAndDotDot: false
+            nameFilters: ["temp*_input", "fan*_input"]
+        }
     }
 
     FileView {

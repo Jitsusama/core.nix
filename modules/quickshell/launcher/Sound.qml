@@ -195,29 +195,40 @@ Provider {
         const out = Pipewire.defaultAudioSink;
         const into = Pipewire.defaultAudioSource;
         const rows = [];
+        // Each device by name, its level beside it, so a long name is what
+        // the row is rather than what gets cut.
         if (out)
             rows.push(copyRow({
-                name: level(out),
-                side: `out, through ${named(out)}`,
+                name: named(out),
+                side: `out \u00b7 ${level(out)}`,
                 glyph: glyph(kind(out))
             }));
         if (into)
             rows.push(copyRow({
-                name: level(into),
-                side: `in, through ${named(into)}`,
+                name: named(into),
+                side: `in \u00b7 ${level(into)}`,
                 glyph: glyph(kind(into))
             }));
-        // Each program playing, by the name it gives.
+        // The track playing, as the music mark has it (Music.qml), then
+        // each program with a stream open to play through, by the name it
+        // gives; a playback stream carries PipeWire's sink flag, and may be
+        // open and silent, so it says only that it's open.
+        if (Music.playing)
+            rows.push(copyRow({
+                name: Music.artist === "" ? Music.title : `${Music.title}, ${Music.artist}`,
+                side: "playing",
+                glyph: Theme.glyph.playing
+            }));
         const playing = Pipewire.nodes.values
             .filter(node => node.isStream && node.isSink && (node.type & PwNodeType.Audio))
             .map(node => node.properties["application.name"] ?? node.name)
             .filter((name, i, all) => name && all.indexOf(name) === i);
         for (const name of playing)
-            rows.push(copyRow({ name: name, side: "playing", glyph: Theme.glyph.playing }));
+            rows.push(copyRow({ name: name, side: "has sound open", glyph: glyph(0xf057e) }));
         return {
             headline: out ? `${level(out)}, through ${named(out)}` : "nothing to play through",
             rows: rows,
-            note: playing.length === 0 ? "nothing playing" : "from PipeWire"
+            note: !Music.playing && playing.length === 0 ? "nothing playing" : "from PipeWire"
         };
     }
 

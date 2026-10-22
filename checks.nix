@@ -863,6 +863,8 @@ in
       cp ${./tests/colour-cases.js} colour-cases.js
       cp ${import ./modules/quickshell/launcher/zones.nix { inherit lib pkgs; }} zones.jsonl
       export QML_XHR_ALLOW_FILE_READ=1
+      # A zone with summer time, for the day of the year.
+      export TZ=America/Toronto TZDIR=${pkgs.tzdata}/share/zoneinfo
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
       QML_IMPORT_PATH=${qt}/lib/qt-6/qml ${qt}/bin/qml answers.qml
@@ -1851,11 +1853,17 @@ in
     pkgs.runCommandLocal "the-shell-speaks-its-javascript" { nativeBuildInputs = [ pkgs.ripgrep ]; }
       ''
         cd ${./.}
-        if rg --line-number --no-heading --glob '*.qml' --glob '*.js' \
-          -e '\.(flatMap|flat|findLast|findLastIndex|toSorted|toReversed|toSpliced)\(' modules/quickshell; then
+        # ripgrep answers 0 for a match, 1 for none and 2 when it can't
+        # search, and only none passes.
+        status=0
+        rg --line-number --no-heading --glob '*.qml' --glob '*.js' \
+          -e '\.(flatMap|flat|findLast|findLastIndex|toSorted|toReversed|toSpliced)\(' \
+          -e '\b(structuredClone|Object\.groupBy|Object\.hasOwn)\(' modules/quickshell || status=$?
+        if [ $status = 0 ]; then
           echo "The lines above call a method Quickshell's JavaScript doesn't have."
           exit 1
         fi
+        [ $status = 1 ]
         touch $out
       '';
 
