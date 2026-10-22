@@ -1,0 +1,119 @@
+ASoC: sdw_utils: amp feedback channel mapping (7.3)
+
+Mainline's, in 7.3, for 7.2, which lacks them. In order:
+
+b5b00a57868b ASoC: sdw_utils: cs_amp: Delete bogus and incorrect capture
+
+diff --git a/include/sound/soc_sdw_utils.h b/include/sound/soc_sdw_utils.h
+index 9b28e9aef4f1..9fbb69b9052d 100644
+--- a/include/sound/soc_sdw_utils.h
++++ b/include/sound/soc_sdw_utils.h
+@@ -250,8 +250,6 @@ int asoc_sdw_cs_amp_init(struct snd_soc_card *card,
+ 			 struct snd_soc_dai_link *dai_links,
+ 			 struct asoc_sdw_codec_info *info,
+ 			 bool playback);
+-int asoc_sdw_cs_spk_feedback_rtd_init(struct snd_soc_pcm_runtime *rtd,
+-				      struct snd_soc_dai *dai);
+ int asoc_sdw_cs35l56_volume_limit(struct snd_soc_card *card, const char *name_prefix);
+ 
+ /* MAXIM codec support */
+diff --git a/sound/soc/sdw_utils/soc_sdw_cs_amp.c b/sound/soc/sdw_utils/soc_sdw_cs_amp.c
+index 325ab7230481..6e21ef8f87e2 100644
+--- a/sound/soc/sdw_utils/soc_sdw_cs_amp.c
++++ b/sound/soc/sdw_utils/soc_sdw_cs_amp.c
+@@ -14,7 +14,6 @@
+ #include <sound/soc-dai.h>
+ #include <sound/soc_sdw_utils.h>
+ 
+-#define CS_AMP_CHANNELS_PER_AMP	4
+ #define CS35L56_SPK_VOLUME_0DB 400 /* 0dB Max */
+ 
+ int asoc_sdw_cs35l56_volume_limit(struct snd_soc_card *card, const char *name_prefix)
+@@ -64,51 +63,6 @@ int asoc_sdw_cs_spk_rtd_init(struct snd_soc_pcm_runtime *rtd, struct snd_soc_dai
+ }
+ EXPORT_SYMBOL_NS(asoc_sdw_cs_spk_rtd_init, "SND_SOC_SDW_UTILS");
+ 
+-int asoc_sdw_cs_spk_feedback_rtd_init(struct snd_soc_pcm_runtime *rtd, struct snd_soc_dai *dai)
+-{
+-	const struct snd_soc_dai_link *dai_link = rtd->dai_link;
+-	const struct snd_soc_dai_link_ch_map *ch_map;
+-	const struct snd_soc_dai_link_component *codec_dlc;
+-	struct snd_soc_dai *codec_dai;
+-	u8 ch_slot[8] = {};
+-	unsigned int amps_per_bus, ch_per_amp, mask;
+-	int i, ret;
+-
+-	WARN_ON(dai_link->num_cpus > ARRAY_SIZE(ch_slot));
+-
+-	/*
+-	 * CS35L56 has 4 TX channels. When the capture is aggregated the
+-	 * same bus slots will be allocated to all the amps on a bus. Only
+-	 * one amp on that bus can be transmitting in each slot so divide
+-	 * the available 4 slots between all the amps on a bus.
+-	 */
+-	amps_per_bus = dai_link->num_codecs / dai_link->num_cpus;
+-	if ((amps_per_bus == 0) || (amps_per_bus > CS_AMP_CHANNELS_PER_AMP)) {
+-		dev_err(rtd->card->dev, "Illegal num_codecs:%u / num_cpus:%u\n",
+-			dai_link->num_codecs, dai_link->num_cpus);
+-		return -EINVAL;
+-	}
+-
+-	ch_per_amp = CS_AMP_CHANNELS_PER_AMP / amps_per_bus;
+-
+-	for_each_rtd_ch_maps(rtd, i, ch_map) {
+-		codec_dlc = snd_soc_link_to_codec(rtd->dai_link, i);
+-		codec_dai = snd_soc_find_dai(codec_dlc);
+-		mask = GENMASK(ch_per_amp - 1, 0) << ch_slot[ch_map->cpu];
+-
+-		ret = snd_soc_dai_set_tdm_slot(codec_dai, 0, mask, 4, 32);
+-		if (ret < 0) {
+-			dev_err(rtd->card->dev, "Failed to set TDM slot:%d\n", ret);
+-			return ret;
+-		}
+-
+-		ch_slot[ch_map->cpu] += ch_per_amp;
+-	}
+-
+-	return 0;
+-}
+-EXPORT_SYMBOL_NS(asoc_sdw_cs_spk_feedback_rtd_init, "SND_SOC_SDW_UTILS");
+-
+ int asoc_sdw_cs_amp_init(struct snd_soc_card *card,
+ 			 struct snd_soc_dai_link *dai_links,
+ 			 struct asoc_sdw_codec_info *info,
+diff --git a/sound/soc/sdw_utils/soc_sdw_utils.c b/sound/soc/sdw_utils/soc_sdw_utils.c
+index a47f34afd1d1..c48d5881922c 100644
+--- a/sound/soc/sdw_utils/soc_sdw_utils.c
++++ b/sound/soc/sdw_utils/soc_sdw_utils.c
+@@ -800,7 +800,6 @@ struct asoc_sdw_codec_info codec_info_list[] = {
+ 				.dai_name = "cs35l56-ot25",
+ 				.dai_type = SOC_SDW_DAI_TYPE_AMP,
+ 				.dailink = {SOC_SDW_UNUSED_DAI_ID, SOC_SDW_AMP_IN_DAI_ID},
+-				.rtd_init = asoc_sdw_cs_spk_feedback_rtd_init,
+ 			},
+ 		},
+ 		.dai_num = 2,
+@@ -829,7 +828,6 @@ struct asoc_sdw_codec_info codec_info_list[] = {
+ 				.dai_name = "cs35l56-ot25",
+ 				.dai_type = SOC_SDW_DAI_TYPE_AMP,
+ 				.dailink = {SOC_SDW_UNUSED_DAI_ID, SOC_SDW_AMP_IN_DAI_ID},
+-				.rtd_init = asoc_sdw_cs_spk_feedback_rtd_init,
+ 			},
+ 		},
+ 		.dai_num = 2,
+@@ -858,7 +856,6 @@ struct asoc_sdw_codec_info codec_info_list[] = {
+ 				.dai_name = "cs35l56-ot25",
+ 				.dai_type = SOC_SDW_DAI_TYPE_AMP,
+ 				.dailink = {SOC_SDW_UNUSED_DAI_ID, SOC_SDW_AMP_IN_DAI_ID},
+-				.rtd_init = asoc_sdw_cs_spk_feedback_rtd_init,
+ 			},
+ 		},
+ 		.dai_num = 2,
+@@ -887,7 +884,6 @@ struct asoc_sdw_codec_info codec_info_list[] = {
+ 				.dai_name = "cs35l56-ot25",
+ 				.dai_type = SOC_SDW_DAI_TYPE_AMP,
+ 				.dailink = {SOC_SDW_UNUSED_DAI_ID, SOC_SDW_AMP_IN_DAI_ID},
+-				.rtd_init = asoc_sdw_cs_spk_feedback_rtd_init,
+ 			},
+ 		},
+ 		.dai_num = 2,

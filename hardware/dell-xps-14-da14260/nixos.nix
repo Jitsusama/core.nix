@@ -66,6 +66,7 @@ in
     ../../modules/panel/nixos.nix
     ../../modules/power-profiles-daemon/nixos.nix
     ../../modules/touchpad/nixos.nix
+    ./backports.nix
     ./camera.nix
     ./speakers.nix
   ];

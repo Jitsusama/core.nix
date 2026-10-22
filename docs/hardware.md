@@ -154,6 +154,52 @@ matter here weren't, and a third, mainline's 86c8360c97f6, came with 7.2.12:
 Once a stable release takes one, its patch no longer applies and the kernel
 build stops, which is the sign to drop it.
 
+### 7.3's Fixes, Taken Early
+
+7.3 adds and fixes a good deal for this laptop's parts, and none of it is
+tagged for 7.2's stable releases. Rather than wait for the kernel to move,
+`backports.nix` carries what matters here: 18 patches in `backports/`, 87
+mainline commits, each patch naming its commits in order. They were picked
+from every commit between 7.2 and 7.3 touching a driver this laptop binds or
+could bind, and apply to 7.2.12 after the kernel's own patches with no
+offset or fuzz. One, the Thunderbolt fix, had a hunk moved onto 7.2's
+context, which its header says.
+
+| Patch                           | What it gives                                       |
+| ------------------------------- | --------------------------------------------------- |
+| `xe-flips-in-the-vrr-window`    | flips on time with variable refresh always on       |
+| `xe-real-vtotal`                | the real vertical total, which USB-C monitors need  |
+| `xe-refresh-without-modeset`    | refresh rate changes without blanking the panel     |
+| `xe-peak-bandwidth`             | Xe3's bandwidth point, so less memory power         |
+| `xe-cdclk-for-downscaling`      | no underruns or flicker on a downscaled plane       |
+| `xe-small-fixes`                | fbdev, resume hotplug, UHBR DP audio, four GT fixes |
+| `sof-dsp-and-dma`               | the DSP's DMA, its period on a high-priority queue  |
+| `amp-feedback-channels`         | the amplifiers' feedback on the right channels      |
+| `hdmi-jack-after-resume`        | a jack plugged in during suspend is seen            |
+| `sdca-hid-lifetime`             | the headset buttons' device leaves with its codec   |
+| `iwlwifi-core-107`              | Wi-Fi firmware 107 and per-country puncturing       |
+| `iwlmld-resume-fixes`           | Wi-Fi resumes cleanly after being powered off       |
+| `btintel-pcie-reset`            | Bluetooth resets without races, and `vendor_reset`  |
+| `bluetooth-le-fixes`            | LE Audio broadcast reports and advertising          |
+| `ish-sensors`                   | the sensor hub's sensors, ready and scaled right    |
+| `haptic-ff-before-register`     | the touchpad's force feedback from the start        |
+| `thunderbolt-reset-at-shutdown` | a TB3 dock is told it's unplugged at shutdown       |
+| `issei`                         | a driver for the security engine                    |
+
+`sdca-hid-lifetime` brings the RT766 codec's driver, which nothing here uses,
+because one of its commits edits it. The headset buttons' input device takes a
+new name with it, from `HID sdw:0:0:01fa:4245:01` to one starting `SDCA HID`,
+which no rule here matches on. `iwlwifi-core-107` loads
+`iwlwifi-sc-a0-wh-b0-c107`, which linux-firmware has shipped since 20260916;
+without that file the driver falls back to 106. `issei` binds the security
+engine at `00:18.0` (`8086:e45d`), as Dell's `issei.sys` does on Windows, with
+`INTEL_SSEI` and `INTEL_SSEI_HW_HECI` built as modules; it gives
+`/dev/issei0` and the engine's firmware version in `/sys/class/issei`, and
+nothing in userspace talks to it yet.
+
+An assertion fails once the kernel is 7.3, which has them all, and the way
+through is to drop `backports.nix` and its directory.
+
 ### The Boot Clock
 
 The firmware hands over to the boot loader at 400 MHz with HWP off, and holds
@@ -581,10 +627,9 @@ type, which libinput reads as Windows reads the same flag.
 
 ### What's Left
 
-| Part            | Why it isn't here yet                                                 |
-| --------------- | --------------------------------------------------------------------- |
-| Presence        | the camera bridge never senses anyone with the camera idle; see below |
-| Security engine | Linux 7.2 has no driver for it; see below                             |
+| Part     | Why it isn't here yet                                                 |
+| -------- | --------------------------------------------------------------------- |
+| Presence | the camera bridge never senses anyone with the camera idle; see below |
 
 - **Presence.** The sensor hub's presence reading comes from the Synaptics
   camera bridge, which the hub asks for results every 2 s once face
@@ -599,11 +644,6 @@ type, which libinput reads as Windows reads the same flag.
   was the first where the bridge never answered the driver handing the
   camera's link back as the camera closed, so the setting stays
   Microsoft's, the one the camera was proven on.
-- **The security engine** (`00:18.0`, `8086:e45d`). Windows binds Dell's
-  `issei.sys` to it, Intel's Silicon Security Engine Interface, for SPDM and
-  other services. Linux 7.3's `drivers/misc/issei` lists this device; 7.2
-  has none. It comes with the 7.3 kernel, with `INTEL_SSEI` and
-  `INTEL_SSEI_HW_HECI` built as modules.
 
 ### Expected in the Journal
 
