@@ -5,9 +5,11 @@
 # seven words it made, shown alone for a phone and typed back, then reads
 # back. The rescue bundles the old stick carried, read from its vault
 # mounted only for reading before it's written over, and the host's own
-# machine's, go onto the new stick and stay with the person. polkit lets the person open a
-# removable disk without the password a desktop's agent would ask for,
-# since a test has no agent to answer it.
+# machine's, go onto the new stick and stay with the person. The stick is
+# the host's own machine's, so the bundle it keeps for itself is opened
+# with its passphrase and signs the stick with the machine's db key.
+# polkit lets the person open a removable disk without the password a
+# desktop's agent would ask for, since a test has no agent to answer it.
 { self, pkgs }:
 let
   inherit (pkgs) lib;
@@ -31,6 +33,8 @@ let
     yubikeys = [ "the Nano" ];
     account = "alice";
   };
+  # What opens the bundle the host keeps for itself.
+  bundlePassphrase = "the host's own bundle's passphrase";
   # Rescue bundles as far as a host reads one it carries on: which
   # machine's it is, and when it was sealed.
   bundle =
@@ -89,11 +93,25 @@ pkgs.testers.runNixOSTest {
         }
       });
     '';
-    # The bundle this host's own install left for anyone to read.
-    systemd.tmpfiles.rules = [
-      "d /var/lib/guide 0755 root root -"
-      "C /var/lib/guide/rescue-bundle.json 0644 root root - ${bundle "tower"}"
-    ];
+    # The host is the machine the stick is for, and keeps its bundle as
+    # its install, or `guide seal-keys`, leaves one for anyone to read,
+    # before the person signs in.
+    systemd.services.seal-own-bundle = {
+      wantedBy = [ "multi-user.target" ];
+      before = [ "getty@tty1.service" ];
+      serviceConfig = {
+        Type = "oneshot";
+        RemainAfterExit = true;
+      };
+      script = ''
+        ${lib.getExe pkgs.sbctl} create-keys --export /var/lib/sbctl/keys \
+          --database-path /var/lib/sbctl/GUID
+        mkdir -p /var/lib/guide
+        echo ${lib.escapeShellArg bundlePassphrase} |
+          ${lib.getExe guide} seal-keys ${payload}/target.json /var/lib/guide/rescue-bundle.json
+        chmod 0644 /var/lib/guide/rescue-bundle.json
+      '';
+    };
     services.getty.autologinUser = "alice";
     environment.loginShellInit = ''
       if [ "$(tty)" = /dev/tty1 ]; then
@@ -103,6 +121,7 @@ pkgs.testers.runNixOSTest {
     environment.systemPackages = [
       pkgs.dosfstools
       pkgs.gptfdisk
+      pkgs.sbsigntool
     ];
     virtualisation = {
       memorySize = 2048;
@@ -143,8 +162,13 @@ pkgs.testers.runNixOSTest {
         host.succeed("su alice -c 'udisksctl mount --block-device /dev/sda1'")
         host.succeed("findmnt /dev/sda1")
 
-    with subtest("the one stick is named, by what it is"):
+    with subtest("the bundle the host keeps for the machine is opened with its passphrase"):
         on_screen("Write laptop's stick")
+        # Sealed to no YubiKey, since the payload carries no recipients.
+        on_screen("which opens")
+        type(${builtins.toJSON bundlePassphrase})
+
+    with subtest("the one stick is named, by what it is"):
         on_screen("is the stick to write")
         type("")
 
@@ -183,7 +207,7 @@ pkgs.testers.runNixOSTest {
     with subtest("the old stick's bundles and the host's own are kept, and carried on"):
         host.succeed("udevadm settle && mkdir -p /run/vault && mount -o ro /dev/sda4 /run/vault")
         kept = "/home/alice/.local/state/guide/rescue"
-        for machine, bundle in [("desktop", "${bundle "desktop"}"), ("tower", "${bundle "tower"}")]:
+        for machine, bundle in [("desktop", "${bundle "desktop"}"), ("laptop", "/var/lib/guide/rescue-bundle.json")]:
             host.succeed(f"cmp {bundle} /run/vault/{machine}-rescue-bundle.json")
             host.succeed(f"cmp {bundle} {kept}/{machine}-rescue-bundle.json")
         host.succeed(f"test $(stat -c %U {kept}) = alice")
@@ -192,5 +216,10 @@ pkgs.testers.runNixOSTest {
         # opened, and unmounted again: UDisks2 says so only as it takes
         # the mount point away.
         host.succeed("journalctl -u udisks2 --grep 'Cleaning up mount point /run/media/alice/.* \\(device 8:2 is not mounted\\)'")
+
+    with subtest("the stick's boot program is signed with the machine's db key, from its bundle"):
+        host.succeed("mkdir -p /run/esp && mount -o ro /dev/sda1 /run/esp")
+        host.succeed("sbverify --cert /var/lib/sbctl/keys/db/db.pem /run/esp/EFI/BOOT/BOOTX64.EFI")
+        host.succeed("umount /run/esp")
   '';
 }
