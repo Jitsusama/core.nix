@@ -2,6 +2,7 @@
 //! the vault open.
 
 use crate::install::{VAULT_KEY, vault_key};
+use crate::observe::fido2;
 use crate::vault::{self, Vault, VaultKey};
 use crate::{Answer, Answers, Ask, Fault, Machine, Place, Secret, Standing, Step};
 
@@ -66,10 +67,11 @@ impl Step for CheckKeyboard {
     }
 }
 
-/// The vault opened by one of the machine's YubiKeys, plugged in and
-/// touched, with its PIN, or with none plugged in by the recovery
-/// passphrase, its key held in memory for the steps after. One field takes
-/// either, since which it is follows from whether a key is plugged in.
+/// The vault opened by the recovery passphrase or by one of the machine's
+/// YubiKeys, plugged in and touched, with its PIN, its key held in memory
+/// for the steps after. One field takes either: what's typed is tried as
+/// the passphrase first, which costs the key nothing, so typing the
+/// passphrase with a key plugged in never spends one of its PIN's tries.
 pub struct OpenVault;
 
 /// The names, as a person says them: "the Nano", "the Nano or the 5Ci".
@@ -146,14 +148,12 @@ impl Step for OpenVault {
                 Ask::Act {
                     id: "key",
                     what: format!(
-                        "Plug in {named}, and touch it when it blinks. To use the recovery passphrase instead, leave it out."
+                        "Plug in {named}, and touch it when it blinks, or use the recovery passphrase instead."
                     ),
                 },
                 Ask::Secret {
                     id: "passphrase",
-                    name: format!(
-                        "the PIN of {named}, or with none plugged in, the recovery passphrase"
-                    ),
+                    name: format!("the PIN of {named}, or the recovery passphrase"),
                 },
             ],
         })
@@ -166,32 +166,37 @@ impl Step for OpenVault {
                 ask: "passphrase",
             });
         };
-        let plugged = if keys(machine)?.is_empty() {
-            vec![]
-        } else {
-            crate::observe::fido2::list(machine)?
-        };
-        let key = match plugged.len() {
-            0 => {
-                let sealed = sealed(machine, vault::KEY_PASSPHRASE)?;
-                // A host makes the passphrase as words, read as the words they
-                // say; one chosen by hand, for a test, is taken as typed.
-                match VaultKey::open_with_passphrase(&sealed, typed) {
-                    Err(_) if crate::words::typed(typed.expose()) != typed.expose() => {
-                        VaultKey::open_with_passphrase(
-                            &sealed,
-                            &Secret::new(crate::words::typed(typed.expose())),
-                        )?
-                    }
-                    opened => opened?,
-                }
+        let sealed_to_passphrase = sealed(machine, vault::KEY_PASSPHRASE)?;
+        // A host makes the passphrase as words, read as the words they say;
+        // one chosen by hand, for a test, is taken as typed.
+        let by_passphrase = match VaultKey::open_with_passphrase(&sealed_to_passphrase, typed) {
+            Err(_) if crate::words::typed(typed.expose()) != typed.expose() => {
+                VaultKey::open_with_passphrase(
+                    &sealed_to_passphrase,
+                    &Secret::new(crate::words::typed(typed.expose())),
+                )
             }
-            1 => VaultKey::open_with_key(&sealed(machine, vault::KEY)?, typed)?,
-            many => {
-                return Err(Fault::Blocked {
-                    step: self.id(),
-                    why: format!("{many} keys are plugged in; leave only one"),
-                });
+            opened => opened,
+        };
+        let key = match by_passphrase {
+            Ok(key) => key,
+            Err(not_the_passphrase) => {
+                let plugged = if keys(machine)?.is_empty() {
+                    vec![]
+                } else {
+                    fido2::plugged(machine)?
+                };
+                match plugged.len() {
+                    0 => return Err(not_the_passphrase),
+                    1 => VaultKey::open_with_key(&sealed(machine, vault::KEY)?, typed)
+                        .map_err(|fault| fido2::neither(fault, "the recovery passphrase"))?,
+                    many => {
+                        return Err(Fault::Blocked {
+                            step: self.id(),
+                            why: format!("{many} keys are plugged in; leave only one"),
+                        });
+                    }
+                }
             }
         };
         machine.write(VAULT_KEY, key.to_secret().expose().as_bytes())

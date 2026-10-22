@@ -13,10 +13,11 @@ use guide::fake::Fake;
 use guide::install::disk::{ConfirmDisk, LayOutDisk, WipeInstallKey};
 use guide::install::keys::EnrolYubikey;
 use guide::install::system::{CheckFirmware, KeepOnStick, SealRescueBundle, SecureBootKeys};
+use guide::install::vault::OpenVault;
 use guide::install::{INSTALL_KEY, RECOVERY_KEY, STICK_VAULT, TARGET, Target, VAULT_KEY};
 use guide::rescue::{self, Bundle};
-use guide::vault::store::Directory;
-use guide::vault::{Manifest, Packer, Vault, VaultKey};
+use guide::vault::store::{Directory, Store};
+use guide::vault::{self, Manifest, Packer, Vault, VaultKey};
 use guide::{Answer, Answers, Fault, Journey, Program, Secret, Standing, Step, Tool};
 
 macro_rules! fixture {
@@ -75,6 +76,124 @@ fn stick_carrying(directory: &std::path::Path, target: &Target, files: &[(&str, 
         .link("/dev/disk/by-id/virtio-root", Some("/dev/vda"))
         .link("/dev/disk/by-id/usb-stick", Some("/dev/sda"));
     fake
+}
+
+/// These keys plugged in: each canokey as `fido2-token` lists and
+/// describes one, and "linux-id" as the XPS 14's virtual key.
+fn plugged(fake: &mut Fake, keys: &[(&str, &str)]) {
+    let mut listed = String::new();
+    for (path, kind) in keys {
+        let (line, info) = match *kind {
+            "linux-id" => (
+                format!("{path}: vendor=0x15d9, product=0x0a37 ( linux-id)\n"),
+                include_str!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/fixtures/dell-xps-14-da14260/fido2-token-I.txt"
+                )),
+            ),
+            _ => (
+                fixture!("fido2-token-L.txt").replace("/dev/hidraw1", path),
+                fixture!("fido2-token-I.txt"),
+            ),
+        };
+        listed.push_str(&line);
+        fake.prints(Tool::Fido2Token, &["-I", path], info);
+    }
+    fake.prints(Tool::Fido2Token, &["-L"], &listed);
+}
+
+const PASSPHRASE: &str = "the vault's recovery passphrase";
+
+/// A fake machine on the stick, its vault still shut: its key sealed to
+/// `PASSPHRASE`, and a copy for the YubiKeys that nothing here opens, so
+/// a test that reaches for a key fails.
+fn shut_stick(directory: &std::path::Path, target: &Target) -> Fake {
+    let mut fake = stick(directory, target);
+    let key = guide::install::vault_key(&mut fake).unwrap().unwrap();
+    let mut store = Directory::new(PathBuf::from(directory));
+    use std::io::Write;
+    store
+        .create(vault::KEY_PASSPHRASE)
+        .unwrap()
+        .write_all(
+            &key.seal_with_passphrase(&Secret::new(PASSPHRASE.into()), Some(2))
+                .unwrap(),
+        )
+        .unwrap();
+    store
+        .create(vault::KEY)
+        .unwrap()
+        .write_all(b"no key opens this")
+        .unwrap();
+    let manifest = Manifest {
+        format: 1,
+        machine: target.machine.clone(),
+        opened_by: vec![
+            "the Nano".into(),
+            "the 5C".into(),
+            "the recovery passphrase".into(),
+        ],
+    };
+    store
+        .create(vault::MANIFEST)
+        .unwrap()
+        .write_all(&serde_json::to_vec(&manifest).unwrap())
+        .unwrap();
+    fake.with_vault(Box::new(store)).no_file(VAULT_KEY);
+    fake
+}
+
+fn passphrase(text: &str) -> Answers {
+    let mut answers = Answers::new();
+    answers.give("key", Answer::Done);
+    answers.give("passphrase", Answer::Secret(Secret::new(text.into())));
+    answers
+}
+
+#[test]
+fn the_passphrase_typed_with_a_key_plugged_in_opens_the_vault_without_the_key() {
+    let target = target("/dev/disk/by-id/virtio-root");
+    let scratch = Scratch::new("install-vault-passphrase");
+    let mut fake = shut_stick(&scratch, &target);
+    plugged(&mut fake, &[("/dev/hidraw1", "canokey")]);
+    assert!(matches!(
+        OpenVault.observe(&mut fake).unwrap(),
+        Standing::Needed { .. }
+    ));
+    OpenVault.run(&mut fake, &passphrase(PASSPHRASE)).unwrap();
+    assert!(matches!(
+        OpenVault.observe(&mut fake).unwrap(),
+        Standing::Done { .. }
+    ));
+}
+
+#[test]
+fn what_isnt_the_passphrase_goes_to_the_key_plugged_in_and_says_both_were_tried() {
+    let target = target("/dev/disk/by-id/virtio-root");
+    let scratch = Scratch::new("install-vault-pin");
+    let mut fake = shut_stick(&scratch, &target);
+    plugged(&mut fake, &[("/dev/hidraw1", "canokey")]);
+    let refused = OpenVault.run(&mut fake, &passphrase("123456"));
+    assert!(
+        matches!(&refused, Err(Fault::Unopened { why, .. }) if why.starts_with("that isn't the recovery passphrase, and ")),
+        "{refused:?}"
+    );
+}
+
+#[test]
+fn a_laptops_virtual_key_is_never_counted_as_a_key_plugged_in() {
+    let target = target("/dev/disk/by-id/virtio-root");
+    let scratch = Scratch::new("install-vault-linux-id");
+    let mut fake = shut_stick(&scratch, &target);
+    plugged(
+        &mut fake,
+        &[("/dev/hidraw1", "canokey"), ("/dev/hidraw6", "linux-id")],
+    );
+    let refused = OpenVault.run(&mut fake, &passphrase("123456"));
+    assert!(
+        matches!(&refused, Err(Fault::Unopened { why, .. }) if why.starts_with("that isn't")),
+        "the canokey alone is plugged in: {refused:?}"
+    );
 }
 
 fn lsblk(fake: &mut Fake, json: &str) {
@@ -160,13 +279,11 @@ fn a_key_plugged_in_beside_another_is_never_enrolled() {
     let target = target("/dev/disk/by-id/virtio-root");
     let scratch = Scratch::new("install-two-keys");
     let mut fake = stick(&scratch, &target);
-    let one = fixture!("fido2-token-L.txt");
+    plugged(
+        &mut fake,
+        &[("/dev/hidraw1", "canokey"), ("/dev/hidraw2", "canokey")],
+    );
     fake.prints(
-        Tool::Fido2Token,
-        &["-L"],
-        &format!("{one}{}", one.replace("hidraw1", "hidraw2")),
-    )
-    .prints(
         Tool::Cryptsetup,
         &[
             "luksDump",
@@ -200,16 +317,16 @@ fn a_key_that_opens_the_disk_already_isnt_enrolled_again() {
     let scratch = Scratch::new("install-enrolled");
     let mut fake = stick(&scratch, &target);
     let header = fixture!("luks-dump-before-wipe.json");
-    fake.prints(Tool::Fido2Token, &["-L"], fixture!("fido2-token-L.txt"))
-        .prints(
-            Tool::Cryptsetup,
-            &[
-                "luksDump",
-                "--dump-json-metadata",
-                "/dev/disk/by-partlabel/system",
-            ],
-            header,
-        );
+    plugged(&mut fake, &[("/dev/hidraw1", "canokey")]);
+    fake.prints(
+        Tool::Cryptsetup,
+        &[
+            "luksDump",
+            "--dump-json-metadata",
+            "/dev/disk/by-partlabel/system",
+        ],
+        header,
+    );
     // The plugged key answers a silent assertion for the first credential.
     fake.answers(
         Program::Tool(Tool::Fido2Assert),

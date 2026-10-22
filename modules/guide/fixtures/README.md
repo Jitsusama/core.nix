@@ -11,6 +11,7 @@ that changes what it prints fails a test rather than a person's install.
 | `bootctl-status.txt`, `.err`   | `bootctl status`, its stdout and stderr, as a user on the XPS 14 and root on the Surface |
 | `efivar-<name>-<guid>`         | `/sys/firmware/efi/efivars/<name>-<guid>`, read whole |
 | `fido2-token-L.txt`            | `fido2-token -L`, with no YubiKey plugged in      |
+| `fido2-token-I.txt`            | `fido2-token -I`, of the key that lists: on the XPS 14 its virtual linux-id, captured on 2026-10-22 |
 | `lsblk.json`                   | `lsblk -J -O -b`, the short form of the guide's `--json --output-all --bytes` |
 | `sbctl-status.json`            | `sbctl status --json`                             |
 | `sbctl-verify.json`            | `sbctl verify --json`, as root                    |
@@ -44,4 +45,5 @@ stick `/dev/sda`.
 | `lsblk-blank.json`             | `lsblk --json --output-all --bytes`, the machine's disk blank |
 | `lsblk-laid-out.json`          | the same once the machine's layout made its volume and mounted it at /mnt |
 | `fido2-token-L.txt`            | `fido2-token -L`, one canokey plugged in          |
+| `fido2-token-I.txt`            | `fido2-token -I` of a canokey with its PIN set, booted from a stick in QEMU on 2026-10-22, one of its PIN's tries spent |
 | `bootctl-list-from-the-stick.json` | `bootctl --esp-path=/mnt/boot list --json=short` on a repair stick, in `vm-guide-recovers`: an entry named by its hash, and `isSelected` null |

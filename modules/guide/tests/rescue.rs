@@ -285,6 +285,51 @@ fn a_bundle_says_which_passphrase_opens_it() {
 }
 
 #[test]
+fn a_bundle_sealed_to_a_yubikey_opens_by_its_passphrase_with_the_key_plugged_in() {
+    let keys = Keys::new(files("bundle-key-plugged")).unwrap();
+    // Said to be sealed to the Nano too, by a copy nothing here opens, so
+    // reaching for the key fails.
+    let mut written: serde_json::Value = serde_json::from_slice(&sealed(&keys)).unwrap();
+    written["opened_by"] = serde_json::json!(["the Nano", RECOVERY_PASSPHRASE]);
+    written["to_keys"] = "bm8ga2V5IG9wZW5zIHRoaXM=".into();
+    let bundle = Bundle::read(&serde_json::to_vec(&written).unwrap()).unwrap();
+    assert_eq!(bundle.yubikeys(), ["the Nano"]);
+    let opened = std::rc::Rc::new(std::cell::RefCell::new(None));
+    let step = OpenRescueBundle {
+        bundle,
+        opened: std::rc::Rc::clone(&opened),
+    };
+    let mut fake = Fake::new();
+    let canokey = |file: &str| {
+        std::fs::read_to_string(format!(
+            "{}/fixtures/qemu-canokey/{file}",
+            env!("CARGO_MANIFEST_DIR")
+        ))
+        .unwrap()
+    };
+    fake.prints(Tool::Fido2Token, &["-L"], &canokey("fido2-token-L.txt"))
+        .prints(
+            Tool::Fido2Token,
+            &["-I", "/dev/hidraw1"],
+            &canokey("fido2-token-I.txt"),
+        );
+    let typed = |text: &str| {
+        let mut answers = Answers::new();
+        answers.give("key", Answer::Done);
+        answers.give("passphrase", Answer::Secret(Secret::new(text.into())));
+        answers
+    };
+
+    let refused = step.run(&mut fake, &typed("123456"));
+    assert!(
+        matches!(&refused, Err(Fault::Unopened { why, .. }) if why.starts_with(&format!("that isn't {RECOVERY_PASSPHRASE}, and "))),
+        "{refused:?}"
+    );
+    step.run(&mut fake, &typed(passphrase().expose())).unwrap();
+    assert_eq!(opened.borrow().as_ref(), Some(&keys));
+}
+
+#[test]
 fn a_bundle_with_no_yubikey_opens_on_the_host_with_its_passphrase() {
     let keys = Keys::new(files("bundle-host")).unwrap();
     let opened = std::rc::Rc::new(std::cell::RefCell::new(None));

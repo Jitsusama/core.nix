@@ -4,8 +4,8 @@
 
 use guide::Machine;
 use guide::fake::Fake;
-use guide::recover::{BootGeneration, FindMachine, already_there, the_machine};
-use guide::{Answer, Answers, Ask, Journey, Standing, Step, Tool};
+use guide::recover::{BootGeneration, FindMachine, OpenDisk, already_there, the_machine};
+use guide::{Answer, Answers, Ask, Fault, Journey, Program, Secret, Standing, Step, Tool};
 
 macro_rules! fixture {
     ($file:literal) => {
@@ -21,6 +21,75 @@ fn lsblk(json: &str) -> Fake {
     let mut fake = Fake::new();
     fake.prints(Tool::Lsblk, &["--json", "--output-all", "--bytes"], json);
     fake
+}
+
+const RECOVERY_KEY: &str = "seven words read off the phone to open it";
+
+/// The machine's disk, whatever's typed tried first as its recovery key,
+/// which takes it or doesn't, and this one key plugged in: a canokey, or
+/// the XPS 14's virtual key, which can't be the person's.
+fn shut_disk(recovery_takes_it: bool, key: &str) -> Fake {
+    let mut fake = lsblk(fixture!("lsblk-laid-out.json"));
+    let (status, said) = if recovery_takes_it {
+        (0, "")
+    } else {
+        (2, "No key available with this passphrase.")
+    };
+    fake.answers(
+        Program::Tool(Tool::Cryptsetup),
+        &[
+            "open",
+            "--key-file=-",
+            "/dev/disk/by-partlabel/system",
+            "system",
+        ],
+        status,
+        "",
+        said,
+    );
+    let (listed, info) = match key {
+        "linux-id" => (
+            "/dev/hidraw6: vendor=0x15d9, product=0x0a37 ( linux-id)\n",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/fixtures/dell-xps-14-da14260/fido2-token-I.txt"
+            )),
+        ),
+        _ => (fixture!("fido2-token-L.txt"), fixture!("fido2-token-I.txt")),
+    };
+    let path = listed.split(':').next().unwrap().to_string();
+    fake.prints(Tool::Fido2Token, &["-L"], listed)
+        .prints(Tool::Fido2Token, &["-I", &path], info);
+    fake
+}
+
+fn secret(typed: &str) -> Answers {
+    let mut answers = Answers::new();
+    answers.give("key", Answer::Done);
+    answers.give("secret", Answer::Secret(Secret::new(typed.into())));
+    answers
+}
+
+fn asked_the_key(fake: &Fake) -> bool {
+    fake.calls.iter().any(|call| call.contains("--token-only"))
+}
+
+#[test]
+fn the_recovery_key_typed_with_a_key_plugged_in_opens_the_disk_without_the_key() {
+    let mut fake = shut_disk(true, "canokey");
+    OpenDisk.run(&mut fake, &secret(RECOVERY_KEY)).unwrap();
+    assert!(!asked_the_key(&fake), "{:#?}", fake.calls);
+}
+
+#[test]
+fn a_laptops_virtual_key_is_never_asked_for_a_pin() {
+    let mut fake = shut_disk(false, "linux-id");
+    let refused = OpenDisk.run(&mut fake, &secret("123456"));
+    assert!(
+        matches!(&refused, Err(Fault::Refused { status: 2, .. })),
+        "{refused:?}"
+    );
+    assert!(!asked_the_key(&fake), "{:#?}", fake.calls);
 }
 
 #[test]

@@ -1,0 +1,22 @@
+proto: 0x02
+major: 0x01
+minor: 0x00
+build: 0x00
+caps: 0x04 (nowink, cbor, msg)
+version strings: U2F_V2, FIDO_2_0, FIDO_2_1
+extension strings: credBlob, credProtect, hmac-secret, largeBlobKey
+transport strings: nfc, usb
+algorithms: es256 (public-key), eddsa (public-key), unknown (public-key)
+aaguid: 244eb29ee0904e4981fe1f20f8d3b8f4
+options: rk, credMgmt, clientPin, largeBlobs, pinUvAuthToken, makeCredUvNotRqd
+fwversion: 0xc9
+maxmsgsiz: 1300
+maxcredcntlst: 8
+maxcredlen: 70
+maxcredblob: 32
+maxlargeblob: 4096
+pin protocols: 1, 2
+pin retries: 7
+pin change required: false
+uv retries: undefined
+long touch for reset: false

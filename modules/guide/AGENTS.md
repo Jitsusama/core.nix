@@ -113,9 +113,9 @@ driven on; the installed machine's steps come later.
 - **Recovering.** Any stick recovers a machine with its data left in
   place, since the disk says what it is: core's layout on an internal
   disk, an encrypted partition beside its `<name>-boot`. The disk is shown
-  before anything is typed, opened with the plugged-in YubiKey's PIN or,
-  with none plugged in, the recovery key (never the TPM, whose seal a
-  stick's boot doesn't match), every subvolume and the ESP mounted under
+  before anything is typed, opened with the recovery key or the plugged-in
+  YubiKey's PIN (never the TPM, whose seal a stick's boot doesn't match),
+  every subvolume and the ESP mounted under
   /mnt. Then a choice, back after each: a root shell inside it; which
   generation boots next, set in the firmware's `LoaderEntryDefault` as
   `bootctl set-default` would, since from a stick bootctl refuses; or a
@@ -217,9 +217,19 @@ driven on; the installed machine's steps come later.
 - **Opening the vault.** The key's YubiKey copy goes through
   age-plugin-fido2-hmac, which age finds only on PATH, so the guide sets
   its own PATH to the plugin's store directory as it starts. Sealing needs
-  no key plugged in. On the stick one field takes either the plugged-in
-  key's PIN or, with none plugged in, the recovery passphrase; the plugin's
-  own prompts never reach the screen, since the PIN is handed to it.
+  no key plugged in. On the stick one field takes either the recovery
+  passphrase or the plugged-in key's PIN; the plugin's own prompts never
+  reach the screen, since the PIN is handed to it.
+- **Passphrase before PIN.** Wherever one field takes a passphrase or a
+  key's PIN (the vault, a rescue bundle, recovering the disk), what's
+  typed is tried as the passphrase or recovery key first, which costs the
+  key nothing; only then is it the plugged-in key's PIN. Typed the other
+  way round, a passphrase with the Nano plugged in would spend one of the
+  PIN's eight tries, and a key whose PIN is used up opens nothing until
+  it's reset, which wipes what it opened. A key counts as plugged in only
+  when `fido2-token -I` says it has hmac-secret and a PIN, set or not, so
+  a laptop's virtual key such as linux-id, listed with no key plugged in,
+  is never asked for a PIN.
 
 ## Where Things Live
 

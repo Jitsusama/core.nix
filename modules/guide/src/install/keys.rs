@@ -119,7 +119,7 @@ impl Step for EnrolYubikey {
         };
         let target = target(machine)?;
         let volume = target.volume();
-        let plugged = fido2::list(machine)?;
+        let plugged = fido2::plugged(machine)?;
         let device = match plugged.as_slice() {
             [one] => one.path.clone(),
             [] => {

@@ -512,9 +512,10 @@ impl Step for SealKeys {
     }
 }
 
-/// A rescue bundle opened on the host writing a stick, with a YubiKey's
-/// PIN or, with none plugged in, the passphrase. The keys are held here,
-/// in memory, for the stick's writing to take.
+/// A rescue bundle opened on the host writing a stick, with its passphrase
+/// or a YubiKey's PIN, tried in that order so the passphrase typed with a
+/// key plugged in never spends one of the key's PIN tries. The keys are
+/// held here, in memory, for the stick's writing to take.
 pub struct OpenRescueBundle {
     pub bundle: Bundle,
     pub opened: Rc<RefCell<Option<Keys>>>,
@@ -559,12 +560,12 @@ impl Step for OpenRescueBundle {
                 Ask::Act {
                     id: "key",
                     what: format!(
-                        "Plug in {named}, and touch it when it blinks. To use {passphrase} instead, leave it out."
+                        "Plug in {named}, and touch it when it blinks, or use {passphrase} instead."
                     ),
                 },
                 Ask::Secret {
                     id: "passphrase",
-                    name: format!("the PIN of {named}, or with none plugged in, {passphrase}"),
+                    name: format!("the PIN of {named}, or {passphrase}"),
                 },
             ],
         })
@@ -577,19 +578,26 @@ impl Step for OpenRescueBundle {
                 ask: "passphrase",
             });
         };
-        let plugged = if self.bundle.yubikeys().is_empty() {
-            vec![]
-        } else {
-            crate::observe::fido2::list(machine)?
-        };
-        let keys = match plugged.len() {
-            0 => self.bundle.open_with_passphrase(typed)?,
-            1 => self.bundle.open_with_key(typed)?,
-            many => {
-                return Err(Fault::Blocked {
-                    step: self.id(),
-                    why: format!("{many} keys are plugged in; leave only one"),
-                });
+        let keys = match self.bundle.open_with_passphrase(typed) {
+            Ok(keys) => keys,
+            Err(not_the_passphrase) => {
+                let plugged = if self.bundle.yubikeys().is_empty() {
+                    vec![]
+                } else {
+                    crate::observe::fido2::plugged(machine)?
+                };
+                match plugged.len() {
+                    0 => return Err(not_the_passphrase),
+                    1 => self.bundle.open_with_key(typed).map_err(|fault| {
+                        crate::observe::fido2::neither(fault, self.bundle.passphrase())
+                    })?,
+                    many => {
+                        return Err(Fault::Blocked {
+                            step: self.id(),
+                            why: format!("{many} keys are plugged in; leave only one"),
+                        });
+                    }
+                }
             }
         };
         self.opened.replace(Some(keys));

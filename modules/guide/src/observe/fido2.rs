@@ -1,6 +1,7 @@
 //! The FIDO2 keys plugged in, as `fido2-token -L` lists them. Telling one
 //! YubiKey from another needs a credential check rather than this list,
-//! since both say the same; this only says what's there and where.
+//! since both say the same; this only says what's there and where, and
+//! which of them could be one of the person's keys.
 
 use crate::{Fault, Machine, Tool};
 
@@ -19,6 +20,64 @@ pub const YUBICO: u16 = 0x1050;
 
 pub fn list(machine: &mut dyn Machine) -> Result<Vec<Token>, Fault> {
     parse(&machine.run(Tool::Fido2Token, &["-L"])?.ok()?)
+}
+
+/// The keys plugged in that could be one of the person's: everything the
+/// guide seals to a key (the disk's FIDO2 slot, the vault, a rescue
+/// bundle) is a secret the key derives with hmac-secret behind its PIN.
+/// A platform authenticator a laptop lists with no key plugged in, such
+/// as linux-id, does neither, so it never counts as a key plugged in.
+pub fn plugged(machine: &mut dyn Machine) -> Result<Vec<Token>, Fault> {
+    let mut plugged = vec![];
+    for token in list(machine)? {
+        let info = machine.run(Tool::Fido2Token, &["-I", &token.path])?.ok()?;
+        if seals(&info) {
+            plugged.push(token);
+        }
+    }
+    Ok(plugged)
+}
+
+/// Whether `fido2-token -I` says the key derives secrets with hmac-secret
+/// and has a PIN, set or not: libfido2 prints an option it lacks not at
+/// all, one it has as its name, and one turned off with "no" before it
+/// (tools/token.c).
+fn seals(info: &str) -> bool {
+    let listed = |label: &str| {
+        info.lines()
+            .find_map(|line| line.strip_prefix(label))
+            .map(|rest| rest.split(',').map(str::trim).collect::<Vec<_>>())
+            .unwrap_or_default()
+    };
+    let options = listed("options:");
+    listed("extension strings:").contains(&"hmac-secret")
+        && (options.contains(&"clientPin") || options.contains(&"noclientPin"))
+}
+
+/// A key's refusal, once what was typed was tried as `passphrase` first
+/// and wasn't it either, so the person reads that both were tried.
+pub fn neither(fault: Fault, passphrase: &str) -> Fault {
+    match fault {
+        Fault::Unopened { what, why } => Fault::Unopened {
+            what,
+            why: format!("that isn't {passphrase}, and {why}"),
+        },
+        other => other,
+    }
+}
+
+/// What age's FIDO2 plugin said when a key refused, in plain words, for
+/// the refusals a person can do something about.
+pub fn refusal(said: &str) -> Option<&'static str> {
+    if said.contains("pin invalid") {
+        Some("it isn't the PIN of the key plugged in")
+    } else if said.contains("pin auth blocked") {
+        Some("the key plugged in refuses its PIN until it's unplugged and plugged back in")
+    } else if said.contains("no credentials") {
+        Some("the key plugged in isn't one it was sealed to")
+    } else {
+        None
+    }
 }
 
 /// libfido2 prints each as `path: vendor=0x%04x, product=0x%04x (%s %s)`
@@ -69,6 +128,30 @@ mod tests {
                 .unwrap();
         assert_eq!(tokens[0].vendor, YUBICO);
         assert_eq!(tokens[0].name, "Yubico YubiKey OTP+FIDO+CCID");
+    }
+
+    #[test]
+    fn a_key_with_hmac_secret_and_a_pin_can_be_the_persons() {
+        assert!(seals(qemu!("fido2-token-I.txt")));
+        let unset = qemu!("fido2-token-I.txt").replace(" clientPin,", " noclientPin,");
+        assert!(seals(&unset), "a key whose PIN isn't set yet");
+        let no_hmac = qemu!("fido2-token-I.txt").replace(" hmac-secret,", "");
+        assert!(!seals(&no_hmac));
+    }
+
+    #[test]
+    fn the_xps_virtual_key_can_never_be_the_persons() {
+        assert!(!seals(xps!("fido2-token-I.txt")));
+    }
+
+    #[test]
+    fn the_plugins_pin_refusals_are_said_plainly() {
+        let said = "(stanza 0 0) failed to get assertion: pin invalid";
+        assert_eq!(
+            refusal(said),
+            Some("it isn't the PIN of the key plugged in")
+        );
+        assert_eq!(refusal("failed to open the file"), None);
     }
 
     #[test]

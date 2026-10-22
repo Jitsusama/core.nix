@@ -179,7 +179,15 @@ impl VaultKey {
             ))),
         )
         .map_err(|why| unopened("the vault's key", why))?;
-        VaultKey::open(sealed, &plugin)
+        VaultKey::open(sealed, &plugin).map_err(|fault| match fault {
+            Fault::Unopened { what, why } => Fault::Unopened {
+                what,
+                why: crate::observe::fido2::refusal(&why)
+                    .map(String::from)
+                    .unwrap_or(why),
+            },
+            other => other,
+        })
     }
 
     /// The key as text, to hold in memory once it's open, so each step
