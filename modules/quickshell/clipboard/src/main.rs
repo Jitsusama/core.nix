@@ -20,9 +20,11 @@
 //!
 //! A copy a password manager marks as secret is never kept, nor text larger
 //! than `--largest`, nor a picture larger than `--largest-picture`. The
-//! pictures kept take up at most `--room`, the oldest going first. From the
-//! shell, a line `copy N` puts picture N back on the clipboard, and `clear`
-//! forgets everything, every client then being sent `{"clear":true}`.
+//! pictures kept take up at most `--room`, the oldest going first, and the
+//! shells are sent `{"gone":[N, ...]}` for those let go, to make room or
+//! past what it keeps, since their files go with them. From the shell, a
+//! line `copy N` puts picture N back on the clipboard, and `clear` forgets
+//! everything, every client then being sent `{"clear":true}`.
 //!
 //! A copy outlives the program that made it: when the clipboard empties
 //! because that program let go of it, as one does when it closes, this one
@@ -303,8 +305,9 @@ fn written(path: &Path, bytes: &[u8]) -> io::Result<()> {
 }
 
 /// The copies kept, newest first, the shells listening for more, what the
-/// clipboard holds now when it's a copy kept, and where pictures go and how
-/// much room they have.
+/// clipboard holds now when it's a copy kept, where pictures go and how
+/// much room they have, and the pictures let go since the shells were last
+/// told.
 struct History {
     copies: VecDeque<Copy>,
     keep: usize,
@@ -313,6 +316,7 @@ struct History {
     pictures: Option<PathBuf>,
     room: usize,
     next: u64,
+    gone: Vec<u64>,
 }
 
 impl History {
@@ -325,7 +329,19 @@ impl History {
             pictures,
             room,
             next: 1,
+            gone: Vec::new(),
         }
+    }
+
+    /// The line telling the shells which pictures were let go to make room,
+    /// `{"gone":[N, ...]}`, since they keep rows of their own; none when
+    /// nothing went.
+    fn went(&mut self) -> Option<String> {
+        if self.gone.is_empty() {
+            return None;
+        }
+        let ids: Vec<String> = self.gone.drain(..).map(|id| id.to_string()).collect();
+        Some(format!("{{\"gone\":[{}]}}\n", ids.join(",")))
     }
 
     /// Keeps a copy, unless it's blank text. One copied again moves to the
@@ -356,6 +372,9 @@ impl History {
             gone.extend(self.copies.remove(oldest + 1));
         }
         for copy in gone {
+            if let Content::Picture(picture) = &copy.content {
+                self.gone.push(picture.id);
+            }
             discard(&copy.content);
         }
         true
@@ -653,6 +672,9 @@ impl Dispatch<ExtDataControlDeviceV1, ()> for State {
                 let mut history = state.history.lock().unwrap();
                 if let Some(copy) = history.copied(heard) {
                     history.tell(&copy.line());
+                    if let Some(line) = history.went() {
+                        history.tell(&line);
+                    }
                 }
             }
             // The program holding the clipboard let go of it: what it held
@@ -1058,6 +1080,23 @@ mod tests {
         };
         assert!(!oldest.path.exists());
         assert_eq!(fs::read_dir(&dir).unwrap().count(), 2);
+        // The shells are told, once, so their rows go with it.
+        assert_eq!(kept.went(), Some(format!("{{\"gone\":[{}]}}\n", oldest.id)));
+        assert_eq!(kept.went(), None);
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn a_picture_past_what_it_keeps_is_told_as_gone() {
+        let dir = directory("told");
+        let mut kept = History::new(1, Some(dir.clone()), 100);
+        let made = kept.copied(picture(b"a picture")).unwrap();
+        let Content::Picture(made) = made.content else {
+            unreachable!()
+        };
+        assert_eq!(kept.went(), None);
+        kept.copied(text("one"));
+        assert_eq!(kept.went(), Some(format!("{{\"gone\":[{}]}}\n", made.id)));
         fs::remove_dir_all(dir).unwrap();
     }
 
