@@ -211,7 +211,7 @@ a running system shows.
 | `vm-ir-camera-opens-for-readers`  | the IR camera waits for udev and its loopback, opens only while read, its frames grey, no frame from before a reader opened |
 | `vm-loopback-says-who-holds-it`   | a loopback camera's file names each program another account holds it with, not its relay's unit however a program names itself, one line a name, catches a holder that forks, empties when they close it or the camera stops, keeps its folder, follows a new loopback, and takes no loopback of another name |
 | `vm-swap-comes-down-while-probed` | the compressed swap comes down, its reset waiting out udev's probe |
-| `vm-apps-come-first-on-the-disk`  | the account's app and session slices hold a 1 ms latency on the drive behind /home, through the kernel, and jobs and background none |
+| `vm-apps-come-first-on-the-disk`  | the account's app and session slices, and the system's user.slice, hold a 1 ms latency on the drive behind /home, through the kernel; jobs, background, machine and system none |
 | `vm-reboot-cannot-hang`           | a reboot forces on after a minute of a service not stopping, the watchdog resets a stuck last stage, and Plymouth hears which |
 
 The install test builds a disk image with disko and boots it with a software
