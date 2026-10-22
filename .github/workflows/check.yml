@@ -67,7 +67,7 @@ jobs:
           - vm-ir-camera-opens-for-readers
           - vm-loopback-says-who-holds-it
           - vm-swap-comes-down-while-probed
-          - vm-apps-come-first-on-the-disk
+          - vm-apps-come-first
           - vm-reboot-cannot-hang
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
