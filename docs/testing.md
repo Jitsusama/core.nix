@@ -73,6 +73,7 @@ quietly stopped holding.
 | `icon-marks-past-the-basic-plane` | an icon mark past U+FFFF reaches the shell whole |
 | `nix-builds-yield-to-the-user` | Nix's builds run at a lower weight than the user's programs |
 | `work-yields-to-what-the-user-works-in` | jobs is idle beside app.slice, pi finds it, and a window's scope is not idle |
+| `timed-work-goes-ahead-of-other-work` | timed work sits inside jobs above its holder, held by a unit that comes back, and pi finds it |
 | `call-audio-runs-in-real-time` | an app's audio thread can take SCHED_RR 8, below PipeWire's, for at most 200 ms at a time |
 | `machines-yield-to-what-the-user-works-in` | system virtual machines are weighed as a build is, and the account's containers and session machines are idle |
 | `nix-collects-before-the-disk-fills` | Nix collects garbage during a build that fills the disk |
@@ -211,7 +212,7 @@ a running system shows.
 | `vm-ir-camera-opens-for-readers`  | the IR camera waits for udev and its loopback, opens only while read, its frames grey, no frame from before a reader opened |
 | `vm-loopback-says-who-holds-it`   | a loopback camera's file names each program another account holds it with, not its relay's unit however a program names itself, one line a name, catches a holder that forks, empties when they close it or the camera stops, keeps its folder, follows a new loopback, and takes no loopback of another name |
 | `vm-swap-comes-down-while-probed` | the compressed swap comes down, its reset waiting out udev's probe |
-| `vm-apps-come-first`              | the account's app and session slices, and the system's user.slice, hold a 1 ms latency on the drive behind /home, through the kernel (jobs, background, machine and system none); app.slice holds a hard 13% of memory and every slice above it 15% |
+| `vm-apps-come-first`              | the account's app and session slices, and the system's user.slice, hold a 1 ms latency on the drive behind /home, through the kernel (jobs, background, machine and system none); app.slice holds a hard 13% of memory and every slice above it 15%; timed work sits at 10000 inside idle jobs, and work in jobs can move itself there |
 | `vm-reboot-cannot-hang`           | a reboot forces on after a minute of a service not stopping, the watchdog resets a stuck last stage, and Plymouth hears which |
 
 The install test builds a disk image with disko and boots it with a software
