@@ -13,7 +13,8 @@ Piece {
     present: Sessions.running.length > 0
     active: wanting.length > 0
     wants: active
-    hue: "voice"
+    // A program's, as π is on its notice and in Agents.
+    hue: "program"
     value: [`${Sessions.running.length} running`,
         Sessions.working > 0 ? `${Sessions.working} working` : "",
         wanting.length > 0 ? `${wanting.length} ${wanting.length === 1 ? "wants" : "want"} you` : ""]

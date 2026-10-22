@@ -1011,26 +1011,73 @@ pkgs.testers.runNixOSTest {
           as_account(f"niri msg action focus-window --id {window_titled('Elsewhere')['id']}")
           # The margin may hold other marks, a notice missed earlier among
           # them, so it's pi's own that's waited on.
+          # Wants begun now, as the shell only says those it saw begin.
+          def begun():
+              return machine.succeed("date -u +%Y-%m-%dT%H:%M:%SZ").strip()
+
+          question = {"kind": "question", "since": begun(), "said": "Which <way> & why?"}
           since = mark()
           with told("shows card A quest of its own, whole asks you"):
-              presence_says({
-                  "addresses": ["TESTQA"],
-                  "busy": False,
-                  "wants": {"kind": "question", "since": "2026-10-22T07:00:00Z", "said": "Which way?"},
-              })
+              presence_says({"addresses": ["TESTQA"], "busy": False, "wants": question})
           reported("holds margin ", lambda rest: "agent" in rest.split(), since)
           photograph("margin-pi-wants")
+          # The same want, its file replaced again, says nothing new.
+          presence_says({"addresses": ["TESTQA"], "busy": False, "wants": question})
+          time.sleep(3)
+          cards = "journalctl --user --unit=quickshell --no-pager --output=cat | grep -c 'report\\[shows card A quest of its own, whole asks you'"
+          t.assertEqual(as_account(cards).strip(), "1", "the same want was said twice")
           with told("keys notices"):
               machine.send_key("meta_l-n")
           machine.send_key("ret")
           machine.wait_until_succeeds(
               in_session("niri msg --json focused-window | grep -q TESTQA"), timeout=10
           )
-          # Said once: no second notice of the same want is left behind.
           machine.wait_until_fails(in_session("niri msg layers | grep -q notifications"), timeout=10)
+          # Another, unanswered, from the other window: its notice says what
+          # it wants, and goes when the want does, missed by nobody. Notices
+          # missed earlier are let go first, so the margin's notices mark is
+          # this one's alone.
+          held = as_account(
+              "journalctl --user --unit=quickshell --no-pager --output=cat"
+              " | grep -o 'report\\[holds margin [^]]*' | tail -n 1"
+          )
+          since = mark()
+          as_account("qs ipc call notices seen")
+          if "waiting" in held.split()[2:]:
+              reported("holds margin ", lambda rest: "waiting" not in rest.split(), since)
+          as_account(f"niri msg action focus-window --id {window_titled('Elsewhere')['id']}")
+          with told("shows card A quest of its own, whole wants your yes"):
+              presence_says({
+                  "addresses": ["TESTQA"],
+                  "busy": False,
+                  "wants": {"kind": "approval", "since": begun(), "said": "Push it?"},
+              })
+          # Ended while its notice is up, the notice goes with it, well
+          # before its own ten seconds would.
+          presence_says({"addresses": ["TESTQA"], "busy": False})
+          machine.wait_until_fails(in_session("niri msg layers | grep -q notifications"), timeout=5)
+          # A third, left to time out while its want stands: it isn't
+          # missed, since pi's mark says the want; ended, the mark goes.
+          with told("shows card A quest of its own, whole is stuck without you"):
+              presence_says({
+                  "addresses": ["TESTQA"],
+                  "busy": False,
+                  "wants": {"kind": "blocked", "since": begun(), "said": "Out of ideas."},
+              })
+          machine.wait_until_fails(in_session("niri msg layers | grep -q notifications"), timeout=30)
+          time.sleep(2)
+
+          def margin_holds():
+              return as_account(
+                  "journalctl --user --unit=quickshell --no-pager --output=cat"
+                  " | grep -o 'report\\[holds margin [^]]*' | tail -n 1"
+              ).split()[2:]
+
+          t.assertNotIn("waiting", margin_holds(), "pi's notice counted as missed")
           since = mark()
           presence_says({"addresses": ["TESTQA"], "busy": False})
           reported("holds margin ", lambda rest: "agent" not in rest.split(), since)
+          t.assertNotIn("waiting", margin_holds(), "pi's notice counted as missed")
           for title in [agent, "Elsewhere"]:
               as_account(f"niri msg action close-window --id {window_titled(title)['id']}")
           as_account(f"rm -rf {quest} {presence}/testqa.json")
