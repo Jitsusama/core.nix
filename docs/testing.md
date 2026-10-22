@@ -145,6 +145,8 @@ kernel guide][2] says what that catches.
 | `the-panel-knows-its-luminance` | the XPS 14's kernel reads the panel's luminance range from DisplayID's Display Parameters block |
 | `dell-events-are-known` | the XPS 14's dell-wmi ignores the EC's hourly type 0x0012 event rather than log an unknown key |
 | `the-colour-camera-says-it-is-upside-down` | the XPS 14's camera bridge reports its colour sensor rotated 180 degrees |
+| `the-npu-finds-its-compiler` | the XPS 14's graphics drivers hold the NPU's driver and Intel's compiler beside it |
+| `the-gpu-security-link-loads-with-the-gpu` | the XPS 14's initrd loads mei_me and mei_gsc_proxy with xe, inside the 20 s xe waits for its CSME link |
 | `platform-profiles-reach-the-legacy-file` | every profile Dell's driver offers, the XPS 14's SoC slider takes too |
 | `ipu7-outlives-its-open-files` | the XPS 14's capture side is freed when its last node closes, not when the IPU unbinds |
 | `the-camera-holds-no-memory-it-never-uses` | neither half of the XPS 14's camera asks at probe for a firmware log only Intel's offline logger writes, and the capture side frees its firmware's memory when it unbinds |
