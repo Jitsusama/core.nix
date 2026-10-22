@@ -105,7 +105,8 @@ in
     jitsusama.v4l2loopback.holders.ir-camera = {
       device = sink;
       unit = "ir-camera-loopback.service";
-      ignore = [ "ir-camera" ];
+      card = name;
+      ignoreUnits = [ "ir-camera.service" ];
     };
 
     # Making the loopback needs root, so it's a unit of its own, and the

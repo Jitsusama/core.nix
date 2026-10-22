@@ -48,10 +48,22 @@ in
               type = lib.types.str;
               description = "The service that makes the camera, whose life this one shares.";
             };
-            ignore = lib.mkOption {
+            card = lib.mkOption {
+              type = lib.types.nullOr lib.types.str;
+              default = null;
+              description = ''
+                The loopback's name, so a node number another camera has
+                been given since isn't taken for this one. Null for any.
+              '';
+            };
+            ignoreUnits = lib.mkOption {
               type = lib.types.listOf lib.types.str;
               default = [ ];
-              description = "Programs left out, such as the relay that fills the camera.";
+              description = ''
+                Units whose processes are left out, such as the relay's that
+                fills the camera. By unit rather than by name, since a
+                program can take any name but can't join a unit.
+              '';
             };
           };
         }
@@ -62,7 +74,8 @@ in
           camera = {
             device = "/run/camera/device";
             unit = "camera.service";
-            ignore = [ "v4l2-relayd" ];
+            card = "Built-in Camera";
+            ignoreUnits = [ "camera.service" ];
           };
         }
       '';
@@ -98,28 +111,55 @@ in
         wantedBy = [ camera.unit ];
         serviceConfig = {
           ExecStart = lib.escapeShellArgs (
-            [
-              (lib.getExe holders)
+            [ (lib.getExe holders) ]
+            ++ lib.optionals (camera.card != null) [
+              "--card"
+              camera.card
+            ]
+            ++ lib.concatMap (unit: [
+              "--ignore-unit"
+              unit
+            ]) camera.ignoreUnits
+            ++ [
               camera.device
               output
             ]
-            ++ camera.ignore
           );
           # Stopped with its camera, it may not get to say nobody itself.
           ExecStopPost = "${pkgs.coreutils}/bin/truncate -s 0 ${output}";
           Restart = "on-failure";
           RestartSec = 1;
           # It lists every process's open files, which takes reading past
-          # their owners' permissions and root's ptrace reading, and writes
-          # only in its folder.
+          # their owners' permissions and root's ptrace reading. Root is
+          # still root, so everything else it could reach is closed off: it
+          # writes only in its folder, and it can't trace, load, tune or
+          # talk to anything.
           CapabilityBoundingSet = [
             "CAP_DAC_READ_SEARCH"
             "CAP_SYS_PTRACE"
           ];
           NoNewPrivileges = true;
           PrivateNetwork = true;
+          PrivateTmp = true;
           ProtectSystem = "strict";
-          ProtectHome = true;
+          ProtectHome = "read-only";
+          ProtectKernelTunables = true;
+          ProtectKernelModules = true;
+          ProtectKernelLogs = true;
+          ProtectControlGroups = true;
+          ProtectClock = true;
+          ProtectHostname = true;
+          RestrictAddressFamilies = "none";
+          RestrictNamespaces = true;
+          RestrictRealtime = true;
+          RestrictSUIDSGID = true;
+          LockPersonality = true;
+          MemoryDenyWriteExecute = true;
+          SystemCallArchitectures = "native";
+          SystemCallFilter = [
+            "@system-service"
+            "~@privileged @resources"
+          ];
           ReadWritePaths = [ holdersDir ];
         };
       }

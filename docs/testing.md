@@ -209,7 +209,7 @@ a running system shows.
 | `vm-clock-keeps-time`             | the clock sets from the machine's servers past a network's silent one |
 | `vm-libvirt-stops-quickly`        | libvirt's daemon stops at once, its udev thread starved  |
 | `vm-ir-camera-opens-for-readers`  | the IR camera waits for udev and its loopback, opens only while read, its frames grey, no frame from before a reader opened |
-| `vm-loopback-says-who-holds-it`   | a loopback camera's file names each program another account holds it with, not its relay, empties when they close it or the camera stops, keeps its folder across restarts, and follows a new loopback |
+| `vm-loopback-says-who-holds-it`   | a loopback camera's file names each program another account holds it with, not its relay's unit however a program names itself, one line a name, catches a holder that forks, empties when they close it or the camera stops, keeps its folder, follows a new loopback, and takes no loopback of another name |
 | `vm-swap-comes-down-while-probed` | the compressed swap comes down, its reset waiting out udev's probe |
 | `vm-reboot-cannot-hang`           | a reboot forces on after a minute of a service not stopping, the watchdog resets a stuck last stage, and Plymouth hears which |
 
