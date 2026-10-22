@@ -85,6 +85,7 @@ quietly stopped holding.
 | `the-panel-slows-on-a-low-battery` | the XPS 14's panel drops to 60 Hz below 30% on battery, holds there, and comes back to its fastest rate on the charger |
 | `the-camera-takes-its-modules-tuning` | the XPS 14's camera reads Dell's tuning for the module a machine names, and Intel's otherwise |
 | `the-camera-gives-limited-range` | the XPS 14's camera relay, run on a full-range ramp, squeezes it exactly into limited range and neither of its converters changes it after |
+| `usb-camera-holders-follow-the-stream` | a USB camera's watch names its holders only while a streaming interface has a nonzero alternate setting, names its file for the camera, made a plain file name, and removes it when the node goes or the watch is stopped |
 | `the-surface-keyboard-types-at-the-disk-prompt` | the Surface Laptop 4's initrd has every driver on its keyboard's path, and keyd lays that keyboard out there |
 | `the-click-strength-holds-after-sleep` | a machine naming a click strength sets it as each hidraw device appears and after every sleep, and one naming none runs nothing |
 | `disk-guard-stays-in-the-background` | the disk guard yields to the account, and a command overrunning its memory never stops it |
@@ -213,7 +214,7 @@ a running system shows.
 | `vm-passkeys-come-from-the-tpm`   | passkeys and security keys are made in the TPM, each after a yes |
 | `vm-keyring-opens-without-asking` | the keyring opens with its TPM-sealed password, unasked |
 | `vm-speakers-are-tuned`           | the XPS 14's speakers hear the tuning, headphones don't |
-| `vm-desktop-works`                | it boots clean; the desktop shows, opens, locks and asks |
+| `vm-desktop-works`                | it boots clean; the desktop shows, opens, locks and asks, a USB camera's stream included |
 | `vm-greeter-signs-in`             | the greeter signs in and out, not waiting on the account's setup |
 | `vm-wifi-joins`                   | wifid joins, moves past a silent access point, nudges a stuck look, finds sign-ins, keeps others' routing rules |
 | `vm-disk-guard-keeps-the-disk`    | the guards answer each band, sparing what's in use       |

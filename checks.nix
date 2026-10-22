@@ -2964,6 +2964,20 @@ in
         touch $out
       '';
 
+  # The camera watch's reading of a USB camera, over a sysfs of its own: a
+  # holder is named only while one of the camera's streaming interfaces has
+  # a nonzero alternate setting, its file is named for the camera, made a
+  # plain file name, and goes when its node does or the watch is stopped.
+  usb-camera-holders-follow-the-stream =
+    pkgs.runCommandLocal "usb-camera-holders-follow-the-stream"
+      { nativeBuildInputs = [ pkgs.python3 ]; }
+      ''
+        cp ${./modules/v4l2loopback/holders.py} holders.py
+        cp ${./modules/v4l2loopback/holders_test.py} holders_test.py
+        python3 -m unittest -v holders_test
+        touch $out
+      '';
+
   the-click-strength-holds-after-sleep =
     let
       machine =
