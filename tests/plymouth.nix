@@ -89,6 +89,7 @@ pkgs.testers.runNixOSTest {
       kmscon = nodes.machine.services.kmscon.config;
     in
     ''
+      import datetime
       import filecmp
       import os
       import re
@@ -359,11 +360,13 @@ pkgs.testers.runNixOSTest {
           machine.reboot()
           machine.wait_for_text("waiting on Slow Goodbye", timeout=60)
           photographed("stopping-slowly")
-          machine.wait_for_console_text("Sending SIGTERM to remaining processes")
+          # Every wait is bounded, so a restart that stalls fails here in
+          # minutes rather than holding its VM until the hour is up.
+          machine.wait_for_console_text("Sending SIGTERM to remaining processes", timeout=120)
           machine.wait_for_text("waiting on the last programs", timeout=15)
           photographed("last-stage")
           # The test's machine ends at a restart rather than starting again.
-          machine.wait_for_shutdown()
+          machine.wait_for_shutdown(timeout=datetime.timedelta(minutes=3))
           machine.start()
           machine.wait_for_text("disk is locked", timeout=180)
           machine.send_chars("${passphrase}\n")
