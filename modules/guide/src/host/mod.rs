@@ -3,7 +3,10 @@
 //! the recovery passphrase. The stick is a whole USB or removable disk,
 //! only ever one plugged in at once, opened for writing through the
 //! system's own way of letting a person do so (stick::device), so nothing
-//! on a host runs as root.
+//! on a host runs as root. Every stick carries on the rescue bundles the
+//! host keeps (carried).
+
+pub mod carried;
 
 use std::fs::File;
 use std::io::{Read, Write};
@@ -11,11 +14,13 @@ use std::path::{Path, PathBuf};
 
 use crate::install::{LAYOUT_SCRIPT, SYSTEM_CACHE, TARGET, Target};
 use crate::observe::disks::{self, Disk, Kind};
-use crate::rescue::Keys;
+use crate::rescue::{self, Keys};
 use crate::sign::Signer;
 use crate::stick::{self, Image};
+use crate::vault::store::Store;
 use crate::vault::{self, Manifest, Packer, Vault, VaultKey};
 use crate::{Answer, Answers, Ask, Fault, Machine, Place, Secret, Standing, Step, words};
+use carried::Carried;
 
 fn unread(path: &Path) -> impl Fn(std::io::Error) -> Fault + '_ {
     move |why| Fault::unreadable(path.display().to_string(), why)
@@ -180,12 +185,35 @@ pub fn write(
     disk: &mut File,
     signer: Option<&Signer>,
     payload: Option<(&Payload, &Secret)>,
+    bundles: &[Carried],
 ) -> Result<u64, Fault> {
     let kept = |why: std::io::Error| Fault::Unkept {
         path: "the stick".into(),
         why: why.to_string(),
     };
     let mut image = Image::open(File::open(image).map_err(unread(image))?)?;
+    // The bundles beside the vault's sealed files, read back as written.
+    let carry = |store: &mut dyn Store| -> Result<(), Fault> {
+        for bundle in bundles {
+            store
+                .create(&rescue::carried_as(&bundle.machine))?
+                .write_all(&bundle.bytes)
+                .map_err(kept)?;
+        }
+        Ok(())
+    };
+    let carried_back = |store: &mut dyn Store| -> Result<(), Fault> {
+        let mut written = bundles.to_vec();
+        written.sort_by(|one, other| one.machine.cmp(&other.machine));
+        if carried::kept(store) == written {
+            Ok(())
+        } else {
+            Err(Fault::Unproven {
+                step: "write-stick",
+                standing: "the rescue bundles on the stick aren't what was written".into(),
+            })
+        }
+    };
 
     let Some((payload, passphrase)) = payload else {
         let manifest = repair_manifest();
@@ -195,9 +223,11 @@ pub fn write(
             store
                 .create(vault::MANIFEST)?
                 .write_all(&bytes)
-                .map_err(kept)
+                .map_err(kept)?;
+            carry(store)
         })?;
         stick::verify(&written, disk, |store| {
+            carried_back(store)?;
             if vault::manifest(store)? == repair_manifest() {
                 Ok(())
             } else {
@@ -265,6 +295,7 @@ pub fn write(
         if let Some(to_keys) = &to_keys {
             store.create(vault::KEY)?.write_all(to_keys).map_err(kept)?;
         }
+        carry(store)?;
         let mut packer = Packer::new(store, &key);
         for (name, from) in payload.files() {
             match from {
@@ -279,6 +310,7 @@ pub fn write(
     // Read back as the stick will open it: with the passphrase, every file
     // extracted and checked.
     stick::verify(&written, disk, |store| {
+        carried_back(store)?;
         let mut sealed = vec![];
         store
             .open(vault::KEY_PASSPHRASE)?
@@ -321,6 +353,78 @@ fn the_stick(machine: &mut dyn Machine) -> Result<Result<Disk, Standing>, Fault>
     })
 }
 
+/// The rescue bundles the plugged-in stick carries, kept on the host
+/// before anything is written over them, with the host's own machine's
+/// too, which its install left where anyone can read it. Nothing here
+/// stops a stick being written: a stick the guide never wrote, or one
+/// that can't be read, has none.
+pub struct GatherBundles {
+    /// Where the host keeps them, the person's own.
+    pub kept: PathBuf,
+}
+
+impl Step for GatherBundles {
+    fn id(&self) -> &'static str {
+        "gather-bundles"
+    }
+
+    fn place(&self) -> Place {
+        Place::Host
+    }
+
+    fn title(&self) -> &'static str {
+        "Keep the rescue bundles the stick carries"
+    }
+
+    fn observe(&self, machine: &mut dyn Machine) -> Result<Standing, Fault> {
+        let stick = match the_stick(machine)? {
+            Ok(stick) => stick,
+            Err(standing) => return Ok(standing),
+        };
+        Ok(if machine.journal().knows(self.id(), &named(&stick)) {
+            Standing::Done {
+                evidence: format!(
+                    "the host keeps {} rescue bundles",
+                    carried::kept(&mut vault::store::Directory::new(&self.kept)).len()
+                ),
+            }
+        } else {
+            Standing::Needed { asks: vec![] }
+        })
+    }
+
+    fn run(&self, machine: &mut dyn Machine, _answers: &Answers) -> Result<(), Fault> {
+        let stick = the_stick(machine)?.map_err(|standing| Fault::Blocked {
+            step: self.id(),
+            why: standing.to_string(),
+        })?;
+        let vault = stick
+            .partitions
+            .iter()
+            .find(|partition| partition.label.as_deref() == Some("vault"));
+        // Where a desktop mounted the vault it's read as the person; else
+        // from the disk, only for reading.
+        let mut found = match vault.and_then(|vault| vault.mounted.first()) {
+            Some(mounted) => carried::kept(&mut vault::store::Directory::new(mounted)),
+            None if vault.is_some() => match machine.read_disk(&stick.path) {
+                Ok(mut disk) => carried::on_stick(&mut disk),
+                Err(_) => vec![],
+            },
+            None => vec![],
+        };
+        if let Some(own) = machine
+            .read(rescue::KEPT)
+            .ok()
+            .flatten()
+            .and_then(|bytes| Carried::read(bytes, None))
+        {
+            found.push(own);
+        }
+        carried::keep(&mut vault::store::Directory::new(&self.kept), found)?;
+        machine.journal().record(self.id(), &named(&stick))
+    }
+}
+
 /// Who the journal says a stick was written for, by its serial or path.
 fn named(disk: &Disk) -> String {
     disk.serial.clone().unwrap_or_else(|| disk.path.clone())
@@ -332,6 +436,8 @@ pub struct WriteStick {
     pub image: PathBuf,
     pub payload: Option<Payload>,
     pub signer: Option<Signer>,
+    /// The rescue bundles the stick carries on, beside its vault.
+    pub bundles: Vec<Carried>,
     /// The passphrase's words, made once, so those shown are those typed
     /// back and those the vault is sealed to.
     pub words: std::cell::OnceCell<Secret>,
@@ -343,8 +449,15 @@ impl WriteStick {
             image,
             payload,
             signer,
+            bundles: vec![],
             words: std::cell::OnceCell::new(),
         }
+    }
+
+    /// Carrying these rescue bundles on too.
+    pub fn carrying(mut self, bundles: Vec<Carried>) -> WriteStick {
+        self.bundles = bundles;
+        self
     }
 
     fn words(&self) -> Result<&Secret, Fault> {
@@ -458,7 +571,13 @@ impl Step for WriteStick {
             .collect();
         let mut disk = machine.open_disk(&stick.path, &mounted)?;
         let payload = self.payload.as_ref().zip(passphrase);
-        write(&self.image, &mut disk, self.signer.as_ref(), payload)?;
+        write(
+            &self.image,
+            &mut disk,
+            self.signer.as_ref(),
+            payload,
+            &self.bundles,
+        )?;
         machine.journal().record(self.id(), &named(&stick))
     }
 }

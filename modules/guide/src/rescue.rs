@@ -75,6 +75,10 @@ struct Written {
     to_keys: Option<String>,
     to_passphrase: String,
     keys: String,
+    /// When it was sealed, in seconds since 1970, so of two copies of a
+    /// machine's bundle the newer is kept; 0 in one from before it was said.
+    #[serde(default)]
+    sealed: u64,
 }
 
 /// The keys themselves, by their paths under sbctl's directory, held in
@@ -287,6 +291,9 @@ impl Bundle {
             to_keys,
             to_passphrase: STANDARD.encode(key.seal_with_passphrase(passphrase, work)?),
             keys: STANDARD.encode(key.encrypt(&keys.sealed()?)?),
+            sealed: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |since| since.as_secs()),
         };
         let mut bytes = serde_json::to_vec_pretty(&written).map_err(unreadable)?;
         bytes.push(b'\n');
@@ -334,6 +341,11 @@ impl Bundle {
 
     /// Whether it holds these keys, which a machine can tell without
     /// opening it, from the db certificate's fingerprint.
+    /// When it was sealed, in seconds since 1970, or 0 when it doesn't say.
+    pub fn sealed(&self) -> u64 {
+        self.written.sealed
+    }
+
     pub fn holds(&self, db_certificate: &[u8]) -> bool {
         self.written.db == fingerprint(db_certificate)
     }

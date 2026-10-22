@@ -21,7 +21,8 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::rc::Rc;
 
-use guide::host::{self, Payload, WriteStick};
+use guide::host::carried;
+use guide::host::{self, GatherBundles, Payload, WriteStick};
 use guide::install;
 use guide::observe::{disks, efi, entries, fido2, sbctl, tpm};
 use guide::rescue::{Bundle, Keys, OpenRescueBundle, SealKeys};
@@ -31,7 +32,7 @@ use guide::screen::terminal::Terminal;
 use guide::sign::Signer;
 use guide::system::System;
 use guide::vault;
-use guide::vault::store::{Fat, Store};
+use guide::vault::store::{Directory, Fat, Store};
 use guide::{Fault, Journal, Journey, Machine, Place, Secret, Step, Tool};
 
 const USAGE: &str = "usage: guide observe | guide tools | guide install | guide installed | guide recover
@@ -224,6 +225,7 @@ fn write_stick(
         &mut disk,
         signer.as_ref(),
         payload.as_ref().zip(passphrase.as_ref()),
+        &[],
     )?;
     match &payload {
         Some(payload) => println!(
@@ -286,7 +288,35 @@ fn host(
     let theme = Theme::built(Terminal::is_console());
     let mut terminal = Terminal::open()?;
 
-    // The rescue bundle opened first, its keys held only in memory.
+    // The rescue bundles the stick carries kept first, before anything
+    // writes over them, where the person's own state is.
+    let kept = own_state().map(|state| state.join("rescue"));
+    let gathering = Journey::new(match &kept {
+        Some(kept) => vec![Box::new(GatherBundles { kept: kept.clone() }) as Box<dyn Step>],
+        None => vec![],
+    })
+    .map_err(|why| Fault::unreadable("the host's steps", why))?;
+    let mut walk = Walk {
+        journey: &gathering,
+        here: Place::Host,
+        name: &title,
+        theme: &theme,
+        log: None,
+        whole: false,
+        last: Default::default(),
+    };
+    if kept.is_some() && walk.walk(&mut machine, &mut terminal)? != Ended::Finished {
+        return Ok(());
+    }
+    let bundles = kept
+        .as_ref()
+        .map(|kept| carried::kept(&mut Directory::new(kept)))
+        .unwrap_or_default();
+    // A machine whose bundle the host keeps has its stick signed with it,
+    // unless another was given.
+    let bundle = carried::bundle_for(bundle, machine_name.as_deref(), &bundles)?;
+
+    // The rescue bundle opened next, its keys held only in memory.
     let opened = Rc::new(RefCell::new(None));
     let bundle_of = bundle.as_ref().map(|bundle| bundle.machine().to_string());
     let steps: Vec<Box<dyn Step>> = match bundle {
@@ -297,15 +327,7 @@ fn host(
         None => vec![],
     };
     let opening = Journey::new(steps).map_err(|why| Fault::unreadable("the host's steps", why))?;
-    let mut walk = Walk {
-        journey: &opening,
-        here: Place::Host,
-        name: &title,
-        theme: &theme,
-        log: None,
-        whole: false,
-        last: Default::default(),
-    };
+    walk.journey = &opening;
     let (signer, payload) = match bundle_of {
         Some(machine_of) => {
             if walk.walk(&mut machine, &mut terminal)? != Ended::Finished {
@@ -324,11 +346,9 @@ fn host(
         Some(payload) => payload.next(),
         None => "Start the machine to repair from the stick.".into(),
     };
-    let journey = Journey::new(vec![Box::new(WriteStick::new(
-        PathBuf::from(image),
-        payload,
-        signer,
-    ))])
+    let journey = Journey::new(vec![Box::new(
+        WriteStick::new(PathBuf::from(image), payload, signer).carrying(bundles),
+    )])
     .map_err(|why| Fault::unreadable("the host's steps", why))?;
     walk.journey = &journey;
     walk.whole = true;

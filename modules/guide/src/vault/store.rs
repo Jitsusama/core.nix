@@ -22,6 +22,9 @@ pub trait Store {
 
     /// Whether there's a file of that name.
     fn has(&mut self, name: &str) -> Result<bool, Fault>;
+
+    /// The names of every file it keeps.
+    fn names(&mut self) -> Result<Vec<String>, Fault>;
 }
 
 /// A vault in a directory, every file its owner's alone.
@@ -84,6 +87,23 @@ impl Store for Directory {
             Err(why) if why.kind() == std::io::ErrorKind::NotFound => Ok(false),
             Err(why) => Err(unkept(&path)(why)),
         }
+    }
+
+    fn names(&mut self) -> Result<Vec<String>, Fault> {
+        let entries = match fs::read_dir(&self.root) {
+            Ok(entries) => entries,
+            Err(why) if why.kind() == std::io::ErrorKind::NotFound => return Ok(vec![]),
+            Err(why) => return Err(Fault::unreadable(self.root.display().to_string(), why)),
+        };
+        let mut names = vec![];
+        for entry in entries {
+            let entry =
+                entry.map_err(|why| Fault::unreadable(self.root.display().to_string(), why))?;
+            if entry.file_type().is_ok_and(|kind| kind.is_file()) {
+                names.push(entry.file_name().to_string_lossy().into_owned());
+            }
+        }
+        Ok(names)
     }
 }
 
@@ -158,5 +178,16 @@ impl<IO: fatfs::ReadWriteSeek> Store for Fat<IO> {
             Err(why) if why.kind() == std::io::ErrorKind::NotFound => Ok(false),
             Err(why) => Err(Fault::unreadable(format!("{name} in the vault"), why)),
         }
+    }
+
+    fn names(&mut self) -> Result<Vec<String>, Fault> {
+        let mut names = vec![];
+        for entry in self.filesystem.root_dir().iter() {
+            let entry = entry.map_err(|why| Fault::unreadable("the vault", why))?;
+            if entry.is_file() {
+                names.push(entry.file_name());
+            }
+        }
+        Ok(names)
     }
 }

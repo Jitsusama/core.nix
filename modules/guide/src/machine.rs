@@ -132,6 +132,10 @@ pub trait Machine {
         change: &mut dyn FnMut(&mut dyn Store) -> Result<(), Fault>,
     ) -> Result<(), Fault>;
 
+    /// A stick's whole disk, only for reading, with nothing on it
+    /// unmounted, such as to see what it carries before it's written over.
+    fn read_disk(&mut self, device: &str) -> Result<std::fs::File, Fault>;
+
     /// A partition nothing has mounted, opened as root for changing in
     /// place, such as the stick's own EFI system partition.
     fn open_partition(&mut self, device: &str) -> Result<std::fs::File, Fault>;
