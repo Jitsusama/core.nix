@@ -2826,6 +2826,46 @@ in
           touch $out
         '';
 
+    # The XPS 14's colour sensor, OVTI08F4, is mounted upside down, and its
+    # firmware says it isn't. The bridge reports 180 degrees for a sensor in
+    # its upside-down table that matches the machine, whatever the firmware
+    # says, and nothing else says so. Read from the XPS 14's patched source.
+    the-colour-camera-says-it-is-upside-down =
+      let
+        inherit ((bareNixos [ self.nixosModules.dell-xps-14-da14260 ]).config.boot.kernelPackages)
+          kernel
+          ;
+        bridge = "drivers/media/pci/intel/ipu-bridge.c";
+        patches = lib.filter (patch: patch != null) (map (patch: patch.patch) kernel.kernelPatches);
+      in
+      pkgs.runCommandLocal "the-colour-camera-says-it-is-upside-down"
+        {
+          nativeBuildInputs = [
+            pkgs.patchutils
+            pkgs.python3
+          ];
+        }
+        ''
+          tar xf ${kernel.src} --strip-components=1 --wildcards '*/${bridge}'
+          for patch in ${lib.escapeShellArgs (map (patch: "${patch}") patches)}; do
+            filterdiff -p1 -i ${bridge} "$patch" | patch -p1 --forward --batch --silent
+          done
+          python3 - ${bridge} <<'EOF'
+          import re, sys
+          source = open(sys.argv[1]).read()
+          table = re.search(r"upside_down_sensor_dmi_ids\[\] = \{(.*?)\n\};", source, re.S)
+          if not table:
+              sys.exit("The bridge has no upside-down sensor table.")
+          ours = [
+              entry for entry in re.split(r"\n\t\{\n", table.group(1))
+              if '"Dell Inc."' in entry and '"XPS 14 DA14260"' in entry
+          ]
+          if not any('.driver_data = "OVTI08F4"' in entry for entry in ours):
+              sys.exit("The bridge doesn't know the XPS 14's colour sensor is upside down.")
+          EOF
+          touch $out
+        '';
+
     # The legacy profile file, the one power-profiles-daemon writes, offers
     # only what every profile driver takes, so a profile Dell's driver offers
     # that the SoC slider doesn't never reaches either. Without quiet there,
