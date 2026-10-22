@@ -38,9 +38,10 @@ Scope {
                 anchors.fill: parent
                 source: "file://" + Theme.wallpaper.desktop
                 fillMode: Image.PreserveAspectCrop
-                // Read at the screen's own pixels, not the file's.
-                sourceSize: Qt.size(window.width * window.modelData.devicePixelRatio,
-                    window.height * window.modelData.devicePixelRatio)
+                // Read at the screen's own pixels, not the file's. A screen
+                // that goes away is read once more before its window does.
+                sourceSize: Qt.size(window.width * (window.modelData?.devicePixelRatio ?? 1),
+                    window.height * (window.modelData?.devicePixelRatio ?? 1))
                 asynchronous: true
                 cache: false
                 opacity: status === Image.Ready ? 1 : 0

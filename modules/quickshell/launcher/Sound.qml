@@ -65,7 +65,8 @@ Provider {
 
     // Its own short name, rather than the sound card's long one before it.
     function named(node) {
-        return node.nickname || node.description || node.name;
+        // A node going away can have lost all three.
+        return node.nickname || node.description || node.name || "";
     }
 
     // What it is, from what PipeWire knows of it, and for a Bluetooth device

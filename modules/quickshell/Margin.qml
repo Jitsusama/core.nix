@@ -73,7 +73,8 @@ Scope {
 
             required property ShellScreen modelData
 
-            readonly property bool keyed: root.keyed === "*" || root.keyed === modelData.name
+            // A screen that goes away is read once more before it does.
+            readonly property bool keyed: root.keyed === "*" || root.keyed === modelData?.name
             // Which thing is selected, its panel open, and which of its
             // actions, or -1.
             property int selected: -1
