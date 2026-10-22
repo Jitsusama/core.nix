@@ -12,6 +12,7 @@ pub mod blocks;
 pub mod device;
 pub mod gpt;
 
+use crate::progress::{Counted, Meter};
 use std::fs::File;
 use std::io::{self, Read, Seek, SeekFrom, Write};
 
@@ -99,12 +100,15 @@ fn copy_hashed(from: &mut impl Read, to: &mut impl Write, bytes: u64) -> io::Res
 }
 
 /// Writes the image and a vault to the disk, a whole stick or an image
-/// file the size of one. `fill` writes the vault's files.
+/// file the size of one. `fill` writes the vault's files. Every byte of
+/// the image's partitions and the vault is counted on the meter as it's
+/// written.
 pub fn write(
     image: &mut Image,
     disk: &mut File,
     vault_guid: [u8; 16],
     signer: Option<&Signer>,
+    meter: &Meter,
     fill: impl FnOnce(&mut dyn Store) -> Result<(), Fault>,
 ) -> Result<Written, Fault> {
     let bytes = disk.seek(SeekFrom::End(0)).map_err(unwritten)?;
@@ -157,8 +161,10 @@ pub fn write(
 
     let mut copied = vec![];
     for partition in image.partitions() {
-        let mut region =
-            Partition::new(disk, partition.offset(), partition.bytes()).map_err(unwritten)?;
+        let mut region = Counted::new(
+            Partition::new(disk, partition.offset(), partition.bytes()).map_err(unwritten)?,
+            meter,
+        );
         let hash = match signed.iter().find(|(slot, _)| *slot == partition.slot) {
             Some((_, esp)) => copy_hashed(&mut &esp[..], &mut region, partition.bytes()),
             None => {
@@ -176,7 +182,7 @@ pub fn write(
 
     {
         let mut region = Partition::new(disk, vault.offset(), vault.bytes()).map_err(unwritten)?;
-        let mut fat = Fat::format(&mut region)?;
+        let mut fat = Fat::format(Counted::new(&mut region, meter))?;
         fill(&mut fat)?;
         fat.close()?;
         region.flush().map_err(unwritten)?;
@@ -307,10 +313,12 @@ fn drop_cache(disk: &File) -> Result<(), Fault> {
 
 /// Reads the stick back: both tables as they were written, every one of
 /// the image's partitions byte for byte, and the vault through `check`,
-/// which should open every file in it.
+/// which should open every file in it. Every byte read is counted on the
+/// meter.
 pub fn verify(
     written: &Written,
     disk: &mut File,
+    meter: &Meter,
     check: impl FnOnce(&mut dyn Store) -> Result<(), Fault>,
 ) -> Result<(), Fault> {
     drop_cache(disk)?;
@@ -338,12 +346,19 @@ pub fn verify(
     for (partition, hash) in &written.copied {
         disk.seek(SeekFrom::Start(partition.offset()))
             .map_err(unread)?;
-        if &copy_hashed(disk, &mut io::sink(), partition.bytes()).map_err(unread)? != hash {
+        if &copy_hashed(
+            &mut Counted::new(&mut *disk, meter),
+            &mut io::sink(),
+            partition.bytes(),
+        )
+        .map_err(unread)?
+            != hash
+        {
             return Err(differs(&format!("the {} partition", partition.name)));
         }
     }
     let mut region =
         Partition::new(disk, written.vault.offset(), written.vault.bytes()).map_err(unread)?;
-    let mut fat = Fat::open(&mut region)?;
+    let mut fat = Fat::open(Counted::new(&mut region, meter))?;
     check(&mut fat)
 }

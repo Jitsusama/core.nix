@@ -135,7 +135,11 @@ journalctl -b -u prepare-sb-auto-enroll -u secure-boot-enrol-restart
 ```
 
 A firmware already enforcing with these keys, as on a reinstall that carried
-them, gets the files and no restart.
+them, gets neither the files nor a restart. Once Secure Boot enforces,
+`secure-boot-enrolled.service` takes the files off the boot partition. Left
+there, systemd-boot would put these keys back the moment the firmware's were
+cleared to install the machine afresh, if its own disk booted before the
+stick, after a countdown and before any disk asks for a PIN.
 
 `Found OptionROM in the bootchain` means the firmware runs an option ROM that
 the keys alone would stop. Set

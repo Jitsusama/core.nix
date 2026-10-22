@@ -12,13 +12,14 @@ use std::path::PathBuf;
 use guide::fake::Fake;
 use guide::install::disk::{ConfirmDisk, LayOutDisk, WipeInstallKey};
 use guide::install::keys::EnrolYubikey;
+use guide::install::memory::{self, RunFromMemory};
 use guide::install::system::{CheckFirmware, KeepOnStick, SealRescueBundle, SecureBootKeys};
 use guide::install::vault::OpenVault;
 use guide::install::{INSTALL_KEY, RECOVERY_KEY, STICK_VAULT, TARGET, Target, VAULT_KEY};
 use guide::rescue::{self, Bundle};
 use guide::vault::store::{Directory, Store};
 use guide::vault::{self, Manifest, Packer, Vault, VaultKey};
-use guide::{Answer, Answers, Fault, Journey, Program, Secret, Standing, Step, Tool};
+use guide::{Answer, Answers, Ask, Fault, Journey, Program, Secret, Standing, Step, Tool};
 
 macro_rules! fixture {
     ($file:literal) => {
@@ -193,6 +194,279 @@ fn a_laptops_virtual_key_is_never_counted_as_a_key_plugged_in() {
     assert!(
         matches!(&refused, Err(Fault::Unopened { why, .. }) if why.starts_with("that isn't")),
         "the canokey alone is plugged in: {refused:?}"
+    );
+}
+
+#[test]
+fn the_vault_asks_on_one_screen_for_the_passphrase_by_its_name_on_the_phone_or_a_key() {
+    let target = target("/dev/disk/by-id/virtio-root");
+    let scratch = Scratch::new("install-vault-one-screen");
+    let mut fake = shut_stick(&scratch, &target);
+    let Standing::Needed { asks } = OpenVault.observe(&mut fake).unwrap() else {
+        panic!("the vault is shut")
+    };
+    let [Ask::SecretOr { name, or, .. }] = asks.as_slice() else {
+        panic!("one field, saying both ways in: {asks:?}")
+    };
+    assert!(
+        name.contains("1Password on your phone named \"machine stick passphrase\""),
+        "{name}"
+    );
+    assert!(
+        or.starts_with("plug in the Nano or the 5C beside the stick, type its PIN"),
+        "{or}"
+    );
+}
+
+#[test]
+fn once_the_vault_is_open_the_steps_read_what_it_installs_with_the_stick_out() {
+    let target = target("/dev/disk/by-id/virtio-root");
+    let scratch = Scratch::new("install-vault-held");
+    let mut fake = shut_stick(&scratch, &target);
+    OpenVault.run(&mut fake, &passphrase(PASSPHRASE)).unwrap();
+    fake.stick_out(true);
+    assert_eq!(guide::install::target(&mut fake).unwrap(), target);
+    assert!(matches!(
+        OpenVault.observe(&mut fake).unwrap(),
+        Standing::Done { .. }
+    ));
+    // What only the vault holds says the stick is out, to be put back.
+    assert!(matches!(
+        guide::install::vault(&mut fake).err(),
+        Some(Fault::StickOut)
+    ));
+    fake.stick_out(false);
+    assert!(guide::install::vault(&mut fake).is_ok());
+}
+
+#[test]
+fn with_the_stick_out_and_nothing_held_the_target_says_to_put_it_back() {
+    let target = target("/dev/disk/by-id/virtio-root");
+    let scratch = Scratch::new("install-vault-unheld");
+    let mut fake = stick(&scratch, &target);
+    fake.no_file(guide::install::HELD_TARGET).stick_out(true);
+    assert!(matches!(
+        guide::install::target(&mut fake),
+        Err(Fault::StickOut)
+    ));
+}
+
+const STORE_TABLE: &str = "0 16 verity 1 8:3 8:2 4096 4096 2 1 sha256 1f2e3d4c5b6a -";
+
+/// The stick's store as the kernel shows it: two data blocks on sda3, its
+/// hashes on sda2, with this much memory free.
+fn store_on_the_stick(fake: &mut Fake, available_kilobytes: u64) {
+    fake.prints(Tool::Dmsetup, &["table", "usr"], STORE_TABLE)
+        .file(
+            "/proc/meminfo",
+            format!("MemTotal: 16000000 kB\nMemAvailable: {available_kilobytes} kB\n").as_bytes(),
+        )
+        .file("/sys/dev/block/8:2/size", b"16\n")
+        .file(
+            "/sys/dev/block/8:3/uevent",
+            b"MAJOR=8\nMINOR=3\nDEVNAME=sda3\nDEVTYPE=partition\n",
+        )
+        .file(
+            "/sys/dev/block/8:2/uevent",
+            b"MAJOR=8\nMINOR=2\nDEVNAME=sda2\nDEVTYPE=partition\n",
+        )
+        .file("/proc/mounts", b"tmpfs / tmpfs rw 0 0\n")
+        .file("/dev/sda3", &[3u8; 12288])
+        .file("/dev/sda2", &[2u8; 8192]);
+}
+
+const VERIFY: &[&str] = &[
+    "verify",
+    "/run/stick/store",
+    "/run/stick/store-verity",
+    "1f2e3d4c5b6a",
+    "--no-superblock",
+    "--format=1",
+    "--data-block-size=4096",
+    "--hash-block-size=4096",
+    "--data-blocks=2",
+    "--hash-offset=4096",
+    "--hash=sha256",
+    "--salt=-",
+];
+
+fn position(fake: &Fake, call: &str) -> usize {
+    fake.calls
+        .iter()
+        .position(|made| made.starts_with(call))
+        .unwrap_or_else(|| panic!("{call} wasn't run: {:#?}", fake.calls))
+}
+
+#[test]
+fn the_sticks_system_is_copied_into_memory_checked_then_run_from_there() {
+    let mut fake = Fake::new();
+    store_on_the_stick(&mut fake, 8_000_000);
+    fake.prints(
+        Tool::Mount,
+        &[
+            "-t",
+            "tmpfs",
+            "-o",
+            "size=1024k,mode=0700,X-mount.mkdir=0700",
+            "stick",
+            "/run/stick",
+        ],
+        "",
+    )
+    .prints(Tool::Veritysetup, VERIFY, "")
+    .prints(Tool::Losetup, &["--associated", "/run/stick/store"], "")
+    .prints(
+        Tool::Losetup,
+        &["--associated", "/run/stick/store-verity"],
+        "",
+    )
+    .prints(
+        Tool::Losetup,
+        &["--find", "--show", "--read-only", "/run/stick/store"],
+        "/dev/loop0\n",
+    )
+    .prints(
+        Tool::Losetup,
+        &["--find", "--show", "--read-only", "/run/stick/store-verity"],
+        "/dev/loop1\n",
+    )
+    .file("/sys/class/block/loop0/dev", b"7:0\n")
+    .file("/sys/class/block/loop1/dev", b"7:1\n");
+    let swapped = STORE_TABLE.replace("8:3 8:2", "7:0 7:1");
+    fake.prints(
+        Tool::Dmsetup,
+        &[
+            "reload",
+            "--readonly",
+            "--noudevsync",
+            "usr",
+            "--table",
+            &swapped,
+        ],
+        "",
+    )
+    .prints(Tool::Dmsetup, &["resume", "--noudevsync", "usr"], "");
+    assert_eq!(
+        RunFromMemory.observe(&mut fake).unwrap(),
+        Standing::Needed { asks: vec![] },
+        "it asks nothing, and runs as soon as the stick starts"
+    );
+    // Once the table is swapped, the kernel shows the loop devices.
+    fake.prints(Tool::Dmsetup, &["table", "usr"], STORE_TABLE)
+        .prints(Tool::Dmsetup, &["table", "usr"], &swapped);
+    Journey::attempt(&RunFromMemory, &mut fake, &Answers::new()).unwrap();
+
+    assert_eq!(fake.holds("/run/stick/store"), Some(&[3u8; 8192][..]));
+    assert_eq!(
+        fake.holds("/run/stick/store-verity"),
+        Some(&[2u8; 8192][..])
+    );
+    assert!(position(&fake, "veritysetup verify") < position(&fake, "dmsetup reload"));
+    assert!(position(&fake, "dmsetup reload") < position(&fake, "dmsetup resume"));
+    assert!(
+        memory::port_words(&mut fake).contains("take the stick out first"),
+        "the key steps say the stick can come out"
+    );
+}
+
+#[test]
+fn a_copy_that_doesnt_match_the_sticks_hash_is_never_run_from() {
+    let mut fake = Fake::new();
+    store_on_the_stick(&mut fake, 8_000_000);
+    fake.prints(
+        Tool::Mount,
+        &[
+            "-t",
+            "tmpfs",
+            "-o",
+            "size=1024k,mode=0700,X-mount.mkdir=0700",
+            "stick",
+            "/run/stick",
+        ],
+        "",
+    )
+    .refuses(
+        Tool::Veritysetup,
+        VERIFY,
+        1,
+        "Verification failed at position 4096.",
+    );
+    let refused = RunFromMemory.run(&mut fake, &Answers::new());
+    assert!(
+        matches!(&refused, Err(Fault::Refused { said, .. }) if said.contains("Verification failed")),
+        "{refused:?}"
+    );
+    assert!(
+        !fake
+            .calls
+            .iter()
+            .any(|call| call.starts_with("losetup") || call.starts_with("dmsetup reload")),
+        "{:#?}",
+        fake.calls
+    );
+    assert_eq!(memory::port_words(&mut fake), "");
+}
+
+#[test]
+fn a_machine_without_the_memory_keeps_the_stick_in_and_says_so() {
+    let mut fake = Fake::new();
+    // 16 KiB of copies and a gibibyte for the install, and not quite that.
+    store_on_the_stick(&mut fake, (1 << 20) + 15);
+    RunFromMemory.run(&mut fake, &Answers::new()).unwrap();
+    assert!(
+        !fake.calls.iter().any(|call| call.starts_with("mount")),
+        "{:#?}",
+        fake.calls
+    );
+    let Standing::Done { evidence } = RunFromMemory.observe(&mut fake).unwrap() else {
+        panic!("nothing more to do")
+    };
+    assert!(evidence.contains("stays in"), "{evidence}");
+    assert!(memory::port_words(&mut fake).contains("Keep the stick in"));
+}
+
+#[test]
+fn a_system_not_running_from_a_sticks_store_has_nothing_to_copy() {
+    let mut fake = Fake::new();
+    fake.refuses(
+        Tool::Dmsetup,
+        &["table", "usr"],
+        1,
+        "device-mapper: table ioctl on usr failed: No such device or address",
+    );
+    assert!(matches!(
+        RunFromMemory.observe(&mut fake).unwrap(),
+        Standing::Done { .. }
+    ));
+}
+
+#[test]
+fn a_key_step_says_the_stick_can_come_out_once_its_system_is_in_memory() {
+    let target = target("/dev/disk/by-id/virtio-root");
+    let scratch = Scratch::new("install-key-port");
+    let mut fake = stick(&scratch, &target);
+    fake.prints(
+        Tool::Cryptsetup,
+        &[
+            "luksDump",
+            "--dump-json-metadata",
+            "/dev/disk/by-partlabel/system",
+        ],
+        fixture!("luks-dump-before-wipe.json"),
+    );
+    guide::Machine::journal(&mut fake)
+        .record("run-from-memory", "in memory")
+        .unwrap();
+    let Standing::Needed { asks } = EnrolYubikey::new("the Nano").observe(&mut fake).unwrap()
+    else {
+        panic!("the Nano isn't enrolled yet")
+    };
+    let Ask::Act { what, .. } = &asks[0] else {
+        panic!("{asks:?}")
+    };
+    assert_eq!(
+        what,
+        "Plug in the Nano, and only the Nano. If no port is free, take the stick out first: the guide asks for it back when it needs it. Touch the key each time it blinks."
     );
 }
 
@@ -504,6 +778,23 @@ fn the_keys_the_firmware_trusts_are_put_back_with_no_firmware_visit() {
         "{:#?}",
         fake.calls
     );
+}
+
+#[test]
+fn the_firmware_is_checked_against_the_carried_keys_with_the_stick_out() {
+    let target = target("/dev/disk/by-id/virtio-root");
+    let scratch = Scratch::new("install-keys-held");
+    let carried: &[(&str, &[u8])] = &[("sbctl/keys/db/db.pem", SURFACE_CERT)];
+    let mut fake = stick_carrying(&scratch, &target, carried);
+    surface_firmware(&mut fake, SURFACE_DB);
+    let with_the_stick_in = CheckFirmware.observe(&mut fake).unwrap();
+    assert!(
+        matches!(&with_the_stick_in, Standing::Done { evidence } if evidence.contains("trusts the keys this stick carries")),
+        "{with_the_stick_in:?}"
+    );
+    guide::install::system::hold_carried_db(&mut fake).unwrap();
+    fake.stick_out(true);
+    assert_eq!(CheckFirmware.observe(&mut fake).unwrap(), with_the_stick_in);
 }
 
 #[test]

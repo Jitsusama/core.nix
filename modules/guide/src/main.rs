@@ -246,6 +246,7 @@ fn write_stick(
         signer.as_ref(),
         payload.as_ref().zip(passphrase.as_ref()),
         &[],
+        &guide::progress::Meter::new(),
     )?;
     match &payload {
         Some(payload) => println!(
@@ -328,7 +329,7 @@ fn host(
         theme: &theme,
         log: None,
         whole: false,
-        last: Default::default(),
+        done: Default::default(),
     };
     if kept.is_some() && walk.walk(&mut machine, &mut terminal)? != Ended::Finished {
         return Ok(());
@@ -446,7 +447,7 @@ fn seal_keys(target: &str, bundle: &str) -> Result<(), Fault> {
         theme: &theme,
         log: None,
         whole: true,
-        last: Default::default(),
+        done: Default::default(),
     };
     if walk.walk(&mut machine, &mut terminal)? != Ended::Finished {
         return Ok(());
@@ -519,7 +520,7 @@ fn installed() -> Result<(), Fault> {
         theme: &theme,
         log: None,
         whole: true,
-        last: Default::default(),
+        done: Default::default(),
     };
     if walk.walk(&mut machine, &mut terminal)? != Ended::Finished {
         return Ok(());
@@ -569,7 +570,7 @@ fn recover() -> Result<(), Fault> {
             theme: &theme,
             log: Some(Path::new(LOG)),
             whole: true,
-            last: Default::default(),
+            done: Default::default(),
         };
         if walk.walk(&mut machine, &mut terminal)? != Ended::Finished {
             return Ok(());
@@ -603,12 +604,12 @@ fn recover() -> Result<(), Fault> {
                         theme: &theme,
                         log: Some(Path::new(LOG)),
                         whole: false,
-                        last: Default::default(),
+                        done: Default::default(),
                     };
                     if chosen.walk(&mut machine, &mut terminal)? != Ended::Finished {
                         return Ok(());
                     }
-                    *walk.last.borrow_mut() = chosen.last.take();
+                    *walk.done.borrow_mut() = chosen.done.take();
                 }
                 Some(_) => {
                     machine
@@ -695,7 +696,7 @@ fn install() -> Result<(), Fault> {
                 theme: &theme,
                 log: Some(Path::new(LOG)),
                 whole: false,
-                last: Default::default(),
+                done: Default::default(),
             }
             .choose(
                 &mut terminal,
@@ -726,7 +727,7 @@ fn install() -> Result<(), Fault> {
         theme: &theme,
         log: Some(Path::new(LOG)),
         whole: false,
-        last: Default::default(),
+        done: Default::default(),
     };
     if walk.walk(&mut machine, &mut terminal)? != Ended::Finished {
         return Ok(());

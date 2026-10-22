@@ -55,6 +55,15 @@ impl fmt::Display for Standing {
 pub enum Ask {
     /// A secret they type, named the way they know it: "the Nano's PIN".
     Secret { id: &'static str, name: String },
+    /// A secret they type, or another way in typed into the same field,
+    /// said on the one screen: a passphrase kept on their phone, or a
+    /// YubiKey plugged in and its PIN. `or` is the whole of the other way,
+    /// pressing Return and all, as it reads after "Or".
+    SecretOr {
+        id: &'static str,
+        name: String,
+        or: String,
+    },
     /// Something they do away from the keyboard, said plainly.
     Act { id: &'static str, what: String },
     /// A word they type back to show they mean it, such as a disk's name.
@@ -92,6 +101,7 @@ impl Ask {
     pub fn id(&self) -> &'static str {
         match self {
             Ask::Secret { id, .. }
+            | Ask::SecretOr { id, .. }
             | Ask::Act { id, .. }
             | Ask::TypeBack { id, .. }
             | Ask::Show { id, .. }

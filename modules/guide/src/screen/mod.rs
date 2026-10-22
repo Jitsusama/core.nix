@@ -73,8 +73,6 @@ pub struct Theme {
     /// Each mark by name, as drawn here: the mark, or on a console its
     /// stand-in.
     marks: Vec<(String, String)>,
-    /// Whether keys are drawn by name, as a console has no glyph for them.
-    console: bool,
 }
 
 impl Theme {
@@ -101,11 +99,7 @@ impl Theme {
                 ))
             })
             .collect();
-        Theme {
-            roles,
-            marks,
-            console,
-        }
+        Theme { roles, marks }
     }
 
     /// The theme this build was given.
@@ -147,16 +141,17 @@ impl Theme {
         roles.chain(marks).collect()
     }
 
-    /// A key as it's drawn: its own glyph where one exists, its name where
-    /// the console has none.
+    /// A key as it's drawn: by the name on its keycap, the same on the
+    /// console as in a terminal, so it reads the same wherever the guide
+    /// runs; the arrows by their glyphs, which every font has
+    /// (../../console/glyphs.txt).
     pub fn key(&self, key: Key) -> &'static str {
-        match (key, self.console) {
-            (Key::Return, false) => "↵",
-            (Key::Return, true) => "Return",
-            (Key::Tab, _) => "Tab",
-            // The console's font has the arrows (../../console/glyphs.txt).
-            (Key::Arrows, _) => "↑↓",
-            (Key::Leave, _) => "Ctrl+C",
+        match key {
+            Key::Return => "Return",
+            Key::Tab => "Tab",
+            Key::Escape => "Esc",
+            Key::Arrows => "↑↓",
+            Key::Leave => "Ctrl+C",
         }
     }
 }
@@ -166,6 +161,7 @@ impl Theme {
 pub enum Key {
     Return,
     Tab,
+    Escape,
     /// Up and down together, for moving through a list.
     Arrows,
     /// Ctrl+C, which leaves the guide.

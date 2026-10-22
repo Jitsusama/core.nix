@@ -154,6 +154,9 @@ fn the_one_stick_is_written_whole_and_what_was_mounted_from_it_is_handed_over() 
     let mut answers = Answers::new();
     answers.give("stick", Answer::Done);
     Journey::attempt(&step, &mut fake, &answers).unwrap();
+    // The screen was told what the write was doing, last reading it back.
+    let said = guide::Machine::meter(&mut fake).said();
+    assert!(said.starts_with("Reading it back to check it: "), "{said}");
 
     let opened = fake
         .calls
@@ -269,7 +272,16 @@ fn the_last_card_says_how_to_reach_the_machines_firmware() {
         .expect("how to start from the stick");
     assert!(clear < start, "{said}");
     assert!(
-        said.ends_with("asks for a YubiKey's PIN, or the recovery passphrase first."),
+        said.starts_with("Take the stick to laptop, switched off, and plug it in."),
+        "{said}"
+    );
+    // Nothing on the disk is let start between the two.
+    let off = said
+        .find("hold the power button until laptop is off")
+        .expect("switched off");
+    assert!(clear < off && off < start, "{said}");
+    assert!(
+        said.ends_with("asks first for the stick's passphrase, the seven words you saved on your phone, or a YubiKey's PIN."),
         "{said}"
     );
 

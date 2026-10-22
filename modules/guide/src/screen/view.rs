@@ -2,14 +2,16 @@
 //!
 //! - where the journey is, its name in strong and how far along, muted, at
 //!   the right;
-//! - what the step before showed, muted, while there's one to show;
+//! - every step done so far, each behind the done mark with what it
+//!   showed, muted, the latest nearest the step at hand;
 //! - the step, its title in strong;
-//! - the one thing it asks now, said in text, with its field below;
+//! - the one thing it asks now, said in text as what to do, with its field
+//!   below, or how far along it is while it works;
 //! - what stopped it, when something did, behind the mark of its kind;
-//! - the keys that work now, muted, at the foot.
+//! - every key that works now and what it does, muted, at the foot.
 //!
 //! Everything sits two columns in from the edge, and as the screen gets
-//! short what the step before showed goes first, then how far along.
+//! short the steps done go first, the earliest first, then how far along.
 //! Something shown for a phone's camera is the one exception: it's alone
 //! in the middle of the screen, since the camera copies whatever it sees.
 
@@ -24,8 +26,8 @@ pub struct Where<'a> {
     /// none while the journey doesn't know yet.
     pub step: usize,
     pub steps: Option<usize>,
-    /// What the step before showed, said back once it's done.
-    pub last: Option<&'a str>,
+    /// What each step done so far showed, in the order they were done.
+    pub done: &'a [String],
 }
 
 /// What's happening at a moment.
@@ -39,9 +41,16 @@ pub enum Moment<'a> {
         /// Which choice the cursor is on, for a choice.
         chosen: usize,
         refused: Option<&'a str>,
+        /// Whether Escape goes back to the ask before.
+        back: bool,
     },
-    /// A step at work, and what the person does meanwhile, if anything.
-    Working { title: &'a str, meanwhile: &'a str },
+    /// A step at work, what the person does meanwhile, if anything, and
+    /// how far along it is.
+    Working {
+        title: &'a str,
+        meanwhile: &'a str,
+        progress: Option<&'a str>,
+    },
     /// A step that can't run here and now, and what to do about it.
     Blocked {
         title: &'a str,
@@ -197,6 +206,7 @@ pub fn draw(theme: &Theme, at: &Where, moment: &Moment, width: u16, height: u16)
         return alone(shown, width as usize, height as usize);
     }
     let width = width as usize;
+    let height = height as usize;
     let inside = width.saturating_sub(2 * MARGIN);
     let mut lines: Vec<Line> = vec![vec![]];
 
@@ -213,11 +223,56 @@ pub fn draw(theme: &Theme, at: &Where, moment: &Moment, width: u16, height: u16)
     }
     lines.push(header);
     lines.push(vec![]);
-    if let Some(last) = at.last.filter(|_| height >= 16) {
-        lines.extend(said(Role::Muted, last, inside));
+
+    let (body, caret, footer) = step(theme, moment, inside);
+
+    // The steps done, the latest nearest the step at hand, as many as fit
+    // with a line apart from it and the keys still at the foot.
+    let room = height.saturating_sub(lines.len() + body.len() + 4);
+    let history = done(theme, at.done, inside, room);
+    if !history.is_empty() {
+        lines.extend(history);
         lines.push(vec![]);
     }
+    let top = lines.len();
+    lines.extend(body);
+    let caret = caret.map(|(row, column)| ((top + row) as u16, column));
 
+    // The keys at the foot, a line above the screen's last, or straight
+    // after everything else when the screen is too short for that.
+    if !footer.is_empty() {
+        let foot = height.saturating_sub(2).max(lines.len() + 1);
+        lines.resize(foot, vec![]);
+        lines.push(footer);
+    }
+    Drawn { lines, caret }
+}
+
+/// The steps done that fit in this many lines, the latest kept first and
+/// drawn last, each behind the done mark.
+fn done(theme: &Theme, done: &[String], width: usize, room: usize) -> Vec<Line> {
+    let mut kept: Vec<Vec<Line>> = vec![];
+    let mut used = 0;
+    for said in done.iter().rev() {
+        let drawn = marked(
+            span(Role::Success, theme.mark("done")),
+            Role::Muted,
+            &capitalised(said),
+            width,
+        );
+        if used + drawn.len() > room {
+            break;
+        }
+        used += drawn.len();
+        kept.push(drawn);
+    }
+    kept.into_iter().rev().flatten().collect()
+}
+
+/// The step at hand: its lines, where the caret goes among them, and the
+/// keys that work.
+fn step(theme: &Theme, moment: &Moment, inside: usize) -> (Vec<Line>, Option<(usize, u16)>, Line) {
+    let mut lines: Vec<Line> = vec![];
     let mut caret = None;
     let footer: Line;
     match moment {
@@ -227,40 +282,88 @@ pub fn draw(theme: &Theme, at: &Where, moment: &Moment, width: u16, height: u16)
             typed,
             chosen,
             refused,
+            back,
         } => {
             lines.extend(said(Role::Strong, title, inside));
             lines.push(vec![]);
+            // Every key that works here, Escape only where it goes back.
+            let foot = |on: &str| {
+                let mut shown = vec![(Key::Return, on)];
+                if *back {
+                    shown.push((Key::Escape, "back"));
+                }
+                shown.push((Key::Leave, "leave"));
+                keys(theme, &shown)
+            };
+            let typing =
+                |typed: &str| Some((span(Role::Action, theme.mark("cursor")), typed.to_string()));
             let field = match ask {
                 Ask::Act { what, .. } => {
-                    lines.extend(said(Role::Text, what, inside));
-                    footer = keys(theme, &[(Key::Return, "done")]);
+                    lines.extend(said(
+                        Role::Text,
+                        &format!("{what} Then press Return."),
+                        inside,
+                    ));
+                    footer = foot("done");
                     None
                 }
                 Ask::Secret { name, .. } => {
-                    lines.extend(said(Role::Text, &capitalised(name), inside));
+                    lines.extend(said(
+                        Role::Text,
+                        &format!("Type {name}, then press Return."),
+                        inside,
+                    ));
                     lines.push(vec![]);
-                    let dots = theme.mark("hidden").repeat(typed.chars().count());
-                    footer = keys(theme, &[(Key::Return, "go on")]);
-                    Some((span(Role::Machine, theme.mark("locked")), dots))
+                    footer = foot("enter it");
+                    Some((
+                        span(Role::Machine, theme.mark("locked")),
+                        hidden(theme, typed),
+                    ))
+                }
+                Ask::SecretOr { name, or, .. } => {
+                    lines.extend(said(
+                        Role::Text,
+                        &format!("Type {name}, then press Return."),
+                        inside,
+                    ));
+                    lines.push(vec![]);
+                    lines.extend(said(Role::Text, &format!("Or {or}."), inside));
+                    lines.push(vec![]);
+                    footer = foot("enter it");
+                    Some((
+                        span(Role::Machine, theme.mark("locked")),
+                        hidden(theme, typed),
+                    ))
                 }
                 Ask::TypeBack { expected, why, .. } => {
-                    lines.extend(said(Role::Text, &format!("{}.", capitalised(why)), inside));
+                    lines.extend(said(
+                        Role::Text,
+                        &format!(
+                            "{}. To go on, type the word below, then press Return.",
+                            capitalised(why)
+                        ),
+                        inside,
+                    ));
                     lines.push(vec![]);
                     lines.extend(said(Role::Strong, expected, inside));
                     lines.push(vec![]);
-                    footer = keys(theme, &[(Key::Return, "go on")]);
-                    Some((span(Role::Action, theme.mark("cursor")), typed.to_string()))
+                    footer = foot("enter it");
+                    typing(typed)
                 }
                 Ask::Show { how, .. } => {
                     lines.extend(steps(how, inside));
-                    footer = keys(theme, &[(Key::Return, "show it")]);
+                    footer = foot("show it");
                     None
                 }
                 Ask::Recall { why, .. } => {
-                    lines.extend(said(Role::Text, &format!("{}.", capitalised(why)), inside));
+                    lines.extend(said(
+                        Role::Text,
+                        &format!("{}, then press Return.", capitalised(why)),
+                        inside,
+                    ));
                     lines.push(vec![]);
-                    footer = keys(theme, &[(Key::Return, "go on")]);
-                    Some((span(Role::Action, theme.mark("cursor")), typed.to_string()))
+                    footer = foot("enter it");
+                    typing(typed)
                 }
                 // The choices in a column, the one the keys are on led by
                 // the cursor in the accent and in strong, the rest a
@@ -280,16 +383,18 @@ pub fn draw(theme: &Theme, at: &Where, moment: &Moment, width: u16, height: u16)
                         };
                         lines.extend(marked(mark, role, choice, inside));
                     }
-                    footer = keys(theme, &[(Key::Arrows, "choose"), (Key::Return, "go on")]);
+                    let mut shown = vec![(Key::Arrows, "move"), (Key::Return, "choose")];
+                    if *back {
+                        shown.push((Key::Escape, "back"));
+                    }
+                    shown.push((Key::Leave, "leave"));
+                    footer = keys(theme, &shown);
                     None
                 }
             };
             if let Some((mark, shown)) = field {
                 let lead = mark.text.chars().count() + 1;
-                caret = Some((
-                    lines.len() as u16,
-                    (MARGIN + lead + shown.chars().count()) as u16,
-                ));
+                caret = Some((lines.len(), (MARGIN + lead + shown.chars().count()) as u16));
                 lines.push(indent(vec![mark, span(Role::Text, format!(" {shown}"))]));
             }
             if let Some(refused) = refused {
@@ -302,11 +407,24 @@ pub fn draw(theme: &Theme, at: &Where, moment: &Moment, width: u16, height: u16)
                 ));
             }
         }
-        Moment::Working { title, meanwhile } => {
+        Moment::Working {
+            title,
+            meanwhile,
+            progress,
+        } => {
             lines.extend(said(Role::Strong, title, inside));
             lines.push(vec![]);
             if !meanwhile.is_empty() {
                 lines.extend(said(Role::Text, meanwhile, inside));
+                lines.push(vec![]);
+            }
+            if let Some(progress) = progress {
+                lines.extend(marked(
+                    span(Role::Accent, theme.mark("running")),
+                    Role::Text,
+                    progress,
+                    inside,
+                ));
             }
             footer = vec![];
         }
@@ -346,7 +464,7 @@ pub fn draw(theme: &Theme, at: &Where, moment: &Moment, width: u16, height: u16)
                 ],
             );
         }
-        // Drawn alone, above.
+        // Drawn alone, by draw.
         Moment::Showing { .. } => footer = vec![],
         Moment::Finished { said: text } => {
             lines.extend(marked(
@@ -373,15 +491,13 @@ pub fn draw(theme: &Theme, at: &Where, moment: &Moment, width: u16, height: u16)
             footer = keys(theme, &[(Key::Return, then)]);
         }
     }
+    (lines, caret, footer)
+}
 
-    // The keys at the foot, a line above the screen's last, or straight
-    // after everything else when the screen is too short for that.
-    if !footer.is_empty() {
-        let foot = (height as usize).saturating_sub(2).max(lines.len() + 1);
-        lines.resize(foot, vec![]);
-        lines.push(footer);
-    }
-    Drawn { lines, caret }
+/// What's been typed of a secret: a dot for each character, never the
+/// characters.
+fn hidden(theme: &Theme, typed: &str) -> String {
+    theme.mark("hidden").repeat(typed.chars().count())
 }
 
 fn capitalised(text: &str) -> String {
@@ -405,12 +521,21 @@ mod tests {
         )
     }
 
+    const DONE: &[String] = &[];
+
+    fn history() -> Vec<String> {
+        vec![
+            "the keyboard types Colemak".into(),
+            "the vault is open, holding 12 files".into(),
+        ]
+    }
+
     fn at() -> Where<'static> {
         Where {
             journey: "Install hedgehog",
             step: 3,
             steps: Some(13),
-            last: Some("the vault is open, holding 12 files"),
+            done: DONE,
         }
     }
 
@@ -435,11 +560,12 @@ mod tests {
             typed: "123456",
             chosen: 0,
             refused: None,
+            back: false,
         };
         let drawn = draw(&theme(), &at(), &moment, 80, 24);
         let shown = text(&drawn);
         assert!(
-            shown.contains(&"  The Nano's PIN".to_string()),
+            shown.contains(&"  Type the Nano's PIN, then press Return.".to_string()),
             "{shown:#?}"
         );
         assert!(shown.contains(&"  % ******".to_string()), "{shown:#?}");
@@ -454,7 +580,7 @@ mod tests {
                 10
             ))
         );
-        assert_eq!(shown.last().unwrap(), "  Return go on");
+        assert_eq!(shown.last().unwrap(), "  Return enter it    Ctrl+C leave");
         assert_eq!(shown.len(), 23, "the keys sit a line above the foot");
     }
 
@@ -470,13 +596,120 @@ mod tests {
             typed: "",
             chosen: 0,
             refused: None,
+            back: false,
         };
         let shown = text(&draw(&theme(), &at(), &moment, 40, 24));
         assert_eq!(
             shown[1],
             format!("  Install hedgehog{}3 of 13", " ".repeat(36 - 16 - 7))
         );
-        assert_eq!(shown[3], "  the vault is open, holding 12 files");
+    }
+
+    #[test]
+    fn every_step_done_stays_on_the_screen_the_latest_nearest() {
+        let ask = Ask::Act {
+            id: "plugged",
+            what: "Plug in the Nano.".into(),
+        };
+        let moment = Moment::Asking {
+            title: "Enrol a YubiKey",
+            ask: &ask,
+            typed: "",
+            chosen: 0,
+            refused: None,
+            back: false,
+        };
+        let done = history();
+        let at = Where {
+            done: &done,
+            ..at()
+        };
+        let shown = text(&draw(&theme(), &at, &moment, 60, 24));
+        assert_eq!(shown[3], "  v The keyboard types Colemak", "{shown:#?}");
+        assert_eq!(
+            shown[4], "  v The vault is open, holding 12 files",
+            "{shown:#?}"
+        );
+        assert_eq!(shown[5], "");
+        assert_eq!(shown[6], "  Enrol a YubiKey");
+        // A short screen gives up the earliest first.
+        let short = text(&draw(&theme(), &at, &moment, 60, 11));
+        assert!(!short.concat().contains("Colemak"), "{short:#?}");
+        assert!(short.concat().contains("The vault is open"), "{short:#?}");
+    }
+
+    #[test]
+    fn escape_is_shown_only_where_it_goes_back() {
+        let ask = Ask::Secret {
+            id: "again",
+            name: "the same password again".into(),
+        };
+        let moment = |back| Moment::Asking {
+            title: "Choose the account's password",
+            ask: &ask,
+            typed: "",
+            chosen: 0,
+            refused: None,
+            back,
+        };
+        let first = text(&draw(&theme(), &at(), &moment(false), 80, 24));
+        assert_eq!(first.last().unwrap(), "  Return enter it    Ctrl+C leave");
+        let later = text(&draw(&theme(), &at(), &moment(true), 80, 24));
+        assert_eq!(
+            later.last().unwrap(),
+            "  Return enter it    Esc back    Ctrl+C leave"
+        );
+    }
+
+    #[test]
+    fn a_secret_with_another_way_in_says_both_on_one_screen() {
+        let ask = Ask::SecretOr {
+            id: "passphrase",
+            name: "the stick's passphrase, the seven words in 1Password on your phone".into(),
+            or: "plug in the Nano or the 5Ci, type its PIN and press Return, then touch the key when it blinks".into(),
+        };
+        let moment = Moment::Asking {
+            title: "Open the stick's vault",
+            ask: &ask,
+            typed: "ab",
+            chosen: 0,
+            refused: None,
+            back: false,
+        };
+        let drawn = draw(&theme(), &at(), &moment, 120, 24);
+        let shown = text(&drawn);
+        assert!(shown.contains(&"  Type the stick's passphrase, the seven words in 1Password on your phone, then press Return.".to_string()), "{shown:#?}");
+        assert!(shown.contains(&"  Or plug in the Nano or the 5Ci, type its PIN and press Return, then touch the key when it blinks.".to_string()), "{shown:#?}");
+        let field = shown
+            .iter()
+            .position(|line| line == "  % **")
+            .expect("one field");
+        assert_eq!(drawn.caret, Some((field as u16, 6)));
+    }
+
+    #[test]
+    fn a_step_at_work_says_how_far_along_it_is() {
+        let moment = Moment::Working {
+            title: "Install the system",
+            meanwhile: "",
+            progress: Some("3.1 GB of 9.5 GB, 15.5 MB a second, about 7 minutes left"),
+        };
+        let shown = text(&draw(&theme(), &at(), &moment, 80, 24));
+        assert_eq!(shown[3], "  Install the system");
+        assert_eq!(
+            shown[5],
+            "  > 3.1 GB of 9.5 GB, 15.5 MB a second, about 7 minutes left"
+        );
+    }
+
+    #[test]
+    fn keys_are_named_the_same_on_a_console_as_in_a_terminal() {
+        let console = Theme::from("", "", true);
+        let terminal = Theme::from("", "", false);
+        for key in [Key::Return, Key::Tab, Key::Escape, Key::Arrows, Key::Leave] {
+            assert_eq!(console.key(key), terminal.key(key));
+        }
+        assert_eq!(terminal.key(Key::Return), "Return");
     }
 
     #[test]
@@ -491,6 +724,7 @@ mod tests {
             typed: "",
             chosen: 0,
             refused: None,
+            back: false,
         };
         let medium = text(&draw(&theme(), &at(), &moment, 80, 14));
         assert!(
@@ -516,6 +750,7 @@ mod tests {
             typed: "pen",
             chosen: 0,
             refused: Some("\"hedgehoge\" isn't hedgehog, so nothing was wiped"),
+            back: false,
         };
         let drawn = draw(&theme(), &at(), &moment, 60, 30);
         let shown = text(&drawn);
@@ -571,6 +806,7 @@ mod tests {
             typed: "",
             chosen: 1,
             refused: None,
+            back: false,
         };
         let drawn = draw(&theme(), &at(), &moment, 60, 24);
         let shown = text(&drawn);
@@ -581,7 +817,10 @@ mod tests {
         assert!(shown.contains(&"  > Restart".to_string()), "{shown:#?}");
         let row = shown.iter().position(|line| line == "  > Restart").unwrap();
         assert_eq!(drawn.lines[row][1].role, Role::Accent);
-        assert_eq!(shown.last().unwrap(), "  ↑↓ choose    Return go on");
+        assert_eq!(
+            shown.last().unwrap(),
+            "  ↑↓ move    Return choose    Ctrl+C leave"
+        );
         assert_eq!(drawn.caret, None);
     }
 
@@ -614,6 +853,7 @@ mod tests {
             typed: "",
             chosen: 0,
             refused: None,
+            back: false,
         };
         let shown = text(&draw(&theme(), &at(), &moment, 60, 40));
         let first = shown
@@ -631,7 +871,7 @@ mod tests {
             );
         }
         assert!(!shown.concat().contains("abacus"), "{shown:#?}");
-        assert_eq!(shown.last().unwrap(), "  Return show it");
+        assert_eq!(shown.last().unwrap(), "  Return show it    Ctrl+C leave");
     }
 
     #[test]

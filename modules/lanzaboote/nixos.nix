@@ -226,13 +226,20 @@ in
     };
 
     # systemd-boot enrols the keys it's given only while the firmware is in
-    # setup mode, with Secure Boot off, so the machine restarts for it then.
-    # A firmware that already enforces, as one keeping the keys a reinstall
-    # carried does, needs no restart: its new ESP only gets the files, which
-    # would enrol the keys again if the firmware were ever reset.
+    # setup mode, with Secure Boot off, so they're given only then, and the
+    # machine restarts for it. A firmware that already enforces, as one
+    # keeping the keys a reinstall carried does, needs neither.
+    #
+    # Once it enforces, the files go. Left on the ESP, with systemd-boot set
+    # to enrol them by force, they put this machine's keys back the moment
+    # anyone clears the firmware's to install it afresh, should its own disk
+    # boot before the stick: a countdown before any disk asks for a PIN. A
+    # firmware cleared on its own still gets them back, from the next boot
+    # that gets past the disk.
     systemd.services.prepare-sb-auto-enroll = lib.mkIf enrolment.enable {
       # OnSuccess only follows a unit that ends.
       serviceConfig.RemainAfterExit = lib.mkForce false;
+      unitConfig.ConditionSecurity = "!uefi-secureboot";
       unitConfig.OnSuccess = [ "secure-boot-enrol-restart.service" ];
       # Without checksums or Microsoft's keys, the firmware would stop
       # running any option ROM it runs now, so enrolment goes ahead only when
@@ -251,6 +258,20 @@ in
       serviceConfig = {
         Type = "oneshot";
         ExecStart = "${pkgs.coreutils}/bin/true";
+      };
+    };
+
+    systemd.services.secure-boot-enrolled = lib.mkIf enrolment.enable {
+      description = "Take the enrolled Secure Boot keys' files off the ESP";
+      wantedBy = [ "multi-user.target" ];
+      unitConfig = {
+        ConditionSecurity = "uefi-secureboot";
+        ConditionPathExists = "${config.boot.loader.efi.efiSysMountPoint}/loader/keys/auto";
+        RequiresMountsFor = [ config.boot.loader.efi.efiSysMountPoint ];
+      };
+      serviceConfig = {
+        Type = "oneshot";
+        ExecStart = "${pkgs.coreutils}/bin/rm -r ${config.boot.loader.efi.efiSysMountPoint}/loader/keys/auto";
       };
     };
 

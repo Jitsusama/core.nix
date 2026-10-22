@@ -195,8 +195,12 @@ impl Step for SealRescueBundle {
 /// What the vault keeps them as: sbctl's own directory.
 const SBCTL_IN_VAULT: &str = "sbctl";
 
-/// The vault's db certificate as DER, when the stick carries the keys.
-fn carried_db(machine: &mut dyn Machine) -> Result<Option<Vec<u8>>, Fault> {
+/// The vault's db certificate, as it was held when the vault opened: what
+/// the vault holds, or nothing when it holds none.
+const HELD_DB: &str = "/run/guide/carried-db.pem";
+
+/// The vault's db certificate as PEM, when the stick carries the keys.
+fn carried_pem(machine: &mut dyn Machine) -> Result<Option<Vec<u8>>, Fault> {
     let mut vault = vault(machine)?;
     let pem = format!("{SBCTL_IN_VAULT}/keys/db/db.pem");
     if !vault.files().iter().any(|file| file.path == pem) {
@@ -204,6 +208,29 @@ fn carried_db(machine: &mut dyn Machine) -> Result<Option<Vec<u8>>, Fault> {
     }
     let mut text = vec![];
     vault.extract(&pem, &mut text)?;
+    Ok(Some(text))
+}
+
+/// Holds the vault's db certificate, or that it has none, so the firmware
+/// is checked against it while the stick is out.
+pub fn hold_carried_db(machine: &mut dyn Machine) -> Result<(), Fault> {
+    let pem = carried_pem(machine)?.unwrap_or_default();
+    machine.write(HELD_DB, &pem)
+}
+
+/// The vault's db certificate as DER, when the stick carries the keys:
+/// from the vault, or, while the stick is out, as it was held.
+fn carried_db(machine: &mut dyn Machine) -> Result<Option<Vec<u8>>, Fault> {
+    let text = match carried_pem(machine) {
+        Err(Fault::StickOut) => {
+            let held = machine.read(HELD_DB)?.ok_or(Fault::StickOut)?;
+            (!held.is_empty()).then_some(held)
+        }
+        text => text?,
+    };
+    let Some(text) = text else {
+        return Ok(None);
+    };
     let (_, der) = rsa::pkcs8::der::pem::decode_vec(&text)
         .map_err(|why| Fault::unreadable("the vault's db certificate", why))?;
     Ok(Some(der))
@@ -303,7 +330,12 @@ impl Step for InstallSystem {
         })?;
         // The cache goes onto the new disk, never into memory, since it's
         // the whole system.
-        machine.unpack(key, SYSTEM_CACHE, CACHE)?;
+        let cached = machine.unpack(key, SYSTEM_CACHE, CACHE)?;
+        // Nix reads every file of the cache once as it copies the system,
+        // so what it has read says how far along it is.
+        machine
+            .meter()
+            .stage_by_reads("Copying it onto the disk", Some(cached));
         let from = format!("file://{CACHE}");
         let to = format!("local?root={ROOT}");
         // The cache carries no Nix signatures, since the vault already
@@ -333,6 +365,7 @@ impl Step for InstallSystem {
         if copied.status != 0 {
             return Err(copied.refusal());
         }
+        machine.meter().stage("Installing its boot loader", None);
         let installed = machine.run_given(
             Program::Tool(Tool::NixosInstall),
             &[

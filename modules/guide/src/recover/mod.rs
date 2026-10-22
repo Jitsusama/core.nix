@@ -173,16 +173,11 @@ impl Step for OpenDisk {
             });
         }
         Ok(Standing::Needed {
-            asks: vec![
-                Ask::Act {
-                    id: "key",
-                    what: "Plug in a YubiKey that opens the disk, and touch it when it blinks, or use the recovery key instead.".into(),
-                },
-                Ask::Secret {
-                    id: "secret",
-                    name: "the YubiKey's PIN, or the recovery key".into(),
-                },
-            ],
+            asks: vec![Ask::SecretOr {
+                id: "secret",
+                name: "the disk's recovery key, the seven words in 1Password on your phone".into(),
+                or: "plug in a YubiKey that opens the disk, type its PIN and press Return, then touch the key when it blinks".into(),
+            }],
         })
     }
 
@@ -481,8 +476,10 @@ impl Step for IdentifyKeptKey {
         Ok(Standing::Needed {
             asks: vec![Ask::Act {
                 id: "kept",
-                what: "Plug in the YubiKey you still have, and only it. Nothing is asked of it."
-                    .into(),
+                what: format!(
+                    "Plug in the YubiKey you still have, and only it.{} Nothing is asked of it.",
+                    crate::install::memory::port_words(machine)
+                ),
             }],
         })
     }
@@ -776,6 +773,7 @@ impl Step for BootGeneration {
 /// Every step of recovering, in order.
 pub fn steps() -> Vec<Box<dyn Step>> {
     vec![
+        Box::new(crate::install::memory::RunFromMemory),
         Box::new(crate::install::vault::CheckKeyboard),
         Box::new(FindMachine),
         Box::new(OpenDisk),

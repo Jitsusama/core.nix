@@ -556,18 +556,13 @@ impl Step for OpenRescueBundle {
         }
         let named = either(&keys);
         Ok(Standing::Needed {
-            asks: vec![
-                Ask::Act {
-                    id: "key",
-                    what: format!(
-                        "Plug in {named}, and touch it when it blinks, or use {passphrase} instead."
-                    ),
-                },
-                Ask::Secret {
-                    id: "passphrase",
-                    name: format!("the PIN of {named}, or {passphrase}"),
-                },
-            ],
+            asks: vec![Ask::SecretOr {
+                id: "passphrase",
+                name: passphrase.to_string(),
+                or: format!(
+                    "plug in {named}, type its PIN and press Return, then touch the key when it blinks"
+                ),
+            }],
         })
     }
 

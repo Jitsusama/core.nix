@@ -3,7 +3,7 @@
 
 use crate::install::{VAULT_KEY, vault_key};
 use crate::observe::fido2;
-use crate::vault::{self, Vault, VaultKey};
+use crate::vault::{self, VaultKey};
 use crate::{Answer, Answers, Ask, Fault, Machine, Place, Secret, Standing, Step};
 
 /// A word that comes out different on every common layout but Colemak's,
@@ -96,6 +96,14 @@ fn keys(machine: &mut dyn Machine) -> Result<Vec<String>, Fault> {
         .collect())
 }
 
+/// The passphrase as the person knows it: where the host had them keep
+/// it, under the name it gave.
+fn passphrase(machine: &str) -> String {
+    format!(
+        "the stick's passphrase, the seven words in 1Password on your phone named \"{machine} stick passphrase\""
+    )
+}
+
 fn sealed(machine: &mut dyn Machine, name: &str) -> Result<Vec<u8>, Fault> {
     let mut sealed = vec![];
     machine
@@ -120,10 +128,11 @@ impl Step for OpenVault {
     }
 
     fn observe(&self, machine: &mut dyn Machine) -> Result<Standing, Fault> {
-        if let Some(key) = vault_key(machine)? {
-            let vault = Vault::open(machine.vault()?, key)?;
+        // Its key held is the vault open, whether or not the stick is in:
+        // it may be out for a YubiKey's port.
+        if vault_key(machine)?.is_some() {
             return Ok(Standing::Done {
-                evidence: format!("the vault is open, holding {} files", vault.files().len()),
+                evidence: "the stick's vault is open".into(),
             });
         }
         if !machine.vault()?.has(vault::KEY_PASSPHRASE)? {
@@ -134,28 +143,24 @@ impl Step for OpenVault {
             });
         }
         let keys = keys(machine)?;
+        let name = passphrase(&vault::manifest(machine.vault()?)?.machine);
         if keys.is_empty() {
             return Ok(Standing::Needed {
                 asks: vec![Ask::Secret {
                     id: "passphrase",
-                    name: "the vault's recovery passphrase".into(),
+                    name,
                 }],
             });
         }
-        let named = either(&keys);
         Ok(Standing::Needed {
-            asks: vec![
-                Ask::Act {
-                    id: "key",
-                    what: format!(
-                        "Plug in {named}, and touch it when it blinks, or use the recovery passphrase instead."
-                    ),
-                },
-                Ask::Secret {
-                    id: "passphrase",
-                    name: format!("the PIN of {named}, or the recovery passphrase"),
-                },
-            ],
+            asks: vec![Ask::SecretOr {
+                id: "passphrase",
+                name,
+                or: format!(
+                    "plug in {} beside the stick, type its PIN and press Return, then touch the key when it blinks",
+                    either(&keys)
+                ),
+            }],
         })
     }
 
@@ -199,6 +204,10 @@ impl Step for OpenVault {
                 }
             }
         };
-        machine.write(VAULT_KEY, key.to_secret().expose().as_bytes())
+        machine.write(VAULT_KEY, key.to_secret().expose().as_bytes())?;
+        // What it says to install is held too, so the steps that only read
+        // it go on while the stick is out for a YubiKey's port.
+        crate::install::hold_target(machine)?;
+        crate::install::system::hold_carried_db(machine)
     }
 }

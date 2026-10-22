@@ -160,10 +160,12 @@ impl VaultKey {
         }
         let plugin = age::plugin::RecipientPluginV1::new(FIDO2, &parsed, &[], Quiet)
             .map_err(|why| unsealable("the vault's key", why))?;
-        self.sealed(
+        let sealed = self.sealed(
             age::Encryptor::with_recipients(std::iter::once(&plugin as &dyn age::Recipient))
                 .map_err(|why| unsealable("the vault's key", why))?,
-        )
+        );
+        reap_plugins();
+        sealed
     }
 
     /// The key from its copy sealed to the YubiKeys, with whichever one is
@@ -179,7 +181,7 @@ impl VaultKey {
             ))),
         )
         .map_err(|why| unopened("the vault's key", why))?;
-        VaultKey::open(sealed, &plugin).map_err(|fault| match fault {
+        let opened = VaultKey::open(sealed, &plugin).map_err(|fault| match fault {
             Fault::Unopened { what, why } => Fault::Unopened {
                 what,
                 why: crate::observe::fido2::refusal(&why)
@@ -187,7 +189,9 @@ impl VaultKey {
                     .unwrap_or(why),
             },
             other => other,
-        })
+        });
+        reap_plugins();
+        opened
     }
 
     /// The key as text, to hold in memory once it's open, so each step
@@ -241,6 +245,61 @@ impl VaultKey {
             .map_err(|why| unopened("what the key seals", why))?;
         Ok(bytes)
     }
+}
+
+/// What `comm` reads for every program age starts as a plugin, cut to
+/// the kernel's fifteen characters.
+#[cfg(target_os = "linux")]
+const PLUGIN: &str = "age-plugin-";
+
+/// Waits on every age plugin this process started that has since ended.
+/// age's connection to a plugin drops the child without waiting on it, so
+/// each one sealed or opened would otherwise stay a defunct process until
+/// the guide leaves. Only an ended child named as a plugin is waited on,
+/// so no program the guide runs and waits on itself is ever taken from it.
+/// A Mac has no /proc to find them by, and keeps them until the guide
+/// leaves.
+pub fn reap_plugins() {
+    #[cfg(target_os = "linux")]
+    for pid in ended_children(PLUGIN) {
+        // SAFETY: waitpid only reads the pid and writes nothing through
+        // the null status pointer.
+        unsafe { libc::waitpid(pid, std::ptr::null_mut(), libc::WNOHANG) };
+    }
+}
+
+/// This process's children that have ended unwaited (state Z), whose
+/// `comm` begins with `named`.
+#[cfg(target_os = "linux")]
+fn ended_children(named: &str) -> Vec<libc::pid_t> {
+    let own = std::process::id().to_string();
+    let Ok(entries) = std::fs::read_dir("/proc") else {
+        return vec![];
+    };
+    entries
+        .filter_map(|entry| {
+            entry
+                .ok()?
+                .file_name()
+                .to_str()?
+                .parse::<libc::pid_t>()
+                .ok()
+        })
+        .filter(|pid| {
+            let Ok(stat) = std::fs::read_to_string(format!("/proc/{pid}/stat")) else {
+                return false;
+            };
+            // comm sits in parentheses and may hold any byte, so the fields
+            // after it are read from the last closing one.
+            let (Some(open), Some(close)) = (stat.find('('), stat.rfind(')')) else {
+                return false;
+            };
+            let mut after = stat[close + 1..].split_whitespace();
+            stat[open + 1..close].starts_with(named)
+                && after.next() == Some("Z")
+                && after.next() == Some(own.as_str())
+        })
+        .collect()
 }
 
 fn unsealable(what: &str, why: impl std::fmt::Display) -> Fault {
@@ -599,6 +658,43 @@ fn sealed_into<S: Store + ?Sized>(
 mod tests {
     use super::store::Directory;
     use super::*;
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn an_ended_plugin_left_unwaited_is_waited_on_and_nothing_else() {
+        let directory = crate::Scratch::new("vault-reap");
+        std::fs::create_dir_all(&directory).unwrap();
+        let plugin = directory.join("age-plugin-test");
+        let other = directory.join("not-a-plugin");
+        std::os::unix::fs::symlink("/bin/sh", &plugin).unwrap();
+        std::os::unix::fs::symlink("/bin/sh", &other).unwrap();
+        let run = |program: &std::path::Path| {
+            std::process::Command::new(program)
+                .args(["-c", "exit 0"])
+                .spawn()
+                .unwrap()
+        };
+        // Dropped unwaited, as age drops its plugin.
+        let plugin = run(&plugin).id() as libc::pid_t;
+        let mut other = run(&other);
+        // Both have ended, so a reaper that took any child would take both.
+        let ended = || {
+            let all = ended_children("");
+            all.contains(&plugin) && all.contains(&(other.id() as libc::pid_t))
+        };
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        while !ended() && std::time::Instant::now() < deadline {
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        assert!(ended(), "the children never showed as ended");
+
+        reap_plugins();
+
+        assert!(!std::path::Path::new(&format!("/proc/{plugin}")).exists());
+        // Waiting fails only when the child was taken; how it ended doesn't
+        // matter, and a build's busybox sh ends any name it lacks with 127.
+        assert!(other.wait().is_ok(), "another child was taken");
+    }
 
     fn manifest() -> Manifest {
         Manifest {

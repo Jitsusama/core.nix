@@ -163,11 +163,9 @@ pkgs.testers.runNixOSTest {
         type("guide install")
         on_screen("Check the keyboard")
         type("keyboard")
-        on_screen("Plug in the Nano")
-        type("")
-        on_screen("the PIN of the Nano")
+        on_screen("Or plug in the Nano")
         type("${pin}")
-        on_screen("the vault is open")
+        on_screen("vault is open")
 
     with subtest("with the key taken out, the recovery passphrase opens it"):
         machine.send_key("ctrl-c")
@@ -175,10 +173,8 @@ pkgs.testers.runNixOSTest {
         machine.send_monitor_command("device_del key")
         machine.wait_until_succeeds('test -z "$(fido2-token -L)"', timeout=30)
         type("guide install")
-        on_screen("Plug in the Nano")
-        type("")
-        on_screen("the recovery passphrase")
+        on_screen("the stick's passphrase")
         type(${builtins.toJSON passphrase})
-        on_screen("the vault is open")
+        on_screen("vault is open")
   '';
 }

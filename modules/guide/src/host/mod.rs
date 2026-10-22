@@ -8,6 +8,7 @@
 
 pub mod carried;
 
+use crate::progress::Meter;
 use std::fs::File;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
@@ -128,25 +129,28 @@ impl Payload {
     /// the machine's hardware says of its firmware: a card's words.
     pub fn next(&self) -> String {
         let target = &self.target;
-        let mut said = format!("Take the stick to {}.", target.machine);
+        let machine = &target.machine;
+        let mut said = format!("Take the stick to {machine}, switched off, and plug it in.");
         if !self.carries_keys()
             && let Some(clear) = &target.clear_secure_boot_keys
         {
+            // A system already there may put its old keys back the moment
+            // it starts, so it's never let start once they're cleared.
             said.push_str(&format!(
-                " This stick carries none of its Secure Boot keys, so clear its firmware's first: {clear}"
+                " This stick carries none of its Secure Boot keys, so clear its firmware's first: {clear} As you leave the firmware's setup, hold the power button until {machine} is off, so its old system never starts and puts its keys back."
             ));
         }
         match &target.start_from_stick {
-            Some(start) => said.push_str(&format!(" To start it from the stick: {start}")),
-            None => said.push_str(" Start it from the stick."),
+            Some(start) => said.push_str(&format!(" Then start it from the stick: {start}")),
+            None => said.push_str(" Then start it from the stick."),
         }
         let opens = if target.recipients.is_empty() {
-            "the recovery passphrase"
+            "the stick's passphrase, the seven words you saved on your phone"
         } else {
-            "a YubiKey's PIN, or the recovery passphrase"
+            "the stick's passphrase, the seven words you saved on your phone, or a YubiKey's PIN"
         };
         said.push_str(&format!(
-            " The guide carries on there, and asks for {opens} first."
+            " The guide carries on there, and asks first for {opens}."
         ));
         said
     }
@@ -177,6 +181,10 @@ fn repair_manifest() -> Manifest {
     }
 }
 
+/// What the screen says while the stick is written, and then read back.
+const WRITING: &str = "Writing the stick";
+const READING_BACK: &str = "Reading it back to check it";
+
 /// The stick written and read back: the image, its boot program signed
 /// when a signer is given, and its vault, holding the payload sealed with
 /// the passphrase when one is given. Says how many bytes the vault holds.
@@ -186,12 +194,18 @@ pub fn write(
     signer: Option<&Signer>,
     payload: Option<(&Payload, &Secret)>,
     bundles: &[Carried],
+    meter: &Meter,
 ) -> Result<u64, Fault> {
     let kept = |why: std::io::Error| Fault::Unkept {
         path: "the stick".into(),
         why: why.to_string(),
     };
     let mut image = Image::open(File::open(image).map_err(unread(image))?)?;
+    let imaged: u64 = image
+        .partitions()
+        .iter()
+        .map(|partition| partition.bytes())
+        .sum();
     // The bundles beside the vault's sealed files, read back as written.
     let carry = |store: &mut dyn Store| -> Result<(), Fault> {
         for bundle in bundles {
@@ -217,16 +231,25 @@ pub fn write(
 
     let Some((payload, passphrase)) = payload else {
         let manifest = repair_manifest();
-        let written = stick::write(&mut image, disk, stick::new_guid()?, signer, |store| {
-            let bytes = serde_json::to_vec_pretty(&manifest)
-                .map_err(|why| Fault::unreadable("the manifest", why))?;
-            store
-                .create(vault::MANIFEST)?
-                .write_all(&bytes)
-                .map_err(kept)?;
-            carry(store)
-        })?;
-        stick::verify(&written, disk, |store| {
+        meter.stage(WRITING, Some(imaged));
+        let written = stick::write(
+            &mut image,
+            disk,
+            stick::new_guid()?,
+            signer,
+            meter,
+            |store| {
+                let bytes = serde_json::to_vec_pretty(&manifest)
+                    .map_err(|why| Fault::unreadable("the manifest", why))?;
+                store
+                    .create(vault::MANIFEST)?
+                    .write_all(&bytes)
+                    .map_err(kept)?;
+                carry(store)
+            },
+        )?;
+        meter.stage(READING_BACK, Some(imaged));
+        stick::verify(&written, disk, meter, |store| {
             carried_back(store)?;
             if vault::manifest(store)? == repair_manifest() {
                 Ok(())
@@ -287,29 +310,38 @@ pub fn write(
         machine: target.machine.clone(),
         opened_by,
     };
-    let written = stick::write(&mut image, disk, stick::new_guid()?, signer, |store| {
-        store
-            .create(vault::KEY_PASSPHRASE)?
-            .write_all(&sealed)
-            .map_err(kept)?;
-        if let Some(to_keys) = &to_keys {
-            store.create(vault::KEY)?.write_all(to_keys).map_err(kept)?;
-        }
-        carry(store)?;
-        let mut packer = Packer::new(store, &key);
-        for (name, from) in payload.files() {
-            match from {
-                Source::File(path) => {
-                    packer.add(&name, File::open(&path).map_err(unread(&path))?)?
-                }
-                Source::Memory(bytes) => packer.add(&name, bytes)?,
+    meter.stage(WRITING, Some(imaged + needed));
+    let written = stick::write(
+        &mut image,
+        disk,
+        stick::new_guid()?,
+        signer,
+        meter,
+        |store| {
+            store
+                .create(vault::KEY_PASSPHRASE)?
+                .write_all(&sealed)
+                .map_err(kept)?;
+            if let Some(to_keys) = &to_keys {
+                store.create(vault::KEY)?.write_all(to_keys).map_err(kept)?;
             }
-        }
-        packer.finish(&manifest)
-    })?;
+            carry(store)?;
+            let mut packer = Packer::new(store, &key);
+            for (name, from) in payload.files() {
+                match from {
+                    Source::File(path) => {
+                        packer.add(&name, File::open(&path).map_err(unread(&path))?)?
+                    }
+                    Source::Memory(bytes) => packer.add(&name, bytes)?,
+                }
+            }
+            packer.finish(&manifest)
+        },
+    )?;
     // Read back as the stick will open it: with the passphrase, every file
     // extracted and checked.
-    stick::verify(&written, disk, |store| {
+    meter.stage(READING_BACK, Some(imaged + needed));
+    stick::verify(&written, disk, meter, |store| {
         carried_back(store)?;
         let mut sealed = vec![];
         store
@@ -642,6 +674,7 @@ impl Step for WriteStick {
             self.signer.as_ref(),
             payload,
             &self.bundles,
+            &machine.meter(),
         )?;
         machine.journal().record(self.id(), &named(&stick))
     }

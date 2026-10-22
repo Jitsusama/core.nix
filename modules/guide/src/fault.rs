@@ -36,6 +36,8 @@ pub enum Fault {
     },
     /// A fake machine was asked for something its test never told it.
     Unscripted { call: String },
+    /// What's next needs the stick, and it's out.
+    StickOut,
 }
 
 impl fmt::Display for Fault {
@@ -60,6 +62,7 @@ impl fmt::Display for Fault {
             Fault::Blocked { step, why } => write!(f, "{step} can't run: {why}"),
             Fault::Unanswered { step, ask } => write!(f, "{step} needs {ask} before it runs"),
             Fault::Unscripted { call } => write!(f, "the test never said what {call} answers"),
+            Fault::StickOut => write!(f, "the stick isn't plugged in"),
         }
     }
 }
@@ -76,6 +79,7 @@ impl Fault {
             }
             Fault::Blocked { why, .. } => why.clone(),
             Fault::Unanswered { .. } => "it needs an answer it wasn't given".into(),
+            Fault::StickOut => "this needs what's on the stick, and the stick is out".into(),
             fault => fault.to_string(),
         }
     }

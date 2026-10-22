@@ -65,6 +65,14 @@ in
     options = [ "mode=0755" ];
   };
 
+  # systemd finds the ESP the stick booted from and mounts it at /boot
+  # when anything looks there, as sbctl does. Nothing on the stick needs it,
+  # since its boot program has already run, and with the stick out for a
+  # YubiKey the mount would wait for a disk that isn't there, stopping
+  # whatever looked.
+  systemd.units."boot.automount".enable = false;
+  systemd.units."boot.mount".enable = false;
+
   boot = {
     loader.grub.enable = false;
     initrd.systemd.enable = true;
