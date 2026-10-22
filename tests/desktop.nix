@@ -1808,6 +1808,60 @@ pkgs.testers.runNixOSTest {
           machine.wait_until_succeeds("grep -qx default /tmp/answer", timeout=15)
           tokened()
 
+      with subtest("the notices sit a step inside the window under them"):
+          machine.wait_until_fails(in_session("niri msg layers | grep -q notifications"), timeout=30)
+          # A window of its own, the only one in view, two thirds of the
+          # screen wide and centred, so its edge is far from the corner's;
+          # it goes again after.
+          as_account("niri msg action spawn -- kitty --title 'Under the notices'")
+          machine.wait_until_succeeds(
+              in_session("niri msg --json windows | grep -q '\"Under the notices\"'"), timeout=30
+          )
+          under = window_titled("Under the notices")
+          as_account(f"niri msg action focus-window --id {under['id']}")
+          screen = json.loads(as_account("niri msg --json focused-output"))["logical"]["width"]
+          as_account(f"niri msg action set-column-width {int(screen * 2 / 3)}")
+          as_account("niri msg action center-column")
+          space = json.loads(as_account("cat ~/.config/jitsusama/theme.json"))["space"]
+
+          # Where it will be once the view rests, from niri.
+          def settled(last):
+              layout = window_titled("Under the notices")["layout"]
+              place = layout["tile_pos_in_workspace_view"]
+              if last:
+                  t.assertIsNotNone(place, "niri doesn't say where a tiled window is")
+              return place is not None and screen - (place[0] + layout["tile_size"][0]) > 100
+
+          retry(settled, timeout_seconds=15)
+          with told("shows card Inside the window"):
+              as_account("notify-send --expire-time=60000 'Inside the window' 'a step from its edges'")
+          photograph("notice-inside")
+          # The nearest window wholly on screen, as the shell picks it.
+          ws = window_titled("Under the notices")["workspace_id"]
+          tiles = [
+              (w["layout"]["tile_pos_in_workspace_view"], w["layout"]["tile_size"])
+              for w in json.loads(as_account("niri msg --json windows"))
+              if w["workspace_id"] == ws and w["layout"]["tile_pos_in_workspace_view"]
+          ]
+          whole = [(p, s) for p, s in tiles if p[0] >= 0 and p[0] + s[0] <= screen]
+          (left, top), (width, _) = sorted(whole, key=lambda t: (-(t[0][0] + t[1][0]), t[0][1]))[0]
+          step = space["s"]
+          wanted = [
+              int(screen - (left + width) + step + 0.5),
+              int(max(top, 0) + step + 0.5),
+              min(380, int(width - 2 * step)),
+          ]
+          placed = as_account(
+              "journalctl --user --unit=quickshell --no-pager --output=cat"
+              " | grep -o 'report\\[places notices [0-9 ]*' | tail -n 1"
+          ).split()[-3:]
+          t.assertEqual([int(n) for n in placed], wanted, "the notices aren't a step inside the window")
+          as_account("qs ipc call notices putAway")
+          as_account(f"niri msg action close-window --id {under['id']}")
+          machine.wait_until_fails(
+              in_session("niri msg --json windows | grep -q '\"Under the notices\"'"), timeout=30
+          )
+
       with subtest("the launcher keeps the machine awake, lid shut too, then lets it sleep"):
           held = "systemd-inhibit --list --no-pager | grep Caffeinate"
           machine.wait_until_fails(in_session("niri msg layers | grep -q launcher"), timeout=10)

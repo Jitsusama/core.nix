@@ -1,22 +1,30 @@
-// The notification server: each notification is a notice in the top right
-// corner, newest at the top. A click dismisses one; it leaves by itself when
-// its time is up, unless it's critical. While notices are held (Quiet.qml),
-// only a critical one shows.
+// The notification server: the notices on screen are one stack in the top
+// right corner, the oldest not yet dealt with in front and up to three
+// newer behind it as edges, a critical one going to the front. A click on
+// the front one opens what it's about, or puts it away when it's about
+// nothing; one on an edge brings that one forward. The front one leaves by
+// itself when its time is up, unless it's critical. While notices are held
+// (Quiet.qml), only a critical one shows.
 //
-// The corner sits a step inside the windows' own corner, its right edge as
-// the margin's does (Margin.qml) and its top as far below theirs, so a
-// notice lies within the window under it rather than across its border, and
-// the notices make way below the margin's drawer while it's out.
+// Super+N gives the stack the keys while there are notices (`pressed` says
+// what each does, and the front card's footer shows them), and opens the
+// history in the launcher when there are none or it's pressed again.
+//
+// The notices sit a step inside the window under the top right corner, so
+// a notice lies on one window rather than across a border, or a step inside
+// where a window's corner would be when there's none (`inside` says how),
+// and they make way below the margin's drawer while it's out.
 //
 // Each is kept in the session's history as it arrives (Notices.qml), for
-// the launcher to find later. Super+N opens them there, by the keys, where
-// the ones still here can be answered or let go, and while it's open the
-// corner leaves them to it. A notice offering something to do (Reply, Play
-// it) lists it above its footer with that chord beside it, and the chord
-// opens straight on what it offers, so Return does the first.
+// the launcher to find later, where the ones still here can be answered
+// or let go, and while it's open the corner leaves them to it. A notice
+// offering something to do (Reply, Play it) lists it above its footer with
+// the chord that takes the stack beside it, and the right arrow chooses
+// one.
 //
 // It's the notice kind (docs/design.md, Shape and Kinds): the edge frame,
-// since it never takes the keys, or the alert's when critical; who or what
+// the accent's while the stack holds the keys, or the alert's when
+// critical; who or what
 // first, in words, then the message; and a footer in muted monospace saying
 // where it came from, its glyph a step apart from its name, and when.
 //
@@ -51,6 +59,57 @@ Scope {
 
     // When each notification arrived, by its id, for the footer's time.
     property var arrived: ({})
+
+    // Where the notices sit: a step inside the window nearest the top
+    // right corner of all those wholly on screen, the rightmost and then
+    // the highest, their right edge and top each a step within its own, so
+    // a notice lies on one window and never across a border, and no wider
+    // than fits in it. With no window wholly on screen, or the nearest too
+    // narrow to hold a notice, they sit in the corner, a step inside where
+    // a window's would be. niri says where a window will come to rest
+    // (modules/niri/tiled-positions.patch), so they move once a scroll
+    // settles, not with every frame.
+    property int settled: 0
+    readonly property var inside: {
+        settled;
+        Niri.revision;
+        const step = Theme.space.s;
+        const corner = { right: Theme.space.m + step, top: Theme.space.m + step, width: root.width };
+        const screen = window.screen;
+        if (!screen)
+            return corner;
+        const workspace = Object.values(Niri.workspaces)
+            .find(w => w.output === screen.name && w.is_active);
+        if (!workspace)
+            return corner;
+        const under = Object.values(Niri.windows).filter(w => w.workspace_id === workspace.id
+            && w.layout && w.layout.tile_pos_in_workspace_view)
+            .map(w => ({
+                left: w.layout.tile_pos_in_workspace_view[0],
+                top: w.layout.tile_pos_in_workspace_view[1],
+                width: w.layout.tile_size[0]
+            }))
+            .filter(t => t.left >= 0 && t.left + t.width <= screen.width)
+            .sort((a, b) => (b.left + b.width) - (a.left + a.width) || a.top - b.top)[0];
+        if (!under)
+            return corner;
+        const room = under.width - 2 * step;
+        if (room < 2 * root.width / 3)
+            return corner;
+        return {
+            right: Math.round(screen.width - (under.left + under.width) + step),
+            top: Math.round(Math.max(under.top, 0) + step),
+            width: Math.min(root.width, Math.floor(room))
+        };
+    }
+    Connections {
+        target: Niri
+
+        function onLayoutsChanged() {
+            root.settled++;
+        }
+    }
+    onInsideChanged: Report.say(`places notices ${inside.right} ${inside.top} ${inside.width}`)
 
     // The launcher, for the history the stack hands on to.
     property var launcher: null
@@ -277,7 +336,7 @@ Scope {
             && !Notices.gathered
         anchors.top: true
         anchors.right: true
-        implicitWidth: root.width + Theme.space.m + Theme.space.s + Theme.floating.reach
+        implicitWidth: stack.width + root.inside.right + Theme.floating.reach
         implicitHeight: stack.height + stack.y + Theme.floating.reach
         exclusionMode: ExclusionMode.Ignore
         color: "transparent"
@@ -306,9 +365,7 @@ Scope {
         Column {
             id: stack
             x: Theme.floating.reach
-            // A window's top is a gap from the screen's, and this a step
-            // below it.
-            y: Theme.space.m + Theme.space.s + Notices.below
+            y: Math.max(root.inside.top, Theme.space.m + Theme.space.s + Notices.below)
             onHeightChanged: reported.changed()
             // Where the pointer reaches and what niri blurs follow a card
             // only as it moves within the column, so they're gathered again
@@ -323,7 +380,7 @@ Scope {
                     easing.bezierCurve: Theme.motion.curve
                 }
             }
-            width: root.width
+            width: root.inside.width
             spacing: Theme.space.m
 
             Floating {
