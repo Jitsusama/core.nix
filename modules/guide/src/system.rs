@@ -441,8 +441,8 @@ impl Machine for System {
         synced.sync_all().map_err(unkept)
     }
 
-    fn read_disk(&mut self, device: &str) -> Result<File, Fault> {
-        crate::stick::device::open_for_reading(device)
+    fn read_partition(&mut self, device: &str, read: &mut dyn FnMut(&Path)) -> Result<(), Fault> {
+        crate::stick::device::read_partition(device, read)
     }
 
     /// Exclusive, which Linux refuses for a block device something has

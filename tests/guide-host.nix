@@ -3,9 +3,9 @@
 # desktop mounted from it is unmounted, and UDisks2 opens its whole disk,
 # which the guide writes with a machine's payload sealed to a passphrase of
 # seven words it made, shown alone for a phone and typed back, then reads
-# back. The rescue bundles the old stick carried, read off its disk before
-# it's written over, and the host's own machine's, go onto the new stick
-# and stay with the person. polkit lets the person open a
+# back. The rescue bundles the old stick carried, read from its vault
+# mounted only for reading before it's written over, and the host's own
+# machine's, go onto the new stick and stay with the person. polkit lets the person open a
 # removable disk without the password a desktop's agent would ask for,
 # since a test has no agent to answer it.
 { self, pkgs }:
@@ -188,5 +188,9 @@ pkgs.testers.runNixOSTest {
             host.succeed(f"cmp {bundle} {kept}/{machine}-rescue-bundle.json")
         host.succeed(f"test $(stat -c %U {kept}) = alice")
         host.succeed("umount /run/vault")
+        # The old vault was mounted as alice to be read, not its disk
+        # opened, and unmounted before the stick was written.
+        host.succeed("journalctl -u udisks2 --grep 'Mounted /dev/sda2 .*on behalf of uid 1000'")
+        host.succeed("journalctl -u udisks2 --grep 'Unmounted /dev/sda2 on behalf of uid 1000'")
   '';
 }

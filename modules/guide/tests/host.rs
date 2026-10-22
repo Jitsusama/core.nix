@@ -398,10 +398,12 @@ fn a_stick_carries_every_bundle_on_and_the_next_host_keeps_them_off_it() {
     );
 
     // Another host, about to write over it, keeps them first, and its
-    // own machine's beside them.
+    // own machine's beside them, the vault mounted as the stick holds it.
+    let mounted = directory.join("mounted");
+    carried::keep(&mut Directory::new(&mounted), on_it).unwrap();
     let mut host = Fake::new();
     lsblk(&mut host, fixture!("lsblk-laid-out.json"));
-    host.disk("/dev/sda", &stick)
+    host.mount("/dev/sda4", &mounted)
         .file(guide::rescue::KEPT, &bundle("tower", Some(9)));
     let gather = GatherBundles {
         kept: directory.join("host"),
@@ -411,15 +413,16 @@ fn a_stick_carries_every_bundle_on_and_the_next_host_keeps_them_off_it() {
         Standing::Needed { .. }
     ));
     Journey::attempt(&gather, &mut host, &Answers::new()).unwrap();
-    assert!(
-        host.calls
-            .iter()
-            .any(|call| call == "opening /dev/sda for reading"),
-        "{:#?}",
-        host.calls
-    );
-    assert!(
-        !host.calls.iter().any(|call| call.contains("for writing")),
+    // Mounted only for reading, which needs no password, and never the
+    // disk opened, which would.
+    let mounting: Vec<&String> = host
+        .calls
+        .iter()
+        .filter(|call| call.contains("mounting") || call.starts_with("opening"))
+        .collect();
+    assert_eq!(
+        mounting,
+        ["mounting /dev/sda4 for reading", "unmounting /dev/sda4"],
         "{:#?}",
         host.calls
     );
@@ -467,7 +470,10 @@ fn a_vault_a_desktop_mounted_is_read_where_it_is_and_the_disk_never_opened() {
     };
     Journey::attempt(&gather, &mut host, &Answers::new()).unwrap();
     assert!(
-        !host.calls.iter().any(|call| call.starts_with("opening")),
+        !host
+            .calls
+            .iter()
+            .any(|call| call.starts_with("opening") || call.contains("mounting")),
         "{:#?}",
         host.calls
     );
@@ -478,13 +484,13 @@ fn a_vault_a_desktop_mounted_is_read_where_it_is_and_the_disk_never_opened() {
 }
 
 #[test]
-fn a_stick_that_cant_be_read_carries_nothing_and_stops_nothing() {
+fn a_vault_that_wont_mount_carries_nothing_and_stops_nothing() {
     let directory = Scratch::new("host-gathers-unread");
     let mut host = Fake::new();
     lsblk(&mut host, fixture!("lsblk-laid-out.json"));
-    // A stick the guide never wrote: no table at all.
-    host.disk("/dev/sda", &stick_file(&directory))
-        .no_file(guide::rescue::KEPT);
+    // Nothing scripted for mounting it, so it fails as a vault that
+    // isn't one would.
+    host.no_file(guide::rescue::KEPT);
     let gather = GatherBundles {
         kept: directory.join("host"),
     };

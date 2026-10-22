@@ -159,7 +159,8 @@ driven on; the installed machine's steps come later.
   keys are never an input anywhere.
 - **Spreading the bundles.** Before a host writes over a stick, it keeps
   every bundle the stick's vault carries, read where a desktop mounted it
-  or else off the disk opened only for reading, and its own machine's,
+  or else mounted only for reading, which needs no password as opening
+  the disk would, and its own machine's,
   under `$XDG_STATE_HOME/guide/rescue/`. Of two bundles for one machine
   the one sealed later stays. Every stick it writes carries all it keeps
   beside the vault's sealed files, read back as written, and a stick for a

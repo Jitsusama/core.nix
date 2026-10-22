@@ -20,6 +20,7 @@ pub struct Fake {
     pointers: BTreeMap<String, String>,
     vault: Option<Box<dyn Store>>,
     disks: BTreeMap<String, std::path::PathBuf>,
+    mounts: BTreeMap<String, std::path::PathBuf>,
     journal: Journal,
     /// Every call made, in order, as `program arg arg`, followed by the
     /// names of the secrets it was given in brackets, and `(as root)` for
@@ -108,6 +109,13 @@ impl Fake {
     }
 
     /// The stick's vault, as a test made it.
+    /// A partition a step may mount for reading, standing in for it by
+    /// a directory.
+    pub fn mount(&mut self, device: &str, directory: &std::path::Path) -> &mut Fake {
+        self.mounts.insert(device.into(), directory.into());
+        self
+    }
+
     pub fn with_vault(&mut self, vault: Box<dyn Store>) -> &mut Fake {
         self.vault = Some(vault);
         self
@@ -266,12 +274,18 @@ impl Machine for Fake {
         change(self.vault()?)
     }
 
-    fn read_disk(&mut self, device: &str) -> Result<std::fs::File, Fault> {
-        self.calls.push(format!("opening {device} for reading"));
-        let file = self.disks.get(device).ok_or_else(|| Fault::Unscripted {
-            call: format!("opening {device}"),
+    fn read_partition(
+        &mut self,
+        device: &str,
+        read: &mut dyn FnMut(&std::path::Path),
+    ) -> Result<(), Fault> {
+        self.calls.push(format!("mounting {device} for reading"));
+        let directory = self.mounts.get(device).ok_or_else(|| Fault::Unscripted {
+            call: format!("mounting {device}"),
         })?;
-        std::fs::File::open(file).map_err(|why| Fault::unreadable(device, why))
+        read(directory);
+        self.calls.push(format!("unmounting {device}"));
+        Ok(())
     }
 
     fn open_partition(&mut self, device: &str) -> Result<std::fs::File, Fault> {
