@@ -333,7 +333,6 @@ in
   # Which programs have the camera open, for the shell to show.
   jitsusama.v4l2loopback.holders.camera = {
     inherit device;
-    output = "/run/camera/in-use";
     unit = "camera.service";
     ignore = [ "v4l2-relayd" ];
   };

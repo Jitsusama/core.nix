@@ -188,9 +188,6 @@ pkgs.testers.runNixOSTest {
         machine.succeed("systemctl restart ir-camera-loopback.service ir-camera.service")
         machine.wait_for_unit("ir-camera.service")
         machine.wait_for_unit("ir-camera-holders.service")
-        # The loopback's unit makes its directory afresh, so the file comes
-        # back a moment after.
-        machine.wait_for_file("/run/ir-camera-loopback/in-use")
-        t.assertEqual(machine.succeed("cat /run/ir-camera-loopback/in-use"), "")
+        t.assertEqual(machine.succeed("cat /run/camera-holders/ir-camera"), "")
   '';
 }
