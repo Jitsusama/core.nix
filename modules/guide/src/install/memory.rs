@@ -331,11 +331,18 @@ impl Step for RunFromMemory {
             &number(machine, &hashes_loop)?,
         );
         // Without waiting on udev, which has nothing to make: the device's
-        // node stays as it is.
+        // node stays as it is. Read-only, as dm-verity takes no other table.
         machine
             .run(
                 Tool::Dmsetup,
-                &["reload", "--noudevsync", DEVICE, "--table", &swapped],
+                &[
+                    "reload",
+                    "--readonly",
+                    "--noudevsync",
+                    DEVICE,
+                    "--table",
+                    &swapped,
+                ],
             )?
             .ok()?;
         // Resuming a device with a table loaded swaps it in, suspended

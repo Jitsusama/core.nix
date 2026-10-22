@@ -335,7 +335,14 @@ fn the_sticks_system_is_copied_into_memory_checked_then_run_from_there() {
     let swapped = STORE_TABLE.replace("8:3 8:2", "7:0 7:1");
     fake.prints(
         Tool::Dmsetup,
-        &["reload", "--noudevsync", "usr", "--table", &swapped],
+        &[
+            "reload",
+            "--readonly",
+            "--noudevsync",
+            "usr",
+            "--table",
+            &swapped,
+        ],
         "",
     )
     .prints(Tool::Dmsetup, &["resume", "--noudevsync", "usr"], "");
