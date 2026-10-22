@@ -1200,6 +1200,20 @@ in
       touch $out
     '';
 
+  # The keyboard's backlight is heard when its firmware changes it, over a
+  # folder laid out as the kernel's lights are, through Quickshell itself.
+  the-keyboard-light-is-heard = pkgs.runCommandLocal "the-keyboard-light-is-heard" { } ''
+    mkdir -p runtime/leds/test::kbd_backlight runtime/leds/input0::capslock && chmod 700 runtime
+    echo 3 > runtime/leds/test::kbd_backlight/max_brightness
+    touch runtime/leds/test::kbd_backlight/brightness_hw_changed
+    cp ${./modules/quickshell/Lights.qml} Lights.qml
+    cp ${./tests/lights.qml} shell.qml
+    export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
+    export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+    timeout 60 ${lib.getExe' pkgs.quickshell "qs"} -p shell.qml
+    touch $out
+  '';
+
   # The AI spend piece and the launcher's collection of it read what
   # spend-watch writes, from a day of a session's turns on two models, and the states
   # tests/spend.qml writes by hand, through Quickshell itself, with niri, do

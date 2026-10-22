@@ -2,7 +2,9 @@
 // same bar the volume uses. The backlight daemon (modules/backlight) tells a
 // pick from its own changes for the light, and writes each pick to a file
 // this watches, so the bar shows for the keys and never while the screen
-// follows the room.
+// follows the room. The keyboard's backlight shows the same way when its key
+// changes it (Lights.qml), in the same place: whichever changed last.
+import qs
 import Quickshell
 import Quickshell.Io
 import QtQuick
@@ -11,7 +13,13 @@ Scope {
     id: root
 
     property real level: 0
-    property bool shown: false
+    // Which light the bar is showing, or "" while it's hidden.
+    property string shown: ""
+
+    function show(light) {
+        root.shown = light;
+        hide.restart();
+    }
 
     FileView {
         path: Quickshell.env("XDG_RUNTIME_DIR") + "/backlight-chosen"
@@ -27,21 +35,36 @@ Scope {
             if (isNaN(level))
                 return;
             root.level = level;
-            root.shown = true;
-            hide.restart();
+            root.show("screen");
+        }
+    }
+
+    Connections {
+        target: Lights
+
+        function onTurned() {
+            root.show("keyboard");
         }
     }
 
     Timer {
         id: hide
         interval: 1500
-        onTriggered: root.shown = false
+        onTriggered: root.shown = ""
     }
 
     Meter {
         name: "brightness"
         glyph: String.fromCodePoint(0xf00e0)
-        visible: root.shown
+        visible: root.shown === "screen"
         level: root.level
+    }
+
+    Meter {
+        name: "keyboard-light"
+        glyph: String.fromCodePoint(0xf030c)
+        visible: root.shown === "keyboard"
+        level: Lights.lit
+        off: Lights.dark
     }
 }
