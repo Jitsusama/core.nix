@@ -22,12 +22,17 @@ Provider {
         empty: "No pi running."
     })
 
-    readonly property var all: Sessions.running.map(session => made(session))
+    // Those that want Joel first, then the one used last.
+    readonly property var all: Sessions.wanting
+        .concat(Sessions.running.filter(session => !Sessions.wanting.includes(session)))
+        .map(session => made(session))
     onAllChanged: changed()
 
     function made(session) {
         const presence = session.presence;
-        const doing = presence === null ? "" : presence.busy ? "working" : "waiting";
+        const doing = presence === null ? ""
+            : presence.wants ? Sessions.wanted(presence.wants)
+            : presence.busy ? "working" : "waiting";
         const quest = presence && presence.owns
             ? presence.owns.find(owned => /^QEST-/.test(owned)) ?? "" : "";
         return member({
@@ -40,7 +45,8 @@ Provider {
             glyph: Theme.glyph.agent,
             hue: "program",
             side: [session.address, doing, session.folder].filter(part => part !== "").join(" \u00b7 "),
-            note: presence && presence.worksOn ? presence.worksOn : "",
+            note: presence && presence.wants && presence.wants.said ? presence.wants.said
+                : presence && presence.worksOn ? presence.worksOn : "",
             later: true,
             run: () => Niri.act({ FocusWindow: { id: session.window.id } }),
             verbs: () => provider.verbs(session, quest)

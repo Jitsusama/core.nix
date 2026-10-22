@@ -389,6 +389,7 @@ it. Owners go by layer:
 | Do not disturb, caffeinate, recording, sharing, mic muted, caps lock   | the margin mark, while true                        | the mark's panel; the session's rows |
 | Keyboard layer                                                         | the margin mark, while locked; nothing while a key holds it | Keyboard            |
 | Music playing                                                          | the margin mark while it plays; a notice for a moment when the track changes or a media key is pressed | the mark's panel |
+| A pi session wanting Joel, and for what                               | the margin mark, while one waits on him            | "pi"; the mark's panel       |
 | A camera open, and by what                                            | the margin mark, while a program reads one         | "camera"; the mark's panel   |
 | In a call                                                              | the margin mark, while in one                      | the mark's panel             |
 | Notifications waiting                                                  | the margin mark, as a count                        | Notices (Super+N)            |

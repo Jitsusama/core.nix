@@ -558,6 +558,28 @@ let
   # the shell still has it: a shell that restarted is asked again, and once
   # no shell has answered for 20 seconds the askpass refuses. Otherwise the
   # program would wait on it forever, and ssh-tpm-agent every key with it.
+  # A pi session that has come to want Joel, said as a notice from pi
+  # (Sessions.qml starts it once a want): its quest and what it wants, and
+  # Return or a click on it goes to the session's window. A notice's action
+  # reaches only a sender still waiting, so this waits until the notice
+  # closes, and no longer.
+  piWants = pkgs.writeShellApplication {
+    name = "pi-wants-you";
+    runtimeInputs = [
+      pkgs.libnotify
+      pkgs.niri
+    ];
+    text = ''
+      window=$1
+      title=$2
+      body=$3
+      action=$(notify-send --app-name=pi --action=default="Go to it" --wait -- "$title" "$body" || true)
+      if [ "$action" = default ]; then
+        niri msg action focus-window --id "$window"
+      fi
+    '';
+  };
+
   askpass = pkgs.writeShellApplication {
     name = "ssh-askpass";
     runtimeInputs = [
@@ -985,6 +1007,8 @@ in
         source = "pi";
         label = "pi";
         collapse = 6;
+        # In the margin while a session wants Joel.
+        mark = "agent";
       };
       # What's on only now and then, each also a pull in the margin while
       # it's true (Margin.qml), in the order the overview gives them.
@@ -1072,6 +1096,7 @@ in
     # copies it, and notify-send says where the file went.
     home.packages = [
       askpass
+      piWants
       pkgs.quickshell
       pkgs.wf-recorder
       (pkgs.callPackage ./record-window/package.nix { })
