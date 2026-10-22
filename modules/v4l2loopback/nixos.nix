@@ -94,8 +94,16 @@ in
     '';
 
     # The files' folder lasts the boot, so a shell watching it keeps its
-    # watch however often a camera's service starts again.
-    systemd.tmpfiles.rules = lib.optional (cfg.holders != { }) "d ${holdersDir} 0755 root root -";
+    # watch however often a camera's service starts again. USB cameras'
+    # holders (../usb-camera-holders) share it, so it's set by name, which
+    # the two modules' settings merge on.
+    systemd.tmpfiles.settings = lib.mkIf (cfg.holders != { }) {
+      camera-holders.${holdersDir}.d = {
+        mode = "0755";
+        user = "root";
+        group = "root";
+      };
+    };
 
     systemd.services = lib.mapAttrs' (
       name: camera:

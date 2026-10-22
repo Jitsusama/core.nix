@@ -1,6 +1,7 @@
 """Says which programs have a camera open, in a file a shell can watch.
 
 usage: loopback-holders [--card NAME] [--ignore-unit UNIT]... SOURCE OUTPUT
+       loopback-holders --usb [--ignore-unit UNIT]... NODE FOLDER
 
 SOURCE is the camera's V4L2 node, or a file naming it, as the relay writes
 one. OUTPUT gets one program name per line, sorted, and nothing while no
@@ -15,12 +16,21 @@ while anyone holds it, since a holder can change with neither: by exec, by
 handing its descriptor to another process, or by exiting and leaving it to
 a child. While there's no node, as when the camera's module is reloaded, it
 says nobody and waits for one, looking once a second.
+
+With --usb, NODE is a USB camera's, and the file is FOLDER/<the camera's
+name>, made and removed with the camera: it's written while the camera is
+there and removed when its node goes or this is stopped. A program holding
+the camera is listed only while the camera streams, since programs that
+only look at a camera, such as PipeWire's, open it for a moment as it
+comes; while anyone holds it, it looks once a second, as the stream shows
+only in sysfs, which says nothing when it changes.
 """
 
 import argparse
 import ctypes
 import os
 import select
+import signal
 import struct
 import sys
 import time
@@ -57,6 +67,64 @@ def node_of(source, card):
         except OSError:
             return None
     return node
+
+
+def video_folder(sysfs, node):
+    """A node's folder in sysfs."""
+    return os.path.join(sysfs, "class", "video4linux", os.path.basename(node))
+
+
+def usb_interfaces(sysfs, node):
+    """The sysfs folders of the interfaces of the USB device a node is
+    on: its node's device is one of them, and they sit beside it."""
+    device = os.path.join(video_folder(sysfs, node), "device")
+    usb = os.path.dirname(os.path.realpath(device))
+    return [entry.path for entry in os.scandir(usb) if entry.is_dir()]
+
+
+def attribute(folder, name):
+    with open(os.path.join(folder, name)) as value:
+        return value.read().strip()
+
+
+def streams(sysfs, node):
+    """Whether a USB camera is streaming: one of its video streaming
+    interfaces (class 0e, subclass 02) has an alternate setting other than
+    zero, which uvcvideo picks to start a stream and puts back to stop it.
+    A camera that streams over bulk endpoints stays at zero, so it never
+    counts."""
+    try:
+        interfaces = usb_interfaces(sysfs, node)
+    except OSError:
+        return False
+    for interface in interfaces:
+        try:
+            if attribute(interface, "bInterfaceClass") != "0e":
+                continue
+            if attribute(interface, "bInterfaceSubClass") != "02":
+                continue
+            if int(attribute(interface, "bAlternateSetting")) != 0:
+                return True
+        except (OSError, ValueError):
+            continue
+    return False
+
+
+def listed(names, sysfs, node):
+    """Who to name: everyone holding the camera, or for a USB camera,
+    everyone only while it streams."""
+    if sysfs is None or streams(sysfs, node):
+        return names
+    return []
+
+
+def camera_file(sysfs, node, folder):
+    """FOLDER/<the camera's name>, as its driver gives it, made a single
+    plain file name."""
+    path = os.path.join(video_folder(sysfs, node), "name")
+    with open(path, "rb") as name:
+        called = text(name.read()).replace("/", "-").lstrip(".")
+    return os.path.join(folder, called or os.path.basename(node))
 
 
 def text(raw):
@@ -191,8 +259,9 @@ def tidy(output):
                 pass
 
 
-def watch(libc, node, output, units):
-    """Says who holds the node until it goes."""
+def watch(libc, node, output, units, sysfs=None):
+    """Says who holds the node until it goes. With sysfs, the node is a USB
+    camera's, named only while it streams."""
     queue = libc.inotify_init1(IN_CLOEXEC)
     if queue < 0:
         sys.exit(f"inotify: {os.strerror(ctypes.get_errno())}")
@@ -209,10 +278,15 @@ def watch(libc, node, output, units):
                 names, pids = holders(node, units, pids)
             except FileNotFoundError:
                 return
-            if names != said:
-                write(output, names)
-                said = names
-            ready, _, _ = select.select([queue], [], [], 2 if names else None)
+            shown = listed(names, sysfs, node)
+            if shown != said:
+                write(output, shown)
+                said = shown
+            # Whether a USB camera streams shows only in sysfs, so while
+            # anyone holds it, it's looked at every second.
+            every = 1 if sysfs is not None else 2
+            wait = every if names else None
+            ready, _, _ = select.select([queue], [], [], wait)
             if not ready:
                 continue
             # A program opens a camera several times as it starts; one
@@ -231,16 +305,43 @@ def watch(libc, node, output, units):
         os.close(queue)
 
 
+def usb(libc, node, folder, units, sysfs):
+    """Says who streams from a USB camera while it's there, in a file of
+    its own that goes with it."""
+    output = camera_file(sysfs, node, folder)
+
+    def stopped(number, frame):
+        raise SystemExit(0)
+
+    signal.signal(signal.SIGTERM, stopped)
+    tidy(output)
+    try:
+        watch(libc, node, output, units, sysfs)
+    finally:
+        try:
+            os.unlink(output)
+        except FileNotFoundError:
+            pass
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--card")
     parser.add_argument("--ignore-unit", action="append", default=[])
+    parser.add_argument("--usb", action="store_true")
+    # Where sysfs is, for the tests.
+    parser.add_argument("--sysfs", default="/sys", help=argparse.SUPPRESS)
     parser.add_argument("source")
     parser.add_argument("output")
     options = parser.parse_args()
     libc = ctypes.CDLL(None, use_errno=True)
-    tidy(options.output)
     units = set(options.ignore_unit)
+    if options.usb:
+        node = os.path.realpath(options.source)
+        if os.path.exists(node):
+            usb(libc, node, options.output, units, options.sysfs)
+        return
+    tidy(options.output)
     gone = False
     while True:
         node = node_of(options.source, options.card)
