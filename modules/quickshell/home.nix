@@ -367,7 +367,15 @@ let
         inherit (b) does run;
         glyph = actionGlyph b.run;
         chord = map face' (lib.splitString "+" b.chord);
-        opens = if opensCollection b.run then lib.last b.run else "";
+        # Super+N takes the notices on screen, and opens their collection
+        # when there are none, so the launcher steps into it.
+        opens =
+          if opensCollection b.run then
+            lib.last b.run
+          else if b.run == takesNotices then
+            "notices"
+          else
+            "";
       })
       (
         firstOfEach (lib.filter (b: b.run != [ ] && b.run != launcherToggle) config.jitsusama.keys.desktop)
@@ -386,6 +394,13 @@ let
         "launcher"
         "collection"
       ];
+  takesNotices = [
+    "qs"
+    "ipc"
+    "call"
+    "notices"
+    "take"
+  ];
   launcherToggle = [
     "qs"
     "ipc"

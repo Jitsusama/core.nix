@@ -85,8 +85,8 @@ in
   }
   {
     chord = "Super+N";
-    does = "Find a notice that came earlier";
-    action = ''spawn "qs" "ipc" "call" "launcher" "collection" "notices";'';
+    does = "Take the notices by the keys, or find one that came earlier";
+    action = ''spawn "qs" "ipc" "call" "notices" "take";'';
   }
   # What AI use cost (modules/spend-watch). U for usage.
   {

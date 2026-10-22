@@ -52,6 +52,128 @@ Scope {
     // When each notification arrived, by its id, for the footer's time.
     property var arrived: ({})
 
+    // The launcher, for the history the stack hands on to.
+    property var launcher: null
+
+    // The notices on screen, as one stack: their ids, the front first. A
+    // critical one goes to the front and the rest in the order they came,
+    // so a newer one waits its turn behind the one before it. One kept
+    // across a reload of the shell, which arrives unheard, joins the back.
+    property var order: []
+    readonly property var shown: {
+        const live = server.trackedNotifications.values.map(notification => notification.id);
+        const known = order.filter(id => live.includes(id));
+        return known.concat(live.filter(id => !known.includes(id)));
+    }
+    readonly property var front: {
+        const id = shown[0];
+        return server.trackedNotifications.values.find(notification => notification.id === id)
+            ?? null;
+    }
+    // How many behind the front show their edge, a step lower and a step
+    // narrower each, and how far.
+    readonly property int behind: 3
+    readonly property int peek: Theme.space.s
+    // The front card's height, which the cards behind it take.
+    property real frontHeight: 0
+
+    // Whether the stack holds the keys, which Super+N gives it while there
+    // are notices, and which of the front one's offers is chosen, -1 for
+    // the notice itself.
+    property bool holding: false
+    property int chosen: -1
+    onShownChanged: {
+        chosen = -1;
+        if (shown.length === 0)
+            holding = false;
+    }
+    onHoldingChanged: Report.say(holding ? "holds notices" : "lets notices go")
+
+    // What a notice's sender does when it's chosen, or null, and what else
+    // it offers, which its card lists.
+    function opens(notification) {
+        return notification.actions.find(action => action.identifier === "default") ?? null;
+    }
+    function offers(notification) {
+        return notification.actions.filter(action => action.identifier !== "default");
+    }
+
+    // The front one done with, by its offer chosen, or what it's about, or
+    // let go when it's about nothing to open.
+    function run() {
+        const notification = front;
+        if (!notification)
+            return;
+        Notices.mark(notification.id, true);
+        const offer = chosen >= 0 ? offers(notification)[chosen] ?? null : opens(notification);
+        if (offer)
+            offer.invoke();
+        else
+            notification.dismiss();
+    }
+
+    // Turns the stack, so the next comes to the front, or the one before.
+    function turn(by) {
+        const ids = shown.slice();
+        if (ids.length < 2)
+            return;
+        order = by > 0 ? ids.slice(1).concat(ids.slice(0, 1)) : ids.slice(-1).concat(ids.slice(0, -1));
+    }
+
+    // The keys while the stack holds them: Return does the front one,
+    // the arrows choose among what it offers and move through the stack,
+    // Delete or Backspace lets it go and with Shift all of them, Tab hands
+    // on to the history, and Escape gives the keys back.
+    function pressed(event) {
+        const all = (event.modifiers & Qt.ShiftModifier) !== 0;
+        switch (event.key) {
+        case Qt.Key_Return:
+        case Qt.Key_Enter:
+            run();
+            break;
+        case Qt.Key_Right:
+            chosen = Math.min(chosen + 1, front ? offers(front).length - 1 : -1);
+            break;
+        case Qt.Key_Left:
+            chosen = Math.max(chosen - 1, -1);
+            break;
+        case Qt.Key_Down:
+            turn(1);
+            break;
+        case Qt.Key_Up:
+            turn(-1);
+            break;
+        case Qt.Key_Delete:
+        case Qt.Key_Backspace:
+            if (all)
+                putAway();
+            else if (front)
+                front.dismiss();
+            break;
+        case Qt.Key_Tab:
+            history();
+            break;
+        case Qt.Key_Escape:
+            holding = false;
+            break;
+        default:
+            return;
+        }
+        event.accepted = true;
+    }
+
+    function putAway() {
+        for (const notification of server.trackedNotifications.values.slice())
+            notification.dismiss();
+    }
+
+    // The session's notices in the launcher, where past ones are too.
+    function history() {
+        holding = false;
+        if (launcher)
+            launcher.into("notices");
+    }
+
     // The chord that opens the notices, as the launcher draws chords.
     readonly property string reach: {
         const opener = Shortcuts.actions.find(action => action.opens === "notices");
@@ -78,8 +200,16 @@ Scope {
         target: "notices"
 
         function putAway(): void {
-            for (const notification of server.trackedNotifications.values.slice())
-                notification.dismiss();
+            root.putAway();
+        }
+
+        // Super+N: the stack takes the keys while there are notices, and
+        // otherwise, or asked again, the history opens.
+        function take(): void {
+            if (root.holding || root.shown.length === 0)
+                root.history();
+            else
+                root.holding = true;
         }
     }
 
@@ -112,6 +242,8 @@ Scope {
             if (held)
                 Report.say(`held ${notification.summary}`);
             const id = notification.id;
+            if (!held)
+                root.order = urgent ? [id].concat(root.order) : root.order.concat([id]);
             notification.closed.connect(reason => Notices.left(id,
                 reason === NotificationCloseReason.Expired ? "expired"
                 : reason === NotificationCloseReason.CloseRequested ? "withdrawn"
@@ -153,6 +285,7 @@ Scope {
         BackgroundEffect.blurRegion: notices
         WlrLayershell.layer: WlrLayer.Overlay
         WlrLayershell.namespace: "notifications"
+        WlrLayershell.keyboardFocus: root.holding ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
 
         // A card coming or going changes the stack's height while the
         // surface stays up.
@@ -332,6 +465,26 @@ Scope {
                 }
             }
 
+            // The notices, one stack: the front one whole, and behind it
+            // the next few as edges, each a step lower and a step narrower,
+            // at the front one's height with nothing drawn in them, so its
+            // cloudy surface shows only their frames beneath.
+            Item {
+                id: pile
+
+                width: stack.width
+                height: root.shown.length === 0 ? 0
+                    : root.frontHeight + Math.min(root.shown.length - 1, root.behind) * root.peek
+                visible: root.shown.length > 0
+
+                // Keys reach it while the stack holds them, which niri
+                // gives a frame after it's asked.
+                Item {
+                    focus: root.holding
+                    Keys.onPressed: event => root.pressed(event)
+                    onActiveFocusChanged: if (activeFocus) Report.say("keys notices")
+                }
+
             Repeater {
                 id: cards
                 model: server.trackedNotifications
@@ -343,27 +496,46 @@ Scope {
 
                     required property Notification modelData
                     readonly property var from: Notices.sender(modelData.appName)
+                    // Where it stands in the stack, 0 at the front.
+                    readonly property int rank: root.shown.indexOf(modelData.id)
+                    readonly property bool front: rank === 0
 
-                    width: stack.width
+                    visible: rank >= 0 && rank <= root.behind
+                    z: -rank
+                    x: Math.max(rank, 0) * Theme.space.s
+                    y: Math.max(rank, 0) * root.peek
+                    width: stack.width - 2 * x
+                    height: front ? implicitHeight : root.frontHeight
                     urgent: modelData.urgency === NotificationUrgency.Critical
+                    keys: front && root.holding
+
+                    onFrontChanged: if (front) root.frontHeight = implicitHeight
+                    onImplicitHeightChanged: if (front) root.frontHeight = implicitHeight
+                    // Its frame moves as the stack turns, which its window's
+                    // regions follow only when told.
+                    onRankChanged: Qt.callLater(window.gather)
+                    onHeightChanged: Qt.callLater(window.gather)
 
                     Component.onCompleted: Report.say(`shows card ${modelData.summary}`)
 
                     // What its sender does when the notice itself is
                     // chosen, such as opening the conversation it's about,
                     // or null for one that offers nothing.
-                    readonly property var opens: card.modelData.actions
-                        .find(action => action.identifier === "default") ?? null
+                    readonly property var opens: root.opens(card.modelData)
 
-                    // A click anywhere on the card opens what it's about,
-                    // or puts it away when it's about nothing to open. It
-                    // lies beneath the words, so an action's own area,
-                    // drawn later, takes the click on the action.
+                    // A click anywhere on the front card opens what it's
+                    // about, or puts it away when it's about nothing to
+                    // open, and one on an edge behind brings it to the
+                    // front. It lies beneath the words, so an action's own
+                    // area, drawn later, takes the click on the action.
                     MouseArea {
                         width: parent.width
-                        height: words.height
+                        height: card.front ? words.height : parent.height
                         onClicked: {
-                            if (card.opens) {
+                            if (!card.front) {
+                                root.order = [card.modelData.id].concat(
+                                    root.shown.filter(id => id !== card.modelData.id));
+                            } else if (card.opens) {
                                 Notices.mark(card.modelData.id, true);
                                 card.opens.invoke();
                             } else {
@@ -374,6 +546,7 @@ Scope {
 
                     Column {
                         id: words
+                        visible: card.front
                         x: Theme.space.l
                         width: parent.width - 2 * x
                         // The letters sit a step from the frame on every
@@ -419,8 +592,7 @@ Scope {
                             height: root.line + Theme.space.s
                             // The default is the card's own click, not one
                             // of these.
-                            readonly property var offers: card.modelData.actions
-                                .filter(action => action.identifier !== "default")
+                            readonly property var offers: root.offers(card.modelData)
                             visible: offers.length > 0
 
                             Row {
@@ -436,8 +608,21 @@ Scope {
                                     Item {
                                         id: offer
                                         required property var modelData
+                                        required property int index
                                         width: face.width
                                         height: face.height
+
+                                        // Chosen by the arrows: a part's
+                                        // fill, a step round the words.
+                                        Rectangle {
+                                            anchors.fill: parent
+                                            anchors.margins: -Theme.space.xs
+                                            anchors.leftMargin: -Theme.space.s
+                                            anchors.rightMargin: -Theme.space.s
+                                            radius: Theme.inner
+                                            color: Theme.selection
+                                            visible: card.keys && root.chosen === offer.index
+                                        }
 
                                         Row {
                                             id: face
@@ -479,6 +664,7 @@ Scope {
                                 height: root.line
                                 verticalAlignment: Text.AlignVCenter
                                 text: root.reach
+                                visible: !card.keys
                                 color: Theme.muted
                                 font.family: Theme.mono.family
                                 font.pointSize: Theme.mono.body
@@ -523,11 +709,35 @@ Scope {
                                 height: root.line
                                 verticalAlignment: Text.AlignVCenter
                                 readonly property real now: clock.date.getTime()
-                                text: root.since(root.arrived[card.modelData.id] ?? now, now)
+                                // How many wait behind it, before when it came.
+                                readonly property int more: root.shown.length - 1
+                                text: (more > 0 ? `${more} more \u00b7 ` : "")
+                                    + root.since(root.arrived[card.modelData.id] ?? now, now)
                                 color: Theme.muted
                                 font.family: Theme.mono.family
                                 font.pointSize: Theme.mono.body
                                 font.features: { "tnum": 1 }
+                            }
+                        }
+
+                        // While the stack holds the keys, what they do here,
+                        // as a prompt's footer says, a step below where it
+                        // came from, in that footer's size.
+                        Item {
+                            width: parent.width
+                            height: root.line + Theme.space.xs
+                            visible: card.keys
+
+                            KeyHints {
+                                anchors.right: parent.right
+                                anchors.bottom: parent.bottom
+                                size: Theme.mono.body
+                                keys: [
+                                    ["\u21b5", root.chosen >= 0 ? "do it" : card.opens ? "open" : "let go"],
+                                    ["\u232b", "let go"],
+                                    ["\u21e7\u232b", "all"],
+                                    ["\u21e5", "all notices"]
+                                ]
                             }
                         }
                     }
@@ -535,12 +745,13 @@ Scope {
                     // Five seconds when the sender doesn't say, and ten for
                     // one offering something to do. Quickshell's documents
                     // call its timeout seconds, but it passes on what the
-                    // sender said, which is milliseconds. It waits while the
-                    // launcher holds the notices, so one being acted on by
-                    // the keys can't go from under them, and starts again
-                    // in full when the cards come back.
+                    // sender said, which is milliseconds. Only the front
+                    // one counts, so one behind waits its turn and is seen
+                    // whole; and it waits while the keys hold the notices,
+                    // here or in the launcher, so one being acted on can't
+                    // go from under them, starting again in full after.
                     Timer {
-                        running: !card.urgent && !Notices.gathered
+                        running: !card.urgent && !Notices.gathered && card.front && !root.holding
                         onRunningChanged: Report.say(
                             `${running ? "counts" : "waits"} card ${card.modelData.summary}`)
                         interval: card.modelData.expireTimeout > 0
@@ -549,6 +760,7 @@ Scope {
                         onTriggered: card.modelData.expire()
                     }
                 }
+            }
             }
         }
     }

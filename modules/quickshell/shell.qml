@@ -6,7 +6,9 @@ import Quickshell
 
 ShellRoot {
     Wallpaper {}
-    Notifications {}
+    Notifications {
+        launcher: launcher
+    }
     Polkit {}
     Askpass {}
     Volume {}
