@@ -1945,9 +1945,12 @@ pkgs.testers.runNixOSTest {
           launcher_ready()
           type_in("office", selecting="Office")
           step_in()
-          type_in("out", selecting="Mb/s in")
+          # The link's row by its signal, which is always read; its rates
+          # say in and out only while they differ, which the simulated
+          # radio's don't always.
+          type_in("dbm", selecting="dBm \u00b7")
           launcher_until(lambda shown: "over the noise" in shown["footer"])
-          for _ in "out":
+          for _ in "dbm":
               machine.send_key("backspace")
           launcher_until(lambda shown: shown["typed"] == "")
           photograph("launcher-wifi-detail")
