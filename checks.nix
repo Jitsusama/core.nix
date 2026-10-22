@@ -1916,6 +1916,57 @@ in
           < (systemd.slices.user.sliceConfig.CPUWeight or 100)
       );
 
+  # Work yields to what the user works in only while jobs is idle beside
+  # app.slice, the sorter runs outside both, pi is told where jobs is, jobs
+  # comes back after systemd-oomd ends it, and a window's own scope, where
+  # the shell and pi live, isn't idle as well. A dash in the slice's name
+  # would nest it under a parent at the default weight, and nothing says so.
+  work-yields-to-what-the-user-works-in =
+    let
+      inherit (graphical.config) systemd environment;
+      jobs = systemd.user.services.jobs.serviceConfig;
+      sorter = systemd.user.services.jobs-sorter.serviceConfig;
+      scope = systemd.user.units."kitty-.scope".text or "";
+    in
+    holds "work-yields-to-what-the-user-works-in"
+      "jobs isn't idle beside app.slice, its sorter runs inside what it sorts, pi can't find it, it stays gone once stopped, or a window's own scope is idle."
+      (
+        systemd.user.slices.jobs.sliceConfig.CPUWeight == "idle"
+        && jobs.Slice == "jobs.slice"
+        && jobs.Delegate
+        && (jobs.Restart or "no") == "always"
+        && sorter.Slice == "session.slice"
+        && environment.sessionVariables.JOBS_CGROUP == "jobs.slice/jobs.service"
+        && !(lib.hasInfix "idle" scope)
+      );
+
+  # A call's audio thread asks for SCHED_RR 8 in Chrome and Electron apps,
+  # and gets it only if the account's limit reaches 8. At 11 or more,
+  # PipeWire takes its priority from the limit rather than rtkit's 20, so
+  # anything an app sets could rank beside it. With no time limit, a
+  # real-time thread that spins is never stopped. None of these says so.
+  call-audio-runs-in-real-time =
+    let
+      inherit (graphical.config) systemd;
+      manager = systemd.services."user@".serviceConfig;
+      units = systemd.user.settings.Manager;
+      priority = lib.toInt manager.LimitRTPRIO;
+    in
+    holds "call-audio-runs-in-real-time"
+      "The account can't take real-time priority 8, can take 11 or more, or has no real-time time limit."
+      (
+        priority >= 8
+        && priority < 11
+        && (manager.LimitRTTIME or "infinity") != "infinity"
+        && (units.DefaultLimitRTPRIO or null) == manager.LimitRTPRIO
+        && (units.DefaultLimitRTTIME or null) == manager.LimitRTTIME
+      );
+
+  # The sorter's tests run as it builds: a busy process group moves after two
+  # busy seconds and not one, the shell's group and pi's never move, a busy
+  # process inside them moves alone, and a process first seen counts nothing.
+  jobs-sorter-sorts-by-behaviour = pkgs.callPackage ./modules/slices/jobs-sorter/package.nix { };
+
   # Nix collects garbage during a build once free space falls under min-free,
   # and stops at max-free. A max-free at or under min-free stops it before it
   # starts, and nothing says so.
@@ -4475,6 +4526,21 @@ in
       (pkgs.callPackage ./modules/spend-watch/package.nix { }).overrideAttrs
         (old: {
           pname = "spend-watch-passes-clippy";
+          nativeBuildInputs = old.nativeBuildInputs ++ [ pkgs.clippy ];
+          buildPhase = ''
+            cargo clippy --all-targets --offline -- -D warnings
+          '';
+          doCheck = false;
+          installPhase = ''
+            touch $out
+          '';
+        });
+
+    # clippy finds nothing in the jobs sorter, its tests included.
+    jobs-sorter-passes-clippy =
+      (pkgs.callPackage ./modules/slices/jobs-sorter/package.nix { }).overrideAttrs
+        (old: {
+          pname = "jobs-sorter-passes-clippy";
           nativeBuildInputs = old.nativeBuildInputs ++ [ pkgs.clippy ];
           buildPhase = ''
             cargo clippy --all-targets --offline -- -D warnings

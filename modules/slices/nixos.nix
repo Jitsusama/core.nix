@@ -7,16 +7,23 @@
 # threads, a wakeup in session.slice waited at most 751 us at this weight
 # against 1,962 us at the default.
 #
-# A terminal's work yields to everything else Joel runs. kitty starts what
-# each window runs in a scope of its own, kitty-<pid>-<n>.scope, apart from
-# the scope that draws it, and those scopes are idle: a sibling that wants a
-# CPU gets it at once. With a kernel build from a terminal on every core, a
-# wakeup in another app's scope waited at most 2.0 to 4.6 ms over three
-# runs, against 6.7 to 18.2 ms at the default weight, and the build took the
-# same 171 to 174 s. Terminal work still shares the CPU evenly with other
-# terminal work, so an editor beside a build is as it was. The cost is when
-# the rest saturates every core, a virtual machine's build say: a light task
-# in a terminal then waited at most 7 ms, and a heavy one gets what is left.
+# What Joel works in comes before the work it starts. The shell, pi, an
+# editor and a terminal's copy all sit in the window's own scope, kitty's
+# kitty-<pid>-<n>.scope, at an app's weight, so they answer as quickly as
+# Chrome does. The work they start goes to jobs.slice, which is idle: it
+# gets every CPU nobody else wants, so a build loses nothing while Joel
+# reads, and gives way the moment anything he uses wakes. pi puts each
+# process it starts there itself. A terminal's work gets there by how it
+# behaves: jobs-sorter moves a process group out of a window's scope once
+# it has used over half a core for two seconds running, never the shell
+# and never pi, so a pager, an editor or ssh stays where it is. With
+# sixteen spinners in an app's scope, a wakeup in a window's idle scope
+# had waited up to 17.6 ms, a 10 ms stream of sound had broken up 6 times
+# in 20 s, and a paste from a terminal's copy had taken up to 20 ms; with
+# the spinners idle, an app's wakeup waited at most 1.3 ms, and the sound
+# never broke. The cost: work that must wait for a busy app gets nothing
+# until it rests, and for its first two seconds a build in a terminal
+# shares the CPU as an app would.
 #
 # session.slice peaks at about 400 MiB, so a 1 GiB floor keeps it in memory
 # however hard a build pushes. The floor is a hard one, MemoryMin: the kernel
@@ -31,21 +38,68 @@
 # kernel protects a slice only as far as each slice above it is protected, so
 # every one on the way down claims the same floor, and none of it goes
 # anywhere else.
+#
+# A call's sound must never wait for work at all, and only real time does
+# that: an RT thread runs ahead of every cgroup's weight. Chrome and every
+# Electron app ask for SCHED_RR 8 on their audio threads, and fall back to
+# nice -10, but only when the account may: with no real-time or nice limit,
+# both fail and a call's audio runs as any build does. So the account may go
+# to real-time priority 10 and nice -10. Ten stays under PipeWire's 11, the
+# least it takes from the limit before asking rtkit, so its own threads keep
+# rtkit's 20, and keyd its 49. A real-time thread that runs 200 ms without
+# resting is stopped, so one that spins can't take the machine.
+{ pkgs, ... }:
+let
+  sorter = pkgs.callPackage ./jobs-sorter/package.nix { };
+  limits = {
+    LimitRTPRIO = "10";
+    LimitNICE = "-10";
+    LimitRTTIME = "200ms:400ms";
+  };
+in
 {
   systemd.user.slices.session.sliceConfig = {
     CPUWeight = 1000;
     MemoryMin = "1G";
   };
 
-  # A drop-in for every kitty-<pid>-<n>.scope, which kitty makes as it opens
-  # a window.
-  systemd.user.units."kitty-.scope" = {
-    overrideStrategy = "asDropin";
-    text = ''
-      [Scope]
-      CPUWeight=idle
-    '';
+  # Beside app.slice and session.slice, so it yields to both.
+  systemd.user.slices.jobs.sliceConfig.CPUWeight = "idle";
+
+  # The cgroup work is moved into. A cgroup holds only while something is
+  # in it, so this one holds a process of its own, and its delegation says
+  # the processes others write into it are theirs, not the unit's.
+  systemd.user.services.jobs = {
+    description = "The place work Joel starts runs, behind what he uses";
+    wantedBy = [ "default.target" ];
+    serviceConfig = {
+      Slice = "jobs.slice";
+      Delegate = true;
+      ExecStart = "${pkgs.coreutils}/bin/sleep infinity";
+      # systemd-oomd ends the whole cgroup when work in it runs memory out,
+      # holder and all, and pi's writes would find nowhere to go until the
+      # next login. Coming back at once restarts the sorter with it.
+      Restart = "always";
+      RestartSec = 1;
+    };
   };
+
+  systemd.user.services.jobs-sorter = {
+    description = "Moves a terminal's busy work into jobs";
+    wantedBy = [ "default.target" ];
+    requires = [ "jobs.service" ];
+    after = [ "jobs.service" ];
+    serviceConfig = {
+      Slice = "session.slice";
+      ExecStart = "${sorter}/bin/jobs-sorter --home kitty- --keep pi";
+      Restart = "on-failure";
+      RestartSec = 5;
+    };
+  };
+
+  # Where pi, and anything else that wants to, finds jobs: a path under the
+  # account's own user@<uid>.service.
+  environment.sessionVariables.JOBS_CGROUP = "jobs.slice/jobs.service";
 
   systemd.slices.user.sliceConfig.MemoryMin = "1G";
 
@@ -55,5 +109,15 @@
     sliceConfig.MemoryMin = "1G";
   };
 
-  systemd.services."user@".serviceConfig.MemoryMin = "1G";
+  systemd.services."user@".serviceConfig = limits // {
+    MemoryMin = "1G";
+  };
+
+  # What the account's own units start with, said outright rather than
+  # left to whatever the manager inherited.
+  systemd.user.settings.Manager = {
+    DefaultLimitRTPRIO = limits.LimitRTPRIO;
+    DefaultLimitNICE = limits.LimitNICE;
+    DefaultLimitRTTIME = limits.LimitRTTIME;
+  };
 }

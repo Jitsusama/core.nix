@@ -1,0 +1,10 @@
+# jobs-sorter: moves a terminal's busy work into the jobs slice, so the
+# shell, pi and editors beside it keep their CPU (src/main.rs says how).
+[package]
+name = "jobs-sorter"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[dependencies]
