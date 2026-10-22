@@ -1317,7 +1317,8 @@ pkgs.testers.runNixOSTest {
               "version": 1,
               "heartbeat": time.time() + 3600,
               "filesystems": [
-                  {"path": "/", "band": "healthy", "free": 300 * 2**30, "total": 900 * 2**30},
+                  # Less room than /nix, but healthy, so /nix still leads.
+                  {"path": "/", "band": "healthy", "free": 10 * 2**30, "total": 30 * 2**30},
                   {"path": "/nix", "band": "pressure", "free": 20 * 2**30, "total": 900 * 2**30},
               ],
               "frozen": [],
@@ -1331,6 +1332,9 @@ pkgs.testers.runNixOSTest {
               lambda shown: (shown["selected"] or {}).get("name", "").endswith(" free on /nix")
           )
           photograph("launcher-disks")
+          # Its first row is the headline's disk.
+          machine.send_key("down")
+          launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "20.0 GiB free")
           machine.send_key("esc")
           machine.wait_until_fails(in_session("niri msg layers | grep -qw launcher"), timeout=10)
           machine.succeed("rm /run/disk-guard/status.json")

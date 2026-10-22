@@ -128,9 +128,11 @@ Scope {
             return "";
         if (selected === headline || (answer && answer.rows.includes(selected)))
             return "answer";
-        if (selected.opens)
-            return "collection";
-        return selected.what ?? "";
+        // A collection's own row has no provider's kind; a shortcut that
+        // opens one is still a shortcut.
+        if (selected.what)
+            return selected.what;
+        return selected.opens ? "collection" : "";
     }
 
     // A collection's members stay out of the main search, but a thing it

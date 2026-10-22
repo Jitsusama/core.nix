@@ -49,9 +49,11 @@ Provider {
         if (!disk || !disk.present)
             return null;
         const chip = glyph(0xf02ca);
+        // The worst band first, as the disk piece judges it, so the first
+        // row is the headline's, and within a band the least room.
         const rows = disk.disks
             .slice()
-            .sort((a, b) => a.free - b.free)
+            .sort((a, b) => disk.worse(a, b) ? -1 : disk.worse(b, a) ? 1 : a.free - b.free)
             .map(each => copyRow({
                 name: `${disk.shown(each.free)} free`,
                 side: each.band === "healthy" ? each.path : `${each.path} \u00b7 ${each.band}`,
