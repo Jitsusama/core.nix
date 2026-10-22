@@ -47,3 +47,8 @@ stick `/dev/sda`.
 | `fido2-token-L.txt`            | `fido2-token -L`, one canokey plugged in          |
 | `fido2-token-I.txt`            | `fido2-token -I` of a canokey with its PIN set, booted from a stick in QEMU on 2026-10-22, one of its PIN's tries spent |
 | `bootctl-list-from-the-stick.json` | `bootctl --esp-path=/mnt/boot list --json=short` on a repair stick, in `vm-guide-recovers`: an entry named by its hash, and `isSelected` null |
+| `pcrlock-log.json`             | `systemd-pcrlock log --json=short`, as root, on a disk the guide reinstalled and sealed, booted by OVMF straight from the disk on 2026-10-22 |
+| `pcrlock-log-through-the-menu.json` | the same, booted through OVMF's boot menu (`systemctl reboot --firmware-setup`, then Return on the disk), which measured its menu program into PCR 4 before the separator |
+| `pcrlock-policy.json`          | `jq -c '{pcrBank,pcrValues,nvIndex}' /var/lib/systemd/pcrlock.json` on that disk, the same on both boots |
+| `pcr-sha256-<n>`               | `/sys/class/tpm/tpm0/pcr-sha256/<n>` for PCRs 0, 4 and 7 on the straight boot |
+| `pcr-sha256-4-through-the-menu` | the same for PCR 4 on the boot through the menu; PCRs 0 and 7 read as on the straight boot |

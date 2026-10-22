@@ -8,5 +8,6 @@ pub mod efi;
 pub mod entries;
 pub mod fido2;
 pub mod luks;
+pub mod pcrlock;
 pub mod sbctl;
 pub mod tpm;

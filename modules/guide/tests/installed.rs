@@ -468,3 +468,114 @@ fn a_cleared_tpm_gets_its_policy_made_again_before_the_disk_is_sealed_to_it() {
         "{renewing:#?}"
     );
 }
+
+/// The rehearsal's reinstalled disk in QEMU: its seal proven, the TPM
+/// holding its policy, and lanzaboote's unit unable to remake it, as when
+/// the TPM refused the boot. Its NV indices are those that TPM held, the
+/// first install's left among them.
+const REHEARSED: &str =
+    "- 0x194A666\n- 0x194FA70\n- 0x1D10200\n- 0x1D10201\n- 0x1D10202\n- 0x1D10203\n";
+
+/// That disk on a boot that measured this into PCR 4 and logged this.
+fn rehearsed(indices: &str, log: &[u8], pcr4: &[u8]) -> Fake {
+    let mut fake = Fake::new();
+    fake.file(FACTS, br#"{"disk_name":"system"}"#);
+    fake.file(PCRLOCK, fixture!("qemu-canokey", "pcrlock-policy.json"));
+    fake.prints(Tool::Tpm2Getcap, NV, indices);
+    fake.prints(Tool::Systemctl, MADE, "exit-code\n");
+    fake.answers(
+        Program::Tool(Tool::Pcrlock),
+        &["log", "--json=short"],
+        0,
+        std::str::from_utf8(log).unwrap(),
+        "",
+    );
+    fake.file(
+        "/sys/class/tpm/tpm0/pcr-sha256/0",
+        fixture!("qemu-canokey", "pcr-sha256-0"),
+    );
+    fake.file("/sys/class/tpm/tpm0/pcr-sha256/4", pcr4);
+    fake.file(
+        "/sys/class/tpm/tpm0/pcr-sha256/7",
+        fixture!("qemu-canokey", "pcr-sha256-7"),
+    );
+    fake.prints(
+        Tool::Cryptsetup,
+        DUMP,
+        std::str::from_utf8(fixture!("qemu-canokey", "luks-dump-sealed.json")).unwrap(),
+    );
+    use guide::Machine;
+    fake.journal().record("seal-tpm", "opened:0").unwrap();
+    fake
+}
+
+/// Booted through OVMF's boot menu, which measured its own program into
+/// PCR 4 before the separator.
+fn through_the_menu_holding(indices: &str) -> Fake {
+    rehearsed(
+        indices,
+        fixture!("qemu-canokey", "pcrlock-log-through-the-menu.json"),
+        fixture!("qemu-canokey", "pcr-sha256-4-through-the-menu"),
+    )
+}
+
+fn through_the_menu() -> Fake {
+    through_the_menu_holding(REHEARSED)
+}
+
+#[test]
+fn a_boot_through_the_firmwares_menu_keeps_the_seal_for_the_next_ordinary_one() {
+    // Sealing again here would lock the menu in, and the next ordinary
+    // boot, which the TPM opened after this one in the rehearsal, would be
+    // the one refused.
+    let mut fake = through_the_menu();
+    let standing = SealTpm.observe(&mut fake).unwrap();
+    assert!(
+        matches!(&standing, Standing::Done { evidence } if evidence.contains("firmware's own menu")),
+        "{standing:?}"
+    );
+    let log = fake
+        .calls
+        .iter()
+        .find(|call| call.starts_with("systemd-pcrlock log"))
+        .unwrap();
+    assert!(log.ends_with("(as root)"), "{log}");
+}
+
+#[test]
+fn a_boot_straight_from_the_disk_the_policy_failed_on_still_needs_the_seal() {
+    // PCR 4 as the policy foresaw it, so whatever made the policy fail,
+    // no firmware program explains it.
+    let mut fake = rehearsed(
+        REHEARSED,
+        fixture!("qemu-canokey", "pcrlock-log.json"),
+        fixture!("qemu-canokey", "pcr-sha256-4"),
+    );
+    assert!(matches!(
+        SealTpm.observe(&mut fake).unwrap(),
+        Standing::Needed { .. }
+    ));
+}
+
+#[test]
+fn new_firmware_on_a_boot_through_the_menu_still_needs_the_seal() {
+    let mut fake = through_the_menu();
+    fake.file(
+        "/sys/class/tpm/tpm0/pcr-sha256/0",
+        b"B4597C7162476A8C53AA825E9C7EEC9BECEFAD902C82ECA12086ADAB07872E34\n",
+    );
+    assert!(matches!(
+        SealTpm.observe(&mut fake).unwrap(),
+        Standing::Needed { .. }
+    ));
+}
+
+#[test]
+fn a_cleared_tpm_on_a_boot_through_the_menu_still_needs_the_seal() {
+    // Its owner's indices gone, the platform's left.
+    let mut fake = through_the_menu_holding("- 0x1D10200\n");
+    assert!(matches!(
+        SealTpm.observe(&mut fake).unwrap(),
+        Standing::Needed { .. }
+    ));
+}

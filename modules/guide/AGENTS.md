@@ -159,7 +159,13 @@ driven on; the installed machine's steps come later.
   update changes PCR 0 past what the policy can follow, so that unit
   fails. The disk then opens with a YubiKey, and the guide has
   systemd-pcrlock drop the stale policy and the unit make a new one
-  before sealing again. Its secrets go only as files in memory and on
+  before sealing again. A boot through the firmware's own menu fails the
+  unit too, since the menu program is measured into PCR 4, and there the
+  guide leaves the seal alone: replayed without some of the firmware's
+  programs before the separator, the event log gives a PCR 4 the policy
+  allows, with every other PCR allowed as it is. Sealing then would
+  refuse the next ordinary boot, which opens with the TPM's PIN. Its
+  secrets go only as files in memory and on
   standard input, never on a command line.
 - **The rescue bundle.** A machine's Secure Boot keys, all seven files
   sbctl keeps, sealed under a key of their own, which is sealed to the
