@@ -177,6 +177,22 @@ let
   graphical = bareNixos [ self.nixosModules.graphical ];
   macWorkstation = bareDarwin [ self.darwinModules.workstation ];
 
+  # A Rust package with clippy in place of its build, its tests and examples
+  # read too, and nothing installed: a warning fails it.
+  passesClippy =
+    name: package:
+    package.overrideAttrs (old: {
+      pname = name;
+      nativeBuildInputs = old.nativeBuildInputs ++ [ pkgs.clippy ];
+      buildPhase = ''
+        cargo clippy --all-targets --offline -- -D warnings
+      '';
+      doCheck = false;
+      installPhase = ''
+        touch $out
+      '';
+    });
+
   # The virtual machine tests, which CI runs one to a runner beside the rest.
   # Each has to show something nothing cheaper can.
   vmTests = {
@@ -5286,50 +5302,20 @@ in
         '';
 
     # clippy finds nothing in git-engine, its tests included.
-    git-engine-passes-clippy =
-      (pkgs.callPackage ./modules/git-engine/package.nix { }).overrideAttrs
-        (old: {
-          pname = "git-engine-passes-clippy";
-          nativeBuildInputs = old.nativeBuildInputs ++ [ pkgs.clippy ];
-          buildPhase = ''
-            cargo clippy --all-targets --offline -- -D warnings
-          '';
-          doCheck = false;
-          installPhase = ''
-            touch $out
-          '';
-        });
+    git-engine-passes-clippy = passesClippy "git-engine-passes-clippy" (
+      pkgs.callPackage ./modules/git-engine/package.nix { }
+    );
 
     # clippy finds nothing in the backlight daemon, its tests included.
-    backlight-passes-clippy =
-      (pkgs.callPackage ./modules/backlight/package.nix { }).overrideAttrs
-        (old: {
-          pname = "backlight-passes-clippy";
-          nativeBuildInputs = old.nativeBuildInputs ++ [ pkgs.clippy ];
-          buildPhase = ''
-            cargo clippy --all-targets --offline -- -D warnings
-          '';
-          doCheck = false;
-          installPhase = ''
-            touch $out
-          '';
-        });
+    backlight-passes-clippy = passesClippy "backlight-passes-clippy" (
+      pkgs.callPackage ./modules/backlight/package.nix { }
+    );
 
     # clippy finds nothing in the portal's chooser of what to open something
     # with, its tests included.
-    open-with-passes-clippy =
-      (pkgs.callPackage ./modules/open-with/package.nix { }).overrideAttrs
-        (old: {
-          pname = "open-with-passes-clippy";
-          nativeBuildInputs = old.nativeBuildInputs ++ [ pkgs.clippy ];
-          buildPhase = ''
-            cargo clippy --all-targets --offline -- -D warnings
-          '';
-          doCheck = false;
-          installPhase = ''
-            touch $out
-          '';
-        });
+    open-with-passes-clippy = passesClippy "open-with-passes-clippy" (
+      pkgs.callPackage ./modules/open-with/package.nix { }
+    );
 
     # xdg-open opens a kind by the kinds it's a case of, in its declared app,
     # and a program that runs in a terminal in the terminal named for it:
@@ -5381,79 +5367,29 @@ in
 
     # clippy finds nothing in what tells Plymouth of a slow boot or
     # shutdown, its tests included.
-    plymouth-waits-passes-clippy =
-      (pkgs.callPackage ./modules/plymouth/waits/package.nix { }).overrideAttrs
-        (old: {
-          pname = "plymouth-waits-passes-clippy";
-          nativeBuildInputs = old.nativeBuildInputs ++ [ pkgs.clippy ];
-          buildPhase = ''
-            cargo clippy --all-targets --offline -- -D warnings
-          '';
-          doCheck = false;
-          installPhase = ''
-            touch $out
-          '';
-        });
+    plymouth-waits-passes-clippy = passesClippy "plymouth-waits-passes-clippy" (
+      pkgs.callPackage ./modules/plymouth/waits/package.nix { }
+    );
 
     # clippy finds nothing in the clipboard's history, its tests included.
-    clipboard-history-passes-clippy =
-      (pkgs.callPackage ./modules/quickshell/clipboard/package.nix { }).overrideAttrs
-        (old: {
-          pname = "clipboard-history-passes-clippy";
-          nativeBuildInputs = old.nativeBuildInputs ++ [ pkgs.clippy ];
-          buildPhase = ''
-            cargo clippy --all-targets --offline -- -D warnings
-          '';
-          doCheck = false;
-          installPhase = ''
-            touch $out
-          '';
-        });
+    clipboard-history-passes-clippy = passesClippy "clipboard-history-passes-clippy" (
+      pkgs.callPackage ./modules/quickshell/clipboard/package.nix { }
+    );
 
     # clippy finds nothing in the window recorder, its tests included.
-    record-window-passes-clippy =
-      (pkgs.callPackage ./modules/quickshell/record-window/package.nix { }).overrideAttrs
-        (old: {
-          pname = "record-window-passes-clippy";
-          nativeBuildInputs = old.nativeBuildInputs ++ [ pkgs.clippy ];
-          buildPhase = ''
-            cargo clippy --all-targets --offline -- -D warnings
-          '';
-          doCheck = false;
-          installPhase = ''
-            touch $out
-          '';
-        });
+    record-window-passes-clippy = passesClippy "record-window-passes-clippy" (
+      pkgs.callPackage ./modules/quickshell/record-window/package.nix { }
+    );
 
     # clippy finds nothing in the console's font tool, its tests included.
-    console-font-passes-clippy =
-      (pkgs.callPackage ./modules/console/font/package.nix { }).overrideAttrs
-        (old: {
-          pname = "console-font-passes-clippy";
-          nativeBuildInputs = old.nativeBuildInputs ++ [ pkgs.clippy ];
-          buildPhase = ''
-            cargo clippy --all-targets --offline -- -D warnings
-          '';
-          doCheck = false;
-          installPhase = ''
-            touch $out
-          '';
-        });
+    console-font-passes-clippy = passesClippy "console-font-passes-clippy" (
+      pkgs.callPackage ./modules/console/font/package.nix { }
+    );
 
     # clippy finds nothing in the guard, its scenarios included.
-    disk-guard-passes-clippy =
-      (pkgs.callPackage ./modules/disk-guard/package.nix { }).overrideAttrs
-        (old: {
-          pname = "disk-guard-passes-clippy";
-          nativeBuildInputs = old.nativeBuildInputs ++ [ pkgs.clippy ];
-          buildPhase = ''
-            cargo clippy --all-targets --offline -- -D warnings
-          '';
-          doCheck = false;
-          installPhase = ''
-            touch $out
-          '';
-        });
+    disk-guard-passes-clippy = passesClippy "disk-guard-passes-clippy" (
+      pkgs.callPackage ./modules/disk-guard/package.nix { }
+    );
 
     # spend-watch reads the config an account gets: it's refused at build by
     # the watch's own check-config, which builds it and runs its tests on the
@@ -5502,110 +5438,40 @@ in
         '';
 
     # clippy finds nothing in spend-watch, its tests included.
-    spend-watch-passes-clippy =
-      (pkgs.callPackage ./modules/spend-watch/package.nix { }).overrideAttrs
-        (old: {
-          pname = "spend-watch-passes-clippy";
-          nativeBuildInputs = old.nativeBuildInputs ++ [ pkgs.clippy ];
-          buildPhase = ''
-            cargo clippy --all-targets --offline -- -D warnings
-          '';
-          doCheck = false;
-          installPhase = ''
-            touch $out
-          '';
-        });
+    spend-watch-passes-clippy = passesClippy "spend-watch-passes-clippy" (
+      pkgs.callPackage ./modules/spend-watch/package.nix { }
+    );
 
     # clippy finds nothing in the jobs sorter, its tests included.
-    jobs-sorter-passes-clippy =
-      (pkgs.callPackage ./modules/slices/jobs-sorter/package.nix { }).overrideAttrs
-        (old: {
-          pname = "jobs-sorter-passes-clippy";
-          nativeBuildInputs = old.nativeBuildInputs ++ [ pkgs.clippy ];
-          buildPhase = ''
-            cargo clippy --all-targets --offline -- -D warnings
-          '';
-          doCheck = false;
-          installPhase = ''
-            touch $out
-          '';
-        });
+    jobs-sorter-passes-clippy = passesClippy "jobs-sorter-passes-clippy" (
+      pkgs.callPackage ./modules/slices/jobs-sorter/package.nix { }
+    );
 
     # clippy finds nothing in vm-first, its tests included.
-    vm-first-passes-clippy =
-      (pkgs.callPackage ./modules/nix-daemon/vm-first/package.nix { }).overrideAttrs
-        (old: {
-          pname = "vm-first-passes-clippy";
-          nativeBuildInputs = old.nativeBuildInputs ++ [ pkgs.clippy ];
-          buildPhase = ''
-            cargo clippy --all-targets --offline -- -D warnings
-          '';
-          doCheck = false;
-          installPhase = ''
-            touch $out
-          '';
-        });
+    vm-first-passes-clippy = passesClippy "vm-first-passes-clippy" (
+      pkgs.callPackage ./modules/nix-daemon/vm-first/package.nix { }
+    );
 
     # clippy finds nothing in device-check or device-check-disk, their tests
     # included.
-    device-check-passes-clippy =
-      (pkgs.callPackage ./modules/device-check/package.nix { }).overrideAttrs
-        (old: {
-          pname = "device-check-passes-clippy";
-          nativeBuildInputs = old.nativeBuildInputs ++ [ pkgs.clippy ];
-          buildPhase = ''
-            cargo clippy --all-targets --offline -- -D warnings
-          '';
-          doCheck = false;
-          installPhase = ''
-            touch $out
-          '';
-        });
+    device-check-passes-clippy = passesClippy "device-check-passes-clippy" (
+      pkgs.callPackage ./modules/device-check/package.nix { }
+    );
 
     # clippy finds nothing in shutdown-status, its tests included.
-    shutdown-status-passes-clippy =
-      (pkgs.callPackage ./modules/systemd/shutdown-status/package.nix { }).overrideAttrs
-        (old: {
-          pname = "shutdown-status-passes-clippy";
-          nativeBuildInputs = old.nativeBuildInputs ++ [ pkgs.clippy ];
-          buildPhase = ''
-            cargo clippy --all-targets --offline -- -D warnings
-          '';
-          doCheck = false;
-          installPhase = ''
-            touch $out
-          '';
-        });
+    shutdown-status-passes-clippy = passesClippy "shutdown-status-passes-clippy" (
+      pkgs.callPackage ./modules/systemd/shutdown-status/package.nix { }
+    );
 
     # clippy finds nothing in lid-docked, its tests included.
-    lid-docked-passes-clippy =
-      (pkgs.callPackage ./modules/lid/docked/package.nix { }).overrideAttrs
-        (old: {
-          pname = "lid-docked-passes-clippy";
-          nativeBuildInputs = old.nativeBuildInputs ++ [ pkgs.clippy ];
-          buildPhase = ''
-            cargo clippy --all-targets --offline -- -D warnings
-          '';
-          doCheck = false;
-          installPhase = ''
-            touch $out
-          '';
-        });
+    lid-docked-passes-clippy = passesClippy "lid-docked-passes-clippy" (
+      pkgs.callPackage ./modules/lid/docked/package.nix { }
+    );
 
     # clippy finds nothing in network-revive, its tests included.
-    network-revive-passes-clippy =
-      (pkgs.callPackage ./modules/network-revive/package.nix { }).overrideAttrs
-        (old: {
-          pname = "network-revive-passes-clippy";
-          nativeBuildInputs = old.nativeBuildInputs ++ [ pkgs.clippy ];
-          buildPhase = ''
-            cargo clippy --all-targets --offline -- -D warnings
-          '';
-          doCheck = false;
-          installPhase = ''
-            touch $out
-          '';
-        });
+    network-revive-passes-clippy = passesClippy "network-revive-passes-clippy" (
+      pkgs.callPackage ./modules/network-revive/package.nix { }
+    );
 
     # The guide's tests run as it builds: each step proven by observing it
     # again, each parser reading what real machines printed, each stick it
@@ -5651,19 +5517,9 @@ in
       };
 
     # clippy finds nothing in ir-camera, its tests included.
-    ir-camera-passes-clippy =
-      (pkgs.callPackage ./modules/ir-camera/package.nix { }).overrideAttrs
-        (old: {
-          pname = "ir-camera-passes-clippy";
-          nativeBuildInputs = old.nativeBuildInputs ++ [ pkgs.clippy ];
-          buildPhase = ''
-            cargo clippy --all-targets --offline -- -D warnings
-          '';
-          doCheck = false;
-          installPhase = ''
-            touch $out
-          '';
-        });
+    ir-camera-passes-clippy = passesClippy "ir-camera-passes-clippy" (
+      pkgs.callPackage ./modules/ir-camera/package.nix { }
+    );
 
     # The macOS guard builds from the same crate and CI has no Mac, so clippy
     # reads the crate, its scenarios included, as macOS would compile it.
