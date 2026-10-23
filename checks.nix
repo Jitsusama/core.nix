@@ -747,6 +747,7 @@ in
           "disk"
           "awake"
           "wide"
+          "dictation"
           "microphone"
           "capslock"
           "layer"
@@ -2640,6 +2641,37 @@ in
         echo "dictation heard: $heard"
         exit 1
       fi
+      touch $out
+    '';
+
+  # The shell follows dictation as its service says (tests/dictation-watch.py
+  # stands in for it): each state said, a service that stops watched again
+  # once its socket starts it, and a socket nothing listens on tried once,
+  # never in a loop.
+  the-shell-follows-dictation =
+    let
+      niri = pkgs.writeText "Niri.qml" ''
+        pragma Singleton
+        import Quickshell
+        import QtQuick
+        Singleton {
+          property var windows: ({})
+          property var casts: ({})
+          function spawn(command) { }
+          function act(request) { }
+        }
+      '';
+    in
+    pkgs.runCommandLocal "the-shell-follows-dictation" { } ''
+      cp ${./modules/dictation/Dictation.qml} Dictation.qml
+      cp ${./tests/dictation.qml} shell.qml
+      cp ${niri} Niri.qml
+      export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime
+      export LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen QT_FORCE_STDERR_LOGGING=1
+      export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+      mkdir -m 700 $XDG_RUNTIME_DIR
+      timeout 120 ${lib.getExe pkgs.python3} ${./tests/dictation-watch.py} \
+        ${lib.getExe' graphical.pkgs.quickshell "qs"}
       touch $out
     '';
 
