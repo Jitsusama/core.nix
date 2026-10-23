@@ -218,6 +218,9 @@ let
     # The greeter is all that stands between a logout and the desktop.
     vm-greeter-signs-in = import ./tests/greeter.nix { inherit self pkgs; };
     vm-boot-asks-in-the-theme = import ./tests/plymouth.nix { inherit self pkgs; };
+    # Whether the ask shows whole on screens of different sizes shows only
+    # with Plymouth drawing on two of them at once.
+    vm-boot-asks-on-every-screen = import ./tests/plymouth-screens.nix { inherit self pkgs; };
     # Whether libvirt's daemon stops in time shows only with the daemon
     # running and its threads short of CPU, as at a busy shutdown.
     vm-libvirt-stops-quickly = import ./tests/libvirt.nix { inherit self pkgs; };

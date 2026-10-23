@@ -5,19 +5,18 @@
 # message is drawn when the theme is built (./nixos.nix), at one and two
 # device pixels to a logical one, so this only places pictures.
 
-# Plymouth draws at the screen's own pixels here, so the scale is chosen by
-# the screen's height: a panel with more rows than a 16:10 laptop's at one
-# to one takes the pictures drawn at two.
-width = Window.GetWidth();
-height = Window.GetHeight();
-if (height >= 1600)
-  scale = 2;
-else
-  scale = 1;
+# Plymouth draws one canvas as large as the largest screen in each
+# direction, and each screen shows the part of it centred on its own size,
+# so a smaller screen sees only the canvas's middle. The picture covers the
+# whole canvas, so every screen is covered; everything else is placed in the
+# rectangle every screen shows, the smallest width by the smallest height,
+# centred on the canvas. A screen can come after this starts, as a monitor
+# behind a hub does once its link is up, so all of it is laid out again
+# whenever a screen comes or goes.
 
 fun drawn(name)
   {
-    return Image(name + "-" + scale + ".png");
+    return Image(name + "-" + global.scale + ".png");
   }
 
 fun placed(image, x, y, z)
@@ -27,107 +26,178 @@ fun placed(image, x, y, z)
     return sprite;
   }
 
-# The space every lifted picture leaves round its words for their shadows.
-pad = @pad@ * scale;
-middle = width / 2;
+# A sprite showing an image at a place, made the first time it's needed.
+fun sprite_at(sprite, image, x, y, z)
+  {
+    if (!sprite)
+      sprite = Sprite();
+    sprite.SetImage(image);
+    sprite.SetPosition(Math.Int(x), Math.Int(y), z);
+    return sprite;
+  }
 
 Window.SetBackgroundTopColor(@deepest@);
 Window.SetBackgroundBottomColor(@deepest@);
 
-# The picture covers the screen, centred, and fades in over the firmware's
-# black as the lock screen's does.
-picture.shown = 0;
 picture.image = Image("picture.png");
-if (picture.image)
+scale = 0;
+
+# Plymouth draws at the screens' own pixels here, so the scale is chosen by
+# the shared rectangle's height: screens with more rows than a 16:10
+# laptop's at one to one take the pictures drawn at two. These are the
+# pictures and the sizes that follow from it.
+fun drawn_at_scale()
   {
-    cover = Math.Max(width / picture.image.GetWidth(), height / picture.image.GetHeight());
-    picture.scaled = picture.image.Scale(Math.Int(picture.image.GetWidth() * cover + 0.5),
-                                         Math.Int(picture.image.GetHeight() * cover + 0.5));
-    picture.sprite = placed(picture.scaled, (width - picture.scaled.GetWidth()) / 2,
-                            (height - picture.scaled.GetHeight()) / 2, 0);
-    picture.sprite.SetOpacity(0);
+    global.pad = @pad@ * global.scale;
+    global.apart = @apart@ * global.scale;
+
+    global.name.image = drawn("name");
+    global.under.images["starting"] = drawn("starting");
+    global.under.images["locked"] = drawn("locked");
+    global.under.images["restarting"] = drawn("restarting");
+    global.under.images["stopping"] = drawn("stopping");
+    global.under.height = global.under.images["starting"].GetHeight() - 2 * global.pad;
+    global.about.image = drawn("about");
+
+    global.panel.calm = drawn("panel");
+    global.panel.urgent = drawn("panel-urgent");
+    global.panel.reach = @reach@ * global.scale;
+    global.lock.image = drawn("lock");
+    global.hints["pin"] = drawn("hint-pin");
+    global.hints["passphrase"] = drawn("hint-passphrase");
+    global.hints["recovery"] = drawn("hint-recovery");
+    global.hints["again"] = drawn("hint-again");
+    global.dot = drawn("dot");
+    global.step = global.dot.GetWidth() + @dotSpacing@ * global.scale;
+    global.caret.image = drawn("caret");
+
+    global.halo.left = drawn("halo-left");
+    global.halo.middle = drawn("halo-middle");
+    global.halo.right = drawn("halo-right");
+    global.halo.inner = @haloInner@ * global.scale;
   }
 
-# The column, from the bottom up, as Lock.qml stacks it: a line for what
-# the boot says, the prompt's panel, then the name over what's happening,
-# each a step of space apart.
-apart = @apart@ * scale;
-bottom = height - Math.Int(height / 12);
-said.top = bottom - @said@ * scale;
-panel.top = said.top - apart - @panelHeight@ * scale;
-head.bottom = panel.top - apart;
-
-name.image = drawn("name");
-under.images["starting"] = drawn("starting");
-under.images["locked"] = drawn("locked");
-under.images["restarting"] = drawn("restarting");
-under.images["stopping"] = drawn("stopping");
-under.height = under.images["starting"].GetHeight() - 2 * pad;
-under.top = head.bottom - under.height;
-name.top = under.top - (name.image.GetHeight() - 2 * pad);
-name.sprite = placed(name.image, middle - name.image.GetWidth() / 2, name.top - pad, 10);
-
+# What's happening, under the name, as the boot or shutdown goes.
 fun says(what)
   {
-    if (global.under.showing == what)
-      return;
     global.under.showing = what;
     local.image = global.under.images[what];
-    if (global.under.sprite)
-      global.under.sprite.SetImage(image);
-    else
-      global.under.sprite = Sprite(image);
-    global.under.sprite.SetPosition(Math.Int(global.middle - image.GetWidth() / 2),
-                                    Math.Int(global.under.top - global.pad), 10);
+    global.under.sprite = sprite_at(global.under.sprite, image,
+                                    global.middle - image.GetWidth() / 2,
+                                    global.under.top - global.pad, 10);
   }
 
-mode = Plymouth.GetMode();
-if (mode == "shutdown")
-  says("stopping");
-else if (mode == "reboot")
-  says("restarting");
-else
-  says("starting");
+# Everything placed for the screens there are now: the canvas, the shared
+# rectangle, the scale, then each picture from the bottom of that rectangle
+# up, as Lock.qml stacks its column: a line for what the boot says, the
+# prompt's panel, then the name over what's happening, each a step of space
+# apart, and what the boot is, small at the bottom left.
+fun lay_out()
+  {
+    global.width = Window.GetWidth();
+    global.height = Window.GetHeight();
+    local.across = global.width;
+    local.down = global.height;
+    for (index = 0; Window.GetWidth(index); index++)
+      {
+        across = Math.Min(across, Window.GetWidth(index));
+        down = Math.Min(down, Window.GetHeight(index));
+      }
+    global.shared.left = Math.Int((global.width - across) / 2);
+    global.shared.top = Math.Int((global.height - down) / 2);
+    global.shared.width = across;
+    global.shared.height = down;
 
-# What the boot is, small at the bottom left.
-about.image = drawn("about");
-about.sprite = placed(about.image, @aboutLeft@ * scale - pad,
-                      height - @aboutBottom@ * scale - about.image.GetHeight() + pad, 10);
+    # While no screen is there, the scale stays as it was.
+    if (!global.width && global.scale)
+      local.wanted = global.scale;
+    else if (down >= 1600)
+      local.wanted = 2;
+    else
+      local.wanted = 1;
+    if (wanted != global.scale)
+      {
+        global.scale = wanted;
+        drawn_at_scale();
+      }
 
-# The prompt's panel and what's inside it, hidden until something asks.
-panel.calm = drawn("panel");
-panel.urgent = drawn("panel-urgent");
-panel.reach = @reach@ * scale;
-panel.left = middle - @panelWidth@ * scale / 2;
-panel.sprite = placed(panel.calm, panel.left - panel.reach, panel.top - panel.reach, 20);
-centre = panel.top + @panelHeight@ * scale / 2;
+    # The picture covers the canvas, centred, and fades in over the
+    # firmware's black as the lock screen's does. With no screen, as for a
+    # moment while one is replaced, there's no canvas to cover.
+    if (global.picture.image && global.width)
+      {
+        local.cover = Math.Max(global.width / global.picture.image.GetWidth(),
+                               global.height / global.picture.image.GetHeight());
+        local.scaled = global.picture.image.Scale(
+          Math.Int(global.picture.image.GetWidth() * cover + 0.5),
+          Math.Int(global.picture.image.GetHeight() * cover + 0.5));
+        local.fresh = !global.picture.sprite;
+        global.picture.sprite = sprite_at(global.picture.sprite, scaled,
+                                          (global.width - scaled.GetWidth()) / 2,
+                                          (global.height - scaled.GetHeight()) / 2, 0);
+        if (fresh)
+          global.picture.sprite.SetOpacity(0);
+      }
 
-lock.image = drawn("lock");
-lock.x = panel.left + @glyphLeft@ * scale;
-lock.sprite = placed(lock.image, lock.x, centre - lock.image.GetHeight() / 2, 21);
-typed = lock.x + lock.image.GetWidth() + @glyphGap@ * scale;
+    global.middle = global.shared.left + Math.Int(across / 2);
+    global.bottom = global.shared.top + down - Math.Int(down / 12);
+    global.said.top = global.bottom - @said@ * global.scale;
+    global.panel.top = global.said.top - global.apart - @panelHeight@ * global.scale;
+    global.head.bottom = global.panel.top - global.apart;
+    global.under.top = global.head.bottom - global.under.height;
+    global.name.top = global.under.top - (global.name.image.GetHeight() - 2 * global.pad);
+    global.name.sprite = sprite_at(global.name.sprite, global.name.image,
+                                   global.middle - global.name.image.GetWidth() / 2,
+                                   global.name.top - global.pad, 10);
+    says(global.under.showing);
 
-hints["pin"] = drawn("hint-pin");
-hints["passphrase"] = drawn("hint-passphrase");
-hints["recovery"] = drawn("hint-recovery");
-hints["again"] = drawn("hint-again");
-hint.sprite = placed(hints["pin"], typed + @hintGap@ * scale,
-                     centre - hints["pin"].GetHeight() / 2, 21);
+    global.about.sprite = sprite_at(global.about.sprite, global.about.image,
+                                    global.shared.left + @aboutLeft@ * global.scale - global.pad,
+                                    global.shared.top + down - @aboutBottom@ * global.scale
+                                      - global.about.image.GetHeight() + global.pad, 10);
 
-dot = drawn("dot");
-step = dot.GetWidth() + @dotSpacing@ * scale;
-caret.image = drawn("caret");
-caret.sprite = placed(caret.image, typed, centre - caret.image.GetHeight() / 2, 22);
+    # The prompt's panel and what's inside it.
+    global.panel.left = global.middle - @panelWidth@ * global.scale / 2;
+    global.centre = global.panel.top + @panelHeight@ * global.scale / 2;
+    if (global.panel.urging)
+      local.frame = global.panel.urgent;
+    else
+      local.frame = global.panel.calm;
+    global.panel.sprite = sprite_at(global.panel.sprite, frame,
+                                    global.panel.left - global.panel.reach,
+                                    global.panel.top - global.panel.reach, 20);
+
+    global.lock.x = global.panel.left + @glyphLeft@ * global.scale;
+    global.lock.sprite = sprite_at(global.lock.sprite, global.lock.image, global.lock.x,
+                                   global.centre - global.lock.image.GetHeight() / 2, 21);
+    global.typed = global.lock.x + global.lock.image.GetWidth() + @glyphGap@ * global.scale;
+
+    local.hint = global.hints[global.hint.which];
+    global.hint.sprite = sprite_at(global.hint.sprite, hint,
+                                   global.typed + @hintGap@ * global.scale,
+                                   global.centre - hint.GetHeight() / 2, 21);
+
+    for (index = 0; global.dots[index]; index++)
+      {
+        global.dots[index].SetImage(global.dot);
+        global.dots[index].SetPosition(Math.Int(global.typed + index * global.step),
+                                       Math.Int(global.centre - global.dot.GetHeight() / 2), 21);
+      }
+    global.caret.sprite = sprite_at(global.caret.sprite, global.caret.image,
+                                    global.typed + global.typing * global.step,
+                                    global.centre - global.caret.image.GetHeight() / 2, 22);
+
+    # The words drawn as the boot goes, lifted again at the new places.
+    global.status.said = "";
+    status_shown();
+    if (global.said.text)
+      global.said.words = lifted(global.said.text, global.said.top + @said@ * global.scale / 2);
+  }
 
 # Words drawn as the boot goes, centred on a height, in the body face and
 # lifted as the pictures' words are: over the halo drawn with the theme
 # (./nixos.nix), stretched to their width, and a copy of them in the
 # shadow's colour for the tight shadow.
-halo.left = drawn("halo-left");
-halo.middle = drawn("halo-middle");
-halo.right = drawn("halo-right");
-halo.inner = @haloInner@ * scale;
-
 fun lifted(text, centre)
   {
     local.face = "@sansFamily@ " + @sansBody@ * global.scale;
@@ -195,6 +265,19 @@ fun status_callback(text)
 
 Plymouth.SetUpdateStatusFunction(status_callback);
 
+# The first layout, for the screens there as this starts.
+mode = Plymouth.GetMode();
+if (mode == "shutdown")
+  under.showing = "stopping";
+else if (mode == "reboot")
+  under.showing = "restarting";
+else
+  under.showing = "starting";
+hint.which = "pin";
+typing = 0;
+lay_out();
+Plymouth.SetDisplayHotplugFunction(lay_out);
+
 fun asking(shown)
   {
     global.asked = shown;
@@ -232,20 +315,21 @@ fun password_callback(prompt, bullets)
     says("locked");
     asking(1);
 
+    global.panel.urging = global.wrong;
     if (global.wrong)
       global.panel.sprite.SetImage(global.panel.urgent);
     else
       global.panel.sprite.SetImage(global.panel.calm);
 
     if (global.wrong)
-      local.which = "again";
+      global.hint.which = "again";
     else if (holds(prompt, "PIN"))
-      local.which = "pin";
+      global.hint.which = "pin";
     else if (holds(prompt, "ecovery"))
-      local.which = "recovery";
+      global.hint.which = "recovery";
     else
-      local.which = "passphrase";
-    global.hint.sprite.SetImage(global.hints[which]);
+      global.hint.which = "passphrase";
+    global.hint.sprite.SetImage(global.hints[global.hint.which]);
     if (bullets > 0)
       global.hint.sprite.SetOpacity(0);
 
@@ -279,11 +363,13 @@ Plymouth.SetDisplayNormalFunction(normal_callback);
 # panel, which nothing else uses.
 fun message_callback(text)
   {
+    global.said.text = text;
     global.said.words = lifted(text, global.said.top + @said@ * global.scale / 2);
   }
 
 fun hide_message_callback(text)
   {
+    global.said.text = NULL;
     global.said.words = NULL;
   }
 
