@@ -1413,6 +1413,12 @@ in
         # shell's default font and slows its start, and it draws from the
         # theme itself.
         UnsetEnvironment = [ "QT_QPA_PLATFORMTHEME" ];
+        # The bar, the launcher, notices and the lock screen are the
+        # desktop's own, so they sit with the compositor in session.slice, at
+        # its tenfold CPU weight and behind its memory floor (modules/slices),
+        # rather than in app.slice beside Chrome and Slack, where a build's
+        # pressure reaches them first.
+        Slice = "session.slice";
         Restart = "on-failure";
         RestartSec = 1;
       };
