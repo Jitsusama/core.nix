@@ -159,7 +159,7 @@ mod tests {
         assert_eq!(
             stall(text),
             Stall {
-                some: 123456,
+                some: 123_456,
                 full: 789
             }
         );
@@ -182,9 +182,9 @@ mod tests {
         assert_eq!(
             sched("1621278039012 163383489014 6999273\n"),
             Some(Sched {
-                run_ns: 1621278039012,
-                wait_ns: 163383489014,
-                slices: 6999273
+                run_ns: 1_621_278_039_012,
+                wait_ns: 163_383_489_014,
+                slices: 6_999_273
             })
         );
         assert_eq!(sched(""), None);

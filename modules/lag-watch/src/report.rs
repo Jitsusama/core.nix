@@ -2,7 +2,7 @@
 //! how often Joel waited and how long the desktop took, so a change is
 //! judged by what it did under the same load as before it.
 
-use crate::window::{Band, Window};
+use crate::window::{Band, Window, count};
 use std::collections::BTreeMap;
 use std::fmt::Write;
 
@@ -77,7 +77,7 @@ pub fn render(windows: &[Window]) -> String {
             let Some(t) = tallies.get_mut(&(system.clone(), band)) else {
                 continue;
             };
-            let minutes = t.windows as f64 * 10.0 / 60.0;
+            let minutes = count(t.windows) * 10.0 / 60.0;
             let _ = writeln!(
                 out,
                 "  {:<7} {:>6.0} min  waited in {:>4.1}%  \
@@ -85,7 +85,7 @@ pub fn render(windows: &[Window]) -> String {
                  desktop CPU stall {:.2}%, apps' memory stall {:.2}%",
                 format!("{band:?}").to_lowercase(),
                 minutes,
-                t.troubled as f64 / t.windows as f64 * 100.0,
+                count(t.troubled) / count(t.windows) * 100.0,
                 median(&mut t.niri_p99),
                 worst(&t.niri_p99),
                 median(&mut t.niri_wait),
@@ -122,7 +122,7 @@ mod tests {
                 p99_ms: p99,
                 ..Answers::default()
             },
-            trouble: trouble.iter().map(|t| t.to_string()).collect(),
+            trouble: trouble.iter().map(ToString::to_string).collect(),
         }
     }
 

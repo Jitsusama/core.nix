@@ -38,9 +38,10 @@ const TICKS_A_WINDOW: u32 = 5;
 const KEPT_DAYS: u64 = 14;
 
 fn env_dir(var: &str, fallback: &str) -> PathBuf {
-    std::env::var_os(var).map(PathBuf::from).unwrap_or_else(|| {
-        PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join(fallback)
-    })
+    std::env::var_os(var).map_or_else(
+        || PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join(fallback),
+        PathBuf::from,
+    )
 }
 
 fn runtime() -> PathBuf {
@@ -130,7 +131,7 @@ fn niri_socket() -> Option<PathBuf> {
                 .file_name()
                 .map(|n| n.to_string_lossy().to_string())
                 .unwrap_or_default();
-            n.starts_with("niri.") && n.ends_with(".sock")
+            n.starts_with("niri.") && p.extension().is_some_and(|e| e == "sock")
         })
         .collect();
     found.sort();
@@ -161,13 +162,13 @@ fn system() -> String {
 fn seconds_now() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0)
+        .map_or(0, |d| d.as_secs())
 }
 
 /// A day's name, YYYY-MM-DD in UTC, from seconds since 1970.
 fn day(seconds: u64) -> String {
-    let z = (seconds / 86_400) as i64 + 719_468;
+    let days = i64::try_from(seconds / 86_400).expect("a u64 of seconds is under 2^47 days");
+    let z = days + 719_468;
     let era = z.div_euclid(146_097);
     let doe = z.rem_euclid(146_097);
     let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
@@ -185,7 +186,7 @@ fn keep(window: &Window) {
     let text = serde_json::to_string_pretty(window).expect("a window serialises");
     let fresh = dir.join("status.json.new");
     if fs::write(&fresh, text)
-        .and_then(|_| fs::rename(&fresh, dir.join("status.json")))
+        .and_then(|()| fs::rename(&fresh, dir.join("status.json")))
         .is_err()
     {
         eprintln!("couldn't write {}", dir.display());
@@ -210,7 +211,8 @@ fn prune() {
     };
     for entry in entries.flatten() {
         let name = entry.file_name().to_string_lossy().to_string();
-        if name.ends_with(".jsonl") && name < format!("{oldest}.jsonl") {
+        let history = entry.path().extension().is_some_and(|e| e == "jsonl");
+        if history && name < format!("{oldest}.jsonl") {
             let _ = fs::remove_file(entry.path());
         }
     }
@@ -257,7 +259,7 @@ fn now() -> ExitCode {
     for line in &w.trouble {
         println!("  {line}");
     }
-    let wait = |l: &str| w.waits.get(l).map(|x| x.mean_us).unwrap_or(0.0);
+    let wait = |l: &str| w.waits.get(l).map_or(0.0, |x| x.mean_us);
     println!(
         "niri answers in {:.1} ms (p99 {:.1}); niri waits {:.0} us a turn, sound {:.0} us",
         w.niri.p50_ms,

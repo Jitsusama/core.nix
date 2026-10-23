@@ -11,6 +11,26 @@ use crate::kernel::{Group, Sched, Stall};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
+/// Nanoseconds, microseconds or a tally, as a float. Exact: every one here
+/// is far below 2⁵³.
+#[allow(clippy::cast_precision_loss)]
+pub fn float(n: u64) -> f64 {
+    n as f64
+}
+
+/// How many there are, as a float; as exact as `float`.
+#[allow(clippy::cast_precision_loss)]
+pub fn count(n: usize) -> f64 {
+    n as f64
+}
+
+/// The place in a list nearest a fractional one; before the first is the
+/// first.
+#[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+fn nearest(at: f64) -> usize {
+    at.round().max(0.0) as usize
+}
+
 /// What the kernel said at one moment.
 #[derive(Clone, Debug, Default)]
 pub struct Snapshot {
@@ -62,7 +82,7 @@ impl Answers {
         let mut t = times_ms.to_vec();
         t.sort_by(f64::total_cmp);
         let q = |p: f64| {
-            t.get(((t.len() as f64 - 1.0) * p).round() as usize)
+            t.get(nearest((count(t.len()) - 1.0) * p))
                 .copied()
                 .unwrap_or(0.0)
         };
@@ -115,7 +135,7 @@ pub struct Window {
 }
 
 fn share(now: Stall, then: Stall, seconds: f64) -> (f64, f64) {
-    let pct = |a: u64, b: u64| a.saturating_sub(b) as f64 / (seconds * 1e6) * 100.0;
+    let pct = |a: u64, b: u64| float(a.saturating_sub(b)) / (seconds * 1e6) * 100.0;
     (pct(now.some, then.some), pct(now.full, then.full))
 }
 
@@ -168,14 +188,14 @@ pub fn between(then: &Snapshot, now: &Snapshot, niri: Answers, ended: u64, syste
         entry.0 += wait;
         entry.1 += slices;
         if slices > 0 {
-            entry.2 = entry.2.max(wait as f64 / slices as f64 / 1000.0);
+            entry.2 = entry.2.max(float(wait) / float(slices) / 1000.0);
         }
     }
     let waits: BTreeMap<String, Wait> = waits
         .into_iter()
         .map(|(label, (wait, slices, worst))| {
             let mean_us = if slices > 0 {
-                wait as f64 / slices as f64 / 1000.0
+                float(wait) / float(slices) / 1000.0
             } else {
                 0.0
             };
