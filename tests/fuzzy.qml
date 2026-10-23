@@ -102,13 +102,12 @@ QtObject {
     ]), []))
 
     readonly property var firsts: ({
-        "vu": "Turn the volume up",
+        "vol up": "Turn the volume up",
         "vol": "Turn the volume up",
-        "vold": "Turn the volume down",
+        "vol down": "Turn the volume down",
         "lo": "Lock",
         "lock": "Lock",
-        "lck": "Lock",
-        "ws up": "Move the workspace up",
+        "workspace up": "Move the workspace up",
         "below": "Focus the screen below",
         "tab": "Show the column's windows as tabs, or stacked",
         "float": "Float the window, or tile it again",
@@ -118,15 +117,14 @@ QtObject {
         "term below": "Open a terminal below this window",
         "kit": "kitty",
         "chr": "Google Chrome",
-        "gc": "Google Chrome",
         "chrome": "Google Chrome",
         "sl": "Slack",
-        "nv": "Neovim",
+        "neo": "Neovim",
         "1p": "1Password",
         "pass": "1Password",
-        "ws 3": "Go to workspace 3",
+        "workspace 3": "Go to workspace 3",
         "screenshot": "Take a screenshot of a region",
-        "shot win": "Take a screenshot of the window",
+        "screenshot win": "Take a screenshot of the window",
         "dim": "Dim the screen",
         "bright": "Brighten the screen",
         "mute mic": "Mute the microphone, or unmute it",
@@ -142,7 +140,9 @@ QtObject {
         "wide": "Widen the column",
         "every key": "Give every key to the window, or take them back"
     })
-    readonly property var nothing: ["zz", "qx", "xylophone", "kc", "zq"]
+    // Letters that start no word find nothing, initials and letters
+    // inside a word among them.
+    readonly property var nothing: ["zz", "qx", "xylophone", "kc", "zq", "gc", "vu", "lck", "shot", "rome", "nv"]
     readonly property var atMost: ({
         "close": 1,
         "tab": 1,

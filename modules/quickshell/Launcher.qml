@@ -134,7 +134,16 @@ Scope {
         const before = answer ? answer.rows.length : 0;
         answer = answering(typed, fresh);
         const rows = answer ? answer.rows : [];
-        const below = placed(found, gathered);
+        // A thing shows once: a collection found whole stands for what's in
+        // it, so neither its own rows, nor the things that live in it
+        // (`inside` names it), nor a shortcut that opens it, whose chord its
+        // row already draws, are listed beside it.
+        const whole = new Set(found.filter(row => row.key.startsWith("collection:"))
+            .map(row => row.opens));
+        const once = row => row.key.startsWith("collection:")
+            || !(whole.has(row.inside ?? "") || whole.has(row.opens ?? ""));
+        const below = placed(found.filter(once),
+            gathered.filter(row => !whole.has(row.from.settings.name)));
         matches = rows.concat(below);
         // An answer only started gives way to a name that starts the same.
         const meant = answer && !(answer.question && below.length > 0 && startsAWord(below[0].name, typed));
@@ -719,8 +728,9 @@ Scope {
     }
 
     // What the launcher shows, as JSON: whether it holds the keyboard,
-    // what's typed and held, and the row Return takes, with its chord and
-    // whether an answer is still being asked for. A script waits on this before it
+    // what's typed and held, the first twenty rows' names in order (a
+    // collection holds thousands), and the row Return
+    // takes, with its chord and whether an answer is still being asked for. A script waits on this before it
     // presses a key, rather than guessing how long the launcher takes.
     function showing() {
         const row = root.selected;
@@ -729,6 +739,7 @@ Scope {
             keys: root.open && prompt.Window.active,
             typed: root.typed,
             held: root.held.map(step => step.row.chip ?? step.row.name),
+            rows: root.matches.slice(0, 20).map(row => row.name),
             asking: !!root.asking,
             selected: !row ? null : {
                 name: row.name,

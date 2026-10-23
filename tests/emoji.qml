@@ -11,7 +11,6 @@ Item {
     readonly property var firsts: ({
         "fire": "fire",
         "thumbs": "thumbs up",
-        "thup": "thumbs up",
         "shrug": "person shrugging",
         "clap": "clapping hands",
         "red heart": "red heart",
@@ -29,7 +28,8 @@ Item {
         "warn": "warning",
         "check": "check mark"
     })
-    readonly property var nothing: ["zzzz", "qxj", "kitty litter box"]
+    // Letters scattered through a name find nothing, as everywhere else.
+    readonly property var nothing: ["zzzz", "qxj", "kitty litter box", "thup"]
 
     function quoted(value) {
         return JSON.stringify(value);
@@ -50,9 +50,9 @@ Item {
                 failures.push(`"${query}" put first ${quoted(found[0])}, not "${firsts[query]}"; `
                     + `then ${quoted(found.slice(1, 4))}`);
         }
-        // Found by where words start, a match is as tidy as can be; found
-        // loosely, less so, which places it among the launcher's rows.
-        for (const [query, grade] of [["tada", 0], ["party pop", 0], ["thup", 1]]) {
+        // Found by where words start, a match is as tidy as can be, the
+        // only way one is found.
+        for (const [query, grade] of [["tada", 0], ["party pop", 0]]) {
             const words = Fuzzy.words(query);
             const got = Emoji.grade(Emoji.search(all, words), words);
             if (got !== grade)

@@ -13,7 +13,9 @@
 // theme's colour for its kind (hue), its chord or what it is (chord, side),
 // what Return and Shift+Return run (run, below), whether running it waits
 // for the launcher to be gone (later) or happens while it still holds the
-// keys (now, for the clipboard), where it is (context), and what else can
+// keys (now, for the clipboard), where it is (context), the collection it
+// lives in as well, by its provider's name (inside), so a search that
+// finds the collection whole lists it only there, and what else can
 // be done to it (verbs, a function giving rows of the same shape), nested
 // when those rows are things with verbs of their own, a level down. A verb
 // that needs a target asks for one (ask) from the rows `targets` gives,
