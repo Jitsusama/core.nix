@@ -46,6 +46,16 @@
 # 0. Everything outside the daemon, what Joel uses, keeps its lead. Nix's own
 # use-cgroups would give each build a cgroup, but never hands them the CPU
 # controller, and turning it on restarts the daemon under every build.
+#
+# A check can run its machines as systemd-nspawn containers rather than
+# virtual machines, which start in a second or two rather than booting a
+# kernel. A container needs a range of user ids of its own, which a build
+# asking for the uid-range feature gets once the daemon allocates build users
+# itself rather than taking nixbld's. Only those builds get a cgroup of their
+# own, which Nix makes under the daemon's, so they stay in build.slice and
+# under its limits; every other build runs as before. vm-first looks only in
+# the daemon's own cgroup, where every check's virtual machine still runs,
+# since none asks for a range of ids; one beside a container would be missed.
 { pkgs, ... }:
 let
   gib = 1024 * 1024 * 1024;
@@ -54,6 +64,13 @@ in
 {
   nix.daemonCPUSchedPolicy = "batch";
   nix.daemonIOSchedClass = "idle";
+
+  nix.settings.auto-allocate-uids = true;
+  nix.settings.experimental-features = [
+    "auto-allocate-uids"
+    "cgroups"
+  ];
+  nix.settings.extra-system-features = [ "uid-range" ];
 
   nix.settings.min-free = 24 * gib;
   nix.settings.max-free = 64 * gib;
