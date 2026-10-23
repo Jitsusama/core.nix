@@ -2061,7 +2061,9 @@ pkgs.testers.runNixOSTest {
       # dialog, holding the apps the portal offers. Return opens the picture
       # with the one taken, and the portal says it opened; asked again, Escape
       # opens nothing, and the portal says it was refused; and each ask's
-      # socket goes once it's answered.
+      # socket goes once it's answered. Each time the apps offered change
+      # while it waits, as the portal says when apps are installed, so a
+      # pick and a refusal still answer the ask as it was first held.
       with subtest("the launcher asks what to open a picture with, for the portal"):
           portal_png = "/home/${account}/portal-picked.png"
           machine.succeed(
@@ -2103,8 +2105,15 @@ pkgs.testers.runNixOSTest {
               except AssertionError as unheard:
                   raise AssertionError(f"{unheard}; what was said:\n{portal_told()}") from None
 
+          # Offers only swayimg now, one of the apps first offered.
+          def offer_only_swayimg():
+              reply = machine.succeed("ls /run/user/1000/open-with/*.sock").strip()
+              as_account(f"qs ipc call open-with update {reply} swayimg")
+              launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Swayimg")
+
           ask_portal()
           photograph("open-with")
+          offer_only_swayimg()
           machine.send_key("ret")
           machine.wait_until_succeeds(f"grep -qx 0 {portal_said}", timeout=60)
           machine.wait_until_succeeds(opened_with, timeout=60)
@@ -2114,6 +2123,7 @@ pkgs.testers.runNixOSTest {
           machine.wait_until_fails("pgrep -u ${account} -f '[p]ortal-picked.png'", timeout=30)
 
           ask_portal()
+          offer_only_swayimg()
           machine.send_key("esc")
           launcher_until(lambda shown: not shown["open"])
           machine.wait_until_succeeds(f"grep -qx 1 {portal_said}", timeout=60)
