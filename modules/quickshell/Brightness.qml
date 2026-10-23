@@ -3,7 +3,9 @@
 // pick from its own changes for the light, and writes each pick to a file
 // this watches, so the bar shows for the keys and never while the screen
 // follows the room. The keyboard's backlight shows the same way when its key
-// changes it (Lights.qml), in the same place: whichever changed last.
+// changes it (Lights.qml), in the same place: whichever changed last. So
+// does the desk light (DeskLight.qml) when its brightness or warmth changes,
+// by its own buttons or the launcher, but not when a camera lights it.
 import qs
 import Quickshell
 import Quickshell.Io
@@ -47,6 +49,18 @@ Scope {
         }
     }
 
+    Connections {
+        target: DeskLight
+
+        function onBrightened() {
+            root.show("desk");
+        }
+
+        function onWarmed() {
+            root.show("desk-warmth");
+        }
+    }
+
     Timer {
         id: hide
         interval: 1500
@@ -66,5 +80,23 @@ Scope {
         visible: root.shown === "keyboard"
         level: Lights.lit
         off: Lights.dark
+    }
+
+    Meter {
+        name: "desk-light"
+        glyph: String.fromCodePoint(0xf095f)
+        visible: root.shown === "desk"
+        level: DeskLight.light === null ? 0 : DeskLight.light.percent / 100
+    }
+
+    // From warm, empty, to cool, full, said in kelvin.
+    Meter {
+        name: "desk-warmth"
+        glyph: String.fromCodePoint(0xf05a8)
+        visible: root.shown === "desk-warmth"
+        level: DeskLight.light === null ? 0
+            : (DeskLight.light.kelvin - DeskLight.warmest) / (DeskLight.coolest - DeskLight.warmest)
+        reading: DeskLight.light === null ? "" : `${DeskLight.light.kelvin} K`
+        widestReading: "6500 K"
     }
 }
