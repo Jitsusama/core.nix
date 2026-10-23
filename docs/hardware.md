@@ -221,6 +221,12 @@ to 64. Without it, a build's memory pressure backed up the buffers programs
 draw into, and the compositor waited on their locks while they were read
 back, so a key let go of read late and repeated.
 
+The default of 8 wasn't enough here. Under a kernel build, traced for 5
+minutes at each: at 8, kswapd backed up 141 window buffers, and niri waited
+over 10 ms on a buffer lock 25 times; at 64, with kswapd scanning as much,
+it backed up none, and no wait passed 4 ms. A udev rule in `next.nix` sets
+64 as the GPU binds.
+
 `dp-byte-reads-only-when-longer` is Chia-Lin Kao's posting to intel-gfx of
 2026-06-16. The fallback for USB-C hubs that fail multi-byte reads retried a
 failed read byte by byte even when it was one byte, the same read again,
@@ -643,6 +649,18 @@ when no CTA block gives one, so the backlight runs from 0 to 400 in steps of
 one nit, and a level keeps the same nits it had before. The panel answers 0
 when asked what it was last set to, so `actual_brightness` always reads 0;
 `brightness` holds the level set.
+
+The driver picks how to set brightness from the panel's eDP revision, read
+once at boot. Since 2026-10-22 that read has come back wrong on every boot,
+though the panel answers 0x06, eDP 1.5, when asked later. The driver then
+took a PWM signal, which this OLED ignores, so the keys did nothing until 0
+turned it off, and `max_brightness` read 192000. The panel also offers
+Intel's interface (TCON capability 1, brightness in nits), which the driver
+tries only for a panel older than eDP 1.5 and, by default, only with HDR
+metadata in the EDID. `xe.enable_dpcd_backlight=3` drops that last
+condition, so a bad read gets Intel's interface, and a good one still gets
+VESA's. Why the read goes wrong isn't known yet: the first bad boot was also
+the first at a desk.
 
 ### The Touchpad's Click
 

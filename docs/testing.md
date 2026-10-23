@@ -146,6 +146,8 @@ kernel guide][2] says what that catches.
 | `dell-events-are-known` | the XPS 14's dell-wmi ignores the EC's hourly type 0x0012 event rather than log an unknown key |
 | `the-colour-camera-says-it-is-upside-down` | the XPS 14's camera bridge reports its colour sensor rotated 180 degrees |
 | `the-npu-finds-its-compiler` | the XPS 14's graphics drivers hold the NPU's driver and Intel's compiler beside it |
+| `the-window-buffers-stay-under-load` | the XPS 14's udev sets xe's `shrinker_non_purgeable_seeks` to 64, so reclaim under a build leaves window buffers alone |
+| `the-panel-dims-after-a-bad-read` | the XPS 14's kernel may use Intel's brightness interface when its boot-time read of the panel's eDP revision comes back wrong |
 | `the-gpu-security-link-loads-with-the-gpu` | the XPS 14's initrd loads mei_me and mei_gsc_proxy with xe, inside the 20 s xe waits for its CSME link |
 | `platform-profiles-reach-the-legacy-file` | every profile Dell's driver offers, the XPS 14's SoC slider takes too |
 | `ipu7-outlives-its-open-files` | the XPS 14's capture side is freed when its last node closes, not when the IPU unbinds |
