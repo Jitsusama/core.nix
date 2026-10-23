@@ -1896,10 +1896,10 @@ pkgs.testers.runNixOSTest {
               "Take a screenshot of the window",
           ]
 
-          def once(shown, first):
+          def once(shown, leading):
               rows = shown["rows"]
               return (
-                  rows[: len(first)] == first
+                  rows[: len(leading)] == leading
                   and len(set(rows)) == len(rows)
                   and not set(rows) & set(stood_for)
               )
@@ -1907,7 +1907,7 @@ pkgs.testers.runNixOSTest {
           # What a keyboard's caps lock says may follow "lock": that's
           # another thing. Home, with nothing typed, lists nothing twice
           # either, a collection picked often staying in its own place.
-          for typed, first in [
+          for typed, leading in [
               ("tuple", ["Tuple"]),
               ("lock", ["Lock"]),
               ("kitty", ["kitty"]),
@@ -1916,7 +1916,7 @@ pkgs.testers.runNixOSTest {
               ("", []),
           ]:
               answer(typed)
-              launcher_until(lambda shown, first=first: once(shown, first))
+              launcher_until(lambda shown, leading=leading: once(shown, leading))
               machine.send_key("esc")
               machine.wait_until_fails(closed, timeout=10)
           answer("zqxj")
