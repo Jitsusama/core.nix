@@ -1,6 +1,14 @@
 // A row of a palette's list, the launcher's or the margin's panel: its glyph
 // in a column of its own, its name, and on the right its chord or what it
 // is, muted (docs/design.md, Shape and Kinds).
+//
+// A row that's a thing, a noun, says what kind of thing at its right edge
+// (kind: "program", "window"), and what more it has to say muted after its
+// name, so every row says what it is. A row that's an act or a set says so
+// by its words ("Lock the screen", "Windows"), so it has no kind, and its
+// right edge keeps its chord; a noun's chord is taught by the foot instead.
+// Of four ways drawn at full size, this one read best (2026-10-23): the
+// kind never comes before the thing, and the acts keep their chords.
 // Not Row, which is QtQuick's own and would silently win.
 pragma ComponentBehavior: Bound
 import QtQuick
@@ -16,6 +24,12 @@ Rectangle {
     property string side
     // A word after the name, muted: "here" beside a workspace.
     property string count
+    // What kind of thing it is, for a noun; empty for an act or a set.
+    property string kind
+    // What's said after the name: its count, and for a noun what would
+    // have been on the right.
+    readonly property string detail: [count, kind !== "" ? side : ""]
+        .filter(part => part !== "").join(" \u00b7 ")
     // Said by the shell rather than found, so it's muted and can't be picked.
     property bool quiet: false
 
@@ -41,7 +55,8 @@ Rectangle {
         id: nameText
         x: Theme.space.l + Theme.space.xxl
         width: Math.max(0, Math.min(implicitWidth, right.x - x - Theme.space.xxl
-            - (row.count === "" ? 0 : countText.implicitWidth + Theme.space.m)))
+            - (row.detail === "" ? 0 : Math.min(countText.implicitWidth, row.width * 0.3)
+                + Theme.space.m)))
         anchors.verticalCenter: parent.verticalCenter
         text: row.name
         textFormat: row.selected || row.quiet ? Text.PlainText : Text.StyledText
@@ -55,9 +70,11 @@ Rectangle {
     Text {
         id: countText
         x: nameText.x + nameText.width + Theme.space.m
+        width: Math.min(implicitWidth, row.width * 0.3)
+        elide: Text.ElideRight
         anchors.verticalCenter: parent.verticalCenter
-        visible: row.count !== ""
-        text: row.count
+        visible: row.detail !== ""
+        text: row.detail
         color: Theme.muted
         font.family: Theme.mono.family
         font.pointSize: Theme.mono.large
@@ -69,8 +86,9 @@ Rectangle {
         anchors.right: parent.right
         anchors.rightMargin: Theme.space.l
         anchors.verticalCenter: parent.verticalCenter
-        readonly property bool chorded: row.chord.length > 0
-        readonly property bool sided: !chorded && row.side !== ""
+        readonly property bool chorded: row.kind === "" && row.chord.length > 0
+        readonly property string said: row.kind !== "" ? row.kind : row.side
+        readonly property bool sided: !chorded && said !== ""
 
         width: chorded ? keys.width : sided ? side.width : 0
         height: chorded ? keys.height : side.height
@@ -88,7 +106,7 @@ Rectangle {
             // however long it runs it can't reach the name.
             width: Math.min(implicitWidth, row.width * 0.45)
             elide: Text.ElideRight
-            text: row.side
+            text: right.said
             color: Theme.muted
             font.family: Theme.mono.family
             font.pointSize: Theme.mono.large

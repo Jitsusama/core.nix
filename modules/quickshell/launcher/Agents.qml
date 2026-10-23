@@ -56,6 +56,11 @@ Provider {
             ? SpendWatch.sessions[presence.session] ?? "" : "";
         return member({
             key: `agent:${session.address}`,
+            // The session is its window, which the windows and its quest
+            // also find, and it says the most of the three, so it's the
+            // one row left of them (Launcher.qml's compose).
+            is: `window:${session.window.id}`,
+            rich: 2,
             verb: "switch",
             name: session.title,
             // Its address, folder and quest's id, made ready to match, since

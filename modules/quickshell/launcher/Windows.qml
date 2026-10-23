@@ -1,6 +1,10 @@
-// Every open window, found by its title and by its program's name, the most
-// recently used first, each saying where it is: this window, or the
-// workspace it's on when that's another. Return goes to it, and
+// Every open window, found by its own title, the most recently used first,
+// each saying its program and, when that's another, the workspace it's on;
+// windows whose titles read the same say their column as well, so no two
+// rows read alike. A window titled only by its program is that program's
+// row (Applications.qml), which lists its windows. Its program's name
+// finds the program, not each of its windows, so "kitty" is one row and
+// not every terminal open (Joel, 2026-10-23). Return goes to it, and
 // Shift+Return opens another of its program below it. Its verbs move it to
 // another workspace, float or tile it, copy its title or close it. What niri
 // says of its windows comes through Niri, from niri's own event stream, so
@@ -8,12 +12,14 @@
 //
 // They're also a collection, which Super+Tab opens on its own: every window
 // but this one, the one used last first, so Super+Tab and Return go back to
-// it and a few letters find any other. It adds no row of its own to the
+// it and a few letters find any other, there by its program's name too,
+// since everything there is a window. It adds no row of its own to the
 // search, where each window is already found by itself.
 import Quickshell
 import qs
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
+import "Numbers.js" as Numbers
 
 Provider {
     id: provider
@@ -37,8 +43,8 @@ Provider {
         return things.filter(window => !window.focused);
     }
 
-    // Found by title, or by program more loosely, as the main search finds
-    // them; the tidiest matches kept, and among equals the one used last.
+    // Found by title, or by program more loosely; the tidiest matches kept,
+    // and among equals the one used last.
     function search(typed) {
         const words = Fuzzy.words(typed);
         const need = Fuzzy.letters(words);
@@ -52,9 +58,9 @@ Provider {
                     recency: recency, choice: window });
                 return;
             }
-            if (!window.keywords || (window.keywords.mask & need) !== need)
+            if ((window.owner.mask & need) !== need)
                 return;
-            const byWord = Fuzzy.match(window.keywords, words, false);
+            const byWord = Fuzzy.match(window.owner, words, false);
             if (byWord.score >= 0)
                 found.push({ item: window.prepared, score: byWord.score / 4, grade: byWord.grade,
                     recency: recency, choice: window });
@@ -72,27 +78,52 @@ Provider {
             const stamp = window.focus_timestamp;
             return stamp ? stamp.secs * 1e9 + stamp.nanos : 0;
         };
-        return Object.values(Niri.windows)
+        const named = Object.values(Niri.windows)
             .sort((a, b) => when(b) - when(a))
             .map(window => {
                 const entry = window.app_id ? DesktopEntries.heuristicLookup(window.app_id) : null;
                 const program = entry ? entry.name : (window.app_id ?? "");
-                const title = provider.tidy(window.title ?? "", program) || program;
+                const own = provider.tidy(window.title ?? "", program);
+                return {
+                    window: window,
+                    entry: entry,
+                    program: program,
+                    title: own || program,
+                    untitled: own === "" || own === program
+                };
+            });
+        // How many windows each title is, so those alike say their column.
+        const alike = {};
+        for (const one of named)
+            alike[one.title] = (alike[one.title] ?? 0) + 1;
+        return named.map(one => {
+                const window = one.window;
+                const entry = one.entry;
+                const program = one.program;
+                const title = one.title;
                 const workspace = Niri.workspaces[window.workspace_id];
+                const column = (window.layout?.pos_in_scrolling_layout ?? [])[0];
+                const elsewhere = workspace && !(here && workspace.id === here.id);
+                const where = [elsewhere ? `workspace ${workspace.idx}` : "",
+                    alike[title] > 1 && column ? `${Numbers.ordinal(column)} column` : ""]
+                    .filter(part => part !== "").join(", ");
                 const below = entry
                     ? () => provider.launcher.grid.under(window.id, provider.command(entry)) : null;
                 return thing({
+                    // What learning knows it by, which outlives the window.
                     key: `window:${window.app_id}:${title}`,
+                    // What it is now: this window, or its program when the
+                    // program's name is all its title says.
+                    is: one.untitled && entry ? `program:${entry.id}` : `window:${window.id}`,
+                    id: window.id,
+                    program: entry ? entry.id : (window.app_id ?? ""),
+                    owner: Fuzzy.prepare(program),
                     verb: "switch",
                     name: title,
-                    keywords: program,
                     glyph: programGlyph(entry ? entry.id : window.app_id),
                     hue: "program",
-                    // Where a window is matters only when it's elsewhere, so
-                    // a list of the windows here isn't "here" over and over.
-                    side: window.id === Niri.current ? "this window"
-                        : workspace && here && workspace.id === here.id ? ""
-                        : workspace ? `workspace ${workspace.idx}` : "",
+                    side: [title === program ? "" : program, where]
+                        .filter(part => part !== "").join(" \u00b7 "),
                     context: workspace ? `on workspace ${workspace.idx}` : "",
                     focused: window.id === Niri.current,
                     run: () => Niri.act({ FocusWindow: { id: window.id } }),
@@ -216,16 +247,5 @@ Provider {
                 })
             });
         }).filter(target => target.key !== `workspace:${from ? from.idx : -1}`);
-    }
-
-    // A title without the program's name trailing it, as Chrome adds
-    // " - Google Chrome", since the glyph already says whose window it is.
-    function tidy(title, program) {
-        if (program === "")
-            return title;
-        for (const joint of [" - ", " \u2013 ", " \u2014 ", " | "])
-            if (title.endsWith(joint + program))
-                return title.slice(0, title.length - joint.length - program.length);
-        return title;
     }
 }

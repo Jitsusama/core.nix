@@ -103,6 +103,7 @@ let
     "launcher/Zones.js"
     "launcher/Colours.js"
     "launcher/Asking.js"
+    "launcher/Rank.js"
     "launcher/Emoji.js"
   ];
 
