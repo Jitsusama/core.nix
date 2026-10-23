@@ -306,8 +306,9 @@ pub fn write(
         },
     )?;
     // Read back as the stick will open it: with the passphrase, every file
-    // extracted and checked.
-    meter.stage(READING_BACK, Some(imaged + needed));
+    // extracted and checked. What was written is known now, where the
+    // write's total was reckoned with room to spare.
+    meter.stage(READING_BACK, Some(meter.counted()));
     stick::verify(&written, disk, meter, |store| {
         carried_back(bundles, store)?;
         let mut sealed = vec![];
@@ -347,7 +348,7 @@ fn write_repair(
             .map_err(kept)?;
         carry(bundles, store)
     })?;
-    meter.stage(READING_BACK, Some(imaged));
+    meter.stage(READING_BACK, Some(meter.counted()));
     stick::verify(&written, disk, meter, |store| {
         carried_back(bundles, store)?;
         if vault::manifest(store)? == repair_manifest() {
@@ -628,12 +629,13 @@ impl Step for WriteStick {
                 remedy: "plug in a bigger stick instead".into(),
             });
         }
-        let mut asks = vec![Ask::Act {
+        let mut asks = vec![Ask::Confirm {
             id: "stick",
             what: format!(
                 "{} is the stick to write. Everything on it will be replaced.",
                 described(&stick)
             ),
+            verb: "write it",
         }];
         if let Some(payload) = &self.payload {
             let words = self.words()?.expose();

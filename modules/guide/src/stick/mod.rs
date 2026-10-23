@@ -8,6 +8,7 @@
 //! the stick first, so it reads what reached the stick rather than what
 //! was sent: a write that only looked done once booted a laptop to `grub>`.
 
+pub mod behind;
 pub mod blocks;
 pub mod device;
 pub mod gpt;
@@ -21,6 +22,7 @@ use sha2::{Digest, Sha256};
 use crate::Fault;
 use crate::sign::Signer;
 use crate::vault::store::{Fat, Store};
+use behind::{Behind, Kernel};
 use blocks::{Partition, Unflushed};
 use gpt::{ALIGNMENT, EFI_SYSTEM, SECTOR, Table};
 
@@ -160,6 +162,11 @@ pub fn write(
         }
     }
 
+    // Written no further ahead of the stick than a window or two, so what
+    // the meter counts is what the stick has.
+    let opened: &File = disk;
+    let disk = &mut Behind::new(opened, Kernel(opened));
+
     // The head holds the protective MBR and the primary table; the tail,
     // the backup. Clearing both first means nothing reads a table until
     // everything it points at is written.
@@ -214,7 +221,8 @@ pub fn write(
             .and_then(|()| region.flush())
             .map_err(unwritten)?;
     }
-    disk.sync_all().map_err(unwritten)?;
+    disk.finish().map_err(unwritten)?;
+    opened.sync_all().map_err(unwritten)?;
     Ok(Written {
         vault,
         table,

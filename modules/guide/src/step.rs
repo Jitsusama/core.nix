@@ -66,6 +66,13 @@ pub enum Ask {
     },
     /// Something they do away from the keyboard, said plainly.
     Act { id: &'static str, what: String },
+    /// Something they agree to before it's done, such as which stick is
+    /// written over, with `verb` what Return then does, as "write it".
+    Confirm {
+        id: &'static str,
+        what: String,
+        verb: &'static str,
+    },
     /// A word they type back to show they mean it, such as a disk's name.
     TypeBack {
         id: &'static str,
@@ -103,6 +110,7 @@ impl Ask {
             Ask::Secret { id, .. }
             | Ask::SecretOr { id, .. }
             | Ask::Act { id, .. }
+            | Ask::Confirm { id, .. }
             | Ask::TypeBack { id, .. }
             | Ask::Show { id, .. }
             | Ask::Recall { id, .. }

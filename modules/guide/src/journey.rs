@@ -59,9 +59,21 @@ impl Journey {
     }
 
     pub fn next(&self, here: Place, machine: &mut dyn Machine) -> Result<Next<'_>, Fault> {
+        self.next_seeing(here, machine, &mut Vec::new())
+    }
+
+    /// The same as `next`, with what shows each step here found done added
+    /// to `seen`, in order, so steps done before the guide started again
+    /// can be listed with the rest.
+    pub fn next_seeing(
+        &self,
+        here: Place,
+        machine: &mut dyn Machine,
+        seen: &mut Vec<String>,
+    ) -> Result<Next<'_>, Fault> {
         for step in self.steps.iter().filter(|step| step.place() == here) {
             match step.observe(machine)? {
-                Standing::Done { .. } => {}
+                Standing::Done { evidence } => seen.push(evidence),
                 Standing::Needed { asks } => {
                     return Ok(Next::Run {
                         step: step.as_ref(),

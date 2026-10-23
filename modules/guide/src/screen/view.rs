@@ -344,7 +344,7 @@ fn step(theme: &Theme, moment: &Moment, inside: usize) -> (Vec<Line>, Option<(us
             lines.extend(marked(
                 span(Role::Success, theme.mark("done")),
                 Role::Text,
-                text,
+                &capitalised(text),
                 inside,
             ));
             footer = vec![];
@@ -444,28 +444,25 @@ fn asked(
             ));
             (None, foot("done"))
         }
-        Ask::Secret { name, .. } => {
+        Ask::Confirm { what, verb, .. } => {
             lines.extend(said(
                 Role::Text,
-                &format!("Type {name}, then press Return."),
+                &format!("{what} Press Return to {verb}."),
                 inside,
             ));
-            lines.push(vec![]);
-            let field = (
-                span(Role::Machine, theme.mark("locked")),
-                hidden(theme, typed),
-            );
-            (Some(field), foot("enter it"))
+            (None, foot(verb))
         }
-        Ask::SecretOr { name, or, .. } => {
+        Ask::Secret { name, .. } | Ask::SecretOr { name, .. } => {
             lines.extend(said(
                 Role::Text,
                 &format!("Type {name}, then press Return."),
                 inside,
             ));
             lines.push(vec![]);
-            lines.extend(said(Role::Text, &format!("Or {or}."), inside));
-            lines.push(vec![]);
+            if let Ask::SecretOr { or, .. } = ask {
+                lines.extend(said(Role::Text, &format!("Or {or}."), inside));
+                lines.push(vec![]);
+            }
             let field = (
                 span(Role::Machine, theme.mark("locked")),
                 hidden(theme, typed),
@@ -618,6 +615,32 @@ mod tests {
         );
         assert_eq!(shown.last().unwrap(), "  Return enter it    Ctrl+C leave");
         assert_eq!(shown.len(), 23, "the keys sit a line above the foot");
+    }
+
+    #[test]
+    fn a_confirmation_says_what_return_does() {
+        let ask = Ask::Confirm {
+            id: "stick",
+            what: "The stick is the one to write.".into(),
+            verb: "write it",
+        };
+        let moment = Moment::Asking {
+            title: "Write the stick",
+            ask: &ask,
+            typed: "",
+            chosen: 0,
+            refused: None,
+            back: false,
+        };
+        let shown = text(&draw(&theme(), &at(), &moment, 80, 24));
+        assert!(
+            shown
+                .iter()
+                .any(|line| line
+                    .contains("The stick is the one to write. Press Return to write it.")),
+            "{shown:#?}"
+        );
+        assert_eq!(shown.last().unwrap(), "  Return write it    Ctrl+C leave");
     }
 
     #[test]
