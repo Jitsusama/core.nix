@@ -183,6 +183,14 @@ in
       # at 935 MiB in a call, past that floor on its own.
       CPUWeight = 1000;
       Nice = -10;
+      # WebRTC asks real-time priorities of 96 to 98 for its sound and
+      # video threads and the lowest for its low-priority one, so under the
+      # account's limit of 10 only that last one was granted, and it ran
+      # ahead of the call's sound and of the desktop. Tuple is one static
+      # program, so no shim can map its asks into the limit in order; with
+      # no real-time priority at all, every thread of it waits its turn at
+      # the daemon's raised share, its sound alongside the rest.
+      LimitRTPRIO = 0;
     };
     Install.WantedBy = [ "graphical-session.target" ];
   };

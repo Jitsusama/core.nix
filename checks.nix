@@ -4233,6 +4233,17 @@ in
         touch $out
       '';
 
+    # WebRTC inside Tuple asks real-time priorities in an order the account's
+    # limit inverts, granting only its low-priority thread one, so the daemon
+    # is given none, and comes first by its share and its nice value alone.
+    tuple-takes-no-real-time-priority =
+      let
+        service = (account graphical).systemd.user.services.tuple.Service;
+      in
+      holds "tuple-takes-no-real-time-priority"
+        "Tuple's daemon may take a real-time priority, which only its low-priority thread gets, ahead of its sound and the desktop."
+        ((service.LimitRTPRIO or null) == 0 && service.Nice < 0 && service.CPUWeight > 100);
+
     # The tuple command completes in zsh with Tuple's own completion, which
     # only shows when Tab offers nothing, so the check completes commands
     # in a real line editor with the real tuple (tests/tuple-completion.zsh).
