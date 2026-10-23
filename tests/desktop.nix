@@ -1824,8 +1824,7 @@ pkgs.testers.runNixOSTest {
           copied("colour accent", theme["roles"]["accent"].lower())
           # Slack takes its theme only by hand, so the launcher copies it,
           # in the theme's own roles.
-          slack = ["deepest", "raised", "selection", "strong", "raised", "text"]
-          slack += ["success", "alert", "deepest", "text"]
+          slack = ["accent", "selection", "success", "warning"]
           copied("slack theme", ",".join(theme["roles"][role] for role in slack))
           answer("#f53")
           photograph("launcher-colour")
