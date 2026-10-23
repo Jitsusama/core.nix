@@ -3842,16 +3842,45 @@ in
           ${home.home.activationPackage}/activate > steps
         sh -e steps
         tuple settings > said 2>&1 || true
-        tuple off > /dev/null 2>&1 || true
+        tuple stop > /dev/null 2>&1 || true
         if ! grep -q '^capture | portal |' said; then cat said; exit 1; fi
         touch $out
       '';
 
-    # The tuple command completes in zsh, which only shows when Tab offers
-    # nothing, so the check completes each kind of argument in a real line
-    # editor (tests/tuple-completion.zsh). Its tuple is a stand-in, since
-    # the real one lists contacts only once signed in, so the real one's
-    # settings are held to the shape the completion reads them in.
+    # Tuple's daemon writes its log afresh as it starts, so the service keeps
+    # the last three first: run here five times over a folder standing in
+    # for Tuple's, then once more with an empty log, which mustn't push the
+    # oldest out.
+    tuple-keeps-its-logs =
+      let
+        home = account graphical;
+        keeps = home.systemd.user.services.tuple.Service.ExecStartPre;
+        data = "${home.xdg.dataHome}/tuple/0";
+      in
+      pkgs.runCommandLocal "tuple-keeps-its-logs" { } ''
+        mkdir -p data
+        sed 's|${data}|'"$PWD"'/data|g' ${keeps} > keeps
+        chmod +x keeps
+        grep -q "$PWD/data" keeps
+        ./keeps
+        for n in 1 2 3 4 5; do
+          echo "log $n" > data/log.txt
+          ./keeps
+        done
+        : > data/log.txt
+        ./keeps
+        said=$(for n in 1 2 3; do cat data/log.$n.txt; done)
+        if [ "$said" != "$(printf 'log 5\nlog 4\nlog 3')" ] || [ -e data/log.4.txt ]; then
+          echo "kept, newest first:"
+          head data/log.*.txt
+          exit 1
+        fi
+        touch $out
+      '';
+
+    # The tuple command completes in zsh with Tuple's own completion, which
+    # only shows when Tab offers nothing, so the check completes commands
+    # in a real line editor with the real tuple (tests/tuple-completion.zsh).
     tuple-completes-in-zsh =
       let
         home = account graphical;
@@ -3870,16 +3899,8 @@ in
         ''
           export HOME=$PWD XDG_DATA_HOME=$PWD/data XDG_RUNTIME_DIR=$PWD/run
           mkdir -m 700 run
-          tuple settings > settings 2>&1 || true
-          tuple off > /dev/null 2>&1 || true
-          if ! grep -q '^capture | ' settings || grep -v -E '^[a-z-]+ \| [^|]* \| ' settings; then
-            echo "tuple settings no longer lists name | value | what it is:"
-            cat settings
-            exit 1
-          fi
-          zsh -f ${./tests/tuple-completion.zsh} \
-            ${completion}/share/zsh/site-functions/_tuple \
-            ${lib.getExe' pkgs.wl-clipboard "wl-paste"}
+          zsh -f ${./tests/tuple-completion.zsh} ${completion}/share/zsh/site-functions/_tuple
+          tuple stop > /dev/null 2>&1 || true
           touch $out
         '';
 
@@ -3925,12 +3946,12 @@ in
             failed=1
           fi
         }
-        opening 'tuple://join?call_url_slug=U7BVv2' 'tuple join https://tuple.app/c/U7BVv2'
-        opening 'tuple://join?from=web&call_url_slug=a_b-9' 'tuple join https://tuple.app/c/a_b-9'
+        opening 'tuple://join?call_url_slug=U7BVv2' 'tuple call join https://tuple.app/c/U7BVv2'
+        opening 'tuple://join?from=web&call_url_slug=a_b-9' 'tuple call join https://tuple.app/c/a_b-9'
         opening 'tuple://join?call_url_slug=a;b' "notify-send --app-name=Tuple Tuple can't open that link tuple://join?call_url_slug=a;b"
         opening 'tuple://join?call_url_slug=*' "notify-send --app-name=Tuple Tuple can't open that link tuple://join?call_url_slug=*"
         opening 'tuple://auth?code=abc' "notify-send --app-name=Tuple Tuple can't open that link tuple://auth?code=abc"
-        opening "" 'tuple on'
+        opening "" 'tuple start'
         [ "$failed" = 0 ]
         touch $out
       '';

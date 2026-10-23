@@ -2621,8 +2621,8 @@ pkgs.testers.runNixOSTest {
           machine.wait_until_fails(in_session(margin), timeout=10)
 
       with subtest("people coming and going in a Tuple call are said, and Joel can leave"):
-          # Whoever comes is "a guest", not a number, which tuple ls would
-          # be asked about, and with the daemon stopped it starts one.
+          # Whoever comes is "a guest", not a number, which Tuple's contacts
+          # would be asked about, and with the daemon stopped it starts one.
           offered = "pgrep -f '[n]otify-send --app-name=Tuple .*--action={0}'"
           # Those there as Joel joins aren't news, so the call connected a
           # while before the guest comes.
@@ -2635,8 +2635,8 @@ pkgs.testers.runNixOSTest {
               said("peer left call: a guest")
           machine.succeed(offered.format("leave"))
           photograph("notice-alone")
-          # Leaving runs tuple end, which starts the stopped daemon, whose
-          # new log ends the call. Super+N takes the stack, and again opens
+          # Leaving runs tuple call leave, which starts the stopped daemon,
+          # whose new log ends the call. Super+N takes the stack, and again opens
           # the history on the newest notice's offers.
           with told("keys notices"):
               machine.send_key("meta_l-n")
@@ -2646,7 +2646,7 @@ pkgs.testers.runNixOSTest {
           machine.send_key("ret")
           machine.wait_until_fails(in_session(margin), timeout=15)
           machine.wait_until_fails(offered.format("leave"), timeout=10)
-          as_account("tuple off")
+          as_account("tuple stop")
 
       with subtest("a Tuple call ringing wants Joel, and one not answered is kept as missed"):
           offered = "pgrep -f '[n]otify-send --app-name=Tuple .*--action=show'"

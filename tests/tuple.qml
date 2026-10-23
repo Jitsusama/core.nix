@@ -174,13 +174,22 @@ QtObject {
         if (rang !== now - 41512)
             failures.push(`a ring rang at ${rang}, not ${now - 41512}`);
 
-        // [what fills a line's blank, the name tuple ls gives it]
-        const listing = "  117559 Aadi Sanghani <aadi@example.com> [offline]\n"
-            + "  165856 Aadya Garg <aadya@example.com> [online]\n";
+        // [what fills a line's blank, the name Tuple's contacts give it],
+        // from the contacts as `tuple --format json contacts list` gives
+        // them, one with only a short name.
+        const listing = JSON.stringify([
+            { id: 117559, full_name: "Aadi Sanghani", short_name: "Aadi", email: "aadi@example.com",
+                status: "offline", kind: "user", favorited: false, recent: false },
+            { id: 165856, full_name: "Aadya Garg", short_name: "Aadya", email: "aadya@example.com",
+                status: "online", kind: "user", favorited: true, recent: true },
+            { id: 4242, full_name: "", short_name: "Sam", email: "sam@example.com",
+                status: "online", kind: "user", favorited: false, recent: false }
+        ]);
         const names = [
             ["117559", "Aadi Sanghani"],
             [" 165856 ", "Aadya Garg"],
             ["User { id: 165856, name: ... }", "Aadya Garg"],
+            ["4242", "Sam"],
             ["1175", ""],
             ["99999", ""],
             ["Aadi", ""],
@@ -191,6 +200,12 @@ QtObject {
             const got = Tuple.named(listing, who);
             if (got !== expected)
                 failures.push(`"${who}" was named "${got}", not "${expected}"`);
+        }
+        // Anything that isn't the list names nobody.
+        for (const listed of ["  117559 Aadi Sanghani <aadi@example.com> [offline]", "{}", "", "[1, null]"]) {
+            asked++;
+            if (Tuple.named(listed, "117559") !== "")
+                failures.push(`a listing that isn't the contacts named someone: ${listed}`);
         }
 
         // [names, "" for one not known, said]

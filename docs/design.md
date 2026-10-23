@@ -1154,7 +1154,7 @@ What each studio round settled, newest first, with the reason.
   offers to leave as well; a ring wants Joel in the margin and offers to
   bring forward Tuple's window, where it's answered, since the command
   can't; and a ring nobody answered is kept, as a missed call. Names come
-  from tuple ls, asked once for anyone not yet known. Muting is now
+  from Tuple's contacts, asked once for anyone not yet known. Muting is now
   Tuple's own, which the others see, rather than the microphone's, which
   has its own mark, and Tuple's answer says how Joel stands even when the
   shell had it wrong. Tuple's windows reach niri under one name with no

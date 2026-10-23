@@ -19,8 +19,8 @@
 #
 # A call link opened in a browser opens a page that hands the call to
 # tuple://join?call_url_slug=<room>, which Tuple's Linux command doesn't
-# take, so the desktop entry below does: it joins the room as tuple join
-# would its link.
+# take, so the desktop entry below does: it joins the room as tuple call
+# join would its link.
 #
 # Tuple shares a screen through the desktop's portal, the one way to on a
 # Wayland desktop; its other ways only reach X11 windows. Tuple keeps each
@@ -40,10 +40,14 @@
 # was copied, and leave, and notices as people come and go, which Tuple on
 # Linux doesn't give yet. Tuple.qml follows the daemon's log for them all.
 #
-# The tuple command completes in zsh (_tuple), which Tuple doesn't ship:
-# join takes a call's link from the clipboard, favorite and unfavorite a
-# contact by any part of a name or email, and set a setting by its name,
-# said with what it is now, then the values Tuple says it takes.
+# The tuple command completes in zsh through Tuple's own completion, which
+# its command writes, so it knows every command and flag the version has.
+#
+# Tuple's daemon writes its log afresh each time it starts, so the service
+# keeps the last three before it does: the log of whatever went wrong in a
+# call is still there after a restart.
+#
+# Tuple is newer than nixpkgs' (./package.nix).
 { niri, quickshell }:
 {
   config,
@@ -52,8 +56,10 @@
   ...
 }:
 let
-  tuple = lib.getExe pkgs.tuple;
-  settings = "${config.xdg.dataHome}/tuple/0/settings";
+  package = pkgs.callPackage ./package.nix { };
+  tuple = lib.getExe package;
+  data = "${config.xdg.dataHome}/tuple/0";
+  settings = "${data}/settings";
 
   # Opens a tuple: link, or starts the daemon when given none. A room's
   # name is letters, digits, - and _, as Tuple's links write it, and
@@ -61,7 +67,7 @@ let
   opens = pkgs.writeShellScript "tuple-opens" ''
     link=''${1:-}
     if [ -z "$link" ]; then
-      exec ${tuple} on
+      exec ${tuple} start
     fi
     set -f
     room=""
@@ -77,20 +83,33 @@ let
     esac
     case "$room" in
       "" | *[!A-Za-z0-9_-]*) ;;
-      *) exec ${tuple} join "https://tuple.app/c/$room" ;;
+      *) exec ${tuple} call join "https://tuple.app/c/$room" ;;
     esac
     exec ${lib.getExe' pkgs.libnotify "notify-send"} --app-name=Tuple \
       "Tuple can't open that link" "$link"
   '';
 
-  # zsh's completion for the tuple command, which Tuple doesn't ship (_tuple).
+  # zsh's completion for the tuple command, as Tuple's command writes it,
+  # which needs only somewhere to keep its files. The command runs behind
+  # nixpkgs' wrapper as .tuple-wrapped and writes the completion for that
+  # name, which zsh would never use for tuple, so it's named for tuple.
   completion = pkgs.runCommandLocal "tuple-zsh-completion" { } ''
-    install -D ${
-      pkgs.replaceVars ./_tuple {
-        wlPaste = lib.getExe' pkgs.wl-clipboard "wl-paste";
-        grep = lib.getExe pkgs.gnugrep;
-      }
-    } $out/share/zsh/site-functions/_tuple
+    export HOME=$PWD XDG_RUNTIME_DIR=$PWD/run
+    mkdir -m 700 run
+    mkdir -p $out/share/zsh/site-functions
+    ${tuple} completion zsh | sed 's/\.tuple-wrapped/tuple/g' > $out/share/zsh/site-functions/_tuple
+    grep -q '^#compdef tuple$' $out/share/zsh/site-functions/_tuple
+  '';
+
+  # Keeps the daemon's last three logs before it writes a new one; an empty
+  # log is nothing to keep, so it leaves the others where they are.
+  keepsLogs = pkgs.writeShellScript "tuple-keeps-logs" ''
+    cd ${lib.escapeShellArg data} 2>/dev/null || exit 0
+    [ -s log.txt ] || exit 0
+    for n in 2 1; do
+      if [ -e log.$n.txt ]; then mv -f log.$n.txt log.$((n + 1)).txt; fi
+    done
+    mv -f log.txt log.1.txt
   '';
 in
 {
@@ -100,7 +119,7 @@ in
   ];
 
   home.packages = [
-    pkgs.tuple
+    package
     completion
   ];
 
@@ -131,10 +150,11 @@ in
       After = [ "graphical-session.target" ];
     };
     Service = {
-      # tuple on starts the daemon behind it and returns.
+      # tuple start starts the daemon behind it and returns.
       Type = "forking";
-      ExecStart = "${tuple} on";
-      ExecStop = "${tuple} off";
+      ExecStartPre = "${keepsLogs}";
+      ExecStart = "${tuple} start";
+      ExecStop = "${tuple} stop";
       Restart = "on-failure";
     };
     Install.WantedBy = [ "graphical-session.target" ];
