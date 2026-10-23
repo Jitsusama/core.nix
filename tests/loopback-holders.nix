@@ -7,6 +7,7 @@
 # that outlives the camera's service and says nobody while it's down,
 # follows the camera to its next loopback, takes no loopback of another
 # name for it, and waits rather than failing while the camera isn't there.
+# The script is loopback-holders-vm-test.py.
 { self, pkgs }:
 let
   # Holds the loopback it's given open as a relay would, writing nothing.
@@ -49,10 +50,18 @@ let
         wrapProgram $out/bin/doze
       '';
 
-  # Runs a program, as someone else, with the camera it's given held open.
-  holding = program: device: "${pkgs.bash}/bin/bash -c 'exec 3< ${device}; exec ${program} 300'";
-
-  file = "/run/camera-holders/stand-in";
+  # What the script needs from Nix, which it reads from this file at its top:
+  # the file naming the stand-in's holders, and the programs that hold it,
+  # none of them on the machine's PATH.
+  values = pkgs.writeText "loopback-holders-values.json" (
+    builtins.toJSON {
+      file = "/run/camera-holders/stand-in";
+      bash = "${pkgs.bash}/bin/bash";
+      sleep = "${pkgs.coreutils}/bin/sleep";
+      doze = "${doze}/bin/doze";
+      renamed = pkgs.lib.getExe renamed;
+    }
+  );
 in
 pkgs.testers.runNixOSTest {
   name = "loopback-holders";
@@ -93,111 +102,10 @@ pkgs.testers.runNixOSTest {
       ];
     };
 
-  testScript = ''
-    machine.wait_for_unit("stand-in-holders.service")
-    machine.wait_for_file("${file}")
-    device = machine.succeed("cat /run/stand-in/device").strip()
-    machine.succeed(f"udevadm wait --timeout 10 {device}")
-
-    def holders():
-        return machine.succeed("cat ${file}").split("\n")[:-1]
-
-    def hold(unit, command, extra=""):
-        machine.succeed(
-            f"systemd-run --unit={unit} --uid=someone -p Type=exec {extra} -- {command}"
-        )
-
-    with subtest("the relay holding the camera isn't named"):
-        relay = machine.succeed("systemctl show -P MainPID stand-in.service").strip()
-        machine.wait_until_succeeds(
-            f"readlink /proc/{relay}/fd/* | grep -q -x -F {device}", timeout=10
-        )
-        machine.sleep(1)
-        t.assertEqual(holders(), [])
-
-    with subtest("each program another account has it open with is named"):
-        hold("held", f"${holding "${pkgs.coreutils}/bin/sleep" "{device}"}")
-        hold("dozing", f"${holding "${doze}/bin/doze" "{device}"}")
-        machine.wait_until_succeeds("grep -q -x doze ${file}", timeout=10)
-        t.assertEqual(holders(), ["doze", "sleep"])
-        mode = machine.succeed("stat -c %a ${file}").strip()
-        t.assertEqual(mode, "644")
-
-    with subtest("it empties once they close it"):
-        machine.succeed("systemctl stop held.service dozing.service")
-        machine.wait_until_succeeds("! test -s ${file}", timeout=10)
-
-    with subtest("a program named as the relay is named, and a name is one line"):
-        hold("posing", f"${pkgs.lib.getExe renamed} stand-in-relay {device}")
-        hold("odd", f"'${pkgs.lib.getExe renamed}' 'a\\nb\\xff' {device}")
-        machine.wait_until_succeeds("grep -q -x stand-in-relay ${file}", timeout=10)
-        machine.wait_until_succeeds("grep -q '^a?b' ${file}", timeout=10)
-        named = holders()
-        t.assertEqual(len(named), 2, named)
-        t.assertIn("stand-in-relay", named)
-        machine.succeed("systemctl stop posing.service odd.service")
-        machine.wait_until_succeeds("! test -s ${file}", timeout=10)
-
-    with subtest("a holder that leaves the camera to its child is replaced by it"):
-        hold(
-            "forking",
-            f"${pkgs.bash}/bin/bash -c 'exec 3< {device}; ${doze}/bin/doze & ${pkgs.coreutils}/bin/sleep 1'",
-            # So the child outlives the parent's unit, as it would its shell.
-            "-p KillMode=process",
-        )
-        machine.wait_until_succeeds("grep -q -x doze ${file}", timeout=10)
-        machine.wait_until_succeeds("! grep -q -x bash ${file}", timeout=10)
-        t.assertEqual(holders(), ["doze"])
-        machine.succeed("pkill -u someone -x .doze-wrapped")
-        machine.wait_until_succeeds("! test -s ${file}", timeout=10)
-
-    with subtest("its folder outlives the camera's service, and says nobody while it's down"):
-        folder = machine.succeed("stat -c %i /run/camera-holders").strip()
-        hold("stopping", f"${holding "${pkgs.coreutils}/bin/sleep" "{device}"}")
-        machine.wait_until_succeeds("grep -q -x sleep ${file}", timeout=10)
-        # The camera stops while the program still holds it, so only the
-        # service's stopping can empty the file.
-        machine.succeed("systemctl stop stand-in.service")
-        machine.wait_until_fails("systemctl is-active stand-in-holders.service", timeout=10)
-        t.assertEqual(machine.succeed("cat ${file}"), "")
-        machine.succeed("systemctl stop stopping.service")
-        machine.succeed("systemctl start stand-in.service")
-        machine.wait_for_unit("stand-in-holders.service")
-        t.assertEqual(machine.succeed("stat -c %i /run/camera-holders").strip(), folder)
-
-    with subtest("it follows the camera to the next loopback"):
-        machine.succeed("systemctl restart stand-in.service")
-        machine.wait_for_unit("stand-in-holders.service")
-        device = machine.succeed("cat /run/stand-in/device").strip()
-        machine.succeed(f"udevadm wait --timeout 10 {device}")
-        hold("again", f"${holding "${pkgs.coreutils}/bin/sleep" "{device}"}")
-        machine.wait_until_succeeds("grep -q -x sleep ${file}", timeout=10)
-        machine.succeed("systemctl stop again.service")
-
-    with subtest("another camera's loopback isn't taken for it"):
-        other = machine.succeed("v4l2loopback-ctl add -n 'Other'").strip()
-        machine.succeed(f"udevadm wait --timeout 10 {other}")
-        machine.succeed("systemctl stop stand-in-holders.service")
-        machine.succeed(f"echo {other} > /run/stand-in/device")
-        machine.succeed("systemctl start stand-in-holders.service")
-        hold("elsewhere", f"${holding "${pkgs.coreutils}/bin/sleep" "{other}"}")
-        machine.sleep(4)
-        t.assertEqual(holders(), [])
-        machine.succeed("systemctl stop elsewhere.service")
-        machine.succeed(f"echo {device} > /run/stand-in/device")
-
-    with subtest("it waits while the camera isn't there, and finds it when it is"):
-        machine.succeed("systemctl stop stand-in-holders.service")
-        machine.succeed("echo /dev/video-not-yet > /run/stand-in/device")
-        machine.succeed("systemctl start stand-in-holders.service")
-        machine.sleep(4)
-        machine.succeed("systemctl is-active stand-in-holders.service")
-        restarts = machine.succeed("systemctl show -P NRestarts stand-in-holders.service")
-        t.assertEqual(restarts.strip(), "0")
-        t.assertEqual(holders(), [])
-        machine.succeed(f"echo {device} > /run/stand-in/device")
-        hold("found", f"${holding "${pkgs.coreutils}/bin/sleep" "{device}"}")
-        machine.wait_until_succeeds("grep -q -x sleep ${file}", timeout=10)
-        machine.succeed("systemctl stop found.service")
-  '';
+  testScript = builtins.replaceStrings [ "@values@" ] [ "${values}" ] (
+    builtins.readFile ./loopback-holders-vm-test.py
+  );
+  # nix fmt holds the script to mypy --strict against the driver's own types,
+  # through driver_names.pyi, which the driver's lighter check can't find.
+  skipTypeCheck = true;
 }
