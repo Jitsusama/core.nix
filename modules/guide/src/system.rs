@@ -304,6 +304,8 @@ impl Machine for System {
             program: path.into(),
             why: why.to_string(),
         };
+        // Once the guide is stopping, nothing more starts.
+        crate::process::hold_if_stopping();
         let mut child = command.spawn().map_err(unstarted)?;
         self.meter.running(Some(child.id()));
         if let Some(secret) = given.stdin {

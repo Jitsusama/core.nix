@@ -118,6 +118,7 @@ in
   environment.loginShellInit = ''
     if [ "$(tty)" = /dev/tty1 ]; then
       guide install
+      echo "To start the guide again, type guide install, then press Return."
     fi
   '';
 

@@ -268,37 +268,14 @@ pub fn reap_plugins() {
     }
 }
 
-/// This process's children that have ended unwaited (state Z), whose
-/// `comm` begins with `named`.
+/// This process's children that have ended unwaited, whose names begin
+/// with `named`.
 #[cfg(target_os = "linux")]
 fn ended_children(named: &str) -> Vec<libc::pid_t> {
-    let own = std::process::id().to_string();
-    let Ok(entries) = std::fs::read_dir("/proc") else {
-        return vec![];
-    };
-    entries
-        .filter_map(|entry| {
-            entry
-                .ok()?
-                .file_name()
-                .to_str()?
-                .parse::<libc::pid_t>()
-                .ok()
-        })
-        .filter(|pid| {
-            let Ok(stat) = std::fs::read_to_string(format!("/proc/{pid}/stat")) else {
-                return false;
-            };
-            // comm sits in parentheses and may hold any byte, so the fields
-            // after it are read from the last closing one.
-            let (Some(open), Some(close)) = (stat.find('('), stat.rfind(')')) else {
-                return false;
-            };
-            let mut after = stat[close + 1..].split_whitespace();
-            stat[open + 1..close].starts_with(named)
-                && after.next() == Some("Z")
-                && after.next() == Some(own.as_str())
-        })
+    crate::process::children()
+        .into_iter()
+        .filter(|child| child.state == 'Z' && child.name.starts_with(named))
+        .filter_map(|child| libc::pid_t::try_from(child.pid).ok())
         .collect()
 }
 

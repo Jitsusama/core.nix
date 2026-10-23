@@ -91,6 +91,10 @@ impl Meter {
         self.reading().program = program;
     }
 
+    /// The program running now, if one is.
+    pub fn program(&self) -> Option<u32> {
+        self.reading().program
+    }
 
     /// How many bytes the work comes to, once it's known.
     pub fn total(&self, bytes: u64) {

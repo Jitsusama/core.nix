@@ -105,6 +105,7 @@ pub mod journey;
 pub mod machine;
 pub mod observe;
 pub mod place;
+pub mod process;
 pub mod progress;
 pub mod recover;
 pub mod rescue;

@@ -425,8 +425,12 @@ fn step(theme: &Theme, moment: &Moment, inside: usize) -> (Vec<Line>, Option<(us
                     progress,
                     inside,
                 ));
+                // Only a step at work can be stopped; the log is left with
+                // the keys it says.
+                footer = keys(theme, &[(Key::Leave, "stop")]);
+            } else {
+                footer = vec![];
             }
-            footer = vec![];
         }
         Moment::Blocked { title, why, remedy } => {
             lines.extend(said(Role::Strong, title, inside));
