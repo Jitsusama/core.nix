@@ -74,73 +74,8 @@ pkgs.testers.runNixOSTest {
     };
   };
 
-  testScript = ''
-    import json, statistics
-
-    start_all()
-    server.wait_for_open_port(5201)
-    router.wait_for_unit("line.service")
-    client.wait_for_unit("user@1000.service")
-    client.wait_until_succeeds("tc -j qdisc show dev eth1 | grep -q cake", timeout=30)
-
-    def up():
-        status = json.loads(client.succeed("cat /run/shaper/status.json"))
-        return next(l for l in status if l["name"] == "eth1")["up"]
-
-    def ping(name):
-        """An app's pings to the server: the median round trip, in ms."""
-        client.succeed(
-            f"systemd-run -M alice@ --user --wait --collect --slice=app.slice"
-            f" -p StandardOutput=file:/tmp/{name}.txt"
-            f" ${pkgs.iputils}/bin/ping -n -c 40 -i 0.25 ${server}"
-        )
-        text = client.succeed(f"cat /tmp/{name}.txt")
-        times = [float(w[5:]) for w in text.split() if w.startswith("time=")]
-        t.assertGreater(len(times), 20, text)
-        return statistics.median(times)
-
-    # Four uploads from the account's jobs, for as long as the test runs.
-    client.succeed(
-        "systemd-run -M alice@ --user --slice=jobs.slice --unit=uploads"
-        " ${pkgs.bash}/bin/bash -c 'for i in 1 2 3 4; do"
-        " (while true; do cat /dev/zero > /dev/tcp/${server}/5201; done) & done; wait'"
-    )
-
-    with subtest("the shaper finds the line and an app's pings stay near it"):
-        client.wait_until_succeeds(
-            "jq -e '.[] | select(.name == \"eth1\") | .up < 8000' /run/shaper/status.json",
-            timeout=60,
-        )
-        client.sleep(15)
-        # It probes a little past the line and cuts at the queue that
-        # builds, so any moment finds it within a tenth of the line.
-        rate = up()
-        t.assertGreater(rate, 5000)
-        t.assertLess(rate, 8800)
-        shaped = ping("shaped")
-        t.assertLess(shaped, 80, f"shaped at {rate} kbit/s")
-
-    with subtest("when the line drops, the shaper follows it down"):
-        router.succeed("tc qdisc change dev eth2 parent 1: handle 2: ${line "4mbit"}")
-        client.wait_until_succeeds(
-            "jq -e '.[] | select(.name == \"eth1\") | .up < 4000' /run/shaper/status.json",
-            timeout=30,
-        )
-        client.sleep(10)
-        t.assertLess(ping("dropped"), 100)
-
-    with subtest("and back up when it returns"):
-        router.succeed("tc qdisc change dev eth2 parent 1: handle 2: ${line "8mbit"}")
-        client.wait_until_succeeds(
-            "jq -e '.[] | select(.name == \"eth1\") | .up > 6000' /run/shaper/status.json",
-            timeout=120,
-        )
-
-    with subtest("without the shaper, the line's buffer fills"):
-        client.succeed("systemctl stop shaper.service")
-        client.sleep(10)
-        unshaped = ping("unshaped")
-        t.assertGreater(unshaped, 300)
-        print(f"an app's median round trip: {shaped} ms shaped, {unshaped} ms not")
-  '';
+  testScript = builtins.readFile ./shaper-rate-vm-test.py;
+  # nix fmt holds the script to mypy --strict against the driver's own types,
+  # through driver_names.pyi, which the driver's lighter check can't find.
+  skipTypeCheck = true;
 }
