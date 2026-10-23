@@ -100,6 +100,12 @@ pkgs.testers.runNixOSTest {
       from pathlib import Path
       from test_driver.machine.ocr import perform_ocr_variants_on_screenshot
 
+      # The longest a wait may take to read words off the screen. A wait
+      # ends when they show, so this is only a ceiling: on a host busy
+      # with other machines and builds, one reading took 30 seconds, and a
+      # wait of 30 then fails before it can read twice.
+      reading = 120
+
       # A photograph of the screen, kept for a person to judge.
       def photographed(name):
           machine.screenshot(name)
@@ -179,7 +185,7 @@ pkgs.testers.runNixOSTest {
       machine.start()
 
       with subtest("the theme asks for the disk's passphrase"):
-          machine.wait_for_text("disk is locked", timeout=120)
+          machine.wait_for_text("disk is locked", timeout=reading)
           asked = photographed("asks")
           t.assertLess(alerting(asked), framed // 10, "the first ask is framed in alert")
 
@@ -205,7 +211,7 @@ pkgs.testers.runNixOSTest {
           # the first console is lost.
           machine.succeed("chvt 3")
           machine.wait_for_unit("kmsconvt@tty3.service")
-          machine.wait_for_text("login:", timeout=60)
+          machine.wait_for_text("login:", timeout=reading)
           said = machine.succeed("journalctl -o cat -u kmsconvt@tty3.service")
           t.assertRegex(said, r"font engine \[pango\]")
           used = re.search(r"Using \[(.*)\] size (\d+) -> cell size (\d+)x(\d+)", said)
@@ -246,9 +252,9 @@ pkgs.testers.runNixOSTest {
           # activate there, and the account has no shell files: an empty
           # one stands in, so zsh asks nothing of a new user.
           machine.succeed("install -o ${account} -m 600 /dev/null /home/${account}/.zshrc")
-          machine.wait_for_text("Hello", timeout=30)
+          machine.wait_for_text("Hello", timeout=reading)
           machine.send_chars("${account}\n")
-          machine.wait_for_text("Password", timeout=30)
+          machine.wait_for_text("Password", timeout=reading)
           machine.send_chars("${password}\n")
           machine.wait_until_succeeds("pgrep -u ${account} -x zsh", timeout=30)
           # The prompt draws stand-ins only on a console that calls itself
@@ -270,7 +276,7 @@ pkgs.testers.runNixOSTest {
               shown = machine.get_screen_text()
               return "Hello" in shown and "Password" not in shown
 
-          retry(greeted_afresh, 30)
+          retry(greeted_afresh, reading)
 
       with subtest("the keys the greeting gives go back to the desktop"):
           machine.send_key("ctrl-alt-f1")
@@ -324,7 +330,7 @@ pkgs.testers.runNixOSTest {
           machine.wait_for_text("waiting on Slow Hello", timeout=60)
           photographed("waiting")
           machine.succeed("systemctl stop slow.service")
-          retry(lambda _: "Slow" not in machine.get_screen_text(), 30)
+          retry(lambda _: "Slow" not in machine.get_screen_text(), reading)
           # logind stays masked and the greeter stopped, as the emergency
           # shell wants them next.
           machine.succeed(
@@ -423,7 +429,7 @@ pkgs.testers.runNixOSTest {
           machine.crash()
           machine.start()
           for words in ["breaks.service", "the disk was not there", "Ctrl.Alt.Delete"]:
-              machine.wait_for_text(words, timeout=120)
+              machine.wait_for_text(words, timeout=reading)
           photographed("initrd-stops")
     '';
 }
