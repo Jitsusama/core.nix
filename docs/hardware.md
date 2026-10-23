@@ -212,6 +212,7 @@ linux-next's commits and their series, a posting to a list, or a local fix.
 | `xe-shrinker-spares-buffers`     | window buffers reclaimed last, so keys don't repeat    |
 | `dp-byte-reads-only-when-longer` | a failed 1-byte DPCD read isn't sent again             |
 | `dp-mst-dsc-skips-empty-ports`   | an MST hub's empty port isn't asked for its DSC caps   |
+| `edp-wakes-the-panel`            | the panel is woken before its eDP revision is read     |
 
 `xe-shrinker-spares-buffers` is linux-next's split of xe's buffer shrinker
 into purgeable and non-purgeable halves. Buffers that cost a backup and a
@@ -236,6 +237,12 @@ port of a hub read that port's DSC caps even with nothing on it, where the
 answer is no DSC whatever comes back. An HP Z27k G3's hub never answers for
 its empty port, and the monitor's picture waited behind those reads, 8 s on
 every plug and boot.
+
+`edp-wakes-the-panel` is linux-next's 908f1be9c343, posted to intel-gfx on
+2026-09-15. The driver reads the panel's DPCD once as it sets up its
+connector, and a panel left asleep at power on can fail those reads however
+often they're retried. It now sets the panel to D0 first; The Panel's
+Brightness says what a failed read cost here.
 
 An assertion fails once the kernel is 7.4, which may have them, and the way
 through is to drop each patch that kernel has, then `next.nix`.
@@ -651,16 +658,17 @@ when asked what it was last set to, so `actual_brightness` always reads 0;
 `brightness` holds the level set.
 
 The driver picks how to set brightness from the panel's eDP revision, read
-once at boot. Since 2026-10-22 that read has come back wrong on every boot,
-though the panel answers 0x06, eDP 1.5, when asked later. The driver then
+once at boot. Every boot with a monitor already on USB-C read it wrong, and
+no boot without one did, though the panel answers 0x06, eDP 1.5, when asked
+later. The driver then
 took a PWM signal, which this OLED ignores, so the keys did nothing until 0
 turned it off, and `max_brightness` read 192000. The panel also offers
 Intel's interface (TCON capability 1, brightness in nits), which the driver
 tries only for a panel older than eDP 1.5 and, by default, only with HDR
 metadata in the EDID. `xe.enable_dpcd_backlight=3` drops that last
 condition, so a bad read gets Intel's interface, and a good one still gets
-VESA's. Why the read goes wrong isn't known yet: the first bad boot was also
-the first at a desk.
+VESA's. `edp-wakes-the-panel`, from linux-next, wakes the panel before that
+read, for a panel that powers on asleep and fails reads until it's woken.
 
 ### The Touchpad's Click
 

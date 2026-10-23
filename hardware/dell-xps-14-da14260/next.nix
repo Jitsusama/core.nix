@@ -36,6 +36,11 @@ in
       # with nothing on it, which some hubs never answer, and the monitor's
       # picture waited behind that read on every plug and boot.
       "dp-mst-dsc-skips-empty-ports"
+      # Each boot with a monitor already on USB-C read the panel's eDP
+      # revision wrong, and no boot without one did, so brightness went to
+      # a PWM signal this OLED ignores. The driver wakes the panel before
+      # reading it.
+      "edp-wakes-the-panel"
     ]
   );
 
