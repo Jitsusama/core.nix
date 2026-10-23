@@ -131,7 +131,7 @@ makes the theme's font the one any program gets when it asks for monospace.
 
 A project says which compiler it builds with, in its flake, its
 `rust-toolchain.toml` or its `go.mod`, so it builds the same on every machine
-and in CI. core installs no compiler or language runtime for projects to
+and in every build. core installs no compiler or language runtime for projects to
 lean on. It may set defaults that make every project's builds faster, such as
 mold as Rust's linker, as long as a project's own settings still win. A tool
 is installed system-wide only when it's worth having outside any project.
@@ -149,9 +149,8 @@ is installed system-wide only when it's worth having outside any project.
 
 ## Checks Before Switches
 
-Nothing is applied to a machine until `nix flake check` passes locally. CI
-runs the same checks as a backstop, and nothing waits on it. Before switching,
-compare what changes:
+Nothing is applied to a machine until `nix flake check` passes locally, which
+is the only place the checks run. Before switching, compare what changes:
 
 ```sh
 nix store diff-closures /run/current-system ./result

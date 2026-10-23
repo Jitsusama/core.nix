@@ -15,16 +15,9 @@
   # systemd/zram-generator#226 is still open. zram-reset-waits.patch
   # retries while it's busy; take it out once zram-generator does that
   # itself.
-  #
-  # Patching it means CI builds it, and its tests skip only where user
-  # namespaces are refused outright. GitHub's runners make one but refuse to
-  # set it up, so the tests panicked there and every vm-swap run failed.
-  # zram-tests-skip-cleanly.patch skips there too; the tests still run
-  # wherever a namespace can be set up, this laptop included.
   services.zram-generator.package = pkgs.zram-generator.overrideAttrs (old: {
     patches = (old.patches or [ ]) ++ [
       ./zram-reset-waits.patch
-      ./zram-tests-skip-cleanly.patch
     ];
   });
 

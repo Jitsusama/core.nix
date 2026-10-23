@@ -98,7 +98,7 @@ core.nix/
 ## 🚀 Using It
 
 A machine repository takes core.nix as an input and follows its pins, so every
-machine runs a combination CI has checked:
+machine runs a combination core's checks have passed:
 
 ```nix
 inputs = {

@@ -45,10 +45,9 @@ pointed at the checkout, and switch to it once it builds:
 nixos-rebuild build --flake .#<machine> --override-input core path:$HOME/src/core.nix
 ```
 
-CI runs the same checks on every pull request and on main, as a backstop for
-a push that skipped them. Nothing waits on it: a machine repository can pin a
-branch's commit as soon as it's pushed, and pull requests merge with a merge
-commit, so that commit stays on main.
+Nothing else runs them: there's no CI ([0012][7]). A machine repository can
+pin a branch's commit as soon as it's pushed, and pull requests merge with a
+merge commit, so that commit stays on main.
 
 ## The Pyramid
 
@@ -127,7 +126,6 @@ written beside each in `tests/`.
 | `the-shell-speaks-its-javascript`   | the shell calls no method Quickshell's JavaScript lacks   |
 | `formatting`                        | everything is formatted and passes the linters            |
 | `stands-alone`                      | nothing here names a machine, its repository or employer  |
-| `ci-runs-every-vm-test`             | CI's workflow runs every virtual machine test             |
 | `run-subtests-keeps-what-is-named`  | run-subtests keeps a script's boot and helpers and only the subtests named |
 
 ### Examples
@@ -317,7 +315,7 @@ picture caught before its state was drawn is a fault in the test instead.
 - A check above the promises says what the tiers below it miss.
 - What a running system shows goes in an existing virtual machine where it
   fits. A new one has to cover something none of them can; its name starts
-  with `vm-`, and CI's matrix names it, which `ci-runs-every-vm-test` holds.
+  with `vm-`.
 - A VM test past about two minutes, or twenty subtests, splits by area, each
   part carrying only the stand-ins its area needs, so a change reruns only
   the part it touches. Each subtest sets up what it needs and leaves nothing
@@ -354,3 +352,4 @@ isn't restored by accident.
 [4]: ../tests/secure-boot.nix
 [5]: ../tests/shots-that-move.txt
 [6]: ../AGENTS.md#commands
+[7]: decisions/0012-no-ci.md
