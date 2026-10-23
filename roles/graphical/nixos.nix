@@ -10,7 +10,8 @@
 # gets the programs Joel views, draws, reads, watches, listens and pairs
 # with: swayimg, which opens pictures and drawings, zathura, which opens
 # documents, GIMP, Inkscape, mpv, which opens video, the camera, Spotify
-# and Tuple. The compositor and sound get the CPU and memory before
+# and Tuple. When a program asks what to open something with, the launcher
+# asks rather than GNOME's dialog. The compositor and sound get the CPU and memory before
 # anything Joel starts.
 { nixosModules, homeModules }:
 {
@@ -29,6 +30,7 @@
     nixosModules.mpv
     nixosModules.niri
     nixosModules.onepassword
+    nixosModules.open-with
     nixosModules.pipewire
     nixosModules.plymouth
     nixosModules.quickshell
@@ -47,6 +49,7 @@
     homeModules.inkscape
     homeModules.niri
     homeModules.kitty
+    homeModules.open-with
     homeModules.mpv
     homeModules.qt
     homeModules.quickshell

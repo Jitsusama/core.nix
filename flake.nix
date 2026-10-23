@@ -151,6 +151,7 @@
         network-revive = ./modules/network-revive/home.nix;
         niri = ./modules/niri/home.nix;
         nixfmt = ./modules/nixfmt/home.nix;
+        open-with = ./modules/open-with/home.nix;
         opencode = ./modules/opencode/home.nix;
         openssl = ./modules/openssl/home.nix;
         pi = ./modules/pi/home.nix;
@@ -238,6 +239,7 @@
         nix-daemon = ./modules/nix-daemon/nixos.nix;
         nixpkgs = ./modules/nixpkgs/system.nix;
         onepassword = ./modules/onepassword/nixos.nix;
+        open-with = ./modules/open-with/nixos.nix;
         panel = ./modules/panel/nixos.nix;
         perf = ./modules/perf/nixos.nix;
         pipewire = ./modules/pipewire/nixos.nix;

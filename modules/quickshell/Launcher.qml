@@ -1018,7 +1018,7 @@ Scope {
                         hue: Theme.voice
                         quiet: true
                         name: root.typed !== "" ? `Nothing answers to \u201c${root.typed}\u201d.`
-                            : inside
+                            : inside?.collection
                                 ? inside.collection.empty ?? `No ${inside.collection.noun} yet.`
                             : "A window, a program, an action, or what a key does."
                     }

@@ -5237,6 +5237,22 @@ in
           '';
         });
 
+    # clippy finds nothing in the portal's chooser of what to open something
+    # with, its tests included.
+    open-with-passes-clippy =
+      (pkgs.callPackage ./modules/open-with/package.nix { }).overrideAttrs
+        (old: {
+          pname = "open-with-passes-clippy";
+          nativeBuildInputs = old.nativeBuildInputs ++ [ pkgs.clippy ];
+          buildPhase = ''
+            cargo clippy --all-targets --offline -- -D warnings
+          '';
+          doCheck = false;
+          installPhase = ''
+            touch $out
+          '';
+        });
+
     # clippy finds nothing in what tells Plymouth of a slow boot or
     # shutdown, its tests included.
     plymouth-waits-passes-clippy =
