@@ -14,5 +14,5 @@ function stands(entry, now, fresh, failedFor) {
 // that's there but leads nowhere never answers at all, and an answer still
 // being looked up keeps the launcher from copying it.
 function overdueIn(entry, now, patience) {
-    return entry && entry.pending ? Math.max(0, entry.at + patience - now) : null;
+    return entry?.pending ? Math.max(0, entry.at + patience - now) : null;
 }
