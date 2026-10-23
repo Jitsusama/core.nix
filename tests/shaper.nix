@@ -107,9 +107,9 @@ pkgs.testers.runNixOSTest {
     def qdiscs(dev):
         return json.loads(client.succeed(f"tc -s -j qdisc show dev {dev}"))
 
-    def counts(dev):
+    def counts(dev, what="sent_packets"):
         cake = next(q for q in qdiscs(dev) if q["kind"] == "cake")
-        return [t["sent_packets"] for t in cake["tins"]]
+        return [t[what] for t in cake["tins"]]
 
     def ifb(link):
         index = int(client.succeed(f"cat /sys/class/net/{link}/ifindex"))
@@ -162,16 +162,24 @@ pkgs.testers.runNixOSTest {
     def datagrams(port, n=300):
         return f"for i in {{1..{n}}}; do echo x > /dev/udp/${server}/{port}; done"
 
-    def lands(tin, where, script, dev="eth1", n=300):
-        before = counts(dev)
+    def lands(tin, where, script, dev="eth1"):
+        """Runs a script and checks the bytes it moved went to one tin.
+
+        By bytes, not packets: what arrives reaches the IFB merged by
+        GRO, so a download's packet count says more about the merging
+        than the traffic.
+        """
+        least = 5_000 if "/dev/udp" in script else 200_000
+        before = counts(dev, "sent_bytes")
         run(where, script)
-        after = counts(dev)
+        after = counts(dev, "sent_bytes")
         moved = dict(zip(tins, (a - b for a, b in zip(after, before))))
-        t.assertGreaterEqual(moved[tin], n, f"{where} on {dev}: {moved}")
+        print(f"{where} on {dev}: {moved}")
+        t.assertGreaterEqual(moved[tin], least, f"{where} on {dev}: {moved}")
         for other in tins:
             # The shaper's own pings go on into voice meanwhile.
             if other not in (tin, "voice"):
-                t.assertLess(moved[other], n // 4, f"{where} on {dev}: {moved}")
+                t.assertLess(moved[other], moved[tin] // 4, f"{where} on {dev}: {moved}")
 
     with subtest("the account's work goes in bulk, both ways"):
         lands("bulk", "jobs.slice", upload)
