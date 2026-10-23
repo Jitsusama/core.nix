@@ -1731,11 +1731,13 @@ pkgs.testers.runNixOSTest {
               "quest", "terminal", "below", "zsh",
           ]
           twice = []
+          seen = 0
           for text in typed + surveyed + audited:
               as_account("qs ipc call launcher toggle")
               launcher_ready()
               type_in(text)
               things = showing()["things"]
+              seen += len([thing for thing in things if thing["is"]])
               for field in ("is", "reads"):
                   said = [thing[field] for thing in things if thing[field]]
                   again = sorted({one for one in said if said.count(one) > 1})
@@ -1744,6 +1746,8 @@ pkgs.testers.runNixOSTest {
               machine.send_key("esc")
               machine.wait_until_fails(in_session(launcher_open), timeout=10)
           t.assertEqual(twice, [], "a thing was listed twice")
+          # Most of those find something, so the rows were looked at.
+          t.assertGreater(seen, 100)
 
       with subtest("the launcher answers what's asked, and copies the answer"):
 
@@ -2053,8 +2057,8 @@ pkgs.testers.runNixOSTest {
               "Take a screenshot of the window",
           ]
 
-          # Open windows are found by their program too, and two may share
-          # a title, so a search's rows are held to what stands for what;
+          # Two windows may share a title, told apart by where they are, so
+          # a search's rows are held to what stands for what;
           # home's, with no windows but the focused one, are held to once.
           def once(shown, leading):
               rows = shown["rows"]
