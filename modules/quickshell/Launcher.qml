@@ -187,6 +187,9 @@ Scope {
             is: "answer",
             answered: true,
             nested: true,
+            // Named by what it says, not by what was typed, so nothing in
+            // it is marked as matched.
+            plain: true,
             name: said.headline,
             chip: said.question ?? Fuzzy.plainly(typed),
             glyph: first.glyph,
