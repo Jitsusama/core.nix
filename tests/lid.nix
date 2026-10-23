@@ -39,6 +39,16 @@ pkgs.testers.runNixOSTest {
   testScript = ''
     held = "systemd-inhibit --list --no-legend --no-pager | grep -q lid-docked"
     holder = "systemctl show -P MainPID lid-docked.service"
+    opened = (
+        "busctl get-property org.freedesktop.login1 /org/freedesktop/login1"
+        " org.freedesktop.login1.Manager LidClosed | grep -qx 'b false'"
+    )
+    settled = (
+        "busctl get-property org.freedesktop.login1 /org/freedesktop/login1"
+        " org.freedesktop.login1.Manager PreparingForSleep | grep -qx 'b false'"
+        " && ! systemctl list-jobs --no-legend | grep -q suspend"
+        " && systemctl show -P ActiveState systemd-suspend.service | grep -qx inactive"
+    )
 
     def lid(shut):
         machine.succeed(f"echo {shut} > /sys/module/stand_in_lid/parameters/shut")
@@ -62,6 +72,13 @@ pkgs.testers.runNixOSTest {
         lid(1)
         machine.wait_until_succeeds("test -e /run/suspended", timeout=60)
         lid(0)
+        # The stand-in suspend returns at once, and logind, finding the lid
+        # still shut, may queue another, which a loaded machine starts after
+        # the lid opens. The file is cleared once logind has seen the lid
+        # open and isn't preparing to sleep, and no suspend is queued or
+        # running.
+        machine.wait_until_succeeds(opened, timeout=30)
+        machine.wait_until_succeeds(settled, timeout=60)
         machine.succeed("rm /run/suspended")
 
     with subtest("a laptop shut at a desk keeps running once the monitor is off"):
