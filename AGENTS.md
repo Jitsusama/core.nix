@@ -44,7 +44,8 @@ meaning each; [docs/architecture.md][2] defines them.
 - Never rely on the order modules are imported in. When order matters, say so
   with `lib.mkBefore`, `lib.mkAfter` or `lib.mkOrder`.
 - Keep an application's config in its own format beside its module and read
-  it in; don't translate it into Nix.
+  it in; don't translate it into Nix. A script past a few lines, a VM test's
+  included, is a file in its own language too, linted and tested on its own.
 - Never declare a setting another tool writes, and never put a secret or
   application state in a Nix value.
 - Name nothing that builds on core.nix, anywhere in it: no machine, no machine
@@ -65,10 +66,28 @@ meaning each; [docs/architecture.md][2] defines them.
 ## Commands
 
 ```sh
-nix fmt                                # format and lint; run before committing
+nix fmt                                # format, and lint every language strictly
 nix build .#checks.x86_64-linux.<name> # the checks a change touches, as you go
-nix flake check --keep-going           # everything, before pushing
+run-subtests vm-desktop-works <words>  # a VM test's subtests named, in seconds
+nix flake check --keep-going           # everything, once, before pushing
 ```
+
+Prove a change with the cheapest check that shows it while editing, and run
+everything once, before pushing, never after each edit:
+
+| Changed         | While editing, in seconds                              | Before pushing               |
+| --------------- | ------------------------------------------------------ | ---------------------------- |
+| Shell logic     | its named check, `quickshell-passes-qmllint`           | the VM tests it changes      |
+| A shell surface | `quickshell-passes-qmllint`, `run-subtests` on its subtests | `vm-desktop-works`, `shots-changed` |
+| A Rust crate    | `cargo test` in the dev shell, `<crate>-passes-clippy` | its VM test, if it has one   |
+| A theme         | `a-faint-theme-is-refused`, `a-theme-changes-everything` | the VM tests it changes    |
+| The kernel      | `kernel-settings-hold-<model>`                         | the machine's kernel         |
+| A module        | `example-nixos`, `example-laptop`, `example-darwin`    |                              |
+| Python or shell | `nix fmt`, its check                                   |                              |
+
+`nix build --dry-run` on a check says what it would build, so a change that
+reaches a VM test is seen before it's paid for. Watching a check fail is done
+the same narrow way, never by copying the tree and running everything.
 
 A change is done when `nix flake check` passes locally, and its machine builds
 with core pointed at the checkout. Nothing waits on CI, and nothing runs on a

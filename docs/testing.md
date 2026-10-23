@@ -8,9 +8,23 @@ cheaper check already tells them. Every check is defined in
 ## The Loop
 
 ```sh
+nix fmt                                  # format, and lint every language strictly
 nix build .#checks.x86_64-linux.<name>   # the checks the change touches, as you go
-nix flake check --keep-going             # everything, before pushing
+run-subtests <vm-test> <words>           # a VM test's subtests named, in seconds
+nix flake check --keep-going             # everything, once, before pushing
 ```
+
+While editing, a change is proven by the cheapest checks that show it,
+which [AGENTS.md][6] lists by kind of change, and a VM test only by the
+subtests it touches. `nix flake check` runs once, before pushing, not after
+each edit: on a machine shared with other work, a whole run each time is
+what makes the loop slow, and the load it adds is what makes VM tests time
+out.
+
+`nix fmt` lints as it formats, at each linter's strictest, test code
+included: ruff with every rule and mypy `--strict` for Python (`ruff.toml`,
+`mypy.ini`), shellcheck for shell, statix and deadnix for Nix, and the
+`formatting` check holds the repository to it.
 
 `nix flake check` runs every check, but Nix reuses any check whose inputs
 didn't change, so a change pays only for the checks it can affect. With the
@@ -114,6 +128,7 @@ written beside each in `tests/`.
 | `formatting`                        | everything is formatted and passes the linters            |
 | `stands-alone`                      | nothing here names a machine, its repository or employer  |
 | `ci-runs-every-vm-test`             | CI's workflow runs every virtual machine test             |
+| `run-subtests-keeps-what-is-named`  | run-subtests keeps a script's boot and helpers and only the subtests named |
 
 ### Examples
 
@@ -200,11 +215,36 @@ kernel guide][2] says what that catches.
 | `the-splash-keeps-systemd-quiet`  | with the splash, systemd writes only failures to the console |
 | `spend-watch-accepts-its-configuration` | spend-watch passes its tests and accepts the config an account gets, a feed and a cap among it |
 | `spend-watch-passes-clippy`       | clippy finds nothing in spend-watch or its tests          |
+| `wifid-reads-the-air`             | wifid's tests pass: what it hears and offers, how each network is joined, the addresses it shows, what it keeps, and sign-ins |
+| `wifid-sign-in-reads-its-network` | the sign-in window's tests pass: its proxy lets on only the window, and it follows which card wants a sign-in |
+| `wifid-passes-clippy`             | clippy finds nothing in wifid, its sign-in window or their tests |
 
 ### Virtual Machines
 
 Each boots a machine under QEMU, which takes minutes, so each covers what only
 a running system shows.
+
+While changing what one covers, run only the subtests the change touches.
+A test's driver builds in seconds once its machines are built, and runs
+whatever script it's given; `run-subtests`, in the dev shell, builds it and
+runs everything outside a subtest (the boot, the helpers) and the subtests
+whose names hold the words given, in under half a minute for one desktop
+subtest, boot included:
+
+```sh
+run-subtests vm-desktop-works                       # list its subtests
+run-subtests vm-desktop-works "opens kitty"         # run those named
+run-subtests -I vm-desktop-works "opens kitty"      # then a Python prompt, machines up
+run-subtests -K vm-desktop-works "opens kitty"      # keep the disks for the next run
+```
+
+A subtest that uses what an earlier one left, a window or a notice, needs
+that one named too. Each run has its own short runtime folder, since the
+driver keeps its network switch's socket and the machines' state under
+`XDG_RUNTIME_DIR`, so two runs at once don't collide; the folder has to be
+short, as a socket's path can't pass 108 bytes. The pictures land in the
+folder it prints. A break is watched failing this way too, never by
+copying the tree and running the whole test.
 
 | Check                             | Proves                                                  |
 | --------------------------------- | ------------------------------------------------------- |
@@ -276,8 +316,12 @@ picture caught before its state was drawn is a fault in the test instead.
   belong with the promises.
 - A check above the promises says what the tiers below it miss.
 - What a running system shows goes in an existing virtual machine where it
-  fits. A new one has to cover something none of them can, and its name
-  starts with `vm-`, which is how CI gives it a runner of its own.
+  fits. A new one has to cover something none of them can; its name starts
+  with `vm-`, and CI's matrix names it, which `ci-runs-every-vm-test` holds.
+- A VM test past about two minutes, or twenty subtests, splits by area, each
+  part carrying only the stand-ins its area needs, so a change reruns only
+  the part it touches. Each subtest sets up what it needs and leaves nothing
+  behind, so it can run alone.
 - A check that only repeats another one's signal goes.
 - A new module is evaluated by the examples once a role or another module
   imports it. One that nothing imports goes into an example.
@@ -309,3 +353,4 @@ isn't restored by accident.
 [3]: installing.md
 [4]: ../tests/secure-boot.nix
 [5]: ../tests/shots-that-move.txt
+[6]: ../AGENTS.md#commands

@@ -59,16 +59,23 @@ disable` comment and the reason above it.
 
 ## Checking
 
-The quickshell checks are named `quickshell-*` in [`checks.nix`][checks].
+The shell's logic is proven where it's cheapest: in Qt's JavaScript engine
+or offscreen Quickshell, over cases in `tests/`, in under a second each, as
+[testing][logic] lists. Logic that sits in a view file moves into a `.js`
+beside it, where those checks can reach it.
+
 `vm-desktop-works` ([`tests/desktop.nix`][desktop]) starts niri and the shell
 in a virtual machine and drives each surface by its keys, keeping a
-screenshot of each; a change to how a surface behaves or looks gets a
-subtest there. A picture is taken with `photograph`, once the screen holds
-still, after waiting on what the shell reports for the state it shows.
+screenshot of each; what only a running desktop shows gets a subtest there.
+A picture is taken with `photograph`, once the screen holds still, after
+waiting on what the shell reports for the state it shows.
 
-After any change to the shell, compare its pictures with main's using
-`shots-changed`, as [testing][testing] says, and look at every one it
-draws: a change to one surface can move another.
+While changing a surface, run only its subtests, with `run-subtests
+vm-desktop-works <words>` from the dev shell, in under half a minute; a
+subtest that uses what an earlier one left needs that one named too. Before
+pushing, run the whole test once, and compare its pictures with main's using
+`shots-changed`, as [testing][testing] says, looking at every one it draws:
+a change to one surface can move another.
 
 [checks]: ../../checks.nix
 [clipboard]: clipboard/
@@ -79,4 +86,5 @@ draws: a change to one surface can move another.
 [pieces]: pieces/
 [provider]: launcher/Provider.qml
 [skill]: ../theme/SKILL.md
+[logic]: ../../docs/testing.md#the-shells-logic
 [testing]: ../../docs/testing.md#what-changed-on-screen
