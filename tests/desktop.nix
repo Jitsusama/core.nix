@@ -2614,6 +2614,11 @@ pkgs.testers.runNixOSTest {
           machine.wait_until_fails(in_session(notices), timeout=15)
           as_account("systemctl --user stop player")
 
+      # A call comes before the other apps when the machine is busy.
+      with subtest("Tuple's daemon comes before the other apps"):
+          comes = as_account("systemctl --user show tuple --property=CPUWeight --property=Nice")
+          t.assertEqual(sorted(comes.split()), ["CPUWeight=1000", "Nice=-10"])
+
       with subtest("a Tuple call shows in the margin while it lasts"):
           # Only a call writes these lines, so they're written here, with
           # the daemon stopped, since it rewrites its log as it starts.

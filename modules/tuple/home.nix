@@ -174,6 +174,14 @@ in
       ExecStart = "${tuple} start";
       ExecStop = "${tuple} stop";
       Restart = "on-failure";
+      # A call is real time: its sound, camera and screen are encoded and
+      # sent as they happen, so under load the daemon comes before the
+      # other apps it shares app.slice with, ten to one, and at the most
+      # the account may raise it. It stays out of session.slice, whose
+      # memory floor the compositor and sound need: the daemon has peaked
+      # at 935 MiB in a call, past that floor on its own.
+      CPUWeight = 1000;
+      Nice = -10;
     };
     Install.WantedBy = [ "graphical-session.target" ];
   };
