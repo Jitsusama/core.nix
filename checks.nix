@@ -2625,6 +2625,17 @@ in
   # wants a sign-in until none does.
   wifid-sign-in-reads-its-network = pkgs.callPackage ./modules/wifid/sign-in/package.nix { };
 
+  # run-subtests keeps a test script's boot and helpers and only the subtests
+  # named, so what it runs is what was asked for (tests/run-subtests-test.py).
+  run-subtests-keeps-what-is-named =
+    let
+      run-subtests = pkgs.callPackage ./tests/run-subtests.nix { };
+    in
+    pkgs.runCommandLocal "run-subtests-keeps-what-is-named" { } ''
+      RUN_SUBTESTS=${lib.getExe run-subtests.tool} ${run-subtests.tests}
+      touch $out
+    '';
+
   # shutdown-status's tests run as it builds: it reads only systemd-shutdown's
   # and the ramfs's steps, first lines only, says forced once for a last stage
   # begun unmarked, and leftovers for three seconds' silence after a wait.

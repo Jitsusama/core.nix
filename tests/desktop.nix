@@ -837,6 +837,10 @@ pkgs.testers.runNixOSTest {
       # niri sets these as a session, then starts it.
       as_account("systemctl --user set-environment XDG_CURRENT_DESKTOP=niri XDG_SESSION_TYPE=wayland")
       as_account("systemctl --user start compositor")
+      # Every subtest past the first few needs the shell, so it starts with
+      # the session rather than in a subtest, and any subtest can run alone.
+      as_account("systemctl --user start quickshell")
+      machine.wait_until_succeeds(in_session("qs ipc show | grep -q launcher"), timeout=60)
 
       # A loop in the order units start breaks nothing at a switch, when the
       # targets are already reached, so only a boot shows it.
@@ -855,8 +859,6 @@ pkgs.testers.runNixOSTest {
           )
 
       with subtest("Quickshell starts without a QML error"):
-          as_account("systemctl --user start quickshell")
-          machine.wait_until_succeeds(in_session("qs ipc show | grep -q launcher"), timeout=60)
           log = as_account("journalctl --user -u quickshell --no-pager -o cat")
           print(log)
           assert "ERROR" not in log and "Error:" not in log, "Quickshell reported an error"
