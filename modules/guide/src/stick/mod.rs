@@ -181,9 +181,11 @@ pub fn write(
     }
 
     {
-        let mut region = Partition::new(disk, vault.offset(), vault.bytes()).map_err(unwritten)?;
-        // Written back once, after the vault is closed, rather than at
-        // every file fatfs closes.
+        // Formatted, so what the stick held there is never read; written
+        // back once, after the vault is closed, rather than at every file
+        // fatfs closes.
+        let mut region =
+            Partition::fresh(disk, vault.offset(), vault.bytes()).map_err(unwritten)?;
         let mut fat = Fat::format(Counted::writes(Unflushed(&mut region), meter))?;
         fill(&mut fat)?;
         fat.close()?;
