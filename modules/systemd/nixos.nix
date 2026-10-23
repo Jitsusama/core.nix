@@ -16,7 +16,7 @@
 # in rather than ten minutes. The disks are synced by then, and a stall in
 # the kernel's own reboot is caught the same way.
 #
-# With Plymouth on, shutdown-status.py tells it by keyword when either
+# With Plymouth on, shutdown-status tells it by keyword when either
 # happens, since a splash that just sits there says nothing. The services that
 # end a healthy stop leave a mark it reads, ignoring any failure to.
 {
@@ -34,7 +34,7 @@ let
     "kexec"
   ];
   reached = "/run/shutdown-reached-its-end";
-  status = pkgs.writers.writePython3 "shutdown-status" { } ./shutdown-status.py;
+  status = lib.getExe (pkgs.callPackage ./shutdown-status/package.nix { });
 in
 {
   systemd.managerEnvironment.SYSTEMD_DEFAULT_MOUNT_RATE_LIMIT_BURST = "50";
