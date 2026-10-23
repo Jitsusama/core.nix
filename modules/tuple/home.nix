@@ -153,7 +153,8 @@ in
       order = 45;
       source = ./Calls.qml;
     };
-    # Tuple's people, to call or join, found by name or email.
+    # Tuple's place: what can be done about calls now, then the people to
+    # call or join, found by name or email.
     launcher.providers.people = {
       order = 46;
       source = ./People.qml;

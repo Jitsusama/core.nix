@@ -1561,7 +1561,9 @@ in
       touch $out
     '';
 
-  # The launcher's people follow Tuple's contacts through the real
+  # Tuple's place in the launcher leads with what can be done about calls
+  # now, as a stand-in for Tuple.qml says it, and its people follow Tuple's
+  # contacts through the real
   # tuple-people, which reads a stand-in for Tuple's follow here, and call,
   # join or favour one (tests/people.qml), with niri stood in. Stopping the
   # helper stops Tuple's follow, which writes only when someone's presence
@@ -1582,6 +1584,13 @@ in
       niri = singleton "Niri.qml" ''
         property var spawned: []
         function spawn(command) { spawned = command; }
+      '';
+      # Out of a call, as Tuple.qml would be, which the test changes.
+      calls = singleton "Tuple.qml" ''
+        property var controls: [{ key: "tuple:open", verb: "open", name: "Open my Tuple room",
+          keywords: "pair call start new", glyph: "o", hue: "action", run: () => {} }]
+        property bool calling: false
+        property string standing: ""
       '';
       helper = pkgs.callPackage ./modules/quickshell/pi-helper.nix {
         name = "tuple-people";
@@ -1659,6 +1668,7 @@ in
       cp ${./modules/tuple/People.qml} launcher/People.qml
       cp ${./tests/people.qml} shell.qml
       cp ${niri} Niri.qml
+      cp ${calls} Tuple.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
       export FOLLOWED=${followed} STOP_TUPLE=${stop} PATH=${helper}/bin:${tuple}/bin:$PATH
       mkdir -m 700 $XDG_RUNTIME_DIR
@@ -1872,6 +1882,7 @@ in
         import QtQuick
         Singleton {
           property var windows: ({})
+          property var casts: ({})
           function spawn(command) { }
           function act(request) { }
         }

@@ -1,7 +1,11 @@
-// Drives Tuple's people in the launcher (modules/tuple/People.qml) through
+// Drives Tuple's place in the launcher (modules/tuple/People.qml) through
 // Quickshell itself, over the real tuple-people (people.rs) reading a
-// stand-in for Tuple's `contacts follow`, with niri and the launcher stood
-// in. Nothing follows Tuple until the launcher opens; then with nothing
+// stand-in for Tuple's `contacts follow`, with niri, the launcher and
+// Tuple's calls (Tuple.qml) stood in. The place leads with what can be
+// done about calls now: out of a call, opening Joel's room; in one, its
+// controls, which typing there finds by name or keyword, while the main
+// search leaves them to Calls.qml; and its row says how Tuple stands.
+// Nothing follows Tuple until the launcher opens; then with nothing
 // typed it lists the favourites and then those called lately, each by who
 // can pair first, saying how each stands; typing finds anyone by name or
 // email, those Tuple knows first, as they stand, and a stranger saying
@@ -118,6 +122,51 @@ ShellRoot {
         return rows.map(row => row.side).join(", ");
     }
 
+    // The place's people, after what can be done about calls.
+    function folks() {
+        return people.everything().filter(row => row.key.startsWith("person:"));
+    }
+
+    // Out of a call, Joel's room is first; in one, its controls are, and
+    // Tuple's row says so.
+    function moments() {
+        const idle = people.everything();
+        expect("out of a call, the room leads", idle[0].name === "Open my Tuple room"
+            && idle[1].name === "Ada Brook", names(idle.slice(0, 2)));
+        expect("asking who to pair with", people.collection.ask === "who to pair with?",
+            people.collection.ask);
+        const quiet = () => {};
+        Tuple.controls = [
+            { key: "tuple:mute", verb: "mute", name: "Mute me in the Tuple call",
+                keywords: "pair microphone voice", glyph: "m", hue: "action", run: quiet },
+            { key: "tuple:share", verb: "share", name: "Share the screen in the Tuple call",
+                keywords: "pair", glyph: "s", hue: "action", run: quiet },
+            { key: "tuple:leave", verb: "leave", name: "Leave the Tuple call",
+                keywords: "pair hang up end", glyph: "l", hue: "action", run: quiet }
+        ];
+        Tuple.calling = true;
+        Tuple.standing = "in a call";
+        const calling = people.everything();
+        expect("in a call, its controls lead", names(calling.slice(0, 4))
+            === "Mute me in the Tuple call, Share the screen in the Tuple call, Leave the Tuple call, "
+                + "Ada Brook", names(calling.slice(0, 4)));
+        expect("they're calls", calling[0].what === "call", calling[0].what);
+        expect("Tuple's row says it's in a call", people.counted() === "in a call", people.counted());
+        expect("asking what to do", people.collection.ask === "what to do in the call?",
+            people.collection.ask);
+        const leave = people.search("leave").rows;
+        expect("typing in the place finds a control", names(leave) === "Leave the Tuple call", names(leave));
+        const hang = people.search("hang up").rows;
+        expect("and by what else it's called", names(hang) === "Leave the Tuple call", names(hang));
+        expect("the main search leaves controls to their own rows",
+            !people.gather("leave").rows.some(row => row.key.startsWith("tuple:")),
+            names(people.gather("leave").rows));
+        Tuple.controls = [{ key: "tuple:open", verb: "open", name: "Open my Tuple room",
+            keywords: "pair call start new", glyph: "o", hue: "action", run: quiet }];
+        Tuple.calling = false;
+        Tuple.standing = "";
+    }
+
     function home(name) {
         return people.everything().find(row => row.name === name);
     }
@@ -138,7 +187,8 @@ ShellRoot {
         try {
             expect("opening the launcher follows Tuple", people.following.running, "it doesn't");
             expect("everyone", people.everyone.length === 8, people.everyone.length);
-            const open = people.everything();
+            root.moments();
+            const open = root.folks();
             expect("favourites, then those called lately, by who can pair first",
                 names(open) === "Ada Brook, Ben Carrow, Dee Ellery, Cal Dunmore", names(open));
             expect("how each stands", sides(open) === "available, in a call, away, offline", sides(open));
@@ -194,7 +244,7 @@ ShellRoot {
             making.run();
             expect("telling Tuple of a favourite",
                 Niri.spawned.join(" ") === "tuple contacts favorite eli@example.com", Niri.spawned.join(" "));
-            const made = people.everything();
+            const made = root.folks();
             expect("a new favourite at home at once",
                 names(made) === "Ada Brook, Ben Carrow, Dee Ellery, Eli Fenwick, Cal Dunmore", names(made));
             expect("with a star", home("Eli Fenwick").glyph === String.fromCodePoint(0xf04ce),
@@ -203,7 +253,7 @@ ShellRoot {
             home("Dee Ellery").verbs()[1].run();
             expect("telling Tuple of one no longer a favourite",
                 Niri.spawned.join(" ") === "tuple contacts unfavorite dee@example.com", Niri.spawned.join(" "));
-            const unmade = people.everything();
+            const unmade = root.folks();
             expect("one no longer a favourite moves at once, still saying how they stand",
                 names(unmade) === "Ada Brook, Ben Carrow, Eli Fenwick, Cal Dunmore, Dee Ellery"
                     && home("Dee Ellery").side === "away", `${names(unmade)} ${home("Dee Ellery").side}`);
@@ -223,7 +273,7 @@ ShellRoot {
         try {
             // As Tuple says them now, which never heard of the favourites
             // changed here.
-            const open = people.everything();
+            const open = root.folks();
             expect("a favourite gone into a call",
                 names(open) === "Ada Brook, Ben Carrow, Dee Ellery, Cal Dunmore"
                     && sides(open) === "in a call, in a call, away, offline", `${names(open)}: ${sides(open)}`);
@@ -281,7 +331,7 @@ ShellRoot {
     function ended() {
         root.waiting = "Tuple not running";
         try {
-            const open = people.everything();
+            const open = root.folks();
             expect("those kept once the follow ended",
                 names(open) === "Ada Brook, Ben Carrow, Dee Ellery, Cal Dunmore", names(open));
             expect("saying nothing of how they stand", open.every(row => row.side === ""), sides(open));
@@ -297,7 +347,7 @@ ShellRoot {
         root.waiting = "the end";
         try {
             expect("the count", people.counted() === "not running", people.counted());
-            expect("those kept still", people.everything().length === 4, names(people.everything()));
+            expect("those kept still", root.folks().length === 4, names(root.folks()));
             Qt.exit(0);
         } catch (error) {
             fail(error.message);
