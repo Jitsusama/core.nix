@@ -508,7 +508,11 @@ pkgs.testers.runNixOSTest {
       # hundred Quickshell read back the mute from before, which a node of
       # its own never did in six hundred. The tone gives something to record
       # from the start, as a real microphone does, and a recording with
-      # sound waits for its first sound before it writes anything.
+      # sound waits for its first sound before it writes anything. It follows
+      # the dummy driver, in its group, rather than driving: a test tone
+      # driving stops for good the first time a slow reader keeps every
+      # buffer, as a recording did under load, and it says it drives itself,
+      # over any node.driver it's given.
       services.pipewire.extraConfig.pipewire."91-stand-in-microphone" = {
         "context.spa-libs".audiotestsrc = "audiotestsrc/libspa-audiotestsrc";
         "context.objects" = [
@@ -517,6 +521,7 @@ pkgs.testers.runNixOSTest {
             args = {
               "factory.name" = "audiotestsrc";
               "node.name" = "stand-in-microphone";
+              "node.group" = "pipewire.dummy";
               "node.description" = "Stand-in microphone";
               "media.class" = "Audio/Source";
               # Two channels, as a laptop's microphones are.
@@ -852,6 +857,25 @@ pkgs.testers.runNixOSTest {
 
       # A user manager handed its whole service's pressure to watch can't set
       # its own threshold on it, and says so each time it starts or reloads.
+      # A reader that stalls, as one does under load, leaves the microphone
+      # recording once it carries on, as a real one's does.
+      with subtest("the stand-in microphone outlasts a reader that stalls"):
+          as_account(
+              "systemd-run --user --unit=stalls -- ${pkgs.pipewire}/bin/pw-record"
+              " --target stand-in-microphone /tmp/stalls.wav"
+          )
+          machine.wait_until_succeeds("test $(stat -c %s /tmp/stalls.wav) -gt 100000", timeout=60)
+          as_account("systemctl --user kill --signal=STOP stalls")
+          machine.sleep(3)
+          as_account("systemctl --user kill --signal=CONT stalls")
+          machine.sleep(2)
+          stall_from = int(machine.succeed("stat -c %s /tmp/stalls.wav"))
+          machine.sleep(3)
+          stall_to = int(machine.succeed("stat -c %s /tmp/stalls.wav"))
+          as_account("systemctl --user stop stalls")
+          machine.succeed("rm /tmp/stalls.wav")
+          assert stall_to > stall_from + 100000, (stall_from, stall_to)
+
       with subtest("every user manager watches its own pressure"):
           as_account("systemctl --user daemon-reload")
           machine.fail("journalctl -b -o cat | grep -F 'pressure threshold'")
