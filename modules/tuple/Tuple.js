@@ -9,7 +9,7 @@
 // own mute comes from the messages its program holds, each with a blank
 // where something about the call goes. What fills the blank isn't known,
 // so a person is known by whatever fills it, and named only when it holds
-// the number Tuple knows them by, as tuple ls lists them.
+// the number Tuple knows them by, as its contacts list them.
 .pragma library
 
 // What a call's end sounds like: Tuple ending it, the other side ending it,
@@ -43,7 +43,7 @@ const comings = [
 const none = { calling: false, since: 0, others: [[], []], ringing: "", rang: 0,
     muted: null, showing: [] };
 
-// The first call link in some text, as tuple join takes one, or "".
+// The first call link in some text, as tuple call join takes one, or "".
 function link(text) {
     const found = /https:\/\/(?:production\.)?tuple\.app\/c\/[A-Za-z0-9_-]+/.exec(text ?? "");
     return found ? found[0] : "";
@@ -129,19 +129,23 @@ function number(who) {
     return found ? found[1] : "";
 }
 
-// Someone's name, as tuple ls lists them, one to a line, as
-// "  117559 Aadi Sanghani <aadi@example.com> [offline]"; "" if they aren't
-// listed.
+// Someone's name, from the contacts `tuple --format json contacts list`
+// gives, each as { id, full_name, short_name, email, status, ... }; "" if
+// they aren't listed, or the list isn't one.
 function named(listing, who) {
     const id = number(who);
     if (id === "")
         return "";
-    for (const line of (listing ?? "").split("\n")) {
-        const found = /^\s*(\d+)\s+(.+?)\s+<[^>]*>/.exec(line);
-        if (found && found[1] === id)
-            return found[2];
+    let contacts = null;
+    try {
+        contacts = JSON.parse(listing ?? "");
+    } catch (error) {
+        return "";
     }
-    return "";
+    if (!Array.isArray(contacts))
+        return "";
+    const found = contacts.find(contact => String(contact?.id) === id);
+    return found ? found.full_name || found.short_name || "" : "";
 }
 
 // The people in a call as a sentence says them, from their names, "" for

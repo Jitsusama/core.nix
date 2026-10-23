@@ -16,8 +16,8 @@ pragma ComponentBehavior: Bound
 // kept; one that offers something is kept, so the keys reach it too, and
 // withdrawn once it can't be done; and a call that rang and wasn't
 // answered is kept, as a missed call. Each person is named
-// from tuple ls, read once whenever someone new comes, since it lists
-// every contact.
+// from Tuple's contacts, read once whenever someone new comes, since the
+// list holds every one.
 //
 // Joel's room keeps one link, which tuple new prints as it opens the room.
 // It's kept in the shell's state, to copy again without opening the room.
@@ -42,7 +42,7 @@ Singleton {
     readonly property real since: call.since
     // Who's in it besides Joel, each by whatever the log knows them by.
     readonly property var others: Log.others(call)
-    // The names tuple ls gives them, by the number Tuple knows them by.
+    // The names Tuple's contacts give them, by the number Tuple knows them by.
     property var names: ({})
     // Who's calling Joel, while a ring lasts, or "".
     property string ringing: ""
@@ -60,7 +60,7 @@ Singleton {
     // would be, whatever the log leaves unsaid.
     readonly property int ringsFor: 60 * 1000
 
-    // Someone's name, or "" when tuple ls didn't list them.
+    // Someone's name, or "" when Tuple's contacts don't list them.
     function name(who) {
         return names[Log.number(who)] ?? "";
     }
@@ -74,11 +74,11 @@ Singleton {
     }
 
     function join(url) {
-        Niri.spawn(["tuple", "join", url]);
+        Niri.spawn(["tuple", "call", "join", url]);
     }
 
     function leave() {
-        Niri.spawn(["tuple", "end"]);
+        Niri.spawn(["tuple", "call", "leave"]);
     }
 
     // Tuple asks the portal, which asks Joel what to share.
@@ -86,10 +86,13 @@ Singleton {
         Niri.spawn(["tuple", "share"]);
     }
 
-    // Tuple answers whether he was already, so its answer is how he stands
-    // even when the shell had it wrong.
+    // Once Tuple says it's done, which it does as well when he already
+    // was, that's how he stands, even when the shell had it wrong.
+    property bool quieting: false
+
     function mute(quiet) {
-        muting.command = ["tuple", quiet ? "mute" : "unmute"];
+        quieting = quiet;
+        muting.command = ["tuple", "call", quiet ? "mute" : "unmute"];
         muting.running = true;
     }
 
@@ -106,7 +109,8 @@ Singleton {
             Niri.act({ FocusWindow: { id: Math.max(...tuples.map(window => window.id)) } });
     }
 
-    // What's to be said, kept until tuple ls has named whoever it's about.
+    // What's to be said, kept until Tuple's contacts have named whoever it's
+    // about.
     property var telling: []
 
     function tell(what, who) {
@@ -115,15 +119,17 @@ Singleton {
             Qt.callLater(root.say);
     }
 
-    // Everyone the shell might name, by the numbers tuple ls hasn't been
-    // asked about: those in the call, sharing, calling, or to be told of.
+    // Everyone the shell might name, by the numbers the contacts haven't
+    // been looked through for: those in the call, sharing, calling, or to
+    // be told of.
     function unnamed() {
         return others.concat(call.showing, [ringing], telling.map(told => told.who))
             .map(who => Log.number(who))
             .filter(id => id !== "" && !(id in names));
     }
 
-    // Asks tuple ls about anyone not yet named, saying whether it had to.
+    // Looks through the contacts for anyone not yet named, saying whether
+    // it had to.
     function learn() {
         if (unnamed().length === 0)
             return false;
@@ -251,7 +257,7 @@ Singleton {
     // Every contact, to find names in, read only when someone new comes.
     Process {
         id: listing
-        command: ["tuple", "ls"]
+        command: ["tuple", "--format", "json", "contacts", "list"]
         stdout: StdioCollector {
             onStreamFinished: {
                 // One it doesn't list is kept as "", so it isn't asked again.
@@ -266,14 +272,9 @@ Singleton {
 
     Process {
         id: muting
-        stdout: SplitParser {
-            onRead: line => {
-                const said = line.trim();
-                if (said === "muted" || said === "already muted")
-                    root.muted = true;
-                else if (said === "unmuted" || said === "already unmuted")
-                    root.muted = false;
-            }
+        onExited: exitCode => {
+            if (exitCode === 0)
+                root.muted = root.quieting;
         }
     }
 
