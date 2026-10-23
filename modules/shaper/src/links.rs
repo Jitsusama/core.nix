@@ -2,6 +2,7 @@
 //! which network each is on, read from iproute2's JSON.
 
 use serde::Deserialize;
+use std::collections::BTreeMap;
 use std::net::{Ipv4Addr, Ipv6Addr};
 
 #[derive(Deserialize)]
@@ -41,6 +42,24 @@ pub fn uplinks(v4: &str, v6: &str) -> Vec<Uplink> {
         }
     }
     found
+}
+
+/// Which links follow another's rate, by name: a link whose router is the
+/// same as one before it in the routes' order, so both lead to one line.
+/// Two estimates of one line would each take it whole, and their rates
+/// would add up past it. A link known only by its own name (no router's
+/// address learned yet) follows nobody.
+pub fn leaders(order: &[(&str, &str)]) -> BTreeMap<String, String> {
+    let mut follows = BTreeMap::new();
+    for (i, (name, network)) in order.iter().enumerate() {
+        if network.starts_with("link ") {
+            continue;
+        }
+        if let Some((leader, _)) = order[..i].iter().find(|(_, n)| n == network) {
+            follows.insert(name.to_string(), leader.to_string());
+        }
+    }
+    follows
 }
 
 #[derive(Deserialize)]
@@ -117,6 +136,27 @@ pub fn gateway_address(json: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_link_to_the_same_router_follows_the_one_before_it() {
+        let router = "6c:ae:f6:00:00:01";
+        let follows = leaders(&[
+            ("eth0", router),
+            ("wlan0", router),
+            ("usb0", "02:00:00:00:00:02"),
+            ("eth1", router),
+        ]);
+        assert_eq!(follows.get("wlan0").map(String::as_str), Some("eth0"));
+        assert_eq!(follows.get("eth1").map(String::as_str), Some("eth0"));
+        assert_eq!(follows.get("eth0"), None);
+        assert_eq!(follows.get("usb0"), None);
+    }
+
+    #[test]
+    fn a_link_whose_router_isnt_known_follows_nobody() {
+        let follows = leaders(&[("eth0", "link eth0"), ("wlan0", "link eth0")]);
+        assert!(follows.is_empty());
+    }
 
     #[test]
     fn each_link_with_a_default_route_is_an_uplink_once() {

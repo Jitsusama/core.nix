@@ -151,6 +151,8 @@ struct Shaped {
     applied: (u64, u64),
     counted: (u64, u64, Instant),
     state: State,
+    /// The link whose rate this one takes, when both reach the same router.
+    follows: Option<String>,
 }
 
 impl Shaped {
@@ -236,6 +238,7 @@ fn start(
         applied: (up, down),
         counted: (0, 0, Instant::now()),
         state: State::Resting,
+        follows: None,
     };
     let (tx, rx) = shaped.bytes();
     shaped.counted = (tx, rx, Instant::now());
@@ -315,8 +318,29 @@ fn run(options: &Options) -> ExitCode {
         let now = Instant::now();
         if last_look.is_none_or(|at| now - at >= Duration::from_secs(1)) {
             last_look = Some(now);
-            let primary = look(&mut shaped, &mut memory, options, &send);
-            let base = primary.and_then(|p| shaped.get(&p)).map(|s| s.applied.0);
+            let order = look(&mut shaped, &mut memory, options, &send);
+            let networks: Vec<(&str, &str)> = order
+                .iter()
+                .filter_map(|n| shaped.get(n).map(|s| (n.as_str(), s.network.as_str())))
+                .collect();
+            let follows = links::leaders(&networks);
+            for (name, s) in &mut shaped {
+                let leader = follows.get(name).cloned();
+                if leader != s.follows {
+                    match &leader {
+                        Some(l) => {
+                            eprintln!("{name} reaches the same router as {l}; taking its rate");
+                        }
+                        None if s.follows.is_some() => eprintln!("{name} finds its own rate again"),
+                        None => {}
+                    }
+                    s.follows = leader;
+                }
+            }
+            let base = order
+                .first()
+                .and_then(|p| shaped.get(p))
+                .map(|s| s.applied.0);
             follow_tunnels(&mut tunnels, &options.tunnels, base);
             reach = local(&shaped, &tunnels);
         }
@@ -335,8 +359,21 @@ fn run(options: &Options) -> ExitCode {
             }
         }
         let t = (now - began).as_secs_f64();
-        for s in shaped.values_mut() {
+        for s in shaped.values_mut().filter(|s| s.follows.is_none()) {
             step(s, t);
+        }
+        // A follower holds its leader's rates, so the two together stay
+        // under the one line; its own controller only keeps its pings.
+        let rates: BTreeMap<String, (u64, u64)> = shaped
+            .iter()
+            .map(|(n, s)| (n.clone(), (s.controller.up.rate, s.controller.down.rate)))
+            .collect();
+        for s in shaped.values_mut() {
+            if let Some((up, down)) = s.follows.as_ref().and_then(|l| rates.get(l)) {
+                s.controller.up.rate = *up;
+                s.controller.down.rate = *down;
+                apply(s);
+            }
         }
         if now - last_kept >= Duration::from_secs(60) {
             last_kept = now;
@@ -408,15 +445,15 @@ fn follow_tunnels(applied: &mut BTreeMap<String, u64>, names: &[String], base: O
 
 /// Follows the uplinks: shapes a new one, lets a gone one go, and puts back
 /// queues somebody took away or a link that came back without. Returns the
-/// one the first default route uses, which tunnels ride.
+/// uplinks in the routes' order, the first being the one tunnels ride.
 fn look(
     shaped: &mut BTreeMap<String, Shaped>,
     memory: &mut Memory,
     options: &Options,
     send: &std::sync::mpsc::Sender<Echo>,
-) -> Option<String> {
+) -> Vec<String> {
     let now: Vec<links::Uplink> = uplinks();
-    let primary = now.first().map(|u| u.name.clone());
+    let order: Vec<String> = now.iter().map(|u| u.name.clone()).collect();
     let gone: Vec<String> = shaped
         .keys()
         .filter(|k| !now.iter().any(|u| &u.name == *k))
@@ -473,7 +510,7 @@ fn look(
             }
         }
     }
-    primary
+    order
 }
 
 /// One step of an uplink's controller, applying its rates when they moved.
@@ -484,6 +521,11 @@ fn step(s: &mut Shaped, t: f64) {
     s.counted = (tx, rx, Instant::now());
     let kbit = |now: u64, then: u64| float(now.saturating_sub(then)) * 8.0 / 1000.0 / seconds;
     s.state = s.controller.step(t, kbit(tx, tx0), kbit(rx, rx0));
+    apply(s);
+}
+
+/// Puts a link's rates on its queues when they moved by more than 1%.
+fn apply(s: &mut Shaped) {
     let moved = |a: u64, b: u64| a.abs_diff(b) * 100 > b;
     let (up, down) = (s.controller.up.rate, s.controller.down.rate);
     if moved(up, s.applied.0) {
@@ -512,6 +554,8 @@ struct LinkStatus {
     state: String,
     building: bool,
     baselines: Vec<(String, f64)>,
+    #[serde(default)]
+    follows: Option<String>,
 }
 
 fn write_status(runtime: &Path, shaped: &BTreeMap<String, Shaped>) {
@@ -528,6 +572,7 @@ fn write_status(runtime: &Path, shaped: &BTreeMap<String, Shaped>) {
             state: format!("{:?}", s.state).to_lowercase(),
             building: s.controller.building(),
             baselines: s.controller.baselines(),
+            follows: s.follows.clone(),
         })
         .collect();
     let path = runtime.join("status.json");
@@ -560,15 +605,20 @@ fn status(runtime: &Path) -> ExitCode {
     for link in all {
         println!("{}  on {}", link.name, link.network);
         println!("  up {}, down {}", mbit(link.up), mbit(link.down));
+        if let Some(leader) = &link.follows {
+            println!("  at {leader}'s rate: both reach the same router");
+        }
         // Said only while it holds: a quiet line needs no line saying so.
-        if link.building {
+        if link.building && link.follows.is_none() {
             println!("  the line's queue is building, so the shaper is slowing");
         }
-        println!(
-            "  held under load: up {}, down {}",
-            mbit(link.held_up),
-            mbit(link.held_down)
-        );
+        if link.follows.is_none() {
+            println!(
+                "  held under load: up {}, down {}",
+                mbit(link.held_up),
+                mbit(link.held_down)
+            );
+        }
         let pings: Vec<String> = link
             .baselines
             .iter()
