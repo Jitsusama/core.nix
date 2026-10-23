@@ -21,6 +21,17 @@
 //! or half a line, says nothing. When the shell stops reading, Tuple's
 //! follow is stopped and this ends quietly, and when the shell stops this
 //! with a signal, Tuple's follow ends with it.
+//!
+//! `tuple-people call` does the same for the call Joel's in, from
+//! `tuple --format json state follow --raw`, whose first line holds every
+//! contact too and is never read; Tuple's log says too little of a call to
+//! know it's started. Each change to the call is one line:
+//!
+//! - `{"call":{"since":ms,"connection":"connected","muted":false,
+//!   "sharing":false,"camera":false,"people":[[id,"name","connection",
+//!   muted,sharing,camera],...]}}`, Joel's own state first and then each
+//!   of the others', `since` null until it connects;
+//! - `{"call":null}`, no call.
 
 use std::env;
 use std::io::{self, BufRead, BufReader, Write};
@@ -31,6 +42,8 @@ use std::process::{Command, ExitCode, Stdio};
 
 /// What follows the tuple command.
 const ARGS: [&str; 4] = ["--format", "json", "contacts", "follow"];
+/// What follows it for the call.
+const CALL_ARGS: [&str; 5] = ["--format", "json", "state", "follow", "--raw"];
 
 unsafe extern "C" {
     fn prctl(option: i32, arg2: u64, ...) -> i32;
@@ -380,6 +393,11 @@ fn standing_line(standing: &[Standing]) -> String {
     out
 }
 
+/// What turns each of a follow's lines into those the shell is told.
+trait Hears {
+    fn heard(&mut self, line: &str) -> Vec<String>;
+}
+
 /// What was last said of Tuple's people, so only a change is said again.
 #[derive(Default)]
 struct Follower {
@@ -387,7 +405,122 @@ struct Follower {
     standing: Option<Vec<Standing>>,
 }
 
-impl Follower {
+/// A field of an object, if it has one.
+fn field<'a>(fields: &'a [(String, Value)], key: &str) -> Option<&'a Value> {
+    fields
+        .iter()
+        .find_map(|(name, value)| (name == key).then_some(value))
+}
+
+fn yes(fields: &[(String, Value)], key: &str) -> bool {
+    field(fields, key) == Some(&Value::Bool(true))
+}
+
+fn words<'a>(fields: &'a [(String, Value)], key: &str) -> &'a str {
+    match field(fields, key) {
+        Some(Value::Text(text)) => text,
+        _ => "",
+    }
+}
+
+/// Someone's state in the call: muted when their voice isn't sent,
+/// sharing when it's their screen rather than only their voice, and
+/// whether their camera is on.
+fn in_call(fields: &[(String, Value)]) -> [(&'static str, bool); 3] {
+    [
+        ("muted", !yes(fields, "audio_enabled")),
+        ("sharing", words(fields, "share_state") == "screen"),
+        ("camera", yes(fields, "webcam_enabled")),
+    ]
+}
+
+/// The line for one of Tuple's current_call data.
+fn call_line(data: &Value) -> String {
+    let Value::Object(call) = data else {
+        return "{\"call\":null}".to_string();
+    };
+    let mut out = String::from("{\"call\":{\"since\":");
+    match field(call, "started_at") {
+        Some(Value::Number(at)) => out.push_str(at),
+        _ => out.push_str("null"),
+    }
+    let local = match field(call, "local") {
+        Some(Value::Object(local)) => local.as_slice(),
+        _ => &[],
+    };
+    out.push_str(",\"connection\":");
+    quote(&mut out, words(local, "connection_state"));
+    for (name, holds) in in_call(local) {
+        out.push_str(&format!(",\"{name}\":{holds}"));
+    }
+    out.push_str(",\"people\":[");
+    let others = match field(call, "participants") {
+        Some(Value::List(others)) => others.as_slice(),
+        _ => &[],
+    };
+    let mut first = true;
+    for other in others {
+        let Value::Object(fields) = other else {
+            continue;
+        };
+        if !first {
+            out.push(',');
+        }
+        first = false;
+        out.push('[');
+        match field(fields, "id") {
+            Some(Value::Number(id)) => out.push_str(id),
+            Some(Value::Text(id)) => quote(&mut out, id),
+            _ => out.push_str("null"),
+        }
+        out.push(',');
+        let name = ["full_name", "short_name", "email"]
+            .into_iter()
+            .map(|key| words(fields, key))
+            .find(|name| !name.is_empty())
+            .unwrap_or("");
+        quote(&mut out, name);
+        out.push(',');
+        quote(&mut out, words(fields, "connection_state"));
+        for (_, holds) in in_call(fields) {
+            out.push_str(if holds { ",true" } else { ",false" });
+        }
+        out.push(']');
+    }
+    out.push_str("]}}");
+    out
+}
+
+/// What was last said of the call, so only a change is said again.
+#[derive(Default)]
+struct Call {
+    last: Option<String>,
+}
+
+impl Hears for Call {
+    fn heard(&mut self, line: &str) -> Vec<String> {
+        // Only a call's line is read whole: the first, of every contact,
+        // runs past two megabytes, and Tuple names the type first.
+        let head = &line.as_bytes()[..line.len().min(48)];
+        if !head.windows(14).any(|w| w == b"\"current_call\"") {
+            return Vec::new();
+        }
+        let Some(Value::Object(fields)) = Reader::parse(line) else {
+            return Vec::new();
+        };
+        if words(&fields, "type") != "current_call" {
+            return Vec::new();
+        }
+        let said = call_line(field(&fields, "data").unwrap_or(&Value::Null));
+        if self.last.as_ref() == Some(&said) {
+            return Vec::new();
+        }
+        self.last = Some(said.clone());
+        vec![said]
+    }
+}
+
+impl Hears for Follower {
     /// The lines to write for one of Tuple's, people before standing.
     fn heard(&mut self, line: &str) -> Vec<String> {
         let Some(Value::List(items)) = Reader::parse(line) else {
@@ -420,7 +553,7 @@ impl Follower {
 /// at a time. Says the follow's exit code once it ends, 1 when a signal
 /// ended it or it couldn't start, and 0 when `out` closed first, since
 /// then the shell has gone and there's no one to tell.
-fn follow(command: &mut Command, mut out: impl Write) -> i32 {
+fn follow(command: &mut Command, mut hears: impl Hears, mut out: impl Write) -> i32 {
     let mut child = match dies_with_us(command).stdout(Stdio::piped()).spawn() {
         Ok(child) => child,
         Err(error) => {
@@ -437,7 +570,6 @@ fn follow(command: &mut Command, mut out: impl Write) -> i32 {
         return 1;
     };
     let mut input = BufReader::with_capacity(1 << 20, stdout);
-    let mut follower = Follower::default();
     let mut line = Vec::new();
     loop {
         line.clear();
@@ -450,7 +582,7 @@ fn follow(command: &mut Command, mut out: impl Write) -> i32 {
         let Ok(text) = std::str::from_utf8(&line) else {
             continue;
         };
-        for said in follower.heard(text) {
+        for said in hears.heard(text) {
             let written = out
                 .write_all(said.as_bytes())
                 .and_then(|()| out.write_all(b"\n"))
@@ -480,14 +612,23 @@ fn running(socket: &Path) -> bool {
 
 fn main() -> ExitCode {
     let args: Vec<String> = env::args().skip(1).collect();
-    let [tuple, socket] = args.as_slice() else {
-        eprintln!("usage: tuple-people <the tuple command> <its daemon's socket>");
-        return ExitCode::from(2);
+    let (calls, tuple, socket) = match args.as_slice() {
+        [tuple, socket] => (false, tuple, socket),
+        [mode, tuple, socket] if mode == "call" => (true, tuple, socket),
+        _ => {
+            eprintln!("usage: tuple-people [call] <the tuple command> <its daemon's socket>");
+            return ExitCode::from(2);
+        }
     };
     if !running(Path::new(socket)) {
         return ExitCode::from(NOT_RUNNING);
     }
-    let code = follow(Command::new(tuple).args(ARGS), io::stdout().lock());
+    let out = io::stdout().lock();
+    let code = if calls {
+        follow(Command::new(tuple).args(CALL_ARGS), Call::default(), out)
+    } else {
+        follow(Command::new(tuple).args(ARGS), Follower::default(), out)
+    };
     ExitCode::from(u8::try_from(code).unwrap_or(1))
 }
 
@@ -667,6 +808,101 @@ mod tests {
         );
     }
 
+    /// A call's line as Tuple's raw state follow writes one, with Joel's
+    /// own state and one other's, each as (muted, sharing, camera).
+    fn call(connection: &str, started: bool, own: [bool; 3], other: [bool; 3]) -> String {
+        let state = |[muted, sharing, camera]: [bool; 3]| {
+            format!(
+                "\"audio_enabled\":{},\"share_state\":\"{}\",\"webcam_enabled\":{camera}",
+                !muted,
+                if sharing { "screen" } else { "audio" }
+            )
+        };
+        format!(
+            "{{\"type\":\"current_call\",\"data\":{{\"can_create_url\":true,\"id\":\"c-1\",\
+             \"local\":{{{},\"connection_state\":\"{connection}\",\"display\":{{\"id\":0}},\
+             \"is_current_user\":true,\"tracks\":{{\"audio\":\"connected\"}}}},\
+             \"participants\":[{{{},\"connection_state\":\"{connection}\",\"email\":\"ada@example.com\",\
+             \"full_name\":\"Ada Brightwater\",\"id\":7,\"session_id\":\"s-1\"}}],\
+             \"sfu_backed\":false{}}}}}\n",
+            state(own),
+            state(other),
+            if started {
+                ",\"started_at\":1792759701457"
+            } else {
+                ""
+            }
+        )
+    }
+
+    #[test]
+    fn a_call_says_how_everyone_stands() {
+        let mut heard = Call::default();
+        assert_eq!(
+            heard.heard(&call(
+                "signaling",
+                false,
+                [true, false, false],
+                [true, false, false]
+            )),
+            [
+                "{\"call\":{\"since\":null,\"connection\":\"signaling\",\"muted\":true,\
+              \"sharing\":false,\"camera\":false,\"people\":[[7,\"Ada Brightwater\",\
+              \"signaling\",true,false,false]]}}"
+            ]
+        );
+        assert_eq!(
+            heard.heard(&call(
+                "connected",
+                true,
+                [false, true, false],
+                [false, false, true]
+            )),
+            [
+                "{\"call\":{\"since\":1792759701457,\"connection\":\"connected\",\"muted\":false,\
+              \"sharing\":true,\"camera\":false,\"people\":[[7,\"Ada Brightwater\",\
+              \"connected\",false,false,true]]}}"
+            ]
+        );
+    }
+
+    #[test]
+    fn a_call_unchanged_says_nothing_and_its_end_says_so() {
+        let mut heard = Call::default();
+        let going = call("connected", true, [false; 3], [false; 3]);
+        assert_eq!(heard.heard(&going).len(), 1);
+        assert!(heard.heard(&going).is_empty());
+        assert_eq!(
+            heard.heard("{\"type\":\"current_call\",\"data\":null}\n"),
+            ["{\"call\":null}"]
+        );
+        assert!(
+            heard
+                .heard("{\"type\":\"current_call\",\"data\":null}\n")
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn only_a_calls_lines_are_read() {
+        let mut heard = Call::default();
+        // Every contact, with a call's word deep inside it, is skipped
+        // unread; so is any other kind, and half a line.
+        let contacts = format!(
+            "{{\"type\":\"state\",\"data\":{{\"contacts\":[{}],\"note\":\"current_call\"}}}}\n",
+            vec!["{\"id\":1}"; 20].join(",")
+        );
+        let going = call("connected", true, [false; 3], [false; 3]);
+        for line in [
+            contacts.as_str(),
+            "{\"type\":\"rooms\",\"data\":{\"current_call\":1}}\n",
+            "{\"type\":\"session_updated\",\"data\":{\"id\":\"s-1\"}}\n",
+            &going[..going.len() / 2],
+        ] {
+            assert!(heard.heard(line).is_empty(), "{line}");
+        }
+    }
+
     #[test]
     fn a_malformed_line_says_nothing_and_disturbs_nothing() {
         let mut follower = Follower::default();
@@ -708,7 +944,11 @@ mod tests {
             ),
         );
         let mut written = Vec::new();
-        let code = follow(Command::new("sh").arg(&script).args(ARGS), &mut written);
+        let code = follow(
+            Command::new("sh").arg(&script).args(ARGS),
+            Follower::default(),
+            &mut written,
+        );
         fs::remove_file(&script).unwrap();
         assert_eq!(code, 3);
         assert_eq!(
@@ -736,7 +976,7 @@ mod tests {
     #[test]
     fn a_closed_output_ends_it_quietly() {
         let script = stand_in("forever", "while :; do echo '[]'; done\n");
-        let code = follow(Command::new("sh").arg(&script), Closed);
+        let code = follow(Command::new("sh").arg(&script), Follower::default(), Closed);
         fs::remove_file(&script).unwrap();
         assert_eq!(code, 0);
     }
@@ -748,7 +988,7 @@ mod tests {
         use std::os::unix::process::ExitStatusExt;
         use std::time::{Duration, Instant};
         let mut child = std::thread::spawn(|| {
-            dies_with_us(&mut Command::new("sleep").arg("60"))
+            dies_with_us(Command::new("sleep").arg("60"))
                 .spawn()
                 .unwrap()
         })
@@ -772,7 +1012,10 @@ mod tests {
     #[test]
     fn a_tuple_that_wont_start_ends_it_with_1() {
         let missing = env::temp_dir().join("tuple-people-test-nothing-here");
-        assert_eq!(follow(&mut Command::new(missing), Vec::new()), 1);
+        assert_eq!(
+            follow(&mut Command::new(missing), Follower::default(), Vec::new()),
+            1
+        );
     }
 
     /// A socket's place of its own for a test, empty to start with.

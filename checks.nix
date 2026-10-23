@@ -1791,6 +1791,67 @@ in
       touch $out
     '';
 
+  # How the call Joel's in stands comes from Tuple's stream, as tuple-people
+  # says it (tests/tuple-call.qml): the shell's Tuple reads it as a stand-in
+  # helper says a call's lines, one at a time as the test writes them, and
+  # tells who comes and goes through a stand-in notify-send that keeps what
+  # it's asked. The helper's own reading of Tuple's stream is its unit
+  # tests', run as it builds.
+  the-shell-hears-tuples-call =
+    let
+      niri = pkgs.writeText "Niri.qml" ''
+        pragma Singleton
+        import Quickshell
+        import QtQuick
+        Singleton {
+          property var windows: ({})
+          function spawn(command) { }
+          function act(request) { }
+        }
+      '';
+      # Each run follows a feed of its own, the first call-feed and every
+      # later one call-feed.next, until a line says END.
+      people = pkgs.writeShellApplication {
+        name = "tuple-people";
+        runtimeInputs = [ pkgs.coreutils ];
+        text = ''
+          runs=$XDG_RUNTIME_DIR/runs
+          ran=$(cat "$runs" 2>/dev/null || echo 0)
+          echo $((ran + 1)) > "$runs"
+          feed=$XDG_RUNTIME_DIR/call-feed
+          [ "$ran" -eq 0 ] || feed=$feed.next
+          touch "$feed"
+          while read -r line; do
+            [ "$line" = END ] && exit 0
+            echo "$line"
+          done < <(tail -n +1 -f "$feed")
+        '';
+      };
+      notify = pkgs.writeShellApplication {
+        name = "notify-send";
+        text = ''
+          printf '%s\n' "$*" >> "$XDG_RUNTIME_DIR/told"
+          echo 1
+        '';
+      };
+      paste = pkgs.writeShellScriptBin "wl-paste" "exec sleep 300";
+    in
+    pkgs.runCommandLocal "the-shell-hears-tuples-call" { } ''
+      cp ${./modules/tuple/Tuple.qml} Tuple.qml
+      cp ${./modules/tuple/Tuple.js} Tuple.js
+      cp ${./tests/tuple-call.qml} shell.qml
+      cp ${niri} Niri.qml
+      export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime XDG_DATA_HOME=$TMPDIR/data
+      export LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
+      export PATH=${people}/bin:${notify}/bin:${paste}/bin:$PATH
+      mkdir -m 700 $XDG_RUNTIME_DIR
+      mkdir -p $XDG_DATA_HOME/tuple/0
+      touch $XDG_DATA_HOME/tuple/0/log.txt $XDG_RUNTIME_DIR/told
+      export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+      timeout 60 ${lib.getExe' pkgs.quickshell "qs"} -p shell.qml
+      touch $out
+    '';
+
   # Shape is a language (docs/design.md, Shape and Kinds): a border's width
   # says "this is a thing" and a radius says whole or part, so no surface
   # picks either for itself. Every corner is the theme's radius, or a part's
