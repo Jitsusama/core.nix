@@ -36,10 +36,10 @@ const RECHECK: f64 = 3_600.0;
 /// Asks git, without taking the optional locks a status would, so a
 /// checkout someone is working in sees nothing of it.
 fn git(dir: &Path, args: &[&str]) -> Option<String> {
-    let mut argv = vec![OsString::from("git"), OsString::from("-C"), dir.into()];
-    argv.extend(args.iter().map(OsString::from));
+    let mut command = vec![OsString::from("git"), OsString::from("-C"), dir.into()];
+    command.extend(args.iter().map(OsString::from));
     let job = Job {
-        argv,
+        argv: command,
         cwd: None,
         env: vec![(OsString::from("GIT_OPTIONAL_LOCKS"), OsString::from("0"))],
         timeout: GIT_TIMEOUT,

@@ -14,7 +14,7 @@ use std::path::{Path, PathBuf};
 use tokio::io::Interest;
 use tokio::io::unix::AsyncFd;
 
-/// Linux's O_NONBLOCK, the same on every architecture core builds for.
+/// Linux's `O_NONBLOCK`, the same on every architecture core builds for.
 const O_NONBLOCK: i32 = 0o4000;
 
 /// Where one channel sits in a buffered sample, and how it's written there.

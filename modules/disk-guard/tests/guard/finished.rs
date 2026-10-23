@@ -123,7 +123,7 @@ fn anything_but_a_plain_yes_is_not_finished() {
     let dir = tempfile::tempdir().unwrap();
     for script in [
         r#"echo '{"finished": true}'; exit 1"#,
-        r#"echo 'finished'"#,
+        r"echo 'finished'",
         r#"echo '{"finished": "true"}'"#,
         r#"echo '{"finished": true, "why": "merged"}'"#,
         r#"sleep 10; echo '{"finished": true}'"#,

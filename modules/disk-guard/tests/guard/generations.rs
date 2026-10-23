@@ -26,7 +26,7 @@ pub(crate) fn profile_at(
         let link = dir.join(format!("{name}-{number}-link"));
         symlink(format!("/nix/store/{number}-system"), &link).unwrap();
         let at = Timespec {
-            tv_sec: (now - ago * DAY) as i64,
+            tv_sec: crate::whole_seconds(now - ago * DAY),
             tv_nsec: 0,
         };
         let times = Timestamps {
@@ -61,7 +61,7 @@ fn profiles_are_read_with_their_generations_and_the_current_one() {
         system.generations[0].target,
         PathBuf::from("/nix/store/1-system")
     );
-    assert_eq!(system.generations[0].made, NOW - 9.0 * DAY);
+    crate::assert_exactly(system.generations[0].made, NOW - 9.0 * DAY);
 }
 
 #[test]

@@ -161,7 +161,8 @@ fn peer(stream: &UnixStream) -> io::Result<u32> {
         uid: 0,
         gid: 0,
     };
-    let mut size = std::mem::size_of::<libc::ucred>() as libc::socklen_t;
+    let mut size =
+        libc::socklen_t::try_from(std::mem::size_of::<libc::ucred>()).map_err(io::Error::other)?;
     // SAFETY: credentials is a ucred of the size given, which the kernel
     // fills in for SO_PEERCRED.
     let done = unsafe {
@@ -170,7 +171,7 @@ fn peer(stream: &UnixStream) -> io::Result<u32> {
             libc::SOL_SOCKET,
             libc::SO_PEERCRED,
             (&raw mut credentials).cast(),
-            &mut size,
+            &raw mut size,
         )
     };
     if done != 0 {
@@ -183,7 +184,8 @@ fn peer(stream: &UnixStream) -> io::Result<u32> {
 #[cfg(target_os = "macos")]
 fn peer(stream: &UnixStream) -> io::Result<u32> {
     let mut credentials = std::mem::MaybeUninit::<libc::xucred>::zeroed();
-    let mut size = std::mem::size_of::<libc::xucred>() as libc::socklen_t;
+    let mut size =
+        libc::socklen_t::try_from(std::mem::size_of::<libc::xucred>()).map_err(io::Error::other)?;
     // SAFETY: credentials is an xucred of the size given, which the kernel
     // fills in for LOCAL_PEERCRED.
     let done = unsafe {
@@ -192,7 +194,7 @@ fn peer(stream: &UnixStream) -> io::Result<u32> {
             libc::SOL_LOCAL,
             libc::LOCAL_PEERCRED,
             credentials.as_mut_ptr().cast(),
-            &mut size,
+            &raw mut size,
         )
     };
     if done != 0 {

@@ -22,7 +22,7 @@ fn what_is_saved_is_loaded() {
     save(&path, &remembered()).unwrap();
     let loaded: Memory = load(&path).unwrap().unwrap();
     assert_eq!(loaded, remembered());
-    assert_eq!(loaded.learned.ratio(Class::Target), 0.6);
+    crate::assert_exactly(loaded.learned.ratio(Class::Target), 0.6);
 }
 
 #[test]

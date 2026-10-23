@@ -2,15 +2,37 @@
 //! normal's tail, Benjamini-Hochberg's false discovery control, and CRPS,
 //! the proper score a forecast is judged by.
 
+/// A count of things held in memory as a float, for averages, ranks and
+/// shares.
+#[expect(
+    clippy::cast_precision_loss,
+    reason = "a count of values held in memory is far below 2^52, so f64 holds it exactly"
+)]
+pub fn count(n: usize) -> f64 {
+    n as f64
+}
+
+/// A count or index of things held in memory as an `i64`, for arithmetic on
+/// day and hour numbers. Nothing in memory holds more than `isize::MAX`
+/// things, so it always fits and the saturation is never reached.
+pub fn signed(n: usize) -> i64 {
+    i64::try_from(n).unwrap_or(i64::MAX)
+}
+
 /// The q-quantile of sorted values, interpolated; none gives nothing.
+#[expect(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    reason = "the position lies in [0, len - 1], so its floor and ceiling are indices"
+)]
 pub fn quantile_sorted(sorted: &[f64], q: f64) -> f64 {
     if sorted.is_empty() {
         return f64::NAN;
     }
-    let at = q.clamp(0.0, 1.0) * (sorted.len() - 1) as f64;
+    let at = q.clamp(0.0, 1.0) * count(sorted.len() - 1);
     let low = at.floor() as usize;
     let high = at.ceil() as usize;
-    sorted[low] + (sorted[high] - sorted[low]) * (at - low as f64)
+    sorted[low] + (sorted[high] - sorted[low]) * (at - count(low))
 }
 
 pub fn quantile(values: &[f64], q: f64) -> f64 {
@@ -34,7 +56,7 @@ pub fn mean(values: &[f64]) -> f64 {
     if values.is_empty() {
         0.0
     } else {
-        values.iter().sum::<f64>() / values.len() as f64
+        values.iter().sum::<f64>() / count(values.len())
     }
 }
 
@@ -58,10 +80,10 @@ pub fn upper_tail(z: f64) -> f64 {
 pub fn discoveries(p: &[f64], q: f64) -> Vec<bool> {
     let mut order: Vec<usize> = (0..p.len()).collect();
     order.sort_by(|&one, &other| p[one].total_cmp(&p[other]));
-    let m = p.len() as f64;
+    let m = count(p.len());
     let mut cut = None;
     for (rank, &index) in order.iter().enumerate() {
-        if p[index] <= (rank + 1) as f64 / m * q {
+        if p[index] <= count(rank + 1) / m * q {
             cut = Some(rank);
         }
     }
@@ -79,7 +101,7 @@ pub fn discoveries(p: &[f64], q: f64) -> Vec<bool> {
 pub fn crps(samples: &[f64], outcome: f64) -> f64 {
     let mut sorted = samples.to_vec();
     sorted.sort_by(f64::total_cmp);
-    let n = sorted.len() as f64;
+    let n = count(sorted.len());
     let spread: f64 = sorted
         .iter()
         .map(|value| (value - outcome).abs())
@@ -88,7 +110,7 @@ pub fn crps(samples: &[f64], outcome: f64) -> f64 {
     let pairs: f64 = sorted
         .iter()
         .enumerate()
-        .map(|(index, value)| (2.0 * (index as f64 + 1.0) - n - 1.0) * value)
+        .map(|(index, value)| (2.0 * (count(index) + 1.0) - n - 1.0) * value)
         .sum::<f64>()
         / (n * n);
     spread - pairs
@@ -99,6 +121,10 @@ mod tests {
     use super::*;
 
     #[test]
+    #[expect(
+        clippy::float_cmp,
+        reason = "the median of an odd count is one of the values, untouched"
+    )]
     fn a_median_and_its_scale_ignore_one_wild_value() {
         let values = [10.0, 11.0, 9.0, 10.0, 1000.0];
         assert_eq!(median(&values), 10.0);

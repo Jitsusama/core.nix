@@ -189,7 +189,7 @@ fn listed(bus: &Channel) -> Result<Vec<Listed>, Box<dyn Error>> {
     }
 }
 
-/// Whether systemd's SystemState says the system is up, neither booting
+/// Whether systemd's `SystemState` says the system is up, neither booting
 /// nor shutting down.
 fn up(state: &str) -> bool {
     matches!(state, "running" | "degraded")

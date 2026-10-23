@@ -2,13 +2,14 @@
 //! reinstall stick, its payload (payload.nix) sealed into the vault with
 //! the recovery passphrase. The stick is a whole USB or removable disk,
 //! only ever one plugged in at once, opened for writing through the
-//! system's own way of letting a person do so (stick::device), so nothing
+//! system's own way of letting a person do so (`stick::device`), so nothing
 //! on a host runs as root. Every stick carries on the rescue bundles the
 //! host keeps (carried).
 
 pub mod carried;
 
 use crate::progress::Meter;
+use std::fmt::Write as _;
 use std::fs::File;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
@@ -136,12 +137,15 @@ impl Payload {
         {
             // A system already there may put its old keys back the moment
             // it starts, so it's never let start once they're cleared.
-            said.push_str(&format!(
+            // Writing to a String can't fail.
+            _ = write!(
+                said,
                 " This stick carries none of its Secure Boot keys, so clear its firmware's first: {clear} As you leave the firmware's setup, hold the power button until {machine} is off, so its old system never starts and puts its keys back."
-            ));
+            );
         }
         match &target.start_from_stick {
-            Some(start) => said.push_str(&format!(" Then start it from the stick: {start}")),
+            // Writing to a String can't fail.
+            Some(start) => _ = write!(said, " Then start it from the stick: {start}"),
             None => said.push_str(" Then start it from the stick."),
         }
         let opens = if target.recipients.is_empty() {
@@ -149,9 +153,11 @@ impl Payload {
         } else {
             "the stick's passphrase, the seven words you saved on your phone, or a YubiKey's PIN"
         };
-        said.push_str(&format!(
+        // Writing to a String can't fail.
+        _ = write!(
+            said,
             " The guide carries on there, and asks first for {opens}."
-        ));
+        );
         said
     }
 
@@ -185,6 +191,39 @@ fn repair_manifest() -> Manifest {
 const WRITING: &str = "Writing the stick";
 const READING_BACK: &str = "Reading it back to check it";
 
+/// Why the stick couldn't be written.
+fn kept(why: impl std::fmt::Display) -> Fault {
+    Fault::Unkept {
+        path: "the stick".into(),
+        why: why.to_string(),
+    }
+}
+
+/// Puts the bundles beside the vault's sealed files.
+fn carry(bundles: &[Carried], store: &mut dyn Store) -> Result<(), Fault> {
+    for bundle in bundles {
+        store
+            .create(&rescue::carried_as(&bundle.machine))?
+            .write_all(&bundle.bytes)
+            .map_err(kept)?;
+    }
+    Ok(())
+}
+
+/// Proves the bundles beside the vault's sealed files read back as written.
+fn carried_back(bundles: &[Carried], store: &mut dyn Store) -> Result<(), Fault> {
+    let mut written = bundles.to_vec();
+    written.sort_by(|one, other| one.machine.cmp(&other.machine));
+    if carried::kept(store) == written {
+        Ok(())
+    } else {
+        Err(Fault::Unproven {
+            step: "write-stick",
+            standing: "the rescue bundles on the stick aren't what was written".into(),
+        })
+    }
+}
+
 /// The stick written and read back: the image, its boot program signed
 /// when a signer is given, and its vault, holding the payload sealed with
 /// the passphrase when one is given. Says how many bytes the vault holds.
@@ -196,88 +235,16 @@ pub fn write(
     bundles: &[Carried],
     meter: &Meter,
 ) -> Result<u64, Fault> {
-    let kept = |why: std::io::Error| Fault::Unkept {
-        path: "the stick".into(),
-        why: why.to_string(),
-    };
     let mut image = Image::open(File::open(image).map_err(unread(image))?)?;
     let imaged: u64 = image
         .partitions()
         .iter()
-        .map(|partition| partition.bytes())
+        .map(stick::gpt::Partition::bytes)
         .sum();
-    // The bundles beside the vault's sealed files, read back as written.
-    let carry = |store: &mut dyn Store| -> Result<(), Fault> {
-        for bundle in bundles {
-            store
-                .create(&rescue::carried_as(&bundle.machine))?
-                .write_all(&bundle.bytes)
-                .map_err(kept)?;
-        }
-        Ok(())
-    };
-    let carried_back = |store: &mut dyn Store| -> Result<(), Fault> {
-        let mut written = bundles.to_vec();
-        written.sort_by(|one, other| one.machine.cmp(&other.machine));
-        if carried::kept(store) == written {
-            Ok(())
-        } else {
-            Err(Fault::Unproven {
-                step: "write-stick",
-                standing: "the rescue bundles on the stick aren't what was written".into(),
-            })
-        }
-    };
-
     let Some((payload, passphrase)) = payload else {
-        let manifest = repair_manifest();
-        meter.stage(WRITING, Some(imaged));
-        let written = stick::write(
-            &mut image,
-            disk,
-            stick::new_guid()?,
-            signer,
-            meter,
-            |store| {
-                let bytes = serde_json::to_vec_pretty(&manifest)
-                    .map_err(|why| Fault::unreadable("the manifest", why))?;
-                store
-                    .create(vault::MANIFEST)?
-                    .write_all(&bytes)
-                    .map_err(kept)?;
-                carry(store)
-            },
-        )?;
-        meter.stage(READING_BACK, Some(imaged));
-        stick::verify(&written, disk, meter, |store| {
-            carried_back(store)?;
-            if vault::manifest(store)? == repair_manifest() {
-                Ok(())
-            } else {
-                Err(Fault::Unproven {
-                    step: "write-stick",
-                    standing: "the vault's manifest isn't what was written".into(),
-                })
-            }
-        })?;
-        return Ok(written.vault.bytes());
+        return write_repair(&mut image, disk, signer, bundles, imaged, meter);
     };
-
-    // Refused before anything is written, said in what the person has.
-    let bytes = std::io::Seek::seek(disk, std::io::SeekFrom::End(0)).map_err(kept)?;
-    let room = stick::vault_room(&image, bytes)?;
-    let needed = payload.needed()?;
-    if room < needed {
-        return Err(Fault::Blocked {
-            step: "write-stick",
-            why: format!(
-                "the stick holds {} MB of vault, and {}'s install needs {} MB",
-                room / 1_000_000,
-                payload.target.machine,
-                needed.div_ceil(1_000_000)
-            ),
-        });
-    }
+    let needed = fits(&image, disk, payload)?;
     let key = VaultKey::generate();
     let sealed = key.seal_with_passphrase(passphrase, None)?;
     // Sealed to the YubiKeys too when the machine names their recipients,
@@ -325,12 +292,12 @@ pub fn write(
             if let Some(to_keys) = &to_keys {
                 store.create(vault::KEY)?.write_all(to_keys).map_err(kept)?;
             }
-            carry(store)?;
+            carry(bundles, store)?;
             let mut packer = Packer::new(store, &key);
             for (name, from) in payload.files() {
                 match from {
                     Source::File(path) => {
-                        packer.add(&name, File::open(&path).map_err(unread(&path))?)?
+                        packer.add(&name, File::open(&path).map_err(unread(&path))?)?;
                     }
                     Source::Memory(bytes) => packer.add(&name, bytes)?,
                 }
@@ -342,7 +309,7 @@ pub fn write(
     // extracted and checked.
     meter.stage(READING_BACK, Some(imaged + needed));
     stick::verify(&written, disk, meter, |store| {
-        carried_back(store)?;
+        carried_back(bundles, store)?;
         let mut sealed = vec![];
         store
             .open(vault::KEY_PASSPHRASE)?
@@ -356,6 +323,63 @@ pub fn write(
         Ok(())
     })?;
     Ok(written.vault.bytes())
+}
+
+/// A repair stick written and read back: the image, its boot program
+/// signed when a signer is given, and a vault holding only its manifest
+/// and the bundles. Says how many bytes the vault holds.
+fn write_repair(
+    image: &mut Image,
+    disk: &mut File,
+    signer: Option<&Signer>,
+    bundles: &[Carried],
+    imaged: u64,
+    meter: &Meter,
+) -> Result<u64, Fault> {
+    let manifest = repair_manifest();
+    meter.stage(WRITING, Some(imaged));
+    let written = stick::write(image, disk, stick::new_guid()?, signer, meter, |store| {
+        let bytes = serde_json::to_vec_pretty(&manifest)
+            .map_err(|why| Fault::unreadable("the manifest", why))?;
+        store
+            .create(vault::MANIFEST)?
+            .write_all(&bytes)
+            .map_err(kept)?;
+        carry(bundles, store)
+    })?;
+    meter.stage(READING_BACK, Some(imaged));
+    stick::verify(&written, disk, meter, |store| {
+        carried_back(bundles, store)?;
+        if vault::manifest(store)? == repair_manifest() {
+            Ok(())
+        } else {
+            Err(Fault::Unproven {
+                step: "write-stick",
+                standing: "the vault's manifest isn't what was written".into(),
+            })
+        }
+    })?;
+    Ok(written.vault.bytes())
+}
+
+/// Refuses a payload the stick hasn't the room for before anything is
+/// written, said in what the person has. Says how much vault it needs.
+fn fits(image: &Image, disk: &mut File, payload: &Payload) -> Result<u64, Fault> {
+    let bytes = std::io::Seek::seek(disk, std::io::SeekFrom::End(0)).map_err(kept)?;
+    let room = stick::vault_room(image, bytes)?;
+    let needed = payload.needed()?;
+    if room < needed {
+        return Err(Fault::Blocked {
+            step: "write-stick",
+            why: format!(
+                "the stick holds {} MB of vault, and {}'s install needs {} MB",
+                room / 1_000_000,
+                payload.target.machine,
+                needed.div_ceil(1_000_000)
+            ),
+        });
+    }
+    Ok(needed)
 }
 
 /// What a person reads a stick by.
@@ -402,7 +426,7 @@ impl GatherBundles {
     pub fn new(kept: PathBuf) -> GatherBundles {
         GatherBundles {
             kept,
-            unread: Default::default(),
+            unread: std::cell::RefCell::default(),
         }
     }
 }
@@ -520,6 +544,7 @@ impl WriteStick {
 
     /// Carrying these rescue bundles on too, gathered from the stick it
     /// writes over.
+    #[must_use]
     pub fn carrying(mut self, bundles: Vec<Carried>) -> WriteStick {
         self.bundles = bundles;
         self.gathered = true;

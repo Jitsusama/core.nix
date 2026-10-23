@@ -2,6 +2,7 @@ use disk_guard::band::{Band, Thresholds};
 use disk_guard::clock::{Awake, Tick};
 use disk_guard::decide::{Decision, Fill, Situation, decide, spare};
 use disk_guard::moments::{Power, Pressure, Stall};
+use disk_guard::units::{float, whole};
 
 const GIB: u64 = 1 << 30;
 const HOUR: f64 = 3600.0;
@@ -20,14 +21,14 @@ fn thresholds() -> Thresholds {
 fn filling(free: u64, rate: f64, seconds: u32) -> (Fill, u64) {
     let mut fill = Fill::default();
     let mut now = 0.0;
-    let mut left = free as f64;
-    fill.observe(now, left as u64);
+    let mut left = float(free);
+    fill.observe(now, whole(left));
     for _ in 0..seconds / 5 {
         now += 5.0;
         left -= rate * 5.0;
-        fill.observe(now, left as u64);
+        fill.observe(now, whole(left));
     }
-    (fill, left as u64)
+    (fill, whole(left))
 }
 
 fn situation(band: Band, free: u64, fill: &Fill) -> Situation<'_> {
@@ -60,7 +61,7 @@ fn readings_moments_apart_are_too_close_to_measure_a_rate_by() {
     // The reading a step later is measured from the first.
     fill.observe(5.0, 500 * GIB - (500 << 20));
     let rate = fill.rate().unwrap();
-    assert!((rate - 100.0 * (1 << 20) as f64).abs() < 1.0, "{rate}");
+    assert!((rate - 100.0 * f64::from(1 << 20)).abs() < 1.0, "{rate}");
 }
 
 #[test]
@@ -73,7 +74,7 @@ fn freeing_space_forecasts_nothing() {
 fn a_fill_is_forecast_to_reach_a_threshold() {
     let (fill, free) = filling(200 * GIB, 1e9, 30);
     let until = fill.until(free, 150 * GIB).unwrap();
-    let expected = (free - 150 * GIB) as f64 / 1e9;
+    let expected = float(free - 150 * GIB) / 1e9;
     assert!(
         (until - expected).abs() < expected * 0.05,
         "{until} against {expected}"

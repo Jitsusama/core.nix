@@ -6,7 +6,8 @@
 
 use guide::fake::Fake;
 use guide::installed::{CheckSecureBoot, FACTS, PCRLOCK, SealTpm};
-use guide::{Answer, Answers, Fault, Journey, Program, Secret, Standing, Step, Tool};
+use guide::{Answer, Answers, Fault, Journey, Machine, Program, Secret, Standing, Step, Tool};
+use std::fmt::Write as _;
 
 const GLOBAL: &str = "8be4df61-93ca-11d2-aa0d-00e098032b8c";
 const DUMP: &[&str] = &[
@@ -137,7 +138,7 @@ fn secure_boot_switched_off_blocks_the_seal() {
     ));
 }
 
-/// tpm2_getcap's arguments for the TPM's NV indices.
+/// `tpm2_getcap`'s arguments for the TPM's NV indices.
 const NV: &[&str] = &["-T", "device:/dev/tpmrm0", "handles-nv-index"];
 
 /// The XPS 14's NV indices, its pcrlock policy's among them.
@@ -151,8 +152,11 @@ fn cleared() -> String {
     held()
         .lines()
         .filter(|line| !line.starts_with("- 0x1ACCCE4"))
-        .map(|line| format!("{line}\n"))
-        .collect()
+        .fold(String::new(), |mut kept, line| {
+            // Writing to a String can't fail.
+            _ = writeln!(kept, "{line}");
+            kept
+        })
 }
 
 fn machine() -> Fake {
@@ -302,7 +306,6 @@ fn a_tpm_slot_not_tried_first_is_still_to_do() {
         .unwrap()
         .remove("priority");
     fake.prints(Tool::Cryptsetup, DUMP, &header.to_string());
-    use guide::Machine;
     fake.journal().record("seal-tpm", "opened:0").unwrap();
     assert!(matches!(
         SealTpm.observe(&mut fake).unwrap(),
@@ -333,7 +336,6 @@ fn a_seal_proven_once_holds_while_the_tpm_keeps_its_policy() {
         DUMP,
         std::str::from_utf8(fixture!("qemu-canokey", "luks-dump-sealed.json")).unwrap(),
     );
-    use guide::Machine;
     fake.journal().record("seal-tpm", "opened:0").unwrap();
     assert!(matches!(
         SealTpm.observe(&mut fake).unwrap(),
@@ -352,7 +354,6 @@ fn a_cleared_tpm_undoes_a_seal_proven_before() {
         DUMP,
         std::str::from_utf8(fixture!("qemu-canokey", "luks-dump-sealed.json")).unwrap(),
     );
-    use guide::Machine;
     fake.journal().record("seal-tpm", "opened:0").unwrap();
     assert!(matches!(
         SealTpm.observe(&mut fake).unwrap(),
@@ -370,7 +371,6 @@ fn a_firmware_update_undoes_a_seal_proven_before() {
         DUMP,
         std::str::from_utf8(fixture!("qemu-canokey", "luks-dump-sealed.json")).unwrap(),
     );
-    use guide::Machine;
     fake.journal().record("seal-tpm", "opened:0").unwrap();
     assert!(matches!(
         SealTpm.observe(&mut fake).unwrap(),
@@ -504,7 +504,6 @@ fn rehearsed(indices: &str, log: &[u8], pcr4: &[u8]) -> Fake {
         DUMP,
         std::str::from_utf8(fixture!("qemu-canokey", "luks-dump-sealed.json")).unwrap(),
     );
-    use guide::Machine;
     fake.journal().record("seal-tpm", "opened:0").unwrap();
     fake
 }

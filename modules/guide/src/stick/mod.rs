@@ -36,7 +36,7 @@ pub struct Image {
 
 impl Image {
     pub fn open(mut file: File) -> Result<Image, Fault> {
-        let mut start = vec![0u8; (ALIGNMENT * SECTOR) as usize];
+        let mut start = vec![0u8; usize::try_from(ALIGNMENT * SECTOR).expect("a mebibyte")];
         file.seek(SeekFrom::Start(0))
             .and_then(|_| file.read_exact(&mut start))
             .map_err(|why| Fault::unreadable("the stick's image", why))?;
@@ -67,7 +67,7 @@ pub struct Written {
     copied: Vec<(gpt::Partition, Vec<u8>)>,
 }
 
-fn unwritten(why: io::Error) -> Fault {
+fn unwritten(why: impl std::fmt::Display) -> Fault {
     Fault::Unkept {
         path: "the stick".into(),
         why: why.to_string(),
@@ -84,13 +84,25 @@ pub fn new_guid() -> Result<[u8; 16], Fault> {
     Ok(guid)
 }
 
+/// `bytes` as a length held in memory, refused when it's more than this
+/// machine can address.
+fn in_memory(bytes: u64) -> io::Result<usize> {
+    usize::try_from(bytes).map_err(|_| {
+        io::Error::new(
+            io::ErrorKind::OutOfMemory,
+            "it's more than this machine can hold in memory",
+        )
+    })
+}
+
 /// Copies `bytes` from where the reader is to the writer, hashing them.
 fn copy_hashed(from: &mut impl Read, to: &mut impl Write, bytes: u64) -> io::Result<Vec<u8>> {
     let mut hash = Sha256::new();
     let mut buffer = vec![0u8; 1 << 20];
     let mut left = bytes;
     while left > 0 {
-        let count = buffer.len().min(left as usize);
+        // What's left past a `usize` is more than the buffer.
+        let count = usize::try_from(left).map_or(buffer.len(), |left| buffer.len().min(left));
         from.read_exact(&mut buffer[..count])?;
         hash.update(&buffer[..count]);
         to.write_all(&buffer[..count])?;
@@ -124,21 +136,23 @@ pub fn write(
 
     // Signed before anything is written, so a key that won't sign leaves
     // the stick as it was.
-    let mut signed = vec![];
+    let mut signed_esps = vec![];
     if let Some(signer) = signer {
         for partition in image.partitions() {
             if partition.kind == EFI_SYSTEM {
-                let mut esp = vec![0u8; partition.bytes() as usize];
+                let length = in_memory(partition.bytes())
+                    .map_err(|why| Fault::unreadable("the stick's image", why))?;
+                let mut esp = vec![0u8; length];
                 image
                     .file
                     .seek(SeekFrom::Start(partition.offset()))
                     .and_then(|_| image.file.read_exact(&mut esp))
                     .map_err(|why| Fault::unreadable("the stick's image", why))?;
                 sign_esp(&mut esp, signer)?;
-                signed.push((partition.slot, esp));
+                signed_esps.push((partition.slot, esp));
             }
         }
-        if signed.is_empty() {
+        if signed_esps.is_empty() {
             return Err(Fault::unreadable(
                 "the stick's image",
                 "it has no EFI system partition to sign",
@@ -154,7 +168,7 @@ pub fn write(
     for (start, length) in [(0, head), (tail, bytes - tail)] {
         let mut region = Partition::new(disk, start, length).map_err(unwritten)?;
         region
-            .write_all(&vec![0u8; length as usize])
+            .write_all(&vec![0u8; in_memory(length).map_err(unwritten)?])
             .and_then(|()| region.flush())
             .map_err(unwritten)?;
     }
@@ -165,17 +179,17 @@ pub fn write(
             Partition::new(disk, partition.offset(), partition.bytes()).map_err(unwritten)?,
             meter,
         );
-        let hash = match signed.iter().find(|(slot, _)| *slot == partition.slot) {
-            Some((_, esp)) => copy_hashed(&mut &esp[..], &mut region, partition.bytes()),
-            None => {
+        let hash =
+            if let Some((_, esp)) = signed_esps.iter().find(|(slot, _)| *slot == partition.slot) {
+                copy_hashed(&mut &esp[..], &mut region, partition.bytes())
+            } else {
                 image
                     .file
                     .seek(SeekFrom::Start(partition.offset()))
                     .map_err(|why| Fault::unreadable("the stick's image", why))?;
                 copy_hashed(&mut image.file, &mut region, partition.bytes())
             }
-        }
-        .map_err(unwritten)?;
+            .map_err(unwritten)?;
         region.flush().map_err(unwritten)?;
         copied.push((partition, hash));
     }
@@ -262,16 +276,16 @@ pub fn sign_in_place(esp: &mut File, signer: &Signer) -> Result<(), Fault> {
         why: why.to_string(),
     };
     let bytes = esp.seek(SeekFrom::End(0)).map_err(unwritten)?;
-    let mut was = vec![0u8; bytes as usize];
+    let mut was = vec![0u8; in_memory(bytes).map_err(unwritten)?];
     Partition::new(esp, 0, bytes)
         .and_then(|mut region| region.read_exact(&mut was))
         .map_err(unwritten)?;
-    let mut signed = was.clone();
-    if !sign_esp(&mut signed, signer)? {
+    let mut signed_esp = was.clone();
+    if !sign_esp(&mut signed_esp, signer)? {
         return Ok(());
     }
-    let block = blocks::BLOCK as usize;
-    for (at, (new, old)) in signed.chunks(block).zip(was.chunks(block)).enumerate() {
+    let block = blocks::BLOCK_LENGTH;
+    for (at, (new, old)) in signed_esp.chunks(block).zip(was.chunks(block)).enumerate() {
         if new != old {
             Partition::new(esp, (at * block) as u64, new.len() as u64)
                 .and_then(|mut region| region.write_all(new).and_then(|()| region.flush()))
@@ -280,11 +294,11 @@ pub fn sign_in_place(esp: &mut File, signer: &Signer) -> Result<(), Fault> {
     }
     esp.sync_all().map_err(unwritten)?;
     drop_cache(esp)?;
-    let mut back = vec![0u8; bytes as usize];
+    let mut back = vec![0u8; in_memory(bytes).map_err(unwritten)?];
     Partition::new(esp, 0, bytes)
         .and_then(|mut region| region.read_exact(&mut back))
         .map_err(unwritten)?;
-    if back != signed {
+    if back != signed_esp {
         return Err(Fault::Unproven {
             step: "sign-the-stick",
             standing: "the stick's EFI system partition isn't what was written".into(),
@@ -331,7 +345,7 @@ pub fn verify(
         standing: format!("{what} on the stick isn't what was written"),
     };
     let unread = |why: io::Error| Fault::unreadable("the stick", why);
-    let mut reread = vec![0u8; (written.table.first_usable() * SECTOR) as usize];
+    let mut reread = vec![0u8; in_memory(written.table.first_usable() * SECTOR).map_err(unread)?];
     disk.seek(SeekFrom::Start(0))
         .and_then(|_| disk.read_exact(&mut reread))
         .map_err(unread)?;

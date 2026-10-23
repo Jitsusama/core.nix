@@ -113,7 +113,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(status.guid, None);
-        assert!(status.vendors.is_empty());
+        assert_eq!(status.vendors, Vec::<String>::new());
     }
 
     #[test]

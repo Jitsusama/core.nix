@@ -110,13 +110,14 @@ mod tests {
         let answering = thread::spawn(move || {
             let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
             let stream = loop {
-                match listener.accept() {
-                    Ok((stream, _)) => break stream,
-                    Err(_) if std::time::Instant::now() < deadline => {
-                        thread::sleep(std::time::Duration::from_millis(10))
-                    }
-                    Err(_) => panic!("wifid wasn't asked anything"),
+                if let Ok((stream, _)) = listener.accept() {
+                    break stream;
                 }
+                assert!(
+                    std::time::Instant::now() < deadline,
+                    "wifid wasn't asked anything"
+                );
+                thread::sleep(std::time::Duration::from_millis(10));
             };
             stream.set_nonblocking(false).unwrap();
             let mut asked = Vec::new();

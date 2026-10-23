@@ -97,29 +97,35 @@ struct Notifications {
 
 #[zbus::interface(name = "org.freedesktop.Notifications")]
 impl Notifications {
-    #[allow(clippy::too_many_arguments)]
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "the specification's Notify takes eight arguments"
+    )]
     fn notify(
         &self,
-        _app_name: &str,
+        app_name: &str,
         replaces_id: u32,
-        _app_icon: &str,
+        app_icon: &str,
         summary: &str,
         body: &str,
-        _actions: Vec<String>,
+        actions: Vec<String>,
         hints: HashMap<String, OwnedValue>,
-        _expire_timeout: i32,
+        expire_timeout: i32,
     ) -> u32 {
+        // What the guard's notices never vary in is heard and let go.
+        let _ = (app_name, app_icon, actions, expire_timeout);
         let mut heard = self.heard.lock().unwrap();
         heard.push(Heard::Notify {
             replaces: replaces_id,
             summary: summary.to_owned(),
             body: body.to_owned(),
             urgency: hints
-                .get("urgency")
-                .and_then(|value| u8::try_from(value).ok()),
+                .into_iter()
+                .find(|(name, _)| name == "urgency")
+                .and_then(|(_, value)| u8::try_from(&value).ok()),
         });
         if replaces_id == 0 {
-            40 + heard.len() as u32
+            40 + u32::try_from(heard.len()).unwrap()
         } else {
             replaces_id
         }

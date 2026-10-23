@@ -68,6 +68,7 @@ impl Scan {
     /// as long as a scan is, even across a move, unless a process it wasn't
     /// asked about has started since: one it couldn't vouch for stays
     /// unknown without its being asked again.
+    #[must_use]
     pub fn vouched_by(mut self, socket: &Path, roots: &[PathBuf]) -> Self {
         self.voucher = Some(Voucher {
             socket: socket.to_owned(),
@@ -214,7 +215,7 @@ pub struct Reclaim<'a> {
 
 /// How long the system daemon may take over the garbage a user daemon asks
 /// it to collect: a pass of many batches, each measured.
-const COLLECT_TIMEOUT: Duration = Duration::from_secs(30 * 60);
+const COLLECT_TIMEOUT: Duration = Duration::from_mins(30);
 
 impl<'a> Reclaim<'a> {
     pub fn new(offers: &[Offer], scan: &'a mut Scan) -> Self {
@@ -232,6 +233,7 @@ impl<'a> Reclaim<'a> {
     }
 
     /// For a pass in `band`, which what it asks of the system daemon says.
+    #[must_use]
     pub fn during(mut self, band: Band) -> Self {
         self.band = band;
         self
@@ -239,6 +241,7 @@ impl<'a> Reclaim<'a> {
 
     /// For a pass that can wait: the commands it runs do so at idle
     /// priority, so a collection never slows the work it makes room for.
+    #[must_use]
     pub fn gently(mut self) -> Self {
         self.gentle = true;
         self

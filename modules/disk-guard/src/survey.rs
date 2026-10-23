@@ -4,12 +4,14 @@
 
 use crate::activity::{self, Process, Use};
 use crate::anchor::Dir;
+use crate::band::Band;
 use crate::clock::Awake;
 use crate::config::{CacheProtocol, Config, Source};
 use crate::discover::{self, Checkout, Kind};
 use crate::plan::{Candidate, Class};
 use crate::replaced::Uses;
 use crate::snapshots::Boot;
+use crate::units::Span;
 use crate::{
     age, caches, coredumps, logs, nix_builds, scratch, snapshots, temp, trash, trees, workspaces,
 };
@@ -138,168 +140,23 @@ pub fn survey(config: &Config, world: &mut World) -> Vec<Offer> {
                 from,
                 protocol,
                 rank,
-            } => {
-                let Some(device) = device(path) else { continue };
-                match protocol {
-                    Some(CacheProtocol::GoBuild) => {
-                        for entry in caches::go_build(path) {
-                            let candidate =
-                                caches::go_entry(&entry, *rank, *from, world.awake, world.now);
-                            offers.push(Offer {
-                                candidate,
-                                action: Action::Entry { root: path.clone() },
-                                device,
-                            });
-                        }
-                    }
-                    None => {
-                        let Some(parent) = path.parent() else {
-                            continue;
-                        };
-                        let candidate = caches::whole(path, *rank, *from, size(path));
-                        offers.push(Offer {
-                            candidate,
-                            action: Action::Entry {
-                                root: parent.to_owned(),
-                            },
-                            device,
-                        });
-                    }
-                }
-            }
+            } => offer_cache(path, *from, *protocol, *rank, world, &mut offers),
             Source::Scratch { path, healthy } => {
-                let Some(device) = device(path) else { continue };
-                let healthy = healthy.map(|span| span.0.as_secs_f64());
-                for entry in scratch::entries(path) {
-                    let size = size(&entry.path);
-                    let candidate =
-                        scratch::candidate(&entry, healthy, size, world.awake, world.now);
-                    offers.push(Offer {
-                        candidate,
-                        action: Action::Entry { root: path.clone() },
-                        device,
-                    });
-                }
+                offer_scratch(path, *healthy, world, &mut offers);
             }
             Source::Snapshots {
                 path,
                 pattern,
                 command,
-            } => {
-                let (Some(device), Ok(pattern)) = (device(path), regex_lite::Regex::new(pattern))
-                else {
-                    continue;
-                };
-                for snapshot in snapshots::entries(path, &pattern) {
-                    if snapshots::orphaned(&snapshot, world.processes, &[command], world.boot) {
-                        let candidate = snapshots::candidate(
-                            &snapshot,
-                            size(&snapshot.path),
-                            world.awake,
-                            world.now,
-                        );
-                        offers.push(Offer {
-                            candidate,
-                            action: Action::Entry { root: path.clone() },
-                            device,
-                        });
-                    }
-                }
-            }
+            } => offer_snapshots(path, pattern, command, world, &mut offers),
             Source::Workspaces { path, quests } => {
-                let Some(device) = device(path) else { continue };
-                for workspace in workspaces::find(path, quests) {
-                    let written = age::last_write(&workspace.path, WRITE_DEPTH, WRITE_BUDGET);
-                    let size = size(&workspace.path);
-                    if let Some(candidate) =
-                        workspaces::candidate(&workspace, written, size, world.awake, world.now)
-                    {
-                        offers.push(Offer {
-                            candidate,
-                            action: Action::Workspace { root: path.clone() },
-                            device,
-                        });
-                    }
-                }
+                offer_workspaces(path, quests, world, &mut offers);
             }
-            Source::Temp { path } => {
-                let Some(device) = device(path) else { continue };
-                let tmpdirs: Vec<PathBuf> = world
-                    .processes
-                    .iter()
-                    .flat_map(|process| &process.env)
-                    .filter(|(name, _)| name == "TMPDIR")
-                    .map(|(_, value)| PathBuf::from(value))
-                    .collect();
-                for entry in temp::leftovers(temp::survey(path), world.uid, &tmpdirs) {
-                    let candidate = temp::candidate(&entry, world.awake, world.now);
-                    offers.push(Offer {
-                        candidate,
-                        action: Action::Entry { root: path.clone() },
-                        device,
-                    });
-                }
-            }
-            Source::Trash { path } => {
-                let Some(device) = device(path) else { continue };
-                for item in trash::items(path) {
-                    let candidate = trash::candidate(&item, world.awake, world.now);
-                    offers.push(Offer {
-                        candidate,
-                        action: Action::Trash {
-                            trash: path.clone(),
-                        },
-                        device,
-                    });
-                }
-            }
-            Source::Coredumps { path } => {
-                let Some(device) = device(path) else { continue };
-                for dump in coredumps::find(path) {
-                    let candidate = coredumps::candidate(&dump, world.awake, world.now);
-                    offers.push(Offer {
-                        candidate,
-                        action: Action::Entry { root: path.clone() },
-                        device,
-                    });
-                }
-            }
-            Source::NixBuilds { path } => {
-                let Some(device) = device(path) else { continue };
-                for build in nix_builds::find(path) {
-                    if nix_builds::orphaned(&build, world.processes, world.boot) {
-                        let size = size(&build.snapshot.path);
-                        let candidate = nix_builds::candidate(&build, size, world.awake, world.now);
-                        offers.push(Offer {
-                            candidate,
-                            action: Action::Entry { root: path.clone() },
-                            device,
-                        });
-                    }
-                }
-            }
-            Source::Logs { path } => {
-                let Some(device) = device(path) else { continue };
-                for log in logs::oversized(path, logs::LIMIT) {
-                    let Ok(meta) = fs::symlink_metadata(&log) else {
-                        continue;
-                    };
-                    let candidate = Candidate {
-                        path: log,
-                        class: Class::Log,
-                        idle: 0.0,
-                        size: meta.len().saturating_sub(logs::KEEP),
-                        occupied: false,
-                        spent: false,
-                        checkout: None,
-                    };
-                    offers.push(Offer {
-                        candidate,
-                        action: Action::Trim { root: path.clone() },
-                        device,
-                    });
-                }
-            }
+            Source::Temp { path } => offer_temp(path, world, &mut offers),
+            Source::Trash { path } => offer_trash(path, world, &mut offers),
+            Source::Coredumps { path } => offer_coredumps(path, world, &mut offers),
+            Source::NixBuilds { path } => offer_nix_builds(path, world, &mut offers),
+            Source::Logs { path } => offer_logs(path, &mut offers),
             Source::Producer {
                 command,
                 path,
@@ -333,37 +190,242 @@ pub fn survey(config: &Config, world: &mut World) -> Vec<Offer> {
                 });
             }
             Source::Podman { command, path } => {
-                let Some(device) = device(path) else { continue };
-                let program = command.to_string_lossy().into_owned();
-                for (unused, source, how) in [
-                    (false, name.clone(), "--build-cache"),
-                    (true, format!("{name}:unused"), "--all"),
-                ] {
-                    let argv = [&program, "image", "prune", "--force", how];
-                    offers.push(Offer {
-                        candidate: Candidate {
-                            path: named(path, &source),
-                            class: Class::Podman { unused },
-                            idle: since_ran(world, &source),
-                            size: 0,
-                            occupied: false,
-                            spent: false,
-                            checkout: None,
-                        },
-                        action: Action::Run {
-                            root: path.clone(),
-                            source,
-                            argv: argv.map(str::to_owned).to_vec(),
-                            timeout: PODMAN_TIMEOUT,
-                        },
-                        device,
-                    });
-                }
+                offer_podman(name, command, path, world, &mut offers);
             }
             Source::Finished { .. } => {}
         }
     }
     offers
+}
+
+/// A cache's offer: each entry of a Go build cache, or else the whole cache.
+fn offer_cache(
+    path: &Path,
+    from: Band,
+    protocol: Option<CacheProtocol>,
+    rank: u8,
+    world: &World,
+    offers: &mut Vec<Offer>,
+) {
+    let Some(device) = device(path) else { return };
+    match protocol {
+        Some(CacheProtocol::GoBuild) => {
+            for entry in caches::go_build(path) {
+                let candidate = caches::go_entry(&entry, rank, from, world.awake, world.now);
+                offers.push(Offer {
+                    candidate,
+                    action: Action::Entry {
+                        root: path.to_owned(),
+                    },
+                    device,
+                });
+            }
+        }
+        None => {
+            let Some(parent) = path.parent() else {
+                return;
+            };
+            let candidate = caches::whole(path, rank, from, size(path));
+            offers.push(Offer {
+                candidate,
+                action: Action::Entry {
+                    root: parent.to_owned(),
+                },
+                device,
+            });
+        }
+    }
+}
+
+/// A scratch directory's entries.
+fn offer_scratch(path: &Path, healthy: Option<Span>, world: &World, offers: &mut Vec<Offer>) {
+    let Some(device) = device(path) else { return };
+    let healthy = healthy.map(|span| span.0.as_secs_f64());
+    for entry in scratch::entries(path) {
+        let size = size(&entry.path);
+        let candidate = scratch::candidate(&entry, healthy, size, world.awake, world.now);
+        offers.push(Offer {
+            candidate,
+            action: Action::Entry {
+                root: path.to_owned(),
+            },
+            device,
+        });
+    }
+}
+
+/// The snapshots matching `pattern` that no process running `command` keeps.
+fn offer_snapshots(
+    path: &Path,
+    pattern: &str,
+    command: &str,
+    world: &World,
+    offers: &mut Vec<Offer>,
+) {
+    let (Some(device), Ok(pattern)) = (device(path), regex_lite::Regex::new(pattern)) else {
+        return;
+    };
+    for snapshot in snapshots::entries(path, &pattern) {
+        if snapshots::orphaned(&snapshot, world.processes, &[command], world.boot) {
+            let candidate =
+                snapshots::candidate(&snapshot, size(&snapshot.path), world.awake, world.now);
+            offers.push(Offer {
+                candidate,
+                action: Action::Entry {
+                    root: path.to_owned(),
+                },
+                device,
+            });
+        }
+    }
+}
+
+/// The quest workspaces in `path`, judged by their quests' READMEs in `quests`.
+fn offer_workspaces(path: &Path, quests: &Path, world: &World, offers: &mut Vec<Offer>) {
+    let Some(device) = device(path) else { return };
+    for workspace in workspaces::find(path, quests) {
+        let written = age::last_write(&workspace.path, WRITE_DEPTH, WRITE_BUDGET);
+        let size = size(&workspace.path);
+        if let Some(candidate) =
+            workspaces::candidate(&workspace, written, size, world.awake, world.now)
+        {
+            offers.push(Offer {
+                candidate,
+                action: Action::Workspace {
+                    root: path.to_owned(),
+                },
+                device,
+            });
+        }
+    }
+}
+
+/// What's left in a temporary directory, but for any a process names as its
+/// `TMPDIR`.
+fn offer_temp(path: &Path, world: &World, offers: &mut Vec<Offer>) {
+    let Some(device) = device(path) else { return };
+    let tmpdirs: Vec<PathBuf> = world
+        .processes
+        .iter()
+        .flat_map(|process| &process.env)
+        .filter(|(name, _)| name == "TMPDIR")
+        .map(|(_, value)| PathBuf::from(value))
+        .collect();
+    for entry in temp::leftovers(temp::survey(path), world.uid, &tmpdirs) {
+        let candidate = temp::candidate(&entry, world.awake, world.now);
+        offers.push(Offer {
+            candidate,
+            action: Action::Entry {
+                root: path.to_owned(),
+            },
+            device,
+        });
+    }
+}
+
+/// A desktop trash's items.
+fn offer_trash(path: &Path, world: &World, offers: &mut Vec<Offer>) {
+    let Some(device) = device(path) else { return };
+    for item in trash::items(path) {
+        let candidate = trash::candidate(&item, world.awake, world.now);
+        offers.push(Offer {
+            candidate,
+            action: Action::Trash {
+                trash: path.to_owned(),
+            },
+            device,
+        });
+    }
+}
+
+/// The core dumps kept in `path`.
+fn offer_coredumps(path: &Path, world: &World, offers: &mut Vec<Offer>) {
+    let Some(device) = device(path) else { return };
+    for dump in coredumps::find(path) {
+        let candidate = coredumps::candidate(&dump, world.awake, world.now);
+        offers.push(Offer {
+            candidate,
+            action: Action::Entry {
+                root: path.to_owned(),
+            },
+            device,
+        });
+    }
+}
+
+/// The build directories Nix kept in `path` whose builder is gone.
+fn offer_nix_builds(path: &Path, world: &World, offers: &mut Vec<Offer>) {
+    let Some(device) = device(path) else { return };
+    for build in nix_builds::find(path) {
+        if nix_builds::orphaned(&build, world.processes, world.boot) {
+            let size = size(&build.snapshot.path);
+            let candidate = nix_builds::candidate(&build, size, world.awake, world.now);
+            offers.push(Offer {
+                candidate,
+                action: Action::Entry {
+                    root: path.to_owned(),
+                },
+                device,
+            });
+        }
+    }
+}
+
+/// The logs beneath `path` past their limit, each offering what trimming it
+/// drops.
+fn offer_logs(path: &Path, offers: &mut Vec<Offer>) {
+    let Some(device) = device(path) else { return };
+    for log in logs::oversized(path, logs::LIMIT) {
+        let Ok(meta) = fs::symlink_metadata(&log) else {
+            continue;
+        };
+        let candidate = Candidate {
+            path: log,
+            class: Class::Log,
+            idle: 0.0,
+            size: meta.len().saturating_sub(logs::KEEP),
+            occupied: false,
+            spent: false,
+            checkout: None,
+        };
+        offers.push(Offer {
+            candidate,
+            action: Action::Trim {
+                root: path.to_owned(),
+            },
+            device,
+        });
+    }
+}
+
+/// Podman's two prunes: its build cache, and every image no container uses.
+fn offer_podman(name: &str, command: &Path, path: &Path, world: &World, offers: &mut Vec<Offer>) {
+    let Some(device) = device(path) else { return };
+    let program = command.to_string_lossy().into_owned();
+    for (unused, source, how) in [
+        (false, name.to_owned(), "--build-cache"),
+        (true, format!("{name}:unused"), "--all"),
+    ] {
+        let argv = [&program, "image", "prune", "--force", how];
+        offers.push(Offer {
+            candidate: Candidate {
+                path: named(path, &source),
+                class: Class::Podman { unused },
+                idle: since_ran(world, &source),
+                size: 0,
+                occupied: false,
+                spent: false,
+                checkout: None,
+            },
+            action: Action::Run {
+                root: path.to_owned(),
+                source,
+                argv: argv.map(str::to_owned).to_vec(),
+                timeout: PODMAN_TIMEOUT,
+            },
+            device,
+        });
+    }
 }
 
 /// The targets or installs beneath a root, and a target's variants. A
@@ -502,7 +564,7 @@ fn since_ran(world: &World, source: &str) -> f64 {
 
 /// The filesystem a source's directory is on, as its space is shared.
 fn device(path: &Path) -> Option<u64> {
-    fs::metadata(path).ok().filter(|meta| meta.is_dir())?;
+    fs::metadata(path).ok().filter(fs::Metadata::is_dir)?;
     crate::pool::pool(path).ok()
 }
 

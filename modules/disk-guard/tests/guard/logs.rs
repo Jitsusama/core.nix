@@ -1,14 +1,24 @@
 use disk_guard::anchor::Dir;
 use disk_guard::logs::{oversized, trim};
+use std::fmt::Write as _;
 use std::fs::{self, OpenOptions};
 use std::io::Write;
+use std::ops::Range;
 use std::os::unix::fs::symlink;
 use std::path::Path;
 
 /// A log of numbered lines, `lines` long.
 fn log(path: &Path, lines: usize) {
-    let text: String = (0..lines).map(|n| format!("line {n:06}\n")).collect();
-    fs::write(path, text).unwrap();
+    fs::write(path, numbered(0..lines)).unwrap();
+}
+
+/// The lines of a log numbered `numbers`, each 12 bytes.
+fn numbered(numbers: Range<usize>) -> String {
+    numbers.fold(String::new(), |mut text, n| {
+        // Writing to a String can't fail.
+        _ = writeln!(text, "line {n:06}");
+        text
+    })
 }
 
 #[test]
@@ -39,12 +49,7 @@ fn a_trimmed_log_keeps_its_last_whole_lines() {
     let dropped = trim(&Dir::open(root.path()).unwrap(), Path::new("a.log"), 100).unwrap();
     let kept = fs::read_to_string(root.path().join("a.log")).unwrap();
     // Each line is 12 bytes: the last 100 hold a partial line and 8 whole.
-    assert_eq!(
-        kept,
-        (992..1000)
-            .map(|n| format!("line {n:06}\n"))
-            .collect::<String>()
-    );
+    assert_eq!(kept, numbered(992..1000));
     assert_eq!(dropped, 12_000 - 96);
 }
 
@@ -56,12 +61,7 @@ fn a_tail_longer_than_one_copy_is_kept_whole() {
     let keep = 3 * 12 * 100_000;
     trim(&Dir::open(root.path()).unwrap(), Path::new("a.log"), keep).unwrap();
     let kept = fs::read_to_string(root.path().join("a.log")).unwrap();
-    assert_eq!(
-        kept,
-        (100_000..400_000)
-            .map(|n| format!("line {n:06}\n"))
-            .collect::<String>()
-    );
+    assert_eq!(kept, numbered(100_000..400_000));
 }
 
 #[test]

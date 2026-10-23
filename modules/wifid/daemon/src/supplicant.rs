@@ -9,7 +9,7 @@ use crate::address::AddressKey;
 use crate::network::{Address, Inner, Method, Network, Security};
 
 /// A value for one of a network's fields, in the type wpa_supplicant's
-/// AddNetwork reads it as.
+/// `AddNetwork` reads it as.
 #[derive(Debug, PartialEq)]
 pub enum Value {
     Bytes(Vec<u8>),
@@ -52,9 +52,9 @@ pub enum Step {
 }
 
 impl Trouble {
-    /// The trouble a status code from wpa_supplicant's AuthStatusCode or
-    /// AssocStatusCode means. A wrong WPA2 password comes as a PskMismatch
-    /// signal instead, but a wrong WPA3 one only as a failed challenge,
+    /// The trouble a status code from wpa_supplicant's `AuthStatusCode` or
+    /// `AssocStatusCode` means. A wrong WPA2 password comes as a
+    /// `PskMismatch` signal instead, but a wrong WPA3 one only as a failed challenge,
     /// which is how hostapd answers it.
     pub fn from_status(step: Step, code: i32, security: Security) -> Option<Trouble> {
         match (step, code, security) {
@@ -162,7 +162,7 @@ fn hex(digit: u8) -> u8 {
     }
 }
 
-/// A network's fields as AddNetwork takes them over D-Bus.
+/// A network's fields as `AddNetwork` takes them over D-Bus.
 pub fn dictionary(
     fields: Vec<(&'static str, Value)>,
 ) -> HashMap<&'static str, zvariant::Value<'static>> {
@@ -178,7 +178,7 @@ pub fn dictionary(
 }
 
 /// A mark of the fields, and the fields with it added as the network's
-/// id_str. It's made under
+/// `id_str`. It's made under
 /// the machine's key, so it says nothing of the password. wifid knows by
 /// it, next time it starts, whether a network a card holds is still as
 /// wanted.
@@ -195,7 +195,7 @@ pub fn marked(
         };
         // Each part led by its length, so no two lists of fields read alike.
         for part in [name.as_bytes(), &[kind], &bytes] {
-            given.extend_from_slice(&(part.len() as u32).to_be_bytes());
+            given.extend_from_slice(&low_u32(part.len()).to_be_bytes());
             given.extend_from_slice(part);
         }
     }
@@ -203,6 +203,14 @@ pub fn marked(
     let mut fields = fields;
     fields.push(("id_str", Value::Text(mark.clone())));
     (mark, fields)
+}
+
+/// The lowest four bytes of a length, the rest dropped, as marks have
+/// always been made. No field is anywhere near four gigabytes long, so
+/// nothing is dropped from a real one.
+fn low_u32(length: usize) -> u32 {
+    let [first, second, third, fourth, ..] = length.to_le_bytes();
+    u32::from_le_bytes([first, second, third, fourth])
 }
 
 /// A text field as wpa_supplicant gives it back, quoted.
@@ -223,7 +231,7 @@ pub fn changes<'a, P>(
     for (network, mark) in held {
         match mark.as_deref() {
             Some(mark) if wanted.iter().any(|w| w == mark) && !kept.contains(&mark) => {
-                kept.push(mark)
+                kept.push(mark);
             }
             _ => gone.push(network),
         }
@@ -556,8 +564,8 @@ mod tests {
             .map(|(_, value)| value)
     }
 
-    fn text(value: &str) -> Option<Value> {
-        Some(Value::Text(value.to_string()))
+    fn text(value: &str) -> Value {
+        Value::Text(value.to_string())
     }
 
     #[test]
@@ -576,7 +584,7 @@ mod tests {
             ("domain_suffix_match", "radius.office.test"),
             ("phase2", "auth=MSCHAPV2"),
         ] {
-            assert_eq!(field(&fields, name), text(value).as_ref(), "{name}");
+            assert_eq!(field(&fields, name), Some(&text(value)), "{name}");
         }
     }
 
@@ -586,7 +594,7 @@ mod tests {
 
         assert_eq!(
             field(&fields, "ca_cert"),
-            text("/etc/ssl/certs/ca-certificates.crt").as_ref()
+            Some(&text("/etc/ssl/certs/ca-certificates.crt"))
         );
     }
 

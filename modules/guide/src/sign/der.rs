@@ -35,9 +35,7 @@ pub fn read<'a>(input: &'a [u8], what: &str) -> Result<(Value<'a>, &'a [u8]), Fa
     }
     let (&first, rest) = rest.split_first().ok_or_else(|| malformed(what))?;
     let (length, rest) = match first {
-        // An indefinite length, which DER forbids.
-        0x80 => return Err(malformed(what)),
-        0..0x80 => (first as usize, rest),
+        0..=0x7f => (first as usize, rest),
         0x81..=0x84 => {
             let count = (first & 0x7f) as usize;
             if rest.len() < count || rest[0] == 0 {
@@ -51,6 +49,8 @@ pub fn read<'a>(input: &'a [u8], what: &str) -> Result<(Value<'a>, &'a [u8]), Fa
             }
             (length, &rest[count..])
         }
+        // An indefinite length, 0x80, which DER forbids, or one longer than
+        // anything read here.
         _ => return Err(malformed(what)),
     };
     if rest.len() < length {
@@ -80,15 +80,17 @@ pub fn children<'a>(value: Value<'a>, what: &str) -> Result<Vec<Value<'a>>, Faul
 }
 
 fn length(count: usize) -> Vec<u8> {
-    if count < 0x80 {
-        return vec![count as u8];
+    if let Ok(short) = u8::try_from(count)
+        && short < 0x80
+    {
+        return vec![short];
     }
     let bytes: Vec<u8> = count
         .to_be_bytes()
         .into_iter()
         .skip_while(|byte| *byte == 0)
         .collect();
-    let mut encoded = vec![0x80 | bytes.len() as u8];
+    let mut encoded = vec![0x80 | u8::try_from(bytes.len()).expect("at most eight bytes")];
     encoded.extend(bytes);
     encoded
 }
@@ -142,10 +144,11 @@ pub fn small_integer(n: u8) -> Vec<u8> {
     }
 }
 
-/// A time as a signature's signing time holds it: UTCTime from 1950 to
-/// 2049, GeneralizedTime otherwise, as OpenSSL chooses.
+/// A time as a signature's signing time holds it: `UTCTime` from 1950 to
+/// 2049, `GeneralizedTime` otherwise, as OpenSSL chooses.
 pub fn time(seconds: u64) -> Vec<u8> {
-    let days = (seconds / 86_400) as i64;
+    // Even `u64::MAX` seconds is far fewer days than an `i64` holds.
+    let days = i64::try_from(seconds / 86_400).expect("fewer days than an i64 holds");
     let rest = seconds % 86_400;
     // Howard Hinnant's days-to-civil, from the days since 1970.
     let z = days + 719_468;
@@ -216,7 +219,7 @@ mod tests {
         let inner = value(OCTET_STRING, &[&[7; 300]]);
         let outer = sequence(&[&small_integer(1), &inner]);
         let (read_back, rest) = read(&outer, "a test").unwrap();
-        assert!(rest.is_empty());
+        assert_eq!(rest, b"");
         assert_eq!(read_back.encoding, outer);
         let parts = children(read_back, "a test").unwrap();
         assert_eq!(parts[1].encoding, inner);

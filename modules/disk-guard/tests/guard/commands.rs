@@ -11,7 +11,7 @@ pub(crate) fn guards_policy() -> u32 {
     // SAFETY: sched_getscheduler only reads the calling thread's policy.
     let policy = unsafe { libc::sched_getscheduler(0) };
     assert!(policy >= 0, "{}", std::io::Error::last_os_error());
-    policy as u32
+    u32::try_from(policy).unwrap()
 }
 
 fn job(words: &[&str]) -> Job {

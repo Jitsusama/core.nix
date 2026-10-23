@@ -70,14 +70,14 @@ fn an_entry_is_idle_since_its_last_write_with_its_sources_healthy_window() {
             healthy: Some(30.0 * 86_400.0)
         }
     );
-    assert_eq!(made.idle, 4_000.0);
+    crate::assert_exactly(made.idle, 4_000.0);
     assert_eq!(made.size, 77);
     let unread = Entry {
         written: f64::INFINITY,
         ..entry
     };
-    assert_eq!(
+    crate::assert_exactly(
         candidate(&unread, None, 77, &Awake::default(), 5_000.0).idle,
-        0.0
+        0.0,
     );
 }

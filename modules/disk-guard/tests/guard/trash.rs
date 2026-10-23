@@ -46,10 +46,10 @@ fn each_trashed_thing_is_dated_by_when_it_was_deleted_in_local_time() {
     let found = sorted(items(root.path()));
     assert_eq!(found.len(), 2);
     assert_eq!(found[0].path, root.path().join("files/photos"));
-    assert_eq!(found[0].deleted, local("2026-09-01T08:00:00"));
+    crate::assert_exactly(found[0].deleted, local("2026-09-01T08:00:00"));
     assert_eq!(found[0].size, 500);
     assert_eq!(found[1].path, root.path().join("files/report.pdf"));
-    assert_eq!(found[1].deleted, local("2026-10-01T12:30:00"));
+    crate::assert_exactly(found[1].deleted, local("2026-10-01T12:30:00"));
     assert_eq!(found[1].size, 3000);
 }
 
@@ -90,7 +90,7 @@ fn a_trashed_thing_is_idle_for_the_awake_time_since_its_deletion() {
     };
     let made = candidate(&item, &Awake::default(), 5_000.0);
     assert_eq!(made.class, Class::Trash);
-    assert_eq!(made.idle, 4_000.0);
+    crate::assert_exactly(made.idle, 4_000.0);
     assert_eq!(made.size, 9);
 }
 

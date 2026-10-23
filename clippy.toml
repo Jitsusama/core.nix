@@ -2,5 +2,21 @@
 # which lints it holds them to. cargo clippy finds this file from any crate
 # below it, and the checks point clippy at it.
 
-# Names that read as code to clippy but are what things are called.
-doc-valid-idents = ["ErgoDox", ".."]
+# Names of things, programs and protocols that read as code to clippy. A name
+# from code, an interface or a specification still takes backticks.
+doc-valid-idents = [
+  "DHCPv4",
+  "DisplayPort",
+  "ErgoDox",
+  "GStreamer",
+  "MSCHAPv2",
+  "NVMe",
+  "PipeWire",
+  "SplitMix64",
+  "UDisks2",
+  "UPower",
+  "wpa_supplicant",
+  "YubiKey",
+  "YubiKeys",
+  "..",
+]

@@ -365,7 +365,7 @@ mod tests {
         let table = Table::parse(TABLE).unwrap();
         assert_eq!(table.data(), "8:3");
         assert_eq!(table.hashes(), "8:2");
-        assert_eq!(table.data_bytes(), 1114522 * 4096);
+        assert_eq!(table.data_bytes(), 1_114_522 * 4096);
         assert_eq!(table.hash_start(), 1);
         assert!(!table.in_memory());
         let moved = table.over("7:0", "7:1");

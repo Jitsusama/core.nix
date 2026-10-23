@@ -192,7 +192,10 @@ fn reclaiming_a_build_takes_its_artifacts_and_fingerprint_alone() {
             "libbeta-3333333333333333.rlib",
         ]
     );
-    assert!(names(&target.join("debug/.fingerprint")).is_empty());
+    assert_eq!(
+        names(&target.join("debug/.fingerprint")),
+        Vec::<String>::new()
+    );
     // The cross target's build of it is another candidate.
     assert_eq!(
         names(&target.join("x86_64-unknown-linux-gnu/release/deps")).len(),
@@ -217,7 +220,7 @@ fn a_build_whose_target_cargo_holds_is_kept() {
 #[test]
 fn a_target_with_no_builds_replaces_nothing() {
     let root = tempfile::tempdir().unwrap();
-    assert!(replaced(&root.path().join("target")).is_empty());
+    assert_eq!(replaced(&root.path().join("target")), Vec::<Build>::new());
     fs::create_dir_all(root.path().join("target/debug/deps")).unwrap();
-    assert!(replaced(&root.path().join("target")).is_empty());
+    assert_eq!(replaced(&root.path().join("target")), Vec::<Build>::new());
 }

@@ -25,8 +25,8 @@ pub(crate) fn local(fields: [i32; 6]) -> Option<f64> {
     // Whether daylight saving applies is for mktime to work out.
     tm.tm_isdst = -1;
     // SAFETY: as above.
-    let seconds = unsafe { libc::mktime(&mut tm) };
-    (seconds != -1).then_some(seconds as f64)
+    let seconds = unsafe { libc::mktime(&raw mut tm) };
+    (seconds != -1).then_some(crate::units::wall(seconds, 0))
 }
 
 /// One reading of the clocks, in seconds: wall time, time since boot

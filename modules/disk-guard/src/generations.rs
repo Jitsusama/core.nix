@@ -23,7 +23,7 @@ static ENTRY: LazyLock<Regex> =
 /// Where each boot loader keeps its entries on the boot partition.
 const ENTRY_DIRS: [&str; 2] = ["EFI/Linux", "loader/entries"];
 /// How long deleting a profile's generations may take.
-const EXPIRE_TIMEOUT: Duration = Duration::from_secs(5 * 60);
+const EXPIRE_TIMEOUT: Duration = Duration::from_mins(5);
 
 /// One generation of a profile.
 #[derive(Clone, Debug, PartialEq)]

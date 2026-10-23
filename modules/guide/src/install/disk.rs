@@ -2,6 +2,8 @@
 //! machine's own disko script with a key held only in memory, and, last,
 //! left with only the YubiKeys and the recovery key to open it.
 
+use std::fmt::Write as _;
+
 use crate::install::{INSTALL_KEY, LAYOUT, LAYOUT_SCRIPT, ROOT, Target, target, vault};
 use crate::observe::disks::{self, Disk, Kind};
 use crate::observe::luks;
@@ -20,7 +22,8 @@ pub fn described(disk: &Disk) -> String {
         disk.bytes / 1_000_000_000
     );
     if let Some(serial) = &disk.serial {
-        said.push_str(&format!(", serial {serial}"));
+        // Writing to a String can't fail.
+        _ = write!(said, ", serial {serial}");
     }
     said
 }
@@ -162,7 +165,11 @@ fn laid_out(machine: &mut dyn Machine, target: &Target, disk: &Disk) -> Result<b
 fn new_key() -> Result<String, Fault> {
     let mut bytes = [0u8; 32];
     getrandom::fill(&mut bytes).map_err(|why| Fault::unreadable("the system's randomness", why))?;
-    Ok(bytes.iter().map(|byte| format!("{byte:02x}")).collect())
+    Ok(bytes.iter().fold(String::new(), |mut hex, byte| {
+        // Writing to a String can't fail.
+        _ = write!(hex, "{byte:02x}");
+        hex
+    }))
 }
 
 /// The disk wiped and laid out by the machine's own disko script, its

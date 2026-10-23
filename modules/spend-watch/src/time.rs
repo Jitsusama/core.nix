@@ -11,28 +11,90 @@ pub const HOUR: f64 = 3600.0;
 pub const DAY: f64 = 86_400.0;
 
 /// The whole hour an instant falls in.
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "the floor is already whole, and hours since the epoch are far inside i64"
+)]
 pub fn hour_of(at: f64) -> i64 {
     (at / HOUR).floor() as i64
 }
 
+#[expect(
+    clippy::cast_precision_loss,
+    reason = "hours since the epoch are far below 2^52, so f64 holds them exactly"
+)]
 pub fn hour_start(hour: i64) -> f64 {
     hour as f64 * HOUR
+}
+
+/// The whole minute an instant falls in.
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "the floor is already whole, and minutes since the epoch are far inside i64"
+)]
+pub fn minute_of(at: f64) -> i64 {
+    (at / 60.0).floor() as i64
+}
+
+/// An instant in whole seconds, cut toward zero, for a key that names it.
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "dropping the fraction of a second is the intent, and seconds since the epoch \
+              are far inside i64"
+)]
+pub fn whole_seconds(at: f64) -> i64 {
+    at as i64
+}
+
+/// The instant a whole minute since the epoch starts.
+#[expect(
+    clippy::cast_precision_loss,
+    reason = "minutes since the epoch are far below 2^52, so f64 holds them exactly"
+)]
+pub fn minute_start(minute: i64) -> f64 {
+    minute as f64 * 60.0
 }
 
 /// An RFC 3339 instant, as pi and the feeds write them.
 pub fn parse(text: &str) -> Option<f64> {
     let stamp: Timestamp = text.parse().ok()?;
-    Some(stamp.as_millisecond() as f64 / 1000.0)
+    Some(from_milliseconds(stamp.as_millisecond()))
 }
 
 pub fn rfc3339(at: f64) -> String {
-    Timestamp::from_millisecond((at * 1000.0) as i64)
+    Timestamp::from_millisecond(milliseconds(at))
         .map(|stamp| stamp.to_string())
         .unwrap_or_default()
 }
 
 pub fn now() -> f64 {
-    Timestamp::now().as_millisecond() as f64 / 1000.0
+    from_milliseconds(Timestamp::now().as_millisecond())
+}
+
+/// Milliseconds since the epoch as an instant in seconds.
+#[expect(
+    clippy::cast_precision_loss,
+    reason = "milliseconds since the epoch stay below 2^53 for 285,000 years, so f64 holds \
+              them exactly"
+)]
+pub fn from_milliseconds(milliseconds: i64) -> f64 {
+    milliseconds as f64 / 1000.0
+}
+
+/// An instant in whole milliseconds since the epoch, cut toward zero.
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "dropping the fraction of a millisecond is the intent, and an instant past \
+              i64 saturates, which jiff then refuses as out of range"
+)]
+fn milliseconds(at: f64) -> i64 {
+    (at * 1000.0) as i64
+}
+
+/// One of jiff's weekdays, hours or months as an index, since jiff never
+/// gives them below zero.
+fn index(value: i8) -> usize {
+    usize::from(value.unsigned_abs())
 }
 
 #[derive(Debug, Clone)]
@@ -59,7 +121,7 @@ impl Zone {
     }
 
     fn zoned(&self, at: f64) -> Zoned {
-        Timestamp::from_millisecond((at * 1000.0) as i64)
+        Timestamp::from_millisecond(milliseconds(at))
             .unwrap_or(Timestamp::UNIX_EPOCH)
             .to_zoned(self.tz.clone())
     }
@@ -73,20 +135,25 @@ impl Zone {
     /// The local hour of the week: Monday's first hour is 0.
     pub fn slot(&self, at: f64) -> usize {
         let zoned = self.zoned(at);
-        let weekday = zoned.weekday().to_monday_zero_offset() as usize;
-        weekday * 24 + zoned.hour() as usize
+        let weekday = index(zoned.weekday().to_monday_zero_offset());
+        weekday * 24 + index(zoned.hour())
     }
 
     pub fn local_hour(&self, at: f64) -> u32 {
-        self.zoned(at).hour() as u32
+        u32::from(self.zoned(at).hour().unsigned_abs())
     }
 
     /// The instant a local day starts, which daylight saving can move.
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "days since the epoch are far below 2^52, so f64 holds them exactly"
+    )]
     pub fn day_start(&self, day: i64) -> f64 {
         let date = date_of(day);
-        date.to_zoned(self.tz.clone())
-            .map(|zoned| zoned.timestamp().as_millisecond() as f64 / 1000.0)
-            .unwrap_or(day as f64 * DAY)
+        date.to_zoned(self.tz.clone()).map_or_else(
+            |_| day as f64 * DAY,
+            |zoned| from_milliseconds(zoned.timestamp().as_millisecond()),
+        )
     }
 
     /// The instant on a local day at the wall-clock time `like` shows, so
@@ -96,13 +163,20 @@ impl Zone {
         date_of(day)
             .at(zoned.hour(), zoned.minute(), zoned.second(), 0)
             .to_zoned(self.tz.clone())
-            .map(|zoned| zoned.timestamp().as_millisecond() as f64 / 1000.0)
-            .unwrap_or_else(|_| self.day_start(day) + (like - self.day_start(self.day(like))))
+            .map_or_else(
+                |_| self.day_start(day) + (like - self.day_start(self.day(like))),
+                |zoned| from_milliseconds(zoned.timestamp().as_millisecond()),
+            )
     }
 
     /// The weekday of a local day, Monday 0.
     pub fn weekday(day: i64) -> usize {
-        date_of(day).weekday().to_monday_zero_offset() as usize
+        index(date_of(day).weekday().to_monday_zero_offset())
+    }
+
+    /// The Monday of the week a local day falls in.
+    pub fn week_start(day: i64) -> i64 {
+        day - i64::from(date_of(day).weekday().to_monday_zero_offset())
     }
 
     /// How a local instant reads to a person: "14:00", or "Thu 14:00" when
@@ -118,7 +192,7 @@ impl Zone {
         } else if days.abs() < 7 {
             format!(
                 "{} {time}",
-                weekday_name(zoned.weekday().to_monday_zero_offset() as usize)
+                weekday_name(index(zoned.weekday().to_monday_zero_offset()))
             )
         } else {
             // A weekday alone would name the wrong week.
@@ -131,9 +205,9 @@ impl Zone {
         let date = date_of(day);
         format!(
             "{} {} {}",
-            weekday_name(date.weekday().to_monday_zero_offset() as usize),
+            weekday_name(index(date.weekday().to_monday_zero_offset())),
             date.day(),
-            month_name(date.month() as usize)
+            month_name(index(date.month()))
         )
     }
 
@@ -148,8 +222,7 @@ pub fn parse_day(text: &str) -> Option<i64> {
 
 fn day_number(date: Date) -> i64 {
     date.since(Date::constant(1970, 1, 1))
-        .map(|span| span.get_days() as i64)
-        .unwrap_or(0)
+        .map_or(0, |span| i64::from(span.get_days()))
 }
 
 fn date_of(day: i64) -> Date {
@@ -182,6 +255,10 @@ mod tests {
     }
 
     #[test]
+    #[expect(
+        clippy::float_cmp,
+        reason = "both instants are whole seconds, which f64 holds and subtracts exactly"
+    )]
     fn a_day_across_daylight_saving_is_its_own_length() {
         let toronto = Zone::named("America/Toronto").unwrap();
         let day = parse_day("2026-11-01").unwrap();
@@ -210,6 +287,10 @@ mod tests {
     // Noon in Toronto after the clocks go back is noon before, an hour of
     // UTC apart.
     #[test]
+    #[expect(
+        clippy::float_cmp,
+        reason = "both instants are whole seconds, which f64 holds exactly"
+    )]
     fn the_same_time_holds_across_a_change_of_clocks() {
         let toronto = Zone::named("America/Toronto").unwrap();
         let after = parse("2026-11-02T17:00:00Z").unwrap();

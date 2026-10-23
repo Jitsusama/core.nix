@@ -199,14 +199,15 @@ let
   };
 
   # A Rust package with clippy in place of its build, its tests and examples
-  # read too, and nothing installed: a warning fails it.
+  # read too, held to clippyLints, and nothing installed.
   passesClippy =
     name: package:
     package.overrideAttrs (old: {
       pname = name;
       nativeBuildInputs = old.nativeBuildInputs ++ [ pkgs.clippy ];
+      CLIPPY_CONF_DIR = clippyConfig;
       buildPhase = ''
-        cargo clippy --all-targets --offline -- -D warnings
+        cargo clippy --all-targets --offline -- ${lib.escapeShellArgs clippyLints}
       '';
       doCheck = false;
       installPhase = ''
@@ -5614,18 +5615,10 @@ in
     guide-proves-its-steps = pkgs.callPackage ./modules/guide/package.nix { };
 
     # clippy finds nothing in the guide, its tests included.
-    guide-passes-clippy = (pkgs.callPackage ./modules/guide/package.nix { }).overrideAttrs (old: {
-      pname = "guide-passes-clippy";
-      nativeBuildInputs = old.nativeBuildInputs ++ [ pkgs.clippy ];
-      buildPhase = ''
-        cargo clippy --all-targets --offline -- -D warnings
-      '';
-      doCheck = false;
-      doInstallCheck = false;
-      installPhase = ''
-        touch $out
-      '';
-    });
+    guide-passes-clippy =
+      (passesClippy "guide-passes-clippy" (pkgs.callPackage ./modules/guide/package.nix { }))
+      .overrideAttrs
+        { doInstallCheck = false; };
 
     # A Mac writes sticks too, through its own raw disks and cache, and no
     # check runs on a Mac, so clippy reads the guide as macOS would compile it.
@@ -5638,9 +5631,11 @@ in
       in
       (pkgs.callPackage ./modules/guide/package.nix { }).overrideAttrs {
         pname = "guide-compiles-for-macos";
+        CLIPPY_CONF_DIR = clippyConfig;
         buildPhase = ''
           export PATH=${toolchain}/bin:$PATH
-          cargo clippy --target aarch64-apple-darwin --all-targets --offline -- -D warnings
+          cargo clippy --target aarch64-apple-darwin --all-targets --offline -- \
+            ${lib.escapeShellArgs clippyLints}
         '';
         doCheck = false;
         doInstallCheck = false;
@@ -5681,6 +5676,11 @@ in
           touch $out
         '';
 
+    # clippy finds nothing in the cameras' holders watcher, its tests included.
+    v4l2loopback-holders-passes-clippy = passesClippy "v4l2loopback-holders-passes-clippy" (
+      pkgs.callPackage ./modules/v4l2loopback/holders/package.nix { }
+    );
+
     # clippy finds nothing in ir-camera, its tests included.
     ir-camera-passes-clippy = passesClippy "ir-camera-passes-clippy" (
       pkgs.callPackage ./modules/ir-camera/package.nix { }
@@ -5704,9 +5704,11 @@ in
       in
       (pkgs.callPackage ./modules/disk-guard/package.nix { }).overrideAttrs {
         pname = "disk-guard-compiles-for-macos";
+        CLIPPY_CONF_DIR = clippyConfig;
         buildPhase = ''
           export PATH=${toolchain}/bin:$PATH
-          cargo clippy --target aarch64-apple-darwin --all-targets --offline -- -D warnings
+          cargo clippy --target aarch64-apple-darwin --all-targets --offline -- \
+            ${lib.escapeShellArgs clippyLints}
         '';
         doCheck = false;
         installPhase = ''

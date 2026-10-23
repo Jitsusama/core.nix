@@ -132,7 +132,10 @@ mod tests {
         let start = Instant::now();
         let mut steer = Steer::default();
         steer.heard(0.8, 0.5, start);
-        assert_eq!(steer.due(start + BRIGHTENING - MOMENT), None);
+        assert_eq!(
+            steer.due((start + BRIGHTENING).checked_sub(MOMENT).unwrap()),
+            None
+        );
         assert_eq!(steer.due(start + BRIGHTENING), Some(0.8));
         assert_eq!(steer.next(), None);
     }

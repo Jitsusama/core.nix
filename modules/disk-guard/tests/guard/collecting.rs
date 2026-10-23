@@ -173,7 +173,7 @@ impl Store {
         fs::create_dir_all(&path).unwrap();
         fs::write(
             path.join("meta"),
-            format!("{} {size}\n", (now() - ago) as u64),
+            format!("{} {size}\n", disk_guard::units::whole(now() - ago)),
         )
         .unwrap();
         path

@@ -51,10 +51,10 @@ fn clock(id: libc::clockid_t) -> io::Result<f64> {
         tv_nsec: 0,
     };
     // SAFETY: time is a valid timespec the kernel fills in.
-    if unsafe { libc::clock_gettime(id, &mut time) } != 0 {
+    if unsafe { libc::clock_gettime(id, &raw mut time) } != 0 {
         return Err(io::Error::last_os_error());
     }
-    Ok(time.tv_sec as f64 + time.tv_nsec as f64 / 1e9)
+    Ok(crate::units::wall(time.tv_sec, time.tv_nsec))
 }
 
 /// The clocks awake time is counted from. On macOS uptime stops while the
@@ -77,7 +77,7 @@ pub fn tick() -> io::Result<crate::clock::Tick> {
 
 /// macOS keeps no stall averages, so it reads as none.
 pub fn pressure(_proc_pressure: &Path) -> io::Result<crate::moments::Pressure> {
-    Ok(Default::default())
+    Ok(crate::moments::Pressure::default())
 }
 
 /// Where power comes from, as `pmset` says.
@@ -106,7 +106,7 @@ fn sysctl_value<T: Copy>(name: &CStr) -> io::Result<T> {
         libc::sysctlbyname(
             name.as_ptr(),
             value.as_mut_ptr().cast(),
-            &mut size,
+            &raw mut size,
             ptr::null_mut(),
             0,
         )
@@ -129,7 +129,7 @@ fn sysctl_bytes(name: &CStr) -> io::Result<Vec<u8>> {
         libc::sysctlbyname(
             name.as_ptr(),
             ptr::null_mut(),
-            &mut size,
+            &raw mut size,
             ptr::null_mut(),
             0,
         )
@@ -143,7 +143,7 @@ fn sysctl_bytes(name: &CStr) -> io::Result<Vec<u8>> {
         libc::sysctlbyname(
             name.as_ptr(),
             bytes.as_mut_ptr().cast(),
-            &mut size,
+            &raw mut size,
             ptr::null_mut(),
             0,
         )
@@ -158,6 +158,10 @@ fn sysctl_bytes(name: &CStr) -> io::Result<Vec<u8>> {
 /// `struct proc_fileinfo`, from xnu's `sys/proc_info.h`, which libc lacks.
 #[repr(C)]
 #[derive(Clone, Copy)]
+#[expect(
+    clippy::struct_field_names,
+    reason = "its fields are named as xnu's `sys/proc_info.h` names them"
+)]
 struct ProcFileInfo {
     fi_openflags: u32,
     fi_status: u32,
@@ -177,6 +181,10 @@ struct VnodeFdInfoWithPath {
 /// `struct proc_regioninfo`: one region of a process's memory.
 #[repr(C)]
 #[derive(Clone, Copy)]
+#[expect(
+    clippy::struct_field_names,
+    reason = "its fields are named as xnu's `sys/proc_info.h` names them"
+)]
 struct ProcRegionInfo {
     pri_protection: u32,
     pri_max_protection: u32,
@@ -232,7 +240,7 @@ fn bytes(chars: &[libc::c_char]) -> Vec<u8> {
     chars
         .iter()
         .take_while(|&&c| c != 0)
-        .map(|&c| c as u8)
+        .map(|&c| c.cast_unsigned())
         .collect()
 }
 
@@ -252,7 +260,7 @@ fn clear_errno() {
 /// libproc's answer about `pid` of exactly `T`'s size.
 fn pidinfo<T: Copy>(pid: c_int, flavor: c_int, arg: u64) -> io::Result<T> {
     let mut value = MaybeUninit::<T>::zeroed();
-    let size = size_of::<T>() as c_int;
+    let size = c_int::try_from(size_of::<T>()).map_err(io::Error::other)?;
     clear_errno();
     // SAFETY: value has room for size bytes, which the kernel writes at most.
     let got = unsafe { libc::proc_pidinfo(pid, flavor, arg, value.as_mut_ptr().cast(), size) };
@@ -271,17 +279,18 @@ fn pidinfo<T: Copy>(pid: c_int, flavor: c_int, arg: u64) -> io::Result<T> {
 fn pids() -> io::Result<Vec<libc::pid_t>> {
     // SAFETY: a null buffer asks only how many there are.
     let count = unsafe { libc::proc_listallpids(ptr::null_mut(), 0) };
-    if count < 0 {
+    // Negative, the call failed.
+    let Ok(count) = usize::try_from(count) else {
         return Err(io::Error::last_os_error());
-    }
-    let mut pids: Vec<libc::pid_t> = vec![0; count as usize + 64];
-    let room = (pids.len() * size_of::<libc::pid_t>()) as c_int;
+    };
+    let mut pids: Vec<libc::pid_t> = vec![0; count + 64];
+    let room = c_int::try_from(pids.len() * size_of::<libc::pid_t>()).map_err(io::Error::other)?;
     // SAFETY: pids has room for room bytes.
     let count = unsafe { libc::proc_listallpids(pids.as_mut_ptr().cast(), room) };
-    if count < 0 {
+    let Ok(count) = usize::try_from(count) else {
         return Err(io::Error::last_os_error());
-    }
-    pids.truncate(count as usize);
+    };
+    pids.truncate(count);
     Ok(pids)
 }
 
@@ -290,7 +299,8 @@ fn pids() -> io::Result<Vec<libc::pid_t>> {
 /// another account's are, reads as unreadable rather than as idle.
 pub fn processes(_proc: &Path) -> io::Result<Vec<crate::activity::Process>> {
     let argmax: c_int = sysctl_value(c"kern.argmax")?;
-    let mut args = vec![0u8; argmax.max(0) as usize];
+    // A negative maximum leaves no room, as it says nothing.
+    let mut args = vec![0u8; usize::try_from(argmax).unwrap_or(0)];
     Ok(pids()?
         .into_iter()
         .filter(|&pid| pid > 0)
@@ -302,7 +312,7 @@ pub fn processes(_proc: &Path) -> io::Result<Vec<crate::activity::Process>> {
 /// start, or none when it's gone or a zombie, which holds no files. Its BSD
 /// info is anybody's to read.
 pub fn started(_proc: &Path, pid: u32) -> Option<u64> {
-    let info: libc::proc_bsdinfo = pidinfo(pid as libc::pid_t, libc::PROC_PIDTBSDINFO, 0).ok()?;
+    let info: libc::proc_bsdinfo = pidinfo(pid.cast_signed(), libc::PROC_PIDTBSDINFO, 0).ok()?;
     (info.pbi_status != libc::SZOMB).then(|| start_of(&info))
 }
 
@@ -335,7 +345,7 @@ fn process(pid: libc::pid_t, args: &mut [u8]) -> Option<crate::activity::Process
     let crate::procargs::Args { argv, env } = arguments(pid, args).unwrap_or_default();
 
     Some(crate::activity::Process {
-        pid: pid as u32,
+        pid: u32::try_from(pid).ok()?,
         uid: info.pbi_ruid,
         start_ticks,
         name: String::from_utf8_lossy(&name).into_owned(),
@@ -354,12 +364,13 @@ fn process(pid: libc::pid_t, args: &mut [u8]) -> Option<crate::activity::Process
 /// The executable's path.
 fn exe(pid: libc::pid_t) -> Option<PathBuf> {
     let mut path = vec![0u8; libc::PROC_PIDPATHINFO_MAXSIZE as usize];
+    let room = u32::try_from(path.len()).ok()?;
     // SAFETY: path has room for the size given.
-    let length = unsafe { libc::proc_pidpath(pid, path.as_mut_ptr().cast(), path.len() as u32) };
-    (length > 0).then(|| {
-        path.truncate(length as usize);
-        PathBuf::from(OsStr::from_bytes(&path))
-    })
+    let length = unsafe { libc::proc_pidpath(pid, path.as_mut_ptr().cast(), room) };
+    // Nothing, or negative, it failed.
+    let length = usize::try_from(length).ok().filter(|&length| length > 0)?;
+    path.truncate(length);
+    Some(PathBuf::from(OsStr::from_bytes(&path)))
 }
 
 /// The files it holds open: of its descriptors, those that are vnodes.
@@ -367,32 +378,34 @@ fn files(pid: libc::pid_t) -> io::Result<Vec<PathBuf>> {
     clear_errno();
     // SAFETY: a null buffer asks only for the size.
     let size = unsafe { libc::proc_pidinfo(pid, libc::PROC_PIDLISTFDS, 0, ptr::null_mut(), 0) };
-    if size <= 0 {
+    // Nothing, or negative, it has no descriptors or the call failed.
+    let Some(size) = usize::try_from(size).ok().filter(|&size| size > 0) else {
         let error = io::Error::last_os_error();
         return match error.raw_os_error() {
             Some(0) | None => Ok(Vec::new()),
             _ => Err(error),
         };
-    }
+    };
     let none = libc::proc_fdinfo {
         proc_fd: 0,
         proc_fdtype: 0,
     };
-    let mut fds = vec![none; size as usize / size_of::<libc::proc_fdinfo>() + 16];
-    let room = (fds.len() * size_of::<libc::proc_fdinfo>()) as c_int;
+    let mut fds = vec![none; size / size_of::<libc::proc_fdinfo>() + 16];
+    let room =
+        c_int::try_from(fds.len() * size_of::<libc::proc_fdinfo>()).map_err(io::Error::other)?;
     // SAFETY: fds has room for room bytes.
     let got =
         unsafe { libc::proc_pidinfo(pid, libc::PROC_PIDLISTFDS, 0, fds.as_mut_ptr().cast(), room) };
-    if got <= 0 {
+    let Some(got) = usize::try_from(got).ok().filter(|&got| got > 0) else {
         return Err(io::Error::last_os_error());
-    }
-    fds.truncate(got as usize / size_of::<libc::proc_fdinfo>());
+    };
+    fds.truncate(got / size_of::<libc::proc_fdinfo>());
     let mut files: Vec<PathBuf> = fds
         .iter()
         .filter(|fd| fd.proc_fdtype == libc::PROX_FDTYPE_VNODE as u32)
         .filter_map(|fd| {
             let mut vnode = MaybeUninit::<VnodeFdInfoWithPath>::zeroed();
-            let size = size_of::<VnodeFdInfoWithPath>() as c_int;
+            let size = c_int::try_from(size_of::<VnodeFdInfoWithPath>()).ok()?;
             // SAFETY: vnode has room for size bytes.
             let got = unsafe {
                 libc::proc_pidfdinfo(
@@ -451,9 +464,9 @@ fn arguments(pid: libc::pid_t, room: &mut [u8]) -> Option<crate::procargs::Args>
     let read = unsafe {
         libc::sysctl(
             name.as_mut_ptr(),
-            name.len() as u32,
+            u32::try_from(name.len()).ok()?,
             room.as_mut_ptr().cast(),
-            &mut size,
+            &raw mut size,
             ptr::null_mut(),
             0,
         )

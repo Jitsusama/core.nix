@@ -292,43 +292,41 @@ impl Step for MakeRecoveryKey {
         let volume = target.volume();
         // Held before they're enrolled, so a run cut short gives the slot
         // it may have made the same words, rather than leave one nobody has.
-        let key = match held(machine, RECOVERY_KEY)? {
-            Some(key) => key,
-            None => {
-                let made = words::made()?;
-                machine.write(RECOVERY_KEY, made.expose().as_bytes())?;
-                made
-            }
+        let key = if let Some(key) = held(machine, RECOVERY_KEY)? {
+            key
+        } else {
+            let made = words::made()?;
+            machine.write(RECOVERY_KEY, made.expose().as_bytes())?;
+            made
         };
-        let slot = match opened_by(machine, &volume, &key)? {
-            Some(slot) => slot,
-            None => {
-                let unlock = format!("--unlock-key-file={INSTALL_KEY}");
-                let mut args = vec![unlock.as_str()];
-                // One made before whose words are lost goes, so no key
-                // nobody has stays on the disk.
-                if luks::observe(machine, &volume)?.has(&luks::Kind::Recovery) {
-                    args.push("--wipe-slot=recovery");
-                }
-                args.extend(["--password", volume.as_str()]);
-                let made = machine.run_given(
-                    Program::Tool(Tool::SystemdCryptenroll),
-                    &args,
-                    Given {
-                        env: vec![("NEWPASSWORD", &key)],
-                        ..Given::default()
-                    },
-                )?;
-                if made.status != 0 {
-                    return Err(made.refusal());
-                }
-                opened_by(machine, &volume, &key)?.ok_or_else(|| {
-                    Fault::unreadable(
-                        "the disk's recovery key",
-                        "it doesn't open the slot made for it",
-                    )
-                })?
+        let slot = if let Some(slot) = opened_by(machine, &volume, &key)? {
+            slot
+        } else {
+            let unlock = format!("--unlock-key-file={INSTALL_KEY}");
+            let mut args = vec![unlock.as_str()];
+            // One made before whose words are lost goes, so no key
+            // nobody has stays on the disk.
+            if luks::observe(machine, &volume)?.has(&luks::Kind::Recovery) {
+                args.push("--wipe-slot=recovery");
             }
+            args.extend(["--password", volume.as_str()]);
+            let made = machine.run_given(
+                Program::Tool(Tool::SystemdCryptenroll),
+                &args,
+                Given {
+                    env: vec![("NEWPASSWORD", &key)],
+                    ..Given::default()
+                },
+            )?;
+            if made.status != 0 {
+                return Err(made.refusal());
+            }
+            opened_by(machine, &volume, &key)?.ok_or_else(|| {
+                Fault::unreadable(
+                    "the disk's recovery key",
+                    "it doesn't open the slot made for it",
+                )
+            })?
         };
         let token = Secret::new(format!(
             r#"{{"type":"systemd-recovery","keyslots":["{slot}"]}}"#

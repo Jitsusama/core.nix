@@ -197,7 +197,10 @@ fn a_directory_is_begun_before_it_is_reclaimed_and_ended_after() {
 fn nothing_journalled_has_nothing_unfinished() {
     let dir = tempfile::tempdir().unwrap();
     let journal = Journal::new(&dir.path().join("journal.jsonl"), 400);
-    assert!(journal.unfinished().unwrap().is_empty());
+    assert_eq!(
+        journal.unfinished().unwrap(),
+        Vec::<(PathBuf, PathBuf)>::new()
+    );
 }
 
 #[test]

@@ -96,7 +96,7 @@ fn signing_time(signed: &[u8]) -> SystemTime {
     let day_of_era = year_of_era * 365 + year_of_era / 4 - year_of_era / 100 + day_of_year;
     let days = era * 146_097 + day_of_era - 719_468;
     let seconds = days * 86_400 + field(6..8) * 3600 + field(8..10) * 60 + field(10..12);
-    UNIX_EPOCH + Duration::from_secs(seconds as u64)
+    UNIX_EPOCH + Duration::from_secs(u64::try_from(seconds).unwrap())
 }
 
 #[test]
@@ -119,20 +119,18 @@ fn every_signature_is_byte_for_byte_what_sbsign_makes() {
             ],
         );
         let expected = fs::read(&by_sbsign).unwrap();
-        let signed = signer
+        let ours = signer
             .sign(fs::read(&program).unwrap(), signing_time(&expected))
             .unwrap();
         assert!(
-            signed == expected,
+            ours == expected,
             "{} differs from sbsign's",
             program.display()
         );
 
         // Signed again, as a stick written for a machine is once its
         // install has its keys, it's what signing it the first time made.
-        let again = signer
-            .sign(signed.clone(), signing_time(&expected))
-            .unwrap();
+        let again = signer.sign(ours.clone(), signing_time(&expected)).unwrap();
         assert!(
             again == expected,
             "{} signed again differs",
@@ -140,7 +138,7 @@ fn every_signature_is_byte_for_byte_what_sbsign_makes() {
         );
 
         let by_guide = directory.join("guide.efi");
-        fs::write(&by_guide, &signed).unwrap();
+        fs::write(&by_guide, &ours).unwrap();
         run(
             "sbverify",
             &[

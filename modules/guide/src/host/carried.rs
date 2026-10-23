@@ -130,7 +130,7 @@ pub fn on_stick(disk: &mut File) -> Vec<Carried> {
     let mut read = || -> Result<Vec<Carried>, Fault> {
         let unread = |why: std::io::Error| Fault::unreadable("the stick", why);
         let bytes = disk.seek(SeekFrom::End(0)).map_err(unread)?;
-        let mut start = vec![0u8; TABLE.min(bytes) as usize];
+        let mut start = vec![0u8; usize::try_from(TABLE.min(bytes)).expect("at most a mebibyte")];
         disk.seek(SeekFrom::Start(0))
             .and_then(|_| disk.read_exact(&mut start))
             .map_err(unread)?;

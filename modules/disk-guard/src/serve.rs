@@ -12,7 +12,7 @@ use std::fs::{File, OpenOptions};
 use std::io::{self, Write};
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex, mpsc};
+use std::sync::{Arc, Mutex, PoisonError, mpsc};
 use std::time::Duration;
 
 /// Takes the lock that keeps one daemon to a state directory, or None
@@ -56,7 +56,7 @@ pub fn answering(
         .name("answering".to_owned())
         .spawn(move || {
             loop {
-                let served = server.serve(&mut |uid, request, responder| {
+                let answered = server.serve(&mut |uid, request, responder| {
                     let reply = match request {
                         Request::Processes { roots } => match crate::sys::processes(&proc) {
                             Ok(processes) => {
@@ -72,9 +72,8 @@ pub fn answering(
                                 .filter(|path| store.is_some() && device(path) == store)
                                 .collect();
                             if let (Some(store), false) = (store, held.is_empty()) {
-                                let mut spoken = spoken
-                                    .lock()
-                                    .unwrap_or_else(|poisoned| poisoned.into_inner());
+                                let mut spoken =
+                                    spoken.lock().unwrap_or_else(PoisonError::into_inner);
                                 spoken.insert(store, std::time::Instant::now());
                             }
                             Reply::Collects(held)
@@ -99,7 +98,7 @@ pub fn answering(
                     };
                     responder.send(&reply);
                 });
-                if let Err(error) = served {
+                if let Err(error) = answered {
                     // Out of descriptors, most likely; a moment may free one.
                     eprintln!("disk-guard: answering: {error}");
                     std::thread::sleep(Duration::from_millis(500));
@@ -122,7 +121,7 @@ impl Unheard {
     pub fn said(&mut self, told: Result<(), String>) -> Option<String> {
         let why = told.err();
         let changed = why != self.last;
-        self.last = why.clone();
+        self.last.clone_from(&why);
         why.filter(|_| changed)
     }
 }
@@ -174,13 +173,12 @@ pub fn stopping(signals: &[i32]) -> io::Result<impl FnMut(Duration) -> bool + us
         let deadline = std::time::Instant::now() + wait;
         loop {
             let left = deadline.saturating_duration_since(std::time::Instant::now());
-            let timeout = libc::timespec {
-                tv_sec: left.as_secs() as libc::time_t,
-                tv_nsec: left.subsec_nanos() as libc::c_long,
-            };
+            let timeout = timespec(left);
             // SAFETY: set and timeout are valid for the call; no siginfo
             // is asked for.
-            let taken = unsafe { libc::sigtimedwait(&set, std::ptr::null_mut(), &timeout) };
+            let taken = unsafe {
+                libc::sigtimedwait(&raw const set, std::ptr::null_mut(), &raw const timeout)
+            };
             if taken > 0 {
                 return true;
             }
@@ -209,22 +207,25 @@ pub fn stopping(signals: &[i32]) -> io::Result<impl FnMut(Duration) -> bool + us
     let queue = unsafe { OwnedFd::from_raw_fd(queue) };
     let heard: Vec<libc::kevent> = signals
         .iter()
-        .map(|&signal| libc::kevent {
-            ident: signal as libc::uintptr_t,
-            filter: libc::EVFILT_SIGNAL,
-            flags: libc::EV_ADD,
-            fflags: 0,
-            data: 0,
-            udata: std::ptr::null_mut(),
+        .map(|&signal| {
+            Ok(libc::kevent {
+                ident: libc::uintptr_t::try_from(signal).map_err(io::Error::other)?,
+                filter: libc::EVFILT_SIGNAL,
+                flags: libc::EV_ADD,
+                fflags: 0,
+                data: 0,
+                udata: std::ptr::null_mut(),
+            })
         })
-        .collect();
+        .collect::<io::Result<_>>()?;
+    let count = libc::c_int::try_from(heard.len()).map_err(io::Error::other)?;
     // SAFETY: heard is a list of that many kevents, and no events are
     // asked for back.
     let added = unsafe {
         libc::kevent(
             queue.as_raw_fd(),
             heard.as_ptr(),
-            heard.len() as libc::c_int,
+            count,
             std::ptr::null_mut(),
             0,
             std::ptr::null(),
@@ -235,16 +236,13 @@ pub fn stopping(signals: &[i32]) -> io::Result<impl FnMut(Duration) -> bool + us
     }
     let signals = signals.to_vec();
     Ok(move |wait: Duration| {
-        if take_pending(&set, &signals) {
+        if take_pending(set, &signals) {
             return true;
         }
         let deadline = std::time::Instant::now() + wait;
         loop {
             let left = deadline.saturating_duration_since(std::time::Instant::now());
-            let timeout = libc::timespec {
-                tv_sec: left.as_secs() as libc::time_t,
-                tv_nsec: left.subsec_nanos() as libc::c_long,
-            };
+            let timeout = timespec(left);
             let mut event = std::mem::MaybeUninit::<libc::kevent>::zeroed();
             // SAFETY: event has room for the one event asked for, and
             // timeout is valid for the call.
@@ -255,13 +253,13 @@ pub fn stopping(signals: &[i32]) -> io::Result<impl FnMut(Duration) -> bool + us
                     0,
                     event.as_mut_ptr(),
                     1,
-                    &timeout,
+                    &raw const timeout,
                 )
             };
             if got > 0 {
                 // Sent, so it's pending now: taken, so the next wait
                 // doesn't hear it again.
-                take_pending(&set, &signals);
+                take_pending(set, &signals);
                 return true;
             }
             if got == 0 || left.is_zero() {
@@ -276,22 +274,31 @@ pub fn stopping(signals: &[i32]) -> io::Result<impl FnMut(Duration) -> bool + us
 
 /// Takes one of `signals` if one is pending here, saying whether it did.
 #[cfg(target_os = "macos")]
-fn take_pending(set: &libc::sigset_t, signals: &[i32]) -> bool {
+fn take_pending(set: libc::sigset_t, signals: &[i32]) -> bool {
     // SAFETY: waiting is a sigset_t sigpending fills in; both sets are
     // then only read, and sigwait returns at once for a pending signal.
     unsafe {
         let mut waiting: libc::sigset_t = std::mem::zeroed();
-        if libc::sigpending(&mut waiting) != 0 {
+        if libc::sigpending(&raw mut waiting) != 0 {
             return false;
         }
         if !signals
             .iter()
-            .any(|&signal| libc::sigismember(&waiting, signal) == 1)
+            .any(|&signal| libc::sigismember(&raw const waiting, signal) == 1)
         {
             return false;
         }
         let mut taken = 0;
-        libc::sigwait(set, &mut taken) == 0
+        libc::sigwait(&raw const set, &raw mut taken) == 0
+    }
+}
+
+/// A span as the kernel takes one, the longest it holds standing in for
+/// any longer.
+fn timespec(span: Duration) -> libc::timespec {
+    libc::timespec {
+        tv_sec: libc::time_t::try_from(span.as_secs()).unwrap_or(libc::time_t::MAX),
+        tv_nsec: libc::c_long::from(span.subsec_nanos()),
     }
 }
 
@@ -301,11 +308,11 @@ fn block(signals: &[i32]) -> io::Result<libc::sigset_t> {
     // SAFETY: set is a sigset_t the calls fill in and then only read.
     unsafe {
         let mut set: libc::sigset_t = std::mem::zeroed();
-        libc::sigemptyset(&mut set);
+        libc::sigemptyset(&raw mut set);
         for &signal in signals {
-            libc::sigaddset(&mut set, signal);
+            libc::sigaddset(&raw mut set, signal);
         }
-        let blocked = libc::pthread_sigmask(libc::SIG_BLOCK, &set, std::ptr::null_mut());
+        let blocked = libc::pthread_sigmask(libc::SIG_BLOCK, &raw const set, std::ptr::null_mut());
         if blocked != 0 {
             return Err(io::Error::from_raw_os_error(blocked));
         }

@@ -41,7 +41,7 @@ impl fatfs::TimeProvider for Clock {
 }
 
 /// Seconds since 1970 as a DOS date and time, held to the years FAT can
-/// say, 1980 to 2107. The calendar is Howard Hinnant's civil_from_days.
+/// say, 1980 to 2107. The calendar is Howard Hinnant's `civil_from_days`.
 fn dos_time(seconds: u64) -> fatfs::DateTime {
     const FIRST: u64 = 315_532_800; // 1980-01-01
     const LAST: u64 = 4_354_819_199; // 2107-12-31 23:59:59

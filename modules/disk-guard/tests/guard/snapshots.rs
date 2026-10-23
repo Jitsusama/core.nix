@@ -27,7 +27,7 @@ fn snapshot(pid: u32, born: f64) -> Snapshot {
 fn running(pid: u32, started: f64, exe: &str) -> Process {
     Process {
         pid,
-        start_ticks: ((started - BOOT.wall) * BOOT.ticks) as u64,
+        start_ticks: disk_guard::units::whole((started - BOOT.wall) * BOOT.ticks),
         exe: Some(PathBuf::from(exe)),
         cmdline: vec![OsString::from(exe)],
         readable: true,
@@ -125,6 +125,6 @@ fn a_wrapped_program_is_known_by_its_own_name() {
 fn an_orphaned_snapshot_is_waste() {
     let made = candidate(&snapshot(42, 3_000.0), 5, &Awake::default(), 4_000.0);
     assert_eq!(made.class, Class::Snapshot);
-    assert_eq!(made.idle, 1_000.0);
+    crate::assert_exactly(made.idle, 1_000.0);
     assert_eq!(made.size, 5);
 }

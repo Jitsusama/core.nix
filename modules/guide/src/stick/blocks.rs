@@ -27,7 +27,17 @@ impl<T: Read + Write + Seek> Disk for T {}
 /// 64 KiB: whole sectors on every stick, and large enough that a file
 /// written in order costs one write per block. A partition's last block is
 /// shorter when it ends short of one, still whole sectors.
-pub const BLOCK: u64 = 64 * 1024;
+pub const BLOCK: u64 = BLOCK_LENGTH as u64;
+
+/// A block, as a length in memory.
+pub const BLOCK_LENGTH: usize = 64 * 1024;
+
+/// How far `at` lies into its block. The remainder is less than 64 KiB, so
+/// its low two bytes hold all of it.
+fn within_block(at: u64) -> usize {
+    let [low, high, ..] = (at % BLOCK).to_le_bytes();
+    usize::from(u16::from_le_bytes([low, high]))
+}
 
 /// 512 blocks, 32 MiB: the tables' blocks a vault's files are written
 /// through and a directory of thousands of files, with room to spare for
@@ -98,7 +108,8 @@ impl<'d, D: Disk> Partition<'d, D> {
 
     /// How long the block at `block` is: whole, or what's left.
     fn length(&self, block: u64) -> usize {
-        BLOCK.min(self.bytes - block) as usize
+        // What's left past a `usize` is more than a block.
+        usize::try_from(self.bytes - block).map_or(BLOCK_LENGTH, |left| left.min(BLOCK_LENGTH))
     }
 
     /// The block `at` lies in, read off the disk unless it's held, it's
@@ -176,10 +187,9 @@ impl<'d, D: Disk> Partition<'d, D> {
             };
             match &mut stretch {
                 Some((from, bytes))
-                    if *from + bytes.len() as u64 == *block
-                        && bytes.len() < RUN * BLOCK as usize =>
+                    if *from + bytes.len() as u64 == *block && bytes.len() < RUN * BLOCK_LENGTH =>
                 {
-                    bytes.extend_from_slice(&held.bytes)
+                    bytes.extend_from_slice(&held.bytes);
                 }
                 _ => {
                     if let Some((from, bytes)) = stretch.take() {
@@ -210,7 +220,7 @@ impl<D: Disk> Read for Partition<'_, D> {
         if self.position >= self.bytes || into.is_empty() {
             return Ok(0);
         }
-        let within = (self.position % BLOCK) as usize;
+        let within = within_block(self.position);
         let count = into
             .len()
             .min(self.length(self.position - within as u64) - within);
@@ -232,7 +242,7 @@ impl<D: Disk> Write for Partition<'_, D> {
                 "past the partition's end",
             ));
         }
-        let within = (self.position % BLOCK) as usize;
+        let within = within_block(self.position);
         let length = self.length(self.position - within as u64);
         let count = from.len().min(length - within);
         // A whole block replaces what's there, so it needn't be read.
@@ -334,7 +344,7 @@ mod tests {
 
     #[test]
     fn small_writes_reach_the_disk_in_whole_blocks() {
-        let mut disk = Strict(Cursor::new(vec![0xaa; 4 * BLOCK as usize]));
+        let mut disk = Strict(Cursor::new(vec![0xaa; 4 * BLOCK_LENGTH]));
         {
             let mut partition = Partition::new(&mut disk, BLOCK, 2 * BLOCK).unwrap();
             partition.seek(SeekFrom::Start(BLOCK - 3)).unwrap();
@@ -344,7 +354,7 @@ mod tests {
             partition.flush().unwrap();
         }
         let bytes = disk.0.into_inner();
-        let at = BLOCK as usize;
+        let at = BLOCK_LENGTH;
         assert_eq!(&bytes[at + 10..at + 15], b"entry");
         assert_eq!(&bytes[2 * at - 3..2 * at + 3], b"across");
         assert_eq!(bytes[at - 1], 0xaa, "before the partition");
@@ -353,8 +363,11 @@ mod tests {
 
     #[test]
     fn what_was_written_reads_back_through_another_view() {
-        let mut disk = Cursor::new(vec![0; 3 * BLOCK as usize]);
-        let message: Vec<u8> = (0..BLOCK as usize + 100).map(|n| n as u8).collect();
+        let mut disk = Cursor::new(vec![0; 3 * BLOCK_LENGTH]);
+        // Each byte its offset's lowest, so a byte out of place shows.
+        let message: Vec<u8> = (0..BLOCK_LENGTH + 100)
+            .map(|n| n.to_le_bytes()[0])
+            .collect();
         {
             let mut partition = Partition::new(&mut disk, BLOCK, 2 * BLOCK).unwrap();
             partition.seek(SeekFrom::Start(7)).unwrap();
@@ -371,7 +384,11 @@ mod tests {
     #[test]
     fn a_short_last_block_is_reached_in_whole_sectors() {
         let bytes = BLOCK + 3 * SECTOR;
-        let mut disk = Strict(Cursor::new(vec![0; (bytes + 2 * SECTOR) as usize]));
+        let mut disk = Strict(Cursor::new(vec![
+            0;
+            usize::try_from(bytes + 2 * SECTOR)
+                .unwrap()
+        ]));
         {
             let mut partition = Partition::new(&mut disk, SECTOR, bytes).unwrap();
             partition.seek(SeekFrom::End(-4)).unwrap();
@@ -379,7 +396,7 @@ mod tests {
             partition.flush().unwrap();
         }
         let written = disk.0.into_inner();
-        let end = (SECTOR + bytes) as usize;
+        let end = usize::try_from(SECTOR + bytes).unwrap();
         assert_eq!(&written[end - 4..end], b"tail");
         assert_eq!(written[end], 0, "past the partition");
     }
@@ -427,13 +444,14 @@ mod tests {
         // FAT32's least size, and more.
         let bytes = 1024 * BLOCK;
         let mut disk = Counting {
-            disk: Cursor::new(vec![0xaa; bytes as usize]),
+            disk: Cursor::new(vec![0xaa; 1024 * BLOCK_LENGTH]),
             ..Counting::default()
         };
         // As a binary cache is: thousands of files at the top, most small,
-        // in pieces smaller than a block.
-        let files: Vec<Vec<u8>> = (0..400)
-            .map(|n| vec![n as u8; 1000 + (n % 7) * 9000])
+        // in pieces smaller than a block, each filled with its number's
+        // lowest byte.
+        let files: Vec<Vec<u8>> = (0..400_usize)
+            .map(|n| vec![n.to_le_bytes()[0]; 1000 + (n % 7) * 9000])
             .collect();
         let held: u64 = files.iter().map(|file| file.len() as u64).sum();
         {
@@ -488,13 +506,14 @@ mod tests {
     #[test]
     fn a_fresh_block_let_go_is_read_again_when_its_reached() {
         let bytes = 2 * CACHED as u64 * BLOCK;
-        let mut disk = Cursor::new(vec![0xaa; bytes as usize]);
+        let mut disk = Cursor::new(vec![0xaa; 2 * CACHED * BLOCK_LENGTH]);
         {
             let mut partition = Partition::fresh(&mut disk, 0, bytes).unwrap();
-            partition.write_all(&[1; BLOCK as usize]).unwrap();
+            partition.write_all(&vec![1; BLOCK_LENGTH]).unwrap();
             // Enough other blocks that the first is let go.
+            let other = vec![2; BLOCK_LENGTH];
             for _ in 0..CACHED + RUN {
-                partition.write_all(&[2; BLOCK as usize]).unwrap();
+                partition.write_all(&other).unwrap();
             }
             partition.seek(SeekFrom::Start(10)).unwrap();
             partition.write_all(&[3; 5]).unwrap();
@@ -503,13 +522,13 @@ mod tests {
         let disk = disk.into_inner();
         assert_eq!(disk[..10], [1; 10], "the block's first write was lost");
         assert_eq!(disk[10..15], [3; 5]);
-        assert_eq!(disk[15..BLOCK as usize], [1; BLOCK as usize - 15]);
+        assert_eq!(disk[15..BLOCK_LENGTH], vec![1; BLOCK_LENGTH - 15]);
     }
 
     #[test]
     fn a_fresh_partition_starts_empty_without_reading_the_disk() {
         let mut disk = Counting {
-            disk: Cursor::new(vec![0xaa; 2 * BLOCK as usize]),
+            disk: Cursor::new(vec![0xaa; 2 * BLOCK_LENGTH]),
             ..Counting::default()
         };
         {
@@ -521,23 +540,23 @@ mod tests {
         assert_eq!(disk.read, 0);
         let disk = disk.disk.into_inner();
         assert_eq!(
-            disk[..BLOCK as usize],
-            [0xaa; BLOCK as usize],
+            disk[..BLOCK_LENGTH],
+            vec![0xaa; BLOCK_LENGTH],
             "an untouched block was written"
         );
-        assert_eq!(disk[BLOCK as usize..BLOCK as usize + 3], [0; 3]);
-        assert_eq!(&disk[BLOCK as usize + 3..BLOCK as usize + 8], b"vault");
+        assert_eq!(disk[BLOCK_LENGTH..BLOCK_LENGTH + 3], [0; 3]);
+        assert_eq!(&disk[BLOCK_LENGTH + 3..BLOCK_LENGTH + 8], b"vault");
     }
 
     #[test]
     fn nothing_is_written_past_the_partitions_end() {
-        let mut disk = Cursor::new(vec![0; 3 * BLOCK as usize]);
+        let mut disk = Cursor::new(vec![0; 3 * BLOCK_LENGTH]);
         let mut partition = Partition::new(&mut disk, 0, BLOCK).unwrap();
         partition.seek(SeekFrom::Start(BLOCK - 2)).unwrap();
         assert_eq!(partition.write(b"abcd").unwrap(), 2);
         assert!(partition.write(b"cd").is_err());
         partition.flush().unwrap();
         drop(partition);
-        assert_eq!(disk.into_inner()[BLOCK as usize], 0);
+        assert_eq!(disk.into_inner()[BLOCK_LENGTH], 0);
     }
 }

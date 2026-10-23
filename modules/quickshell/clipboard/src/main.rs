@@ -40,6 +40,7 @@
 //!        [--pictures DIR] [--largest-picture BYTES] [--room BYTES]
 
 use std::collections::{HashMap, VecDeque};
+use std::fmt::Write as _;
 use std::fs::{self, File, OpenOptions};
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::io::{self, BufRead, BufReader, PipeReader, PipeWriter, Read, Write};
@@ -199,7 +200,8 @@ fn quoted(text: &str) -> String {
             '\r' => out.push_str("\\r"),
             '\t' => out.push_str("\\t"),
             c if (c as u32) < 0x20 || c == '\u{2028}' || c == '\u{2029}' => {
-                out.push_str(&format!("\\u{:04x}", c as u32))
+                // Writing to a String can't fail.
+                _ = write!(out, "\\u{:04x}", c as u32);
             }
             c => out.push(c),
         }
@@ -551,7 +553,7 @@ impl Dispatch<ExtDataControlSourceV1, ()> for State {
         state: &mut Self,
         source: &ExtDataControlSourceV1,
         event: ext_data_control_source_v1::Event,
-        _: &(),
+        (): &(),
         _: &Connection,
         _: &QueueHandle<Self>,
     ) {
@@ -603,7 +605,7 @@ impl Dispatch<wl_seat::WlSeat, ()> for State {
         _: &mut Self,
         _: &wl_seat::WlSeat,
         _: wl_seat::Event,
-        _: &(),
+        (): &(),
         _: &Connection,
         _: &QueueHandle<Self>,
     ) {
@@ -615,7 +617,7 @@ impl Dispatch<ExtDataControlManagerV1, ()> for State {
         _: &mut Self,
         _: &ExtDataControlManagerV1,
         _: <ExtDataControlManagerV1 as Proxy>::Event,
-        _: &(),
+        (): &(),
         _: &Connection,
         _: &QueueHandle<Self>,
     ) {
@@ -627,7 +629,7 @@ impl Dispatch<ExtDataControlOfferV1, ()> for State {
         state: &mut Self,
         offer: &ExtDataControlOfferV1,
         event: ext_data_control_offer_v1::Event,
-        _: &(),
+        (): &(),
         _: &Connection,
         _: &QueueHandle<Self>,
     ) {
@@ -642,7 +644,7 @@ impl Dispatch<ExtDataControlDeviceV1, ()> for State {
         state: &mut Self,
         _: &ExtDataControlDeviceV1,
         event: ext_data_control_device_v1::Event,
-        _: &(),
+        (): &(),
         connection: &Connection,
         _: &QueueHandle<Self>,
     ) {
@@ -733,10 +735,10 @@ fn now() -> u128 {
 /// Sends each new shell every copy kept, then listens for what it asks:
 /// `clear` here, and `copy N` passed to the Wayland side, woken to do it.
 fn serve(
-    listener: UnixListener,
-    history: Arc<Mutex<History>>,
-    asked: mpsc::Sender<u64>,
-    wake: PipeWriter,
+    listener: &UnixListener,
+    history: &Arc<Mutex<History>>,
+    asked: &mpsc::Sender<u64>,
+    wake: &PipeWriter,
 ) {
     for client in listener.incoming().flatten() {
         let _ = client.set_write_timeout(Some(Duration::from_secs(1)));
@@ -751,7 +753,7 @@ fn serve(
                 history.clients.push(client);
             }
         }
-        let history = Arc::clone(&history);
+        let history = Arc::clone(history);
         let asked = asked.clone();
         thread::spawn(move || {
             for line in BufReader::new(asking).lines() {
@@ -856,7 +858,7 @@ fn run() -> Result<(), String> {
     let (asked, chosen) = mpsc::channel();
     let (mut woken, wake) = io::pipe().map_err(|e| format!("no pipe: {e}"))?;
     let serving = Arc::clone(&history);
-    thread::spawn(move || serve(listener, serving, asked, wake));
+    thread::spawn(move || serve(&listener, &serving, &asked, &wake));
 
     let mut state = State {
         history,
@@ -910,7 +912,7 @@ fn waited(wayland: &impl AsFd, woken: &PipeReader) -> Result<(bool, bool), Strin
     loop {
         match poll(&mut fds, None) {
             Ok(_) => break,
-            Err(rustix::io::Errno::INTR) => continue,
+            Err(rustix::io::Errno::INTR) => {}
             Err(e) => return Err(format!("can't wait: {e}")),
         }
     }
@@ -929,7 +931,7 @@ mod tests {
     use super::*;
 
     fn types(names: &[&str]) -> Vec<String> {
-        names.iter().map(|name| name.to_string()).collect()
+        names.iter().map(ToString::to_string).collect()
     }
 
     #[test]
@@ -989,6 +991,10 @@ mod tests {
         History::new(keep, None, 0)
     }
 
+    #[expect(
+        clippy::unnecessary_wraps,
+        reason = "it's what copied takes, as Wayland gives it"
+    )]
     fn picture(bytes: &[u8]) -> Option<Heard> {
         Some(Heard::Picture {
             kind: "image/png",
@@ -996,6 +1002,10 @@ mod tests {
         })
     }
 
+    #[expect(
+        clippy::unnecessary_wraps,
+        reason = "it's what copied takes, as Wayland gives it"
+    )]
     fn text(said: &str) -> Option<Heard> {
         Some(Heard::Text(said.to_string()))
     }
@@ -1029,8 +1039,8 @@ mod tests {
         };
         assert_eq!(fs::read(&made.path).unwrap(), b"a picture");
         assert_eq!(made.path.parent(), Some(dir.as_path()));
-        let mode = fs::metadata(&made.path).unwrap().permissions().mode();
-        assert_eq!(mode & 0o777, 0o600);
+        let permissions = fs::metadata(&made.path).unwrap().permissions().mode();
+        assert_eq!(permissions & 0o777, 0o600);
         assert_eq!(kept.current, Some(copy.content.clone()));
         fs::remove_dir_all(dir).unwrap();
     }
@@ -1252,7 +1262,8 @@ mod tests {
     fn a_webp_says_its_size_whichever_way_it_was_made() {
         let extended = webp(b"VP8X", &[0, 0, 0, 0, 0x7f, 0x02, 0x00, 0xdf, 0x01, 0x00]);
         assert_eq!(dimensions("image/webp", &extended), Some((640, 480)));
-        let bits: u32 = 639 | (479 << 14);
+        // The width and height less one, as WebP keeps them.
+        let bits: u32 = (640 - 1) | ((480 - 1) << 14);
         let lossless = webp(b"VP8L", &[[0x2f].as_slice(), &bits.to_le_bytes()].concat());
         assert_eq!(dimensions("image/webp", &lossless), Some((640, 480)));
         let lossy = webp(

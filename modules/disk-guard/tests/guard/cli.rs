@@ -41,7 +41,7 @@ fn the_commands_that_answer_read_their_options() {
     assert_eq!(
         parse(&words("journal --since 1d --json")).unwrap(),
         Command::Journal {
-            since: Some(Span(Duration::from_secs(86400))),
+            since: Some(Span(Duration::from_hours(24))),
             json: true,
         }
     );
@@ -120,11 +120,12 @@ impl Machine {
             String::from_utf8(err).unwrap(),
         )
     }
+}
 
-    fn config(&self, path: &Path, text: &str) {
-        fs::create_dir_all(path.parent().unwrap()).unwrap();
-        fs::write(path, text).unwrap();
-    }
+/// Writes `text` to `path`, making the directory it goes in.
+fn write_file(path: &Path, text: &str) {
+    fs::create_dir_all(path.parent().unwrap()).unwrap();
+    fs::write(path, text).unwrap();
 }
 
 const GOOD: &str = r#"{ "version": 1, "scope": "user",
@@ -134,11 +135,11 @@ const GOOD: &str = r#"{ "version": 1, "scope": "user",
 fn a_config_is_checked_and_a_bad_one_refused_with_its_reason() {
     let machine = Machine::new();
     let good = machine.root.join("good.json");
-    machine.config(&good, GOOD);
+    write_file(&good, GOOD);
     let (code, _, err) = machine.run(&format!("check-config {}", good.display()));
     assert_eq!((code, err.as_str()), (0, ""));
     let bad = machine.root.join("bad.json");
-    machine.config(
+    write_file(
         &bad,
         r#"{ "version": 1, "scope": "user", "colour": "red", "sources": {} }"#,
     );
@@ -177,7 +178,7 @@ fn status_tells_of_each_guard_that_wrote_one() {
     assert_eq!(code, 3);
     assert!(err.contains("no guard"), "{err}");
 
-    machine.config(&machine.env.status, &status(wall() - 12.0, "pressure"));
+    write_file(&machine.env.status, &status(wall() - 12.0, "pressure"));
     let (code, out, _) = machine.run("status");
     assert_eq!(code, 0);
     assert!(out.contains("user guard"), "{out}");
@@ -188,7 +189,7 @@ fn status_tells_of_each_guard_that_wrote_one() {
     assert!(out.contains("freed 4.2 GiB"), "{out}");
     assert!(!out.contains("system guard"), "{out}");
 
-    machine.config(
+    write_file(
         &machine.env.system_status,
         &status(wall() - 600.0, "healthy"),
     );
@@ -338,7 +339,7 @@ fn the_journal_leaves_out_what_a_reclaim_began_with_but_keeps_it_as_json() {
 fn a_daemon_refuses_another_scopes_config_and_a_second_of_itself() {
     let machine = Machine::new();
     let system = machine.root.join("system.json");
-    machine.config(
+    write_file(
         &system,
         r#"{ "version": 1, "scope": "system", "sources": {} }"#,
     );
@@ -346,7 +347,7 @@ fn a_daemon_refuses_another_scopes_config_and_a_second_of_itself() {
     assert_eq!(code, 1);
     assert!(err.contains("system"), "{err}");
 
-    machine.config(&machine.env.config, GOOD);
+    write_file(&machine.env.config, GOOD);
     let held = disk_guard::serve::hold(&machine.env.state).unwrap();
     assert!(held.is_some());
     let (code, _, err) = machine.run("user");
@@ -359,7 +360,7 @@ fn explain_says_why_the_system_daemon_could_not_vouch_for_a_process() {
     let machine = Machine::new();
     let scratch = machine.root.join("scratch");
     fs::create_dir_all(scratch.join("run-1")).unwrap();
-    machine.config(
+    write_file(
         &machine.env.config,
         &format!(
             r#"{{ "version": 1, "scope": "user",
@@ -399,7 +400,7 @@ fn explain_says_how_each_band_would_treat_a_path() {
         "[Trash Info]\nPath=/x/old.txt\nDeletionDate=2001-09-09T01:46:40\n",
     )
     .unwrap();
-    machine.config(
+    write_file(
         &machine.env.config,
         &format!(
             r#"{{ "version": 1, "scope": "user",
@@ -458,7 +459,7 @@ fn plan_shows_what_a_pass_would_take() {
         "[Trash Info]\nPath=/x/old.txt\nDeletionDate=2001-09-09T01:46:40\n",
     )
     .unwrap();
-    machine.config(
+    write_file(
         &machine.env.config,
         &format!(
             r#"{{ "version": 1, "scope": "user",

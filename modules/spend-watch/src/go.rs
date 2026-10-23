@@ -29,7 +29,11 @@ pub fn find(registry: &Path, session: &str) -> Result<Place, String> {
     let mut found = Vec::new();
     for entry in entries.flatten() {
         let name = entry.file_name().to_string_lossy().into_owned();
-        if name.ends_with(".json") && name.starts_with(session) {
+        let json = entry
+            .path()
+            .extension()
+            .is_some_and(|extension| extension == "json");
+        if json && name.starts_with(session) {
             found.push(entry.path());
         }
     }
@@ -64,7 +68,8 @@ pub fn parse(text: &str) -> Option<Place> {
         _ => None,
     };
     Some(Place {
-        pid: entry.get("process")?.get("pid")?.as_u64()? as u32,
+        // A process id is never past u32, as the kernel's are 32-bit.
+        pid: u32::try_from(entry.get("process")?.get("pid")?.as_u64()?).ok()?,
         driver: text_of(terminal.get("driverId"))?,
         window: text_of(terminal.get("value"))?,
         scope: text_of(terminal.get("scope"))?,
@@ -101,7 +106,7 @@ pub fn niri_window(windows: &str, pid: u32) -> Option<u64> {
     windows
         .as_array()?
         .iter()
-        .find(|window| window.get("pid").and_then(Value::as_u64) == Some(pid as u64))
+        .find(|window| window.get("pid").and_then(Value::as_u64) == Some(u64::from(pid)))
         .and_then(|window| window.get("id")?.as_u64())
 }
 

@@ -1,4 +1,5 @@
 use disk_guard::garbage::{Batch, Dead, Listing, delete, list, parse};
+use disk_guard::units::float;
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
@@ -247,9 +248,9 @@ fn a_listing_holds_each_path_s_references_among_the_dead_by_place() {
             dead("lib", 2.0, 1, &["live-glibc"]),
         ],
     );
-    assert_eq!(listing.listed_at, 5.0);
+    crate::assert_exactly(listing.listed_at, 5.0);
     assert_eq!(listing.dead[0].refers, [1]);
-    assert!(listing.dead[1].refers.is_empty());
+    assert_eq!(listing.dead[1].refers, Vec::<u32>::new());
     assert_eq!(listing.dead[1].path, store("lib"));
 }
 
@@ -263,7 +264,7 @@ fn what_is_gone_is_left_out_and_holds_nothing_back() {
     );
     let made = listing.batches(|dead| !dead.path.ends_with("app"), NOW, KEEP, u64::MAX, 100);
     assert_eq!(names(&made), [(vec!["lib".to_owned()], false)]);
-    assert_eq!(made[0].newest, NOW - 30.0 * DAY);
+    crate::assert_exactly(made[0].newest, NOW - 30.0 * DAY);
 }
 
 /// Each batch's paths by name, and whether healthy keeps it.
@@ -297,7 +298,7 @@ fn old_garbage_goes_oldest_first_in_batches() {
         ]
     );
     assert_eq!(batches[0].size, 2);
-    assert_eq!(batches[0].newest, NOW - 10.0 * DAY);
+    crate::assert_exactly(batches[0].newest, NOW - 10.0 * DAY);
 }
 
 #[test]
@@ -314,7 +315,7 @@ fn garbage_is_as_young_as_the_newest_garbage_referring_to_it() {
         [(vec!["app".to_owned(), "lib".to_owned()], true)],
         "kept while healthy, the referrer first"
     );
-    assert_eq!(batches[0].newest, NOW - DAY);
+    crate::assert_exactly(batches[0].newest, NOW - DAY);
 }
 
 #[test]
@@ -345,32 +346,37 @@ impl Draw {
         self.0 ^= self.0 << 17;
         self.0 % n
     }
+
+    /// A draw below `n`, as an index or a count.
+    fn index(&mut self, n: usize) -> usize {
+        usize::try_from(self.below(n as u64)).unwrap()
+    }
 }
 
 #[test]
 fn property_every_batch_holds_or_follows_the_garbage_referring_to_it() {
     for seed in 1..=2000u64 {
         let mut draw = Draw(seed.wrapping_mul(0x9e37_79b9_7f4a_7c15) | 1);
-        let count = 1 + draw.below(40) as usize;
+        let count = 1 + draw.index(40);
         // Few distinct days, so dates tie as one build's paths do.
         let all: Vec<Dead> = (0..count)
             .map(|at| {
                 let references: Vec<String> = (0..draw.below(4))
-                    .map(|_| draw.below(count as u64) as usize)
+                    .map(|_| draw.index(count))
                     .filter(|&reference| reference > at)
                     .map(|reference| format!("p{:02}", (reference * 37) % 100))
                     .collect();
                 let references: Vec<&str> = references.iter().map(String::as_str).collect();
                 dead(
                     &format!("p{:02}", (at * 37) % 100),
-                    draw.below(6) as f64,
+                    float(draw.below(6)),
                     1 + draw.below(5),
                     &references,
                 )
             })
             .collect();
         let budget = draw.below(60);
-        let most = 1 + draw.below(5) as usize;
+        let most = 1 + draw.index(5);
         let made = batches(&all, NOW, KEEP, budget, most);
         let batch_of = |path: &str| {
             made.iter()
@@ -479,7 +485,7 @@ fn nix_path_info_is_read_for_what_each_dead_path_weighs_and_refers_to() {
     assert_eq!(read.len(), 2, "a path gone since the listing is left out");
     assert_eq!(read[0].path, "/nix/store/aaa-app");
     assert_eq!(read[0].size, 4096);
-    assert_eq!(read[0].registered, 1_700_000_000.0);
+    crate::assert_exactly(read[0].registered, 1_700_000_000.0);
     assert_eq!(
         read[0].references,
         ["/nix/store/bbb-lib", "/nix/store/aaa-app"]

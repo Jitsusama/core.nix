@@ -7,6 +7,7 @@
 //! the card's own address and the network's name, under a key that never
 //! leaves the machine.
 
+use std::fmt::Write as _;
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Read, Write};
 use std::os::unix::fs::OpenOptionsExt;
@@ -65,7 +66,11 @@ impl AddressKey {
         hash.update(b"mark\0");
         hash.update(what);
         let digest = hash.finalize().into_bytes();
-        digest.iter().map(|byte| format!("{byte:02x}")).collect()
+        digest.iter().fold(String::new(), |mut hex, byte| {
+            // Writing to a String can't fail.
+            _ = write!(hex, "{byte:02x}");
+            hex
+        })
     }
 
     /// The address this card shows the network of that name.
@@ -111,8 +116,8 @@ mod tests {
 
         assert_eq!(made.address(CARD, "Lantern"), read.address(CARD, "Lantern"));
         assert_ne!(made.0, [0; 32]);
-        let mode = fs::metadata(&file).unwrap().permissions().mode();
-        assert_eq!(mode & 0o777, 0o600);
+        let permissions = fs::metadata(&file).unwrap().permissions().mode();
+        assert_eq!(permissions & 0o777, 0o600);
     }
 
     #[test]

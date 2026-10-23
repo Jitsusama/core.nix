@@ -2,6 +2,7 @@
 
 use crate::clock::Awake;
 use crate::plan::{Candidate, Class};
+use crate::units::wall;
 use regex_lite::Regex;
 use std::fs::{self, Metadata};
 use std::os::unix::fs::{FileTypeExt, MetadataExt};
@@ -63,8 +64,8 @@ fn made_up(name: &str) -> bool {
 /// modification times, but the change time is when each landed here, and
 /// nothing can set that back.
 fn changed(meta: &Metadata) -> f64 {
-    let modified = meta.mtime() as f64 + meta.mtime_nsec() as f64 / 1e9;
-    let changed = meta.ctime() as f64 + meta.ctime_nsec() as f64 / 1e9;
+    let modified = wall(meta.mtime(), meta.mtime_nsec());
+    let changed = wall(meta.ctime(), meta.ctime_nsec());
     modified.max(changed)
 }
 

@@ -18,7 +18,7 @@
 //! reloads, and each it leaves down because the unit's check still fails.
 //! What it found each time it looked it says at debug level, and only when
 //! its configuration asks: journald drops a unit's debug lines only for the
-//! system's manager, which alone tells it the unit's LogLevelMax.
+//! system's manager, which alone tells it the unit's `LogLevelMax`.
 
 mod config;
 mod network;

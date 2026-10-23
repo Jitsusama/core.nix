@@ -26,7 +26,7 @@ use std::process;
 use std::thread;
 use std::time::Duration;
 
-/// /proc's CPU times are in USER_HZ, which is 100 on every Linux ABI.
+/// /proc's CPU times are in `USER_HZ`, which is 100 on every Linux ABI.
 const MS_PER_TICK: u64 = 10;
 
 const CGROUPS: &str = "/sys/fs/cgroup";
@@ -67,8 +67,8 @@ fn parse_stat(line: &str) -> Option<Sample> {
     let field = |n: usize| -> Option<u64> { rest.get(n - 3)?.parse().ok() };
     Some(Sample {
         pid,
-        ppid: field(4)? as u32,
-        pgrp: field(5)? as u32,
+        ppid: u32::try_from(field(4)?).ok()?,
+        pgrp: u32::try_from(field(5)?).ok()?,
         comm,
         cpu: field(14)? + field(15)? + field(16)? + field(17)?,
         start: field(22)?,
@@ -228,6 +228,11 @@ fn descendants(top: u32, procs: &[Sample]) -> Vec<u32> {
     found
 }
 
+#[expect(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    reason = "uptime is never negative, and far inside a u64 in milliseconds"
+)]
 fn uptime_ticks() -> Option<u64> {
     let text = fs::read_to_string("/proc/uptime").ok()?;
     let seconds: f64 = text.split_whitespace().next()?.parse().ok()?;
@@ -244,12 +249,16 @@ fn samples(scope: &Path) -> Vec<Sample> {
         .collect()
 }
 
+#[expect(
+    clippy::case_sensitive_file_extension_comparisons,
+    reason = "a systemd unit's suffix is case-sensitive"
+)]
 fn homes(under: &Path, prefixes: &[String]) -> Vec<PathBuf> {
     let Ok(entries) = fs::read_dir(under) else {
         return Vec::new();
     };
     entries
-        .filter_map(|entry| entry.ok())
+        .filter_map(Result::ok)
         .map(|entry| entry.path())
         .filter(|path| {
             path.file_name()
@@ -369,6 +378,7 @@ mod tests {
         }
     }
 
+    #[expect(clippy::similar_names, reason = "named as /proc names them")]
     fn proc(pid: u32, ppid: u32, pgrp: u32, comm: &str, cpu: u64) -> Sample {
         Sample {
             pid,
@@ -433,7 +443,7 @@ mod tests {
         assert!(moves[0].is_empty() && moves[1].is_empty());
         assert_eq!(moves[2].len(), 1);
         let mut pids = moves[2][0].pids.clone();
-        pids.sort();
+        pids.sort_unstable();
         assert_eq!(pids, vec![30, 31]);
     }
 
@@ -444,14 +454,14 @@ mod tests {
             &mut sorter,
             &[window(0, 0), window(90, 0), window(90, 0), window(180, 0)],
         );
-        assert!(moves.iter().all(|moved| moved.is_empty()));
+        assert!(moves.iter().all(Vec::is_empty));
     }
 
     #[test]
     fn a_short_burst_stays() {
         let mut sorter = Sorter::default();
         let moves = looks(&mut sorter, &[window(0, 0), window(90, 0), window(95, 0)]);
-        assert!(moves.iter().all(|moved| moved.is_empty()));
+        assert!(moves.iter().all(Vec::is_empty));
     }
 
     #[test]
@@ -459,7 +469,7 @@ mod tests {
         let busy = |cpu: u64| vec![proc(10, 1, 10, "zsh", cpu), proc(20, 10, 20, "pi", cpu)];
         let mut sorter = Sorter::default();
         let moves = looks(&mut sorter, &[busy(0), busy(90), busy(180), busy(270)]);
-        assert!(moves.iter().all(|moved| moved.is_empty()));
+        assert!(moves.iter().all(Vec::is_empty));
     }
 
     #[test]

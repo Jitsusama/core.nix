@@ -4,7 +4,7 @@
 //! only the logs know a turn's cache; the ratio of bill to list scales
 //! them when there's a bill.
 
-use crate::history::History;
+use crate::history::{History, sql as fail};
 use crate::stats;
 use std::collections::HashMap;
 
@@ -17,10 +17,6 @@ pub struct Waste {
     pub causes: Vec<(String, f64)>,
     /// The session that rebuilt most after pauses, with its dollars.
     pub worst: Option<(String, f64)>,
-}
-
-fn fail(error: rusqlite::Error) -> String {
-    error.to_string()
 }
 
 /// The share of a span's spend that went on rebuilding context a session
@@ -104,7 +100,9 @@ pub fn work(history: &History, from: f64, to: f64) -> Result<Vec<Work>, String> 
         .map_err(fail)?;
     let rows = statement
         .query_map([from, to], |row| {
-            let turns: f64 = row.get::<_, i64>(2)? as f64;
+            // A count is an integer, which rusqlite reads as an f64 just as
+            // a cast would.
+            let turns: f64 = row.get(2)?;
             let dollars: f64 = row.get(3)?;
             let read: f64 = row.get(4)?;
             let prompt: f64 = row.get(5)?;
@@ -239,7 +237,7 @@ mod tests {
     #[test]
     fn a_costly_session_among_many_usual_ones_is_found() {
         let mut sessions: Vec<Work> = (0..40)
-            .map(|i| work(&format!("s{i}"), 60.0, 0.5 + 0.01 * (i % 7) as f64))
+            .map(|i| work(&format!("s{i}"), 60.0, 0.5 + 0.01 * f64::from(i % 7)))
             .collect();
         sessions.push(work("costly", 200.0, 1.8));
         let found = outliers(&sessions, 0.05, 25.0);
@@ -251,7 +249,7 @@ mod tests {
     #[test]
     fn a_few_costly_turns_are_noise() {
         let mut sessions: Vec<Work> = (0..40)
-            .map(|i| work(&format!("s{i}"), 60.0, 0.5 + 0.01 * (i % 7) as f64))
+            .map(|i| work(&format!("s{i}"), 60.0, 0.5 + 0.01 * f64::from(i % 7)))
             .collect();
         sessions.push(work("brief", 6.0, 1.8));
         assert!(outliers(&sessions, 0.05, 25.0).is_empty());

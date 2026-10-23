@@ -1,7 +1,7 @@
 //! The portal's chooser of an app to open something with, for niri. When a
 //! program asks the portal to open a file or a link, and the portal can't
 //! tell which app should (more than one can, none is the default for its
-//! kind, and none has been picked often enough), it asks its AppChooser,
+//! kind, and none has been picked often enough), it asks its `AppChooser`,
 //! which GNOME's portal answers with a dialog of its own. This answers it in
 //! the launcher instead.
 //!
@@ -40,7 +40,7 @@ const PATH: &str = "/org/freedesktop/portal/desktop";
 /// How long a choice may wait for the shell: long enough to come back to,
 /// and short enough that one a restarted shell forgot doesn't hold its
 /// program for good.
-const WAITING: Duration = Duration::from_secs(10 * 60);
+const WAITING: Duration = Duration::from_mins(10);
 
 /// What the portal is told: an app picked, none, or the choice ended some
 /// other way.
@@ -174,12 +174,14 @@ impl Chooser {
     async fn choose_application(
         &self,
         handle: OwnedObjectPath,
-        _app_id: String,
-        _parent_window: String,
+        app_id: String,
+        parent_window: String,
         choices: Vec<String>,
         options: HashMap<String, OwnedValue>,
         #[zbus(object_server)] server: &ObjectServer,
     ) -> (u32, HashMap<String, OwnedValue>) {
+        // The shell asks over its own window, whichever program asked.
+        let _ = (app_id, parent_window);
         let asked = self.asked.fetch_add(1, Ordering::Relaxed);
         let socket = self.sockets.join(format!("{asked}.sock"));
         let _ = std::fs::remove_file(&socket);
@@ -254,7 +256,7 @@ impl Chooser {
         let Some(pending) = held(&self.pending).get(&handle).cloned() else {
             return;
         };
-        *held(&pending.offered) = choices.clone();
+        held(&pending.offered).clone_from(&choices);
         self.tell("update", vec![pending.place.clone(), choices.join(";")])
             .await;
     }

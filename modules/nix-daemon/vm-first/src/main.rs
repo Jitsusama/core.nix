@@ -1,13 +1,13 @@
 //! Puts the virtual machines Nix's checks start ahead of the builds they
 //! share the daemon with.
 //!
-//! Every build runs in the daemon's one cgroup, as SCHED_BATCH, so a VM
+//! Every build runs in the daemon's one cgroup, as `SCHED_BATCH`, so a VM
 //! test's qemu shares each CPU evenly with whatever compilers run beside
 //! it, and a batch thread never preempts another as it wakes. Its guest's
 //! timers then fire late, and a test's timeouts fail on a busy machine.
 //! Inside one cgroup the CPU is split by nice, so once a second this
 //! finds every process in `--cgroup` whose name starts with a `--name`,
-//! and puts each of its threads back to SCHED_OTHER at `--nice`. Threads
+//! and puts each of its threads back to `SCHED_OTHER` at `--nice`. Threads
 //! a VM starts afterwards take that from the thread that starts them.
 //! Programs outside the cgroup, everything Joel uses, keep their weight.
 //!
@@ -79,14 +79,16 @@ fn behind(now: &Scheduling, settings: &Settings) -> bool {
     now.policy != SCHED_OTHER || now.nice != settings.nice
 }
 
-/// Puts one thread at SCHED_OTHER and the nice asked for. Changing policy
+/// Puts one thread at `SCHED_OTHER` and the nice asked for. Changing policy
 /// keeps the nice, so the nice is set after.
 fn bring_ahead(tid: u32, nice: i32) -> Result<(), i32> {
     let param = SchedParam { sched_priority: 0 };
     // SAFETY: both calls take plain integers and a pointer to a live
     // struct of the layout the kernel reads.
     let failed = unsafe {
-        sched_setscheduler(tid as i32, SCHED_OTHER, &param) != 0
+        // A thread id is at most the kernel's pid_max, 2^22, so it reads the
+        // same as the i32 the call takes.
+        sched_setscheduler(tid.cast_signed(), SCHED_OTHER, &raw const param) != 0
             || setpriority(PRIO_PROCESS, tid, nice) != 0
     };
     if failed {
@@ -101,7 +103,7 @@ fn sort_vm(pid: &str, settings: &Settings, warned: &mut bool) -> usize {
         return 0;
     };
     let mut moved = 0;
-    for task in tasks.filter_map(|task| task.ok()) {
+    for task in tasks.filter_map(Result::ok) {
         let Some(tid) = task
             .file_name()
             .to_str()

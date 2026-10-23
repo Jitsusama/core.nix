@@ -337,7 +337,8 @@ impl Dir {
             let name = OsString::from_vec(name);
             match rustix::fs::mkdirat(&self.fd, &name, Mode::RWXU) {
                 Ok(()) => return Ok(name),
-                Err(Errno::EXIST) => continue,
+                // A name another took is passed over for the next.
+                Err(Errno::EXIST) => {}
                 Err(error) => return Err(error.into()),
             }
         }
@@ -458,7 +459,8 @@ impl Dir {
             if stat.st_nlink > 1 && kind != FileType::Directory && !seen.insert(stat.st_ino) {
                 continue;
             }
-            total += stat.st_blocks as u64 * 512;
+            // The kernel never counts a negative number of blocks.
+            total += u64::try_from(stat.st_blocks).unwrap_or(0) * 512;
             if kind == FileType::Directory
                 && let Ok(Some(child)) = self.entry(name)
             {

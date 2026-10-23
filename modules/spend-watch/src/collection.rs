@@ -173,10 +173,10 @@ fn row_line(key: String, row: &report::Row) -> Line {
     let figure = maybe_about(dollars(row.dollars), row.estimated);
     // A share too small to round to a percent says nothing the figure
     // doesn't.
-    let side = if percent(row.share) != "0%" {
-        format!("{figure} · {}", percent(row.share))
-    } else {
+    let side = if percent(row.share) == "0%" {
         figure.clone()
+    } else {
+        format!("{figure} · {}", percent(row.share))
     };
     let mut made = line(key, row.name.clone(), side);
     let rest = row
@@ -184,7 +184,7 @@ fn row_line(key: String, row: &report::Row) -> Line {
         .strip_prefix(&format!("{figure} · "))
         .unwrap_or(&row.shown);
     if rest != figure {
-        made.note = rest.to_owned();
+        rest.clone_into(&mut made.note);
     }
     made
 }
@@ -249,7 +249,7 @@ fn cut_line(id: &str, cut: Cut, report: &Report) -> Option<Line> {
         format!("{} to {}", percent(top.share), top.name)
     };
     made.role = "report".into();
-    made.report = id.to_owned();
+    id.clone_into(&mut made.report);
     Some(made)
 }
 
@@ -348,7 +348,12 @@ fn cap_line(picture: &Picture, view: &CapView, sign_ins: Vec<Line>) -> Line {
             };
             let limit = |amount: Option<f64>| amount.map_or("no limit".into(), whole);
             let mut row = line(
-                format!("cap:{}:{}:{}", cap.name, event.kind, event.at as i64),
+                format!(
+                    "cap:{}:{}:{}",
+                    cap.name,
+                    event.kind,
+                    crate::time::whole_seconds(event.at)
+                ),
                 name,
                 picture.zone.clock(event.at, now),
             );
@@ -387,7 +392,7 @@ fn sign_ins(picture: &Picture, feed: &str) -> Vec<Line> {
                 action.name.clone(),
                 format!("for {}", source.name),
             );
-            made.note = source.message.clone();
+            made.note.clone_from(&source.message);
             made.role = "sign-in".into();
             made.run = Some(action.run.clone());
             made.verb = "sign in".into();
@@ -424,7 +429,7 @@ fn finding_line(finding: &Finding) -> Line {
             finding.badge.clone()
         },
     );
-    made.note = finding.note.clone();
+    made.note.clone_from(&finding.note);
     made.copy = format!("{name}. {}", finding.detail);
     made.role = role(finding).into();
     if let Some(action) = &finding.action {
@@ -792,7 +797,7 @@ mod tests {
 
     const NOW: f64 = 1_791_988_200.0; // 2026-10-14T14:30:00Z, a Wednesday
 
-    fn store(history: &History, line: serde_json::Value, at: f64) {
+    fn store(history: &History, line: &serde_json::Value, at: f64) {
         let record = crate::feed::parse(&line.to_string()).unwrap();
         crate::feed::store(history, "proxy", &record, at).unwrap();
     }
@@ -814,12 +819,12 @@ mod tests {
             turn += 1;
             store(
                 &history,
-                serde_json::json!({
+                &serde_json::json!({
                     "v": 1, "kind": "billed", "source": "warehouse",
                     "hour": crate::time::rfc3339(hour), "tool": "pi",
                     "model": models[turn % 3], "vendor": "v",
                     "session": format!("0199-session-{}", turn % 5),
-                    "dollars": 20.0 + (turn % 7) as f64 * 9.0,
+                    "dollars": 20.0 + crate::stats::count(turn % 7) * 9.0,
                     "tokens": {"input": 0, "cached": 0, "cacheWrite": 0, "output": 0},
                 }),
                 hour,
@@ -828,7 +833,7 @@ mod tests {
         }
         store(
             &history,
-            serde_json::json!({
+            &serde_json::json!({
                 "v": 1, "kind": "settled", "source": "warehouse",
                 "through": crate::time::rfc3339(hour),
             }),
@@ -836,7 +841,7 @@ mod tests {
         );
         store(
             &history,
-            serde_json::json!({
+            &serde_json::json!({
                 "v": 1, "kind": "cap", "name": "weekly", "label": "weekly cap",
                 "allowance": 15000, "windowHours": 168, "spent": 14100, "warn": 0.9,
                 "state": "notified", "at": "2026-10-14T14:00:00Z",
@@ -845,7 +850,7 @@ mod tests {
         );
         store(
             &history,
-            serde_json::json!({
+            &serde_json::json!({
                 "v": 1, "kind": "cap", "name": "weekly", "label": "weekly cap",
                 "allowance": 4000, "windowHours": 168, "spent": 14200, "warn": 0.9,
                 "fallback": 4000, "state": "refused", "at": "2026-10-14T14:25:00Z",
@@ -854,7 +859,7 @@ mod tests {
         );
         store(
             &history,
-            serde_json::json!({
+            &serde_json::json!({
                 "v": 1, "kind": "cap", "name": "premium", "label": "premium day",
                 "allowance": 1000, "windowHours": 24, "spent": 600, "warn": 0.5,
                 "state": "notified", "resets": "2026-10-15T04:00:00Z",
@@ -864,7 +869,7 @@ mod tests {
         );
         store(
             &history,
-            serde_json::json!({
+            &serde_json::json!({
                 "v": 1, "kind": "action", "id": "drive", "name": "Sign in to Drive",
                 "run": ["true"], "fits": ["sign-in"],
             }),
@@ -872,7 +877,7 @@ mod tests {
         );
         store(
             &history,
-            serde_json::json!({
+            &serde_json::json!({
                 "v": 1, "kind": "health", "source": "overrides", "state": "optional",
                 "message": "needs Drive access to read an override's end", "signIn": "drive",
             }),
@@ -883,7 +888,7 @@ mod tests {
         for at in [NOW - 3600.0, NOW] {
             store(
                 &history,
-                serde_json::json!({
+                &serde_json::json!({
                     "v": 1, "kind": "health", "source": "warehouse", "state": "error",
                     "message": failed,
                 }),

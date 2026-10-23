@@ -252,36 +252,7 @@ fn entry_events(entry: &Value, carry: &mut Carry, refusals: &[String], events: &
     let kind = entry.get("type").and_then(Value::as_str).unwrap_or("");
     let at = stamp(entry);
     match kind {
-        "session" => {
-            let id = entry
-                .get("id")
-                .and_then(Value::as_str)
-                .unwrap_or("")
-                .to_owned();
-            let cwd = entry
-                .get("cwd")
-                .and_then(Value::as_str)
-                .unwrap_or("")
-                .to_owned();
-            carry.session = Some(id.clone());
-            carry.cwd = Some(cwd.clone());
-            carry.copies_known = true;
-            if carried(entry) {
-                carry.copied_until = at;
-            }
-            if carry.quest.is_none() {
-                carry.quest = carry
-                    .workspaces
-                    .as_deref()
-                    .and_then(|workspaces| workspace_quest(workspaces, &cwd));
-            }
-            events.push(Event::Session {
-                id,
-                cwd,
-                at: at.unwrap_or(0.0),
-                kind: carry.kind.clone(),
-            });
-        }
+        "session" => session_entry(entry, at, carry, events),
         "session_info" => {
             let name = entry.get("name").and_then(Value::as_str).unwrap_or("");
             if let Some(session) = carry.session.clone().filter(|_| !name.is_empty()) {
@@ -311,88 +282,138 @@ fn entry_events(entry: &Value, carry: &mut Carry, refusals: &[String], events: &
                 );
             }
         }
-        "custom" => {
-            let custom = entry
-                .get("customType")
-                .and_then(Value::as_str)
-                .unwrap_or("");
-            let data = entry.get("data").cloned().unwrap_or(Value::Null);
-            if custom == "quest-workflow" && data.get("questId").is_some() {
-                carry.quest = data
-                    .get("questId")
-                    .and_then(Value::as_str)
-                    .map(str::to_owned);
-            }
-            if let (Some((tokens, cost)), Some(at)) = (usage(&data), at) {
-                let model = data.get("model").and_then(Value::as_str).map(str::to_owned);
-                if tokens.input + tokens.output + tokens.cache_read + tokens.cache_write > 0.0 {
-                    push_turn(
-                        events,
-                        carry,
-                        at,
-                        Kind::Side(custom.into()),
-                        tokens,
-                        cost,
-                        model,
-                        None,
-                    );
-                }
-            }
-        }
+        "custom" => custom_entry(entry, at, carry, events),
         "message" => {
-            let Some(message) = entry.get("message") else {
-                return;
-            };
-            if message.get("role").and_then(Value::as_str) != Some("assistant") {
-                return;
-            }
-            let Some(at) = at else { return };
-            let model = message
-                .get("model")
-                .and_then(Value::as_str)
-                .map(str::to_owned);
-            let provider = message
-                .get("provider")
-                .and_then(Value::as_str)
-                .map(str::to_owned);
-            if message.get("stopReason").and_then(Value::as_str) == Some("error") {
-                let said = message
-                    .get("errorMessage")
-                    .and_then(Value::as_str)
-                    .unwrap_or("");
-                let lower = said.to_lowercase();
-                if refusals
-                    .iter()
-                    .any(|pattern| lower.contains(&pattern.to_lowercase()))
-                {
-                    events.push(Event::Refusal {
-                        session: carry.session.clone().unwrap_or_default(),
-                        at,
-                        model: model.clone().or(carry.model.clone()).unwrap_or_default(),
-                        said: said.chars().take(300).collect(),
-                    });
-                }
-            }
-            if let Some((tokens, cost)) = usage(message)
-                && tokens.input + tokens.output + tokens.cache_read + tokens.cache_write > 0.0
-            {
-                push_turn(
-                    events,
-                    carry,
-                    at,
-                    Kind::Agent,
-                    tokens,
-                    cost,
-                    model,
-                    provider,
-                );
+            if let (Some(message), Some(at)) = (entry.get("message"), at) {
+                message_entry(message, at, carry, refusals, events);
             }
         }
         _ => {}
     }
 }
 
-#[allow(clippy::too_many_arguments)]
+/// A log's header: the session it is, where it works, and whether what
+/// comes before it was copied from its parent's log.
+fn session_entry(entry: &Value, at: Option<f64>, carry: &mut Carry, events: &mut Vec<Event>) {
+    let id = entry
+        .get("id")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_owned();
+    let cwd = entry
+        .get("cwd")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_owned();
+    carry.session = Some(id.clone());
+    carry.cwd = Some(cwd.clone());
+    carry.copies_known = true;
+    if carried(entry) {
+        carry.copied_until = at;
+    }
+    if carry.quest.is_none() {
+        carry.quest = carry
+            .workspaces
+            .as_deref()
+            .and_then(|workspaces| workspace_quest(workspaces, &cwd));
+    }
+    events.push(Event::Session {
+        id,
+        cwd,
+        at: at.unwrap_or(0.0),
+        kind: carry.kind.clone(),
+    });
+}
+
+/// An extension's own entry: a quest taken up, or a side call's turn.
+fn custom_entry(entry: &Value, at: Option<f64>, carry: &mut Carry, events: &mut Vec<Event>) {
+    let custom = entry
+        .get("customType")
+        .and_then(Value::as_str)
+        .unwrap_or("");
+    let data = entry.get("data").cloned().unwrap_or(Value::Null);
+    if custom == "quest-workflow" && data.get("questId").is_some() {
+        carry.quest = data
+            .get("questId")
+            .and_then(Value::as_str)
+            .map(str::to_owned);
+    }
+    if let (Some((tokens, cost)), Some(at)) = (usage(&data), at) {
+        let model = data.get("model").and_then(Value::as_str).map(str::to_owned);
+        if tokens.input + tokens.output + tokens.cache_read + tokens.cache_write > 0.0 {
+            push_turn(
+                events,
+                carry,
+                at,
+                Kind::Side(custom.into()),
+                tokens,
+                cost,
+                model,
+                None,
+            );
+        }
+    }
+}
+
+/// A message with an instant: an assistant's turn, and a refusal when it
+/// ended in an error a refusal's pattern matches.
+fn message_entry(
+    message: &Value,
+    at: f64,
+    carry: &mut Carry,
+    refusals: &[String],
+    events: &mut Vec<Event>,
+) {
+    if message.get("role").and_then(Value::as_str) != Some("assistant") {
+        return;
+    }
+    let model = message
+        .get("model")
+        .and_then(Value::as_str)
+        .map(str::to_owned);
+    let provider = message
+        .get("provider")
+        .and_then(Value::as_str)
+        .map(str::to_owned);
+    if message.get("stopReason").and_then(Value::as_str) == Some("error") {
+        let said = message
+            .get("errorMessage")
+            .and_then(Value::as_str)
+            .unwrap_or("");
+        let lower = said.to_lowercase();
+        if refusals
+            .iter()
+            .any(|pattern| lower.contains(&pattern.to_lowercase()))
+        {
+            events.push(Event::Refusal {
+                session: carry.session.clone().unwrap_or_default(),
+                at,
+                model: model.clone().or(carry.model.clone()).unwrap_or_default(),
+                said: said.chars().take(300).collect(),
+            });
+        }
+    }
+    if let Some((tokens, cost)) = usage(message)
+        && tokens.input + tokens.output + tokens.cache_read + tokens.cache_write > 0.0
+    {
+        push_turn(
+            events,
+            carry,
+            at,
+            Kind::Agent,
+            tokens,
+            cost,
+            model,
+            provider,
+        );
+    }
+}
+
+#[expect(
+    clippy::too_many_arguments,
+    reason = "a turn is what the log's entry gives apart: its instant, kind, tokens, cost, \
+              model and provider, onto what the log has carried so far"
+)]
 fn push_turn(
     events: &mut Vec<Event>,
     carry: &mut Carry,
@@ -411,7 +432,7 @@ fn push_turn(
         at,
         model: model.clone(),
         provider: provider.unwrap_or_default(),
-        kind: kind.clone(),
+        kind,
         tokens,
         cost,
         quest: carry.quest.clone(),
@@ -420,7 +441,7 @@ fn push_turn(
         rebuilt_cost: 0.0,
         cause: None,
     };
-    if kind == Kind::Agent {
+    if turn.kind == Kind::Agent {
         turn.gap = carry.last_at.map(|last| (at - last).max(0.0));
         if tokens.cache_write > 0.0 {
             let (rebuilt, cause) = rebuilding(carry, &turn);
@@ -599,6 +620,10 @@ mod tests {
     }
 
     #[test]
+    #[expect(
+        clippy::float_cmp,
+        reason = "token counts are whole numbers, which f64 holds and subtracts exactly"
+    )]
     fn the_first_write_is_fresh_and_a_pause_rebuilds() {
         let bytes = lines(&[
             HEADER,

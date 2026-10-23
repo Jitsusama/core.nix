@@ -4,17 +4,14 @@
 
 use crate::config::Config;
 use crate::forecast;
-use crate::history::History;
+use crate::forecast::Days;
+use crate::history::{History, sql as fail};
 use crate::money::{dollars, percent};
 use crate::picture::Picture;
 use crate::report::{Report, Row};
 use crate::stats;
 use crate::time::{DAY, Zone};
 use std::collections::BTreeMap;
-
-fn fail(error: rusqlite::Error) -> String {
-    error.to_string()
-}
 
 /// Each local day's largest burn score, replayed with the allowance a
 /// working hour of the eight weeks before it gave, and that working hour.
@@ -44,8 +41,9 @@ pub fn burn_days(
     // A working hour before a day: the median of the hours of the eight
     // weeks before it that spent at least a dollar, as the burn takes it.
     let working = |day: i64| {
-        let to = (zone.day_start(day) / 3600.0) as i64;
-        let from = (zone.day_start(day - crate::detect::BURN_DAYS as i64) / 3600.0) as i64;
+        let to = crate::time::hour_of(zone.day_start(day));
+        let from =
+            crate::time::hour_of(zone.day_start(day - stats::signed(crate::detect::BURN_DAYS)));
         let active: Vec<f64> = hours
             .range(from..to)
             .map(|(_, spent)| *spent)
@@ -61,7 +59,7 @@ pub fn burn_days(
     let mut score = 0.0;
     let mut out: BTreeMap<i64, (f64, f64)> = BTreeMap::new();
     for minute in first..=last {
-        let at = minute as f64 * 60.0;
+        let at = crate::time::minute_start(minute);
         let day = zone.day(at);
         let working = *working_by_day.entry(day).or_insert_with(|| working(day));
         if !working.is_finite() {
@@ -79,84 +77,15 @@ pub fn burn_days(
 }
 
 pub fn backtest(history: &History, picture: &Picture, config: &Config) -> Result<Report, String> {
-    let mut rows = Vec::new();
-    let mut notes = Vec::new();
     let days = &picture.days;
-    // Every whole day; today is still going.
-    let whole = days.before(days.dollars.len().saturating_sub(1));
-    for score in forecast::score(&whole, whole.dollars.len(), 0x5eed) {
-        rows.push(Row {
-            name: format!(
-                "{}, {}",
-                score.model,
-                if score.horizon == 1 {
-                    "a day"
-                } else {
-                    "a week"
-                }
-            ),
-            dollars: score.crps,
-            share: 0.0,
-            shown: format!(
-                "CRPS {} against a mean of {}; 80% range held {}, 95% held {}; {} origins",
-                dollars(score.crps),
-                dollars(score.mean),
-                percent(score.held80),
-                percent(score.held95),
-                score.origins
-            ),
-            estimated: false,
-        });
-    }
+    let mut rows = forecast_rows(days);
+    let mut notes = Vec::new();
     if rows.is_empty() {
         notes.push("Too few days to score the forecast: eight weeks and a day are needed.".into());
     }
-    // The burn's alarms, by the threshold each day's trailing weeks set.
-    let window = crate::detect::BURN_DAYS;
-    let burn = burn_days(history, picture)?;
-    let rate = 1.0 / config.detectors.burn_run_length_days;
-    let mut alarms: BTreeMap<i64, u32> = BTreeMap::new();
-    let values: Vec<(i64, f64, f64)> = burn.iter().map(|(d, (s, w))| (*d, *s, *w)).collect();
-    for (index, (day, max, working)) in values.iter().enumerate() {
-        if index < window {
-            continue;
-        }
-        let past: Vec<f64> = values[index - window..index]
-            .iter()
-            .map(|(_, s, _)| *s)
-            .collect();
-        let threshold = stats::quantile(&past, 1.0 - rate).max(*working);
-        if *max > threshold {
-            *alarms.entry(day - Zone::weekday(*day) as i64).or_default() += 1;
-        }
-    }
-    // The caps' events that would have asked, and days refused.
-    let mut statement = history
-        .db
-        .prepare(
-            "SELECT at FROM cap_events WHERE kind IN ('lowered', 'lapsed', 'notified', 'refused')",
-        )
-        .map_err(fail)?;
-    let cap_events: Vec<f64> = statement
-        .query_map([], |row| row.get(0))
-        .map_err(fail)?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(fail)?;
+    let alarms = burn_alarms(history, picture, config)?;
+    let (caps, refused_days) = cap_asks(history, picture)?;
     let zone = &picture.zone;
-    let mut caps: BTreeMap<i64, u32> = BTreeMap::new();
-    for at in &cap_events {
-        let day = zone.day(*at);
-        *caps.entry(day - Zone::weekday(day) as i64).or_default() += 1;
-    }
-    let mut refused_days: Vec<i64> = picture
-        .refusals
-        .iter()
-        .map(|(at, _)| zone.day(*at))
-        .collect();
-    refused_days.dedup();
-    for day in &refused_days {
-        *caps.entry(day - Zone::weekday(*day) as i64).or_default() += 1;
-    }
     let weeks: Vec<i64> = {
         let first = days.first + 28;
         let last = zone.day(picture.now);
@@ -176,8 +105,7 @@ pub fn backtest(history: &History, picture: &Picture, config: &Config) -> Result
         let cap_total: u32 = caps.values().sum();
         notes.push(format!(
             "The caps would have asked {cap_total} times, outside the budget: cap changes, notices \
-             and the {} days refused.",
-            refused_days.len()
+             and the {refused_days} days refused."
         ));
         for (week, count) in alarms.iter().filter(|(_, c)| **c > 0).rev().take(8) {
             rows.push(Row {
@@ -208,6 +136,98 @@ pub fn backtest(history: &History, picture: &Picture, config: &Config) -> Result
         notes,
         rest: None,
     })
+}
+
+/// A row for each of the forecast's models and horizons, scored on every
+/// whole day of the history; today is still going, so it's left out.
+fn forecast_rows(days: &Days) -> Vec<Row> {
+    let mut rows = Vec::new();
+    let whole = days.before(days.dollars.len().saturating_sub(1));
+    for score in forecast::score(&whole, whole.dollars.len(), 0x5eed) {
+        rows.push(Row {
+            name: format!(
+                "{}, {}",
+                score.model,
+                if score.horizon == 1 {
+                    "a day"
+                } else {
+                    "a week"
+                }
+            ),
+            dollars: score.crps,
+            share: 0.0,
+            shown: format!(
+                "CRPS {} against a mean of {}; 80% range held {}, 95% held {}; {} origins",
+                dollars(score.crps),
+                dollars(score.mean),
+                percent(score.held80),
+                percent(score.held95),
+                score.origins
+            ),
+            estimated: false,
+        });
+    }
+    rows
+}
+
+/// The burn's alarms by the Monday of their week, each day judged by the
+/// threshold its trailing weeks set.
+fn burn_alarms(
+    history: &History,
+    picture: &Picture,
+    config: &Config,
+) -> Result<BTreeMap<i64, u32>, String> {
+    let window = crate::detect::BURN_DAYS;
+    let burn = burn_days(history, picture)?;
+    let rate = 1.0 / config.detectors.burn_run_length_days;
+    let mut alarms: BTreeMap<i64, u32> = BTreeMap::new();
+    let values: Vec<(i64, f64, f64)> = burn.iter().map(|(d, (s, w))| (*d, *s, *w)).collect();
+    for (index, (day, max, working)) in values.iter().enumerate() {
+        if index < window {
+            continue;
+        }
+        let past: Vec<f64> = values[index - window..index]
+            .iter()
+            .map(|(_, s, _)| *s)
+            .collect();
+        let threshold = stats::quantile(&past, 1.0 - rate).max(*working);
+        if *max > threshold {
+            *alarms.entry(Zone::week_start(*day)).or_default() += 1;
+        }
+    }
+    Ok(alarms)
+}
+
+/// The caps' events that would have asked and the days refused, by the
+/// Monday of their week, and how many days were refused.
+fn cap_asks(history: &History, picture: &Picture) -> Result<(BTreeMap<i64, u32>, usize), String> {
+    let mut statement = history
+        .db
+        .prepare(
+            "SELECT at FROM cap_events WHERE kind IN ('lowered', 'lapsed', 'notified', 'refused')",
+        )
+        .map_err(fail)?;
+    let cap_events: Vec<f64> = statement
+        .query_map([], |row| row.get(0))
+        .map_err(fail)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(fail)?;
+    let zone = &picture.zone;
+    let mut caps: BTreeMap<i64, u32> = BTreeMap::new();
+    for at in &cap_events {
+        let day = zone.day(*at);
+        *caps.entry(Zone::week_start(day)).or_default() += 1;
+    }
+    let mut refused_days: Vec<i64> = picture
+        .refusals
+        .iter()
+        .map(|(at, _)| zone.day(*at))
+        .collect();
+    refused_days.dedup();
+    for day in &refused_days {
+        *caps.entry(Zone::week_start(*day)).or_default() += 1;
+    }
+    Ok((caps, refused_days.len()))
 }
 
 #[cfg(test)]
@@ -246,15 +266,15 @@ mod tests {
         let history = History::memory();
         let today = (NOW / DAY).floor() * DAY;
         for back in 1..90 {
-            let day = today - back as f64 * DAY;
+            let day = today - f64::from(back) * DAY;
             for minute in (9 * 60..17 * 60).step_by(10) {
-                turn(&history, day + minute as f64 * 60.0, 1.0);
+                turn(&history, day + f64::from(minute) * 60.0, 1.0);
             }
         }
         for minute in 0..180 {
             turn(
                 &history,
-                today - DAY + (2 * 60 + minute) as f64 * 60.0,
+                today - DAY + f64::from(2 * 60 + minute) * 60.0,
                 10.0,
             );
         }

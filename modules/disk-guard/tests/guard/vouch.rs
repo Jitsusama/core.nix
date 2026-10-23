@@ -150,7 +150,7 @@ fn a_process_the_system_could_not_read_is_not_vouched_for() {
     let mut hidden = elsewhere();
     hidden.readable = false;
     let told = answer(&[hidden], &[PathBuf::from("/home/u/src")], mine);
-    assert!(told.vouched.is_empty());
+    assert_eq!(told.vouched, Vec::<(u32, u64)>::new());
 }
 
 fn unreadable(pid: u32, start_ticks: u64) -> Process {

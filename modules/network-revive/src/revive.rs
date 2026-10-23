@@ -279,6 +279,10 @@ mod tests {
         }
     }
 
+    #[expect(
+        clippy::unused_async_trait_impl,
+        reason = "the stand-in answers at once, which an async trait allows"
+    )]
     impl Units for Told {
         async fn state(&self, _: &str) -> Result<State, Unanswered> {
             let mut states = self.states.borrow_mut();

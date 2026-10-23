@@ -73,14 +73,14 @@ pub fn trim(root: &Dir, relative: &Path, keep: u64) -> io::Result<u64> {
         return Err(io::Error::new(io::ErrorKind::InvalidInput, "no file named"));
     };
     let file = root.child(parent)?.file(name, true)?;
-    let mut size = rustix::fs::fstat(&file)?.st_size as u64;
+    let mut size = u64::try_from(rustix::fs::fstat(&file)?.st_size).map_err(io::Error::other)?;
     if size <= keep {
         return Ok(0);
     }
     // The tail starts after the last line break before it, read from the
     // byte before, so a tail that starts a line keeps that line.
     let mut start = size - keep;
-    let mut head = vec![0; (keep as usize).min(CHUNK)];
+    let mut head = vec![0; usize::try_from(keep).map_or(CHUNK, |keep| keep.min(CHUNK))];
     let read = rustix::io::pread(&file, &mut head, start - 1)?;
     if let Some(newline) = head[..read].iter().position(|&byte| byte == b'\n') {
         start += newline as u64;
@@ -90,7 +90,7 @@ pub fn trim(root: &Dir, relative: &Path, keep: u64) -> io::Result<u64> {
     let mut buffer = vec![0; CHUNK];
     for _ in 0..CATCH_UPS {
         while from < size {
-            let want = ((size - from) as usize).min(CHUNK);
+            let want = usize::try_from(size - from).map_or(CHUNK, |left| left.min(CHUNK));
             let read = rustix::io::pread(&file, &mut buffer[..want], from)?;
             if read == 0 {
                 break;
@@ -99,7 +99,7 @@ pub fn trim(root: &Dir, relative: &Path, keep: u64) -> io::Result<u64> {
             from += read as u64;
             written += read as u64;
         }
-        let now = rustix::fs::fstat(&file)?.st_size as u64;
+        let now = u64::try_from(rustix::fs::fstat(&file)?.st_size).map_err(io::Error::other)?;
         if now <= size {
             break;
         }

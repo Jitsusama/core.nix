@@ -137,7 +137,12 @@ pub struct History {
     pub db: Connection,
 }
 
-fn sql(error: rusqlite::Error) -> String {
+/// A database error as the text every caller reports, for `map_err`.
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "map_err hands over the error by value, and this is the fn it calls"
+)]
+pub fn sql(error: rusqlite::Error) -> String {
     error.to_string()
 }
 
@@ -223,7 +228,7 @@ impl History {
             };
             path.with_extension(format!("db.schema-{shape}{tail}"))
         };
-        (1..)
+        (1..=u32::MAX)
             .map(named)
             .find(|aside| !aside.exists())
             .expect("a free name")
@@ -232,7 +237,9 @@ impl History {
     /// Brings a history of an older shape up to this one, all at once or
     /// not at all.
     fn upgrade(&self, from: i64) -> Result<(), String> {
-        let steps: String = UPGRADES[(from - 1) as usize..].concat();
+        let first = usize::try_from(from - 1)
+            .map_err(|_| format!("the history's shape {from} has no upgrade"))?;
+        let steps: String = UPGRADES[first..].concat();
         self.db
             .execute_batch(&format!(
                 "BEGIN IMMEDIATE; {steps} UPDATE meta SET value = '{SCHEMA}' \
@@ -320,11 +327,13 @@ impl History {
             .query_row(
                 "SELECT offset, carry FROM files WHERE path = ?1 AND identity = ?2",
                 params![path, identity],
-                |row| Ok((row.get::<_, i64>(0)? as u64, row.get::<_, String>(1)?)),
+                |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)),
             )
             .optional()
             .ok()
             .flatten()
+            // Only offsets from `set_file` are kept, and none is below zero.
+            .and_then(|(offset, carry)| Some((u64::try_from(offset).ok()?, carry)))
     }
 
     /// Forgets a log's turns, for one replaced or read again from its start.
@@ -359,10 +368,13 @@ impl History {
         carry: &str,
         session: Option<&str>,
     ) -> Result<(), String> {
+        // No file is longer than an i64 can count, so this always fits.
+        let offset = i64::try_from(offset)
+            .map_err(|_| format!("{path} is read past where an offset can be kept"))?;
         self.db
             .execute(
                 "INSERT OR REPLACE INTO files VALUES (?1, ?2, ?3, ?4, ?5)",
-                params![path, identity, offset as i64, carry, session],
+                params![path, identity, offset, carry, session],
             )
             .map(|_| ())
             .map_err(sql)
@@ -413,7 +425,7 @@ impl History {
                             turn.gap,
                             turn.rebuilt,
                             turn.rebuilt_cost,
-                            turn.cause.as_ref().map(|cause| cause.name()),
+                            turn.cause.as_ref().map(crate::logs::Cause::name),
                         ],
                     )
                     .map_err(sql)?;
@@ -564,7 +576,7 @@ mod tests {
             .execute(
                 "INSERT INTO turns VALUES (?1, ?2, ?3, 'opus', 'anthropic', 'agent', ?4,
                  0, 0, 0, 0, 0, ?5, 0, 0, NULL, 0, 0, NULL)",
-                params![session, (hour * 3600) as f64, hour, quest, cost],
+                params![session, crate::time::hour_start(hour), hour, quest, cost],
             )
             .unwrap();
     }

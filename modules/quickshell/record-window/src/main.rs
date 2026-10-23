@@ -4,7 +4,7 @@
 //! wf-recorder records through wlr-screencopy, which takes only the screen or
 //! a part of it, and niri says where a tiled window sits only to a
 //! screencast. So this asks niri for the window's own screencast, over the
-//! ScreenCast interface niri shares with GNOME's Mutter, as a call does
+//! `ScreenCast` interface niri shares with GNOME's Mutter, as a call does
 //! through the portal, and hands the PipeWire stream that comes of it to
 //! GStreamer. That encodes it on the GPU through VA-API where Intel's or
 //! AMD's driver runs it, as the screen's recordings are, and on the processor

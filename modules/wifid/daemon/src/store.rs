@@ -165,7 +165,7 @@ impl Store {
 
     /// Keeps a sealed password, readable by wifid alone, whole or not at
     /// all, and on the disk by the time this returns.
-    pub fn keep_password(&self, file: &Path, sealed: &str) -> io::Result<()> {
+    pub fn keep_password(file: &Path, sealed: &str) -> io::Result<()> {
         let name = file.file_name().unwrap_or_default().to_string_lossy();
         let partial = file.with_file_name(format!(".{name}.partial"));
         let mut written = OpenOptions::new()
@@ -378,7 +378,7 @@ mod tests {
         let (_root, store) = store();
 
         let file = store.password_file("Lantern").unwrap();
-        store.keep_password(&file, "sealed").unwrap();
+        Store::keep_password(&file, "sealed").unwrap();
         store
             .save(&Network {
                 secret: Some(file.clone()),
@@ -414,7 +414,7 @@ mod tests {
     fn a_password_no_network_names_is_let_go_of() {
         let (_root, store) = store();
         let file = store.password_file("Lantern").unwrap();
-        store.keep_password(&file, "sealed").unwrap();
+        Store::keep_password(&file, "sealed").unwrap();
 
         store.let_go_of_password(&file).unwrap();
 
@@ -445,9 +445,9 @@ mod tests {
     fn a_password_kept_again_replaces_the_one_before() {
         let (_root, store) = store();
         let file = store.password_file("Lantern").unwrap();
-        store.keep_password(&file, "before").unwrap();
+        Store::keep_password(&file, "before").unwrap();
 
-        store.keep_password(&file, "after").unwrap();
+        Store::keep_password(&file, "after").unwrap();
 
         assert_eq!(fs::read_to_string(&file).unwrap(), "after");
     }

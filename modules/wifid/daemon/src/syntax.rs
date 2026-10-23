@@ -2,6 +2,8 @@
 //! of settings, one `Key=value` to a line. networkd's .network files are in
 //! it, and so is wifid.conf.
 
+use std::fmt::Write as _;
+
 /// A file in systemd's format, kept line by line so that writing it back
 /// changes nothing a person put there, comments included.
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -221,18 +223,19 @@ impl Document {
 
     pub fn render(&self) -> String {
         let mut text = String::new();
-        let mut write = |lines: &[Line]| {
+        let mut add = |lines: &[Line]| {
             for line in lines {
-                match line {
-                    Line::Setting { key, value } => text.push_str(&format!("{key}={value}\n")),
-                    Line::Other(line) => text.push_str(&format!("{line}\n")),
-                }
+                // Writing to a String can't fail.
+                _ = match line {
+                    Line::Setting { key, value } => writeln!(text, "{key}={value}"),
+                    Line::Other(line) => writeln!(text, "{line}"),
+                };
             }
         };
-        write(&self.head);
+        add(&self.head);
         for section in &self.sections {
-            write(&[Line::Other(format!("[{}]", section.name))]);
-            write(&section.lines);
+            add(&[Line::Other(format!("[{}]", section.name))]);
+            add(&section.lines);
         }
         text
     }

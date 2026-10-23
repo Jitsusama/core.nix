@@ -231,7 +231,8 @@ pub fn kept_line(history: &History, feed: &str) -> Result<String, String> {
     };
     let billed = newest(
         "SELECT source, MAX(hour) FROM billed WHERE feed = ?1 GROUP BY source",
-        |hour| crate::time::hour_start(hour as i64),
+        // The column holds whole hours, so this is the hour's start.
+        |hour| hour * crate::time::HOUR,
     )?;
     let caps = newest(
         "SELECT name, MAX(at) FROM caps WHERE feed = ?1 GROUP BY name",
@@ -634,6 +635,10 @@ mod tests {
     }
 
     #[test]
+    #[expect(
+        clippy::float_cmp,
+        reason = "the sum of the one row left is that row's figure, untouched"
+    )]
     fn a_provisional_hour_is_replaced_as_it_grows() {
         let history = History::memory();
         let billed = |dollars: f64| {

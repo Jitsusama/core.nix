@@ -273,8 +273,11 @@ fn a_directory_is_begun_in_the_journal_before_it_is_moved() {
         "a file goes in one unlink: {said:?}"
     );
     assert!(at("action", &trashed).unwrap() < at("pass", Path::new("")).unwrap());
-    let begin = &home.journal()[begun];
-    assert_eq!(begin["root"], home.root.join("scratch").to_str().unwrap());
+    let beginning = &home.journal()[begun];
+    assert_eq!(
+        beginning["root"],
+        home.root.join("scratch").to_str().unwrap()
+    );
 }
 
 #[test]
@@ -321,13 +324,13 @@ fn what_a_guard_left_moved_aside_is_emptied_when_the_next_starts() {
     assert_eq!(resumed["path"], unfinished.to_str().unwrap());
     assert_eq!(resumed["outcome"], "reclaimed");
     guard.step(&tick(), &CALM).unwrap();
-    let resumes = home
+    let resumptions = home
         .journal()
         .iter()
         .filter(|line| line["kind"] == "resumed")
         .count();
     assert_eq!(
-        resumes, 1,
+        resumptions, 1,
         "what was resumed is ended, and not resumed again"
     );
 }
@@ -796,6 +799,7 @@ fn a_tree_kept_for_its_use_is_explained_as_kept_and_why() {
 #[test]
 fn a_predicates_answer_is_kept_for_the_next_guard() {
     use crate::finished::git;
+    use std::os::unix::fs::PermissionsExt;
     let home = Home::new();
     let (_, deps) = home.replaced_build("0%");
     let app = home.root.join("src/app");
@@ -816,7 +820,6 @@ fn a_predicates_answer_is_kept_for_the_next_guard() {
         ),
     )
     .unwrap();
-    use std::os::unix::fs::PermissionsExt;
     fs::set_permissions(&predicate, fs::Permissions::from_mode(0o755)).unwrap();
     let config = || {
         Config::parse(&format!(
@@ -1163,7 +1166,7 @@ impl Home {
         }
         touch(
             &deps.join(format!("libapp-{OLD}.rlib")),
-            wall() as i64 - 5 * 86_400,
+            crate::whole_seconds(wall()) - 5 * 86_400,
         );
         let config = Config::parse(&format!(
             r#"{{ "version": 1, "scope": "user", "status_file": true, "notify": false,

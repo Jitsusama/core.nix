@@ -7,7 +7,8 @@
 //! period resetting, bring it back under.
 
 use crate::forecast::{Paths, Shape};
-use crate::history::History;
+use crate::history::{History, sql as fail};
+use crate::stats::{count, signed};
 use crate::time::{HOUR, Zone};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -37,10 +38,6 @@ pub struct Event {
     pub before: Option<f64>,
     pub after: Option<f64>,
     pub spent: f64,
-}
-
-fn fail(error: rusqlite::Error) -> String {
-    error.to_string()
 }
 
 const COLUMNS: &str = "feed, name, label, allowance, window_hours, spent, warn, fallback, \
@@ -95,7 +92,7 @@ pub fn earlier(history: &History, of: &Cap, periods: usize) -> Result<Vec<Cap>, 
         .map_err(fail)?;
     let rows = statement
         .query_map(
-            rusqlite::params![of.feed, of.name, resets, periods as i64],
+            rusqlite::params![of.feed, of.name, resets, signed(periods)],
             cap,
         )
         .map_err(fail)?;
@@ -147,10 +144,14 @@ fn hourly(path: &[f64], shape: &Shape, zone: &Zone, now: f64, hours: usize) -> V
     let today = zone.day(now);
     (0..hours)
         .map(|k| {
-            let at = now + k as f64 * HOUR;
+            let at = now + count(k) * HOUR;
             let day = zone.day(at);
-            let index = (day - today) as usize;
-            let total = path.get(index).copied().unwrap_or(0.0);
+            // A coming hour's day is never before today's.
+            let total = usize::try_from(day - today)
+                .ok()
+                .and_then(|index| path.get(index))
+                .copied()
+                .unwrap_or(0.0);
             total * shape.shares[Zone::weekday(day)][zone.local_hour(at) as usize]
         })
         .collect()
@@ -170,6 +171,12 @@ pub enum Window<'a> {
 impl Window<'_> {
     /// The spend counted k hours from now, from what's counted now and
     /// `since[j]`, what's simulated over the next j hours.
+    #[expect(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        reason = "the hours to the reset are whole and at least zero, and a count past \
+                  usize saturates, which is past every hour the paths reach"
+    )]
     fn counted(&self, spent: f64, since: &[f64], k: usize, now: f64) -> f64 {
         match *self {
             Window::Rolling(past) => {
@@ -199,10 +206,10 @@ impl Window<'_> {
                 for (k, hour) in past.iter().enumerate() {
                     left -= hour;
                     if left < allowance {
-                        return now + (k + 1) as f64 * HOUR;
+                        return now + count(k + 1) * HOUR;
                     }
                 }
-                now + past.len() as f64 * HOUR
+                now + count(past.len()) * HOUR
             }
             Window::Resets { at, .. } => at,
         }
@@ -218,7 +225,17 @@ impl Window<'_> {
     }
 }
 
-#[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "a clock is judged on a cap's figures, its window and the forecast's paths, \
+              none of which belong together anywhere else"
+)]
+#[expect(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    reason = "the hours to an end are whole and at least zero, and a count past usize \
+              saturates, which the horizon then filters out"
+)]
 pub fn clock(
     spent: f64,
     allowance: f64,
@@ -266,13 +283,13 @@ pub fn clock(
         capped += usize::from(c);
         before_end += usize::from(b);
     }
-    let n = paths.len().max(1) as f64;
+    let n = count(paths.len().max(1));
     let frees_at = (spent >= allowance).then(|| window.frees(spent, allowance, now));
     Clock {
-        warn_within_day: warned as f64 / n,
-        cap_within_day: capped as f64 / n,
-        cap_before_end: end_hour.map(|_| before_end as f64 / n),
-        over_after_end: end_hour.and(fallback).map(|_| over_after as f64 / n),
+        warn_within_day: count(warned) / n,
+        cap_within_day: count(capped) / n,
+        cap_before_end: end_hour.map(|_| count(before_end) / n),
+        over_after_end: end_hour.and(fallback).map(|_| count(over_after) / n),
         frees_at,
         freeing_in_day: window.freeing_in_day(spent, now),
     }
@@ -290,6 +307,11 @@ pub const HELD: f64 = 10.0 * 60.0;
 /// change nor any after it on the same cap when a later one took the cap
 /// back to where it was within that time. Changes of state pass as they
 /// are.
+#[expect(
+    clippy::float_cmp,
+    reason = "a reading's events all carry the very instant it was read at, so only \
+              equality finds the ones that came with a change"
+)]
 pub fn held(events: Vec<Event>, now: f64) -> Vec<Event> {
     let changes = |event: &Event| matches!(event.kind.as_str(), "lowered" | "raised" | "lapsed");
     let pressing = |event: &Event| {
@@ -458,6 +480,10 @@ mod tests {
     }
 
     #[test]
+    #[expect(
+        clippy::float_cmp,
+        reason = "a share of ten paths that all reach the cap is exactly one"
+    )]
     fn over_the_cap_it_frees_when_old_hours_roll_out() {
         // $100 an hour for the window's first ten hours, nothing since.
         let mut past = vec![100.0; 10];
@@ -564,6 +590,10 @@ mod tests {
     // $1,000 spent and $40 an hour to come: it warns before the reset and
     // never reaches the cap after, where a rolling day would by 04:00.
     #[test]
+    #[expect(
+        clippy::float_cmp,
+        reason = "a share of paths that all reach the cap is exactly one"
+    )]
     fn a_period_s_spend_goes_all_at_once_when_it_resets() {
         let zone = Zone::utc();
         let now = 1_791_936_000.0 + 22.0 * HOUR;
@@ -610,6 +640,7 @@ mod tests {
     // A reset an hour off, then one a day after: $50 an hour counts
     // toward each day from its own start.
     #[test]
+    #[expect(clippy::float_cmp, reason = "sums of whole dollars are exact in f64")]
     fn every_period_after_the_first_resets_too() {
         let now = 1_791_936_000.0;
         let window = Window::Resets {
@@ -618,7 +649,7 @@ mod tests {
         };
         let mut since = vec![0.0];
         for k in 1..=60 {
-            since.push(50.0 * k as f64);
+            since.push(50.0 * f64::from(k));
         }
         let counted = |k: usize| window.counted(0.0, &since, k, now);
         assert_eq!(counted(1), 50.0);

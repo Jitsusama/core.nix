@@ -45,7 +45,27 @@ fn pace(looked: &mut VecDeque<(Instant, u64)>, now: Instant, done: u64) -> Optio
     }
     let (then, was) = *looked.front()?;
     let over = now.duration_since(then).as_secs_f64();
-    (over >= 1.0).then(|| done.saturating_sub(was) as f64 / over)
+    (over >= 1.0).then(|| approximately(done.saturating_sub(was)) / over)
+}
+
+/// A count of bytes as a float, for the rates and units a person reads
+/// it in.
+#[expect(
+    clippy::cast_precision_loss,
+    reason = "only a count past 2^53 bytes loses a bit, and it's read rounded to a place"
+)]
+fn approximately(count: u64) -> f64 {
+    count as f64
+}
+
+/// A rate in whole bytes a second, its fraction dropped.
+#[expect(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    reason = "the rate shown is finite and at least 1, so the cast drops its fraction and no sign"
+)]
+fn whole(rate: f64) -> u64 {
+    rate as u64
 }
 
 /// A step's meter, shared between the step feeding it and the screen
@@ -157,7 +177,7 @@ impl Meter {
     fn reading(&self) -> std::sync::MutexGuard<'_, Reading> {
         self.0
             .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 }
 
@@ -245,7 +265,7 @@ pub fn said(done: u64, total: Option<u64>, elapsed: Duration) -> String {
     if done == 0 {
         return format!("Running for {}", duration(elapsed));
     }
-    let rate = (elapsed.as_secs_f64() >= 1.0).then(|| done as f64 / elapsed.as_secs_f64());
+    let rate = (elapsed.as_secs_f64() >= 1.0).then(|| approximately(done) / elapsed.as_secs_f64());
     told(done, total, rate)
 }
 
@@ -260,13 +280,13 @@ fn told(done: u64, total: Option<u64>, rate: Option<f64>) -> String {
         // Nothing moved over the pace's whole span, as while a step closes
         // what it wrote: how long is left can't be reckoned from that.
         Some(rate) if rate < 1.0 => {
-            parts.push(format!("nothing more in the last {}", duration(PACE)))
+            parts.push(format!("nothing more in the last {}", duration(PACE)));
         }
         Some(rate) => {
-            parts.push(format!("{} a second", bytes(rate as u64)));
-            let left = total
-                .filter(|total| *total > done)
-                .and_then(|total| Duration::try_from_secs_f64((total - done) as f64 / rate).ok());
+            parts.push(format!("{} a second", bytes(whole(rate))));
+            let left = total.filter(|total| *total > done).and_then(|total| {
+                Duration::try_from_secs_f64(approximately(total - done) / rate).ok()
+            });
             if let Some(left) = left {
                 parts.push(format!("about {} left", rough(left)));
             }
@@ -283,7 +303,7 @@ pub fn bytes(count: u64) -> String {
     if count < 1000 {
         return format!("{count} bytes");
     }
-    let mut value = count as f64 / 1000.0;
+    let mut value = approximately(count) / 1000.0;
     let mut unit = 0;
     while value >= 1000.0 && unit + 1 < UNITS.len() {
         value /= 1000.0;
@@ -416,7 +436,7 @@ mod tests {
         assert_eq!(rough(Duration::from_secs(20)), "a minute");
         assert_eq!(rough(Duration::from_secs(89)), "a minute");
         assert_eq!(rough(Duration::from_secs(150)), "3 minutes");
-        assert_eq!(rough(Duration::from_secs(3900)), "1 hour 5 minutes");
+        assert_eq!(rough(Duration::from_mins(65)), "1 hour 5 minutes");
     }
 
     #[test]

@@ -66,7 +66,7 @@ fn settings(mut arguments: impl Iterator<Item = String>) -> Result<Settings, Str
                 format = Some(
                     Raw::named(&value)
                         .ok_or_else(|| format!("--format takes Y10, Y12 or Y16, not {value}"))?,
-                )
+                );
             }
             "--width" => width = Some(size(&value)?),
             "--height" => height = Some(size(&value)?),
@@ -325,7 +325,7 @@ mod tests {
     use super::*;
 
     fn parse(arguments: &[&str]) -> Result<Settings, String> {
-        settings(arguments.iter().map(|argument| argument.to_string()))
+        settings(arguments.iter().map(ToString::to_string))
     }
 
     const ALL: [&str; 10] = [

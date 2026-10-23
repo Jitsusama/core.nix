@@ -72,7 +72,7 @@ fn a_user_config_is_read() {
             ..
         } => {
             assert_eq!(path, &PathBuf::from("/home/u/src"));
-            assert_eq!(*every, Some(Span(Duration::from_secs(6 * 3600))));
+            assert_eq!(*every, Some(Span(Duration::from_hours(6))));
             assert_eq!(*timeout, Span(Duration::from_secs(300)));
         }
         other => panic!("gc read as {other:?}"),
@@ -160,7 +160,7 @@ fn either_daemon_says_where_nix_is_and_which_generations_stay() {
     assert_eq!(user.nix.generations.keep, 3);
     assert_eq!(
         user.nix.generations.young,
-        Span(Duration::from_secs(7 * 86400))
+        Span(Duration::from_hours(7 * 24))
     );
     let bare = Config::parse(USER).unwrap();
     assert_eq!(
@@ -207,7 +207,7 @@ fn refusals_say_why() {
             with(USER, r#""version": 1"#, r#""version": 2"#),
             "version 2",
         ),
-        (with(USER, r#"(?P<pid>\\d+)"#, r#"(\\d+)"#), "pid group"),
+        (with(USER, r"(?P<pid>\\d+)", r"(\\d+)"), "pid group"),
         (
             with(USER, r#""timeout": "5m""#, r#""timeout": "5 minutes""#),
             "span",

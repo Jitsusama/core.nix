@@ -130,7 +130,7 @@ impl Index {
         for _ in 0..count {
             let start = at;
             let word = |n: usize| u32_at(data, start + 4 * n);
-            let stat = StatData {
+            let stat_data = StatData {
                 ctime: (word(0)?, word(1)?),
                 mtime: (word(2)?, word(3)?),
                 ino: word(5)?,
@@ -187,7 +187,7 @@ impl Index {
                 stage: ((flags >> 12) & 3) as u8,
                 flags,
                 extended,
-                stat,
+                stat: stat_data,
             });
         }
         let mut tree = None;

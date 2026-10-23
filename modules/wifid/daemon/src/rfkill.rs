@@ -67,7 +67,7 @@ impl Switches {
 
 /// What to write to turn every Wi-Fi radio on, or off.
 pub fn turning(on: bool) -> Event {
-    [0, 0, 0, 0, WLAN, CHANGE_ALL, !on as u8, 0]
+    [0, 0, 0, 0, WLAN, CHANGE_ALL, u8::from(!on), 0]
 }
 
 #[cfg(test)]
@@ -77,7 +77,7 @@ mod tests {
     fn event(index: u32, kind: u8, op: u8, soft: bool, hard: bool) -> Event {
         let mut event = [0; 8];
         event[..4].copy_from_slice(&index.to_ne_bytes());
-        event[4..].copy_from_slice(&[kind, op, soft as u8, hard as u8]);
+        event[4..].copy_from_slice(&[kind, op, u8::from(soft), u8::from(hard)]);
         event
     }
 

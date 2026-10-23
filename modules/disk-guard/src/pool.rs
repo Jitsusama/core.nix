@@ -37,7 +37,7 @@ pub fn pool(path: &Path) -> io::Result<u64> {
         let bytes: Vec<u8> = chars
             .iter()
             .take_while(|&&c| c != 0)
-            .map(|&c| c as u8)
+            .map(|&c| c.cast_unsigned())
             .collect();
         String::from_utf8_lossy(&bytes).into_owned()
     };

@@ -251,7 +251,7 @@ impl Secrets {
         let blob = Zeroizing::new(fs::read_to_string(old)?);
         let password = self.credentials.unseal(&name, blob.trim_end()).await?;
         let new = old.with_extension("sealed");
-        store.keep_password(&new, &vault.seal(&name, &password)?)?;
+        Store::keep_password(&new, &vault.seal(&name, &password)?)?;
         network.secret = Some(new);
         store.save(&network).map_err(|failure| match failure {
             Failure::Io(error) => error,
@@ -396,7 +396,7 @@ mod tests {
     /// within a few seconds.
     async fn call_to(service: tokio::task::JoinHandle<Value>) -> Value {
         let waited = tokio::time::timeout(Duration::from_secs(3), service).await;
-        waited.map(Result::unwrap).unwrap_or(Value::Null)
+        waited.map_or(Value::Null, Result::unwrap)
     }
 
     fn opened(password: io::Result<Option<Zeroizing<String>>>) -> Option<String> {

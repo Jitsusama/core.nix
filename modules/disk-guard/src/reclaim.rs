@@ -212,7 +212,7 @@ pub fn variant(root: &Dir, root_path: &Path, candidate: &Candidate, now: SystemT
     let mut held = Vec::new();
     for session in &sessions {
         match hold_session(&dir, OsStr::from_bytes(session), now) {
-            Ok(Hold::Held(hold)) => held.push(hold),
+            Ok(Hold::Held(locked)) => held.push(locked),
             Ok(Hold::Busy(what)) => {
                 return Outcome::Kept(format!("rustc holds {}", what.display()));
             }

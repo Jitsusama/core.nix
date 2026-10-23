@@ -8,7 +8,7 @@ use crate::caps::{self, Cap, Clock};
 use crate::config::Config;
 use crate::estimate::{Ratios, Shift};
 use crate::forecast::{self, Days, Paths, Shape};
-use crate::history::History;
+use crate::history::{History, sql as fail};
 use crate::series::{self, Inputs, Piece, Source};
 use crate::stats;
 use crate::time::{DAY, HOUR, Zone};
@@ -127,10 +127,6 @@ pub struct Picture {
     pub lead: (u32, u32),
 }
 
-fn fail(error: rusqlite::Error) -> String {
-    error.to_string()
-}
-
 impl Picture {
     pub fn read(history: &History, config: &Config, now: f64) -> Result<Picture, String> {
         let zone = config.zone()?;
@@ -146,17 +142,7 @@ impl Picture {
             .unwrap_or(crate::time::hour_of(now));
         let now_hour = crate::time::hour_of(now);
         let inputs = Inputs::read(history, first_hour, now_hour + 1)?;
-        let learning = inputs.learning();
-        let mut ratios = Ratios::learn(&learning);
-        let shifts =
-            crate::estimate::shifts(&learning, |hour| zone.day(crate::time::hour_start(hour)));
-        // A month's ratio lags a price that's moved, so the hours the bill
-        // hasn't come for are estimated at the price as it is now.
-        for shift in &shifts {
-            if let Some(ratio) = ratios.models.get_mut(&shift.model) {
-                ratio.ratio = shift.now;
-            }
-        }
+        let (ratios, shifts) = learned(&inputs, &zone);
         let pieces = inputs.pieces(&ratios);
         let mut hours: BTreeMap<i64, f64> = BTreeMap::new();
         for piece in &pieces {
@@ -164,13 +150,7 @@ impl Picture {
         }
         let today = zone.day(now);
         let first_day = zone.day(crate::time::hour_start(first_hour)).min(today);
-        let mut daily = vec![0.0; (today - first_day + 1) as usize];
-        for (&hour, &dollars) in &hours {
-            let day = zone.day(crate::time::hour_start(hour));
-            if (first_day..=today).contains(&day) {
-                daily[(day - first_day) as usize] += dollars;
-            }
-        }
+        let daily = daily(&zone, &hours, first_day, today);
         let in_days =
             |from: i64, to: i64| -> Vec<&Piece> { span(&pieces, &zone, from, to).iter().collect() };
         let figure = |from: i64, to: i64| Figure::of(&in_days(from, to));
@@ -183,94 +163,18 @@ impl Picture {
         let history_days = days.before(daily.len() - 1);
         let weight = mixture_weight(&history_days);
         let paths = if history_days.dollars.len() >= 14 {
-            forecast::mixture(&history_days, 7, today as u64, weight)
+            forecast::mixture(&history_days, 7, today.cast_unsigned(), weight)
         } else {
             Vec::new()
         };
-        let shape = Shape::learn(
-            &hours
-                .range(now_hour - 24 * 56..now_hour)
-                .map(|(&hour, &dollars)| {
-                    let at = crate::time::hour_start(hour);
-                    (Zone::weekday(zone.day(at)), zone.local_hour(at), dollars)
-                })
-                .collect::<Vec<_>>(),
-        );
+        let shape = shape(&zone, &hours, now_hour);
         let standing = standing(&zone, &hours, now, daily.last().copied().unwrap_or(0.0));
         let caps = cap_views(history, config, &zone, &hours, &paths, &shape, now)?;
         let events = caps::held(caps::events(history, now - 30.0 * DAY)?, now);
-        let refusals = {
-            let mut statement = history
-                .db
-                .prepare("SELECT at, model FROM refusals ORDER BY at")
-                .map_err(fail)?;
-            statement
-                .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
-                .map_err(fail)?
-                .collect::<Result<Vec<_>, _>>()
-                .map_err(fail)?
-        };
-        let sources = {
-            let mut statement = history
-                .db
-                .prepare(
-                    "SELECT feed, source, state, message, sign_in, at, coalesce(since, at)
-                     FROM health ORDER BY feed, source",
-                )
-                .map_err(fail)?;
-            statement
-                .query_map([], |row| {
-                    Ok(SourceState {
-                        feed: row.get(0)?,
-                        name: row.get(1)?,
-                        state: row.get(2)?,
-                        message: row.get(3)?,
-                        sign_in: row.get(4)?,
-                        at: row.get(5)?,
-                        since: row.get(6)?,
-                    })
-                })
-                .map_err(fail)?
-                .collect::<Result<Vec<_>, _>>()
-                .map_err(fail)?
-        };
-        let actions = {
-            let mut statement = history
-                .db
-                .prepare("SELECT feed, id, name, run, fits FROM actions ORDER BY feed, id")
-                .map_err(fail)?;
-            statement
-                .query_map([], |row| {
-                    let run: String = row.get(3)?;
-                    let fits: String = row.get(4)?;
-                    Ok(FeedAction {
-                        feed: row.get(0)?,
-                        id: row.get(1)?,
-                        name: row.get(2)?,
-                        run: serde_json::from_str(&run).unwrap_or_default(),
-                        fits: fits
-                            .split(',')
-                            .filter(|fit| !fit.is_empty())
-                            .map(str::to_owned)
-                            .collect(),
-                    })
-                })
-                .map_err(fail)?
-                .collect::<Result<Vec<_>, _>>()
-                .map_err(fail)?
-        };
-        // What the provider said in the last quarter hour still stands.
-        let said = {
-            let mut statement = history
-                .db
-                .prepare("SELECT severity, text FROM said WHERE at >= ?1 ORDER BY severity, text")
-                .map_err(fail)?;
-            statement
-                .query_map([now - 900.0], |row| Ok((row.get(0)?, row.get(1)?)))
-                .map_err(fail)?
-                .collect::<Result<Vec<_>, _>>()
-                .map_err(fail)?
-        };
+        let refusals = read_refusals(history)?;
+        let sources = read_sources(history)?;
+        let actions = read_actions(history)?;
+        let said = read_said(history, now)?;
         let logs_at: Option<f64> = history
             .db
             .query_row("SELECT MAX(at) FROM turns", [], |row| row.get(0))
@@ -300,25 +204,9 @@ impl Picture {
             actions,
             said,
             waste: waste::waste(history, week_start, now + 1.0)?,
-            waste_before: (1..=8)
-                .map(|weeks| {
-                    let first = today - 6 - 7 * weeks;
-                    waste::share(history, zone.day_start(first), zone.day_start(first + 7))
-                })
-                .collect::<Result<Vec<_>, _>>()?
-                .into_iter()
-                .flatten()
-                .collect(),
+            waste_before: waste_before(history, &zone, today)?,
             work: waste::work(history, now - 30.0 * DAY, now + 1.0)?,
-            roots: quests
-                .iter()
-                .map(|quest| {
-                    (
-                        quest.id.clone(),
-                        crate::quests::root(&quests, &quest.id).to_owned(),
-                    )
-                })
-                .collect(),
+            roots: roots(&quests),
             titles: quests
                 .iter()
                 .map(|quest| (quest.id.clone(), quest.title.clone()))
@@ -446,6 +334,155 @@ fn read_quests(history: &History) -> Result<Vec<crate::quests::Quest>, String> {
     rows.collect::<Result<Vec<_>, _>>().map_err(fail)
 }
 
+/// Each model's ratio of bill to list, and the prices that have moved,
+/// whose new ratios the ratios take up at once: a month's ratio lags a
+/// price that's moved, so the hours the bill hasn't come for are
+/// estimated at the price as it is now.
+fn learned(inputs: &Inputs, zone: &Zone) -> (Ratios, Vec<Shift>) {
+    let learning = inputs.learning();
+    let mut ratios = Ratios::learn(&learning);
+    let shifts = crate::estimate::shifts(&learning, |hour| zone.day(crate::time::hour_start(hour)));
+    for shift in &shifts {
+        if let Some(ratio) = ratios.models.get_mut(&shift.model) {
+            ratio.ratio = shift.now;
+        }
+    }
+    (ratios, shifts)
+}
+
+/// Each local day's dollars from `first_day` to `today`, from the hours'.
+fn daily(zone: &Zone, hours: &BTreeMap<i64, f64>, first_day: i64, today: i64) -> Vec<f64> {
+    // The first day is never after today, so the count is at least one.
+    let count = usize::try_from(today - first_day + 1).unwrap_or(0);
+    let mut daily = vec![0.0; count];
+    for (&hour, &dollars) in hours {
+        let day = zone.day(crate::time::hour_start(hour));
+        if (first_day..=today).contains(&day)
+            && let Ok(index) = usize::try_from(day - first_day)
+        {
+            daily[index] += dollars;
+        }
+    }
+    daily
+}
+
+/// How a day's spend falls across the hours of the week, from the eight
+/// weeks before this hour.
+fn shape(zone: &Zone, hours: &BTreeMap<i64, f64>, now_hour: i64) -> Shape {
+    Shape::learn(
+        &hours
+            .range(now_hour - 24 * 56..now_hour)
+            .map(|(&hour, &dollars)| {
+                let at = crate::time::hour_start(hour);
+                (Zone::weekday(zone.day(at)), zone.local_hour(at), dollars)
+            })
+            .collect::<Vec<_>>(),
+    )
+}
+
+fn read_refusals(history: &History) -> Result<Vec<(f64, String)>, String> {
+    let mut statement = history
+        .db
+        .prepare("SELECT at, model FROM refusals ORDER BY at")
+        .map_err(fail)?;
+    statement
+        .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+        .map_err(fail)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(fail)
+}
+
+fn read_sources(history: &History) -> Result<Vec<SourceState>, String> {
+    let mut statement = history
+        .db
+        .prepare(
+            "SELECT feed, source, state, message, sign_in, at, coalesce(since, at)
+             FROM health ORDER BY feed, source",
+        )
+        .map_err(fail)?;
+    statement
+        .query_map([], |row| {
+            Ok(SourceState {
+                feed: row.get(0)?,
+                name: row.get(1)?,
+                state: row.get(2)?,
+                message: row.get(3)?,
+                sign_in: row.get(4)?,
+                at: row.get(5)?,
+                since: row.get(6)?,
+            })
+        })
+        .map_err(fail)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(fail)
+}
+
+fn read_actions(history: &History) -> Result<Vec<FeedAction>, String> {
+    let mut statement = history
+        .db
+        .prepare("SELECT feed, id, name, run, fits FROM actions ORDER BY feed, id")
+        .map_err(fail)?;
+    statement
+        .query_map([], |row| {
+            let run: String = row.get(3)?;
+            let fits: String = row.get(4)?;
+            Ok(FeedAction {
+                feed: row.get(0)?,
+                id: row.get(1)?,
+                name: row.get(2)?,
+                run: serde_json::from_str(&run).unwrap_or_default(),
+                fits: fits
+                    .split(',')
+                    .filter(|fit| !fit.is_empty())
+                    .map(str::to_owned)
+                    .collect(),
+            })
+        })
+        .map_err(fail)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(fail)
+}
+
+/// What the provider said in the last quarter hour, which still stands.
+fn read_said(history: &History, now: f64) -> Result<Vec<(String, String)>, String> {
+    let mut statement = history
+        .db
+        .prepare("SELECT severity, text FROM said WHERE at >= ?1 ORDER BY severity, text")
+        .map_err(fail)?;
+    statement
+        .query_map([now - 900.0], |row| Ok((row.get(0)?, row.get(1)?)))
+        .map_err(fail)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(fail)
+}
+
+/// The share of each of the eight weeks before this one that was rebuilt
+/// context, for the weeks that spent.
+fn waste_before(history: &History, zone: &Zone, today: i64) -> Result<Vec<f64>, String> {
+    Ok((1..=8)
+        .map(|weeks| {
+            let first = today - 6 - 7 * weeks;
+            waste::share(history, zone.day_start(first), zone.day_start(first + 7))
+        })
+        .collect::<Result<Vec<_>, _>>()?
+        .into_iter()
+        .flatten()
+        .collect())
+}
+
+/// Each quest's root, the quest at the top of its family.
+fn roots(quests: &[crate::quests::Quest]) -> HashMap<String, String> {
+    quests
+        .iter()
+        .map(|quest| {
+            (
+                quest.id.clone(),
+                crate::quests::root(quests, &quest.id).to_owned(),
+            )
+        })
+        .collect()
+}
+
 /// The state space's share of the mixture, from how each model scored on
 /// the last four weeks' days: the better one gets more, never all.
 fn mixture_weight(days: &Days) -> f64 {
@@ -457,8 +494,7 @@ fn mixture_weight(days: &Days) -> f64 {
         scores
             .iter()
             .find(|s| s.model == model && s.horizon == 1)
-            .map(|s| s.crps)
-            .unwrap_or(1.0)
+            .map_or(1.0, |s| s.crps)
     };
     let (one, other) = (
         crps("state space").max(1e-6),
@@ -485,8 +521,8 @@ fn counted(cap: &Cap, earlier: &[Cap], hours: &BTreeMap<i64, f64>) -> f64 {
         let last = crate::time::hour_of(reading.at);
         // A period's cap counts from the period's start, not a window back.
         let first = match reading.resets {
-            Some(resets) => crate::time::hour_of(resets - reading.window_hours as f64 * HOUR),
-            None => last - reading.window_hours as i64 + 1,
+            Some(resets) => crate::time::hour_of(resets - f64::from(reading.window_hours) * HOUR),
+            None => last - i64::from(reading.window_hours) + 1,
         };
         spent += reading.spent;
         billed += hours.range(first..=last).map(|(_, d)| d).sum::<f64>();
@@ -502,11 +538,16 @@ fn counted(cap: &Cap, earlier: &[Cap], hours: &BTreeMap<i64, f64>) -> f64 {
 /// the first reset after now, from the one after it was read.
 fn next_reset(cap: &Cap, now: f64) -> Option<f64> {
     let first = cap.resets?;
-    let length = cap.window_hours as f64 * HOUR;
+    let length = f64::from(cap.window_hours) * HOUR;
     let passed = ((now - first) / length).floor().max(-1.0) + 1.0;
     Some(first + passed * length)
 }
 
+#[expect(
+    clippy::float_cmp,
+    reason = "a day that spent the very same as today is a tie, counted half as a mid-rank \
+              percentile counts it"
+)]
 fn standing(zone: &Zone, hours: &BTreeMap<i64, f64>, now: f64, so_far: f64) -> Standing {
     let today = zone.day(now);
     let weekend = |day: i64| Zone::weekday(day) >= 5;
@@ -538,9 +579,9 @@ fn standing(zone: &Zone, hours: &BTreeMap<i64, f64>, now: f64, so_far: f64) -> S
     if comparable.iter().filter(|value| **value > 0.0).count() < 5 {
         return Standing::default();
     }
-    let below = comparable.iter().filter(|value| **value < so_far).count() as f64;
-    let equal = comparable.iter().filter(|value| **value == so_far).count() as f64;
-    let percentile = (below + equal / 2.0) / comparable.len() as f64;
+    let below = stats::count(comparable.iter().filter(|value| **value < so_far).count());
+    let equal = stats::count(comparable.iter().filter(|value| **value == so_far).count());
+    let percentile = (below + equal / 2.0) / stats::count(comparable.len());
     let word = if percentile <= 0.1 {
         WORDS[0]
     } else if percentile <= 0.9 {
@@ -569,35 +610,18 @@ fn cap_views(
     if caps.is_empty()
         && let Some(own) = &config.cap
     {
-        let window = own.window_hours as i64;
-        caps.push(Cap {
-            feed: String::new(),
-            name: "own".into(),
-            label: format!("{}-hour cap", own.window_hours),
-            allowance: Some(own.allowance),
-            window_hours: own.window_hours,
-            spent: hours
-                .range(now_hour - window + 1..=now_hour)
-                .map(|(_, d)| d)
-                .sum(),
-            warn: own.warn,
-            fallback: None,
-            state: "ok".into(),
-            ends: None,
-            ends_known: true,
-            resets: None,
-            at: now,
-        });
+        caps.push(own_cap(own, hours, now));
     }
     let mut out = Vec::new();
     for cap in caps {
-        let window = cap.window_hours as i64;
+        let window = i64::from(cap.window_hours);
         let earlier = caps::earlier(history, &cap, EARLIER_PERIODS)?;
-        let share = counted(&cap, &earlier, hours);
+        let cap_share = counted(&cap, &earlier, hours);
         // What's been billed since the feed's figure, hours wholly after it:
         // none when the figure came this hour.
         let after = crate::time::hour_of(cap.at) + 1;
-        let billed = |from: i64| share * hours.range(from..=now_hour).map(|(_, d)| d).sum::<f64>();
+        let billed =
+            |from: i64| cap_share * hours.range(from..=now_hour).map(|(_, d)| d).sum::<f64>();
         let since: f64 = if cap.feed.is_empty() || after > now_hour {
             0.0
         } else {
@@ -606,32 +630,23 @@ fn cap_views(
         let resets = next_reset(&cap, now);
         let spent = match resets {
             // Read in a period that's since reset: what's billed since.
-            Some(next) if cap.at < next - window as f64 * HOUR => {
-                billed(crate::time::hour_of(next - window as f64 * HOUR))
-            }
+            Some(next) if cap.at < next - f64::from(cap.window_hours) * HOUR => billed(
+                crate::time::hour_of(next - f64::from(cap.window_hours) * HOUR),
+            ),
             _ => cap.spent + since,
         };
         // What rolls out next: the window's oldest hours first.
         let past: Vec<f64> = (now_hour - window + 1..=now_hour)
-            .map(|hour| share * hours.get(&hour).copied().unwrap_or(0.0))
+            .map(|hour| cap_share * hours.get(&hour).copied().unwrap_or(0.0))
             .collect();
         let leaving = match resets {
             Some(at) => caps::Window::Resets {
                 at,
-                hours: window as usize,
+                hours: cap.window_hours as usize,
             },
             None => caps::Window::Rolling(&past),
         };
-        let scaled: Paths;
-        let paths = if share == 1.0 {
-            paths
-        } else {
-            scaled = paths
-                .iter()
-                .map(|path| path.iter().map(|day| day * share).collect())
-                .collect();
-            &scaled
-        };
+        let paths = scaled(paths, cap_share);
         let ends_at = cap.ends.map(|day| zone.day_start(day + 1));
         let clock = match cap.allowance {
             Some(allowance) if !paths.is_empty() => Some(caps::clock(
@@ -641,7 +656,7 @@ fn cap_views(
                 cap.fallback,
                 ends_at,
                 leaving,
-                paths,
+                &paths,
                 shape,
                 zone,
                 now,
@@ -671,6 +686,50 @@ fn cap_views(
     Ok(out)
 }
 
+/// The cap a machine with no feed sets itself, read from what's billed.
+fn own_cap(own: &crate::config::CapConfig, hours: &BTreeMap<i64, f64>, now: f64) -> Cap {
+    let now_hour = crate::time::hour_of(now);
+    let window = i64::from(own.window_hours);
+    Cap {
+        feed: String::new(),
+        name: "own".into(),
+        label: format!("{}-hour cap", own.window_hours),
+        allowance: Some(own.allowance),
+        window_hours: own.window_hours,
+        spent: hours
+            .range(now_hour - window + 1..=now_hour)
+            .map(|(_, d)| d)
+            .sum(),
+        warn: own.warn,
+        fallback: None,
+        state: "ok".into(),
+        ends: None,
+        ends_known: true,
+        resets: None,
+        at: now,
+    }
+}
+
+/// The forecast's paths at a cap's share of what's billed, as they are
+/// when it counts all of it.
+#[expect(
+    clippy::float_cmp,
+    reason = "a share of exactly one is what `counted` gives a cap that counts everything, \
+              and scaling by it would only copy the paths"
+)]
+fn scaled(paths: &Paths, share: f64) -> std::borrow::Cow<'_, Paths> {
+    if share == 1.0 {
+        std::borrow::Cow::Borrowed(paths)
+    } else {
+        std::borrow::Cow::Owned(
+            paths
+                .iter()
+                .map(|path| path.iter().map(|day| day * share).collect())
+                .collect(),
+        )
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -696,6 +755,10 @@ mod tests {
     // Read at 04:00 with the day resetting at 10:00: it counts from that
     // day's start, and resets every day after.
     #[test]
+    #[expect(
+        clippy::float_cmp,
+        reason = "whole dollars sum exactly, so the share is the very division written here"
+    )]
     fn a_period_s_cap_counts_from_its_start_and_resets_on_its_own() {
         let mut day = cap("proxy", 300.0);
         day.at = 100.0 * HOUR;
@@ -712,6 +775,10 @@ mod tests {
     // $50 an hour billed for the day: a premium day that counted none of it
     // simulates none, and one that counted half simulates half.
     #[test]
+    #[expect(
+        clippy::float_cmp,
+        reason = "whole dollars sum exactly, and these shares are exact binary fractions"
+    )]
     fn a_cap_counts_its_share_of_what_is_billed() {
         let hours: BTreeMap<i64, f64> = (77..=100).map(|hour| (hour, 50.0)).collect();
         assert_eq!(counted(&cap("proxy", 0.0), &[], &hours), 0.0);
@@ -724,6 +791,10 @@ mod tests {
     // which says nothing of its share; the days before, which counted none
     // of what was billed, say it's none.
     #[test]
+    #[expect(
+        clippy::float_cmp,
+        reason = "whole dollars sum exactly, and these shares are exact binary fractions"
+    )]
     fn a_period_just_begun_takes_its_share_from_the_ones_before() {
         let period = |at: f64, resets: f64, spent: f64| {
             let mut day = cap("proxy", spent);

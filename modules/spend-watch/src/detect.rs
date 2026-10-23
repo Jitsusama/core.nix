@@ -6,17 +6,14 @@
 
 use crate::config::Config;
 use crate::findings::{Action, Finding, Severity};
-use crate::history::History;
+use crate::history::{History, sql as fail};
 use crate::money::{dollars, grouped, percent, whole};
-use crate::picture::Picture;
+use crate::picture::{CapView, Picture};
 use crate::stats;
 use crate::time::{DAY, HOUR, Zone};
 use augurs_changepoint::{Detector, NormalGammaDetector};
 use std::collections::{BTreeMap, HashMap, HashSet};
-
-fn fail(error: rusqlite::Error) -> String {
-    error.to_string()
-}
+use std::fmt::Write as _;
 
 fn finding(
     key: String,
@@ -154,146 +151,188 @@ pub const BURN_DAYS: usize = 56;
 
 pub fn caps(picture: &Picture) -> Vec<Finding> {
     let mut out = Vec::new();
-    let now = picture.now;
     for view in &picture.caps {
-        let cap = &view.cap;
-        let key = |what: &str| format!("cap:{}:{}:{what}", cap.feed, cap.name);
-        let ask = offered(picture, "cap");
-        let Some(allowance) = cap.allowance else {
-            continue;
-        };
-        let share = view.spent / allowance;
-        let over = view.spent >= allowance || cap.state == "refused";
-        // Where the spend is counted: a rolling window, or a period that
-        // resets whatever is spent.
-        let counted = match view.resets {
-            Some(at) => format!(", resetting at {}", picture.zone.clock(at, now)),
-            None => format!(" in the last {} hours", cap.window_hours),
-        };
-        if over {
-            let frees = match view.resets {
-                Some(_) => String::new(),
-                None => view
-                    .clock
-                    .as_ref()
-                    .and_then(|clock| clock.frees_at)
-                    .map(|at| {
-                        format!(
-                            " It's back under by {} if nothing more is spent.",
-                            picture.zone.clock(at, now)
-                        )
-                    })
-                    .unwrap_or_default(),
-            };
-            let mut f = finding(
-                key("over"),
-                "caps",
-                Severity::Alert,
-                format!("over the {}", cap.label),
-                format!(
-                    "{} of {}{counted}.{frees}",
-                    whole(view.spent),
-                    whole(allowance),
-                ),
-            );
-            f.badge = view
-                .clock
-                .as_ref()
-                .and_then(|clock| clock.frees_at)
-                .map(|at| format!("back {}", picture.zone.clock(at, now)))
-                .unwrap_or_else(|| percent(share));
-            f.note = format!("{} of {}", whole(view.spent), whole(allowance));
-            f.dollars = view.spent - allowance;
-            f.surprise = 3.0;
-            f.cap = true;
-            f.action = ask.clone();
-            out.push(f);
-            continue;
-        }
-        if let Some(clock) = &view.clock {
-            let chance = clock.cap_within_day;
-            if chance >= 0.2 {
-                let mut f = finding(
-                    key("close"),
-                    "caps",
-                    if chance >= 0.5 {
-                        Severity::Alert
-                    } else {
-                        Severity::Warning
-                    },
-                    format!("may reach the {} within a day", cap.label),
-                    format!(
-                        "{} of {} spent{}; by the forecast's paths.",
-                        whole(view.spent),
-                        whole(allowance),
-                        match view.resets {
-                            Some(_) => counted.clone(),
-                            None => format!(
-                                ", {} rolling out in the next day",
-                                whole(clock.freeing_in_day)
-                            ),
-                        }
-                    ),
-                );
-                f.badge = format!("{} chance", percent(chance));
-                f.note = format!("{} of {} spent", whole(view.spent), whole(allowance));
-                f.dollars = allowance - view.spent;
-                f.surprise = 2.0;
-                f.cap = true;
-                f.action = ask.clone();
-                out.push(f);
-            } else if share >= cap.warn {
-                let mut f = finding(
-                    key("near"),
-                    "caps",
-                    Severity::Warning,
-                    format!("near the {}", cap.label),
-                    format!("{} of {}{counted}.", whole(view.spent), whole(allowance)),
-                );
-                f.badge = percent(share);
-                f.note = format!("{} of {}", whole(view.spent), whole(allowance));
-                f.dollars = allowance - view.spent;
-                f.cap = true;
-                f.action = ask.clone();
-                out.push(f);
-            }
-            // An override ending, warned ahead when what follows it is likely
-            // to be over at once.
-            if let (Some(ends_at), Some(after), Some(fallback)) =
-                (view.ends_at, clock.over_after_end, cap.fallback)
-            {
-                let days_left = (ends_at - now) / DAY;
-                let lead = picture.lead;
-                if days_left > 0.0 && days_left <= lead.0 as f64 && after >= 0.5 {
-                    let day = Zone::day_name(picture.zone.day(ends_at - 1.0));
-                    let mut f = finding(
-                        key("ending"),
-                        "caps",
-                        if days_left <= lead.1 as f64 {
-                            Severity::Alert
-                        } else {
-                            Severity::Warning
-                        },
-                        format!("the {} override is ending", cap.label),
-                        format!(
-                            "The {} override ends {day}. At this pace, a {} chance the spend \
-                             is over the {} that follows the moment it does.",
-                            whole(allowance),
-                            percent(after),
-                            whole(fallback)
-                        ),
-                    );
-                    f.badge = format!("ends {day}");
-                    f.note = ending_note(after, fallback);
-                    f.dollars = view.spent;
-                    f.surprise = 2.5;
-                    f.cap = true;
-                    f.action = ask.clone();
-                    out.push(f);
-                }
-            }
-        }
+        out.extend(cap_findings(picture, view));
     }
+    out.extend(cap_events(picture));
+    out
+}
+
+/// A finding's key for one of a cap's states.
+fn cap_key(view: &CapView, what: &str) -> String {
+    format!("cap:{}:{}:{what}", view.cap.feed, view.cap.name)
+}
+
+/// What one cap with an allowance says now: over it, likely to reach it
+/// within a day, or near it, and its override ending.
+fn cap_findings(picture: &Picture, view: &CapView) -> Vec<Finding> {
+    let cap = &view.cap;
+    let now = picture.now;
+    let ask = offered(picture, "cap");
+    let Some(allowance) = cap.allowance else {
+        return Vec::new();
+    };
+    let share = view.spent / allowance;
+    let over = view.spent >= allowance || cap.state == "refused";
+    // Where the spend is counted: a rolling window, or a period that
+    // resets whatever is spent.
+    let counted = match view.resets {
+        Some(at) => format!(", resetting at {}", picture.zone.clock(at, now)),
+        None => format!(" in the last {} hours", cap.window_hours),
+    };
+    if over {
+        return vec![over_finding(picture, view, allowance, &counted, ask)];
+    }
+    let mut out = Vec::new();
+    let Some(clock) = &view.clock else {
+        return out;
+    };
+    let chance = clock.cap_within_day;
+    if chance >= 0.2 {
+        let mut f = finding(
+            cap_key(view, "close"),
+            "caps",
+            if chance >= 0.5 {
+                Severity::Alert
+            } else {
+                Severity::Warning
+            },
+            format!("may reach the {} within a day", cap.label),
+            format!(
+                "{} of {} spent{}; by the forecast's paths.",
+                whole(view.spent),
+                whole(allowance),
+                match view.resets {
+                    Some(_) => counted.clone(),
+                    None => format!(
+                        ", {} rolling out in the next day",
+                        whole(clock.freeing_in_day)
+                    ),
+                }
+            ),
+        );
+        f.badge = format!("{} chance", percent(chance));
+        f.note = format!("{} of {} spent", whole(view.spent), whole(allowance));
+        f.dollars = allowance - view.spent;
+        f.surprise = 2.0;
+        f.cap = true;
+        f.action.clone_from(&ask);
+        out.push(f);
+    } else if share >= cap.warn {
+        let mut f = finding(
+            cap_key(view, "near"),
+            "caps",
+            Severity::Warning,
+            format!("near the {}", cap.label),
+            format!("{} of {}{counted}.", whole(view.spent), whole(allowance)),
+        );
+        f.badge = percent(share);
+        f.note = format!("{} of {}", whole(view.spent), whole(allowance));
+        f.dollars = allowance - view.spent;
+        f.cap = true;
+        f.action.clone_from(&ask);
+        out.push(f);
+    }
+    out.extend(ending_finding(picture, view, clock, allowance, ask));
+    out
+}
+
+/// A cap that's over: by how much, and when it's back under.
+fn over_finding(
+    picture: &Picture,
+    view: &CapView,
+    allowance: f64,
+    counted: &str,
+    ask: Option<Action>,
+) -> Finding {
+    let now = picture.now;
+    let frees_at = view.clock.as_ref().and_then(|clock| clock.frees_at);
+    let frees = match view.resets {
+        Some(_) => String::new(),
+        None => frees_at
+            .map(|at| {
+                format!(
+                    " It's back under by {} if nothing more is spent.",
+                    picture.zone.clock(at, now)
+                )
+            })
+            .unwrap_or_default(),
+    };
+    let mut f = finding(
+        cap_key(view, "over"),
+        "caps",
+        Severity::Alert,
+        format!("over the {}", view.cap.label),
+        format!(
+            "{} of {}{counted}.{frees}",
+            whole(view.spent),
+            whole(allowance),
+        ),
+    );
+    f.badge = frees_at.map_or_else(
+        || percent(view.spent / allowance),
+        |at| format!("back {}", picture.zone.clock(at, now)),
+    );
+    f.note = format!("{} of {}", whole(view.spent), whole(allowance));
+    f.dollars = view.spent - allowance;
+    f.surprise = 3.0;
+    f.cap = true;
+    f.action = ask;
+    f
+}
+
+/// An override ending, warned ahead when what follows it is likely to be
+/// over at once.
+fn ending_finding(
+    picture: &Picture,
+    view: &CapView,
+    clock: &crate::caps::Clock,
+    allowance: f64,
+    ask: Option<Action>,
+) -> Option<Finding> {
+    let (Some(ends_at), Some(after), Some(fallback)) =
+        (view.ends_at, clock.over_after_end, view.cap.fallback)
+    else {
+        return None;
+    };
+    let days_left = (ends_at - picture.now) / DAY;
+    let lead = picture.lead;
+    let due = days_left > 0.0 && days_left <= f64::from(lead.0) && after >= 0.5;
+    if !due {
+        return None;
+    }
+    let day = Zone::day_name(picture.zone.day(ends_at - 1.0));
+    let mut f = finding(
+        cap_key(view, "ending"),
+        "caps",
+        if days_left <= f64::from(lead.1) {
+            Severity::Alert
+        } else {
+            Severity::Warning
+        },
+        format!("the {} override is ending", view.cap.label),
+        format!(
+            "The {} override ends {day}. At this pace, a {} chance the spend \
+             is over the {} that follows the moment it does.",
+            whole(allowance),
+            percent(after),
+            whole(fallback)
+        ),
+    );
+    f.badge = format!("ends {day}");
+    f.note = ending_note(after, fallback);
+    f.dollars = view.spent;
+    f.surprise = 2.5;
+    f.cap = true;
+    f.action = ask;
+    Some(f)
+}
+
+/// The cap changes of the last day worth a look: a fall or a lapse not yet
+/// undone, and a rise.
+fn cap_events(picture: &Picture) -> Vec<Finding> {
+    let mut out = Vec::new();
+    let now = picture.now;
     // A fall is past once a later change takes the cap back to where it
     // was, so it stops asking for a look; the return is told instead.
     // No limit is at least any limit.
@@ -342,7 +381,10 @@ pub fn caps(picture: &Picture) -> Vec<Finding> {
         let mut f = finding(
             format!(
                 "cap-event:{}:{}:{}:{}",
-                event.feed, event.name, event.kind, event.at as i64
+                event.feed,
+                event.name,
+                event.kind,
+                crate::time::whole_seconds(event.at)
             ),
             "caps",
             severity,
@@ -445,7 +487,7 @@ fn minutes(history: &History, from: f64) -> Result<BTreeMap<i64, (f64, String)>,
 /// never told: the caps say when spending fast is about to cost access.
 pub fn burn(picture: &Picture, history: &History, config: &Config) -> Result<Vec<Finding>, String> {
     let now = picture.now;
-    let from = now - BURN_DAYS as f64 * DAY;
+    let from = now - stats::count(BURN_DAYS) * DAY;
     let by_minute = minutes(history, from)?;
     if by_minute.is_empty() {
         return Ok(Vec::new());
@@ -457,25 +499,18 @@ pub fn burn(picture: &Picture, history: &History, config: &Config) -> Result<Vec
     };
     let zone = &picture.zone;
     let today = zone.day(now);
-    // A working hour: the median of the hours before today that spent at
-    // least a dollar.
-    let mut hours: BTreeMap<i64, f64> = BTreeMap::new();
-    for (minute, (spent, _)) in by_minute.range(..(zone.day_start(today) / 60.0) as i64) {
-        *hours.entry(minute / 60).or_default() += spent * ratio;
-    }
-    let working = stats::median(
-        &hours
-            .into_values()
-            .filter(|spent| *spent >= 1.0)
-            .collect::<Vec<_>>(),
+    let working = working_hour(
+        &by_minute,
+        crate::time::minute_of(zone.day_start(today)),
+        ratio,
     );
     if !working.is_finite() || working <= 0.0 {
         return Ok(Vec::new());
     }
     // Twice a working hour's rate, whatever the hour.
     let allowance = |_minute: i64| 2.0 * working / 60.0;
-    let first = (from / 60.0) as i64;
-    let last = (now / 60.0) as i64;
+    let first = crate::time::minute_of(from);
+    let last = crate::time::minute_of(now);
     let mut score = 0.0;
     let mut daily_max: BTreeMap<i64, f64> = BTreeMap::new();
     let mut last_hour: Vec<(f64, String)> = Vec::new();
@@ -486,7 +521,7 @@ pub fn burn(picture: &Picture, history: &History, config: &Config) -> Result<Vec
             .unwrap_or((0.0, String::new()));
         let spent = spent * ratio;
         score = f64::max(0.0, score + spent - allowance(minute));
-        let day = zone.day(minute as f64 * 60.0);
+        let day = zone.day(crate::time::minute_start(minute));
         let entry = daily_max.entry(day).or_default();
         *entry = entry.max(score);
         if minute > last - 60 {
@@ -499,7 +534,7 @@ pub fn burn(picture: &Picture, history: &History, config: &Config) -> Result<Vec
     let began = by_minute
         .keys()
         .next()
-        .map_or(today, |minute| zone.day(*minute as f64 * 60.0));
+        .map_or(today, |minute| zone.day(crate::time::minute_start(*minute)));
     let past: Vec<f64> = daily_max
         .iter()
         .filter(|(day, _)| **day >= began && **day < today)
@@ -535,11 +570,46 @@ pub fn burn(picture: &Picture, history: &History, config: &Config) -> Result<Vec
     else {
         return Ok(Vec::new());
     };
+    Ok(vec![burn_finding(
+        picture,
+        history,
+        config,
+        &top,
+        (spent_hour, working),
+    )])
+}
+
+/// A working hour: the median of the hours before `before`, a minute, that
+/// spent at least a dollar, at the bill's ratio to list.
+fn working_hour(by_minute: &BTreeMap<i64, (f64, String)>, before: i64, ratio: f64) -> f64 {
+    let mut hours: BTreeMap<i64, f64> = BTreeMap::new();
+    for (minute, (spent, _)) in by_minute.range(..before) {
+        *hours.entry(minute / 60).or_default() += spent * ratio;
+    }
+    stats::median(
+        &hours
+            .into_values()
+            .filter(|spent| *spent >= 1.0)
+            .collect::<Vec<_>>(),
+    )
+}
+
+/// The burn's note: the last hour's spend against a working hour's, named
+/// for the session spending most, `top`, and its quest.
+fn burn_finding(
+    picture: &Picture,
+    history: &History,
+    config: &Config,
+    top: &str,
+    (spent_hour, working): (f64, f64),
+) -> Finding {
+    let today = picture.zone.day(picture.now);
+    let rate = 1.0 / config.detectors.burn_run_length_days;
     let quest = history
         .db
         .query_row(
             "SELECT quest FROM turns WHERE session = ?1 ORDER BY at DESC LIMIT 1",
-            [&top],
+            [top],
             |row| row.get::<_, Option<String>>(0),
         )
         .ok()
@@ -572,10 +642,10 @@ pub fn burn(picture: &Picture, history: &History, config: &Config) -> Result<Vec
     f.note = format!("a working hour is {}", whole(working));
     f.dollars = spent_hour;
     f.surprise = -(rate.log10());
-    f.session = Some(top.clone());
+    f.session = Some(top.to_owned());
     f.quest = quest;
-    f.action = Some(go_to(&top));
-    Ok(vec![f])
+    f.action = Some(go_to(top));
+    f
 }
 
 pub fn waste(picture: &Picture, config: &Config) -> Vec<Finding> {
@@ -627,10 +697,12 @@ pub fn waste(picture: &Picture, config: &Config) -> Vec<Finding> {
     if let Some((session, worst)) = &waste.worst
         && worst * ratio >= config.detectors.floor
     {
-        detail.push_str(&format!(
+        // Writing to a String can't fail.
+        _ = write!(
+            detail,
             " {} of it after pauses in one session.",
             dollars(worst * ratio)
-        ));
+        );
         f.session = Some(session.clone());
         f.action = Some(go_to(session));
     }
@@ -696,7 +768,7 @@ pub fn peers(picture: &Picture, config: &Config) -> Vec<Finding> {
                     capitalized(&sessions),
                     worst.times,
                     dollars(spent),
-                    grouped(turns as u64),
+                    turns_shown(turns),
                     percent(worst.work.cached),
                     percent(worst.usual_cached),
                     percent(config.detectors.false_discovery),
@@ -707,7 +779,7 @@ pub fn peers(picture: &Picture, config: &Config) -> Vec<Finding> {
             f.note = format!(
                 "{sessions}, {} over {} turns",
                 whole(spent),
-                grouped(turns as u64)
+                turns_shown(turns)
             );
             f.dollars = members.iter().map(|o| o.excess).sum::<f64>() * ratio;
             f.surprise = members
@@ -722,6 +794,16 @@ pub fn peers(picture: &Picture, config: &Config) -> Vec<Finding> {
         .collect()
 }
 
+/// A count of turns, grouped by thousands.
+#[expect(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    reason = "turns are a sum of whole counts of at least zero, far inside u64"
+)]
+fn turns_shown(turns: f64) -> String {
+    grouped(turns as u64)
+}
+
 fn capitalized(text: &str) -> String {
     let mut chars = text.chars();
     match chars.next() {
@@ -733,10 +815,10 @@ fn capitalized(text: &str) -> String {
 /// A quest spending while it doesn't move: real money over the last week
 /// and no update to its record in five days.
 pub fn stalled(picture: &Picture, config: &Config) -> Vec<Finding> {
-    let mut spend: HashMap<&str, f64> = HashMap::new();
+    let mut by_root: HashMap<&str, f64> = HashMap::new();
     for piece in &picture.pieces_week {
         if let Some(quest) = &piece.quest {
-            *spend.entry(picture.root(quest)).or_default() += piece.dollars;
+            *by_root.entry(picture.root(quest)).or_default() += piece.dollars;
         }
     }
     // A subquest's spend is its root's, so its changes are too: a root's
@@ -754,7 +836,7 @@ pub fn stalled(picture: &Picture, config: &Config) -> Vec<Finding> {
         if quest.status != "active" {
             continue;
         }
-        let spent = spend.get(quest.id.as_str()).copied().unwrap_or(0.0);
+        let spent = by_root.get(quest.id.as_str()).copied().unwrap_or(0.0);
         let updated = changed.get(quest.id.as_str());
         let quiet_days = updated.map_or(0, |day| today - day);
         if spent >= config.detectors.floor.max(100.0) && quiet_days >= 5 {
@@ -791,7 +873,7 @@ pub fn regimes(picture: &Picture) -> Vec<Finding> {
     }
     let logs: Vec<f64> = daily[..n].iter().map(|d| d.ln_1p()).collect();
     let centre = stats::mean(&logs);
-    let spread = (logs.iter().map(|x| (x - centre).powi(2)).sum::<f64>() / n as f64)
+    let spread = (logs.iter().map(|x| (x - centre).powi(2)).sum::<f64>() / stats::count(n))
         .sqrt()
         .max(1e-6);
     let z: Vec<f64> = logs.iter().map(|x| (x - centre) / spread).collect();
@@ -821,7 +903,7 @@ pub fn regimes(picture: &Picture) -> Vec<Finding> {
     if !before.is_finite() || !after.is_finite() || (after / before - 1.0).abs() < 0.25 {
         return Vec::new();
     }
-    let day = picture.days.first + at as i64;
+    let day = picture.days.first + stats::signed(at);
     let mut f = finding(
         format!("regime:{day}"),
         "regimes",
@@ -926,7 +1008,12 @@ pub fn novelty(
             out.push(f);
         }
     }
-    // Spend billed for sessions no log here knows, past its usual share.
+    out.extend(elsewhere(picture));
+    Ok(out)
+}
+
+/// Spend billed for sessions no log here knows, past its usual share.
+fn elsewhere(picture: &Picture) -> Option<Finding> {
     let share = |pieces: &[crate::series::Piece]| {
         let pi: f64 = pieces
             .iter()
@@ -942,27 +1029,28 @@ pub fn novelty(
     };
     let (week, week_share) = share(&picture.pieces_week);
     let (_, month_share) = share(&picture.pieces_month);
-    if week >= 50.0 && week_share > (2.0 * month_share).max(0.1) {
-        let mut f = finding(
-            "new:elsewhere".into(),
-            "novelty",
-            Severity::Warning,
-            "pi spending somewhere this machine doesn't know".into(),
-            format!(
-                "{} in the last 7 days from sessions with no log here, {} of pi's spend against \
-                 {} usual.",
-                dollars(week),
-                percent(week_share),
-                percent(month_share)
-            ),
-        );
-        f.badge = whole(week);
-        f.note = elsewhere_note(week_share, month_share);
-        f.dollars = week;
-        f.surprise = 2.0;
-        out.push(f);
+    let past_usual = week >= 50.0 && week_share > (2.0 * month_share).max(0.1);
+    if !past_usual {
+        return None;
     }
-    Ok(out)
+    let mut f = finding(
+        "new:elsewhere".into(),
+        "novelty",
+        Severity::Warning,
+        "pi spending somewhere this machine doesn't know".into(),
+        format!(
+            "{} in the last 7 days from sessions with no log here, {} of pi's spend against \
+             {} usual.",
+            dollars(week),
+            percent(week_share),
+            percent(month_share)
+        ),
+    );
+    f.badge = whole(week);
+    f.note = elsewhere_note(week_share, month_share);
+    f.dollars = week;
+    f.surprise = 2.0;
+    Some(f)
 }
 
 /// On course for a day far past any of the last eight weeks'.
@@ -1100,13 +1188,13 @@ pub fn health(picture: &Picture) -> Vec<Finding> {
         // What failed, without the error underneath it, which the detail
         // keeps; or, when the feed says no more than the title does, what
         // it means for the figures.
-        f.note = source
+        source
             .message
             .split(": ")
             .next()
             .filter(|said| !said.is_empty() && !said.eq_ignore_ascii_case(&f.title))
             .unwrap_or("other sources fill in")
-            .to_owned();
+            .clone_into(&mut f.note);
         f.surprise = 0.5;
         out.push(f);
     }
@@ -1157,7 +1245,7 @@ mod tests {
             history
                 .add_event(&Event::Turn(Turn {
                     session: format!("s{back}"),
-                    at: NOW - back as f64 * DAY - 3600.0,
+                    at: NOW - crate::time::hour_start(back * 24) - 3600.0,
                     model: "m".into(),
                     provider: "p".into(),
                     kind: Kind::Agent,
@@ -1215,9 +1303,9 @@ mod tests {
         let history = History::memory();
         let today = (NOW / DAY).floor() * DAY;
         for back in 0..56 {
-            let day = today - back as f64 * DAY;
+            let day = today - f64::from(back) * DAY;
             for minute in (9 * 60..17 * 60).step_by(10) {
-                let at = day + minute as f64 * 60.0;
+                let at = day + f64::from(minute) * 60.0;
                 if at < NOW - 3600.0 {
                     turn(&history, &format!("s{back}"), at, 1.0);
                 }
@@ -1265,7 +1353,7 @@ mod tests {
         for back in 1..28 {
             let line = serde_json::json!({
                 "v": 1, "kind": "billed", "source": "meter", "tool": "all",
-                "hour": crate::time::rfc3339(today - back as f64 * DAY + 7.0 * HOUR),
+                "hour": crate::time::rfc3339(today - f64::from(back) * DAY + 7.0 * HOUR),
                 "model": "y", "dollars": 5.0,
             });
             let record = crate::feed::parse(&line.to_string()).unwrap();
@@ -1273,7 +1361,7 @@ mod tests {
         }
         for back in 0..28 {
             for minute in (9 * 60..17 * 60).step_by(10) {
-                let at = today - back as f64 * DAY + minute as f64 * 60.0;
+                let at = today - f64::from(back) * DAY + f64::from(minute) * 60.0;
                 if at < NOW - 3600.0 {
                     turn(&history, &format!("s{back}"), at, 2.0);
                 }
@@ -1294,15 +1382,15 @@ mod tests {
     #[test]
     fn a_moved_price_is_noted_and_taken_up() {
         let history = History::memory();
-        let today = (NOW / DAY).floor() as i64;
+        let today = crate::time::hour_of(NOW) / 24;
         for back in 1..=23 {
             let day = today - back;
             let hour = day * 24 + 12;
-            turn(&history, "s", hour as f64 * HOUR, 100.0);
+            turn(&history, "s", crate::time::hour_start(hour), 100.0);
             let ratio = if back <= 3 { 0.55 } else { 0.72 };
             let line = serde_json::json!({
                 "v": 1, "kind": "billed", "source": "warehouse", "tool": "pi",
-                "hour": crate::time::rfc3339(hour as f64 * HOUR), "model": "m",
+                "hour": crate::time::rfc3339(crate::time::hour_start(hour)), "model": "m",
                 "dollars": 100.0 * ratio,
             });
             let record = crate::feed::parse(&line.to_string()).unwrap();
@@ -1310,7 +1398,7 @@ mod tests {
         }
         let settled = serde_json::json!({
             "v": 1, "kind": "settled", "source": "warehouse",
-            "through": crate::time::rfc3339((today * 24) as f64 * HOUR),
+            "through": crate::time::rfc3339(crate::time::hour_start(today * 24)),
         });
         let record = crate::feed::parse(&settled.to_string()).unwrap();
         crate::feed::store(&history, "proxy", &record, NOW).unwrap();
@@ -1390,7 +1478,7 @@ mod tests {
     fn an_ordinary_hour_is_no_burn() {
         let history = ordinary();
         for minute in (0..60).step_by(10) {
-            turn(&history, "s0", NOW - 3600.0 + minute as f64 * 60.0, 1.0);
+            turn(&history, "s0", NOW - 3600.0 + f64::from(minute) * 60.0, 1.0);
         }
         assert!(burns(&history).is_empty());
     }
@@ -1401,7 +1489,12 @@ mod tests {
     fn a_burning_hour_names_its_session() {
         let history = ordinary();
         for minute in 0..60 {
-            turn(&history, "hot", NOW - 3600.0 + minute as f64 * 60.0, 10.0);
+            turn(
+                &history,
+                "hot",
+                NOW - 3600.0 + f64::from(minute) * 60.0,
+                10.0,
+            );
         }
         let found = burns(&history);
         assert_eq!(found.len(), 1, "{found:?}");
@@ -1417,7 +1510,12 @@ mod tests {
     fn a_burn_is_a_note() {
         let history = ordinary();
         for minute in 0..60 {
-            turn(&history, "hot", NOW - 3600.0 + minute as f64 * 60.0, 10.0);
+            turn(
+                &history,
+                "hot",
+                NOW - 3600.0 + f64::from(minute) * 60.0,
+                10.0,
+            );
         }
         let found = burns(&history);
         assert_eq!(found.len(), 1, "{found:?}");
@@ -1435,7 +1533,7 @@ mod tests {
             turn(
                 &history,
                 "agent",
-                night - 3600.0 + minute as f64 * 60.0,
+                night - 3600.0 + f64::from(minute) * 60.0,
                 1.5,
             );
         }
@@ -1450,11 +1548,16 @@ mod tests {
     fn a_burn_is_one_however_its_sessions_change() {
         let history = ordinary();
         for minute in 0..60 {
-            turn(&history, "first", NOW - 7200.0 + minute as f64 * 60.0, 10.0);
+            turn(
+                &history,
+                "first",
+                NOW - 7200.0 + f64::from(minute) * 60.0,
+                10.0,
+            );
             turn(
                 &history,
                 "second",
-                NOW - 3600.0 + minute as f64 * 60.0,
+                NOW - 3600.0 + f64::from(minute) * 60.0,
                 10.0,
             );
         }
@@ -1495,7 +1598,7 @@ mod tests {
             history
                 .add_event(&Event::Turn(Turn {
                     session: "s".into(),
-                    at: NOW - day as f64 * DAY - 3600.0,
+                    at: NOW - f64::from(day) * DAY - 3600.0,
                     model: "m".into(),
                     provider: "p".into(),
                     kind: Kind::Agent,
@@ -1536,10 +1639,10 @@ mod tests {
         let history = History::memory();
         let start = NOW - 2.0 * DAY;
         for half in 0..96 {
-            turn(&history, "s", start + half as f64 * 1800.0, 1.5);
+            turn(&history, "s", start + f64::from(half) * 1800.0, 1.5);
         }
         for hour in 0..24 {
-            let now = start + DAY + hour as f64 * 3600.0;
+            let now = start + DAY + f64::from(hour) * 3600.0;
             assert!(burns_at(&history, now).is_empty(), "a burn at {hour}");
         }
     }
@@ -1554,7 +1657,7 @@ mod tests {
             turn(
                 &history,
                 "hot",
-                evening - 9000.0 + minute as f64 * 60.0,
+                evening - 9000.0 + f64::from(minute) * 60.0,
                 10.0,
             );
         }

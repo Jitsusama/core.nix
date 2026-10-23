@@ -45,7 +45,7 @@ fn deletion_date(info: &Path) -> Option<f64> {
 /// When a path last changed state, which a move into the trash does.
 fn arrived(path: &Path) -> Option<f64> {
     let meta = fs::symlink_metadata(path).ok()?;
-    Some(meta.ctime() as f64 + meta.ctime_nsec() as f64 / 1e9)
+    Some(crate::units::wall(meta.ctime(), meta.ctime_nsec()))
 }
 
 /// The logical size of what lies under a path, never through a symlink or

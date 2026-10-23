@@ -42,10 +42,10 @@ pub fn parse(text: &str) -> Option<Quest> {
             let set =
                 |value: &str| (value != "null" && !value.is_empty()).then(|| value.to_owned());
             match key {
-                "id" => quest.id = value.to_owned(),
-                "kind" => quest.kind = value.to_owned(),
+                "id" => value.clone_into(&mut quest.id),
+                "kind" => value.clone_into(&mut quest.kind),
                 "parent" => quest.parent = set(value),
-                "status" => quest.status = value.to_owned(),
+                "status" => value.clone_into(&mut quest.status),
                 "started" => quest.started = set(value),
                 "updated" => quest.updated = set(value),
                 "aliases" | "sessions" if value.is_empty() => list = Some(key),
@@ -71,12 +71,11 @@ pub fn parse(text: &str) -> Option<Quest> {
             _ => {}
         }
     }
-    quest.title = rest
-        .lines()
+    rest.lines()
         .find_map(|line| line.strip_prefix("# "))
         .unwrap_or(&quest.id)
         .trim()
-        .to_owned();
+        .clone_into(&mut quest.title);
     (!quest.id.is_empty()).then_some(quest)
 }
 

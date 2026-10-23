@@ -49,7 +49,7 @@ pub struct Walk<'a> {
 }
 
 fn number(journey: &Journey, step: &dyn Step) -> (usize, usize) {
-    let steps: Vec<&str> = journey.steps().map(|step| step.id()).collect();
+    let steps: Vec<&str> = journey.steps().map(Step::id).collect();
     let at = steps.iter().position(|id| *id == step.id()).unwrap_or(0);
     (at + 1, steps.len())
 }
@@ -79,12 +79,11 @@ impl Ticking {
 
 impl Walk<'_> {
     fn place(&self, step: Option<&dyn Step>) -> (usize, Option<usize>) {
-        let (at, of) = match step {
-            Some(step) => number(self.journey, step),
-            None => {
-                let of = self.journey.steps().count();
-                (of, of)
-            }
+        let (at, of) = if let Some(step) = step {
+            number(self.journey, step)
+        } else {
+            let of = self.journey.steps().count();
+            (of, of)
         };
         (at, self.whole.then_some(of))
     }
@@ -94,7 +93,7 @@ impl Walk<'_> {
         io: &mut dyn Io,
         step: Option<&dyn Step>,
         done: &[String],
-        moment: Moment,
+        moment: &Moment,
     ) -> Result<(), Fault> {
         let (at, steps) = self.place(step);
         let (width, height) = io.size();
@@ -104,7 +103,7 @@ impl Walk<'_> {
             steps,
             done,
         };
-        io.show(&draw(self.theme, &at, &moment, width, height), self.theme)
+        io.show(&draw(self.theme, &at, moment, width, height), self.theme)
     }
 
     /// The step's working screen, drawn now and then once a second with
@@ -123,15 +122,18 @@ impl Walk<'_> {
             io,
             Some(step),
             done,
-            Moment::Working {
+            &Moment::Working {
                 title: step.title(),
                 meanwhile,
                 progress: Some(&said),
             },
         )?;
-        let stop = Arc::new(AtomicBool::new(false));
+        let stopping = Arc::new(AtomicBool::new(false));
         let Some(mut painter) = io.painter() else {
-            return Ok(Ticking { stop, thread: None });
+            return Ok(Ticking {
+                stop: stopping,
+                thread: None,
+            });
         };
         let (at, steps) = self.place(Some(step));
         let journey = self.name.to_string();
@@ -140,7 +142,7 @@ impl Walk<'_> {
         let done = done.to_vec();
         let theme = self.theme.clone();
         let meter = meter.clone();
-        let stopped = stop.clone();
+        let stopped = stopping.clone();
         let thread = std::thread::spawn(move || {
             let slice = Duration::from_millis(100);
             loop {
@@ -177,18 +179,9 @@ impl Walk<'_> {
             }
         });
         Ok(Ticking {
-            stop,
+            stop: stopping,
             thread: Some(thread),
         })
-    }
-
-    /// Waits for Return, or for the machine to change, looking at it again
-    /// every so often by itself, or for Ctrl+C. Says whether to go on.
-    fn wait_or_look(&self, io: &mut dyn Io) -> Result<bool, Fault> {
-        match io.press_within(LOOK_AGAIN)? {
-            Some(Press::Leave) => Ok(false),
-            _ => Ok(true),
-        }
     }
 
     /// Says to put the stick back in, until it is.
@@ -202,24 +195,13 @@ impl Walk<'_> {
             io,
             step,
             done,
-            Moment::Blocked {
+            &Moment::Blocked {
                 title: "Put the stick back in",
                 why: "the next step needs what's on the stick",
                 remedy: "plug the stick back in, into any port: the guide carries on by itself once it's in",
             },
         )?;
-        self.wait_or_look(io)
-    }
-
-    /// Waits for Return, or Ctrl+C. Says whether to go on.
-    fn wait(&self, io: &mut dyn Io) -> Result<bool, Fault> {
-        loop {
-            match io.press()? {
-                Press::Return => return Ok(true),
-                Press::Leave => return Ok(false),
-                _ => {}
-            }
-        }
+        wait_or_look(io)
     }
 
     /// The last lines of the log, until Tab or Return.
@@ -239,7 +221,7 @@ impl Walk<'_> {
             io,
             Some(step),
             done,
-            Moment::Working {
+            &Moment::Working {
                 title: "The log",
                 meanwhile: &said,
                 progress: None,
@@ -283,13 +265,13 @@ impl Walk<'_> {
                     back: at > 0,
                 },
             };
-            self.show(io, Some(step), done, moment)?;
+            self.show(io, Some(step), done, &moment)?;
             match io.press()? {
                 Press::Leave => return Ok(None),
                 Press::Char(c)
                     if !matches!(ask, Ask::Act { .. } | Ask::Choose { .. } | Ask::Show { .. }) =>
                 {
-                    typed.push(c)
+                    typed.push(c);
                 }
                 Press::Return if matches!(ask, Ask::Show { .. }) && !alone => alone = true,
                 Press::Escape if alone => alone = false,
@@ -311,7 +293,7 @@ impl Walk<'_> {
                 }
                 Press::Return => {
                     let answer = match ask {
-                        Ask::Act { .. } => Some(Answer::Done),
+                        Ask::Act { .. } | Ask::Show { .. } => Some(Answer::Done),
                         Ask::Choose { .. } => Some(Answer::Chosen(chosen)),
                         Ask::Secret { .. } | Ask::SecretOr { .. } if typed.is_empty() => None,
                         Ask::Secret { .. } | Ask::SecretOr { .. } => {
@@ -324,7 +306,6 @@ impl Walk<'_> {
                             refused = Some("what was typed isn't what's shown above".into());
                             None
                         }
-                        Ask::Show { .. } => Some(Answer::Done),
                         Ask::Recall { expected, .. }
                             if words::typed(&typed) == words::typed(expected) =>
                         {
@@ -366,7 +347,7 @@ impl Walk<'_> {
         let ask = Ask::Choose {
             id: "choice",
             question: question.into(),
-            choices: choices.iter().map(|choice| choice.to_string()).collect(),
+            choices: choices.iter().map(ToString::to_string).collect(),
         };
         let mut chosen = 0;
         loop {
@@ -375,7 +356,7 @@ impl Walk<'_> {
                 io,
                 None,
                 &done,
-                Moment::Asking {
+                &Moment::Asking {
                     title,
                     ask: &ask,
                     typed: "",
@@ -404,8 +385,8 @@ impl Walk<'_> {
         then: &str,
     ) -> Result<bool, Fault> {
         let done = self.done.borrow().clone();
-        self.show(io, None, &done, Moment::Card { title, said, then })?;
-        self.wait(io)
+        self.show(io, None, &done, &Moment::Card { title, said, then })?;
+        wait(io)
     }
 
     pub fn walk(&self, machine: &mut dyn Machine, io: &mut dyn Io) -> Result<Ended, Fault> {
@@ -439,12 +420,12 @@ impl Walk<'_> {
                         io,
                         None,
                         done,
-                        Moment::Failed {
+                        &Moment::Failed {
                             title,
                             fault: &fault,
                         },
                     )?;
-                    if !self.wait_or_look(io)? {
+                    if !wait_or_look(io)? {
                         return Ok(Ended::Left);
                     }
                     continue;
@@ -458,7 +439,7 @@ impl Walk<'_> {
                         io,
                         None,
                         shown,
-                        Moment::Finished {
+                        &Moment::Finished {
                             said: last.as_deref().unwrap_or("everything is done"),
                         },
                     )?;
@@ -470,13 +451,13 @@ impl Walk<'_> {
                         io,
                         Some(step),
                         done,
-                        Moment::Blocked {
+                        &Moment::Blocked {
                             title: step.title(),
                             why: &why,
                             remedy: &remedy,
                         },
                     )?;
-                    if !self.wait_or_look(io)? {
+                    if !wait_or_look(io)? {
                         return Ok(Ended::Left);
                     }
                 }
@@ -503,29 +484,63 @@ impl Walk<'_> {
                                 return Ok(Ended::Left);
                             }
                         }
-                        Err(fault) => loop {
-                            let fault = fault.said();
-                            self.show(
-                                io,
-                                Some(step),
-                                done,
-                                Moment::Failed {
-                                    title: step.title(),
-                                    fault: &fault,
-                                },
-                            )?;
-                            match io.press()? {
-                                Press::Return => break,
-                                Press::Leave => return Ok(Ended::Left),
-                                Press::Tab if !self.read_log(io, step, done)? => {
-                                    return Ok(Ended::Left);
-                                }
-                                _ => {}
+                        Err(fault) => {
+                            if !self.failed(io, step, done, &fault)? {
+                                return Ok(Ended::Left);
                             }
-                        },
+                        }
                     }
                 }
             }
+        }
+    }
+
+    /// What stopped a step, said until Return goes on, Tab showing the log
+    /// meanwhile, or Ctrl+C. Says whether to go on.
+    fn failed(
+        &self,
+        io: &mut dyn Io,
+        step: &dyn Step,
+        done: &[String],
+        fault: &Fault,
+    ) -> Result<bool, Fault> {
+        loop {
+            let said = fault.said();
+            self.show(
+                io,
+                Some(step),
+                done,
+                &Moment::Failed {
+                    title: step.title(),
+                    fault: &said,
+                },
+            )?;
+            match io.press()? {
+                Press::Return => return Ok(true),
+                Press::Leave => return Ok(false),
+                Press::Tab if !self.read_log(io, step, done)? => return Ok(false),
+                _ => {}
+            }
+        }
+    }
+}
+
+/// Waits for Return, or for the machine to change, looking at it again
+/// every so often by itself, or for Ctrl+C. Says whether to go on.
+fn wait_or_look(io: &mut dyn Io) -> Result<bool, Fault> {
+    match io.press_within(LOOK_AGAIN)? {
+        Some(Press::Leave) => Ok(false),
+        _ => Ok(true),
+    }
+}
+
+/// Waits for Return, or Ctrl+C. Says whether to go on.
+fn wait(io: &mut dyn Io) -> Result<bool, Fault> {
+    loop {
+        match io.press()? {
+            Press::Return => return Ok(true),
+            Press::Leave => return Ok(false),
+            _ => {}
         }
     }
 }
@@ -734,7 +749,7 @@ mod tests {
     #[test]
     fn with_the_stick_out_it_says_to_put_it_back_and_goes_on_by_itself_once_it_is() {
         let journey = Journey::new(vec![Box::new(NeedsStick {
-            looks: Default::default(),
+            looks: std::cell::Cell::default(),
         })])
         .unwrap();
         let theme = Theme::from("", "", true);
@@ -773,7 +788,7 @@ mod tests {
             theme,
             log: None,
             whole: true,
-            done: Default::default(),
+            done: std::cell::RefCell::default(),
         }
     }
 

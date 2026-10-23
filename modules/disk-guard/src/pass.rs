@@ -3,6 +3,7 @@
 
 use crate::band::{Band, Space, Thresholds};
 use crate::plan::{Candidate, Class, Group, plan};
+use crate::units::float;
 use std::collections::{BTreeMap, BTreeSet};
 use std::io;
 use std::path::PathBuf;
@@ -138,7 +139,7 @@ pub fn pass(
     loop {
         let before = match disk.space() {
             Ok(space) => space,
-            Err(error) => return failed(report, error),
+            Err(error) => return failed(report, &error),
         };
         band = thresholds.band(&before, band);
         report.band = report.band.max(band);
@@ -160,10 +161,10 @@ pub fn pass(
         let mut steps = plan(&offered, windows, None, |class| learned.ratio(class));
         steps.retain(|step| !given_up.contains(&step.group));
         if steps.is_empty() {
-            report.end = if !given_up.is_empty() {
-                End::Stalled
-            } else {
+            report.end = if given_up.is_empty() {
                 End::Exhausted
+            } else {
+                End::Stalled
             };
             return report;
         }
@@ -181,8 +182,8 @@ pub fn pass(
             }
             taken[index] = true;
             let outcome = reclaimer.reclaim(candidate);
-            let reclaimed = outcome == Outcome::Reclaimed;
-            if reclaimed {
+            let freeing = outcome == Outcome::Reclaimed;
+            if freeing {
                 predicted += step.predicted;
                 batch.push(candidate);
                 if !groups.contains(&step.group) {
@@ -191,7 +192,7 @@ pub fn pass(
             }
             report.actions.push((candidate.path.clone(), outcome));
             let enough = remaining.is_some_and(|remaining| predicted >= remaining);
-            let measure = reclaimed && candidate.class.command();
+            let measure = freeing && candidate.class.command();
             if enough || measure || disk.now() - started >= BATCH_SECONDS {
                 break;
             }
@@ -200,40 +201,54 @@ pub fn pass(
             continue;
         }
         if let Err(error) = disk.settle() {
-            return failed(report, error);
+            return failed(report, &error);
         }
         let after = match disk.space() {
             Ok(space) => space,
-            Err(error) => return failed(report, error),
+            Err(error) => return failed(report, &error),
         };
         let freed = after.free.saturating_sub(before.free);
         report.freed += freed;
-        if (freed as f64) < predicted as f64 * STALL_SHARE {
-            if predicted < STALL_FLOOR {
-                continue;
-            }
-            for group in groups {
-                let count = stalls.entry(group).or_default();
-                *count += 1;
-                if *count >= STALL_BATCHES {
-                    given_up.insert(group);
-                }
+        if float(freed) < float(predicted) * STALL_SHARE {
+            if predicted >= STALL_FLOOR {
+                stalled(groups, &mut stalls, &mut given_up);
             }
             continue;
         }
         for group in groups {
             stalls.remove(&group);
         }
-        // Each kind is credited its share of the batch's logical bytes.
-        let logical: u64 = batch.iter().map(|candidate| candidate.size).sum();
-        for candidate in batch {
-            let share = candidate.size as f64 / logical.max(1) as f64;
-            learned.learn(candidate.class, candidate.size as f64, freed as f64 * share);
+        credit(learned, &batch, freed);
+    }
+}
+
+/// Counts a stalled batch against each of its groups, giving up on a group
+/// once it has stalled `STALL_BATCHES` times running.
+fn stalled(
+    groups: Vec<Group>,
+    stalls: &mut BTreeMap<Group, usize>,
+    given_up: &mut BTreeSet<Group>,
+) {
+    for group in groups {
+        let count = stalls.entry(group).or_default();
+        *count += 1;
+        if *count >= STALL_BATCHES {
+            given_up.insert(group);
         }
     }
 }
 
-fn failed(mut report: Report, error: io::Error) -> Report {
+/// Teaches what a measured batch freed, each kind credited its share of the
+/// batch's logical bytes.
+fn credit(learned: &mut Learned, batch: &[&Candidate], freed: u64) {
+    let logical: u64 = batch.iter().map(|candidate| candidate.size).sum();
+    for candidate in batch {
+        let share = float(candidate.size) / float(logical.max(1));
+        learned.learn(candidate.class, float(candidate.size), float(freed) * share);
+    }
+}
+
+fn failed(mut report: Report, error: &io::Error) -> Report {
     report.end = End::Failed(error.to_string());
     report
 }

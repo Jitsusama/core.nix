@@ -457,8 +457,8 @@ mod tests {
         }
     }
 
-    fn heard(name: &str, signal: i16) -> Option<Heard> {
-        Some(Heard {
+    fn heard(name: &str, signal: i16) -> Heard {
+        Heard {
             name: name.into(),
             security: Security::Personal,
             signal,
@@ -466,7 +466,7 @@ mod tests {
             frequency: 2437,
             age: 0,
             radio: crate::radio::Radio::default(),
-        })
+        }
     }
 
     fn nearby(state: &State) -> Vec<(String, u8)> {
@@ -817,9 +817,9 @@ mod tests {
     fn a_network_in_the_air_is_shown_once_by_its_strongest_access_point() {
         let mut state = State::default();
 
-        state.heard("/Interfaces/0/BSSs/1", heard("Lantern", -82));
-        state.heard("/Interfaces/0/BSSs/2", heard("Lantern", -52));
-        state.heard("/Interfaces/1/BSSs/3", heard("Lantern", -71));
+        state.heard("/Interfaces/0/BSSs/1", Some(heard("Lantern", -82)));
+        state.heard("/Interfaces/0/BSSs/2", Some(heard("Lantern", -52)));
+        state.heard("/Interfaces/1/BSSs/3", Some(heard("Lantern", -71)));
 
         assert_eq!(
             state.described().nearby,
@@ -835,10 +835,10 @@ mod tests {
     fn networks_in_the_air_are_shown_strongest_first_then_by_name() {
         let mut state = State::default();
 
-        state.heard("/Interfaces/0/BSSs/1", heard("Faint", -90));
-        state.heard("/Interfaces/0/BSSs/2", heard("Lantern", -66));
-        state.heard("/Interfaces/0/BSSs/3", heard("Inn", -64));
-        state.heard("/Interfaces/0/BSSs/4", heard("Far", -79));
+        state.heard("/Interfaces/0/BSSs/1", Some(heard("Faint", -90)));
+        state.heard("/Interfaces/0/BSSs/2", Some(heard("Lantern", -66)));
+        state.heard("/Interfaces/0/BSSs/3", Some(heard("Inn", -64)));
+        state.heard("/Interfaces/0/BSSs/4", Some(heard("Far", -79)));
 
         assert_eq!(
             nearby(&state),
@@ -854,10 +854,10 @@ mod tests {
     #[test]
     fn signal_wandering_within_a_bar_changes_nothing_shown() {
         let mut state = State::default();
-        state.heard("/Interfaces/0/BSSs/1", heard("Lantern", -62));
+        state.heard("/Interfaces/0/BSSs/1", Some(heard("Lantern", -62)));
         let before = state.described();
 
-        state.heard("/Interfaces/0/BSSs/1", heard("Lantern", -68));
+        state.heard("/Interfaces/0/BSSs/1", Some(heard("Lantern", -68)));
 
         assert_eq!(state.described(), before);
     }
@@ -865,8 +865,8 @@ mod tests {
     #[test]
     fn an_access_point_no_longer_heard_is_no_longer_shown() {
         let mut state = State::default();
-        state.heard("/Interfaces/0/BSSs/1", heard("Lantern", -52));
-        state.heard("/Interfaces/0/BSSs/2", heard("Lantern", -82));
+        state.heard("/Interfaces/0/BSSs/1", Some(heard("Lantern", -52)));
+        state.heard("/Interfaces/0/BSSs/2", Some(heard("Lantern", -82)));
 
         state.heard("/Interfaces/0/BSSs/1", None);
 
@@ -896,7 +896,7 @@ mod tests {
         let mut state = State::default();
         state.saved(&[saved("Lantern", false, 0)]);
         state.follow(&on_nothing(2));
-        state.heard("/Interfaces/0/BSSs/1", heard("Somebody Else's", -52));
+        state.heard("/Interfaces/0/BSSs/1", Some(heard("Somebody Else's", -52)));
 
         state.looked("wlan2");
 
@@ -969,7 +969,7 @@ mod tests {
         let mut state = State::default();
         state.saved(&[saved("Lantern", false, 0)]);
         state.follow(&on_nothing(2));
-        state.heard("/Interfaces/0/BSSs/1", heard("Lantern", -52));
+        state.heard("/Interfaces/0/BSSs/1", Some(heard("Lantern", -52)));
 
         state.looked("wlan2");
 
@@ -981,7 +981,7 @@ mod tests {
         let mut state = State::default();
         state.saved(&[saved("Lantern", false, 0)]);
         state.follow(&on_nothing(2));
-        state.heard("/Interfaces/0/BSSs/1", heard("Lantern", -52));
+        state.heard("/Interfaces/0/BSSs/1", Some(heard("Lantern", -52)));
         state.looked("wlan2");
         state.attempting("wlan2");
 
@@ -993,8 +993,8 @@ mod tests {
     #[test]
     fn a_card_going_takes_what_it_heard_with_it() {
         let mut state = State::default();
-        state.heard("/Interfaces/1/BSSs/1", heard("Lantern", -52));
-        state.heard("/Interfaces/10/BSSs/2", heard("Inn", -52));
+        state.heard("/Interfaces/1/BSSs/1", Some(heard("Lantern", -52)));
+        state.heard("/Interfaces/10/BSSs/2", Some(heard("Inn", -52)));
 
         state.unheard_under("/Interfaces/1/");
 
@@ -1013,7 +1013,7 @@ mod tests {
     fn a_network_in_detail_has_what_the_card_on_it_read_of_its_link() {
         let mut state = State::default();
         state.follow(&inn(2));
-        state.heard("/Interfaces/0/BSSs/1", heard("Roadside Inn", -52));
+        state.heard("/Interfaces/0/BSSs/1", Some(heard("Roadside Inn", -52)));
 
         state.polled("wlan2", Some(polled("/Interfaces/0/BSSs/1")));
         let detail = state.detail("Roadside Inn");
@@ -1026,7 +1026,7 @@ mod tests {
     fn a_network_in_detail_marks_the_access_point_a_card_is_on_before_its_link_is_read() {
         let mut state = State::default();
         state.follow(&inn(2));
-        state.heard("/Interfaces/0/BSSs/1", heard("Roadside Inn", -52));
+        state.heard("/Interfaces/0/BSSs/1", Some(heard("Roadside Inn", -52)));
 
         state.at("wlan2", Some("/Interfaces/0/BSSs/1".into()));
         let detail = state.detail("Roadside Inn");
@@ -1039,7 +1039,7 @@ mod tests {
     fn an_access_point_a_card_has_left_is_no_longer_marked() {
         let mut state = State::default();
         state.follow(&inn(2));
-        state.heard("/Interfaces/0/BSSs/1", heard("Roadside Inn", -52));
+        state.heard("/Interfaces/0/BSSs/1", Some(heard("Roadside Inn", -52)));
         state.at("wlan2", Some("/Interfaces/0/BSSs/1".into()));
 
         state.at("wlan2", None);
@@ -1054,7 +1054,7 @@ mod tests {
 
         state.keep_only(&[2]);
         state.follow(&inn(2));
-        state.heard("/Interfaces/0/BSSs/1", heard("Roadside Inn", -52));
+        state.heard("/Interfaces/0/BSSs/1", Some(heard("Roadside Inn", -52)));
 
         assert!(state.detail("Roadside Inn").points[0].joined);
     }
@@ -1074,7 +1074,7 @@ mod tests {
     fn a_card_s_reading_is_kept_out_of_a_network_it_isn_t_on() {
         let mut state = State::default();
         state.follow(&inn(2));
-        state.heard("/Interfaces/0/BSSs/2", heard("Lantern", -52));
+        state.heard("/Interfaces/0/BSSs/2", Some(heard("Lantern", -52)));
 
         state.polled("wlan2", Some(polled("/Interfaces/0/BSSs/1")));
         let detail = state.detail("Lantern");

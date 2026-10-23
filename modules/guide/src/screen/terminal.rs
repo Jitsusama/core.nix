@@ -101,7 +101,7 @@ impl Drop for Terminal {
 }
 
 /// What a key event means here, if anything.
-fn pressed(event: Event) -> Option<Press> {
+fn pressed(event: &Event) -> Option<Press> {
     let Event::Key(key) = event else {
         return None;
     };
@@ -124,7 +124,7 @@ fn pressed(event: Event) -> Option<Press> {
 impl Keys for Terminal {
     fn press(&mut self) -> Result<Press, Fault> {
         loop {
-            if let Some(press) = pressed(event::read().map_err(broken)?) {
+            if let Some(press) = pressed(&event::read().map_err(broken)?) {
                 return Ok(press);
             }
         }
@@ -137,7 +137,7 @@ impl Keys for Terminal {
             if left.is_zero() || !event::poll(left).map_err(broken)? {
                 return Ok(None);
             }
-            if let Some(press) = pressed(event::read().map_err(broken)?) {
+            if let Some(press) = pressed(&event::read().map_err(broken)?) {
                 return Ok(Some(press));
             }
         }
@@ -177,7 +177,7 @@ impl Paint for Painter {
     /// of them lands in what the next screen asks for.
     fn left(&mut self, within: Duration) -> bool {
         match event::poll(within) {
-            Ok(true) => event::read().ok().and_then(pressed) == Some(Press::Leave),
+            Ok(true) => event::read().ok().as_ref().and_then(pressed) == Some(Press::Leave),
             Ok(false) => false,
             Err(_) => {
                 std::thread::sleep(within);
@@ -207,7 +207,7 @@ fn paint(out: &mut Stdout, drawn: &Drawn, theme: &Theme) -> Result<(), Fault> {
     for (row, line) in drawn.lines.iter().enumerate() {
         queue!(
             out,
-            cursor::MoveTo(0, row as u16),
+            cursor::MoveTo(0, super::cell(row)),
             terminal::Clear(terminal::ClearType::CurrentLine)
         )
         .map_err(broken)?;
@@ -221,7 +221,7 @@ fn paint(out: &mut Stdout, drawn: &Drawn, theme: &Theme) -> Result<(), Fault> {
     }
     queue!(
         out,
-        cursor::MoveTo(0, drawn.lines.len() as u16),
+        cursor::MoveTo(0, super::cell(drawn.lines.len())),
         terminal::Clear(terminal::ClearType::FromCursorDown)
     )
     .map_err(broken)?;

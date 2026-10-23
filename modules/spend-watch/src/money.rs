@@ -7,14 +7,25 @@ pub fn dollars(amount: f64) -> String {
     if amount < 10.0 {
         format!("{sign}${amount:.2}")
     } else {
-        format!("{sign}${}", grouped(amount.round() as u64))
+        format!("{sign}${}", grouped(rounded(amount)))
     }
 }
 
 /// Whole dollars, for a badge or a headline where cents are noise.
 pub fn whole(amount: f64) -> String {
     let sign = if amount < 0.0 { "-" } else { "" };
-    format!("{sign}${}", grouped(amount.abs().round() as u64))
+    format!("{sign}${}", grouped(rounded(amount.abs())))
+}
+
+/// An amount of at least zero, rounded to whole dollars.
+#[expect(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    reason = "rounding to whole dollars is the intent; callers pass amounts of at least \
+              zero, and no bill nears u64's limit"
+)]
+fn rounded(amount: f64) -> u64 {
+    amount.round() as u64
 }
 
 /// A figure that's estimated reads "about" first.
@@ -38,6 +49,10 @@ pub fn grouped(value: u64) -> String {
     out
 }
 
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "rounding to a whole percent is the intent, and a share is far inside i64"
+)]
 pub fn percent(fraction: f64) -> String {
     format!("{}%", (fraction * 100.0).round() as i64)
 }

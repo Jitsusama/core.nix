@@ -12,12 +12,13 @@
 //! the rest keep their amounts in the body, which sharing holds back.
 
 use crate::findings::{Finding, Severity};
-use crate::history::History;
+use crate::history::{History, sql as fail};
 use crate::money::{percent, whole};
 use crate::picture::Picture;
 use crate::time::{DAY, Zone};
 use rusqlite::params;
 use std::collections::HashMap;
+use std::fmt::Write as _;
 use std::time::Duration;
 use zbus::blocking::Connection;
 use zbus::blocking::connection::Builder;
@@ -45,10 +46,6 @@ pub trait Desk {
     fn close(&mut self, id: u32) -> Result<(), String>;
     /// Whether the person's screen is unlocked, as far as can be told.
     fn unlocked(&mut self) -> bool;
-}
-
-fn fail(error: rusqlite::Error) -> String {
-    error.to_string()
 }
 
 /// The summary a finding's notice carries: its title without an amount.
@@ -162,7 +159,7 @@ pub fn daily(history: &History, picture: &Picture, now: f64) -> Result<Option<Ch
         return Ok(None);
     }
     let key = format!("daily:{}", Zone::iso_day(today));
-    let sent: bool = history
+    let told: bool = history
         .db
         .query_row(
             "SELECT EXISTS (SELECT 1 FROM notices WHERE key = ?1)",
@@ -170,17 +167,15 @@ pub fn daily(history: &History, picture: &Picture, now: f64) -> Result<Option<Ch
             |row| row.get(0),
         )
         .map_err(fail)?;
-    if sent || picture.yesterday.dollars < 1.0 {
+    if told || picture.yesterday.dollars < 1.0 {
         return Ok(None);
     }
     let weekend = |day: i64| Zone::weekday(day) >= 5;
     let yesterday = today - 1;
-    let n = picture.days.dollars.len() as i64;
     let at = |day: i64| {
-        let index = day - picture.days.first;
-        (0..n)
-            .contains(&index)
-            .then(|| picture.days.dollars[index as usize])
+        usize::try_from(day - picture.days.first)
+            .ok()
+            .and_then(|index| picture.days.dollars.get(index).copied())
     };
     let comparable: Vec<f64> = (2..=29)
         .map(|back| today - back)
@@ -189,8 +184,8 @@ pub fn daily(history: &History, picture: &Picture, now: f64) -> Result<Option<Ch
         .collect();
     let spent = picture.yesterday.dollars;
     let word = if comparable.len() >= 5 {
-        let below = comparable.iter().filter(|value| **value < spent).count() as f64
-            / comparable.len() as f64;
+        let below = crate::stats::count(comparable.iter().filter(|value| **value < spent).count())
+            / crate::stats::count(comparable.len());
         if below <= 0.1 {
             ", quiet"
         } else if below <= 0.9 {
@@ -214,13 +209,11 @@ pub fn daily(history: &History, picture: &Picture, now: f64) -> Result<Option<Ch
         "Yesterday {}{word}",
         crate::money::maybe_about(whole(spent), picture.yesterday.estimated)
     );
+    // Writing to a String can't fail.
     if all > 0.0 {
-        body.push_str(&format!("; cache writes {}", percent(cache / all)));
+        _ = write!(body, "; cache writes {}", percent(cache / all));
     }
-    body.push_str(&format!(
-        "; the last 7 days {}.",
-        whole(picture.week.dollars)
-    ));
+    _ = write!(body, "; the last 7 days {}.", whole(picture.week.dollars));
     Ok(Some(Change::Show {
         key,
         summary: "Yesterday's AI spend".into(),
@@ -418,9 +411,9 @@ mod tests {
 
     impl Desk for Fake {
         fn show(&mut self, summary: &str, _: &str, _: bool) -> Result<u32, String> {
-            self.shown
-                .push((self.shown.len() as u32 + 1, summary.into()));
-            Ok(self.shown.len() as u32)
+            let id = u32::try_from(self.shown.len() + 1).map_err(|error| error.to_string())?;
+            self.shown.push((id, summary.into()));
+            Ok(id)
         }
         fn close(&mut self, id: u32) -> Result<(), String> {
             self.shown.retain(|(shown, _)| *shown != id);

@@ -29,9 +29,11 @@ pub fn power(text: &str) -> Option<Power> {
                 .find_map(|word| word.strip_suffix("%;")?.parse().ok())
         })
         .collect();
-    let battery = (!charges.is_empty())
-        .then(|| u8::try_from(charges.iter().sum::<u32>() / charges.len() as u32).ok())
-        .flatten();
+    let total: u32 = charges.iter().sum();
+    let battery = u32::try_from(charges.len())
+        .ok()
+        .and_then(|count| total.checked_div(count))
+        .and_then(|mean| u8::try_from(mean).ok());
     Some(Power {
         mains: source == "AC Power",
         battery,

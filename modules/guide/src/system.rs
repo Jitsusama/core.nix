@@ -149,6 +149,7 @@ impl System {
     }
 
     /// The stick's vault, for the steps that read or fill it.
+    #[must_use]
     pub fn with_vault(mut self, vault: Box<dyn Store>) -> System {
         self.vault = Some(vault);
         self
@@ -159,6 +160,7 @@ impl System {
     /// It's named from then on by its partition's GUID, which a stick
     /// written once keeps and no other stick has, so one plugged back in is
     /// known for the same stick, and another's vault is never taken for it.
+    #[must_use]
     pub fn with_vault_partition(mut self, partition: impl Into<PathBuf>) -> System {
         let partition = partition.into();
         self.vault_node = node(&partition);
@@ -168,6 +170,7 @@ impl System {
 
     /// Keeps the secrets programs read from files here instead, which only
     /// a test should want, since it may not be memory.
+    #[must_use]
     pub fn keeping_secrets_in(mut self, place: PathBuf) -> System {
         self.secrets = Some(place);
         self
@@ -212,6 +215,32 @@ impl System {
     }
 }
 
+impl System {
+    /// The credential files a call is given, each in a directory made for
+    /// that one call, or none when it's given none.
+    fn credentials(&self, given: &Given) -> Result<Option<Credentials>, Fault> {
+        static CALLS: AtomicU32 = AtomicU32::new(0);
+        if given.credentials.is_empty() {
+            return Ok(None);
+        }
+        let place = match &self.secrets {
+            Some(place) => place.clone(),
+            None => secret_place()?,
+        }
+        .join(format!(
+            "credentials-{}-{}",
+            std::process::id(),
+            CALLS.fetch_add(1, Ordering::Relaxed)
+        ));
+        private_directory(&place)?;
+        let credentials = Credentials(place);
+        for (name, secret) in &given.credentials {
+            private_file(&credentials.0.join(name), secret.expose().as_bytes())?;
+        }
+        Ok(Some(credentials))
+    }
+}
+
 impl Machine for System {
     fn run_given(&mut self, program: Program, args: &[&str], given: Given) -> Result<Ran, Fault> {
         let path = match program {
@@ -236,26 +265,7 @@ impl Machine for System {
                 why: "a secret in its environment would be on run0's command line".into(),
             });
         }
-        let credentials = if given.credentials.is_empty() {
-            None
-        } else {
-            static CALLS: AtomicU32 = AtomicU32::new(0);
-            let place = match &self.secrets {
-                Some(place) => place.clone(),
-                None => secret_place()?,
-            }
-            .join(format!(
-                "credentials-{}-{}",
-                std::process::id(),
-                CALLS.fetch_add(1, Ordering::Relaxed)
-            ));
-            private_directory(&place)?;
-            let credentials = Credentials(place);
-            for (name, secret) in &given.credentials {
-                private_file(&credentials.0.join(name), secret.expose().as_bytes())?;
-            }
-            Some(credentials)
-        };
+        let credentials = self.credentials(&given)?;
         let mut command = if through_run0 {
             // run0 starts it as a service of its own, which loads each
             // credential from where it's held here and is given only
@@ -373,17 +383,17 @@ impl Machine for System {
         Ok(Box::new(std::io::BufWriter::with_capacity(1 << 20, file)))
     }
 
-    /// As systemd's efi_set_variable does (src/basic/efivars.c): efivarfs
+    /// As systemd's `efi_set_variable` does (src/basic/efivars.c): efivarfs
     /// marks most variables immutable, so the flag is dropped first and put
     /// back after, and the attributes and value go in one write to a file
     /// opened without truncating, which efivarfs doesn't do.
     fn set_efi_variable(&mut self, name: &str, value: &[u8]) -> Result<(), Fault> {
+        const IMMUTABLE: libc::c_long = 0x10;
         let path = Path::new("/sys/firmware/efi/efivars").join(name);
         let refused = |why: std::io::Error| Fault::Unkept {
             path: path.display().to_string(),
             why: why.to_string(),
         };
-        const IMMUTABLE: libc::c_long = 0x10;
         let held = File::open(&path).ok();
         let before = held.as_ref().and_then(|file| flags(file, None));
         if let (Some(file), Some(before)) = (&held, before) {

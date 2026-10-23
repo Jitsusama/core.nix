@@ -81,7 +81,7 @@ fn a_go_entry_is_a_cache_aged_by_its_last_use() {
             from: Band::Pressure
         }
     );
-    assert_eq!(made.idle, 4_000.0);
+    crate::assert_exactly(made.idle, 4_000.0);
     assert_eq!(made.size, 6);
     assert_eq!(made.path, entry.path);
 }
@@ -98,5 +98,5 @@ fn a_cache_without_a_protocol_goes_whole() {
     );
     assert_eq!(made.path, Path::new("/c/npm/_cacache"));
     assert_eq!(made.size, 42);
-    assert_eq!(made.idle, 0.0);
+    crate::assert_exactly(made.idle, 0.0);
 }

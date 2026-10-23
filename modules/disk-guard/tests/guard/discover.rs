@@ -1,5 +1,6 @@
 use disk_guard::discover::{Checkout, Found, Kind, checkout_of, walk};
 use std::fs;
+use std::os::unix::fs::MetadataExt;
 use std::os::unix::fs::symlink;
 use std::path::{Path, PathBuf};
 
@@ -219,7 +220,6 @@ fn a_checkout_on_another_filesystem_is_never_called_gone() {
     // directory it was mounted at sat on another filesystem.
     let root = tempfile::tempdir_in(env!("CARGO_TARGET_TMPDIR")).unwrap();
     let shm = Path::new("/dev/shm");
-    use std::os::unix::fs::MetadataExt;
     let elsewhere = shm
         .metadata()
         .map(|m| m.dev() != root.path().metadata().unwrap().dev());
