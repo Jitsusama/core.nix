@@ -140,6 +140,11 @@ Singleton {
             enabled: root.leaving
 
             function onFrameSwapped() {
+                // A frame swapped as the last one was handled can still
+                // arrive, from the render thread, after the picture's
+                // been asked for.
+                if (root.asked === null)
+                    return;
                 const done = root.asked.done;
                 const geometry = Picking.geometry(root.box, window.bounds);
                 root.asked = null;
