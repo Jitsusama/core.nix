@@ -10,6 +10,14 @@
   networking.useDHCP = false;
   services.resolved.enable = true;
 
+  # LLMNR is the one thing turned off for every link rather than link by
+  # link, since links nothing here manages, a VPN's tunnel or a bridge,
+  # keep resolved's default of asking it. A bare name nobody answers, a
+  # typo or an ssh to a host the network doesn't know, then waited on
+  # LLMNR's timeouts: 8.8 s before glibc said no, where resolved's DNS
+  # alone answered in 10 ms. No network here answers LLMNR.
+  services.resolved.settings.Resolve.LLMNR = "no";
+
   # networkd removes every routing rule it didn't make whenever it sets up a
   # link. It isn't the only program routing here: WARP, Tailscale and
   # wg-quick each send their traffic through a rule of their own, and would
@@ -31,9 +39,9 @@
     # A stranger's Wi-Fi learns as little as it can, and changes nothing
     # beyond the link: no hostname sent or taken, and an
     # identity that follows the address wpa_supplicant gives this network, so
-    # no two networks can tell they've met the same machine. Nothing goes in
-    # resolved's global settings, which would reach every resolver on the
-    # machine, so LLMNR and mDNS are turned off here, link by link.
+    # no two networks can tell they've met the same machine. mDNS is turned
+    # off here, link by link, rather than in resolved's global settings, so
+    # a saved network can turn it back on; LLMNR is off everywhere.
     "90-wifi" = {
       matchConfig = {
         Type = "wlan";
@@ -77,6 +85,10 @@
         IPv6PrivacyExtensions = "yes";
         LLMNR = "no";
         MulticastDNS = "no";
+        # A dock's hub drops the cable's carrier for a moment as it resets;
+        # without this, every connection and tunnel lost its addresses with
+        # it, and resolved logged 265 lines of trouble in one such hour.
+        IgnoreCarrierLoss = "3s";
       };
       dhcpV4Config = {
         ClientIdentifier = "mac";
