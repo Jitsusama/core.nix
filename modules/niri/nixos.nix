@@ -31,11 +31,18 @@
     # patch (tiled-positions.patch) reports a tiled window's place too,
     # where the view comes to rest, so a scroll sends one change, not one a
     # frame.
+    #
+    # niri casts a screen in every pixel of its mode, so a call took the
+    # 4K monitor as 3840x2160, and Tuple, which ignores the size its viewer
+    # asks for, squeezed it into 10 Mbit/s. The patch
+    # (cast-logical-size.patch) casts a scaled screen at its logical size,
+    # 2560x1440 there, as a Mac shares one; windows' casts keep theirs.
     package = pkgs.niri.overrideAttrs (old: {
       patches = (old.patches or [ ]) ++ [
         ./touchscreen-gestures.patch
         ./prune-imports.patch
         ./tiled-positions.patch
+        ./cast-logical-size.patch
         (pkgs.fetchpatch {
           name = "niri-screencast-pts-unknown.patch";
           url = "https://github.com/niri-wm/niri/commit/a30ca7983b2f1fc3ddeb209b3fe18fa78e0dbd25.patch";

@@ -1,0 +1,182 @@
+From: Joel Gerber <Jitsusama@users.noreply.github.com>
+Subject: [PATCH] screencasting: cast a scaled screen at its logical size
+
+A screen's cast was the size of its mode, so a 4K screen at scale 1.5
+went to a call as 3840x2160. A call's encoder spends its bitrate and its
+time on every pixel, and some clients can't ask for less: Tuple for
+Linux leaves its viewer's requested resolution unimplemented
+(SetTransmitResolution) and sends what PipeWire gives it, so a 4K screen
+at its 10 Mbit/s cap came across late and blurred.
+
+A scaled screen is now cast at its logical size, the one its windows are
+laid out in (2560x1440 for that screen), with each element rescaled to
+fit, so text stays as legible as on a screen of that size. The cursor's
+position is rescaled with it. Each side is rounded down to even for
+encoders that sample colour at half size. A screen at scale 1 and window
+casts are unchanged.
+
+---
+diff --git a/src/screencasting/mod.rs b/src/screencasting/mod.rs
+index 85b3180..03589bd 100644
+--- a/src/screencasting/mod.rs
++++ b/src/screencasting/mod.rs
+@@ -8,7 +8,9 @@ use calloop::LoopHandle;
+ use smithay::backend::allocator::format::FormatSet;
+ use smithay::backend::allocator::gbm::GbmDevice;
+ use smithay::backend::drm::DrmDeviceFd;
+-use smithay::backend::renderer::element::utils::{Relocate, RelocateRenderElement};
++use smithay::backend::renderer::element::utils::{
++    Relocate, RelocateRenderElement, RescaleRenderElement,
++};
+ use smithay::backend::renderer::gles::GlesRenderer;
+ use smithay::desktop::Window;
+ use smithay::output::Output;
+@@ -541,9 +543,8 @@ impl Niri {
+         let _span = tracy_client::span!("Niri::render_for_screen_cast");
+ 
+         let weak = output.downgrade();
+-        let size = output.current_mode().unwrap().size;
+-        let transform = output.current_transform();
+-        let size = transform.transform_size(size);
++        let (size, shrink) = cast_size_for_output(output);
++        let origin = Point::from((0, 0));
+ 
+         let scale = Scale::from(output.current_scale().fractional_scale());
+ 
+@@ -587,6 +588,7 @@ impl Niri {
+                     if output_geo.contains(pointer_loc) {
+                         pointer_pos = pointer_loc - output_geo.loc;
+                         self.render_pointer(renderer, output, &mut |elem| {
++                            let elem = RescaleRenderElement::from_element(elem, origin, shrink);
+                             elements.push(elem.into())
+                         });
+                     }
+@@ -598,12 +600,15 @@ impl Niri {
+                     target: RenderTarget::Screencast,
+                     xray: None,
+                 };
+-                self.render(ctx, output, false, &mut |elem| elements.push(elem.into()));
++                self.render(ctx, output, false, &mut |elem| {
++                    let elem = RescaleRenderElement::from_element(elem, origin, shrink);
++                    elements.push(elem.into())
++                });
+ 
+                 cursor_data = Some(CursorData::compute(
+                     &elements,
+                     main_start,
+-                    pointer_pos,
++                    pointer_pos.upscale(shrink),
+                     scale,
+                 ));
+             }
+@@ -787,18 +792,106 @@ impl Niri {
+ }
+ 
+ fn cast_params_for_output(output: &Output) -> (Size<i32, Physical>, u32) {
+-    let mode = output.current_mode().unwrap();
+-    let transform = output.current_transform();
+-    let size = transform.transform_size(mode.size);
+-    let refresh = mode.refresh as u32;
++    let (size, _) = cast_size_for_output(output);
++    let refresh = output.current_mode().unwrap().refresh as u32;
+     (size, refresh)
+ }
+ 
++/// The size a screen is cast at, and how much its pixels shrink to fit it.
++///
++/// A screen is cast at its logical size, the one its windows are laid out in, rather than in
++/// every pixel: a scaled screen's text is as legible there, and a 4K screen at scale 1.5 is
++/// 2.25 times fewer pixels for a call's encoder at 2560x1440. A viewer can't ask for less
++/// itself, since a call such as Tuple's sends whatever size it's given. Each side is rounded
++/// down to even, which encoders sampling colour at half size need.
++fn cast_size_for_output(output: &Output) -> (Size<i32, Physical>, Scale<f64>) {
++    let mode = output.current_mode().unwrap();
++    let size = output.current_transform().transform_size(mode.size);
++    let scale = output.current_scale().fractional_scale();
++    if scale <= 1. {
++        return (size, Scale::from(1.));
++    }
++
++    let side = |pixels: i32| (f64::from(pixels) / scale) as i32 & !1;
++    let cast = Size::from((side(size.w), side(size.h)));
++    let shrink = Scale {
++        x: f64::from(cast.w) / f64::from(size.w),
++        y: f64::from(cast.h) / f64::from(size.h),
++    };
++    (cast, shrink)
++}
++
+ niri_render_elements! {
+     CastRenderElement<R> => {
+         Output = OutputRenderElements<R>,
+         Window = WindowCastRenderElements<R>,
+         Pointer = PointerRenderElements<R>,
+         RelocatedPointer = RelocateRenderElement<PointerRenderElements<R>>,
++        RescaledOutput = RescaleRenderElement<OutputRenderElements<R>>,
++        RescaledPointer = RescaleRenderElement<PointerRenderElements<R>>,
++    }
++}
++
++#[cfg(test)]
++mod tests {
++    use smithay::output::{self, Mode, PhysicalProperties, Subpixel};
++    use smithay::utils::Transform;
++
++    use super::*;
++
++    fn screen(width: i32, height: i32, scale: f64, transform: Transform) -> Output {
++        let output = Output::new(
++            String::from("screen"),
++            PhysicalProperties {
++                size: (0, 0).into(),
++                subpixel: Subpixel::Unknown,
++                make: String::new(),
++                model: String::new(),
++                serial_number: String::new(),
++            },
++        );
++        let mode = Mode {
++            size: (width, height).into(),
++            refresh: 60_000,
++        };
++        output.change_current_state(
++            Some(mode),
++            Some(transform),
++            Some(output::Scale::Fractional(scale)),
++            None,
++        );
++        output
++    }
++
++    fn cast(width: i32, height: i32, scale: f64, transform: Transform) -> (i32, i32) {
++        let (size, _) = cast_size_for_output(&screen(width, height, scale, transform));
++        (size.w, size.h)
++    }
++
++    #[test]
++    fn a_scaled_screen_is_cast_at_its_logical_size() {
++        assert_eq!(cast(3840, 2160, 1.5, Transform::Normal), (2560, 1440));
++        assert_eq!(cast(2880, 1800, 2., Transform::Normal), (1440, 900));
++    }
++
++    #[test]
++    fn a_screen_at_scale_one_is_cast_whole() {
++        assert_eq!(cast(1920, 1080, 1., Transform::Normal), (1920, 1080));
++    }
++
++    #[test]
++    fn each_side_is_rounded_down_to_even() {
++        assert_eq!(cast(2560, 1600, 1.75, Transform::Normal), (1462, 914));
++    }
++
++    #[test]
++    fn a_turned_screen_is_cast_turned() {
++        assert_eq!(cast(3840, 2160, 1.5, Transform::_90), (1440, 2560));
++    }
++
++    #[test]
++    fn its_pixels_shrink_by_as_much_as_its_sides() {
++        let (_, shrink) = cast_size_for_output(&screen(3840, 2160, 1.5, Transform::Normal));
++        assert_eq!((shrink.x, shrink.y), (2560. / 3840., 1440. / 2160.));
+     }
+ }
