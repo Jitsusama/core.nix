@@ -1,10 +1,11 @@
 //! Drives a Logitech Litra Glow, the light on a desk's monitor.
 //!
 //! ```text
-//! litra on | off | status
+//! litra on | off | status [--format json]
 //! litra brightness PERCENT
 //! litra temperature KELVIN
 //! litra follow FOLDER
+//! litra watch
 //! ```
 //!
 //! The light takes 20-byte HID reports on its hidraw node, which systemd's
@@ -16,6 +17,16 @@
 //! streams), puts them out once none does, and puts them out when it's
 //! stopped. It sleeps until a file in the folder changes, a light is
 //! plugged in, or it's told to stop, so it costs nothing in between.
+//!
+//! `watch` prints every light's state as one line of JSON, the same as
+//! `status --format json` gives, once at the start and again whenever it
+//! changes, for a shell to show it. hidraw gives each reader every report
+//! the light sends, so it hears the light's own buttons, which report
+//! their new value, and any program's commands, which the light answers
+//! with no value, so it asks the light again after one. A light's answer
+//! to a question changes nothing but what it knows, so two watches never
+//! set each other going. It sleeps until the light says something or a
+//! light comes or goes.
 //!
 //! It needs only the standard library, which already links the C library
 //! these few calls come from.
@@ -43,6 +54,10 @@ const BRIGHTNESS: u8 = 0x4c;
 const BRIGHTNESS_IS: u8 = 0x31;
 const TEMPERATURE: u8 = 0x9c;
 const TEMPERATURE_IS: u8 = 0x81;
+/// What the light says unasked when its own buttons change it.
+const POWER_CHANGED: u8 = 0x00;
+const BRIGHTNESS_CHANGED: u8 = 0x10;
+const TEMPERATURE_CHANGED: u8 = 0x20;
 /// The Glow's range: its own units for brightness, kelvin for warmth.
 const DIMMEST: u16 = 20;
 const BRIGHTEST: u16 = 250;
@@ -58,10 +73,14 @@ const IN_CREATE: u32 = 0x100;
 const IN_DELETE: u32 = 0x200;
 const IN_DELETE_SELF: u32 = 0x400;
 const POLLIN: i16 = 0x001;
+const POLLERR: i16 = 0x008;
+const POLLHUP: i16 = 0x010;
 const SIG_BLOCK: c_int = 0;
 const SIGINT: c_int = 2;
 const SIGTERM: c_int = 15;
 const SFD_CLOEXEC: c_int = 0o2_000_000;
+const LOCK_EX: c_int = 2;
+const LOCK_UN: c_int = 8;
 
 #[repr(C)]
 struct PollFd {
@@ -82,6 +101,7 @@ unsafe extern "C" {
     fn sigaddset(set: *mut SigSet, signal: c_int) -> c_int;
     fn sigprocmask(how: c_int, set: *const SigSet, old: *mut SigSet) -> c_int;
     fn signalfd(fd: c_int, set: *const SigSet, flags: c_int) -> c_int;
+    fn flock(fd: c_int, operation: c_int) -> c_int;
 }
 
 /// Every light plugged in, as its node in `dev`, by the hidraw nodes `sys`
@@ -151,14 +171,41 @@ impl Light {
         Ok(Self { file })
     }
 
-    fn tell(&mut self, command: u8, values: &[u8]) -> io::Result<()> {
-        self.file.write_all(&report(command, values))
+    /// Sends a report and waits up to a second for the light's reply to it,
+    /// an answer to a question or the bare acknowledgement of a command,
+    /// handing whatever else it says meanwhile, such as its buttons, to
+    /// `other`. The light keeps only the latest of reports sent closer than
+    /// about 40 ms apart, so every program speaking to it takes its turn
+    /// under a lock on its node, and lets go once the light has replied.
+    fn exchange(
+        &mut self,
+        command: u8,
+        values: &[u8],
+        other: &mut dyn FnMut(&[u8]),
+    ) -> io::Result<Vec<u8>> {
+        let fd = self.file.as_raw_fd();
+        // SAFETY: a plain call on a descriptor of our own.
+        while unsafe { flock(fd, LOCK_EX) } != 0 {
+            let error = io::Error::last_os_error();
+            if error.kind() != ErrorKind::Interrupted {
+                return Err(error);
+            }
+        }
+        let replied = self
+            .file
+            .write_all(&report(command, values))
+            .and_then(|()| self.reply(command, other));
+        // SAFETY: as above; closing the file would let go of it too.
+        unsafe { flock(fd, LOCK_UN) };
+        replied
     }
 
-    /// Asks a question and waits up to a second for its answer, passing
-    /// over whatever else the light says meanwhile, such as its buttons.
-    fn ask(&mut self, question: u8) -> io::Result<Vec<u8>> {
-        self.tell(question, &[])?;
+    /// Tells the light something and waits for it to say it heard.
+    fn tell(&mut self, command: u8, values: &[u8]) -> io::Result<()> {
+        self.exchange(command, values, &mut |_| {}).map(drop)
+    }
+
+    fn reply(&mut self, question: u8, other: &mut dyn FnMut(&[u8])) -> io::Result<Vec<u8>> {
         let deadline = Instant::now() + Duration::from_secs(1);
         let mut reply = [0u8; 64];
         loop {
@@ -177,11 +224,10 @@ impl Light {
                 continue;
             }
             match self.file.read(&mut reply) {
-                Ok(length) => {
-                    if let Some(values) = answer(&reply[..length], question) {
-                        return Ok(values.to_vec());
-                    }
-                }
+                Ok(length) => match answer(&reply[..length], question) {
+                    Some(values) => return Ok(values.to_vec()),
+                    None => other(&reply[..length]),
+                },
                 Err(error) if error.kind() == ErrorKind::WouldBlock => {}
                 Err(error) if error.kind() == ErrorKind::Interrupted => {}
                 Err(error) => return Err(error),
@@ -211,25 +257,118 @@ fn every(command: u8, values: &[u8]) -> ExitCode {
     }
 }
 
-fn status() -> ExitCode {
-    for node in lights(Path::new("/sys"), Path::new("/dev")) {
-        let said = Light::open(&node).and_then(|mut light| {
-            Ok((
-                light.ask(POWER_IS)?,
-                light.ask(BRIGHTNESS_IS)?,
-                light.ask(TEMPERATURE_IS)?,
-            ))
-        });
-        match said {
-            Ok((on, level, warmth)) if !on.is_empty() && level.len() >= 2 && warmth.len() >= 2 => {
-                let state = if on[0] == 1 { "on" } else { "off" };
-                let level = percent(u16::from_be_bytes([level[0], level[1]]));
-                let warmth = u16::from_be_bytes([warmth[0], warmth[1]]);
-                println!("{}: {state}, {level}%, {warmth} K", node.display());
+/// What a light is doing, as far as it has said.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+struct State {
+    on: Option<bool>,
+    units: Option<u16>,
+    kelvin: Option<u16>,
+}
+
+impl State {
+    fn complete(&self) -> bool {
+        self.on.is_some() && self.units.is_some() && self.kelvin.is_some()
+    }
+}
+
+/// What a report from the light calls for.
+#[derive(Debug, PartialEq)]
+enum Heard {
+    /// It said something new about itself.
+    Changed,
+    /// A command changed it without saying to what, so ask.
+    Ask(u8),
+    Nothing,
+}
+
+/// Takes in a report the light sent: a button's new value, an answer to
+/// anybody's question, or the bare acknowledgement of anybody's command.
+fn hear(state: &mut State, report: &[u8]) -> Heard {
+    let [0x11, 0xff, 0x04, code, values @ ..] = report else {
+        return Heard::Nothing;
+    };
+    let word = values
+        .get(..2)
+        .map(|word| u16::from_be_bytes([word[0], word[1]]));
+    let before = *state;
+    match *code {
+        POWER_CHANGED | POWER_IS => {
+            if let Some(on) = values.first() {
+                state.on = Some(*on == 1);
             }
-            Ok(_) => println!("{}: a short answer", node.display()),
+        }
+        BRIGHTNESS_CHANGED | BRIGHTNESS_IS => state.units = word.or(state.units),
+        TEMPERATURE_CHANGED | TEMPERATURE_IS => state.kelvin = word.or(state.kelvin),
+        POWER => return Heard::Ask(POWER_IS),
+        BRIGHTNESS => return Heard::Ask(BRIGHTNESS_IS),
+        TEMPERATURE => return Heard::Ask(TEMPERATURE_IS),
+        _ => return Heard::Nothing,
+    }
+    if *state == before {
+        Heard::Nothing
+    } else {
+        Heard::Changed
+    }
+}
+
+/// The lights that have said everything about themselves, as JSON.
+fn json<'a>(lights: impl IntoIterator<Item = (&'a Path, &'a State)>) -> String {
+    let said: Vec<String> = lights
+        .into_iter()
+        .filter_map(|(node, state)| {
+            let (on, units, kelvin) = (state.on?, state.units?, state.kelvin?);
+            let node = node
+                .display()
+                .to_string()
+                .replace('\\', "\\\\")
+                .replace('"', "\\\"");
+            Some(format!(
+                r#"{{"node":"{node}","on":{on},"percent":{},"kelvin":{kelvin}}}"#,
+                percent(units)
+            ))
+        })
+        .collect();
+    format!("[{}]", said.join(","))
+}
+
+/// Asks a light everything about itself.
+fn ask_state(node: &Path) -> io::Result<State> {
+    let mut state = State::default();
+    find_out(
+        &mut Light::open(node)?,
+        &mut state,
+        vec![TEMPERATURE_IS, BRIGHTNESS_IS, POWER_IS],
+    )?;
+    if state.complete() {
+        Ok(state)
+    } else {
+        Err(io::Error::new(ErrorKind::InvalidData, "a short answer"))
+    }
+}
+
+fn status(as_json: bool) -> ExitCode {
+    let mut said = Vec::new();
+    for node in lights(Path::new("/sys"), Path::new("/dev")) {
+        match ask_state(&node) {
+            Ok(state) if as_json => said.push((node, state)),
+            Ok(State {
+                on: Some(on),
+                units: Some(units),
+                kelvin: Some(kelvin),
+            }) => {
+                let on = if on { "on" } else { "off" };
+                println!("{}: {on}, {}%, {kelvin} K", node.display(), percent(units));
+            }
+            Ok(_) => {}
+            Err(error) if as_json => eprintln!("{}: {error}", node.display()),
             Err(error) => println!("{}: {error}", node.display()),
         }
+    }
+    if as_json {
+        println!(
+            "{}",
+            json(said.iter().map(|(node, state)| (node.as_path(), state)))
+        );
     }
     ExitCode::SUCCESS
 }
@@ -386,12 +525,165 @@ fn follow(folder: &Path) -> ExitCode {
     }
 }
 
+/// Watches /dev for a light's node coming or going, or the permissions
+/// udev gives it after it comes.
+fn devices() -> io::Result<File> {
+    // SAFETY: a plain call.
+    let fd = unsafe { inotify_init1(IN_CLOEXEC) };
+    if fd < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    // SAFETY: the descriptor is ours alone, and the file closes it.
+    let file = unsafe { File::from_raw_fd(fd) };
+    let dev = CString::new("/dev").map_err(io::Error::other)?;
+    // SAFETY: the path is a valid C string for the call.
+    if unsafe { inotify_add_watch(fd, dev.as_ptr(), IN_CREATE | IN_ATTRIB | IN_DELETE) } < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    Ok(file)
+}
+
+/// Asks a light each question in turn, last first, taking in whatever else
+/// it says meanwhile, and asking about any command that's heard.
+fn find_out(light: &mut Light, state: &mut State, mut asking: Vec<u8>) -> io::Result<()> {
+    while let Some(question) = asking.pop() {
+        let mut heard = Vec::new();
+        let values = light.exchange(question, &[], &mut |report| {
+            if let Heard::Ask(next) = hear(state, report) {
+                heard.push(next);
+            }
+        })?;
+        let mut answer = vec![0x11, 0xff, 0x04, question];
+        answer.extend(values);
+        hear(state, &answer);
+        for next in heard {
+            if !asking.contains(&next) {
+                asking.insert(0, next);
+            }
+        }
+    }
+    Ok(())
+}
+
+struct Watched {
+    node: PathBuf,
+    light: Light,
+    state: State,
+}
+
+fn watch() -> ExitCode {
+    let mut devices = match devices() {
+        Ok(devices) => devices,
+        Err(error) => {
+            eprintln!("/dev: {error}");
+            return ExitCode::FAILURE;
+        }
+    };
+    let mut watched: Vec<Watched> = Vec::new();
+    let mut said: Option<String> = None;
+    let mut look = true;
+    let mut out = io::stdout().lock();
+    let mut buffer = [0u8; 4096];
+    loop {
+        if look {
+            let present = lights(Path::new("/sys"), Path::new("/dev"));
+            watched.retain(|light| present.contains(&light.node));
+            for node in present {
+                if watched.iter().any(|light| light.node == node) {
+                    continue;
+                }
+                // One udev hasn't opened yet is tried again when it does.
+                let Ok(mut light) = Light::open(&node) else {
+                    continue;
+                };
+                let mut state = State::default();
+                let asking = vec![TEMPERATURE_IS, BRIGHTNESS_IS, POWER_IS];
+                if find_out(&mut light, &mut state, asking).is_ok() {
+                    watched.push(Watched { node, light, state });
+                }
+            }
+            look = false;
+        }
+
+        let line = json(
+            watched
+                .iter()
+                .map(|light| (light.node.as_path(), &light.state)),
+        );
+        if said.as_ref() != Some(&line) {
+            if writeln!(out, "{line}").and_then(|()| out.flush()).is_err() {
+                // Nobody is reading any more.
+                return ExitCode::SUCCESS;
+            }
+            said = Some(line);
+        }
+
+        let mut waiting = vec![PollFd {
+            fd: devices.as_raw_fd(),
+            events: POLLIN,
+            revents: 0,
+        }];
+        waiting.extend(watched.iter().map(|light| PollFd {
+            fd: light.light.file.as_raw_fd(),
+            events: POLLIN,
+            revents: 0,
+        }));
+        // SAFETY: valid pollfds for the length given.
+        if unsafe { poll(waiting.as_mut_ptr(), waiting.len() as u64, -1) } < 0 {
+            continue;
+        }
+        if waiting[0].revents & POLLIN != 0 {
+            // A node comes before udev opens it to the seat.
+            std::thread::sleep(Duration::from_millis(100));
+            let _ = devices.read(&mut buffer);
+            look = true;
+        }
+        let mut gone = Vec::new();
+        for (index, light) in watched.iter_mut().enumerate() {
+            let revents = waiting[index + 1].revents;
+            if revents & (POLLERR | POLLHUP) != 0 {
+                gone.push(index);
+                continue;
+            }
+            if revents & POLLIN == 0 {
+                continue;
+            }
+            let mut asking = Vec::new();
+            let read = loop {
+                match light.light.file.read(&mut buffer) {
+                    Ok(0) => break Ok(()),
+                    Ok(length) => {
+                        if let Heard::Ask(question) = hear(&mut light.state, &buffer[..length])
+                            && !asking.contains(&question)
+                        {
+                            asking.push(question);
+                        }
+                    }
+                    Err(error) if error.kind() == ErrorKind::WouldBlock => break Ok(()),
+                    Err(error) if error.kind() == ErrorKind::Interrupted => {}
+                    Err(error) => break Err(error),
+                }
+            };
+            if read
+                .and_then(|()| find_out(&mut light.light, &mut light.state, asking))
+                .is_err()
+            {
+                gone.push(index);
+            }
+        }
+        for index in gone.into_iter().rev() {
+            watched.remove(index);
+            look = true;
+        }
+    }
+}
+
 fn number(text: &str, unit: &[char]) -> Option<u16> {
     text.trim_end_matches(unit).parse().ok()
 }
 
-const USAGE: &str =
-    "usage: litra on | off | status | brightness PERCENT | temperature KELVIN | follow FOLDER";
+const USAGE: &str = "usage: litra on | off | status [--format json] | brightness PERCENT | \
+                     temperature KELVIN | follow FOLDER | watch";
 
 fn main() -> ExitCode {
     let arguments: Vec<String> = std::env::args().skip(1).collect();
@@ -399,7 +691,9 @@ fn main() -> ExitCode {
     match arguments[..] {
         ["on"] => every(POWER, &[1]),
         ["off"] => every(POWER, &[0]),
-        ["status"] => status(),
+        ["status"] => status(false),
+        ["status", "--format", "json"] => status(true),
+        ["watch"] => watch(),
         ["brightness", share] if number(share, &['%']).is_some() => {
             let share = number(share, &['%']).unwrap_or_default();
             every(BRIGHTNESS, &units(share).to_be_bytes())
@@ -501,6 +795,110 @@ mod tests {
         for share in 0..=100 {
             assert_eq!(percent(units(share)), share);
         }
+    }
+
+    /// A report as the light sends it: its header, a code, then values.
+    fn from_light(code: u8, values: &[u8]) -> Vec<u8> {
+        let mut sent = vec![0x11, 0xff, 0x04, code];
+        sent.extend_from_slice(values);
+        sent.resize(REPORT, 0);
+        sent
+    }
+
+    #[test]
+    fn the_lights_buttons_say_their_new_values() {
+        let mut state = State::default();
+        // As a Glow sent them: power on, brightness 84, 4500 K.
+        assert_eq!(hear(&mut state, &from_light(0x00, &[1])), Heard::Changed);
+        assert_eq!(
+            hear(&mut state, &from_light(0x10, &[0x00, 0x54])),
+            Heard::Changed
+        );
+        assert_eq!(
+            hear(&mut state, &from_light(0x20, &[0x11, 0x94])),
+            Heard::Changed
+        );
+        assert_eq!(
+            state,
+            State {
+                on: Some(true),
+                units: Some(84),
+                kelvin: Some(4500),
+            }
+        );
+        assert_eq!(
+            hear(&mut state, &from_light(0x20, &[0x11, 0x94])),
+            Heard::Nothing
+        );
+        assert_eq!(hear(&mut state, &from_light(0x00, &[0])), Heard::Changed);
+        assert_eq!(state.on, Some(false));
+    }
+
+    #[test]
+    fn a_command_heard_from_anybody_is_asked_about() {
+        let mut state = State::default();
+        assert_eq!(
+            hear(&mut state, &from_light(POWER, &[])),
+            Heard::Ask(POWER_IS)
+        );
+        assert_eq!(
+            hear(&mut state, &from_light(BRIGHTNESS, &[])),
+            Heard::Ask(BRIGHTNESS_IS)
+        );
+        assert_eq!(
+            hear(&mut state, &from_light(TEMPERATURE, &[])),
+            Heard::Ask(TEMPERATURE_IS)
+        );
+        assert_eq!(state, State::default());
+    }
+
+    #[test]
+    fn an_answer_to_anybodys_question_is_taken_and_never_asked_about() {
+        let mut state = State::default();
+        assert_eq!(
+            hear(&mut state, &from_light(BRIGHTNESS_IS, &[0x00, 0x3d])),
+            Heard::Changed
+        );
+        assert_eq!(
+            hear(&mut state, &from_light(BRIGHTNESS_IS, &[0x00, 0x3d])),
+            Heard::Nothing
+        );
+        assert_eq!(
+            hear(&mut state, &from_light(TEMPERATURE_IS, &[0x13, 0xec])),
+            Heard::Changed
+        );
+        assert_eq!(state.units, Some(61));
+        assert_eq!(state.kelvin, Some(5100));
+        assert_eq!(hear(&mut state, &[0x11, 0xff]), Heard::Nothing);
+        assert_eq!(hear(&mut state, &from_light(0x7f, &[1])), Heard::Nothing);
+    }
+
+    #[test]
+    fn json_says_only_the_lights_that_have_said_everything() {
+        let whole = State {
+            on: Some(false),
+            units: Some(DIMMEST + 39),
+            kelvin: Some(5000),
+        };
+        let partial = State {
+            on: Some(true),
+            ..State::default()
+        };
+        assert_eq!(json([]), "[]");
+        assert_eq!(
+            json([
+                (Path::new("/dev/hidraw1"), &whole),
+                (Path::new("/dev/hidraw4"), &partial),
+            ]),
+            r#"[{"node":"/dev/hidraw1","on":false,"percent":17,"kelvin":5000}]"#
+        );
+        assert_eq!(
+            json([
+                (Path::new("/dev/a\"b"), &whole),
+                (Path::new("/dev/c"), &whole)
+            ]),
+            r#"[{"node":"/dev/a\"b","on":false,"percent":17,"kelvin":5000},{"node":"/dev/c","on":false,"percent":17,"kelvin":5000}]"#
+        );
     }
 
     #[test]

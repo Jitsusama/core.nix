@@ -1,5 +1,6 @@
 # Joel's Logitech Litra Glow, the light on his monitor: the `litra` command
-# that turns it on and off and sets its brightness and warmth, and a watch,
+# that turns it on and off, sets its brightness and warmth, and says what it's
+# doing, once or as it changes (`litra watch`, for the shell), and a watch,
 # run as the person at the machine, that lights it while any camera streams
 # and puts it out once none does, so a call is lit without a hand to the
 # button. systemd's hwdb opens the light's hidraw node to the person at the
