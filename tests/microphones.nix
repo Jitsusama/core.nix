@@ -3,7 +3,7 @@
 # udev marks the second a webcam, as systemd's sound rules do for a USB
 # camera with a microphone. WirePlumber picks the input it ranks highest, so
 # the webcam's must rank below a USB microphone's 2100 and above a laptop's
-# own, which starts from 1600.
+# own, which starts from 1600. The script is microphones-vm-test.py.
 { pkgs }:
 pkgs.testers.runNixOSTest {
   name = "microphones";
@@ -25,41 +25,8 @@ pkgs.testers.runNixOSTest {
     '';
   };
 
-  testScript = ''
-    import shlex
-
-    def as_joel(command):
-        environment = "export XDG_RUNTIME_DIR=/run/user/1000; cd ~; "
-        return machine.succeed("su - joel -c " + shlex.quote(environment + command))
-
-    # The rank WirePlumber gave the microphone on a card, by the card's
-    # number.
-    def rank(card):
-        return as_joel(
-            "pw-dump | jq -r '.[] | .info.props? // empty"
-            ' | select(."media.class" == "Audio/Source"'
-            f' and ."alsa.card" == {card}) | ."priority.session"'
-            "'"
-        ).strip()
-
-    machine.wait_for_unit("multi-user.target")
-    machine.succeed("loginctl enable-linger joel")
-    machine.wait_for_unit("user@1000.service")
-    as_joel("systemctl --user start pipewire.service")
-    machine.wait_for_unit("wireplumber.service", "joel")
-    machine.wait_until_succeeds(
-        "su - joel -c 'XDG_RUNTIME_DIR=/run/user/1000 pw-dump'"
-        " | jq -e '[.[] | select(.info.props?.\"media.class\" == \"Audio/Source\")] | length == 2'"
-    )
-
-    with subtest("a webcam's microphone yields to a USB microphone"):
-        webcam = rank(1)
-        machine.log(f"the webcam's microphone ranks {webcam}")
-        assert webcam == "1900", webcam
-
-    with subtest("other microphones keep their rank"):
-        other = rank(0)
-        machine.log(f"the other microphone ranks {other}")
-        assert other not in ("", "1900"), other
-  '';
+  testScript = builtins.readFile ./microphones-vm-test.py;
+  # nix fmt holds the script to mypy --strict against the driver's own types,
+  # through driver_names.pyi, which the driver's lighter check can't find.
+  skipTypeCheck = true;
 }
