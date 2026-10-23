@@ -1,0 +1,34 @@
+// biome lints the JavaScript the shell runs in Qt's engine, through
+// tests/qt-javascript-lint.sh, with every rule on but those below, each with
+// the reason it doesn't fit. Qt's engine (QV4) parses neither an object
+// spread nor a catch with no binding, so the rules asking for those are off.
+// Nothing here is formatted by biome.
+{
+  "formatter": { "enabled": false },
+  "assist": { "enabled": false },
+  "linter": {
+    "rules": {
+      "preset": "all",
+      "complexity": {
+        "noUselessCatchBinding": "off"
+      },
+      "performance": {
+        // Qt imports a library whole, under the name its importer gives it.
+        "noNamespaceImport": "off"
+      },
+      "correctness": {
+        // It checks the Qwik framework's scopes, which nothing here uses.
+        "useQwikValidLexicalScope": "off"
+      },
+      "style": {
+        // QML names an imported library by its file, capitalised as a type.
+        "useFilenamingConvention": "off",
+        // It forbids every conditional expression; a nested one stays refused.
+        "noTernary": "off",
+        "useObjectSpread": "off",
+        // A file holds one thing however long; past this it likely holds two.
+        "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 500 } }
+      }
+    }
+  }
+}

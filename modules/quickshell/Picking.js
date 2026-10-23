@@ -7,11 +7,14 @@
 .pragma library
 
 const least = 16;
+// The character code of "a", the letter of the first row and column.
+const LETTER_A = 97;
 
 // Where the box starts: the middle quarter of the screen, so the first key
 // moves or sizes something already there.
 function start(screen) {
-    const width = Math.round(screen.width / 2), height = Math.round(screen.height / 2);
+    const width = Math.round(screen.width / 2);
+    const height = Math.round(screen.height / 2);
     return {
         x: Math.round((screen.width - width) / 2),
         y: Math.round((screen.height - height) / 2),
@@ -62,17 +65,21 @@ function grid(screen) {
 }
 
 function letter(index) {
-    return String.fromCharCode(97 + index);
+    return String.fromCharCode(LETTER_A + index);
 }
 
 // The cell two letters name, row then column, or null when there's none.
 function cell(cells, typed) {
-    if (typed.length !== 2)
+    if (typed.length !== 2) {
         return null;
-    const row = typed.charCodeAt(0) - 97, column = typed.charCodeAt(1) - 97;
-    if (row < 0 || row >= cells.rows || column < 0 || column >= cells.columns)
+    }
+    const row = typed.charCodeAt(0) - LETTER_A;
+    const column = typed.charCodeAt(1) - LETTER_A;
+    if (row < 0 || row >= cells.rows || column < 0 || column >= cells.columns) {
         return null;
-    const x = Math.round(column * cells.width), y = Math.round(row * cells.height);
+    }
+    const x = Math.round(column * cells.width);
+    const y = Math.round(row * cells.height);
     return {
         x, y,
         width: Math.round((column + 1) * cells.width) - x,
@@ -83,16 +90,19 @@ function cell(cells, typed) {
 // Whether a letter can still lead to a cell after what's been typed.
 function fits(cells, typed) {
     const within = (code, count) => code >= 0 && code < count;
-    if (typed.length === 0)
+    if (typed.length === 0) {
         return true;
-    if (!within(typed.charCodeAt(0) - 97, cells.rows))
+    }
+    if (!within(typed.charCodeAt(0) - LETTER_A, cells.rows)) {
         return false;
-    return typed.length === 1 || within(typed.charCodeAt(1) - 97, cells.columns);
+    }
+    return typed.length === 1 || within(typed.charCodeAt(1) - LETTER_A, cells.columns);
 }
 
 // The box from one cell to another, each corner where it lies.
 function spanned(a, b) {
-    const x = Math.min(a.x, b.x), y = Math.min(a.y, b.y);
+    const x = Math.min(a.x, b.x);
+    const y = Math.min(a.y, b.y);
     return {
         x, y,
         width: Math.max(a.x + a.width, b.x + b.width) - x,

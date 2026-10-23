@@ -6,7 +6,7 @@
 .pragma library
 
 function stands(entry, now, fresh, failedFor) {
-    return !!entry && (entry.pending || now - entry.at < (entry.failed ? failedFor : fresh));
+    return Boolean(entry) && (entry.pending || now - entry.at < (entry.failed ? failedFor : fresh));
 }
 
 // How long until one still being asked counts as not answering, after

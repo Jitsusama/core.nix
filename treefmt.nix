@@ -1,7 +1,8 @@
 # How `nix fmt` formats and lints this repository, and what the formatting
 # check holds it to. Lines stop at 100 characters, the practical limit of the
 # code style. Every language's linter runs at its strictest, test code's
-# included; ruff.toml and mypy.ini say how for Python, .luacheckrc for Lua.
+# included; ruff.toml and mypy.ini say how for Python, .luacheckrc for Lua,
+# biome.jsonc for JavaScript.
 { pkgs, ... }:
 let
   driver = pkgs.python3Packages.callPackage "${pkgs.path}/nixos/lib/test-driver" { };
@@ -30,6 +31,16 @@ in
       ])
     }/bin/mypy";
     includes = [ "*.py" ];
+  };
+
+  # biome reads the JavaScript QML imports as the modules it means
+  # (tests/qt-javascript-lint.sh).
+  settings.formatter.qt-javascript-lint = {
+    command = pkgs.lib.getExe (pkgs.callPackage ./tests/qt-javascript-lint.nix { });
+    includes = [ "*.js" ];
+    # The launcher is being redesigned, its matcher with it, which comes
+    # under biome as it's rewritten.
+    excludes = [ "modules/quickshell/Fuzzy.js" ];
   };
 
   # luacheck reads each Lua file as the program that runs it does, as
