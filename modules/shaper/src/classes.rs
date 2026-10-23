@@ -32,6 +32,10 @@ pub struct Sets {
     pub app4: Vec<String>,
     /// Programs that are calls through and through: Tuple's daemon.
     pub video5: Vec<String>,
+    /// The work Joel waits on at a terminal, which the slices keep inside
+    /// jobs and ahead of the rest of it: it goes at an app's pace, not
+    /// bulk's.
+    pub awaited5: Vec<String>,
 }
 
 const SYSTEM_BULK: [&str; 2] = ["build.slice", "machine.slice"];
@@ -42,6 +46,7 @@ const ACCOUNT_BULK: [&str; 4] = [
     "machine.slice",
 ];
 const CALLS: [&str; 1] = ["app.slice/tuple.service"];
+const AWAITED: [&str; 1] = ["jobs.slice/jobs-awaited.slice"];
 
 /// Reads the classes' cgroups from a cgroup tree mounted at `root`. Only
 /// cgroups that exist are named, since nft refuses a path it can't find.
@@ -72,10 +77,12 @@ pub fn read(root: &Path) -> Sets {
         if exists(&apps) {
             sets.app4.push(apps);
         }
-        for unit in CALLS {
-            let path = format!("{manager}/{unit}");
-            if exists(&path) {
-                sets.video5.push(path);
+        for (cgroups, set) in [(&CALLS, &mut sets.video5), (&AWAITED, &mut sets.awaited5)] {
+            for cgroup in cgroups {
+                let path = format!("{manager}/{cgroup}");
+                if exists(&path) {
+                    set.push(path);
+                }
             }
         }
     }
@@ -138,6 +145,7 @@ pub fn transaction(table: &str, sets: &Sets, local: &Local) -> String {
     fill("voice2", &sets.voice2, true);
     fill("app4", &sets.app4, true);
     fill("video5", &sets.video5, true);
+    fill("awaited5", &sets.awaited5, true);
     fill("local4", &local.v4, false);
     fill("local6", &local.v6, false);
     fill("uplinks", &local.links, true);
@@ -196,6 +204,20 @@ mod tests {
     }
 
     #[test]
+    fn the_work_joel_waits_on_is_named_apart_from_the_rest_of_jobs() {
+        let root = tree(&[
+            &format!("{ACCOUNT}/jobs.slice/jobs-awaited.slice/awaited.service"),
+            &format!("{ACCOUNT}/jobs.slice/jobs.service"),
+        ]);
+        let sets = read(&root);
+        assert_eq!(
+            sets.awaited5,
+            [format!("{ACCOUNT}/jobs.slice/jobs-awaited.slice")]
+        );
+        assert_eq!(sets.bulk4, [format!("{ACCOUNT}/jobs.slice")]);
+    }
+
+    #[test]
     fn every_account_is_read() {
         let root = tree(&[
             "user.slice/user-1000.slice/user@1000.service/jobs.slice",
@@ -227,7 +249,7 @@ mod tests {
         assert!(text.contains(
             "flush set inet shaper bulk1\nadd element inet shaper bulk1 { \"build.slice\" }\n"
         ));
-        assert!(text.contains("flush set inet shaper video5\nflush set inet shaper local4\n"));
+        assert!(text.contains("flush set inet shaper awaited5\nflush set inet shaper local4\n"));
         assert!(text.contains("add element inet shaper local4 { 192.168.4.0/22 }\n"));
         assert!(text.contains("flush set inet shaper local6\nflush set inet shaper uplinks\n"));
         assert!(text.ends_with("add element inet shaper uplinks { \"enp1\" }\n"));

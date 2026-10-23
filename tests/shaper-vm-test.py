@@ -162,16 +162,24 @@ def datagrams(port: int, n: int = 300, to: str = far) -> str:
 
 
 # Each slice is held open; a slice made afresh is the subtest further on.
-for name in ["jobs.slice", "background.slice", "app.slice"]:
+for name in ["jobs.slice", "jobs-awaited.slice", "background.slice", "app.slice"]:
     hold(name)
 hold("build.slice", system=True)
-for set_name, name in [("bulk4", "background.slice"), ("bulk1", "build.slice")]:
+for set_name, name in [
+    ("bulk4", "background.slice"),
+    ("awaited5", "jobs-awaited.slice"),
+    ("bulk1", "build.slice"),
+]:
     client.wait_until_succeeds(f"nft list set inet shaper {set_name} | grep -q {name}", timeout=10)
 
 with subtest("the account's work goes in bulk, both ways"):
     lands("bulk", "jobs.slice", upload)
     lands("bulk", "jobs.slice", download, dev=ifb("eth1"))
     lands("bulk", "background.slice", datagrams(9000))
+
+with subtest("what Joel waits on at a terminal goes as an app's would, both ways"):
+    lands("best effort", "jobs-awaited.slice", upload)
+    lands("best effort", "jobs-awaited.slice", download, dev=ifb("eth1"))
 
 with subtest("the system's builds go in bulk"):
     lands("bulk", "system:build.slice", upload)
