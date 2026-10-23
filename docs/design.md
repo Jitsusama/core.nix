@@ -536,14 +536,14 @@ works the same way everywhere.
   what a person would call it ("audio" is Sound, "notifications" the
   Notices), and Return steps into it; found that way, it stands alone for
   what it holds, so neither its members nor things that live in it, nor the
-  shortcut that opens it, sit beside it. Beside the field, a word says what
-  the selection is: an
-  answer, a collection, a window, a program, a shortcut, a pi session.
-  Each is whole at home, and most have a chord that opens them: Super+V the
+  shortcut that opens it, sit beside it. Each thing's row says what kind
+  of thing it is at its right edge (Shape and Kinds).
+  The windows, the copies and the notices are whole at home, and most have
+  a chord that opens them: Super+V the
   copies, Super+E the emoji, Super+N the notices (the stack on screen
   first, by the keys, then the history), Super+Shift+/ the shortcuts.
-- **A thing is listed once.** A key's action that a row already does is
-  that row, drawing the key's chord: Super+L is the session's Lock,
+- **A key's action is its row.** A key's action that a row already does
+  is that row, drawing the key's chord: Super+L is the session's Lock,
   Super+Return is kitty, and the screenshot keys are Capture's rows.
 - **Copies stay in memory.** One program hears every copy for the session,
   text and pictures, and the shell asks it for them, so none is written to
