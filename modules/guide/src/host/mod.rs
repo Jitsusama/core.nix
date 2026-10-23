@@ -628,12 +628,13 @@ impl Step for WriteStick {
                 remedy: "plug in a bigger stick instead".into(),
             });
         }
-        let mut asks = vec![Ask::Act {
+        let mut asks = vec![Ask::Confirm {
             id: "stick",
             what: format!(
                 "{} is the stick to write. Everything on it will be replaced.",
                 described(&stick)
             ),
+            verb: "write it",
         }];
         if let Some(payload) = &self.payload {
             let words = self.words()?.expose();

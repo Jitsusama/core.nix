@@ -269,7 +269,13 @@ impl Walk<'_> {
             match io.press()? {
                 Press::Leave => return Ok(None),
                 Press::Char(c)
-                    if !matches!(ask, Ask::Act { .. } | Ask::Choose { .. } | Ask::Show { .. }) =>
+                    if !matches!(
+                        ask,
+                        Ask::Act { .. }
+                            | Ask::Confirm { .. }
+                            | Ask::Choose { .. }
+                            | Ask::Show { .. }
+                    ) =>
                 {
                     typed.push(c);
                 }
@@ -293,7 +299,9 @@ impl Walk<'_> {
                 }
                 Press::Return => {
                     let answer = match ask {
-                        Ask::Act { .. } | Ask::Show { .. } => Some(Answer::Done),
+                        Ask::Act { .. } | Ask::Confirm { .. } | Ask::Show { .. } => {
+                            Some(Answer::Done)
+                        }
                         Ask::Choose { .. } => Some(Answer::Chosen(chosen)),
                         Ask::Secret { .. } | Ask::SecretOr { .. } if typed.is_empty() => None,
                         Ask::Secret { .. } | Ask::SecretOr { .. } => {

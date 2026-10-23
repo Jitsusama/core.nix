@@ -209,7 +209,9 @@ fn the_sticks_passphrase_is_seven_words_shown_for_the_phone_and_typed_back() {
     };
     let asks = asked(&mut fake);
     let [
-        Ask::Act { .. },
+        Ask::Confirm {
+            verb: "write it", ..
+        },
         Ask::Show { how, shown, .. },
         Ask::Recall {
             id: "passphrase",
