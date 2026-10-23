@@ -1,5 +1,7 @@
 // A Tuple call (Tuple.qml): true while Joel's in one, saying who with and
-// for how long, and while one rings, when it wants him. Its panel brings a
+// for how long, and while one rings, when it wants him. Its line below
+// says what matters most in the call now: that it's connecting, whose
+// screen is shown, whose camera is on, and otherwise who's in it. Its panel brings a
 // ringing call's window forward, since that's where it's answered; in a
 // call it leaves, shares the screen while nothing's shared (the sharing
 // piece stops a share), mutes Joel in Tuple or lets him be heard again,
@@ -26,7 +28,8 @@ Piece {
         return Tuple.name(who).split(" ")[0];
     }
     // Whose screen is shown in the call, by the first sharing it.
-    readonly property var showing: Tuple.call.showing.map(who => first(who) || "Someone")
+    readonly property var showing: Tuple.showing.map(who => first(who) || "Someone")
+    readonly property var watching: Tuple.watching.map(who => first(who) || "Someone")
 
     active: Tuple.calling || rings
     wants: rings
@@ -38,7 +41,10 @@ Piece {
         : `In a Tuple call ${Tuple.company} for ${length}`
             + (Tuple.muted === true ? ", muted" : "")
     context: rings ? "Answer in Tuple's window"
+        : Tuple.connecting ? "Connecting"
         : showing.length > 0 ? `${showing[0]} is sharing`
+        : Tuple.sending ? "Sharing your screen"
+        : watching.length > 0 ? `${Log.company(watching).replace(/^with /, "")}, on camera`
         : Log.company(Tuple.others.map(who => first(who)))
     actions: rings ? [{
         glyph: String.fromCodePoint(0xf03f2),

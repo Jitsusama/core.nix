@@ -1,13 +1,21 @@
 pragma Singleton
 pragma ComponentBehavior: Bound
 // Tuple's calls, as the shell sees them, for the margin's piece (Call.qml)
-// and the launcher's rows (Calls.qml). Tuple's command starts, joins and
-// ends a call and says nothing after, so how a call stands comes from the
-// daemon's log, which Tuple writes in its data, where the XDG spec puts it:
-// when a call connects and ends, who comes and goes, a call ringing, and
-// whether Tuple sends Joel's voice. The log is followed as it's written,
-// from its last lines when the shell starts, so a call already going
-// counts. What a line means is Tuple.js's to say.
+// and the launcher's rows (Calls.qml). How the call Joel's in stands comes
+// from Tuple's own stream of state, as tuple-people says it (people.rs):
+// whether it's connected and since when, who's in it by name, and for
+// Joel and each of them, whether they're muted, sharing their screen or
+// showing their camera. Any tuple command starts a daemon when none is
+// running, so the helper runs only while Tuple's daemon answers, and is
+// started again whenever the daemon writes its log, as it does as it
+// starts; a stopped Tuple stays stopped.
+//
+// A call ringing, and one missed, come from the daemon's log, which Tuple
+// writes in its data, where the XDG spec puts it. The log is followed as
+// it's written, from its last lines when the shell starts, so a ring
+// already going counts. What a line means is Tuple.js's to say; while the
+// stream isn't running, as with an older Tuple, the log says how a call
+// stands too, as well as it can.
 //
 // Tuple on Linux doesn't yet tell Joel when someone joins or leaves, or
 // that everyone else has left, so the shell does, as notices of Tuple's,
@@ -37,11 +45,32 @@ Singleton {
 
     // How the call stands, as Tuple.js tells it from the log.
     property var call: Log.none
-    readonly property bool calling: call.calling
-    // When the call connected, in milliseconds since 1970.
-    readonly property real since: call.since
-    // Who's in it besides Joel, each by whatever the log knows them by.
-    readonly property var others: Log.others(call)
+    // The call as Tuple's stream says it, while the stream runs: false
+    // for none, else { since, connection, muted, sharing, camera, people },
+    // each of people [id, name, connection, muted, sharing, camera].
+    property var live: false
+    // Whether the stream runs, which it does only while Tuple's does.
+    property bool streamed: false
+    readonly property bool calling: streamed ? live !== false : call.calling
+    // When the call connected, in milliseconds since 1970, or when the
+    // shell heard of it, until it does.
+    property real heardAt: 0
+    readonly property real since: streamed ? (live === false ? 0 : live.since ?? heardAt) : call.since
+    // Who's in it besides Joel, each by the id Tuple knows them by, or
+    // whatever the log does.
+    readonly property var others: streamed ? (live === false ? [] : live.people.map(one => `${one[0]}`))
+        : Log.others(call)
+    // Whose screen is shown in the call, by the first sharing it.
+    readonly property var showing: streamed ? (live === false ? []
+        : live.people.filter(one => one[4]).map(one => `${one[0]}`)) : call.showing
+    // Whose cameras are on, besides Joel's.
+    readonly property var watching: streamed && live !== false
+        ? live.people.filter(one => one[5]).map(one => `${one[0]}`) : []
+    // Whether Joel's screen and camera are in the call, as Tuple says.
+    readonly property bool sending: streamed && live !== false && live.sharing
+    readonly property bool filming: streamed && live !== false && live.camera
+    // Whether it's still connecting, or is again.
+    readonly property bool connecting: streamed && live !== false && live.connection !== "connected"
     // The names Tuple's contacts give them, by the number Tuple knows them by.
     property var names: ({})
     // Who's calling Joel, while a ring lasts, or "".
@@ -123,7 +152,7 @@ Singleton {
     // been looked through for: those in the call, sharing, calling, or to
     // be told of.
     function unnamed() {
-        return others.concat(call.showing, [ringing], telling.map(told => told.who))
+        return others.concat(showing, [ringing], telling.map(told => told.who))
             .map(who => Log.number(who))
             .filter(id => id !== "" && !(id in names));
     }
@@ -194,9 +223,9 @@ Singleton {
         call = Log.after(call, line, now);
         if (call === before)
             return;
-        if (call.muted !== before.muted && call.muted !== null)
+        if (!streamed && call.muted !== before.muted && call.muted !== null)
             muted = call.muted;
-        if (!call.calling && before.calling) {
+        if (!streamed && !call.calling && before.calling) {
             muted = null;
             withdraw("leave");
         }
@@ -217,8 +246,9 @@ Singleton {
         if (call.ringing !== "" && call.ringing !== before.ringing)
             tell("rings", call.ringing);
         // Whoever's there as Joel joins was there already, and everyone
-        // goes as he leaves, so neither is news.
-        if (!call.calling || !before.calling)
+        // goes as he leaves, so neither is news; while the stream runs,
+        // it says who comes and goes.
+        if (streamed || !call.calling || !before.calling)
             return;
         const was = Log.others(before);
         const is = Log.others(call);
@@ -246,11 +276,71 @@ Singleton {
         }
     }
 
+    // A line of Tuple's stream, as tuple-people says it.
+    function streams(line) {
+        let said;
+        try {
+            said = JSON.parse(line);
+        } catch (error) {
+            return;
+        }
+        if (!("call" in said))
+            return;
+        const before = live;
+        const now = said.call ?? false;
+        if (now !== false && before === false)
+            heardAt = Date.now();
+        for (const [id, name] of now === false ? [] : now.people)
+            if (name !== "" && names[`${id}`] !== name)
+                names = Object.assign({}, names, { [`${id}`]: name });
+        live = now;
+        // Muting is said only once connected: Tuple sends no voice before.
+        muted = now === false || now.connection !== "connected" ? null : now.muted;
+        if (now === false && before !== false)
+            withdraw("leave");
+        // Whoever's there as the call connects was there already, and
+        // everyone goes as Joel leaves, so neither is news.
+        if (now === false || before === false || before.since === null
+            || now.since === null || Date.now() - now.since < settling)
+            return;
+        const was = before.people.map(one => `${one[0]}`);
+        const is = now.people.map(one => `${one[0]}`);
+        for (const who of is.filter(who => !was.includes(who)))
+            tell("came", who);
+        const went = was.filter(who => !is.includes(who));
+        for (const who of went)
+            tell(is.length === 0 && who === went[went.length - 1] ? "alone" : "went", who);
+    }
+
     Process {
         running: true
         command: ["tail", "-F", "-n", "400", root.log]
         stdout: SplitParser {
-            onRead: line => root.heard(line)
+            onRead: line => {
+                // The daemon writes its log as it starts, so its stream
+                // can be followed from then on.
+                if (!following.running)
+                    following.running = true;
+                root.heard(line);
+            }
+        }
+    }
+
+    Process {
+        id: following
+        running: true
+        // Tuple's daemon listens here, as tuple-0 for its first account.
+        command: ["tuple-people", "call", "tuple", `${Quickshell.env("XDG_RUNTIME_DIR")}/tuple-0`]
+        stdout: SplitParser {
+            onRead: line => root.streams(line)
+        }
+        onStarted: root.streamed = true
+        onExited: {
+            if (root.live !== false)
+                root.withdraw("leave");
+            root.streamed = false;
+            root.live = false;
+            root.muted = null;
         }
     }
 
