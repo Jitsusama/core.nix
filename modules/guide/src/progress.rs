@@ -2,8 +2,11 @@
 //! as it moves bytes, and the screen reads it once a second, from another
 //! thread, to say how much is done, how fast, and how long is left. A step
 //! that moves nothing it can count is still said to be running, and for
-//! how long, so a wait never looks like a hang.
+//! how long, so a wait never looks like a hang. How fast is over the last
+//! few seconds, so a step that slows down says so rather than showing an
+//! average that drifts.
 
+use std::collections::VecDeque;
 use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -22,6 +25,27 @@ struct Reading {
     by_reads: bool,
     /// The program running now, by its process id.
     program: Option<u32>,
+    /// How much was done when the screen last looked, and when.
+    looked: VecDeque<(Instant, u64)>,
+}
+
+/// How far back the pace is reckoned from.
+const PACE: Duration = Duration::from_secs(10);
+
+/// Bytes a second over the last `PACE`, from what was done each time it
+/// was looked at, which keeps what it needs; none until there's a second
+/// to go by.
+fn pace(looked: &mut VecDeque<(Instant, u64)>, now: Instant, done: u64) -> Option<f64> {
+    looked.push_back((now, done));
+    while looked
+        .get(1)
+        .is_some_and(|(then, _)| now.duration_since(*then) >= PACE)
+    {
+        looked.pop_front();
+    }
+    let (then, was) = *looked.front()?;
+    let over = now.duration_since(then).as_secs_f64();
+    (over >= 1.0).then(|| done.saturating_sub(was) as f64 / over)
 }
 
 /// A step's meter, shared between the step feeding it and the screen
@@ -51,6 +75,7 @@ impl Meter {
         reading.done = 0;
         reading.total = total;
         reading.by_reads = false;
+        reading.looked.clear();
     }
 
     /// Begins a part of the work a program does, counted by how many bytes
@@ -95,13 +120,19 @@ impl Meter {
             {
                 reading.done = read;
             }
-            reading.clone()
+            let done = reading.done;
+            let pace = pace(&mut reading.looked, Instant::now(), done);
+            (reading.clone(), pace)
         };
+        let (reading, pace) = reading;
         let elapsed =
             |since: Option<Instant>| since.map(|since| since.elapsed()).unwrap_or_default();
         match reading.stage {
             Some((stage, since)) => {
-                let pace = said(reading.done, reading.total, elapsed(Some(since)));
+                let pace = match pace {
+                    Some(rate) => told(reading.done, reading.total, Some(rate)),
+                    None => said(reading.done, reading.total, elapsed(Some(since))),
+                };
                 // Before a byte of it is counted, how long the whole step has
                 // been running says more than how long this part has.
                 let pace = if reading.done == 0 {
@@ -111,7 +142,10 @@ impl Meter {
                 };
                 format!("{stage}: {}", lowered(&pace))
             }
-            None => said(reading.done, reading.total, elapsed(reading.started)),
+            None => match pace {
+                Some(rate) if reading.done > 0 => told(reading.done, reading.total, Some(rate)),
+                _ => said(reading.done, reading.total, elapsed(reading.started)),
+            },
         }
     }
 
@@ -207,6 +241,12 @@ pub fn said(done: u64, total: Option<u64>, elapsed: Duration) -> String {
         return format!("Running for {}", duration(elapsed));
     }
     let rate = (elapsed.as_secs_f64() >= 1.0).then(|| done as f64 / elapsed.as_secs_f64());
+    told(done, total, rate)
+}
+
+/// How far along, and at `rate` bytes a second how fast and how long is
+/// left.
+fn told(done: u64, total: Option<u64>, rate: Option<f64>) -> String {
     let mut parts = vec![match total {
         Some(total) => format!("{} of {}", bytes(done), bytes(total.max(done))),
         None => format!("{} so far", bytes(done)),
@@ -320,6 +360,28 @@ mod tests {
             said(1_200_000_000, None, Duration::from_secs(100)),
             "1.2 GB so far, 12.0 MB a second"
         );
+    }
+
+    #[test]
+    fn the_pace_is_the_last_few_seconds_not_the_whole_stage() {
+        let start = Instant::now();
+        let mut looked = VecDeque::new();
+        let mut paced = None;
+        // 100 MB a second for five seconds, then 1 MB a second.
+        for second in 0..=20u64 {
+            let done = if second <= 5 {
+                second * 100_000_000
+            } else {
+                500_000_000 + (second - 5) * 1_000_000
+            };
+            paced = pace(&mut looked, start + Duration::from_secs(second), done);
+        }
+        let paced = paced.unwrap();
+        assert!(
+            (900_000.0..1_100_000.0).contains(&paced),
+            "{paced} bytes a second"
+        );
+        assert!(looked.len() <= 11, "{} kept", looked.len());
     }
 
     #[test]
