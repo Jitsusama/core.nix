@@ -178,26 +178,11 @@ let
   graphical = bareNixos [ self.nixosModules.graphical ];
   macWorkstation = bareDarwin [ self.darwinModules.workstation ];
 
-  # What clippy holds Rust to: its own lints and its pedantic group, less
-  # three about a published library's API, which nothing here is: the results
-  # a caller must use, and the errors and panics its docs must name. A warning
-  # fails. clippy.toml holds clippy's settings, apart from the rest of the tree.
-  clippyLints = [
-    "-D"
-    "warnings"
-    "-W"
-    "clippy::pedantic"
-    "-A"
-    "clippy::must_use_candidate"
-    "-A"
-    "clippy::missing_errors_doc"
-    "-A"
-    "clippy::missing_panics_doc"
-  ];
-  clippyConfig = lib.fileset.toSource {
-    root = ./.;
-    fileset = ./clippy.toml;
-  };
+  # What clippy holds Rust to, and its settings, as a repository built on core
+  # gets them too; modules/clippy/clippy.nix says why each lint is there.
+  clippy = pkgs.callPackage ./modules/clippy/clippy.nix { };
+  clippyLints = clippy.lints;
+  clippyConfig = clippy.config;
 
   # Quickshell's own type files, which qmllint reads the shell against, with
   # two of their faults corrected: the blur module doesn't say it depends on
@@ -225,20 +210,7 @@ let
 
   # A Rust package with clippy in place of its build, its tests and examples
   # read too, held to clippyLints, and nothing installed.
-  passesClippy =
-    name: package:
-    package.overrideAttrs (old: {
-      pname = name;
-      nativeBuildInputs = old.nativeBuildInputs ++ [ pkgs.clippy ];
-      CLIPPY_CONF_DIR = clippyConfig;
-      buildPhase = ''
-        cargo clippy --all-targets --offline -- ${lib.escapeShellArgs clippyLints}
-      '';
-      doCheck = false;
-      installPhase = ''
-        touch $out
-      '';
-    });
+  passesClippy = name: package: clippy.passes { inherit name package; };
 
   # The virtual machine tests. Each has to show something nothing cheaper can.
   vmTests = {

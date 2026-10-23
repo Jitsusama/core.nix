@@ -1,8 +1,9 @@
 # How `nix fmt` formats and lints this repository, and what the formatting
-# check holds it to. Lines stop at 100 characters, the practical limit of the
-# code style. Every language's linter runs at its strictest, test code's
-# included; ruff.toml and mypy.ini say how for Python, .luacheckrc for Lua,
-# biome.jsonc for JavaScript and .rumdl.toml for Markdown.
+# check holds it to: every linter core shares (treefmtModules.treefmt, from
+# modules/treefmt/treefmt.nix), at its strictest, test code's included, and
+# what only core has besides. ruff.toml and mypy.ini say how for Python,
+# .luacheckrc for Lua, biome.jsonc for JavaScript and .rumdl.toml for
+# Markdown.
 { pkgs, ... }:
 let
   driver = pkgs.python3Packages.callPackage "${pkgs.path}/nixos/lib/test-driver" { };
@@ -15,23 +16,14 @@ let
   );
 in
 {
-  projectRootFile = "flake.nix";
-
-  # mypy reads every script at once, from a Python carrying the libraries
-  # they import, so their types are checked too. A VM test's script names the
-  # test driver's types, which mypy reads from the driver as it's built; it's
-  # a program rather than a library, so it's given as one.
-  settings.formatter.mypy = {
-    command = "${
-      pkgs.python3.withPackages (python: [
-        python.dbus-fast
-        python.fido2
-        python.mypy
-        driverTypes
-      ])
-    }/bin/mypy";
-    includes = [ "*.py" ];
-  };
+  # A VM test's script names the test driver's types, which mypy reads from
+  # the driver as it's built; it's a program rather than a library, so it's
+  # given as one.
+  jitsusama.mypy.packages = python: [
+    python.dbus-fast
+    python.fido2
+    driverTypes
+  ];
 
   # biome reads the JavaScript QML imports as the modules it means
   # (tests/qt-javascript-lint.sh).
@@ -41,63 +33,5 @@ in
     # The launcher is being redesigned, its matcher with it, which comes
     # under biome as it's rewritten.
     excludes = [ "modules/quickshell/Fuzzy.js" ];
-  };
-
-  # rumdl reads every Markdown file, as .rumdl.toml says, and fixes nothing.
-  settings.formatter.rumdl = {
-    command = pkgs.lib.getExe pkgs.rumdl;
-    options = [
-      "check"
-      "--config"
-      "cache = false"
-    ];
-    includes = [ "*.md" ];
-  };
-
-  # zsh reads each of its files for what it can't parse, one at a time, as
-  # it takes them; nothing lints zsh further.
-  settings.formatter.zsh-parses = {
-    command = pkgs.lib.getExe pkgs.bash;
-    options = [
-      "-c"
-      ''for file; do ${pkgs.lib.getExe pkgs.zsh} --no-exec "$file" || exit; done''
-      "zsh-parses"
-    ];
-    includes = [ "*.zsh" ];
-  };
-
-  # luacheck reads each Lua file as the program that runs it does, as
-  # .luacheckrc says.
-  settings.formatter.luacheck = {
-    command = "${pkgs.lua54Packages.luacheck}/bin/luacheck";
-    options = [
-      "--codes"
-      "--no-color"
-      "--quiet"
-    ];
-    includes = [ "*.lua" ];
-  };
-
-  programs = {
-    actionlint.enable = true;
-    deadnix.enable = true;
-    nixfmt.enable = true;
-    ruff-check.enable = true;
-    ruff-format.enable = true;
-    rustfmt = {
-      enable = true;
-      edition = "2024";
-    };
-    shellcheck.enable = true;
-    statix.enable = true;
-    stylua = {
-      enable = true;
-      settings = {
-        column_width = 100;
-        indent_type = "Spaces";
-        indent_width = 2;
-        quote_style = "AutoPreferSingle";
-      };
-    };
   };
 }
