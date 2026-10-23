@@ -13,8 +13,10 @@ let
     echo "''${SSH_ASKPASS_PROMPT:-secret} $1" >> ${runtime}/asked
     [ ! -e ${runtime}/refuse ]
   '';
+  # ruff and mypy read it through `nix fmt`, so the writers' flake8 is off.
   passkey = pkgs.writers.writePython3Bin "passkey" {
     libraries = [ pkgs.python3Packages.fido2 ];
+    doCheck = false;
   } (builtins.readFile ./passkey.py);
 in
 pkgs.testers.runNixOSTest {

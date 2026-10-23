@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # Drops the built-in panel to 60 Hz once the battery falls below 30%, and
 # brings it back to its fastest rate when the charger is plugged in. On
 # battery it stays at 60 Hz even if the reading climbs back over 30%, so a

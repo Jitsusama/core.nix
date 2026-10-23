@@ -1,27 +1,23 @@
-# Builds the launcher's time zones from tzdata, since the shell's JavaScript
-# has no time zones but its own: one line of JSON for each zone,
-# [zone, names, changes], where names are the city and, for a country with
-# only that zone, the country, lowercased; and changes are [when, minutes
-# east of UTC, abbreviation], the first standing from the start of `since`
-# and each after it from the second given, until the end of `until`.
-#
-#     python3 zones.py zoneinfo since until > out
+"""Build the launcher's time zones from tzdata.
+
+The shell's JavaScript has no time zones but its own, so this prints one
+line of JSON for each zone, [zone, names, changes]. The names are the city
+and, for a country with only that zone, the country, lowercased. The
+changes are [when, minutes east of UTC, abbreviation], the first standing
+from the start of `since` and each after it from the second given, until
+the end of `until`.
+
+    python3 zones.py zoneinfo since until > out
+"""
+
 import json
 import sys
 import zoneinfo
-from datetime import datetime, timedelta, timezone
-
-directory, since, until = sys.argv[1], int(sys.argv[2]), int(sys.argv[3])
-zoneinfo.reset_tzpath([directory])
-
-
-def table(name):
-    with open(f"{directory}/{name}", encoding="utf-8") as file:
-        return [line.rstrip("\n").split("\t") for line in file if not line.startswith("#")]
-
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 # How a country tzdata names with a parenthesis is said.
-spoken = {
+SPOKEN = {
     "Samoa (American)": ["american samoa"],
     "Cocos (Keeling) Islands": ["cocos islands", "keeling islands"],
     "Congo (Dem. Rep.)": ["democratic republic of the congo", "dr congo"],
@@ -40,7 +36,7 @@ spoken = {
 
 # The names a zone goes by beyond its city and country, as they're said in
 # North America and of Europe's and Asia's largest.
-known = {
+KNOWN = {
     "America/New_York": ["eastern", "est", "edt", "et"],
     "America/Chicago": ["central", "cst", "cdt", "ct"],
     "America/Denver": ["mountain", "mst", "mdt", "mt"],
@@ -51,32 +47,35 @@ known = {
     "Australia/Sydney": ["aest", "aedt"],
 }
 
-countries = {
-    fields[0]: spoken.get(fields[1], [fields[1].lower()]) for fields in table("iso3166.tab")
-}
-zones = {}
-for fields in table("zone.tab"):
-    zones.setdefault(fields[2], []).append(fields[0])
-held = {}
-for zone, codes in zones.items():
-    for code in codes:
-        held.setdefault(code, []).append(zone)
+# A zone's state at a moment: minutes east of UTC and its abbreviation.
+type State = list[int | str | None]
 
 
-def state(zone, moment):
+def table(directory: Path, name: str) -> list[list[str]]:
+    """Read one of tzdata's tab-separated tables, its comments left out."""
+    with (directory / name).open(encoding="utf-8") as file:
+        return [line.rstrip("\n").split("\t") for line in file if not line.startswith("#")]
+
+
+def state(zone: zoneinfo.ZoneInfo, moment: datetime) -> State:
+    """Give the zone's offset and abbreviation at the moment."""
     local = moment.astimezone(zone)
-    return [int(local.utcoffset().total_seconds() // 60), local.tzname()]
+    offset = local.utcoffset()
+    minutes = 0 if offset is None else int(offset.total_seconds() // 60)
+    return [minutes, local.tzname()]
 
 
-def at(seconds):
-    return datetime.fromtimestamp(seconds, timezone.utc)
+def at(seconds: int) -> datetime:
+    """Give the moment a Unix time names."""
+    return datetime.fromtimestamp(seconds, UTC)
 
 
-def changes(name):
+def changes(name: str, since: int, until: int) -> list[list[int | str | None]]:
+    """List the zone's changes from the start of since to the end of until."""
     zone = zoneinfo.ZoneInfo(name)
-    moment = datetime(since, 1, 1, tzinfo=timezone.utc)
-    end = datetime(until + 1, 1, 1, tzinfo=timezone.utc)
-    found = [[int(moment.timestamp())] + state(zone, moment)]
+    moment = datetime(since, 1, 1, tzinfo=UTC)
+    end = datetime(until + 1, 1, 1, tzinfo=UTC)
+    found = [[int(moment.timestamp()), *state(zone, moment)]]
     day = timedelta(days=1)
     while moment < end:
         later = moment + day
@@ -89,17 +88,34 @@ def changes(name):
                     low = middle
                 else:
                     high = middle
-            found.append([high] + state(zone, at(high)))
+            found.append([high, *state(zone, at(high))])
         moment = later
     return found
 
 
-def names(zone, codes):
-    city = zone.split("/")[-1].replace("_", " ").lower()
-    alone = [name for code in codes if held[code] == [zone] for name in countries[code]]
-    return list(dict.fromkeys([city] + alone + known.get(zone, [])))
+def main(argv: list[str]) -> None:
+    """Print each zone's line, then UTC's."""
+    directory, since, until = Path(argv[0]), int(argv[1]), int(argv[2])
+    zoneinfo.reset_tzpath([str(directory)])
+    countries = {
+        fields[0]: SPOKEN.get(fields[1], [fields[1].lower()])
+        for fields in table(directory, "iso3166.tab")
+    }
+    zones: dict[str, list[str]] = {}
+    for fields in table(directory, "zone.tab"):
+        zones.setdefault(fields[2], []).append(fields[0])
+    held: dict[str, list[str]] = {}
+    for zone, codes in zones.items():
+        for code in codes:
+            held.setdefault(code, []).append(zone)
+
+    for zone in sorted(zones):
+        city = zone.split("/")[-1].replace("_", " ").lower()
+        alone = [name for code in zones[zone] if held[code] == [zone] for name in countries[code]]
+        names = list(dict.fromkeys([city, *alone, *KNOWN.get(zone, [])]))
+        print(json.dumps([zone, names, changes(zone, since, until)], ensure_ascii=False))
+    print(json.dumps(["UTC", ["utc", "gmt", "zulu"], changes("UTC", since, until)]))
 
 
-for zone in sorted(zones):
-    print(json.dumps([zone, names(zone, zones[zone]), changes(zone)], ensure_ascii=False))
-print(json.dumps(["UTC", ["utc", "gmt", "zulu"], changes("UTC")]))
+if __name__ == "__main__":
+    main(sys.argv[1:])

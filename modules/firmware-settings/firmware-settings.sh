@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # Holds the firmware's settings to the ones the machine declares, through
 # the kernel's firmware-attributes class, which Dell's, Lenovo's and HP's
 # drivers provide.

@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # Runs a failed boot's summary (modules/console/stopped.sh, as a machine
 # builds it) with stand-ins for systemctl and journalctl, and checks what it
 # says: nothing when nothing failed; each failed unit with its description

@@ -2,3 +2,5 @@ vendor/
 .claude/settings.local.json
 result
 target/
+.mypy_cache/
+.ruff_cache/

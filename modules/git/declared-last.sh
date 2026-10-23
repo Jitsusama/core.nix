@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # Keeps the global file git writes a plain file, so a program can change its
 # own settings, and ends it with an include of the declared settings, which
 # git then reads after everything a program wrote. Run on every switch, which

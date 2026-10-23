@@ -1,0 +1,30 @@
+# How ruff formats and lints the repository's Python, test code included:
+# every rule, less the few that contradict another or the formatter, and
+# those that don't fit what these files are. treefmt.nix runs it.
+line-length = 100
+target-version = "py314"
+
+[lint]
+select = ["ALL"]
+ignore = [
+  # Docstrings open on their first line, with no blank line before them in
+  # a class, which rules out the opposite rules D213 and D203.
+  "D203",
+  "D213",
+  # The formatter decides trailing commas and how strings join.
+  "COM812",
+  "ISC001",
+  # The scripts are programs read in or run by path, not packages.
+  "INP001",
+  # They are command-line programs, so print is how they speak.
+  "T201",
+  # The tests are unittest's, which the standard library carries.
+  "PT009",
+  "PT027",
+  # The licence is the repository's, in LICENSE, not a line in each file.
+  "CPY001",
+]
+
+[lint.per-file-ignores]
+# A test's name is the sentence it proves, so a docstring would repeat it.
+"*-test.py" = ["D102"]
