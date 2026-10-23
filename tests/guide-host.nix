@@ -159,6 +159,10 @@ pkgs.testers.runNixOSTest {
 
     with subtest("the stick, once used, has a partition the desktop mounted"):
         host.succeed("udevadm settle")
+        # udisks lets only someone signed in at the machine mount a stick, and
+        # takes alice for someone at another seat until her sign-in on the
+        # first console is open, which multi-user.target doesn't wait for.
+        host.wait_until_succeeds("test \"$(loginctl show-user alice --property=State --value)\" = active")
         host.succeed("su alice -c 'udisksctl mount --block-device /dev/sda1'")
         host.succeed("findmnt /dev/sda1")
 
