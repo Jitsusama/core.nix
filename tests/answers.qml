@@ -327,6 +327,24 @@ QtObject {
                 failures.push(`${what} ${stands ? "was asked again" : "wasn't asked again"}`);
         }
 
+        // One still being asked is given up on once its patience has
+        // passed, and nothing else ever is.
+        const overdue = [
+            ["nothing asked yet", null, 0, null],
+            ["just asked", { pending: true, at: 1000 }, 1000, 5000],
+            ["nearly given up on", { pending: true, at: 1000 }, 5999, 1],
+            ["given up on", { pending: true, at: 1000 }, 6000, 0],
+            ["long given up on", { pending: true, at: 1000 }, 60000, 0],
+            ["answered", { at: 1000 }, 60000, null],
+            ["failed", { failed: true, at: 1000 }, 60000, null]
+        ];
+        for (const [what, entry, now, left] of overdue) {
+            asked++;
+            const got = Asking.overdueIn(entry, now, 5000);
+            if (got !== left)
+                failures.push(`${what} was given up on in ${got}, not ${left}`);
+        }
+
         // Said as warnings, since Qt keeps ordinary logging quiet.
         for (const failure of failures)
             console.warn(failure);

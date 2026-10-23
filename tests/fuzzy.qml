@@ -102,13 +102,12 @@ QtObject {
     ]), []))
 
     readonly property var firsts: ({
-        "vu": "Turn the volume up",
+        "vol up": "Turn the volume up",
         "vol": "Turn the volume up",
-        "vold": "Turn the volume down",
+        "vol down": "Turn the volume down",
         "lo": "Lock",
         "lock": "Lock",
-        "lck": "Lock",
-        "ws up": "Move the workspace up",
+        "workspace up": "Move the workspace up",
         "below": "Focus the screen below",
         "tab": "Show the column's windows as tabs, or stacked",
         "float": "Float the window, or tile it again",
@@ -118,15 +117,14 @@ QtObject {
         "term below": "Open a terminal below this window",
         "kit": "kitty",
         "chr": "Google Chrome",
-        "gc": "Google Chrome",
         "chrome": "Google Chrome",
         "sl": "Slack",
-        "nv": "Neovim",
+        "neo": "Neovim",
         "1p": "1Password",
         "pass": "1Password",
-        "ws 3": "Go to workspace 3",
+        "workspace 3": "Go to workspace 3",
         "screenshot": "Take a screenshot of a region",
-        "shot win": "Take a screenshot of the window",
+        "screenshot win": "Take a screenshot of the window",
         "dim": "Dim the screen",
         "bright": "Brighten the screen",
         "mute mic": "Mute the microphone, or unmute it",
@@ -139,10 +137,14 @@ QtObject {
         "off": "Power Off",
         "log": "Log Out",
         "cent": "Centre the window",
-        "wide": "Widen the column",
+        // The word typed whole beats the word it begins.
+        "wide": "Make the column as wide as the screen, or put it back",
+        "widen": "Widen the column",
         "every key": "Give every key to the window, or take them back"
     })
-    readonly property var nothing: ["zz", "qx", "xylophone", "kc", "zq"]
+    // Letters that start no word find nothing, initials and letters
+    // inside a word among them.
+    readonly property var nothing: ["zz", "qx", "xylophone", "kc", "zq", "gc", "vu", "lck", "shot", "rome", "nv"]
     readonly property var atMost: ({
         "close": 1,
         "tab": 1,
@@ -197,9 +199,9 @@ QtObject {
         // work slows both alike, so the ratio holds where a time in
         // milliseconds wouldn't, and it still catches the matcher growing
         // slower in kind. On a laptop at rest a query over this list, the
-        // size of a desktop's main search, takes 0.12 ms, four and a half
-        // looks' worth, against the 8.3 ms of a frame at 120 Hz; doing the
-        // alignment twice over takes it to almost seven. Every query is
+        // size of a desktop's main search, takes about 0.1 ms, three looks'
+        // worth, against the 8.3 ms of a frame at 120 Hz, since matching
+        // by words is a look for each word and a sum. Every query is
         // typed a letter at a time, as a person types it, each searching
         // the whole list, though the launcher narrows the last results as a
         // query grows; over a list three times the size too. The fastest of
@@ -208,7 +210,7 @@ QtObject {
         // within one can even out, so a matcher too slow exits 2 and the
         // check runs it again in a fresh process (checks.nix); a ranking
         // that's wrong exits 1 and is never run again.
-        const most = 6.5;
+        const most = 4.5;
         const many = things.concat(
             names.map(n => Fuzzy.prepare(n + " again")),
             names.map(n => Fuzzy.prepare("another " + n)));

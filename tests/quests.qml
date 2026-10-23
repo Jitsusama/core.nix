@@ -90,11 +90,11 @@ ShellRoot {
             expect("a finished one, found by typing",
                 names(banner) === "Tune the banner" && banner[0].glyph === Theme.glyph.done
                     && banner[0].side === "5 Jan 2025", `${names(banner)} ${banner[0]?.side}`);
-            // The finished one is the better match, landing on a word's
-            // start, yet the open one comes first.
-            const tune = quests.search("tune").rows;
-            expect("the open one before the finished one",
-                names(tune) === "Retune the prompt, Tune the banner", names(tune));
+            // Each matches "the" as well, and the finished one is the
+            // shortest, yet the open ones come first.
+            const the = quests.search("the").rows;
+            expect("the open ones before the finished one",
+                the.length === 4 && names(the).endsWith(", Tune the banner"), names(the));
             const byId = quests.search("20261003").rows;
             expect("found by its id", names(byId) === "Retune the prompt", names(byId));
 

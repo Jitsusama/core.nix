@@ -134,7 +134,16 @@ Scope {
         const before = answer ? answer.rows.length : 0;
         answer = answering(typed, fresh);
         const rows = answer ? answer.rows : [];
-        const below = placed(found, gathered);
+        // A thing shows once: a collection found whole stands for what's in
+        // it, so neither its own rows, nor the things that live in it
+        // (`inside` names it), nor a shortcut that opens it, whose chord its
+        // row already draws, are listed beside it.
+        const whole = new Set(found.filter(row => row.key.startsWith("collection:"))
+            .map(row => row.opens));
+        const once = row => row.key.startsWith("collection:")
+            || !(whole.has(row.inside ?? "") || whole.has(row.opens ?? ""));
+        const below = placed(found.filter(once),
+            gathered.filter(row => !whole.has(row.from.settings.name)));
         matches = rows.concat(below);
         // An answer only started gives way to a name that starts the same.
         const meant = answer && !(answer.question && below.length > 0 && startsAWord(below[0].name, typed));
@@ -185,7 +194,11 @@ Scope {
     // offers beside them, such as turning Wi-Fi off, is found like any, and
     // so is the collection itself, by its title or any of its words, so
     // typing what it holds goes straight to it.
+    // A desktop action another row stands for (Provider.qml's draws) is
+    // found only as that row.
+    readonly property var standIns: sources.reduce((all, source) => all.concat(source.draws), [])
     readonly property var choices: sources.reduce((all, source) => all.concat(source.things), [])
+        .filter(row => !(row.key.startsWith("action:") && root.standIns.includes(row.name)))
         .concat(collections.map(named))
     readonly property var collections: sources.filter(source => source.collection)
 
@@ -195,7 +208,7 @@ Scope {
         const collection = source.collection;
         const row = Object.assign(whole(source, false, false), { weight: source.weight });
         row.prepared = Fuzzy.prepare(row.name);
-        row.keywords = Fuzzy.prepare([collection.noun].concat(collection.words ?? []).join(" "));
+        row.keywords = Fuzzy.prepare([row.name, collection.noun].concat(collection.words ?? []).join(" "));
         // Its words are what a person calls it, so they count as its name.
         row.named = true;
         return row;
@@ -269,11 +282,9 @@ Scope {
         let added = 0;
         for (const key of picks.likeliest()) {
             const choice = byKey[key];
-            if (!choice || shown.has(key))
-                continue;
-            // A collection with nothing in it is no likely pick, since
-            // nothing can be stepped into; it stays below with the rest.
-            if (choice.from && choice.from.collection && choice.from.everything().length === 0)
+            // A collection is always below with the rest, in its own place,
+            // so it isn't listed again as a likely pick.
+            if (!choice || shown.has(key) || choice.named)
                 continue;
             rows.push(choice);
             shown.add(key);
@@ -507,9 +518,9 @@ Scope {
     // Every choice the words find, best first (Fuzzy.js says how), with
     // what was picked for this query before leaning on the order (Picks.qml
     // says how); a thing picked before is shown even when it matches more
-    // loosely than the rest. One found only by what it is, its keywords,
-    // ranks well below those found by name, but for a collection's own
-    // words, which are what it's called.
+    // loosely than the rest. One found only with its keywords, beside its
+    // name or alone, ranks well below those found by name, but for a
+    // collection's own words, which are what it's called.
     function search(letters) {
         const narrowing = typed !== "" && letters.startsWith(typed);
         typed = letters;
@@ -719,8 +730,9 @@ Scope {
     }
 
     // What the launcher shows, as JSON: whether it holds the keyboard,
-    // what's typed and held, and the row Return takes, with its chord and
-    // whether an answer is still being asked for. A script waits on this before it
+    // what's typed and held, the first twenty rows' names in order (a
+    // collection holds thousands), and the row Return
+    // takes, with its chord and whether an answer is still being asked for. A script waits on this before it
     // presses a key, rather than guessing how long the launcher takes.
     function showing() {
         const row = root.selected;
@@ -729,6 +741,7 @@ Scope {
             keys: root.open && prompt.Window.active,
             typed: root.typed,
             held: root.held.map(step => step.row.chip ?? step.row.name),
+            rows: root.matches.slice(0, 20).map(row => row.name),
             asking: !!root.asking,
             selected: !row ? null : {
                 name: row.name,

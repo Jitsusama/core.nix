@@ -443,8 +443,9 @@ works the same way everywhere.
   switcher. A key bound anywhere on the desktop that the palette can't find is
   a failing check.
 - **Few rows, and learned.** A query leaves the handful of things it could
-  mean, not a wall: words match where they start, and a match more scattered
-  than the best is left out. What's picked for what was typed becomes what
+  mean, not a wall: each word typed has to start a word, its letters
+  unbroken, so nothing is found by letters scattered through it, and a thing
+  is listed once. What's picked for what was typed becomes what
   it means, said in the footer, so there are no aliases to set up or
   remember.
 - **Home is what's next.** With nothing typed, the launcher shows what's in
@@ -476,19 +477,26 @@ works the same way everywhere.
   answer came from.
   Nothing leaves the machine unless the question needs the network, never
   for a private address, and never with the launcher's `lookups` off.
-- **Large sets are one row each.** Emoji, the clipboard's history, past
-  notices and the Wi-Fi networks in reach are too many to mix into the
-  search: each that has a match adds one row, its best match with a count of
-  the rest, so there's no haystack and no mode to enter first. Return uses
-  that match; the right arrow sees all of them, with what was typed still
-  searching. The row sits below the matches as tidy as its own and above any
-  scattered ones. A collection is found whole by its name or what a person
-  would call it ("audio" is Sound, "notifications" the Notices), and Return
-  steps into it. Beside the field, a word says what the selection is: an
+- **Large sets are one row each.** The clipboard's history, past notices
+  and the Wi-Fi networks in reach are too many to mix into the search: each
+  that has a match adds one row, its best match with a count of the rest,
+  so there's no haystack and no mode to enter first. Return uses that
+  match; the right arrow sees all of them, with what was typed still
+  searching. The row sits below the other matches. Emoji add none, since a
+  name like what was typed ("turkey" for "tu") is a row to rule out; they
+  are found in their own place. A collection is found whole by its name or
+  what a person would call it ("audio" is Sound, "notifications" the
+  Notices), and Return steps into it; found that way, it stands alone for
+  what it holds, so neither its members nor things that live in it, nor the
+  shortcut that opens it, sit beside it. Beside the field, a word says what
+  the selection is: an
   answer, a collection, a window, a program, a shortcut, a pi session.
   Each is whole at home, and most have a chord that opens them: Super+V the
   copies, Super+E the emoji, Super+N the notices (the stack on screen
   first, by the keys, then the history), Super+Shift+/ the shortcuts.
+- **A thing is listed once.** A key's action that a row already does is
+  that row, drawing the key's chord: Super+L is the session's Lock,
+  Super+Return is kitty, and the screenshot keys are Capture's rows.
 - **Copies stay in memory.** One program hears every copy for the session,
   text and pictures, and the shell asks it for them, so none is written to
   disk, a picture's file sitting in the runtime directory, and none is kept
@@ -1199,10 +1207,13 @@ What each studio round settled, newest first, with the reason.
 - **A launcher that finds what's meant** (2026-10-11). Research into
   Raycast, the launchers before it and the work on learning keys found two
   complaints above the rest: modes entered before typing, and lists too long
-  to read. The launcher matches as fzf does, with nucleo's care over gaps,
-  but a word's first letter has to start a word unless the whole word lands
-  unbroken, and a match more scattered than the best is dropped, which is
-  what Alfred and LaunchBar knew. It learns from picks as LaunchBar and
+  to read. The launcher matched as fzf does, a word's first letter starting
+  a word and a match more scattered than the best dropped, which is what
+  Alfred and LaunchBar knew. On 2026-10-23 Joel asked to turn even that off:
+  scattered matches, and the same thing listed twice, left him reading rows
+  to rule them out. Each word typed now starts a word of what it finds,
+  unbroken, ranked by fzf's bonuses, and a collection found whole stands
+  alone for what it holds. It learns from picks as LaunchBar and
   Firefox's address bar do, keyed by what was typed. A check holds both its
   rankings and its speed, run in Qt's own engine.
 

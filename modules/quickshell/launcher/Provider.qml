@@ -13,7 +13,9 @@
 // theme's colour for its kind (hue), its chord or what it is (chord, side),
 // what Return and Shift+Return run (run, below), whether running it waits
 // for the launcher to be gone (later) or happens while it still holds the
-// keys (now, for the clipboard), where it is (context), and what else can
+// keys (now, for the clipboard), where it is (context), the collection it
+// lives in as well, by its provider's name (inside), so a search that
+// finds the collection whole lists it only there, and what else can
 // be done to it (verbs, a function giving rows of the same shape), nested
 // when those rows are things with verbs of their own, a level down. A verb
 // that needs a target asks for one (ask) from the rows `targets` gives,
@@ -49,6 +51,11 @@ Scope {
     // The launcher, for what a thing needs of it: the lock, opening below.
     property var launcher: null
     property var things: []
+    // The desktop's actions its rows stand for, by what they do (Shortcuts'
+    // `does`), each row drawing the action's chord, so the action is listed
+    // only here rather than twice under two names: the session's Lock is
+    // Super+L's "Lock the screen".
+    property var draws: []
 
     signal answered
     // A collection's things changed while it might be open.
@@ -187,7 +194,8 @@ Scope {
 
     // What a URL said as JSON, asking it again once `fresh` milliseconds
     // have passed, and only then: the value it last gave, if any, comes
-    // back at once, and `answered` says when a new one has arrived. A
+    // back at once, and `answered` says when a new one has arrived. One
+    // that hasn't answered in `patience` milliseconds has failed, and a
     // failure is asked again after ten seconds.
     function ask(url, fresh) {
         const now = Date.now();
@@ -203,8 +211,10 @@ Scope {
         asked[url] = entry;
         const request = new XMLHttpRequest();
         request.onreadystatechange = () => {
-            if (request.readyState !== XMLHttpRequest.DONE)
+            // A late answer, once it was given up on, changes nothing.
+            if (request.readyState !== XMLHttpRequest.DONE || !entry.pending)
                 return;
+            delete provider.requests[url];
             entry.pending = false;
             entry.at = Date.now();
             entry.status = request.status;
@@ -217,9 +227,53 @@ Scope {
             }
             provider.answered();
         };
+        requests[url] = request;
         request.open("GET", url);
         request.send();
+        if (!deadline.running) {
+            deadline.interval = patience;
+            deadline.start();
+        }
         return entry;
+    }
+
+    readonly property int patience: 5000
+    // What's still being asked, by URL, to give up on.
+    property var requests: ({})
+
+    // Gives up on what's taken its patience, as failed, and waits for the
+    // next one still being asked, so it runs only while something is.
+    function giveUp() {
+        const now = Date.now();
+        let soonest = null;
+        let gaveUp = false;
+        for (const url of Object.keys(asked)) {
+            const entry = asked[url];
+            const left = Asking.overdueIn(entry, now, patience);
+            if (left === 0) {
+                entry.pending = false;
+                entry.failed = true;
+                entry.at = now;
+                requests[url]?.abort();
+                delete requests[url];
+                gaveUp = true;
+            } else if (left !== null && (soonest === null || left < soonest)) {
+                soonest = left;
+            }
+        }
+        if (soonest !== null) {
+            deadline.interval = soonest;
+            deadline.start();
+        }
+        if (gaveUp)
+            provider.answered();
+    }
+
+    Timer {
+        id: deadline
+        onTriggered: {
+            provider.giveUp();
+        }
     }
 
     // An application's own glyph where the icon font has one, by its desktop
@@ -271,7 +325,9 @@ Scope {
         }, fields);
         made.weight = provider.weight;
         made.prepared = Fuzzy.prepare(made.name);
-        made.keywords = fields.keywords ? Fuzzy.prepare(fields.keywords) : null;
+        // Its keywords beside its name, so a search can say some words of
+        // each: "wifi off" finds Turn Wi-Fi Off, "wifi" being a keyword.
+        made.keywords = fields.keywords ? Fuzzy.prepare(`${made.name} ${fields.keywords}`) : null;
         return made;
     }
 }

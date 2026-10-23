@@ -37,9 +37,12 @@ let
   '';
 
   # Lantern's front desk, as a hotel's: every page is sent there until
-  # someone signs in, which its one button does.
+  # someone signs in, which its one button does. It answers each connection
+  # on a thread of its own, as a real one does: WebKit opens a connection
+  # ahead of asking anything, and a server answering one at a time waits on
+  # it while the page and wifid's next check wait behind.
   frontDesk = pkgs.writeText "front-desk.py" ''
-    from http.server import BaseHTTPRequestHandler, HTTPServer
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
     PAGE = b"""<!doctype html><title>Lantern</title>
     <form method="post" action="/sign-in"><button autofocus>Sign in</button></form>"""
@@ -67,7 +70,7 @@ let
             signed_in = True
             self.answer(200, {"Content-Type": "text/html"}, b"<p>Welcome to Lantern.</p>")
 
-    HTTPServer(("10.42.0.1", 80), Desk).serve_forever()
+    ThreadingHTTPServer(("10.42.0.1", 80), Desk).serve_forever()
   '';
 
   # Text views and file lists draw on the theme's dark background, which
@@ -505,7 +508,11 @@ pkgs.testers.runNixOSTest {
       # hundred Quickshell read back the mute from before, which a node of
       # its own never did in six hundred. The tone gives something to record
       # from the start, as a real microphone does, and a recording with
-      # sound waits for its first sound before it writes anything.
+      # sound waits for its first sound before it writes anything. It follows
+      # the dummy driver, in its group, rather than driving: a test tone
+      # driving stops for good the first time a slow reader keeps every
+      # buffer, as a recording did under load, and it says it drives itself,
+      # over any node.driver it's given.
       services.pipewire.extraConfig.pipewire."91-stand-in-microphone" = {
         "context.spa-libs".audiotestsrc = "audiotestsrc/libspa-audiotestsrc";
         "context.objects" = [
@@ -514,6 +521,7 @@ pkgs.testers.runNixOSTest {
             args = {
               "factory.name" = "audiotestsrc";
               "node.name" = "stand-in-microphone";
+              "node.group" = "pipewire.dummy";
               "node.description" = "Stand-in microphone";
               "media.class" = "Audio/Source";
               # Two channels, as a laptop's microphones are.
@@ -849,6 +857,25 @@ pkgs.testers.runNixOSTest {
 
       # A user manager handed its whole service's pressure to watch can't set
       # its own threshold on it, and says so each time it starts or reloads.
+      # A reader that stalls, as one does under load, leaves the microphone
+      # recording once it carries on, as a real one's does.
+      with subtest("the stand-in microphone outlasts a reader that stalls"):
+          as_account(
+              "systemd-run --user --unit=stalls -- ${pkgs.pipewire}/bin/pw-record"
+              " --target stand-in-microphone /tmp/stalls.wav"
+          )
+          machine.wait_until_succeeds("test $(stat -c %s /tmp/stalls.wav) -gt 100000", timeout=60)
+          as_account("systemctl --user kill --signal=STOP stalls")
+          machine.sleep(3)
+          as_account("systemctl --user kill --signal=CONT stalls")
+          machine.sleep(2)
+          stall_from = int(machine.succeed("stat -c %s /tmp/stalls.wav"))
+          machine.sleep(3)
+          stall_to = int(machine.succeed("stat -c %s /tmp/stalls.wav"))
+          as_account("systemctl --user stop stalls")
+          machine.succeed("rm /tmp/stalls.wav")
+          assert stall_to > stall_from + 100000, (stall_from, stall_to)
+
       with subtest("every user manager watches its own pressure"):
           as_account("systemctl --user daemon-reload")
           machine.fail("journalctl -b -o cat | grep -F 'pressure threshold'")
@@ -1847,15 +1874,28 @@ pkgs.testers.runNixOSTest {
           log = as_account("journalctl --user -u quickshell --no-pager -o cat")
           assert "ERROR" not in log and "Error:" not in log, "an answer raised an error"
 
-      with subtest("the launcher finds emoji as one row, and steps into the rest"):
-          copied("tada", "\U0001F389")
-          answer("smiling")
+      with subtest("the launcher finds emoji in their own place, and only there"):
+          closed = in_session("niri msg layers | grep -qw launcher")
+          # The main search lists no emoji, only the place they're in.
+          answer("tada")
+          t.assertNotIn("party popper", showing()["rows"])
+          machine.send_key("esc")
+          machine.wait_until_fails(closed, timeout=10)
+          answer("emoji")
+          launcher_until(lambda shown: shown["rows"] == ["Emoji"])
+          machine.send_key("ret")
+          launcher_until(lambda shown: shown["held"] == ["emoji"])
+          type_in("tada", selecting="party popper")
+          machine.send_key("ret")
+          machine.wait_until_fails(closed, timeout=10)
+          t.assertEqual(as_account("wl-paste --no-newline"), "\U0001F389")
+          machine.send_key("meta_l-e")
+          launcher_ready()
+          type_in("smiling")
           photograph("launcher-emoji")
-          step_in()
           type_in(" cat")
           photograph("launcher-emoji-all")
           machine.send_key("ret")
-          closed = in_session("niri msg layers | grep -qw launcher")
           machine.wait_until_fails(closed, timeout=10)
           # The grinning cat with smiling eyes, first among the smiling cats.
           t.assertEqual(as_account("wl-paste --no-newline"), "\U0001F638")
@@ -1867,6 +1907,58 @@ pkgs.testers.runNixOSTest {
           machine.send_key("ret")
           machine.wait_until_fails(closed, timeout=10)
           t.assertEqual(as_account("wl-paste --no-newline"), "\U0001F431")
+
+      with subtest("a search lists each thing once"):
+          closed = in_session("niri msg layers | grep -qw launcher")
+          # Tuple's place stands alone for its rows and its people; the
+          # session's Lock and Do Not Disturb draw their keys' chords, so
+          # those keys aren't listed again; kitty draws Super+Return's;
+          # and Capture holds the screenshots its keys take. Nothing is
+          # found by letters scattered through it.
+          stood_for = [
+              "Lock the screen",
+              "Hold notices, or let them show",
+              "Open a terminal",
+              "Take a screenshot of the screen",
+              "Take a screenshot of the window",
+          ]
+
+          # Open windows are found by their program too, and two may share
+          # a title, so a search's rows are held to what stands for what;
+          # home's, with no windows but the focused one, are held to once.
+          def once(shown, leading):
+              rows = shown["rows"]
+              return (
+                  rows[: len(leading)] == leading
+                  and (shown["typed"] != "" or len(set(rows)) == len(rows))
+                  and not set(rows) & set(stood_for)
+              )
+
+          # What a keyboard's caps lock says may follow "lock": that's
+          # another thing. Home, with nothing typed, lists nothing twice
+          # either, a collection picked often staying in its own place.
+          for typed, leading in [
+              ("tuple", ["Tuple"]),
+              ("lock", ["Lock"]),
+              ("kitty", ["kitty"]),
+              ("do not disturb", ["Do Not Disturb"]),
+              ("screenshot", ["Capture"]),
+              ("", []),
+          ]:
+              answer(typed)
+              launcher_until(lambda shown, leading=leading: once(shown, leading))
+              machine.send_key("esc")
+              machine.wait_until_fails(closed, timeout=10)
+          answer("zqxj")
+          launcher_until(lambda shown: shown["rows"] == [])
+          machine.send_key("esc")
+          machine.wait_until_fails(closed, timeout=10)
+          # The speakers' tuning plays through them, and is no program.
+          answer("volume")
+          launcher_until(lambda shown: "Turn the volume up" in shown["rows"])
+          t.assertNotIn("pebble_x_plus_tuning_output", showing()["rows"])
+          machine.send_key("esc")
+          machine.wait_until_fails(closed, timeout=10)
 
       with subtest("Super+Shift+/ shows every layer's shortcuts, and runs the desktop's"):
           windows = len(json.loads(as_account("niri msg --json windows")))
@@ -1890,7 +1982,10 @@ pkgs.testers.runNixOSTest {
           def opened(_):
               return len(json.loads(as_account("niri msg --json windows"))) > windows
 
-          retry(opened, timeout_seconds=15)
+          # kitty starts cold, drawn in software, which on a machine running
+          # other tests too has taken 10 seconds and more than 19, so it's
+          # given a minute.
+          retry(opened, timeout_seconds=60)
 
       with subtest("Super+V finds what was copied earlier, and copies it again"):
           keeping = as_account("systemctl --user is-active clipboard-history")
@@ -2266,12 +2361,15 @@ pkgs.testers.runNixOSTest {
           photograph("launcher-sign-in")
           type_in("sign in", selecting="Sign In to Lantern")
           machine.send_key("ret")
+          # The window is GTK and WebKit started cold, drawn in software,
+          # which on a machine running other tests too has taken 42 seconds
+          # to show and more than 60, so it's given three minutes for both.
           window = "niri msg --json windows | grep -qF '\"app_id\":\"io.jitsusama.WifiSignIn\"'"
-          machine.wait_until_succeeds(in_session(window), timeout=60)
+          machine.wait_until_succeeds(in_session(window), timeout=180)
           # Its button can only be pressed once the front desk has served
           # the page, which a window that has to try again does later.
           machine.wait_until_succeeds(
-              "journalctl -u lantern-front-desk | grep -q 'GET /sign-in'", timeout=60
+              "journalctl -u lantern-front-desk | grep -q 'GET /sign-in'", timeout=180
           )
           photograph("sign-in", timeout=20)
           # Its one button signs in, and the window closes as Lantern lets
