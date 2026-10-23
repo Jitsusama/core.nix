@@ -236,6 +236,8 @@ let
     # Whether a reboot gets past what won't stop shows only by rebooting, with
     # a watchdog there to reset the machine.
     vm-reboot-cannot-hang = import ./tests/shutdown.nix { inherit self pkgs; };
+    # What logind makes of a shut lid shows only with logind watching one.
+    vm-lid-stays-at-the-desk = import ./tests/lid.nix { inherit self pkgs; };
   };
 in
 {
@@ -5142,6 +5144,21 @@ in
       (pkgs.callPackage ./modules/systemd/shutdown-status/package.nix { }).overrideAttrs
         (old: {
           pname = "shutdown-status-passes-clippy";
+          nativeBuildInputs = old.nativeBuildInputs ++ [ pkgs.clippy ];
+          buildPhase = ''
+            cargo clippy --all-targets --offline -- -D warnings
+          '';
+          doCheck = false;
+          installPhase = ''
+            touch $out
+          '';
+        });
+
+    # clippy finds nothing in lid-docked, its tests included.
+    lid-docked-passes-clippy =
+      (pkgs.callPackage ./modules/lid/docked/package.nix { }).overrideAttrs
+        (old: {
+          pname = "lid-docked-passes-clippy";
           nativeBuildInputs = old.nativeBuildInputs ++ [ pkgs.clippy ];
           buildPhase = ''
             cargo clippy --all-targets --offline -- -D warnings
