@@ -24,9 +24,10 @@ Provider {
 
     readonly property var awake: thing({
         key: "session:awake",
-        verb: Caffeinate.on ? "let it sleep" : "keep awake",
-        name: Caffeinate.on ? "Let It Sleep" : "Keep Awake",
-        keywords: "caffeinate awake stay awake keep on no sleep coffee insomnia presentation lid",
+        verb: Caffeinate.on ? "let sleep" : "keep awake",
+        name: Caffeinate.on ? "Let the machine sleep" : "Keep the machine awake",
+        keywords: "caffeinate keep awake stay awake keep on no sleep coffee insomnia "
+            + "presentation lid let it sleep",
         side: !Caffeinate.on ? "" : Caffeinate.lid ? "awake, lid shut too" : "awake while open",
         glyph: String.fromCodePoint(0xf0176),
         hue: "machine",
@@ -38,9 +39,10 @@ Provider {
     // right arrow offers holding them until it's ended.
     readonly property var quiet: thing({
         key: "session:quiet",
-        verb: Quiet.on ? "end it" : "hold notices",
-        name: Quiet.on ? "End Do Not Disturb" : "Do Not Disturb",
-        keywords: "quiet focus dnd silence mute snooze pause notifications notices alerts hold",
+        verb: Quiet.on ? "turn off" : "turn on",
+        name: Quiet.on ? "Turn off do not disturb" : "Turn on do not disturb",
+        keywords: "quiet focus dnd silence mute snooze pause notifications notices alerts hold "
+            + "end donotdisturb",
         side: Quiet.on ? Quiet.lasts : "for an hour",
         chord: bound(holds),
         glyph: String.fromCodePoint(0xf00a0),
@@ -56,17 +58,18 @@ Provider {
     })
 
     // Each power profile is found by its own name, the one in use saying
-    // so; the charger's coming and going picks one again.
+    // so; the charger's coming and going picks one again. What's learned
+    // knows each by the name it had first (was), so a rename keeps it.
     readonly property var profiles: [
-        { profile: PowerProfile.PowerSaver, name: "Power Saver", glyph: 0xf032a,
-            words: "eco low power battery saver slow cool" },
-        { profile: PowerProfile.Balanced, name: "Balanced Power", glyph: 0xf05d1,
-            words: "normal default" },
-        { profile: PowerProfile.Performance, name: "Performance", glyph: 0xf04c5,
-            words: "turbo fast boost max speed" }
+        { profile: PowerProfile.PowerSaver, name: "Use power saver", was: "Power Saver",
+            glyph: 0xf032a, words: "eco low power battery saver slow cool" },
+        { profile: PowerProfile.Balanced, name: "Use balanced power", was: "Balanced Power",
+            glyph: 0xf05d1, words: "normal default balanced" },
+        { profile: PowerProfile.Performance, name: "Use full performance", was: "Performance",
+            glyph: 0xf04c5, words: "turbo fast boost max speed" }
     ].filter(choice => choice.profile !== PowerProfile.Performance
         || PowerProfiles.hasPerformanceProfile).map(choice => thing({
-        key: `session:power:${choice.name}`,
+        key: `session:power:${choice.was}`,
         verb: "use",
         name: choice.name,
         keywords: `power profile mode energy ${choice.words}`,
@@ -80,8 +83,8 @@ Provider {
     // records, stopping it leads the home screen, so it never runs unseen.
     readonly property var recording: thing({
         key: "session:recording",
-        verb: "stop it",
-        name: "Stop Recording",
+        verb: "stop",
+        name: "Stop recording",
         keywords: "record recording video screencast capture",
         side: `recording ${Recorder.what}`,
         glyph: Theme.glyph.recording,
@@ -89,46 +92,64 @@ Provider {
         run: () => Recorder.stop()
     })
 
+    // What ending the session closes, said before it's done.
+    readonly property string closing: {
+        const open = Niri.windows.length;
+        return open === 0 ? "" : `, closing ${open === 1 ? "the window" : `${open} windows`}`;
+    }
+
+    // Each is learned by the name it had first (was), so renaming one keeps
+    // what Joel taught it, and that name still finds it.
     things: [awake, quiet].concat(Recorder.recording ? [recording] : [], profiles, [
         {
-            name: "Lock",
+            name: "Lock the screen",
+            was: "Lock",
+            verb: "lock",
             does: locks,
             words: "lock screen lockscreen away leave",
             glyph: 0xf023,
             run: () => provider.launcher.lock.lock()
         },
         {
-            name: "Suspend",
+            name: "Suspend the machine",
+            was: "Suspend",
+            verb: "suspend",
             words: "sleep sleep now hibernate nap standby",
             glyph: 0xf04b2,
             run: () => Niri.spawn(["systemctl", "suspend"])
         },
         {
-            name: "Log Out",
+            name: "Log out",
+            was: "Log Out",
+            verb: "log out",
             words: "logout sign out signout quit niri end session",
             glyph: 0xf0343,
-            sure: "Yes, log out, closing every window",
+            sure: "Log out now",
             run: () => Niri.act({ Quit: { skip_confirmation: true } })
         },
         {
-            name: "Reboot",
+            name: "Reboot the machine",
+            was: "Reboot",
+            verb: "reboot",
             words: "restart reset relaunch",
             glyph: 0xf0453,
-            sure: "Yes, reboot now",
+            sure: "Reboot now",
             run: () => Niri.spawn(["systemctl", "reboot"])
         },
         {
-            name: "Power Off",
+            name: "Power off the machine",
+            was: "Power Off",
+            verb: "power off",
             words: "shutdown shut down poweroff power down turn off halt",
             glyph: 0xf011,
-            sure: "Yes, power off now",
+            sure: "Power off now",
             run: () => Niri.spawn(["systemctl", "poweroff"])
         }
     ].map(action => thing({
-        key: `session:${action.name}`,
-        verb: action.name.toLowerCase(),
+        key: `session:${action.was}`,
+        verb: action.verb,
         name: action.name,
-        keywords: action.words,
+        keywords: `${action.was.toLowerCase()} ${action.words}`,
         chord: action.does ? bound(action.does) : [],
         glyph: String.fromCodePoint(action.glyph),
         hue: "machine",
@@ -137,9 +158,9 @@ Provider {
         // everyday words now find them.
         confirm: !!action.sure,
         verbs: action.sure ? () => [thing({
-            key: `session:${action.name}:sure`,
-            verb: action.name.toLowerCase(),
-            name: action.sure,
+            key: `session:${action.was}:sure`,
+            verb: action.verb,
+            name: action.sure + provider.closing,
             glyph: String.fromCodePoint(action.glyph),
             hue: "alert",
             run: action.run

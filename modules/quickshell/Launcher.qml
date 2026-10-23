@@ -218,6 +218,7 @@ Scope {
     readonly property var standIns: sources.reduce((all, source) => all.concat(source.draws), [])
     readonly property var choices: sources.reduce((all, source) => all.concat(source.things), [])
         .filter(row => !(row.key.startsWith("action:") && root.standIns.includes(row.name)))
+        .map(withSynonyms)
         .concat(collections.map(named))
     readonly property var collections: sources.filter(source => source.collection)
 
@@ -270,8 +271,10 @@ Scope {
         return rows;
     }
 
-    // How many of the likeliest picks the home screen shows.
-    readonly property int likely: 3
+    // How many of the likeliest picks the home screen shows, and what leads
+    // them: jitsusama.quickshell.launcher.home.
+    readonly property int likely: Providers.launcher.home.likely
+    readonly property var pinned: Providers.launcher.home.pinned
 
     // How tall the list is while the launcher's open: as tall as home was
     // when it opened.
@@ -281,23 +284,9 @@ Scope {
     // its provider calls its things: a closed set of nouns, so a kind is
     // learned once. An act or a set says what it is by its words, and an
     // answer's rows are the answer's, so they have none.
-    readonly property var kinds: ({
-        "program": "program",
-        "window": "window",
-        "pi session": "pi",
-        "quest": "quest",
-        "run": "run",
-        "copy": "copy",
-        "notice": "notice",
-        "emoji": "emoji",
-        "key": "key",
-        "Wi-Fi": "network",
-        "Bluetooth": "device",
-        "sound": "device",
-        "display": "display",
-        "person": "person",
-        "call": "call"
-    })
+    // They're jitsusama.quickshell.launcher.kinds, so a machine can say them
+    // its own way.
+    readonly property var kinds: Providers.launcher.kinds
 
     function kindOf(row) {
         if (!row || row.opens || row.plain || (answer && answer.rows.includes(row)))
@@ -305,10 +294,72 @@ Scope {
         return kinds[row.what ?? ""] ?? "";
     }
 
+    // The one word the foot gives Return: the row's own, or else an act's
+    // first word ("forget", "disconnect"), which its name starts with, or
+    // "open" for a thing.
+    function verbOf(row) {
+        if (!row)
+            return "";
+        if ((row.verb ?? "") !== "")
+            return row.verb;
+        return kindOf(row) !== "" ? "open" : Rank.firstWord(row.name ?? "") || "open";
+    }
+
+    // A chord as words, for the foot: its keys joined by +, those pressed
+    // one after another a space apart, as Chord draws them.
+    function chordText(keys) {
+        return (keys ?? []).map((key, index) => index === 0 ? key.text
+            : `${key.after === true ? " " : "+"}${key.text}`).join("");
+    }
+
+    // The word that found a row by what else it's called ("sleep" for
+    // Suspend the machine), shown after its name, so a row is never named
+    // by a word it doesn't say and Joel can see why it's there: the run of
+    // its other words that each word typed starts, or the first one.
+    function saidAs(row) {
+        const typedWords = Fuzzy.words(typed);
+        const own = row && row.keywords ? Fuzzy.words(row.keywords.text ?? "") : [];
+        if (typedWords.length === 0 || own.length === 0)
+            return "";
+        for (let at = 0; at + typedWords.length <= own.length; at++) {
+            if (typedWords.every((word, i) => own[at + i].startsWith(word)))
+                return own.slice(at, at + typedWords.length).join(" ");
+        }
+        return own.find(word => word.startsWith(typedWords[0])) ?? "";
+    }
+
+    // The fewest letters that reach a row from what's typed: the shortest
+    // start of it that's learned to mean this row. Said in the foot when
+    // it's shorter than what was typed, so the habit gets quicker by itself.
+    function enough(row) {
+        const letters = Fuzzy.plainly(typed);
+        if (!row || letters.includes(" "))
+            return "";
+        for (let length = 1; length < letters.length; length++) {
+            const start = letters.slice(0, length);
+            if (picks.latched(start) === row.key)
+                return start;
+        }
+        return "";
+    }
+
     // The collections home keeps on its shelf, in this order, each with
     // the chord that opens it: the ones reached most. The rest are a word
     // away, and most have chords of their own.
-    readonly property var shelf: ["windows", "clipboard", "notices"]
+    readonly property var shelf: Providers.launcher.home.shelf
+
+    // A row's own words, with those a machine adds for it
+    // (jitsusama.quickshell.launcher.synonyms), so a habit of Joel's finds
+    // it. Made once for each row, and never twice for the same one.
+    function withSynonyms(row) {
+        const more = Providers.launcher.synonyms[row.key];
+        if (!more || row.synonymised)
+            return row;
+        row.keywords = Fuzzy.prepare([row.keywords ? row.keywords.text : ""].concat(more)
+            .join(" ").trim());
+        row.synonymised = true;
+        return row;
+    }
 
     // How often each thing's been picked, taken as the launcher opens, so
     // what it orders holds still while it's open.
@@ -334,7 +385,8 @@ Scope {
             names[choice.key] = choice.name;
         }
         let added = 0;
-        for (const key of Rank.likeliest(often, names)) {
+        // Those pinned lead, in their order, whether picked or not.
+        for (const key of pinned.concat(Rank.likeliest(often, names))) {
             const choice = byKey[key];
             // A collection is always below with the rest, in its own place,
             // so it isn't listed again as a likely pick.
@@ -832,7 +884,7 @@ Scope {
             asking: !!root.asking,
             selected: !row ? null : {
                 name: row.name,
-                verb: row.verb ?? "",
+                verb: root.verbOf(row),
                 chord: (row.chord ?? []).map(key => key.text).join(" "),
                 side: row.side ?? "",
                 settled: row !== root.headline || !root.answer.asking
@@ -1086,6 +1138,7 @@ Scope {
                                     side: entry.modelData.side
                                     count: entry.modelData.count ?? ""
                                     kind: root.held.length === 0 ? root.kindOf(entry.modelData) : ""
+                                    also: entry.modelData.byWord ? root.saidAs(entry.modelData) : ""
                                     onClicked: root.run(entry.modelData, false)
                                     onPointed: at => root.pointed(entry.index, at)
                                 }
@@ -1200,8 +1253,6 @@ Scope {
                             anchors.verticalCenter: parent.verticalCenter
                             width: keys.x - x - Theme.space.xl
                             elide: Text.ElideRight
-                            readonly property string asked: Fuzzy.words(root.typed).join(" ")
-                            readonly property int times: foot.choice ? foot.choice.times ?? 0 : 0
 
                             // An answer's footer says where it came from.
                             readonly property string said: !foot.choice ? ""
@@ -1211,12 +1262,13 @@ Scope {
                                 : root.held.length > 0 ? root.held[0].row.context ?? ""
                                 // A thing's row says its kind where a chord
                                 // would be, so its chord is taught here.
+                                // What's typed is longer than it need be.
+                                : root.enough(foot.choice) !== ""
+                                    ? `${root.enough(foot.choice)} is enough`
                                 : root.kindOf(foot.choice) !== ""
                                     && (foot.choice.chord ?? []).length > 0
-                                    ? `next time ${foot.choice.chord.map(key => key.text)
-                                        .join("+")}`
-                                : times === 0 ? "" : `you picked this for \u201c${asked}\u201d ${
-                                    times === 1 ? "once" : `${times} times`}`
+                                    ? `next time ${root.chordText(foot.choice.chord)}`
+                                : ""
                             // What it said last, kept while it fades out.
                             property string drawn: ""
                             onSaidChanged: {
@@ -1337,7 +1389,7 @@ Scope {
                                 const choice = foot.choice;
                                 if (!choice)
                                     return [];
-                                const keys = [["\u21b5", choice.verb ?? "run"]];
+                                const keys = [["\u21b5", root.verbOf(choice)]];
                                 if (root.held.length === 0 && choice.below)
                                     keys.push(["\u21e7\u21b5", "below"]);
                                 if ((root.held.length === 0 || root.collecting) && choice.verbs)

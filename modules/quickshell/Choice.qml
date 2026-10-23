@@ -26,10 +26,14 @@ Rectangle {
     property string count
     // What kind of thing it is, for a noun; empty for an act or a set.
     property string kind
-    // What's said after the name: its count, and for a noun what would
-    // have been on the right.
-    readonly property string detail: [count, kind !== "" ? side : ""]
-        .filter(part => part !== "").join(" \u00b7 ")
+    // The other word it was found by, when not its name: said in quotes
+    // right after the name, so a row is never named by a word it doesn't
+    // say (Suspend the machine "sleep").
+    property string also
+    // What's said after the name: the word it was found by, its count, and
+    // for a noun what would have been on the right.
+    readonly property string detail: [also !== "" ? `\u201c${also}\u201d` : "", count,
+        kind !== "" ? side : ""].filter(part => part !== "").join(" \u00b7 ")
     // Said by the shell rather than found, so it's muted and can't be picked.
     property bool quiet: false
 

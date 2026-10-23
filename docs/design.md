@@ -489,8 +489,18 @@ works the same way everywhere.
   shorter start of the word, so "sl", "sla" and "slac" all mean Slack. One
   slip teaches nothing: another row takes the place only when it's picked
   twice running. Something that can't be taken back, such as powering off,
-  is learned only once its first word is typed whole. What's learned is
-  said in the footer, so there are no aliases to set up or remember.
+  is learned only once its first word is typed whole. When fewer letters
+  would do, the footer says so ("sl is enough"), so the habit gets
+  quicker by itself, and there are no aliases to set up or remember.
+- **One way of naming.** A thing is its own name ("Slack"); a set is a
+  plural noun ("Windows"); an act says what it does to what, in sentence
+  case ("Lock the screen", "Turn on do not disturb"), a switch saying what
+  it will do now. Other words find a row but never name it: a row found by
+  one shows the word in quotes after its name (Suspend the machine
+  "sleep"), and a renamed row's old name is one of them. Return's word in
+  the footer is the act's own verb, or start, switch, open or copy.
+  Ending the session asks once more, saying what it closes ("Reboot now,
+  closing 14 windows").
 - **Nothing moves that Joel didn't move.** Rows that arrive late go below
   the ones of their kind already shown, the selection stays on its thing
   as rows come and go, and the list keeps the height it opened at, so the
@@ -718,7 +728,10 @@ anything.
   applications, actions, the session), each a file of its own with an
   `order`, a `weight` against the rest and a `source`, so a kind is turned
   off, reweighted or added in a line; `jitsusama.quickshell.launcher.learning`
-  says whether and how fast it learns.
+  says whether and how fast it learns. `synonyms` gives a row more words
+  that find it, by the key it's learned by; `home` says how many likely
+  picks home shows, which lead them, and its shelf of collections; `kinds`
+  says the word each kind of thing's row ends with.
 - **Rendered at build.** Nix fills the options into each program's own files,
   which stay in that program's format beside the module. Nothing parses a
   setting or looks one up while running, so a customised surface is exactly as

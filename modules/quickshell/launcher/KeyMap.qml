@@ -45,7 +45,8 @@ Provider {
     readonly property var all: Shortcuts.layers.reduce((rows, layer) => rows.concat(
         layer.binds.map(bind => member({
             key: `shortcut:${layer.name}:${bind.does}`,
-            verb: bind.run.length > 0 ? "run" : "close",
+            // What it does, by its first word, as the desktop's own are.
+            verb: bind.run.length > 0 ? bind.does.split(" ")[0].toLowerCase() : "close",
             name: bind.does,
             words: also[layer.name] ? Fuzzy.prepare(`${bind.does} ${also[layer.name]}`) : null,
             glyph: layer.glyph || bind.glyph,
