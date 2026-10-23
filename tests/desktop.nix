@@ -146,6 +146,31 @@ let
   # tap, then how far across an up or down swipe goes, as a fraction of the
   # screen. Writing waits until it's read, so a swipe has started once it
   # returns.
+  # A window through X11 named only as Tuple names its windows: its part as
+  # the WM_CLASS instance, given as the one argument, Tuple as the class, and
+  # no name. It stays until it's stopped.
+  tupleWindow =
+    pkgs.writers.writePython3 "tuple-window"
+      {
+        libraries = [ pkgs.python3Packages.xlib ];
+      }
+      ''
+        import sys
+        from Xlib import X, display
+
+        shown = display.Display()
+        screen = shown.screen()
+        window = screen.root.create_window(
+            0, 0, 450, 450, 0, screen.root_depth, X.InputOutput, X.CopyFromParent,
+            background_pixel=screen.black_pixel,
+        )
+        window.set_wm_class(sys.argv[1], "Tuple")
+        window.map()
+        shown.flush()
+        while True:
+            shown.next_event()
+      '';
+
   touchscreen =
     pkgs.writers.writePython3 "touchscreen"
       {
@@ -2956,6 +2981,50 @@ pkgs.testers.runNixOSTest {
           launcher_until(joins_nothing)
           machine.send_key("esc")
           machine.wait_until_fails(in_session("niri msg layers | grep -qw launcher"), timeout=10)
+
+      with subtest("Tuple's windows find their places: the face in a corner, a shared screen wide"):
+          # Through X11, as Tuple draws them, so niri starts xwayland-satellite
+          # for them, and they reach it titled by their part. Tuple's daemon
+          # is a service, started with no token from niri to be let take the
+          # keys, which xwayland-satellite would hand on, so neither has one.
+          def tuple_opens(part):
+              as_account(f"niri msg action spawn -- env -u XDG_ACTIVATION_TOKEN ${tupleWindow} {part}")
+              machine.wait_until_succeeds(
+                  in_session(f"niri msg --json windows | grep -q '\"title\":\"{part}\"'"), timeout=60
+              )
+              return window_titled(part)
+
+          span = json.loads(as_account("niri msg --json focused-output"))["logical"]
+          # Tuple's own panel floats.
+          tuple_panel = tuple_opens("tuple-main")
+          assert tuple_panel["is_floating"], tuple_panel
+          # Joel is at work in a window of his own when the other's face
+          # comes, and keeps the keys. (xwayland-satellite hands a new X11
+          # window the keys while another of its windows has them, which no
+          # rule of niri's overrides.)
+          as_account("niri msg action spawn -- kitty --title 'at work'")
+          machine.wait_until_succeeds(
+              in_session("niri msg --json focused-window | grep -q '\"title\":\"at work\"'"), timeout=60
+          )
+          tuple_face = tuple_opens("tuple-webcams")
+          t.assertEqual(tuple_face["app_id"], "Tuple")
+          assert tuple_face["is_floating"], tuple_face
+          assert not tuple_face["is_focused"], tuple_face
+          assert window_titled("at work")["is_focused"], tuple_face
+          left, top, width, height = drawn_at(tuple_face)
+          t.assertEqual((width, height), (384, 216))
+          # In the bottom-right corner, a little in from the screen's edges
+          # and whatever niri keeps clear along them.
+          assert 0 < span["width"] - (left + width) <= 48, tuple_face
+          assert 0 < span["height"] - (top + height) <= 48, tuple_face
+
+          tuple_view = tuple_opens("tuple-screen")
+          assert not tuple_view["is_floating"], tuple_view
+          assert tuple_view["layout"]["window_size"][0] >= span["width"] * 0.9, tuple_view
+          photograph("tuple-windows")
+          as_account("pkill -f '[t]uple-window'")
+          as_account(f"niri msg action close-window --id {window_titled('at work')['id']}")
+          machine.wait_until_fails(in_session("niri msg --json windows | grep -q 'tuple-\\|at work'"), timeout=30)
 
       with subtest("caps lock shows in the margin while it's on"):
           capitals = "/run/keyboard-lights/capslock"
