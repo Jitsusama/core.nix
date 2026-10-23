@@ -43,9 +43,11 @@ QtObject {
             row("window:kitty:zsh", "zsh", { is: "window:2" })
         ])), "window:kitty:zsh window:kitty:zsh");
 
-        // Tiers: the name typed whole, then a word start, then a synonym,
-        // whatever the score.
+        // Tiers: the name typed whole, then its start, then a later word's,
+        // then a synonym, whatever the score.
         expect("the name itself first", Rank.tier("Slack", " slack ", false), 0);
+        expect("the name's start", Rank.tier("Power off the machine", "pow", false), 0.5);
+        expect("a later word's start", Rank.tier("Use power saver", "pow", false), 1);
         expect("a word start", Rank.tier("Google Chrome", "chro", false), 1);
         expect("by another word", Rank.tier("Suspend", "sleep", true), 2);
         const found = [f("session:suspend", "Suspend", 2, 900), f("program:slack", "Slack", 1, 10),

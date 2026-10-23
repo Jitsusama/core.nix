@@ -7,8 +7,10 @@
 // - A thing is one row: rows that say they're the same thing (their `is`,
 //   or their key) are one, in the first one's place, as the one with the
 //   most to say (its `rich`).
-// - Tiers: a name that is what's typed, then a name with a word that
-//   starts with it, then only something else it's known by. Nothing lifts
+// - Tiers: a name that is what's typed, then a name that starts with it,
+//   then a name with a later word that starts with it, then only
+//   something else it's known by. An act's name starts with its verb, so
+//   "pow" is the act that starts Power before one that uses power. Nothing lifts
 //   a row over a better tier but what was latched for what's typed.
 // - The latch: what was picked for what's typed, and for each start of a
 //   word picked for, so a pick for "slack" holds at "sl" too. It moves to
@@ -52,13 +54,24 @@ function plainly(typed) {
     return String(typed).trim().toLowerCase().replace(/\s+/g, " ");
 }
 
-// Which tier a match is in: 0 for a name that is what's typed, 1 for a
-// word of its name starting with it, 2 for something else it's known by.
+// The tier of a name starting with what's typed, between one typed whole
+// and one whose later word starts with it.
+const NAME_START = 0.5;
+
+// Which tier a match is in: 0 for a name that is what's typed, 0.5 for a
+// name starting with it, 1 for a later word of its name starting with it,
+// 2 for something else it's known by. A row added late, at 1 unless it
+// says, goes among the word starts.
 function tier(name, typed, byWord) {
     if (byWord) {
         return 2;
     }
-    return plainly(name) === plainly(typed) ? 0 : 1;
+    const said = plainly(name);
+    const query = plainly(typed);
+    if (said === query) {
+        return 0;
+    }
+    return said.startsWith(firstWord(query)) ? NAME_START : 1;
 }
 
 // The strings a pick for `typed` is latched at: it, and when it's one word,

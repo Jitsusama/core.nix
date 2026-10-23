@@ -484,7 +484,9 @@ works the same way everywhere.
   A desktop check types everything Joel has picked for, and fails on a thing
   listed twice.
 - **The same letters land on the same row.** The name typed whole comes
-  first, then a word it starts, then a word that only finds it. What's
+  first, then a name it starts, then a later word it starts, then a word
+  that only finds it: an act's name starts with its verb, so "pow" is
+  Power off the machine before Use power saver. What's
   picked for what was typed is first there from then on, and at every
   shorter start of the word, so "sl", "sla" and "slac" all mean Slack. One
   slip teaches nothing: another row takes the place only when it's picked
