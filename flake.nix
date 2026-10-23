@@ -226,6 +226,7 @@
         kmscon = ./modules/kmscon/nixos.nix;
         lanzaboote = moduleFrom ./modules/lanzaboote/nixos.nix { inherit lanzaboote; };
         libvirt = ./modules/libvirt/nixos.nix;
+        lid = ./modules/lid/nixos.nix;
         linux-id = ./modules/linux-id/nixos.nix;
         memory = ./modules/memory/nixos.nix;
         mpv = ./modules/mpv/nixos.nix;

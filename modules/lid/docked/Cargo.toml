@@ -1,0 +1,10 @@
+# lid-docked: holds logind's lock against the lid's handling while a monitor
+# is plugged in (src/main.rs says how).
+[package]
+name = "lid-docked"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[dependencies]
