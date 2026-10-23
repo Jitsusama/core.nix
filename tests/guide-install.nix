@@ -295,7 +295,16 @@ pkgs.testers.runNixOSTest {
       with subtest("the install asks for the stick back, goes on once it's in, and says how far along it is"):
           on_screen("Put the stick back in", timeout=300, stopped="try again")
           plug_stick_back()
-          on_screen(r"Copying it off the stick: [0-9.]+ [KMG]B of ", timeout=300)
+          # The card asking for the stick says "look again" until the guide
+          # next looks, up to two seconds after the stick is back.
+          on_screen(r"Copying it off the stick: [0-9.]+ [KMG]B of ", timeout=300, stopped="try again")
+
+      with subtest("Ctrl+C partway through a step stops the guide there, and it carries on once started again"):
+          on_screen("Ctrl\\+C stop")
+          machine.send_key("ctrl-c")
+          machine.wait_until_tty_matches("1", "Stopped. Start the guide again", timeout=60)
+          machine.wait_until_tty_matches("1", "type guide install, then press Return", timeout=60)
+          type("guide install")
 
       with subtest("the system installs from the vault, and the account gets its password"):
           on_screen("a password for alice", timeout=1800)

@@ -1,6 +1,7 @@
 //! A journey walked on a screen: the next step found afresh each time,
 //! what it needs asked one thing at a time, then run to its proof. Return
-//! goes on, Escape goes back one ask, and Ctrl+C leaves; a step that's
+//! goes on, Escape goes back one ask, and Ctrl+C leaves, even partway
+//! through a step at work, whose programs are ended first; a step that's
 //! blocked or fails is looked at again with Return once the person has
 //! done what it said. Every step done stays on the screen, and a step at
 //! work says how far along it is, once a second, until it's done.
@@ -148,7 +149,10 @@ impl Walk<'_> {
                     if stopped.load(Ordering::Relaxed) {
                         return;
                     }
-                    std::thread::sleep(slice);
+                    if painter.left(slice) {
+                        painter.stop(&title, meter.program());
+                        return;
+                    }
                     waited += slice;
                 }
                 let said = meter.said();
@@ -545,6 +549,11 @@ mod tests {
         keys: VecDeque<Press>,
         shown: Arc<Mutex<Vec<Vec<String>>>>,
         paints: bool,
+        /// How many times the painter waits for a key before Ctrl+C is
+        /// pressed, if ever.
+        leaves_after: Option<usize>,
+        /// The step the painter was told to stop partway through, if any.
+        stopped: Arc<Mutex<Vec<String>>>,
     }
 
     fn text(drawn: &Drawn) -> Vec<String> {
@@ -578,12 +587,23 @@ mod tests {
         }
 
         fn painter(&self) -> Option<Box<dyn Paint>> {
-            self.paints
-                .then(|| Box::new(Recorder(self.shown.clone())) as Box<dyn Paint>)
+            self.paints.then(|| {
+                Box::new(Recorder {
+                    shown: self.shown.clone(),
+                    leaves_after: self.leaves_after,
+                    waited: 0,
+                    stopped: self.stopped.clone(),
+                }) as Box<dyn Paint>
+            })
         }
     }
 
-    struct Recorder(Arc<Mutex<Vec<Vec<String>>>>);
+    struct Recorder {
+        shown: Arc<Mutex<Vec<Vec<String>>>>,
+        leaves_after: Option<usize>,
+        waited: usize,
+        stopped: Arc<Mutex<Vec<String>>>,
+    }
 
     impl Paint for Recorder {
         fn size(&self) -> (u16, u16) {
@@ -591,8 +611,19 @@ mod tests {
         }
 
         fn paint(&mut self, drawn: &Drawn, _theme: &Theme) -> Result<(), Fault> {
-            self.0.lock().unwrap().push(text(drawn));
+            self.shown.lock().unwrap().push(text(drawn));
             Ok(())
+        }
+
+        fn left(&mut self, within: Duration) -> bool {
+            std::thread::sleep(within);
+            self.waited += 1;
+            Some(self.waited) == self.leaves_after
+        }
+
+        /// Only says so: the real one ends the guide.
+        fn stop(&mut self, during: &str, _running: Option<u32>) {
+            self.stopped.lock().unwrap().push(during.into());
         }
     }
 
@@ -793,6 +824,29 @@ mod tests {
                 .any(|line| line.contains("something was copied")),
             "{shown:#?}"
         );
+    }
+
+    #[test]
+    fn ctrl_c_while_a_step_is_at_work_stops_it_there() {
+        let journey = Journey::new(vec![Box::new(Slow)]).unwrap();
+        let theme = Theme::from("", "", true);
+        let mut stand = Stand {
+            paints: true,
+            leaves_after: Some(5),
+            ..Stand::default()
+        };
+        walk(&journey, &theme)
+            .walk(&mut fake(), &mut stand)
+            .unwrap();
+        let stopped = stand.stopped.lock().unwrap().clone();
+        assert_eq!(stopped, ["Copy something slowly"]);
+        let shown = stand.shown.lock().unwrap().clone();
+        let working: Vec<&Vec<String>> = shown
+            .iter()
+            .filter(|lines| lines.iter().any(|line| line == "  Copy something slowly"))
+            .collect();
+        assert_eq!(working.len(), 1, "nothing drawn once stopped: {shown:#?}");
+        assert_eq!(working[0].last().unwrap(), "  Ctrl+C stop", "{shown:#?}");
     }
 
     #[test]

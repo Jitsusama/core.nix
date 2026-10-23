@@ -3,6 +3,7 @@
 //! as it's pressed.
 
 use std::io::{Stdout, Write, stdout};
+use std::time::Duration;
 
 use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
 use crossterm::{cursor, execute, queue, terminal};
@@ -47,10 +48,19 @@ pub trait Screen {
     }
 }
 
-/// Draws on a screen from a thread of its own.
+/// Draws on a screen from a thread of its own, while a step is at work,
+/// and hears Ctrl+C meanwhile.
 pub trait Paint: Send {
     fn size(&self) -> (u16, u16);
     fn paint(&mut self, drawn: &Drawn, theme: &Theme) -> Result<(), Fault>;
+
+    /// Waits up to `within` for Ctrl+C, and says whether it was pressed.
+    fn left(&mut self, within: Duration) -> bool;
+
+    /// Stops the guide partway through the step titled `during`, with
+    /// `running` the program it runs, if one: what it runs is ended, the
+    /// terminal given back, and the guide leaves.
+    fn stop(&mut self, during: &str, running: Option<u32>);
 }
 
 /// Where keys come from and lines go: one terminal, or a test's stand-in.
@@ -161,6 +171,31 @@ impl Paint for Painter {
 
     fn paint(&mut self, drawn: &Drawn, theme: &Theme) -> Result<(), Fault> {
         paint(&mut self.out, drawn, theme)
+    }
+
+    /// Every other key pressed while a step is at work is let go, so none
+    /// of them lands in what the next screen asks for.
+    fn left(&mut self, within: Duration) -> bool {
+        match event::poll(within) {
+            Ok(true) => event::read().ok().and_then(pressed) == Some(Press::Leave),
+            Ok(false) => false,
+            Err(_) => {
+                std::thread::sleep(within);
+                false
+            }
+        }
+    }
+
+    fn stop(&mut self, during: &str, running: Option<u32>) {
+        crate::process::stop_starting();
+        let _ = execute!(self.out, cursor::Show, terminal::LeaveAlternateScreen);
+        let _ = terminal::disable_raw_mode();
+        println!("Stopping partway through: {during}.");
+        crate::process::end(&crate::process::running_now(running), crate::process::GRACE);
+        println!(
+            "Stopped. Start the guide again the way you started it, and it carries on from the steps already done."
+        );
+        std::process::exit(130);
     }
 }
 

@@ -91,6 +91,11 @@ impl Meter {
         self.reading().program = program;
     }
 
+    /// The program running now, if one is.
+    pub fn program(&self) -> Option<u32> {
+        self.reading().program
+    }
+
     /// How many bytes the work comes to, once it's known.
     pub fn total(&self, bytes: u64) {
         self.reading().total = Some(bytes);
@@ -251,12 +256,22 @@ fn told(done: u64, total: Option<u64>, rate: Option<f64>) -> String {
         Some(total) => format!("{} of {}", bytes(done), bytes(total.max(done))),
         None => format!("{} so far", bytes(done)),
     }];
-    if let Some(rate) = rate {
-        parts.push(format!("{} a second", bytes(rate as u64)));
-        if let Some(total) = total.filter(|total| *total > done) {
-            let left = Duration::from_secs_f64((total - done) as f64 / rate);
-            parts.push(format!("about {} left", rough(left)));
+    match rate.filter(|rate| rate.is_finite()) {
+        // Nothing moved over the pace's whole span, as while a step closes
+        // what it wrote: how long is left can't be reckoned from that.
+        Some(rate) if rate < 1.0 => {
+            parts.push(format!("nothing more in the last {}", duration(PACE)))
         }
+        Some(rate) => {
+            parts.push(format!("{} a second", bytes(rate as u64)));
+            let left = total
+                .filter(|total| *total > done)
+                .and_then(|total| Duration::try_from_secs_f64((total - done) as f64 / rate).ok());
+            if let Some(left) = left {
+                parts.push(format!("about {} left", rough(left)));
+            }
+        }
+        None => {}
     }
     parts.join(", ")
 }
@@ -382,6 +397,18 @@ mod tests {
             "{paced} bytes a second"
         );
         assert!(looked.len() <= 11, "{} kept", looked.len());
+    }
+
+    #[test]
+    fn a_pace_that_stopped_says_so_rather_than_a_time_left() {
+        assert_eq!(
+            told(10_000_000_000, Some(10_100_000_000), Some(0.0)),
+            "10.0 GB of 10.1 GB, nothing more in the last 10 seconds"
+        );
+        assert_eq!(
+            told(10_000_000_000, Some(10_100_000_000), Some(1e-300)),
+            "10.0 GB of 10.1 GB, nothing more in the last 10 seconds"
+        );
     }
 
     #[test]
