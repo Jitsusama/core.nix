@@ -28,6 +28,14 @@ in
       # back at a quarter of the pressure of those it can drop, and a
       # per-device file, shrinker_non_purgeable_seeks, tunes how much.
       "xe-shrinker-spares-buffers"
+      # A read the sink never answered was sent again as a byte-by-byte
+      # retry, even when it was one byte, so through an MST hub it waited
+      # the 4 s sideband timeout twice.
+      "dp-byte-reads-only-when-longer"
+      # Adding a connector read the DSC caps of each port on a hub, even one
+      # with nothing on it, which some hubs never answer, and the monitor's
+      # picture waited behind that read on every plug and boot.
+      "dp-mst-dsc-skips-empty-ports"
     ]
   );
 }
