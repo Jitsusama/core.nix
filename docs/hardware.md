@@ -644,6 +644,18 @@ one nit, and a level keeps the same nits it had before. The panel answers 0
 when asked what it was last set to, so `actual_brightness` always reads 0;
 `brightness` holds the level set.
 
+The driver picks how to set brightness from the panel's eDP revision, read
+once at boot. Since 2026-10-22 that read has come back wrong on every boot,
+though the panel answers 0x06, eDP 1.5, when asked later. The driver then
+took a PWM signal, which this OLED ignores, so the keys did nothing until 0
+turned it off, and `max_brightness` read 192000. The panel also offers
+Intel's interface (TCON capability 1, brightness in nits), which the driver
+tries only for a panel older than eDP 1.5 and, by default, only with HDR
+metadata in the EDID. `xe.enable_dpcd_backlight=3` drops that last
+condition, so a bad read gets Intel's interface, and a good one still gets
+VESA's. Why the read goes wrong isn't known yet: the first bad boot was also
+the first at a desk.
+
 ### The Touchpad's Click
 
 The touchpad is a `2C2F` haptic pad on `hid-multitouch`: it has no button,

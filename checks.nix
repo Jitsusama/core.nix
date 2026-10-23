@@ -2659,6 +2659,17 @@ in
         ]
       );
 
+  # When xe's boot-time read of the panel's eDP revision comes back wrong,
+  # it drives brightness by PWM, which the XPS 14's OLED ignores, unless
+  # it may use Intel's brightness interface.
+  the-panel-dims-after-a-bad-read =
+    let
+      inherit ((bareNixos [ self.nixosModules.dell-xps-14-da14260 ]).config.boot) kernelParams;
+    in
+    holds "the-panel-dims-after-a-bad-read"
+      "xe may not use Intel's brightness interface, so a bad read of the panel leaves its brightness keys doing nothing."
+      (lib.elem "xe.enable_dpcd_backlight=3" kernelParams);
+
   # The profile follows the charger: performance on mains, balanced on
   # battery, and power saver once the battery falls below UPower's low mark,
   # staying there while the battery reads above it again, until the charger is

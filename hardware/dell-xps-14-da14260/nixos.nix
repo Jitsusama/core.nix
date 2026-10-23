@@ -471,6 +471,14 @@ in
     TelemetryAccessLvl = "Disabled";
   };
 
+  # The panel takes its brightness over the display link, and xe picks how
+  # from its eDP revision, read once at boot. When that read comes back
+  # wrong, as on every boot since 2026-10-22, xe fell back to a PWM signal
+  # the OLED ignores, so brightness keys did nothing until 0 turned it off.
+  # Intel's interface, which the panel also offers, is tried only after such
+  # a read; after a good one, eDP 1.5 still takes the VESA controls.
+  boot.kernelParams = [ "xe.enable_dpcd_backlight=3" ];
+
   # The BE211's Wi-Fi 7 receive path drops links to the slowest rate, so it
   # runs as Wi-Fi 6, as Omarchy runs it. Remove this once a Wi-Fi 7 link holds
   # its rate without it.
