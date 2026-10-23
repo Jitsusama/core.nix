@@ -6,8 +6,11 @@
 # left the pad's light green. A profile set of its own names them, so
 # muting from either side mutes both, the desktop's input volume is the
 # mic's own gain, and its touch strip is the headphone volume the desktop
-# shows.
-{ pkgs, ... }:
+# shows. In the auto level mode it's left in, the mic ignores that gain, so
+# the slider changes nothing a listener hears. Its voice is brought up to the level programs expect by a filter
+# that voice.conf describes, run as a PipeWire client of its own in every
+# account, following the sound server as the speakers' tunings do.
+{ config, pkgs, ... }:
 let
   # The input carries the higher priority so the profile with both wins
   # over the one with only the headphones.
@@ -44,4 +47,23 @@ in
       actions.update-props."device.profile-set" = "${profileSet}";
     }
   ];
+
+  systemd.user.services.shure-mv7-voice = {
+    description = "The Shure MV7's voice level";
+    after = [
+      "pipewire.service"
+      "wireplumber.service"
+    ];
+    requires = [ "pipewire.service" ];
+    wants = [ "wireplumber.service" ];
+    partOf = [ "pipewire.service" ];
+    wantedBy = [ "pipewire.service" ];
+    # The limiter is an LV2 plugin, which PipeWire looks for here.
+    environment.LV2_PATH = "${pkgs.lsp-plugins}/lib/lv2";
+    serviceConfig = {
+      ExecStart = "${config.services.pipewire.package}/bin/pipewire -c ${./voice.conf}";
+      Restart = "on-failure";
+      RestartSec = 2;
+    };
+  };
 }
