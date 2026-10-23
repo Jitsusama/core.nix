@@ -2,7 +2,7 @@
 //!
 //! Each uplink's root is an HTB with two classes that never limit each
 //! other, at a rate no link reaches, so HTB only takes turns between them:
-//! 1:1 for what the link reaches without the router, under fq_codel and
+//! 1:1 for what the link reaches without the router, under `fq_codel` and
 //! never slowed, and 1:2, the default, for everything else, under CAKE at
 //! the rate the controller finds. HTB puts a packet whose priority names
 //! one of its classes there, so nftables sends local traffic to 1:1 by

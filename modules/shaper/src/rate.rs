@@ -25,6 +25,20 @@
 
 use std::collections::{HashMap, VecDeque};
 
+/// A count, a rate in kbit/s or a time in microseconds, as a float. Exact:
+/// every one here is far below 2⁵³.
+#[allow(clippy::cast_precision_loss)]
+pub fn float(n: u64) -> f64 {
+    n as f64
+}
+
+/// A rate worked out as a float, to the nearest whole kbit/s. A negative
+/// rate is none, and every caller holds the result within its bounds.
+#[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+pub fn whole(kbit: f64) -> u64 {
+    kbit.round().max(0.0) as u64
+}
+
 /// Rates are in kbit/s, as tc takes them.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Bounds {
@@ -107,7 +121,7 @@ impl Direction {
     }
 
     fn set(&mut self, rate: f64) {
-        self.rate = (rate.round() as u64).clamp(self.bounds.min, self.bounds.max);
+        self.rate = whole(rate).clamp(self.bounds.min, self.bounds.max);
     }
 }
 
@@ -163,9 +177,9 @@ pub struct Controller {
 
 /// One step's climb, from a direction's rate and what it held.
 fn climbed(s: &Settings, dir: &Direction) -> f64 {
-    let rate = dir.rate as f64;
+    let rate = float(dir.rate);
     if dir.rate < dir.held {
-        (rate * s.climb_back).min(dir.held as f64)
+        (rate * s.climb_back).min(float(dir.held))
     } else {
         rate * s.climb
     }
@@ -265,14 +279,13 @@ impl Controller {
             let drain = 1.0 - (level / s.drain_ms).min(0.5);
             let mut cut = false;
             for (dir, carried) in [(&mut self.up, sent), (&mut self.down, received)] {
-                if carried >= dir.rate as f64 * s.loaded && !resting && rising {
-                    let from = carried.min(dir.rate as f64);
+                if carried >= float(dir.rate) * s.loaded && !resting && rising {
+                    let from = carried.min(float(dir.rate));
                     // A queue still growing after a cut says that rate too
                     // was over the line, so each cut is the line's best
                     // guess.
-                    dir.held =
-                        ((from * s.cut).round() as u64).clamp(dir.bounds.min, dir.bounds.max);
-                    dir.set(dir.held as f64 * drain);
+                    dir.held = whole(from * s.cut).clamp(dir.bounds.min, dir.bounds.max);
+                    dir.set(float(dir.held) * drain);
                     dir.learned = true;
                     cut = true;
                 }
@@ -294,7 +307,7 @@ impl Controller {
         }
         let mut climbing = false;
         for (dir, carried) in [(&mut self.up, sent), (&mut self.down, received)] {
-            if carried >= dir.rate as f64 * s.busy {
+            if carried >= float(dir.rate) * s.busy {
                 let rate = climbed(&s, dir);
                 dir.set(rate);
                 if dir.rate > dir.held {
@@ -303,7 +316,7 @@ impl Controller {
                 }
                 climbing = true;
             } else {
-                let rate = dir.rate as f64 + (dir.held as f64 - dir.rate as f64) * s.settle;
+                let rate = float(dir.rate) + (float(dir.held) - float(dir.rate)) * s.settle;
                 dir.set(rate);
             }
         }
@@ -429,7 +442,7 @@ mod tests {
         pings(&mut c, 300.0, 3);
         c.step(1.7, 9_900.0, 0.0);
         // Still growing at the draining rate: the line is under even that.
-        assert_eq!(c.up.held, (draining as f64 * 0.9).round() as u64);
+        assert_eq!(c.up.held, whole(float(draining) * 0.9));
         assert!(c.up.rate < c.up.held);
     }
 
@@ -503,7 +516,7 @@ mod tests {
         // Back in about seven seconds, then only probing past it.
         let mut steps = 0;
         while c.up.rate < c.up.held && steps < 100 {
-            c.step(1.0, c.up.rate as f64, 0.0);
+            c.step(1.0, float(c.up.rate), 0.0);
             steps += 1;
         }
         assert_eq!(c.up.rate, 10_000);
@@ -520,7 +533,7 @@ mod tests {
         for _ in 0..100 {
             c.step(1.0, 0.0, 0.0);
         }
-        assert!((c.up.rate as i64 - 10_000).abs() < 100, "{}", c.up.rate);
+        assert!(c.up.rate.abs_diff(10_000) < 100, "{}", c.up.rate);
     }
 
     #[test]
@@ -546,7 +559,7 @@ mod tests {
             let dt = 0.2;
             let end = self.at + seconds;
             while self.at < end {
-                let sent = c.up.rate as f64;
+                let sent = float(c.up.rate);
                 self.queue_kbit = (self.queue_kbit + (sent - line) * dt).clamp(0.0, 8_000.0);
                 let delay = self.queue_kbit / line * 1000.0;
                 pings(c, 20.0 + delay, 3);

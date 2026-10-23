@@ -6,6 +6,7 @@
 //! cgroup tree as it stands. nft takes a cgroup by its path and looks the ID
 //! up itself, so the sets are written as paths.
 
+use std::fmt::Write;
 use std::fs;
 use std::path::Path;
 
@@ -118,16 +119,17 @@ pub struct Local {
 pub fn transaction(table: &str, sets: &Sets, local: &Local) -> String {
     let mut out = String::new();
     let mut fill = |name: &str, elements: &[String], quote: bool| {
-        out.push_str(&format!("flush set inet {table} {name}\n"));
+        let _ = writeln!(out, "flush set inet {table} {name}");
         if !elements.is_empty() {
             let items: Vec<String> = elements
                 .iter()
                 .map(|e| if quote { format!("\"{e}\"") } else { e.clone() })
                 .collect();
-            out.push_str(&format!(
-                "add element inet {table} {name} {{ {} }}\n",
+            let _ = writeln!(
+                out,
+                "add element inet {table} {name} {{ {} }}",
                 items.join(", ")
-            ));
+            );
         }
     };
     fill("bulk1", &sets.bulk1, true);

@@ -14,7 +14,7 @@
 //! current (src/classes.rs), and its queues on each uplink (src/qdisc.rs).
 //!
 //! Usage: shaper run [--hosts 1.1.1.1,...] [--tunnels wg0,...] [--state DIR]
-//!                   [--runtime DIR] (SHAPER_HOSTS stands for --hosts)
+//!                   [--runtime DIR] (`SHAPER_HOSTS` stands for --hosts)
 //!        shaper status
 //!        shaper stop
 
@@ -27,7 +27,7 @@ mod rate;
 
 use memory::{Held, Memory};
 use probe::{Echo, Probes};
-use rate::{Bounds, Controller, Direction, Settings, State};
+use rate::{Bounds, Controller, Direction, Settings, State, float, whole};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fs;
@@ -90,7 +90,7 @@ fn options(args: &[String]) -> Options {
                     .split(',')
                     .filter(|t| !t.is_empty())
                     .map(str::to_string)
-                    .collect()
+                    .collect();
             }
             other => eprintln!("ignoring {other}"),
         }
@@ -102,7 +102,7 @@ fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let rest = args.get(1..).unwrap_or_default();
     match args.first().map(String::as_str) {
-        Some("run") => run(options(rest)),
+        Some("run") => run(&options(rest)),
         Some("status") => status(&options(rest).runtime),
         Some("stop") => {
             stop();
@@ -199,11 +199,12 @@ fn start(
     hosts: &[String],
     echoes: &std::sync::mpsc::Sender<Echo>,
 ) -> Option<Shaped> {
-    let index = read_number(
+    let index = u32::try_from(read_number(
         &Path::new("/sys/class/net")
             .join(&uplink.name)
             .join("ifindex"),
-    )? as u32;
+    )?)
+    .ok()?;
     let ifb = qdisc::ifb(index);
     let network = network_of(&uplink);
     let held = memory.get(&network).unwrap_or(FIRST);
@@ -225,7 +226,7 @@ fn start(
         "shaping {} on {network} at {up} kbit/s up, {down} down",
         uplink.name
     );
-    let probes = Probes::start(&uplink.name, hosts, 0.3, echoes.clone());
+    let probes = Probes::start(&uplink.name, hosts, 0.3, echoes);
     let mut shaped = Shaped {
         uplink,
         ifb,
@@ -297,7 +298,7 @@ fn refill(text: &str) {
     }
 }
 
-fn run(options: Options) -> ExitCode {
+fn run(options: &Options) -> ExitCode {
     let _ = fs::create_dir_all(&options.state);
     let _ = fs::create_dir_all(&options.runtime);
     let mut memory = Memory::open(&options.state);
@@ -314,7 +315,7 @@ fn run(options: Options) -> ExitCode {
         let now = Instant::now();
         if last_look.is_none_or(|at| now - at >= Duration::from_secs(1)) {
             last_look = Some(now);
-            let primary = look(&mut shaped, &mut memory, &options, &send);
+            let primary = look(&mut shaped, &mut memory, options, &send);
             let base = primary.and_then(|p| shaped.get(&p)).map(|s| s.applied.0);
             follow_tunnels(&mut tunnels, &options.tunnels, base);
             reach = local(&shaped, &tunnels);
@@ -371,8 +372,8 @@ fn keep(memory: &mut Memory, s: &mut Shaped) {
 /// What a tunnel may send, against the uplink it rides: a little under, so
 /// its own queue forms inside the tunnel, where its packets can still be
 /// told apart, before the uplink's CAKE sees them as one flow. A tunnel's
-/// own header takes about 4% of a packet (MASQUE's or WireGuard's on 1300
-/// bytes).
+/// own header takes about 4% of a packet (MASQUE's or `WireGuard`'s on
+/// 1300 bytes).
 const TUNNEL_SHARE: f64 = 0.95;
 
 /// Keeps a CAKE on each tunnel that's there, at its share of the primary
@@ -386,7 +387,7 @@ fn follow_tunnels(applied: &mut BTreeMap<String, u64>, names: &[String], base: O
             }
             continue;
         };
-        let kbit = ((base as f64 * TUNNEL_SHARE) as u64).max(FLOOR.up);
+        let kbit = whole(float(base) * TUNNEL_SHARE).max(FLOOR.up);
         let json = sh(&words(&format!("tc -j qdisc show dev {name}"))).unwrap_or_default();
         let moved = applied
             .get(name)
@@ -454,7 +455,7 @@ fn look(
                     s.applied = (s.controller.up.rate, s.controller.down.rate);
                 }
                 if !s.probes.running() {
-                    s.probes = Probes::start(&s.uplink.name, &options.hosts, 0.3, send.clone());
+                    s.probes = Probes::start(&s.uplink.name, &options.hosts, 0.3, send);
                 }
                 // The router answers ARP a moment after the link comes up,
                 // so a link first named by itself learns its network later.
@@ -481,7 +482,7 @@ fn step(s: &mut Shaped, t: f64) {
     let (tx0, rx0, at) = s.counted;
     let seconds = at.elapsed().as_secs_f64().max(0.001);
     s.counted = (tx, rx, Instant::now());
-    let kbit = |now: u64, then: u64| now.saturating_sub(then) as f64 * 8.0 / 1000.0 / seconds;
+    let kbit = |now: u64, then: u64| float(now.saturating_sub(then)) * 8.0 / 1000.0 / seconds;
     s.state = s.controller.step(t, kbit(tx, tx0), kbit(rx, rx0));
     let moved = |a: u64, b: u64| a.abs_diff(b) * 100 > b;
     let (up, down) = (s.controller.up.rate, s.controller.down.rate);
@@ -533,7 +534,7 @@ fn write_status(runtime: &Path, shaped: &BTreeMap<String, Shaped>) {
     let fresh = runtime.join("status.json.new");
     let text = serde_json::to_string(&all).expect("status serialises");
     if fs::write(&fresh, text)
-        .and_then(|_| fs::rename(&fresh, &path))
+        .and_then(|()| fs::rename(&fresh, &path))
         .is_err()
     {
         eprintln!("couldn't write {}", path.display());
@@ -541,7 +542,7 @@ fn write_status(runtime: &Path, shaped: &BTreeMap<String, Shaped>) {
 }
 
 fn mbit(kbit: u64) -> String {
-    format!("{:.1} Mbit/s", kbit as f64 / 1000.0)
+    format!("{:.1} Mbit/s", float(kbit) / 1000.0)
 }
 
 const TINS: [&str; 4] = ["bulk", "best effort", "video", "voice"];
@@ -586,8 +587,8 @@ fn status(runtime: &Path) -> ExitCode {
                     tin.packets,
                     tin.drops,
                     tin.marks,
-                    tin.average_us as f64 / 1000.0,
-                    tin.peak_us as f64 / 1000.0
+                    float(tin.average_us) / 1000.0,
+                    float(tin.peak_us) / 1000.0
                 );
             }
         }

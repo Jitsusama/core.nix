@@ -46,7 +46,7 @@ impl Memory {
         let text = serde_json::to_string_pretty(&self.networks).expect("rates serialise");
         let fresh = self.path.with_extension("json.new");
         if fs::write(&fresh, text)
-            .and_then(|_| fs::rename(&fresh, &self.path))
+            .and_then(|()| fs::rename(&fresh, &self.path))
             .is_err()
         {
             eprintln!("couldn't write {}", self.path.display());

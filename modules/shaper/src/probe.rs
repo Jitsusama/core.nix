@@ -18,17 +18,35 @@ pub struct Echo {
     pub rtt_ms: Option<f64>,
 }
 
+/// What a line of ping's output says of one ping.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Heard {
+    /// It came back after this many milliseconds.
+    Back(f64),
+    /// It never came back.
+    Lost,
+}
+
+impl Heard {
+    fn rtt_ms(self) -> Option<f64> {
+        match self {
+            Heard::Back(ms) => Some(ms),
+            Heard::Lost => None,
+        }
+    }
+}
+
 /// What one line of ping's output says, if anything.
-pub fn parse(line: &str) -> Option<Option<f64>> {
+pub fn parse(line: &str) -> Option<Heard> {
     if line.starts_with("no answer yet") {
-        return Some(None);
+        return Some(Heard::Lost);
     }
     let at = line.find("time=")?;
     let rest = &line[at + 5..];
     let end = rest
         .find(|c: char| c != '.' && !c.is_ascii_digit())
         .unwrap_or(rest.len());
-    rest[..end].parse().ok().map(Some)
+    rest[..end].parse().ok().map(Heard::Back)
 }
 
 /// The pings running for one link, stopped when dropped.
@@ -37,7 +55,7 @@ pub struct Probes {
 }
 
 impl Probes {
-    pub fn start(link: &str, hosts: &[String], interval_s: f64, to: Sender<Echo>) -> Probes {
+    pub fn start(link: &str, hosts: &[String], interval_s: f64, to: &Sender<Echo>) -> Probes {
         let mut children = Vec::new();
         for host in hosts {
             let child = Command::new("ping")
@@ -55,11 +73,11 @@ impl Probes {
             let (link, host, to) = (link.to_string(), host.clone(), to.clone());
             thread::spawn(move || {
                 for line in BufReader::new(stdout).lines().map_while(Result::ok) {
-                    if let Some(rtt_ms) = parse(&line) {
+                    if let Some(heard) = parse(&line) {
                         let echo = Echo {
                             link: link.clone(),
                             host: host.clone(),
-                            rtt_ms,
+                            rtt_ms: heard.rtt_ms(),
                         };
                         if to.send(echo).is_err() {
                             break;
@@ -99,16 +117,16 @@ mod tests {
     #[test]
     fn a_reply_gives_its_round_trip() {
         let line = "64 bytes from 1.1.1.1: icmp_seq=3 ttl=58 time=17.3 ms";
-        assert_eq!(parse(line), Some(Some(17.3)));
+        assert_eq!(parse(line), Some(Heard::Back(17.3)));
         assert_eq!(
             parse("64 bytes from 10.0.0.1: icmp_seq=1 ttl=64 time=0.412 ms"),
-            Some(Some(0.412))
+            Some(Heard::Back(0.412))
         );
     }
 
     #[test]
     fn a_ping_that_never_came_back_is_lost() {
-        assert_eq!(parse("no answer yet for icmp_seq=4"), Some(None));
+        assert_eq!(parse("no answer yet for icmp_seq=4"), Some(Heard::Lost));
     }
 
     #[test]
