@@ -215,11 +215,43 @@ in
     x-scheme-handler/tuple=tuple.desktop
   '';
 
-  # After niri's own rules, which match no window of Tuple's.
-  xdg.configFile."niri/config.kdl".text = lib.mkAfter ''
-    window-rule {
-        match app-id="^Tuple$"
-        open-floating true
-    }
-  '';
+  # After niri's own rules, which match no window of Tuple's. Tuple names
+  # each window by its part (tuple-main, tuple-webcams and the rest) beside
+  # "Tuple", one as its app id and the other as its title, so each rule
+  # matches the part either way.
+  xdg.configFile."niri/config.kdl".text =
+    let
+      parts =
+        names:
+        lib.concatMapStrings (name: ''
+          match app-id="^tuple-${name}$"
+          match title="^tuple-${name}$"
+        '') names;
+    in
+    lib.mkAfter ''
+      // Its own windows and questions float over the work, as dialogs do.
+      window-rule {
+      ${
+        parts [
+          "main"
+          "incoming-call"
+          "join-request"
+          "error"
+          "external-url"
+        ]
+      }    open-floating true
+      }
+      // The other's face, small in a corner, never taking the keys.
+      window-rule {
+      ${parts [ "webcams" ]}    open-floating true
+          open-focused false
+          default-column-width { fixed 384; }
+          default-window-height { fixed 216; }
+          default-floating-position x=16 y=16 relative-to="bottom-right"
+      }
+      // The other's screen, the thing to look at, as wide as the screen.
+      window-rule {
+      ${parts [ "screen" ]}    open-maximized true
+      }
+    '';
 }
