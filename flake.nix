@@ -208,6 +208,7 @@
         camera = ./modules/camera/nixos.nix;
         console = ./modules/console/nixos.nix;
         coredump = ./modules/coredump/nixos.nix;
+        ddcutil = ./modules/ddcutil/nixos.nix;
         device-check = ./modules/device-check/nixos.nix;
         disk-guard = ./modules/disk-guard/nixos.nix;
         disko = moduleFrom ./modules/disko/nixos.nix { inherit disko; };
@@ -228,6 +229,7 @@
         libvirt = ./modules/libvirt/nixos.nix;
         lid = ./modules/lid/nixos.nix;
         linux-id = ./modules/linux-id/nixos.nix;
+        litra = ./modules/litra/nixos.nix;
         memory = ./modules/memory/nixos.nix;
         mpv = ./modules/mpv/nixos.nix;
         network-revive = ./modules/network-revive/nixos.nix;
@@ -243,6 +245,7 @@
         podman = ./modules/podman/nixos.nix;
         power-profiles-daemon = ./modules/power-profiles-daemon/nixos.nix;
         quickshell = ./modules/quickshell/nixos.nix;
+        shure-mv7 = ./modules/shure-mv7/nixos.nix;
         slices = ./modules/slices/nixos.nix;
         swayimg = ./modules/swayimg/nixos.nix;
         systemd = ./modules/systemd/nixos.nix;
@@ -250,6 +253,8 @@
         timesyncd = ./modules/timesyncd/nixos.nix;
         touchpad = ./modules/touchpad/nixos.nix;
         tpm = ./modules/tpm/nixos.nix;
+        usb-camera-holders = ./modules/usb-camera-holders/nixos.nix;
+        usb-wake = ./modules/usb-wake/nixos.nix;
         wifid = ./modules/wifid/nixos.nix;
         wpa_supplicant = ./modules/wpa_supplicant/nixos.nix;
         yubikey = ./modules/yubikey/system.nix;

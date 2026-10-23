@@ -1,0 +1,12 @@
+# loopback-holders: says which programs have a camera open, or stream from
+# it, in a file a shell can watch (src/main.rs says how).
+[package]
+name = "loopback-holders"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+# The standard library alone, which links the C library its few calls
+# come from.
+[dependencies]

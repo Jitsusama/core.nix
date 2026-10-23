@@ -200,6 +200,9 @@ let
     vm-passkeys-come-from-the-tpm = import ./tests/linux-id.nix { inherit self pkgs; };
     vm-keyring-opens-without-asking = import ./tests/gnome-keyring.nix { inherit self pkgs; };
     vm-speakers-are-tuned = import ./tests/speakers.nix { inherit pkgs; };
+    # Which input WirePlumber picks comes from the rank it gives each
+    # microphone as udev reports its card, so only a running machine shows it.
+    vm-webcam-microphones-yield = import ./tests/microphones.nix { inherit pkgs; };
     vm-desktop-works = import ./tests/desktop.nix { inherit self pkgs; };
     # Joining Wi-Fi is the kernel, wifid, wpa_supplicant and networkd
     # together, and what it leaves of other programs' routing only shows
@@ -238,6 +241,9 @@ let
     vm-reboot-cannot-hang = import ./tests/shutdown.nix { inherit self pkgs; };
     # What logind makes of a shut lid shows only with logind watching one.
     vm-lid-stays-at-the-desk = import ./tests/lid.nix { inherit self pkgs; };
+    # Whether udev turns a root hub's wakeup on shows only with a USB
+    # controller and udev there.
+    vm-plugging-in-wakes-it = import ./tests/usb-wake.nix { inherit self pkgs; };
   };
 in
 {
@@ -2986,6 +2992,17 @@ in
         touch $out
       '';
 
+  # The camera watch's tests, which run as it builds. Over a sysfs of its
+  # own, a USB camera's holder is named only while one of its streaming
+  # interfaces has a nonzero alternate setting, its file is named for the
+  # camera, made a plain file name, and goes when its node does or the
+  # watch is stopped; a name is one printable line, a wrapper's named for
+  # what it wraps, and only a unit in a process's cgroup is ignored. What
+  # takes real holders is vm-loopback-says-who-holds-it's.
+  usb-camera-holders-follow-the-stream =
+    pkgs.callPackage ./modules/v4l2loopback/holders/package.nix
+      { };
+
   the-click-strength-holds-after-sleep =
     let
       machine =
@@ -5055,6 +5072,20 @@ in
       pkgs.runCommandCC "the-click-strength-finds-the-intensity" { nativeBuildInputs = [ pkgs.rustc ]; }
         ''
           rustc --edition 2024 --test -D warnings -o tests ${./modules/touchpad/click-strength.rs}
+          ./tests
+          touch $out
+        '';
+
+    # The Litra's command finds the lights by their HID ids, builds the
+    # reports they read and reads their answers, maps brightness and warmth
+    # to the light's range, and counts a camera streaming only by a file
+    # that names a program, never one half-written. Its watch takes in the
+    # light's buttons and anybody's answers, asks after anybody's command,
+    # and says in JSON only the lights that have said everything.
+    the-litra-follows-the-cameras =
+      pkgs.runCommandCC "the-litra-follows-the-cameras" { nativeBuildInputs = [ pkgs.rustc ]; }
+        ''
+          rustc --edition 2024 --test -D warnings -o tests ${./modules/litra/litra.rs}
           ./tests
           touch $out
         '';

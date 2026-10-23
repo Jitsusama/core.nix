@@ -1,5 +1,6 @@
 # A NixOS machine with a screen in front of Joel: fonts, sound, Bluetooth for
-# headphones and mice, a keyring the TPM unlocks, 1Password, and niri, started
+# headphones and mice, a plugged-in monitor's own controls, which programs
+# stream from a USB camera, a desk light lit while one does, a keyring the TPM unlocks, 1Password, and niri, started
 # at boot by greetd, with the console, the consoles signed in on, and
 # Plymouth, which asks for the disk's PIN, in the theme of the account it
 # signs in. Every account gets
@@ -19,18 +20,22 @@
     nixosModules.bluetooth
     nixosModules.camera
     nixosModules.console
+    nixosModules.ddcutil
     nixosModules.fonts
     nixosModules.gnome-keyring
     nixosModules.greetd
     nixosModules.kmscon
+    nixosModules.litra
     nixosModules.mpv
     nixosModules.niri
     nixosModules.onepassword
     nixosModules.pipewire
     nixosModules.plymouth
     nixosModules.quickshell
+    nixosModules.shure-mv7
     nixosModules.slices
     nixosModules.swayimg
+    nixosModules.usb-camera-holders
     nixosModules.zathura
   ];
   home-manager.sharedModules = [

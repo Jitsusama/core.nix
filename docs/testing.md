@@ -85,6 +85,7 @@ quietly stopped holding.
 | `the-panel-slows-on-a-low-battery` | the XPS 14's panel drops to 60 Hz below 30% on battery, holds there, and comes back to its fastest rate on the charger |
 | `the-camera-takes-its-modules-tuning` | the XPS 14's camera reads Dell's tuning for the module a machine names, and Intel's otherwise |
 | `the-camera-gives-limited-range` | the XPS 14's camera relay, run on a full-range ramp, squeezes it exactly into limited range and neither of its converters changes it after |
+| `usb-camera-holders-follow-the-stream` | a USB camera's watch names its holders only while a streaming interface has a nonzero alternate setting, names its file for the camera, made a plain file name, and removes it when the node goes or the watch is stopped; a holder's name is one printable line, and only a unit in its cgroup is left out |
 | `the-surface-keyboard-types-at-the-disk-prompt` | the Surface Laptop 4's initrd has every driver on its keyboard's path, and keyd lays that keyboard out there |
 | `the-click-strength-holds-after-sleep` | a machine naming a click strength sets it as each hidraw device appears and after every sleep, and one naming none runs nothing |
 | `disk-guard-stays-in-the-background` | the disk guard yields to the account, and a command overrunning its memory never stops it |
@@ -167,6 +168,7 @@ kernel guide][2] says what that catches.
 | `the-ergodox-layout-builds`       | the layout fits the board and answers with its own serial |
 | `the-ergodox-command-reaches-the-board` | `ergodox` writes each command whole to the board's channel alone |
 | `the-pinentry-asks-the-shell` | linux-id's pinentry asks the askpass in the program's words |
+| `the-litra-follows-the-cameras` | `litra` finds the lights by their ids, speaks their reports, and counts a camera streaming only by a whole file naming a program |
 | `the-ergodox-watch-tells-the-layer` | the layer watcher finds the board and says only what it's told |
 | `the-click-strength-finds-the-intensity` | the click strength's setter finds a haptic pad's intensity, the XPS 14's among them, and writes only it, only when it differs |
 | `btrfs-reclaims-its-chunks`       | tmpfiles turns Btrfs's reclaim on for data and metadata   |
@@ -214,7 +216,8 @@ a running system shows.
 | `vm-passkeys-come-from-the-tpm`   | passkeys and security keys are made in the TPM, each after a yes |
 | `vm-keyring-opens-without-asking` | the keyring opens with its TPM-sealed password, unasked |
 | `vm-speakers-are-tuned`           | the XPS 14's speakers hear the tuning, headphones don't |
-| `vm-desktop-works`                | it boots clean; the desktop shows, opens, locks and asks |
+| `vm-webcam-microphones-yield`     | a webcam's microphone ranks below a USB microphone's    |
+| `vm-desktop-works`                | it boots clean; the desktop shows, opens, locks and asks, a USB camera's stream included |
 | `vm-greeter-signs-in`             | the greeter signs in and out, not waiting on the account's setup |
 | `vm-wifi-joins`                   | wifid joins, moves past a silent access point, nudges a stuck look, finds sign-ins, keeps others' routing rules |
 | `vm-disk-guard-keeps-the-disk`    | the guards answer each band, sparing what's in use       |
@@ -226,6 +229,7 @@ a running system shows.
 | `vm-swap-comes-down-while-probed` | the compressed swap comes down, its reset waiting out udev's probe |
 | `vm-apps-come-first`              | the account's app and session slices, and the system's user.slice, hold a 1 ms latency on the drive behind /home, through the kernel (jobs, background, machine and system none); app.slice holds a hard 13% of memory and every slice above it 15%; timed work sits at 10000 inside idle jobs, and work in jobs can move itself there |
 | `vm-checks-go-first`              | a build user's qemu in the daemon's cgroup goes from batch at nice 5 to normal at nice -10, every thread and a later one, and a compiler beside it doesn't |
+| `vm-plugging-in-wakes-it`         | every USB root hub may wake the machine, so a cable plugged into a sleeping laptop wakes it |
 | `vm-lid-stays-at-the-desk`        | a shut lid suspends with no monitor, keeps running with one plugged in whose screen is off, holding one lock through the card's changes, and suspends once it's unplugged |
 | `vm-reboot-cannot-hang`           | a reboot forces on after a minute of a service not stopping, the watchdog resets a stuck last stage, and Plymouth hears which |
 
