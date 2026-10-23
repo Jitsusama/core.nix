@@ -278,7 +278,9 @@ Scope {
         }, fields);
         made.weight = provider.weight;
         made.prepared = Fuzzy.prepare(made.name);
-        made.keywords = fields.keywords ? Fuzzy.prepare(fields.keywords) : null;
+        // Its keywords beside its name, so a search can say some words of
+        // each: "wifi off" finds Turn Wi-Fi Off, "wifi" being a keyword.
+        made.keywords = fields.keywords ? Fuzzy.prepare(`${made.name} ${fields.keywords}`) : null;
         return made;
     }
 }

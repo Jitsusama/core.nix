@@ -208,7 +208,7 @@ Scope {
         const collection = source.collection;
         const row = Object.assign(whole(source, false, false), { weight: source.weight });
         row.prepared = Fuzzy.prepare(row.name);
-        row.keywords = Fuzzy.prepare([collection.noun].concat(collection.words ?? []).join(" "));
+        row.keywords = Fuzzy.prepare([row.name, collection.noun].concat(collection.words ?? []).join(" "));
         // Its words are what a person calls it, so they count as its name.
         row.named = true;
         return row;
@@ -518,9 +518,9 @@ Scope {
     // Every choice the words find, best first (Fuzzy.js says how), with
     // what was picked for this query before leaning on the order (Picks.qml
     // says how); a thing picked before is shown even when it matches more
-    // loosely than the rest. One found only by what it is, its keywords,
-    // ranks well below those found by name, but for a collection's own
-    // words, which are what it's called.
+    // loosely than the rest. One found only with its keywords, beside its
+    // name or alone, ranks well below those found by name, but for a
+    // collection's own words, which are what it's called.
     function search(letters) {
         const narrowing = typed !== "" && letters.startsWith(typed);
         typed = letters;
