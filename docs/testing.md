@@ -227,6 +227,7 @@ a running system shows.
 | `vm-swap-comes-down-while-probed` | the compressed swap comes down, its reset waiting out udev's probe |
 | `vm-apps-come-first`              | the account's app and session slices, and the system's user.slice, hold a 1 ms latency on the drive behind /home, through the kernel (jobs, background, machine and system none); app.slice holds a hard 13% of memory and every slice above it 15%; timed work sits at 10000 inside idle jobs, and work in jobs can move itself there |
 | `vm-checks-go-first`              | a build user's qemu in the daemon's cgroup goes from batch at nice 5 to normal at nice -10, every thread and a later one, and a compiler beside it doesn't |
+| `vm-plugging-in-wakes-it`         | every USB root hub may wake the machine, so a cable plugged into a sleeping laptop wakes it |
 | `vm-lid-stays-at-the-desk`        | a shut lid suspends with no monitor, keeps running with one plugged in whose screen is off, holding one lock through the card's changes, and suspends once it's unplugged |
 | `vm-reboot-cannot-hang`           | a reboot forces on after a minute of a service not stopping, the watchdog resets a stuck last stage, and Plymouth hears which |
 
