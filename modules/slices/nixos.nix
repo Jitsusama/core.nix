@@ -144,14 +144,34 @@ in
     };
   };
 
+  # Work Joel starts in a terminal is work he's waiting on, so it goes ahead
+  # of what agents start, and still gives way to what he uses. pi puts its
+  # own work in jobs.service; the sorter moves a terminal's busy work here
+  # instead, inside jobs, idle as that is. On one CPU shared with a spinner
+  # in jobs, a spinner here took 91% of it, as its weight says. Timed work
+  # stays ahead of both, since its results fail when it waits.
+  systemd.user.slices.jobs-awaited.sliceConfig.CPUWeight = 1000;
+
+  systemd.user.services.awaited = {
+    description = "The place Joel's own work runs, ahead of agents' work";
+    wantedBy = [ "default.target" ];
+    serviceConfig = {
+      Slice = "jobs-awaited.slice";
+      Delegate = true;
+      ExecStart = "${pkgs.coreutils}/bin/sleep infinity";
+      Restart = "always";
+      RestartSec = 1;
+    };
+  };
+
   systemd.user.services.jobs-sorter = {
     description = "Moves a terminal's busy work into jobs";
     wantedBy = [ "default.target" ];
-    requires = [ "jobs.service" ];
-    after = [ "jobs.service" ];
+    requires = [ "awaited.service" ];
+    after = [ "awaited.service" ];
     serviceConfig = {
       Slice = "session.slice";
-      ExecStart = "${sorter}/bin/jobs-sorter --home kitty- --keep pi";
+      ExecStart = "${sorter}/bin/jobs-sorter --home kitty- --keep pi --jobs jobs.slice/jobs-awaited.slice/awaited.service";
       Restart = "on-failure";
       RestartSec = 5;
     };

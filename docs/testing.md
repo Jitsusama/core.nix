@@ -103,6 +103,7 @@ quietly stopped holding.
 | `nix-builds-yield-to-the-user` | Nix's builds run at a lower weight than the user's programs |
 | `work-yields-to-what-the-user-works-in` | jobs is idle beside app.slice, pi finds it, and a window's scope is not idle |
 | `timed-work-goes-ahead-of-other-work` | timed work sits inside jobs above its holder, held by a unit that comes back, and pi finds it |
+| `joels-work-goes-before-agents` | the sorter moves a terminal's work inside jobs, above pi's work and below timed work |
 | `call-audio-runs-in-real-time` | an app's audio thread can take SCHED_RR 8, below PipeWire's, for at most 200 ms at a time |
 | `machines-yield-to-what-the-user-works-in` | system virtual machines are weighed as a build is, and the account's containers and session machines are idle |
 | `nix-collects-before-the-disk-fills` | Nix collects garbage during a build that fills the disk |
