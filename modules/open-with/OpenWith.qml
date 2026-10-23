@@ -8,7 +8,10 @@
 // or an empty line for none.
 //
 // Asks wait their turn, oldest first, as askpass's do. A collection only
-// while one is waiting, it's never at home or in a search otherwise.
+// while one is waiting, it's never at home or in a search otherwise. An ask
+// is known by its socket, which nothing changes, since the apps it offers
+// can change while it waits, and a row or the launcher may still hold the
+// ask as it was before.
 import qs
 import Quickshell
 import Quickshell.Io
@@ -22,8 +25,8 @@ Provider {
     // Who's waiting, oldest first: { reply, what, kind, last, offered }.
     property var asks: []
     readonly property var asking: asks.length > 0 ? asks[0] : null
-    // The ask the launcher holds, which closing it refuses.
-    property var shown: null
+    // The socket of the ask the launcher holds, which closing it refuses.
+    property string shown: ""
 
     collection: asking === null ? null : ({
         noun: "apps",
@@ -62,7 +65,7 @@ Provider {
                 glyph: programGlyph(found.id),
                 hue: "program",
                 side: found.id === ask.last ? "last time" : found.entry.genericName.toLowerCase(),
-                run: () => provider.settle(ask, found.id)
+                run: () => provider.settle(ask.reply, found.id)
             }));
     }
 
@@ -77,15 +80,15 @@ Provider {
     }
 
     // Says the pick, or none, on the ask's socket, and asks the next.
-    function settle(ask, id) {
-        if (!asks.includes(ask))
+    function settle(reply, id) {
+        if (!asks.some(other => other.reply === reply))
             return;
-        asks = asks.filter(other => other !== ask);
-        if (shown === ask)
-            shown = null;
+        asks = asks.filter(other => other.reply !== reply);
+        if (shown === reply)
+            shown = "";
         // It connects only once made: a local socket can connect, say and
         // close at once, and an object still being made can't be destroyed.
-        const answer = answering.createObject(provider, { path: ask.reply, said: `${id}\n` });
+        const answer = answering.createObject(provider, { path: reply, said: `${id}\n` });
         answer.connected = true;
         if (asking !== null)
             Qt.callLater(provider.showNext);
@@ -93,9 +96,9 @@ Provider {
 
     // Holds the oldest ask in the launcher, unless it already does.
     function showNext() {
-        if (asking === null || (shown === asking && launcher.open))
+        if (asking === null || (shown === asking.reply && launcher.open))
             return;
-        shown = asking;
+        shown = asking.reply;
         launcher.into(settings.name);
     }
 
@@ -128,14 +131,14 @@ Provider {
         target: provider.launcher
 
         function onOpenChanged() {
-            if (!provider.launcher.open && provider.shown !== null)
+            if (!provider.launcher.open && provider.shown !== "")
                 Qt.callLater(provider.refuse, provider.shown);
         }
     }
 
-    function refuse(ask) {
-        if (!launcher.open && shown === ask)
-            settle(ask, "");
+    function refuse(reply) {
+        if (!launcher.open && shown === reply)
+            settle(reply, "");
     }
 
     IpcHandler {
@@ -171,11 +174,11 @@ Provider {
         // Stops asking, once the program gave up or the chooser stopped
         // waiting.
         function withdraw(reply: string): void {
-            const withdrawn = provider.shown !== null && provider.shown.reply === reply;
+            const withdrawn = provider.shown === reply;
             provider.asks = provider.asks.filter(other => other.reply !== reply);
             if (!withdrawn)
                 return;
-            provider.shown = null;
+            provider.shown = "";
             if (provider.asking !== null)
                 provider.showNext();
             else
