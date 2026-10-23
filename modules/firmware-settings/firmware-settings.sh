@@ -6,14 +6,16 @@
 #   firmware-settings apply           writes them, asking for the admin password
 #   firmware-settings set NAME VALUE  writes one for now, which check then names
 #
-# It exits 1 when a setting differs and 2 when the firmware has no such
-# setting.
+# It exits 1 when a setting differs, 2 when the firmware has no such
+# setting, and 77 when it can't read one, as without root.
 
 root=${FIRMWARE_ATTRIBUTES:-/sys/class/firmware-attributes}
 declared=${FIRMWARE_SETTINGS:-/etc/firmware-settings}
 # How many seconds to wait for a setting to appear: a driver announces its
 # interface before it has made the settings in it.
 wait=${FIRMWARE_SETTINGS_WAIT:-0}
+
+command=${1:-}
 
 usage() {
   echo "usage: firmware-settings check | apply | set NAME VALUE" >&2
@@ -38,19 +40,31 @@ where() {
   return 2
 }
 
+# A setting's value, or a refusal naming the command to run as root: the
+# kernel lets only root read most of them, and an empty value would read
+# as a setting that differs.
+current() {
+  if [ ! -r "$1/current_value" ]; then
+    echo "firmware-settings: can't read $2; run it as root: run0 firmware-settings $command" >&2
+    return 77
+  fi
+  cat "$1/current_value"
+}
+
 # Each declared setting the firmware holds otherwise, as NAME=VALUE.
 differences() {
-  local name value dir
+  local name value dir now
   while IFS='=' read -r name value; do
     [ -n "$name" ] || continue
     dir=$(where "$name") || return 2
-    [ "$(cat "$dir/current_value")" = "$value" ] || echo "$name=$value"
+    now=$(current "$dir" "$name") || return
+    [ "$now" = "$value" ] || echo "$name=$value"
   done < "$declared"
 }
 
 check() {
   local drift name value
-  drift=$(differences) || return 2
+  drift=$(differences) || return
   if [ -z "$drift" ]; then
     echo "The firmware's settings are as declared."
     return 0
