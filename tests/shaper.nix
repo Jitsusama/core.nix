@@ -74,7 +74,9 @@ pkgs.testers.runNixOSTest {
         via = "192.168.2.2";
       }
     ];
-    # Takes what's sent to 5201, and sends 2 MB to whoever connects to 5202.
+    # Takes what's sent to 5201, and sends 10 MB to whoever connects to 5202:
+    # arriving packets reach the IFB merged by GRO, often 13 KB each, so a
+    # download needs that much to count as many packets as an upload.
     systemd.services.sink = {
       wantedBy = [ "multi-user.target" ];
       script = "exec ${lib.getExe pkgs.socat} -u TCP-LISTEN:5201,fork,reuseaddr OPEN:/dev/null";
@@ -83,7 +85,7 @@ pkgs.testers.runNixOSTest {
       wantedBy = [ "multi-user.target" ];
       script = ''
         exec ${lib.getExe pkgs.socat} -u \
-          'EXEC:${pkgs.coreutils}/bin/head -c 2000000 /dev/zero' TCP-LISTEN:5202,fork,reuseaddr
+          'EXEC:${pkgs.coreutils}/bin/head -c 10000000 /dev/zero' TCP-LISTEN:5202,fork,reuseaddr
       '';
     };
   };
