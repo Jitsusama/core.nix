@@ -8,7 +8,8 @@
 # screen, by the word Linux in it, which OCR reads more surely than NixOS,
 # whose O it takes for a nought. A screen coming while the splash is up can't be made to happen on
 # cue here, so whether the second screen comes before the theme starts or
-# after is left to the boot; either way the layout must cover both.
+# after is left to the boot; either way the layout must cover both. The
+# script is plymouth-screens-vm-test.py.
 { self, pkgs }:
 let
   account = "jitsusama";
@@ -73,72 +74,22 @@ pkgs.testers.runNixOSTest {
     { nodes, ... }:
     let
       encrypted = nodes.machine.specialisation.encrypted.configuration.system.build.toplevel;
+      # What the script needs from Nix, which it reads from this file at its
+      # top. ImageMagick and Tesseract run beside the driver, not on the
+      # machine, so they come as paths rather than on its PATH.
+      values = pkgs.writeText "plymouth-screens-values.json" (
+        builtins.toJSON {
+          inherit passphrase small large;
+          encrypted = "${encrypted}";
+          magick = "${pkgs.imagemagick}/bin/magick";
+          tesseract = "${pkgs.tesseract}/bin/tesseract";
+        }
+      );
     in
-    ''
-      import os
-      import subprocess
-
-      # Each screen photographed, the first as the driver does and the
-      # second by its device's name.
-      def photographed(name, device=None):
-          path = os.path.join(machine.out_dir, f"{name}.png")
-          if device is None:
-              machine.screenshot(name)
-              return path
-          # As the driver photographs the first: a PPM, which every QEMU
-          # writes, turned into a PNG.
-          raw = path.replace(".png", ".ppm")
-          said = machine.send_monitor_command(f"screendump {raw} {device}")
-          if not os.path.exists(raw):
-              raise Exception(f"QEMU wrote no picture of {device}: {said}")
-          subprocess.run(["${pkgs.imagemagick}/bin/magick", raw, path], check=True)
-          os.unlink(raw)
-          return path
-
-      # The words in a screen's bottom left quarter, enlarged for OCR, which
-      # can't read the line at its own small size.
-      def bottom_left(path, width, height):
-          crop = f"{width // 2}x{height // 4}+0+{height - height // 4}"
-          enlarged = path.replace(".png", "-bottom-left.png")
-          subprocess.run([
-              "${pkgs.imagemagick}/bin/magick", path, "-crop", crop, "+repage",
-              "-resize", "300%", "-colorspace", "Gray", "-negate", enlarged,
-          ], check=True)
-          return subprocess.check_output(
-              ["${pkgs.tesseract}/bin/tesseract", enlarged, "-"], text=True
-          )
-
-      machine.wait_for_unit("multi-user.target")
-      machine.succeed(
-          "echo -n ${passphrase} | cryptsetup luksFormat -q --iter-time=1 /dev/vdb -",
-          "echo -n ${passphrase} | cryptsetup luksOpen -q /dev/vdb root",
-          "mkfs.ext4 -q /dev/mapper/root",
-          "${encrypted}/bin/switch-to-configuration boot",
-          "sync",
-      )
-      machine.crash()
-      machine.start()
-      machine.wait_for_text("disk is locked", timeout=120)
-
-      with subtest("the smaller screen shows the whole ask, its edges too"):
-          def whole_on_small(_):
-              said = bottom_left(photographed("small"), ${toString small.width}, ${toString small.height})
-              return "Linux" in said
-          retry(whole_on_small, 60)
-
-      with subtest("the larger screen shows the whole ask too"):
-          def whole_on_large(_):
-              shot = photographed("large", "large")
-              said = bottom_left(shot, ${toString large.width}, ${toString large.height})
-              text = subprocess.check_output(
-                  ["${pkgs.tesseract}/bin/tesseract", shot, "-"], text=True
-              )
-              return "Linux" in said and "locked" in text
-          retry(whole_on_large, 60)
-
-      with subtest("the passphrase still opens the disk"):
-          machine.send_chars("${passphrase}\n")
-          machine.wait_for_unit("multi-user.target")
-          t.assertIn("/dev/mapper/root on / ", machine.succeed("mount"))
-    '';
+    builtins.replaceStrings [ "@values@" ] [ "${values}" ] (
+      builtins.readFile ./plymouth-screens-vm-test.py
+    );
+  # nix fmt holds the script to mypy --strict against the driver's own types,
+  # through driver_names.pyi, which the driver's lighter check can't find.
+  skipTypeCheck = true;
 }

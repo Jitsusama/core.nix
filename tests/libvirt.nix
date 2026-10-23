@@ -5,7 +5,7 @@
 # gives up 30 seconds later and exits as failed. The daemon shares one CPU
 # with a busy loop here, and its udev thread runs only when nothing else will,
 # so a stop often finds the thread still waiting, and ten leave the old code
-# next to no way through.
+# next to no way through. The script is libvirt-vm-test.py.
 { self, pkgs }:
 pkgs.testers.runNixOSTest {
   name = "libvirt";
@@ -17,29 +17,8 @@ pkgs.testers.runNixOSTest {
     virtualisation.cores = 2;
   };
 
-  testScript = ''
-    machine.wait_for_unit("libvirtd.service")
-    machine.succeed(
-        "systemd-run --unit=busy -p Type=exec -p CPUAffinity=0 /bin/sh -c 'while :; do :; done'"
-    )
-
-    with subtest("the daemon stops at once while its udev thread waits"):
-        for attempt in range(10):
-            # systemd refuses a unit's sixth start in ten seconds, manual ones
-            # included, and a fast runner gets through a round in under two.
-            # These starts are the test's, so its count is cleared for each.
-            machine.succeed("systemctl reset-failed libvirtd.service libvirtd-config.service")
-            machine.succeed("systemctl start libvirtd.service")
-            machine.succeed("virsh --connect qemu:///system version")
-            pid = machine.succeed("systemctl show -P MainPID libvirtd.service").strip()
-            machine.succeed(f"taskset -a -p -c 0 {pid}")
-            thread = machine.succeed(f"grep -l -x udev-event /proc/{pid}/task/*/comm").split("/")[4]
-            machine.succeed(f"chrt --idle -p 0 {thread}")
-            machine.succeed("systemctl stop libvirtd.service")
-            result = machine.succeed("systemctl show -P Result libvirtd.service").strip()
-            t.assertEqual(result, "success", f"stop {attempt + 1} of 10")
-        machine.succeed("systemctl is-active busy.service")
-        journal = machine.succeed("journalctl -b -o cat -u libvirtd.service")
-        t.assertNotIn("Make forcefull daemon shutdown", journal)
-  '';
+  testScript = builtins.readFile ./libvirt-vm-test.py;
+  # nix fmt holds the script to mypy --strict against the driver's own types,
+  # through driver_names.pyi, which the driver's lighter check can't find.
+  skipTypeCheck = true;
 }

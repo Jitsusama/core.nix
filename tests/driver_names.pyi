@@ -16,6 +16,9 @@ from test_driver.machine import QemuMachine
 driver: Driver
 machine: QemuMachine
 
+# The clock test's time server, which its machine sets its clock from.
+server: QemuMachine
+
 # unittest's assertions, which fail the test with what they say.
 t: AssertionTester
 

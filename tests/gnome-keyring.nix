@@ -3,10 +3,13 @@
 # back, once after the session starts it and once when a program asks first.
 # Nothing may ask for a password along the way: there's no one here to
 # answer, so a prompt waits until the timeout fails the step. The keyring on
-# disk must not hold the secret in the clear.
+# disk must not hold the secret in the clear. The script is
+# gnome-keyring-vm-test.py.
 { self, pkgs }:
 let
   runtime = "/run/user/1000";
+  # What the script needs of the above, which it reads at its top.
+  values = pkgs.writeText "gnome-keyring-values.json" (builtins.toJSON { inherit runtime; });
 in
 pkgs.testers.runNixOSTest {
   name = "gnome-keyring";
@@ -37,99 +40,11 @@ pkgs.testers.runNixOSTest {
     };
   };
 
-  testScript = ''
-    import shlex
-
-    def as_joel(command):
-        environment = (
-            "export XDG_RUNTIME_DIR=${runtime}"
-            " DBUS_SESSION_BUS_ADDRESS=unix:path=${runtime}/bus; cd ~; "
-        )
-        return machine.succeed("su - joel -c " + shlex.quote(environment + command))
-
-    # The account's manager starts its default target as the account signs
-    # in, which brings the keyring up beside the compositor.
-    def log_in():
-        as_joel("systemctl --user start default.target compositor.service")
-        keyring_is_up()
-
-    def keyring_is_up():
-        as_joel(
-            "timeout 30 sh -c 'until systemctl --user is-active -q"
-            " gnome-keyring.service; do sleep 0.2; done'"
-        )
-        # The unit's daemon is the only one: none started beside it. The
-        # brackets keep this command's own shell from matching.
-        daemons = "pgrep -u joel -f '[b]in/gnome-keyring-daemon'"
-        as_joel(
-            f"test $({daemons} | wc -l) = 1 && {daemons} | grep -qx"
-            " $(systemctl --user show -p MainPID --value gnome-keyring.service)"
-        )
-        # The daemon never reaps a child it didn't start, so none may be left
-        # to it by the script that started it.
-        as_joel(
-            "! ps -o stat= --ppid"
-            " $(systemctl --user show -p MainPID --value gnome-keyring.service)"
-            " | grep -q Z"
-        )
-
-    def log_out():
-        as_joel("systemctl --user stop compositor.service gnome-keyring.service")
-
-    machine.wait_for_unit("multi-user.target")
-    machine.succeed("loginctl enable-linger joel")
-    machine.wait_for_unit("user@1000.service")
-
-    # A target waits for every unit it wants, so the keyring wanted by one
-    # of the session's would hold the compositor back while the TPM unseals.
-    with subtest("the session doesn't wait for the keyring"):
-        for target in ["graphical-session-pre.target", "graphical-session.target"]:
-            after = as_joel(f"systemctl --user show -p After --value {target}")
-            t.assertNotIn("gnome-keyring.service", after.split(), f"{target} waits for it")
-
-    with subtest("the keyring's password is sealed to the TPM at the first login"):
-        log_in()
-        # The header's first 16 bytes name the key: the TPM's and the host's,
-        # scoped to one account. systemd falls back to the host's alone,
-        # silently, when it can't reach the TPM.
-        key = as_joel(
-            "base64 -d ~/.local/state/gnome-keyring/login.cred | head -c 16 | od -An -tx1"
-        )
-        t.assertEqual(key.split(), "ef 4a c1 36 79 a9 48 0e a7 db 68 89 7f 9f 16 5d".split())
-
-    with subtest("a secret is stored without a prompt, and not in the clear"):
-        as_joel(
-            "printf hunter2 | timeout 10"
-            " secret-tool store --label=Slack service slack account joel"
-        )
-        as_joel("test -s ~/.local/share/keyrings/login.keyring")
-        as_joel("! grep -q hunter2 ~/.local/share/keyrings/login.keyring")
-
-    with subtest("the next login reads it back without a prompt"):
-        log_out()
-        log_in()
-        secret = as_joel("timeout 10 secret-tool lookup service slack account joel")
-        t.assertEqual(secret, "hunter2")
-
-    # A program can ask before the keyring is up. Asking starts the unit, and
-    # the answer waits for it to unlock, where gnome-keyring's own D-Bus
-    # files would start a second daemon with the keyring locked.
-    with subtest("a program that asks first gets the unlocked keyring"):
-        log_out()
-        secret = as_joel("timeout 10 secret-tool lookup service slack account joel")
-        t.assertEqual(secret, "hunter2")
-        keyring_is_up()
-
-    # PAM's keyring step would start a daemon of its own at every sign-in,
-    # before the session, with a password that never opens the keyring.
-    with subtest("signing in starts no keyring of PAM's"):
-        machine.wait_until_tty_matches("1", "login: ")
-        machine.send_chars("joel\n")
-        machine.wait_until_tty_matches("1", "Password: ")
-        machine.send_chars("hunter3\n")
-        # The shell's prompt comes once every PAM step has run.
-        machine.wait_until_tty_matches("1", r"joel@machine.*\$ ", timeout=60)
-        t.assertEqual(machine.succeed("journalctl -b -q -o cat --grep gkr-pam || true"), "")
-        keyring_is_up()
-  '';
+  # The script reads the values from the file put in place of its marker.
+  testScript = builtins.replaceStrings [ "@values@" ] [ "${values}" ] (
+    builtins.readFile ./gnome-keyring-vm-test.py
+  );
+  # nix fmt holds the script to mypy --strict against the driver's own types,
+  # through driver_names.pyi, which the driver's lighter check can't find.
+  skipTypeCheck = true;
 }
