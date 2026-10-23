@@ -282,11 +282,9 @@ Scope {
         let added = 0;
         for (const key of picks.likeliest()) {
             const choice = byKey[key];
-            if (!choice || shown.has(key))
-                continue;
-            // A collection with nothing in it is no likely pick, since
-            // nothing can be stepped into; it stays below with the rest.
-            if (choice.from && choice.from.collection && choice.from.everything().length === 0)
+            // A collection is always below with the rest, in its own place,
+            // so it isn't listed again as a likely pick.
+            if (!choice || shown.has(key) || choice.named)
                 continue;
             rows.push(choice);
             shown.add(key);

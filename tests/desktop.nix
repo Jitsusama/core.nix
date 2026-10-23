@@ -1888,18 +1888,41 @@ pkgs.testers.runNixOSTest {
           # those keys aren't listed again; kitty draws Super+Return's;
           # and Capture holds the screenshots its keys take. Nothing is
           # found by letters scattered through it.
-          for typed, rows in [
+          stood_for = [
+              "Lock the screen",
+              "Hold notices, or let them show",
+              "Open a terminal",
+              "Take a screenshot of the screen",
+              "Take a screenshot of the window",
+          ]
+
+          def once(shown, first):
+              rows = shown["rows"]
+              return (
+                  rows[: len(first)] == first
+                  and len(set(rows)) == len(rows)
+                  and not set(rows) & set(stood_for)
+              )
+
+          # What a keyboard's caps lock says may follow "lock": that's
+          # another thing. Home, with nothing typed, lists nothing twice
+          # either, a collection picked often staying in its own place.
+          for typed, first in [
               ("tuple", ["Tuple"]),
               ("lock", ["Lock"]),
               ("kitty", ["kitty"]),
               ("do not disturb", ["Do Not Disturb"]),
               ("screenshot", ["Capture"]),
-              ("zqxj", []),
+              ("", []),
           ]:
               answer(typed)
-              launcher_until(lambda shown, rows=rows: shown["rows"] == rows)
+              launcher_until(lambda shown, first=first: once(shown, first))
               machine.send_key("esc")
               machine.wait_until_fails(closed, timeout=10)
+          answer("zqxj")
+          launcher_until(lambda shown: shown["rows"] == [])
+          machine.send_key("esc")
+          machine.wait_until_fails(closed, timeout=10)
           # The speakers' tuning plays through them, and is no program.
           answer("volume")
           launcher_until(lambda shown: "Turn the volume up" in shown["rows"])
