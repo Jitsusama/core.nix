@@ -89,6 +89,54 @@ let
     mv "$out.part" "$out.exit"
   '';
 
+  # Asks the portal to open a file, always asking what with, as a program
+  # does, and stays on the bus until the portal answers, since it drops a
+  # request whose caller has gone. Its answer, 0 for opened and 1 for
+  # refused, lands in the runtime folder's portal-said.
+  askPortal =
+    pkgs.writers.writePython3 "ask-portal"
+      {
+        libraries = [ pkgs.python3Packages.jeepney ];
+        flakeIgnore = [ "E501" ];
+      }
+      ''
+        import os
+        import sys
+        from jeepney import DBusAddress, MatchRule, message_bus, new_method_call
+        from jeepney.io.blocking import Proxy, open_dbus_connection
+
+        said = os.path.join(os.environ["XDG_RUNTIME_DIR"], "portal-said")
+        connection = open_dbus_connection(bus="SESSION", enable_fds=True)
+        token = "asked"
+        sender = connection.unique_name[1:].replace(".", "_")
+        print(f"on {os.environ.get('DBUS_SESSION_BUS_ADDRESS')} as {connection.unique_name}", file=sys.stderr, flush=True)
+        rule = MatchRule(
+            type="signal",
+            interface="org.freedesktop.portal.Request",
+            member="Response",
+            path=f"/org/freedesktop/portal/desktop/request/{sender}/{token}",
+        )
+        Proxy(message_bus, connection).AddMatch(rule)
+        portal = DBusAddress(
+            "/org/freedesktop/portal/desktop",
+            bus_name="org.freedesktop.portal.Desktop",
+            interface="org.freedesktop.portal.OpenURI",
+        )
+        options = {"ask": ("b", True), "handle_token": ("s", token)}
+        # The portal opens a file only as one already open, by OpenFile,
+        # and refuses its path as a file:// link.
+        opened = open(sys.argv[1], "rb")
+        asked = new_method_call(portal, "OpenFile", "sha{sv}", ("", opened, options))
+        with connection.filter(rule) as heard:
+            handle = connection.send_and_get_reply(asked)
+            print(f"asked, {handle.header.message_type} {handle.body}", file=sys.stderr, flush=True)
+            answer = connection.recv_until_filtered(heard, timeout=120)
+            print(f"answered {answer.body[0]}", file=sys.stderr, flush=True)
+        with open(said + ".part", "w") as told:
+            told.write(f"{answer.body[0]}\n")
+        os.rename(said + ".part", said)
+      '';
+
   # A stand-in touchscreen, as wide as the screen, which swipes with as many
   # fingers as it's told, one way, or taps: each line written to
   # /run/touchscreen is how many and which way (RL is from right to left), or
@@ -2007,6 +2055,71 @@ pkgs.testers.runNixOSTest {
           machine.succeed("pkill -KILL -u ${account} -f '[g]imp'")
           machine.wait_until_fails("pgrep -u ${account} -f '[g]imp'", timeout=30)
           machine.succeed(f"rm {pictures}/*.png")
+
+      # A program asks the portal what to open a picture with, as one does when
+      # more than one app could, and the launcher asks rather than GNOME's
+      # dialog, holding the apps the portal offers. Return opens the picture
+      # with the one taken, and the portal says it opened; asked again, Escape
+      # opens nothing, and the portal says it was refused; and each ask's
+      # socket goes once it's answered.
+      with subtest("the launcher asks what to open a picture with, for the portal"):
+          portal_png = "/home/${account}/portal-picked.png"
+          machine.succeed(
+              "echo iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+              f" | base64 -d > {portal_png} && chown ${account} {portal_png}"
+          )
+          opened_with = "pgrep -u ${account} -af '[p]ortal-picked.png' | grep -v ask-portal"
+          sockets_gone = "! ls /run/user/1000/open-with/*.sock"
+          portal_said = "/run/user/1000/portal-said"
+
+          # What the shell, the chooser, the portal and the caller made of an
+          # ask, said when the launcher never holds the apps.
+          def portal_told():
+              _, said = machine.execute(
+                  in_session(
+                      "qs ipc show | grep -A4 open-with; ls -la /run/user/1000/open-with; "
+                      f"cat {portal_said}; pgrep -af ask-portal; "
+                      "busctl --user list | grep -i -e portal -e ask; "
+                      "journalctl --user --no-pager --output=cat --lines=80 "
+                      "--unit=ask-portal --unit=open-with --unit=xdg-desktop-portal"
+                  )
+              )
+              return said
+
+          def ask_portal():
+              machine.succeed(f"rm -f {portal_said}")
+              # Under the account's manager, on the bus the portal is on.
+              as_account(
+                  "systemd-run --user --collect --unit=ask-portal "
+                  f"${askPortal} {portal_png}"
+              )
+              try:
+                  launcher_until(
+                      lambda shown: shown["keys"]
+                      and shown["held"] == ["apps"]
+                      and shown["selected"] is not None,
+                      timeout=60,
+                  )
+              except AssertionError as unheard:
+                  raise AssertionError(f"{unheard}; what was said:\n{portal_told()}") from None
+
+          ask_portal()
+          photograph("open-with")
+          machine.send_key("ret")
+          machine.wait_until_succeeds(f"grep -qx 0 {portal_said}", timeout=60)
+          machine.wait_until_succeeds(opened_with, timeout=60)
+          launcher_until(lambda shown: not shown["open"])
+          machine.wait_until_succeeds(sockets_gone, timeout=10)
+          machine.succeed("pkill -KILL -u ${account} -f '[p]ortal-picked.png'")
+          machine.wait_until_fails("pgrep -u ${account} -f '[p]ortal-picked.png'", timeout=30)
+
+          ask_portal()
+          machine.send_key("esc")
+          launcher_until(lambda shown: not shown["open"])
+          machine.wait_until_succeeds(f"grep -qx 1 {portal_said}", timeout=60)
+          machine.wait_until_succeeds(sockets_gone, timeout=10)
+          machine.fail(opened_with)
+          machine.succeed(f"rm {portal_png}")
 
       # Opens a file as a click on it would, and waits for the program meant
       # for it to take the focus. A program's first start here, drawn in
