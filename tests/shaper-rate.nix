@@ -112,9 +112,11 @@ pkgs.testers.runNixOSTest {
             timeout=60,
         )
         client.sleep(15)
+        # It probes a little past the line and cuts at the queue that
+        # builds, so any moment finds it within a tenth of the line.
         rate = up()
         t.assertGreater(rate, 5000)
-        t.assertLess(rate, 8000)
+        t.assertLess(rate, 8800)
         shaped = ping("shaped")
         t.assertLess(shaped, 80, f"shaped at {rate} kbit/s")
 

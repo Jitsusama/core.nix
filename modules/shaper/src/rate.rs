@@ -7,12 +7,16 @@
 //! goes, as cake-autorate does on routers: pings to a few distant hosts
 //! each keep a baseline, the least round trip seen lately, and a ping that
 //! comes back well over its baseline is delayed. While enough of the latest
-//! pings are delayed and a direction is busy, that direction's rate drops
-//! to a little under what it was carrying, since that is what the line
-//! managed with a queue building, and that rate is held as the line's. The
-//! queue then takes a while to drain, and the pings stay late meanwhile:
-//! later cuts in the same spell lower the rate further, so it drains
-//! sooner, but leave the held rate alone. Nothing climbs until a whole
+//! pings are delayed and a direction is busy, a little under what that
+//! direction was carrying is held as the line's rate, since that is what
+//! the line managed with a queue building. The rate itself goes further
+//! under, by as much as the queue is deep, so the queue drains in about a
+//! second rather than the ten a rate a tenth under the line would take
+//! over a full modem buffer. The pings stay late while it drains, which is
+//! no reason to cut again: a later cut in the same spell comes only while
+//! the delay is still rising, as it does when the line is slower than the
+//! cut, and the held rate follows it down. Cutting at every late ping took
+//! an 8 Mbit/s line's rate to 3. Nothing climbs until a whole
 //! window of fresh pings says the line is quiet. Then a busy direction
 //! climbs quickly back to the held rate, and above it only slowly, so a
 //! probe past what the line takes builds a few milliseconds of queue before
@@ -46,13 +50,14 @@ pub struct Settings {
     /// How much a climb adds each step, below the held rate and above it.
     pub climb_back: f64,
     pub climb: f64,
-    /// Seconds without a cut before delay counts as a new spell.
-    pub spell_s: f64,
     /// How far a resting rate moves towards the held rate each step.
     pub settle: f64,
     /// Seconds after a cut before another: the pings in flight still carry
     /// the queue the cut was for.
     pub after_cut_s: f64,
+    /// A queue this deep, in ms, is drained at half the held rate; a
+    /// shallower one at a share of it as much under as it is deep.
+    pub drain_ms: f64,
 }
 
 impl Default for Settings {
@@ -70,9 +75,9 @@ impl Default for Settings {
             // a line that dipped to half is found again in about 30 s.
             climb_back: 1.02,
             climb: 1.005,
-            spell_s: 2.0,
             settle: 0.05,
             after_cut_s: 0.6,
+            drain_ms: 1000.0,
         }
     }
 }
@@ -145,7 +150,15 @@ pub struct Controller {
     pub down: Direction,
     baselines: HashMap<String, Baseline>,
     recent: VecDeque<bool>,
+    /// How far over its baseline each of the latest pings came back, in
+    /// ms, beside `recent`; a lost one is unbounded.
+    levels: VecDeque<f64>,
     last_cut: Option<f64>,
+    /// The queue's delay when the rate was last cut.
+    cut_level: f64,
+    /// Whether the line has been delayed since a cut, without a whole
+    /// quiet window between: a spell ends only when the queue has drained.
+    in_spell: bool,
 }
 
 /// One step's climb, from a direction's rate and what it held.
@@ -175,7 +188,10 @@ impl Controller {
             down,
             baselines: HashMap::new(),
             recent: VecDeque::new(),
+            levels: VecDeque::new(),
             last_cut: None,
+            cut_level: 0.0,
+            in_spell: false,
         }
     }
 
@@ -183,15 +199,28 @@ impl Controller {
     /// back, which counts as delayed when the host's last ping answered.
     pub fn sample(&mut self, host: &str, rtt_ms: Option<f64>) {
         let baseline = self.baselines.entry(host.to_string()).or_default();
-        let delayed = match rtt_ms {
-            Some(rtt) => baseline.update(rtt) > self.settings.delay_ms,
-            None if baseline.lost() => true,
+        let over = match rtt_ms {
+            Some(rtt) => baseline.update(rtt),
+            None if baseline.lost() => f64::INFINITY,
             None => return,
         };
-        self.recent.push_back(delayed);
+        self.recent.push_back(over > self.settings.delay_ms);
+        self.levels.push_back(over);
         while self.recent.len() > self.settings.window {
             self.recent.pop_front();
+            self.levels.pop_front();
         }
+        if self.quiet() {
+            self.in_spell = false;
+        }
+    }
+
+    /// How far over their baselines the latest pings came back, by their
+    /// median, in ms.
+    fn level(&self) -> f64 {
+        let mut all: Vec<f64> = self.levels.iter().copied().collect();
+        all.sort_by(f64::total_cmp);
+        all.get(all.len() / 2).copied().unwrap_or(0.0)
     }
 
     /// Whether the line's queue is building now.
@@ -222,24 +251,40 @@ impl Controller {
         let s = self.settings.clone();
         if self.building() {
             let resting = self.last_cut.is_some_and(|at| now - at < s.after_cut_s);
-            let new_spell = self.last_cut.is_none_or(|at| now - at >= s.spell_s);
+            let new_spell = !self.in_spell;
+            let level = self.level();
+            // A queue that drains needs no cut: only one still growing does.
+            let rising = new_spell || level > self.cut_level + s.delay_ms / 3.0;
+            // A rate a tenth under the line drains its queue at a tenth of
+            // the line: a second of modem buffer would take ten seconds. So
+            // a cut goes under the held rate by a share as large as the
+            // queue's delay is of a second, up to half, which drains it in
+            // about a second, and stays there until the line is quiet. A
+            // rate let back up as the queue fell stood at the line with the
+            // queue half drained.
+            let drain = 1.0 - (level / s.drain_ms).min(0.5);
             let mut cut = false;
             for (dir, carried) in [(&mut self.up, sent), (&mut self.down, received)] {
-                if carried >= dir.rate as f64 * s.loaded && !resting {
+                if carried >= dir.rate as f64 * s.loaded && !resting && rising {
                     let from = carried.min(dir.rate as f64);
-                    dir.set(from * s.cut);
-                    if new_spell {
-                        dir.held = dir.rate;
-                        dir.learned = true;
-                    }
+                    // A queue still growing after a cut says that rate too
+                    // was over the line, so each cut is the line's best
+                    // guess.
+                    dir.held =
+                        ((from * s.cut).round() as u64).clamp(dir.bounds.min, dir.bounds.max);
+                    dir.set(dir.held as f64 * drain);
+                    dir.learned = true;
                     cut = true;
                 }
             }
             if cut {
                 self.last_cut = Some(now);
+                self.cut_level = level;
+                self.in_spell = true;
                 // The pings that showed the queue are spent; the next cut
                 // waits for pings sent at the new rate.
                 self.recent.clear();
+                self.levels.clear();
                 return State::Cut;
             }
             return State::Holding;
@@ -351,8 +396,10 @@ mod tests {
         pings(&mut c, 20.0, 6);
         pings(&mut c, 200.0, 3);
         assert_eq!(c.step(1.0, 11_000.0, 2_000.0), State::Cut);
-        assert_eq!(c.up.rate, 9_900);
+        // The line held a tenth under what it carried; the queue of about
+        // 180 ms drains at about that much under that.
         assert_eq!(c.up.held, 9_900);
+        assert!((8_000..8_300).contains(&c.up.rate), "{}", c.up.rate);
         // The download carried little, so it wasn't filling the queue.
         assert_eq!(c.down.rate, 100_000);
     }
@@ -363,23 +410,42 @@ mod tests {
         pings(&mut c, 20.0, 6);
         pings(&mut c, 200.0, 3);
         c.step(1.0, 11_000.0, 0.0);
+        let draining = c.up.rate;
         assert_eq!(c.step(1.2, 0.0, 0.0), State::Holding);
-        pings(&mut c, 200.0, 3);
+        pings(&mut c, 300.0, 3);
         assert_eq!(c.step(1.4, 9_900.0, 0.0), State::Holding);
-        assert_eq!(c.up.rate, 9_900);
+        assert_eq!(c.up.rate, draining);
         assert_eq!(c.step(1.7, 9_900.0, 0.0), State::Cut);
-        assert_eq!(c.up.rate, 8_910);
+        assert!(c.up.rate < draining);
     }
 
     #[test]
-    fn cuts_while_the_queue_drains_leave_the_held_rate() {
+    fn a_queue_still_growing_after_a_cut_lowers_the_held_rate_too() {
         let mut c = controller(20_000, 100_000);
         pings(&mut c, 20.0, 6);
         pings(&mut c, 200.0, 3);
         c.step(1.0, 11_000.0, 0.0);
-        pings(&mut c, 200.0, 3);
+        let draining = c.up.rate;
+        pings(&mut c, 300.0, 3);
         c.step(1.7, 9_900.0, 0.0);
-        assert_eq!((c.up.rate, c.up.held), (8_910, 9_900));
+        // Still growing at the draining rate: the line is under even that.
+        assert_eq!(c.up.held, (draining as f64 * 0.9).round() as u64);
+        assert!(c.up.rate < c.up.held);
+    }
+
+    #[test]
+    fn a_queue_draining_after_a_cut_is_not_cut_again() {
+        let mut c = controller(20_000, 100_000);
+        pings(&mut c, 20.0, 6);
+        pings(&mut c, 200.0, 3);
+        c.step(1.0, 11_000.0, 0.0);
+        let (draining, held) = (c.up.rate, c.up.held);
+        // Still late, but less so each time: the cut already drains it.
+        for (at, rtt) in [(1.7, 190.0), (2.4, 150.0), (3.1, 90.0)] {
+            pings(&mut c, rtt, 3);
+            assert_eq!(c.step(at, 9_900.0, 0.0), State::Holding, "at {at}");
+        }
+        assert_eq!((c.up.rate, c.up.held), (draining, held));
     }
 
     #[test]
@@ -391,7 +457,8 @@ mod tests {
         pings(&mut c, 20.0, 6);
         pings(&mut c, 200.0, 3);
         c.step(4.0, 8_000.0, 0.0);
-        assert_eq!((c.up.rate, c.up.held), (7_200, 7_200));
+        assert_eq!(c.up.held, 7_200);
+        assert!(c.up.rate < 7_200);
     }
 
     #[test]
@@ -463,6 +530,56 @@ mod tests {
         pings(&mut c, 200.0, 3);
         c.step(1.0, 1_000.0, 5_000.0);
         assert_eq!((c.up.rate, c.down.rate), (1_000, 5_000));
+    }
+
+    /// A line beyond the router as the timed VM test makes it: `line`
+    /// kbit/s, 20 ms away, with a buffer of a second at 8 Mbit/s, and
+    /// uploads that always fill what the shaper lets out. Steps it for
+    /// `seconds`, three pings a step, and gives the queue's delay in ms.
+    struct Line {
+        queue_kbit: f64,
+        at: f64,
+    }
+
+    impl Line {
+        fn run(&mut self, c: &mut Controller, line: f64, seconds: f64) -> f64 {
+            let dt = 0.2;
+            let end = self.at + seconds;
+            while self.at < end {
+                let sent = c.up.rate as f64;
+                self.queue_kbit = (self.queue_kbit + (sent - line) * dt).clamp(0.0, 8_000.0);
+                let delay = self.queue_kbit / line * 1000.0;
+                pings(c, 20.0 + delay, 3);
+                self.at += dt;
+                c.step(self.at, sent, 0.0);
+            }
+            self.queue_kbit / line * 1000.0
+        }
+    }
+
+    #[test]
+    fn a_full_modem_buffer_is_drained_without_cutting_far_under_the_line() {
+        let mut c = controller(10_000, 50_000);
+        pings(&mut c, 20.0, 6);
+        let mut line = Line {
+            queue_kbit: 0.0,
+            at: 0.0,
+        };
+        // It probes a little past the line and cuts at the queue that
+        // builds, so it sits within a tenth of the line either way.
+        line.run(&mut c, 8_000.0, 20.0);
+        assert!((5_000..8_800).contains(&c.up.rate), "{}", c.up.rate);
+        let delay = line.run(&mut c, 8_000.0, 10.0);
+        assert!(delay < 60.0, "{delay}");
+        assert!((5_000..8_800).contains(&c.up.rate), "{}", c.up.rate);
+        // The line halves: followed within seconds.
+        line.run(&mut c, 4_000.0, 30.0);
+        assert!(c.up.rate < 4_400, "{}", c.up.rate);
+        let delay = line.run(&mut c, 4_000.0, 10.0);
+        assert!(delay < 100.0, "{delay}");
+        // And back: found again within two minutes.
+        line.run(&mut c, 8_000.0, 120.0);
+        assert!(c.up.rate > 6_000, "{}", c.up.rate);
     }
 
     #[test]
