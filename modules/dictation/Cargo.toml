@@ -1,0 +1,10 @@
+# dictation: types what's said into the focused window, Whisper's encoder
+# on the NPU (src/main.rs says how).
+[package]
+name = "dictation"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[dependencies]

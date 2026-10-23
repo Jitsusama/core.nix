@@ -2617,6 +2617,32 @@ in
   # thread behind until it is both normal and at the nice asked for.
   vm-first-finds-the-vms = pkgs.callPackage ./modules/nix-daemon/vm-first/package.nix { };
 
+  # dictation's tests run as it builds: its spectrogram matches the one that
+  # transcribed a clip word for word, its transform the plain sum, its
+  # vocabulary reads back into text, and silence or a moment isn't heard.
+  dictation-works-it-out = pkgs.callPackage ./modules/dictation/package.nix { };
+
+  # The whole of dictation's Whisper, on the CPU as a machine with no NPU
+  # runs it: whisper.cpp's public clip, read and typed back word for word.
+  dictation-hears-the-clip =
+    let
+      dictation = pkgs.callPackage ./modules/dictation/package.nix { };
+      model = pkgs.callPackage ./modules/dictation/model.nix { };
+      clip = "${pkgs.whisper-cpp.src}/samples/jfk.wav";
+      want = lib.concatStringsSep " " [
+        "And so my fellow Americans, ask not what your country can do for you,"
+        "ask what you can do for your country."
+      ];
+    in
+    pkgs.runCommand "dictation-hears-the-clip" { } ''
+      heard=$(DICTATION_DEVICE=CPU ${lib.getExe dictation} transcribe ${model} ${clip})
+      if [ "$heard" != ${lib.escapeShellArg want} ]; then
+        echo "dictation heard: $heard"
+        exit 1
+      fi
+      touch $out
+    '';
+
   # wifid's tests run as it builds: what it hears of the air and offers,
   # what each network asks to be joined by, the address it shows each
   # network, the networks and secrets it keeps, and how it tells a network
@@ -5505,6 +5531,11 @@ in
     # clippy finds nothing in the jobs sorter, its tests included.
     jobs-sorter-passes-clippy = passesClippy "jobs-sorter-passes-clippy" (
       pkgs.callPackage ./modules/slices/jobs-sorter/package.nix { }
+    );
+
+    # clippy finds nothing in dictation, its tests included.
+    dictation-passes-clippy = passesClippy "dictation-passes-clippy" (
+      pkgs.callPackage ./modules/dictation/package.nix { }
     );
 
     # clippy finds nothing in vm-first, its tests included.

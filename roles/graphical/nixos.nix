@@ -11,7 +11,8 @@
 # with: swayimg, which opens pictures and drawings, zathura, which opens
 # documents, GIMP, Inkscape, mpv, which opens video, the camera, Spotify
 # and Tuple. When a program asks what to open something with, the launcher
-# asks rather than GNOME's dialog. The compositor and sound get the CPU and memory before
+# asks rather than GNOME's dialog. A chord types what Joel says where he's
+# typing. The compositor and sound get the CPU and memory before
 # anything Joel starts.
 { nixosModules, homeModules }:
 {
@@ -44,6 +45,7 @@
   home-manager.sharedModules = [
     homeModules.backlight
     homeModules.camera
+    homeModules.dictation
     homeModules.fontconfig
     homeModules.gimp
     homeModules.gtk

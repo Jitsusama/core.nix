@@ -874,6 +874,11 @@ upstream as it is and the override can then come out.
   test network of eight convolutions for the NPU in half a second, and one
   pass ran in 3.7 ms there, against 6.8 ms on the GPU. nixpkgs could carry
   the same package, or build the driver with its compiler from source.
+  Dictation (`modules/dictation`) runs Whisper small's encoder there: 75 ms
+  for 30 s of audio, against about 130 ms on the GPU and 2.4 s on the CPU,
+  so 11 s of speech was typed in under a second while a kernel built.
+  Its decoder stays on the CPU, since its shapes grow a token at a time and
+  the NPU's compiler takes only fixed ones.
 
 ### Left Out on Purpose
 

@@ -124,6 +124,7 @@
         claude = ./modules/claude/home.nix;
         curl = ./modules/curl/home.nix;
         delta = ./modules/delta/home.nix;
+        dictation = ./modules/dictation/home.nix;
         dig = ./modules/dig/home.nix;
         direnv = ./modules/direnv/home.nix;
         disk-guard = ./modules/disk-guard/home.nix;
