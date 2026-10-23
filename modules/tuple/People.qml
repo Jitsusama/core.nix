@@ -1,4 +1,10 @@
-// Tuple's people, a collection: everyone Tuple lists as a contact, as
+// Tuple's place in the launcher, a collection found by typing "tuple",
+// "pair" or "call": first what can be done about calls now, as Tuple.qml
+// says it, so a ringing call, or the call Joel's in, leads, and out of one
+// his room does; then the people to pair with. Its row at home says how
+// Tuple stands: who's calling, in a call, or how many can pair.
+//
+// The people are everyone Tuple lists as a contact, as
 // tuple-people says them (people.rs). Tuple's own `contacts follow` says
 // every contact again, over a megabyte of them, each time anyone's
 // presence changes; the helper reads all of that so the shell doesn't,
@@ -29,12 +35,19 @@ Provider {
 
     collection: ({
         noun: "people",
-        title: "People",
-        words: ["tuple", "pair", "pairing", "teammates", "contacts", "colleagues"],
+        title: "Tuple",
+        words: ["tuple", "pair", "pairing", "call", "calls", "room", "teammates", "contacts",
+            "colleagues"],
         glyph: String.fromCodePoint(0xf000e),
-        ask: "who to pair with?",
+        ask: Tuple.calling ? "what to do in the call?" : "who to pair with?",
         empty: "Tuple lists nobody yet."
     })
+
+    // What can be done about calls now, which leads the place.
+    readonly property var moment: Tuple.controls.map(control => thing(Object.assign({
+        what: "call"
+    }, control)))
+    onMomentChanged: changed()
 
     // Everyone as a row each, made again only when the helper says
     // everyone again, and who they are by id.
@@ -162,10 +175,33 @@ Provider {
         })] : []);
     }
 
+    // Inside the place, what's typed finds what can be done about calls
+    // as well as people, those first, at whichever is the finer match.
+    function search(typed) {
+        const words = Fuzzy.words(typed);
+        const found = [];
+        for (const row of moment) {
+            const byName = Fuzzy.match(row.prepared, words, false);
+            const best = byName.score >= 0 || !row.keywords ? byName
+                : Fuzzy.match(row.keywords, words, false);
+            if (best.score >= 0)
+                found.push({ row: row, grade: best.grade });
+        }
+        const people = gather(typed);
+        const grade = Math.min(people.grade, ...found.map(f => f.grade));
+        return {
+            rows: found.filter(f => f.grade === grade).map(f => f.row)
+                .concat(people.grade === grade ? people.rows : []),
+            grade: grade
+        };
+    }
+
+    // In the main search only people, since what can be done about calls
+    // is found there on its own (Calls.qml).
     // Everyone is searched, thousands of them, so each name and email's
     // letters are tested first, which passes most over without a call,
     // and only those left are made ready to match, once.
-    function search(typed) {
+    function gather(typed) {
         const words = Fuzzy.words(typed);
         const need = Fuzzy.letters(words);
         const rows = known;
@@ -192,10 +228,12 @@ Provider {
     }
 
     function everything() {
-        return all.slice();
+        return moment.concat(all);
     }
 
     function counted() {
+        if (Tuple.standing !== "")
+            return Tuple.standing;
         if (stopped)
             return "not running";
         if (everyone.length === 0)

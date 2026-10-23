@@ -1,7 +1,7 @@
 pragma Singleton
 pragma ComponentBehavior: Bound
 // Tuple's calls, as the shell sees them, for the margin's piece (Call.qml)
-// and the launcher's rows (Calls.qml). How the call Joel's in stands comes
+// and the launcher's rows (Calls.qml, People.qml). How the call Joel's in stands comes
 // from Tuple's own stream of state, as tuple-people says it (people.rs):
 // whether it's connected and since when, who's in it by name, and for
 // Joel and each of them, whether they're muted, sharing their screen or
@@ -88,6 +88,113 @@ Singleton {
     // A ring Tuple stops writing about is over after a minute, as a phone's
     // would be, whatever the log leaves unsaid.
     readonly property int ringsFor: 60 * 1000
+
+    // Whether a screen or window is being cast to a call now, as niri says.
+    readonly property bool casting: Object.values(Niri.casts)
+        .some(cast => cast.kind === "PipeWire" && cast.is_active)
+    // A link copied that isn't Joel's own room, which he opens instead.
+    readonly property string joinable: calling || copied === room ? "" : copied
+
+    // What can be done about Tuple's calls now, most wanted first, each
+    // there only when it can be done, as the launcher's rows say them:
+    // found anywhere by name (Calls.qml) and first in Tuple's own place
+    // (People.qml). A ringing call's window, where it's answered, comes
+    // first; in a call, being heard or not, sharing while nothing is
+    // shared, and leaving; out of one, opening Joel's room, or joining the
+    // call whose link was just copied; and copying his room's link once
+    // it's known.
+    readonly property var controls: {
+        const glyph = code => String.fromCodePoint(code);
+        const rows = [];
+        if (ringing !== "" && !calling)
+            rows.push({
+                key: "tuple:ringing",
+                verb: "show",
+                name: `Show the Tuple call from ${name(ringing) || "someone"}`,
+                keywords: "pair ringing answer",
+                glyph: glyph(0xf03f2),
+                hue: "person",
+                note: "answer it in Tuple's window",
+                run: () => root.show()
+            });
+        if (calling) {
+            const quiet = muted === true;
+            rows.push({
+                key: "tuple:mute",
+                verb: quiet ? "unmute" : "mute",
+                name: quiet ? "Let them hear me again in the Tuple call" : "Mute me in the Tuple call",
+                keywords: "pair microphone voice",
+                glyph: glyph(quiet ? 0xf036c : 0xf036d),
+                hue: "action",
+                later: true,
+                run: () => root.mute(!quiet)
+            });
+            if (!casting)
+                rows.push({
+                    key: "tuple:share",
+                    verb: "share",
+                    name: "Share the screen in the Tuple call",
+                    keywords: "pair",
+                    glyph: glyph(0xf1483),
+                    hue: "action",
+                    later: true,
+                    run: () => root.share()
+                });
+            rows.push({
+                key: "tuple:leave",
+                verb: "leave",
+                name: "Leave the Tuple call",
+                keywords: "pair hang up end",
+                glyph: glyph(0xf03f5),
+                hue: "action",
+                later: true,
+                run: () => root.leave()
+            });
+        } else {
+            rows.push({
+                key: "tuple:open",
+                verb: "open",
+                name: "Open my Tuple room",
+                keywords: "pair call start new",
+                glyph: glyph(0xf081c),
+                hue: "action",
+                note: "and copy its link to hand on",
+                later: true,
+                run: () => root.open()
+            });
+            const link = joinable;
+            if (link !== "")
+                rows.push({
+                    key: "tuple:join",
+                    verb: "join",
+                    name: "Join the Tuple call in the clipboard",
+                    keywords: "pair call link",
+                    glyph: glyph(0xf0659),
+                    hue: "action",
+                    note: link.replace(/^https:\/\//, ""),
+                    later: true,
+                    run: () => root.join(link)
+                });
+        }
+        if (room !== "")
+            rows.push({
+                key: "tuple:link",
+                verb: "copy",
+                name: "Copy my Tuple room's link",
+                keywords: "pair call url",
+                glyph: glyph(0xf0339),
+                hue: "action",
+                note: room.replace(/^https:\/\//, ""),
+                run: () => root.copyRoom()
+            });
+        return rows;
+    }
+
+    // How Tuple stands, in a few words: who's calling, or whether Joel's
+    // in a call and heard there, or "" while he's in none.
+    readonly property string standing: ringing !== "" && !calling
+        ? `${name(ringing) || "someone"} calling`
+        : calling ? (muted === true ? "in a call, muted" : "in a call") : ""
 
     // Someone's name, or "" when Tuple's contacts don't list them.
     function name(who) {
