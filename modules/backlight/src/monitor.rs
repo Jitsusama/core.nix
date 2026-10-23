@@ -69,8 +69,8 @@ const IN_Q_OVERFLOW: u32 = 0x4000;
 /// A message from the host: who it's from, how long it is, what it says, and
 /// a checksum that counts the monitor's address too.
 fn message(payload: &[u8]) -> Vec<u8> {
-    // A DDC/CI message says at most 32 bytes, which fits.
-    let mut message = vec![0x51, 0x80 | payload.len() as u8];
+    let length = u8::try_from(payload.len()).expect("a DDC/CI message says at most 32 bytes");
+    let mut message = vec![0x51, 0x80 | length];
     message.extend_from_slice(payload);
     message.push(message.iter().fold(0x6E, |sum, byte| sum ^ byte));
     message
@@ -98,7 +98,7 @@ fn refused(why: String) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, why)
 }
 
-/// A monitor's answer to get_vcp, whose checksum counts the host's address.
+/// A monitor's answer to `get_vcp`, whose checksum counts the host's address.
 fn reading(reply: &[u8], vcp: u8) -> io::Result<Reading> {
     let [
         0x6E,
@@ -140,8 +140,12 @@ fn reading(reply: &[u8], vcp: u8) -> io::Result<Reading> {
 }
 
 /// The value nearest a share of a monitor's brightest.
+#[expect(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    reason = "a share of the brightest is between 0 and max"
+)]
 fn value_for(level: f64, max: u16) -> u16 {
-    // In range: a share of the brightest is between 0 and max.
     (level.clamp(0.0, 1.0) * f64::from(max)).round() as u16
 }
 
@@ -906,7 +910,7 @@ mod tests {
         event.extend_from_slice(&1i32.to_ne_bytes());
         event.extend_from_slice(&mask.to_ne_bytes());
         event.extend_from_slice(&0u32.to_ne_bytes());
-        event.extend_from_slice(&(padded.len() as u32).to_ne_bytes());
+        event.extend_from_slice(&u32::try_from(padded.len()).unwrap().to_ne_bytes());
         event.extend_from_slice(&padded);
         event
     }

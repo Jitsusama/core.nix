@@ -182,6 +182,9 @@ impl Step for OpenDisk {
     }
 
     fn run(&self, machine: &mut dyn Machine, answers: &Answers) -> Result<(), Fault> {
+        // cryptsetup's status when no slot takes what it was given
+        // (lib/libcryptsetup.h, EPERM): anything else is the disk refusing.
+        const NO_SLOT_TAKES_IT: i32 = 2;
         let Some(Answer::Secret(typed)) = answers.get("secret") else {
             return Err(Fault::Unanswered {
                 step: self.id(),
@@ -205,9 +208,6 @@ impl Step for OpenDisk {
                 ..Given::default()
             },
         )?;
-        // cryptsetup's status when no slot takes what it was given
-        // (lib/libcryptsetup.h, EPERM): anything else is the disk refusing.
-        const NO_SLOT_TAKES_IT: i32 = 2;
         if by_recovery_key.status != NO_SLOT_TAKES_IT {
             return match by_recovery_key.status {
                 0 => Ok(()),

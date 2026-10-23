@@ -60,24 +60,26 @@ fn main() -> ExitCode {
         ["installed"] => reported(installed()),
         ["recover"] => reported(recover()),
         ["seal-keys", target, bundle] => reported(seal_keys(target, bundle)),
-        ["host", image, ref options @ ..] => match Written::parse(options) {
-            Some(written) => reported(written.open().and_then(|(signer, payload, bundle)| {
-                host(image, signer, payload, bundle, written.uses_kept())
-            })),
-            None => {
+        ["host", image, ref options @ ..] => {
+            if let Some(written) = Written::parse(options) {
+                reported(written.open().and_then(|(signer, payload, bundle)| {
+                    host(image, signer, payload, bundle, written.uses_kept())
+                }))
+            } else {
                 eprintln!("{USAGE}");
                 ExitCode::from(2)
             }
-        },
-        ["write-stick", image, target, ref options @ ..] => match Written::parse(options) {
-            Some(written) => reported(written.open().and_then(|(signer, payload, bundle)| {
-                write_stick(image, target, signer, payload, bundle)
-            })),
-            None => {
+        }
+        ["write-stick", image, target, ref options @ ..] => {
+            if let Some(written) = Written::parse(options) {
+                reported(written.open().and_then(|(signer, payload, bundle)| {
+                    write_stick(image, target, signer, payload, bundle)
+                }))
+            } else {
                 eprintln!("{USAGE}");
                 ExitCode::from(2)
             }
-        },
+        }
         _ => {
             eprintln!("{USAGE}");
             ExitCode::from(2)
@@ -329,7 +331,7 @@ fn host(
         theme: &theme,
         log: None,
         whole: false,
-        done: Default::default(),
+        done: RefCell::default(),
     };
     if kept.is_some() && walk.walk(&mut machine, &mut terminal)? != Ended::Finished {
         return Ok(());
@@ -447,7 +449,7 @@ fn seal_keys(target: &str, bundle: &str) -> Result<(), Fault> {
         theme: &theme,
         log: None,
         whole: true,
-        done: Default::default(),
+        done: RefCell::default(),
     };
     if walk.walk(&mut machine, &mut terminal)? != Ended::Finished {
         return Ok(());
@@ -506,10 +508,10 @@ fn installed() -> Result<(), Fault> {
     ) {
         return Ok(());
     }
-    let name = machine
-        .read("/etc/hostname")?
-        .map(|bytes| String::from_utf8_lossy(&bytes).trim().to_string())
-        .unwrap_or_else(|| "this machine".into());
+    let name = machine.read("/etc/hostname")?.map_or_else(
+        || "this machine".into(),
+        |bytes| String::from_utf8_lossy(&bytes).trim().to_string(),
+    );
     let title = format!("Finish {name}");
     let theme = Theme::built(Terminal::is_console());
     let mut terminal = Terminal::open()?;
@@ -520,7 +522,7 @@ fn installed() -> Result<(), Fault> {
         theme: &theme,
         log: None,
         whole: true,
-        done: Default::default(),
+        done: RefCell::default(),
     };
     if walk.walk(&mut machine, &mut terminal)? != Ended::Finished {
         return Ok(());
@@ -570,7 +572,7 @@ fn recover() -> Result<(), Fault> {
             theme: &theme,
             log: Some(Path::new(LOG)),
             whole: true,
-            done: Default::default(),
+            done: RefCell::default(),
         };
         if walk.walk(&mut machine, &mut terminal)? != Ended::Finished {
             return Ok(());
@@ -604,7 +606,7 @@ fn recover() -> Result<(), Fault> {
                         theme: &theme,
                         log: Some(Path::new(LOG)),
                         whole: false,
-                        done: Default::default(),
+                        done: RefCell::default(),
                     };
                     if chosen.walk(&mut machine, &mut terminal)? != Ended::Finished {
                         return Ok(());
@@ -696,7 +698,7 @@ fn install() -> Result<(), Fault> {
                 theme: &theme,
                 log: Some(Path::new(LOG)),
                 whole: false,
-                done: Default::default(),
+                done: RefCell::default(),
             }
             .choose(
                 &mut terminal,
@@ -727,7 +729,7 @@ fn install() -> Result<(), Fault> {
         theme: &theme,
         log: Some(Path::new(LOG)),
         whole: false,
-        done: Default::default(),
+        done: RefCell::default(),
     };
     if walk.walk(&mut machine, &mut terminal)? != Ended::Finished {
         return Ok(());
@@ -783,23 +785,20 @@ fn tools() -> ExitCode {
     }
     for path in guide::tool::Path::ALL {
         let name = path.name();
-        match path.value() {
-            Some(value) => {
-                let absent: Vec<&str> = value
-                    .split(':')
-                    .filter(|directory| !Path::new(directory).is_dir())
-                    .collect();
-                if absent.is_empty() {
-                    println!("{name}: {value}");
-                } else {
-                    missing += 1;
-                    println!("{name}: {} isn't there", absent.join(", "));
-                }
-            }
-            None => {
+        if let Some(value) = path.value() {
+            let absent: Vec<&str> = value
+                .split(':')
+                .filter(|directory| !Path::new(directory).is_dir())
+                .collect();
+            if absent.is_empty() {
+                println!("{name}: {value}");
+            } else {
                 missing += 1;
-                println!("{name}: this build has no path for them");
+                println!("{name}: {} isn't there", absent.join(", "));
             }
+        } else {
+            missing += 1;
+            println!("{name}: this build has no path for them");
         }
     }
     if missing == 0 {
@@ -824,18 +823,7 @@ fn observe() -> ExitCode {
 
     show(
         "Secure Boot",
-        efi::SecureBoot::observe(&mut machine).map(|seen| match seen {
-            Some(seen) => format!(
-                "{}, {} mode",
-                if seen.enforcing {
-                    "enforced"
-                } else {
-                    "not enforced"
-                },
-                seen.mode
-            ),
-            None => "this machine didn't boot through UEFI".into(),
-        }),
+        efi::SecureBoot::observe(&mut machine).map(|seen| secure_boot_said(seen.as_ref())),
     );
     show(
         "Owner keys",
@@ -873,46 +861,12 @@ fn observe() -> ExitCode {
     );
     show(
         "FIDO2 keys",
-        fido2::list(&mut machine).map(|tokens| {
-            if tokens.is_empty() {
-                return "none plugged in".into();
-            }
-            tokens
-                .iter()
-                .map(|token| {
-                    let maker = if token.vendor == fido2::YUBICO {
-                        "a YubiKey"
-                    } else {
-                        "a key"
-                    };
-                    format!("{maker} at {} ({})", token.path, token.name)
-                })
-                .collect::<Vec<_>>()
-                .join("; ")
-        }),
+        fido2::list(&mut machine).map(|tokens| fido2_said(&tokens)),
     );
     match disks::observe(&mut machine) {
         Ok(found) => {
             for disk in found {
-                show(
-                    &disk.path,
-                    Ok(format!(
-                        "{} GB {}, {}{}",
-                        disk.bytes / 1_000_000_000,
-                        disk.model.as_deref().unwrap_or("disk"),
-                        match disk.kind {
-                            disks::Kind::Internal => "built in",
-                            disks::Kind::Removable => "removable",
-                        },
-                        if disk.installable() {
-                            ", free to install on"
-                        } else if disk.in_use() {
-                            ", in use"
-                        } else {
-                            ""
-                        }
-                    )),
-                );
+                show(&disk.path, Ok(disk_said(&disk)));
             }
         }
         Err(fault) => show("Disks", Err(fault)),
@@ -923,6 +877,61 @@ fn observe() -> ExitCode {
     } else {
         ExitCode::FAILURE
     }
+}
+
+/// Secure Boot as `guide observe` says it.
+fn secure_boot_said(seen: Option<&efi::SecureBoot>) -> String {
+    match seen {
+        Some(seen) => format!(
+            "{}, {} mode",
+            if seen.enforcing {
+                "enforced"
+            } else {
+                "not enforced"
+            },
+            seen.mode
+        ),
+        None => "this machine didn't boot through UEFI".into(),
+    }
+}
+
+/// The FIDO2 keys plugged in, as `guide observe` says them.
+fn fido2_said(tokens: &[fido2::Token]) -> String {
+    if tokens.is_empty() {
+        return "none plugged in".into();
+    }
+    tokens
+        .iter()
+        .map(|token| {
+            let maker = if token.vendor == fido2::YUBICO {
+                "a YubiKey"
+            } else {
+                "a key"
+            };
+            format!("{maker} at {} ({})", token.path, token.name)
+        })
+        .collect::<Vec<_>>()
+        .join("; ")
+}
+
+/// A disk as `guide observe` says it.
+fn disk_said(disk: &disks::Disk) -> String {
+    format!(
+        "{} GB {}, {}{}",
+        disk.bytes / 1_000_000_000,
+        disk.model.as_deref().unwrap_or("disk"),
+        match disk.kind {
+            disks::Kind::Internal => "built in",
+            disks::Kind::Removable => "removable",
+        },
+        if disk.installable() {
+            ", free to install on"
+        } else if disk.in_use() {
+            ", in use"
+        } else {
+            ""
+        }
+    )
 }
 
 #[cfg(test)]

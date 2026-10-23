@@ -23,7 +23,7 @@ use crate::replaced::Uses;
 use crate::socket::{Reply, Request, Responder};
 use crate::state::{self, Memory};
 use crate::survey::{Action, Offer, World, named, survey};
-use crate::units::Size;
+use crate::units::{Size, float, whole};
 use crate::writers::{self, Frozen, Writers};
 use serde::Serialize;
 use std::cell::Cell;
@@ -36,7 +36,7 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, TryRecvError};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 /// What the machine is doing, read by the caller each step.
@@ -114,6 +114,54 @@ fn writes_on(processes: &Path, pid: u32, device: u64) -> bool {
     fds.filter_map(Result::ok)
         .any(|fd| pool(&fd.path()).is_ok_and(|pool| pool == device))
 }
+
+/// Thaws each frozen process whose disk has room again, and lets go of one
+/// somebody thawed already, journaling either; the rest stay frozen.
+fn thaw(
+    freeze: &mut dyn crate::freeze::Freeze,
+    watched: &BTreeMap<u64, Watched>,
+    memory: &mut Memory,
+    journal: &mut Journal,
+    tick: &Tick,
+) -> io::Result<()> {
+    let band_of = |path: &Path| {
+        watched
+            .values()
+            .find(|watched| watched.path == path)
+            .map(|watched| watched.band)
+    };
+    let mut still = Vec::new();
+    for frozen in std::mem::take(&mut memory.frozen) {
+        let roomy = band_of(&frozen.path).is_none_or(|band| band < Band::Urgent);
+        let (kept, outcome) = if roomy {
+            match freeze.thaw(&frozen.unit) {
+                Ok(()) => (false, Outcome::Reclaimed),
+                Err(why) => (true, Outcome::Failed(why)),
+            }
+        } else if let Ok(true) = freeze.frozen(&frozen.unit) {
+            (true, Outcome::Reclaimed)
+        } else {
+            // Thawed by somebody else, or gone: theirs to decide.
+            memory.spared.push((frozen.pid, frozen.start));
+            (false, Outcome::Kept("thawed already".to_owned()))
+        };
+        if !kept || roomy {
+            journal.write(&Line::Action {
+                at: tick.wall,
+                band: band_of(&frozen.path).unwrap_or(Band::Healthy),
+                path: named(&frozen.path, &format!("{}:{}", frozen.name, frozen.pid)),
+                kind: "thaw".to_owned(),
+                size: 0,
+                outcome,
+            })?;
+        }
+        if kept {
+            still.push(frozen);
+        }
+    }
+    memory.frozen = still;
+    Ok(())
+}
 /// How often the status file is written when nothing in it has changed,
 /// so its heartbeat says the guard is alive.
 const HEARTBEAT_EVERY: f64 = 30.0;
@@ -165,6 +213,10 @@ pub struct Places {
     pub running: Vec<PathBuf>,
 }
 
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "its four flags are independent facts about unrelated work, not one state"
+)]
 pub struct Guard {
     config: Config,
     processes: PathBuf,
@@ -484,46 +536,14 @@ impl Guard {
         let Some(freeze) = self.freeze.as_mut() else {
             return Ok(());
         };
-        let band_of = |path: &Path| {
-            self.watched
-                .values()
-                .find(|watched| watched.path == path)
-                .map(|watched| watched.band)
-        };
         // First what's frozen: thawed with room, let go when thawed already.
-        let mut still = Vec::new();
-        for frozen in std::mem::take(&mut self.memory.frozen) {
-            let roomy = band_of(&frozen.path).is_none_or(|band| band < Band::Urgent);
-            let (kept, outcome) = if roomy {
-                match freeze.thaw(&frozen.unit) {
-                    Ok(()) => (false, Outcome::Reclaimed),
-                    Err(why) => (true, Outcome::Failed(why)),
-                }
-            } else {
-                match freeze.frozen(&frozen.unit) {
-                    Ok(true) => (true, Outcome::Reclaimed),
-                    // Thawed by somebody else, or gone: theirs to decide.
-                    _ => {
-                        self.memory.spared.push((frozen.pid, frozen.start));
-                        (false, Outcome::Kept("thawed already".to_owned()))
-                    }
-                }
-            };
-            if !kept || roomy {
-                self.journal.write(&Line::Action {
-                    at: tick.wall,
-                    band: band_of(&frozen.path).unwrap_or(Band::Healthy),
-                    path: named(&frozen.path, &format!("{}:{}", frozen.name, frozen.pid)),
-                    kind: "thaw".to_owned(),
-                    size: 0,
-                    outcome,
-                })?;
-            }
-            if kept {
-                still.push(frozen);
-            }
-        }
-        self.memory.frozen = still;
+        thaw(
+            freeze.as_mut(),
+            &self.watched,
+            &mut self.memory,
+            &mut self.journal,
+            tick,
+        )?;
         let Some(samples) = samples else {
             return Ok(());
         };
@@ -619,7 +639,7 @@ impl Guard {
                     let now = SystemTime::now()
                         .duration_since(UNIX_EPOCH)
                         .map_or(0.0, |since| since.as_secs_f64());
-                    let mut uses = uses.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+                    let mut uses = uses.lock().unwrap_or_else(PoisonError::into_inner);
                     for seen in seen {
                         match seen {
                             Seen::Opened(path) => uses.opened(&path, now),
@@ -661,10 +681,7 @@ impl Guard {
                 }
             }
         }
-        let mut uses = self
-            .uses
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let mut uses = self.uses.lock().unwrap_or_else(PoisonError::into_inner);
         for deps in marked {
             uses.watching(&deps, tick.wall);
         }
@@ -682,7 +699,7 @@ impl Guard {
         self.mark(tick);
         self.heartbeat();
         self.heard_garbage(tick.wall)?;
-        let spare = spare(
+        let spare_moment = spare(
             senses.power,
             senses.saver,
             &self.memory.awake,
@@ -711,7 +728,7 @@ impl Guard {
                 pass_seconds: self.memory.pass_seconds.unwrap_or(FIRST_PASS_SECONDS),
                 upkept: self.memory.upkept,
                 now: tick.wall,
-                spare,
+                spare: spare_moment,
             });
             let resting = watched.rest.is_some_and(|rest| {
                 tick.monotonic < rest.until
@@ -720,13 +737,13 @@ impl Guard {
             // A user daemon on this filesystem asks for the garbage in its
             // turn; the system's own upkeep goes on.
             let driven =
-                matches!(decision, Decision::Reach(_)) && spoken_for(&self.hearing, device);
+                matches!(decision, Decision::Reach(_)) && spoken_for(self.hearing.as_ref(), device);
             if decision != Decision::Rest && !resting && !driven {
                 due.push((device, decision, thresholds));
             }
         }
-        self.list_garbage(tick.wall, spare, powered(senses.power, senses.saver));
-        self.dedupe(tick, spare, powered(senses.power, senses.saver))?;
+        self.list_garbage(tick.wall, spare_moment, powered(senses.power, senses.saver));
+        self.dedupe(tick, spare_moment, powered(senses.power, senses.saver))?;
         self.collects(tick);
         let passed = !due.is_empty();
         if passed {
@@ -745,7 +762,7 @@ impl Guard {
             let uses = self
                 .uses
                 .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .unwrap_or_else(PoisonError::into_inner)
                 .clone();
             state::save(&self.uses_path, &uses)?;
             state::save(&self.answers_path, &self.answers)?;
@@ -971,7 +988,7 @@ impl Guard {
     /// leaves healthy or the power stops being spare. Not once the disk
     /// stalls: its own reads stall it. Each run is journaled, and only one
     /// that finished counts as done.
-    fn dedupe(&mut self, tick: &Tick, spare: bool, powered: bool) -> io::Result<()> {
+    fn dedupe(&mut self, tick: &Tick, spare_moment: bool, powered: bool) -> io::Result<()> {
         let Some(system) = &self.config.system else {
             return Ok(());
         };
@@ -1023,7 +1040,7 @@ impl Guard {
         };
         let every = system.dedupe.every.0.as_secs_f64();
         let due = dedupe::due(self.memory.deduped.as_ref(), tick.wall, every, space.total);
-        if band > Band::Healthy || !spare || failed_lately || !due {
+        if band > Band::Healthy || !spare_moment || failed_lately || !due {
             return Ok(());
         }
         let (systemd_run, nix) = (
@@ -1311,7 +1328,7 @@ impl Guard {
         let uses = self
             .uses
             .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .unwrap_or_else(PoisonError::into_inner)
             .clone();
         let (predicates, answers) = (&self.predicates, &mut self.answers);
         let mut finished = |dir: &Path| {
@@ -1630,12 +1647,12 @@ fn paths(source: &Source) -> Vec<&Path> {
 
 /// Whether a user daemon spoke for the filesystem within the minute, so it
 /// drives that filesystem's passes.
-fn spoken_for(hearing: &Option<Hearing>, device: u64) -> bool {
-    hearing.as_ref().is_some_and(|hearing| {
+fn spoken_for(hearing: Option<&Hearing>, device: u64) -> bool {
+    hearing.is_some_and(|hearing| {
         let spoken = hearing
             .spoken
             .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
+            .unwrap_or_else(PoisonError::into_inner);
         spoken
             .get(&device)
             .is_some_and(|at| at.elapsed() < SPOKEN_FOR)
@@ -1723,7 +1740,7 @@ struct Pretending {
 
 impl Reclaimer for Pretending {
     fn reclaim(&mut self, candidate: &Candidate) -> Outcome {
-        let freed = (candidate.size as f64 * self.learned.ratio(candidate.class)) as u64;
+        let freed = whole(float(candidate.size) * self.learned.ratio(candidate.class));
         self.free
             .set(self.free.get().saturating_add(freed).min(self.total));
         Outcome::Reclaimed

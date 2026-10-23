@@ -129,7 +129,7 @@ pub trait Machine {
         if (read.len() as u64) < bytes {
             return Err(Fault::unreadable(from, "it's shorter than what's copied"));
         }
-        read.truncate(bytes as usize);
+        read.truncate(usize::try_from(bytes).expect("no more than was read"));
         self.write(to, &read)?;
         self.meter().advance(bytes);
         Ok(())

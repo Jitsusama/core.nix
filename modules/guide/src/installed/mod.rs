@@ -312,41 +312,7 @@ impl Step for SealTpm {
         if policy_index(machine)?.is_some() && !policy_current(machine)? {
             renew_policy(machine)?;
         }
-
-        let pcrlock = format!("--tpm2-pcrlock={PCRLOCK}");
-        let mut args = vec![
-            "--unlock-fido2-device=auto",
-            "--tpm2-device=auto",
-            "--tpm2-with-pin=yes",
-            pcrlock.as_str(),
-        ];
-        // A slot sealed before is replaced, so none is left that nothing
-        // proved.
-        if before.has(&luks::Kind::Tpm2) {
-            args.push("--wipe-slot=tpm2");
-        }
-        args.push(&volume);
-        let enrolled = machine.run_given(
-            Program::Tool(Tool::SystemdCryptenroll),
-            &args,
-            Given {
-                // systemd 261.3 asks for the PIN that unlocks with a FIDO2
-                // key as cryptsetup.fido2-pin, whatever name cryptenroll
-                // hands it (src/shared/cryptsetup-fido2.c ignores its
-                // askpw_credential), so the PIN goes under both: the name
-                // read today, and the one cryptenroll means.
-                credentials: vec![
-                    ("cryptsetup.fido2-pin", key_pin),
-                    ("cryptenroll.fido2-pin", key_pin),
-                    ("cryptenroll.new-tpm2-pin", pin),
-                ],
-                as_root: true,
-                ..Given::default()
-            },
-        )?;
-        if enrolled.status != 0 {
-            return Err(enrolled.refusal());
-        }
+        enrol_tpm(machine, &volume, &before, pin, key_pin)?;
 
         let after = luks::observe_as_root(machine, &volume)?;
         let slots: Vec<u32> = after
@@ -377,33 +343,85 @@ impl Step for SealTpm {
             )?
             .ok()?;
 
-        // Proven by opening the disk with the TPM and the PIN, as the boot
-        // will, through cryptsetup's token plugin.
-        let typed = Secret::new(format!("{}\n", pin.expose()));
-        let opened = machine.run_given(
-            Program::Tool(Tool::Cryptsetup),
-            &[
-                "open",
-                "--test-passphrase",
-                "--token-only",
-                "--token-type",
-                "systemd-tpm2",
-                &volume,
-            ],
-            Given {
-                plain: vec![("LD_LIBRARY_PATH", Path::Tokens.get()?)],
-                stdin: Some(&typed),
-                as_root: true,
-                ..Given::default()
-            },
-        )?;
-        if opened.status != 0 {
-            return Err(opened.refusal());
-        }
+        prove_tpm_opens(machine, &volume, pin)?;
         machine
             .journal()
             .record(self.id(), &format!("opened:{slot}"))
     }
+}
+
+/// Seals `volume` to the TPM with `pin` under the measured-boot policy,
+/// opened by the plugged-in YubiKey with `key_pin`, in place of any slot
+/// `before` shows sealed already.
+fn enrol_tpm(
+    machine: &mut dyn Machine,
+    volume: &str,
+    before: &luks::Header,
+    pin: &Secret,
+    key_pin: &Secret,
+) -> Result<(), Fault> {
+    let pcrlock = format!("--tpm2-pcrlock={PCRLOCK}");
+    let mut args = vec![
+        "--unlock-fido2-device=auto",
+        "--tpm2-device=auto",
+        "--tpm2-with-pin=yes",
+        pcrlock.as_str(),
+    ];
+    // A slot sealed before is replaced, so none is left that nothing
+    // proved.
+    if before.has(&luks::Kind::Tpm2) {
+        args.push("--wipe-slot=tpm2");
+    }
+    args.push(volume);
+    let enrolled = machine.run_given(
+        Program::Tool(Tool::SystemdCryptenroll),
+        &args,
+        Given {
+            // systemd 261.3 asks for the PIN that unlocks with a FIDO2
+            // key as cryptsetup.fido2-pin, whatever name cryptenroll
+            // hands it (src/shared/cryptsetup-fido2.c ignores its
+            // askpw_credential), so the PIN goes under both: the name
+            // read today, and the one cryptenroll means.
+            credentials: vec![
+                ("cryptsetup.fido2-pin", key_pin),
+                ("cryptenroll.fido2-pin", key_pin),
+                ("cryptenroll.new-tpm2-pin", pin),
+            ],
+            as_root: true,
+            ..Given::default()
+        },
+    )?;
+    if enrolled.status != 0 {
+        return Err(enrolled.refusal());
+    }
+    Ok(())
+}
+
+/// Proves `volume` opens with the TPM and `pin`, as the boot will, through
+/// cryptsetup's token plugin.
+fn prove_tpm_opens(machine: &mut dyn Machine, volume: &str, pin: &Secret) -> Result<(), Fault> {
+    let typed = Secret::new(format!("{}\n", pin.expose()));
+    let opened = machine.run_given(
+        Program::Tool(Tool::Cryptsetup),
+        &[
+            "open",
+            "--test-passphrase",
+            "--token-only",
+            "--token-type",
+            "systemd-tpm2",
+            volume,
+        ],
+        Given {
+            plain: vec![("LD_LIBRARY_PATH", Path::Tokens.get()?)],
+            stdin: Some(&typed),
+            as_root: true,
+            ..Given::default()
+        },
+    )?;
+    if opened.status != 0 {
+        return Err(opened.refusal());
+    }
+    Ok(())
 }
 
 /// Every step on the installed machine, in order.

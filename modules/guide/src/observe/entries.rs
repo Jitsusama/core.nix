@@ -31,10 +31,9 @@ impl Entry {
     pub fn described(&self) -> String {
         match (self.kind, &self.version) {
             // "NixOS Zokor 26.11 (Linux 7.2.3) (Generation 15, 2026-10-12)"
-            (Kind::Uki, _) => self.title.clone(),
+            (Kind::Uki, _) | (_, None) => self.title.clone(),
             // "Generation 14 NixOS Yarara 26.05 (Linux 6.18.5), built on 2026-01-16"
             (_, Some(version)) => version.clone(),
-            (_, None) => self.title.clone(),
         }
     }
 }

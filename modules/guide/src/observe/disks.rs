@@ -179,7 +179,7 @@ mod tests {
         tran: Option<&str>,
         rm: bool,
         mounted: Option<&str>,
-        children: Vec<serde_json::Value>,
+        children: &[serde_json::Value],
     ) -> serde_json::Value {
         serde_json::json!({
             "name": name, "path": path, "type": kind, "size": 1u64 << 30,
@@ -196,7 +196,7 @@ mod tests {
             None,
             false,
             mounted,
-            vec![],
+            &[],
         );
         let partition = block(
             &format!("{name}1"),
@@ -205,7 +205,7 @@ mod tests {
             tran,
             rm,
             None,
-            vec![opened],
+            &[opened],
         );
         block(
             name,
@@ -214,7 +214,7 @@ mod tests {
             tran,
             rm,
             None,
-            vec![partition],
+            &[partition],
         )
         .to_string()
     }

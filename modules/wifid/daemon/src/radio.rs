@@ -209,7 +209,7 @@ fn six_ghz_control(he: &[u8]) -> Option<u8> {
         return None;
     }
     let vht = if parameters & (1 << 14) != 0 { 3 } else { 0 };
-    let cohosted = if parameters & (1 << 15) != 0 { 1 } else { 0 };
+    let cohosted = usize::from(parameters & (1 << 15) != 0);
     // Three bytes of parameters, the BSS colour and two of basic rates,
     // then the channel before the control byte.
     he.get(6 + vht + cohosted + 1).copied()
@@ -673,7 +673,7 @@ mod tests {
     fn elements_cut_short_are_read_as_far_as_they_go() {
         let mut cut = hotel();
         cut.truncate(cut.len() - 3);
-        cut.extend([BSS_LOAD as u8, 200]);
+        cut.extend([u8::try_from(BSS_LOAD).unwrap(), 200]);
 
         let radio = Radio::read(&cut, 5200);
 

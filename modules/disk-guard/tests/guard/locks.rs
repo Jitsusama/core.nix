@@ -40,7 +40,7 @@ fn soon(mut free: impl FnMut() -> bool) -> bool {
 
 fn held(hold: Hold) -> disk_guard::locks::Held {
     match hold {
-        Hold::Held(held) => held,
+        Hold::Held(locks) => locks,
         Hold::Busy(path) => panic!("busy at {}", path.display()),
     }
 }
@@ -87,10 +87,10 @@ fn a_target_cargo_holds_is_busy_and_nothing_stays_held() {
 
 /// rustc's session timestamp: microseconds since the epoch in base 36.
 fn stamp(at: SystemTime) -> String {
-    let mut micros = at.duration_since(UNIX_EPOCH).unwrap().as_micros() as u64;
+    let mut micros = u64::try_from(at.duration_since(UNIX_EPOCH).unwrap().as_micros()).unwrap();
     let mut digits = Vec::new();
     while micros > 0 {
-        digits.push(b"0123456789abcdefghijklmnopqrstuvwxyz"[(micros % 36) as usize]);
+        digits.push(b"0123456789abcdefghijklmnopqrstuvwxyz"[usize::try_from(micros % 36).unwrap()]);
         micros /= 36;
     }
     digits.reverse();
@@ -114,10 +114,20 @@ pub(crate) fn posix_lock(path: &Path) -> Option<File> {
         .open(path)
         .unwrap();
     let mut lock: libc::flock = unsafe { std::mem::zeroed() };
-    lock.l_type = libc::F_WRLCK as _;
-    lock.l_whence = libc::SEEK_SET as _;
+    lock.l_type = short(libc::F_WRLCK);
+    lock.l_whence = short(libc::SEEK_SET);
     let taken = unsafe { libc::fcntl(file.as_raw_fd(), libc::F_SETLK, &lock) } == 0;
     taken.then_some(file)
+}
+
+/// A constant as a `flock`'s short fields hold it, whether the platform
+/// names it as an int, as Linux does, or as a short already.
+fn short<T>(constant: T) -> libc::c_short
+where
+    T: TryInto<libc::c_short>,
+    T::Error: std::fmt::Debug,
+{
+    constant.try_into().unwrap()
 }
 
 #[test]

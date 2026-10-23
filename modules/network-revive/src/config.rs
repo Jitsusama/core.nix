@@ -21,7 +21,7 @@ pub struct Config {
 pub struct Unit {
     pub name: String,
     /// The arguments that make the unit's own program say whether it could
-    /// start, added to its ExecStart, as nginx's -t; with none, it's started
+    /// start, added to its `ExecStart`, as nginx's `-t`; with none, it's started
     /// unchecked.
     #[serde(default)]
     pub check: Option<Vec<String>>,

@@ -187,13 +187,13 @@ impl Signer {
             ),
             attribute(SMIME_CAPABILITIES, &smime_capabilities()),
         ]);
-        let signed = [SHA256_DIGEST_INFO, &Sha256::digest(&attributes)].concat();
+        let digest_info = [SHA256_DIGEST_INFO, &Sha256::digest(&attributes)].concat();
         let signature = self
             .key
             .sign_with_rng(
                 &mut rand_core::OsRng,
                 Pkcs1v15Sign::new_unprefixed(),
-                &signed,
+                &digest_info,
             )
             .map_err(refused("the db key"))?;
 

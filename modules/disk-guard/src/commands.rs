@@ -63,7 +63,7 @@ fn idle() {
     let param = libc::sched_param { sched_priority: 0 };
     // SAFETY: both act on the calling thread alone, with valid arguments.
     unsafe {
-        libc::sched_setscheduler(0, libc::SCHED_IDLE, &param);
+        libc::sched_setscheduler(0, libc::SCHED_IDLE, &raw const param);
         libc::syscall(
             libc::SYS_ioprio_set,
             IOPRIO_WHO_PROCESS,
@@ -233,7 +233,7 @@ impl Stream {
             return Ok(false);
         };
         let mut dropped = false;
-        let mut buffer = [0; 64 << 10];
+        let mut buffer = vec![0; 64 << 10];
         loop {
             match reader.read(&mut buffer) {
                 Ok(0) => {
@@ -267,8 +267,9 @@ fn wait_readable(streams: &[Stream], wait: Duration) -> io::Result<()> {
         std::thread::sleep(wait);
         return Ok(());
     }
-    let millis = wait.as_millis().min(i32::MAX as u128) as i32;
-    if unsafe { libc::poll(fds.as_mut_ptr(), fds.len() as libc::nfds_t, millis) } < 0 {
+    let millis = i32::try_from(wait.as_millis()).unwrap_or(i32::MAX);
+    let count = libc::nfds_t::try_from(fds.len()).map_err(io::Error::other)?;
+    if unsafe { libc::poll(fds.as_mut_ptr(), count, millis) } < 0 {
         let error = io::Error::last_os_error();
         if error.kind() != io::ErrorKind::Interrupted {
             return Err(error);

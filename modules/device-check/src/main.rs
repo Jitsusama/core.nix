@@ -12,14 +12,15 @@
 //! Each is named once, so running it often costs nothing to read. It exits 0
 //! whatever it finds, and non-zero only when it couldn't look.
 //!
-//! DEVICE_CHECK_ROOT puts a directory in front of /sys, /proc and /run,
-//! DEVICE_CHECK_EXPECTED names the expected devices' file, DEVICE_CHECK_STATE
-//! where it keeps what it found, and DEVICE_CHECK_NOTIFY the program that
+//! `DEVICE_CHECK_ROOT` puts a directory in front of /sys, /proc and /run,
+//! `DEVICE_CHECK_EXPECTED` names the expected devices' file, `DEVICE_CHECK_STATE`
+//! where it keeps what it found, and `DEVICE_CHECK_NOTIFY` the program that
 //! notifies, for tests.
 
 use std::collections::BTreeSet;
 use std::env;
 use std::ffi::{OsStr, OsString};
+use std::fmt::Write as _;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -145,10 +146,9 @@ fn glob(pattern: &[u8], name: &[u8]) -> bool {
         Some((b'?', rest)) => !name.is_empty() && glob(rest, &name[1..]),
         Some((b'[', rest)) => match (class(rest, name.first().copied()), name.split_first()) {
             (Some((true, after)), Some((_, name))) => glob(after, name),
-            (Some(_), _) => false,
             // An unclosed bracket is itself.
             (None, Some((b'[', name))) => glob(rest, name),
-            (None, _) => false,
+            (Some(_) | None, _) => false,
         },
         Some((b'\\', [escaped, rest @ ..])) => {
             name.first() == Some(escaped) && glob(rest, &name[1..])
@@ -331,7 +331,11 @@ fn look() -> io::Result<()> {
     tell(&root, &notify, Change::Fixed, found.difference(&now));
 
     let next = state.join(format!("now.{}", process::id()));
-    let text: String = now.iter().map(|finding| format!("{finding}\n")).collect();
+    let text = now.iter().fold(String::new(), |mut text, finding| {
+        // Writing to a String can't fail.
+        _ = writeln!(text, "{finding}");
+        text
+    });
     fs::write(&next, text)?;
     fs::rename(&next, &kept)
 }

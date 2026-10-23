@@ -21,12 +21,21 @@ impl Random {
     }
 
     /// Uniform on [0, 1).
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "both are at most 2^53, which f64 holds exactly"
+    )]
     pub fn unit(&mut self) -> f64 {
         (self.next_u64() >> 11) as f64 / (1u64 << 53) as f64
     }
 
+    #[expect(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        reason = "the product lies in [0, bound), and cutting it toward zero is the draw"
+    )]
     pub fn below(&mut self, bound: usize) -> usize {
-        (self.unit() * bound as f64) as usize % bound.max(1)
+        (self.unit() * crate::stats::count(bound)) as usize % bound.max(1)
     }
 
     pub fn pick<'a, T>(&mut self, from: &'a [T]) -> &'a T {
@@ -57,7 +66,7 @@ mod tests {
         let mut random = Random::seeded(1);
         let draws: Vec<f64> = (0..10_000).map(|_| random.unit()).collect();
         assert!(draws.iter().all(|u| (0.0..1.0).contains(u)));
-        let mean = draws.iter().sum::<f64>() / draws.len() as f64;
+        let mean = crate::stats::mean(&draws);
         assert!((mean - 0.5).abs() < 0.02);
     }
 }

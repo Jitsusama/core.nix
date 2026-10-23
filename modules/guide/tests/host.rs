@@ -52,9 +52,10 @@ fn image(directory: &Path) -> PathBuf {
         slots,
     };
     let sectors = 16384;
-    let mut bytes = vec![0u8; (sectors * SECTOR) as usize];
+    let mut bytes = vec![0u8; usize::try_from(sectors * SECTOR).unwrap()];
     for (at, rendered) in table.render(sectors) {
-        bytes[at as usize..at as usize + rendered.len()].copy_from_slice(&rendered);
+        let at = usize::try_from(at).unwrap();
+        bytes[at..at + rendered.len()].copy_from_slice(&rendered);
     }
     let path = directory.join("image.raw");
     fs::write(&path, bytes).unwrap();

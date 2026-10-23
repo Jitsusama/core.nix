@@ -23,8 +23,24 @@ out.
 
 `nix fmt` lints as it formats, at each linter's strictest, test code
 included: ruff with every rule and mypy `--strict` for Python (`ruff.toml`,
-`mypy.ini`), shellcheck for shell, statix and deadnix for Nix, and the
-`formatting` check holds the repository to it.
+`mypy.ini`), shellcheck for shell, luacheck for Lua, each file read as the
+Lua of the program that runs it (`.luacheckrc`), biome with every rule that
+fits for the JavaScript QML imports (`biome.jsonc`, read through
+`tests/qt-javascript-lint.sh`), rumdl for Markdown (`.rumdl.toml`), zsh
+itself for what it can't parse, since nothing lints zsh further, statix and
+deadnix for Nix, and the `formatting` check holds the repository to it.
+
+Two linters run in checks rather than `nix fmt`, since each needs what a
+build brings. clippy reads every crate and single-file program with its
+pedantic group on top of its defaults, less three lints about a published
+library's API, as `clippyLints` in `checks.nix` says; `clippy.toml` holds
+its settings, and the `-passes-clippy` checks hold the code to both, which
+a bare `cargo clippy` doesn't. qmllint reads the account's shell and the
+greeter (`quickshell-passes-qmllint`), and each offscreen check's own
+folder, its cases and stand-ins included, before running it
+(`tests/shell-folder-lint.sh`). A finding that's right as it is says so
+where it is, with its reason: `#[expect(..., reason = ...)]` in Rust, a
+`biome-ignore` comment in JavaScript, `qmllint disable` in QML.
 
 `nix flake check` runs every check, but Nix reuses any check whose inputs
 didn't change, so a change pays only for the checks it can affect. With the
@@ -211,6 +227,8 @@ kernel guide][2] says what that catches.
 | `guide-passes-clippy`             | clippy finds nothing in the guide or its tests            |
 | `guide-compiles-for-macos`        | clippy finds nothing in the guide as macOS compiles it     |
 | `ir-camera-passes-clippy`         | clippy finds nothing in ir-camera or its tests            |
+| `v4l2loopback-holders-passes-clippy` | clippy finds nothing in the cameras' holders watcher or its tests |
+| `rust-programs-pass-clippy`       | clippy finds nothing in the single-file programs or their tests |
 | `record-window-passes-clippy`     | clippy finds nothing in record-window or its tests        |
 | `plymouth-waits-passes-clippy`    | clippy finds nothing in plymouth-waits or its tests       |
 | `the-splash-keeps-systemd-quiet`  | with the splash, systemd writes only failures to the console |

@@ -1,5 +1,6 @@
 use disk_guard::band::Band;
 use disk_guard::plan::{Candidate, Class, Group, plan, windows};
+use disk_guard::units::{float, whole};
 use std::path::PathBuf;
 
 /// A small seeded generator, so a failing case can be named and replayed.
@@ -17,8 +18,13 @@ impl Draw {
         self.next() % n
     }
 
+    /// A draw below `n`, as an index or a count.
+    fn index(&mut self, n: usize) -> usize {
+        usize::try_from(self.below(n as u64)).unwrap()
+    }
+
     fn band(&mut self) -> Band {
-        [Band::Healthy, Band::Pressure, Band::Urgent, Band::Critical][self.below(4) as usize]
+        [Band::Healthy, Band::Pressure, Band::Urgent, Band::Critical][self.index(4)]
     }
 
     fn class(&mut self) -> Class {
@@ -35,7 +41,7 @@ impl Draw {
             6 => Class::Temp,
             7 => Class::Trash,
             8 => Class::Cache {
-                rank: self.below(40) as u8,
+                rank: u8::try_from(self.below(40)).unwrap(),
                 from: self.band(),
             },
             9 => Class::Coredump,
@@ -43,7 +49,7 @@ impl Draw {
             11 => Class::Replaced,
             12 => Class::Garbage {
                 kept: bool(self),
-                order: self.below(20) as u16,
+                order: u16::try_from(self.below(20)).unwrap(),
             },
             13 => Class::Generations { kept: bool(self) },
             14 => Class::Producer {
@@ -68,8 +74,8 @@ impl Draw {
                 DAY,
                 DAY + HOUR,
                 7.0 * DAY,
-            ][self.below(7) as usize]
-                + self.below(2) as f64 * self.below(14 * DAY as u64) as f64,
+            ][self.index(7)]
+                + float(self.below(2)) * float(self.below(14 * whole(DAY))),
             size: self.below(4 * GIB),
             occupied: self.below(4) == 0,
             spent: self.below(4) == 0,
@@ -220,7 +226,10 @@ fn critical_takes_everything_offered() {
 #[test]
 fn a_finished_tree_someone_sits_in_is_judged_as_occupied() {
     let tree = occupied(spent(candidate("merged-shell", Class::Target, HOUR)));
-    assert!(taken(std::slice::from_ref(&tree), Band::Pressure).is_empty());
+    assert_eq!(
+        taken(std::slice::from_ref(&tree), Band::Pressure),
+        Vec::<String>::new()
+    );
     assert_eq!(
         plan(&[tree], Band::Critical, None, |_| 1.0)[0].group,
         Group::Occupied
@@ -246,7 +255,7 @@ fn a_cache_is_taken_from_its_own_band_on() {
         0.0,
     );
     let both = [soon, late];
-    assert!(taken(&both, Band::Healthy).is_empty());
+    assert_eq!(taken(&both, Band::Healthy), Vec::<String>::new());
     assert_eq!(taken(&both, Band::Pressure), ["soon"]);
     assert_eq!(taken(&both, Band::Urgent), ["soon"]);
     assert_eq!(taken(&both, Band::Critical), ["soon", "late"]);
@@ -313,7 +322,7 @@ fn the_plan_goes_cheapest_loss_first() {
 #[test]
 fn a_plan_stops_once_its_predicted_free_covers_the_shortfall() {
     let candidates: Vec<_> = (0..10)
-        .map(|n| candidate(&format!("t{n}"), Class::Target, (10 + n) as f64 * HOUR))
+        .map(|n| candidate(&format!("t{n}"), Class::Target, f64::from(10 + n) * HOUR))
         .collect();
     let steps = plan(&candidates, Band::Pressure, Some(3 * GIB), |_| 1.0);
     assert_eq!(steps.len(), 3);
@@ -421,9 +430,7 @@ fn property_a_plan_takes_only_what_is_due_cheapest_first_and_stops_once_covered(
     for case in 1..=3000_u64 {
         let mut draw = Draw(case.wrapping_mul(0x9E37_79B9_7F4A_7C15) | 1);
         let band = draw.band();
-        let candidates: Vec<Candidate> = (0..draw.below(40) as usize)
-            .map(|n| draw.candidate(n))
-            .collect();
+        let candidates: Vec<Candidate> = (0..draw.index(40)).map(|n| draw.candidate(n)).collect();
         let ratio = |class: Class| if class == Class::Target { 0.5 } else { 1.0 };
         let all = plan(&candidates, band, None, ratio);
         let mut indices: Vec<usize> = all.iter().map(|step| step.index).collect();

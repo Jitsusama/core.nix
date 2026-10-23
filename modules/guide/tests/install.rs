@@ -7,6 +7,7 @@
 mod common;
 
 use common::Scratch;
+use std::io::Write;
 use std::path::PathBuf;
 
 use guide::fake::Fake;
@@ -112,7 +113,6 @@ fn shut_stick(directory: &std::path::Path, target: &Target) -> Fake {
     let mut fake = stick(directory, target);
     let key = guide::install::vault_key(&mut fake).unwrap().unwrap();
     let mut store = Directory::new(PathBuf::from(directory));
-    use std::io::Write;
     store
         .create(vault::KEY_PASSPHRASE)
         .unwrap()
@@ -1030,7 +1030,7 @@ fn db_key(directory: &std::path::Path) -> (String, String) {
         "-keyout",
     ]
     .iter()
-    .map(|arg| arg.as_ref())
+    .map(AsRef::as_ref)
     .collect();
     args.extend([key.as_os_str(), "-out".as_ref(), pem.as_os_str()]);
     run("openssl", &args);
@@ -1186,7 +1186,12 @@ fn the_stick_carries_the_machines_keys_and_bundle_and_boots_with_its_key() {
         b"a newer sealed bundle"
     );
     assert_eq!(listed(), files);
-    assert!(std::fs::read(scratch.join("esp.fat")).unwrap() == esp);
+    // Said in words, since the whole partition's bytes would bury the
+    // failure.
+    assert!(
+        std::fs::read(scratch.join("esp.fat")).unwrap() == esp,
+        "the ESP its key signed already was changed"
+    );
     assert!(boots_with(&scratch, &scratch.join("esp.fat"), &pem));
 
     // Keys made again, as a second install from the stick does, make it

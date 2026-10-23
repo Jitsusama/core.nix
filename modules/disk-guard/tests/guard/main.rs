@@ -64,3 +64,30 @@ mod vouch;
 mod workspaces;
 #[cfg(target_os = "linux")]
 mod writers;
+
+/// Asserts a float is exactly the one expected, as `assert_eq!` would, for
+/// a value worked out without rounding or carried through unchanged.
+#[track_caller]
+#[expect(
+    clippy::float_cmp,
+    reason = "each float compared is whole seconds, a share a float holds, or carried unchanged"
+)]
+fn assert_exactly(actual: f64, expected: f64) {
+    assert!(actual == expected, "{actual} is not exactly {expected}");
+}
+
+/// Whole wall seconds from a float of them, rounded towards zero, as a
+/// file's times are set.
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "a test's wall times fit an i64 many times over, and their fraction isn't wanted"
+)]
+fn whole_seconds(seconds: f64) -> i64 {
+    seconds as i64
+}
+
+/// The lowest byte of `n`, the rest dropped, as noise is drawn a byte at a
+/// time from a wider generator.
+fn low_byte(n: u64) -> u8 {
+    n.to_le_bytes()[0]
+}

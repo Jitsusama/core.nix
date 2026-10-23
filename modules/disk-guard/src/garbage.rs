@@ -65,15 +65,15 @@ pub struct Listed {
 impl Listing {
     /// The listing of `dead`, begun at `listed_at`.
     pub fn new(listed_at: f64, dead: Vec<Dead>) -> Listing {
-        let index: HashMap<&str, u32> = dead
-            .iter()
-            .enumerate()
-            .map(|(at, path)| (path.path.as_str(), at as u32))
+        // Places count in u32, as references hold them; no listing comes
+        // near four billion dead paths.
+        let index: HashMap<&str, u32> = (0u32..)
+            .zip(&dead)
+            .map(|(at, path)| (path.path.as_str(), at))
             .collect();
-        let refers: Vec<Vec<u32>> = dead
-            .iter()
-            .enumerate()
-            .map(|(at, path)| among(&index, at as u32, &path.references))
+        let refers: Vec<Vec<u32>> = (0u32..)
+            .zip(&dead)
+            .map(|(at, path)| among(&index, at, &path.references))
             .collect();
         let dead = dead
             .into_iter()
@@ -105,7 +105,7 @@ fn among(index: &HashMap<&str, u32>, at: u32, references: &[String]) -> Vec<u32>
 
 /// How long one step of `nix store gc --max` may take, when there is no
 /// listing to delete from.
-pub const GC_TIMEOUT: Duration = Duration::from_secs(10 * 60);
+pub const GC_TIMEOUT: Duration = Duration::from_mins(10);
 
 /// What the `nix` command needs to be told before any of the commands the
 /// guard runs, which stock Nix still calls experimental and refuses
@@ -165,9 +165,9 @@ pub fn parse(json: &str) -> Result<Vec<Dead>, String> {
 const CHUNK: usize = 1000;
 /// How long listing the dead may take: about a minute on a store of
 /// 240 GiB of garbage, and far longer at idle priority on a busy disk.
-const LIST_TIMEOUT: Duration = Duration::from_secs(30 * 60);
+const LIST_TIMEOUT: Duration = Duration::from_mins(30);
 /// How long describing one chunk may take.
-const DESCRIBE_TIMEOUT: Duration = Duration::from_secs(5 * 60);
+const DESCRIBE_TIMEOUT: Duration = Duration::from_mins(5);
 /// The most of a command's output read: a listing of 12,000 paths is
 /// 4 MiB, and a chunk's description about 3.
 const OUTPUT_LIMIT: usize = 256 << 20;
@@ -198,11 +198,7 @@ pub fn list(nix: &Path, idle: bool) -> Result<Vec<Listed>, String> {
         .collect();
     // Each chunk's references are placed as they're read, among all the
     // dead the listing named, so no chunk's names are held past it.
-    let index: HashMap<&str, u32> = paths
-        .iter()
-        .enumerate()
-        .map(|(at, path)| (*path, at as u32))
-        .collect();
+    let index: HashMap<&str, u32> = (0u32..).zip(&paths).map(|(at, path)| (*path, at)).collect();
     let mut described: Vec<Option<Listed>> = vec![None; paths.len()];
     for chunk in paths.chunks(CHUNK) {
         let mut argv: Vec<&OsStr> = vec![nix.as_os_str()];
@@ -250,7 +246,7 @@ pub fn list(nix: &Path, idle: bool) -> Result<Vec<Listed>, String> {
 }
 
 /// How long deleting one batch may take.
-const DELETE_TIMEOUT: Duration = Duration::from_secs(10 * 60);
+const DELETE_TIMEOUT: Duration = Duration::from_mins(10);
 /// How many paths may come alive since the listing before it's taken as
 /// too stale to go on with.
 const REVIVALS: usize = 16;

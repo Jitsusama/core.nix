@@ -8,7 +8,7 @@
 //! plugged in and stops it when none is, through SYSTEMCTL without waiting.
 //! Starting a unit that runs does nothing, so the lock never lapses while a
 //! monitor stays. udev runs it whenever a card says a monitor came or went.
-//! LID_DOCKED_DRM names the connectors' directory, for tests.
+//! `LID_DOCKED_DRM` names the connectors' directory, for tests.
 
 use std::env;
 use std::ffi::OsString;

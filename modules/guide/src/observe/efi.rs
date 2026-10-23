@@ -1,7 +1,7 @@
 //! Secure Boot as the firmware itself says it, from its global variables,
 //! which every UEFI machine keeps and anyone can read: whether it enforces,
 //! and which of UEFI's modes it's in. A firmware older than UEFI 2.5 keeps
-//! no AuditMode or DeployedMode, as the Surface Laptop 4's doesn't.
+//! no `AuditMode` or `DeployedMode`, as the Surface Laptop 4's doesn't.
 
 use std::fmt;
 
@@ -11,7 +11,7 @@ use crate::{Fault, Machine};
 const GLOBAL: &str = "8be4df61-93ca-11d2-aa0d-00e098032b8c";
 /// Where the firmware keeps db, the keys it trusts boot files from.
 const IMAGE_SECURITY: &str = "d719b2cb-3d3a-4596-a3bc-dad00e67656f";
-/// EFI_CERT_X509_GUID, as it's laid out in a signature list.
+/// `EFI_CERT_X509_GUID`, as it's laid out in a signature list.
 const X509: [u8; 16] = [
     0xa1, 0x59, 0xc0, 0xa5, 0xe4, 0x94, 0xa7, 0x4a, 0x87, 0xb5, 0xab, 0x15, 0x5c, 0x2b, 0xf0, 0x72,
 ];
@@ -26,7 +26,7 @@ pub fn db_certificates(machine: &mut dyn Machine) -> Result<Vec<Vec<u8>>, Fault>
 }
 
 /// The X.509 certificates in a signature database variable as efivarfs
-/// gives it: four bytes of attributes, then EFI_SIGNATURE_LISTs, each a
+/// gives it: four bytes of attributes, then `EFI_SIGNATURE_LIST`s, each a
 /// type, its sizes, a header, and signatures that are an owner GUID and
 /// the data (UEFI 2.10, section 32.4.1).
 pub fn certificates(variable: &[u8]) -> Result<Vec<Vec<u8>>, Fault> {
@@ -127,8 +127,7 @@ impl SecureBoot {
         };
         let flag = |name: &str, bytes: Option<&[u8]>| -> Result<bool, Fault> {
             match bytes {
-                None => Ok(false),
-                Some([_, _, _, _, 0]) => Ok(false),
+                None | Some([_, _, _, _, 0]) => Ok(false),
                 Some([_, _, _, _, 1]) => Ok(true),
                 Some(other) => Err(Fault::unreadable(
                     format!("the firmware's {name}"),

@@ -42,7 +42,7 @@ const HARNESS: Duration = Duration::from_secs(300);
 const REFRESH: Duration = Duration::from_secs(10);
 /// How long the heartbeat goes on without a pass that worked: past this,
 /// the shell is let see a watch that isn't working as one that stopped.
-const FAILING: Duration = Duration::from_secs(2 * 300 + 60);
+const FAILING: Duration = Duration::from_mins(2 * 5 + 1);
 
 struct Feed {
     config: FeedConfig,
@@ -172,7 +172,7 @@ fn watch(config: Config, wake: Sender<Wake>) {
     std::thread::spawn(move || {
         let sessions = config.sessions.clone();
         let Ok(fd) = inotify::init(CreateFlags::CLOEXEC) else {
-            return poll(config, wake);
+            return poll(&config, &wake);
         };
         let flags = WatchFlags::MODIFY
             | WatchFlags::CREATE
@@ -209,7 +209,7 @@ fn watch(config: Config, wake: Sender<Wake>) {
         // No sessions directory yet, as before pi's first run: polling
         // notices it appear.
         if !watched.contains(&sessions) {
-            return poll(config, wake);
+            return poll(&config, &wake);
         }
         let mut buffer = [0u8; 8192];
         loop {
@@ -221,7 +221,7 @@ fn watch(config: Config, wake: Sender<Wake>) {
                     }
                 }
                 Err(rustix::io::Errno::INTR) => {}
-                Err(_) => return poll(config, wake),
+                Err(_) => return poll(&config, &wake),
             }
         }
     });
@@ -229,13 +229,13 @@ fn watch(config: Config, wake: Sender<Wake>) {
 
 #[cfg(not(target_os = "linux"))]
 fn watch(config: Config, wake: Sender<Wake>) {
-    std::thread::spawn(move || poll(config, wake));
+    std::thread::spawn(move || poll(&config, &wake));
 }
 
 /// Where inotify can't be had: the logs' newest change, every five seconds.
-fn poll(config: Config, wake: Sender<Wake>) {
+fn poll(config: &Config, wake: &Sender<Wake>) {
     let newest = || {
-        crate::ingest::found(&config)
+        crate::ingest::found(config)
             .iter()
             .filter_map(|found| std::fs::metadata(&found.path).ok())
             .map(|meta| (meta.len(), meta.modified().ok()))
@@ -267,15 +267,15 @@ fn listen(socket: &Path, wake: Sender<Wake>) -> Result<(), String> {
     std::thread::spawn(move || {
         for stream in listener.incoming().flatten() {
             let wake = wake.clone();
-            std::thread::spawn(move || answer(stream, wake));
+            std::thread::spawn(move || answer(&stream, &wake));
         }
     });
     Ok(())
 }
 
-fn answer(stream: UnixStream, wake: Sender<Wake>) {
+fn answer(stream: &UnixStream, wake: &Sender<Wake>) {
     let _ = stream.set_read_timeout(Some(Duration::from_secs(5)));
-    let mut reader = BufReader::new(&stream);
+    let mut reader = BufReader::new(stream);
     let mut asked = String::new();
     if reader.read_line(&mut asked).is_err() {
         return;
@@ -288,7 +288,7 @@ fn answer(stream: UnixStream, wake: Sender<Wake>) {
         return;
     }
     if let Ok(said) = replied.recv_timeout(Duration::from_secs(120)) {
-        let mut stream = &stream;
+        let mut stream = stream;
         let _ = writeln!(stream, "{said}");
     }
 }
@@ -351,7 +351,7 @@ pub fn pass(
 ) -> Result<status::Status, String> {
     let picture = Picture::read(history, config, now)?;
     let raised = crate::detect::all(&picture, history, config)?;
-    let findings = crate::findings::settle(history, raised, now)?;
+    let findings = crate::findings::settle(history, &raised, now)?;
     let shown = status::status(&picture, &findings);
     writer.write(
         &config.runtime()?,
@@ -463,72 +463,43 @@ fn hold(config: &Config) -> Result<(), String> {
     Ok(())
 }
 
-pub fn run(config: Config) -> Result<(), String> {
+pub fn run(config: &Config) -> Result<(), String> {
     let _lock = lock(&config.state)?;
     config.runtime()?;
-    hold(&config)?;
+    hold(config)?;
     let history = History::open(&config.history())?;
-    let (wake, woken): (Sender<Wake>, Receiver<Wake>) = mpsc::channel();
+    let (wake, inbox): (Sender<Wake>, Receiver<Wake>) = mpsc::channel();
     listen(&config.socket(), wake.clone())?;
     watch(config.clone(), wake.clone());
-    {
-        let wake = wake.clone();
-        std::thread::spawn(move || {
-            while wake.send(Wake::Tick).is_ok() {
-                std::thread::sleep(HEARTBEAT);
-            }
-        });
-    }
-    harness(&history, &config);
+    tick(wake.clone());
+    harness(&history, config);
     // A log that can't be read is said and passed over, never a reason to
     // stop: the loop tries again each pass.
-    if let Err(error) = catch_up(&history, &config) {
+    if let Err(error) = catch_up(&history, config) {
         eprintln!("reading pi's logs: {error}");
     }
     let mut writer = Writer::new();
     let mut desk = Buses::default();
-    let mut feeds: Vec<Feed> = config
-        .feeds
-        .iter()
-        .map(|feed| Feed {
-            config: feed.clone(),
-            child: None,
-            stdin: None,
-            next: Instant::now(),
-            backoff: None,
-            started: Instant::now(),
-        })
-        .collect();
+    let mut feeds = feeds(config);
     let mut pace = Pace::Idle;
-    let mut last_pass = Instant::now() - IDLE;
+    // The first pass is due at once, as though the last were an idle wait
+    // ago. The monotonic clock reaches far enough back that it always is.
+    let mut last_pass = Instant::now()
+        .checked_sub(IDLE)
+        .unwrap_or_else(Instant::now);
     let mut last_harness = Instant::now();
     let mut dirty = true;
-    let mut waiting: Vec<Sender<String>> = Vec::new();
-    // The feeds a refresh still waits to hear from, and until when.
-    let mut owed: Vec<String> = Vec::new();
-    let mut owed_until = Instant::now();
+    let mut refresh = Refresh {
+        waiting: Vec::new(),
+        owed: Vec::new(),
+        until: Instant::now(),
+    };
     // The status last written, when its heartbeat was, and when a pass
     // last worked.
     let mut last_status: Option<(status::Status, Instant, Instant)> = None;
     loop {
         let now = time::now();
-        // Working is pi's logs moving lately.
-        let logs_at: Option<f64> = history
-            .db
-            .query_row("SELECT MAX(at) FROM turns", [], |row| row.get(0))
-            .ok()
-            .flatten();
-        let paced = if logs_at.is_some_and(|at| now - at < ACTIVE) {
-            Pace::Active
-        } else {
-            Pace::Idle
-        };
-        if paced != pace {
-            pace = paced;
-            for feed in &mut feeds {
-                feed.say(&feed::pace_line(pace));
-            }
-        }
+        pace = repace(&history, &mut feeds, pace, now);
         for feed in &mut feeds {
             if feed.child.is_none() && Instant::now() >= feed.next {
                 // Without it, a feed carries on from where it says it read.
@@ -539,63 +510,37 @@ pub fn run(config: Config) -> Result<(), String> {
             }
         }
         if last_harness.elapsed() >= HARNESS {
-            harness(&history, &config);
+            harness(&history, config);
             last_harness = Instant::now();
             dirty = true;
         }
-        let answered = owed.is_empty() || Instant::now() >= owed_until;
+        let answered = refresh.owed.is_empty() || Instant::now() >= refresh.until;
         let due = (dirty && last_pass.elapsed() >= BUSY)
             || last_pass.elapsed() >= IDLE
-            || (!waiting.is_empty() && answered);
+            || (!refresh.waiting.is_empty() && answered);
         if due {
-            if let Err(error) = catch_up(&history, &config) {
+            if let Err(error) = catch_up(&history, config) {
                 eprintln!("reading pi's logs: {error}");
             }
-            match pass(&history, &config, &mut writer, &mut desk, now) {
+            match pass(&history, config, &mut writer, &mut desk, now) {
                 Ok(shown) => last_status = Some((shown, Instant::now(), Instant::now())),
                 Err(error) => eprintln!("a pass failed: {error}"),
             }
             last_pass = Instant::now();
             dirty = false;
-            owed.clear();
-            for reply in waiting.drain(..) {
+            refresh.owed.clear();
+            for reply in refresh.waiting.drain(..) {
                 let _ = reply.send("done".into());
             }
         } else if let Some((status, at, worked)) = &mut last_status
             && at.elapsed() >= HEARTBEAT
             && worked.elapsed() < FAILING
         {
-            status.heartbeat = now;
-            let text = serde_json::to_string(&*status).unwrap_or_default();
-            let path = config.runtime().unwrap_or_default().join("status.json");
-            if let Err(error) = status::write_atomic(&path, &text) {
-                eprintln!("{error}");
-            }
+            beat(config, status, now);
             *at = Instant::now();
         }
-        // Wait for something, but never past when a pass or a feed is due.
-        let until_pass = if dirty {
-            BUSY.saturating_sub(last_pass.elapsed())
-        } else {
-            IDLE.saturating_sub(last_pass.elapsed())
-        };
-        let until_feed = feeds
-            .iter()
-            .filter(|feed| feed.child.is_none())
-            .map(|feed| feed.next.saturating_duration_since(Instant::now()))
-            .min()
-            .unwrap_or(IDLE);
-        let until_answered = if waiting.is_empty() || owed.is_empty() {
-            IDLE
-        } else {
-            owed_until.saturating_duration_since(Instant::now())
-        };
-        let timeout = until_pass
-            .min(until_feed)
-            .min(until_answered)
-            .min(HEARTBEAT)
-            .max(Duration::from_millis(100));
-        let first = match woken.recv_timeout(timeout) {
+        let timeout = wait_for(&feeds, &refresh, dirty, last_pass);
+        let first = match inbox.recv_timeout(timeout) {
             Ok(first) => Some(first),
             Err(mpsc::RecvTimeoutError::Timeout) => None,
             Err(mpsc::RecvTimeoutError::Disconnected) => {
@@ -603,64 +548,172 @@ pub fn run(config: Config) -> Result<(), String> {
             }
         };
         // Everything waiting, at once, so a feed's backfill is one transaction.
-        let mut woke: Vec<Wake> = first.into_iter().collect();
-        woke.extend(woken.try_iter());
-        let mut lines = 0;
+        let mut arrived: Vec<Wake> = first.into_iter().collect();
+        arrived.extend(inbox.try_iter());
         let stored_at = time::now();
         let began = history.begin().is_ok();
-        for wake in woke {
-            match wake {
-                Wake::Line(name, line) => {
-                    owed.retain(|owing| *owing != name);
-                    match feed::parse(&line) {
-                        Ok(record) => {
-                            if let Err(error) = feed::store(&history, &name, &record, stored_at) {
-                                eprintln!("feed {name}: keeping a record: {error}");
-                            }
-                            lines += 1;
-                        }
-                        Err(error) => eprintln!(
-                            "feed {name}: {error}: {}",
-                            line.chars().take(200).collect::<String>()
-                        ),
-                    }
-                }
-                Wake::Ended(name) => {
-                    if let Some(feed) = feeds.iter_mut().find(|feed| feed.config.name == name) {
-                        eprintln!("feed {name} stopped; starting it again in a while");
-                        feed.stopped();
-                    }
-                }
-                Wake::Moved => dirty = true,
-                Wake::Asked(what, reply) => match what.as_str() {
-                    "refresh" => {
-                        // Answered once each running feed has said
-                        // something back, or a little while has passed.
-                        for feed in &mut feeds {
-                            if feed.child.is_some() {
-                                feed.say(&feed::refresh_line());
-                                owed.push(feed.config.name.clone());
-                            }
-                        }
-                        owed_until = Instant::now() + REFRESH;
-                        waiting.push(reply);
-                    }
-                    "ping" => {
-                        let _ = reply.send("here".into());
-                    }
-                    other => {
-                        let _ = reply.send(format!("not something spend-watch is asked: {other}"));
-                    }
-                },
-                Wake::Tick => {}
+        for wake in arrived {
+            if take(wake, &history, &mut feeds, &mut refresh, stored_at) {
+                dirty = true;
             }
         }
         if began && let Err(error) = history.commit() {
             eprintln!("keeping what the feeds said: {error}");
         }
-        if lines > 0 {
-            dirty = true;
+    }
+}
+
+/// Wakes the loop every heartbeat, until it's gone.
+fn tick(wake: Sender<Wake>) {
+    std::thread::spawn(move || {
+        while wake.send(Wake::Tick).is_ok() {
+            std::thread::sleep(HEARTBEAT);
         }
+    });
+}
+
+/// Each feed the config names, not yet started and free to start now.
+fn feeds(config: &Config) -> Vec<Feed> {
+    config
+        .feeds
+        .iter()
+        .map(|feed| Feed {
+            config: feed.clone(),
+            child: None,
+            stdin: None,
+            next: Instant::now(),
+            backoff: None,
+            started: Instant::now(),
+        })
+        .collect()
+}
+
+/// Writes the status last written again with a new heartbeat, so the shell
+/// sees the watch still runs between passes.
+fn beat(config: &Config, status: &mut status::Status, now: f64) {
+    status.heartbeat = now;
+    let text = serde_json::to_string(&*status).unwrap_or_default();
+    let path = config.runtime().unwrap_or_default().join("status.json");
+    if let Err(error) = status::write_atomic(&path, &text) {
+        eprintln!("{error}");
+    }
+}
+
+/// Who a refresh owes an answer: those waiting on it, and the feeds it
+/// still waits to hear from, until when.
+struct Refresh {
+    waiting: Vec<Sender<String>>,
+    owed: Vec<String>,
+    until: Instant,
+}
+
+/// The pace pi's logs set, working while they moved lately, told to every
+/// feed when it changes.
+fn repace(history: &History, feeds: &mut [Feed], pace: Pace, now: f64) -> Pace {
+    let logs_at: Option<f64> = history
+        .db
+        .query_row("SELECT MAX(at) FROM turns", [], |row| row.get(0))
+        .ok()
+        .flatten();
+    let paced = if logs_at.is_some_and(|at| now - at < ACTIVE) {
+        Pace::Active
+    } else {
+        Pace::Idle
+    };
+    if paced != pace {
+        for feed in feeds {
+            feed.say(&feed::pace_line(paced));
+        }
+    }
+    paced
+}
+
+/// How long to wait for something, but never past when a pass or a feed
+/// is due, or a refresh has waited long enough.
+fn wait_for(feeds: &[Feed], refresh: &Refresh, dirty: bool, last_pass: Instant) -> Duration {
+    let until_pass = if dirty {
+        BUSY.saturating_sub(last_pass.elapsed())
+    } else {
+        IDLE.saturating_sub(last_pass.elapsed())
+    };
+    let until_feed = feeds
+        .iter()
+        .filter(|feed| feed.child.is_none())
+        .map(|feed| feed.next.saturating_duration_since(Instant::now()))
+        .min()
+        .unwrap_or(IDLE);
+    let until_answered = if refresh.waiting.is_empty() || refresh.owed.is_empty() {
+        IDLE
+    } else {
+        refresh.until.saturating_duration_since(Instant::now())
+    };
+    until_pass
+        .min(until_feed)
+        .min(until_answered)
+        .min(HEARTBEAT)
+        .max(Duration::from_millis(100))
+}
+
+/// Takes one thing that woke the loop, saying whether it changes what the
+/// next pass shows: a feed's record, or pi's logs moving.
+fn take(
+    wake: Wake,
+    history: &History,
+    feeds: &mut [Feed],
+    refresh: &mut Refresh,
+    stored_at: f64,
+) -> bool {
+    match wake {
+        Wake::Line(name, line) => {
+            refresh.owed.retain(|owing| *owing != name);
+            match feed::parse(&line) {
+                Ok(record) => {
+                    if let Err(error) = feed::store(history, &name, &record, stored_at) {
+                        eprintln!("feed {name}: keeping a record: {error}");
+                    }
+                    true
+                }
+                Err(error) => {
+                    eprintln!(
+                        "feed {name}: {error}: {}",
+                        line.chars().take(200).collect::<String>()
+                    );
+                    false
+                }
+            }
+        }
+        Wake::Ended(name) => {
+            if let Some(feed) = feeds.iter_mut().find(|feed| feed.config.name == name) {
+                eprintln!("feed {name} stopped; starting it again in a while");
+                feed.stopped();
+            }
+            false
+        }
+        Wake::Moved => true,
+        Wake::Asked(what, reply) => {
+            match what.as_str() {
+                "refresh" => {
+                    // Answered once each running feed has said something
+                    // back, or a little while has passed.
+                    for feed in feeds {
+                        if feed.child.is_some() {
+                            feed.say(&feed::refresh_line());
+                            refresh.owed.push(feed.config.name.clone());
+                        }
+                    }
+                    refresh.until = Instant::now() + REFRESH;
+                    refresh.waiting.push(reply);
+                }
+                "ping" => {
+                    let _ = reply.send("here".into());
+                }
+                other => {
+                    let _ = reply.send(format!("not something spend-watch is asked: {other}"));
+                }
+            }
+            false
+        }
+        Wake::Tick => false,
     }
 }
 

@@ -5,6 +5,8 @@
 //! along ln(1 + lux): a step from 10 to 20 lux counts for as much as one from
 //! 1000 to 2000.
 
+use std::fmt::Write as _;
+
 /// One point the curve passes through: in this much light, the screen this
 /// bright, as a share of its brightest.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -114,10 +116,11 @@ impl Curve {
 
     /// The curve as text that `read` reads back.
     pub fn write(&self) -> String {
-        self.points
-            .iter()
-            .map(|point| format!("{} {:.3}\n", point.lux, point.level))
-            .collect()
+        self.points.iter().fold(String::new(), |mut text, point| {
+            // Writing to a String can't fail.
+            _ = writeln!(text, "{} {:.3}", point.lux, point.level);
+            text
+        })
     }
 }
 
@@ -165,7 +168,7 @@ mod tests {
     fn between_points_the_level_follows_the_light_s_ratio() {
         let curve = standard();
         // Halfway along ln(1 + lux) from 20 to 150 lux is about 55 lux.
-        let halfway = (along(20.0) + along(150.0)) / 2.0;
+        let halfway = f64::midpoint(along(20.0), along(150.0));
         let lux = halfway.exp() - 1.0;
         assert!(close(curve.level_at(lux), 0.4));
     }

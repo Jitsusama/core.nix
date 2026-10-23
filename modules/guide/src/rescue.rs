@@ -11,6 +11,7 @@
 
 use std::cell::RefCell;
 use std::collections::BTreeMap;
+use std::fmt::Write as _;
 use std::path::PathBuf;
 use std::rc::Rc;
 
@@ -91,8 +92,11 @@ pub struct Keys {
 pub fn fingerprint(bytes: &[u8]) -> String {
     Sha256::digest(bytes)
         .iter()
-        .map(|byte| format!("{byte:02x}"))
-        .collect()
+        .fold(String::new(), |mut hex, byte| {
+            // Writing to a String can't fail.
+            _ = write!(hex, "{byte:02x}");
+            hex
+        })
 }
 
 /// A fault in sealing or opening the bundle, said of the bundle rather
@@ -351,7 +355,7 @@ impl Bundle {
         self.written.db == fingerprint(db_certificate)
     }
 
-    fn opened(&self, key: VaultKey) -> Result<Keys, Fault> {
+    fn opened(&self, key: &VaultKey) -> Result<Keys, Fault> {
         let sealed = STANDARD.decode(&self.written.keys).map_err(unreadable)?;
         let keys = Keys::unsealed(&key.decrypt(&sealed).map_err(of_the_bundle)?)?;
         if !self.holds(keys.file("keys/db/db.pem")) || keys.owner() != self.written.owner {
@@ -373,7 +377,7 @@ impl Bundle {
             }
             opened => opened,
         };
-        self.opened(opened.map_err(of_the_bundle)?)
+        self.opened(&opened.map_err(of_the_bundle)?)
     }
 
     /// With whichever of its YubiKeys is plugged in, and its PIN, which the
@@ -386,7 +390,7 @@ impl Bundle {
             });
         };
         let sealed = STANDARD.decode(to_keys).map_err(unreadable)?;
-        self.opened(VaultKey::open_with_key(&sealed, pin).map_err(of_the_bundle)?)
+        self.opened(&VaultKey::open_with_key(&sealed, pin).map_err(of_the_bundle)?)
     }
 }
 

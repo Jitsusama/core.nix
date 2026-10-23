@@ -65,7 +65,7 @@ fn each_workspace_is_read_with_what_its_quest_says() {
     assert_eq!(found[0].path, spaces.join("QEST-20261001-ABC123"));
     assert_eq!(found[0].status, "concluded");
     // The end of the day it was last updated, in local time.
-    assert_eq!(found[0].finished, local("2026-10-04"));
+    crate::assert_exactly(found[0].finished, local("2026-10-04"));
     assert!((found[0].born - now()).abs() < 60.0, "{}", found[0].born);
 }
 
@@ -80,7 +80,7 @@ fn a_concluded_quest_keeps_its_workspace_from_when_it_finished() {
     )
     .unwrap();
     assert_eq!(made.class, Class::Workspace);
-    assert_eq!(made.idle, 4_000.0);
+    crate::assert_exactly(made.idle, 4_000.0);
     assert_eq!(made.size, 7);
 }
 
@@ -94,7 +94,7 @@ fn a_workspace_that_appeared_later_is_kept_from_then() {
         5_000.0,
     )
     .unwrap();
-    assert_eq!(made.idle, 2_000.0);
+    crate::assert_exactly(made.idle, 2_000.0);
 }
 
 #[test]
@@ -107,21 +107,21 @@ fn a_write_since_restarts_the_keeping() {
         5_000.0,
     )
     .unwrap();
-    assert_eq!(made.idle, 500.0);
+    crate::assert_exactly(made.idle, 500.0);
 }
 
 #[test]
 fn a_quest_retired_before_its_workspace_appeared_has_nothing_to_keep() {
     let retired = workspace("retired", 10.0 * DAY, 9.0 * DAY);
     let made = candidate(&retired, 10.0 * DAY, 7, &Awake::default(), 10.0 * DAY).unwrap();
-    assert_eq!(made.idle, f64::INFINITY);
+    crate::assert_exactly(made.idle, f64::INFINITY);
     // Retired after it appeared, it's kept like a concluded one.
     let later = workspace("retired", 10.0 * DAY, 11.0 * DAY);
-    assert_eq!(
+    crate::assert_exactly(
         candidate(&later, 0.0, 7, &Awake::default(), 12.0 * DAY)
             .unwrap()
             .idle,
-        DAY
+        DAY,
     );
 }
 

@@ -59,7 +59,7 @@ fn a_tree_left_before_a_suspend_has_idled_only_while_awake() {
         Checkout::At("/home/u/src/app".into()),
     );
     let made = candidate(&target, &seen(Use::Free), &suspended_once(), 10_000.0).unwrap();
-    assert_eq!(made.idle, 4_000.0);
+    crate::assert_exactly(made.idle, 4_000.0);
     assert_eq!(made.class, Class::Target);
     assert_eq!(made.size, 4096);
     assert_eq!(made.checkout.as_deref(), Some(Path::new("/home/u/src/app")));
@@ -74,7 +74,7 @@ fn a_tree_too_big_to_date_has_not_idled() {
         ..seen(Use::Free)
     };
     let made = candidate(&target, &unread, &suspended_once(), 10_000.0).unwrap();
-    assert_eq!(made.idle, 0.0);
+    crate::assert_exactly(made.idle, 0.0);
 }
 
 #[test]
@@ -155,9 +155,9 @@ fn an_npm_install_is_dated_by_the_last_install_or_commit() {
         Checkout::At(checkout.clone()),
     );
     // A package's own files keep the times it was published with.
-    assert_eq!(last_used(&install), 5_000.0);
+    crate::assert_exactly(last_used(&install), 5_000.0);
     touch(&checkout.join(".git/logs/HEAD"), 7_000);
-    assert_eq!(last_used(&install), 7_000.0);
+    crate::assert_exactly(last_used(&install), 7_000.0);
 }
 
 #[test]
@@ -182,7 +182,7 @@ fn a_venv_is_dated_by_the_last_package_installed_into_it() {
         Kind::Install,
         Checkout::At(root.path().join("tool")),
     );
-    assert_eq!(last_used(&install), 6_000.0);
+    crate::assert_exactly(last_used(&install), 6_000.0);
 }
 
 #[test]
@@ -194,5 +194,5 @@ fn a_target_is_dated_by_its_last_build() {
     touch(&target.join("debug"), 1_000);
     touch(&target, 1_000);
     let found = found(target.to_str().unwrap(), Kind::Target, Checkout::Unknown);
-    assert_eq!(last_used(&found), 2_000.0);
+    crate::assert_exactly(last_used(&found), 2_000.0);
 }

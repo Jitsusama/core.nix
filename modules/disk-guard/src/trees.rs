@@ -37,8 +37,8 @@ pub fn variants(target: &Path) -> Vec<Variant> {
     let mut found = Vec::new();
     for path in crates {
         let sessions = subdirs(&path);
-        let named = |dir: &PathBuf| dir.file_name().map(|n| n.to_string_lossy().into_owned());
-        let names: Vec<String> = sessions.iter().filter_map(named).collect();
+        let name_of = |dir: &PathBuf| dir.file_name().map(|n| n.to_string_lossy().into_owned());
+        let names: Vec<String> = sessions.iter().filter_map(name_of).collect();
         if names.iter().any(|name| name.ends_with("-working")) {
             continue;
         }

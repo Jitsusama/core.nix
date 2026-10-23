@@ -113,7 +113,7 @@ fn vouching_each(
                             vouched: touching.iter().map(|p| (p.pid, p.start_ticks)).collect(),
                             touching,
                         },
-                    ))
+                    ));
                 })
                 .unwrap();
         }
@@ -246,7 +246,7 @@ fn outlived(proc: &Path, socket: &Path, pid: u32, then: impl FnOnce(&Path) + Sen
                 (then.take().unwrap())(dir.parent().unwrap());
                 responder.send(&disk_guard::socket::Reply::Answer(
                     disk_guard::vouch::Answer::default(),
-                ))
+                ));
             })
             .unwrap();
     });
@@ -457,7 +457,7 @@ fn run(argv: &[&str], timeout: Duration) -> (Offer, Outcome, Duration) {
         Action::Run {
             root: root.path().to_owned(),
             source: "gc".to_owned(),
-            argv: argv.iter().map(|arg| arg.to_string()).collect(),
+            argv: argv.iter().map(ToString::to_string).collect(),
             timeout,
         },
     )];

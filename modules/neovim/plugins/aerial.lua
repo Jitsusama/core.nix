@@ -150,7 +150,7 @@ aerial.setup({
     show_backdrop = true,
 
     -- How to format the symbols in the winbar
-    format = function(symbols, depth, separator)
+    format = function(symbols, _depth, separator)
       local result = {}
       local last = nil
       for _, symbol in ipairs(symbols) do

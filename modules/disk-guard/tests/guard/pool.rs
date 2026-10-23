@@ -1,5 +1,6 @@
 use disk_guard::pool::{apfs_container, pool};
 use std::fs;
+use std::os::fd::AsRawFd;
 use std::os::unix::fs::MetadataExt;
 use std::path::Path;
 
@@ -10,7 +11,8 @@ const BTRFS_IOC_SUBVOL_CREATE: libc::c_ulong = 0x5000_940e;
 
 /// Whether `path` is on Btrfs, where subvolumes can be made.
 pub(crate) fn on_btrfs(path: &Path) -> bool {
-    rustix::fs::statfs(path).unwrap().f_type as u64 == BTRFS_SUPER_MAGIC
+    // Signed on Linux and unsigned on a Mac, the type is widened to compare.
+    i128::from(rustix::fs::statfs(path).unwrap().f_type) == i128::from(BTRFS_SUPER_MAGIC)
 }
 
 /// Makes the subvolume `name` in `dir`, which any account owning `dir` may.
@@ -18,7 +20,6 @@ pub(crate) fn subvolume(dir: &Path, name: &str) {
     let file = fs::File::open(dir).unwrap();
     let mut args = [0u8; 4096];
     args[8..8 + name.len()].copy_from_slice(name.as_bytes());
-    use std::os::fd::AsRawFd;
     // SAFETY: args is the size the kernel reads, and outlives the call.
     let made = unsafe {
         libc::ioctl(

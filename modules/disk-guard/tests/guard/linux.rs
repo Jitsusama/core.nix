@@ -128,7 +128,7 @@ fn settling_shows_what_a_delete_freed() {
             state ^= state << 13;
             state ^= state >> 7;
             state ^= state << 17;
-            state as u8
+            crate::low_byte(state)
         })
         .collect();
     // The filesystem is shared with whatever else the machine is writing,
@@ -298,9 +298,9 @@ fn the_boot_is_dated_from_the_kernels_statistics() {
     )
     .unwrap();
     let booted = boot(&stat).unwrap();
-    assert_eq!(booted.wall, 1_760_000_000.0);
-    assert_eq!(booted.ticks, unsafe { libc::sysconf(libc::_SC_CLK_TCK) }
-        as f64);
+    crate::assert_exactly(booted.wall, 1_760_000_000.0);
+    let ticks = u64::try_from(unsafe { libc::sysconf(libc::_SC_CLK_TCK) }).unwrap();
+    crate::assert_exactly(booted.ticks, disk_guard::units::float(ticks));
     fs::write(&stat, "cpu  1 2 3\n").unwrap();
     assert!(boot(&stat).is_err());
 }
@@ -373,14 +373,14 @@ fn a_commit_that_hangs_is_given_up_on_for_the_fallback() {
 #[test]
 fn while_a_commit_is_stuck_no_other_is_begun() {
     let stuck = Arc::new(AtomicBool::new(true));
-    let (began, begun) = mpsc::channel::<()>();
+    let (beginning, begun) = mpsc::channel::<()>();
     let fell_back = Cell::new(false);
     let started = Instant::now();
     patiently(
         &stuck,
         PATIENCE,
         move || {
-            began.send(()).unwrap();
+            beginning.send(()).unwrap();
             Ok(())
         },
         || {

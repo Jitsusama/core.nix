@@ -28,12 +28,12 @@ pub fn boot(proc_stat: &std::path::Path) -> io::Result<crate::snapshots::Boot> {
         .ok_or_else(|| io::Error::other("no boot time in the kernel's statistics"))?;
     // SAFETY: sysconf only reads a constant.
     let ticks = unsafe { libc::sysconf(libc::_SC_CLK_TCK) };
-    if ticks <= 0 {
+    let Some(ticks) = u64::try_from(ticks).ok().filter(|&ticks| ticks > 0) else {
         return Err(io::Error::last_os_error());
-    }
+    };
     Ok(crate::snapshots::Boot {
         wall,
-        ticks: ticks as f64,
+        ticks: crate::units::float(ticks),
     })
 }
 
@@ -42,9 +42,7 @@ pub fn boot(proc_stat: &std::path::Path) -> io::Result<crate::snapshots::Boot> {
 /// unless there's no sysfs to read it from, as in a build sandbox.
 pub fn space(path: &Path) -> io::Result<Space> {
     let vfs = rustix::fs::statvfs(path)?;
-    let btrfs = if rustix::fs::statfs(path)?.f_type as u64 == BTRFS_SUPER_MAGIC
-        && Path::new(BTRFS_SYSFS).exists()
-    {
+    let btrfs = if is_btrfs(&rustix::fs::statfs(path)?) && Path::new(BTRFS_SYSFS).exists() {
         Some(btrfs_allocation(
             &Path::new(BTRFS_SYSFS).join(btrfs_fsid(path)?),
         )?)
@@ -93,7 +91,7 @@ pub fn give_back() {
 pub fn settle(path: &Path) -> io::Result<()> {
     let flags = rustix::fs::OFlags::RDONLY | rustix::fs::OFlags::CLOEXEC;
     let fd = rustix::fs::open(path, flags, rustix::fs::Mode::empty())?;
-    if rustix::fs::fstatfs(&fd)?.f_type as u64 != BTRFS_SUPER_MAGIC {
+    if !is_btrfs(&rustix::fs::fstatfs(&fd)?) {
         return Ok(rustix::fs::syncfs(&fd)?);
     }
     let committing = rustix::io::fcntl_dupfd_cloexec(&fd, 0)?;
@@ -176,10 +174,10 @@ fn clock(id: libc::clockid_t) -> io::Result<f64> {
         tv_nsec: 0,
     };
     // SAFETY: time is a valid timespec the kernel fills in.
-    if unsafe { libc::clock_gettime(id, &mut time) } != 0 {
+    if unsafe { libc::clock_gettime(id, &raw mut time) } != 0 {
         return Err(io::Error::last_os_error());
     }
-    Ok(time.tv_sec as f64 + time.tv_nsec as f64 / 1e9)
+    Ok(crate::units::wall(time.tv_sec, time.tv_nsec))
 }
 
 /// The clocks awake time is counted from. Monotonic time stops while the
@@ -204,7 +202,9 @@ pub fn tick() -> io::Result<crate::clock::Tick> {
 pub fn pressure(proc_pressure: &Path) -> io::Result<crate::moments::Pressure> {
     let stall = |resource: &str| -> io::Result<crate::moments::Stall> {
         let text = match fs::read_to_string(proc_pressure.join(resource)) {
-            Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(Default::default()),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {
+                return Ok(crate::moments::Stall::default());
+            }
             other => other?,
         };
         let mut stall = crate::moments::Stall::default();
@@ -242,20 +242,20 @@ pub fn power(supplies: &Path) -> io::Result<crate::moments::Power> {
         if read(supply.join("scope")).is_ok_and(|scope| scope == "Device") {
             continue;
         }
-        match read(supply.join("type"))?.as_str() {
-            "Battery" => {
-                if let Ok(charge) = read(supply.join("capacity"))?.parse::<u8>() {
-                    charges.push(charge);
-                }
+        if read(supply.join("type"))? == "Battery" {
+            if let Ok(charge) = read(supply.join("capacity"))?.parse::<u8>() {
+                charges.push(charge);
             }
-            _ => {
-                sources += 1;
-                online |= read(supply.join("online")).is_ok_and(|state| state == "1");
-            }
+        } else {
+            sources += 1;
+            online |= read(supply.join("online")).is_ok_and(|state| state == "1");
         }
     }
-    let battery = (!charges.is_empty())
-        .then(|| (charges.iter().map(|&c| c as u32).sum::<u32>() / charges.len() as u32) as u8);
+    // The mean of charges each under 256 is under 256 too, so it fits.
+    let total: usize = charges.iter().map(|&charge| usize::from(charge)).sum();
+    let battery = total
+        .checked_div(charges.len())
+        .and_then(|mean| u8::try_from(mean).ok());
     Ok(crate::moments::Power {
         mains: online || (sources == 0 && battery.is_none()),
         battery,
@@ -298,7 +298,7 @@ fn waiters_in(text: &str, me: u32, inodes: &[u64]) -> Option<Vec<i32>> {
     let held: Vec<&str> = lines
         .iter()
         .filter(|(waiting, kind, pid, file)| {
-            let mine = *pid == me as i32 || (kind == "OFDLCK" && *pid == -1);
+            let mine = *pid == me.cast_signed() || (kind == "OFDLCK" && *pid == -1);
             let inode = file.rsplit(':').next().and_then(|inode| inode.parse().ok());
             !waiting && mine && inode.is_some_and(|inode: u64| inodes.contains(&inode))
         })
@@ -478,7 +478,7 @@ fn mapped_path(line: &str) -> Option<PathBuf> {
 /// no device number has, so the two never meet.
 pub fn pool(path: &Path) -> io::Result<u64> {
     let device = fs::metadata(path)?.dev();
-    if rustix::fs::statfs(path)?.f_type as u64 != BTRFS_SUPER_MAGIC {
+    if !is_btrfs(&rustix::fs::statfs(path)?) {
         return Ok(device);
     }
     let id = btrfs_id(path)?;
@@ -486,12 +486,19 @@ pub fn pool(path: &Path) -> io::Result<u64> {
     Ok((halves[0] ^ halves[1]) | 1 << 63)
 }
 
+/// Whether a filesystem's statistics say it's Btrfs. The kernel's type is
+/// signed, so its bits are read as the unsigned magic number they are.
+fn is_btrfs(stats: &rustix::fs::StatFs) -> bool {
+    stats.f_type.cast_unsigned() == BTRFS_SUPER_MAGIC
+}
+
 /// A Btrfs filesystem's id, as its sysfs directory is named.
 fn btrfs_fsid(path: &Path) -> io::Result<PathBuf> {
-    let hex: String = btrfs_id(path)?
-        .iter()
-        .map(|byte| format!("{byte:02x}"))
-        .collect();
+    let hex = btrfs_id(path)?.iter().fold(String::new(), |mut hex, byte| {
+        // Writing to a String can't fail.
+        _ = write!(hex, "{byte:02x}");
+        hex
+    });
     let fsid = format!(
         "{}-{}-{}-{}-{}",
         &hex[0..8],
@@ -517,6 +524,7 @@ fn btrfs_id(path: &Path) -> io::Result<[u8; 16]> {
     Ok(args[16..32].try_into().unwrap())
 }
 use std::ffi::OsString;
+use std::fmt::Write as _;
 use std::fs;
 use std::io;
 use std::path::Path;

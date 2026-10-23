@@ -236,7 +236,7 @@ pub fn draw(theme: &Theme, at: &Where, moment: &Moment, width: u16, height: u16)
     }
     let top = lines.len();
     lines.extend(body);
-    let caret = caret.map(|(row, column)| ((top + row) as u16, column));
+    let caret = caret.map(|(row, column)| (super::cell(top + row), column));
 
     // The keys at the foot, a line above the screen's last, or straight
     // after everything else when the screen is too short for that.
@@ -286,115 +286,14 @@ fn step(theme: &Theme, moment: &Moment, inside: usize) -> (Vec<Line>, Option<(us
         } => {
             lines.extend(said(Role::Strong, title, inside));
             lines.push(vec![]);
-            // Every key that works here, Escape only where it goes back.
-            let foot = |on: &str| {
-                let mut shown = vec![(Key::Return, on)];
-                if *back {
-                    shown.push((Key::Escape, "back"));
-                }
-                shown.push((Key::Leave, "leave"));
-                keys(theme, &shown)
-            };
-            let typing =
-                |typed: &str| Some((span(Role::Action, theme.mark("cursor")), typed.to_string()));
-            let field = match ask {
-                Ask::Act { what, .. } => {
-                    lines.extend(said(
-                        Role::Text,
-                        &format!("{what} Then press Return."),
-                        inside,
-                    ));
-                    footer = foot("done");
-                    None
-                }
-                Ask::Secret { name, .. } => {
-                    lines.extend(said(
-                        Role::Text,
-                        &format!("Type {name}, then press Return."),
-                        inside,
-                    ));
-                    lines.push(vec![]);
-                    footer = foot("enter it");
-                    Some((
-                        span(Role::Machine, theme.mark("locked")),
-                        hidden(theme, typed),
-                    ))
-                }
-                Ask::SecretOr { name, or, .. } => {
-                    lines.extend(said(
-                        Role::Text,
-                        &format!("Type {name}, then press Return."),
-                        inside,
-                    ));
-                    lines.push(vec![]);
-                    lines.extend(said(Role::Text, &format!("Or {or}."), inside));
-                    lines.push(vec![]);
-                    footer = foot("enter it");
-                    Some((
-                        span(Role::Machine, theme.mark("locked")),
-                        hidden(theme, typed),
-                    ))
-                }
-                Ask::TypeBack { expected, why, .. } => {
-                    lines.extend(said(
-                        Role::Text,
-                        &format!(
-                            "{}. To go on, type the word below, then press Return.",
-                            capitalised(why)
-                        ),
-                        inside,
-                    ));
-                    lines.push(vec![]);
-                    lines.extend(said(Role::Strong, expected, inside));
-                    lines.push(vec![]);
-                    footer = foot("enter it");
-                    typing(typed)
-                }
-                Ask::Show { how, .. } => {
-                    lines.extend(steps(how, inside));
-                    footer = foot("show it");
-                    None
-                }
-                Ask::Recall { why, .. } => {
-                    lines.extend(said(
-                        Role::Text,
-                        &format!("{}, then press Return.", capitalised(why)),
-                        inside,
-                    ));
-                    lines.push(vec![]);
-                    footer = foot("enter it");
-                    typing(typed)
-                }
-                // The choices in a column, the one the keys are on led by
-                // the cursor in the accent and in strong, the rest a
-                // cursor's width in, so their words line up.
-                Ask::Choose {
-                    question, choices, ..
-                } => {
-                    lines.extend(said(Role::Text, question, inside));
-                    lines.push(vec![]);
-                    let cursor = theme.mark("cursor");
-                    let lead = " ".repeat(cursor.chars().count());
-                    for (at, choice) in choices.iter().enumerate() {
-                        let (mark, role) = if at == *chosen {
-                            (span(Role::Accent, cursor), Role::Strong)
-                        } else {
-                            (span(Role::Text, lead.clone()), Role::Text)
-                        };
-                        lines.extend(marked(mark, role, choice, inside));
-                    }
-                    let mut shown = vec![(Key::Arrows, "move"), (Key::Return, "choose")];
-                    if *back {
-                        shown.push((Key::Escape, "back"));
-                    }
-                    shown.push((Key::Leave, "leave"));
-                    footer = keys(theme, &shown);
-                    None
-                }
-            };
+            let (field, foot) = asked(theme, ask, typed, *chosen, *back, inside, &mut lines);
+            footer = foot;
             if let Some((mark, shown)) = field {
                 let lead = mark.text.chars().count() + 1;
-                caret = Some((lines.len(), (MARGIN + lead + shown.chars().count()) as u16));
+                caret = Some((
+                    lines.len(),
+                    super::cell(MARGIN + lead + shown.chars().count()),
+                ));
                 lines.push(indent(vec![mark, span(Role::Text, format!(" {shown}"))]));
             }
             if let Some(refused) = refused {
@@ -414,41 +313,12 @@ fn step(theme: &Theme, moment: &Moment, inside: usize) -> (Vec<Line>, Option<(us
         } => {
             lines.extend(said(Role::Strong, title, inside));
             lines.push(vec![]);
-            if !meanwhile.is_empty() {
-                lines.extend(said(Role::Text, meanwhile, inside));
-                lines.push(vec![]);
-            }
-            if let Some(progress) = progress {
-                lines.extend(marked(
-                    span(Role::Accent, theme.mark("running")),
-                    Role::Text,
-                    progress,
-                    inside,
-                ));
-                // Only a step at work can be stopped; the log is left with
-                // the keys it says.
-                footer = keys(theme, &[(Key::Leave, "stop")]);
-            } else {
-                footer = vec![];
-            }
+            footer = working(theme, meanwhile, *progress, inside, &mut lines);
         }
         Moment::Blocked { title, why, remedy } => {
             lines.extend(said(Role::Strong, title, inside));
             lines.push(vec![]);
-            lines.extend(marked(
-                span(Role::Warning, theme.mark("caution")),
-                Role::Text,
-                &capitalised(why),
-                inside,
-            ));
-            lines.extend(said(
-                Role::Text,
-                &format!("{}.", capitalised(remedy)),
-                inside,
-            ));
-            // A step that stops can hold a boot back, so the way out is
-            // shown beside the way on.
-            footer = keys(theme, &[(Key::Return, "look again"), (Key::Leave, "leave")]);
+            footer = blocked(theme, why, remedy, inside, &mut lines);
         }
         Moment::Failed { title, fault } => {
             lines.extend(said(Role::Strong, title, inside));
@@ -496,6 +366,165 @@ fn step(theme: &Theme, moment: &Moment, inside: usize) -> (Vec<Line>, Option<(us
         }
     }
     (lines, caret, footer)
+}
+
+/// A step at work: what to do meanwhile and how far along it is, added
+/// to `lines`, then the keys that work.
+fn working(
+    theme: &Theme,
+    meanwhile: &str,
+    progress: Option<&str>,
+    inside: usize,
+    lines: &mut Vec<Line>,
+) -> Line {
+    if !meanwhile.is_empty() {
+        lines.extend(said(Role::Text, meanwhile, inside));
+        lines.push(vec![]);
+    }
+    let Some(progress) = progress else {
+        return vec![];
+    };
+    lines.extend(marked(
+        span(Role::Accent, theme.mark("running")),
+        Role::Text,
+        progress,
+        inside,
+    ));
+    // Only a step at work can be stopped; the log is left with the keys it
+    // says.
+    keys(theme, &[(Key::Leave, "stop")])
+}
+
+/// What's in the way of a step and what to do about it, added to `lines`,
+/// then the keys that work.
+fn blocked(theme: &Theme, why: &str, remedy: &str, inside: usize, lines: &mut Vec<Line>) -> Line {
+    lines.extend(marked(
+        span(Role::Warning, theme.mark("caution")),
+        Role::Text,
+        &capitalised(why),
+        inside,
+    ));
+    lines.extend(said(
+        Role::Text,
+        &format!("{}.", capitalised(remedy)),
+        inside,
+    ));
+    // A step that stops can hold a boot back, so the way out is shown
+    // beside the way on.
+    keys(theme, &[(Key::Return, "look again"), (Key::Leave, "leave")])
+}
+
+/// What one ask says to do, added to `lines`, then its field, if it has
+/// one, as its mark and what's shown in it, and the keys that work.
+fn asked(
+    theme: &Theme,
+    ask: &Ask,
+    typed: &str,
+    chosen: usize,
+    back: bool,
+    inside: usize,
+    lines: &mut Vec<Line>,
+) -> (Option<(Span, String)>, Line) {
+    // Every key that works here, Escape only where it goes back.
+    let foot = |on: &str| {
+        let mut shown = vec![(Key::Return, on)];
+        if back {
+            shown.push((Key::Escape, "back"));
+        }
+        shown.push((Key::Leave, "leave"));
+        keys(theme, &shown)
+    };
+    let typing = |typed: &str| Some((span(Role::Action, theme.mark("cursor")), typed.to_string()));
+    match ask {
+        Ask::Act { what, .. } => {
+            lines.extend(said(
+                Role::Text,
+                &format!("{what} Then press Return."),
+                inside,
+            ));
+            (None, foot("done"))
+        }
+        Ask::Secret { name, .. } => {
+            lines.extend(said(
+                Role::Text,
+                &format!("Type {name}, then press Return."),
+                inside,
+            ));
+            lines.push(vec![]);
+            let field = (
+                span(Role::Machine, theme.mark("locked")),
+                hidden(theme, typed),
+            );
+            (Some(field), foot("enter it"))
+        }
+        Ask::SecretOr { name, or, .. } => {
+            lines.extend(said(
+                Role::Text,
+                &format!("Type {name}, then press Return."),
+                inside,
+            ));
+            lines.push(vec![]);
+            lines.extend(said(Role::Text, &format!("Or {or}."), inside));
+            lines.push(vec![]);
+            let field = (
+                span(Role::Machine, theme.mark("locked")),
+                hidden(theme, typed),
+            );
+            (Some(field), foot("enter it"))
+        }
+        Ask::TypeBack { expected, why, .. } => {
+            lines.extend(said(
+                Role::Text,
+                &format!(
+                    "{}. To go on, type the word below, then press Return.",
+                    capitalised(why)
+                ),
+                inside,
+            ));
+            lines.push(vec![]);
+            lines.extend(said(Role::Strong, expected, inside));
+            lines.push(vec![]);
+            (typing(typed), foot("enter it"))
+        }
+        Ask::Show { how, .. } => {
+            lines.extend(steps(how, inside));
+            (None, foot("show it"))
+        }
+        Ask::Recall { why, .. } => {
+            lines.extend(said(
+                Role::Text,
+                &format!("{}, then press Return.", capitalised(why)),
+                inside,
+            ));
+            lines.push(vec![]);
+            (typing(typed), foot("enter it"))
+        }
+        // The choices in a column, the one the keys are on led by the
+        // cursor in the accent and in strong, the rest a cursor's width in,
+        // so their words line up.
+        Ask::Choose {
+            question, choices, ..
+        } => {
+            lines.extend(said(Role::Text, question, inside));
+            lines.push(vec![]);
+            let cursor = theme.mark("cursor");
+            let lead = " ".repeat(cursor.chars().count());
+            for (at, choice) in choices.iter().enumerate() {
+                let (mark, role) = if at == chosen {
+                    (span(Role::Accent, cursor), Role::Strong)
+                } else {
+                    (span(Role::Text, lead.clone()), Role::Text)
+                };
+                lines.extend(marked(mark, role, choice, inside));
+            }
+            let mut shown = vec![(Key::Arrows, "move"), (Key::Return, "choose")];
+            if back {
+                shown.push((Key::Escape, "back"));
+            }
+            shown.push((Key::Leave, "leave"));
+            (None, keys(theme, &shown))
+        }
+    }
 }
 
 /// What's been typed of a secret: a dot for each character, never the
@@ -577,10 +606,13 @@ mod tests {
         assert_eq!(
             drawn.caret,
             Some((
-                shown
-                    .iter()
-                    .position(|line| line.contains("******"))
-                    .unwrap() as u16,
+                u16::try_from(
+                    shown
+                        .iter()
+                        .position(|line| line.contains("******"))
+                        .unwrap()
+                )
+                .unwrap(),
                 10
             ))
         );
@@ -688,7 +720,7 @@ mod tests {
             .iter()
             .position(|line| line == "  % **")
             .expect("one field");
-        assert_eq!(drawn.caret, Some((field as u16, 6)));
+        assert_eq!(drawn.caret, Some((u16::try_from(field).unwrap(), 6)));
     }
 
     #[test]

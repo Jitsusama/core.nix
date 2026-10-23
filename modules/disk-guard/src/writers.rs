@@ -105,7 +105,7 @@ impl Writers {
                     start,
                     name: track.name.clone(),
                     written,
-                    rate: written as f64 / seconds,
+                    rate: crate::units::float(written) / seconds,
                     cgroup: track.cgroup.clone(),
                 })
             })

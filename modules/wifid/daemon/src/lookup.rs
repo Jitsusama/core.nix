@@ -35,7 +35,7 @@ pub async fn addresses(card: &str, server: IpAddr, name: &str) -> io::Result<Vec
     for kind in [Kind::V4, Kind::V6] {
         // A number nobody off the network can guess, so nobody can answer
         // in its place.
-        let id = RandomState::new().hash_one(name) as u16;
+        let id = low_u16(RandomState::new().hash_one(name));
         let answered = asked(&socket, &query(id, name, kind), id, AGAIN, PATIENCE).await?;
         let addresses = answered.ok_or_else(|| {
             io::Error::new(io::ErrorKind::TimedOut, format!("{server} didn't answer"))
@@ -45,6 +45,19 @@ pub async fn addresses(card: &str, server: IpAddr, name: &str) -> io::Result<Vec
         }
     }
     Ok(Vec::new())
+}
+
+/// The lowest two bytes of a number, the rest dropped: all the room a
+/// query's number has.
+fn low_u16(number: u64) -> u16 {
+    let [low, high, ..] = number.to_le_bytes();
+    u16::from_le_bytes([low, high])
+}
+
+/// The lowest byte of a length, the rest dropped. DNS keeps a label to 63
+/// bytes, so nothing is dropped from one it allows.
+fn low_byte(length: usize) -> u8 {
+    length.to_le_bytes()[0]
 }
 
 /// Sends the query and waits for its answer, sending it again each time
@@ -94,7 +107,7 @@ pub fn query(id: u16, name: &str, kind: Kind) -> Vec<u8> {
     // with one question.
     query.extend([0x01, 0x00, 0, 1, 0, 0, 0, 0, 0, 0]);
     for label in name.split('.').filter(|label| !label.is_empty()) {
-        query.push(label.len() as u8);
+        query.push(low_byte(label.len()));
         query.extend(label.as_bytes());
     }
     query.push(0);
@@ -123,7 +136,9 @@ pub fn answers(reply: &[u8], id: u16) -> Option<Vec<IpAddr>> {
     let answered = at.u16()? == id;
     let flags = at.u16()?;
     let is_answer = flags & 0x8000 != 0;
-    let succeeded = flags & 0x000f == 0;
+    // The lowest four bits are the answer's code, none of them set when
+    // it succeeded.
+    let succeeded = flags.trailing_zeros() >= 4;
     if !(answered && is_answer && succeeded) {
         return None;
     }

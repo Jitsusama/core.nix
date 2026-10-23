@@ -1,5 +1,6 @@
 //! When something was last built or written, in wall seconds.
 
+use crate::units::wall;
 use std::fs;
 use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
@@ -7,7 +8,7 @@ use std::path::{Path, PathBuf};
 /// A path's own modification time, never through a symlink.
 pub(crate) fn mtime(path: &Path) -> Option<f64> {
     let meta = fs::symlink_metadata(path).ok()?;
-    Some(meta.mtime() as f64 + meta.mtime_nsec() as f64 / 1e9)
+    Some(wall(meta.mtime(), meta.mtime_nsec()))
 }
 
 pub(crate) fn subdirs(dir: &Path) -> Vec<PathBuf> {
@@ -102,7 +103,7 @@ pub fn last_write(path: &Path, depth: usize, budget: usize) -> f64 {
                     return f64::INFINITY;
                 }
                 let Ok(meta) = entry.metadata() else { continue };
-                newest = newest.max(meta.mtime() as f64 + meta.mtime_nsec() as f64 / 1e9);
+                newest = newest.max(wall(meta.mtime(), meta.mtime_nsec()));
                 if meta.is_dir() {
                     deeper.push(entry.path());
                 }

@@ -8,7 +8,8 @@ use crate::daemon::{Explained, Guard, Places};
 use crate::serve::{answering, hold, steps, stopping};
 use crate::units::{Size, Span, shown as size};
 use serde_json::Value;
-use std::ffi::OsString;
+use std::ffi::{OsStr, OsString};
+use std::fmt::Write as _;
 use std::fs;
 use std::io::{self, Write};
 use std::os::unix::fs::DirBuilderExt;
@@ -138,18 +139,18 @@ pub fn parse(args: &[OsString]) -> Result<Command, String> {
     let mut options = Options::read(rest)?;
     let command = match name.to_str() {
         Some("user") => Command::User {
-            config: options.path("--config")?,
-            state: options.path("--state")?,
+            config: options.path("--config"),
+            state: options.path("--state"),
         },
         Some("system") => Command::System {
-            config: options.path("--config")?,
-            state: options.path("--state")?,
+            config: options.path("--config"),
+            state: options.path("--state"),
         },
         Some("status") => Command::Status {
             json: options.flag("--json"),
         },
         Some("plan") => Command::Plan {
-            config: options.path("--config")?,
+            config: options.path("--config"),
             band: options
                 .text("--band")?
                 .map(|band| {
@@ -180,7 +181,7 @@ pub fn parse(args: &[OsString]) -> Result<Command, String> {
         },
         Some("thaw") => Command::Thaw,
         Some("explain") => {
-            let config = options.path("--config")?;
+            let config = options.path("--config");
             match options.positional.as_slice() {
                 [path] => {
                     let path = PathBuf::from(path);
@@ -190,7 +191,7 @@ pub fn parse(args: &[OsString]) -> Result<Command, String> {
                 _ => return Err(format!("explain takes one path\n{USAGE}")),
             }
         }
-        _ => return Err(format!("{name:?} is not a command\n{USAGE}")),
+        _ => return Err(format!("{} is not a command\n{USAGE}", quoted(name))),
     };
     options.finished()?;
     Ok(command)
@@ -234,26 +235,31 @@ impl Options {
         Ok(options)
     }
 
-    fn take(&mut self, name: &str) -> Option<Option<OsString>> {
+    /// The option named `name` and its value, if it was given.
+    fn take(&mut self, name: &str) -> Option<(String, Option<OsString>)> {
         let at = self.named.iter().position(|(seen, _)| seen == name)?;
-        Some(self.named.remove(at).1)
+        Some(self.named.remove(at))
+    }
+
+    /// The value given for `name`, if it was given one.
+    fn value(&mut self, name: &str) -> Option<OsString> {
+        self.take(name).and_then(|(_, value)| value)
     }
 
     fn flag(&mut self, name: &str) -> bool {
         self.take(name).is_some()
     }
 
-    fn path(&mut self, name: &str) -> Result<Option<PathBuf>, String> {
-        Ok(self.take(name).flatten().map(PathBuf::from))
+    fn path(&mut self, name: &str) -> Option<PathBuf> {
+        self.value(name).map(PathBuf::from)
     }
 
     fn text(&mut self, name: &str) -> Result<Option<String>, String> {
-        self.take(name)
-            .flatten()
+        self.value(name)
             .map(|value| {
                 value
                     .into_string()
-                    .map_err(|value| format!("{name} {value:?} is not text"))
+                    .map_err(|value| format!("{name} {} is not text", quoted(&value)))
             })
             .transpose()
     }
@@ -264,10 +270,20 @@ impl Options {
             return Err(format!("{name} is not an option here\n{USAGE}"));
         }
         if let Some(arg) = self.positional.first() {
-            return Err(format!("{arg:?} is not expected here\n{USAGE}"));
+            return Err(format!("{} is not expected here\n{USAGE}", quoted(arg)));
         }
         Ok(())
     }
+}
+
+/// An argument as Rust quotes it, escaping what isn't printable or isn't
+/// text, so whatever was typed shows exactly.
+#[expect(
+    clippy::unnecessary_debug_formatting,
+    reason = "the quotes and escapes are wanted, to show an argument exactly"
+)]
+fn quoted(arg: &OsStr) -> String {
+    format!("{arg:?}")
 }
 
 /// Runs a command that answers and exits, saying how in its exit code.
@@ -280,11 +296,11 @@ pub fn run(command: Command, env: &Env, out: &mut dyn Write, err: &mut dyn Write
             config,
             band,
             pretend_free,
-        } => plan(env, config, band, pretend_free, out),
+        } => plan(env, config.as_deref(), band, pretend_free, out),
         Command::User { config, state } => daemon(env, Scope::User, config, state, err),
         Command::System { config, state } => daemon(env, Scope::System, config, state, err),
         Command::Thaw => thaw(out),
-        Command::Explain { path, config } => explain(env, &path, config, out),
+        Command::Explain { path, config } => explain(env, &path, config.as_deref(), out),
     };
     match done {
         Ok(code) => code,
@@ -406,8 +422,8 @@ fn daemon(
 
 /// Says why `path` stays or would go: the candidate a source offers there
 /// or holding it, how it's in use now, and what each band would do.
-fn explain(env: &Env, path: &Path, config: Option<PathBuf>, out: &mut dyn Write) -> Done {
-    let config = read_config(config.as_deref().unwrap_or(&env.config))?;
+fn explain(env: &Env, path: &Path, config: Option<&Path>, out: &mut dyn Write) -> Done {
+    let config = read_config(config.unwrap_or(&env.config))?;
     let places = Places {
         state: env.state.clone(),
         status: None,
@@ -492,6 +508,10 @@ fn thaw(out: &mut dyn Write) -> Done {
 
 /// A Mac's guard freezes nothing, so nothing is frozen.
 #[cfg(not(target_os = "linux"))]
+#[expect(
+    clippy::unnecessary_wraps,
+    reason = "it answers as Linux's `thaw` does, which can fail"
+)]
 fn thaw(out: &mut dyn Write) -> Done {
     let _ = writeln!(out, "Nothing is frozen.");
     Ok(FINE)
@@ -511,6 +531,10 @@ fn read_config(path: &Path) -> Result<Config, (i32, String)> {
     Config::parse(&text).map_err(|why| (REFUSED, format!("{}: {why}", path.display())))
 }
 
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "it takes the error as `map_err` hands it over, so callers write `map_err(failed)`"
+)]
 fn failed(error: io::Error) -> (i32, String) {
     (REFUSED, error.to_string())
 }
@@ -580,7 +604,8 @@ fn status(env: &Env, json: bool, out: &mut dyn Write) -> Done {
                 _ => None,
             };
             if let (Some(next), Some(forecast)) = (next, filesystem["forecast"].as_f64()) {
-                line.push_str(&format!(", {next} in {}", span(forecast)));
+                // Writing to a String can't fail.
+                _ = write!(line, ", {next} in {}", span(forecast));
             }
             writeln!(out, "{line}").map_err(failed)?;
         }
@@ -640,7 +665,8 @@ fn journal(env: &Env, since: Option<Span>, json: bool, out: &mut dyn Write) -> D
                         entry["path"].as_str().unwrap_or("?"),
                     );
                     if let Some(reason) = entry["reason"].as_str() {
-                        said.push_str(&format!(" ({reason})"));
+                        // Writing to a String can't fail.
+                        _ = write!(said, " ({reason})");
                     }
                     said
                 }
@@ -663,12 +689,12 @@ fn journal(env: &Env, since: Option<Span>, json: bool, out: &mut dyn Write) -> D
 
 fn plan(
     env: &Env,
-    config: Option<PathBuf>,
+    config: Option<&Path>,
     band: Option<Band>,
     free: Option<Size>,
     out: &mut dyn Write,
 ) -> Done {
-    let config = read_config(config.as_deref().unwrap_or(&env.config))?;
+    let config = read_config(config.unwrap_or(&env.config))?;
     let places = Places {
         state: env.state.clone(),
         status: None,

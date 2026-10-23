@@ -31,6 +31,14 @@ fn u32_at(bytes: &[u8], at: usize) -> Result<u32, Fault> {
         .ok_or_else(|| refused("it ends inside its own headers"))
 }
 
+/// A length or an offset as one of a PE file's 32-bit fields holds it: its
+/// low 32 bits, all a PE file can say, so one past them wraps as it always
+/// has.
+fn dword(n: usize) -> u32 {
+    let [first, second, third, fourth, ..] = n.to_le_bytes();
+    u32::from_le_bytes([first, second, third, fourth])
+}
+
 fn padded(length: usize) -> usize {
     length.div_ceil(8) * 8
 }
@@ -95,7 +103,7 @@ impl Program {
                 placed.push((start, size));
             }
         }
-        placed.sort();
+        placed.sort_unstable();
         let mut end = headers;
         for (start, size) in placed {
             if start != end {
@@ -128,16 +136,16 @@ impl Program {
     pub fn signed(mut self, signature: &[u8]) -> Vec<u8> {
         let length = 8 + signature.len();
         let mut certificates = Vec::with_capacity(padded(length));
-        certificates.extend((length as u32).to_le_bytes());
+        certificates.extend(dword(length).to_le_bytes());
         certificates.extend(REVISION_2.to_le_bytes());
         certificates.extend(PKCS_SIGNED_DATA.to_le_bytes());
         certificates.extend(signature);
         certificates.resize(padded(length), 0);
 
-        let start = self.bytes.len() as u32;
+        let start = dword(self.bytes.len());
         self.bytes[self.table..self.table + 4].copy_from_slice(&start.to_le_bytes());
         self.bytes[self.table + 4..self.table + 8]
-            .copy_from_slice(&(certificates.len() as u32).to_le_bytes());
+            .copy_from_slice(&dword(certificates.len()).to_le_bytes());
         self.bytes.extend(certificates);
         let sum = checksum(&self.bytes, self.checksum);
         self.bytes[self.checksum..self.checksum + 4].copy_from_slice(&sum.to_le_bytes());
@@ -158,9 +166,11 @@ pub fn signature(bytes: &[u8]) -> Option<&[u8]> {
 /// The PE checksum: the file's 16-bit words summed with their carries
 /// folded back in, its own field left out, plus the file's length.
 fn checksum(bytes: &[u8], field: usize) -> u32 {
+    // The carry goes back in at the bottom. A sum that carried is at most
+    // 0xfffe, so adding the carry back never carries again.
     let fold = |sum: u16, word: u16| {
-        let wide = u32::from(sum) + u32::from(word);
-        ((wide >> 16) + (wide & 0xffff)) as u16
+        let (wrapped, carried) = sum.overflowing_add(word);
+        wrapped + u16::from(carried)
     };
     let sum = [&bytes[..field], &bytes[field + 4..]]
         .iter()
@@ -171,7 +181,7 @@ fn checksum(bytes: &[u8], field: usize) -> u32 {
                 u16::from_le_bytes([word[0], *word.get(1).unwrap_or(&0)]),
             )
         });
-    u32::from(sum) + bytes.len() as u32
+    u32::from(sum) + dword(bytes.len())
 }
 
 #[cfg(test)]
@@ -190,14 +200,17 @@ mod tests {
         bytes[0x94..0x96].copy_from_slice(&240u16.to_le_bytes());
         let optional = 0x98;
         bytes[optional..optional + 2].copy_from_slice(&PE32_PLUS.to_le_bytes());
-        bytes[optional + 60..optional + 64].copy_from_slice(&(headers as u32).to_le_bytes());
+        let headers_u32 = u32::try_from(headers).unwrap();
+        bytes[optional + 60..optional + 64].copy_from_slice(&headers_u32.to_le_bytes());
         bytes[optional + 108..optional + 112].copy_from_slice(&16u32.to_le_bytes());
         let header = optional + 240;
         bytes[header..header + 8].copy_from_slice(b".text\0\0\0");
-        bytes[header + 16..header + 20].copy_from_slice(&(section as u32).to_le_bytes());
-        bytes[header + 20..header + 24].copy_from_slice(&(headers as u32).to_le_bytes());
+        let section_u32 = u32::try_from(section).unwrap();
+        bytes[header + 16..header + 20].copy_from_slice(&section_u32.to_le_bytes());
+        bytes[header + 20..header + 24].copy_from_slice(&headers_u32.to_le_bytes());
+        // Each byte its offset's lowest, never zero.
         for (n, byte) in bytes[headers..].iter_mut().enumerate() {
-            *byte = n as u8 | 1;
+            *byte = n.to_le_bytes()[0] | 1;
         }
         bytes
     }
@@ -260,7 +273,7 @@ mod tests {
         let mut bytes = program(0x400, 0);
         let table = 0x98 + 112 + 32;
         bytes[table..table + 4].copy_from_slice(&4u32.to_le_bytes());
-        let length = bytes.len() as u32 - 4;
+        let length = u32::try_from(bytes.len()).unwrap() - 4;
         bytes[table + 4..table + 8].copy_from_slice(&length.to_le_bytes());
         assert!(
             matches!(Program::parse(bytes.clone()), Err(Fault::Unreadable { why, .. }) if why == "its signature isn't at its end")

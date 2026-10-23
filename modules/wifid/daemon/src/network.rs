@@ -180,9 +180,8 @@ impl Account {
         };
         let inner = match wifi("Inner") {
             None if method == Method::Peap => Inner::Mschapv2,
-            None => Inner::Pap,
             Some("mschapv2") => Inner::Mschapv2,
-            Some("pap") => Inner::Pap,
+            None | Some("pap") => Inner::Pap,
             Some(other) => {
                 return Err(Unreadable(format!(
                     "Inner={other} is neither mschapv2 nor pap"

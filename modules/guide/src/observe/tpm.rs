@@ -96,7 +96,7 @@ impl Fixed {
     }
 }
 
-/// tpm2_getcap's YAML-shaped listing, flattened: a property's own value by
+/// `tpm2_getcap`'s YAML-shaped listing, flattened: a property's own value by
 /// its name, and each field indented under it as `PROPERTY.field`.
 struct Properties(BTreeMap<String, String>);
 

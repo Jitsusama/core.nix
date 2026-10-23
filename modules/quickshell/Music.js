@@ -5,10 +5,17 @@
 // MprisPlayer has.
 .pragma library
 
+// playerctld's D-Bus name, which ends with its own.
+const PLAYERCTLD = /\.playerctld$/;
+// The seconds in an hour.
+const HOUR = 3600;
+// Nerd Fonts' note, the mark of a player it has none for.
+const NOTE = 0xf_07_5a;
+
 // playerctld speaks for whichever player it last saw, so it would be the
 // same music twice.
 function own(players) {
-    return players.filter(player => !/\.playerctld$/.test(player.dbusName));
+    return players.filter(player => !PLAYERCTLD.test(player.dbusName));
 }
 
 // Newest first, by when each did something, in milliseconds by D-Bus name.
@@ -43,7 +50,7 @@ function others(players, started, chosen) {
 function time(seconds) {
     const s = Math.max(0, Math.floor(seconds));
     const pad = n => String(n).padStart(2, "0");
-    const hours = Math.floor(s / 3600);
+    const hours = Math.floor(s / HOUR);
     const minutes = Math.floor(s / 60) % 60;
     return hours > 0 ? `${hours}:${pad(minutes)}:${pad(s % 60)}`
         : `${minutes}:${pad(s % 60)}`;
@@ -52,22 +59,23 @@ function time(seconds) {
 // Where in the track: "1:38 of 6:43", or "paused at 1:38". A stream with no
 // length says only how far it's come.
 function where(position, length, playing) {
-    if (!playing)
+    if (!playing) {
         return `paused at ${time(position)}`;
+    }
     return length > 0 ? `${time(position)} of ${time(length)}` : time(position);
 }
 
 // A player's mark where Nerd Fonts has one, by the desktop entry it names,
 // and a note otherwise.
 const marks = {
-    "spotify": 0xf1bc,
-    "google-chrome": 0xf268,
-    "chromium": 0xf268,
-    "chromium-browser": 0xf268,
-    "firefox": 0xf269,
-    "vlc": 0xf057c
+    "spotify": 0xf1_bc,
+    "google-chrome": 0xf2_68,
+    "chromium": 0xf2_68,
+    "chromium-browser": 0xf2_68,
+    "firefox": 0xf2_69,
+    "vlc": 0xf_05_7c
 };
 
 function mark(entry) {
-    return String.fromCodePoint(marks[(entry ?? "").toLowerCase()] ?? 0xf075a);
+    return String.fromCodePoint(marks[(entry ?? "").toLowerCase()] ?? NOTE);
 }

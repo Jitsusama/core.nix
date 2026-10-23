@@ -1,5 +1,5 @@
 //! A pinentry that asks through the shell. Each question a program puts to
-//! it over pinentry's protocol goes to SSH_ASKPASS, the shell's prompt, the
+//! it over pinentry's protocol goes to `SSH_ASKPASS`, the shell's prompt, the
 //! way askpass is asked: a yes for CONFIRM and MESSAGE, a secret for GETPIN.
 //! linux-id asks it whether Joel is there before its key signs.
 //!
@@ -167,7 +167,7 @@ fn escaped(data: &str) -> String {
         .replace('\n', "%0A")
 }
 
-/// Asks through SSH_ASKPASS.
+/// Asks through `SSH_ASKPASS`.
 fn ask(kind: Kind, asking: &str) -> Answer {
     if let Some(askpass) = env::var_os("SSH_ASKPASS").filter(|askpass| !askpass.is_empty()) {
         ask_through(&askpass, kind, asking)
@@ -242,11 +242,11 @@ mod tests {
 
     /// Runs the lines through a session, answering every question with
     /// `answer`, and gives back what it replied and what it asked.
-    fn run(lines: &[&str], answer: fn(&Kind) -> Answer) -> (Vec<String>, Vec<(Kind, String)>) {
+    fn run(lines: &[&str], answer: fn(Kind) -> Answer) -> (Vec<String>, Vec<(Kind, String)>) {
         let mut session = Session::default();
         let mut asked = Vec::new();
         let mut ask = |kind: Kind, words: &str| {
-            let given = answer(&kind);
+            let given = answer(kind);
             asked.push((kind, words.to_owned()));
             given
         };
@@ -261,11 +261,11 @@ mod tests {
         (replies, asked)
     }
 
-    fn yes(_: &Kind) -> Answer {
+    fn yes(_: Kind) -> Answer {
         Answer::Given(String::new())
     }
 
-    fn no(_: &Kind) -> Answer {
+    fn no(_: Kind) -> Answer {
         Answer::Refused
     }
 

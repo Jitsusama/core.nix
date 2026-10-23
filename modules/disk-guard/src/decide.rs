@@ -5,6 +5,7 @@
 use crate::band::{Band, Thresholds};
 use crate::clock::Awake;
 use crate::moments::{Power, Pressure};
+use crate::units::float;
 
 /// How a filesystem's free space is being used up, in bytes a second,
 /// averaged over about two minutes so one burst doesn't set it.
@@ -34,7 +35,7 @@ impl Fill {
         }
         if let Some((then, was)) = self.last {
             let seconds = now - then;
-            let sample = (was as f64 - free as f64) / seconds;
+            let sample = (float(was) - float(free)) / seconds;
             let weight = 1.0 - (-seconds / Self::SMOOTHING).exp();
             self.rate = Some(match self.rate {
                 Some(rate) => rate + weight * (sample - rate),
@@ -56,7 +57,7 @@ impl Fill {
             return Some(0.0);
         }
         match self.rate {
-            Some(rate) if rate > 0.0 => Some((free - below) as f64 / rate),
+            Some(rate) if rate > 0.0 => Some(float(free - below) / rate),
             _ => None,
         }
     }

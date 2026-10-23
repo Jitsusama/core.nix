@@ -1,193 +1,239 @@
 // Converting a measure from one unit to another, as the launcher answers it:
 // "5 km in mi", "100f to c", "1 gib as mb", "3 cups in ml". Each kind of
 // measure is a table of its units, each with how many of the kind's base it
-// is and the names it's typed as, so a new unit is one line. Temperature is
+// is and the names it's typed as, so a new unit is one entry. Temperature is
 // the one kind that isn't a plain factor, so its scales carry an offset too.
 // Plain JavaScript, so tests/answers.qml runs it in Qt's own engine.
 .pragma library
 .import "Numbers.js" as Numbers
 
-// [symbol, how many of the base, names it's typed as]; the symbol is
-// typed as well, lowercased.
+// Each unit as { symbol, size, names }: how many of the base it is and the
+// names it's typed as; the symbol is typed as well, lowercased.
 const kinds = {
     length: {
-        glyph: 0xf046d,
+        glyph: 0xf_04_6d,
         units: [
-            ["nm", 1e-9, ["nanometre", "nanometres", "nanometer", "nanometers"]],
-            ["\u00b5m", 1e-6, ["um", "micron", "microns", "micrometre", "micrometres"]],
-            ["mm", 1e-3, ["millimetre", "millimetres", "millimeter", "millimeters"]],
-            ["cm", 1e-2, ["centimetre", "centimetres", "centimeter", "centimeters"]],
-            ["m", 1, ["metre", "metres", "meter", "meters"]],
-            ["km", 1e3, ["kilometre", "kilometres", "kilometer", "kilometers", "kms"]],
-            ["in", 0.0254, ["inch", "inches", "\""]],
-            ["ft", 0.3048, ["foot", "feet", "'"]],
-            ["yd", 0.9144, ["yard", "yards"]],
-            ["mi", 1609.344, ["mile", "miles"]],
-            ["nmi", 1852, ["nautical mile", "nautical miles"]]
+            { symbol: "nm", size: 1e-9,
+                names: ["nanometre", "nanometres", "nanometer", "nanometers"] },
+            { symbol: "\u00b5m", size: 1e-6,
+                names: ["um", "micron", "microns", "micrometre", "micrometres"] },
+            { symbol: "mm", size: 1e-3,
+                names: ["millimetre", "millimetres", "millimeter", "millimeters"] },
+            { symbol: "cm", size: 1e-2,
+                names: ["centimetre", "centimetres", "centimeter", "centimeters"] },
+            { symbol: "m", size: 1, names: ["metre", "metres", "meter", "meters"] },
+            { symbol: "km", size: 1e3,
+                names: ["kilometre", "kilometres", "kilometer", "kilometers", "kms"] },
+            { symbol: "in", size: 0.0254, names: ["inch", "inches", "\""] },
+            { symbol: "ft", size: 0.3048, names: ["foot", "feet", "'"] },
+            { symbol: "yd", size: 0.9144, names: ["yard", "yards"] },
+            { symbol: "mi", size: 1609.344, names: ["mile", "miles"] },
+            { symbol: "nmi", size: 1852, names: ["nautical mile", "nautical miles"] }
         ]
     },
     mass: {
-        glyph: 0xf05d1,
+        glyph: 0xf_05_d1,
         units: [
-            ["mg", 1e-6, ["milligram", "milligrams"]],
-            ["g", 1e-3, ["gram", "grams"]],
-            ["kg", 1, ["kilogram", "kilograms", "kilo", "kilos", "kgs"]],
-            ["t", 1e3, ["tonne", "tonnes", "metric ton", "metric tons"]],
-            ["oz", 0.028349523125, ["ounce", "ounces"]],
-            ["lb", 0.45359237, ["lbs", "pound", "pounds"]],
-            ["st", 6.35029318, ["stone", "stones"]]
+            { symbol: "mg", size: 1e-6, names: ["milligram", "milligrams"] },
+            { symbol: "g", size: 1e-3, names: ["gram", "grams"] },
+            { symbol: "kg", size: 1, names: ["kilogram", "kilograms", "kilo", "kilos", "kgs"] },
+            { symbol: "t", size: 1e3, names: ["tonne", "tonnes", "metric ton", "metric tons"] },
+            { symbol: "oz", size: 0.028_349_523_125, names: ["ounce", "ounces"] },
+            { symbol: "lb", size: 0.453_592_37, names: ["lbs", "pound", "pounds"] },
+            { symbol: "st", size: 6.350_293_18, names: ["stone", "stones"] }
         ]
     },
     // In litres; cups, pints, quarts and gallons are American.
     volume: {
-        glyph: 0xf01ab,
+        glyph: 0xf_01_ab,
         units: [
-            ["mL", 1e-3, ["ml", "millilitre", "millilitres", "milliliter", "milliliters"]],
-            ["cL", 1e-2, ["cl", "centilitre", "centilitres"]],
-            ["dL", 1e-1, ["dl", "decilitre", "decilitres"]],
-            ["L", 1, ["l", "litre", "litres", "liter", "liters"]],
-            ["m\u00b3", 1e3, ["m3", "cubic metre", "cubic metres"]],
-            ["tsp", 0.00492892159375, ["teaspoon", "teaspoons"]],
-            ["tbsp", 0.01478676478125, ["tablespoon", "tablespoons"]],
-            ["fl oz", 0.0295735295625, ["floz", "fluid ounce", "fluid ounces"]],
-            ["cup", 0.2365882365, ["cups"]],
-            ["pt", 0.473176473, ["pint", "pints"]],
-            ["qt", 0.946352946, ["quart", "quarts"]],
-            ["gal", 3.785411784, ["gallon", "gallons"]]
+            { symbol: "mL", size: 1e-3,
+                names: ["ml", "millilitre", "millilitres", "milliliter", "milliliters"] },
+            { symbol: "cL", size: 1e-2, names: ["cl", "centilitre", "centilitres"] },
+            { symbol: "dL", size: 1e-1, names: ["dl", "decilitre", "decilitres"] },
+            { symbol: "L", size: 1, names: ["l", "litre", "litres", "liter", "liters"] },
+            { symbol: "m\u00b3", size: 1e3, names: ["m3", "cubic metre", "cubic metres"] },
+            { symbol: "tsp", size: 0.004_928_921_593_75, names: ["teaspoon", "teaspoons"] },
+            { symbol: "tbsp", size: 0.014_786_764_781_25,
+                names: ["tablespoon", "tablespoons"] },
+            { symbol: "fl oz", size: 0.029_573_529_562_5,
+                names: ["floz", "fluid ounce", "fluid ounces"] },
+            { symbol: "cup", size: 0.236_588_236_5, names: ["cups"] },
+            { symbol: "pt", size: 0.473_176_473, names: ["pint", "pints"] },
+            { symbol: "qt", size: 0.946_352_946, names: ["quart", "quarts"] },
+            { symbol: "gal", size: 3.785_411_784, names: ["gallon", "gallons"] }
         ]
     },
     area: {
-        glyph: 0xf0fe6,
+        glyph: 0xf_0f_e6,
         units: [
-            ["m\u00b2", 1, ["m2", "sqm", "square metre", "square metres"]],
-            ["km\u00b2", 1e6, ["km2", "square kilometre", "square kilometres"]],
-            ["ha", 1e4, ["hectare", "hectares"]],
-            ["ft\u00b2", 0.09290304, ["ft2", "sqft", "square foot", "square feet"]],
-            ["ac", 4046.8564224, ["acre", "acres"]],
-            ["mi\u00b2", 2589988.110336, ["mi2", "square mile", "square miles"]]
+            { symbol: "m\u00b2", size: 1, names: ["m2", "sqm", "square metre", "square metres"] },
+            { symbol: "km\u00b2", size: 1e6,
+                names: ["km2", "square kilometre", "square kilometres"] },
+            { symbol: "ha", size: 1e4, names: ["hectare", "hectares"] },
+            { symbol: "ft\u00b2", size: 0.092_903_04,
+                names: ["ft2", "sqft", "square foot", "square feet"] },
+            { symbol: "ac", size: 4046.856_422_4, names: ["acre", "acres"] },
+            { symbol: "mi\u00b2", size: 2_589_988.110_336,
+                names: ["mi2", "square mile", "square miles"] }
         ]
     },
+    // A kilometre an hour is 1 / 3.6 metres a second, and a knot a nautical
+    // mile, 1852 metres, an hour.
     speed: {
-        glyph: 0xf04c5,
+        glyph: 0xf_04_c5,
         units: [
-            ["m/s", 1, ["mps", "metres per second"]],
-            ["km/h", 1 / 3.6, ["kmh", "kph", "kilometres per hour"]],
-            ["mph", 0.44704, ["miles per hour"]],
-            ["kn", 1852 / 3600, ["kt", "knot", "knots"]]
+            { symbol: "m/s", size: 1, names: ["mps", "metres per second"] },
+            { symbol: "km/h", size: 0.277_777_777_777_777_8,
+                names: ["kmh", "kph", "kilometres per hour"] },
+            { symbol: "mph", size: 0.447_04, names: ["miles per hour"] },
+            { symbol: "kn", size: 0.514_444_444_444_444_5, names: ["kt", "knot", "knots"] }
         ]
     },
-    // In bytes: a thousand to a kilobyte, 1,024 to a kibibyte.
+    // In bytes: a thousand to a kilobyte, 1,024 to a kibibyte and each power
+    // of it to the next, and eight bits to a byte.
     data: {
-        glyph: 0xf02ca,
+        glyph: 0xf_02_ca,
         units: [
-            ["bit", 1 / 8, ["bits"]],
-            ["B", 1, ["b", "byte", "bytes"]],
-            ["kB", 1e3, ["kb", "kilobyte", "kilobytes"]],
-            ["MB", 1e6, ["mb", "megabyte", "megabytes"]],
-            ["GB", 1e9, ["gb", "gigabyte", "gigabytes"]],
-            ["TB", 1e12, ["tb", "terabyte", "terabytes"]],
-            ["PB", 1e15, ["pb", "petabyte", "petabytes"]],
-            ["KiB", 1024, ["kib", "kibibyte", "kibibytes"]],
-            ["MiB", 1024 ** 2, ["mib", "mebibyte", "mebibytes"]],
-            ["GiB", 1024 ** 3, ["gib", "gibibyte", "gibibytes"]],
-            ["TiB", 1024 ** 4, ["tib", "tebibyte", "tebibytes"]],
-            ["PiB", 1024 ** 5, ["pib", "pebibyte", "pebibytes"]],
-            ["kbit", 1e3 / 8, ["kilobit", "kilobits"]],
-            ["Mbit", 1e6 / 8, ["megabit", "megabits"]],
-            ["Gbit", 1e9 / 8, ["gigabit", "gigabits"]]
+            { symbol: "bit", size: 0.125, names: ["bits"] },
+            { symbol: "B", size: 1, names: ["b", "byte", "bytes"] },
+            { symbol: "kB", size: 1e3, names: ["kb", "kilobyte", "kilobytes"] },
+            { symbol: "MB", size: 1e6, names: ["mb", "megabyte", "megabytes"] },
+            { symbol: "GB", size: 1e9, names: ["gb", "gigabyte", "gigabytes"] },
+            { symbol: "TB", size: 1e12, names: ["tb", "terabyte", "terabytes"] },
+            { symbol: "PB", size: 1e15, names: ["pb", "petabyte", "petabytes"] },
+            { symbol: "KiB", size: 1024, names: ["kib", "kibibyte", "kibibytes"] },
+            { symbol: "MiB", size: 1_048_576, names: ["mib", "mebibyte", "mebibytes"] },
+            { symbol: "GiB", size: 1_073_741_824, names: ["gib", "gibibyte", "gibibytes"] },
+            { symbol: "TiB", size: 1_099_511_627_776,
+                names: ["tib", "tebibyte", "tebibytes"] },
+            { symbol: "PiB", size: 1_125_899_906_842_624,
+                names: ["pib", "pebibyte", "pebibytes"] },
+            { symbol: "kbit", size: 125, names: ["kilobit", "kilobits"] },
+            { symbol: "Mbit", size: 125_000, names: ["megabit", "megabits"] },
+            { symbol: "Gbit", size: 125_000_000, names: ["gigabit", "gigabits"] }
         ]
     },
     // In seconds; a year is a Julian one, 365.25 days.
     time: {
-        glyph: 0xf051b,
+        glyph: 0xf_05_1b,
         units: [
-            ["ns", 1e-9, ["nanosecond", "nanoseconds"]],
-            ["\u00b5s", 1e-6, ["us", "microsecond", "microseconds"]],
-            ["ms", 1e-3, ["millisecond", "milliseconds"]],
-            ["s", 1, ["sec", "secs", "second", "seconds"]],
-            ["min", 60, ["mins", "minute", "minutes"]],
-            ["h", 3600, ["hr", "hrs", "hour", "hours"]],
-            ["d", 86400, ["day", "days"]],
-            ["wk", 604800, ["week", "weeks"]],
-            ["yr", 31557600, ["year", "years"]]
+            { symbol: "ns", size: 1e-9, names: ["nanosecond", "nanoseconds"] },
+            { symbol: "\u00b5s", size: 1e-6, names: ["us", "microsecond", "microseconds"] },
+            { symbol: "ms", size: 1e-3, names: ["millisecond", "milliseconds"] },
+            { symbol: "s", size: 1, names: ["sec", "secs", "second", "seconds"] },
+            { symbol: "min", size: 60, names: ["mins", "minute", "minutes"] },
+            { symbol: "h", size: 3600, names: ["hr", "hrs", "hour", "hours"] },
+            { symbol: "d", size: 86_400, names: ["day", "days"] },
+            { symbol: "wk", size: 604_800, names: ["week", "weeks"] },
+            { symbol: "yr", size: 31_557_600, names: ["year", "years"] }
         ]
     },
     energy: {
-        glyph: 0xf140b,
+        glyph: 0xf_14_0b,
         units: [
-            ["J", 1, ["j", "joule", "joules"]],
-            ["kJ", 1e3, ["kj", "kilojoule", "kilojoules"]],
-            ["cal", 4.184, ["calorie", "calories"]],
-            ["kcal", 4184, ["kilocalorie", "kilocalories", "food calories"]],
-            ["Wh", 3600, ["wh", "watt hour", "watt hours"]],
-            ["kWh", 3.6e6, ["kwh", "kilowatt hour", "kilowatt hours"]]
+            { symbol: "J", size: 1, names: ["j", "joule", "joules"] },
+            { symbol: "kJ", size: 1e3, names: ["kj", "kilojoule", "kilojoules"] },
+            { symbol: "cal", size: 4.184, names: ["calorie", "calories"] },
+            { symbol: "kcal", size: 4184, names: ["kilocalorie", "kilocalories", "food calories"] },
+            { symbol: "Wh", size: 3600, names: ["wh", "watt hour", "watt hours"] },
+            { symbol: "kWh", size: 3.6e6, names: ["kwh", "kilowatt hour", "kilowatt hours"] }
         ]
     },
     pressure: {
-        glyph: 0xf029a,
+        glyph: 0xf_02_9a,
         units: [
-            ["Pa", 1, ["pa", "pascal", "pascals"]],
-            ["kPa", 1e3, ["kpa", "kilopascal", "kilopascals"]],
-            ["hPa", 100, ["hpa", "hectopascal", "hectopascals", "mbar", "millibar"]],
-            ["bar", 1e5, ["bars"]],
-            ["psi", 6894.757293168, ["pounds per square inch"]],
-            ["atm", 101325, ["atmosphere", "atmospheres"]]
+            { symbol: "Pa", size: 1, names: ["pa", "pascal", "pascals"] },
+            { symbol: "kPa", size: 1e3, names: ["kpa", "kilopascal", "kilopascals"] },
+            { symbol: "hPa", size: 100,
+                names: ["hpa", "hectopascal", "hectopascals", "mbar", "millibar"] },
+            { symbol: "bar", size: 1e5, names: ["bars"] },
+            { symbol: "psi", size: 6894.757_293_168, names: ["pounds per square inch"] },
+            { symbol: "atm", size: 101_325, names: ["atmosphere", "atmospheres"] }
         ]
     },
+    // In degrees; a radian is 180 / pi of them.
     angle: {
-        glyph: 0xf0937,
+        glyph: 0xf_09_37,
         units: [
-            ["\u00b0", 1, ["deg", "degree", "degrees"]],
-            ["rad", 180 / Math.PI, ["radian", "radians"]],
-            ["grad", 0.9, ["gon", "gradian", "gradians"]],
-            ["turn", 360, ["turns", "rev", "revolution", "revolutions"]]
+            { symbol: "\u00b0", size: 1, names: ["deg", "degree", "degrees"] },
+            { symbol: "rad", size: 57.295_779_513_082_32, names: ["radian", "radians"] },
+            { symbol: "grad", size: 0.9, names: ["gon", "gradian", "gradians"] },
+            { symbol: "turn", size: 360, names: ["turns", "rev", "revolution", "revolutions"] }
         ]
     },
-    // Each scale as [symbol, degrees per kelvin's step, its zero in
-    // kelvin, names].
+    // In kelvin: each scale's size is the kelvin a degree of it is, 5 / 9 of
+    // one for Fahrenheit's, and its zero where it starts.
     temperature: {
-        glyph: 0xf050f,
+        glyph: 0xf_05_0f,
         units: [
-            ["\u00b0C", 1, 273.15, ["c", "\u00b0c", "celsius", "centigrade"]],
-            ["\u00b0F", 5 / 9, 255.3722222222222, ["f", "\u00b0f", "fahrenheit"]],
-            ["K", 1, 0, ["k", "kelvin", "kelvins"]]
+            { symbol: "\u00b0C", size: 1, zero: 273.15,
+                names: ["c", "\u00b0c", "celsius", "centigrade"] },
+            { symbol: "\u00b0F", size: 0.555_555_555_555_555_6,
+                zero: 255.372_222_222_222_2, names: ["f", "\u00b0f", "fahrenheit"] },
+            { symbol: "K", size: 1, zero: 0, names: ["k", "kelvin", "kelvins"] }
         ]
     }
 };
 
+// Six figures are enough to read and to use, and no more are claimed.
+const FIGURES = 6;
+// The most places a number is written with before it takes an exponent.
+const MOST_PLACES = 12;
+// The gaps between a unit's words, however they're typed.
+const GAPS = /\s+/g;
+// The zeros before an exponent, and a point left bare by them.
+const ZEROS_BEFORE_EXPONENT = /\.?0+e/;
+// What groups an amount's digits as it's typed, and is left out to read it.
+const GROUPING = /[,_]/g;
+
 // Every name a unit is typed as, lowercased, to its kind and its row.
 const named = (() => {
     const all = {};
-    for (const kind in kinds)
-        for (const unit of kinds[kind].units) {
-            const names = unit[unit.length - 1];
-            for (const name of [unit[0].toLowerCase()].concat(names))
-                all[name] = { kind: kind, unit: unit };
+    for (const [kind, { units }] of Object.entries(kinds)) {
+        for (const unit of units) {
+            for (const name of [unit.symbol.toLowerCase()].concat(unit.names)) {
+                all[name] = { kind, unit };
+            }
         }
+    }
     return all;
 })();
 
-function unit(name) {
-    return named[name.trim().toLowerCase().replace(/\s+/g, " ")] ?? null;
+function lookup(name) {
+    return named[name.trim().toLowerCase().replace(GAPS, " ")] ?? null;
 }
 
 // A unit's value in the kind's base, and back.
 function toBase(kind, unit, value) {
-    return kind === "temperature" ? value * unit[1] + unit[2] : value * unit[1];
+    return kind === "temperature" ? value * unit.size + unit.zero : value * unit.size;
 }
 
 function fromBase(kind, unit, value) {
-    return kind === "temperature" ? (value - unit[2]) / unit[1] : value / unit[1];
+    return kind === "temperature" ? (value - unit.zero) / unit.size : value / unit.size;
 }
 
-// Six figures are enough to read and to use, and no more are claimed.
 function figures(value, group, point) {
-    if (value === 0 || !isFinite(value))
+    if (value === 0 || !Number.isFinite(value)) {
         return Numbers.format(value, 0, group, point);
-    const places = Math.max(0, 5 - Math.floor(Math.log10(Math.abs(value))));
-    if (places > 12)
-        return value.toExponential(5).replace(/\.?0+e/, "e");
+    }
+    const places = Math.max(0, FIGURES - 1 - Math.floor(Math.log10(Math.abs(value))));
+    if (places > MOST_PLACES) {
+        return value.toExponential(FIGURES - 1).replace(ZEROS_BEFORE_EXPONENT, "e");
+    }
     return Numbers.format(value, places, group, point);
+}
+
+// A value as it's copied, in as many figures, without the zeros after them.
+function copied(value) {
+    return String(Number(value.toPrecision(FIGURES)));
+}
+
+// A measure as it's said, its figures then its unit's symbol, which a lone
+// degree sign is written against.
+function saying(figured, unit) {
+    const gap = unit.symbol.startsWith("\u00b0") && unit.symbol.length === 1 ? "" : " ";
+    return `${figured}${gap}${unit.symbol}`;
 }
 
 // An amount, its unit, a word for "into", and the unit wanted.
@@ -197,45 +243,39 @@ const asking = new RegExp(`^(${number})\\s*(.+?)\\s+(?:in|to|as|into)\\s+(.+)$`,
 // The answer to what's typed, or null when it isn't a conversion.
 function answer(text, options) {
     const asked = asking.exec(text.trim());
-    if (!asked)
+    if (!asked) {
         return null;
-    const from = unit(asked[2]);
-    const to = unit(asked[3]);
-    if (!from || !to || from.kind !== to.kind || from.unit === to.unit)
+    }
+    const from = lookup(asked[2]);
+    const to = lookup(asked[3]);
+    if (!(from && to) || from.kind !== to.kind || from.unit === to.unit) {
         return null;
+    }
     const group = options ? options.group : undefined;
     const point = options ? options.point : undefined;
-    const kind = from.kind;
-    const amount = parseFloat(asked[1].replace(/[,_]/g, ""));
-    const convert = (value, a, b) => fromBase(kind, b.unit, toBase(kind, a.unit, value));
-    const value = convert(amount, from, to);
-    const said = (number, of) => `${figures(number, group, point)}${of.unit[0].startsWith("\u00b0")
-        && of.unit[0].length === 1 ? "" : " "}${of.unit[0]}`;
-    const glyph = kinds[kind].glyph;
-    let rows;
-    if (kind === "temperature")
-        // The third scale, since a temperature has no rate to give.
-        rows = kinds.temperature.units.filter(scale => scale !== from.unit && scale !== to.unit)
+    const { kind } = from;
+    const amount = Number.parseFloat(asked[1].replace(GROUPING, ""));
+    const convert = (quantity, a, b) => fromBase(kind, b, toBase(kind, a, quantity));
+    const said = (quantity, unit) => saying(figures(quantity, group, point), unit);
+    const value = convert(amount, from.unit, to.unit);
+    const { glyph } = kinds[kind];
+    // A temperature has no rate to give, so its rows are in the third scale.
+    const rows = kind === "temperature"
+        ? kinds.temperature.units.filter(scale => scale !== from.unit && scale !== to.unit)
             .map(scale => {
-                const other = { unit: scale };
-                const there = convert(amount, from, other);
-                return { text: said(there, other), side: "",
-                    copy: String(Number(there.toPrecision(6))) };
-            });
-    else {
-        const each = convert(1, from, to);
-        rows = [
-            { text: `1 ${from.unit[0]} = ${said(each, to)}`, side: "rate",
-                copy: String(Number(each.toPrecision(6))) },
-            { text: `1 ${to.unit[0]} = ${said(1 / each, from)}`, side: "inverse",
-                copy: String(Number((1 / each).toPrecision(6))) }
-        ];
-    }
-    return {
-        headline: said(value, to),
-        copy: String(Number(value.toPrecision(6))),
-        glyph: glyph,
-        kind: kind,
-        rows: rows
-    };
+                const there = convert(amount, from.unit, scale);
+                return { text: said(there, scale), side: "", copy: copied(there) };
+            })
+        : rates(convert(1, from.unit, to.unit), from.unit, to.unit, said);
+    return { headline: said(value, to.unit), copy: copied(value), glyph, kind, rows };
+}
+
+// The rows saying what one of each unit is in the other, `each` being one
+// of `from` in `to`.
+function rates(each, from, to, said) {
+    return [
+        { text: `1 ${from.symbol} = ${said(each, to)}`, side: "rate", copy: copied(each) },
+        { text: `1 ${to.symbol} = ${said(1 / each, from)}`, side: "inverse",
+            copy: copied(1 / each) }
+    ];
 }

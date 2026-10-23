@@ -147,7 +147,7 @@ fn builds(deps: &Path) -> Vec<Build> {
                     .iter()
                     .filter_map(|file| mtime(file))
                     .fold(0.0, f64::max),
-                size: metadata.iter().map(|meta| meta.size()).sum(),
+                size: metadata.iter().map(MetadataExt::size).sum(),
                 name,
                 digest,
                 files,

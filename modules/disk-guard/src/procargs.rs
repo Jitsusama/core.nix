@@ -17,8 +17,8 @@ pub struct Args {
 /// empty string, after which come the loader's own strings. A buffer
 /// that ends before its count of arguments does is refused.
 pub fn parse(bytes: &[u8], keep: impl Fn(&[u8]) -> bool) -> Option<Args> {
-    let argc = i32::from_ne_bytes(bytes.get(..4)?.try_into().ok()?);
-    let argc = usize::try_from(argc).ok()?;
+    let count = i32::from_ne_bytes(bytes.get(..4)?.try_into().ok()?);
+    let count = usize::try_from(count).ok()?;
     let mut rest = bytes.get(4..)?;
     let path = rest.iter().position(|&byte| byte == 0)?;
     rest = &rest[path..];
@@ -32,8 +32,8 @@ pub fn parse(bytes: &[u8], keep: impl Fn(&[u8]) -> bool) -> Option<Args> {
         rest = &rest[end + 1..];
         Some(word)
     };
-    let mut argv = Vec::with_capacity(argc);
-    for _ in 0..argc {
+    let mut argv = Vec::with_capacity(count);
+    for _ in 0..count {
         argv.push(OsStr::from_bytes(next()?).to_owned());
     }
     let mut env = Vec::new();

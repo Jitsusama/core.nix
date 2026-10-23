@@ -174,7 +174,7 @@ impl Device {
         loop {
             // SAFETY: each request is given the structure the kernel defines
             // for it, which the assertions above hold to the kernel's layout.
-            let result = unsafe { libc::ioctl(self.fd(), request, argument as *mut T) };
+            let result = unsafe { libc::ioctl(self.fd(), request, std::ptr::from_mut(argument)) };
             if result != -1 {
                 return Ok(());
             }
@@ -244,7 +244,8 @@ impl Device {
     }
 
     fn stream(&self, kind: u32, on: bool) -> io::Result<()> {
-        let mut kind = kind as libc::c_int;
+        // A buffer type is a small number, so it reads the same signed.
+        let mut kind: libc::c_int = kind.cast_signed();
         self.ioctl(
             if on {
                 VIDIOC_STREAMON
@@ -269,7 +270,7 @@ impl Device {
     pub fn event(&self) -> io::Result<Option<(u32, u32)>> {
         let mut event: Event = zeroed();
         match self.ioctl(VIDIOC_DQEVENT, &mut event) {
-            Ok(()) => Ok(Some((event.kind, event.data[0] as u32))),
+            Ok(()) => Ok(Some((event.kind, low_half(event.data[0])))),
             // The kernel says there's none this way, waiting or not.
             Err(error) if error.raw_os_error() == Some(libc::ENOENT) => Ok(None),
             Err(error) => Err(error),
@@ -303,6 +304,13 @@ struct Mapping {
     length: usize,
 }
 
+/// The low 32 bits of a 64-bit field, where the kernel puts a 32-bit word in
+/// a union wider than it.
+fn low_half(field: u64) -> u32 {
+    let [a, b, c, d, ..] = field.to_le_bytes();
+    u32::from_le_bytes([a, b, c, d])
+}
+
 impl Mapping {
     fn new(device: &Device, buffer: &Buffer) -> io::Result<Self> {
         let length = buffer.length as usize;
@@ -315,7 +323,7 @@ impl Mapping {
                 libc::PROT_READ,
                 libc::MAP_SHARED,
                 device.fd(),
-                buffer.offset as u32 as libc::off_t,
+                libc::off_t::from(low_half(buffer.offset)),
             )
         };
         if start == libc::MAP_FAILED {

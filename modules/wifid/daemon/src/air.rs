@@ -163,22 +163,22 @@ const ACCOUNT: &[&str] = &[
 mod tests {
     use super::*;
 
-    fn owned(value: Value<'_>) -> OwnedValue {
+    fn owned(value: &Value<'_>) -> OwnedValue {
         value.try_to_owned().unwrap()
     }
 
     fn key_management(ways: &[&str]) -> OwnedValue {
         let dictionary = HashMap::from([("KeyMgmt", Value::from(ways.to_vec()))]);
-        owned(Value::from(dictionary))
+        owned(&Value::from(dictionary))
     }
 
     fn access_point(ssid: &[u8], rsn: &[&str], privacy: bool, signal: i16) -> AccessPoint {
         AccessPoint::new(HashMap::from([
-            ("SSID".into(), owned(Value::from(ssid.to_vec()))),
+            ("SSID".into(), owned(&Value::from(ssid.to_vec()))),
             ("WPA".into(), key_management(&[])),
             ("RSN".into(), key_management(rsn)),
-            ("Privacy".into(), owned(Value::from(privacy))),
-            ("Signal".into(), owned(Value::from(signal))),
+            ("Privacy".into(), owned(&Value::from(privacy))),
+            ("Signal".into(), owned(&Value::from(signal))),
         ]))
     }
 
@@ -200,12 +200,15 @@ mod tests {
         let mut lantern = access_point(b"Lantern", &["wpa-psk"], true, -58);
         // A BSS Load element: 3 on it, its channel busy half the time.
         let said = HashMap::from([
-            ("BSSID".into(), owned(Value::from(vec![2u8, 0, 0, 0, 1, 0]))),
-            ("Frequency".into(), owned(Value::from(2437u16))),
-            ("Age".into(), owned(Value::from(4u32))),
+            (
+                "BSSID".into(),
+                owned(&Value::from(vec![2u8, 0, 0, 0, 1, 0])),
+            ),
+            ("Frequency".into(), owned(&Value::from(2437u16))),
+            ("Age".into(), owned(&Value::from(4u32))),
             (
                 "IEs".into(),
-                owned(Value::from(vec![11u8, 5, 3, 0, 128, 0, 0])),
+                owned(&Value::from(vec![11u8, 5, 3, 0, 128, 0, 0])),
             ),
         ]);
 
@@ -257,7 +260,7 @@ mod tests {
     #[test]
     fn an_access_point_is_heard_on_a_channel() {
         let mut lantern = access_point(b"Lantern", &["wpa-psk"], true, -58);
-        let on = HashMap::from([("Frequency".into(), owned(Value::from(5180u16)))]);
+        let on = HashMap::from([("Frequency".into(), owned(&Value::from(5180u16)))]);
 
         lantern.changed(on);
 
@@ -277,7 +280,7 @@ mod tests {
 
         lantern.changed(HashMap::from([(
             "Signal".into(),
-            owned(Value::from(-77i16)),
+            owned(&Value::from(-77i16)),
         )]));
         let heard = lantern.heard().unwrap();
 
@@ -317,7 +320,7 @@ mod tests {
     fn an_access_point_described_in_part_is_not_offered() {
         let partial = AccessPoint::new(HashMap::from([(
             "SSID".into(),
-            owned(Value::from(b"Lantern".to_vec())),
+            owned(&Value::from(b"Lantern".to_vec())),
         )]));
 
         assert_eq!(partial.heard(), None);

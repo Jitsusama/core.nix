@@ -251,47 +251,43 @@ fn main() {
         let started = std::time::Instant::now();
         let answer = Engine::default().ask(&dir, &options, true);
         let took = started.elapsed();
-        match answer {
-            Some(answer) => {
-                let names = [
-                    "workdir",
-                    "commit",
-                    "local_branch",
-                    "remote_branch",
-                    "remote_name",
-                    "remote_url",
-                    "action",
-                    "index_size",
-                    "staged",
-                    "unstaged",
-                    "conflicted",
-                    "untracked",
-                    "ahead",
-                    "behind",
-                    "stashes",
-                    "tag",
-                    "unstaged_deleted",
-                    "staged_new",
-                    "staged_deleted",
-                    "push_remote_name",
-                    "push_remote_url",
-                    "push_ahead",
-                    "push_behind",
-                    "skip_worktree",
-                    "assume_unchanged",
-                    "encoding",
-                    "summary",
-                ];
-                for (name, value) in names.iter().zip(fields(&answer)) {
-                    println!("{name}={value}");
-                }
-                eprintln!("answered in {took:?}");
-            }
-            None => {
-                println!("norepo");
-                std::process::exit(1);
-            }
+        let Some(answer) = answer else {
+            println!("norepo");
+            std::process::exit(1);
+        };
+        let names = [
+            "workdir",
+            "commit",
+            "local_branch",
+            "remote_branch",
+            "remote_name",
+            "remote_url",
+            "action",
+            "index_size",
+            "staged",
+            "unstaged",
+            "conflicted",
+            "untracked",
+            "ahead",
+            "behind",
+            "stashes",
+            "tag",
+            "unstaged_deleted",
+            "staged_new",
+            "staged_deleted",
+            "push_remote_name",
+            "push_remote_url",
+            "push_ahead",
+            "push_behind",
+            "skip_worktree",
+            "assume_unchanged",
+            "encoding",
+            "summary",
+        ];
+        for (name, value) in names.iter().zip(fields(&answer)) {
+            println!("{name}={value}");
         }
+        eprintln!("answered in {took:?}");
         return;
     }
     if serve(&options(&args)).is_err() {

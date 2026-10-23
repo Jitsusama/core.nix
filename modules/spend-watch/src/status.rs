@@ -134,11 +134,48 @@ pub fn status(picture: &Picture, findings: &[Finding]) -> Status {
     };
     let hint = top.map_or_else(|| value.clone(), |finding| capitalized(&finding.title));
     let quiet_hint = match top {
-        Some(finding) => unpriced(&finding.title)
-            .map(|title| capitalized(&title))
-            .unwrap_or_else(|| "AI spend wants a look".into()),
+        Some(finding) => unpriced(&finding.title).map_or_else(
+            || "AI spend wants a look".into(),
+            |title| capitalized(&title),
+        ),
         None => quiet_value.clone(),
     };
+    let actions = actions(picture, top);
+    let (role, wants) = match top.map(|finding| finding.severity) {
+        Some(Severity::Alert) => ("alert", true),
+        Some(Severity::Warning) => ("warning", false),
+        _ => ("text", false),
+    };
+    Status {
+        v: VERSION,
+        heartbeat: picture.now,
+        active: top.is_some(),
+        role: role.into(),
+        wants,
+        title: "AI spend".into(),
+        open: Said {
+            value,
+            badge: top.map_or_else(String::new, |finding| finding.badge.clone()),
+            hint,
+            context,
+        },
+        quiet: Said {
+            value: quiet_value,
+            // A badge that's a percentage or a clock says no amount.
+            badge: top
+                .map(|finding| finding.badge.clone())
+                .filter(|badge| !badge.contains('$'))
+                .unwrap_or_default(),
+            hint: quiet_hint,
+            context: quiet_context,
+        },
+        actions,
+    }
+}
+
+/// What the margin offers: the finding's own action and its mark, a
+/// sign-in for each source signed out, and the week's report.
+fn actions(picture: &Picture, top: Option<&Finding>) -> Vec<ShellAction> {
     let mut actions: Vec<ShellAction> = Vec::new();
     if let Some(action) = top.and_then(|finding| finding.action.as_ref()) {
         actions.push(ShellAction {
@@ -182,36 +219,7 @@ pub fn status(picture: &Picture, findings: &[Finding]) -> Status {
             .map(str::to_owned)
             .to_vec(),
     });
-    let (role, wants) = match top.map(|finding| finding.severity) {
-        Some(Severity::Alert) => ("alert", true),
-        Some(Severity::Warning) => ("warning", false),
-        _ => ("text", false),
-    };
-    Status {
-        v: VERSION,
-        heartbeat: picture.now,
-        active: top.is_some(),
-        role: role.into(),
-        wants,
-        title: "AI spend".into(),
-        open: Said {
-            value,
-            badge: top.map_or_else(String::new, |finding| finding.badge.clone()),
-            hint,
-            context,
-        },
-        quiet: Said {
-            value: quiet_value,
-            // A badge that's a percentage or a clock says no amount.
-            badge: top
-                .map(|finding| finding.badge.clone())
-                .filter(|badge| !badge.contains('$'))
-                .unwrap_or_default(),
-            hint: quiet_hint,
-            context: quiet_context,
-        },
-        actions,
-    }
+    actions
 }
 
 /// What the shell shows while a newer spend-watch keeps the history and
@@ -372,6 +380,10 @@ mod tests {
     // A cap a feed read this very hour, as the meter's premium day is on
     // every reading, is drawn with nothing billed after it.
     #[test]
+    #[expect(
+        clippy::float_cmp,
+        reason = "the feed's whole-dollar figure is kept untouched, with nothing billed after it"
+    )]
     fn a_cap_read_this_hour_is_drawn() {
         let history = History::memory();
         let now = crate::time::parse("2026-10-14T12:30:00Z").unwrap();
@@ -419,6 +431,10 @@ mod tests {
     // Read in a day that's since reset: none of it counts, and the next
     // reset is the one after.
     #[test]
+    #[expect(
+        clippy::float_cmp,
+        reason = "nothing is billed since the reset, so the sum is exactly zero"
+    )]
     fn a_day_s_cap_read_yesterday_has_reset() {
         let now = crate::time::parse("2026-10-14T12:30:00Z").unwrap();
         let history = premium_day(1100.0, "2026-10-13T12:00:00Z", "2026-10-14T04:00:00Z");

@@ -104,7 +104,7 @@ fn src(root: &Path) -> (PathBuf, PathBuf, PathBuf) {
 fn written_ago(path: &Path, seconds: f64) {
     use rustix::fs::{AtFlags, CWD, Timespec, Timestamps, utimensat};
     let at = Timespec {
-        tv_sec: (now() - seconds) as i64,
+        tv_sec: crate::whole_seconds(now() - seconds),
         tv_nsec: 0,
     };
     let times = Timestamps {
@@ -475,7 +475,8 @@ fn producers_are_offered_where_they_free_idle_since_they_last_ran() {
             from: None
         }
     );
-    assert_eq!(tec.candidate.idle, f64::INFINITY, "never ran");
+    // It never ran.
+    crate::assert_exactly(tec.candidate.idle, f64::INFINITY);
     assert_eq!(tec.candidate.size, 0, "what it frees is measured");
     assert_eq!(
         tec.action,
@@ -529,7 +530,8 @@ fn podmans_prunes_are_offered_where_its_storage_lies() {
     );
     let unused = find(&found, &named("podman:unused"));
     assert_eq!(unused.candidate.class, Class::Podman { unused: true });
-    assert_eq!(unused.candidate.idle, f64::INFINITY, "remembered apart");
+    // Its last run is remembered apart from the build cache's, so it never ran.
+    crate::assert_exactly(unused.candidate.idle, f64::INFINITY);
     assert_eq!(
         unused.action,
         run("podman:unused", &["image", "prune", "--force", "--all"])

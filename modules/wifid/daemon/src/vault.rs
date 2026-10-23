@@ -273,7 +273,7 @@ mod tests {
     /// within a few seconds.
     async fn call_to(service: tokio::task::JoinHandle<Value>) -> Value {
         let waited = tokio::time::timeout(std::time::Duration::from_secs(3), service).await;
-        waited.map(Result::unwrap).unwrap_or(Value::Null)
+        waited.map_or(Value::Null, Result::unwrap)
     }
 
     #[test]

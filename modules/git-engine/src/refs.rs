@@ -126,13 +126,13 @@ impl Refs {
             return 0;
         }
         match self {
-            Refs::Files { shared, .. } => std::fs::read(shared.join("logs/refs/stash"))
-                .map(|log| {
+            Refs::Files { shared, .. } => {
+                std::fs::read(shared.join("logs/refs/stash")).map_or(0, |log| {
                     log.split(|&b| b == b'\n')
                         .filter(|line| !line.is_empty())
                         .count()
                 })
-                .unwrap_or(0),
+            }
             Refs::Reftable { shared, .. } => shared.stashes,
         }
     }

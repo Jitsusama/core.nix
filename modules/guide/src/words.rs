@@ -2,7 +2,7 @@
 //! words, which a phone's camera reads off the screen and a person types
 //! from the phone without a slip. They come from the EFF's large list
 //! (`words.txt`, as published at
-//! https://www.eff.org/files/2016/07/18/eff_large_wordlist.txt, SHA-256
+//! <https://www.eff.org/files/2016/07/18/eff_large_wordlist.txt>, SHA-256
 //! addd35536511597a02fa0a9ff1e5284677b8883b83e986e43f15a3db996b903e).
 
 use std::sync::OnceLock;
@@ -72,11 +72,16 @@ pub fn typed(text: &str) -> String {
 mod tests {
     use super::*;
     use sha2::{Digest, Sha256};
+    use std::fmt::Write as _;
 
     #[test]
     fn the_list_is_the_effs_with_every_word_once() {
         let digest = Sha256::digest(include_bytes!("words.txt"));
-        let hex: String = digest.iter().map(|byte| format!("{byte:02x}")).collect();
+        let hex = digest.iter().fold(String::new(), |mut hex, byte| {
+            // Writing to a String can't fail.
+            _ = write!(hex, "{byte:02x}");
+            hex
+        });
         assert_eq!(
             hex,
             "addd35536511597a02fa0a9ff1e5284677b8883b83e986e43f15a3db996b903e"
@@ -94,7 +99,9 @@ mod tests {
         let words: Vec<&str> = made.expose().split(' ').collect();
         assert_eq!(words.len(), COUNT);
         assert!(words.iter().all(|word| list().contains(word)), "{words:?}");
-        assert!((list().len() as f64).log2() * COUNT as f64 > 90.0);
+        let words = f64::from(u32::try_from(list().len()).unwrap());
+        let count = f64::from(u32::try_from(COUNT).unwrap());
+        assert!(words.log2() * count > 90.0);
         assert_ne!(made.expose(), super::made().unwrap().expose());
     }
 

@@ -6,7 +6,7 @@
 //! are facts rather than figures, so theirs clear at once. Marked expected, it stays in the
 //! collection but never asks for the person again.
 
-use crate::history::History;
+use crate::history::{History, sql as fail};
 use rusqlite::{OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 
@@ -94,15 +94,11 @@ pub fn sort(findings: &mut [Finding]) {
     });
 }
 
-fn fail(error: rusqlite::Error) -> String {
-    error.to_string()
-}
-
 /// Keeps what this pass raised, clears what's settled, and says what holds
 /// now with when each started and whether it's marked.
-pub fn settle(history: &History, raised: Vec<Finding>, now: f64) -> Result<Vec<Finding>, String> {
+pub fn settle(history: &History, raised: &[Finding], now: f64) -> Result<Vec<Finding>, String> {
     let db = &history.db;
-    for finding in &raised {
+    for finding in raised {
         let started: Option<f64> = db
             .query_row(
                 "SELECT started FROM findings WHERE key = ?1 AND cleared IS NULL",
@@ -252,8 +248,8 @@ mod tests {
         let history = History::memory();
         let mut down = finding("health:proxy:meter", Severity::Note, 0.0);
         down.detector = "health".into();
-        settle(&history, vec![down], 0.0).unwrap();
-        assert!(settle(&history, vec![], 30.0).unwrap().is_empty());
+        settle(&history, &[down], 0.0).unwrap();
+        assert!(settle(&history, &[], 30.0).unwrap().is_empty());
     }
 
     // A cap's change is as plain: once the cap is back, the fall is past,
@@ -265,37 +261,36 @@ mod tests {
         fell.detector = "caps".into();
         let mut near = finding("cap:proxy:weekly:warn", Severity::Warning, 0.0);
         near.detector = "caps".into();
-        settle(&history, vec![fell, near], 0.0).unwrap();
-        let left = settle(&history, vec![], 30.0).unwrap();
+        settle(&history, &[fell, near], 0.0).unwrap();
+        let left = settle(&history, &[], 30.0).unwrap();
         let keys: Vec<&str> = left.iter().map(|found| found.key.as_str()).collect();
         // A cap's forecast hovers like any other, so it still settles.
         assert_eq!(keys, ["cap:proxy:weekly:warn"]);
     }
 
     #[test]
+    #[expect(
+        clippy::float_cmp,
+        reason = "the start is kept as it was given, a whole number of seconds"
+    )]
     fn one_cause_is_one_finding_and_it_settles_before_clearing() {
         let history = History::memory();
-        settle(
-            &history,
-            vec![finding("burn:s1", Severity::Alert, 100.0)],
-            0.0,
-        )
-        .unwrap();
+        settle(&history, &[finding("burn:s1", Severity::Alert, 100.0)], 0.0).unwrap();
         let held = settle(
             &history,
-            vec![finding("burn:s1", Severity::Alert, 120.0)],
+            &[finding("burn:s1", Severity::Alert, 120.0)],
             60.0,
         )
         .unwrap();
         assert_eq!(held.len(), 1);
         assert_eq!(held[0].started, 0.0);
         assert_eq!(
-            settle(&history, vec![], 600.0).unwrap().len(),
+            settle(&history, &[], 600.0).unwrap().len(),
             1,
             "not yet settled"
         );
         assert!(
-            settle(&history, vec![], 60.0 + SETTLE + 1.0)
+            settle(&history, &[], 60.0 + SETTLE + 1.0)
                 .unwrap()
                 .is_empty()
         );
@@ -306,7 +301,7 @@ mod tests {
         let history = History::memory();
         let held = settle(
             &history,
-            vec![
+            &[
                 finding("note", Severity::Note, 5000.0),
                 finding("cap", Severity::Alert, 10.0),
             ],
@@ -333,7 +328,7 @@ mod tests {
             finding("new:model:opus-4", Severity::Warning, 5.0),
             finding("new:tool:a_b", Severity::Warning, 5.0),
         ];
-        settle(&history, held, 0.0).unwrap();
+        settle(&history, &held, 0.0).unwrap();
         assert_eq!(
             mark(&history, "new:model:opus", 1.0).unwrap(),
             "new:model:opus"
@@ -344,19 +339,23 @@ mod tests {
 
     // Marking this week's near cap leaves next week's to ask.
     #[test]
+    #[expect(
+        clippy::float_cmp,
+        reason = "the start is kept as it was given, a whole number of seconds"
+    )]
     fn a_mark_lasts_one_episode() {
         let history = History::memory();
         settle(
             &history,
-            vec![finding("cap:near", Severity::Warning, 5.0)],
+            &[finding("cap:near", Severity::Warning, 5.0)],
             0.0,
         )
         .unwrap();
         mark(&history, "cap:near", 1.0).unwrap();
-        settle(&history, vec![], 2.0 * SETTLE).unwrap();
+        settle(&history, &[], 2.0 * SETTLE).unwrap();
         let back = settle(
             &history,
-            vec![finding("cap:near", Severity::Warning, 5.0)],
+            &[finding("cap:near", Severity::Warning, 5.0)],
             7.0 * 86400.0,
         )
         .unwrap();

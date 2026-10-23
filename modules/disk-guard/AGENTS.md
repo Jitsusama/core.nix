@@ -18,8 +18,9 @@ it under systemd or launchd, and [`home.nix`][2] the account's.
   oversized logs, Nix's leftover build directories), Nix generations and
   garbage, idle build variants and cold scratch, producers' own collection,
   caches cheapest to refill first, idle targets and installs, older builds a
-  newer one of their crate replaced, and last what is occupied. While healthy, routine upkeep runs at most every six hours,
-  only in a spare moment: on mains or a battery over half, ten minutes after
+  newer one of their crate replaced, and last what is occupied. While
+  healthy, routine upkeep runs at most every six hours, only in a spare
+  moment: on mains or a battery over half, ten minutes after
   boot or resume, with nothing stalling on the disk or memory.
 - **Windows.** How long a thing has to sit idle before it goes narrows with
   each band, and counts only time the machine was awake. `src/plan.rs` holds

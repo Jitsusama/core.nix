@@ -21,7 +21,7 @@ pub const PATTERN: &str = "disk-guard-freeze-*.scope";
 /// How long a new scope may take to start before it's frozen.
 const STARTING: Duration = Duration::from_secs(2);
 
-/// A unit as ListUnitsByPatterns lists it.
+/// A unit as `ListUnitsByPatterns` lists it.
 type Listed = (
     String,
     String,

@@ -50,14 +50,16 @@ impl Manager {
     fn start_transient_unit(
         &self,
         name: String,
-        mode: String,
+        mode: &str,
         properties: Vec<(String, OwnedValue)>,
-        _aux: Vec<(String, Vec<(String, OwnedValue)>)>,
+        aux: Vec<(String, Vec<(String, OwnedValue)>)>,
     ) -> OwnedObjectPath {
+        // The guard asks for no auxiliary units.
+        drop(aux);
         let pids = properties
-            .iter()
+            .into_iter()
             .find(|(key, _)| key == "PIDs")
-            .map(|(_, value)| Vec::<u32>::try_from(value.try_clone().unwrap()).unwrap());
+            .map(|(_, value)| Vec::<u32>::try_from(value).unwrap());
         self.0
             .calls
             .lock()
@@ -77,11 +79,21 @@ impl Manager {
         self.0.units.lock().unwrap().insert(name, "running");
     }
 
-    fn get_unit(&self, name: String) -> OwnedObjectPath {
-        unit_path(&name)
+    #[expect(
+        clippy::unused_self,
+        reason = "zbus serves a method on its object, which a unit's path needs nothing of"
+    )]
+    fn get_unit(&self, name: &str) -> OwnedObjectPath {
+        unit_path(name)
     }
 
-    fn list_units_by_patterns(&self, _states: Vec<String>, patterns: Vec<String>) -> Vec<Listed> {
+    #[expect(
+        clippy::needless_pass_by_value,
+        reason = "zbus hands each argument over by value, and a list can't borrow from a message"
+    )]
+    fn list_units_by_patterns(&self, states: Vec<String>, patterns: Vec<&str>) -> Vec<Listed> {
+        // Every unit is listed, whatever its state.
+        drop(states);
         assert_eq!(patterns, ["disk-guard-freeze-*.scope"]);
         let units = self.0.units.lock().unwrap();
         units
@@ -127,6 +139,10 @@ impl Unit {
     }
 
     #[zbus(property)]
+    #[expect(
+        clippy::unused_self,
+        reason = "zbus serves a property on its object, and every unit here is active"
+    )]
     fn active_state(&self) -> String {
         "active".to_owned()
     }

@@ -105,7 +105,7 @@ impl Whisper {
     pub fn transcribe(&mut self, audio: &[f32]) -> Result<(String, Timings)> {
         let start = Instant::now();
         let features = self.spectrogram.features(audio);
-        let featured = Instant::now();
+        let after_features = Instant::now();
         let (shape, hidden) = self.encoder.run(
             &[Input::F32(
                 "input_features",
@@ -115,7 +115,7 @@ impl Whisper {
             "last_hidden_state",
             None,
         )?;
-        let encoded = Instant::now();
+        let after_encoder = Instant::now();
 
         let mut decoder = self.decoder.request()?;
         let mut tokens = Vec::new();
@@ -137,13 +137,13 @@ impl Whisper {
             tokens.push(next);
             ids = vec![i64_of(next)];
         }
-        let decoded = Instant::now();
+        let after_decoder = Instant::now();
         Ok((
             self.vocab.text(&tokens, END),
             Timings {
-                features: featured - start,
-                encoder: encoded - featured,
-                decoder: decoded - encoded,
+                features: after_features - start,
+                encoder: after_encoder - after_features,
+                decoder: after_decoder - after_encoder,
                 tokens: tokens.len(),
             },
         ))

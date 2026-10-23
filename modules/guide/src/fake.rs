@@ -161,7 +161,7 @@ fn key(program: Program, args: &[&str]) -> (String, Vec<String>) {
         Program::Tool(tool) => tool.name().to_string(),
         Program::Carried(path) => path.to_string(),
     };
-    (name, args.iter().map(|arg| arg.to_string()).collect())
+    (name, args.iter().map(ToString::to_string).collect())
 }
 
 impl Machine for Fake {

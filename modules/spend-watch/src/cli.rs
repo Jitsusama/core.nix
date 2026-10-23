@@ -108,52 +108,11 @@ fn command(args: Vec<String>) -> Result<String, String> {
         }
         ["run"] => {
             let config = Config::read(&path)?;
-            crate::daemon::run(config).map(|()| String::new())
+            crate::daemon::run(&config).map(|()| String::new())
         }
-        ["import"] => {
-            let config = Config::read(&path)?;
-            let _lock = crate::daemon::lock(&config.state)
-                .map_err(|_| "the daemon is running, and reads what's new itself".to_owned())?;
-            let history = History::open(&config.history())?;
-            let began = std::time::Instant::now();
-            crate::daemon::harness(&history, &config);
-            crate::daemon::catch_up(&history, &config)?;
-            let turns: i64 = history
-                .db
-                .query_row("SELECT COUNT(*) FROM turns", [], |row| row.get(0))
-                .map_err(|error| error.to_string())?;
-            Ok(format!(
-                "{turns} turns held, read in {:.1} s.\n",
-                began.elapsed().as_secs_f64()
-            ))
-        }
-        ["show"] | ["show", "collection"] => {
-            let config = Config::read(&path)?;
-            let history = History::open(&config.history())?;
-            let now = crate::time::now();
-            let began = std::time::Instant::now();
-            let picture = Picture::read(&history, &config, now)?;
-            let read = began.elapsed();
-            let mut raised = crate::detect::all(&picture, &history, &config)?;
-            crate::findings::sort(&mut raised);
-            let detected = began.elapsed();
-            let status = crate::status::status(&picture, &raised);
-            let collection = crate::collection::collection(&picture, &raised, &config);
-            let written = began.elapsed();
-            eprintln!(
-                "read {:.0} ms, detected {:.0} ms, drawn {:.0} ms",
-                read.as_secs_f64() * 1000.0,
-                (detected - read).as_secs_f64() * 1000.0,
-                (written - detected).as_secs_f64() * 1000.0
-            );
-            let text = if words.len() == 2 {
-                serde_json::to_string_pretty(&collection)
-            } else {
-                serde_json::to_string_pretty(&status)
-            };
-            text.map(|text| text + "\n")
-                .map_err(|error| error.to_string())
-        }
+        ["import"] => import(&path),
+        ["show"] => show(&path, false),
+        ["show", "collection"] => show(&path, true),
         ["refresh"] => {
             let config = Config::read(&path)?;
             crate::daemon::ask(&config.socket(), "refresh").map(|said| format!("{said}\n"))
@@ -162,33 +121,7 @@ fn command(args: Vec<String>) -> Result<String, String> {
             let config = Config::read(&path)?;
             crate::go::go(&config.registry, session).map(|()| String::new())
         }
-        ["findings"] => {
-            let config = Config::read(&path)?;
-            let history = History::open(&config.history())?;
-            let findings = crate::findings::standing(&history)?;
-            if format == Format::Json {
-                return serde_json::to_string_pretty(&findings)
-                    .map(|text| text + "\n")
-                    .map_err(|e| e.to_string());
-            }
-            if findings.is_empty() {
-                return Ok("Nothing found.\n".into());
-            }
-            Ok(findings
-                .iter()
-                .map(|finding| {
-                    format!(
-                        "{}{}: {}\n  {}\n  key {}\n",
-                        finding.severity.name(),
-                        if finding.marked { ", expected" } else { "" },
-                        finding.title,
-                        finding.detail,
-                        finding.key
-                    )
-                })
-                .collect::<Vec<_>>()
-                .join("\n"))
-        }
+        ["findings"] => findings(&path, format),
         ["findings", "expect", key] => {
             let config = Config::read(&path)?;
             let history = History::open(&config.history())?;
@@ -211,6 +144,87 @@ fn command(args: Vec<String>) -> Result<String, String> {
         }
         _ => Err(format!("not a command: {}\n\n{USAGE}", words.join(" "))),
     }
+}
+
+/// `import`: reads everything new into the history while the daemon isn't
+/// running, and says how much it holds.
+fn import(path: &std::path::Path) -> Result<String, String> {
+    let config = Config::read(path)?;
+    let _lock = crate::daemon::lock(&config.state)
+        .map_err(|_| "the daemon is running, and reads what's new itself".to_owned())?;
+    let history = History::open(&config.history())?;
+    let began = std::time::Instant::now();
+    crate::daemon::harness(&history, &config);
+    crate::daemon::catch_up(&history, &config)?;
+    let turns: i64 = history
+        .db
+        .query_row("SELECT COUNT(*) FROM turns", [], |row| row.get(0))
+        .map_err(|error| error.to_string())?;
+    Ok(format!(
+        "{turns} turns held, read in {:.1} s.\n",
+        began.elapsed().as_secs_f64()
+    ))
+}
+
+/// `show` and `show collection`: the status or the collection the daemon
+/// would write now, with how long each step took on standard error.
+fn show(path: &std::path::Path, collection: bool) -> Result<String, String> {
+    let config = Config::read(path)?;
+    let history = History::open(&config.history())?;
+    let now = crate::time::now();
+    let began = std::time::Instant::now();
+    let picture = Picture::read(&history, &config, now)?;
+    let read = began.elapsed();
+    let mut raised = crate::detect::all(&picture, &history, &config)?;
+    crate::findings::sort(&mut raised);
+    let detected = began.elapsed();
+    let status = crate::status::status(&picture, &raised);
+    let drawn = crate::collection::collection(&picture, &raised, &config);
+    let written = began.elapsed();
+    // Each later reading of the clock is at least the one before it, so
+    // the saturation never comes into it.
+    eprintln!(
+        "read {:.0} ms, detected {:.0} ms, drawn {:.0} ms",
+        read.as_secs_f64() * 1000.0,
+        detected.saturating_sub(read).as_secs_f64() * 1000.0,
+        written.saturating_sub(detected).as_secs_f64() * 1000.0
+    );
+    let text = if collection {
+        serde_json::to_string_pretty(&drawn)
+    } else {
+        serde_json::to_string_pretty(&status)
+    };
+    text.map(|text| text + "\n")
+        .map_err(|error| error.to_string())
+}
+
+/// `findings`: every standing finding, as text or JSON.
+fn findings(path: &std::path::Path, format: Format) -> Result<String, String> {
+    let config = Config::read(path)?;
+    let history = History::open(&config.history())?;
+    let findings = crate::findings::standing(&history)?;
+    if format == Format::Json {
+        return serde_json::to_string_pretty(&findings)
+            .map(|text| text + "\n")
+            .map_err(|e| e.to_string());
+    }
+    if findings.is_empty() {
+        return Ok("Nothing found.\n".into());
+    }
+    Ok(findings
+        .iter()
+        .map(|finding| {
+            format!(
+                "{}{}: {}\n  {}\n  key {}\n",
+                finding.severity.name(),
+                if finding.marked { ", expected" } else { "" },
+                finding.title,
+                finding.detail,
+                finding.key
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n"))
 }
 
 fn report_command(config: &Config, rest: &[&str], format: Format) -> Result<String, String> {

@@ -46,16 +46,46 @@ impl Span {
 
 /// A number of bytes as people read one: `140.0 GiB`.
 pub fn shown(bytes: u64) -> String {
-    let bytes = bytes as f64;
+    let bytes = float(bytes);
     let (scale, unit) = [(40, "TiB"), (30, "GiB"), (20, "MiB"), (10, "KiB")]
         .into_iter()
-        .find(|(shift, _)| bytes >= (1u64 << shift) as f64)
+        .find(|(shift, _)| bytes >= float(1u64 << shift))
         .unwrap_or((0, "B"));
     if scale == 0 {
         format!("{bytes} B")
     } else {
-        format!("{:.1} {unit}", bytes / (1u64 << scale) as f64)
+        format!("{:.1} {unit}", bytes / float(1u64 << scale))
     }
+}
+
+/// A count of bytes, ticks or microseconds as a float, for a rate, a share or
+/// a size shown to a tenth. Past 2^53 it is the nearest float instead.
+#[expect(
+    clippy::cast_precision_loss,
+    reason = "rates, shares and shown sizes are estimates, where the nearest float serves"
+)]
+pub fn float(count: u64) -> f64 {
+    count as f64
+}
+
+/// A moment in wall seconds, from its whole seconds and its nanoseconds.
+#[expect(
+    clippy::cast_precision_loss,
+    reason = "seconds since 1970 and nanoseconds in one both stay below 2^53, so convert exactly"
+)]
+pub fn wall(whole: i64, nanos: i64) -> f64 {
+    whole as f64 + nanos as f64 / 1e9
+}
+
+/// Whole bytes from an estimate, rounded towards zero, with a negative one or
+/// not a number as none and one past `u64::MAX` as `u64::MAX`.
+#[expect(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    reason = "a saturating cast rounds an estimate exactly as wanted, clamped to what fits"
+)]
+pub fn whole(estimate: f64) -> u64 {
+    estimate as u64
 }
 
 /// How much space: a number of bytes, or a share of the filesystem it is
@@ -97,7 +127,7 @@ impl Size {
     pub fn of(self, total: u64) -> u64 {
         match self {
             Size::Bytes(bytes) => bytes,
-            Size::Percent(share) => (total as f64 * share / 100.0) as u64,
+            Size::Percent(share) => whole(float(total) * share / 100.0),
         }
     }
 }

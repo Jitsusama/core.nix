@@ -47,7 +47,7 @@ fn the_writer_of_more_than_half_the_recent_writes_is_found() {
         (10, "dd", 3 * GIB)
     );
     assert!(
-        (top.rate - 3.0 * GIB as f64 / 30.0).abs() < 1.0,
+        (top.rate - 3.0 * disk_guard::units::float(GIB) / 30.0).abs() < 1.0,
         "{}",
         top.rate
     );
@@ -94,6 +94,6 @@ fn a_writers_descendants_are_its_children_and_theirs() {
     process(proc, 12, 11, "as", 0);
     process(proc, 13, 1, "elsewhere", 0);
     let mut found = descendants(&sample(proc), 10);
-    found.sort();
+    found.sort_unstable();
     assert_eq!(found, [10, 11, 12]);
 }

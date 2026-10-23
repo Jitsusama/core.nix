@@ -150,6 +150,10 @@ impl Sha1 {
     }
 }
 
+#[expect(
+    clippy::many_single_char_names,
+    reason = "named as FIPS 180-4 names them"
+)]
 fn sha1_compress(state: &mut [u32; 5], block: &[u8; 64]) {
     let mut w = [0u32; 80];
     for (i, word) in block.as_chunks::<4>().0.iter().enumerate() {
@@ -289,6 +293,10 @@ impl Sha256 {
     }
 }
 
+#[expect(
+    clippy::many_single_char_names,
+    reason = "named as FIPS 180-4 names them"
+)]
 fn sha256_compress(state: &mut [u32; 8], block: &[u8; 64]) {
     let mut w = [0u32; 64];
     for (i, word) in block.as_chunks::<4>().0.iter().enumerate() {
@@ -353,14 +361,14 @@ mod tests {
             "84983e441c3bd26ebaae4aa1f95129e5e54670f1"
         );
         assert_eq!(
-            sha1(&[b'a'; 1_000_000]),
+            sha1(&vec![b'a'; 1_000_000]),
             "34aa973cd4c4daa4f61eeb2bdbad27316534016f"
         );
     }
 
     #[test]
     fn sha1_gives_the_same_answer_however_it_is_fed() {
-        let data: Vec<u8> = (0..1000u32).map(|n| (n * 7) as u8).collect();
+        let data: Vec<u8> = (0..1000u32).map(|n| (n * 7).to_le_bytes()[0]).collect();
         for split in [0, 1, 55, 56, 63, 64, 65, 999] {
             let mut sha = Sha1::new();
             sha.update(&data[..split]);

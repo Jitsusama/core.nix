@@ -1,6 +1,7 @@
 //! Which candidates a pass takes in a band, and in what order.
 
 use crate::band::Band;
+use crate::units::{float, whole};
 use std::path::PathBuf;
 
 /// The groups a pass takes from, cheapest loss first.
@@ -139,10 +140,18 @@ pub type Windows = [Option<f64>; 4];
 const NEVER: Option<f64> = None;
 const AT_ONCE: Option<f64> = Some(0.0);
 
+#[expect(
+    clippy::unnecessary_wraps,
+    reason = "a window in the table is an Option, where None is never"
+)]
 fn hours(n: f64) -> Option<f64> {
     Some(n * HOUR)
 }
 
+#[expect(
+    clippy::unnecessary_wraps,
+    reason = "a window in the table is an Option, where None is never"
+)]
 fn days(n: f64) -> Option<f64> {
     Some(n * DAY)
 }
@@ -175,10 +184,12 @@ pub fn windows(candidate: &Candidate) -> (Group, Windows) {
             Group::Variants,
             [healthy, days(1.0), hours(6.0), hours(2.0)],
         ),
-        Class::Snapshot | Class::NixBuild => (Group::Waste, [AT_ONCE; 4]),
-        Class::Workspace => (Group::Waste, [days(30.0), days(7.0), days(1.0), AT_ONCE]),
+        // Of a log, what's trimmed is history nobody reads; the rest stays.
+        Class::Snapshot | Class::NixBuild | Class::Log => (Group::Waste, [AT_ONCE; 4]),
+        Class::Workspace | Class::Trash => {
+            (Group::Waste, [days(30.0), days(7.0), days(1.0), AT_ONCE])
+        }
         Class::Temp => (Group::Waste, [days(1.0), days(1.0), hours(6.0), hours(2.0)]),
-        Class::Trash => (Group::Waste, [days(30.0), days(7.0), days(1.0), AT_ONCE]),
         Class::Cache { from, .. } => {
             let from = |band: Band| if band >= from { AT_ONCE } else { NEVER };
             (
@@ -201,10 +212,12 @@ pub fn windows(candidate: &Candidate) -> (Group, Windows) {
         ),
         // Their own policies decide how much each takes.
         // What's young and within budget waits for pressure.
-        Class::Garbage { kept: true, .. } => (Group::Garbage, [NEVER, AT_ONCE, AT_ONCE, AT_ONCE]),
-        Class::Garbage { kept: false, .. } => (Group::Garbage, [AT_ONCE; 4]),
-        Class::Generations { kept: true } => (Group::Garbage, [NEVER, AT_ONCE, AT_ONCE, AT_ONCE]),
-        Class::Generations { kept: false } => (Group::Garbage, [AT_ONCE; 4]),
+        Class::Garbage { kept: true, .. } | Class::Generations { kept: true } => {
+            (Group::Garbage, [NEVER, AT_ONCE, AT_ONCE, AT_ONCE])
+        }
+        Class::Garbage { kept: false, .. } | Class::Generations { kept: false } => {
+            (Group::Garbage, [AT_ONCE; 4])
+        }
         Class::Producer { every, from } => {
             // From its band on as often as an hour allows, so a band that
             // keeps returning doesn't run a long collection every pass.
@@ -222,8 +235,6 @@ pub fn windows(candidate: &Candidate) -> (Group, Windows) {
                 ],
             )
         }
-        // What's trimmed is history nobody reads; the rest stays.
-        Class::Log => (Group::Waste, [AT_ONCE; 4]),
         // At most hourly, like a producer's.
         Class::Podman { unused: false } => (Group::Caches, [NEVER, NEVER, hours(1.0), hours(1.0)]),
         Class::Podman { unused: true } => (Group::Occupied, [NEVER, NEVER, NEVER, hours(1.0)]),
@@ -247,7 +258,7 @@ pub fn plan(
         .enumerate()
         .filter_map(|(index, candidate)| {
             let group = group(candidate, band)?;
-            let predicted = (candidate.size as f64 * ratio(candidate.class).max(0.0)) as u64;
+            let predicted = whole(float(candidate.size) * ratio(candidate.class).max(0.0));
             Some(Step {
                 index,
                 group,
@@ -259,9 +270,9 @@ pub fn plan(
         Class::Cache { rank, .. } => u16::from(rank),
         // After every cache: images are the slowest to fetch again.
         Class::Podman { .. } => u16::MAX,
-        // Generations first, since what they free is garbage, then the
-        // garbage policy's own order: by age, then by size.
-        Class::Generations { .. } => 0,
+        // Generations, ranked with everything else at 0, come first, since
+        // what they free is garbage, then the garbage policy's own order: by
+        // age, then by size.
         Class::Garbage { order, .. } => order.saturating_add(1),
         _ => 0,
     };

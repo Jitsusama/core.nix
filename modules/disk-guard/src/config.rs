@@ -317,7 +317,7 @@ pub struct Garbage {
 
 impl Garbage {
     fn keep() -> Span {
-        Span(Duration::from_secs(3 * 86400))
+        Span(Duration::from_hours(3 * 24))
     }
     fn budget() -> Size {
         Size::Percent(10.0)
@@ -390,7 +390,7 @@ impl Generations {
         5
     }
     fn young() -> Span {
-        Span(Duration::from_secs(7 * 86400))
+        Span(Duration::from_hours(7 * 24))
     }
 }
 
@@ -416,9 +416,13 @@ pub struct Dedupe {
 
 impl Dedupe {
     fn every() -> Span {
-        Span(Duration::from_secs(7 * 86400))
+        Span(Duration::from_hours(7 * 24))
     }
 
+    #[expect(
+        clippy::unnecessary_wraps,
+        reason = "serde's default for an Option field must return the Option"
+    )]
     fn systemd_run() -> Option<PathBuf> {
         Some(PathBuf::from("/run/current-system/systemd/bin/systemd-run"))
     }

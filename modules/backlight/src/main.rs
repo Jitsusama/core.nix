@@ -24,7 +24,7 @@
 //!
 //! Usage: backlight <standard curve>. The standard curve is where learning
 //! starts, a point to a line: the lux, a space and the share of the brightest.
-//! What it learns is kept in $XDG_STATE_HOME/backlight/learned.
+//! What it learns is kept in `$XDG_STATE_HOME/backlight/learned`.
 
 mod curve;
 mod light;
@@ -80,12 +80,11 @@ async fn lid_moved(lid: &mut Option<Pin<Box<PropertyStream<'_, bool>>>>) -> zbus
     let Some(stream) = lid else {
         return std::future::pending().await;
     };
-    match std::future::poll_fn(|cx| stream.as_mut().poll_next(cx)).await {
-        Some(changed) => changed.get().await,
-        None => {
-            *lid = None;
-            std::future::pending().await
-        }
+    if let Some(changed) = std::future::poll_fn(|cx| stream.as_mut().poll_next(cx)).await {
+        changed.get().await
+    } else {
+        *lid = None;
+        std::future::pending().await
     }
 }
 
@@ -163,16 +162,17 @@ async fn run() -> Result<(), Box<dyn Error>> {
     fs::create_dir_all(&kept)?;
     let learned = kept.join("learned");
     let (curve, knows_joel) = match fs::read_to_string(&learned) {
-        Ok(text) => match Curve::read(&text) {
-            Some(curve) => (curve, true),
-            None => {
+        Ok(text) => {
+            if let Some(curve) = Curve::read(&text) {
+                (curve, true)
+            } else {
                 eprintln!(
                     "<4>{} holds no curve, so learning starts again",
                     learned.display()
                 );
                 (standard, false)
             }
-        },
+        }
         Err(error) if error.kind() == io::ErrorKind::NotFound => (standard, false),
         Err(error) => return Err(error.into()),
     };

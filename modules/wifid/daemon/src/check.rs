@@ -1,7 +1,7 @@
 //! Whether a network reaches beyond itself, or keeps its guests on a
 //! sign-in page until they agree to its terms.
 //!
-//! The check asks Google's generate_204 page for its empty answer over
+//! The check asks Google's `generate_204` page for its empty answer over
 //! plain HTTP, which a network that wants a sign-in can't pass along
 //! untouched: it redirects the request to its sign-in page, or answers
 //! with that page in its place. When a card first reaches a network, it
@@ -65,13 +65,19 @@ impl Checker {
             Session::read(&answer)
         };
         let secure = async {
-            match reached && tls.is_some() {
-                true => Some(asked(&self.settings.secure_page).await),
-                false => None,
+            if reached && tls.is_some() {
+                Some(asked(&self.settings.secure_page).await)
+            } else {
+                None
             }
         };
         let (session, plain, secure) = tokio::join!(session, asked(&self.settings.page), secure);
-        let verdict = judge(&self.settings.page, session.as_ref(), plain, secure);
+        let verdict = judge(
+            &self.settings.page,
+            session.as_ref(),
+            &plain,
+            secure.as_ref(),
+        );
         let after = recheck_after(&verdict, session.as_ref());
         (verdict, after)
     }
@@ -88,13 +94,11 @@ async fn twice<T, E, F>(mut ask: impl FnMut() -> F, pause: Duration) -> Result<T
 where
     F: Future<Output = Result<T, E>>,
 {
-    match ask().await {
-        Ok(answer) => Ok(answer),
-        Err(_) => {
-            tokio::time::sleep(pause).await;
-            ask().await
-        }
+    if let Ok(answer) = ask().await {
+        return Ok(answer);
     }
+    tokio::time::sleep(pause).await;
+    ask().await
 }
 
 /// The pages a check asks.
@@ -207,10 +211,10 @@ impl Session {
 pub fn judge(
     asked: &Page,
     session: Option<&Session>,
-    plain: Verdict,
-    secure: Option<Verdict>,
+    plain: &Verdict,
+    secure: Option<&Verdict>,
 ) -> Verdict {
-    let found = [Some(&plain), secure.as_ref()]
+    let found = [Some(plain), secure]
         .into_iter()
         .flatten()
         .find_map(|verdict| match verdict {
@@ -231,7 +235,7 @@ pub fn judge(
         },
         (_, Some(page)) => Verdict::SignIn { page },
         (Some(_), None) => Verdict::Online,
-        (None, None) if plain == Verdict::Online && secure != Some(Verdict::Limited) => {
+        (None, None) if *plain == Verdict::Online && secure != Some(&Verdict::Limited) => {
             Verdict::Online
         }
         (None, None) => Verdict::Limited,
@@ -394,16 +398,16 @@ mod tests {
         assert_eq!(verdict(nonsense, &check_page()), Verdict::Limited);
     }
 
-    fn api(body: Value) -> Vec<u8> {
+    fn api(body: &Value) -> Vec<u8> {
         let mut answer =
             b"HTTP/1.0 200 OK\r\nContent-Type: application/captive+json\r\n\r\n".to_vec();
-        answer.extend(serde_json::to_vec(&body).unwrap());
+        answer.extend(serde_json::to_vec(body).unwrap());
         answer
     }
 
     #[test]
     fn the_network_says_whether_it_wants_a_sign_in_and_where() {
-        let wants = api(json!({"captive": true, "user-portal-url": "https://front-desk.inn/"}));
+        let wants = api(&json!({"captive": true, "user-portal-url": "https://front-desk.inn/"}));
 
         assert_eq!(
             Session::read(&wants),
@@ -418,7 +422,7 @@ mod tests {
     #[test]
     fn the_network_says_how_long_the_session_it_gave_lasts() {
         let given =
-            api(json!({"captive": false, "seconds-remaining": 326, "bytes-remaining": 65536}));
+            api(&json!({"captive": false, "seconds-remaining": 326, "bytes-remaining": 65536}));
 
         let session = Session::read(&given).unwrap();
 
@@ -430,7 +434,7 @@ mod tests {
     fn an_answer_that_isnt_the_network_s_word_is_none() {
         let error = b"HTTP/1.0 404 Not Found\r\n\r\n{\"captive\": false}";
         let page = b"HTTP/1.0 200 OK\r\n\r\n<html>";
-        let unsaid = api(json!({"user-portal-url": "https://front-desk.inn/"}));
+        let unsaid = api(&json!({"user-portal-url": "https://front-desk.inn/"}));
 
         assert_eq!(Session::read(error), None);
         assert_eq!(Session::read(page), None);
@@ -456,11 +460,11 @@ mod tests {
         let wanted = judge(
             &asked,
             Some(&wanting),
-            Verdict::Online,
-            Some(Verdict::Online),
+            &Verdict::Online,
+            Some(&Verdict::Online),
         );
-        let found_anyway = judge(&asked, Some(&not_wanting), signing_in(inn), None);
-        let found = judge(&asked, None, signing_in(inn), Some(Verdict::Limited));
+        let found_anyway = judge(&asked, Some(&not_wanting), &signing_in(inn), None);
+        let found = judge(&asked, None, &signing_in(inn), Some(&Verdict::Limited));
 
         assert_eq!(wanted, signing_in(inn));
         assert_eq!(found_anyway, signing_in(inn));
@@ -474,8 +478,8 @@ mod tests {
 
         let asked = check_page();
 
-        let found = judge(&asked, Some(&wanting), signing_in(inn), None);
-        let unfound = judge(&asked, Some(&wanting), Verdict::Online, None);
+        let found = judge(&asked, Some(&wanting), &signing_in(inn), None);
+        let unfound = judge(&asked, Some(&wanting), &Verdict::Online, None);
 
         assert_eq!(found, signing_in(inn));
         assert_eq!(
@@ -491,8 +495,8 @@ mod tests {
         let judged = judge(
             &check_page(),
             Some(&not_wanting),
-            Verdict::Limited,
-            Some(Verdict::Limited),
+            &Verdict::Limited,
+            Some(&Verdict::Limited),
         );
 
         assert_eq!(judged, Verdict::Online);
@@ -501,7 +505,8 @@ mod tests {
     #[test]
     fn without_it_both_checks_must_get_through() {
         let asked = check_page();
-        let judged = |plain, secure| judge(&asked, None, plain, secure);
+        let judged =
+            |plain: Verdict, secure: Option<Verdict>| judge(&asked, None, &plain, secure.as_ref());
 
         assert_eq!(
             judged(Verdict::Online, Some(Verdict::Online)),

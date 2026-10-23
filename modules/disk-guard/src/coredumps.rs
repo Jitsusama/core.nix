@@ -58,7 +58,7 @@ pub fn find(dir: &Path) -> Vec<Dump> {
             path: entry.path(),
             uid,
             pid,
-            at: usec as f64 / 1e6,
+            at: crate::units::float(usec) / 1e6,
             size: meta.len(),
         });
     }

@@ -56,10 +56,10 @@ impl Ratios {
 
     /// From (hour, model, list, billed) for each settled hour.
     pub fn learn(rows: &[(i64, String, f64, f64)]) -> Ratios {
-        let Some(last) = rows.iter().map(|row| row.0).max() else {
+        let Some(newest) = rows.iter().map(|row| row.0).max() else {
             return Ratios::default();
         };
-        let since = last - LEARN_DAYS * 24;
+        let since = newest - LEARN_DAYS * 24;
         let mut daily: HashMap<&str, BTreeMap<i64, (f64, f64)>> = HashMap::new();
         let mut all: BTreeMap<i64, (f64, f64)> = BTreeMap::new();
         for (hour, model, list, billed) in rows.iter().filter(|row| row.0 >= since) {
@@ -155,7 +155,10 @@ pub fn shifts(rows: &[(i64, String, f64, f64)], day: impl Fn(i64) -> i64) -> Vec
             continue;
         }
         let (earlier, recent) = days.split_at(days.len() - SHIFT_DAYS);
-        let earlier = &earlier[earlier.len().saturating_sub(LEARN_DAYS as usize)..];
+        // The constant is positive, so it always converts; were it not, the
+        // saturation would keep every earlier day, as a wrapped count did.
+        let learned = usize::try_from(LEARN_DAYS).unwrap_or(usize::MAX);
+        let earlier = &earlier[earlier.len().saturating_sub(learned)..];
         let sum = |days: &[(i64, f64, f64)]| {
             days.iter().fold((0.0, 0.0), |(list, billed), day| {
                 (list + day.1, billed + day.2)
@@ -186,7 +189,7 @@ pub fn shifts(rows: &[(i64, String, f64, f64)], day: impl Fn(i64) -> i64) -> Vec
                 before,
                 now,
                 since: recent[0].0,
-                list_a_day: now_list / SHIFT_DAYS as f64,
+                list_a_day: now_list / crate::stats::count(SHIFT_DAYS),
             });
         }
     }
@@ -201,7 +204,14 @@ mod tests {
         ratios
             .iter()
             .enumerate()
-            .map(|(day, ratio)| (day as i64 * 24, model.to_owned(), 100.0, 100.0 * ratio))
+            .map(|(day, ratio)| {
+                (
+                    crate::stats::signed(day) * 24,
+                    model.to_owned(),
+                    100.0,
+                    100.0 * ratio,
+                )
+            })
             .collect()
     }
 
@@ -209,7 +219,9 @@ mod tests {
     // a small drift.
     #[test]
     fn a_price_is_three_days_at_a_new_ratio() {
-        let usual: Vec<f64> = (0..20).map(|day| 0.70 + 0.02 * (day % 3) as f64).collect();
+        let usual: Vec<f64> = (0..20)
+            .map(|day| 0.70 + 0.02 * f64::from(day % 3))
+            .collect();
         let moved = [usual.clone(), vec![0.55, 0.56, 0.54]].concat();
         let shifts = |rows: &[(i64, String, f64, f64)]| shifts(rows, |hour| hour.div_euclid(24));
         let found = shifts(&days("opus", &moved));

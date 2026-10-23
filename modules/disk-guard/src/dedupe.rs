@@ -28,7 +28,7 @@ const BACKED_OFF: f64 = 30.0 * 86400.0;
 
 /// How long a run may take. One on a store never optimised reads all of
 /// it, at idle priority behind whatever else runs.
-const TIMEOUT: Duration = Duration::from_secs(12 * 3600);
+const TIMEOUT: Duration = Duration::from_hours(12);
 
 /// How long a stopped run has to unwind before it's killed.
 const STOP_GRACE: Duration = Duration::from_secs(30);
@@ -59,8 +59,8 @@ static FREED: LazyLock<Regex> = LazyLock::new(|| {
 pub fn freed(said: &str) -> Option<u64> {
     let found = FREED.captures_iter(said).last()?;
     let size: f64 = found["size"].parse().ok()?;
-    let power = "KMGTPE".find(&found["unit"])? as i32 + 1;
-    Some((size * 1024f64.powi(power)).round() as u64)
+    let power = i32::try_from("KMGTPE".find(&found["unit"])?).ok()? + 1;
+    Some(crate::units::whole((size * 1024f64.powi(power)).round()))
 }
 
 /// Whether a run is due, `every` seconds after the last one, or a month
@@ -121,15 +121,14 @@ pub fn optimise(
         Ok(Ran::TimedOut) => Err(format!("nix-store --optimise ran past {TIMEOUT:?}")),
         Ok(Ran::Finished(output)) => {
             let said = String::from_utf8_lossy(&output.stderr);
-            match (output.status, freed(&said)) {
-                (Some(0), Some(bytes)) => Ok(Some(bytes)),
-                _ => {
-                    let last = said.lines().rev().find(|line| !line.trim().is_empty());
-                    Err(format!(
-                        "nix-store --optimise failed: {}",
-                        last.unwrap_or("it said nothing")
-                    ))
-                }
+            if let (Some(0), Some(bytes)) = (output.status, freed(&said)) {
+                Ok(Some(bytes))
+            } else {
+                let last = said.lines().rev().find(|line| !line.trim().is_empty());
+                Err(format!(
+                    "nix-store --optimise failed: {}",
+                    last.unwrap_or("it said nothing")
+                ))
             }
         }
     }

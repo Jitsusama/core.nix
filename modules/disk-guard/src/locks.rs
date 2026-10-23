@@ -9,7 +9,7 @@
 //! rustc locks each incremental session, `s-{timestamp}-{random}-working`
 //! and then `s-{timestamp}-{svh}`, with a POSIX record lock on the lock
 //! file `s-{timestamp}-{random}.lock` beside it, and its own collection
-//! leaves sessions under 10 s old (rustc_incremental's persist/fs.rs). The
+//! leaves sessions under 10 s old (`rustc_incremental`'s `persist/fs.rs`). The
 //! guard takes an open-file-description lock, which conflicts with rustc's
 //! but, unlike a POSIX lock, isn't dropped when any other descriptor the
 //! guard has on the file closes.
@@ -115,13 +115,23 @@ fn session_parts(name: &str) -> Option<(&str, SystemTime)> {
     ))
 }
 
+/// A constant as a `flock`'s short fields hold it, whether the platform
+/// names it as an int, as Linux does, or as a short already.
+fn short<T>(constant: T) -> io::Result<libc::c_short>
+where
+    T: TryInto<libc::c_short>,
+    T::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
+{
+    constant.try_into().map_err(io::Error::other)
+}
+
 /// An exclusive open-file-description lock on the whole file, without
 /// waiting: true if taken.
 fn lock_whole(file: &OwnedFd) -> io::Result<bool> {
     // SAFETY: flock is plain data, for which zero is a valid value.
     let mut lock: libc::flock = unsafe { std::mem::zeroed() };
-    lock.l_type = libc::F_WRLCK as _;
-    lock.l_whence = libc::SEEK_SET as _;
+    lock.l_type = short(libc::F_WRLCK)?;
+    lock.l_whence = short(libc::SEEK_SET)?;
     // SAFETY: the descriptor is open for the call, and lock outlives it.
     if unsafe { libc::fcntl(file.as_raw_fd(), libc::F_OFD_SETLK, &lock) } == 0 {
         return Ok(true);

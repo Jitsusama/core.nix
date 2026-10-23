@@ -168,7 +168,7 @@ mod tests {
             .args(["-c", "trap '' TERM; exec sleep 30"])
             .spawn()
             .unwrap();
-        while !stat(program.id()).is_some_and(|child| child.name == "sleep") {
+        while stat(program.id()).is_none_or(|child| child.name != "sleep") {
             std::thread::sleep(Duration::from_millis(10));
         }
         let started = Instant::now();

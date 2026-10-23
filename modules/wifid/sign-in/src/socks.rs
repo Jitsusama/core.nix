@@ -80,16 +80,15 @@ pub fn request(stream: &mut (impl Read + Write)) -> io::Result<Option<Target>> {
         3 => None,
         _ => return answer(stream, Answer::AddressNotSupported).map(|()| None),
     };
-    let target = match target {
-        Some(address) => Target::Address(SocketAddr::new(
+    let target = if let Some(address) = target {
+        Target::Address(SocketAddr::new(
             address,
             u16::from_be_bytes(read_bytes(stream)?),
-        )),
-        None => {
-            let name = String::from_utf8(read_counted(stream)?)
-                .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
-            Target::Name(name, u16::from_be_bytes(read_bytes(stream)?))
-        }
+        ))
+    } else {
+        let name = String::from_utf8(read_counted(stream)?)
+            .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
+        Target::Name(name, u16::from_be_bytes(read_bytes(stream)?))
     };
     if command != CONNECT {
         answer(stream, Answer::CommandNotSupported)?;
@@ -120,7 +119,7 @@ fn read_counted(stream: &mut impl Read) -> io::Result<Vec<u8>> {
 
 /// Serves every client that connects, each on a thread of its own, with
 /// `connect` making the connection a request asks for.
-pub fn serve<C>(listener: TcpListener, credentials: Credentials, connect: C)
+pub fn serve<C>(listener: &TcpListener, credentials: &Credentials, connect: C)
 where
     C: Fn(&Target) -> io::Result<TcpStream> + Clone + Send + 'static,
 {
@@ -210,9 +209,9 @@ mod tests {
     }
 
     fn proving(username: &str, password: &str) -> Vec<u8> {
-        let mut said = vec![1, username.len() as u8];
+        let mut said = vec![1, u8::try_from(username.len()).unwrap()];
         said.extend(username.as_bytes());
-        said.push(password.len() as u8);
+        said.push(u8::try_from(password.len()).unwrap());
         said.extend(password.as_bytes());
         said
     }

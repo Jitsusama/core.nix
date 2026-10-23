@@ -216,13 +216,12 @@ fn scan_slice(
     };
     let identity = format!("{}:{}", metadata.dev(), metadata.ino());
     let name = path.to_string_lossy().into_owned();
-    let (mut offset, mut carry) = match history.file(&name, &identity) {
-        Some((offset, carry)) => (offset, serde_json::from_str(&carry).unwrap_or_default()),
-        None => {
-            // A new log, or one replaced under the same name: start over.
-            history.forget_file(&name)?;
-            (0, Carry::default())
-        }
+    let (mut offset, mut carry) = if let Some((offset, carry)) = history.file(&name, &identity) {
+        (offset, serde_json::from_str(&carry).unwrap_or_default())
+    } else {
+        // A new log, or one replaced under the same name: start over.
+        history.forget_file(&name)?;
+        (0, Carry::default())
     };
     if metadata.len() < offset {
         history.forget_file(&name)?;
@@ -249,12 +248,13 @@ fn scan_slice(
     let mut file = std::fs::File::open(path).map_err(|error| error.to_string())?;
     file.seek(SeekFrom::Start(offset))
         .map_err(|error| error.to_string())?;
-    let mut bytes = Vec::with_capacity(want as usize);
+    // Only a hint: a slice always fits in memory's addresses.
+    let mut bytes = Vec::with_capacity(usize::try_from(want).unwrap_or(0));
     (&mut file)
         .take(want)
         .read_to_end(&mut bytes)
         .map_err(|error| error.to_string())?;
-    carry.kind = found.kind.clone();
+    carry.kind.clone_from(&found.kind);
     carry.workspaces = reading
         .workspaces
         .map(|workspaces| workspaces.to_string_lossy().into_owned());
@@ -266,7 +266,7 @@ fn scan_slice(
         match line_end(&mut file, offset, slice)? {
             Some(end) => {
                 eprintln!("{name}: passed over a line of {} bytes", end - offset);
-                (end - offset) as usize
+                usize::try_from(end - offset).map_err(|error| error.to_string())?
             }
             None => return Ok(Pass::default()),
         }

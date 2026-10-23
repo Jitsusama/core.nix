@@ -9,14 +9,17 @@
 //! audio is kept in memory until it's typed.
 //!
 //! Usage:
-//!   dictation serve MODEL_DIR      the service, on the socket it's given
-//!   dictation toggle               start listening, or stop and type
-//!   dictation watch                print each change of state as it comes
-//!   dictation transcribe MODEL_DIR FILE.wav
-//!                                  print what's said in a 16 kHz mono WAV
 //!
-//! DICTATION_DEVICE names where the encoder runs (NPU, falling back to the
-//! CPU), and DICTATION_CACHE where OpenVINO keeps what it compiles.
+//! ```text
+//! dictation serve MODEL_DIR      the service, on the socket it's given
+//! dictation toggle               start listening, or stop and type
+//! dictation watch                print each change of state as it comes
+//! dictation transcribe MODEL_DIR FILE.wav
+//!                                print what's said in a 16 kHz mono WAV
+//! ```
+//!
+//! `DICTATION_DEVICE` names where the encoder runs (NPU, falling back to the
+//! CPU), and `DICTATION_CACHE` where OpenVINO keeps what it compiles.
 
 mod mel;
 mod openvino;

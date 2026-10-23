@@ -167,7 +167,7 @@ fn kernel_threads_and_other_entries_are_left_out() {
         .iter()
         .map(|p| p.pid)
         .collect();
-    pids.sort();
+    pids.sort_unstable();
     assert_eq!(pids, [100, 200]);
 }
 
@@ -239,7 +239,7 @@ fn a_build_waiting_on_a_held_lock_is_seen() {
     let waiter = {
         let path = path.clone();
         std::thread::spawn(move || {
-            flock(fs::File::open(path).unwrap(), FlockOperation::LockExclusive).unwrap()
+            flock(fs::File::open(path).unwrap(), FlockOperation::LockExclusive).unwrap();
         })
     };
     let me = std::process::id();
@@ -249,7 +249,7 @@ fn a_build_waiting_on_a_held_lock_is_seen() {
         std::thread::sleep(std::time::Duration::from_millis(10));
         waiters = lock_waiters(Path::new("/proc/locks"), me, &[inode]).unwrap();
     }
-    assert_eq!(waiters, [me as i32]);
+    assert_eq!(waiters, [me.cast_signed()]);
     drop(held);
     waiter.join().unwrap();
     let again = fs::File::open(&path).unwrap();

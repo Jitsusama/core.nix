@@ -84,7 +84,7 @@ fn a_bundle_opens_with_its_passphrase_to_the_keys_sealed_in_it() {
 
     let bundle = Bundle::read(&bytes).unwrap();
     assert_eq!(bundle.machine(), "laptop");
-    assert!(bundle.yubikeys().is_empty());
+    assert_eq!(bundle.yubikeys(), Vec::<String>::new());
     let opened = bundle.open_with_passphrase(&passphrase()).unwrap();
     assert_eq!(opened, keys);
     assert_eq!(opened.owner(), OWNER);
@@ -275,7 +275,7 @@ fn a_bundle_says_which_passphrase_opens_it() {
     assert!(bundle.open_with_passphrase(&wrong).is_err());
     let step = OpenRescueBundle {
         bundle,
-        opened: Default::default(),
+        opened: std::rc::Rc::default(),
     };
     let standing = step.observe(&mut Fake::new()).unwrap();
     assert!(

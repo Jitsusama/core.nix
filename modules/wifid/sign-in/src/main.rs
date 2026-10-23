@@ -15,6 +15,7 @@ mod socks;
 mod wifi;
 
 use std::cell::Cell;
+use std::fmt::Write as _;
 use std::fs::File;
 use std::io::{self, Read};
 use std::net::{Ipv4Addr, SocketAddr, TcpListener, TcpStream};
@@ -202,10 +203,10 @@ fn proxy(card: &str) -> io::Result<String> {
     );
     let card = card.to_string();
     thread::spawn(move || {
-        socks::serve(listener, credentials, move |target| {
+        socks::serve(&listener, &credentials, move |target| {
             connect(&card, target)
                 .inspect_err(|error| eprintln!("can't reach {target:?} through {card}: {error}"))
-        })
+        });
     });
     Ok(address)
 }
@@ -215,7 +216,11 @@ fn proxy(card: &str) -> io::Result<String> {
 fn token() -> io::Result<String> {
     let mut bytes = [0; 16];
     File::open("/dev/urandom")?.read_exact(&mut bytes)?;
-    Ok(bytes.iter().map(|byte| format!("{byte:02x}")).collect())
+    Ok(bytes.iter().fold(String::new(), |mut hex, byte| {
+        // Writing to a String can't fail.
+        _ = write!(hex, "{byte:02x}");
+        hex
+    }))
 }
 
 /// Connects where the page asks through the card alone, a name looked up

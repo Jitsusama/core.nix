@@ -1,7 +1,7 @@
 //! The screen's backlight: which one, how bright it is, and hearing when
 //! that changes.
 //!
-//! The kernel marks a backlight's actual_brightness changed whenever its
+//! The kernel marks a backlight's `actual_brightness` changed whenever its
 //! brightness is written, by the keys, by this daemon or by anything else,
 //! and a poll on that file wakes for it. So the daemon waits on the file
 //! rather than reading it every so often.
@@ -81,9 +81,13 @@ impl Screen {
 
     /// The steps nearest a share of the brightest, and never none, which on
     /// some panels turns the light off.
+    #[expect(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        reason = "a share of the brightest is between 0 and max"
+    )]
     pub fn steps_for(&self, level: f64) -> u32 {
         let steps = (level.clamp(0.0, 1.0) * f64::from(self.max)).round();
-        // In range: a share of the brightest is between 0 and max.
         (steps as u32).max(1)
     }
 

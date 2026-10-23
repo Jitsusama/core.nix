@@ -112,14 +112,14 @@ pub fn search(
         if span <= WINDOW * 2 {
             return scan(file, names, stride, low, high, oid, &mut buf);
         }
-        let fraction =
-            (want.saturating_sub(low_value) as f64) / ((high_value - low_value).max(1) as f64);
-        let guess = low + ((f64::from(span) * fraction) as u32).min(span - 1);
+        let guess = low + interpolate(span, want, low_value, high_value);
         let start = guess.saturating_sub(WINDOW / 2).max(low);
         let end = (start + WINDOW).min(high);
         read_names(file, names, stride, start, end, &mut buf)?;
         let first_name = &buf[..20];
-        let last_name = &buf[(end - start - 1) as usize * stride as usize..][..20];
+        let last_at = usize::try_from(u64::from(end - start - 1) * stride)
+            .map_err(|_| invalid("a pack index past what memory holds"))?;
+        let last_name = &buf[last_at..][..20];
         if oid.0.as_slice() < first_name {
             high = start;
             high_value = leading(first_name);
@@ -133,6 +133,20 @@ pub fn search(
     Ok(None)
 }
 
+/// How far into a span of names the one wanted likely sits, by where its
+/// leading value lies between the span's ends.
+#[expect(
+    clippy::cast_precision_loss,
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    reason = "a guess needs no more than a float's precision, and is a share of the span"
+)]
+fn interpolate(span: u32, want: u64, low_value: u64, high_value: u64) -> u32 {
+    let fraction =
+        (want.saturating_sub(low_value) as f64) / ((high_value - low_value).max(1) as f64);
+    ((f64::from(span) * fraction) as u32).min(span - 1)
+}
+
 fn read_names(
     file: &File,
     names: u64,
@@ -141,13 +155,14 @@ fn read_names(
     end: u32,
     buf: &mut Vec<u8>,
 ) -> io::Result<()> {
-    let len = (u64::from(end - start) * stride) as usize;
+    let len = usize::try_from(u64::from(end - start) * stride)
+        .map_err(|_| invalid("a pack index past what memory holds"))?;
     buf.resize(len, 0);
     file.read_exact_at(buf, names + stride * u64::from(start))
 }
 
 fn find_in(buf: &[u8], stride: u64, oid: &Oid) -> Option<u32> {
-    let stride = stride as usize;
+    let stride = usize::try_from(stride).ok()?;
     let count = buf.len() / stride;
     let (mut low, mut high) = (0, count);
     while low < high {
@@ -320,6 +335,10 @@ struct Store {
 }
 
 impl Store {
+    #[expect(
+        clippy::case_sensitive_file_extension_comparisons,
+        reason = "git names a pack's index .idx, in lowercase"
+    )]
     fn open(dir: &Path) -> Store {
         let pack_dir = dir.join("pack");
         let midx = Midx::open(&pack_dir.join("multi-pack-index")).ok();
@@ -368,6 +387,10 @@ impl Store {
         }
     }
 
+    #[expect(
+        clippy::case_sensitive_file_extension_comparisons,
+        reason = "git names a pack's index .idx, in lowercase"
+    )]
     fn without_midx(dir: &Path) -> Store {
         let pack_dir = dir.join("pack");
         let mut names: Vec<String> = std::fs::read_dir(&pack_dir)

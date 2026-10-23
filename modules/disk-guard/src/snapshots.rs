@@ -4,6 +4,7 @@
 use crate::activity::{Process, runs};
 use crate::clock::Awake;
 use crate::plan::{Candidate, Class};
+use crate::units::{float, wall};
 use regex_lite::Regex;
 use std::fs;
 use std::os::unix::fs::MetadataExt;
@@ -54,7 +55,7 @@ pub fn entries(dir: &Path, pattern: &Regex) -> Vec<Snapshot> {
             .created()
             .ok()
             .and_then(|at| at.duration_since(UNIX_EPOCH).ok());
-        let born = born.map_or(meta.ctime() as f64, |at| at.as_secs_f64());
+        let born = born.map_or(wall(meta.ctime(), 0), |at| at.as_secs_f64());
         found.push(Snapshot {
             path: entry.path(),
             pid,
@@ -70,7 +71,7 @@ pub fn entries(dir: &Path, pattern: &Regex) -> Vec<Snapshot> {
 /// that can't be read keeps it, since it can't be ruled out.
 pub fn orphaned(snapshot: &Snapshot, processes: &[Process], commands: &[&str], boot: Boot) -> bool {
     let maker = |process: &&Process| {
-        let started = boot.wall + process.start_ticks as f64 / boot.ticks;
+        let started = boot.wall + float(process.start_ticks) / boot.ticks;
         let runs_one = commands.iter().any(|command| runs(process, command));
         !process.readable || (runs_one && started <= snapshot.born + SLACK)
     };

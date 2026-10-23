@@ -35,7 +35,7 @@ fn a_build_is_dated_by_what_only_cargo_writes() {
         5_000,
     );
     touch(&target, 9_000);
-    assert_eq!(last_build(&target, None), 5_000.0);
+    crate::assert_exactly(last_build(&target, None), 5_000.0);
 }
 
 #[test]
@@ -48,7 +48,7 @@ fn a_commit_in_the_checkout_counts_as_work_in_it() {
     let target = checkout.join("target");
     dir(&target.join("debug/deps"));
     touch(&target.join("debug/deps"), 1_000);
-    assert_eq!(last_build(&target, Some(&checkout)), 7_000.0);
+    crate::assert_exactly(last_build(&target, Some(&checkout)), 7_000.0);
 }
 
 #[test]
@@ -68,7 +68,7 @@ fn a_linked_worktrees_reflog_is_found_through_its_git_file() {
     let target = tree.join("target");
     dir(&target.join("debug/deps"));
     touch(&target.join("debug/deps"), 1_000);
-    assert_eq!(last_build(&target, Some(&tree)), 8_000.0);
+    crate::assert_exactly(last_build(&target, Some(&tree)), 8_000.0);
 }
 
 #[test]
@@ -77,7 +77,7 @@ fn a_target_never_built_is_dated_by_itself() {
     let target = root.path().join("target");
     dir(&target);
     touch(&target, 3_000);
-    assert_eq!(last_build(&target, None), 3_000.0);
+    crate::assert_exactly(last_build(&target, None), 3_000.0);
 }
 
 #[test]
@@ -97,8 +97,8 @@ fn the_last_write_is_the_newest_within_reach() {
     for (path, when) in [("a/b/c", 1_000), ("a/b/c/d", 1_000), ("a/b/c/d/e", 9_000)] {
         touch(&top.join(path), when);
     }
-    assert_eq!(last_write(&top, 4, 1_000), 4_000.0);
-    assert_eq!(last_write(&top, 5, 1_000), 9_000.0);
+    crate::assert_exactly(last_write(&top, 4, 1_000), 4_000.0);
+    crate::assert_exactly(last_write(&top, 5, 1_000), 9_000.0);
 }
 
 #[test]
@@ -108,7 +108,7 @@ fn a_tree_too_big_to_read_counts_as_written_now() {
         fs::write(root.path().join(format!("f{n}")), "").unwrap();
         touch(&root.path().join(format!("f{n}")), 1_000);
     }
-    assert_eq!(last_write(root.path(), 4, 10), f64::INFINITY);
+    crate::assert_exactly(last_write(root.path(), 4, 10), f64::INFINITY);
 }
 
 #[test]
@@ -121,5 +121,5 @@ fn a_symlink_is_dated_by_itself_not_what_it_names() {
     std::os::unix::fs::symlink(elsewhere.path(), top.join("link")).unwrap();
     touch(&top.join("link"), 2_000);
     touch(&top, 1_000);
-    assert_eq!(last_write(&top, 4, 1_000), 2_000.0);
+    crate::assert_exactly(last_write(&top, 4, 1_000), 2_000.0);
 }

@@ -21,6 +21,11 @@ use guide::vault::store::Store;
 use guide::vault::{self, Manifest, Packer, Vault, VaultKey};
 use guide::{Fault, Secret};
 
+/// A byte offset or length on a stick as an index into its bytes in memory.
+fn index(bytes: u64) -> usize {
+    usize::try_from(bytes).unwrap()
+}
+
 fn try_run(program: &str, args: &[&OsStr]) -> Output {
     Command::new(program)
         .args(args)
@@ -107,17 +112,20 @@ fn make_image(directory: &Path, program: Option<&Path>) -> PathBuf {
         slots,
     };
     let sectors = 16384;
-    let mut bytes = vec![0u8; (sectors * SECTOR) as usize];
+    let mut bytes = vec![0u8; index(sectors * SECTOR)];
     for (_, fill, first, last) in &parts[1..] {
-        let range = (first * SECTOR) as usize..((last + 1) * SECTOR) as usize;
+        let range = index(first * SECTOR)..index((last + 1) * SECTOR);
+        // Each byte its fill and its offset's lowest byte, so a byte out
+        // of place shows.
         for (n, byte) in bytes[range].iter_mut().enumerate() {
-            *byte = fill ^ (n as u8);
+            *byte = fill ^ n.to_le_bytes()[0];
         }
     }
     let esp = make_esp(directory, program);
-    bytes[(2048 * SECTOR) as usize..(4096 * SECTOR) as usize].copy_from_slice(&esp);
+    bytes[index(2048 * SECTOR)..index(4096 * SECTOR)].copy_from_slice(&esp);
     for (at, rendered) in table.render(sectors) {
-        bytes[at as usize..at as usize + rendered.len()].copy_from_slice(&rendered);
+        let at = index(at);
+        bytes[at..at + rendered.len()].copy_from_slice(&rendered);
     }
     let path = directory.join("image.raw");
     fs::write(&path, bytes).unwrap();
@@ -135,7 +143,7 @@ fn stick_file(directory: &Path, bytes: u64) -> PathBuf {
     let chunk = vec![0xeeu8; 1 << 20];
     let mut left = bytes;
     while left > 0 {
-        let count = left.min(chunk.len() as u64) as usize;
+        let count = index(left.min(chunk.len() as u64));
         file.write_all(&chunk[..count]).unwrap();
         left -= count as u64;
     }
@@ -152,7 +160,7 @@ fn open(path: &Path) -> File {
 
 /// One partition of the stick, copied out into its own file.
 fn copy_out(disk: &mut File, partition: &stick::gpt::Partition, to: &Path) {
-    let mut region = vec![0u8; partition.bytes() as usize];
+    let mut region = vec![0u8; index(partition.bytes())];
     disk.seek(SeekFrom::Start(partition.offset())).unwrap();
     disk.read_exact(&mut region).unwrap();
     fs::write(to, region).unwrap();
@@ -173,10 +181,10 @@ fn fill(
     let sealed = key
         .seal(&[&nano.to_public() as &dyn age::Recipient])
         .unwrap();
-    let packed = VaultKey::open(&sealed, nano).unwrap();
+    let opened = VaultKey::open(&sealed, nano).unwrap();
     move |store| {
         store.create(vault::KEY)?.write_all(&sealed).unwrap();
-        let mut packer = Packer::new(store, &packed);
+        let mut packer = Packer::new(store, &opened);
         packer.add("cache/nix-cache-info", &b"StoreDir: /nix/store\n"[..])?;
         let big: Vec<u8> = (0..3_000_000u32).map(|n| (n % 251) as u8).collect();
         packer.add("cache/nar/a.nar.zst", &big[..])?;
@@ -287,7 +295,7 @@ fn the_images_partitions_are_copied_byte_for_byte() {
     let imaged: u64 = image
         .partitions()
         .iter()
-        .map(|partition| partition.bytes())
+        .map(stick::gpt::Partition::bytes)
         .sum();
     assert!(meter.counted() >= imaged, "{} of {imaged}", meter.counted());
     let meter = Meter::new();
@@ -296,7 +304,7 @@ fn the_images_partitions_are_copied_byte_for_byte() {
     let source = fs::read(&image_path).unwrap();
     let stick = fs::read(&path).unwrap();
     for partition in image.partitions() {
-        let range = partition.offset() as usize..(partition.offset() + partition.bytes()) as usize;
+        let range = index(partition.offset())..index(partition.offset() + partition.bytes());
         assert!(source[range.clone()] == stick[range], "{}", partition.name);
     }
     // The UKI finds its store by these, so they're the image's own.
@@ -557,7 +565,7 @@ fn a_write_that_stops_part_way_leaves_no_partition_table() {
     );
     let stick = fs::read(&path).unwrap();
     assert!(Table::read(&stick).is_err());
-    let backup = &stick[stick.len() - SECTOR as usize..];
+    let backup = &stick[stick.len() - index(SECTOR)..];
     assert_ne!(&backup[..8], b"EFI PART");
 }
 

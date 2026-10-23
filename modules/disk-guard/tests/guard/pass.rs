@@ -1,6 +1,7 @@
 use disk_guard::band::{Band, Space, Thresholds};
 use disk_guard::pass::{Disk, End, Goal, Learned, Outcome, Reclaimer, pass};
 use disk_guard::plan::{Candidate, Class};
+use disk_guard::units::float;
 use std::collections::BTreeMap;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -119,7 +120,7 @@ fn targets(count: usize, idle: f64) -> Vec<Candidate> {
             path: PathBuf::from(format!("/home/u/t{n:02}")),
             class: Class::Target,
             // The longest idle goes first, so t00 does.
-            idle: idle + (count - n) as f64,
+            idle: idle + float(u64::try_from(count - n).unwrap()),
             size: GIB,
             occupied: false,
             spent: false,
@@ -288,7 +289,7 @@ fn deletes_that_free_nothing_stop_the_pass_after_three_batches() {
         "three batches of the six the shortfall needs"
     );
     // A stall teaches nothing, or the next pass would plan everything.
-    assert_eq!(run.learned.ratio(Class::Target), 1.0);
+    crate::assert_exactly(run.learned.ratio(Class::Target), 1.0);
 }
 
 /// `count` temp files of `size` each, long idle, so due at any band.
@@ -297,7 +298,7 @@ fn temps(count: usize, size: u64) -> Vec<Candidate> {
         .map(|n| Candidate {
             path: PathBuf::from(format!("/tmp/tmp.{n:04}")),
             class: Class::Temp,
-            idle: 30.0 * 86_400.0 + (count - n) as f64,
+            idle: 30.0 * 86_400.0 + float(u64::try_from(count - n).unwrap()),
             size,
             occupied: false,
             spent: false,
@@ -322,11 +323,8 @@ fn small_batches_a_writer_swamps_dont_stop_the_pass() {
     let run = run(disk, &candidates, Goal::Reach, nothing, Vec::new());
     assert_eq!(run.end, End::Reached);
     assert_eq!(run.free, 20 * GIB);
-    assert_eq!(
-        run.learned.ratio(Class::Temp),
-        1.0,
-        "too small to learn from"
-    );
+    // Too small to learn from.
+    crate::assert_exactly(run.learned.ratio(Class::Temp), 1.0);
 }
 
 #[test]

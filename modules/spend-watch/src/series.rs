@@ -24,7 +24,8 @@
 
 use crate::estimate::Ratios;
 
-use crate::history::History;
+use crate::history::{History, sql as fail};
+use rusqlite::Connection;
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -113,202 +114,237 @@ pub struct Inputs {
     pub fed: bool,
 }
 
-fn fail(error: rusqlite::Error) -> String {
-    error.to_string()
-}
+/// Each session's repo, by its id.
+type Repos = HashMap<String, String>;
+/// An agent's session's kind and name, by its id.
+type Agents = HashMap<String, (String, String)>;
+/// The quest a session served in an hour, by the hour and the session.
+type QuestAt = HashMap<(i64, String), Option<String>>;
 
 impl Inputs {
     pub fn read(history: &History, from: i64, to: i64) -> Result<Inputs, String> {
         let db = &history.db;
         let mut inputs = Inputs::default();
-        let mut repos: HashMap<String, String> = HashMap::new();
-        // An agent's session's kind and name, by where its log was found.
-        let mut agents: HashMap<String, (String, String)> = HashMap::new();
-        {
-            let mut statement = db
-                .prepare("SELECT id, repo, kind, name FROM sessions")
-                .map_err(fail)?;
-            let rows = statement
-                .query_map([], |row| {
-                    Ok((
-                        row.get::<_, String>(0)?,
-                        row.get::<_, String>(1)?,
-                        row.get::<_, Option<String>>(2)?,
-                        row.get::<_, Option<String>>(3)?,
-                    ))
-                })
-                .map_err(fail)?;
-            for row in rows {
-                let (id, repo, kind, name) = row.map_err(fail)?;
-                inputs.logged.insert(id.clone());
-                if let Some(kind) = kind {
-                    agents.insert(id.clone(), (kind, name.unwrap_or_default()));
-                }
-                repos.insert(id, repo);
-            }
-        }
-        // The quest a session served in each hour, for its subagents.
-        let mut quest_at: HashMap<(i64, String), Option<String>> = HashMap::new();
-        let mut turns: Vec<(i64, Known)> = Vec::new();
-        {
-            let mut statement = db
-                .prepare(
-                    "SELECT hour, session, quest, model, kind, cost FROM turn_hours
-                     WHERE hour >= ?1 AND hour < ?2 ORDER BY hour, session, quest, model, kind",
-                )
-                .map_err(fail)?;
-            let rows = statement
-                .query_map([from, to], |row| {
-                    Ok((
-                        row.get::<_, i64>(0)?,
-                        row.get::<_, String>(1)?,
-                        row.get::<_, Option<String>>(2)?,
-                        row.get::<_, String>(3)?,
-                        row.get::<_, String>(4)?,
-                        row.get::<_, f64>(5)?,
-                    ))
-                })
-                .map_err(fail)?;
-            for row in rows {
-                let (hour, session, quest, model, kind, list) = row.map_err(fail)?;
-                quest_at.insert((hour, session.clone()), quest.clone());
-                turns.push((
-                    hour,
-                    Known {
-                        repo: repos.get(&session).cloned().unwrap_or_default(),
-                        own: session.clone(),
-                        session,
-                        quest,
-                        model,
-                        kind,
-                        persona: String::new(),
-                        list,
-                    },
-                ));
-            }
-        }
-        {
-            let mut statement = db
-                .prepare("SELECT kind, model, persona, parent, started, cost, sessions FROM runs")
-                .map_err(fail)?;
-            let rows = statement
-                .query_map([], |row| {
-                    Ok((
-                        row.get::<_, String>(0)?,
-                        row.get::<_, String>(1)?,
-                        row.get::<_, String>(2)?,
-                        row.get::<_, Option<String>>(3)?,
-                        row.get::<_, f64>(4)?,
-                        row.get::<_, f64>(5)?,
-                        row.get::<_, String>(6)?,
-                    ))
-                })
-                .map_err(fail)?;
-            for row in rows {
-                let (kind, model, persona, parent, started, cost, sessions) = row.map_err(fail)?;
-                let hour = crate::time::hour_of(started);
-                let parent = parent.unwrap_or_default();
-                let known = Known {
-                    quest: quest_at.get(&(hour, parent.clone())).cloned().flatten(),
-                    repo: repos.get(&parent).cloned().unwrap_or_default(),
-                    own: parent.clone(),
-                    session: parent,
-                    model,
-                    kind: format!("subagent:{kind}"),
-                    persona,
-                    list: cost,
-                };
-                let ids: Vec<String> = serde_json::from_str(&sessions).unwrap_or_default();
-                for id in &ids {
-                    inputs.subagents.insert(
-                        id.clone(),
-                        Known {
-                            own: id.clone(),
-                            list: 0.0,
-                            ..known.clone()
-                        },
-                    );
-                }
-                if !(from..to).contains(&hour) {
-                    continue;
-                }
-                // What the run's logs hold is counted at their own hours.
-                let mut logged = 0.0;
-                for id in ids.iter().filter(|id| inputs.logged.contains(*id)) {
-                    logged += db
-                        .query_row(
-                            "SELECT COALESCE(SUM(cost), 0) FROM turns WHERE session = ?1",
-                            [id],
-                            |row| row.get::<_, f64>(0),
-                        )
-                        .map_err(fail)?;
-                }
-                let rest = known.list - logged;
-                if rest > 1e-9 {
-                    inputs.known.entry(hour).or_default().push(Known {
-                        list: rest,
-                        ..known
-                    });
-                }
-            }
-        }
+        let (repos, agents) = inputs.read_sessions(db)?;
+        let (quest_at, turns) = Inputs::read_turns(db, from, to, &repos)?;
+        inputs.read_runs(db, (from, to), &repos, &quest_at)?;
         for (hour, turn) in turns {
             let known = inputs.labelled(turn, &agents);
             inputs.known.entry(hour).or_default().push(known);
         }
-        {
-            let mut statement = db
-                .prepare(
-                    "SELECT hour, source, tool, model, session, SUM(dollars) FROM billed
-                     WHERE hour >= ?1 AND hour < ?2 GROUP BY hour, source, tool, model, session",
-                )
-                .map_err(fail)?;
-            let rows = statement
-                .query_map([from, to], |row| {
-                    Ok((
-                        row.get::<_, i64>(0)?,
-                        BilledRow {
-                            source: row.get(1)?,
-                            tool: row.get(2)?,
-                            model: row.get(3)?,
-                            session: row.get(4)?,
-                            dollars: row.get(5)?,
-                        },
-                    ))
-                })
-                .map_err(fail)?;
-            for row in rows {
-                let (hour, billed) = row.map_err(fail)?;
-                inputs.billed.entry(hour).or_default().push(billed);
-            }
-        }
-        {
-            let mut statement = db
-                .prepare(
-                    "SELECT s.source, s.through, (SELECT MIN(hour) FROM billed b
-                     WHERE b.source = s.source AND b.feed = s.feed) FROM settled s",
-                )
-                .map_err(fail)?;
-            let rows = statement
-                .query_map([], |row| {
-                    Ok((
-                        row.get::<_, String>(0)?,
-                        row.get::<_, i64>(1)?,
-                        row.get::<_, Option<i64>>(2)?,
-                    ))
-                })
-                .map_err(fail)?;
-            for row in rows {
-                let (source, through, first) = row.map_err(fail)?;
-                let first = first.unwrap_or(through);
-                let entry = inputs.settled.entry(source).or_insert((first, through));
-                *entry = (entry.0.min(first), entry.1.max(through));
-            }
-        }
+        inputs.read_billed(db, from, to)?;
+        inputs.read_settled(db)?;
         inputs.fed = db
             .query_row("SELECT EXISTS (SELECT 1 FROM billed)", [], |row| row.get(0))
             .map_err(fail)?;
         Ok(inputs)
+    }
+
+    /// Every session a log here knows, with its repo, and an agent's kind
+    /// and name, by where its log was found.
+    fn read_sessions(&mut self, db: &Connection) -> Result<(Repos, Agents), String> {
+        let mut repos = Repos::new();
+        let mut agents = Agents::new();
+        let mut statement = db
+            .prepare("SELECT id, repo, kind, name FROM sessions")
+            .map_err(fail)?;
+        let rows = statement
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, Option<String>>(2)?,
+                    row.get::<_, Option<String>>(3)?,
+                ))
+            })
+            .map_err(fail)?;
+        for row in rows {
+            let (id, repo, kind, name) = row.map_err(fail)?;
+            self.logged.insert(id.clone());
+            if let Some(kind) = kind {
+                agents.insert(id.clone(), (kind, name.unwrap_or_default()));
+            }
+            repos.insert(id, repo);
+        }
+        Ok((repos, agents))
+    }
+
+    /// Each hour's turns, and the quest a session served in each hour, for
+    /// its subagents.
+    fn read_turns(
+        db: &Connection,
+        from: i64,
+        to: i64,
+        repos: &Repos,
+    ) -> Result<(QuestAt, Vec<(i64, Known)>), String> {
+        let mut quest_at = QuestAt::new();
+        let mut turns: Vec<(i64, Known)> = Vec::new();
+        let mut statement = db
+            .prepare(
+                "SELECT hour, session, quest, model, kind, cost FROM turn_hours
+                     WHERE hour >= ?1 AND hour < ?2 ORDER BY hour, session, quest, model, kind",
+            )
+            .map_err(fail)?;
+        let rows = statement
+            .query_map([from, to], |row| {
+                Ok((
+                    row.get::<_, i64>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, Option<String>>(2)?,
+                    row.get::<_, String>(3)?,
+                    row.get::<_, String>(4)?,
+                    row.get::<_, f64>(5)?,
+                ))
+            })
+            .map_err(fail)?;
+        for row in rows {
+            let (hour, session, quest, model, kind, list) = row.map_err(fail)?;
+            quest_at.insert((hour, session.clone()), quest.clone());
+            turns.push((
+                hour,
+                Known {
+                    repo: repos.get(&session).cloned().unwrap_or_default(),
+                    own: session.clone(),
+                    session,
+                    quest,
+                    model,
+                    kind,
+                    persona: String::new(),
+                    list,
+                },
+            ));
+        }
+        Ok((quest_at, turns))
+    }
+
+    /// Each run of subagents: the sessions that were its agents, and, at
+    /// the hour it started, what of its cost no log of it covers.
+    fn read_runs(
+        &mut self,
+        db: &Connection,
+        (from, to): (i64, i64),
+        repos: &Repos,
+        quest_at: &QuestAt,
+    ) -> Result<(), String> {
+        let mut statement = db
+            .prepare("SELECT kind, model, persona, parent, started, cost, sessions FROM runs")
+            .map_err(fail)?;
+        let rows = statement
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, Option<String>>(3)?,
+                    row.get::<_, f64>(4)?,
+                    row.get::<_, f64>(5)?,
+                    row.get::<_, String>(6)?,
+                ))
+            })
+            .map_err(fail)?;
+        for row in rows {
+            let (kind, model, persona, parent, started, cost, sessions) = row.map_err(fail)?;
+            let hour = crate::time::hour_of(started);
+            let parent = parent.unwrap_or_default();
+            let known = Known {
+                quest: quest_at.get(&(hour, parent.clone())).cloned().flatten(),
+                repo: repos.get(&parent).cloned().unwrap_or_default(),
+                own: parent.clone(),
+                session: parent,
+                model,
+                kind: format!("subagent:{kind}"),
+                persona,
+                list: cost,
+            };
+            let ids: Vec<String> = serde_json::from_str(&sessions).unwrap_or_default();
+            for id in &ids {
+                self.subagents.insert(
+                    id.clone(),
+                    Known {
+                        own: id.clone(),
+                        list: 0.0,
+                        ..known.clone()
+                    },
+                );
+            }
+            if !(from..to).contains(&hour) {
+                continue;
+            }
+            // What the run's logs hold is counted at their own hours.
+            let mut logged = 0.0;
+            for id in ids.iter().filter(|id| self.logged.contains(*id)) {
+                logged += db
+                    .query_row(
+                        "SELECT COALESCE(SUM(cost), 0) FROM turns WHERE session = ?1",
+                        [id],
+                        |row| row.get::<_, f64>(0),
+                    )
+                    .map_err(fail)?;
+            }
+            let rest = known.list - logged;
+            if rest > 1e-9 {
+                self.known.entry(hour).or_default().push(Known {
+                    list: rest,
+                    ..known
+                });
+            }
+        }
+        Ok(())
+    }
+
+    /// What each hour billed, by source, tool, model and session.
+    fn read_billed(&mut self, db: &Connection, from: i64, to: i64) -> Result<(), String> {
+        let mut statement = db
+            .prepare(
+                "SELECT hour, source, tool, model, session, SUM(dollars) FROM billed
+                     WHERE hour >= ?1 AND hour < ?2 GROUP BY hour, source, tool, model, session",
+            )
+            .map_err(fail)?;
+        let rows = statement
+            .query_map([from, to], |row| {
+                Ok((
+                    row.get::<_, i64>(0)?,
+                    BilledRow {
+                        source: row.get(1)?,
+                        tool: row.get(2)?,
+                        model: row.get(3)?,
+                        session: row.get(4)?,
+                        dollars: row.get(5)?,
+                    },
+                ))
+            })
+            .map_err(fail)?;
+        for row in rows {
+            let (hour, billed) = row.map_err(fail)?;
+            self.billed.entry(hour).or_default().push(billed);
+        }
+        Ok(())
+    }
+
+    /// Each source's settled hours, from the first it billed.
+    fn read_settled(&mut self, db: &Connection) -> Result<(), String> {
+        let mut statement = db
+            .prepare(
+                "SELECT s.source, s.through, (SELECT MIN(hour) FROM billed b
+                     WHERE b.source = s.source AND b.feed = s.feed) FROM settled s",
+            )
+            .map_err(fail)?;
+        let rows = statement
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, i64>(1)?,
+                    row.get::<_, Option<i64>>(2)?,
+                ))
+            })
+            .map_err(fail)?;
+        for row in rows {
+            let (source, through, first) = row.map_err(fail)?;
+            let first = first.unwrap_or(through);
+            let entry = self.settled.entry(source).or_insert((first, through));
+            *entry = (entry.0.min(first), entry.1.max(through));
+        }
+        Ok(())
     }
 
     /// A turn as the work it was part of: a run's, shown as the run's under
@@ -501,109 +537,121 @@ impl Inputs {
         }
     }
 
+    /// A settled hour's pieces, from the warehouse's bill: another tool's
+    /// as its own, a session's to its pieces, and what came without a split
+    /// to the pieces no session's bill covered.
+    fn warehouse_pieces(
+        &self,
+        hour: i64,
+        known: &[Known],
+        billed: &[BilledRow],
+        out: &mut Vec<Piece>,
+    ) {
+        let rows: Vec<&BilledRow> = billed
+            .iter()
+            .filter(|row| row.source == "warehouse")
+            .collect();
+        let mut unsplit: HashMap<&str, f64> = HashMap::new();
+        let mut by_session: HashMap<&str, f64> = HashMap::new();
+        for row in &rows {
+            if row.tool != "pi" {
+                out.push(Self::other(
+                    hour,
+                    &row.tool,
+                    &row.model,
+                    "",
+                    row.dollars,
+                    Source::Warehouse,
+                ));
+            } else if row.session.is_empty() {
+                *unsplit.entry(&row.model).or_default() += row.dollars;
+            } else {
+                *by_session.entry(&row.session).or_default() += row.dollars;
+            }
+        }
+        // A session's own bill goes to its pieces by their list shares.
+        let mut covered: HashSet<&str> = HashSet::new();
+        for (session, dollars) in &by_session {
+            let mine: Vec<&Known> = known.iter().filter(|piece| piece.own == *session).collect();
+            let mine_list: f64 = mine.iter().map(|piece| piece.list).sum();
+            if !mine.is_empty() && mine_list > 0.0 {
+                covered.insert(session);
+                for piece in mine {
+                    out.push(Self::piece(
+                        hour,
+                        piece,
+                        dollars * piece.list / mine_list,
+                        Source::Warehouse,
+                    ));
+                }
+            } else if let Some(run) = self.subagents.get(*session) {
+                out.push(Self::piece(hour, run, *dollars, Source::Warehouse));
+            } else if self.logged.contains(*session) {
+                // Billed in an hour its log has no turn in, near an hour's edge.
+                let model = rows
+                    .iter()
+                    .find(|row| row.session == *session)
+                    .map_or("", |row| &row.model);
+                let mut piece =
+                    Self::other(hour, "pi", model, session, *dollars, Source::Warehouse);
+                piece.kind = "agent".into();
+                out.push(piece);
+            } else {
+                let model = rows
+                    .iter()
+                    .find(|row| row.session == *session)
+                    .map_or("", |row| &row.model);
+                let mut piece =
+                    Self::other(hour, "pi", model, "elsewhere", *dollars, Source::Warehouse);
+                piece.kind = "elsewhere".into();
+                out.push(piece);
+            }
+        }
+        // What came without a split follows the shares of the uncovered
+        // pieces on its model, and where no log names that model, every
+        // uncovered piece's: a model's price differs, so its bill is its
+        // own pieces'.
+        let rest: Vec<&Known> = known
+            .iter()
+            .filter(|piece| !covered.contains(piece.own.as_str()))
+            .collect();
+        let mut unsplit: Vec<(&str, f64)> = unsplit.into_iter().collect();
+        unsplit.sort_by(|one, other| one.0.cmp(other.0));
+        for (model, dollars) in unsplit.into_iter().filter(|(_, dollars)| *dollars > 0.0) {
+            let on_model: Vec<&Known> = rest
+                .iter()
+                .copied()
+                .filter(|piece| piece.model == model && piece.list > 0.0)
+                .collect();
+            let shared = if on_model.is_empty() {
+                &rest
+            } else {
+                &on_model
+            };
+            let list: f64 = shared.iter().map(|piece| piece.list).sum();
+            if list > 0.0 {
+                for piece in shared {
+                    out.push(Self::piece(
+                        hour,
+                        piece,
+                        dollars * piece.list / list,
+                        Source::Warehouse,
+                    ));
+                }
+            } else {
+                let mut piece =
+                    Self::other(hour, "pi", model, "elsewhere", dollars, Source::Warehouse);
+                piece.kind = "elsewhere".into();
+                out.push(piece);
+            }
+        }
+    }
+
     fn hour_pieces(&self, hour: i64, ratios: &Ratios, out: &mut Vec<Piece>) {
         let known: &[Known] = self.known.get(&hour).map_or(&[], Vec::as_slice);
         let billed: &[BilledRow] = self.billed.get(&hour).map_or(&[], Vec::as_slice);
         if self.settled("warehouse", hour) {
-            let rows: Vec<&BilledRow> = billed
-                .iter()
-                .filter(|row| row.source == "warehouse")
-                .collect();
-            let mut unsplit: HashMap<&str, f64> = HashMap::new();
-            let mut by_session: HashMap<&str, f64> = HashMap::new();
-            for row in &rows {
-                if row.tool != "pi" {
-                    out.push(Self::other(
-                        hour,
-                        &row.tool,
-                        &row.model,
-                        "",
-                        row.dollars,
-                        Source::Warehouse,
-                    ));
-                } else if row.session.is_empty() {
-                    *unsplit.entry(&row.model).or_default() += row.dollars;
-                } else {
-                    *by_session.entry(&row.session).or_default() += row.dollars;
-                }
-            }
-            // A session's own bill goes to its pieces by their list shares.
-            let mut covered: HashSet<&str> = HashSet::new();
-            for (session, dollars) in &by_session {
-                let mine: Vec<&Known> =
-                    known.iter().filter(|piece| piece.own == *session).collect();
-                let mine_list: f64 = mine.iter().map(|piece| piece.list).sum();
-                if !mine.is_empty() && mine_list > 0.0 {
-                    covered.insert(session);
-                    for piece in mine {
-                        out.push(Self::piece(
-                            hour,
-                            piece,
-                            dollars * piece.list / mine_list,
-                            Source::Warehouse,
-                        ));
-                    }
-                } else if let Some(run) = self.subagents.get(*session) {
-                    out.push(Self::piece(hour, run, *dollars, Source::Warehouse));
-                } else if self.logged.contains(*session) {
-                    // Billed in an hour its log has no turn in, near an hour's edge.
-                    let model = rows
-                        .iter()
-                        .find(|row| row.session == *session)
-                        .map_or("", |row| &row.model);
-                    let mut piece =
-                        Self::other(hour, "pi", model, session, *dollars, Source::Warehouse);
-                    piece.kind = "agent".into();
-                    out.push(piece);
-                } else {
-                    let model = rows
-                        .iter()
-                        .find(|row| row.session == *session)
-                        .map_or("", |row| &row.model);
-                    let mut piece =
-                        Self::other(hour, "pi", model, "elsewhere", *dollars, Source::Warehouse);
-                    piece.kind = "elsewhere".into();
-                    out.push(piece);
-                }
-            }
-            // What came without a split follows the shares of the uncovered
-            // pieces on its model, and where no log names that model, every
-            // uncovered piece's: a model's price differs, so its bill is its
-            // own pieces'.
-            let rest: Vec<&Known> = known
-                .iter()
-                .filter(|piece| !covered.contains(piece.own.as_str()))
-                .collect();
-            let mut unsplit: Vec<(&str, f64)> = unsplit.into_iter().collect();
-            unsplit.sort_by(|one, other| one.0.cmp(other.0));
-            for (model, dollars) in unsplit.into_iter().filter(|(_, dollars)| *dollars > 0.0) {
-                let on_model: Vec<&Known> = rest
-                    .iter()
-                    .copied()
-                    .filter(|piece| piece.model == model && piece.list > 0.0)
-                    .collect();
-                let shared = if on_model.is_empty() {
-                    &rest
-                } else {
-                    &on_model
-                };
-                let list: f64 = shared.iter().map(|piece| piece.list).sum();
-                if list > 0.0 {
-                    for piece in shared {
-                        out.push(Self::piece(
-                            hour,
-                            piece,
-                            dollars * piece.list / list,
-                            Source::Warehouse,
-                        ));
-                    }
-                } else {
-                    let mut piece =
-                        Self::other(hour, "pi", model, "elsewhere", dollars, Source::Warehouse);
-                    piece.kind = "elsewhere".into();
-                    out.push(piece);
-                }
-            }
+            self.warehouse_pieces(hour, known, billed, out);
             return;
         }
         let mut meter: BTreeMap<&str, f64> = BTreeMap::new();
@@ -618,7 +666,7 @@ impl Inputs {
         for piece in known {
             match (self.fed, estimate(piece)) {
                 (true, Some(dollars)) => {
-                    out.push(Self::piece(hour, piece, dollars, Source::Estimated))
+                    out.push(Self::piece(hour, piece, dollars, Source::Estimated));
                 }
                 _ => out.push(Self::piece(hour, piece, piece.list, Source::List)),
             }
@@ -679,7 +727,14 @@ mod tests {
             .execute(
                 "INSERT INTO turns VALUES (?1, ?2, ?3, ?4, 'anthropic', 'agent', ?5,
                  0, 0, 0, 0, 0, ?6, 0, 0, NULL, 0, 0, NULL)",
-                rusqlite::params![session, hour as f64 * 3600.0, hour, model, quest, cost],
+                rusqlite::params![
+                    session,
+                    crate::time::hour_start(hour),
+                    hour,
+                    model,
+                    quest,
+                    cost
+                ],
             )
             .unwrap();
         history
@@ -697,7 +752,7 @@ mod tests {
     }
 
     fn hour_text(hour: i64) -> String {
-        crate::time::rfc3339(hour as f64 * 3600.0)
+        crate::time::rfc3339(crate::time::hour_start(hour))
     }
 
     fn billed(
@@ -729,6 +784,10 @@ mod tests {
     const H: i64 = 490_000;
 
     #[test]
+    #[expect(
+        clippy::float_cmp,
+        reason = "one turn's whole-dollar list price is passed through untouched"
+    )]
     fn logs_alone_are_list_prices() {
         let history = history();
         turn(&history, "s1", H, "opus", 10.0, Some("Q1"));
@@ -740,6 +799,11 @@ mod tests {
     }
 
     #[test]
+    #[expect(
+        clippy::float_cmp,
+        reason = "each session's bill goes whole to its one piece, so the sums are of whole \
+                  dollars and exact"
+    )]
     fn a_settled_hour_is_the_bill_split_by_session() {
         let history = history();
         turn(&history, "s1", H, "opus", 10.0, Some("Q1"));
@@ -788,7 +852,7 @@ mod tests {
                     format!("{kind}-1"),
                     kind,
                     parent,
-                    hour as f64 * 3600.0,
+                    crate::time::hour_start(hour),
                     cost,
                     serde_json::to_string(ids).unwrap()
                 ],
@@ -911,6 +975,10 @@ mod tests {
     // for keeps its model: a model no log names is other tools' on it, and
     // a model the meter doesn't name is drawn from what's left over.
     #[test]
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "a few dollars in rounded cents are far inside i64"
+    )]
     fn a_live_hour_s_other_tools_keep_their_models() {
         let history = history();
         turn(&history, "s1", H, "opus", 10.0, None);

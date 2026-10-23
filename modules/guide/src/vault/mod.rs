@@ -11,6 +11,7 @@
 
 pub mod store;
 
+use std::fmt::Write as _;
 use std::io::{self, BufRead, BufReader, Read, Write};
 
 use age::secrecy::{ExposeSecret, SecretString};
@@ -343,7 +344,11 @@ fn checked(path: &str) -> Result<&str, Fault> {
 }
 
 fn hex(digest: &[u8]) -> String {
-    digest.iter().map(|byte| format!("{byte:02x}")).collect()
+    digest.iter().fold(String::new(), |mut hex, byte| {
+        // Writing to a String can't fail.
+        _ = write!(hex, "{byte:02x}");
+        hex
+    })
 }
 
 /// Counts and hashes what passes through, read or written.
@@ -572,7 +577,8 @@ impl<'s, S: Store + ?Sized> Vault<'s, S> {
                 continue;
             }
             let mut objects = vec![];
-            for part in bytes.chunks(OBJECT as usize) {
+            let object = usize::try_from(OBJECT).expect("a gibibyte fits in memory");
+            for part in bytes.chunks(object) {
                 let name = format!("{next:08}.age");
                 next += 1;
                 sealed_into(self.store, &recipient, &name, &path, part)?;
@@ -705,7 +711,7 @@ mod tests {
         assert_eq!(back, big);
         let mut empty = vec![];
         vault.extract("empty", &mut empty).unwrap();
-        assert!(empty.is_empty());
+        assert_eq!(empty, b"");
     }
 
     #[test]
@@ -743,7 +749,7 @@ mod tests {
             .iter()
             .map(|file| file.path.as_str())
             .collect();
-        paths.sort();
+        paths.sort_unstable();
         assert_eq!(paths, ["sbctl/GUID", "sbctl/keys/db/db.pem", "target.json"]);
         for (path, expected) in [
             ("target.json", &b"{}"[..]),

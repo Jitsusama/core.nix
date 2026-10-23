@@ -11,6 +11,13 @@ pub mod run;
 pub mod terminal;
 pub mod view;
 
+/// A row or a column as a terminal takes one: the low 16 bits of where it
+/// is, all a screen has, so one past them wraps round as it always has.
+fn cell(at: usize) -> u16 {
+    let [low, high, ..] = at.to_le_bytes();
+    u16::from_le_bytes([low, high])
+}
+
 /// What a piece of text means, which says how it's drawn: text in its
 /// three weights, the accent where the keys go, and the hues marks wear.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -124,8 +131,7 @@ impl Theme {
         self.marks
             .iter()
             .find(|(found, _)| found == name)
-            .map(|(_, mark)| mark.as_str())
-            .unwrap_or("")
+            .map_or("", |(_, mark)| mark.as_str())
     }
 
     /// What's missing from it that the screen draws.

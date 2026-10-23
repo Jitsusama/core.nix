@@ -224,6 +224,11 @@ impl Wifi {
     /// Every card and every saved network. Called with more, it answers
     /// again with all of it each time any of it changes.
     #[zlink(more)]
+    #[expect(
+        clippy::unused_async,
+        clippy::unused_async_trait_impl,
+        reason = "zlink's service macro awaits every method it answers with, so each must be async"
+    )]
     async fn describe(&self, more: bool) -> impl Stream<Item = Reply<Described>> + Unpin {
         let mut state = self.state.clone();
         let now = state.borrow_and_update().described();
@@ -256,6 +261,11 @@ impl Wifi {
     /// answers again each time any of it changes, and the cards on
     /// networks read their links every two seconds until the call ends.
     #[zlink(more)]
+    #[expect(
+        clippy::unused_async,
+        clippy::unused_async_trait_impl,
+        reason = "zlink's service macro awaits every method it answers with, so each must be async"
+    )]
     async fn detail(&self, more: bool, name: String) -> impl Stream<Item = Reply<Detail>> + Unpin {
         // Kept in the stream, so the count goes down as the call ends.
         let watching = more.then(|| Watching::new(&self.watching));
@@ -299,6 +309,11 @@ impl Wifi {
     /// card has looked and heard no saved network it can join. The boot
     /// waits on this rather than on a timeout.
     #[zlink(more)]
+    #[expect(
+        clippy::unused_async,
+        clippy::unused_async_trait_impl,
+        reason = "zlink's service macro awaits every method it answers with, so each must be async"
+    )]
     async fn settled(&self, _more: bool) -> impl Stream<Item = Reply<()>> + Unpin {
         // Waiting in a stream rather than in the call leaves wifid free to
         // answer every other call meanwhile.
@@ -313,6 +328,10 @@ impl Wifi {
 
     /// Checks every card's network again now. Describe says what it found
     /// once it has.
+    #[expect(
+        clippy::unused_async,
+        reason = "zlink's service macro awaits every method it answers with, so each must be async"
+    )]
     async fn check(&self) {
         self.asked.send_modify(|asked| *asked += 1);
     }
@@ -587,8 +606,8 @@ mod tests {
         assert!(matches!(settled, Some(Some(_))), "{settled:?}");
     }
 
-    fn inn_heard() -> Option<crate::air::Heard> {
-        Some(crate::air::Heard {
+    fn inn_heard() -> crate::air::Heard {
+        crate::air::Heard {
             name: "Roadside Inn".into(),
             security: Security::Open,
             signal: -52,
@@ -596,13 +615,13 @@ mod tests {
             frequency: 2462,
             age: 0,
             radio: crate::radio::Radio::default(),
-        })
+        }
     }
 
     #[tokio::test]
     async fn a_network_in_detail_is_answered_once_as_it_is() {
         let (wifi, state, _) = wifi();
-        state.send_modify(|state| state.heard("/BSSs/0", inn_heard()));
+        state.send_modify(|state| state.heard("/BSSs/0", Some(inn_heard())));
 
         let mut replies = wifi.detail(false, "Roadside Inn".into()).await;
         let reply = replies.next().await.unwrap();
@@ -621,7 +640,7 @@ mod tests {
 
         let mut replies = wifi.detail(true, "Roadside Inn".into()).await;
         let first = replies.next().await.unwrap();
-        state.send_modify(|state| state.heard("/BSSs/0", inn_heard()));
+        state.send_modify(|state| state.heard("/BSSs/0", Some(inn_heard())));
         let second = replies.next().await.unwrap();
         state.send_modify(|state| state.follow(&inn()));
         let unchanged = replies.next().now_or_never();

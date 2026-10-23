@@ -4,7 +4,7 @@
 //! open of what's in it instead, by any process of any account.
 //!
 //! An account gets fanotify without privilege when events name files by
-//! handle (FAN_REPORT_DFID_NAME) and marks are on inodes, which is all
+//! handle (`FAN_REPORT_DFID_NAME`) and marks are on inodes, which is all
 //! this asks. Each event names the directory by its file handle and the
 //! file by its name, and the opener's pid is reported only when it's the
 //! guard itself, whose own opens date nothing.
@@ -16,7 +16,7 @@ use std::mem::size_of;
 use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
 use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::{Mutex, PoisonError};
 use std::time::Duration;
 
 /// What a watch saw.
@@ -36,7 +36,7 @@ pub struct Watch {
     me: i32,
 }
 
-/// The longest file handle the kernel gives (MAX_HANDLE_SZ).
+/// The longest file handle the kernel gives (`MAX_HANDLE_SZ`).
 const MAX_HANDLE: usize = 128;
 
 impl Watch {
@@ -55,7 +55,8 @@ impl Watch {
             // SAFETY: fd is a new descriptor nothing else owns.
             fd: unsafe { OwnedFd::from_raw_fd(fd) },
             dirs: Mutex::new(HashMap::new()),
-            me: std::process::id() as i32,
+            // The kernel reports pids as signed, and gives none past i32::MAX.
+            me: std::process::id().cast_signed(),
         })
     }
 
@@ -81,7 +82,7 @@ impl Watch {
         }
         self.dirs
             .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .unwrap_or_else(PoisonError::into_inner)
             .insert(key, dir.to_owned());
         Ok(())
     }
@@ -95,7 +96,7 @@ impl Watch {
         };
         let millis = i32::try_from(within.as_millis()).unwrap_or(i32::MAX);
         // SAFETY: one pollfd, counted as one.
-        if unsafe { libc::poll(&mut poll, 1, millis) } < 0 {
+        if unsafe { libc::poll(&raw mut poll, 1, millis) } < 0 {
             let error = io::Error::last_os_error();
             return if error.kind() == io::ErrorKind::Interrupted {
                 Ok(Vec::new())
@@ -111,19 +112,19 @@ impl Watch {
             // SAFETY: the buffer holds `bytes` writable bytes.
             let read =
                 unsafe { libc::read(self.fd.as_raw_fd(), buffer.as_mut_ptr().cast(), bytes) };
-            if read < 0 {
+            // Negative, the read failed.
+            let Ok(read) = usize::try_from(read) else {
                 let error = io::Error::last_os_error();
                 if error.kind() == io::ErrorKind::WouldBlock {
                     return Ok(seen);
                 }
                 return Err(error);
-            }
+            };
             if read == 0 {
                 return Ok(seen);
             }
             // SAFETY: the kernel wrote `read` bytes into the buffer.
-            let events =
-                unsafe { std::slice::from_raw_parts(buffer.as_ptr().cast::<u8>(), read as usize) };
+            let events = unsafe { std::slice::from_raw_parts(buffer.as_ptr().cast::<u8>(), read) };
             self.parse(events, &mut seen);
         }
     }
@@ -173,10 +174,7 @@ impl Watch {
                 key.extend_from_slice(record.get(16..handle_end)?);
                 let name = record.get(handle_end..)?;
                 let name = &name[..name.iter().position(|&byte| byte == 0)?];
-                let dirs = self
-                    .dirs
-                    .lock()
-                    .unwrap_or_else(|poisoned| poisoned.into_inner());
+                let dirs = self.dirs.lock().unwrap_or_else(PoisonError::into_inner);
                 return dirs.get(&key).map(|dir| dir.join(OsStr::from_bytes(name)));
             }
             records = &records[length..];
@@ -190,16 +188,18 @@ impl Watch {
 fn key(path: &CString) -> io::Result<Vec<u8>> {
     // SAFETY: statfs fills the struct it's given.
     let mut stat: libc::statfs = unsafe { std::mem::zeroed() };
-    if unsafe { libc::statfs(path.as_ptr(), &mut stat) } != 0 {
+    if unsafe { libc::statfs(path.as_ptr(), &raw mut stat) } != 0 {
         return Err(io::Error::last_os_error());
     }
     // A file_handle followed by room for the longest handle, kept aligned.
     let mut room = vec![0u32; (size_of::<libc::file_handle>() + MAX_HANDLE).div_ceil(4)];
     let handle = room.as_mut_ptr().cast::<libc::file_handle>();
     let mut mount = 0;
+    let longest = u32::try_from(MAX_HANDLE).map_err(io::Error::other)?;
     // SAFETY: handle points at a file_handle with MAX_HANDLE bytes after it.
-    unsafe { (*handle).handle_bytes = MAX_HANDLE as u32 };
-    if unsafe { libc::name_to_handle_at(libc::AT_FDCWD, path.as_ptr(), handle, &mut mount, 0) } != 0
+    unsafe { (*handle).handle_bytes = longest };
+    if unsafe { libc::name_to_handle_at(libc::AT_FDCWD, path.as_ptr(), handle, &raw mut mount, 0) }
+        != 0
     {
         return Err(io::Error::last_os_error());
     }
@@ -210,7 +210,7 @@ fn key(path: &CString) -> io::Result<Vec<u8>> {
     let (bytes, kind) = unsafe { ((*handle).handle_bytes as usize, (*handle).handle_type) };
     key.extend_from_slice(&kind.to_ne_bytes());
     let handle_bytes: Vec<u8> = room.iter().flat_map(|word| word.to_ne_bytes()).collect();
-    let start = size_of::<libc::file_handle>();
-    key.extend_from_slice(&handle_bytes[start..start + bytes]);
+    let header = size_of::<libc::file_handle>();
+    key.extend_from_slice(&handle_bytes[header..header + bytes]);
     Ok(key)
 }

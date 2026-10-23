@@ -38,10 +38,11 @@ pub struct Days {
 
 impl Days {
     fn weekday(&self, index: usize) -> usize {
-        crate::time::Zone::weekday(self.first + index as i64)
+        crate::time::Zone::weekday(self.first + stats::signed(index))
     }
 
     /// The days before `index`, as their own history.
+    #[must_use]
     pub fn before(&self, index: usize) -> Days {
         Days {
             first: self.first,
@@ -68,7 +69,7 @@ pub fn state_space(days: &Days, horizon: usize, random: &mut Random) -> Paths {
     let n = days.dollars.len();
     let start = n.saturating_sub(WINDOW_DAYS);
     let weights: Vec<f64> = (start..n)
-        .map(|i| 0.5f64.powf((n - i) as f64 / HALF_LIFE_DAYS))
+        .map(|i| 0.5f64.powf(stats::count(n - i) / HALF_LIFE_DAYS))
         .collect();
     let mut chance = [0.0; 7];
     let mut weight = [0.0; 7];
@@ -127,7 +128,8 @@ pub fn state_space(days: &Days, horizon: usize, random: &mut Random) -> Paths {
             }
         }
         let tail = &errors[14.min(errors.len())..];
-        let sse = tail.iter().map(|error| error * error).sum::<f64>() / tail.len().max(1) as f64;
+        let sse =
+            tail.iter().map(|error| error * error).sum::<f64>() / stats::count(tail.len().max(1));
         if best.as_ref().is_none_or(|best| sse < best.sse) {
             best = Some(Fit {
                 sse,
@@ -150,7 +152,7 @@ pub fn state_space(days: &Days, horizon: usize, random: &mut Random) -> Paths {
             let mut at = level;
             (0..horizon)
                 .map(|h| {
-                    let weekday = crate::time::Zone::weekday(days.first + (n + h) as i64);
+                    let weekday = crate::time::Zone::weekday(days.first + stats::signed(n + h));
                     let error = *random.pick(&errors);
                     if random.unit() < chance[weekday] {
                         let spent = (at + season[weekday] + error).exp();
@@ -178,12 +180,13 @@ pub fn recent_weeks(days: &Days, horizon: usize, random: &mut Random) -> Paths {
                 .map(|h| {
                     // The same weekday k weeks back, or as near as there is.
                     let back = n + h;
-                    let mut index = back as i64 - 7 * k as i64;
-                    while index >= n as i64 {
+                    let mut index = stats::signed(back) - 7 * stats::signed(k);
+                    while index >= stats::signed(n) {
                         index -= 7;
                     }
-                    days.dollars
-                        .get(index.max(0) as usize)
+                    usize::try_from(index.max(0))
+                        .ok()
+                        .and_then(|index| days.dollars.get(index))
                         .copied()
                         .unwrap_or(0.0)
                 })
@@ -193,11 +196,16 @@ pub fn recent_weeks(days: &Days, horizon: usize, random: &mut Random) -> Paths {
 }
 
 /// Half the paths from each, or as the weights say.
+#[expect(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    reason = "the weight is clamped to [0, 1], so the rounded share lies in [0, SAMPLES]"
+)]
 pub fn mixture(days: &Days, horizon: usize, seed: u64, weight: f64) -> Paths {
     let mut random = Random::seeded(seed);
     let one = state_space(days, horizon, &mut random);
     let other = recent_weeks(days, horizon, &mut random);
-    let take = ((SAMPLES as f64) * weight.clamp(0.0, 1.0)).round() as usize;
+    let take = (stats::count(SAMPLES) * weight.clamp(0.0, 1.0)).round() as usize;
     one.into_iter()
         .take(take)
         .chain(other.into_iter().take(SAMPLES - take))
@@ -226,10 +234,10 @@ pub struct Score {
 /// The rolling-origin backtest: from every day with eight weeks before it,
 /// each model forecasts the next day and the next week, and is scored.
 pub fn score(days: &Days, last: usize, seed: u64) -> Vec<Score> {
+    type Model = fn(&Days, usize, &mut Random) -> Paths;
     let n = days.dollars.len();
     let first = 56.max(n.saturating_sub(last + 7));
     let mut out = Vec::new();
-    type Model = fn(&Days, usize, &mut Random) -> Paths;
     let models: [(&'static str, Option<Model>); 3] = [
         ("mixture", None),
         ("state space", Some(state_space)),
@@ -270,8 +278,8 @@ pub fn score(days: &Days, last: usize, seed: u64) -> Vec<Score> {
                 origins,
                 crps: stats::mean(&crps),
                 mean: stats::mean(&actual),
-                held80: held80 as f64 / origins as f64,
-                held95: held95 as f64 / origins as f64,
+                held80: stats::count(held80) / stats::count(origins),
+                held95: stats::count(held95) / stats::count(origins),
             });
         }
     }

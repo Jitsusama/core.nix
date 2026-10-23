@@ -104,7 +104,7 @@ fn an_entry_too_big_to_survey_counts_as_new() {
     for n in 0..60_000 {
         fs::write(big.join(n.to_string()), "").unwrap();
     }
-    assert_eq!(survey(temp.path())[0].newest, f64::INFINITY);
+    crate::assert_exactly(survey(temp.path())[0].newest, f64::INFINITY);
 }
 
 #[test]
@@ -196,11 +196,11 @@ fn a_live_processes_tmpdir_keeps_what_holds_it() {
 fn a_leftover_is_idle_for_the_awake_time_since_its_last_change() {
     let made = candidate(&entry("build-a1b2c3"), &Awake::default(), 4_600.0);
     assert_eq!(made.class, Class::Temp);
-    assert_eq!(made.idle, 3_600.0);
+    crate::assert_exactly(made.idle, 3_600.0);
     assert_eq!(made.size, 4096);
     let unread = Entry {
         newest: f64::INFINITY,
         ..entry("build-a1b2c3")
     };
-    assert_eq!(candidate(&unread, &Awake::default(), 4_600.0).idle, 0.0);
+    crate::assert_exactly(candidate(&unread, &Awake::default(), 4_600.0).idle, 0.0);
 }

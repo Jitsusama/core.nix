@@ -6,7 +6,9 @@
 
 use crate::Fault;
 
-pub const SECTOR: u64 = 512;
+pub const SECTOR: u64 = SECTOR_LENGTH as u64;
+/// A sector, as a length in memory.
+pub const SECTOR_LENGTH: usize = 512;
 const SIGNATURE: &[u8; 8] = b"EFI PART";
 const HEADER_BYTES: usize = 92;
 const ENTRY_BYTES: usize = 128;
@@ -67,7 +69,7 @@ impl Table {
     pub fn read(start: &[u8]) -> Result<Table, Fault> {
         let bad = |why: &str| Fault::unreadable("the image's partition table", why);
         let header = start
-            .get(SECTOR as usize..SECTOR as usize + HEADER_BYTES)
+            .get(SECTOR_LENGTH..SECTOR_LENGTH + HEADER_BYTES)
             .ok_or_else(|| bad("it's shorter than a header"))?;
         if &header[..8] != SIGNATURE {
             return Err(bad("it isn't GPT"));
@@ -85,8 +87,10 @@ impl Table {
         if le32(&header[84..]) as usize != ENTRY_BYTES {
             return Err(bad("its entries aren't 128 bytes"));
         }
-        let entries = start
-            .get(at as usize..at as usize + count * ENTRY_BYTES)
+        // Entries past where a `usize` reaches are past what was read.
+        let entries = usize::try_from(at)
+            .ok()
+            .and_then(|at| start.get(at..at + count * ENTRY_BYTES))
             .ok_or_else(|| bad("its entries run past what was read"))?;
         if crc32fast::hash(entries) != le32(&header[88..]) {
             return Err(bad("its entries' checksum is wrong"));
@@ -123,7 +127,16 @@ impl Table {
 
     /// Sectors the entries take, rounded up.
     fn entry_sectors(&self) -> u64 {
-        (self.slots.len() * ENTRY_BYTES).div_ceil(SECTOR as usize) as u64
+        (self.slots.len() * ENTRY_BYTES).div_ceil(SECTOR_LENGTH) as u64
+    }
+
+    /// How many slots the header says there are.
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "the slots are read from a header's 32-bit count, so their number fits in one"
+    )]
+    fn slot_count(&self) -> u32 {
+        self.slots.len() as u32
     }
 
     /// The first sector a partition may use on a disk of this many.
@@ -198,24 +211,26 @@ impl Table {
         let last = sectors - 1;
         let backup_entries = last - self.entry_sectors();
         let header = |mine: u64, other: u64, entries_at: u64| {
-            let mut header = vec![0u8; SECTOR as usize];
+            let mut header = vec![0u8; SECTOR_LENGTH];
             header[..8].copy_from_slice(SIGNATURE);
             header[8..12].copy_from_slice(&0x0001_0000u32.to_le_bytes());
-            header[12..16].copy_from_slice(&(HEADER_BYTES as u32).to_le_bytes());
+            let header_bytes = u32::try_from(HEADER_BYTES).expect("a header is 92 bytes");
+            header[12..16].copy_from_slice(&header_bytes.to_le_bytes());
             header[24..32].copy_from_slice(&mine.to_le_bytes());
             header[32..40].copy_from_slice(&other.to_le_bytes());
             header[40..48].copy_from_slice(&self.first_usable().to_le_bytes());
             header[48..56].copy_from_slice(&self.last_usable(sectors).to_le_bytes());
             header[56..72].copy_from_slice(&self.disk_guid);
             header[72..80].copy_from_slice(&entries_at.to_le_bytes());
-            header[80..84].copy_from_slice(&(self.slots.len() as u32).to_le_bytes());
-            header[84..88].copy_from_slice(&(ENTRY_BYTES as u32).to_le_bytes());
+            header[80..84].copy_from_slice(&self.slot_count().to_le_bytes());
+            let entry_bytes = u32::try_from(ENTRY_BYTES).expect("an entry is 128 bytes");
+            header[84..88].copy_from_slice(&entry_bytes.to_le_bytes());
             header[88..92].copy_from_slice(&entries_crc.to_le_bytes());
             let crc = crc32fast::hash(&header[..HEADER_BYTES]);
             header[16..20].copy_from_slice(&crc.to_le_bytes());
             header
         };
-        let mut mbr = vec![0u8; SECTOR as usize];
+        let mut mbr = vec![0u8; SECTOR_LENGTH];
         let protective = &mut mbr[446..462];
         protective[1..4].copy_from_slice(&[0x00, 0x02, 0x00]);
         protective[4] = 0xee;
@@ -241,9 +256,10 @@ mod tests {
     /// A table as the writer would put it on a disk this many sectors big,
     /// laid out as the disk holds it.
     fn disk(table: &Table, sectors: u64) -> Vec<u8> {
-        let mut disk = vec![0u8; (sectors * SECTOR) as usize];
+        let mut disk = vec![0u8; usize::try_from(sectors * SECTOR).unwrap()];
         for (at, bytes) in table.render(sectors) {
-            disk[at as usize..at as usize + bytes.len()].copy_from_slice(&bytes);
+            let at = usize::try_from(at).unwrap();
+            disk[at..at + bytes.len()].copy_from_slice(&bytes);
         }
         disk
     }
@@ -314,7 +330,7 @@ mod tests {
         let table = image();
         let sectors = 8192;
         let disk = disk(&table, sectors);
-        let last = &disk[((sectors - 1) * SECTOR) as usize..];
+        let last = &disk[usize::try_from((sectors - 1) * SECTOR).unwrap()..];
         assert_eq!(&last[..8], SIGNATURE);
         assert_eq!(le64(&last[24..]), sectors - 1);
         assert_eq!(le64(&last[32..]), 1);
@@ -323,7 +339,7 @@ mod tests {
     #[test]
     fn a_damaged_table_is_refused() {
         let mut disk = disk(&image(), 8192);
-        disk[2 * SECTOR as usize] ^= 1;
+        disk[2 * SECTOR_LENGTH] ^= 1;
         assert!(matches!(
             Table::read(&disk),
             Err(Fault::Unreadable { why, .. }) if why == "its entries' checksum is wrong"

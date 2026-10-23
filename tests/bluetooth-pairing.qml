@@ -42,13 +42,13 @@ ShellRoot {
             throw new Error(`${what}: ${said}`);
     }
 
+    Accessories {
+        id: bluetooth
+        settings: ({})
+    }
+
     Component.onCompleted: {
         try {
-            const made = Qt.createComponent("launcher/Accessories.qml");
-            if (made.status !== Component.Ready)
-                throw new Error(`loading: ${made.errorString()}`);
-            const bluetooth = made.createObject(root, { settings: {} });
-
             bluetooth.join(linkedFirst);
             expect("pairing starts", linkedFirst.pairing, "it wasn't asked to pair");
             expect("trusted before paired", linkedFirst.trusted,

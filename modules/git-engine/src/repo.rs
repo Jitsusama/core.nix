@@ -46,8 +46,7 @@ pub fn discover(dir: &Path) -> Option<Location> {
                 && git_dir.join("HEAD").exists()
             {
                 let common = std::fs::read_to_string(git_dir.join("commondir"))
-                    .map(|text| git_dir.join(text.trim()))
-                    .unwrap_or_else(|_| git_dir.clone());
+                    .map_or_else(|_| git_dir.clone(), |text| git_dir.join(text.trim()));
                 let common = std::fs::canonicalize(&common).unwrap_or(common);
                 return Some(Location {
                     workdir: dir.to_path_buf(),
@@ -500,90 +499,116 @@ impl Repo {
             stashes: self.refs.stashes(),
             ..Answer::default()
         };
-        let mut head_tree = None;
-        if let Some(commit) = commit {
-            // A commit never changes, so it's read once while it's HEAD.
-            if self
-                .head_commit
-                .as_ref()
-                .is_none_or(|(seen, ..)| *seen != commit)
-                && let Some(object) = self.odb.read(&commit)?
-                && object.kind == Kind::Commit
-            {
-                let parsed = parse_commit(&object.data)?;
-                let summary = parsed.summary.replace(['\x1e', '\x1f'], " ");
-                self.head_commit = Some((commit, parsed.tree, parsed.encoding, summary));
-            }
-            if let Some((seen, tree, encoding, summary)) = &self.head_commit
-                && *seen == commit
-            {
-                head_tree = Some(*tree);
-                answer.encoding.clone_from(encoding);
-                answer.summary.clone_from(summary);
-            }
-        }
+        let head_tree = match commit {
+            Some(commit) => self.describe_head(commit, &mut answer)?,
+            None => None,
+        };
         if let (Some(branch), Some(commit)) = (&branch, commit) {
-            let remote = self
-                .config
-                .get(&format!("branch.{branch}.remote"))
-                .map(str::to_string);
-            let merge = self
-                .config
-                .get(&format!("branch.{branch}.merge"))
-                .map(str::to_string);
-            if let (Some(remote), Some(merge)) = (remote, merge) {
-                let tracking = if remote == "." {
-                    Some(merge.clone())
-                } else {
-                    let key = format!("remote.{remote}.fetch");
-                    let mapped: Vec<String> = self
-                        .config
-                        .get_all(&key)
-                        .filter_map(|spec| map_refspec(spec, &merge))
-                        .collect();
-                    mapped.into_iter().next()
-                };
-                if let Some(tracking) = tracking
-                    && let Some(upstream) = self.refs.resolve(&tracking)
-                {
-                    answer.remote_name = remote.clone();
-                    answer.remote_branch = merge
-                        .strip_prefix("refs/heads/")
-                        .unwrap_or(&merge)
-                        .to_string();
-                    answer.remote_url = self
-                        .config
-                        .get(&format!("remote.{remote}.url"))
-                        .unwrap_or_default()
-                        .to_string();
-                    (answer.ahead, answer.behind) = self.ahead_behind(commit, upstream)?;
-                }
-            }
-            let push_remote = self
-                .config
-                .get(&format!("branch.{branch}.pushremote"))
-                .or_else(|| self.config.get("remote.pushdefault"))
-                .map(str::to_string);
-            if let Some(push_remote) = push_remote
-                && let Some(pushed) = self
-                    .refs
-                    .resolve(&format!("refs/remotes/{push_remote}/{branch}"))
-            {
-                answer.push_remote_url = self
-                    .config
-                    .get(&format!("remote.{push_remote}.url"))
-                    .unwrap_or_default()
-                    .to_string();
-                answer.push_remote_name = push_remote;
-                (answer.push_ahead, answer.push_behind) = self.ahead_behind(commit, pushed)?;
-            }
+            self.track(branch, commit, &mut answer)?;
         }
         if let Some(commit) = commit {
             answer.tag = self.tag(commit);
         }
-        if !diff {
-            return Ok(answer);
+        if diff {
+            self.count(options, head_tree, &mut answer)?;
         }
+        Ok(answer)
+    }
+
+    /// Puts HEAD's commit's summary and encoding in the answer, and gives its
+    /// tree.
+    fn describe_head(&mut self, commit: Oid, answer: &mut Answer) -> io::Result<Option<Oid>> {
+        // A commit never changes, so it's read once while it's HEAD.
+        if self
+            .head_commit
+            .as_ref()
+            .is_none_or(|(seen, ..)| *seen != commit)
+            && let Some(object) = self.odb.read(&commit)?
+            && object.kind == Kind::Commit
+        {
+            let parsed = parse_commit(&object.data)?;
+            let summary = parsed.summary.replace(['\x1e', '\x1f'], " ");
+            self.head_commit = Some((commit, parsed.tree, parsed.encoding, summary));
+        }
+        let Some((seen, tree, encoding, summary)) = &self.head_commit else {
+            return Ok(None);
+        };
+        if *seen != commit {
+            return Ok(None);
+        }
+        answer.encoding.clone_from(encoding);
+        answer.summary.clone_from(summary);
+        Ok(Some(*tree))
+    }
+
+    /// Puts in the answer where the branch is pulled from and pushed to, and
+    /// how far it is ahead of and behind each.
+    fn track(&mut self, branch: &str, commit: Oid, answer: &mut Answer) -> io::Result<()> {
+        let remote = self
+            .config
+            .get(&format!("branch.{branch}.remote"))
+            .map(str::to_string);
+        let merge = self
+            .config
+            .get(&format!("branch.{branch}.merge"))
+            .map(str::to_string);
+        if let (Some(remote), Some(merge)) = (remote, merge) {
+            let tracking = if remote == "." {
+                Some(merge.clone())
+            } else {
+                let key = format!("remote.{remote}.fetch");
+                let mapped: Vec<String> = self
+                    .config
+                    .get_all(&key)
+                    .filter_map(|spec| map_refspec(spec, &merge))
+                    .collect();
+                mapped.into_iter().next()
+            };
+            if let Some(tracking) = tracking
+                && let Some(upstream) = self.refs.resolve(&tracking)
+            {
+                answer.remote_name.clone_from(&remote);
+                answer.remote_branch = merge
+                    .strip_prefix("refs/heads/")
+                    .unwrap_or(&merge)
+                    .to_string();
+                answer.remote_url = self
+                    .config
+                    .get(&format!("remote.{remote}.url"))
+                    .unwrap_or_default()
+                    .to_string();
+                (answer.ahead, answer.behind) = self.ahead_behind(commit, upstream)?;
+            }
+        }
+        let push_remote = self
+            .config
+            .get(&format!("branch.{branch}.pushremote"))
+            .or_else(|| self.config.get("remote.pushdefault"))
+            .map(str::to_string);
+        if let Some(push_remote) = push_remote
+            && let Some(pushed) = self
+                .refs
+                .resolve(&format!("refs/remotes/{push_remote}/{branch}"))
+        {
+            answer.push_remote_url = self
+                .config
+                .get(&format!("remote.{push_remote}.url"))
+                .unwrap_or_default()
+                .to_string();
+            answer.push_remote_name = push_remote;
+            (answer.push_ahead, answer.push_behind) = self.ahead_behind(commit, pushed)?;
+        }
+        Ok(())
+    }
+
+    /// Counts in the answer what's staged, changed, untracked and in
+    /// conflict, as far as the options' limits.
+    fn count(
+        &mut self,
+        options: &Options,
+        head_tree: Option<Oid>,
+        answer: &mut Answer,
+    ) -> io::Result<()> {
         // Before the first `git add` there's no index, and everything is
         // untracked.
         let index = self
@@ -603,7 +628,7 @@ impl Repo {
         {
             status::settle(&mut counts, limits);
             answer.counts = Some(counts);
-            return Ok(answer);
+            return Ok(());
         }
         let settings = Settings {
             autocrlf: self.config.get("core.autocrlf").map(str::to_string),
@@ -670,6 +695,6 @@ impl Repo {
         )?;
         status::settle(&mut counts, limits);
         answer.counts = Some(counts);
-        Ok(answer)
+        Ok(())
     }
 }

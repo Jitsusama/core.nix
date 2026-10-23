@@ -88,7 +88,7 @@ fn lasting(address: &Value) -> bool {
 /// The kernel's scope for an address that reaches beyond its link.
 const UNIVERSE: u64 = 0;
 
-/// The kernel's flag for an IPv6 privacy address, IFA_F_TEMPORARY.
+/// The kernel's flag for an IPv6 privacy address, `IFA_F_TEMPORARY`.
 const TEMPORARY: u64 = 0x01;
 
 fn address(address: &Value) -> Option<String> {
@@ -116,7 +116,7 @@ mod tests {
     }
 
     fn reach(links: &[Value], dns: &[&str]) -> Reach {
-        let dns = dns.iter().map(|server| server.to_string()).collect();
+        let dns = dns.iter().map(ToString::to_string).collect();
         Reach::read(&json!({ "Interfaces": links }), dns)
     }
 

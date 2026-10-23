@@ -25,14 +25,14 @@ fn status(bands: &[(&str, Band, u64)], last: Option<LastPass>) -> Status {
     }
 }
 
-fn pass(at: f64, band: Band, end: &str, freed: u64) -> Option<LastPass> {
-    Some(LastPass {
+fn pass(at: f64, band: Band, end: &str, freed: u64) -> LastPass {
+    LastPass {
         at,
         path: PathBuf::from("/home"),
         band,
         end: end.to_owned(),
         freed: freed * GIB,
-    })
+    }
 }
 
 fn shown(change: Option<Change>) -> Notice {
@@ -46,7 +46,7 @@ fn shown(change: Option<Change>) -> Notice {
 fn a_writer_frozen_is_told_at_once_with_how_to_let_it_go_on() {
     let short = status(
         &[("/home", Band::Critical, 2)],
-        pass(1.0, Band::Critical, "exhausted", 0),
+        Some(pass(1.0, Band::Critical, "exhausted", 0)),
     );
     let mut frozen = short.clone();
     frozen.frozen.push(disk_guard::writers::Frozen {
@@ -74,7 +74,7 @@ fn nothing_changing_says_nothing() {
     assert_eq!(change(&calm, &calm), None);
     let pressed = status(
         &[("/home", Band::Pressure, 140)],
-        pass(1.0, Band::Pressure, "reached", 1),
+        Some(pass(1.0, Band::Pressure, "reached", 1)),
     );
     assert_eq!(change(&pressed, &pressed), None);
 }
@@ -104,12 +104,12 @@ fn a_pass_left_short_names_who_is_writing_the_most() {
     let before = status(&[("/home", Band::Urgent, 60)], None);
     let mut short = status(
         &[("/home", Band::Critical, 25)],
-        pass(1.0, Band::Critical, "exhausted", 5),
+        Some(pass(1.0, Band::Critical, "exhausted", 5)),
     );
     short.writer = Some(Writing {
         name: "cargo".to_owned(),
         pid: 4242,
-        rate: 120.0 * (1 << 20) as f64,
+        rate: 120.0 * f64::from(1 << 20),
     });
     let notice = shown(change(&before, &short));
     assert_eq!(
@@ -137,7 +137,7 @@ fn a_pass_below_healthy_tells_what_it_freed_and_how_it_ended() {
     let before = status(&[("/home", Band::Urgent, 60)], None);
     let reached = status(
         &[("/home", Band::Healthy, 200)],
-        pass(1.0, Band::Urgent, "reached", 140),
+        Some(pass(1.0, Band::Urgent, "reached", 140)),
     );
     let notice = shown(change(&before, &reached));
     assert_eq!(notice.summary, "Freed 140.0 GiB on /home");
@@ -145,7 +145,7 @@ fn a_pass_below_healthy_tells_what_it_freed_and_how_it_ended() {
     assert_eq!(notice.urgency, Urgency::Normal);
     let short = status(
         &[("/home", Band::Critical, 25)],
-        pass(1.0, Band::Critical, "exhausted", 5),
+        Some(pass(1.0, Band::Critical, "exhausted", 5)),
     );
     let notice = shown(change(&before, &short));
     assert_eq!(notice.summary, "Freed 5.0 GiB on /home, short of room");
@@ -156,7 +156,7 @@ fn a_pass_below_healthy_tells_what_it_freed_and_how_it_ended() {
     assert_eq!(notice.urgency, Urgency::Critical);
     let stalled = status(
         &[("/home", Band::Urgent, 60)],
-        pass(1.0, Band::Urgent, "stalled", 0),
+        Some(pass(1.0, Band::Urgent, "stalled", 0)),
     );
     let notice = shown(change(&before, &stalled));
     assert_eq!(notice.summary, "Nothing freed on /home, short of room");
@@ -166,7 +166,7 @@ fn a_pass_below_healthy_tells_what_it_freed_and_how_it_ended() {
     );
     let failed = status(
         &[("/home", Band::Urgent, 60)],
-        pass(1.0, Band::Urgent, "failed: reading space: gone", 0),
+        Some(pass(1.0, Band::Urgent, "failed: reading space: gone", 0)),
     );
     assert_eq!(
         shown(change(&before, &failed)).body,
@@ -179,7 +179,7 @@ fn routine_upkeep_says_nothing() {
     let before = status(&[("/home", Band::Healthy, 400)], None);
     let upkept = status(
         &[("/home", Band::Healthy, 410)],
-        pass(1.0, Band::Healthy, "reached", 10),
+        Some(pass(1.0, Band::Healthy, "reached", 10)),
     );
     assert_eq!(change(&before, &upkept), None);
 }

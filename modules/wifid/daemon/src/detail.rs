@@ -107,7 +107,7 @@ pub struct Best {
 }
 
 /// What a card's driver last read of its link, as wpa_supplicant's
-/// SignalPoll says it, with the access point it's on by its path.
+/// `SignalPoll` says it, with the access point it's on by its path.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Polled {
     pub point: String,
@@ -351,7 +351,7 @@ mod tests {
         }
     }
 
-    fn owned(value: Value<'_>) -> OwnedValue {
+    fn owned(value: &Value<'_>) -> OwnedValue {
         value.try_to_owned().unwrap()
     }
 
@@ -595,16 +595,16 @@ mod tests {
     fn signal_poll_is_read_as_the_driver_says_it() {
         // As an Intel card said it of a hotel's 5 GHz access point.
         let said = HashMap::from([
-            ("rssi".into(), owned(Value::from(-59i32))),
-            ("avg-rssi".into(), owned(Value::from(-58i32))),
-            ("noise".into(), owned(Value::from(9999i32))),
-            ("linkspeed".into(), owned(Value::from(458u32))),
-            ("linkrxspeed".into(), owned(Value::from(458_800u32))),
-            ("linktxspeed".into(), owned(Value::from(286_700u32))),
-            ("frequency".into(), owned(Value::from(5200u32))),
-            ("width".into(), owned(Value::from("40 MHz"))),
-            ("rx-he-mcs".into(), owned(Value::from(9u32))),
-            ("rx-he-nss".into(), owned(Value::from(2u32))),
+            ("rssi".into(), owned(&Value::from(-59i32))),
+            ("avg-rssi".into(), owned(&Value::from(-58i32))),
+            ("noise".into(), owned(&Value::from(9999i32))),
+            ("linkspeed".into(), owned(&Value::from(458u32))),
+            ("linkrxspeed".into(), owned(&Value::from(458_800u32))),
+            ("linktxspeed".into(), owned(&Value::from(286_700u32))),
+            ("frequency".into(), owned(&Value::from(5200u32))),
+            ("width".into(), owned(&Value::from("40 MHz"))),
+            ("rx-he-mcs".into(), owned(&Value::from(9u32))),
+            ("rx-he-nss".into(), owned(&Value::from(2u32))),
         ]);
 
         let polled = Polled::read("/fi/w1/wpa_supplicant1/Interfaces/0/BSSs/1".into(), &said);
@@ -630,8 +630,8 @@ mod tests {
     #[test]
     fn signal_poll_without_link_rates_takes_the_one_it_has() {
         let said = HashMap::from([
-            ("linkspeed".into(), owned(Value::from(54u32))),
-            ("rx-mcs".into(), owned(Value::from(7u32))),
+            ("linkspeed".into(), owned(&Value::from(54u32))),
+            ("rx-mcs".into(), owned(&Value::from(7u32))),
         ]);
 
         let polled = Polled::read(String::new(), &said);

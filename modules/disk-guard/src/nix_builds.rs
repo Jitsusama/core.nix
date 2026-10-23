@@ -40,7 +40,7 @@ pub fn find(dir: &Path) -> Vec<Build> {
             let kept = fs::symlink_metadata(&snapshot.path)
                 .ok()
                 .filter(|meta| meta.mode() & 0o044 != 0)
-                .map(|meta| meta.ctime() as f64);
+                .map(|meta| crate::units::wall(meta.ctime(), 0));
             Build { snapshot, kept }
         })
         .collect()

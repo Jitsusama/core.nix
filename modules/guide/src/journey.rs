@@ -55,7 +55,7 @@ impl Journey {
     /// has left are behind it, and can't be observed from here.
     /// The steps in their order.
     pub fn steps(&self) -> impl Iterator<Item = &dyn Step> {
-        self.steps.iter().map(|step| step.as_ref())
+        self.steps.iter().map(AsRef::as_ref)
     }
 
     pub fn next(&self, here: Place, machine: &mut dyn Machine) -> Result<Next<'_>, Fault> {

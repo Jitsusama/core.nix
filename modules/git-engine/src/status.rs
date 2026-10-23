@@ -7,7 +7,7 @@ use crate::attrs::{self, State};
 use crate::fsmonitor::Changed;
 use crate::hash::{Oid, Sha256, to_hex};
 use crate::index::{CacheTree, Entry, Index};
-use crate::odb::{Kind, Odb, tree_entries};
+use crate::odb::{Kind, Odb, TreeEntry, tree_entries};
 use crate::pattern::{Pattern, parse_file};
 use crate::stamp::Stamp;
 use std::collections::{HashMap, HashSet};
@@ -396,28 +396,7 @@ fn compare_tree(
             }
             at = sub_range.end.max(at + 1);
         } else {
-            if entry.stage == 0 && !entry.intent_to_add() {
-                match tree_entry {
-                    Some(t) if t.mode == 0o040_000 => {
-                        bump(&mut counts.staged, limits.staged);
-                        counts.staged_new += 1;
-                        count_deleted(odb, t.oid, limits, counts)?;
-                    }
-                    Some(t) => {
-                        if t.oid != entry.oid || t.mode != entry.mode {
-                            bump(&mut counts.staged, limits.staged);
-                        }
-                    }
-                    None => {
-                        bump(&mut counts.staged, limits.staged);
-                        counts.staged_new += 1;
-                    }
-                }
-            } else if entry.stage != 0 {
-                // A conflict: what the tree had is still to be decided.
-            } else if tree_entry.is_some() {
-                // Intent to add over a path HEAD has: unchanged, staged.
-            }
+            compare_file(odb, entry, tree_entry, limits, counts)?;
             // Every stage of one path is one entry to the tree.
             let mut next = at + 1;
             while next < range.end && index.entries[next].path == entry.path {
@@ -441,6 +420,38 @@ fn compare_tree(
 }
 
 /// Every file of a tree HEAD has and the index doesn't.
+/// Counts a file in the index as staged against what HEAD's tree has at
+/// its path, if anything.
+fn compare_file(
+    odb: &mut Odb,
+    entry: &Entry,
+    tree_entry: Option<&TreeEntry>,
+    limits: Limits,
+    counts: &mut Counts,
+) -> io::Result<()> {
+    if entry.stage == 0 && !entry.intent_to_add() {
+        match tree_entry {
+            Some(t) if t.mode == 0o040_000 => {
+                bump(&mut counts.staged, limits.staged);
+                counts.staged_new += 1;
+                count_deleted(odb, t.oid, limits, counts)?;
+            }
+            Some(t) => {
+                if t.oid != entry.oid || t.mode != entry.mode {
+                    bump(&mut counts.staged, limits.staged);
+                }
+            }
+            None => {
+                bump(&mut counts.staged, limits.staged);
+                counts.staged_new += 1;
+            }
+        }
+    }
+    // Neither a conflict, whose tree side is still to be decided, nor an
+    // intent to add, unchanged and staged, counts.
+    Ok(())
+}
+
 fn count_deleted(odb: &mut Odb, tree: Oid, limits: Limits, counts: &mut Counts) -> io::Result<()> {
     let object = odb
         .read(&tree)?
@@ -479,12 +490,24 @@ fn later_or_same(a: (u32, u32), b: (i64, i64)) -> bool {
     a >= b
 }
 
-#[allow(clippy::cast_possible_truncation)]
+/// A stat field's low 32 bits, all the index keeps of it, as git does.
+fn low_32(field: u64) -> u32 {
+    let [a, b, c, d, ..] = field.to_le_bytes();
+    u32::from_le_bytes([a, b, c, d])
+}
+
+/// A time's seconds and nanoseconds as the index keeps them.
+fn kept_time(seconds: i64, nanoseconds: i64) -> (u32, u32) {
+    (
+        low_32(seconds.cast_unsigned()),
+        low_32(nanoseconds.cast_unsigned()),
+    )
+}
+
 fn judge(workdir: &Path, entry: &Entry, written: (i64, i64), settings: &Settings) -> Verdict {
     let path = workdir.join(os(&entry.path));
-    let meta = match std::fs::symlink_metadata(&path) {
-        Ok(meta) => meta,
-        Err(_) => return Verdict::Deleted,
+    let Ok(meta) = std::fs::symlink_metadata(&path) else {
+        return Verdict::Deleted;
     };
     let kind = entry.mode & 0o170_000;
     let file_type = meta.file_type();
@@ -508,16 +531,16 @@ fn judge(workdir: &Path, entry: &Entry, written: (i64, i64), settings: &Settings
         }
     }
     let stat = &entry.stat;
-    let moved = stat.mtime != (meta.mtime() as u32, meta.mtime_nsec() as u32)
-        || (settings.trust_ctime && stat.ctime != (meta.ctime() as u32, meta.ctime_nsec() as u32))
-        || stat.ino != meta.ino() as u32
+    let moved = stat.mtime != kept_time(meta.mtime(), meta.mtime_nsec())
+        || (settings.trust_ctime && stat.ctime != kept_time(meta.ctime(), meta.ctime_nsec()))
+        || stat.ino != low_32(meta.ino())
         || stat.uid != meta.uid()
         || stat.gid != meta.gid()
-        || stat.size != meta.size() as u32;
+        || stat.size != low_32(meta.size());
     if !moved && !later_or_same(stat.mtime, written) {
         return Verdict::Clean;
     }
-    if moved && stat.size != 0 && stat.size != meta.size() as u32 {
+    if moved && stat.size != 0 && stat.size != low_32(meta.size()) {
         return Verdict::Changed;
     }
     Verdict::Look(meta)
@@ -613,18 +636,17 @@ pub fn unstaged(
         if !paths.monitored && full(counts.unstaged, limits.unstaged) {
             break;
         }
-        let outcome = match known {
-            Some(outcome) => outcome,
-            None => {
-                let verdict = verdicts.next().unwrap_or(Verdict::Changed);
-                let outcome = settle_verdict(odb, entry, verdict, paths, settings, cache)?;
-                if paths.monitored {
-                    cache
-                        .verdicts
-                        .insert(entry.path.clone(), (identity(entry), outcome));
-                }
-                outcome
+        let outcome = if let Some(outcome) = known {
+            outcome
+        } else {
+            let verdict = verdicts.next().unwrap_or(Verdict::Changed);
+            let outcome = settle_verdict(odb, entry, verdict, paths, settings, cache)?;
+            if paths.monitored {
+                cache
+                    .verdicts
+                    .insert(entry.path.clone(), (identity(entry), outcome));
             }
+            outcome
         };
         match outcome {
             Outcome::Clean => {}

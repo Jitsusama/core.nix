@@ -27,6 +27,10 @@ pub struct Run {
 }
 
 /// Every run the harness recorded, or none when it has no database yet.
+#[expect(
+    clippy::cast_precision_loss,
+    reason = "token counts are far below 2^52, so f64 holds them exactly"
+)]
 pub fn read(path: &Path) -> Result<Vec<Run>, String> {
     if !path.exists() {
         return Ok(Vec::new());
@@ -69,8 +73,10 @@ pub fn read(path: &Path) -> Result<Vec<Run>, String> {
                 model: bare(&row.get::<_, Option<String>>(3)?.unwrap_or_default()),
                 persona: row.get(4)?,
                 parent: row.get(5)?,
-                started: row.get::<_, i64>(6)? as f64 / 1000.0,
-                ended: row.get::<_, Option<i64>>(7)?.map(|ms| ms as f64 / 1000.0),
+                started: crate::time::from_milliseconds(row.get::<_, i64>(6)?),
+                ended: row
+                    .get::<_, Option<i64>>(7)?
+                    .map(crate::time::from_milliseconds),
                 cost: row.get(8)?,
                 input: row.get::<_, i64>(9)? as f64,
                 output: row.get::<_, i64>(10)? as f64,
@@ -130,6 +136,10 @@ mod tests {
     use super::*;
 
     #[test]
+    #[expect(
+        clippy::float_cmp,
+        reason = "a whole second in milliseconds divides by a thousand exactly"
+    )]
     fn a_harness_from_before_sessions_were_recorded_still_reads() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("runs.db");
@@ -148,7 +158,7 @@ mod tests {
         assert_eq!(runs.len(), 1);
         assert_eq!(runs[0].parent, None);
         assert!(runs[0].sessions.is_empty());
-        assert_eq!(runs[0].started, 1791950171.0);
+        assert_eq!(runs[0].started, 1_791_950_171.0);
     }
 
     #[test]

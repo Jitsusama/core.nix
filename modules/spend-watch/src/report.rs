@@ -10,6 +10,7 @@ use crate::series::{self, Piece, Source};
 use crate::time::Zone;
 use serde::Serialize;
 use std::collections::HashMap;
+use std::fmt::Write as _;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Period {
@@ -80,7 +81,7 @@ impl Period {
     /// Its local days, first and last.
     pub fn days(self, zone: &Zone, now: f64) -> (i64, i64) {
         let today = zone.day(now);
-        let monday = today - Zone::weekday(today) as i64;
+        let monday = Zone::week_start(today);
         let month_first = |day: i64| {
             let iso = Zone::iso_day(day);
             crate::time::parse_day(&format!("{}-01", &iso[..7])).unwrap_or(day)
@@ -376,7 +377,8 @@ pub fn helpers_by_session(
         entry.0 += piece.dollars;
         entry.1 |= piece.source.estimated() && piece.dollars > 0.005;
     }
-    let mut by: std::collections::BTreeMap<String, Vec<(f64, Helper)>> = Default::default();
+    let mut by: std::collections::BTreeMap<String, Vec<(f64, Helper)>> =
+        std::collections::BTreeMap::default();
     for ((session, kind), (dollars_spent, estimated)) in spent {
         if dollars_spent < 0.005 {
             continue;
@@ -502,35 +504,44 @@ pub fn cap_line(picture: &Picture, view: &crate::picture::CapView) -> String {
         whole(allowance),
         percent(view.spent / allowance)
     );
+    // Writing to a String can't fail.
     if let Some(at) = view.resets {
-        line.push_str(&format!(
+        _ = write!(
+            line,
             " It resets at {}.",
             picture.zone.clock(at, picture.now)
-        ));
+        );
     }
     if let Some(clock) = &view.clock {
         match (clock.frees_at, view.resets) {
             // Back under when it resets, which is said already.
             (Some(_), Some(_)) => {}
-            (Some(at), None) => line.push_str(&format!(
-                " Back under by {}.",
-                picture.zone.clock(at, picture.now)
-            )),
-            (None, _) => line.push_str(&format!(
-                " A {} chance of reaching it within a day.",
-                percent(clock.cap_within_day)
-            )),
+            (Some(at), None) => {
+                _ = write!(
+                    line,
+                    " Back under by {}.",
+                    picture.zone.clock(at, picture.now)
+                );
+            }
+            (None, _) => {
+                _ = write!(
+                    line,
+                    " A {} chance of reaching it within a day.",
+                    percent(clock.cap_within_day)
+                );
+            }
         }
         if let (Some(ends), Some(after)) = (cap.ends, clock.over_after_end) {
-            line.push_str(&format!(
+            _ = write!(
+                line,
                 " The override ends {}, with a {} chance of being over what follows.",
                 Zone::day_name(ends),
                 percent(after)
-            ));
+            );
         }
     }
     if let (Some(ends), false) = (cap.ends, cap.ends_known) {
-        line.push_str(&format!(" Its end, {}, is a guess.", Zone::day_name(ends)));
+        _ = write!(line, " Its end, {}, is a guess.", Zone::day_name(ends));
     }
     line
 }
@@ -586,14 +597,14 @@ pub fn waste(picture: &Picture) -> Report {
 pub fn quests(picture: &Picture, period: Period) -> Report {
     let (from, to) = period.days(&picture.zone, picture.now);
     let pieces = picture.between(from, to);
-    let mut spend: HashMap<&str, f64> = HashMap::new();
+    let mut by_root: HashMap<&str, f64> = HashMap::new();
     for piece in &pieces {
         if let Some(quest) = &piece.quest {
-            *spend.entry(picture.root(quest)).or_default() += piece.dollars;
+            *by_root.entry(picture.root(quest)).or_default() += piece.dollars;
         }
     }
-    let total: f64 = spend.values().sum();
-    let mut rows: Vec<Row> = spend
+    let total: f64 = by_root.values().sum();
+    let mut rows: Vec<Row> = by_root
         .into_iter()
         .map(|(id, spent)| {
             let quest = picture.quests.iter().find(|quest| quest.id == id);
@@ -788,7 +799,7 @@ pub fn forecast(picture: &Picture) -> Report {
             day.sort_by(f64::total_cmp);
             let q = |p| crate::stats::quantile_sorted(&day, p);
             Row {
-                name: Zone::day_name(today + ahead as i64),
+                name: Zone::day_name(today + crate::stats::signed(ahead)),
                 dollars: q(0.5),
                 share: 0.0,
                 shown: format!("{} ({} to {})", whole(q(0.5)), whole(q(0.1)), whole(q(0.9))),
@@ -841,109 +852,122 @@ fn csv_field(text: &str) -> String {
 pub fn render(report: &Report, format: Format) -> String {
     match format {
         Format::Json => serde_json::to_string_pretty(report).unwrap_or_default() + "\n",
-        Format::Csv => {
-            let mut out = String::from("name,dollars,share,estimated\n");
-            for row in &report.rows {
-                out.push_str(&format!(
-                    "{},{:.2},{:.4},{}\n",
-                    csv_field(&row.name),
-                    row.dollars,
-                    row.share,
-                    row.estimated
-                ));
-            }
-            out
-        }
-        Format::Markdown => {
-            let mut out = format!("## {}\n\n", report.title);
-            if !report.shown.is_empty() {
-                out.push_str(&format!(
-                    "{} from {} to {}, {}.\n\n",
-                    report.shown, report.from, report.to, report.source
-                ));
-            }
-            // The caps' rows are what changed and when, not spend.
-            if !report.rows.is_empty() && report.period == "caps" {
-                out.push_str("| When | What changed |\n|---|---|\n");
-                for row in &report.rows {
-                    out.push_str(&format!(
-                        "| {} | {} |\n",
-                        row.name.replace('|', "/"),
-                        row.shown.replace('|', "/")
-                    ));
-                }
-                out.push('\n');
-            } else if !report.rows.is_empty() {
-                out.push_str("| | Spend | Share |\n|---|---:|---:|\n");
-                for row in &report.rows {
-                    let share = if row.share > 0.0 {
-                        percent(row.share)
-                    } else {
-                        String::new()
-                    };
-                    out.push_str(&format!(
-                        "| {} | {} | {share} |\n",
-                        row.name.replace('|', "/"),
-                        row.shown.replace('|', "/")
-                    ));
-                }
-                out.push('\n');
-            }
-            for note in &report.notes {
-                out.push_str(&format!("- {note}\n"));
-            }
-            out
-        }
-        Format::Text => {
-            let mut out = format!("{}\n", report.title);
-            if !report.shown.is_empty() {
-                out.push_str(&format!(
-                    "{} from {} to {}, {}.\n",
-                    report.shown, report.from, report.to, report.source
-                ));
-            }
-            out.push('\n');
-            const NAME: usize = 60;
-            let width = report
-                .rows
-                .iter()
-                .map(|row| row.name.chars().count())
-                .max()
-                .unwrap_or(0)
-                .min(NAME);
-            // A cut's figures line up on the right; a sentence doesn't.
-            let figures = report.rows.iter().all(|row| row.share > 0.0);
-            let shown_width = if figures {
-                report
-                    .rows
-                    .iter()
-                    .map(|row| row.shown.chars().count())
-                    .max()
-                    .unwrap_or(0)
-            } else {
-                0
-            };
-            for row in &report.rows {
-                let name: String = row.name.chars().take(NAME).collect();
-                let share = if row.share > 0.0 {
-                    format!("  {:>4}", percent(row.share))
-                } else {
-                    String::new()
-                };
-                out.push_str(&format!(
-                    "  {name:<width$}  {:>shown_width$}{share}\n",
-                    row.shown
-                ));
-            }
-            if !report.rows.is_empty() && !report.notes.is_empty() {
-                out.push('\n');
-            }
-            for note in &report.notes {
-                out.push_str(&format!("{note}\n"));
-            }
-            out
-        }
+        Format::Csv => render_csv(report),
+        Format::Markdown => render_markdown(report),
+        Format::Text => render_text(report),
     }
+}
+
+// Writing to a String can't fail, so what `write!` returns below is let go.
+
+/// A report's rows as CSV, with a header.
+fn render_csv(report: &Report) -> String {
+    let mut out = String::from("name,dollars,share,estimated\n");
+    for row in &report.rows {
+        _ = writeln!(
+            out,
+            "{},{:.2},{:.4},{}",
+            csv_field(&row.name),
+            row.dollars,
+            row.share,
+            row.estimated
+        );
+    }
+    out
+}
+
+/// A report as Markdown: its title, what it covers, a table and its notes.
+fn render_markdown(report: &Report) -> String {
+    let mut out = format!("## {}\n\n", report.title);
+    if !report.shown.is_empty() {
+        _ = write!(
+            out,
+            "{} from {} to {}, {}.\n\n",
+            report.shown, report.from, report.to, report.source
+        );
+    }
+    // The caps' rows are what changed and when, not spend.
+    if !report.rows.is_empty() && report.period == "caps" {
+        out.push_str("| When | What changed |\n|---|---|\n");
+        for row in &report.rows {
+            _ = writeln!(
+                out,
+                "| {} | {} |",
+                row.name.replace('|', "/"),
+                row.shown.replace('|', "/")
+            );
+        }
+        out.push('\n');
+    } else if !report.rows.is_empty() {
+        out.push_str("| | Spend | Share |\n|---|---:|---:|\n");
+        for row in &report.rows {
+            let share = if row.share > 0.0 {
+                percent(row.share)
+            } else {
+                String::new()
+            };
+            _ = writeln!(
+                out,
+                "| {} | {} | {share} |",
+                row.name.replace('|', "/"),
+                row.shown.replace('|', "/")
+            );
+        }
+        out.push('\n');
+    }
+    for note in &report.notes {
+        _ = writeln!(out, "- {note}");
+    }
+    out
+}
+
+/// A report as plain text, its rows in columns.
+fn render_text(report: &Report) -> String {
+    const NAME: usize = 60;
+    let mut out = format!("{}\n", report.title);
+    if !report.shown.is_empty() {
+        _ = writeln!(
+            out,
+            "{} from {} to {}, {}.",
+            report.shown, report.from, report.to, report.source
+        );
+    }
+    out.push('\n');
+    let width = report
+        .rows
+        .iter()
+        .map(|row| row.name.chars().count())
+        .max()
+        .unwrap_or(0)
+        .min(NAME);
+    // A cut's figures line up on the right; a sentence doesn't.
+    let figures = report.rows.iter().all(|row| row.share > 0.0);
+    let shown_width = if figures {
+        report
+            .rows
+            .iter()
+            .map(|row| row.shown.chars().count())
+            .max()
+            .unwrap_or(0)
+    } else {
+        0
+    };
+    for row in &report.rows {
+        let name: String = row.name.chars().take(NAME).collect();
+        let share = if row.share > 0.0 {
+            format!("  {:>4}", percent(row.share))
+        } else {
+            String::new()
+        };
+        _ = writeln!(out, "  {name:<width$}  {:>shown_width$}{share}", row.shown);
+    }
+    if !report.rows.is_empty() && !report.notes.is_empty() {
+        out.push('\n');
+    }
+    for note in &report.notes {
+        _ = writeln!(out, "{note}");
+    }
+    out
 }
 
 #[cfg(test)]

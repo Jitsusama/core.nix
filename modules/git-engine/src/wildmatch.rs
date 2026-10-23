@@ -29,7 +29,10 @@ fn lower(c: u8, fold: bool) -> u8 {
     if fold { c.to_ascii_lowercase() } else { c }
 }
 
-#[allow(clippy::too_many_lines)]
+#[expect(
+    clippy::too_many_lines,
+    reason = "it follows git's own dowild, step for step"
+)]
 fn dowild(p: &[u8], mut pi: usize, t: &[u8], mut ti: usize, pathname: bool, fold: bool) -> Outcome {
     let start = pi;
     while at(p, pi) != 0 {
@@ -264,6 +267,7 @@ mod tests {
     // Cases from git's t/t3070-wildmatch.sh, as (pattern, text, whether
     // they match as paths); the last field is unused.
     #[test]
+    #[expect(clippy::too_many_lines, reason = "git's own cases, one to a line")]
     fn agrees_with_gits_own_cases() {
         let cases: &[(&str, &str, bool, bool)] = &[
             ("foo", "foo", true, true),

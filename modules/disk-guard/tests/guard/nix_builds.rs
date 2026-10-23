@@ -54,7 +54,7 @@ fn build_directories_are_found_and_kept_failures_told_apart() {
         .iter()
         .map(|build| (build.snapshot.pid, build.kept.is_some()))
         .collect();
-    assert_eq!(summary, [(25486, true), (387614, false)]);
+    assert_eq!(summary, [(25486, true), (387_614, false)]);
 }
 
 #[test]
@@ -77,7 +77,7 @@ fn a_build_any_nix_process_runs_is_held() {
 fn an_abandoned_build_is_waste() {
     let made = candidate(&build(None), 7, &Awake::default(), 5_000.0);
     assert_eq!(made.class, Class::NixBuild);
-    assert_eq!(made.idle, 2_000.0);
+    crate::assert_exactly(made.idle, 2_000.0);
     assert_eq!(made.size, 7);
 }
 
@@ -90,5 +90,5 @@ fn a_failure_kept_on_purpose_ages_as_scratch_from_when_it_was_kept() {
             healthy: Some(7.0 * 86_400.0)
         }
     );
-    assert_eq!(made.idle, 1_000.0);
+    crate::assert_exactly(made.idle, 1_000.0);
 }

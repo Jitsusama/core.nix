@@ -140,22 +140,23 @@ mod authopen {
             iov_base: byte.as_mut_ptr().cast(),
             iov_len: 1,
         };
+        let int = u32::try_from(size_of::<libc::c_int>()).expect("an int is four bytes");
         // SAFETY: CMSG_SPACE only computes a size.
-        let space = unsafe { libc::CMSG_SPACE(size_of::<libc::c_int>() as u32) } as usize;
-        let mut control = vec![0u8; space];
+        let space = unsafe { libc::CMSG_SPACE(int) };
+        let mut control = vec![0u8; space as usize];
         // SAFETY: a zeroed msghdr is valid, and every pointer set in it
         // points at a buffer that outlives the call.
         let mut message: libc::msghdr = unsafe { std::mem::zeroed() };
-        message.msg_iov = &mut io;
+        message.msg_iov = &raw mut io;
         message.msg_iovlen = 1;
         message.msg_control = control.as_mut_ptr().cast();
-        message.msg_controllen = space as _;
+        message.msg_controllen = space;
         // SAFETY: the socket is open and the message's buffers are ours.
-        if unsafe { libc::recvmsg(socket.as_raw_fd(), &mut message, 0) } < 0 {
+        if unsafe { libc::recvmsg(socket.as_raw_fd(), &raw mut message, 0) } < 0 {
             return Err(refused(device, std::io::Error::last_os_error()));
         }
         // SAFETY: CMSG_FIRSTHDR reads only the message recvmsg filled.
-        let header = unsafe { libc::CMSG_FIRSTHDR(&message) };
+        let header = unsafe { libc::CMSG_FIRSTHDR(&raw const message) };
         // SAFETY: the header is checked for being there and for carrying
         // rights before its data is read as a descriptor.
         unsafe {
