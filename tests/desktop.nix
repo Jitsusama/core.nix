@@ -1955,7 +1955,10 @@ pkgs.testers.runNixOSTest {
           def opened(_):
               return len(json.loads(as_account("niri msg --json windows"))) > windows
 
-          retry(opened, timeout_seconds=15)
+          # kitty starts cold, drawn in software, which on a machine running
+          # other tests too has taken 10 seconds and more than 19, so it's
+          # given a minute.
+          retry(opened, timeout_seconds=60)
 
       with subtest("Super+V finds what was copied earlier, and copies it again"):
           keeping = as_account("systemctl --user is-active clipboard-history")
