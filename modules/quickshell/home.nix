@@ -496,21 +496,18 @@ let
     byhand = ./launcher/ByHand.qml;
   };
 
-  # Slack's theme in the ten colours its importer reads: the sidebar, a
-  # row under the pointer, the chosen row and its text, a hovered row, the
-  # sidebar's text, someone present, a mention's badge, and the top bar and
-  # its text. Its frame sits a step deeper than its rows, as GTK's does.
+  # Slack's theme in the four colours its importer keeps: its frame, the
+  # open channel, someone present and a mention's badge. Slack shades the
+  # frame into its rail and sidebar and draws its own text, so the frame is
+  # the accent, which Slack darkens into the theme's greens, rather than the
+  # deepest background, which it shades to grey. A badge is the warning
+  # colour, since Slack writes its number dark on that and light on the
+  # alert colour, too faint to read (2.96:1).
   slackTheme = lib.concatMapStringsSep "," (role: roles.${role}) [
-    "deepest"
-    "raised"
+    "accent"
     "selection"
-    "strong"
-    "raised"
-    "text"
     "success"
-    "alert"
-    "deepest"
-    "text"
+    "warning"
   ];
 
   # The program that hears every copy, for the clipboard collection.
@@ -826,7 +823,7 @@ in
             name = "Slack's Theme";
             app = "slack";
             keywords = "slack theme colours sidebar";
-            side = "paste in Appearance, Import theme";
+            side = "pick Aubergine, then Custom theme, Import";
             copy = slackTheme;
           }
         ];
