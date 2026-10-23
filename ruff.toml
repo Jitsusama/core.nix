@@ -30,5 +30,7 @@ ignore = [
 # and a test says what has to hold with assert, which is never run with -O.
 "*-test.py" = ["D102", "S101"]
 # A VM test's script imports the driver's names only for type checkers
-# (driver_names.pyi), since the driver gives them to it as globals.
-"*-vm-test.py" = ["TC004"]
+# (driver_names.pyi), since the driver gives them to it as globals. The
+# driver's retry hands each try whether it's the last as a plain positional
+# bool, so what a script gives retry has to take one.
+"*-vm-test.py" = ["TC004", "FBT001"]
