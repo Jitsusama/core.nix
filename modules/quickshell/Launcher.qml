@@ -318,14 +318,22 @@ Scope {
     // its other words that each word typed starts, or the first one.
     function saidAs(row) {
         const typedWords = Fuzzy.words(typed);
-        const own = row && row.keywords ? Fuzzy.words(row.keywords.text ?? "") : [];
-        if (typedWords.length === 0 || own.length === 0)
+        // Its keywords hold its name too, and a hyphened word of it closed
+        // up, so a search can say some words of each; only the others are
+        // shown.
+        const named = new Set(Fuzzy.words(row ? row.name : "")
+            .reduce((all, word) => all.concat([word, word.replace(/-/g, "")]), []));
+        const own = row && row.keywords
+            ? Fuzzy.words(row.keywords.text ?? "").filter(word => !named.has(word)) : [];
+        const inName = word => Array.from(named).some(one => one.startsWith(word));
+        const typedOwn = typedWords.filter(word => !inName(word));
+        if (typedOwn.length === 0 || own.length === 0)
             return "";
-        for (let at = 0; at + typedWords.length <= own.length; at++) {
-            if (typedWords.every((word, i) => own[at + i].startsWith(word)))
-                return own.slice(at, at + typedWords.length).join(" ");
+        for (let at = 0; at + typedOwn.length <= own.length; at++) {
+            if (typedOwn.every((word, i) => own[at + i].startsWith(word)))
+                return own.slice(at, at + typedOwn.length).join(" ");
         }
-        return own.find(word => word.startsWith(typedWords[0])) ?? "";
+        return own.find(word => word.startsWith(typedOwn[0])) ?? "";
     }
 
     // The fewest letters that reach a row from what's typed: the shortest
