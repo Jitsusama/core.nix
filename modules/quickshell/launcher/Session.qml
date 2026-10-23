@@ -94,7 +94,8 @@ Provider {
 
     // What ending the session closes, said before it's done.
     readonly property string closing: {
-        const open = Niri.windows.length;
+        // Niri's windows are kept by id.
+        const open = Object.keys(Niri.windows).length;
         return open === 0 ? "" : `, closing ${open === 1 ? "the window" : `${open} windows`}`;
     }
 
