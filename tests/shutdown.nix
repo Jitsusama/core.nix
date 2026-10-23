@@ -9,11 +9,20 @@
 #
 # Each reboot also says what it told Plymouth: a stand-in for its client
 # writes the keyword to the console, where a healthy reboot must write none.
+# The script is shutdown-vm-test.py.
 { self, pkgs }:
 let
   plymouth = pkgs.writeShellScript "plymouth" ''
     echo "<3>told plymouth $2" > /dev/kmsg
   '';
+  # What the stuck service and the leftover run, which the script reads from
+  # this file, swapped in for its @values@ marker.
+  values = pkgs.writeText "shutdown-values.json" (
+    builtins.toJSON {
+      sleep = "${pkgs.coreutils}/bin/sleep";
+      sh = "${pkgs.bash}/bin/sh";
+    }
+  );
 in
 pkgs.testers.runNixOSTest {
   name = "shutdown";
@@ -28,59 +37,10 @@ pkgs.testers.runNixOSTest {
       systemd.services.shutdown-status.environment.PLYMOUTH = lib.mkForce "${plymouth}";
     };
 
-  testScript = ''
-    import re
-    import time
-    from datetime import timedelta
-
-
-    def reboot():
-        machine.wait_for_unit("multi-user.target")
-        said = len(machine.get_console_log())
-        machine.succeed("systemctl --no-block reboot")
-        return time.monotonic(), said
-
-
-    # The kernel's own line, stamped with its time, and not the journal's copy.
-    def told(said):
-        return re.findall(r"\] told plymouth --status=(\w+)", machine.get_console_log()[said:])
-
-
-    with subtest("a healthy reboot tells Plymouth nothing"):
-        started, said = reboot()
-        machine.wait_for_shutdown(timeout=timedelta(seconds=30))
-        t.assertEqual(told(said), [])
-
-    with subtest("a service that won't stop holds a reboot a minute"):
-        machine.start()
-        machine.wait_for_unit("multi-user.target")
-        machine.succeed(
-            "systemd-run --unit=stuck -p Type=exec -p TimeoutStopSec=infinity"
-            " -p ExecStop='${pkgs.coreutils}/bin/sleep infinity'"
-            " ${pkgs.coreutils}/bin/sleep infinity"
-        )
-        started, said = reboot()
-        machine.wait_for_shutdown(timeout=timedelta(seconds=120))
-        took = time.monotonic() - started
-        t.assertGreater(took, 55, "the reboot didn't wait for the service")
-        t.assertLess(took, 90, "the reboot waited past the minute")
-        t.assertEqual(told(said), ["forced"])
-
-    with subtest("a leftover that ignores SIGTERM can't hold the last stage"):
-        machine.start()
-        machine.wait_for_unit("multi-user.target")
-        machine.succeed("test -e /dev/watchdog0")
-        machine.succeed(
-            "systemd-run --unit=leftover -p KillMode=none ${pkgs.bash}/bin/sh -c"
-            " 'trap \"\" TERM; exec ${pkgs.coreutils}/bin/sleep infinity'"
-        )
-        started, said = reboot()
-        machine.wait_for_qmp_event(
-            lambda event: event["event"] == "WATCHDOG", timeout=timedelta(seconds=60)
-        )
-        took = time.monotonic() - started
-        machine.wait_for_shutdown(timeout=timedelta(seconds=30))
-        t.assertGreater(took, 25, "the watchdog fired before its 30 seconds")
-        t.assertEqual(told(said), ["leftovers"])
-  '';
+  testScript = builtins.replaceStrings [ "@values@" ] [ "${values}" ] (
+    builtins.readFile ./shutdown-vm-test.py
+  );
+  # nix fmt holds the script to mypy --strict against the driver's own types,
+  # through driver_names.pyi, which the driver's lighter check can't find.
+  skipTypeCheck = true;
 }
