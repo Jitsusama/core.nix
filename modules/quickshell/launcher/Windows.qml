@@ -1,7 +1,7 @@
 // Every open window, found by its own title, the most recently used first,
 // each saying its program and, when that's another, the workspace it's on;
-// windows whose titles read the same say their column as well, so no two
-// rows read alike. A window titled only by its program is that program's
+// windows whose titles read the same say their column as well, and how
+// far down it, so no two rows read alike. A window titled only by its program is that program's
 // row (Applications.qml), which lists its windows. Its program's name
 // finds the program, not each of its windows, so "kitty" is one row and
 // not every terminal open (Joel, 2026-10-23). Return goes to it, and
@@ -102,10 +102,14 @@ Provider {
                 const program = one.program;
                 const title = one.title;
                 const workspace = Niri.workspaces[window.workspace_id];
-                const column = (window.layout?.pos_in_scrolling_layout ?? [])[0];
+                const tile = window.layout?.pos_in_scrolling_layout ?? [];
+                const column = tile[0];
                 const elsewhere = workspace && !(here && workspace.id === here.id);
+                // One under another in a column says how far down, the
+                // top one only its column.
+                const down = tile[1] > 1 ? `, ${Numbers.ordinal(tile[1])} down` : "";
                 const where = [elsewhere ? `workspace ${workspace.idx}` : "",
-                    alike[title] > 1 && column ? `${Numbers.ordinal(column)} column` : ""]
+                    alike[title] > 1 && column ? `${Numbers.ordinal(column)} column${down}` : ""]
                     .filter(part => part !== "").join(", ");
                 const below = entry
                     ? () => provider.launcher.grid.under(window.id, provider.command(entry)) : null;
