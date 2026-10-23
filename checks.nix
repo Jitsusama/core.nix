@@ -2586,6 +2586,29 @@ in
         && environment.sessionVariables.TIMED_CGROUP == "jobs.slice/${timed.Slice}/timed.service"
       );
 
+  # A terminal's busy work, Joel's own, goes ahead of the work pi starts in
+  # jobs.service, only from inside jobs, so it still yields to the apps,
+  # and behind timed work. The sorter moves it to a holder that comes back
+  # and takes what's written into it.
+  joels-work-goes-before-agents =
+    let
+      inherit (graphical.config) systemd;
+      awaited = systemd.user.services.awaited.serviceConfig;
+      sorter = systemd.user.services.jobs-sorter;
+      weight = systemd.user.slices.jobs-awaited.sliceConfig.CPUWeight or 100;
+    in
+    holds "joels-work-goes-before-agents"
+      "A terminal's work isn't moved inside jobs above pi's work and below timed work, or its holder doesn't take what's written into it or stays gone."
+      (
+        awaited.Slice == "jobs-awaited.slice"
+        && weight > 100
+        && weight < systemd.user.slices.jobs-timed.sliceConfig.CPUWeight
+        && awaited.Delegate
+        && (awaited.Restart or "no") == "always"
+        && lib.hasSuffix " --jobs jobs.slice/jobs-awaited.slice/awaited.service" sorter.serviceConfig.ExecStart
+        && lib.elem "awaited.service" sorter.requires
+      );
+
   # A call's audio thread asks for SCHED_RR 8 in Chrome and Electron apps,
   # and gets it only if the account's limit reaches 8. At 11 or more,
   # PipeWire takes its priority from the limit rather than rtkit's 20, so

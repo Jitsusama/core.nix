@@ -83,6 +83,12 @@ pkgs.testers.runNixOSTest {
         )
         t.assertEqual(machine.succeed(f"cat {jobs}/cpu.idle").strip(), "1")
         t.assertEqual(machine.succeed(f"cat {timed}/cpu.weight").strip(), "10000")
+        machine.wait_until_succeeds(
+            "systemctl -M alice@ --user is-active awaited.service", timeout=30
+        )
+        t.assertEqual(
+            machine.succeed(f"cat {jobs}/jobs-awaited.slice/cpu.weight").strip(), "1000"
+        )
         t.assertEqual(
             machine.succeed(f"cat {jobs}/jobs.service/cpu.weight").strip(), "100"
         )
