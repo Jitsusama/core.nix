@@ -6,6 +6,9 @@
 # Learning starts from jitsusama.backlight.standard; what it learns stays in
 # the account's state, and each pick is told to the shell's brightness bar
 # through $XDG_RUNTIME_DIR/backlight-chosen.
+# A monitor on a DisplayPort or MST bus that answers DDC/CI follows the
+# panel at the same share of its own brightest (src/monitor.rs), once
+# udev opens its bus to the seat, as modules/ddcutil does.
 {
   config,
   lib,
