@@ -272,12 +272,14 @@ pkgs.testers.runNixOSTest {
         (config.boot.kernelPackages.callPackage ./stand-in-backlight { })
         (config.boot.kernelPackages.callPackage ./stand-in-light { })
         (config.boot.kernelPackages.callPackage ./stand-in-lid { })
+        (config.boot.kernelPackages.callPackage ./stand-in-monitor { })
         config.boot.kernelPackages.v4l2loopback
       ];
       boot.kernelModules = [
         "stand-in-backlight"
         "stand-in-light"
         "stand-in-lid"
+        "stand-in-monitor"
         # A stand-in camera, a loopback as the laptop's is, fed a test
         # picture as the laptop's relay feeds it the sensor's.
         "v4l2loopback"
@@ -983,6 +985,30 @@ pkgs.testers.runNixOSTest {
           lid_says("the lid is open")
           light(1)
           retry(lambda _: brightness() < held_at, timeout_seconds=30)
+
+      # The VM's monitor is a stand-in on a bus named as an MST hub's, which
+      # answers DDC/CI for its brightness as the desk's does. It follows the
+      # panel, at the same share of its own brightest, whatever moves the
+      # panel: a pick here, the room's light above.
+      with subtest("the monitor follows the panel's brightness"):
+          machine.wait_until_succeeds(
+              in_session("journalctl --user --unit=backlight --no-pager --output=cat | grep -q 'the monitor on i2c-[0-9]* follows'"),
+              timeout=10,
+          )
+          panel_brightest = int(machine.succeed("cat /sys/class/backlight/stand-in/max_brightness"))
+
+          def on_monitor(_):
+              shown = int(machine.succeed("cat /sys/module/stand_in_monitor/parameters/brightness"))
+              return shown == round(brightness() / panel_brightest * 100)
+
+          retry(on_monitor, timeout_seconds=10)
+          for share in [70, 20]:
+              as_account(f"niri msg action spawn -- brightnessctl --class=backlight set {share}%")
+              machine.wait_until_succeeds(f"grep -qx {share} /sys/class/backlight/stand-in/brightness")
+              retry(on_monitor, timeout_seconds=10)
+          backlight_said = as_account("journalctl --user --unit=backlight --no-pager --output=cat")
+          t.assertNotIn("can't set the monitor", backlight_said, "the monitor refused a level")
+          t.assertNotIn("left alone", backlight_said, "the monitor didn't answer")
 
       with subtest("the charge shows when power goes and comes back, then goes"):
           # The kernel's stand-in has two supplies, mains and USB, and UPower

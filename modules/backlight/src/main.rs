@@ -18,12 +18,17 @@
 //! $XDG_RUNTIME_DIR/backlight-chosen, which the shell's brightness bar
 //! watches, so the bar shows for Joel's changes and never for the light's.
 //!
+//! The panel's brightness is the one brightness: the keys, the light and the
+//! lid all end in it. Each monitor plugged in follows it over DDC/CI, set to
+//! the same share of its own brightest (monitor.rs).
+//!
 //! Usage: backlight <standard curve>. The standard curve is where learning
 //! starts, a point to a line: the lux, a space and the share of the brightest.
 //! What it learns is kept in $XDG_STATE_HOME/backlight/learned.
 
 mod curve;
 mod light;
+mod monitor;
 mod screen;
 mod steer;
 
@@ -42,6 +47,7 @@ use zbus::{Connection, proxy};
 
 use curve::Curve;
 use light::{Readings, Sensor};
+use monitor::Monitors;
 use screen::Screen;
 use steer::{Ramp, Steer};
 
@@ -200,6 +206,7 @@ async fn run() -> Result<(), Box<dyn Error>> {
         shut: false,
     };
     backlight.lid(shut);
+    let mut monitors = Monitors::find(backlight.screen.level_of(seen));
     let (mut readings, now) = listen().unzip();
     if let Some(lux) = now {
         eprintln!("<6>hears {lux:.0} lux");
@@ -219,7 +226,12 @@ async fn run() -> Result<(), Box<dyn Error>> {
             lux = light(&mut readings) => backlight.heard(lux?),
             shut = lid_moved(&mut lid) => backlight.lid(shut?),
             () = until(wake) => backlight.step().await,
+            changed = monitors.changed() => {
+                changed?;
+                monitors.look();
+            }
         }
+        monitors.follow(backlight.screen.level_of(backlight.seen));
     }
 }
 
