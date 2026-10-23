@@ -21,6 +21,7 @@
     nixosModules.bluetooth
     nixosModules.camera
     nixosModules.console
+    nixosModules.creative-pebble-x-plus
     nixosModules.ddcutil
     nixosModules.fonts
     nixosModules.gnome-keyring
