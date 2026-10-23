@@ -90,6 +90,14 @@ in
     also = "smiley emoticon symbol character";
     action = ''spawn "qs" "ipc" "call" "launcher" "collection" "emoji";'';
   }
+  # What's said, typed where the focus is (modules/dictation). D for
+  # dictate; niri fires a chord on press only, so a second press stops it.
+  {
+    chord = "Super+D";
+    does = "Dictate into the focused window, or stop and type it";
+    also = "speak voice talk transcribe speech";
+    action = ''spawn "dictation" "toggle";'';
+  }
   {
     chord = "Super+N";
     does = "Take the notices by the keys, or find one that came earlier";

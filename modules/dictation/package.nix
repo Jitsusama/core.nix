@@ -1,0 +1,27 @@
+# dictation, built from this directory's crate with its tests run as it
+# builds, linked to OpenVINO's C API.
+{
+  lib,
+  rustPlatform,
+  openvino,
+}:
+rustPlatform.buildRustPackage {
+  pname = "dictation";
+  version = "0.1.0";
+  src = lib.fileset.toSource {
+    root = ./.;
+    fileset = lib.fileset.unions [
+      ./Cargo.toml
+      ./Cargo.lock
+      ./src
+    ];
+  };
+  cargoLock.lockFile = ./Cargo.lock;
+  buildInputs = [ openvino ];
+  meta = {
+    description = "Types what's said into the focused window, Whisper's encoder on the NPU";
+    license = lib.licenses.mit;
+    mainProgram = "dictation";
+    platforms = lib.platforms.linux;
+  };
+}
