@@ -18,6 +18,7 @@ set voice2 { typeof socket cgroupv2 level 2; }
 set bulk4 { typeof socket cgroupv2 level 4; }
 set app4 { typeof socket cgroupv2 level 4; }
 set video5 { typeof socket cgroupv2 level 5; }
+set awaited5 { typeof socket cgroupv2 level 5; }
 set local4 { type ipv4_addr; flags interval; }
 set local6 { type ipv6_addr; flags interval; }
 set uplinks { type ifname; }
@@ -58,6 +59,10 @@ chain classify {
   # how WebRTC sends a call's sound and pictures; 443 is QUIC, a page.
   socket cgroupv2 level 5 @video5 goto video
   udp dport != 443 socket cgroupv2 level 4 @app4 goto video
+
+  # What Joel waits on at a terminal sits inside jobs, but he's waiting,
+  # so it goes as an app's would; the rest of jobs he isn't waiting on.
+  socket cgroupv2 level 5 @awaited5 goto best
 
   # The work Joel started rather than the programs he's using.
   socket cgroupv2 level 1 @bulk1 goto bulk

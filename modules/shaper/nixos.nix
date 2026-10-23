@@ -20,7 +20,8 @@
 # 443, which is how a browser's call sends; bulk for the jobs, background
 # and containers slices, the account's user.slice, Nix's builds, virtual
 # machines and whatever this machine forwards for them; best effort for the
-# rest, Spotify, Chrome, Slack and pi's own requests among them. Bulk gets
+# rest, Spotify, Chrome, Slack, pi's own requests and what Joel waits on at
+# a terminal among them. Bulk gets
 # the whole line while nothing else wants it, and a sixteenth while
 # something does. What a link reaches without the router isn't slowed.
 #
