@@ -3,10 +3,14 @@
 # machine running chrony, which it reaches; it has to get there, and not keep
 # asking the network's. Nothing names the network's server until networkd has
 # it, so timesyncd starts once it does: started sooner, it would find no server
-# named and fall back to the machine's, which proves nothing.
+# named and fall back to the machine's, which proves nothing. The script is
+# clock-vm-test.py.
 { self, pkgs }:
 let
   silent = "192.168.1.99";
+  # What the script needs from Nix, in one file whose path takes the place
+  # of the script's @values@ marker.
+  values = pkgs.writeText "clock-values.json" (builtins.toJSON { inherit silent; });
 in
 pkgs.testers.runNixOSTest {
   name = "clock";
@@ -37,13 +41,10 @@ pkgs.testers.runNixOSTest {
       systemd.services.systemd-timesyncd.wantedBy = lib.mkForce [ ];
     };
 
-  testScript = ''
-    start_all()
-    server.wait_for_unit("chronyd.service")
-    machine.wait_until_succeeds("networkctl status eth1 | grep -q 'NTP: ${silent}'", timeout=60)
-    machine.succeed("systemctl start systemd-timesyncd.service")
-    machine.succeed("timedatectl show-timesync -p LinkNTPServers --value | grep -qx ${silent}")
-    machine.wait_until_succeeds("timedatectl show -p NTPSynchronized --value | grep -qx yes", timeout=120)
-    machine.succeed("timedatectl show-timesync -p ServerName --value | grep -qx server")
-  '';
+  testScript = builtins.replaceStrings [ "@values@" ] [ "${values}" ] (
+    builtins.readFile ./clock-vm-test.py
+  );
+  # nix fmt holds the script to mypy --strict against the driver's own types,
+  # through driver_names.pyi, which the driver's lighter check can't find.
+  skipTypeCheck = true;
 }
