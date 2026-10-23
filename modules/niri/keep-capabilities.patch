@@ -1,0 +1,87 @@
+Keep a capability niri is given to niri alone
+
+niri asks the GPU for a high-priority rendering context, which drivers
+such as xe grant only to a process holding CAP_SYS_NICE. A distribution
+can give niri that capability through a wrapper, as NixOS does for
+kwin_wayland, but such a wrapper puts it in the inheritable and ambient
+sets too, and every program niri spawns would then inherit it. niri
+clears its inheritable set as it starts, which clears the ambient set
+with it, so it keeps the capability in its permitted and effective sets
+and spawns programs without it.
+
+diff --git a/src/main.rs b/src/main.rs
+index e80992e..2065cb5 100644
+--- a/src/main.rs
++++ b/src/main.rs
+@@ -58,6 +58,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
+         .with_ansi_sanitization(false)
+         .init();
+ 
++    // niri may be given CAP_SYS_NICE, so the GPU lets its rendering context
++    // run at high priority. A wrapper granting a capability puts it in the
++    // inheritable and ambient sets too, which every program niri spawns
++    // would inherit, so it's dropped from both before anything is spawned,
++    // and niri alone keeps it.
++    drop_inherited_capabilities();
++
+     if env::var_os("NOTIFY_SOCKET").is_some() {
+         IS_SYSTEMD_SERVICE.store(true, Ordering::Relaxed);
+ 
+@@ -408,3 +415,57 @@ fn set_default_max_buffer_size(display: &Display<State>, size: usize) {
+         libc::dlclose(lib);
+     }
+ }
++
++// Clears this thread's inheritable capabilities, which clears its ambient
++// ones with them, keeping its permitted and effective ones. It runs before
++// any other thread is started, so every thread niri starts inherits the
++// result.
++fn drop_inherited_capabilities() {
++    // The kernel's own structures, which only the kernel reads.
++    #[repr(C)]
++    #[allow(dead_code)]
++    struct Header {
++        version: u32,
++        pid: libc::c_int,
++    }
++
++    #[repr(C)]
++    #[allow(dead_code)]
++    #[derive(Clone, Copy, Default)]
++    struct Sets {
++        effective: u32,
++        permitted: u32,
++        inheritable: u32,
++    }
++
++    // Version 3 holds 64 capabilities as two sets of 32.
++    const VERSION_3: u32 = 0x2008_0522;
++    let mut header = Header {
++        version: VERSION_3,
++        pid: 0,
++    };
++    let mut sets = [Sets::default(); 2];
++    let header: *mut Header = &mut header;
++
++    // SAFETY: capget and capset read and write a version 3 header and two
++    // sets, which is what's given.
++    let read = unsafe { libc::syscall(libc::SYS_capget, header, sets.as_mut_ptr()) };
++    if read != 0 {
++        warn!("error reading capabilities: {}", io::Error::last_os_error());
++        return;
++    }
++    if sets.iter().all(|set| set.inheritable == 0) {
++        return;
++    }
++    for set in &mut sets {
++        set.inheritable = 0;
++    }
++    // SAFETY: as for capget.
++    let written = unsafe { libc::syscall(libc::SYS_capset, header, sets.as_ptr()) };
++    if written != 0 {
++        warn!(
++            "error dropping inheritable capabilities: {}",
++            io::Error::last_os_error()
++        );
++    }
++}

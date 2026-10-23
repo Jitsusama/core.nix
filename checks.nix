@@ -3744,6 +3744,24 @@ in
         touch $out
       '';
 
+    # The session's niri starts through the wrapper giving it CAP_SYS_NICE,
+    # without which the GPU won't draw its frames first; the desktop test
+    # checks what niri holds once started, and what it hands on.
+    niri-starts-able-to-go-first =
+      let
+        inherit (graphical) config;
+        wrapper = config.security.wrappers.niri-compositor;
+      in
+      holds "niri-starts-able-to-go-first"
+        "The session's niri doesn't start through its wrapper with CAP_SYS_NICE, so the GPU draws its frames in turn with everything else's."
+        (
+          wrapper.capabilities == "cap_sys_nice+ep"
+          && wrapper.source == "${config.programs.niri.package}/bin/niri"
+          &&
+            lib.hasInfix "ExecStart=${config.security.wrapperDir}/niri-compositor --session"
+              config.systemd.user.units."niri.service".text
+        );
+
     # niri reads back the files an account gets and rejects anything it
     # wouldn't load, from a misspelt action to a colour it can't parse.
     niri-accepts-its-configuration =

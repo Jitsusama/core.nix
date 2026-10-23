@@ -602,8 +602,9 @@ pkgs.testers.runNixOSTest {
       services.cage = {
         enable = true;
         user = account;
-        # The machine's niri, with its patches, rather than nixpkgs's.
-        program = lib.getExe config.programs.niri.package;
+        # The machine's niri, with its patches, rather than nixpkgs's, through
+        # the wrapper its session starts it by.
+        program = "${config.security.wrapperDir}/niri-compositor";
         environment.WLR_RENDERER = "pixman";
       };
       # Stands in for niri's own unit, which starts the graphical session, and
@@ -846,6 +847,29 @@ pkgs.testers.runNixOSTest {
       # targets are already reached, so only a boot shows it.
       with subtest("the machine boots without an ordering cycle"):
           machine.fail("journalctl -b -o cat | grep -F 'ordering cycle'")
+
+      # niri holds CAP_SYS_NICE, so the GPU draws its frames first, from the
+      # wrapper it starts through; that wrapper puts it in the inheritable
+      # and ambient sets too, which niri clears, so what it starts holds
+      # none of it, nor can take it up.
+      with subtest("niri keeps CAP_SYS_NICE to itself"):
+          def caps_of(status: str) -> dict[str, int]:
+              return {
+                  line.split(":")[0]: int(line.split()[1], 16)
+                  for line in status.splitlines()
+                  if line.startswith("Cap")
+              }
+
+          compositor = machine.succeed("pgrep -x -u ${account} niri | head -n 1").strip()
+          niri_caps = caps_of(machine.succeed(f"cat /proc/{compositor}/status"))
+          assert niri_caps["CapEff"] & (1 << 23), niri_caps
+          t.assertEqual((niri_caps["CapInh"], niri_caps["CapAmb"]), (0, 0))
+          as_account("niri msg action spawn -- sh -c 'grep ^Cap /proc/self/status > /tmp/child-caps'")
+          machine.wait_until_succeeds("test -s /tmp/child-caps", timeout=30)
+          offspring = caps_of(machine.succeed("cat /tmp/child-caps"))
+          t.assertEqual(
+              [offspring[name] for name in ("CapEff", "CapPrm", "CapInh", "CapAmb")], [0, 0, 0, 0]
+          )
 
       # A user manager handed its whole service's pressure to watch can't set
       # its own threshold on it, and says so each time it starts or reloads.
