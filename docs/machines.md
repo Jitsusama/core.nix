@@ -106,6 +106,31 @@ On a Mac, `darwin-rebuild` takes the same arguments, with `sudo` only for the
 switch. home-manager is part of the system, so one switch applies the
 machine and the account together.
 
+On a NixOS workstation, an account in `wheel` can switch to a system it built
+without a password: `switch-system ./result` after `nixos-rebuild build`.
+
+## Formatting and Linting
+
+A machine repository formats and lints its code as core does by giving
+treefmt-nix core's linters beside its own `treefmt.nix`, which adds only what
+it alone has:
+
+```nix
+# flake.nix
+treefmt =
+  pkgs:
+  treefmt-nix.lib.evalModule pkgs {
+    imports = [
+      core.treefmtModules.treefmt
+      ./treefmt.nix
+    ];
+  };
+```
+
+Each linter reads core's own settings, so `nix fmt` there holds code to
+exactly what it holds core's to. Lua is read as the program that runs it does,
+which the repository says in a `.luacheckrc` of its own.
+
 ## Taking New Pins
 
 The machine repository follows core.nix's pins, so updating is one input:

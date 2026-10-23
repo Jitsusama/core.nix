@@ -70,6 +70,7 @@ system it belongs to, and which output of `flake.nix` names it:
 | `darwin.nix` | nix-darwin                | `darwinModules`                    |
 | `nixos.nix`  | NixOS                     | `nixosModules`                     |
 | `system.nix` | both NixOS and nix-darwin | `nixosModules` and `darwinModules` |
+| `treefmt.nix` | treefmt-nix              | `treefmtModules`                   |
 
 A tool needing settings in more than one system has one file for each, side by
 side: zsh has `home.nix` for the shell, `system.nix` for what either system
@@ -165,6 +166,7 @@ fixed:
 | `packages`                   | what core builds itself: the kernel, for x86_64-linux           |
 | `checks`                     | every module and role evaluated, the examples, formatting       |
 | `formatter`                  | treefmt, for `nix fmt`                                          |
+| `treefmtModules`             | the linters core holds itself to, for a repository's `nix fmt`  |
 | `home-manager`, `nix-darwin` | what the machine repositories imported before the outputs above |
 | `wallpapers`, `neovim-pi`    | inputs the machine repositories reached through core.nix        |
 
@@ -198,6 +200,7 @@ The last two rows exist only until no machine repository imports them;
 | `jitsusama.theme.glyphs`           | every mark, by meaning, with its stand-in on a console   |
 | `jitsusama.keys.*`                 | every layer's shortcuts, checked for clashes             |
 | `jitsusama.niri.binds`             | niri's shortcuts: chord, plain words and action          |
+| `jitsusama.mypy.packages`          | the libraries a repository's Python imports, for mypy    |
 | `jitsusama.kitty.keys`             | kitty's shortcuts: chord, plain words and action         |
 | `jitsusama.keys.neovim`            | Neovim's keys, from `modules/neovim/keys.nix`            |
 | `jitsusama.keys.pi`                | pi's keys, from `modules/pi/keys.nix`                    |

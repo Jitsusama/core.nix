@@ -3,7 +3,8 @@
 # Modules live in modules/<tool>/, roles in roles/<role>/ and hardware in
 # hardware/<model>/, one file per module system: home.nix for home-manager,
 # darwin.nix, nixos.nix, or system.nix for one file that is both of the last
-# two. A module's other files sit beside it. To see how any file fits, find
+# two, and treefmt.nix for how a repository is formatted and linted. A
+# module's other files sit beside it. To see how any file fits, find
 # its path here.
 {
   description = "Joel's machines as a library: the modules and roles every machine builds from";
@@ -95,7 +96,15 @@
         "aarch64-darwin"
       ];
       forEachSystem = f: nixpkgs.lib.genAttrs systems (system: f nixpkgs.legacyPackages.${system});
-      treefmt = pkgs: treefmt-nix.lib.evalModule pkgs ./treefmt.nix;
+      # Core holds itself to the linters it offers, and to what only it has.
+      treefmt =
+        pkgs:
+        treefmt-nix.lib.evalModule pkgs {
+          imports = [
+            self.treefmtModules.treefmt
+            ./treefmt.nix
+          ];
+        };
 
       # The module a file makes once it's given what it takes from here. The
       # key gives it the identity a path import has, so importing it twice
@@ -326,6 +335,12 @@
           ''
             makeBinaryWrapper ${pkgs.lib.getExe guide} $out/bin/guide --add-flags "host ${image} --install ${payload}"
           '';
+
+      # How a repository built on core formats and lints itself as core does,
+      # imported into the module it gives treefmt-nix.
+      treefmtModules = {
+        treefmt = ./modules/treefmt/treefmt.nix;
+      };
 
       formatter = forEachSystem (pkgs: (treefmt pkgs).config.build.wrapper);
       # The tools for working on core's own programs, the disk guard and
