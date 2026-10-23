@@ -274,6 +274,7 @@ copying the tree and running the whole test.
 | `vm-checks-go-first`              | a build user's qemu in the daemon's cgroup goes from batch at nice 5 to normal at nice -10, every thread and a later one, and a compiler beside it doesn't |
 | `vm-plugging-in-wakes-it`         | every USB root hub may wake the machine, so a cable plugged into a sleeping laptop wakes it |
 | `vm-lid-stays-at-the-desk`        | a shut lid suspends with no monitor, keeps running with one plugged in whose screen is off, holding one lock through the card's changes, and suspends once it's unplugged |
+| `vm-admins-switch-unasked`        | an account in wheel switches to another system and back with no password; one outside wheel, and what isn't a NixOS system in the store, is refused |
 | `vm-reboot-cannot-hang`           | a reboot forces on after a minute of a service not stopping, the watchdog resets a stuck last stage, and Plymouth hears which |
 
 The install test builds a disk image with disko and boots it with a software

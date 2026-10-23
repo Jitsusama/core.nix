@@ -264,6 +264,9 @@ let
     # Whether udev turns a root hub's wakeup on shows only with a USB
     # controller and udev there.
     vm-plugging-in-wakes-it = import ./tests/usb-wake.nix { inherit self pkgs; };
+    # Whether polkit lets an account switch the machine shows only with
+    # polkit, systemd and a system to switch to.
+    vm-admins-switch-unasked = import ./tests/switch-system.nix { inherit self pkgs; };
   };
 in
 {
