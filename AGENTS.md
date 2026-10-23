@@ -75,15 +75,15 @@ nix flake check --keep-going           # everything, once, before pushing
 Prove a change with the cheapest check that shows it while editing, and run
 everything once, before pushing, never after each edit:
 
-| Changed         | While editing, in seconds                              | Before pushing               |
-| --------------- | ------------------------------------------------------ | ---------------------------- |
-| Shell logic     | its named check, `quickshell-passes-qmllint`           | the VM tests it changes      |
-| A shell surface | `quickshell-passes-qmllint`, `run-subtests` on its subtests | `vm-desktop-works`, `shots-changed` |
-| A Rust crate    | `cargo test` in the dev shell, `<crate>-passes-clippy` | its VM test, if it has one   |
-| A theme         | `a-faint-theme-is-refused`, `a-theme-changes-everything` | the VM tests it changes    |
-| The kernel      | `kernel-settings-hold-<model>`                         | the machine's kernel         |
-| A module        | `example-nixos`, `example-laptop`, `example-darwin`    |                              |
-| Python or shell | `nix fmt`, its check                                   |                              |
+| Changed         | While editing, in seconds                         | Before pushing             |
+| --------------- | ------------------------------------------------- | -------------------------- |
+| Shell logic     | its own check, `quickshell-passes-qmllint`        | the VM tests it changes    |
+| A shell surface | `quickshell-passes-qmllint`, `run-subtests`       | `vm-desktop-works`, `shots-changed` |
+| A Rust crate    | `cargo test`, then `<crate>-passes-clippy`        | its VM test, if any        |
+| A theme         | `a-faint-theme-is-refused`, `a-theme-changes-everything` | the VM tests it changes |
+| The kernel      | `kernel-settings-hold-<model>`                    | the machine's kernel       |
+| A module        | `example-nixos`, `example-laptop`, `example-darwin` |                          |
+| Any script      | `nix fmt`, its own check                          |                            |
 
 `nix build --dry-run` on a check says what it would build, so a change that
 reaches a VM test is seen before it's paid for. Watching a check fail is done
