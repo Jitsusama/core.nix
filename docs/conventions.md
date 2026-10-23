@@ -74,6 +74,19 @@ An application's configuration stays in its own format beside its module
 linked as a source. Translating it into Nix attribute sets hides it from the
 application's documentation and from its own validators.
 
+## Scripts Stay Files
+
+A script past a few lines, a VM test's included, is a file in its own
+language (`.py`, `.sh`, `.qml`), and Nix reads it in or runs it by path.
+Inside a Nix string it can't be linted, imported, run alone or tested, and
+an editor reads it as text. Store paths reach it as arguments,
+the environment, or a placeholder swapped in by `builtins.replaceStrings`, as
+`tests/shots-changed.nix` does. Python goes through `writers.writePython3`
+or `writePython3Bin`, so flake8 reads it as it builds, and its tests are a
+file of their own that a check runs, as `tests/run-subtests-test.py` is. A
+build phase of a line or two stays inline, since it reads as part of the
+derivation.
+
 ## Applications That Write Their Own Settings
 
 Some applications change their own configuration, and some share a file with

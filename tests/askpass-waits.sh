@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # How the askpass waits on the shell (modules/quickshell/home.nix), run with
 # bash and the built askpass as its argument. A stand-in for qs plays a
 # shell that answers, one that restarts and so forgets what it was asking,
@@ -8,6 +9,8 @@ here=$PWD
 mkdir -p bin run
 export XDG_RUNTIME_DIR=$here/run STATE=$here
 while IFS= read -r line; do
+  # The askpass's own line, $PATH and all, as it's written in it.
+  # shellcheck disable=SC2016
   if [[ $line == 'export PATH="'*':$PATH"' ]]; then
     line="export PATH=\"$here/bin:${line#export PATH=\"}"
   fi
@@ -35,9 +38,12 @@ EOF
 chmod +x bin/qs
 
 failed=0
+# Runs the command after the name, and says whether it held.
 check() {
-  if eval "$2"; then echo "ok: $1"; else
-    echo "FAILED: $1"
+  local name=$1
+  shift
+  if "$@"; then echo "ok: $name"; else
+    echo "FAILED: $name"
     failed=1
   fi
 }
@@ -54,26 +60,38 @@ start() {
   done
   reply=$(cat has)
 }
-asks() { grep -c '^ask ' said; }
 ended() {
   wait "$asking"
-  echo $? > exit
+  echo $? > status
+}
+
+# What a check holds to, each run by check by its name, which shellcheck
+# can't follow.
+# shellcheck disable=SC2329
+{
+  exited() { [ "$(cat status)" = "$1" ]; }
+  printed() { [ "$(cat out)" = "$1" ]; }
+  asked() { [ "$(grep -c '^ask ' said)" = "$1" ]; }
+  complained() { grep -q "$1" err; }
+  folder_gone() { ! compgen -G 'run/*askpass*' > /dev/null; }
+  between() { [ "$1" -ge "$2" ] && [ "$1" -le "$3" ]; }
 }
 
 start secret
 printf '2468\n' > "$reply/answer"
 ended
-check "an answer is said" '[ "$(cat exit)" = 0 ] && [ "$(cat out)" = 2468 ]'
-check "and asked for once" '[ "$(asks)" = 1 ]'
-check "and its folder goes" '! ls run | grep -q askpass'
+check "an answer is said" exited 0
+check "as it was typed" printed 2468
+check "and asked for once" asked 1
+check "and its folder goes" folder_gone
 
 start confirm
 : > has
 sleep 4
-check "a restarted shell is asked again" '[ "$(asks)" = 2 ]'
+check "a restarted shell is asked again" asked 2
 printf 'yes\n' > "$reply/answer"
 ended
-check "and its yes is taken" '[ "$(cat exit)" = 0 ]'
+check "and its yes is taken" exited 0
 
 # Answered between one look and the next, it's never asked again.
 start confirm
@@ -82,17 +100,18 @@ printf 'yes\n' > "$reply/answer.part"
 : > has
 mv "$reply/answer.part" "$reply/answer"
 ended
-check "an ask answered as it's looked at isn't asked again" \
-  '[ "$(asks)" = 1 ] && [ "$(cat exit)" = 0 ]'
+check "an ask answered as it's looked at isn't asked again" asked 1
+check "and its answer is taken" exited 0
 
 start confirm
 echo down > mode
 began=$SECONDS
 ended
 took=$((SECONDS - began))
-check "a shell that's gone is refused" '[ "$(cat exit)" = 1 ] && grep -q "went away" err'
-check "after about 20 seconds (it took $took)" '[ "$took" -ge 18 ] && [ "$took" -le 30 ]'
-check "and its folder goes" '! ls run | grep -q askpass'
+check "a shell that's gone is refused" exited 1
+check "saying it went away" complained "went away"
+check "after about 20 seconds (it took $took)" between "$took" 18 30
+check "and its folder goes" folder_gone
 
 start confirm
 echo down > mode
@@ -100,8 +119,8 @@ echo down > mode
 sleep 7
 echo up > mode
 sleep 4
-check "a shell back within that is asked again" '[ "$(asks)" = 2 ]'
+check "a shell back within that is asked again" asked 2
 printf 'yes\n' > "$reply/answer"
 ended
-check "and its answer taken" '[ "$(cat exit)" = 0 ]'
+check "and its answer taken" exited 0
 exit $failed

@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # The ErgoDox's command: what can be done to the board from a terminal, and
 # what the shell runs when it's asked from the launcher. ERGODOX_FIRMWARE is
 # this machine's build of the firmware (firmware.nix), and ERGODOX_LAYERS

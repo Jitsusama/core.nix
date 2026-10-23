@@ -1,7 +1,9 @@
-"""The board described for the shell: each layer by its name, and on it each
-key where it sits, what its cap says, what it does in words and what holding
-it does. The shell draws the overlay and finds keys in the launcher from
-this (modules/quickshell/Keyboard.qml).
+"""Describe the board for the shell.
+
+Each layer is given by its name, and on it each key where it sits, what its
+cap says, what it does in words and what holding it does. The shell draws
+the overlay and finds keys in the launcher from this
+(modules/quickshell/Keyboard.qml).
 
     describe.py LAYOUT INFO NAME... > shell.json
 
@@ -14,6 +16,10 @@ added to the layout is never drawn blank or found by its QMK name.
 import json
 import re
 import sys
+from pathlib import Path
+
+# A place as info.json gives it: x, y and, when not 1, w and h, in keys.
+type Place = dict[str, float]
 
 # Each keycode as its cap says it, five characters at most, and in words, for
 # finding it. A key that types a character says it on its cap.
@@ -107,39 +113,77 @@ for letter in "ABCDEFGHIJKLMNOPQRSTUVWXYZ":
     KEYS[f"KC_{letter}"] = (letter, letter.lower())
 
 # What holding a mod-tap's modifier does.
-MODIFIERS = {"LCTL": "Ctrl", "RCTL": "Ctrl", "LALT": "Alt", "RALT": "Alt",
-             "LGUI": "Super", "RGUI": "Super", "LSFT": "Shift", "RSFT": "Shift"}
+MODIFIERS = {
+    "LCTL": "Ctrl",
+    "RCTL": "Ctrl",
+    "LALT": "Alt",
+    "RALT": "Alt",
+    "LGUI": "Super",
+    "RGUI": "Super",
+    "LSFT": "Shift",
+    "RSFT": "Shift",
+}
 
 # Where a key is, by its place in LAYOUT_ergodox_pretty: the rows, top to
 # bottom, and the fingers by column, outermost first, which the right hand
 # mirrors.
-ROWS = [(0, "top row"), (14, "upper row"), (28, "home row"), (40, "lower row"),
-        (54, "bottom row"), (64, "thumb")]
-FINGERS = ["outer column", "little finger", "ring finger", "middle finger",
-           "index finger", "index finger, reaching in", "inner column"]
+ROWS = [
+    (0, "top row"),
+    (14, "upper row"),
+    (28, "home row"),
+    (40, "lower row"),
+    (54, "bottom row"),
+    (64, "thumb"),
+]
+FINGERS = [
+    "outer column",
+    "little finger",
+    "ring finger",
+    "middle finger",
+    "index finger",
+    "index finger, reaching in",
+    "inner column",
+]
 THUMBS = {
-    64: "the small key above the long ones", 67: "the small key above the long ones",
-    65: "the top small key", 66: "the top small key",
-    68: "the middle small key", 69: "the middle small key",
-    72: "the bottom small key", 73: "the bottom small key",
-    70: "the outer long key", 75: "the outer long key",
-    71: "the inner long key", 74: "the inner long key",
+    64: "the small key above the long ones",
+    67: "the small key above the long ones",
+    65: "the top small key",
+    66: "the top small key",
+    68: "the middle small key",
+    69: "the middle small key",
+    72: "the bottom small key",
+    73: "the bottom small key",
+    70: "the outer long key",
+    75: "the outer long key",
+    71: "the inner long key",
+    74: "the inner long key",
 }
 
 
-def where(index, key):
-    hand = "left hand" if key["x"] < 8 else "right hand"
+# The halves, in keys from the left edge: the left one's keys start before
+# the gap at 8, and the right one's end at 17, where its outer column does.
+RIGHT_HALF_STARTS = 8
+RIGHT_EDGE = 17
+
+
+def where(index: int, place: Place) -> str:
+    """Say where the key at this place in the layout sits."""
+    left = place["x"] < RIGHT_HALF_STARTS
+    hand = "left hand" if left else "right hand"
     row = [name for start, name in ROWS if index >= start][-1]
     if row == "thumb":
         return f"{hand} thumb, {THUMBS[index]}"
     # Columns stand a key's width apart from the outer one, which is 1.5 wide.
-    column = key["x"] if key["x"] < 8 else 17 - key["x"] - key.get("w", 1)
+    column = place["x"] if left else RIGHT_EDGE - place["x"] - place.get("w", 1)
     finger = FINGERS[min(len(FINGERS) - 1, max(0, round(column - 0.5)))]
     return f"{hand}, {row}, {finger}"
 
 
-def describe(code):
-    """The cap, the words and what holding it does, for one keycode."""
+def describe(code: str) -> tuple[str, str, str | int | None]:
+    """Give a keycode's cap, its words and what holding it does.
+
+    What it holds is a modifier's name, a layer's number, or None.
+    """
     tap_hold = re.fullmatch(r"(MT|LT)\((\w+),\s*(\w+)\)", code)
     if tap_hold:
         kind, hold, tap = tap_hold.groups()
@@ -152,30 +196,47 @@ def describe(code):
     return cap, words, None
 
 
-def main():
-    layout_file, info_file, *names = sys.argv[1:]
-    layers = json.load(open(layout_file))["layers"]
-    places = json.load(open(info_file))["layouts"]["LAYOUT_ergodox_pretty"]["layout"]
+def key(index: int, code: str, place: Place, names: list[str]) -> dict[str, object]:
+    """Describe one key of a layer, the layers' names given for what it holds."""
+    described: dict[str, object] = {
+        "x": place["x"],
+        "y": place["y"],
+        "w": place.get("w", 1),
+        "h": place.get("h", 1),
+        "where": where(index, place),
+    }
+    if code == "KC_TRANSPARENT":
+        described["falls"] = True
+    elif code != "KC_NO":
+        cap, words, held = describe(code)
+        described.update(cap=cap, words=words)
+        if isinstance(held, int):
+            described["holds"] = names[held]
+        elif held:
+            described["holds"] = held
+    return described
+
+
+def main(argv: list[str]) -> None:
+    """Describe the layout's layers, by the names given, to standard output."""
+    layout_file, info_file, *names = argv
+    layers: list[list[str]] = json.loads(Path(layout_file).read_text())["layers"]
+    info = json.loads(Path(info_file).read_text())
+    places: list[Place] = info["layouts"]["LAYOUT_ergodox_pretty"]["layout"]
     if len(names) != len(layers):
         sys.exit(f"{len(names)} layer names for {len(layers)} layers.")
-    described = []
-    for number, (name, codes) in enumerate(zip(names, layers)):
-        keys = []
-        for index, (code, place) in enumerate(zip(codes, places)):
-            key = {"x": place["x"], "y": place["y"], "w": place.get("w", 1),
-                   "h": place.get("h", 1), "where": where(index, place)}
-            if code == "KC_TRANSPARENT":
-                key["falls"] = True
-            elif code != "KC_NO":
-                cap, words, held = describe(code)
-                key.update(cap=cap, words=words)
-                if isinstance(held, int):
-                    key["holds"] = names[held]
-                elif held:
-                    key["holds"] = held
-            keys.append(key)
-        described.append({"name": name, "keys": keys})
+    described = [
+        {
+            "name": name,
+            "keys": [
+                key(index, code, place, names)
+                for index, (code, place) in enumerate(zip(codes, places, strict=True))
+            ],
+        }
+        for name, codes in zip(names, layers, strict=True)
+    ]
     json.dump({"layers": described}, sys.stdout, ensure_ascii=False, indent=1)
 
 
-main()
+if __name__ == "__main__":
+    main(sys.argv[1:])

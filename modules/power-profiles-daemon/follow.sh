@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # Sets the power profile for the charger and the battery: performance on mains
 # power where the daemon offers it, balanced on battery, and power saver once
 # the battery falls below UPower's low mark. On battery it stays in power saver

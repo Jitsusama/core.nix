@@ -1,3 +1,4 @@
+# shellcheck shell=bash disable=SC2154 # The colours and mark come from nixos.nix's header.
 # Says on the console what stopped the boot, before a failed boot's shell
 # asks for root, which is all there is to read on a machine whose root is
 # locked: each unit that failed, the last it said, and the way out. A shell

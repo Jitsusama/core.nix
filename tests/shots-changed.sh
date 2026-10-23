@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # What changed on screen between two runs of a VM test.
 #
 # The desktop test photographs every state it puts the desktop in. Run it on
