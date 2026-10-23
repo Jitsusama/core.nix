@@ -214,6 +214,8 @@ kernel guide][2] says what that catches.
 | `lid-docked-passes-clippy`        | clippy finds nothing in lid-docked or its tests           |
 | `jobs-sorter-sorts-by-behaviour`  | the sorter moves a group busy two seconds running, never the shell's or pi's |
 | `jobs-sorter-passes-clippy`       | clippy finds nothing in the jobs sorter or its tests      |
+| `shaper-finds-the-rate`           | the shaper reads a queue from delayed pings, not one late ping or a silent host; cuts under what the line carried, holds while it drains, and climbs while it's quiet; reads sets, routes and queues from what the kernel prints |
+| `shaper-passes-clippy`            | clippy finds nothing in the shaper or its tests           |
 | `vm-first-finds-the-vms`          | vm-first reads a thread's nice and policy, knows qemu by its name and nothing else |
 | `vm-first-passes-clippy`          | clippy finds nothing in vm-first or its tests             |
 | `dictation-works-it-out`          | dictation's spectrogram, transform and vocabulary match their references |
@@ -317,6 +319,8 @@ emptying, and then look.
 | `vm-loopback-says-who-holds-it`   | a loopback camera's file names each program another account holds it with, not its relay's unit however a program names itself, one line a name, catches a holder that forks, empties when they close it or the camera stops, keeps its folder, follows a new loopback, and takes no loopback of another name |
 | `vm-swap-comes-down-while-probed` | the compressed swap comes down, its reset waiting out udev's probe |
 | `vm-apps-come-first`              | the account's app and session slices, and the system's user.slice, hold a 1 ms latency on the drive behind /home, through the kernel (jobs, background, machine and system none); app.slice holds a hard 13% of memory and every slice above it 15%; timed work sits at 10000 inside idle jobs, and work in jobs can move itself there |
+| `vm-the-network-keeps-its-order`  | an account's jobs, background and the system's builds go in CAKE's bulk tin both ways, an app's pages best effort, its calls and Tuple's daemon video, names and the shaper's pings voice; a slice made again keeps its class; the client's own network isn't slowed; the queues follow the default route and go when the shaper stops |
+| `vm-the-line-stays-quick`         | under four uploads on an 8 Mbit/s line 20 ms away, an app's ping stays under 80 ms with the shaper and passes 300 without; the shaper follows the line down to 4 Mbit/s and back |
 | `vm-checks-go-first`              | a build user's qemu in the daemon's cgroup goes from batch at nice 5 to normal at nice -10, every thread and a later one, and a compiler beside it doesn't |
 | `vm-plugging-in-wakes-it`         | every USB root hub may wake the machine, so a cable plugged into a sleeping laptop wakes it |
 | `vm-lid-stays-at-the-desk`        | a shut lid suspends with no monitor, keeps running with one plugged in whose screen is off, holding one lock through the card's changes, and suspends once it's unplugged |

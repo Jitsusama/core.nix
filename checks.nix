@@ -272,6 +272,12 @@ let
     # Whether the kernel took a slice's disk latency shows only with the
     # account's manager starting it on a real drive.
     vm-apps-come-first = import ./tests/slices.nix { inherit self pkgs; };
+    # Which of CAKE's tins a slice's traffic reaches shows only with the
+    # account's manager making the slices and packets crossing a real link.
+    vm-the-network-keeps-its-order = import ./tests/shaper.nix { inherit self pkgs; };
+    # Whether the shaper finds a line's rate, and keeps a ping near the line's
+    # own delay under a full upload, shows only with a real queue filling.
+    vm-the-line-stays-quick = import ./tests/shaper-rate.nix { inherit self pkgs; };
     # Whether a check's VM goes ahead of the builds shows only with a build
     # user's process in the daemon's own cgroup and the service's real rights.
     vm-checks-go-first = import ./tests/vm-first.nix { inherit self pkgs; };
@@ -2665,6 +2671,12 @@ in
   # busy seconds and not one, the shell's group and pi's never move, a busy
   # process inside them moves alone, and a process first seen counts nothing.
   jobs-sorter-sorts-by-behaviour = pkgs.callPackage ./modules/slices/jobs-sorter/package.nix { };
+
+  # The shaper's tests run as it builds: a queue is read from delayed pings
+  # and not from one late one or a host that stays silent, the rate cuts to
+  # under what the line carried and climbs while nothing waits, and each
+  # set, route and queue is read from what the kernel prints.
+  shaper-finds-the-rate = pkgs.callPackage ./modules/shaper/package.nix { };
 
   # vm-first's tests run as it builds: it reads a thread's nice and policy
   # past any name, knows qemu wrapped or not and nothing else, and counts a
@@ -5621,6 +5633,11 @@ in
     # clippy finds nothing in dictation, its tests included.
     dictation-passes-clippy = passesClippy "dictation-passes-clippy" (
       pkgs.callPackage ./modules/dictation/package.nix { }
+    );
+
+    # clippy finds nothing in the shaper, its tests included.
+    shaper-passes-clippy = passesClippy "shaper-passes-clippy" (
+      pkgs.callPackage ./modules/shaper/package.nix { }
     );
 
     # clippy finds nothing in vm-first, its tests included.

@@ -1,0 +1,108 @@
+# Which of CAKE's tins each connection goes to, decided from the cgroup of
+# the socket that opened it, and kept in its conntrack mark, bits 0x07000000,
+# as CAKE numbers them: 1 bulk, 2 best effort, 3 video, 4 voice. Bit
+# 0x08000000 marks what a link reaches without the router, which isn't
+# slowed at all. The shaper fills the sets every few seconds (src/classes.rs
+# says why) and its tc filters copy the mark to what arrives.
+#
+# Every packet this machine sends is looked at, not only a connection's
+# first: a cgroup made a moment ago reaches its set within a second, and a
+# connection opened in that second then takes its class from its next
+# packet. The match reads the packet's own socket, so it costs a few set
+# lookups, and the kernel writes the mark only when it changes. What
+# arrives takes the class its connection last sent with.
+
+set bulk1 { typeof socket cgroupv2 level 1; }
+set bulk2 { typeof socket cgroupv2 level 2; }
+set voice2 { typeof socket cgroupv2 level 2; }
+set bulk4 { typeof socket cgroupv2 level 4; }
+set app4 { typeof socket cgroupv2 level 4; }
+set video5 { typeof socket cgroupv2 level 5; }
+set local4 { type ipv4_addr; flags interval; }
+set local6 { type ipv6_addr; flags interval; }
+set uplinks { type ifname; }
+
+chain local {
+  ct mark set ct mark and 0xf0ffffff or 0x0a000000
+}
+
+chain bulk {
+  ct mark set ct mark and 0xf8ffffff or 0x01000000
+}
+
+chain best {
+  ct mark set ct mark and 0xf8ffffff or 0x02000000
+}
+
+chain video {
+  ct mark set ct mark and 0xf8ffffff or 0x03000000
+}
+
+chain voice {
+  ct mark set ct mark and 0xf8ffffff or 0x04000000
+}
+
+chain classify {
+  ip daddr @local4 goto local
+  ip daddr { 169.254.0.0/16, 224.0.0.0/4, 255.255.255.255 } goto local
+  ip6 daddr @local6 goto local
+  ip6 daddr { fe80::/10, ff00::/8 } goto local
+
+  # Names and time, which everything waits on, and the shaper's own
+  # pings, which must measure the line rather than a queue here.
+  udp dport { 53, 123, 853 } goto voice
+  tcp dport { 53, 853 } goto voice
+  socket cgroupv2 level 2 @voice2 goto voice
+
+  # Calls: Tuple's daemon, and an app's UDP to anything but 443, which is
+  # how WebRTC sends a call's sound and pictures; 443 is QUIC, a page.
+  socket cgroupv2 level 5 @video5 goto video
+  udp dport != 443 socket cgroupv2 level 4 @app4 goto video
+
+  # The work Joel started rather than the programs he's using.
+  socket cgroupv2 level 1 @bulk1 goto bulk
+  socket cgroupv2 level 2 @bulk2 goto bulk
+  socket cgroupv2 level 4 @bulk4 goto bulk
+
+  goto best
+}
+
+chain output {
+  type filter hook output priority mangle; policy accept;
+  # What stays on this machine never meets a queue worth sorting.
+  oifname "lo" return
+  jump classify
+}
+
+# What this machine forwards for its virtual machines and containers is
+# theirs, and theirs is work; nothing it forwards is a socket here.
+chain forward {
+  type filter hook forward priority mangle; policy accept;
+  ct mark and 0x0f000000 != 0 return
+  iifname { "virbr*", "vnet*", "tap*", "podman*", "veth*", "docker*", "br-*" } jump bulk
+  ct mark and 0x0f000000 == 0 jump best
+}
+
+# A connection that arrives, such as ssh, belongs to whoever opened it.
+chain input {
+  type filter hook input priority mangle; policy accept;
+  ct mark and 0x0f000000 != 0 return
+  ip saddr @local4 jump local
+  ip6 saddr @local6 jump local
+  ip6 saddr fe80::/10 jump local
+  ct mark and 0x0f000000 == 0 jump best
+}
+
+# CAKE reads the tin from the packet's priority when its major number is
+# CAKE's handle, 2:, and the root HTB sends priority 1:1 to its class for
+# local traffic. Only the shaper's uplinks are given one: elsewhere a
+# priority means whatever that link's own queue makes of it.
+chain postrouting {
+  type filter hook postrouting priority mangle; policy accept;
+  oifname != @uplinks return
+  ct mark and 0x08000000 != 0 meta priority set 1:1 return
+  ct mark and 0x07000000 == 0x01000000 meta priority set 2:1 return
+  ct mark and 0x07000000 == 0x02000000 meta priority set 2:2 return
+  ct mark and 0x07000000 == 0x03000000 meta priority set 2:3 return
+  ct mark and 0x07000000 == 0x04000000 meta priority set 2:4 return
+}

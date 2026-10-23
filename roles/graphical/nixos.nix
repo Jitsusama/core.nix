@@ -13,7 +13,8 @@
 # and Tuple. When a program asks what to open something with, the launcher
 # asks rather than GNOME's dialog. A chord types what Joel says where he's
 # typing. The compositor and sound get the CPU and memory before
-# anything Joel starts.
+# anything Joel starts, and calls, music and what he waits on get the
+# network before the work he started.
 { nixosModules, homeModules }:
 {
   imports = [
@@ -36,6 +37,7 @@
     nixosModules.pipewire
     nixosModules.plymouth
     nixosModules.quickshell
+    nixosModules.shaper
     nixosModules.shure-mv7
     nixosModules.slices
     nixosModules.swayimg
