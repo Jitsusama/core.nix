@@ -1896,11 +1896,14 @@ pkgs.testers.runNixOSTest {
               "Take a screenshot of the window",
           ]
 
+          # Open windows are found by their program too, and two may share
+          # a title, so a search's rows are held to what stands for what;
+          # home's, with no windows but the focused one, are held to once.
           def once(shown, leading):
               rows = shown["rows"]
               return (
                   rows[: len(leading)] == leading
-                  and len(set(rows)) == len(rows)
+                  and (shown["typed"] != "" or len(set(rows)) == len(rows))
                   and not set(rows) & set(stood_for)
               )
 
