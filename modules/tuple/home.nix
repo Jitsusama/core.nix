@@ -30,9 +30,12 @@
 # Tuple writes a desktop entry each time its daemon starts, one that runs
 # tuple with nothing after it, which only prints the command's help. This
 # entry takes its place, hidden, since there's no window to open, and opens
-# Tuple's links. A browser asks xdg-open, which takes the one entry that
-# says it opens them when no list names one, so no list of defaults, which
-# programs write too, needs to.
+# Tuple's links. xdg-open finds the entry by what it says it opens, but gio,
+# and the desktop's portal that programs hand links to, find an app in a
+# folder only through the folder's index or a list of defaults, and this
+# folder has neither. So the entry is named the default in niri's own list,
+# which they read before the account's mimeapps.list, the browser's to
+# rewrite.
 #
 # The shell is where a call shows (docs/design.md, Calls): a piece in the
 # margin while Joel's in one or one rings, with leaving, sharing and muting
@@ -180,6 +183,13 @@ in
       NoDisplay=true
     '';
   };
+
+  # niri's own list of defaults, which only a desktop's may hold; the
+  # browser keeps rewriting the account's mimeapps.list.
+  xdg.configFile."niri-mimeapps.list".text = ''
+    [Default Applications]
+    x-scheme-handler/tuple=tuple.desktop
+  '';
 
   # After niri's own rules, which match no window of Tuple's.
   xdg.configFile."niri/config.kdl".text = lib.mkAfter ''
