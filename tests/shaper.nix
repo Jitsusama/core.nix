@@ -136,8 +136,10 @@ pkgs.testers.runNixOSTest {
     for slice in ["jobs.slice", "background.slice", "app.slice"]:
         hold(slice)
     hold("build.slice", system=True)
-    client.wait_until_succeeds("nft list set inet shaper bulk4 | grep -q background.slice", timeout=10)
-    client.wait_until_succeeds("nft list set inet shaper bulk1 | grep -q build.slice", timeout=10)
+    for name, slice in [("bulk4", "background.slice"), ("bulk1", "build.slice")]:
+        client.wait_until_succeeds(
+            f"nft list set inet shaper {name} | grep -q {slice}", timeout=10
+        )
 
     def run(where, script):
         """Runs a bash script in a slice: an account's, or the system's."""

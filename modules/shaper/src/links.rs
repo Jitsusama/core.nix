@@ -159,11 +159,11 @@ mod tests {
     fn a_links_networks_are_its_addresses_prefixes() {
         let json = r#"[{"ifname":"enp","addr_info":[
             {"family":"inet","local":"192.168.4.45","prefixlen":22,"scope":"global"},
-            {"family":"inet6","local":"2600:1700:abcd:1:4667:52ff:fe02:37a3","prefixlen":64,"scope":"global"},
-            {"family":"inet6","local":"fe80::4667:52ff:fe02:37a3","prefixlen":64,"scope":"link"}]}]"#;
+            {"family":"inet6","local":"2001:db8:abcd:1::37a3","prefixlen":64,"scope":"global"},
+            {"family":"inet6","local":"fe80::37a3","prefixlen":64,"scope":"link"}]}]"#;
         let (v4, v6) = local_networks(json);
         assert_eq!(v4, ["192.168.4.0/22"]);
-        assert_eq!(v6, ["2600:1700:abcd:1::/64"]);
+        assert_eq!(v6, ["2001:db8:abcd:1::/64"]);
     }
 
     #[test]

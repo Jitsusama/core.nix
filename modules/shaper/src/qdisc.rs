@@ -81,7 +81,8 @@ pub fn install(link: &str, ifb: &str, up: u64, down: u64) -> Vec<Vec<String>> {
     all.push(cmd(&format!("ip link set {ifb} up")));
     all.extend(htb(ifb));
     all.push(cmd(&format!(
-        "tc filter replace dev {ifb} parent 1: protocol all prio 1 handle {LOCAL_BIT:#x}/{LOCAL_BIT:#x} fw classid 1:1"
+        "tc filter replace dev {ifb} parent 1: protocol all prio 1 \
+         handle {LOCAL_BIT:#x}/{LOCAL_BIT:#x} fw classid 1:1"
     )));
     all.push(cmd(&format!(
         "tc qdisc replace dev {ifb} parent 1:2 handle 2: {}",
@@ -208,8 +209,12 @@ mod tests {
             .iter()
             .map(|c| c.join(" "))
             .collect();
-        assert!(all.contains(&"tc qdisc replace dev enp1 parent 1:2 handle 2: cake bandwidth 9000kbit diffserv4 nat ack-filter".into()));
-        assert!(all.contains(&"tc qdisc replace dev shaper3 parent 1:2 handle 2: cake bandwidth 80000kbit diffserv4 nat ingress fwmark 0x7000000".into()));
+        let out = "tc qdisc replace dev enp1 parent 1:2 handle 2: \
+                   cake bandwidth 9000kbit diffserv4 nat ack-filter";
+        let back = "tc qdisc replace dev shaper3 parent 1:2 handle 2: \
+                    cake bandwidth 80000kbit diffserv4 nat ingress fwmark 0x7000000";
+        assert!(all.contains(&out.to_string()));
+        assert!(all.contains(&back.to_string()));
         assert!(all.iter().any(|c| {
             c.contains("ctinfo cpmark 0xf000000 pipe action mirred egress redirect dev shaper3")
         }));
@@ -223,7 +228,8 @@ mod tests {
     fn a_change_keeps_each_directions_options() {
         assert_eq!(
             change("enp1", 8_000, false).join(" "),
-            "tc qdisc change dev enp1 parent 1:2 handle 2: cake bandwidth 8000kbit diffserv4 nat ack-filter"
+            "tc qdisc change dev enp1 parent 1:2 handle 2: \
+             cake bandwidth 8000kbit diffserv4 nat ack-filter"
         );
         assert!(
             change("shaper3", 8_000, true)

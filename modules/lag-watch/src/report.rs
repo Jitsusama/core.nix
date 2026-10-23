@@ -80,8 +80,9 @@ pub fn render(windows: &[Window]) -> String {
             let minutes = t.windows as f64 * 10.0 / 60.0;
             let _ = writeln!(
                 out,
-                "  {:<7} {:>6.0} min  waited in {:>4.1}%  niri answers p99 {:>5.1} ms (worst {:.1}), \
-                 waits {:>4.0} us; desktop CPU stall {:.2}%, apps' memory stall {:.2}%",
+                "  {:<7} {:>6.0} min  waited in {:>4.1}%  \
+                 niri answers p99 {:>5.1} ms (worst {:.1}), waits {:>4.0} us; \
+                 desktop CPU stall {:.2}%, apps' memory stall {:.2}%",
                 format!("{band:?}").to_lowercase(),
                 minutes,
                 t.troubled as f64 / t.windows as f64 * 100.0,
