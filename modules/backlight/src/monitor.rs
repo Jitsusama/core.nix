@@ -22,6 +22,11 @@
 //!
 //! Monitors come and go as their buses do, which a watch on /dev hears, so
 //! nothing is looked for until one does.
+//!
+//! HP's Z27k G3 shows nothing during a boot with the laptop's lid shut unless
+//! its DisplayPort hot-plug detection is set to Always on, and a reset or a
+//! firmware update would quietly put it back to Low power. So each time one
+//! is found, its setting is read, and set to Always on only if it isn't.
 
 use std::collections::HashMap;
 use std::ffi::{CString, c_char, c_int, c_ulong};
@@ -52,6 +57,15 @@ const DDC_CI: u8 = 0x37;
 const EDID: u8 = 0x50;
 /// The VCP code that holds a monitor's brightness.
 const BRIGHTNESS: u8 = 0x10;
+/// The VCP code, in the maker's own range, where HP's Z27k G3 keeps its
+/// DisplayPort hot-plug detection: its low byte is 0 for Low power and 1 for
+/// Always on. Read from one before and after the setting was changed on its
+/// own menu; no other code changed.
+const HOT_PLUG: u8 = 0xE7;
+const ALWAYS_ON: u16 = 0x0001;
+/// HP's maker code and the Z27k G3's product code, as its EDID gives them
+/// and an `Identity` begins; its EDID's name reads "HP Z27k G3".
+const Z27K_G3: [u8; 4] = [0x22, 0x0E, 0xD3, 0x36];
 /// How long a monitor takes to have an answer ready.
 const ANSWERING: Duration = Duration::from_millis(40);
 /// How long a monitor wants between one command and the next.
@@ -160,6 +174,50 @@ fn identity(edid: &[u8]) -> Option<Identity> {
         return None;
     }
     block[8..18].try_into().ok()
+}
+
+/// Whether a monitor is one whose hot-plug detection is held at Always on.
+fn holds_hot_plug(identity: &Identity) -> bool {
+    identity[..4] == Z27K_G3
+}
+
+/// What to set a Z27k G3's hot-plug detection to, given what it holds: Always
+/// on, keeping whatever else it says, but only if it's at Low power.
+fn hot_plug_to_set(now: u16) -> Option<u16> {
+    let [_, low] = now.to_be_bytes();
+    (low == 0).then_some(now | ALWAYS_ON)
+}
+
+/// Reads a Z27k G3's hot-plug detection, and sets it to Always on if it isn't.
+fn hold_hot_plug(name: &str, bus: &mut Bus) {
+    let now = match bus.read_vcp(HOT_PLUG) {
+        Ok(Reading { now, .. }) => now,
+        Err(error) => {
+            eprintln!("<4>can't read the hot-plug detection of the monitor on {name}: {error}");
+            return;
+        }
+    };
+    let Some(value) = hot_plug_to_set(now) else {
+        eprintln!("<6>the monitor on {name} keeps hot-plug detection always on ({now:#06x})");
+        return;
+    };
+    if let Err(error) = bus.write_vcp(HOT_PLUG, value) {
+        eprintln!(
+            "<4>the monitor on {name} has hot-plug detection at low power ({now:#06x}), \
+             and it can't be set: {error}"
+        );
+        return;
+    }
+    match bus.read_vcp(HOT_PLUG) {
+        Ok(Reading { now: after, .. }) => eprintln!(
+            "<5>the monitor on {name} had hot-plug detection at low power ({now:#06x}), \
+             and now has {after:#06x}"
+        ),
+        Err(error) => eprintln!(
+            "<4>the monitor on {name} had hot-plug detection at low power ({now:#06x}), \
+             and was set to {value:#06x}, but can't be read back: {error}"
+        ),
+    }
 }
 
 /// An I2C bus, its reads and writes going to one address.
@@ -278,7 +336,7 @@ struct Monitor {
 }
 
 impl Monitor {
-    fn start(name: &str, bus: Bus, level: f64) -> io::Result<Monitor> {
+    fn start(name: &str, bus: Bus, identity: Option<Identity>, level: f64) -> io::Result<Monitor> {
         let shared = Arc::new(Shared {
             wanted: Mutex::new(Wanted {
                 level: Some(level),
@@ -290,7 +348,7 @@ impl Monitor {
         let theirs = Arc::clone(&shared);
         thread::Builder::new()
             .name(format!("monitor on {name}"))
-            .spawn(move || follow(&owned, bus, &theirs))?;
+            .spawn(move || follow(&owned, bus, identity, &theirs))?;
         Ok(Monitor { shared })
     }
 
@@ -307,9 +365,9 @@ impl Drop for Monitor {
     }
 }
 
-/// A monitor's thread: learns its brightest, then sets each level asked
-/// for, unless it already shows it.
-fn follow(name: &str, mut bus: Bus, shared: &Shared) {
+/// A monitor's thread: learns its brightest, holds a Z27k G3's hot-plug
+/// detection, then sets each level asked for, unless it already shows it.
+fn follow(name: &str, mut bus: Bus, identity: Option<Identity>, shared: &Shared) {
     let found = bus
         .read_vcp(BRIGHTNESS)
         .or_else(|_| bus.read_vcp(BRIGHTNESS));
@@ -324,6 +382,9 @@ fn follow(name: &str, mut bus: Bus, shared: &Shared) {
         }
     };
     eprintln!("<6>the monitor on {name} follows the panel, {now} of {max}");
+    if identity.as_ref().is_some_and(holds_hot_plug) {
+        hold_hot_plug(name, &mut bus);
+    }
     let mut shown = now;
     let mut failing = false;
     while let Some(level) = shared.next() {
@@ -615,8 +676,9 @@ impl Monitors {
             if bus.monitor.is_some() {
                 continue;
             }
+            let identity = bus.identity;
             let monitor = Bus::open(&self.dev.join(&name))
-                .and_then(|opened| Monitor::start(&name, opened, self.level));
+                .and_then(|opened| Monitor::start(&name, opened, identity, self.level));
             match monitor {
                 Ok(monitor) => bus.monitor = Some(monitor),
                 // udev opens a bus to the seat a moment after it comes, and
@@ -708,6 +770,44 @@ mod tests {
         assert_eq!(value_for(2.0 / 3.0, 100), 67);
         assert_eq!(value_for(0.5, 101), 51);
         assert_eq!(value_for(2.0, 100), 100);
+    }
+
+    #[test]
+    fn a_z27k_g3_has_its_hot_plug_detection_held_and_other_monitors_do_not() {
+        let z27k_g3 = [0x22, 0x0E, 0xD3, 0x36, 0, 0, 0, 0, 0x1C, 0x1F];
+        let another_hp = [0x22, 0x0E, 0xD4, 0x36, 0, 0, 0, 0, 0x1C, 0x1F];
+        let another_maker = [0x10, 0xAC, 0xD3, 0x36, 0, 0, 0, 0, 0x1C, 0x1F];
+        assert!(holds_hot_plug(&z27k_g3));
+        assert!(!holds_hot_plug(&another_hp));
+        assert!(!holds_hot_plug(&another_maker));
+    }
+
+    #[test]
+    fn hot_plug_detection_at_low_power_is_set_to_always_on() {
+        assert_eq!(hot_plug_to_set(0x0000), Some(0x0001));
+        assert_eq!(hot_plug_to_set(0x0100), Some(0x0101));
+    }
+
+    #[test]
+    fn hot_plug_detection_always_on_is_left_alone() {
+        assert_eq!(hot_plug_to_set(0x0001), None);
+        assert_eq!(hot_plug_to_set(0x0101), None);
+    }
+
+    #[test]
+    fn what_a_z27k_g3_says_for_its_hot_plug_detection_is_read() {
+        assert_eq!(
+            reading(&answer(0, HOT_PLUG, 1, 0), HOT_PLUG).unwrap(),
+            Reading { max: 1, now: 0 }
+        );
+    }
+
+    #[test]
+    fn setting_hot_plug_detection_to_always_on_is_framed_as_the_menu_sets_it() {
+        assert_eq!(
+            set_vcp(HOT_PLUG, ALWAYS_ON)[..6],
+            [0x51, 0x84, 0x03, 0xE7, 0x00, 0x01]
+        );
     }
 
     #[test]
