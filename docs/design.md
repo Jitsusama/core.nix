@@ -477,20 +477,26 @@ works the same way everywhere.
   answer came from.
   Nothing leaves the machine unless the question needs the network, never
   for a private address, and never with the launcher's `lookups` off.
-- **Large sets are one row each.** Emoji, the clipboard's history, past
-  notices and the Wi-Fi networks in reach are too many to mix into the
-  search: each that has a match adds one row, its best match with a count of
-  the rest, so there's no haystack and no mode to enter first. Return uses
-  that match; the right arrow sees all of them, with what was typed still
-  searching. The row sits below the other matches. A collection is found whole by its name or what a person
-  would call it ("audio" is Sound, "notifications" the Notices), and Return
-  steps into it; found that way, it stands alone for what it holds, so
-  neither its members nor things that live in it, nor the shortcut that
-  opens it, sit beside it. Beside the field, a word says what the selection is: an
+- **Large sets are one row each.** The clipboard's history, past notices
+  and the Wi-Fi networks in reach are too many to mix into the search: each
+  that has a match adds one row, its best match with a count of the rest,
+  so there's no haystack and no mode to enter first. Return uses that
+  match; the right arrow sees all of them, with what was typed still
+  searching. The row sits below the other matches. Emoji add none, since a
+  name like what was typed ("turkey" for "tu") is a row to rule out; they
+  are found in their own place. A collection is found whole by its name or
+  what a person would call it ("audio" is Sound, "notifications" the
+  Notices), and Return steps into it; found that way, it stands alone for
+  what it holds, so neither its members nor things that live in it, nor the
+  shortcut that opens it, sit beside it. Beside the field, a word says what
+  the selection is: an
   answer, a collection, a window, a program, a shortcut, a pi session.
   Each is whole at home, and most have a chord that opens them: Super+V the
   copies, Super+E the emoji, Super+N the notices (the stack on screen
   first, by the keys, then the history), Super+Shift+/ the shortcuts.
+- **A thing is listed once.** A key's action that a row already does is
+  that row, drawing the key's chord: Super+L is the session's Lock,
+  Super+Return is kitty, and the screenshot keys are Capture's rows.
 - **Copies stay in memory.** One program hears every copy for the session,
   text and pictures, and the shell asks it for them, so none is written to
   disk, a picture's file sitting in the runtime directory, and none is kept

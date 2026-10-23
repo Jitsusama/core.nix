@@ -54,9 +54,15 @@ Provider {
     readonly property var outputs: devices.filter(node => node.isSink)
     readonly property var inputs: devices.filter(node => !node.isSink)
 
-    // A node's volume is heard only once something binds it.
+    // Each program's stream open to play through: a playback stream carries
+    // PipeWire's sink flag.
+    readonly property var streams: Pipewire.nodes.values
+        .filter(node => node.isStream && node.isSink && (node.type & PwNodeType.Audio))
+
+    // A node's volume and properties are heard only once something binds
+    // it; a stream's say which program it is.
     PwObjectTracker {
-        objects: provider.nodes
+        objects: provider.nodes.concat(provider.streams)
     }
 
     function inUse(node) {
@@ -216,16 +222,17 @@ Provider {
             }));
         // The track playing, as the music mark has it (Music.qml), then
         // each program with a stream open to play through, by the name it
-        // gives; a playback stream carries PipeWire's sink flag, and may be
-        // open and silent, so it says only that it's open.
+        // gives; a stream may be open and silent, so it says only that it's
+        // open. A filter's own stream, such as the speakers' tuning, is no
+        // program: it carries the link group its filter's nodes share.
         if (Music.playing)
             rows.push(copyRow({
                 name: Music.artist === "" ? Music.title : `${Music.title}, ${Music.artist}`,
                 side: "playing",
                 glyph: Theme.glyph.playing
             }));
-        const playing = Pipewire.nodes.values
-            .filter(node => node.isStream && node.isSink && (node.type & PwNodeType.Audio))
+        const playing = streams
+            .filter(node => !node.properties["node.link-group"])
             .map(node => node.properties["application.name"] ?? node.name)
             .filter((name, i, all) => name && all.indexOf(name) === i);
         for (const name of playing)

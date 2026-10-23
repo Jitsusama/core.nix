@@ -19,9 +19,13 @@ Provider {
         title: "Emoji",
         words: ["emoticons", "smileys", "faces", "symbols", "characters", "unicode"],
         glyph: String.fromCodePoint(0xf01f5),
-        ask: "which emoji?"
+        ask: "which emoji?",
+        // Found only here, by Super+E or by its name: in the main search an
+        // emoji named like what was typed ("turkey" for "tu") is a row to
+        // read and rule out.
+        searched: false
     })
-    examples: ["tada"]
+    examples: ["emoji"]
 
     // Every emoji, in Unicode's order, read the first time it's needed.
     property var all: null

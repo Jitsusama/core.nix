@@ -11,6 +11,17 @@ Provider {
 
     what: "session"
 
+    // Locking and holding notices have keys too, so these rows stand for
+    // those actions and draw their chords.
+    readonly property string locks: "Lock the screen"
+    readonly property string holds: "Hold notices, or let them show"
+    draws: [locks, holds]
+
+    function bound(does) {
+        const action = Shortcuts.actions.find(candidate => candidate.does === does);
+        return action ? action.chord : [];
+    }
+
     readonly property var awake: thing({
         key: "session:awake",
         verb: Caffeinate.on ? "let it sleep" : "keep awake",
@@ -31,6 +42,7 @@ Provider {
         name: Quiet.on ? "End Do Not Disturb" : "Do Not Disturb",
         keywords: "quiet focus dnd silence mute snooze pause notifications notices alerts hold",
         side: Quiet.on ? Quiet.lasts : "for an hour",
+        chord: bound(holds),
         glyph: String.fromCodePoint(0xf00a0),
         hue: "voice",
         run: () => Quiet.on ? Quiet.end() : Quiet.keep(60),
@@ -80,6 +92,7 @@ Provider {
     things: [awake, quiet].concat(Recorder.recording ? [recording] : [], profiles, [
         {
             name: "Lock",
+            does: locks,
             words: "lock screen lockscreen away leave",
             glyph: 0xf023,
             run: () => provider.launcher.lock.lock()
@@ -116,6 +129,7 @@ Provider {
         verb: action.name.toLowerCase(),
         name: action.name,
         keywords: action.words,
+        chord: action.does ? bound(action.does) : [],
         glyph: String.fromCodePoint(action.glyph),
         hue: "machine",
         run: action.run,

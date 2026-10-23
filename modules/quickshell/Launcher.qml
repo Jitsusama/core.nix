@@ -194,7 +194,11 @@ Scope {
     // offers beside them, such as turning Wi-Fi off, is found like any, and
     // so is the collection itself, by its title or any of its words, so
     // typing what it holds goes straight to it.
+    // A desktop action another row stands for (Provider.qml's draws) is
+    // found only as that row.
+    readonly property var standIns: sources.reduce((all, source) => all.concat(source.draws), [])
     readonly property var choices: sources.reduce((all, source) => all.concat(source.things), [])
+        .filter(row => !(row.key.startsWith("action:") && root.standIns.includes(row.name)))
         .concat(collections.map(named))
     readonly property var collections: sources.filter(source => source.collection)
 

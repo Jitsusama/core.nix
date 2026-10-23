@@ -29,6 +29,9 @@ const bonusConsecutive = -(gapStart + gapExtension);
 const bonusFirstLetter = 2;
 const bonusBoundaryWhite = bonusBoundary + 2;
 const bonusBoundaryDelimiter = bonusBoundary + 1;
+// Ours, not fzf's: a word typed whole beats one it only begins, so "pi"
+// finds pi before a picture.
+const bonusWhole = bonusBoundary;
 
 // The kinds of character a bonus depends on, in fzf's order: anything
 // past nonWord is part of a word.
@@ -117,7 +120,8 @@ function prepare(text) {
 // What a word is worth landing at `at`: fzf's score for a run of letters,
 // the first worth more where a stronger word starts and doubled, each
 // later one keeping the bonus of the start of its run, unless a stronger
-// word start inside it begins a new one.
+// word start inside it begins a new one. A run ending where its word ends
+// is worth more again.
 function worth(bonus, at, m) {
     let opened = bonus[at];
     let score = scoreMatch + opened * bonusFirstLetter;
@@ -130,6 +134,7 @@ function worth(bonus, at, m) {
             score += scoreMatch + Math.max(b, bonusConsecutive, opened);
         }
     }
+    if (at + m >= bonus.length || bonus[at + m] > 0) score += bonusWhole;
     return score;
 }
 

@@ -51,6 +51,11 @@ Scope {
     // The launcher, for what a thing needs of it: the lock, opening below.
     property var launcher: null
     property var things: []
+    // The desktop's actions its rows stand for, by what they do (Shortcuts'
+    // `does`), each row drawing the action's chord, so the action is listed
+    // only here rather than twice under two names: the session's Lock is
+    // Super+L's "Lock the screen".
+    property var draws: []
 
     signal answered
     // A collection's things changed while it might be open.

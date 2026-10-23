@@ -40,16 +40,27 @@ Provider {
 
     readonly property string picture: glyph(0xf0100)
 
-    // A row's chord, from the desktop's binds, by what it runs. A niri
-    // action's command ends its options with --, which says nothing here.
-    function chord(run) {
-        const bind = Shortcuts.actions.find(action => {
+    // The desktop's bind that runs what a row runs. A niri action's command
+    // ends its options with --, which says nothing here.
+    function bind(run) {
+        return Shortcuts.actions.find(action => {
             const words = action.run[action.run.length - 1] === "--" ? action.run.slice(0, -1)
                 : action.run;
             return words.join(" ") === run;
         });
-        return bind ? bind.chord : [];
     }
+
+    // A row's chord, from its bind.
+    function chord(run) {
+        const found = bind(run);
+        return found ? found.chord : [];
+    }
+
+    // Its rows that have a key stand for those actions, so a screenshot's
+    // chord is found here, once.
+    draws: ["niri msg action screenshot-screen", "niri msg action screenshot-window",
+        "qs ipc call recording screen", "qs ipc call recording window"]
+        .map(run => bind(run)).filter(found => !!found).map(found => found.does)
 
     // What it says beside the window it was asked of, shortened where a
     // title runs long.

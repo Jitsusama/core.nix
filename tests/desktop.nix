@@ -1847,15 +1847,28 @@ pkgs.testers.runNixOSTest {
           log = as_account("journalctl --user -u quickshell --no-pager -o cat")
           assert "ERROR" not in log and "Error:" not in log, "an answer raised an error"
 
-      with subtest("the launcher finds emoji as one row, and steps into the rest"):
-          copied("tada", "\U0001F389")
-          answer("smiling")
+      with subtest("the launcher finds emoji in their own place, and only there"):
+          closed = in_session("niri msg layers | grep -qw launcher")
+          # The main search lists no emoji, only the place they're in.
+          answer("tada")
+          t.assertNotIn("party popper", showing()["rows"])
+          machine.send_key("esc")
+          machine.wait_until_fails(closed, timeout=10)
+          answer("emoji")
+          launcher_until(lambda shown: shown["rows"] == ["Emoji"])
+          machine.send_key("ret")
+          launcher_until(lambda shown: shown["held"] == ["emoji"])
+          type_in("tada", selecting="party popper")
+          machine.send_key("ret")
+          machine.wait_until_fails(closed, timeout=10)
+          t.assertEqual(as_account("wl-paste --no-newline"), "\U0001F389")
+          machine.send_key("meta_l-e")
+          launcher_ready()
+          type_in("smiling")
           photograph("launcher-emoji")
-          step_in()
           type_in(" cat")
           photograph("launcher-emoji-all")
           machine.send_key("ret")
-          closed = in_session("niri msg layers | grep -qw launcher")
           machine.wait_until_fails(closed, timeout=10)
           # The grinning cat with smiling eyes, first among the smiling cats.
           t.assertEqual(as_account("wl-paste --no-newline"), "\U0001F638")
@@ -1867,6 +1880,32 @@ pkgs.testers.runNixOSTest {
           machine.send_key("ret")
           machine.wait_until_fails(closed, timeout=10)
           t.assertEqual(as_account("wl-paste --no-newline"), "\U0001F431")
+
+      with subtest("a search lists each thing once"):
+          closed = in_session("niri msg layers | grep -qw launcher")
+          # Tuple's place stands alone for its rows and its people; the
+          # session's Lock and Do Not Disturb draw their keys' chords, so
+          # those keys aren't listed again; kitty draws Super+Return's;
+          # and Capture holds the screenshots its keys take. Nothing is
+          # found by letters scattered through it.
+          for typed, rows in [
+              ("tuple", ["Tuple"]),
+              ("lock", ["Lock"]),
+              ("kitty", ["kitty"]),
+              ("do not disturb", ["Do Not Disturb"]),
+              ("screenshot", ["Capture"]),
+              ("zqxj", []),
+          ]:
+              answer(typed)
+              launcher_until(lambda shown, rows=rows: shown["rows"] == rows)
+              machine.send_key("esc")
+              machine.wait_until_fails(closed, timeout=10)
+          # The speakers' tuning plays through them, and is no program.
+          answer("volume")
+          launcher_until(lambda shown: "Turn the volume up" in shown["rows"])
+          t.assertNotIn("pebble_x_plus_tuning_output", showing()["rows"])
+          machine.send_key("esc")
+          machine.wait_until_fails(closed, timeout=10)
 
       with subtest("Super+Shift+/ shows every layer's shortcuts, and runs the desktop's"):
           windows = len(json.loads(as_account("niri msg --json windows")))
