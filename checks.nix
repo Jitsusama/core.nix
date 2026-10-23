@@ -5121,6 +5121,22 @@ in
           '';
         });
 
+    # clippy finds nothing in device-check or device-check-disk, their tests
+    # included.
+    device-check-passes-clippy =
+      (pkgs.callPackage ./modules/device-check/package.nix { }).overrideAttrs
+        (old: {
+          pname = "device-check-passes-clippy";
+          nativeBuildInputs = old.nativeBuildInputs ++ [ pkgs.clippy ];
+          buildPhase = ''
+            cargo clippy --all-targets --offline -- -D warnings
+          '';
+          doCheck = false;
+          installPhase = ''
+            touch $out
+          '';
+        });
+
     # clippy finds nothing in shutdown-status, its tests included.
     shutdown-status-passes-clippy =
       (pkgs.callPackage ./modules/systemd/shutdown-status/package.nix { }).overrideAttrs

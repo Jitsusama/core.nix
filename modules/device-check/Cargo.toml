@@ -1,0 +1,11 @@
+# device-check: names the devices that have stopped working, and
+# device-check-disk, which keeps what smartd hears from a disk for it
+# (src/main.rs and src/bin/device-check-disk.rs say how).
+[package]
+name = "device-check"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[dependencies]
