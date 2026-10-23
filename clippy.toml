@@ -11,6 +11,7 @@ doc-valid-idents = [
   "GStreamer",
   "MSCHAPv2",
   "NVMe",
+  "OpenVINO",
   "PipeWire",
   "SplitMix64",
   "UDisks2",

@@ -27,7 +27,7 @@ use std::time::Duration;
 use crate::mel::{RATE, SAMPLES};
 use crate::whisper::Whisper;
 
-const UNUSED: Duration = Duration::from_secs(10 * 60);
+const UNUSED: Duration = Duration::from_mins(10);
 // Under -40 dBFS throughout is silence, which Whisper would otherwise hear
 // words in.
 const SILENT: f32 = 0.01;
