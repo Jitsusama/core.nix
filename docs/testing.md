@@ -258,6 +258,7 @@ copying the tree and running the whole test.
 | `vm-keyring-opens-without-asking` | the keyring opens with its TPM-sealed password, unasked |
 | `vm-speakers-are-tuned`           | the XPS 14's speakers hear the tuning, headphones don't |
 | `vm-pebble-speakers-are-tuned`    | a Pebble X Plus hears its tuning, headphones don't      |
+| `vm-mv7-voice-is-levelled`        | an MV7's voice comes up 12 dB, its room and s sounds less, its peaks under -1 dBFS; another mic's are untouched |
 | `vm-webcam-microphones-yield`     | a webcam's microphone ranks below a USB microphone's    |
 | `vm-desktop-works`                | it boots clean; the desktop shows, opens, locks and asks, a USB camera's stream included |
 | `vm-greeter-signs-in`             | the greeter signs in and out, not waiting on the account's setup |
