@@ -4,6 +4,7 @@
 # gets the pattern in 8-bit grey, the camera closes when it stops, and no reader
 # gets a frame from before it opened, the last one's face least of all, and a
 # relay whose loopback has gone waits for it rather than failing over and over.
+# The script is ir-camera-vm-test.py.
 { self, pkgs }:
 let
   width = 648;
@@ -117,77 +118,14 @@ pkgs.testers.runNixOSTest {
       '';
     };
 
-  testScript = ''
-    machine.wait_for_unit("ir-camera.service")
-    machine.wait_for_file("/dev/ir-camera")
-
-    with subtest("the relay waits for udev to give it the loopback"):
-        restarts = machine.succeed("systemctl show -P NRestarts ir-camera.service")
-        t.assertEqual(restarts.strip(), "0")
-        machine.fail("journalctl -b -o cat -u ir-camera.service | grep -q 'Permission denied'")
-
-    source = machine.succeed("v4l2loopback-ctl add -n 'Stand-in IR' -x 1 -b 2").strip()
-    machine.succeed(f"udevadm wait --timeout 10 {source}")
-    machine.succeed(f"systemd-run --unit=stand-in -p Type=exec stand-in-camera {source}")
-    machine.wait_for_file("/run/stand-in-camera")
-    relay = machine.succeed("systemctl show -P MainPID ir-camera.service").strip()
-    holds_camera = f"readlink /proc/{relay}/fd/* | grep -q -x -F {source}"
-
-    with subtest("the camera stays closed until a program reads"):
-        machine.fail(holds_camera)
-
-    with subtest("programs get grey frames, and browsers don't take it for a camera"):
-        format = machine.succeed("v4l2-ctl -d /dev/ir-camera --get-fmt-video")
-        t.assertIn("'GREY'", format)
-        t.assertIn("${toString width}/${toString height}", format)
-        capabilities = machine.succeed("v4l2-ctl -d /dev/ir-camera --info")
-        t.assertIn("Video Output", capabilities.split("Device Caps")[1])
-
-    with subtest("a reader gets the camera's frames in grey"):
-        machine.succeed(
-            "v4l2-ctl -d /dev/ir-camera --stream-mmap --stream-count=10 --stream-to=/tmp/read"
-        )
-        names = machine.succeed("frames /tmp/read").split()
-        print(f"The reader got: {' '.join(names)}")
-        t.assertNotIn("other", names)
-        t.assertEqual(names[-1], "pattern", " ".join(names))
-
-    with subtest("a paused camera's next reader gets no frame from before it opened"):
-        machine.succeed("touch /run/stand-in-paused; sleep 1")
-        machine.execute(
-            f"timeout 3 v4l2-ctl -d {source} --stream-mmap --stream-count=1 --stream-to=/tmp/stale"
-        )
-        stale = int(machine.succeed("stat -c %s /tmp/stale 2>/dev/null || echo 0"))
-        t.assertEqual(stale, 0, "A reader opening a paused camera got the frame from before it")
-        machine.succeed("rm /run/stand-in-paused")
-
-    with subtest("the camera closes when the reader stops"):
-        machine.wait_until_succeeds(f"! {holds_camera}", timeout=30)
-        machine.wait_until_succeeds(
-            "journalctl -b -o cat -u ir-camera.service | grep -q 'The reader stopped'", timeout=30
-        )
-
-    with subtest("the next reader never gets the last one's frames"):
-        machine.succeed("systemctl stop stand-in.service")
-        machine.execute(
-            ": > /tmp/next; timeout 5 v4l2-ctl -d /dev/ir-camera --stream-mmap --stream-count=1"
-            " --stream-to=/tmp/next"
-        )
-        names = machine.succeed("frames /tmp/next").split()
-        t.assertNotIn("pattern", names, "The next reader got the last one's frames")
-
-    with subtest("a relay started with its loopback gone waits for it rather than retrying"):
-        machine.succeed("systemctl stop ir-camera.service")
-        machine.succeed("v4l2loopback-ctl delete $(readlink /run/ir-camera-loopback/sink)")
-        machine.succeed("systemctl start --no-block ir-camera.service")
-        machine.sleep(7)
-        restarts = machine.succeed("systemctl show -P NRestarts ir-camera.service").strip()
-        t.assertEqual(restarts, "0", "The relay kept retrying a loopback that had gone")
-        holders = machine.succeed("systemctl show -P NRestarts ir-camera-holders.service")
-        t.assertEqual(holders.strip(), "0", "Saying who holds the camera failed while it was gone")
-        machine.succeed("systemctl restart ir-camera-loopback.service ir-camera.service")
-        machine.wait_for_unit("ir-camera.service")
-        machine.wait_for_unit("ir-camera-holders.service")
-        t.assertEqual(machine.succeed("cat /run/camera-holders/ir-camera"), "")
-  '';
+  testScript =
+    let
+      # The frames' size, which the script reads from this file at its top.
+      values = pkgs.writeText "ir-camera-values.json" (builtins.toJSON { inherit width height; });
+      script = builtins.readFile ./ir-camera-vm-test.py;
+    in
+    builtins.replaceStrings [ "@values@" ] [ "${values}" ] script;
+  # nix fmt holds the script to mypy --strict against the driver's own types,
+  # through driver_names.pyi, which the driver's lighter check can't find.
+  skipTypeCheck = true;
 }
