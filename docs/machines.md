@@ -131,6 +131,19 @@ Each linter reads core's own settings, so `nix fmt` there holds code to
 exactly what it holds core's to. Lua is read as the program that runs it does,
 which the repository says in a `.luacheckrc` of its own.
 
+Its Rust meets the same clippy lints as core's crates, through a check it
+names in its own checks:
+
+```nix
+my-tool-passes-clippy = (core.lib.clippy pkgs).passes {
+  name = "my-tool-passes-clippy";
+  package = pkgs.callPackage ./modules/my-tool/package.nix { };
+};
+```
+
+clippy reads core's `clippy.toml` unless `settings` names a folder holding
+the repository's own, for names of things its docs use that core's don't.
+
 ## Taking New Pins
 
 The machine repository follows core.nix's pins, so updating is one input:

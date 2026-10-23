@@ -336,6 +336,11 @@
             makeBinaryWrapper ${pkgs.lib.getExe guide} $out/bin/guide --add-flags "host ${image} --install ${payload}"
           '';
 
+      # How a repository built on core holds its Rust to clippy as core does:
+      # `(core.lib.clippy pkgs).passes { name = ...; package = ...; }` is a
+      # check that the package passes, with its lints and core's settings.
+      lib.clippy = pkgs: pkgs.callPackage ./modules/clippy/clippy.nix { };
+
       # How a repository built on core formats and lints itself as core does,
       # imported into the module it gives treefmt-nix.
       treefmtModules = {
