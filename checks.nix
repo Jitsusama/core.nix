@@ -200,6 +200,9 @@ let
     vm-passkeys-come-from-the-tpm = import ./tests/linux-id.nix { inherit self pkgs; };
     vm-keyring-opens-without-asking = import ./tests/gnome-keyring.nix { inherit self pkgs; };
     vm-speakers-are-tuned = import ./tests/speakers.nix { inherit pkgs; };
+    # Which input WirePlumber picks comes from the rank it gives each
+    # microphone as udev reports its card, so only a running machine shows it.
+    vm-webcam-microphones-yield = import ./tests/microphones.nix { inherit pkgs; };
     vm-desktop-works = import ./tests/desktop.nix { inherit self pkgs; };
     # Joining Wi-Fi is the kernel, wifid, wpa_supplicant and networkd
     # together, and what it leaves of other programs' routing only shows
