@@ -1,0 +1,12 @@
+# lag-watch keeps a standing watch on whether what Joel uses waits
+# (src/main.rs says how).
+[package]
+name = "lag-watch"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"

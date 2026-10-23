@@ -14,7 +14,8 @@
 # asks rather than GNOME's dialog. A chord types what Joel says where he's
 # typing. The compositor and sound get the CPU and memory before
 # anything Joel starts, and calls, music and what he waits on get the
-# network before the work he started.
+# network before the work he started; lag-watch keeps a standing watch
+# on whether they wait.
 { nixosModules, homeModules }:
 {
   imports = [
@@ -54,6 +55,7 @@
     homeModules.inkscape
     homeModules.niri
     homeModules.kitty
+    homeModules.lag-watch
     homeModules.open-with
     homeModules.mpv
     homeModules.qt

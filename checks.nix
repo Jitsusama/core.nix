@@ -2678,6 +2678,12 @@ in
   # set, route and queue is read from what the kernel prints.
   shaper-finds-the-rate = pkgs.callPackage ./modules/shaper/package.nix { };
 
+  # lag-watch's tests run as it builds: the desktop or apps waiting is
+  # trouble and work waiting on work isn't, niri slow to answer is, the
+  # watched threads are found by name, and the report sums each
+  # generation by its load.
+  lag-watch-tells-who-waited = pkgs.callPackage ./modules/lag-watch/package.nix { };
+
   # vm-first's tests run as it builds: it reads a thread's nice and policy
   # past any name, knows qemu wrapped or not and nothing else, and counts a
   # thread behind until it is both normal and at the nice asked for.
@@ -5623,6 +5629,11 @@ in
     # clippy finds nothing in spend-watch, its tests included.
     spend-watch-passes-clippy = passesClippy "spend-watch-passes-clippy" (
       pkgs.callPackage ./modules/spend-watch/package.nix { }
+    );
+
+    # clippy finds nothing in lag-watch, its tests included.
+    lag-watch-passes-clippy = passesClippy "lag-watch-passes-clippy" (
+      pkgs.callPackage ./modules/lag-watch/package.nix { }
     );
 
     # clippy finds nothing in the jobs sorter, its tests included.
