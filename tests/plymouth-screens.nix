@@ -85,17 +85,14 @@ pkgs.testers.runNixOSTest {
           if device is None:
               machine.screenshot(name)
               return path
-          if os.path.exists(path):
-              os.unlink(path)
-          said = machine.send_monitor_command(f"screendump {path} -f png {device}")
-          # QEMU writes the picture after it answers, so it's waited for
-          # until it reads whole.
-          def written(_):
-              return subprocess.run(
-                  ["${pkgs.imagemagick}/bin/magick", "identify", path], capture_output=True
-              ).returncode == 0
-          retry(written, 10)
-          print(said)
+          # As the driver photographs the first: a PPM, which every QEMU
+          # writes, turned into a PNG.
+          raw = path.replace(".png", ".ppm")
+          said = machine.send_monitor_command(f"screendump {raw} {device}")
+          if not os.path.exists(raw):
+              raise Exception(f"QEMU wrote no picture of {device}: {said}")
+          subprocess.run(["${pkgs.imagemagick}/bin/magick", raw, path], check=True)
+          os.unlink(raw)
           return path
 
       # The words in a screen's bottom left quarter, enlarged for OCR, which
