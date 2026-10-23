@@ -1,0 +1,111 @@
+Titles an X11 window that has no name with its WM_CLASS instance.
+
+xwayland-satellite gives the compositor a window's WM_CLASS class as its
+app id and its WM_NAME or _NET_WM_NAME as its title, and drops the
+instance. A program that names each of its windows only by instance,
+under one shared class and with no name, as Tuple does (tuple-screen and
+tuple-webcams, both of class Tuple), reaches the compositor as several
+windows with the same app id and no title, which no window rule can tell
+apart. Such a window now goes by its instance as its title, until a name
+set later takes its place. A WM_CLASS holding a class alone leaves the
+window untitled, as before.
+
+diff --git a/src/xstate/mod.rs b/src/xstate/mod.rs
+index 6f08eb9..be286e9 100644
+--- a/src/xstate/mod.rs
++++ b/src/xstate/mod.rs
+@@ -624,6 +624,13 @@ impl XState {
+         if title.is_none() {
+             title = self.get_wm_name(window)?;
+         }
++        // A window with no name goes by its WM_CLASS instance, which a
++        // program can set apart for each of its windows where the class is
++        // shared, so the compositor's window rules and lists can still tell
++        // them apart. A name set later takes its place.
++        if title.is_none() {
++            title = self.get_wm_instance(window)?.map(WmName::WmName);
++        }
+         if let Some(name) = title {
+             server_state.set_win_title(window, name);
+         }
+@@ -716,6 +723,20 @@ impl XState {
+         PropertyCookieWrapper::new(&self.connection, cookie).resolve(resolver)
+     }
+ 
++    fn get_wm_instance(&self, window: x::Window) -> XResult<Option<String>> {
++        let cookie = self.get_property_cookie(window, x::ATOM_WM_CLASS, x::ATOM_STRING, 256);
++        let resolver = |reply: x::GetPropertyReply| {
++            let data: &[u8] = reply.value();
++            // wm class is instance + class; a class alone counts as no instance
++            let mut fields = data.split(|b| *b == 0u8).filter(|s| !s.is_empty());
++            let instance = fields.next().filter(|_| fields.next().is_some());
++            instance.map(|i| String::from_utf8_lossy(i).to_string())
++        };
++        Ok(PropertyCookieWrapper::new(&self.connection, cookie)
++            .resolve(resolver)?
++            .flatten())
++    }
++
+     fn get_wm_name(&self, window: x::Window) -> XResult<Option<WmName>> {
+         let cookie = self.get_property_cookie(window, x::ATOM_WM_NAME, x::ATOM_STRING, 256);
+         let resolver = |reply: x::GetPropertyReply| {
+diff --git a/tests/integration.rs b/tests/integration.rs
+index d35a065..8135b5b 100644
+--- a/tests/integration.rs
++++ b/tests/integration.rs
+@@ -1520,6 +1520,55 @@ fn funny_window_title_class() {
+     assert_eq!(data.toplevel().title, Some("title".into()));
+ }
+ 
++#[test]
++fn untitled_window_goes_by_its_instance() {
++    let mut f = Fixture::new();
++    let mut connection = Connection::new(&f.display);
++    let window = connection.new_window(connection.root, 0, 0, 20, 20, false);
++    connection.set_property(
++        window,
++        x::ATOM_STRING,
++        x::ATOM_WM_CLASS,
++        b"app-webcams\0App\0",
++    );
++    connection.map_window(window);
++    f.wait_and_dispatch();
++
++    let surface = f
++        .testwl
++        .last_created_surface_id()
++        .expect("No surface created!");
++    f.configure_and_verify_new_toplevel(&mut connection, window, surface);
++    let data = f.testwl.get_surface_data(surface).unwrap();
++    assert_eq!(data.toplevel().title, Some("app-webcams".into()));
++    assert_eq!(data.toplevel().app_id, Some("App".into()));
++
++    connection.set_property(window, x::ATOM_STRING, x::ATOM_WM_NAME, b"named\0");
++    f.wait_and_dispatch();
++
++    let data = f.testwl.get_surface_data(surface).unwrap();
++    assert_eq!(data.toplevel().title, Some("named".into()));
++}
++
++#[test]
++fn class_alone_leaves_a_window_untitled() {
++    let mut f = Fixture::new();
++    let mut connection = Connection::new(&f.display);
++    let window = connection.new_window(connection.root, 0, 0, 20, 20, false);
++    connection.set_property(window, x::ATOM_STRING, x::ATOM_WM_CLASS, b"App\0");
++    connection.map_window(window);
++    f.wait_and_dispatch();
++
++    let surface = f
++        .testwl
++        .last_created_surface_id()
++        .expect("No surface created!");
++    f.configure_and_verify_new_toplevel(&mut connection, window, surface);
++    let data = f.testwl.get_surface_data(surface).unwrap();
++    assert_eq!(data.toplevel().title, None);
++    assert_eq!(data.toplevel().app_id, Some("App".into()));
++}
++
+ #[test]
+ fn close_window() {
+     let mut f = Fixture::new();

@@ -4,14 +4,15 @@
 # starts, joins and ends calls. A service starts the daemon with the desktop,
 # so a call reaches Joel without his starting anything first. Tuple draws its
 # own windows, which no theme reaches, and through X11, where each has a name
-# of its own (tuple-main, tuple-error, tuple-incoming-call, tuple-screen),
-# but xwayland-satellite passes niri only the class they share, Tuple, and
-# none has a title, so no window rule can tell one from another.
+# of its own (tuple-webcams, tuple-screen and the rest) under the class they
+# share, Tuple, and none has a title. xwayland-satellite titles each with that
+# name (modules/niri patches it to), so a window rule can tell them apart.
 #
 # Most of them are small, the ring, an error, Tuple's own panel, and tiling
-# would stretch each to the screen's height, so they all open floating, at
-# the size Tuple asks for; the other person's screen, when they share it,
-# does too, and tiles or fills the screen with niri's own keys. The cursor
+# would stretch each to the screen's height, so they open floating, at the
+# size Tuple asks for. The other person's face sits small in the corner
+# without taking the keys, and their shared screen, the thing to look at,
+# opens as wide as the screen. The cursor
 # Tuple draws over a shared screen is a layer of its own over the whole
 # screen, which no window rule reaches, and none is kept out of a
 # screencast, since niri draws what it keeps out as black, and over that
@@ -215,43 +216,27 @@ in
     x-scheme-handler/tuple=tuple.desktop
   '';
 
-  # After niri's own rules, which match no window of Tuple's. Tuple names
-  # each window by its part (tuple-main, tuple-webcams and the rest) beside
-  # "Tuple", one as its app id and the other as its title, so each rule
-  # matches the part either way.
-  xdg.configFile."niri/config.kdl".text =
-    let
-      parts =
-        names:
-        lib.concatMapStrings (name: ''
-          match app-id="^tuple-${name}$"
-          match title="^tuple-${name}$"
-        '') names;
-    in
-    lib.mkAfter ''
-      // Its own windows and questions float over the work, as dialogs do.
-      window-rule {
-      ${
-        parts [
-          "main"
-          "incoming-call"
-          "join-request"
-          "error"
-          "external-url"
-        ]
-      }    open-floating true
-      }
-      // The other's face, small in a corner, never taking the keys.
-      window-rule {
-      ${parts [ "webcams" ]}    open-floating true
-          open-focused false
-          default-column-width { fixed 384; }
-          default-window-height { fixed 216; }
-          default-floating-position x=16 y=16 relative-to="bottom-right"
-      }
-      // The other's screen, the thing to look at, as wide as the screen.
-      window-rule {
-      ${parts [ "screen" ]}    open-maximized true
-      }
-    '';
+  # After niri's own rules, which match no window of Tuple's. Each later rule
+  # here wins over the first for what it sets.
+  xdg.configFile."niri/config.kdl".text = lib.mkAfter ''
+    // Its own windows and questions float over the work, as dialogs do.
+    window-rule {
+        match app-id="^Tuple$"
+        open-floating true
+    }
+    // The other's face, small in a corner, never taking the keys.
+    window-rule {
+        match app-id="^Tuple$" title="^tuple-webcams$"
+        open-focused false
+        default-column-width { fixed 384; }
+        default-window-height { fixed 216; }
+        default-floating-position x=16 y=16 relative-to="bottom-right"
+    }
+    // The other's screen, the thing to look at, as wide as the screen.
+    window-rule {
+        match app-id="^Tuple$" title="^tuple-screen$"
+        open-floating false
+        open-maximized true
+    }
+  '';
 }
