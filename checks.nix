@@ -1211,7 +1211,7 @@ in
       cp ${options} Options.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
-      timeout 60 ${lib.getExe' pkgs.quickshell "qs"} -p shell.qml
+      timeout 60 ${lib.getExe' graphical.pkgs.quickshell "qs"} -p shell.qml
       touch $out
     '';
 
@@ -1238,7 +1238,7 @@ in
       cp ${niri} Niri.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
-      timeout 60 ${lib.getExe' pkgs.quickshell "qs"} -p shell.qml
+      timeout 60 ${lib.getExe' graphical.pkgs.quickshell "qs"} -p shell.qml
       touch $out
     '';
 
@@ -1252,7 +1252,7 @@ in
     cp ${./tests/lights.qml} shell.qml
     export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
     export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
-    timeout 60 ${lib.getExe' pkgs.quickshell "qs"} -p shell.qml
+    timeout 60 ${lib.getExe' graphical.pkgs.quickshell "qs"} -p shell.qml
     touch $out
   '';
 
@@ -1316,7 +1316,7 @@ in
       cp ${shortcuts} Shortcuts.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
-      timeout 60 ${lib.getExe' pkgs.quickshell "qs"} -p shell.qml
+      timeout 60 ${lib.getExe' graphical.pkgs.quickshell "qs"} -p shell.qml
       touch $out
     '';
 
@@ -1421,7 +1421,7 @@ in
       export HOME=$PWD QUESTS=$PWD/store PATH=${quests}/bin:$PATH
       mkdir -m 700 $XDG_RUNTIME_DIR
       export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
-      timeout 60 ${lib.getExe' pkgs.quickshell "qs"} -p shell.qml
+      timeout 60 ${lib.getExe' graphical.pkgs.quickshell "qs"} -p shell.qml
       touch $out
     '';
 
@@ -1484,7 +1484,7 @@ in
       export PATH=${litra}/bin:$PATH
       mkdir -m 700 $XDG_RUNTIME_DIR
       export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
-      timeout 60 ${lib.getExe' pkgs.quickshell "qs"} -p shell.qml
+      timeout 60 ${lib.getExe' graphical.pkgs.quickshell "qs"} -p shell.qml
       touch $out
     '';
 
@@ -1572,7 +1572,7 @@ in
       export PI_STATE=$state PATH=${runs}/bin:$PATH
       mkdir -m 700 $XDG_RUNTIME_DIR
       export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
-      timeout 60 ${lib.getExe' pkgs.quickshell "qs"} -p shell.qml
+      timeout 60 ${lib.getExe' graphical.pkgs.quickshell "qs"} -p shell.qml
       kill $live
       touch $out
     '';
@@ -1692,7 +1692,7 @@ in
       echo $! > $XDG_RUNTIME_DIR/daemon
       while [ ! -S $XDG_RUNTIME_DIR/tuple-0 ]; do sleep 0.1; done
       export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
-      timeout 60 ${lib.getExe' pkgs.quickshell "qs"} -p shell.qml
+      timeout 60 ${lib.getExe' graphical.pkgs.quickshell "qs"} -p shell.qml
       if [ -e $XDG_RUNTIME_DIR/asked ]; then
         echo "the shell asked Tuple itself:"; cat $XDG_RUNTIME_DIR/asked; exit 1
       fi
@@ -1779,7 +1779,7 @@ in
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
       mkdir -m 700 $XDG_RUNTIME_DIR
       export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = machine.fonts.packages; }}
-      timeout 60 ${lib.getExe' pkgs.quickshell "qs"} -p shell.qml
+      timeout 60 ${lib.getExe' graphical.pkgs.quickshell "qs"} -p shell.qml
       touch $out
     '';
 
@@ -1822,7 +1822,7 @@ in
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime XDG_CONFIG_HOME=$TMPDIR/config
       export LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
-      timeout 60 ${lib.getExe' pkgs.quickshell "qs"} -p shell.qml
+      timeout 60 ${lib.getExe' graphical.pkgs.quickshell "qs"} -p shell.qml
       touch $out
     '';
 
@@ -1847,7 +1847,7 @@ in
         ''} Niri.qml
         export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
         export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
-        timeout 60 ${lib.getExe' pkgs.quickshell "qs"} -p shell.qml
+        timeout 60 ${lib.getExe' graphical.pkgs.quickshell "qs"} -p shell.qml
         touch $out
       '';
 
@@ -1942,7 +1942,7 @@ in
       mkdir -p $XDG_DATA_HOME/tuple/0
       touch $XDG_DATA_HOME/tuple/0/log.txt $XDG_RUNTIME_DIR/told
       export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
-      timeout 60 ${lib.getExe' pkgs.quickshell "qs"} -p shell.qml
+      timeout 60 ${lib.getExe' graphical.pkgs.quickshell "qs"} -p shell.qml
       touch $out
     '';
 
