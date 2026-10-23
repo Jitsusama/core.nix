@@ -1,7 +1,8 @@
 # Takes the compressed swap down while something holds its device open, as
 # udev does to probe it when swapoff closes it, and lets go only once the
 # reset has found it busy. The kernel won't reset a device anything holds
-# open, so a reset that tries once fails, and the device stays set up.
+# open, so a reset that tries once fails, and the device stays set up. The
+# script is zram-vm-test.py.
 { self, pkgs }:
 let
   # Holds the device open until the reset says it waits, then lets go at
@@ -34,18 +35,8 @@ pkgs.testers.runNixOSTest {
     environment.systemPackages = [ hold ];
   };
 
-  testScript = ''
-    setup = "systemd-zram-setup@zram0.service"
-    machine.wait_for_unit("dev-zram0.swap")
-    machine.succeed("systemd-run --unit=hold -p Type=exec hold-zram")
-    machine.wait_for_file("/run/holding-zram")
-
-    with subtest("the swap comes down once the device is let go"):
-        machine.succeed(f"systemctl stop --no-block {setup}")
-        machine.wait_until_succeeds(
-            f"systemctl show -P ActiveState {setup} | grep -q -x -E 'inactive|failed'", timeout=30
-        )
-        t.assertEqual(machine.succeed(f"systemctl show -P Result {setup}").strip(), "success")
-        t.assertEqual(machine.succeed("cat /sys/block/zram0/disksize").strip(), "0")
-  '';
+  testScript = builtins.readFile ./zram-vm-test.py;
+  # nix fmt holds the script to mypy --strict against the driver's own types,
+  # through driver_names.pyi, which the driver's lighter check can't find.
+  skipTypeCheck = true;
 }
