@@ -118,6 +118,7 @@ let
       qt = pkgs.qt6.qtdeclarative;
     in
     ''
+      ${shellFolderLint}
       for run in 1 2 3 4 5; do
         status=0
         QML_IMPORT_PATH=${qt}/lib/qt-6/qml ${qt}/bin/qml ${file} || status=$?
@@ -197,6 +198,30 @@ let
     root = ./.;
     fileset = ./clippy.toml;
   };
+
+  # Quickshell's own type files, which qmllint reads the shell against, with
+  # two of their faults corrected: the blur module doesn't say it depends on
+  # Quickshell, whose Region it names, and PanelWindow is marked uncreatable
+  # because Quickshell types it as the interface it makes a real window
+  # behind.
+  quickshellTypes = pkgs.runCommandLocal "quickshell-types" { } ''
+    mkdir -p $out/lib/qt-6/qml
+    cp -r ${pkgs.quickshell}/lib/qt-6/qml/Quickshell $out/lib/qt-6/qml/
+    chmod -R u+w $out
+    echo 'depends Quickshell' >> $out/lib/qt-6/qml/Quickshell/Wayland/_BackgroundEffect/qmldir
+    substituteInPlace $out/lib/qt-6/qml/Quickshell/_Window/quickshell-window.qmltypes \
+      --replace-fail 'exports: ["Quickshell._Window/PanelWindow 0.0"]
+            isCreatable: false' 'exports: ["Quickshell._Window/PanelWindow 0.0"]'
+  '';
+
+  # Lints the shell an offscreen check has laid out in its build folder, its
+  # own cases and stand-ins included, as the account's is linted
+  # (tests/shell-folder-lint.sh).
+  shellFolderLint = lib.concatStringsSep " " [
+    (lib.getExe (pkgs.callPackage ./tests/shell-folder-lint.nix { }))
+    "${quickshellTypes}/lib/qt-6/qml"
+    "${pkgs.kdePackages.qtdeclarative}/lib/qt-6/qml"
+  ];
 
   # A Rust package with clippy in place of its build, its tests and examples
   # read too, held to clippyLints, and nothing installed.
@@ -787,12 +812,10 @@ in
         && "${home.xdg.configFile."quickshell/pieces/wide.qml".source}" == "${own}"
       );
 
-  # qmllint reads the shell as the account gets it, as the module qs, against
-  # Quickshell's own type files, and any warning fails. Two faults in those
-  # files are corrected in a copy first: the blur module doesn't say it
-  # depends on Quickshell, whose Region it names, and PanelWindow is marked
-  # uncreatable because Quickshell types it as the interface it makes a real
-  # window behind. Two kinds of report are left out, since each one here is
+  # qmllint reads the shell as the account gets it, and the greeter beside it,
+  # as the module qs, against
+  # Quickshell's own type files as quickshellTypes corrects them, and any
+  # warning fails. Two kinds of report are left out, since each one here is
   # Quickshell's files, not the shell: a property typed by a name its files
   # don't export (AuthFlow, BluetoothAdapter and the like), and a handler
   # whose parameter is a Qt enum QML can't see (QProcess::ExitStatus).
@@ -802,15 +825,6 @@ in
         lib.filterAttrs (name: _: lib.hasPrefix "quickshell/" name)
           (account graphical).xdg.configFile;
       qt = pkgs.kdePackages.qtdeclarative;
-      types = pkgs.runCommandLocal "quickshell-types" { } ''
-        mkdir -p $out/lib/qt-6/qml
-        cp -r ${pkgs.quickshell}/lib/qt-6/qml/Quickshell $out/lib/qt-6/qml/
-        chmod -R u+w $out
-        echo 'depends Quickshell' >> $out/lib/qt-6/qml/Quickshell/Wayland/_BackgroundEffect/qmldir
-        substituteInPlace $out/lib/qt-6/qml/Quickshell/_Window/quickshell-window.qmltypes \
-          --replace-fail 'exports: ["Quickshell._Window/PanelWindow 0.0"]
-                isCreatable: false' 'exports: ["Quickshell._Window/PanelWindow 0.0"]'
-      '';
     in
     # In UTF-8, which Qt otherwise switches to and says so.
     pkgs.runCommandLocal "quickshell-passes-qmllint" { LC_ALL = "C.UTF-8"; } ''
@@ -821,6 +835,20 @@ in
         '') files
       )}
       mv quickshell qs
+      # The greeter runs beside the account's files, as greetd's module lays
+      # them out, with what it's built with standing in.
+      cp ${
+        pkgs.replaceVars ./modules/greetd/greeter.qml {
+          accounts = builtins.toJSON [
+            {
+              name = "someone";
+              called = "Someone";
+            }
+          ];
+          session = builtins.toJSON [ "niri-session" ];
+          analyze = "systemd-analyze";
+        }
+      } qs/greeter.qml
       # Quickshell finds a folder's files as a module by its path; qmllint
       # needs a qmldir saying so.
       find qs -type d | while read -r dir; do
@@ -838,7 +866,7 @@ in
         } > "$dir/qmldir"
       done
       ${qt}/bin/qmllint --ignore-settings --max-warnings 0 \
-        -I ${types}/lib/qt-6/qml -I ${qt}/lib/qt-6/qml -I . \
+        -I ${quickshellTypes}/lib/qt-6/qml -I ${qt}/lib/qt-6/qml -I . \
         --unresolved-type disable --signal-handler-parameters disable \
         $(find qs -name '*.qml' | sort)
       touch $out
@@ -927,6 +955,7 @@ in
       export TZ=America/Toronto TZDIR=${pkgs.tzdata}/share/zoneinfo
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+      ${shellFolderLint}
       QML_IMPORT_PATH=${qt}/lib/qt-6/qml ${qt}/bin/qml answers.qml
       touch $out
     '';
@@ -942,6 +971,7 @@ in
       cp ${./modules/quickshell/Picking.js} Picking.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+      ${shellFolderLint}
       QML_IMPORT_PATH=${qt}/lib/qt-6/qml ${qt}/bin/qml picking.qml
       touch $out
     '';
@@ -957,6 +987,7 @@ in
       cp ${./modules/quickshell/Askpass.js} Askpass.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+      ${shellFolderLint}
       QML_IMPORT_PATH=${qt}/lib/qt-6/qml ${qt}/bin/qml askpass.qml
       touch $out
     '';
@@ -1226,6 +1257,7 @@ in
       cp ${options} Options.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+      ${shellFolderLint}
       timeout 60 ${lib.getExe' graphical.pkgs.quickshell "qs"} -p shell.qml
       touch $out
     '';
@@ -1253,6 +1285,7 @@ in
       cp ${niri} Niri.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+      ${shellFolderLint}
       timeout 60 ${lib.getExe' graphical.pkgs.quickshell "qs"} -p shell.qml
       touch $out
     '';
@@ -1267,6 +1300,7 @@ in
     cp ${./tests/lights.qml} shell.qml
     export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
     export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+    ${shellFolderLint}
     timeout 60 ${lib.getExe' graphical.pkgs.quickshell "qs"} -p shell.qml
     touch $out
   '';
@@ -1331,6 +1365,7 @@ in
       cp ${shortcuts} Shortcuts.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+      ${shellFolderLint}
       timeout 60 ${lib.getExe' graphical.pkgs.quickshell "qs"} -p shell.qml
       touch $out
     '';
@@ -1436,6 +1471,7 @@ in
       export HOME=$PWD QUESTS=$PWD/store PATH=${quests}/bin:$PATH
       mkdir -m 700 $XDG_RUNTIME_DIR
       export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+      ${shellFolderLint}
       timeout 60 ${lib.getExe' graphical.pkgs.quickshell "qs"} -p shell.qml
       touch $out
     '';
@@ -1499,6 +1535,7 @@ in
       export PATH=${litra}/bin:$PATH
       mkdir -m 700 $XDG_RUNTIME_DIR
       export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+      ${shellFolderLint}
       timeout 60 ${lib.getExe' graphical.pkgs.quickshell "qs"} -p shell.qml
       touch $out
     '';
@@ -1587,6 +1624,7 @@ in
       export PI_STATE=$state PATH=${runs}/bin:$PATH
       mkdir -m 700 $XDG_RUNTIME_DIR
       export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+      ${shellFolderLint}
       timeout 60 ${lib.getExe' graphical.pkgs.quickshell "qs"} -p shell.qml
       kill $live
       touch $out
@@ -1707,6 +1745,7 @@ in
       echo $! > $XDG_RUNTIME_DIR/daemon
       while [ ! -S $XDG_RUNTIME_DIR/tuple-0 ]; do sleep 0.1; done
       export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+      ${shellFolderLint}
       timeout 60 ${lib.getExe' graphical.pkgs.quickshell "qs"} -p shell.qml
       if [ -e $XDG_RUNTIME_DIR/asked ]; then
         echo "the shell asked Tuple itself:"; cat $XDG_RUNTIME_DIR/asked; exit 1
@@ -1744,6 +1783,7 @@ in
       mkdir runtime && chmod 700 runtime
       cp ${shell} shell.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
+      ${shellFolderLint}
       timeout 60 ${lib.getExe' graphical.pkgs.quickshell "qs"} -p shell.qml > log 2>&1 || true
       cat log
       # Each warning names the line its FileView is on: the quiet one's
@@ -1766,6 +1806,7 @@ in
     cp ${./tests/watched.qml} shell.qml
     export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
     export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+    ${shellFolderLint}
     timeout 60 ${lib.getExe' graphical.pkgs.quickshell "qs"} -p shell.qml
     touch $out
   '';
@@ -1794,6 +1835,7 @@ in
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
       mkdir -m 700 $XDG_RUNTIME_DIR
       export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = machine.fonts.packages; }}
+      ${shellFolderLint}
       timeout 60 ${lib.getExe' graphical.pkgs.quickshell "qs"} -p shell.qml
       touch $out
     '';
@@ -1837,6 +1879,7 @@ in
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime XDG_CONFIG_HOME=$TMPDIR/config
       export LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+      ${shellFolderLint}
       timeout 60 ${lib.getExe' graphical.pkgs.quickshell "qs"} -p shell.qml
       touch $out
     '';
@@ -1862,6 +1905,7 @@ in
         ''} Niri.qml
         export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
         export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+        ${shellFolderLint}
         timeout 60 ${lib.getExe' graphical.pkgs.quickshell "qs"} -p shell.qml
         touch $out
       '';
@@ -1879,6 +1923,7 @@ in
       cp ${./modules/quickshell/Music.js} Music.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+      ${shellFolderLint}
       QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml music.qml
       touch $out
     '';
@@ -1895,6 +1940,7 @@ in
       cp ${./modules/tuple/Tuple.js} Tuple.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+      ${shellFolderLint}
       QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml tuple.qml
       touch $out
     '';
@@ -1957,6 +2003,7 @@ in
       mkdir -p $XDG_DATA_HOME/tuple/0
       touch $XDG_DATA_HOME/tuple/0/log.txt $XDG_RUNTIME_DIR/told
       export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+      ${shellFolderLint}
       timeout 60 ${lib.getExe' graphical.pkgs.quickshell "qs"} -p shell.qml
       touch $out
     '';

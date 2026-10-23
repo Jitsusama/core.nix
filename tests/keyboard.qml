@@ -12,6 +12,8 @@ import QtQuick
 import "launcher"
 
 ShellRoot {
+    id: root
+
     function expect(what, holds, said) {
         if (!holds)
             throw new Error(`${what}: ${said}`);
@@ -36,7 +38,7 @@ ShellRoot {
         onTriggered: {
             if (KeyboardLayout.present && KeyboardLayer.present) {
                 stop();
-                run();
+                root.run();
             } else if (--left === 0) {
                 stop();
                 console.warn("FAIL the files never loaded");
