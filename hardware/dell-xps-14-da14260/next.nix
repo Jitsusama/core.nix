@@ -38,4 +38,14 @@ in
       "dp-mst-dsc-skips-empty-ports"
     ]
   );
+
+  # At its default of 8, reclaim under a build still backed up window
+  # buffers, 141 in 5 minutes, and the compositor waited over 10 ms on a
+  # buffer lock 25 times. At 64, the most the file takes, it backed up none
+  # in the same build, and no wait passed 4 ms. Buffers the driver can drop
+  # still go first. The device is bound in the initrd, so its add event,
+  # replayed once the system's udev starts, is the one that sets it.
+  services.udev.extraRules = ''
+    ACTION=="add|bind", SUBSYSTEM=="pci", DRIVER=="xe", ATTR{shrinker_non_purgeable_seeks}="64"
+  '';
 }

@@ -221,6 +221,12 @@ to 64. Without it, a build's memory pressure backed up the buffers programs
 draw into, and the compositor waited on their locks while they were read
 back, so a key let go of read late and repeated.
 
+The default of 8 wasn't enough here. Under a kernel build, traced for 5
+minutes at each: at 8, kswapd backed up 141 window buffers, and niri waited
+over 10 ms on a buffer lock 25 times; at 64, with kswapd scanning as much,
+it backed up none, and no wait passed 4 ms. A udev rule in `next.nix` sets
+64 as the GPU binds.
+
 `dp-byte-reads-only-when-longer` is Chia-Lin Kao's posting to intel-gfx of
 2026-06-16. The fallback for USB-C hubs that fail multi-byte reads retried a
 failed read byte by byte even when it was one byte, the same read again,
