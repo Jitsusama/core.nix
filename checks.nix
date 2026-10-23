@@ -193,8 +193,7 @@ let
       '';
     });
 
-  # The virtual machine tests, which CI runs one to a runner beside the rest.
-  # Each has to show something nothing cheaper can.
+  # The virtual machine tests. Each has to show something nothing cheaper can.
   vmTests = {
     # The disk layout and Secure Boot decide whether a machine starts at all.
     vm-secure-boot-installs = import ./tests/secure-boot.nix { inherit self pkgs; };
@@ -5516,8 +5515,8 @@ in
       '';
     });
 
-    # A Mac writes sticks too, through its own raw disks and cache, and CI
-    # has no Mac, so clippy reads the guide as macOS would compile it.
+    # A Mac writes sticks too, through its own raw disks and cache, and no
+    # check runs on a Mac, so clippy reads the guide as macOS would compile it.
     guide-compiles-for-macos =
       let
         toolchain = (pkgs.extend rust-overlay.overlays.default).rust-bin.stable.latest.minimal.override {
@@ -5550,8 +5549,8 @@ in
       pkgs.callPackage ./modules/wifid/sign-in/package.nix { }
     );
 
-    # The macOS guard builds from the same crate and CI has no Mac, so clippy
-    # reads the crate, its scenarios included, as macOS would compile it.
+    # The macOS guard builds from the same crate and no check runs on a Mac,
+    # so clippy reads the crate, its scenarios included, as macOS would compile it.
     disk-guard-compiles-for-macos =
       let
         toolchain = (pkgs.extend rust-overlay.overlays.default).rust-bin.stable.latest.minimal.override {
@@ -5570,18 +5569,6 @@ in
           touch $out
         '';
       };
-
-    # CI runs the virtual machine tests by name, one to a runner, so one it
-    # doesn't name would never run there.
-    ci-runs-every-vm-test = pkgs.runCommandLocal "ci-runs-every-vm-test" { } ''
-      for test in ${lib.concatStringsSep " " (lib.attrNames vmTests)}; do
-        if ! grep -qx "          - $test" ${./.github/workflows/check.yml}; then
-          echo "CI's workflow doesn't run $test."
-          exit 1
-        fi
-      done
-      touch $out
-    '';
   }
   // vmTests
 )

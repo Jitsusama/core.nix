@@ -14,8 +14,8 @@
   #
   # Patched, it builds here rather than coming from the cache, and four of its
   # tests check which error the kernel's keyring gives for a missing key. That
-  # depends on the kernel: nixpkgs rewrites them to expect ENOENT, and CI's
-  # runners give ENOKEY, so they fail there whatever the agent does. They test
+  # depends on the kernel: nixpkgs rewrites them to expect ENOENT, and some
+  # kernels give ENOKEY, so they fail there whatever the agent does. They test
   # the kernel, not the agent, so they're skipped. The pattern has no
   # parentheses or question marks: the build's shell reads those as a glob and
   # drops the flag without a word.

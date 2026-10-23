@@ -90,7 +90,7 @@ reaches a VM test is seen before it's paid for. Watching a check fail is done
 the same narrow way, never by copying the tree and running everything.
 
 A change is done when `nix flake check` passes locally, and its machine builds
-with core pointed at the checkout. Nothing waits on CI, and nothing runs on a
+with core pointed at the checkout. There's no CI, and nothing runs on a
 schedule. A refactor is done when the machine repositories' machines evaluate
 to the same derivations as before. A new check has to earn its place. All of
 it is in [docs/testing.md][1].

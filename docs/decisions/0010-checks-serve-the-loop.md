@@ -3,7 +3,7 @@
 ## Status
 
 Accepted, 2026-10-10. Replaces [0003][1]'s scheduled pin update; core.nix
-still owns the pins.
+still owns the pins. Its CI backstop is replaced by [0012][3].
 
 ## Context
 
@@ -50,3 +50,4 @@ schedule: the pins move when someone updates them, through the same loop.
 
 [1]: 0003-core-owns-the-pins.md
 [2]: ../testing.md
+[3]: 0012-no-ci.md

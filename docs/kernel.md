@@ -245,8 +245,8 @@ Two things catch a kernel that has drifted from what it says:
   stops offering it.
 
 Building the configuration applies the patches, so a patch that no longer
-applies fails the check too. It takes minutes, which is why CI runs it rather
-than building the kernel, which takes far longer. The CPU doesn't change the
+applies fails the check too. It takes minutes, which is why the checks run it
+rather than building the kernel, which takes far longer. The CPU doesn't change the
 configuration, so one check covers every machine.
 
 ## Building It
