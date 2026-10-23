@@ -105,6 +105,20 @@
     };
   };
 
+  # Docked, the cable and Wi-Fi hold an address each on the same network.
+  # The kernel answers ARP for either address on either link, and names
+  # whichever it likes as the source of its own ARP, so the router can tie
+  # Wi-Fi's address to the cable's hardware and lose it at an undock until
+  # ARP refreshes; a call's peer on the same network then sees one machine
+  # at two paths that are one. Each link answers for its own addresses only
+  # (arp_ignore 1) and names its own address when it asks (arp_announce 2).
+  boot.kernel.sysctl = {
+    "net.ipv4.conf.all.arp_ignore" = 1;
+    "net.ipv4.conf.default.arp_ignore" = 1;
+    "net.ipv4.conf.all.arp_announce" = 2;
+    "net.ipv4.conf.default.arp_announce" = 2;
+  };
+
   # The kernel's Wi-Fi stack reads each country's channel and power limits
   # from here; without it, it falls back to the most restrictive set.
   hardware.wirelessRegulatoryDatabase = true;
