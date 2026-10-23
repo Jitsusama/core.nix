@@ -3750,6 +3750,24 @@ in
         touch $out
       '';
 
+    # The session's niri starts through the wrapper giving it CAP_SYS_NICE,
+    # without which the GPU won't draw its frames first; the desktop test
+    # checks what niri holds once started, and what it hands on.
+    niri-starts-able-to-go-first =
+      let
+        inherit (graphical) config;
+        wrapper = config.security.wrappers.niri-compositor;
+      in
+      holds "niri-starts-able-to-go-first"
+        "The session's niri doesn't start through its wrapper with CAP_SYS_NICE, so the GPU draws its frames in turn with everything else's."
+        (
+          wrapper.capabilities == "cap_sys_nice+ep"
+          && wrapper.source == "${config.programs.niri.package}/bin/niri"
+          &&
+            lib.hasInfix "ExecStart=${config.security.wrapperDir}/niri-compositor --session"
+              config.systemd.user.units."niri.service".text
+        );
+
     # niri reads back the files an account gets and rejects anything it
     # wouldn't load, from a misspelt action to a colour it can't parse.
     niri-accepts-its-configuration =
@@ -4238,6 +4256,17 @@ in
         fi
         touch $out
       '';
+
+    # WebRTC inside Tuple asks real-time priorities in an order the account's
+    # limit inverts, granting only its low-priority thread one, so the daemon
+    # is given none, and comes first by its share and its nice value alone.
+    tuple-takes-no-real-time-priority =
+      let
+        service = (account graphical).systemd.user.services.tuple.Service;
+      in
+      holds "tuple-takes-no-real-time-priority"
+        "Tuple's daemon may take a real-time priority, which only its low-priority thread gets, ahead of its sound and the desktop."
+        ((service.LimitRTPRIO or null) == 0 && service.Nice < 0 && service.CPUWeight > 100);
 
     # The tuple command completes in zsh with Tuple's own completion, which
     # only shows when Tab offers nothing, so the check completes commands

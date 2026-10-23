@@ -3,7 +3,7 @@
 # programs, Xwayland for the X11 programs left, the tool its brightness keys
 # call, and the clipboard's. Its media keys go to the shell (Quickshell's
 # Music.qml). Its touchscreen takes the touchpad's gestures too.
-{ pkgs, ... }:
+{ config, pkgs, ... }:
 {
   programs.niri = {
     enable = true;
@@ -37,12 +37,20 @@
     # asks for, squeezed it into 10 Mbit/s. The patch
     # (cast-logical-size.patch) casts a scaled screen at its logical size,
     # 2560x1440 there, as a Mac shares one; windows' casts keep theirs.
+    #
+    # niri asks the GPU to draw its frames at high priority, which xe grants
+    # only to a process holding CAP_SYS_NICE, so without it the desktop's
+    # frames queued beside Chrome's. A wrapper below gives it, putting it
+    # in the inheritable and ambient sets too, which every program niri
+    # starts would inherit; the patch (keep-capabilities.patch) clears
+    # them as niri starts, so niri alone keeps it.
     package = pkgs.niri.overrideAttrs (old: {
       patches = (old.patches or [ ]) ++ [
         ./touchscreen-gestures.patch
         ./prune-imports.patch
         ./tiled-positions.patch
         ./cast-logical-size.patch
+        ./keep-capabilities.patch
         (pkgs.fetchpatch {
           name = "niri-screencast-pts-unknown.patch";
           url = "https://github.com/niri-wm/niri/commit/a30ca7983b2f1fc3ddeb209b3fe18fa78e0dbd25.patch";
@@ -57,6 +65,22 @@
     });
     # The GTK file chooser, rather than installing Nautilus to provide one.
     useNautilus = false;
+  };
+
+  # niri with CAP_SYS_NICE, which the session's niri starts through, under a
+  # name of its own so `niri msg` and the rest stay the plain program.
+  security.wrappers.niri-compositor = {
+    owner = "root";
+    group = "root";
+    capabilities = "cap_sys_nice+ep";
+    source = "${config.programs.niri.package}/bin/niri";
+  };
+  systemd.user.services.niri = {
+    overrideStrategy = "asDropin";
+    serviceConfig.ExecStart = [
+      ""
+      "${config.security.wrapperDir}/niri-compositor --session"
+    ];
   };
 
   # nixpkgs's wrappers for Chromium and Electron programs, such as Chrome,
