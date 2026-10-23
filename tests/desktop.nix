@@ -1562,7 +1562,7 @@ pkgs.testers.runNixOSTest {
                   print(f"TYPEAHEAD {gap}: '{went}' went beneath, '{held}' held")
                   return went + held == "slack"
 
-              retry(none_lost, timeout=10)
+              retry(none_lost, timeout_seconds=10)
               machine.send_key("esc")
               machine.wait_until_fails(in_session(launcher_open), timeout=10)
               machine.wait_until_succeeds(
