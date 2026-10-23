@@ -129,19 +129,19 @@ mod tests {
     fn each_generation_is_summed_by_band_in_the_order_it_was_seen() {
         let all = [
             window(
-                "/nix/store/aaa-nixos-system-optimus-26.11",
+                "/nix/store/aaa-nixos-system-example-26.11",
                 Band::Loaded,
                 12.0,
                 &["niri took 60 ms to answer"],
             ),
             window(
-                "/nix/store/aaa-nixos-system-optimus-26.11",
+                "/nix/store/aaa-nixos-system-example-26.11",
                 Band::Loaded,
                 2.0,
                 &[],
             ),
             window(
-                "/nix/store/bbb-nixos-system-optimus-26.11",
+                "/nix/store/bbb-nixos-system-example-26.11",
                 Band::Quiet,
                 1.0,
                 &[],
