@@ -11,6 +11,7 @@
 //! the heading, since the rest is the quest's story.
 
 use std::env;
+use std::fmt::Write as _;
 use std::fs::{self, File};
 use std::io::{self, BufRead, BufReader, Write};
 use std::path::Path;
@@ -146,7 +147,8 @@ fn quoted(text: &str) -> String {
             '\\' => out.push_str("\\\\"),
             '\n' => out.push_str("\\n"),
             '\t' => out.push_str("\\t"),
-            c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
+            // Writing to a String can't fail.
+            c if (c as u32) < 0x20 => _ = write!(out, "\\u{:04x}", c as u32),
             c => out.push(c),
         }
     }
@@ -167,9 +169,9 @@ fn json(quest: &Quest, folder: &str) -> String {
     ];
     let mut out = String::from("{");
     for (name, value) in fields {
-        out.push_str(&format!("{}:{},", quoted(name), quoted(value)));
+        _ = write!(out, "{}:{},", quoted(name), quoted(value));
     }
-    out.push_str(&format!("{}:{}}}", quoted("folder"), quoted(folder)));
+    _ = write!(out, "{}:{}}}", quoted("folder"), quoted(folder));
     out
 }
 

@@ -62,6 +62,17 @@ struct Globals {
     report: u8,
 }
 
+/// A HID item's low two bytes, which is all of it a 16-bit field holds.
+fn low_u16(value: u32) -> u16 {
+    let [low, high, ..] = value.to_le_bytes();
+    u16::from_le_bytes([low, high])
+}
+
+/// A HID item's low byte, which is all of it a report id holds.
+fn low_u8(value: u32) -> u8 {
+    value.to_le_bytes()[0]
+}
+
 /// The intensity field a descriptor gives a feature report, if it gives one
 /// in a numbered report, which every Precision Touchpad's reports are.
 fn intensity(descriptor: &[u8]) -> Option<Field> {
@@ -85,27 +96,27 @@ fn intensity(descriptor: &[u8]) -> Option<Field> {
         let unsigned = data
             .iter()
             .rev()
-            .fold(0u32, |value, byte| value << 8 | *byte as u32);
+            .fold(0u32, |value, byte| value << 8 | u32::from(*byte));
         let signed = match size {
-            1 => data[0] as i8 as i64,
-            2 => i16::from_le_bytes([data[0], data[1]]) as i64,
-            4 => i32::from_le_bytes([data[0], data[1], data[2], data[3]]) as i64,
+            1 => i64::from(data[0].cast_signed()),
+            2 => i64::from(i16::from_le_bytes([data[0], data[1]])),
+            4 => i64::from(i32::from_le_bytes([data[0], data[1], data[2], data[3]])),
             _ => 0,
         };
         match prefix & 0xfc {
-            0x04 => globals.page = unsigned as u16,
+            0x04 => globals.page = low_u16(unsigned),
             0x14 => globals.minimum = signed,
             0x24 => {
                 globals.maximum = signed;
                 globals.unsigned_maximum = unsigned;
             }
             0x74 => globals.size = unsigned as usize,
-            0x84 => globals.report = unsigned as u8,
+            0x84 => globals.report = low_u8(unsigned),
             0x94 => globals.count = unsigned as usize,
             0xa4 => stack.push(globals),
             0xb4 => globals = stack.pop()?,
-            0x08 if size == 4 => usages.push((Some((unsigned >> 16) as u16), unsigned as u16)),
-            0x08 => usages.push((None, unsigned as u16)),
+            0x08 if size == 4 => usages.push((Some(low_u16(unsigned >> 16)), low_u16(unsigned))),
+            0x08 => usages.push((None, low_u16(unsigned))),
             0xb0 => {
                 let report = globals.report as usize;
                 let index = usages.iter().position(|&(page, usage)| {
@@ -115,7 +126,7 @@ fn intensity(descriptor: &[u8]) -> Option<Field> {
                     // A logical maximum written with its top bit set is read
                     // unsigned when the minimum isn't below zero.
                     let maximum = if globals.maximum < globals.minimum {
-                        globals.unsigned_maximum as i64
+                        i64::from(globals.unsigned_maximum)
                     } else {
                         globals.maximum
                     };
@@ -145,12 +156,14 @@ impl Field {
     fn read(&self, report: &[u8]) -> i64 {
         let raw = (0..self.size).fold(0u64, |value, bit| {
             let at = self.offset + bit;
-            value | ((report[1 + at / 8] >> (at % 8) & 1) as u64) << bit
+            value | u64::from(report[1 + at / 8] >> (at % 8) & 1) << bit
         });
+        // A field is at most 32 bits, so its bits read as an i64 unchanged.
+        let raw = raw.cast_signed();
         if self.minimum < 0 && raw >> (self.size - 1) & 1 == 1 {
-            raw as i64 - (1i64 << self.size)
+            raw - (1i64 << self.size)
         } else {
-            raw as i64
+            raw
         }
     }
 
@@ -158,14 +171,14 @@ impl Field {
         for bit in 0..self.size {
             let at = self.offset + bit;
             let byte = &mut report[1 + at / 8];
-            *byte = *byte & !(1 << (at % 8)) | (((value >> bit) & 1) as u8) << (at % 8);
+            *byte = *byte & !(1 << (at % 8)) | u8::from((value >> bit) & 1 == 1) << (at % 8);
         }
     }
 
     /// The value a percentage is, rounded, within the field's range.
     fn scaled(&self, percent: u8) -> i64 {
         let span = self.maximum - self.minimum;
-        self.minimum + (span * percent.min(100) as i64 + 50) / 100
+        self.minimum + (span * i64::from(percent.min(100)) + 50) / 100
     }
 
     fn percent(&self, value: i64) -> i64 {

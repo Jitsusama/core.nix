@@ -212,6 +212,7 @@ kernel guide][2] says what that catches.
 | `guide-passes-clippy`             | clippy finds nothing in the guide or its tests            |
 | `guide-compiles-for-macos`        | clippy finds nothing in the guide as macOS compiles it     |
 | `ir-camera-passes-clippy`         | clippy finds nothing in ir-camera or its tests            |
+| `rust-programs-pass-clippy`       | clippy, pedantic group included, finds nothing in the single-file programs or their tests |
 | `record-window-passes-clippy`     | clippy finds nothing in record-window or its tests        |
 | `plymouth-waits-passes-clippy`    | clippy finds nothing in plymouth-waits or its tests       |
 | `the-splash-keeps-systemd-quiet`  | with the splash, systemd writes only failures to the console |

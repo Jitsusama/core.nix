@@ -177,6 +177,27 @@ let
   graphical = bareNixos [ self.nixosModules.graphical ];
   macWorkstation = bareDarwin [ self.darwinModules.workstation ];
 
+  # What clippy holds Rust to: its own lints and its pedantic group, less
+  # three about a published library's API, which nothing here is: the results
+  # a caller must use, and the errors and panics its docs must name. A warning
+  # fails. clippy.toml holds clippy's settings, apart from the rest of the tree.
+  clippyLints = [
+    "-D"
+    "warnings"
+    "-W"
+    "clippy::pedantic"
+    "-A"
+    "clippy::must_use_candidate"
+    "-A"
+    "clippy::missing_errors_doc"
+    "-A"
+    "clippy::missing_panics_doc"
+  ];
+  clippyConfig = lib.fileset.toSource {
+    root = ./.;
+    fileset = ./clippy.toml;
+  };
+
   # A Rust package with clippy in place of its build, its tests and examples
   # read too, and nothing installed: a warning fails it.
   passesClippy =
@@ -5314,9 +5335,6 @@ in
         touch $out
       '';
 
-    # The layer watcher's own tests: it finds the board's channel as the
-    # command does, asks to watch in one report, and says only what a watch
-    # report tells it, by the layer's name.
     # linux-id's pinentry speaks pinentry's protocol and asks the askpass in
     # the words the program set, as its own tests say.
     the-pinentry-asks-the-shell =
@@ -5352,6 +5370,9 @@ in
           touch $out
         '';
 
+    # The layer watcher's own tests: it finds the board's channel as the
+    # command does, asks to watch in one report, and says only what a watch
+    # report tells it, by the layer's name.
     the-ergodox-watch-tells-the-layer =
       pkgs.runCommandCC "the-ergodox-watch-tells-the-layer" { nativeBuildInputs = [ pkgs.rustc ]; }
         ''
@@ -5627,6 +5648,38 @@ in
           touch $out
         '';
       };
+
+    # clippy finds nothing in the programs that are one Rust file on the
+    # standard library alone, their tests included, held to clippyLints.
+    rust-programs-pass-clippy =
+      let
+        programs = [
+          ./modules/ergodox/ergodox-watch.rs
+          ./modules/linux-id/pinentry.rs
+          ./modules/litra/litra.rs
+          ./modules/quickshell/keyboard-lights.rs
+          ./modules/quickshell/quests.rs
+          ./modules/quickshell/runs.rs
+          ./modules/touchpad/click-strength.rs
+          ./modules/tuple/people.rs
+        ];
+        clippy = "clippy-driver --edition 2024 --emit=metadata -o $TMPDIR/program";
+      in
+      pkgs.runCommandLocal "rust-programs-pass-clippy"
+        {
+          nativeBuildInputs = [
+            pkgs.clippy
+            pkgs.rustc
+          ];
+          CLIPPY_CONF_DIR = clippyConfig;
+        }
+        ''
+          for program in ${lib.escapeShellArgs programs}; do
+            ${clippy} ${lib.escapeShellArgs clippyLints} "$program"
+            ${clippy} --test ${lib.escapeShellArgs clippyLints} "$program"
+          done
+          touch $out
+        '';
 
     # clippy finds nothing in ir-camera, its tests included.
     ir-camera-passes-clippy = passesClippy "ir-camera-passes-clippy" (

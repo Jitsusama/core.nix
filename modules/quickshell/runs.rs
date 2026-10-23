@@ -14,6 +14,7 @@
 //! participant gave, for a pager.
 
 use std::env;
+use std::fmt::Write as _;
 use std::fs;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
@@ -75,11 +76,7 @@ impl Reader<'_> {
     }
 
     fn space(&mut self) {
-        while self
-            .bytes
-            .get(self.at)
-            .is_some_and(|b| b.is_ascii_whitespace())
-        {
+        while self.bytes.get(self.at).is_some_and(u8::is_ascii_whitespace) {
             self.at += 1;
         }
     }
@@ -217,7 +214,8 @@ fn quoted(text: &str) -> String {
             '\\' => out.push_str("\\\\"),
             '\n' => out.push_str("\\n"),
             '\t' => out.push_str("\\t"),
-            c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
+            // Writing to a String can't fail.
+            c if (c as u32) < 0x20 => _ = write!(out, "\\u{:04x}", c as u32),
             c => out.push(c),
         }
     }
@@ -239,10 +237,10 @@ fn flag<'a>(args: Option<&'a Value>, name: &str) -> &'a str {
     };
     let mut words = args.iter();
     while let Some(word) = words.next() {
-        if *word == Value::Text(name.to_string()) {
-            if let Some(Value::Text(next)) = words.next() {
-                return next;
-            }
+        if *word == Value::Text(name.to_string())
+            && let Some(Value::Text(next)) = words.next()
+        {
+            return next;
         }
     }
     ""
@@ -394,7 +392,7 @@ fn json(run: &Run) -> String {
         quoted(&run.kind),
         quoted(&run.about),
         number(first.and_then(|p| p.pid)),
-        quoted(first.map(|p| p.cwd.as_str()).unwrap_or("")),
+        quoted(first.map_or("", |p| p.cwd.as_str())),
         quoted(started),
         participants.join(",")
     )
@@ -473,7 +471,7 @@ fn name_rounds(found: &mut [Run], files: &Path, since: SystemTime) {
             .filter(|run| run.kind != "fleet" && run.about.is_empty())
         {
             if text.contains(&quoted(&run.id)) {
-                run.about = about.clone();
+                run.about.clone_from(&about);
             }
         }
     }
@@ -481,29 +479,29 @@ fn name_rounds(found: &mut [Run], files: &Path, since: SystemTime) {
 
 fn main() -> ExitCode {
     let args: Vec<String> = env::args().skip(1).collect();
-    if let [mode, file] = args.as_slice() {
-        if mode == "answer" {
-            let Some(text) = read(Path::new(file))
-                .and_then(|result| result.text("finalAssistantText").map(String::from))
-            else {
-                eprintln!("pi-runs: {file} holds no answer");
-                return ExitCode::FAILURE;
-            };
-            return match io::stdout()
-                .lock()
-                .write_all(format!("{}\n", text.trim_end()).as_bytes())
-            {
-                Ok(()) => ExitCode::SUCCESS,
-                Err(_) => ExitCode::FAILURE,
-            };
-        }
+    if let [mode, file] = args.as_slice()
+        && mode == "answer"
+    {
+        let Some(text) = read(Path::new(file))
+            .and_then(|result| result.text("finalAssistantText").map(String::from))
+        else {
+            eprintln!("pi-runs: {file} holds no answer");
+            return ExitCode::FAILURE;
+        };
+        return match io::stdout()
+            .lock()
+            .write_all(format!("{}\n", text.trim_end()).as_bytes())
+        {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(_) => ExitCode::FAILURE,
+        };
     }
     let [state] = args.as_slice() else {
         eprintln!("usage: pi-runs <the harness's state folder> | pi-runs answer <a result file>");
         return ExitCode::from(2);
     };
     let state = PathBuf::from(state);
-    let since = SystemTime::now() - Duration::from_secs(24 * 3600);
+    let since = SystemTime::now() - Duration::from_hours(24);
     let mut found = runs(&state.join("subagent-workflow/runs"), false, since);
     let mut rounds = runs(&state.join("review/transcripts/runs"), true, since);
     // A round named for its change may be listed by a file a day old, so
@@ -511,7 +509,7 @@ fn main() -> ExitCode {
     name_rounds(
         &mut rounds,
         &state.join("review/runs"),
-        since - Duration::from_secs(6 * 24 * 3600),
+        since - Duration::from_hours(6 * 24),
     );
     found.append(&mut rounds);
     let out: Vec<String> = found.iter().map(json).collect();
@@ -586,7 +584,7 @@ mod tests {
         fs::create_dir_all(&folder).unwrap();
         let running = Value::Object(vec![("state".into(), Value::Text("running".into()))]);
         let lease = |pid: f64| Value::Object(vec![("childPid".into(), Value::Number(pid))]);
-        let me = std::process::id() as f64;
+        let me = f64::from(std::process::id());
         assert_eq!(
             said_state(&running, &lease(me), &Value::Null, &folder),
             "running"
@@ -615,7 +613,7 @@ mod tests {
 
     #[test]
     fn numbers_are_written_plainly() {
-        assert_eq!(number(Some(1571469.0)), "1571469");
+        assert_eq!(number(Some(1_571_469.0)), "1571469");
         assert_eq!(number(Some(8.5)), "8.5");
         assert_eq!(number(Some(f64::NAN)), "null");
         assert_eq!(number(None), "null");

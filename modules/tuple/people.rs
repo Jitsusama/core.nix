@@ -34,6 +34,7 @@
 //! - `{"call":null}`, no call.
 
 use std::env;
+use std::fmt::Write as _;
 use std::io::{self, BufRead, BufReader, Write};
 use std::os::unix::net::UnixStream;
 use std::os::unix::process::CommandExt;
@@ -107,11 +108,7 @@ impl Reader<'_> {
     }
 
     fn space(&mut self) {
-        while self
-            .bytes
-            .get(self.at)
-            .is_some_and(|b| b.is_ascii_whitespace())
-        {
+        while self.bytes.get(self.at).is_some_and(u8::is_ascii_whitespace) {
             self.at += 1;
         }
     }
@@ -281,7 +278,8 @@ fn quote(out: &mut String, text: &str) {
             '\\' => out.push_str("\\\\"),
             '\n' => out.push_str("\\n"),
             '\t' => out.push_str("\\t"),
-            c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
+            // Writing to a String can't fail.
+            c if (c as u32) < 0x20 => _ = write!(out, "\\u{:04x}", c as u32),
             c => out.push(c),
         }
     }
@@ -434,7 +432,7 @@ fn in_call(fields: &[(String, Value)]) -> [(&'static str, bool); 3] {
     ]
 }
 
-/// The line for one of Tuple's current_call data.
+/// The line for one of Tuple's `current_call` data.
 fn call_line(data: &Value) -> String {
     let Value::Object(call) = data else {
         return "{\"call\":null}".to_string();
@@ -451,7 +449,7 @@ fn call_line(data: &Value) -> String {
     out.push_str(",\"connection\":");
     quote(&mut out, words(local, "connection_state"));
     for (name, holds) in in_call(local) {
-        out.push_str(&format!(",\"{name}\":{holds}"));
+        _ = write!(out, ",\"{name}\":{holds}");
     }
     out.push_str(",\"people\":[");
     let others = match field(call, "participants") {

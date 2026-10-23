@@ -1,0 +1,6 @@
+# clippy's settings for every Rust crate and program here; checks.nix says
+# which lints it holds them to. cargo clippy finds this file from any crate
+# below it, and the checks point clippy at it.
+
+# Names that read as code to clippy but are what things are called.
+doc-valid-idents = ["ErgoDox", ".."]
