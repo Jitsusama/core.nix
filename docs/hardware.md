@@ -200,6 +200,40 @@ nothing in userspace talks to it yet.
 An assertion fails once the kernel is 7.3, which has them all, and the way
 through is to drop `backports.nix` and its directory.
 
+### linux-next's Fixes, Taken Early
+
+Some fixes this laptop needs are in no release yet, and two are in no tree
+at all. `next.nix` carries them in `next/`, applied after the backports from
+7.3 with no offset or fuzz, each patch's header naming where it comes from:
+linux-next's commits and their series, a posting to a list, or a local fix.
+
+| Patch                            | What it gives                                          |
+| -------------------------------- | ------------------------------------------------------ |
+| `xe-shrinker-spares-buffers`     | window buffers reclaimed last, so keys don't repeat    |
+| `dp-byte-reads-only-when-longer` | a failed 1-byte DPCD read isn't sent again             |
+| `dp-mst-dsc-skips-empty-ports`   | an MST hub's empty port isn't asked for its DSC caps   |
+
+`xe-shrinker-spares-buffers` is linux-next's split of xe's buffer shrinker
+into purgeable and non-purgeable halves. Buffers that cost a backup and a
+restore report seeks 8 against the purgeable ones' 2, so reclaim takes them
+last, and `shrinker_non_purgeable_seeks` under each device tunes it from 1
+to 64. Without it, a build's memory pressure backed up the buffers programs
+draw into, and the compositor waited on their locks while they were read
+back, so a key let go of read late and repeated.
+
+`dp-byte-reads-only-when-longer` is Chia-Lin Kao's posting to intel-gfx of
+2026-06-16. The fallback for USB-C hubs that fail multi-byte reads retried a
+failed read byte by byte even when it was one byte, the same read again,
+which through an MST hub costs a second 4 s sideband timeout.
+`dp-mst-dsc-skips-empty-ports` is a local fix. Adding a connector for each
+port of a hub read that port's DSC caps even with nothing on it, where the
+answer is no DSC whatever comes back. An HP Z27k G3's hub never answers for
+its empty port, and the monitor's picture waited behind those reads, 8 s on
+every plug and boot.
+
+An assertion fails once the kernel is 7.4, which may have them, and the way
+through is to drop each patch that kernel has, then `next.nix`.
+
 ### The Boot Clock
 
 The firmware hands over to the boot loader at 400 MHz with HWP off, and holds

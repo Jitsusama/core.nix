@@ -1,0 +1,33 @@
+drm/dp_mst: leave a port with no device out of the DSC lookup (local)
+
+A local fix; linux-next of 2026-10-20 lacks it too.
+
+drm_dp_mst_dsc_aux_for_port(), called as the driver adds a connector for
+each port of a branch device, ends by reading the port's own DSC and FEC
+caps over the sideband. For a port with nothing on it (peer device type
+none) there is nothing to decompress, and the answer is NULL whatever the
+read returns. Some branch devices never answer a remote DPCD read for such
+a port: an HP Z27k G3's hub leaves its empty port 1 unanswered, so the
+read waits out the 4 s sideband timeout, and the modeset's payload
+allocation, queued behind it, lights the monitor seconds late on every
+plug and boot. Return NULL for such a port before reading anything.
+
+diff --git a/drivers/gpu/drm/display/drm_dp_mst_topology.c b/drivers/gpu/drm/display/drm_dp_mst_topology.c
+index 7ce9e21..7154589 100644
+--- a/drivers/gpu/drm/display/drm_dp_mst_topology.c
++++ b/drivers/gpu/drm/display/drm_dp_mst_topology.c
+@@ -6104,6 +6104,14 @@ struct drm_dp_aux *drm_dp_mst_dsc_aux_for_port(struct drm_dp_mst_port *port)
+ 	if (!port)
+ 		return NULL;
+ 
++	/*
++	 * A port with no peer device has no decompression to offer, and some
++	 * branch devices never answer a remote DPCD read for one, so each
++	 * read below would wait out the sideband timeout for nothing.
++	 */
++	if (port->pdt == DP_PEER_DEVICE_NONE)
++		return NULL;
++
+ 	if (port->parent->port_parent)
+ 		immediate_upstream_port = port->parent->port_parent;
+ 	else
