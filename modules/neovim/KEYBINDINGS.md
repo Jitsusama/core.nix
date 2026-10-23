@@ -67,9 +67,10 @@ actions, for a key in a plugin's own window, which its file hands to the
 plugin in place of the plugin's own keys. A function too long for one line
 goes in the plugin's file, registered under a name with
 `require('keys').act(name, fn)`, and the key names it with `action`. A new
-group needs its Space, which `neovim-finds-in-every-group` holds. The `neovim-binds-every-key` check fails if a
-named action is missing, a key isn't bound as keys.nix says, a plugin's
-window holds a key keys.nix doesn't give it, or a file binds a key that says
-what it does without it being in keys.nix.
+group needs its Space, which `neovim-finds-in-every-group` holds. The
+`neovim-binds-every-key` check fails if a named action is missing, a key
+isn't bound as keys.nix says, a plugin's window holds a key keys.nix doesn't
+give it, or a file binds a key that says what it does without it being in
+keys.nix.
 
 [design]: ../../docs/design.md

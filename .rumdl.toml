@@ -1,0 +1,21 @@
+# rumdl lints every Markdown file through `nix fmt`, with all its rules on.
+
+[global]
+# Lines stop at 100 characters, as everywhere here.
+line_length = 100
+
+[MD013]
+line-length = 100
+# A table row or a line of code can't be wrapped without changing what it
+# says.
+tables = false
+code-blocks = false
+
+[MD076]
+# A list item may run to paragraphs of its own, as the design's records do,
+# which a list's spacing otherwise counts as mixed.
+allow-loose-continuation = true
+
+[per-file-ignores]
+# Claude's instructions file only points at AGENTS.md, as Claude reads it.
+"CLAUDE.md" = ["MD041"]
