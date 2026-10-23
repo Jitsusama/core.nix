@@ -110,6 +110,11 @@ in
     console = "Q";
     means = "notices are held, not shown";
   };
+  listening = {
+    glyph = nerd "f036c";
+    console = "D";
+    means = "dictation hears what's said, to type it";
+  };
   muted = {
     glyph = nerd "f036d";
     console = "M";
