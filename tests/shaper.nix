@@ -154,8 +154,11 @@ pkgs.testers.runNixOSTest {
                 f" {bash} -c '{script}'"
             )
 
-    upload = "head -c 1000000 /dev/zero > /dev/tcp/${server}/5201"
-    download = "exec 3<>/dev/tcp/${server}/5202; cat <&3 > /dev/null"
+    # By the store's paths: a system unit systemd-run makes has no
+    # coreutils on its PATH, where an account's does.
+    bin = "${pkgs.coreutils}/bin"
+    upload = f"{bin}/head -c 1000000 /dev/zero > /dev/tcp/${server}/5201"
+    download = f"exec 3<>/dev/tcp/${server}/5202; {bin}/cat <&3 > /dev/null"
     def datagrams(port, n=300):
         return f"for i in {{1..{n}}}; do echo x > /dev/udp/${server}/{port}; done"
 
@@ -186,7 +189,7 @@ pkgs.testers.runNixOSTest {
 
     with subtest("everything Tuple's daemon sends is video"):
         # The daemon runs well before a call, so its unit's set knows it.
-        lands("video", "unit:tuple", f"sleep 1; {upload}")
+        lands("video", "unit:tuple", f"{bin}/sleep 1; {upload}")
 
     with subtest("names and time go first, from anything"):
         lands("voice", "jobs.slice", datagrams(53))
@@ -230,7 +233,7 @@ pkgs.testers.runNixOSTest {
         client.wait_until_succeeds("ping -c1 -W1 10.9.0.2", timeout=30)
         client.wait_until_succeeds("tc -j qdisc show dev wg0 | grep -q cake", timeout=15)
         client.wait_until_succeeds("nft list set inet shaper uplinks | grep -q wg0", timeout=15)
-        inner = "head -c 1000000 /dev/zero > /dev/tcp/10.9.0.2/5201"
+        inner = f"{bin}/head -c 1000000 /dev/zero > /dev/tcp/10.9.0.2/5201"
         lands("bulk", "jobs.slice", inner, dev="wg0")
         lands("best effort", "app.slice", inner, dev="wg0")
 
