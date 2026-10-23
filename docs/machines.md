@@ -129,7 +129,10 @@ treefmt =
 
 Each linter reads core's own settings, so `nix fmt` there holds code to
 exactly what it holds core's to. Lua is read as the program that runs it does,
-which the repository says in a `.luacheckrc` of its own.
+which the repository says in a `.luacheckrc` of its own. A VM test's script,
+kept in a `*-vm-test.py` file, imports the test driver's names from
+`driver_names` under `if TYPE_CHECKING:`, as [testing.md][3] says, and
+mypy reads them and the driver's own types from core.
 
 Its Rust meets the same clippy lints as core's crates, through a check it
 names in its own checks:
@@ -154,3 +157,4 @@ nix flake update core
 
 [1]: ../examples/
 [2]: hardware.md
+[3]: testing.md

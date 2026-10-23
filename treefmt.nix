@@ -5,24 +5,11 @@
 # .luacheckrc for Lua, biome.jsonc for JavaScript and .rumdl.toml for
 # Markdown.
 { pkgs, ... }:
-let
-  driver = pkgs.python3Packages.callPackage "${pkgs.path}/nixos/lib/test-driver" { };
-  site = pkgs.python3.sitePackages;
-  driverTypes = pkgs.python3Packages.toPythonModule (
-    pkgs.runCommandLocal "test-driver-types" { } ''
-      mkdir -p $out/${site}
-      ln -s ${driver}/${site}/test_driver $out/${site}/
-    ''
-  );
-in
 {
-  # A VM test's script names the test driver's types, which mypy reads from
-  # the driver as it's built; it's a program rather than a library, so it's
-  # given as one.
+  # The libraries core's own Python imports.
   jitsusama.mypy.packages = python: [
     python.dbus-fast
     python.fido2
-    driverTypes
   ];
 
   # biome reads the JavaScript QML imports as the modules it means

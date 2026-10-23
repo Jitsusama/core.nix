@@ -10,6 +10,38 @@
   pkgs,
   ...
 }:
+let
+  # A VM test's script names the NixOS test driver's types, which mypy reads
+  # from the driver as it's built; it's a program rather than a library, so
+  # it's given as one.
+  driver = pkgs.python3Packages.callPackage "${pkgs.path}/nixos/lib/test-driver" { };
+  site = pkgs.python3.sitePackages;
+  driverTypes = pkgs.python3Packages.toPythonModule (
+    pkgs.runCommandLocal "test-driver-types" { } ''
+      mkdir -p $out/${site}
+      ln -s ${driver}/${site}/test_driver $out/${site}/
+    ''
+  );
+  # The names the driver gives a script as globals, which it imports from
+  # driver_names for type checkers alone, found on mypy's path wherever the
+  # script lives.
+  driverNames = lib.fileset.toSource {
+    root = ../../tests;
+    fileset = ../../tests/driver_names.pyi;
+  };
+  python = pkgs.python3.withPackages (
+    python:
+    [
+      python.mypy
+      driverTypes
+    ]
+    ++ config.jitsusama.mypy.packages python
+  );
+  mypy = pkgs.writeShellApplication {
+    name = "mypy";
+    text = ''MYPYPATH=${driverNames} exec ${python}/bin/mypy "$@"'';
+  };
+in
 {
   options.jitsusama.mypy.packages = lib.mkOption {
     type = lib.types.functionTo (lib.types.listOf lib.types.package);
@@ -24,11 +56,10 @@
     projectRootFile = "flake.nix";
 
     # mypy reads every script at once, from a Python carrying the libraries
-    # they import, so their types are checked too.
+    # they import and the test driver's types, so their types are checked
+    # too.
     settings.formatter.mypy = {
-      command = "${
-        pkgs.python3.withPackages (python: [ python.mypy ] ++ config.jitsusama.mypy.packages python)
-      }/bin/mypy";
+      command = lib.getExe mypy;
       options = [
         "--config-file"
         "${../../mypy.ini}"
