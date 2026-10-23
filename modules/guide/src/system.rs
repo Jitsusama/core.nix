@@ -506,7 +506,7 @@ impl Machine for System {
             .mode(0o600)
             .open(to)
             .map_err(unkept(Path::new(to)))?;
-        let mut out = crate::progress::Counted::new(file, &self.meter);
+        let mut out = crate::progress::Counted::writes(file, &self.meter);
         let copied = std::io::copy(&mut source.take(bytes), &mut out)
             .map_err(|why| Fault::unreadable(from, why))?;
         if copied != bytes {
@@ -570,7 +570,7 @@ impl Machine for System {
                 .map_err(unkept(&to))?;
             let mut out = std::io::BufWriter::with_capacity(
                 1 << 20,
-                crate::progress::Counted::new(file, &meter),
+                crate::progress::Counted::writes(file, &meter),
             );
             vault.extract(&path, &mut out)?;
             out.flush().map_err(unkept(&to))?;

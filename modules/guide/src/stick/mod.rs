@@ -21,7 +21,7 @@ use sha2::{Digest, Sha256};
 use crate::Fault;
 use crate::sign::Signer;
 use crate::vault::store::{Fat, Store};
-use blocks::Partition;
+use blocks::{Partition, Unflushed};
 use gpt::{ALIGNMENT, EFI_SYSTEM, SECTOR, Table};
 
 /// The least a vault may be: a repair stick's needs only its manifest, and
@@ -161,7 +161,7 @@ pub fn write(
 
     let mut copied = vec![];
     for partition in image.partitions() {
-        let mut region = Counted::new(
+        let mut region = Counted::writes(
             Partition::new(disk, partition.offset(), partition.bytes()).map_err(unwritten)?,
             meter,
         );
@@ -182,7 +182,9 @@ pub fn write(
 
     {
         let mut region = Partition::new(disk, vault.offset(), vault.bytes()).map_err(unwritten)?;
-        let mut fat = Fat::format(Counted::new(&mut region, meter))?;
+        // Written back once, after the vault is closed, rather than at
+        // every file fatfs closes.
+        let mut fat = Fat::format(Counted::writes(Unflushed(&mut region), meter))?;
         fill(&mut fat)?;
         fat.close()?;
         region.flush().map_err(unwritten)?;
@@ -347,7 +349,7 @@ pub fn verify(
         disk.seek(SeekFrom::Start(partition.offset()))
             .map_err(unread)?;
         if &copy_hashed(
-            &mut Counted::new(&mut *disk, meter),
+            &mut Counted::reads(&mut *disk, meter),
             &mut io::sink(),
             partition.bytes(),
         )
@@ -357,8 +359,11 @@ pub fn verify(
             return Err(differs(&format!("the {} partition", partition.name)));
         }
     }
-    let mut region =
-        Partition::new(disk, written.vault.offset(), written.vault.bytes()).map_err(unread)?;
-    let mut fat = Fat::open(Counted::new(&mut region, meter))?;
+    // Counted as it comes off the stick, under the cache, so a lookup in
+    // the vault's directory isn't counted once for every file.
+    let mut counted = Counted::reads(disk, meter);
+    let mut region = Partition::new(&mut counted, written.vault.offset(), written.vault.bytes())
+        .map_err(unread)?;
+    let mut fat = Fat::open(&mut region)?;
     check(&mut fat)
 }

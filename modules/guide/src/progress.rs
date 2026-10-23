@@ -140,18 +140,32 @@ fn lowered(said: &str) -> String {
     }
 }
 
-/// Something read or written through, every byte that passes counted on
-/// a meter.
+/// Something read or written through, the bytes that pass one way
+/// counted on a meter: a write counted by what's written, so a file
+/// system's own lookups along the way don't count as progress, and a read
+/// by what's read.
 pub struct Counted<T> {
     inner: T,
     meter: Meter,
+    reads: bool,
 }
 
 impl<T> Counted<T> {
-    pub fn new(inner: T, meter: &Meter) -> Counted<T> {
+    /// Counting what's written through it.
+    pub fn writes(inner: T, meter: &Meter) -> Counted<T> {
         Counted {
             inner,
             meter: meter.clone(),
+            reads: false,
+        }
+    }
+
+    /// Counting what's read through it.
+    pub fn reads(inner: T, meter: &Meter) -> Counted<T> {
+        Counted {
+            inner,
+            meter: meter.clone(),
+            reads: true,
         }
     }
 }
@@ -159,7 +173,9 @@ impl<T> Counted<T> {
 impl<T: Read> Read for Counted<T> {
     fn read(&mut self, into: &mut [u8]) -> io::Result<usize> {
         let count = self.inner.read(into)?;
-        self.meter.advance(count as u64);
+        if self.reads {
+            self.meter.advance(count as u64);
+        }
         Ok(count)
     }
 }
@@ -167,7 +183,9 @@ impl<T: Read> Read for Counted<T> {
 impl<T: Write> Write for Counted<T> {
     fn write(&mut self, from: &[u8]) -> io::Result<usize> {
         let count = self.inner.write(from)?;
-        self.meter.advance(count as u64);
+        if !self.reads {
+            self.meter.advance(count as u64);
+        }
         Ok(count)
     }
 
@@ -377,17 +395,28 @@ mod tests {
     }
 
     #[test]
-    fn what_passes_through_is_counted_both_ways() {
+    fn only_what_passes_the_counted_way_is_counted() {
         let meter = Meter::new();
         meter.start();
-        let mut counted = Counted::new(io::Cursor::new(vec![0u8; 100]), &meter);
-        counted.write_all(&[1; 30]).unwrap();
+        let mut writing = Counted::writes(io::Cursor::new(vec![0u8; 100]), &meter);
+        writing.write_all(&[1; 30]).unwrap();
         let mut back = vec![];
-        counted.read_to_end(&mut back).unwrap();
+        writing.read_to_end(&mut back).unwrap();
         assert_eq!(back.len(), 70);
         assert!(
-            meter.said().starts_with("100 bytes so far"),
-            "{}",
+            meter.said().starts_with("30 bytes so far"),
+            "a write's reads aren't counted: {}",
+            meter.said()
+        );
+
+        let meter = Meter::new();
+        meter.start();
+        let mut reading = Counted::reads(io::Cursor::new(vec![0u8; 100]), &meter);
+        reading.write_all(&[1; 30]).unwrap();
+        reading.read_to_end(&mut back).unwrap();
+        assert!(
+            meter.said().starts_with("70 bytes so far"),
+            "a read's writes aren't counted: {}",
             meter.said()
         );
     }
