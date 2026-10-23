@@ -52,7 +52,7 @@ Provider {
     readonly property var radio: thing({
         key: "wifi:radio",
         verb: on ? "turn off" : "turn on",
-        name: on ? "Turn Wi-Fi Off" : "Turn Wi-Fi On",
+        name: on ? "Turn off Wi-Fi" : "Turn on Wi-Fi",
         keywords: "wifi wlan wireless radio network internet airplane mode flight",
         glyph: glyph(on ? 0xf05aa : 0xf05a9),
         hue: "machine",
