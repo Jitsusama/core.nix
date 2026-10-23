@@ -168,7 +168,7 @@ kernel guide][2] says what that catches.
 | `the-ergodox-watch-tells-the-layer` | the layer watcher finds the board and says only what it's told |
 | `the-click-strength-finds-the-intensity` | the click strength's setter finds a haptic pad's intensity, the XPS 14's among them, and writes only it, only when it differs |
 | `btrfs-reclaims-its-chunks`       | tmpfiles turns Btrfs's reclaim on for data and metadata   |
-| `the-firmware-takes-what-is-declared` | `firmware-settings` names what differs, writes it with the password, then wipes it |
+| `the-firmware-takes-what-is-declared` | `firmware-settings` names what differs, writes it with the password, then wipes it, and refuses a value it can't read |
 | `devices-that-stop-working-are-named` | `device-check` names a failed or missing device, or a disk's fault, once, and again when it's fixed |
 | `kernel-trouble-is-named` | `device-check` names a kernel that oopsed, locked up, saw a hardware fault or held a task stuck, once, and not its harmless taints |
 | `disks-say-when-they-fail` | a workstation runs smartd on its disks and hands their faults to device-check, not to every terminal |

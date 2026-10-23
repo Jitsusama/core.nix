@@ -937,7 +937,9 @@ in
 
   # firmware-settings names every setting the firmware holds apart from the
   # declared ones, writes them with the admin password from its input, and
-  # wipes that password from the kernel whether the writes worked or not.
+  # wipes that password from the kernel whether the writes worked or not. A
+  # value it can't read, as without root, it refuses rather than calling
+  # it changed.
   # Files stand in for the kernel's firmware-attributes class.
   the-firmware-takes-what-is-declared =
     pkgs.runCommandLocal "the-firmware-takes-what-is-declared"
@@ -987,6 +989,15 @@ in
         firmware-settings check > out 2>&1 || status=$?
         [ "$status" = 2 ] || fail "check of a setting the firmware lacks exited $status"
         grep -qF "no firmware setting Missing" out || fail "check didn't name the missing setting"
+
+        chmod a-r "$fw/attributes/Mode/current_value"
+        printf 'Mode=Standard\n' > declared
+        status=0
+        firmware-settings check > out 2>&1 || status=$?
+        [ "$status" = 77 ] || fail "check of a setting it can't read exited $status"
+        grep -qF "can't read Mode; run it as root: run0 firmware-settings check" out ||
+          fail "check didn't say to run it as root"
+        grep -qF "Mode is" out && fail "check named a setting it couldn't read as differing"
         touch $out
       '';
 
