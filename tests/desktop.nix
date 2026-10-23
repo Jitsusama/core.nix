@@ -37,9 +37,12 @@ let
   '';
 
   # Lantern's front desk, as a hotel's: every page is sent there until
-  # someone signs in, which its one button does.
+  # someone signs in, which its one button does. It answers each connection
+  # on a thread of its own, as a real one does: WebKit opens a connection
+  # ahead of asking anything, and a server answering one at a time waits on
+  # it while the page and wifid's next check wait behind.
   frontDesk = pkgs.writeText "front-desk.py" ''
-    from http.server import BaseHTTPRequestHandler, HTTPServer
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
     PAGE = b"""<!doctype html><title>Lantern</title>
     <form method="post" action="/sign-in"><button autofocus>Sign in</button></form>"""
@@ -67,7 +70,7 @@ let
             signed_in = True
             self.answer(200, {"Content-Type": "text/html"}, b"<p>Welcome to Lantern.</p>")
 
-    HTTPServer(("10.42.0.1", 80), Desk).serve_forever()
+    ThreadingHTTPServer(("10.42.0.1", 80), Desk).serve_forever()
   '';
 
   # Text views and file lists draw on the theme's dark background, which
