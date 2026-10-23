@@ -147,8 +147,10 @@ fn coordinate(heard: &Receiver<Event>, events: &Sender<Event>, jobs: &Sender<Job
                         Ok(started) => {
                             recording = Some(started);
                             let _ = jobs.send(Job::Warm);
+                            // The shell shows that it's listening, from the
+                            // watchers' stream; a notice is only for what
+                            // went wrong.
                             state = State::Listening;
-                            notice("Listening", "Press the chord again to type what you said.");
                         }
                         Err(error) => notice("Dictation can't listen", &error),
                     },
