@@ -5,13 +5,28 @@
 # `if TYPE_CHECKING:`, and mypy reads them as the driver's own types. A test
 # whose only machine isn't named `machine` declares its own here.
 
+from collections.abc import Callable
 from contextlib import AbstractContextManager
+from datetime import timedelta
+from typing import Any
 
-from test_driver.driver import Driver
+from test_driver.driver import AssertionTester, Driver
 from test_driver.machine import QemuMachine
 
 driver: Driver
 machine: QemuMachine
+
+# unittest's assertions, which fail the test with what they say.
+t: AssertionTester
+
+# Calls a function each second until it returns true, then once more,
+# told it's the last try, when the time is up; the time is 15 minutes
+# unless given.
+def retry(
+    fn: Callable[..., Any],
+    timeout_seconds: int | timedelta | None = None,
+    timeout: timedelta | None = None,
+) -> None: ...
 
 # Starts every machine at once.
 def start_all() -> None: ...
