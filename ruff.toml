@@ -29,3 +29,6 @@ ignore = [
 # A test's name is the sentence it proves, so a docstring would repeat it,
 # and a test says what has to hold with assert, which is never run with -O.
 "*-test.py" = ["D102", "S101"]
+# A VM test's script imports the driver's names only for type checkers
+# (driver_names.pyi), since the driver gives them to it as globals.
+"*-vm-test.py" = ["TC004"]

@@ -7,20 +7,10 @@ outside it, and anything that isn't a NixOS system in the store, is refused,
 and the machine is left as it was.
 """
 
-from __future__ import annotations
-
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
-    from contextlib import AbstractContextManager
-
-    from test_driver.machine import QemuMachine
-
-# The driver runs the script with its machine and its subtests among the
-# script's globals.
-machine = cast("QemuMachine", globals()["machine"])
-subtest = cast("Callable[[str], AbstractContextManager[None]]", globals()["subtest"])
+    from driver_names import machine, subtest
 
 
 def as_account(account: str, command: str) -> str:
@@ -56,7 +46,7 @@ with subtest("an administrator switches back"):
 with subtest("an account outside wheel is refused"):
     status, said = machine.execute(as_account("other", f"switch-system {switched} 2>&1"))
     assert status != 0, "an account outside wheel switched"
-    assert "authentication required" in said.lower(), f"it wasn't refused by polkit: {said}"
+    assert "requires interactive authentication" in said, f"polkit didn't refuse it: {said}"
     assert running() == first, "the machine changed"
 
 with subtest("what isn't a NixOS system in the store is refused"):

@@ -44,6 +44,8 @@ in
     };
   };
 
+  # Without polkit, systemd lets only root start a unit.
+  security.polkit.enable = true;
   security.polkit.extraConfig = builtins.readFile ./switch-system.rules;
 
   environment.systemPackages = [ ask ];
