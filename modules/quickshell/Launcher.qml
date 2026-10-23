@@ -884,6 +884,7 @@ Scope {
             asking: !!root.asking,
             selected: !row ? null : {
                 name: row.name,
+                is: Rank.identity(row),
                 verb: root.verbOf(row),
                 chord: (row.chord ?? []).map(key => key.text).join(" "),
                 side: row.side ?? "",

@@ -1696,7 +1696,7 @@ pkgs.testers.runNixOSTest {
               before = selected()
               machine.send_key("down")
               launcher_until(lambda shown: (shown["selected"] or {}).get("name", "") != before)
-              if showing()["kind"] == "collection":
+              if showing()["selected"]["is"].startswith("collection:"):
                   break
           chosen = selected()
           step_in()
