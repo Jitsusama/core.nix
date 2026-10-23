@@ -83,15 +83,19 @@ pkgs.testers.runNixOSTest {
     };
     systemd.services.source = {
       wantedBy = [ "multi-user.target" ];
+      # The listener comes first, so each connection forks its own head;
+      # socat opens its first address first, and with the command there
+      # one head served the first download and every later one read EOF.
       script = ''
-        exec ${lib.getExe pkgs.socat} -u \
-          'EXEC:${pkgs.coreutils}/bin/head -c 10000000 /dev/zero' TCP-LISTEN:5202,fork,reuseaddr
+        exec ${lib.getExe pkgs.socat} -U TCP-LISTEN:5202,fork,reuseaddr \
+          'EXEC:${pkgs.coreutils}/bin/head -c 10000000 /dev/zero'
       '';
     };
   };
 
   testScript = ''
     import json
+    import time
 
     bash = "${pkgs.bash}/bin/bash"
     tins = ["bulk", "best effort", "video", "voice"]
@@ -162,6 +166,18 @@ pkgs.testers.runNixOSTest {
     def datagrams(port, n=300):
         return f"for i in {{1..{n}}}; do echo x > /dev/udp/${server}/{port}; done"
 
+    def still(dev):
+        """Waits for a queue to go still: a transfer's script ends once its
+        bytes are in the socket, and the rest leaves after. Voice is left
+        out, since the shaper's own pings never stop."""
+        last = None
+        for _ in range(50):
+            now = counts(dev, "sent_bytes")[:3]
+            if now == last:
+                return
+            last = now
+            time.sleep(0.2)
+
     def lands(tin, where, script, dev="eth1"):
         """Runs a script and checks the bytes it moved went to one tin.
 
@@ -170,6 +186,7 @@ pkgs.testers.runNixOSTest {
         than the traffic.
         """
         least = 5_000 if "/dev/udp" in script else 200_000
+        still(dev)
         before = counts(dev, "sent_bytes")
         run(where, script)
         after = counts(dev, "sent_bytes")
