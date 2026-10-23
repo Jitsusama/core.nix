@@ -338,6 +338,29 @@ moves in a way that delays input or focus, every animation holds the panel's
 refresh rate, the first frame of every surface is complete, and nothing jumps
 when its content changes size. Anything that stutters is a bug.
 
+## Latency Budgets
+
+Joel types the moment he presses a chord, so a surface that takes the keys
+has them before his first letter lands, and every key after shows its result
+in the next frame. These are the budgets the principle and the quality bar
+hold every surface to:
+
+| From    | To                             | Budget                                   |
+| ------- | ------------------------------ | ---------------------------------------- |
+| a chord | the surface has the keys       | 30 ms, one round trip with niri          |
+| a key   | what it changed, drawn         | 50 ms, and 100 ms at the 99th percentile |
+| a key   | the launcher's search answered | 4 ms, leaving the frame for drawing      |
+
+A surface meets the first by never being made at the chord. The launcher's
+surface stays mapped, a clear pixel that takes no keys while closed, and a
+chord reaches it over the shell's own socket rather than a program started to
+carry it. On the laptop it was measured on, a bare surface built that way
+had the keys 17 to 26 ms after the chord, where the launcher making its
+surface at the chord took 122 to 401 ms and lost the first letters to the
+window below. niri hands a surface the keys a frame after it asks, so a
+letter typed within that frame still goes beneath; the desktop check holds
+that none is ever lost between the two.
+
 ## What Matters: Three Tiers
 
 Every surface sorts what it could show into three tiers and draws them the

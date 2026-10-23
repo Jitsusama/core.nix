@@ -58,7 +58,9 @@ in
     chord = "Super+Space";
     does = "Find a program or an action";
     also = "launcher search run app";
-    action = ''spawn "qs" "ipc" "call" "launcher" "toggle";'';
+    # launcher-say, not qs ipc, so the launcher has the keys before the
+    # first letter typed after the chord (Quickshell's home.nix).
+    action = ''spawn "launcher-say" "toggle";'';
   }
   # The margin's drawer: what's on, Keep Awake or do not disturb or the mic
   # muted, and what can be done about it. O is a home key, under the right
@@ -76,19 +78,19 @@ in
     chord = "Super+Tab";
     does = "Find a window";
     also = "switch alt tab windows";
-    action = ''spawn "qs" "ipc" "call" "launcher" "collection" "windows";'';
+    action = ''spawn "launcher-say" "collection" "windows";'';
   }
   {
     chord = "Super+V";
     does = "Find something copied earlier";
     also = "clipboard paste history copies";
-    action = ''spawn "qs" "ipc" "call" "launcher" "collection" "clipboard";'';
+    action = ''spawn "launcher-say" "collection" "clipboard";'';
   }
   {
     chord = "Super+E";
     does = "Find an emoji";
     also = "smiley emoticon symbol character";
-    action = ''spawn "qs" "ipc" "call" "launcher" "collection" "emoji";'';
+    action = ''spawn "launcher-say" "collection" "emoji";'';
   }
   # What's said, typed where the focus is (modules/dictation). D for
   # dictate; niri fires a chord on press only, so a second press stops it.
@@ -109,7 +111,7 @@ in
     chord = "Super+U";
     does = "Find what AI use cost";
     also = "spend money tokens usage bill claude pi";
-    action = ''spawn "qs" "ipc" "call" "launcher" "collection" "spend";'';
+    action = ''spawn "launcher-say" "collection" "spend";'';
   }
   # The cards on screen put away, as a click on each would: each stays
   # unread where Super+N finds it.
@@ -131,7 +133,7 @@ in
     also = "keys hotkeys keybindings chords help cheat sheet";
     # The launcher's collection of every layer's shortcuts, searchable, in
     # place of niri's own overlay of only its own.
-    action = ''spawn "qs" "ipc" "call" "launcher" "collection" "shortcuts";'';
+    action = ''spawn "launcher-say" "collection" "shortcuts";'';
   }
   # The keyboard's layout, for a glance while typing, where a keyboard's
   # module describes one. K for keyboard.
@@ -607,12 +609,12 @@ in
   {
     chord = "Super+P";
     does = "Capture the screen, a window, a region or the camera";
-    action = ''spawn "qs" "ipc" "call" "launcher" "collection" "capture";'';
+    action = ''spawn "launcher-say" "collection" "capture";'';
   }
   {
     chord = "Print";
     does = "Capture the screen, a window, a region or the camera";
-    action = ''spawn "qs" "ipc" "call" "launcher" "collection" "capture";'';
+    action = ''spawn "launcher-say" "collection" "capture";'';
   }
   {
     chord = "Shift+Print";
