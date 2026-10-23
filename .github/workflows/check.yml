@@ -56,6 +56,7 @@ jobs:
           - vm-passkeys-come-from-the-tpm
           - vm-keyring-opens-without-asking
           - vm-speakers-are-tuned
+          - vm-pebble-speakers-are-tuned
           - vm-desktop-works
           - vm-wifi-joins
           - vm-disk-guard-keeps-the-disk

@@ -200,6 +200,7 @@ let
     vm-passkeys-come-from-the-tpm = import ./tests/linux-id.nix { inherit self pkgs; };
     vm-keyring-opens-without-asking = import ./tests/gnome-keyring.nix { inherit self pkgs; };
     vm-speakers-are-tuned = import ./tests/speakers.nix { inherit pkgs; };
+    vm-pebble-speakers-are-tuned = import ./tests/pebble-x-plus.nix { inherit pkgs; };
     # Which input WirePlumber picks comes from the rank it gives each
     # microphone as udev reports its card, so only a running machine shows it.
     vm-webcam-microphones-yield = import ./tests/microphones.nix { inherit pkgs; };

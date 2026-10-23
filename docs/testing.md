@@ -219,6 +219,7 @@ a running system shows.
 | `vm-passkeys-come-from-the-tpm`   | passkeys and security keys are made in the TPM, each after a yes |
 | `vm-keyring-opens-without-asking` | the keyring opens with its TPM-sealed password, unasked |
 | `vm-speakers-are-tuned`           | the XPS 14's speakers hear the tuning, headphones don't |
+| `vm-pebble-speakers-are-tuned`    | a Pebble X Plus hears its tuning, headphones don't      |
 | `vm-webcam-microphones-yield`     | a webcam's microphone ranks below a USB microphone's    |
 | `vm-desktop-works`                | it boots clean; the desktop shows, opens, locks and asks, a USB camera's stream included |
 | `vm-greeter-signs-in`             | the greeter signs in and out, not waiting on the account's setup |

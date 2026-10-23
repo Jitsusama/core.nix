@@ -209,6 +209,7 @@
         camera = ./modules/camera/nixos.nix;
         console = ./modules/console/nixos.nix;
         coredump = ./modules/coredump/nixos.nix;
+        creative-pebble-x-plus = ./modules/creative-pebble-x-plus/nixos.nix;
         ddcutil = ./modules/ddcutil/nixos.nix;
         device-check = ./modules/device-check/nixos.nix;
         disk-guard = ./modules/disk-guard/nixos.nix;
