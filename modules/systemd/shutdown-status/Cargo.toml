@@ -1,0 +1,10 @@
+# shutdown-status: tells Plymouth when a shutdown is forced on or held up
+# (src/main.rs says how).
+[package]
+name = "shutdown-status"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[dependencies]

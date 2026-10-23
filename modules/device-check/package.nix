@@ -1,34 +1,28 @@
 # The device-check command, which names the devices that have stopped working,
 # and device-check-disk, which smartd runs to keep what a disk reports where
-# device-check reads it (nixos.nix).
+# device-check reads it (nixos.nix). Built from this directory, its tests run
+# as it builds, with notify-send's path built in.
 {
-  symlinkJoin,
-  writeShellApplication,
-  coreutils,
-  findutils,
+  lib,
+  rustPlatform,
   libnotify,
 }:
-let
-  deviceCheck = writeShellApplication {
-    name = "device-check";
-    runtimeInputs = [
-      coreutils
-      findutils
-      libnotify
+rustPlatform.buildRustPackage {
+  pname = "device-check";
+  version = "0.1.0";
+  src = lib.fileset.toSource {
+    root = ./.;
+    fileset = lib.fileset.unions [
+      ./Cargo.toml
+      ./Cargo.lock
+      ./src
     ];
-    text = builtins.readFile ./device-check.sh;
   };
-  disk = writeShellApplication {
-    name = "device-check-disk";
-    runtimeInputs = [ coreutils ];
-    text = builtins.readFile ./device-check-disk.sh;
+  cargoLock.lockFile = ./Cargo.lock;
+  env.DEVICE_CHECK_NOTIFY_SEND = lib.getExe' libnotify "notify-send";
+  meta = {
+    description = "Names the devices that have stopped working";
+    license = lib.licenses.mit;
+    mainProgram = "device-check";
   };
-in
-symlinkJoin {
-  name = "device-check";
-  paths = [
-    deviceCheck
-    disk
-  ];
-  meta.mainProgram = "device-check";
 }

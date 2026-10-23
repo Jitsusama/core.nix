@@ -181,6 +181,9 @@ kernel guide][2] says what that catches.
 | `jobs-sorter-passes-clippy`       | clippy finds nothing in the jobs sorter or its tests      |
 | `vm-first-finds-the-vms`          | vm-first reads a thread's nice and policy, knows qemu by its name and nothing else |
 | `vm-first-passes-clippy`          | clippy finds nothing in vm-first or its tests             |
+| `shutdown-status-reads-the-last-stage` | shutdown-status reads only the last stage's steps, says forced once when it begins unmarked, and leftovers after three quiet seconds |
+| `shutdown-status-passes-clippy`   | clippy finds nothing in shutdown-status or its tests      |
+| `device-check-passes-clippy`      | clippy finds nothing in device-check, device-check-disk or their tests |
 | `guide-proves-its-steps`          | the guide counts a step done only once observing it again says so, reads what real machines' tools printed, writes sticks that sfdisk, fsck.fat and their own key read back whole, signs EFI programs byte for byte as sbsign does, and finds every program it runs |
 | `guide-passes-clippy`             | clippy finds nothing in the guide or its tests            |
 | `guide-compiles-for-macos`        | clippy finds nothing in the guide as macOS compiles it     |

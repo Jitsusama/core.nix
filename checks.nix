@@ -2324,6 +2324,13 @@ in
   # thread behind until it is both normal and at the nice asked for.
   vm-first-finds-the-vms = pkgs.callPackage ./modules/nix-daemon/vm-first/package.nix { };
 
+  # shutdown-status's tests run as it builds: it reads only systemd-shutdown's
+  # and the ramfs's steps, first lines only, says forced once for a last stage
+  # begun unmarked, and leftovers for three seconds' silence after a wait.
+  shutdown-status-reads-the-last-stage =
+    pkgs.callPackage ./modules/systemd/shutdown-status/package.nix
+      { };
+
   # Nix collects garbage during a build once free space falls under min-free,
   # and stops at max-free. A max-free at or under min-free stops it before it
   # starts, and nothing says so.
@@ -5104,6 +5111,37 @@ in
       (pkgs.callPackage ./modules/nix-daemon/vm-first/package.nix { }).overrideAttrs
         (old: {
           pname = "vm-first-passes-clippy";
+          nativeBuildInputs = old.nativeBuildInputs ++ [ pkgs.clippy ];
+          buildPhase = ''
+            cargo clippy --all-targets --offline -- -D warnings
+          '';
+          doCheck = false;
+          installPhase = ''
+            touch $out
+          '';
+        });
+
+    # clippy finds nothing in device-check or device-check-disk, their tests
+    # included.
+    device-check-passes-clippy =
+      (pkgs.callPackage ./modules/device-check/package.nix { }).overrideAttrs
+        (old: {
+          pname = "device-check-passes-clippy";
+          nativeBuildInputs = old.nativeBuildInputs ++ [ pkgs.clippy ];
+          buildPhase = ''
+            cargo clippy --all-targets --offline -- -D warnings
+          '';
+          doCheck = false;
+          installPhase = ''
+            touch $out
+          '';
+        });
+
+    # clippy finds nothing in shutdown-status, its tests included.
+    shutdown-status-passes-clippy =
+      (pkgs.callPackage ./modules/systemd/shutdown-status/package.nix { }).overrideAttrs
+        (old: {
+          pname = "shutdown-status-passes-clippy";
           nativeBuildInputs = old.nativeBuildInputs ++ [ pkgs.clippy ];
           buildPhase = ''
             cargo clippy --all-targets --offline -- -D warnings
