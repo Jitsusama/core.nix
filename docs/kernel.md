@@ -209,8 +209,8 @@ xz and 0.3 s from zstd, for 16.3 MB against 11.9 MB.
 
 The kernel module also turns on `intel_iommu=on`, so every device's DMA is
 translated, where Intel's firmware opt-in translates only the Thunderbolt
-ports. Five more modules tune the running kernel. The workstation role brings
-in the first four, and the graphical role the last:
+ports. Six more modules tune the running kernel. The workstation role brings
+in the first four, and the graphical role the last two:
 
 - **[`btrfs`][btrfs]:** the kernel gives nearly empty chunks back once
   unallocated space runs short, so metadata always has room to grow and a
@@ -230,6 +230,10 @@ in the first four, and the graphical role the last:
   work pi and terminals start, virtual machines and containers run behind
   what Joel uses; a call's audio may run in real time; and the work's disk
   writes give way while a save of his waits on the disk.
+- **[`shaper`][shaper]:** the network in the same order: CAKE on every link
+  with a default route, a little under the rate the line takes, found as it
+  goes, so the queue is here and sorted rather than in the modem; names,
+  calls and what Joel uses go ahead of the work he started, both ways.
 
 ## How It's Checked
 
@@ -372,6 +376,7 @@ if less; record a new one after moving to a new series.
 [memory]: ../modules/memory/nixos.nix
 [nix-daemon]: ../modules/nix-daemon/nixos.nix
 [perf]: ../modules/perf/nixos.nix
+[shaper]: ../modules/shaper/nixos.nix
 [slices]: ../modules/slices/nixos.nix
 [hw]: hardware.md
 [crashes]: hardware.md#the-two-crashes

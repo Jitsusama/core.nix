@@ -16,7 +16,12 @@ from test_driver.machine import QemuMachine
 driver: Driver
 machine: QemuMachine
 
-# The clock test's time server, which its machine sets its clock from.
+# The shaper's tests: a client whose line goes through a router to a server.
+client: QemuMachine
+router: QemuMachine
+
+# The clock test's time server, which its machine sets its clock from, and
+# the shaper's tests' far end.
 server: QemuMachine
 
 # unittest's assertions, which fail the test with what they say.

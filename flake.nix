@@ -155,6 +155,7 @@
         jq = ./modules/jq/home.nix;
         keys = ./modules/keys/home.nix;
         kitty = ./modules/kitty/home.nix;
+        lag-watch = ./modules/lag-watch/home.nix;
         lsd = ./modules/lsd/home.nix;
         mpv = ./modules/mpv/home.nix;
         neovim = moduleFrom ./modules/neovim/home.nix { inherit neovim-pi; };
@@ -258,6 +259,7 @@
         podman = ./modules/podman/nixos.nix;
         power-profiles-daemon = ./modules/power-profiles-daemon/nixos.nix;
         quickshell = ./modules/quickshell/nixos.nix;
+        shaper = ./modules/shaper/nixos.nix;
         shure-mv7 = ./modules/shure-mv7/nixos.nix;
         slices = ./modules/slices/nixos.nix;
         swayimg = ./modules/swayimg/nixos.nix;
