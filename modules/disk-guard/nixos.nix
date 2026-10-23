@@ -92,11 +92,21 @@ in
     environment.systemPackages = [ package ];
     environment.etc."disk-guard/config.json".source = configFile;
 
+    # The machine's chores yield to what Joel uses, as the account's guard
+    # does in its own background.slice. In system.slice the guard had the
+    # weight of every account together, and used 6,554 CPU-s in 17 h against
+    # niri's 1,743, a tenth of a core. At the builds' weight, with every other
+    # slice busy, it still keeps about 0.7 of a core of sixteen, so a disk
+    # filling under a build is still caught; its passes wait only while what
+    # Joel runs wants the CPU.
+    systemd.slices.background.sliceConfig.CPUWeight = 10;
+
     systemd.services.disk-guard = {
       description = "Keeps the machine's disks from filling";
       wantedBy = [ "multi-user.target" ];
       serviceConfig = {
         ExecStart = "${lib.getExe package} system --config ${configFile}";
+        Slice = "background.slice";
         # The socket every account's guard asks, and the status file
         # `disk-guard status` reads, both open to every account. It's kept
         # while the guard is down, so its last status, heartbeat and all,

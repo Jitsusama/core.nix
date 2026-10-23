@@ -2657,19 +2657,25 @@ in
       "The Nix daemon never collects garbage during a build: min-free is ${toString min-free}, max-free ${toString max-free}."
       (min-free > 0 && max-free > min-free);
 
-  # The disk guard's own memory ceiling never stops it, and the account's
-  # guard yields to whatever the account runs. Past the ceiling the kernel
+  # The disk guard's own memory ceiling never stops it, and both guards
+  # yield: the account's to whatever the account runs, the machine's to what
+  # every account runs, at the builds' weight. Past the ceiling the kernel
   # kills in the unit, and systemd's default then stops the whole unit, a
   # guard that was only waiting on a command among it.
   disk-guard-stays-in-the-background =
     let
-      system = workstation.config.systemd.services.disk-guard.serviceConfig;
+      inherit (workstation.config) systemd;
+      system = systemd.services.disk-guard.serviceConfig;
       user = (account workstation).systemd.user.services.disk-guard.Service;
     in
     holds "disk-guard-stays-in-the-background"
-      "A command overrunning the disk guard's memory would stop the guard, or the account's guard runs outside background.slice."
+      "A command overrunning the disk guard's memory would stop the guard, or a guard runs outside a background.slice at the builds' weight."
       (
-        system.OOMPolicy == "continue" && user.OOMPolicy == "continue" && user.Slice == "background.slice"
+        system.OOMPolicy == "continue"
+        && user.OOMPolicy == "continue"
+        && user.Slice == "background.slice"
+        && (system.Slice or null) == "background.slice"
+        && (systemd.slices.background.sliceConfig.CPUWeight or null) == 10
       );
 
   # spend-watch only watches, so it yields to whatever the account runs, and
