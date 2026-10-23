@@ -6,6 +6,14 @@
 //! behind it, are tried; the panel's own and the machine's other buses are
 //! left alone. udev lets the person at the seat open those buses.
 //!
+//! A connector's bus passes through to the hub behind it, so a monitor on a
+//! dock is reached twice: by its hub's bus and by the connector's. Two
+//! threads on one monitor would break the gap it wants between commands, so
+//! a connector's bus whose monitor's EDID matches one a hub's bus reads is
+//! left to the hub's, which is the monitor's own. Hub buses are never matched
+//! with each other, since two of one model can share an EDID that has no
+//! serial.
+//!
 //! A monitor answers slowly, a second or so for a read, so each is read once,
 //! to learn its brightest, and after that only written. Each has a thread of
 //! its own that owns its bus, so the daemon never waits on one, and it writes
@@ -40,6 +48,8 @@ unsafe extern "C" {
 const I2C_SLAVE: c_ulong = 0x0703;
 /// Where a monitor answers DDC/CI.
 const DDC_CI: u8 = 0x37;
+/// Where a monitor gives its EDID.
+const EDID: u8 = 0x50;
 /// The VCP code that holds a monitor's brightness.
 const BRIGHTNESS: u8 = 0x10;
 /// How long a monitor takes to have an answer ready.
@@ -135,6 +145,40 @@ fn value_for(level: f64, max: u16) -> u16 {
     (level.clamp(0.0, 1.0) * f64::from(max)).round() as u16
 }
 
+/// Which monitor an EDID is: its maker, model, serial and when it was made.
+type Identity = [u8; 10];
+
+/// The monitor an EDID's first block names, if it is one.
+fn identity(edid: &[u8]) -> Option<Identity> {
+    let block = edid.get(..128)?;
+    let whole = block.iter().fold(0u8, |sum, byte| sum.wrapping_add(*byte)) == 0;
+    if block[..8] != [0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x00] || !whole {
+        return None;
+    }
+    block[8..18].try_into().ok()
+}
+
+/// An I2C bus, its reads and writes going to one address.
+fn open_at(path: &Path, address: u8) -> io::Result<File> {
+    let file = OpenOptions::new().read(true).write(true).open(path)?;
+    // SAFETY: the descriptor is the file's, open for the whole call, and
+    // I2C_SLAVE takes the address as a plain number.
+    if unsafe { ioctl(file.as_raw_fd(), I2C_SLAVE, c_ulong::from(address)) } < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    Ok(file)
+}
+
+/// The monitor a bus reaches, by its EDID. A block is read in a few
+/// milliseconds, and only as a bus comes.
+fn reached(path: &Path) -> io::Result<Identity> {
+    let mut file = open_at(path, EDID)?;
+    file.write_all(&[0])?;
+    let mut edid = [0; 128];
+    file.read_exact(&mut edid)?;
+    identity(&edid).ok_or_else(|| refused("its EDID isn't one".into()))
+}
+
 /// A monitor's bus, opened to talk to it.
 struct Bus {
     file: File,
@@ -142,13 +186,9 @@ struct Bus {
 
 impl Bus {
     fn open(path: &Path) -> io::Result<Bus> {
-        let file = OpenOptions::new().read(true).write(true).open(path)?;
-        // SAFETY: the descriptor is the file's, open for the whole call, and
-        // I2C_SLAVE takes the address as a plain number.
-        if unsafe { ioctl(file.as_raw_fd(), I2C_SLAVE, c_ulong::from(DDC_CI)) } < 0 {
-            return Err(io::Error::last_os_error());
-        }
-        Ok(Bus { file })
+        Ok(Bus {
+            file: open_at(path, DDC_CI)?,
+        })
     }
 
     fn send(&mut self, message: &[u8]) -> io::Result<()> {
@@ -311,23 +351,54 @@ fn is_displayport(connector: &str) -> bool {
         .is_some_and(|(_, kind)| kind.starts_with("DP-"))
 }
 
-/// Whether a bus in /sys/class/i2c-dev reaches a monitor: one an MST hub
-/// made for a monitor behind it, or a DisplayPort connector's own.
-fn reaches_a_monitor(bus: &Path) -> bool {
+/// How a bus reaches a monitor.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+enum Reach {
+    /// An MST hub made it for the one monitor behind it.
+    ThroughAHub,
+    /// It's a DisplayPort connector's, and reaches what's on the cable,
+    /// through a hub if there is one.
+    ByItsConnector,
+}
+
+/// How a bus in /sys/class/i2c-dev reaches a monitor, if it does.
+fn reach(bus: &Path) -> Option<Reach> {
     let name = fs::read_to_string(bus.join("name")).unwrap_or_default();
     if name.trim() == "DPMST" {
-        return true;
+        return Some(Reach::ThroughAHub);
     }
-    fs::canonicalize(bus.join("device")).is_ok_and(|device| {
+    let on_a_connector = fs::canonicalize(bus.join("device")).is_ok_and(|device| {
         device
             .parent()
             .and_then(Path::file_name)
             .is_some_and(|connector| is_displayport(&connector.to_string_lossy()))
-    })
+    });
+    on_a_connector.then_some(Reach::ByItsConnector)
+}
+
+/// A bus that reaches a monitor, and which monitor once its EDID is read.
+struct Seen<'a> {
+    name: &'a str,
+    reach: Reach,
+    identity: Option<Identity>,
+}
+
+/// The connector buses that reach a monitor a hub's bus reaches too, each
+/// with the hub's bus it's left to.
+fn doubled<'a>(seen: &[Seen<'a>]) -> HashMap<&'a str, &'a str> {
+    let hubs: HashMap<Identity, &str> = seen
+        .iter()
+        .filter(|bus| bus.reach == Reach::ThroughAHub)
+        .filter_map(|bus| Some((bus.identity?, bus.name)))
+        .collect();
+    seen.iter()
+        .filter(|bus| bus.reach == Reach::ByItsConnector)
+        .filter_map(|bus| Some((bus.name, *hubs.get(&bus.identity?)?)))
+        .collect()
 }
 
 /// The buses that reach a monitor, by name, and have a node in `dev`.
-fn buses(class: &Path, dev: &Path) -> io::Result<Vec<String>> {
+fn buses(class: &Path, dev: &Path) -> io::Result<Vec<(String, Reach)>> {
     let entries = match fs::read_dir(class) {
         Ok(entries) => entries,
         Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(Vec::new()),
@@ -339,9 +410,11 @@ fn buses(class: &Path, dev: &Path) -> io::Result<Vec<String>> {
         let name = entry.file_name().to_string_lossy().into_owned();
         // The node goes before the class's entry does, so a bus going is
         // known from the node.
-        if name.starts_with("i2c-") && dev.join(&name).exists() && reaches_a_monitor(&entry.path())
-        {
-            found.push(name);
+        if !name.starts_with("i2c-") || !dev.join(&name).exists() {
+            continue;
+        }
+        if let Some(reach) = reach(&entry.path()) {
+            found.push((name, reach));
         }
     }
     found.sort();
@@ -397,10 +470,23 @@ pub struct Monitors {
     dev: PathBuf,
     /// The panel's level, as a share of its brightest.
     level: f64,
-    /// Each bus found, with its monitor's thread, or none while it can't be
-    /// opened, as before udev has opened it to the seat.
-    buses: HashMap<String, Option<Monitor>>,
+    /// Each bus found, by name.
+    buses: HashMap<String, Found>,
     watch: Option<AsyncFd<File>>,
+}
+
+/// A bus that reaches a monitor.
+struct Found {
+    reach: Reach,
+    /// Its monitor, once its EDID has been read.
+    identity: Option<Identity>,
+    /// Its monitor's thread, or none while it can't be opened, as before
+    /// udev has opened it to the seat, or while it's left to another bus.
+    monitor: Option<Monitor>,
+    /// Whether it's been tried and couldn't be opened, said once.
+    tried: bool,
+    /// The bus its monitor is left to, said once.
+    left_to: Option<String>,
 }
 
 impl Monitors {
@@ -429,7 +515,11 @@ impl Monitors {
             return;
         }
         self.level = level;
-        for monitor in self.buses.values().flatten() {
+        for monitor in self
+            .buses
+            .values()
+            .filter_map(|found| found.monitor.as_ref())
+        {
             monitor.want(level);
         }
     }
@@ -471,32 +561,73 @@ impl Monitors {
                 return;
             }
         };
-        self.buses.retain(|name, _| found.contains(name));
-        for name in found {
-            let tried = match self.buses.get(&name) {
-                Some(Some(_)) => continue,
-                Some(None) => true,
-                None => false,
+        self.buses
+            .retain(|name, _| found.iter().any(|(seen, _)| seen == name));
+        for (name, reach) in found {
+            let bus = self.buses.entry(name).or_insert_with_key(|_| Found {
+                reach,
+                identity: None,
+                monitor: None,
+                tried: false,
+                left_to: None,
+            });
+            bus.reach = reach;
+        }
+        // Read until it answers, since a bus not yet open to the seat can't
+        // say which monitor it reaches.
+        for (name, bus) in &mut self.buses {
+            if bus.identity.is_none() {
+                bus.identity = reached(&self.dev.join(name)).ok();
+            }
+        }
+        let seen: Vec<Seen> = self
+            .buses
+            .iter()
+            .map(|(name, bus)| Seen {
+                name,
+                reach: bus.reach,
+                identity: bus.identity,
+            })
+            .collect();
+        let doubled: HashMap<String, String> = doubled(&seen)
+            .into_iter()
+            .map(|(name, hub)| (name.to_owned(), hub.to_owned()))
+            .collect();
+        let mut names: Vec<String> = self.buses.keys().cloned().collect();
+        names.sort();
+        for name in names {
+            let Some(bus) = self.buses.get_mut(&name) else {
+                continue;
             };
-            let monitor = Bus::open(&self.dev.join(&name))
-                .and_then(|bus| Monitor::start(&name, bus, self.level));
-            match monitor {
-                Ok(monitor) => {
-                    self.buses.insert(name, Some(monitor));
+            if let Some(hub) = doubled.get(&name) {
+                if bus.left_to.as_ref() != Some(hub) {
+                    eprintln!("<6>{name} reaches the monitor {hub} does, so it's left to {hub}");
+                    bus.left_to = Some(hub.clone());
                 }
+                bus.monitor = None;
+                continue;
+            }
+            bus.left_to = None;
+            if bus.monitor.is_some() {
+                continue;
+            }
+            let monitor = Bus::open(&self.dev.join(&name))
+                .and_then(|opened| Monitor::start(&name, opened, self.level));
+            match monitor {
+                Ok(monitor) => bus.monitor = Some(monitor),
                 // udev opens a bus to the seat a moment after it comes, and
                 // the watch hears it then.
                 Err(error) if error.kind() == io::ErrorKind::PermissionDenied => {
-                    if !tried {
+                    if !bus.tried {
                         eprintln!("<5>{name} isn't open to the seat yet");
                     }
-                    self.buses.insert(name, None);
+                    bus.tried = true;
                 }
                 Err(error) => {
-                    if !tried {
+                    if !bus.tried {
                         eprintln!("<4>can't open {name}: {error}");
                     }
-                    self.buses.insert(name, None);
+                    bus.tried = true;
                 }
             }
         }
@@ -623,8 +754,12 @@ mod tests {
             fs::write(self.0.join("dev").join(bus), "").unwrap();
         }
 
-        fn buses(&self) -> Vec<String> {
+        fn buses(&self) -> Vec<(String, Reach)> {
             buses(&self.0.join("class"), &self.0.join("dev")).unwrap()
+        }
+
+        fn names(&self) -> Vec<String> {
+            self.buses().into_iter().map(|(name, _)| name).collect()
         }
     }
 
@@ -638,7 +773,7 @@ mod tests {
     fn a_bus_behind_an_mst_hub_reaches_a_monitor() {
         let tree = Tree::new("mst");
         tree.add("i2c-13", "DPMST", "i2c-13");
-        assert_eq!(tree.buses(), ["i2c-13"]);
+        assert_eq!(tree.buses(), [("i2c-13".into(), Reach::ThroughAHub)]);
     }
 
     #[test]
@@ -651,7 +786,7 @@ mod tests {
         );
         tree.add("i2c-3", "AUX A/DDI A/PHY A", "card1/card1-eDP-1/i2c-3");
         tree.add("i2c-5", "i915 gmbus dpb", "card1/card1-HDMI-A-1/i2c-5");
-        assert_eq!(tree.buses(), ["i2c-7"]);
+        assert_eq!(tree.buses(), [("i2c-7".into(), Reach::ByItsConnector)]);
     }
 
     #[test]
@@ -676,7 +811,79 @@ mod tests {
         tree.add("i2c-13", "DPMST", "i2c-13");
         tree.add("i2c-14", "DPMST", "i2c-14");
         fs::remove_file(tree.0.join("dev/i2c-14")).unwrap();
-        assert_eq!(tree.buses(), ["i2c-13"]);
+        assert_eq!(tree.names(), ["i2c-13"]);
+    }
+
+    /// An EDID's first block for a monitor, summed as a monitor sums it.
+    fn edid(serial: u8) -> Vec<u8> {
+        let mut block = vec![0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x00];
+        // HP's maker code, a model, the serial, the week and year made.
+        block.extend_from_slice(&[0x22, 0xF0, 0x4E, 0x37, serial, 0, 0, 0, 12, 34]);
+        block.resize(127, 0);
+        block.push(0u8.wrapping_sub(block.iter().fold(0u8, |sum, byte| sum.wrapping_add(*byte))));
+        block
+    }
+
+    #[test]
+    fn an_edid_names_its_monitor_by_maker_model_serial_and_making() {
+        assert_eq!(
+            identity(&edid(7)),
+            Some([0x22, 0xF0, 0x4E, 0x37, 7, 0, 0, 0, 12, 34])
+        );
+    }
+
+    #[test]
+    fn what_isn_t_a_whole_edid_names_no_monitor() {
+        let mut summed_wrong = edid(7);
+        summed_wrong[127] ^= 1;
+        let mut no_header = edid(7);
+        no_header[0] = 0xFF;
+        assert_eq!(identity(&summed_wrong), None);
+        assert_eq!(identity(&no_header), None);
+        assert_eq!(identity(&edid(7)[..100]), None);
+        assert_eq!(identity(&[0; 128]), None);
+    }
+
+    fn seen(name: &str, reach: Reach, serial: Option<u8>) -> Seen<'_> {
+        Seen {
+            name,
+            reach,
+            identity: serial.and_then(|serial| identity(&edid(serial))),
+        }
+    }
+
+    #[test]
+    fn a_connector_reaching_a_hub_s_monitor_is_left_to_the_hub_s_bus() {
+        let found = [
+            seen("i2c-10", Reach::ByItsConnector, Some(1)),
+            seen("i2c-13", Reach::ThroughAHub, Some(1)),
+        ];
+        assert_eq!(doubled(&found), HashMap::from([("i2c-10", "i2c-13")]));
+    }
+
+    #[test]
+    fn monitors_behind_a_hub_are_each_followed_though_their_edids_match() {
+        let found = [
+            seen("i2c-10", Reach::ByItsConnector, Some(1)),
+            seen("i2c-13", Reach::ThroughAHub, Some(1)),
+            seen("i2c-14", Reach::ThroughAHub, Some(1)),
+        ];
+        assert_eq!(doubled(&found).len(), 1);
+        assert!(doubled(&found[1..]).is_empty());
+    }
+
+    #[test]
+    fn a_connector_is_followed_unless_a_hub_s_bus_is_known_to_reach_its_monitor() {
+        assert!(
+            doubled(&[
+                seen("i2c-7", Reach::ByItsConnector, Some(1)),
+                seen("i2c-8", Reach::ByItsConnector, Some(1)),
+                seen("i2c-13", Reach::ThroughAHub, Some(2)),
+                seen("i2c-10", Reach::ByItsConnector, None),
+                seen("i2c-14", Reach::ThroughAHub, None),
+            ])
+            .is_empty()
+        );
     }
 
     #[test]
