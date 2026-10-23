@@ -2331,12 +2331,15 @@ pkgs.testers.runNixOSTest {
           photograph("launcher-sign-in")
           type_in("sign in", selecting="Sign In to Lantern")
           machine.send_key("ret")
+          # The window is GTK and WebKit started cold, drawn in software,
+          # which on a machine running other tests too has taken 42 seconds
+          # to show and more than 60, so it's given three minutes for both.
           window = "niri msg --json windows | grep -qF '\"app_id\":\"io.jitsusama.WifiSignIn\"'"
-          machine.wait_until_succeeds(in_session(window), timeout=60)
+          machine.wait_until_succeeds(in_session(window), timeout=180)
           # Its button can only be pressed once the front desk has served
           # the page, which a window that has to try again does later.
           machine.wait_until_succeeds(
-              "journalctl -u lantern-front-desk | grep -q 'GET /sign-in'", timeout=60
+              "journalctl -u lantern-front-desk | grep -q 'GET /sign-in'", timeout=180
           )
           photograph("sign-in", timeout=20)
           # Its one button signs in, and the window closes as Lantern lets
