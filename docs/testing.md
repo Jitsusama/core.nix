@@ -244,6 +244,30 @@ short, as a socket's path can't pass 108 bytes. The pictures land in the
 folder it prints. A break is watched failing this way too, never by
 copying the tree and running the whole test.
 
+A VM test proves wiring: that the real parts connect, a unit starting with
+its config, a message reaching its receiver, the shell drawing on niri. One
+path through each connection is enough; the many cases of a behaviour, such
+as a search's ranking or a guard's thresholds, go in the tiers below, where
+they run in milliseconds.
+
+Its script is Python in a file of its own, `tests/<name>-vm-test.py`, which
+the test reads with `builtins.readFile` and `skipTypeCheck = true`, so ruff
+and mypy read it as strictly as any other Python, as `nix fmt` runs them.
+The driver gives the script its names as globals; for type checkers, it
+imports them from `tests/driver_names.pyi` under `if TYPE_CHECKING:`, and
+mypy checks every call against the driver's own types before a machine
+boots. What the script needs from Nix comes as a program on the machine's
+path, or as one JSON file of values it reads at its top, never spliced into
+its text. Every subtest stays at the top of the file, where `run-subtests`
+finds it.
+
+A test waits on what shows the state it needs: a unit's readiness, a line
+in the journal, a file, the compositor's event stream. A fixed sleep only
+guesses how long a loaded machine takes, and fails or wastes time when it's
+wrong. Showing that something didn't happen takes an event too: wait until
+what would have made it happen is done, such as systemd's job queue
+emptying, and then look.
+
 | Check                             | Proves                                                  |
 | --------------------------------- | ------------------------------------------------------- |
 | `vm-secure-boot-installs`         | the whole install works, and the disk opens only for it |
