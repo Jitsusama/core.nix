@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # Starts a command as the Nix daemon starts a build, and prints its process
 # id: as the first user id the daemon allocates, batch at nice 5, inside the
 # daemon's cgroup.
