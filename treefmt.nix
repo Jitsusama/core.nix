@@ -1,7 +1,7 @@
 # How `nix fmt` formats and lints this repository, and what the formatting
 # check holds it to. Lines stop at 100 characters, the practical limit of the
 # code style. Every language's linter runs at its strictest, test code's
-# included; ruff.toml and mypy.ini say how for Python.
+# included; ruff.toml and mypy.ini say how for Python, .luacheckrc for Lua.
 { pkgs, ... }:
 let
   driver = pkgs.python3Packages.callPackage "${pkgs.path}/nixos/lib/test-driver" { };
@@ -30,6 +30,18 @@ in
       ])
     }/bin/mypy";
     includes = [ "*.py" ];
+  };
+
+  # luacheck reads each Lua file as the program that runs it does, as
+  # .luacheckrc says.
+  settings.formatter.luacheck = {
+    command = "${pkgs.lua54Packages.luacheck}/bin/luacheck";
+    options = [
+      "--codes"
+      "--no-color"
+      "--quiet"
+    ];
+    includes = [ "*.lua" ];
   };
 
   programs = {

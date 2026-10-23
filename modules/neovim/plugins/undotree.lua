@@ -1,5 +1,6 @@
 -- Undotree configuration
--- Visualizes the undo history and makes it easy to browse and switch between different undo branches
+-- Visualizes the undo history and makes it easy to browse and switch between
+-- different undo branches
 
 -- Set configuration variables before plugin loads
 -- Focus the undotree window when toggling (more intuitive)

@@ -5,7 +5,7 @@ local keys = require('keys')
 
 -- Helper function to check if cursor has text before it
 local function has_words_before()
-  unpack = unpack or table.unpack
+  -- Neovim's LuaJIT has unpack as a global, as Lua 5.1 does.
   local line, col = unpack(vim.api.nvim_win_get_cursor(0))
 
   if col == 0 then

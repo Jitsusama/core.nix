@@ -954,17 +954,6 @@ in
       touch $out
     '';
 
-  # The camera's viewfinder script names nothing it never set, which Lua
-  # would otherwise read as nothing and carry on.
-  the-camera-script-names-what-it-sets =
-    pkgs.runCommandLocal "the-camera-script-names-what-it-sets"
-      { nativeBuildInputs = [ pkgs.lua54Packages.luacheck ]; }
-      ''
-        luacheck --std lua54 --globals mp --no-max-line-length --no-color \
-          ${./modules/camera/camera.lua}
-        touch $out
-      '';
-
   # firmware-settings names every setting the firmware holds apart from the
   # declared ones, writes them with the admin password from its input, and
   # wipes that password from the kernel whether the writes worked or not. A

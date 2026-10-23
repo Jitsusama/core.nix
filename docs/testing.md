@@ -23,8 +23,9 @@ out.
 
 `nix fmt` lints as it formats, at each linter's strictest, test code
 included: ruff with every rule and mypy `--strict` for Python (`ruff.toml`,
-`mypy.ini`), shellcheck for shell, statix and deadnix for Nix, and the
-`formatting` check holds the repository to it.
+`mypy.ini`), shellcheck for shell, luacheck for Lua, each file read as the
+Lua of the program that runs it (`.luacheckrc`), statix and deadnix for
+Nix, and the `formatting` check holds the repository to it.
 
 `nix flake check` runs every check, but Nix reuses any check whose inputs
 didn't change, so a change pays only for the checks it can affect. With the
