@@ -32,6 +32,7 @@
     nixosModules.pipewire
     nixosModules.plymouth
     nixosModules.quickshell
+    nixosModules.shure-mv7
     nixosModules.slices
     nixosModules.swayimg
     nixosModules.usb-camera-holders
