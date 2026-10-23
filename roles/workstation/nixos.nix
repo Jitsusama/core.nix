@@ -8,7 +8,8 @@
 # guard in the machine and in every account takes what regenerates before the
 # disk fills. A device that stops working, or a disk that reports a fault, is
 # named to whoever is signed in. The ErgoDox's devices are open to Joel, so it
-# can be flashed. Each account keeps a watch on what its AI use costs.
+# can be flashed. Each account keeps a watch on what its AI use costs, and its
+# administrators, agents included, switch it without a password.
 { nixosModules, homeModules }:
 {
   imports = [
@@ -24,6 +25,7 @@
     nixosModules.nix-daemon
     nixosModules.perf
     nixosModules.podman
+    nixosModules.switch-system
     nixosModules.tpm
     nixosModules.yubikey
   ];

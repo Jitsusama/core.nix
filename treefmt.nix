@@ -3,17 +3,30 @@
 # code style. Every language's linter runs at its strictest, test code's
 # included; ruff.toml and mypy.ini say how for Python.
 { pkgs, ... }:
+let
+  driver = pkgs.python3Packages.callPackage "${pkgs.path}/nixos/lib/test-driver" { };
+  site = pkgs.python3.sitePackages;
+  driverTypes = pkgs.python3Packages.toPythonModule (
+    pkgs.runCommandLocal "test-driver-types" { } ''
+      mkdir -p $out/${site}
+      ln -s ${driver}/${site}/test_driver $out/${site}/
+    ''
+  );
+in
 {
   projectRootFile = "flake.nix";
 
   # mypy reads every script at once, from a Python carrying the libraries
-  # they import, so their types are checked too.
+  # they import, so their types are checked too. A VM test's script names the
+  # test driver's types, which mypy reads from the driver as it's built; it's
+  # a program rather than a library, so it's given as one.
   settings.formatter.mypy = {
     command = "${
       pkgs.python3.withPackages (python: [
         python.dbus-fast
         python.fido2
         python.mypy
+        driverTypes
       ])
     }/bin/mypy";
     includes = [ "*.py" ];
