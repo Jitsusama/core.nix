@@ -689,6 +689,12 @@ pkgs.testers.runNixOSTest {
       def as_account(command):
           return machine.succeed(in_session(command))
 
+      # The longest a program may take to start and show its window. A wait
+      # ends when it does, so this is only a ceiling: on a host busy with
+      # other machines and builds, a cold kitty or GIMP took past 30
+      # seconds, and a wait on a program starting fails then, not the step.
+      starting = 120
+
       def wait_for_surface(namespace):
           machine.wait_until_succeeds(in_session(f"niri msg layers | grep -q {namespace}"), timeout=30)
 
@@ -874,7 +880,7 @@ pkgs.testers.runNixOSTest {
       # Every subtest past the first few needs the shell, so it starts with
       # the session rather than in a subtest, and any subtest can run alone.
       as_account("systemctl --user start quickshell")
-      machine.wait_until_succeeds(in_session("qs ipc show | grep -q launcher"), timeout=60)
+      machine.wait_until_succeeds(in_session("qs ipc show | grep -q launcher"), timeout=starting)
 
       # A loop in the order units start breaks nothing at a switch, when the
       # targets are already reached, so only a boot shows it.
@@ -1200,12 +1206,12 @@ pkgs.testers.runNixOSTest {
           agent = "\u03c0 - TESTQA A quest of\u2026 - my-tree"
           as_account(f"niri msg action spawn -- kitty --title '{agent}'")
           machine.wait_until_succeeds(
-              in_session("niri msg --json windows | grep -q TESTQA"), timeout=30
+              in_session("niri msg --json windows | grep -q TESTQA"), timeout=starting
           )
           # Another window to be in, so going to the session's means a move.
           as_account("niri msg action spawn -- kitty --title Elsewhere")
           machine.wait_until_succeeds(
-              in_session("niri msg --json windows | grep -q '\"Elsewhere\"'"), timeout=30
+              in_session("niri msg --json windows | grep -q '\"Elsewhere\"'"), timeout=starting
           )
           as_account(f"niri msg action focus-window --id {window_titled('Elsewhere')['id']}")
           # The launcher's foot counts it, working, as its presence says.
@@ -1435,7 +1441,7 @@ pkgs.testers.runNixOSTest {
           # Its answer, read in a terminal named for the run and the member.
           machine.send_key("ret")
           reading = "paint-crew \u00b7 roller"
-          machine.wait_until_succeeds(in_session(f"niri msg --json windows | grep -q '{reading}'"), timeout=30)
+          machine.wait_until_succeeds(in_session(f"niri msg --json windows | grep -q '{reading}'"), timeout=starting)
           # Still open a moment on, so the pager holds the answer.
           time.sleep(1)
           as_account(f"niri msg action close-window --id {window_titled(reading)['id']}")
@@ -1486,7 +1492,7 @@ pkgs.testers.runNixOSTest {
           photograph("launcher")
           machine.send_key("ret")
           # The first window opened can take as long as the first GTK one.
-          machine.wait_until_succeeds(in_session("niri msg windows | grep -i kitty"), timeout=120)
+          machine.wait_until_succeeds(in_session("niri msg windows | grep -i kitty"), timeout=starting)
           # What was picked for what was typed is kept for next time.
           picked = "'\"kitty\":{\"program:kitty\"'"
           machine.wait_until_succeeds(
@@ -1516,7 +1522,7 @@ pkgs.testers.runNixOSTest {
           anchor = json.loads(as_account("niri msg --json focused-window"))
           as_account("qs ipc call grid below kitty")
           kitties = "niri msg --json windows | grep -o '\"app_id\":\"kitty\"' | wc -l"
-          machine.wait_until_succeeds(in_session(f"{kitties} | grep -qx 2"), timeout=30)
+          machine.wait_until_succeeds(in_session(f"{kitties} | grep -qx 2"), timeout=starting)
 
           def placed(_):
               windows = json.loads(as_account("niri msg --json windows"))
@@ -1531,7 +1537,7 @@ pkgs.testers.runNixOSTest {
       with subtest("the launcher switches to a window by its title"):
           as_account("niri msg action spawn -- kitty --title 'Notes for Tuesday'")
           machine.wait_until_succeeds(
-              in_session("niri msg windows | grep -q 'Notes for Tuesday'"), timeout=30
+              in_session("niri msg windows | grep -q 'Notes for Tuesday'"), timeout=starting
           )
           as_account("niri msg action focus-window-previous")
           machine.wait_until_fails(
@@ -1563,7 +1569,7 @@ pkgs.testers.runNixOSTest {
                   f" --instance-group scratch --title '{title}'"
               )
               machine.wait_until_succeeds(
-                  in_session(f"niri msg windows | grep -q '{title}'"), timeout=30
+                  in_session(f"niri msg windows | grep -q '{title}'"), timeout=starting
               )
           notes = window_titled("Notes for Tuesday")
           as_account(f"niri msg action focus-window --id {notes['id']}")
@@ -2192,7 +2198,7 @@ pkgs.testers.runNixOSTest {
               lambda shown: (shown["selected"] or {}).get("name") == "Edit the screenshot in GIMP"
           )
           machine.send_key("ret")
-          machine.wait_until_succeeds(f"pgrep -u ${account} -f '[g]imp.*{picture}'", timeout=30)
+          machine.wait_until_succeeds(f"pgrep -u ${account} -f '[g]imp.*{picture}'", timeout=starting)
           # GIMP goes before it draws, so no window of its own takes the keys
           # meant for what follows, and the picture too, since the region
           # screenshot's subtest waits for one of its own. GIMP takes any other
@@ -2310,7 +2316,7 @@ pkgs.testers.runNixOSTest {
           machine.wait_until_fails(in_session("niri msg layers | grep -q notifications"), timeout=30)
           photograph("swayimg")
           machine.send_key("e")
-          machine.wait_until_succeeds(f"pgrep -u ${account} -f '[g]imp.*{looked}'", timeout=30)
+          machine.wait_until_succeeds(f"pgrep -u ${account} -f '[g]imp.*{looked}'", timeout=starting)
           machine.wait_until_fails("pgrep -u ${account} -x swayimg", timeout=10)
           # As in the screenshot's subtest: GIMP goes before it draws.
           machine.succeed("pkill -KILL -u ${account} -f '[g]imp'")
@@ -3014,7 +3020,7 @@ pkgs.testers.runNixOSTest {
           def tuple_opens(part):
               as_account(f"niri msg action spawn -- env -u XDG_ACTIVATION_TOKEN ${tupleWindow} {part}")
               machine.wait_until_succeeds(
-                  in_session(f"niri msg --json windows | grep -q '\"title\":\"{part}\"'"), timeout=60
+                  in_session(f"niri msg --json windows | grep -q '\"title\":\"{part}\"'"), timeout=starting
               )
               return window_titled(part)
 
@@ -3028,7 +3034,7 @@ pkgs.testers.runNixOSTest {
           # rule of niri's overrides.)
           as_account("niri msg action spawn -- kitty --title 'at work'")
           machine.wait_until_succeeds(
-              in_session("niri msg --json focused-window | grep -q '\"title\":\"at work\"'"), timeout=60
+              in_session("niri msg --json focused-window | grep -q '\"title\":\"at work\"'"), timeout=starting
           )
           tuple_face = tuple_opens("tuple-webcams")
           t.assertEqual(tuple_face["app_id"], "Tuple")
@@ -3110,7 +3116,7 @@ pkgs.testers.runNixOSTest {
       with subtest("Capture takes a window found by its title, on any workspace"):
           as_account("niri msg action spawn -- kitty --title Seashells")
           machine.wait_until_succeeds(
-              in_session("niri msg --json windows | grep -qF '\"title\":\"Seashells\"'"), timeout=60
+              in_session("niri msg --json windows | grep -qF '\"title\":\"Seashells\"'"), timeout=starting
           )
           # The window the keys were in, though niri says none has focus
           # while the launcher has the keys.
@@ -3137,7 +3143,7 @@ pkgs.testers.runNixOSTest {
       with subtest("Capture records the window, and says why when niri can't share it"):
           as_account("niri msg action spawn -- kitty --title Tidepool")
           machine.wait_until_succeeds(
-              in_session("niri msg --json windows | grep -qF '\"title\":\"Tidepool\"'"), timeout=60
+              in_session("niri msg --json windows | grep -qF '\"title\":\"Tidepool\"'"), timeout=starting
           )
           capture()
           type_in("record this window", selecting="Record this window \u00b7 Tidepool")
@@ -3441,7 +3447,7 @@ pkgs.testers.runNixOSTest {
           answered("confirm", 1, timeout=60)
           as_account("! ls $XDG_RUNTIME_DIR | grep -q '^askpass'")
           as_account("systemctl --user start quickshell")
-          machine.wait_until_succeeds(in_session("qs ipc show | grep -q askpass"), timeout=60)
+          machine.wait_until_succeeds(in_session("qs ipc show | grep -q askpass"), timeout=starting)
 
       # A switch restarts the shell, and can come while Joel is away and the
       # screens are locked. niri holds a lock whose shell died, so the shell
@@ -3463,7 +3469,7 @@ pkgs.testers.runNixOSTest {
 
           def started_unlocked():
               as_account("systemctl --user restart quickshell")
-              machine.wait_until_succeeds(in_session("qs ipc show | grep -q askpass"), timeout=60)
+              machine.wait_until_succeeds(in_session("qs ipc show | grep -q askpass"), timeout=starting)
               as_account("qs ipc call lock isLocked | grep -qx false")
               as_account(f"grep -qx unlocked {locked}")
 
