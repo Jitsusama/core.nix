@@ -14,8 +14,9 @@
   # link, since links nothing here manages, a VPN's tunnel or a bridge,
   # keep resolved's default of asking it. A bare name nobody answers, a
   # typo or an ssh to a host the network doesn't know, then waited on
-  # LLMNR's timeouts: 8.8 s before glibc said no, where resolved's DNS
-  # alone answered in 10 ms. No network here answers LLMNR.
+  # LLMNR's timeouts: 8.8 s before glibc said no, where a name that
+  # doesn't exist failed through DNS in under a second. No network here
+  # answers LLMNR.
   services.resolved.settings.Resolve.LLMNR = "no";
 
   # networkd removes every routing rule it didn't make whenever it sets up a
