@@ -145,7 +145,10 @@ mod tests {
         assert_eq!(found, ["10.43.0.1".parse::<IpAddr>().unwrap()]);
         assert_eq!(
             wifid.join().unwrap(),
-            json!({"method": "io.jitsusama.Wifi.Lookup", "parameters": {"card": "wlan2", "name": "front-desk.inn"}})
+            json!({
+                "method": "io.jitsusama.Wifi.Lookup",
+                "parameters": {"card": "wlan2", "name": "front-desk.inn"}
+            })
         );
     }
 
@@ -181,7 +184,10 @@ mod tests {
 
     #[test]
     fn a_failure_says_wifid_s_reason() {
-        let failed = json!({"error": "io.jitsusama.Wifi.Failed", "parameters": {"reason": "10.42.0.1 didn't answer"}});
+        let failed = json!({
+            "error": "io.jitsusama.Wifi.Failed",
+            "parameters": {"reason": "10.42.0.1 didn't answer"}
+        });
         let (_dir, socket, _wifid) = wifid(vec![failed]);
 
         let refused = lookup(&socket, "wlan2", "front-desk.inn").unwrap_err();

@@ -741,7 +741,6 @@ impl Air<'_> {
         }
     }
 
-    /// The name of the card wpa_supplicant has at this path.
     /// Notes the channel the card joined its network on, so a card looks
     /// there first when it next has no network.
     async fn joined(&self, bus: &Connection, card: &ObjectPath<'_>) {
@@ -760,6 +759,7 @@ impl Air<'_> {
         }
     }
 
+    /// The name of the card wpa_supplicant has at this path.
     async fn named(&self, bus: &Connection, card: &ObjectPath<'_>) -> Option<String> {
         if let Some((name, _)) = self.cards.get(card.as_str()) {
             return Some(name.clone());
