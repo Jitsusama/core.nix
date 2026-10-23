@@ -1477,6 +1477,122 @@ in
       touch $out
     '';
 
+  # The launcher's people follow Tuple's contacts through the real
+  # tuple-people, which reads a stand-in for Tuple's follow here, and call,
+  # join or favour one (tests/people.qml), with niri stood in. Stopping the
+  # helper stops Tuple's follow, which writes only when someone's presence
+  # changes and so would never find out by itself. A listener stands in for
+  # the daemon's socket, and once it's stopped, leaving the socket's file
+  # as Tuple's daemon does, Tuple must not be run again, since any tuple
+  # command would start a daemon.
+  the-launcher-finds-the-people =
+    let
+      singleton =
+        name: body:
+        pkgs.writeText name ''
+          pragma Singleton
+          import Quickshell
+          import QtQuick
+          Singleton { ${body} }
+        '';
+      niri = singleton "Niri.qml" ''
+        property var spawned: []
+        function spawn(command) { spawned = command; }
+      '';
+      helper = pkgs.callPackage ./modules/quickshell/pi-helper.nix {
+        name = "tuple-people";
+        source = ./modules/tuple/people.rs;
+      };
+      contact = id: full: short: email: status: favorited: recent: {
+        inherit
+          id
+          email
+          status
+          favorited
+          recent
+          ;
+        full_name = full;
+        short_name = short;
+        kind = "user";
+      };
+      # Strangers between those Tuple knows, so their order is the search's.
+      snapshot =
+        ada:
+        pkgs.writeText "contacts.json" (
+          builtins.toJSON [
+            (contact 101 "Eli Fenwick" null "eli@example.com" "unknown" false false)
+            (contact 102 "Ada Brook" "Ada" "ada@example.com" ada true false)
+            (contact 103 null null "gus@example.com" "unknown" false false)
+            (contact 104 "Ben Carrow" null "ben@example.com" "busy" true false)
+            (contact 105 "Cal Dunmore" null "cal@example.com" "offline" false true)
+            (contact 106 "Zoë \"Zed\" Quill" null "zoe@example.com" "unknown" false false)
+            (contact 107 "Dee Ellery" null "dee@example.com" "unavailable" true false)
+            (contact 108 "" "Hal" null "unknown" false false)
+          ]
+          + "\n"
+        );
+      # Tuple's follow says everyone, then again once Ada goes into a call,
+      # and goes on following. It waits as itself rather than as a sleep,
+      # so it's found by its name until it ends. Anything else asked of it
+      # is written down, since the shell asks Tuple through niri alone.
+      tuple = pkgs.writeShellScriptBin "tuple" ''
+        if [ "$*" != "--format json contacts follow" ]; then
+          echo "$*" >> "$XDG_RUNTIME_DIR/asked"
+          exit 0
+        fi
+        echo followed >> "$XDG_RUNTIME_DIR/follows"
+        cat ${snapshot "online"}
+        while [ ! -e "$XDG_RUNTIME_DIR/next" ]; do sleep 0.1; done
+        cat ${snapshot "busy"}
+        while :; do sleep 1; done
+      '';
+      # Waits up to 2 s for Tuple's stand-in to be following, given yes, or
+      # to be gone, given no.
+      followed = pkgs.writeShellScript "followed" ''
+        for _ in $(seq 20); do
+          found=no
+          for cmdline in /proc/[0-9]*/cmdline; do
+            case "$(tr '\0' ' ' < "$cmdline" 2>/dev/null)" in
+              *${tuple}/bin/tuple*contacts*follow*) found=yes ;;
+            esac
+          done
+          [ "$found" = "$1" ] && exit 0
+          sleep 0.1
+        done
+        exit 1
+      '';
+      # Stops the daemon's stand-in, its socket's file left behind.
+      stop = pkgs.writeShellScript "stop-tuple" ''
+        kill "$(cat "$XDG_RUNTIME_DIR/daemon")"
+      '';
+    in
+    pkgs.runCommandLocal "the-launcher-finds-the-people" { } ''
+      mkdir launcher
+      cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
+      cp ${./modules/quickshell/Fuzzy.js} Fuzzy.js
+      cp ${./modules/quickshell/launcher/Provider.qml} launcher/Provider.qml
+      cp ${./modules/quickshell/launcher/Asking.js} launcher/Asking.js
+      cp ${./modules/tuple/People.qml} launcher/People.qml
+      cp ${./tests/people.qml} shell.qml
+      cp ${niri} Niri.qml
+      export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
+      export FOLLOWED=${followed} STOP_TUPLE=${stop} PATH=${helper}/bin:${tuple}/bin:$PATH
+      mkdir -m 700 $XDG_RUNTIME_DIR
+      ${lib.getExe pkgs.socat} UNIX-LISTEN:$XDG_RUNTIME_DIR/tuple-0,fork,unlink-close=0 /dev/null &
+      echo $! > $XDG_RUNTIME_DIR/daemon
+      while [ ! -S $XDG_RUNTIME_DIR/tuple-0 ]; do sleep 0.1; done
+      export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+      timeout 60 ${lib.getExe' pkgs.quickshell "qs"} -p shell.qml
+      if [ -e $XDG_RUNTIME_DIR/asked ]; then
+        echo "the shell asked Tuple itself:"; cat $XDG_RUNTIME_DIR/asked; exit 1
+      fi
+      if [ "$(wc -l < $XDG_RUNTIME_DIR/follows)" != 2 ]; then
+        echo "Tuple was followed $(wc -l < $XDG_RUNTIME_DIR/follows) times, not twice: a stopped Tuple was run"
+        exit 1
+      fi
+      touch $out
+    '';
+
   # A FileView told not to print errors says nothing of a file that opens
   # and then refuses every read, as some sysfs files do, in the Quickshell
   # the machine runs (fileview-quiet.patch); /proc/self/mem is one, since

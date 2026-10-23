@@ -1,7 +1,8 @@
-# What the launcher reads of pi: one of its helpers, each a single Rust
+# What the shell reads through a helper of its own, each a single Rust
 # file on the standard library alone, so it builds with rustc and no
 # crates, and its tests run as it builds: pi-quests (quests.rs), every
-# quest in the store, and pi-runs (runs.rs), the fleets and review rounds.
+# quest in pi's store, pi-runs (runs.rs), pi's fleets and review rounds,
+# and tuple-people (../tuple/people.rs), Tuple's contacts.
 {
   runCommandCC,
   rustc,

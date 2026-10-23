@@ -1946,9 +1946,9 @@ pkgs.testers.runNixOSTest {
           launcher_ready()
           photograph("launcher-home")
           # The last row at home is the last collection, the shortcuts; a page
-          # down stops there, so two reach it however long home grows.
-          machine.send_key("pgdn")
-          machine.send_key("pgdn")
+          # down stops there, so more than home's pages reach it as it grows.
+          for _ in range(4):
+              machine.send_key("pgdn")
           # Opening a collection keeps the launcher open, where a program
           # picked instead would close it.
           step_in("ret")

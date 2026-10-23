@@ -64,6 +64,14 @@ let
   data = "${config.xdg.dataHome}/tuple/0";
   settings = "${data}/settings";
 
+  # Tuple's people for the shell (people.rs): who's in Tuple's contacts and
+  # how they stand, said only as it changes, since Tuple prints all of
+  # them, over a megabyte, on every change of anyone's presence.
+  people = pkgs.callPackage ../quickshell/pi-helper.nix {
+    name = "tuple-people";
+    source = ./people.rs;
+  };
+
   # Opens a tuple: link, or starts the daemon when given none. A room's
   # name is letters, digits, - and _, as Tuple's links write it, and
   # anything else is said rather than run.
@@ -124,6 +132,7 @@ in
   home.packages = [
     package
     completion
+    people
   ];
 
   xdg.configFile = {
@@ -143,6 +152,12 @@ in
     launcher.providers.tuple = {
       order = 45;
       source = ./Calls.qml;
+    };
+    # Tuple's people, to call or join, found by name or email.
+    launcher.providers.people = {
+      order = 46;
+      source = ./People.qml;
+      weight = 0.9;
     };
   };
 
