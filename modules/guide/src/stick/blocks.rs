@@ -8,8 +8,14 @@
 //! different blocks, so one block held would be read and written back for
 //! nearly every cluster, and every new file would read the whole directory
 //! off the stick again.
+//!
+//! A partition about to be formatted is reached fresh: a block nothing has
+//! written yet holds nothing worth keeping, so it starts empty rather than
+//! being read first. A stick asked to read between writes slows to a
+//! crawl, and a vault's files arrive in pieces smaller than a block. Blocks
+//! go back in unbroken runs, as a stick writes fastest.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::io::{self, Read, Seek, SeekFrom, Write};
 
 use super::gpt::SECTOR;
@@ -27,6 +33,9 @@ pub const BLOCK: u64 = 64 * 1024;
 /// through and a directory of thousands of files, with room to spare for
 /// data passing through in order.
 pub const CACHED: usize = 512;
+
+/// 64 blocks, 4 MiB: the most written back in one go.
+pub const RUN: usize = 64;
 
 /// A block held: its bytes, whether they changed since they were read, and
 /// when it was last reached, for the least lately reached to go first.
@@ -46,6 +55,11 @@ pub struct Partition<'d, D: Disk> {
     held: BTreeMap<u64, Held>,
     /// How many times a block has been reached, as a clock.
     clock: u64,
+    /// For a fresh partition, every block held since it was reached: any
+    /// other holds nothing yet.
+    fresh: Option<HashSet<u64>>,
+    /// How many blocks it holds at most.
+    cached: usize,
 }
 
 impl<'d, D: Disk> Partition<'d, D> {
@@ -65,7 +79,17 @@ impl<'d, D: Disk> Partition<'d, D> {
             position: 0,
             held: BTreeMap::new(),
             clock: 0,
+            fresh: None,
+            cached: CACHED,
         })
+    }
+
+    /// The partition, as `new` has it, about to be written afresh: what's
+    /// on the disk there now is never read.
+    pub fn fresh(disk: &'d mut D, start: u64, bytes: u64) -> io::Result<Partition<'d, D>> {
+        let mut partition = Partition::new(disk, start, bytes)?;
+        partition.fresh = Some(HashSet::new());
+        Ok(partition)
     }
 
     pub fn bytes(&self) -> u64 {
@@ -77,18 +101,22 @@ impl<'d, D: Disk> Partition<'d, D> {
         BLOCK.min(self.bytes - block) as usize
     }
 
-    /// The block `at` lies in, read off the disk unless it's held, or unless
-    /// `whole` says it's about to be written over entirely.
+    /// The block `at` lies in, read off the disk unless it's held, it's
+    /// never been held in a fresh partition, or `whole` says it's about to
+    /// be written over entirely.
     fn hold(&mut self, at: u64, whole: bool) -> io::Result<&mut Held> {
         let block = at / BLOCK * BLOCK;
         self.clock += 1;
         if !self.held.contains_key(&block) {
-            if self.held.len() >= CACHED {
+            if self.held.len() >= self.cached {
                 self.let_go()?;
             }
             let length = self.length(block);
             let mut bytes = vec![0; length];
-            if !whole {
+            // Remembered even when it's written whole, since once let go it
+            // holds what was written.
+            let unwritten = self.fresh.as_mut().is_some_and(|held| held.insert(block));
+            if !whole && !unwritten {
                 self.disk.seek(SeekFrom::Start(self.start + block))?;
                 self.disk.read_exact(&mut bytes)?;
             }
@@ -106,9 +134,12 @@ impl<'d, D: Disk> Partition<'d, D> {
         Ok(held)
     }
 
-    /// Lets go of the block least lately reached, written back if it changed.
+    /// Lets go of the block least lately reached and of the blocks after
+    /// it that are as long untouched, up to a run, written back if they
+    /// changed. Older than half of what's held counts as untouched, which
+    /// keeps the tables and the directory, reached for every file.
     fn let_go(&mut self) -> io::Result<()> {
-        let Some(block) = self
+        let Some(first) = self
             .held
             .iter()
             .min_by_key(|(_, held)| held.reached)
@@ -116,30 +147,61 @@ impl<'d, D: Disk> Partition<'d, D> {
         else {
             return Ok(());
         };
-        self.write_back(block)?;
-        self.held.remove(&block);
+        let mut ages: Vec<u64> = self.held.values().map(|held| held.reached).collect();
+        let middle = ages.len() / 2;
+        let untouched = *ages.select_nth_unstable(middle).1;
+        let mut run = vec![first];
+        while run.len() < RUN {
+            let next = run[run.len() - 1] + BLOCK;
+            match self.held.get(&next) {
+                Some(held) if held.reached <= untouched => run.push(next),
+                _ => break,
+            }
+        }
+        self.write_back(&run)?;
+        for block in run {
+            self.held.remove(&block);
+        }
         Ok(())
     }
 
-    fn write_back(&mut self, block: u64) -> io::Result<()> {
-        if let Some(held) = self.held.get_mut(&block)
-            && held.changed
-        {
-            self.disk.seek(SeekFrom::Start(self.start + block))?;
-            self.disk.write_all(&held.bytes)?;
+    /// Writes back those of `blocks`, in the order they lie on the disk,
+    /// that changed, each unbroken stretch of them in one write of up to a
+    /// run.
+    fn write_back(&mut self, blocks: &[u64]) -> io::Result<()> {
+        let mut stretch: Option<(u64, Vec<u8>)> = None;
+        for block in blocks {
+            let Some(held) = self.held.get_mut(block).filter(|held| held.changed) else {
+                continue;
+            };
+            match &mut stretch {
+                Some((from, bytes))
+                    if *from + bytes.len() as u64 == *block
+                        && bytes.len() < RUN * BLOCK as usize =>
+                {
+                    bytes.extend_from_slice(&held.bytes)
+                }
+                _ => {
+                    if let Some((from, bytes)) = stretch.take() {
+                        self.disk.seek(SeekFrom::Start(self.start + from))?;
+                        self.disk.write_all(&bytes)?;
+                    }
+                    stretch = Some((*block, held.bytes.clone()));
+                }
+            }
             held.changed = false;
         }
+        if let Some((from, bytes)) = stretch {
+            self.disk.seek(SeekFrom::Start(self.start + from))?;
+            self.disk.write_all(&bytes)?;
+        }
         Ok(())
     }
 
-    /// Writes back every block that changed, in the order they lie on the
-    /// disk.
+    /// Writes back every block that changed.
     fn write_back_all(&mut self) -> io::Result<()> {
         let blocks: Vec<u64> = self.held.keys().copied().collect();
-        for block in blocks {
-            self.write_back(block)?;
-        }
-        Ok(())
+        self.write_back(&blocks)
     }
 }
 
@@ -322,12 +384,14 @@ mod tests {
         assert_eq!(written[end], 0, "past the partition");
     }
 
-    /// A disk that counts the bytes read off it and written to it.
+    /// A disk that counts the bytes read off it and written to it, and
+    /// the writes.
     #[derive(Default)]
     struct Counting {
         disk: Cursor<Vec<u8>>,
         read: u64,
         written: u64,
+        writes: u64,
     }
 
     impl Read for Counting {
@@ -342,6 +406,7 @@ mod tests {
         fn write(&mut self, from: &[u8]) -> io::Result<usize> {
             let count = self.disk.write(from)?;
             self.written += count as u64;
+            self.writes += 1;
             Ok(count)
         }
 
@@ -362,27 +427,36 @@ mod tests {
         // FAT32's least size, and more.
         let bytes = 1024 * BLOCK;
         let mut disk = Counting {
-            disk: Cursor::new(vec![0; bytes as usize]),
+            disk: Cursor::new(vec![0xaa; bytes as usize]),
             ..Counting::default()
         };
-        // As a binary cache is: a thousand files at the top, most small.
-        let files: Vec<Vec<u8>> = (0..1000)
+        // As a binary cache is: thousands of files at the top, most small,
+        // in pieces smaller than a block.
+        let files: Vec<Vec<u8>> = (0..400)
             .map(|n| vec![n as u8; 1000 + (n % 7) * 9000])
             .collect();
         let held: u64 = files.iter().map(|file| file.len() as u64).sum();
         {
-            let mut partition = Partition::new(&mut disk, 0, bytes).unwrap();
+            let mut partition = Partition::fresh(&mut disk, 0, bytes).unwrap();
+            // Less than it holds, so blocks are let go as it fills.
+            partition.cached = 2 * RUN;
             let mut store = Fat::format(Unflushed(&mut partition)).unwrap();
             for (n, file) in files.iter().enumerate() {
-                store
-                    .create(&format!("{n:04}.nar.zst"))
-                    .unwrap()
-                    .write_all(file)
-                    .unwrap();
+                let mut created = store.create(&format!("{n:04}.nar.zst")).unwrap();
+                for piece in file.chunks(8192) {
+                    created.write_all(piece).unwrap();
+                }
             }
             store.close().unwrap();
             partition.flush().unwrap();
         }
+        // Nothing comes off the stick while it's written, but for the
+        // tables' blocks let go before they're counted, once, at the close.
+        assert!(
+            disk.read * 10 < held,
+            "{} bytes read while {held} were written",
+            disk.read
+        );
         // Each file takes whole clusters, and the tables and the directory
         // come on top.
         assert!(
@@ -390,12 +464,69 @@ mod tests {
             "{} bytes written for {held} held",
             disk.written
         );
-        // A block written in part is read first, once, and not again.
+        // In runs, not a block at a time, though this small a vault's
+        // directory grows among the files and breaks them up.
         assert!(
-            disk.read < 2 * held,
-            "{} bytes read for {held} written",
-            disk.read
+            disk.writes * 2 * BLOCK < disk.written,
+            "{} writes for {} bytes",
+            disk.writes,
+            disk.written
         );
+        let mut partition = Partition::new(&mut disk.disk, 0, bytes).unwrap();
+        let mut store = Fat::open(&mut partition).unwrap();
+        for (n, file) in files.iter().enumerate() {
+            let mut back = vec![];
+            store
+                .open(&format!("{n:04}.nar.zst"))
+                .unwrap()
+                .read_to_end(&mut back)
+                .unwrap();
+            assert!(back == *file, "file {n} came back changed");
+        }
+    }
+
+    #[test]
+    fn a_fresh_block_let_go_is_read_again_when_its_reached() {
+        let bytes = 2 * CACHED as u64 * BLOCK;
+        let mut disk = Cursor::new(vec![0xaa; bytes as usize]);
+        {
+            let mut partition = Partition::fresh(&mut disk, 0, bytes).unwrap();
+            partition.write_all(&[1; BLOCK as usize]).unwrap();
+            // Enough other blocks that the first is let go.
+            for _ in 0..CACHED + RUN {
+                partition.write_all(&[2; BLOCK as usize]).unwrap();
+            }
+            partition.seek(SeekFrom::Start(10)).unwrap();
+            partition.write_all(&[3; 5]).unwrap();
+            partition.flush().unwrap();
+        }
+        let disk = disk.into_inner();
+        assert_eq!(disk[..10], [1; 10], "the block's first write was lost");
+        assert_eq!(disk[10..15], [3; 5]);
+        assert_eq!(disk[15..BLOCK as usize], [1; BLOCK as usize - 15]);
+    }
+
+    #[test]
+    fn a_fresh_partition_starts_empty_without_reading_the_disk() {
+        let mut disk = Counting {
+            disk: Cursor::new(vec![0xaa; 2 * BLOCK as usize]),
+            ..Counting::default()
+        };
+        {
+            let mut partition = Partition::fresh(&mut disk, 0, 2 * BLOCK).unwrap();
+            partition.seek(SeekFrom::Start(BLOCK + 3)).unwrap();
+            partition.write_all(b"vault").unwrap();
+            partition.flush().unwrap();
+        }
+        assert_eq!(disk.read, 0);
+        let disk = disk.disk.into_inner();
+        assert_eq!(
+            disk[..BLOCK as usize],
+            [0xaa; BLOCK as usize],
+            "an untouched block was written"
+        );
+        assert_eq!(disk[BLOCK as usize..BLOCK as usize + 3], [0; 3]);
+        assert_eq!(&disk[BLOCK as usize + 3..BLOCK as usize + 8], b"vault");
     }
 
     #[test]
