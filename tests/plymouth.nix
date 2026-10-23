@@ -95,11 +95,45 @@ pkgs.testers.runNixOSTest {
       import re
       import shlex
       import subprocess
+      import tempfile
+      import time
+      from pathlib import Path
+      from test_driver.machine.ocr import perform_ocr_variants_on_screenshot
 
       # A photograph of the screen, kept for a person to judge.
       def photographed(name):
           machine.screenshot(name)
           return os.path.join(machine.out_dir, f"{name}.png")
+
+      # Photographs the screen about once a second until the console, from
+      # mark on, says words. Reading a screen can take longer under load
+      # than a shutdown's screen stays up, so the photographs are read only
+      # afterwards, by showing.
+      def photographs_until(words, mark, within):
+          shots = []
+          began = time.monotonic()
+          while words not in machine.get_console_log()[mark:]:
+              t.assertLess(time.monotonic() - began, within, f"the console never said {words}")
+              # As the driver photographs for its own reading: raw, since
+              # its OCR can't read PNG.
+              shot = os.path.join(burst, f"{len(os.listdir(burst))}.ppm")
+              machine.send_monitor_command(f"screendump {shot}")
+              shots.append(shot)
+              time.sleep(1)
+          return shots
+
+      # The newest of the photographs that shows words, kept under name for
+      # a person to judge.
+      def showing(shots, words, name):
+          for shot in reversed(shots):
+              if any(re.search(words, text) for text in perform_ocr_variants_on_screenshot(Path(shot))):
+                  kept = os.path.join(machine.out_dir, f"{name}.png")
+                  with open(kept, "wb") as png:
+                      subprocess.run(["pnmtopng", shot], stdout=png, check=True)
+                  return kept
+          raise AssertionError(f"none of {len(shots)} photographs showed {words}")
+
+      burst = tempfile.mkdtemp()
 
       # How many of a photograph's pixels are the theme's alert colour,
       # which only the frame of a refused secret is drawn in. The muted
@@ -357,14 +391,14 @@ pkgs.testers.runNixOSTest {
               " exec ${pkgs.coreutils}/bin/sleep 25' TERM;"
               " ${pkgs.coreutils}/bin/sleep 25 & wait\"",
           )
+          mark = len(machine.get_console_log())
           machine.reboot()
-          machine.wait_for_text("waiting on Slow Goodbye", timeout=60)
-          photographed("stopping-slowly")
           # Every wait is bounded, so a restart that stalls fails here in
           # minutes rather than holding its VM until the hour is up.
-          machine.wait_for_console_text("Sending SIGTERM to remaining processes", timeout=120)
-          machine.wait_for_text("waiting on the last programs", timeout=15)
-          photographed("last-stage")
+          stopping = photographs_until("Sending SIGTERM to remaining processes", mark, 120)
+          last = photographs_until("Sending SIGKILL to remaining processes", mark, 60)
+          showing(stopping, "waiting on Slow Goodbye", "stopping-slowly")
+          showing(last, "waiting on the last programs", "last-stage")
           # The test's machine ends at a restart rather than starting again.
           machine.wait_for_shutdown(timeout=datetime.timedelta(minutes=3))
           machine.start()
