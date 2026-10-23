@@ -2964,19 +2964,16 @@ in
         touch $out
       '';
 
-  # The camera watch's reading of a USB camera, over a sysfs of its own: a
-  # holder is named only while one of the camera's streaming interfaces has
-  # a nonzero alternate setting, its file is named for the camera, made a
-  # plain file name, and goes when its node does or the watch is stopped.
+  # The camera watch's tests, which run as it builds. Over a sysfs of its
+  # own, a USB camera's holder is named only while one of its streaming
+  # interfaces has a nonzero alternate setting, its file is named for the
+  # camera, made a plain file name, and goes when its node does or the
+  # watch is stopped; a name is one printable line, a wrapper's named for
+  # what it wraps, and only a unit in a process's cgroup is ignored. What
+  # takes real holders is vm-loopback-says-who-holds-it's.
   usb-camera-holders-follow-the-stream =
-    pkgs.runCommandLocal "usb-camera-holders-follow-the-stream"
-      { nativeBuildInputs = [ pkgs.python3 ]; }
-      ''
-        cp ${./modules/v4l2loopback/holders.py} holders.py
-        cp ${./modules/v4l2loopback/holders_test.py} holders_test.py
-        python3 -m unittest -v holders_test
-        touch $out
-      '';
+    pkgs.callPackage ./modules/v4l2loopback/holders/package.nix
+      { };
 
   the-click-strength-holds-after-sleep =
     let

@@ -14,9 +14,7 @@
 # not its metadata node.
 { lib, pkgs, ... }:
 let
-  holders = pkgs.writers.writePython3Bin "loopback-holders" { } (
-    builtins.readFile ../v4l2loopback/holders.py
-  );
+  holders = pkgs.callPackage ../v4l2loopback/holders/package.nix { };
   holdersDir = "/run/camera-holders";
 in
 {

@@ -18,7 +18,7 @@
 }:
 let
   cfg = config.jitsusama.v4l2loopback;
-  holders = pkgs.writers.writePython3Bin "loopback-holders" { } (builtins.readFile ./holders.py);
+  holders = pkgs.callPackage ./holders/package.nix { };
   holdersDir = "/run/camera-holders";
 in
 {
