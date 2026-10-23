@@ -344,7 +344,7 @@ fn step(theme: &Theme, moment: &Moment, inside: usize) -> (Vec<Line>, Option<(us
             lines.extend(marked(
                 span(Role::Success, theme.mark("done")),
                 Role::Text,
-                text,
+                &capitalised(text),
                 inside,
             ));
             footer = vec![];

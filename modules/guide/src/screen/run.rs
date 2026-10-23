@@ -410,8 +410,16 @@ impl Walk<'_> {
         io: &mut dyn Io,
         done: &mut Vec<String>,
     ) -> Result<Ended, Fault> {
+        // What earlier journeys did stays; this one's steps are listed as
+        // each look finds them done, so a guide started again still shows
+        // the steps it did before.
+        let earlier = done.len();
         loop {
-            let next = match self.journey.next(self.here, machine) {
+            let mut seen = Vec::new();
+            let next = self.journey.next_seeing(self.here, machine, &mut seen);
+            done.truncate(earlier);
+            done.extend(seen);
+            let next = match next {
                 Ok(next) => next,
                 Err(Fault::StickOut) => {
                     if !self.stick_out(io, None, done)? {
@@ -486,7 +494,8 @@ impl Walk<'_> {
                     let attempt = Journey::attempt(step, machine, &answers);
                     ticking.stop();
                     match attempt {
-                        Ok(evidence) => done.push(evidence),
+                        // The next look lists it with the rest.
+                        Ok(_) => {}
                         Err(Fault::StickOut) => {
                             if !self.stick_out(io, Some(step), done)? {
                                 return Ok(Ended::Left);
@@ -783,7 +792,7 @@ mod tests {
                 .last()
                 .unwrap()
                 .iter()
-                .any(|line| line.to_lowercase().contains("everything is done")),
+                .any(|line| line.contains("The stick was read")),
             "{shown:#?}"
         );
     }
@@ -844,7 +853,7 @@ mod tests {
                 .last()
                 .unwrap()
                 .iter()
-                .any(|line| line.contains("something was copied")),
+                .any(|line| line.contains("Something was copied")),
             "{shown:#?}"
         );
     }
@@ -870,6 +879,26 @@ mod tests {
             .collect();
         assert_eq!(working.len(), 1, "nothing drawn once stopped: {shown:#?}");
         assert_eq!(working[0].last().unwrap(), "  Ctrl+C stop", "{shown:#?}");
+    }
+
+    #[test]
+    fn a_step_found_done_when_the_guide_starts_again_is_listed_as_done() {
+        let journey = Journey::new(vec![Box::new(Slow), Box::new(Asking)]).unwrap();
+        let theme = Theme::from("", "", true);
+        let mut stand = Stand::default();
+        stand.keys.extend([Press::Char('1'), Press::Return]);
+        let mut machine = fake();
+        machine.file("/copied", b"yes");
+        walk(&journey, &theme)
+            .walk(&mut machine, &mut stand)
+            .unwrap();
+        let shown = stand.shown.lock().unwrap().clone();
+        assert!(
+            shown[0]
+                .iter()
+                .any(|line| line.contains("Something was copied")),
+            "{shown:#?}"
+        );
     }
 
     #[test]
