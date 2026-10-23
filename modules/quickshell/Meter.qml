@@ -20,7 +20,11 @@ PanelWindow {
     // Wide enough for the bar to read as a scale at a glance.
     readonly property int length: 320
     readonly property real shown: Math.max(0, Math.min(level, 1))
-    readonly property string figure: `${Math.round(shown * 100)}%`
+    // What the figure says, a share unless a meter gives its own, such as
+    // a warmth in kelvin, and the widest it gets.
+    property string reading: ""
+    property string widestReading: "100%"
+    readonly property string figure: reading !== "" ? reading : `${Math.round(shown * 100)}%`
 
     // The figure it shows, said to the desktop test while reports are on.
     function tell() {
@@ -85,7 +89,7 @@ PanelWindow {
             TextMetrics {
                 id: widest
                 font: value.font
-                text: "100%"
+                text: meter.widestReading
             }
 
             Text {

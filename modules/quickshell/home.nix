@@ -88,6 +88,7 @@ let
     "Picking.js"
     "Quiet.qml"
     "Lights.qml"
+    "DeskLight.qml"
     "KeyboardLayer.qml"
     "KeyboardLayout.qml"
     "KeyboardMap.qml"

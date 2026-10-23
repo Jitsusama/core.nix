@@ -1405,6 +1405,69 @@ in
       touch $out
     '';
 
+  # The launcher tells how the desk light is lit and sets it, and the
+  # brightness bar hears its changes but not a camera lighting it
+  # (tests/desk-light.qml), over a stand-in litra that keeps a light's
+  # state and says each change on its watch, as the real one does.
+  the-launcher-finds-the-desk-light =
+    let
+      niri = pkgs.writeText "Niri.qml" ''
+        pragma Singleton
+        import Quickshell
+        import QtQuick
+        Singleton { function spawn(command) { Quickshell.execDetached(command); } }
+      '';
+      litra = pkgs.writeShellApplication {
+        name = "litra";
+        runtimeInputs = [ pkgs.coreutils ];
+        text = ''
+          state=$XDG_RUNTIME_DIR/litra-state
+          feed=$XDG_RUNTIME_DIR/litra-feed
+          [ -e "$state" ] || echo "true 40 4000" > "$state"
+          read -r on percent kelvin < "$state"
+          case "$1" in
+            watch)
+              printf '[{"node":"/dev/hidraw1","on":%s,"percent":%s,"kelvin":%s}]\n' \
+                "$on" "$percent" "$kelvin" >> "$feed"
+              exec tail -n +1 -f "$feed"
+              ;;
+            on) on=true ;;
+            off) on=false ;;
+            brightness) percent=$2 ;;
+            temperature) kelvin=$2 ;;
+            # Not litra's: the light's own buttons, or a camera, and the
+            # light unplugged.
+            press) on=$2 percent=$3 kelvin=$4 ;;
+            unplug)
+              echo "[]" >> "$feed"
+              exit 0
+              ;;
+            *) exit 2 ;;
+          esac
+          echo "$on $percent $kelvin" > "$state"
+          printf '[{"node":"/dev/hidraw1","on":%s,"percent":%s,"kelvin":%s}]\n' \
+            "$on" "$percent" "$kelvin" >> "$feed"
+        '';
+      };
+    in
+    pkgs.runCommandLocal "the-launcher-finds-the-desk-light" { } ''
+      mkdir launcher
+      cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
+      cp ${./modules/quickshell/Fuzzy.js} Fuzzy.js
+      cp ${./modules/quickshell/DeskLight.qml} DeskLight.qml
+      cp ${./modules/quickshell/launcher/Provider.qml} launcher/Provider.qml
+      cp ${./modules/quickshell/launcher/Asking.js} launcher/Asking.js
+      cp ${./modules/quickshell/launcher/Light.qml} launcher/Light.qml
+      cp ${./tests/desk-light.qml} shell.qml
+      cp ${niri} Niri.qml
+      export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
+      export PATH=${litra}/bin:$PATH
+      mkdir -m 700 $XDG_RUNTIME_DIR
+      export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+      timeout 60 ${lib.getExe' pkgs.quickshell "qs"} -p shell.qml
+      touch $out
+    '';
+
   # The launcher's runs find pi's fleets and review rounds in a harness's
   # state written here, as the real pi-runs reads it, and go to the session
   # that started one or read a participant's answer (tests/runs.qml), with
