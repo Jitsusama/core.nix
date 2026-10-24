@@ -50,7 +50,9 @@ def unlock(secret: str) -> None:
     # The agent that wrote the prompt to the serial console reads it
     # there, where tty1's may not be reading keys yet.
     machine.send_console(secret + "\n")
-    machine.wait_for_console_text("Finished .*Cryptography Setup for system")
+    # Perhaps coloured; the driver matches across lines joined with nothing
+    # between them, so the pattern mustn't span one.
+    machine.wait_for_console_text(r"Finished (?:\x1b\[[0-9;]*m)*Cryptography Setup for system")
 
 
 machine.start(allow_reboot=True)

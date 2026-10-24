@@ -39,6 +39,11 @@ qemu_img: str = values["qemuImg"]
 guide: str = values["guide"]
 tpm2_clear: str = values["tpm2Clear"]
 keygen: str = values["keygen"]
+
+# systemd saying the disk opened, perhaps coloured. The driver matches across lines joined with
+# nothing between them, so nothing here may span one.
+OPENED = r"Finished (?:\x1b\[[0-9;]*m)*Cryptography Setup for system"
+
 # What's typed at the guide: the keys' PIN, the TPM's, the account's password, the stick's
 # passphrase and the rescue bundle's.
 pin: str = values["pin"]
@@ -290,9 +295,7 @@ with subtest("the stick comes out, and the machine boots its own disk with a key
             machine.send_console(secret + "\n")
             # A prompt left asking times the wait out, and the next try answers it.
             with contextlib.suppress(Exception):
-                machine.wait_for_console_text(
-                    "Finished .*Cryptography Setup for system", timeout=30
-                )
+                machine.wait_for_console_text(OPENED, timeout=30)
                 return
         message = "the disk never opened with the key's PIN"
         raise RuntimeError(message)
@@ -300,7 +303,7 @@ with subtest("the stick comes out, and the machine boots its own disk with a key
     def unlock_as_asked() -> str:
         """Answer the disk's prompts as docs/installing.md says, and say whose PIN opened it."""
         asked = r"Please enter (LUKS2 token|TPM2|security token) PIN"
-        opened = "Finished .*Cryptography Setup for system"
+        opened = OPENED
         answered = ""
         tokens_asked = 0
         for _ in range(8):
