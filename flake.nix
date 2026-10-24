@@ -219,6 +219,7 @@
       nixosModules = {
         backlight = ./modules/backlight/nixos.nix;
         bluetooth = ./modules/bluetooth/nixos.nix;
+        bluetooth-links = ./modules/bluetooth-links/nixos.nix;
         btrfs = ./modules/btrfs/nixos.nix;
         camera = ./modules/camera/nixos.nix;
         console = ./modules/console/nixos.nix;
