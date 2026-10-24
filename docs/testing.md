@@ -121,12 +121,15 @@ niri nested in a headless sway drawn in software, inside the build sandbox
 proves what the shell does on niri that needs no system service: a surface
 landing as niri's layer, what a bind's command does. It asserts through the
 shell's reports and `niri msg`, never pixels. `the-notices-land-on-niri` is
-the first.
+the first. Since nothing types there, Joel is away as soon as the shell's
+idle time passes, which `the-notices-wait-while-joel-is-away` uses.
 
 Two things it can't do, so they stay in a machine. Nested, niri has one
 output that never goes, so screens coming and going need a VM. And keys
 typed there with wtype never reached niri's binds, so a check runs what a
-bind runs rather than pressing it.
+bind runs rather than pressing it. Nor does anything there end Joel being
+away: sway's cursor moved and a virtual pointer through `wlrctl` both left
+niri idle, so coming back needs a VM.
 
 ### Virtual Machines
 

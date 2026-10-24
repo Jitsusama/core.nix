@@ -610,6 +610,10 @@
     sent as a card on niri's notices layer, and what Super+Shift+N runs puts a critical one away
     unread in the history
   '';
+  the-notices-wait-while-joel-is-away = ''
+    a notice that comes while nothing has been typed or moved stays on niri past the time its sender
+    gave it, never counting down
+  '';
   the-npu-finds-its-compiler = ''
     the XPS 14's graphics drivers hold the NPU's driver and Intel's compiler beside it
   '';
