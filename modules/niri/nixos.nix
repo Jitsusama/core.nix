@@ -3,7 +3,12 @@
 # programs, Xwayland for the X11 programs left, the tool its brightness keys
 # call, and the clipboard's. Its media keys go to the shell (Quickshell's
 # Music.qml). Its touchscreen takes the touchpad's gestures too.
-{ config, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 {
   programs.niri = {
     enable = true;
@@ -75,11 +80,19 @@
     capabilities = "cap_sys_nice+ep";
     source = "${config.programs.niri.package}/bin/niri";
   };
+  # niri asks the GPU for a high-priority context, and its own log filter
+  # hides smithay's word on whether it got one, so its default filter is
+  # kept with that one module's lines let through: one per context.
   systemd.user.services.niri = {
     overrideStrategy = "asDropin";
     serviceConfig.ExecStart = [
       ""
       "${config.security.wrapperDir}/niri-compositor --session"
+    ];
+    environment.RUST_LOG = lib.concatStringsSep "," [
+      "niri=debug"
+      "smithay::backend::renderer::gles=error"
+      "smithay::backend::egl::context=info"
     ];
   };
 

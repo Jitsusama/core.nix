@@ -28,6 +28,35 @@ onLinux {
             config.systemd.user.units."niri.service".text
       );
 
+  # Whether the GPU gave niri the priority it asked for is smithay's to say,
+  # at info, which niri's own log filter drops; the session's niri lets
+  # that one module through, and keeps the rest of the filter niri's source
+  # sets, so a niri that changes it is caught here.
+  niri-says-what-the-gpu-gave-it =
+    let
+      inherit (graphical) config;
+      filter = config.systemd.user.services.niri.environment.RUST_LOG or "";
+      kept = lib.removeSuffix ",smithay::backend::egl::context=info" filter;
+    in
+    pkgs.runCommandLocal "niri-says-what-the-gpu-gave-it" { } ''
+      if [ ${lib.escapeShellArg kept} = ${lib.escapeShellArg filter} ]; then
+        echo "The session's niri doesn't let smithay's EGL contexts through its log filter, so its journal can't say whether the GPU gave it a high priority." >&2
+        exit 1
+      fi
+      grep -qF 'const DEFAULT_LOG_FILTER: &str = "'${lib.escapeShellArg kept}'";' \
+        ${config.programs.niri.package.src}/src/main.rs || {
+        echo "The session's niri sets a log filter other than niri's own default with smithay's EGL contexts added." >&2
+        exit 1
+      }
+      grep -qF 'RUST_LOG=${filter}' ${
+        pkgs.writeText "niri.service" config.systemd.user.units."niri.service".text
+      } || {
+        echo "The session's niri unit doesn't carry its log filter." >&2
+        exit 1
+      }
+      touch $out
+    '';
+
   # niri reads back the files an account gets and rejects anything it
   # wouldn't load, from a misspelt action to a colour it can't parse.
   niri-accepts-its-configuration =
