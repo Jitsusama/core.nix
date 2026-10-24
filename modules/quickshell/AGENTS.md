@@ -38,7 +38,10 @@ Joel sees.
   each surface.
 - [`launcher/`][launcher]: one provider per kind of thing the launcher finds,
   each starting from [`Provider.qml`][provider], whose header says what a
-  row holds.
+  row holds. Every name, word and glyph a provider shows or is found by is
+  said once, in [`launcher/words.json`][words], read through `Words.qml`;
+  `the-launcher-means-one-thing-a-word` fails on a word that finds two
+  things, and prints each.
 - [`pieces/`][pieces]: the pieces the margin and the launcher's foot show,
   each starting from `Piece.qml`.
 - [`clipboard/`][clipboard]: the clipboard's history, a Rust daemon.
@@ -96,6 +99,7 @@ a change to one surface can move another.
 [launcher]: launcher/
 [pieces]: pieces/
 [provider]: launcher/Provider.qml
+[words]: launcher/words.json
 [skill]: ../theme/SKILL.md
 [logic]: ../../docs/testing.md#the-shells-logic
 [testing]: ../../docs/testing.md#what-changed-on-screen

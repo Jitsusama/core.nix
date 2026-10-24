@@ -371,7 +371,7 @@ processor or niri, for a minute shows quietly, as something left on, from
 lag-watch's windows; a moment's wait never does, since Joel feels it
 himself, and the launcher's "lag" says what waited.
 
-What each is, in words, is the launcher's What's on, opened by Super+O or by
+What each is, in words, is the launcher's Now, opened by Super+O or by
 clicking a mark, on that mark's row: a row each, its glyph, its name, how it
 stands at the right, and what more there is to know in the footer, grouped
 by how much it asks with what wants Joel first. Return does its first
@@ -470,19 +470,19 @@ it. Owners go by layer:
 | Fact                                                                   | At a glance                                        | In detail, in the launcher   |
 | ---------------------------------------------------------------------- | -------------------------------------------------- | ---------------------------- |
 | Time, date                                                             | the launcher's foot; the lock screen and greeter, when they're up | "time", a place's time |
-| Battery, power                                                         | the margin mark, only when low; the launcher's foot | "battery", "charger"; What's on |
+| Battery, power                                                         | the margin mark, only when low; the launcher's foot | "battery", "charger"; Now |
 | Network, Bluetooth, audio devices                                      | the network in the launcher's foot, in the warning colour when something's wrong | Wi-Fi, Bluetooth and Sound |
 | Volume, brightness                                                     | an overlay while it changes; the volume in the launcher's foot | Sound                |
-| Do not disturb, caffeinate, recording, sharing, mic muted, caps lock   | the margin mark, while true                        | What's on; the session's rows |
+| Do not disturb, caffeinate, recording, sharing, mic muted, caps lock   | the margin mark, while true                        | Now; the session's rows |
 | Keyboard layer                                                         | the margin mark, while locked; nothing while a key holds it | Keyboard            |
-| Music playing                                                          | the margin mark while it plays; a notice for a moment when the track changes or a media key is pressed | What's on |
-| A pi session wanting Joel, and for what                               | the margin mark while one waits, a notice once     | "pi"; What's on             |
-| A camera open, and by what                                            | the margin mark, while a program reads one         | "camera"; What's on         |
-| In a call                                                              | the margin mark, while in one                      | What's on                    |
-| Notifications waiting                                                  | the margin mark                                    | Notices (Super+N); What's on |
-| Disk space                                                             | the margin mark, only while a disk is short of room, a writer is frozen or nothing watches it; a notice when the guard acts | What's on |
+| Music playing                                                          | the margin mark while it plays; a notice for a moment when the track changes or a media key is pressed | Now |
+| An agent wanting Joel, and for what                                   | the margin mark while one waits, a notice once     | Agents ("pi" finds them); Now |
+| A camera open, and by what                                            | the margin mark, while a program reads one         | "camera"; Now               |
+| In a call                                                              | the margin mark, while in one                      | Calls; Now                   |
+| Notifications waiting                                                  | the margin mark                                    | Notifications (Super+N); Now |
+| Disk space                                                             | the margin mark, only while a disk is short of room, a writer is frozen or nothing watches it; a notice when the guard acts | Now |
 | RAM type, speed, maker and part                                        | nothing, since it never changes                    | Memory's Type                |
-| AI spend and its caps                                                  | the margin mark, only while a finding wants a look or nothing watches it; a notice once when one starts to; a line each morning; the launcher's foot | AI spend (Super+U); What's on |
+| AI spend and its caps                                                  | the margin mark, only while a finding wants a look or nothing watches it; a notice once when one starts to; a line each morning; the launcher's foot | AI spend, a part of Agents (Super+U); Now |
 | Directory, repository, branch, git state                               | the program running the window                     | nobody                       |
 | Window titles                                                          | a terminal's unseen tabs; the launcher's windows   | the launcher's windows       |
 
@@ -545,10 +545,10 @@ works the same way everywhere.
 - **The same letters land on the same row.** The name typed whole comes
   first, then a name it starts, then a later word it starts, then a word
   that only finds it, typed whole before only started: an act's name starts
-  with its verb, so "pow" is Power off the machine before Use power saver,
-  and "quiet" is do not disturb before the volume's "quieter". Below three
-  letters a collection's other words find it only whole, so "pi" is pi's
-  sessions and not the Clipboard's pictures. What's
+  with its verb, so "pow" is Power off before Power saver's "power", and
+  "quiet" is do not disturb before the volume's "quieter". Below three
+  letters a collection's other words find it only whole, so "pi" is the
+  Agents and not the Clipboard's pictures. What's
   picked most for what was typed, counting the longer words it starts, is
   first there once it's been picked two more times than anything else, so
   "sl", "sla" and "slac" all mean Slack, and "l" means what its words were
@@ -564,16 +564,46 @@ works the same way everywhere.
   is learned only once its first word is typed whole. When fewer letters
   would do, the field's end says so ("sl is enough"), so the habit gets
   quicker by itself, and there are no aliases to set up or remember.
-- **One way of naming.** A thing is its own name ("Slack"); a set is a
-  plural noun ("Windows"); an act says what it does to what, in sentence
-  case ("Lock the screen", "Turn on do not disturb"), a switch saying what
-  it will do now. Other words find a row but never name it: a row found by
-  one shows the word in quotes after its name (Suspend the machine
-  "sleep"), and a renamed row's old name is one of them. Return's word in
-  the footer is the act's own verb, with the way a turn goes ("turn
-  down"), or start, switch, open or copy.
+- **One way of naming.** Every name and word the launcher knows is said
+  once, in its vocabulary (`modules/quickshell/launcher/words.json`, the
+  option `jitsusama.quickshell.launcher.words`): each thing's name as
+  shown, the categories it's in, the other words that find it and the
+  glyph it wears. A thing is its own name in Joel's words ("Slack",
+  "Agents", "Calls"); a set is a plural noun ("Windows", "Tasks"); an act
+  is short, in sentence case, saying what it does ("Lock", "Keep awake",
+  "Power saver", "Wi-Fi off", "New window", "Bring here"), a switch
+  saying what it will do now. Implementation names are never shown, only
+  kept as hidden words: pi, claude, quest, council, fleet, tuple, niri,
+  spend-watch, lag-watch. Other words find a row but never name it: a row
+  found by one shows the word in quotes after its name (Suspend "sleep"),
+  and a renamed row's old name is one of them, so what Joel typed before
+  still finds it ("use power saver", "quests", "what's on"). A word finds
+  one thing at each strength (a name typed whole, another word, an
+  answer's question), or the vocabulary lists it as meant to find several
+  ("pair" is a call and a Bluetooth device), and a check fails on any
+  other. Return's word in the footer is one: the act's own verb (switch,
+  start, lock, mute, close, copy, set, off), a turn by the way it goes.
   Ending the session asks once more, saying what it closes ("Reboot now,
   closing 14 windows").
+- **Things hold their parts.** A thing is one place for all of it, and
+  what's part of it is inside: Agents holds the agents, then their Tasks,
+  Helpers and AI spend; the Keyboard holds its layout and keys, the
+  keyboards plugged in and every shortcut; Slack holds its theme, so
+  "slack" is Slack and "slack theme" the theme. A part is still found
+  from anywhere by its own name.
+- **Categories are levels.** Fifteen categories gather everything by
+  what it's about: computer, network, sound, now, ai, apps, shortcuts,
+  notifications, clipboard, weather, time, calls, capture, typing and
+  commands. Each is a row found by its word, stepping in lists what it
+  holds, and its word and a space becomes a chip, so what's typed after
+  it searches only inside it ("ai " and then "tas"). A category named as
+  a thing is ("sound", "clipboard") gives way to the thing, and its word
+  and a space still step into it; what's typed after the word that asks
+  something whole ("time in tokyo", "time left") is given back whole, as
+  the question it is. **commands** lists every typed command with its
+  form muted ("ip ⟨address or network⟩", "time in ⟨place⟩", "⟨amount⟩
+  ⟨unit⟩ in ⟨unit⟩"), and Tab or Return on one puts its start in the
+  field, out at the top, to finish there.
 - **Nothing moves that Joel didn't move.** Rows that arrive late go below
   the ones of their kind already shown, the selection stays on its thing
   as rows come and go, and the list keeps the height it opened at, so the
@@ -581,7 +611,8 @@ works the same way everywhere.
 - **Home is what's next.** With nothing typed, the launcher shows what's in
   front of you (the focused window, its verbs one arrow away), then the
   three likeliest picks, then after a gap the same three collections in the
-  same order, Windows, Clipboard and Notices, so home's shape never changes.
+  same order, Windows, Clipboard and Notifications, so home's shape never
+  changes.
   Every other collection is its name away. The field suggests something to try, a different
   one each time it opens, drawn from what the providers can answer; Tab
   takes it.
@@ -640,8 +671,8 @@ works the same way everywhere.
   them afresh. The row sits below the other matches. Emoji add none, since a
   name like what was typed ("turkey" for "tu") is a row to rule out; they
   are found in their own place. A collection is found whole by its name or
-  what a person would call it ("audio" is Sound, "notifications" the
-  Notices), and Return steps into it; found that way, it stands alone for
+  what a person would call it ("audio" is Sound, "notices" the
+  Notifications), and Return steps into it; found that way, it stands alone for
   what it holds, so neither its members nor things that live in it, nor the
   shortcut that opens it, sit beside it. Each thing's row says what kind
   of thing it is at its right edge (Shape and Kinds).
@@ -772,7 +803,7 @@ collection of every layer's shortcuts, Neovim's and pi's among them, each
 with its chord and where it works. Inside a layer its own "what's here"
 shows only its keys: Ctrl+Shift+/ in the terminal, Space ? in Neovim.
 
-Nothing the shell shows is reached only by pointing. Super+O opens What's on,
+Nothing the shell shows is reached only by pointing. Super+O opens Now,
 the margin's glyphs in words, and Super+N takes the notices on screen by
 the launcher's keys, then gathers every notice into the launcher. Either
 way Return goes to who sent one, and the right arrow steps into its verbs:

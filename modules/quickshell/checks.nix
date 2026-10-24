@@ -261,6 +261,21 @@ in
     touch $out
   '';
 
+  # The launcher's vocabulary, as the account writes it, says each word of
+  # one thing, but where it's listed as meant to find several, names only
+  # what it knows and glyphs the theme has, and gives everything a place
+  # (tests/launcher-words.py), printing each word to settle.
+  the-launcher-means-one-thing-a-word =
+    let
+      home = account graphical;
+      glyphs = pkgs.writeText "glyphs.json" (builtins.toJSON (lib.attrNames home.jitsusama.theme.glyphs));
+      words = pkgs.writeText "words.json" home.xdg.configFile."quickshell/launcher/words.json".text;
+    in
+    pkgs.runCommandLocal "the-launcher-means-one-thing-a-word" { } ''
+      ${lib.getExe pkgs.python3} ${../../tests/launcher-words.py} ${words} ${glyphs}
+      touch $out
+    '';
+
   # The launcher lands where it did: a thing is one row, the same letters
   # keep their row, and one slip teaches nothing, as tests/ranking.qml holds
   # launcher/Rank.js to it in Qt's own engine.
@@ -509,6 +524,9 @@ in
       cp ${./launcher/Asking.js} launcher/Asking.js
       cp ${./launcher/Numbers.js} launcher/Numbers.js
       cp ${./launcher/Spend.qml} launcher/Spend.qml
+      cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
+      cp ${./Words.qml} Words.qml
+      cp ${./launcher/words.json} launcher/words.json
       cp ${./SpendWatch.qml} SpendWatch.qml
       cp ${../../tests/spend.qml} shell.qml
       cp ${niri} Niri.qml
@@ -560,6 +578,8 @@ in
       cp ${./launcher/Asking.js} launcher/Asking.js
       cp ${./launcher/Numbers.js} launcher/Numbers.js
       cp ${./launcher/Quests.qml} launcher/Quests.qml
+      cp ${./Words.qml} Words.qml
+      cp ${./launcher/words.json} launcher/words.json
       cp ${../../tests/quests.qml} shell.qml
       cp ${niri} Niri.qml
       cp ${sessions} Sessions.qml
@@ -707,6 +727,8 @@ in
       cp ${./launcher/Asking.js} launcher/Asking.js
       cp ${./launcher/Numbers.js} launcher/Numbers.js
       cp ${./launcher/Runs.qml} launcher/Runs.qml
+      cp ${./Words.qml} Words.qml
+      cp ${./launcher/words.json} launcher/words.json
       cp ${../../tests/runs.qml} shell.qml
       cp ${niri} Niri.qml
       cp ${sessions} Sessions.qml
@@ -827,6 +849,8 @@ in
       cp ${./launcher/Asking.js} launcher/Asking.js
       cp ${./launcher/Numbers.js} launcher/Numbers.js
       cp ${../tuple/People.qml} launcher/People.qml
+      cp ${./Words.qml} Words.qml
+      cp ${./launcher/words.json} launcher/words.json
       cp ${../../tests/people.qml} shell.qml
       cp ${niri} Niri.qml
       cp ${calls} Tuple.qml
@@ -992,6 +1016,9 @@ in
       cp ${./launcher/Asking.js} launcher/Asking.js
       cp ${./launcher/Numbers.js} launcher/Numbers.js
       cp ${./launcher/Keyboard.qml} launcher/Keyboard.qml
+      cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
+      cp ${./Words.qml} Words.qml
+      cp ${./launcher/words.json} launcher/words.json
       cp ${niri} Niri.qml
       cp ${singleton "Shortcuts.qml" "property var actions: []"} Shortcuts.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime XDG_CONFIG_HOME=$TMPDIR/config
@@ -1025,6 +1052,9 @@ in
         cp ${./launcher/Asking.js} launcher/Asking.js
         cp ${./launcher/Numbers.js} launcher/Numbers.js
         cp ${./launcher/Accessories.qml} launcher/Accessories.qml
+        cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
+        cp ${./Words.qml} Words.qml
+        cp ${./launcher/words.json} launcher/words.json
         cp ${../../tests/bluetooth-pairing.qml} shell.qml
         cp ${pkgs.writeText "Niri.qml" ''
           pragma Singleton
@@ -1202,6 +1232,11 @@ in
     in
     pkgs.runCommandLocal "the-shell-hears-tuples-call" { } ''
       cp ${../tuple/Tuple.qml} Tuple.qml
+      # Tuple's rows are named as the launcher's vocabulary says.
+      mkdir launcher
+      cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
+      cp ${./Words.qml} Words.qml
+      cp ${./launcher/words.json} launcher/words.json
       cp ${../tuple/Tuple.js} Tuple.js
       cp ${../../tests/tuple-call.qml} shell.qml
       cp ${niri} Niri.qml

@@ -737,12 +737,12 @@ def changed_at_the_top(before: Image.Image, after: Image.Image) -> tuple[float, 
 
 
 def whats_on(selected: str) -> None:
-    """Wait until the launcher holds What's on and the keys, with this thing's row selected."""
+    """Wait until the launcher holds Now and the keys, with this thing's row selected."""
     launcher_until(
         lambda shown: (
             shown["open"]
             and shown["keys"]
-            and shown["held"] == ["what's on"]
+            and shown["held"] == ["now"]
             and (shown["selected"] or {}).get("name") == selected
         )
     )

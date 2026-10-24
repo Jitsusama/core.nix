@@ -1,0 +1,1565 @@
+{
+  "categories": [
+    {
+      "id": "computer",
+      "words": [
+        "machine",
+        "laptop",
+        "hardware"
+      ],
+      "holds": [
+        "machine",
+        "power",
+        "heat",
+        "waits",
+        "light",
+        "displays",
+        "keyboard",
+        "session:Lock",
+        "session:Suspend",
+        "session:Reboot",
+        "session:Power Off",
+        "session:Log Out",
+        "session:awake",
+        "session:power:Power Saver",
+        "session:power:Balanced Power",
+        "session:power:Performance"
+      ]
+    },
+    {
+      "id": "network",
+      "words": [
+        "online",
+        "connection"
+      ],
+      "holds": [
+        "wifi",
+        "bluetooth",
+        "networks",
+        "wifi:radio",
+        "bluetooth:radio",
+        "wifi:sign-in"
+      ]
+    },
+    {
+      "id": "sound",
+      "words": [],
+      "holds": [
+        "sound"
+      ]
+    },
+    {
+      "id": "now",
+      "words": [],
+      "holds": [
+        "on",
+        "agents",
+        "notices"
+      ]
+    },
+    {
+      "id": "ai",
+      "words": [],
+      "holds": [
+        "agents",
+        "quests",
+        "runs",
+        "spend",
+        "jobs"
+      ]
+    },
+    {
+      "id": "apps",
+      "words": [
+        "applications"
+      ],
+      "holds": [
+        "applications",
+        "windows"
+      ]
+    },
+    {
+      "id": "shortcuts",
+      "words": [],
+      "holds": [
+        "shortcuts",
+        "actions"
+      ]
+    },
+    {
+      "id": "notifications",
+      "words": [],
+      "holds": [
+        "notices",
+        "session:quiet"
+      ]
+    },
+    {
+      "id": "clipboard",
+      "words": [],
+      "holds": [
+        "clipboard",
+        "copies:forget"
+      ]
+    },
+    {
+      "id": "weather",
+      "words": [
+        "outside"
+      ],
+      "holds": [
+        "weather"
+      ]
+    },
+    {
+      "id": "time",
+      "words": [
+        "clock",
+        "calendar"
+      ],
+      "holds": [
+        "time",
+        "today"
+      ]
+    },
+    {
+      "id": "calls",
+      "words": [],
+      "holds": [
+        "people",
+        "tuple"
+      ]
+    },
+    {
+      "id": "capture",
+      "words": [
+        "recordings"
+      ],
+      "holds": [
+        "capture",
+        "gimp",
+        "swayimg",
+        "session:recording"
+      ]
+    },
+    {
+      "id": "typing",
+      "words": [
+        "dictation"
+      ],
+      "holds": [
+        "emoji"
+      ]
+    },
+    {
+      "id": "commands",
+      "words": [
+        "special"
+      ],
+      "holds": []
+    }
+  ],
+  "things": [
+    {
+      "id": "agents",
+      "name": "Agents",
+      "noun": "agents",
+      "what": "agent",
+      "glyph": "agent",
+      "words": [
+        "agent",
+        "ai",
+        "assistant",
+        "assistants",
+        "bots"
+      ],
+      "hidden": [
+        "pi",
+        "claude",
+        "sessions",
+        "session"
+      ],
+      "parts": [
+        "quests",
+        "runs",
+        "spend"
+      ],
+      "ask": "which agent?",
+      "empty": "No agents running."
+    },
+    {
+      "id": "quests",
+      "name": "Tasks",
+      "noun": "tasks",
+      "what": "task",
+      "glyph": "agent",
+      "words": [
+        "task",
+        "plans",
+        "projects",
+        "work",
+        "todo"
+      ],
+      "hidden": [
+        "quest",
+        "quests"
+      ],
+      "ask": "which task?",
+      "empty": "No tasks."
+    },
+    {
+      "id": "runs",
+      "name": "Helpers",
+      "noun": "helpers",
+      "what": "helper",
+      "glyph": "running",
+      "words": [
+        "helper",
+        "reviewers",
+        "reviews",
+        "subagents"
+      ],
+      "hidden": [
+        "run",
+        "runs",
+        "fleets",
+        "councils",
+        "judges"
+      ],
+      "ask": "which helper?",
+      "empty": "No helpers today."
+    },
+    {
+      "id": "spend",
+      "name": "AI spend",
+      "noun": "spend",
+      "glyph": "agent",
+      "words": [
+        "cost",
+        "money",
+        "usage",
+        "tokens",
+        "bill",
+        "budget",
+        "spent"
+      ],
+      "hidden": [
+        "spend-watch"
+      ],
+      "ask": "which?",
+      "empty": "nothing spent yet"
+    },
+    {
+      "id": "jobs",
+      "name": "Jobs",
+      "provider": "machine",
+      "question": "queue",
+      "answers": [
+        "queue",
+        "jobs",
+        "what's running",
+        "whats running",
+        "what's waiting",
+        "whats waiting",
+        "waiting",
+        "heavy work",
+        "builds",
+        "vm tests",
+        "machine queue"
+      ]
+    },
+    {
+      "id": "machine",
+      "name": "Computer",
+      "question": "cpu",
+      "answers": [
+        "memory",
+        "ram",
+        "mem",
+        "swap",
+        "free memory",
+        "memory use",
+        "processor",
+        "cpu",
+        "cores",
+        "load",
+        "load average",
+        "cpu use",
+        "uptime",
+        "since boot",
+        "how long up",
+        "boot time",
+        "disk",
+        "storage",
+        "free space",
+        "disk space",
+        "space",
+        "drive",
+        "ssd",
+        "how full"
+      ]
+    },
+    {
+      "id": "power",
+      "name": "Battery",
+      "answers": [
+        "battery",
+        "batteries",
+        "power",
+        "charge",
+        "charging",
+        "charger",
+        "plugged in",
+        "plugged",
+        "battery life",
+        "battery left",
+        "how much battery",
+        "time left",
+        "on battery",
+        "is it charging",
+        "power supply",
+        "adapter",
+        "energy",
+        "watt",
+        "ac"
+      ]
+    },
+    {
+      "id": "heat",
+      "name": "Heat",
+      "answers": [
+        "temperature",
+        "temp",
+        "heat",
+        "hot",
+        "how hot",
+        "thermal",
+        "sensor",
+        "fan",
+        "fan speed",
+        "cooling",
+        "cpu temperature",
+        "cpu temp"
+      ]
+    },
+    {
+      "id": "waits",
+      "name": "Lag",
+      "answers": [
+        "lag",
+        "laggy",
+        "lagging",
+        "slow",
+        "jank",
+        "janky",
+        "stutter",
+        "waits",
+        "why slow",
+        "is it slow"
+      ],
+      "hidden": [
+        "lag-watch"
+      ]
+    },
+    {
+      "id": "light",
+      "name": "Light",
+      "answers": [
+        "brightness",
+        "backlight",
+        "light",
+        "screen brightness",
+        "screen light",
+        "display brightness",
+        "bright",
+        "brighter",
+        "dim",
+        "dimmer",
+        "keyboard light",
+        "keyboard backlight",
+        "keyboard brightness",
+        "key light",
+        "desk light",
+        "desk lamp",
+        "lamp",
+        "litra",
+        "warmer",
+        "cooler",
+        "warmth"
+      ]
+    },
+    {
+      "id": "today",
+      "name": "Date",
+      "answers": [
+        "date",
+        "today",
+        "day",
+        "week",
+        "week number",
+        "what day is it",
+        "what's the date",
+        "day of the year",
+        "utc",
+        "gmt",
+        "epoch",
+        "unix time",
+        "unix",
+        "timestamp"
+      ]
+    },
+    {
+      "id": "keyboards",
+      "name": "Keyboards",
+      "answers": [
+        "keyboards",
+        "keyboard state",
+        "connected keyboards",
+        "which keyboard",
+        "which keyboards",
+        "caps lock",
+        "capslock",
+        "is caps lock on"
+      ]
+    },
+    {
+      "id": "networks",
+      "name": "Addresses",
+      "answers": [
+        "ip",
+        "ip address",
+        "ip addresses",
+        "my ip",
+        "my ip address"
+      ]
+    },
+    {
+      "id": "weather",
+      "name": "Weather",
+      "answers": [
+        "weather",
+        "forecast"
+      ]
+    },
+    {
+      "id": "time",
+      "name": "Time",
+      "answers": [
+        "time"
+      ]
+    },
+    {
+      "id": "sound",
+      "name": "Sound",
+      "noun": "devices",
+      "words": [
+        "audio",
+        "speakers",
+        "headphones",
+        "headset",
+        "microphone",
+        "mic",
+        "output",
+        "input"
+      ],
+      "answers": [
+        "volume",
+        "vol",
+        "how loud",
+        "loudness",
+        "what's playing",
+        "now playing",
+        "playing",
+        "what song is this",
+        "song",
+        "track",
+        "music"
+      ]
+    },
+    {
+      "id": "keyboard",
+      "name": "Keyboard",
+      "noun": "keys",
+      "glyph": "keyboard",
+      "words": [
+        "layout",
+        "layers",
+        "ergodox",
+        "colemak",
+        "keymap",
+        "typing",
+        "backlight"
+      ],
+      "parts": [
+        "keyboards",
+        "shortcuts"
+      ],
+      "ask": "which key?"
+    },
+    {
+      "id": "shortcuts",
+      "name": "Shortcuts",
+      "noun": "shortcuts",
+      "glyph": "shortcuts",
+      "words": [
+        "hotkeys",
+        "chords",
+        "bindings",
+        "keybindings",
+        "key combos"
+      ],
+      "ask": "which shortcut?"
+    },
+    {
+      "id": "actions",
+      "name": "Desktop",
+      "words": [
+        "desktop actions"
+      ]
+    },
+    {
+      "id": "on",
+      "name": "Now",
+      "noun": "now",
+      "what": "on",
+      "glyph": "now",
+      "words": [
+        "status",
+        "margin",
+        "happening",
+        "on now",
+        "attention"
+      ],
+      "hidden": [
+        "what's on",
+        "whats on"
+      ],
+      "ask": "which?",
+      "empty": "Nothing's on or waiting."
+    },
+    {
+      "id": "clipboard",
+      "name": "Clipboard",
+      "noun": "copies",
+      "glyph": "clipboard",
+      "words": [
+        "copy",
+        "paste",
+        "pasted",
+        "copied",
+        "history",
+        "yank",
+        "pictures",
+        "images"
+      ],
+      "ask": "which copy?"
+    },
+    {
+      "id": "notices",
+      "name": "Notifications",
+      "noun": "notifications",
+      "glyph": "notifications",
+      "words": [
+        "notices",
+        "alerts",
+        "messages",
+        "missed"
+      ],
+      "ask": "which notification?"
+    },
+    {
+      "id": "wifi",
+      "name": "Wi-Fi",
+      "noun": "networks",
+      "glyph": "wireless",
+      "words": [
+        "wifi",
+        "wireless",
+        "internet",
+        "network",
+        "ssid",
+        "hotspot"
+      ],
+      "ask": "which network?"
+    },
+    {
+      "id": "bluetooth",
+      "name": "Bluetooth",
+      "noun": "devices",
+      "glyph": "bluetooth",
+      "words": [
+        "bt",
+        "earbuds",
+        "mouse",
+        "accessories",
+        "paired",
+        "pair",
+        "pairing"
+      ],
+      "ask": "which device?"
+    },
+    {
+      "id": "displays",
+      "name": "Displays",
+      "noun": "displays",
+      "glyph": "display",
+      "words": [
+        "monitors",
+        "screens",
+        "resolution",
+        "scale",
+        "refresh",
+        "rotate",
+        "external",
+        "hdmi"
+      ],
+      "ask": "which display?",
+      "empty": "No displays"
+    },
+    {
+      "id": "capture",
+      "name": "Capture",
+      "noun": "captures",
+      "glyph": "capture",
+      "words": [
+        "screenshot",
+        "screen shot",
+        "record",
+        "recording",
+        "video",
+        "photo",
+        "camera",
+        "webcam",
+        "print",
+        "grab"
+      ],
+      "answers": [
+        "camera",
+        "webcam",
+        "camera in use",
+        "is the camera on",
+        "who has the camera"
+      ],
+      "ask": "of what?"
+    },
+    {
+      "id": "emoji",
+      "name": "Emoji",
+      "noun": "emoji",
+      "glyph": "emoji",
+      "words": [
+        "emoticons",
+        "smileys",
+        "faces",
+        "symbols",
+        "characters",
+        "unicode"
+      ],
+      "ask": "which emoji?"
+    },
+    {
+      "id": "people",
+      "name": "Calls",
+      "noun": "people",
+      "glyph": "people",
+      "words": [
+        "call",
+        "calls",
+        "pair",
+        "pairing",
+        "room",
+        "teammates",
+        "contacts",
+        "colleagues",
+        "people"
+      ],
+      "hidden": [
+        "tuple"
+      ],
+      "ask": "who to pair with?",
+      "empty": "Nobody to call yet."
+    },
+    {
+      "id": "tuple",
+      "name": "The call",
+      "words": [],
+      "hidden": [
+        "tuple"
+      ]
+    },
+    {
+      "id": "gimp",
+      "name": "The newest screenshot",
+      "words": []
+    },
+    {
+      "id": "swayimg",
+      "name": "Screenshots",
+      "words": []
+    },
+    {
+      "id": "applications",
+      "name": "Programs",
+      "noun": "programs",
+      "glyph": "windows"
+    },
+    {
+      "id": "windows",
+      "name": "Windows",
+      "noun": "windows",
+      "glyph": "windows",
+      "words": [
+        "open",
+        "running",
+        "switch"
+      ],
+      "hidden": [
+        "apps"
+      ],
+      "ask": "which window?",
+      "empty": "No other windows."
+    },
+    {
+      "id": "session:awake",
+      "name": "Keep awake",
+      "verb": "start",
+      "glyph": "awake",
+      "words": [
+        "caffeinate",
+        "stay awake",
+        "keep on",
+        "no sleep",
+        "coffee",
+        "insomnia",
+        "presentation",
+        "lid"
+      ],
+      "hidden": [
+        "keep the machine awake",
+        "let it sleep"
+      ],
+      "states": {
+        "on": {
+          "name": "Let it sleep",
+          "verb": "stop",
+          "hidden": [
+            "let the machine sleep",
+            "keep awake"
+          ]
+        }
+      }
+    },
+    {
+      "id": "session:quiet",
+      "name": "Do not disturb",
+      "verb": "start",
+      "glyph": "quiet",
+      "words": [
+        "quiet",
+        "focus",
+        "dnd",
+        "silence",
+        "snooze",
+        "pause",
+        "hold",
+        "donotdisturb",
+        "mute",
+        "notifications",
+        "notices",
+        "alerts"
+      ],
+      "hidden": [
+        "turn on do not disturb"
+      ],
+      "states": {
+        "on": {
+          "name": "Let notices show",
+          "verb": "stop",
+          "hidden": [
+            "turn off do not disturb",
+            "end",
+            "end do not disturb"
+          ]
+        }
+      }
+    },
+    {
+      "id": "session:quiet:60",
+      "in": "session:quiet",
+      "name": "For an hour",
+      "glyph": "quiet"
+    },
+    {
+      "id": "session:quiet:0",
+      "in": "session:quiet",
+      "name": "Until it's ended",
+      "glyph": "quiet"
+    },
+    {
+      "id": "session:recording",
+      "name": "Stop recording",
+      "verb": "stop",
+      "glyph": "recording",
+      "words": [
+        "record",
+        "recording",
+        "video",
+        "screencast",
+        "capture"
+      ]
+    },
+    {
+      "id": "session:power:Power Saver",
+      "name": "Power saver",
+      "verb": "use",
+      "glyph": "saver",
+      "words": [
+        "power profile",
+        "mode",
+        "energy",
+        "eco",
+        "low power",
+        "battery saver",
+        "cool",
+        "saver",
+        "slow",
+        "battery"
+      ],
+      "hidden": [
+        "use power saver"
+      ]
+    },
+    {
+      "id": "session:power:Balanced Power",
+      "name": "Balanced power",
+      "verb": "use",
+      "glyph": "balanced",
+      "words": [
+        "power profile",
+        "mode",
+        "energy",
+        "normal",
+        "default",
+        "balanced"
+      ],
+      "hidden": [
+        "use balanced power"
+      ]
+    },
+    {
+      "id": "session:power:Performance",
+      "name": "Full performance",
+      "verb": "use",
+      "glyph": "performance",
+      "words": [
+        "power profile",
+        "mode",
+        "energy",
+        "turbo",
+        "fast",
+        "boost",
+        "max speed",
+        "speed"
+      ],
+      "hidden": [
+        "use full performance"
+      ]
+    },
+    {
+      "id": "session:Lock",
+      "name": "Lock",
+      "verb": "lock",
+      "glyph": "locked",
+      "words": [
+        "lock screen",
+        "lockscreen",
+        "away",
+        "leave"
+      ],
+      "hidden": [
+        "lock the screen"
+      ]
+    },
+    {
+      "id": "session:Suspend",
+      "name": "Suspend",
+      "verb": "suspend",
+      "glyph": "suspend",
+      "words": [
+        "sleep",
+        "sleep now",
+        "hibernate",
+        "nap",
+        "standby"
+      ],
+      "hidden": [
+        "suspend the machine"
+      ]
+    },
+    {
+      "id": "session:Log Out",
+      "name": "Log out",
+      "verb": "leave",
+      "glyph": "logout",
+      "sure": "Log out now",
+      "words": [
+        "logout",
+        "sign out",
+        "signout",
+        "end session"
+      ],
+      "hidden": [
+        "niri",
+        "quit"
+      ]
+    },
+    {
+      "id": "session:Reboot",
+      "name": "Reboot",
+      "verb": "reboot",
+      "glyph": "reboot",
+      "sure": "Reboot now",
+      "words": [
+        "restart",
+        "reset",
+        "relaunch"
+      ],
+      "hidden": [
+        "reboot the machine"
+      ]
+    },
+    {
+      "id": "session:Power Off",
+      "name": "Power off",
+      "verb": "off",
+      "glyph": "poweroff",
+      "sure": "Power off now",
+      "words": [
+        "shutdown",
+        "shut down",
+        "poweroff",
+        "power down",
+        "turn off",
+        "halt"
+      ],
+      "hidden": [
+        "power off the machine"
+      ]
+    },
+    {
+      "id": "wifi:radio",
+      "name": "Wi-Fi off",
+      "verb": "off",
+      "glyph": "offline",
+      "words": [
+        "wlan",
+        "radio",
+        "airplane mode",
+        "flight"
+      ],
+      "hidden": [
+        "turn off wi-fi"
+      ],
+      "states": {
+        "off": {
+          "name": "Wi-Fi on",
+          "verb": "on",
+          "glyph": "wireless",
+          "hidden": [
+            "turn on wi-fi"
+          ]
+        }
+      }
+    },
+    {
+      "id": "wifi:sign-in",
+      "name": "Sign in to {network}",
+      "verb": "open",
+      "glyph": "wireless",
+      "words": [
+        "portal",
+        "captive",
+        "login",
+        "log in",
+        "hotel",
+        "airport",
+        "cafe"
+      ]
+    },
+    {
+      "id": "bluetooth:radio",
+      "name": "Bluetooth off",
+      "verb": "off",
+      "glyph": "bluetoothOff",
+      "words": [
+        "bt radio",
+        "airplane",
+        "flight mode"
+      ],
+      "hidden": [
+        "turn off bluetooth"
+      ],
+      "states": {
+        "off": {
+          "name": "Bluetooth on",
+          "verb": "on",
+          "glyph": "bluetooth",
+          "hidden": [
+            "turn on bluetooth"
+          ]
+        }
+      }
+    },
+    {
+      "id": "copies:forget",
+      "name": "Forget the clipboard",
+      "verb": "forget",
+      "glyph": "forget",
+      "words": [
+        "clear",
+        "empty",
+        "erase",
+        "wipe"
+      ],
+      "hidden": [
+        "forget the clipboard"
+      ]
+    },
+    {
+      "id": "byhand:slack",
+      "of": "program:slack",
+      "part": "Theme",
+      "name": "Slack theme",
+      "verb": "copy",
+      "words": [
+        "colours",
+        "colors",
+        "sidebar",
+        "theme"
+      ],
+      "hidden": [
+        "slack's theme"
+      ]
+    },
+    {
+      "id": "verb:switch",
+      "in": "windows",
+      "name": "Switch",
+      "verb": "switch",
+      "glyph": "windows",
+      "hidden": [
+        "switch to it"
+      ]
+    },
+    {
+      "id": "verb:bring",
+      "in": "windows",
+      "name": "Bring here",
+      "verb": "bring",
+      "glyph": "workspace",
+      "words": [
+        "this workspace",
+        "fetch"
+      ]
+    },
+    {
+      "id": "verb:move",
+      "in": "windows",
+      "name": "Move to a workspace",
+      "verb": "choose",
+      "glyph": "workspace",
+      "hidden": [
+        "move it to a workspace"
+      ]
+    },
+    {
+      "id": "verb:below",
+      "in": "windows",
+      "name": "New window below",
+      "verb": "start",
+      "glyph": "below",
+      "hidden": [
+        "open another below it",
+        "start another below this window"
+      ]
+    },
+    {
+      "id": "verb:start",
+      "in": "applications",
+      "name": "New window",
+      "verb": "start",
+      "glyph": "below",
+      "words": [
+        "another"
+      ],
+      "hidden": [
+        "start another"
+      ]
+    },
+    {
+      "id": "verb:float",
+      "in": "windows",
+      "name": "Float",
+      "verb": "float",
+      "glyph": "floating",
+      "hidden": [
+        "float it"
+      ],
+      "states": {
+        "floating": {
+          "name": "Tile",
+          "verb": "tile",
+          "hidden": [
+            "tile it"
+          ]
+        }
+      }
+    },
+    {
+      "id": "verb:title",
+      "in": "windows",
+      "name": "Copy title",
+      "verb": "copy",
+      "glyph": "copy",
+      "hidden": [
+        "copy its title"
+      ]
+    },
+    {
+      "id": "verb:close",
+      "in": "windows",
+      "name": "Close",
+      "verb": "close",
+      "glyph": "close",
+      "hidden": [
+        "close it"
+      ]
+    },
+    {
+      "id": "verb:agent:switch",
+      "in": "agents",
+      "name": "Switch",
+      "verb": "switch",
+      "glyph": "windows",
+      "hidden": [
+        "go to its window"
+      ]
+    },
+    {
+      "id": "verb:quest:switch",
+      "in": "quests",
+      "name": "Switch",
+      "verb": "switch",
+      "glyph": "windows",
+      "hidden": [
+        "go to its session"
+      ]
+    },
+    {
+      "id": "verb:quest:open",
+      "in": "quests",
+      "name": "Start an agent",
+      "verb": "start",
+      "glyph": "agent",
+      "hidden": [
+        "open pi on it"
+      ]
+    },
+    {
+      "id": "verb:run:switch",
+      "in": "runs",
+      "name": "Switch",
+      "verb": "switch",
+      "glyph": "windows",
+      "hidden": [
+        "go to its session"
+      ]
+    },
+    {
+      "id": "tuple:ringing",
+      "name": "Show the call from {who}",
+      "verb": "show",
+      "words": [
+        "pair",
+        "ringing",
+        "answer"
+      ],
+      "hidden": [
+        "tuple",
+        "show the tuple call"
+      ],
+      "by": "tuple"
+    },
+    {
+      "id": "tuple:mute",
+      "name": "Mute me in the call",
+      "verb": "mute",
+      "words": [
+        "pair",
+        "microphone",
+        "voice"
+      ],
+      "hidden": [
+        "tuple",
+        "mute me in the tuple call"
+      ],
+      "states": {
+        "muted": {
+          "name": "Let them hear me again",
+          "verb": "unmute",
+          "hidden": [
+            "let them hear me again in the tuple call"
+          ]
+        }
+      },
+      "by": "tuple"
+    },
+    {
+      "id": "tuple:share",
+      "name": "Share the screen in the call",
+      "verb": "share",
+      "hidden": [
+        "tuple",
+        "share the screen in the tuple call"
+      ],
+      "words": [
+        "pair"
+      ],
+      "by": "tuple"
+    },
+    {
+      "id": "tuple:leave",
+      "name": "Leave the call",
+      "verb": "leave",
+      "words": [
+        "pair",
+        "hang up",
+        "end call"
+      ],
+      "hidden": [
+        "tuple",
+        "leave the tuple call"
+      ],
+      "by": "tuple"
+    },
+    {
+      "id": "tuple:open",
+      "name": "Open my room",
+      "verb": "open",
+      "words": [
+        "pair",
+        "new call",
+        "start a call"
+      ],
+      "hidden": [
+        "tuple",
+        "open my tuple room"
+      ],
+      "by": "tuple"
+    },
+    {
+      "id": "tuple:join",
+      "name": "Join the call in the clipboard",
+      "verb": "join",
+      "words": [
+        "pair",
+        "call link"
+      ],
+      "hidden": [
+        "tuple",
+        "join the tuple call in the clipboard"
+      ],
+      "by": "tuple"
+    },
+    {
+      "id": "tuple:link",
+      "name": "Copy my room's link",
+      "verb": "copy",
+      "words": [
+        "pair",
+        "call url",
+        "room url"
+      ],
+      "hidden": [
+        "tuple",
+        "copy my tuple room's link"
+      ],
+      "by": "tuple"
+    }
+  ],
+  "commands": [
+    {
+      "id": "command:ip",
+      "provider": "networks",
+      "start": "ip ",
+      "form": "⟨address or network⟩",
+      "says": "an address's range and who holds it",
+      "words": [
+        "address",
+        "network",
+        "subnet",
+        "cidr"
+      ]
+    },
+    {
+      "id": "command:mac",
+      "provider": "vendors",
+      "start": "mac ",
+      "form": "⟨hardware address⟩",
+      "says": "who made it",
+      "words": [
+        "vendor",
+        "hardware address",
+        "oui"
+      ]
+    },
+    {
+      "id": "command:sum",
+      "provider": "calculator",
+      "start": "",
+      "form": "⟨sum⟩",
+      "says": "worked out as it's typed",
+      "words": [
+        "calculator",
+        "maths",
+        "math",
+        "bases",
+        "hex",
+        "binary"
+      ]
+    },
+    {
+      "id": "command:units",
+      "provider": "units",
+      "start": "",
+      "form": "⟨amount⟩ ⟨unit⟩ in ⟨unit⟩",
+      "says": "a measure in another unit",
+      "words": [
+        "convert",
+        "units",
+        "measure"
+      ]
+    },
+    {
+      "id": "command:money",
+      "provider": "currency",
+      "start": "",
+      "form": "⟨amount⟩ ⟨currency⟩ in ⟨currency⟩",
+      "says": "money at today's rate",
+      "words": [
+        "currency",
+        "exchange",
+        "rate"
+      ]
+    },
+    {
+      "id": "command:time",
+      "provider": "time",
+      "start": "time in ",
+      "form": "⟨place⟩",
+      "says": "the time somewhere",
+      "words": [
+        "zone",
+        "clock"
+      ]
+    },
+    {
+      "id": "command:weather",
+      "provider": "weather",
+      "start": "weather in ",
+      "form": "⟨place⟩",
+      "says": "the weather somewhere",
+      "words": [
+        "forecast"
+      ]
+    },
+    {
+      "id": "command:colour",
+      "provider": "colours",
+      "start": "colour ",
+      "form": "⟨colour⟩",
+      "says": "a colour in its other forms",
+      "words": [
+        "color",
+        "rgb",
+        "oklch",
+        "pigment"
+      ]
+    },
+    {
+      "id": "command:volume",
+      "provider": "sound",
+      "start": "volume ",
+      "form": "⟨level⟩",
+      "says": "sets how loud",
+      "words": [
+        "loud",
+        "sound"
+      ]
+    },
+    {
+      "id": "command:brightness",
+      "provider": "light",
+      "start": "brightness ",
+      "form": "⟨level⟩",
+      "says": "sets the screen's light",
+      "words": [
+        "screen",
+        "backlight"
+      ]
+    },
+    {
+      "id": "command:desk",
+      "provider": "light",
+      "start": "desk light ",
+      "form": "⟨level, warmth, on or off⟩",
+      "says": "sets the desk light",
+      "words": [
+        "lamp",
+        "litra"
+      ]
+    },
+    {
+      "id": "command:epoch",
+      "provider": "today",
+      "start": "epoch",
+      "form": "",
+      "says": "seconds since 1970, and the date's other facts",
+      "words": [
+        "unix",
+        "timestamp"
+      ]
+    }
+  ],
+  "meant": [
+    {
+      "word": "devices",
+      "things": [
+        "sound",
+        "bluetooth"
+      ],
+      "why": "Both list devices: sound's outputs and inputs, and what's paired."
+    },
+    {
+      "word": "tuple",
+      "things": [
+        "people",
+        "tuple",
+        "tuple:ringing",
+        "tuple:mute",
+        "tuple:share",
+        "tuple:leave",
+        "tuple:open",
+        "tuple:join",
+        "tuple:link"
+      ],
+      "why": "The program's name finds the calls and everything done in one, the way its name did."
+    },
+    {
+      "word": "pair",
+      "things": [
+        "people",
+        "bluetooth",
+        "tuple:ringing",
+        "tuple:mute",
+        "tuple:share",
+        "tuple:leave",
+        "tuple:open",
+        "tuple:join",
+        "tuple:link"
+      ],
+      "why": "Joel pairs with a colleague in a call and pairs a device by Bluetooth; both are pairing."
+    },
+    {
+      "word": "pairing",
+      "things": [
+        "people",
+        "bluetooth"
+      ],
+      "why": "As for pair."
+    },
+    {
+      "word": "notifications",
+      "things": [
+        "notices",
+        "session:quiet"
+      ],
+      "why": "Do not disturb holds the notifications, so it's found beside them."
+    },
+    {
+      "word": "notices",
+      "things": [
+        "notices",
+        "session:quiet"
+      ],
+      "why": "Do not disturb holds the notifications, so it's found beside them."
+    },
+    {
+      "word": "alerts",
+      "things": [
+        "notices",
+        "session:quiet"
+      ],
+      "why": "Do not disturb holds the notifications, so it's found beside them."
+    },
+    {
+      "word": "power profile",
+      "things": [
+        "session:power:Power Saver",
+        "session:power:Balanced Power",
+        "session:power:Performance"
+      ],
+      "why": "Each power profile is one of a set; the word lists all three."
+    },
+    {
+      "word": "mode",
+      "things": [
+        "session:power:Power Saver",
+        "session:power:Balanced Power",
+        "session:power:Performance"
+      ],
+      "why": "Each power profile is one of a set; the word lists all three."
+    },
+    {
+      "word": "energy",
+      "things": [
+        "session:power:Power Saver",
+        "session:power:Balanced Power",
+        "session:power:Performance"
+      ],
+      "why": "Each power profile is one of a set; the word lists all three."
+    },
+    {
+      "word": "record",
+      "things": [
+        "capture",
+        "session:recording"
+      ],
+      "why": "While something records, stopping it is found beside starting another."
+    },
+    {
+      "word": "recording",
+      "things": [
+        "capture",
+        "session:recording"
+      ],
+      "why": "While something records, stopping it is found beside starting another."
+    },
+    {
+      "word": "video",
+      "things": [
+        "capture",
+        "session:recording"
+      ],
+      "why": "While something records, stopping it is found beside starting another."
+    },
+    {
+      "word": "microphone",
+      "things": [
+        "sound",
+        "tuple:mute"
+      ],
+      "why": "In a call, muting the microphone there is found beside the microphones themselves."
+    }
+  ]
+}

@@ -3,6 +3,7 @@
 // copies it. The list is Unicode's, with CLDR's English keywords, built at
 // build time into `list` in the skin tone `tone` names, and read once,
 // a moment after the shell starts, so no keystroke waits on it.
+import qs
 import Quickshell
 import Quickshell.Io
 import QtQuick
@@ -14,17 +15,10 @@ Provider {
 
     what: "emoji"
 
-    collection: ({
-        noun: "emoji",
-        title: "Emoji",
-        words: ["emoticons", "smileys", "faces", "symbols", "characters", "unicode"],
-        glyph: String.fromCodePoint(0xf01f5),
-        ask: "which emoji?",
-        // Found only here, by Super+E or by its name: in the main search an
-        // emoji named like what was typed ("turkey" for "tu") is a row to
-        // read and rule out.
-        searched: false
-    })
+    // Found only here, by Super+E or by its name: in the main search an
+    // emoji named like what was typed ("turkey" for "tu") is a row to read
+    // and rule out.
+    collection: Words.collection("emoji", { searched: false })
     examples: ["emoji"]
 
     // Every emoji, in Unicode's order, read the first time it's needed.

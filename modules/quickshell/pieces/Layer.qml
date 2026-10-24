@@ -15,6 +15,7 @@ Piece {
     actions: KeyboardLayer.locked ? [{
         glyph: String.fromCodePoint(0xf0329),
         name: "Let it go",
+        verb: "release",
         run: () => Niri.spawn(["ergodox", "layer", "0"])
     }] : []
 }

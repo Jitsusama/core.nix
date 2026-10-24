@@ -111,7 +111,7 @@ ShellRoot {
             const touched = new Date().getFullYear() === 2026 ? "21 Oct" : "21 Oct 2026";
             const facts = prompt.verbs();
             expect("stepping in",
-                names(facts) === `Open pi on it, QEST-20261003-PROMPT, active \u00b7 queued, ${touched}, `
+                names(facts) === `Start an agent, QEST-20261003-PROMPT, active \u00b7 queued, ${touched}, `
                     + "Bootstrap the laptop, ~/session", names(facts));
             const folder = facts[facts.length - 1];
             expect("its folder copied whole", folder.copy === `${root.here}/session`, folder.copy);
@@ -129,7 +129,8 @@ ShellRoot {
             held.run();
             expect("going to its session", JSON.stringify(Niri.acted) === '{"FocusWindow":{"id":7}}',
                 JSON.stringify(Niri.acted));
-            expect("its step says so", held.verbs()[0].name === "Go to its session", held.verbs()[0].name);
+            expect("its step says so", held.verbs()[0].name === "Switch" && held.verbs()[0].verb === "switch",
+                held.verbs()[0].name);
 
             root.waiting = "the quest made since";
             making.running = true;

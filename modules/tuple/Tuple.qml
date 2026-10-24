@@ -105,88 +105,68 @@ Singleton {
     // it's known.
     readonly property var controls: {
         const glyph = code => String.fromCodePoint(code);
+        // Named and found as the launcher's vocabulary says (Words.qml),
+        // never by the program's name, which only finds them.
+        const said = (key, state, fill) => ({
+            key: key,
+            verb: Words.verb(key, state),
+            name: Words.name(key, state, fill),
+            keywords: Words.keywords(key, state)
+        });
         const rows = [];
         if (ringing !== "" && !calling)
-            rows.push({
-                key: "tuple:ringing",
-                verb: "show",
-                name: `Show the Tuple call from ${name(ringing) || "someone"}`,
-                keywords: "pair ringing answer",
+            rows.push(Object.assign(said("tuple:ringing", "", { who: name(ringing) || "someone" }), {
                 glyph: glyph(0xf03f2),
                 hue: "person",
                 note: "answer it in Tuple's window",
                 run: () => root.show()
-            });
+            }));
         if (calling) {
             const quiet = muted === true;
-            rows.push({
-                key: "tuple:mute",
-                verb: quiet ? "unmute" : "mute",
-                name: quiet ? "Let them hear me again in the Tuple call" : "Mute me in the Tuple call",
-                keywords: "pair microphone voice",
+            rows.push(Object.assign(said("tuple:mute", quiet ? "muted" : ""), {
                 glyph: glyph(quiet ? 0xf036c : 0xf036d),
                 hue: "action",
                 later: true,
                 run: () => root.mute(!quiet)
-            });
+            }));
             if (!casting)
-                rows.push({
-                    key: "tuple:share",
-                    verb: "share",
-                    name: "Share the screen in the Tuple call",
-                    keywords: "pair",
+                rows.push(Object.assign(said("tuple:share"), {
                     glyph: glyph(0xf1483),
                     hue: "action",
                     later: true,
                     run: () => root.share()
-                });
-            rows.push({
-                key: "tuple:leave",
-                verb: "leave",
-                name: "Leave the Tuple call",
-                keywords: "pair hang up end",
+                }));
+            rows.push(Object.assign(said("tuple:leave"), {
                 glyph: glyph(0xf03f5),
                 hue: "action",
                 later: true,
                 run: () => root.leave()
-            });
+            }));
         } else {
-            rows.push({
-                key: "tuple:open",
-                verb: "open",
-                name: "Open my Tuple room",
-                keywords: "pair call start new",
+            rows.push(Object.assign(said("tuple:open"), {
                 glyph: glyph(0xf081c),
                 hue: "action",
                 note: "and copy its link to hand on",
                 later: true,
                 run: () => root.open()
-            });
+            }));
             const link = joinable;
             if (link !== "")
-                rows.push({
-                    key: "tuple:join",
-                    verb: "join",
-                    name: "Join the Tuple call in the clipboard",
-                    keywords: "pair call link",
+                rows.push(Object.assign(said("tuple:join"), {
                     glyph: glyph(0xf0659),
                     hue: "action",
                     note: link.replace(/^https:\/\//, ""),
                     later: true,
                     run: () => root.join(link)
-                });
+                }));
         }
         if (room !== "")
-            rows.push({
-                key: "tuple:link",
-                verb: "copy",
-                name: "Copy my Tuple room's link",
-                keywords: "pair call url",
+            rows.push(Object.assign(said("tuple:link"), {
                 glyph: glyph(0xf0339),
                 hue: "action",
                 note: room.replace(/^https:\/\//, ""),
                 run: () => root.copyRoom()
-            });
+            }));
         return rows;
     }
 

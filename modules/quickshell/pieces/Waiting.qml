@@ -29,6 +29,7 @@ Piece {
     }, {
         glyph: String.fromCodePoint(0xf0a91),
         name: "Let them go",
+        verb: "dismiss",
         run: () => Notices.seen()
     }]
 }

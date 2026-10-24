@@ -21,13 +21,7 @@ Provider {
 
     what: "copy"
 
-    collection: ({
-        noun: "copies",
-        title: "Clipboard",
-        words: ["copy", "paste", "pasted", "copied", "history", "yank", "pictures", "images"],
-        glyph: String.fromCodePoint(0xf0a38),
-        ask: "which copy?"
-    })
+    collection: Words.collection("clipboard")
 
     // Newest first.
     property var all: []
@@ -36,10 +30,10 @@ Provider {
         key: "copies:forget",
         // An act, not a copy, so it says no kind (docs/design.md).
         what: "",
-        verb: "forget",
-        name: "Forget the Clipboard",
-        keywords: "clipboard copies history clear empty erase wipe",
-        glyph: String.fromCodePoint(0xf01fe),
+        verb: Words.verb("copies:forget"),
+        name: Words.name("copies:forget"),
+        keywords: `clipboard copies history ${Words.keywords("copies:forget")}`,
+        glyph: Words.glyph("copies:forget"),
         hue: "action",
         run: () => provider.tell("clear")
     })

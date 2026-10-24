@@ -17,14 +17,7 @@ Provider {
 
     what: "shortcut"
 
-    collection: ({
-        noun: "shortcuts",
-        title: "Shortcuts",
-        words: ["hotkeys", "chords", "bindings", "keybindings", "key combos"],
-        glyph: String.fromCodePoint(0xf097b),
-        ask: "which shortcut?",
-        searched: false
-    })
+    collection: Words.collection("shortcuts", { searched: false })
 
     readonly property var places: ({
         desktop: "on the desktop",

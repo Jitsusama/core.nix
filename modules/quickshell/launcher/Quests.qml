@@ -19,16 +19,11 @@ import "../Fuzzy.js" as Fuzzy
 Provider {
     id: provider
 
-    what: "quest"
+    // Named Tasks in Joel's words (Words.qml), a part of Agents; pi's word
+    // for them finds them but never names them.
+    what: Words.of("quests").what
 
-    collection: ({
-        noun: "quests",
-        title: "Quests",
-        words: ["quest", "plans", "projects", "work", "todo", "tasks"],
-        glyph: Theme.glyph.agent,
-        ask: "which quest?",
-        empty: "No quests."
-    })
+    collection: Words.collection("quests")
 
     // As pi-quests wrote them, or none before it first answers, and the
     // text they were read from, so the same text read again changes nothing.
@@ -146,8 +141,10 @@ Provider {
         const parent = quest.parent ? quests.find(other => other.id === quest.parent) : null;
         return [thing({
             key: session ? "verb:quest:switch" : "verb:quest:open",
-            name: session ? "Go to its session" : "Open pi on it",
-            glyph: String.fromCodePoint(0xf05b2),
+            verb: Words.verb(session ? "verb:quest:switch" : "verb:quest:open"),
+            name: Words.name(session ? "verb:quest:switch" : "verb:quest:open"),
+            keywords: Words.keywords(session ? "verb:quest:switch" : "verb:quest:open"),
+            glyph: Words.glyph(session ? "verb:quest:switch" : "verb:quest:open"),
             hue: "action",
             later: true,
             run: () => provider.go(quest)
@@ -157,7 +154,7 @@ Provider {
                 .filter(part => part !== "").join(" \u00b7 "), "how it stands"),
             quest.updated ? fact("updated", day(quest.updated), "last touched") : null,
             parent ? fact("parent", parent.title || parent.id, `its parent, ${parent.id}`) : null,
-            fact("folder", homely, "pi opens in", quest.folder)
+            fact("folder", homely, "an agent starts in", quest.folder)
         ].filter(row => row !== null));
     }
 

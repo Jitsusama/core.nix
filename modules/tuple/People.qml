@@ -1,5 +1,5 @@
-// Tuple's place in the launcher, a collection found by typing "tuple",
-// "pair" or "call": first what can be done about calls now, as Tuple.qml
+// Calls, Tuple's place in the launcher, a collection found by typing
+// "call", "pair" or "tuple": first what can be done about calls now, as Tuple.qml
 // says it, so a ringing call, or the call Joel's in, leads, and out of one
 // his room does; then the people to pair with. Its row at home says how
 // Tuple stands: who's calling, in a call, or how many can pair.
@@ -33,14 +33,10 @@ Provider {
 
     what: "person"
 
-    collection: ({
-        noun: "people",
-        title: "Tuple",
-        words: ["tuple", "pair", "pairing", "call", "calls", "room", "teammates", "contacts",
-            "colleagues"],
-        glyph: String.fromCodePoint(0xf000e),
-        ask: Tuple.calling ? "what to do in the call?" : "who to pair with?",
-        empty: "Tuple lists nobody yet."
+    // Named Calls (Words.qml): the program's name finds it but never
+    // names it.
+    collection: Words.collection("people", {
+        ask: Tuple.calling ? "what to do in the call?" : "who to pair with?"
     })
 
     // What can be done about calls now, which leads the place.

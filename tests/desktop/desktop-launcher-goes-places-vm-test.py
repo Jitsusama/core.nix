@@ -106,7 +106,7 @@ with subtest("the launcher finds a pi session by its quest, and goes to its wind
     machine.send_key("ret")
     launcher_until(
         lambda shown: (
-            shown["held"] == ["sessions"]
+            shown["held"] == ["agents"]
             and (shown["selected"] or {}).get("name") == "A quest of its own & whole"
             and "$12.50 today" in shown["selected"]["side"]
             and "2nd in line" in shown["selected"]["side"]
@@ -115,9 +115,14 @@ with subtest("the launcher finds a pi session by its quest, and goes to its wind
     photograph("launcher-agents")
     # Stepped into, what's known of it, each a row of its own.
     step_in()
-    launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Go to its window")
+    launcher_until(
+        lambda shown: (
+            (shown["selected"] or {}).get("name") == "Switch"
+            and shown["selected"]["verb"] == "switch"
+        )
+    )
     for name, side in [
-        (r"QEST-20261022-TESTQA", "its quest"),
+        (r"QEST-20261022-TESTQA", "its task"),
         (r"TESTQA", "its address"),
         (r"\d\d:\d\d", "started"),
         (r"\$12\.50", "spent today"),
@@ -136,7 +141,7 @@ with subtest("the launcher finds a pi session by its quest, and goes to its wind
         )
     photograph("launcher-agent-facts")
     machine.send_key("left")
-    launcher_until(lambda shown: shown["held"] == ["sessions"])
+    launcher_until(lambda shown: shown["held"] == ["agents"])
     as_account("rm $XDG_RUNTIME_DIR/spend-watch/collection.json $XDG_RUNTIME_DIR/jobs/queue.json")
     # Found by its address too.
     type_in("testqa", selecting="A quest of its own & whole")
@@ -268,13 +273,14 @@ with subtest(
     as_account(f"niri msg action focus-window --id {window_titled('Elsewhere')['id']}")
     as_account("qs ipc call launcher toggle")
     launcher_ready()
+    # pi's word finds them, named Tasks in Joel's.
     type_in("quests")
-    launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Quests")
+    launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Tasks")
     machine.send_key("ret")
     # The one driving first, naming the session that has it loaded.
     launcher_until(
         lambda shown: (
-            shown["held"] == ["quests"]
+            shown["held"] == ["tasks"]
             and (shown["selected"] or {}).get("name") == "A quest of its own & whole"
             and shown["selected"]["side"] == "driving \u00b7 TESTQA"
         )
@@ -350,15 +356,16 @@ with subtest(
     as_account(f"niri msg action focus-window --id {window_titled('Elsewhere')['id']}")
     as_account("qs ipc call launcher toggle")
     launcher_ready()
+    # pi's word finds them, named Helpers in Joel's.
     type_in("runs")
-    launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Runs")
+    launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Helpers")
     machine.send_key("ret")
     launcher_until(
         lambda shown: (
-            shown["held"] == ["runs"]
+            shown["held"] == ["helpers"]
             and (shown["selected"] or {}).get("name") == "paint-crew"
             and re.fullmatch(
-                r"fleet \u00b7 1 of 2 done \u00b7 (<1|\d+) min \u00b7 TESTQA",
+                r"helpers \u00b7 1 of 2 done \u00b7 (<1|\d+) min \u00b7 TESTQA",
                 shown["selected"]["side"],
             )
         )
@@ -366,7 +373,7 @@ with subtest(
     photograph("launcher-runs")
     # Stepped into, its members after the way to its session.
     step_in()
-    launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Go to its session")
+    launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Switch")
     machine.send_key("down")
     launcher_until(
         lambda shown: (
@@ -394,8 +401,8 @@ with subtest(
     # Return on the run itself goes to its session.
     as_account("qs ipc call launcher toggle")
     launcher_ready()
-    type_in("runs")
-    launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Runs")
+    type_in("helpers")
+    launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Helpers")
     machine.send_key("ret")
     launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "paint-crew")
     machine.send_key("ret")

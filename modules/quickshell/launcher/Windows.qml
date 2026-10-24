@@ -25,15 +25,7 @@ Provider {
 
     what: "window"
 
-    collection: ({
-        noun: "windows",
-        title: "Windows",
-        words: ["apps", "open", "running", "switch", "tasks"],
-        glyph: String.fromCodePoint(0xf05b2),
-        ask: "which window?",
-        empty: "No other windows.",
-        searched: false
-    })
+    collection: Words.collection("windows", { searched: false })
 
     // An open list follows windows opening, closing and being renamed.
     onThingsChanged: changed()
@@ -137,61 +129,64 @@ Provider {
         return String.fromCodePoint(code);
     }
 
+    // An act on a window, named, worded and worn as the vocabulary says
+    // (Words.qml), in the state it's in: one word for Return, a short name.
+    function act(key, state, fields) {
+        return thing(Object.assign({
+            key: key,
+            verb: Words.verb(key, state),
+            name: Words.name(key, state),
+            keywords: Words.keywords(key, state),
+            glyph: Words.glyph(key, state),
+            hue: "action"
+        }, fields));
+    }
+
     // What can be done to a window, the likeliest first.
     function verbs(window, title, program, below) {
         const id = window.id;
+        const here = Niri.workspace();
         const all = [
-            thing({
-                key: "verb:switch",
-                name: "Switch to it",
-                glyph: glyph(0xf05b2),
-                hue: "action",
+            act("verb:switch", "", {
                 run: () => Niri.act({ FocusWindow: { id: id } })
-            }),
-            thing({
-                key: "verb:move",
-                verb: "choose",
-                name: "Move it to a workspace",
-                glyph: glyph(0xf11d9),
-                hue: "action",
-                side: "\u2026",
-                ask: "which workspace?",
-                chip: "move to",
-                targets: () => provider.workspacesFor(window)
             })
         ];
+        // Brought to the workspace in front, for one that's elsewhere.
+        if (here && window.workspace_id !== here.id)
+            all.push(act("verb:bring", "", {
+                run: () => Niri.act({
+                    MoveWindowToWorkspace: {
+                        window_id: id,
+                        reference: { Id: here.id },
+                        focus: true
+                    }
+                })
+            }));
+        all.push(act("verb:move", "", {
+            side: "\u2026",
+            ask: "which workspace?",
+            chip: "move to",
+            targets: () => provider.workspacesFor(window)
+        }));
         if (below)
-            all.push(thing({
-                key: "verb:below",
-                name: `Open another ${program} below it`,
-                glyph: glyph(0xf03cc),
-                hue: "action",
+            all.push(act("verb:below", "", {
+                // What it opens, so the name needn't say it.
+                side: program,
+                keywords: `${Words.keywords("verb:below")} open another ${program} below it`,
                 chord: provider.launcher.belowChord,
                 run: below
             }));
         all.push(
-            thing({
-                key: "verb:float",
-                name: window.is_floating ? "Tile it" : "Float it",
-                glyph: glyph(0xf2d0),
-                hue: "action",
+            act("verb:float", window.is_floating ? "floating" : "", {
                 run: () => Niri.act({ ToggleWindowFloating: { id: id } })
             }),
-            thing({
-                key: "verb:title",
-                name: "Copy its title",
-                glyph: glyph(0xf018f),
-                hue: "action",
+            act("verb:title", "", {
                 // Said while the launcher still holds the keys, which a
                 // Wayland program needs to set the clipboard.
                 now: true,
                 run: () => Quickshell.clipboardText = window.title ?? title
             }),
-            thing({
-                key: "verb:close",
-                name: "Close it",
-                glyph: glyph(0xf05ad),
-                hue: "action",
+            act("verb:close", "", {
                 run: () => Niri.act({ CloseWindow: { id: id } })
             })
         );

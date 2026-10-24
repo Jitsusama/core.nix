@@ -23,13 +23,8 @@ Provider {
 
     what: "notice"
 
-    collection: ({
-        noun: "notices",
-        title: "Notices",
-        words: ["notifications", "alerts", "messages", "missed"],
-        glyph: String.fromCodePoint(0xf009c),
-        ask: "which notice?"
-    })
+    // Named Notifications, Joel's word, as the vocabulary says (Words.qml).
+    collection: Words.collection("notices")
 
     function ago(at) {
         const seconds = Math.max(0, (Date.now() - at) / 1000);

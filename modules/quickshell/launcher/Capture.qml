@@ -32,17 +32,10 @@ Provider {
 
     what: "capture"
 
-    collection: ({
-        noun: "captures",
-        title: "Capture",
-        words: ["screenshot", "screen shot", "record", "recording", "video", "photo", "camera", "webcam", "print", "grab"],
-        glyph: glyph(0xf0100),
-        ask: "of what?",
-        // What it captures are others' things, a window found by its title
-        // among them, so the search lists them where they're their own:
-        // here they'd be the same window twice (Joel, 2026-10-23).
-        searched: false
-    })
+    // What it captures are others' things, a window found by its title
+    // among them, so the search lists them where they're their own: here
+    // they'd be the same window twice (Joel, 2026-10-23).
+    collection: Words.collection("capture", { searched: false })
 
     function glyph(code) {
         return String.fromCodePoint(code);

@@ -383,4 +383,136 @@ in
     console = "t";
     means = "how hard an agent thinks, in its level's colour";
   };
+  # The launcher's things, each by what it is, as its vocabulary names
+  # them (modules/quickshell/launcher/words.json).
+  category = {
+    glyph = nerd "f04fc";
+    console = "#";
+    means = "a category of the launcher's things, such as computer or ai";
+  };
+  command = {
+    glyph = nerd "f018d";
+    console = ">";
+    means = "a command typed with what it takes, such as ip and an address";
+  };
+  windows = {
+    glyph = nerd "f05b2";
+    console = "w";
+    means = "the windows open, or going to one";
+  };
+  workspace = {
+    glyph = nerd "f11d9";
+    console = "W";
+    means = "a workspace, or moving a window to one";
+  };
+  below = {
+    glyph = nerd "f03cc";
+    console = "+";
+    means = "a new window of a program";
+  };
+  copy = {
+    glyph = nerd "f018f";
+    console = "c";
+    means = "copying something to the clipboard";
+  };
+  close = {
+    glyph = nerd "f05ad";
+    console = "x";
+    means = "closing a window";
+  };
+  forget = {
+    glyph = nerd "f01fe";
+    console = "-";
+    means = "forgetting what's kept, such as the clipboard's copies";
+  };
+  clipboard = {
+    glyph = nerd "f0a38";
+    console = "C";
+    means = "the clipboard and what it's kept";
+  };
+  notifications = {
+    glyph = nerd "f009c";
+    console = "N";
+    means = "the notifications of the session, seen or missed";
+  };
+  emoji = {
+    glyph = nerd "f01f5";
+    console = ":";
+    means = "emoji, to type";
+  };
+  shortcuts = {
+    glyph = nerd "f097b";
+    console = "K";
+    means = "every layer's shortcuts";
+  };
+  keyboard = {
+    glyph = nerd "f030c";
+    console = "k";
+    means = "the keyboard: its layout, layers, keys and lights";
+  };
+  display = {
+    glyph = nerd "f037a";
+    console = "D";
+    means = "a display, or the displays";
+  };
+  bluetooth = {
+    glyph = nerd "f00af";
+    console = "B";
+    means = "Bluetooth and what's paired by it";
+  };
+  bluetoothOff = {
+    glyph = nerd "f00b2";
+    console = "b";
+    means = "Bluetooth turned off";
+  };
+  capture = {
+    glyph = nerd "f0100";
+    console = "P";
+    means = "capturing the screen, a window, a region or the camera";
+  };
+  now = {
+    glyph = nerd "f00f0";
+    console = "!";
+    means = "what wants Joel and what's on, now";
+  };
+  people = {
+    glyph = nerd "f000e";
+    console = "P";
+    means = "calls, and the people to call or pair with";
+  };
+  saver = {
+    glyph = nerd "f032a";
+    console = "s";
+    means = "the power saver profile";
+  };
+  balanced = {
+    glyph = nerd "f05d1";
+    console = "=";
+    means = "the balanced power profile";
+  };
+  performance = {
+    glyph = nerd "f04c5";
+    console = "^";
+    means = "the full performance power profile";
+  };
+  suspend = {
+    glyph = nerd "f04b2";
+    console = "z";
+    means = "suspending the machine";
+  };
+  logout = {
+    glyph = nerd "f0343";
+    console = "<";
+    means = "logging out";
+  };
+  reboot = {
+    glyph = nerd "f0453";
+    console = "r";
+    means = "rebooting the machine";
+  };
+  poweroff = {
+    glyph = nerd "f011";
+    console = "o";
+    means = "powering the machine off";
+  };
 }

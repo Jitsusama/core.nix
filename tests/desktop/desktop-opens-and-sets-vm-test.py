@@ -137,7 +137,7 @@ with subtest("Forget the Clipboard forgets every copy, and what it held"):
     retry(still_kept, timeout_seconds=10)
     as_account("qs ipc call launcher toggle")
     launcher_ready()
-    type_in("forget the clip", selecting="Forget the Clipboard")
+    type_in("forget the clip", selecting="Forget the clipboard")
     photograph("launcher-forget-copies")
     with told("forgot the copies"):
         machine.send_key("ret")
@@ -153,11 +153,11 @@ with subtest("the launcher's home keeps its shelf, and a collection opens by nam
     as_account("qs ipc call launcher toggle")
     launcher_ready()
     photograph("launcher-home")
-    t.assertEqual(showing()["rows"][-3:], ["Windows", "Clipboard", "Notices"])
+    t.assertEqual(showing()["rows"][-3:], ["Windows", "Clipboard", "Notifications"])
     # A page down stops on the last of them.
     for _page in range(4):
         machine.send_key("pgdn")
-    launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Notices")
+    launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Notifications")
     # Opening a collection keeps the launcher open, where a program
     # picked instead would close it.
     type_in("shortcuts", selecting="Shortcuts")
@@ -324,8 +324,10 @@ with subtest("the launcher's Sound moves sound to another output, and back"):
 with subtest("the launcher sets the power profile"):
     # By its name, or a word a person would call it.
     for typed, profile, name in [
-        ("eco", "power-saver", "Use power saver"),
-        ("balanced power", "balanced", "Use balanced power"),
+        ("eco", "power-saver", "Power saver"),
+        ("balanced power", "balanced", "Balanced power"),
+        # Its old name, a hidden word, still finds it.
+        ("use power saver", "power-saver", "Power saver"),
     ]:
         as_account("qs ipc call launcher toggle")
         launcher_ready()
