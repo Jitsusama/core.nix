@@ -756,6 +756,10 @@
   vm-commits-are-signed = ''
     commits are signed with the TPM's keys, PINs asked for
   '';
+  vm-desk-facts-follow-a-replug = ''
+    desk-facts names a USB sound card plugged into a running machine, stops naming it once it's
+    pulled out, and names it again when it's plugged back in
+  '';
   vm-desktop-captures-and-locks = ''
     the desktop takes a screen, a window, a region, a recording and the camera's pictures by the
     keys, and its lock screen, polkit's prompt and the askpass answer and hold
