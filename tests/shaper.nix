@@ -4,8 +4,9 @@
 # system's builds, a guest it forwards for, an app's page and its call,
 # Tuple's daemon, names and the shaper's pings. Traffic to the router,
 # on the client's own network, goes by unslowed. When the default route
-# moves to the client's other link, the queues move with it, and when the
-# shaper stops, it takes them all away. Inside a WireGuard tunnel to the
+# moves to the client's other link, the queues move with it; when that link is
+# unplugged and plugged back in, as a dock's adapter is, it's shaped afresh;
+# and when the shaper stops, it takes them all away. Inside a WireGuard tunnel to the
 # server, named as a machine names its VPN's, the same classes reach the
 # tunnel's own CAKE. The script is shaper-vm-test.py.
 { self, pkgs }:
