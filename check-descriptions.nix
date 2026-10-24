@@ -996,8 +996,11 @@
     the launcher, a notice, the margin's marks and dictation's bar come back after the screen goes
     and returns, after a console switch and after a sleep and wake, after which the shell still
     hears a notice, dictation's keys and Keep Awake let go; when one of two screens goes, the
-    margin and dictation's bar stay on the other and the margin comes back on both; and desk-facts
-    stops naming the screen once it's gone and names it again once it's back
+    margin and dictation's bar stay on the other and the margin comes back on both; the launcher
+    opens, finds and runs a row on either of two screens as each goes and comes back, as both go,
+    and after a sleep, its foot still telling the time after the wake; Quickshell warns of nothing
+    meanwhile; and desk-facts stops naming the screen once it's gone and names it again once it's
+    back
   '';
   vm-secure-boot-installs = ''
     the whole install works, and the disk opens only for it

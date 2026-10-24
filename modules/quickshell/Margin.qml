@@ -146,7 +146,7 @@ Scope {
     }
 
     Variants {
-        model: Quickshell.screens
+        model: Quickshell.screens.filter(screen => screen.name !== "")
 
         PanelWindow {
             id: window

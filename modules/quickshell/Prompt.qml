@@ -207,7 +207,15 @@ Item {
         Keys.onEscapePressed: prompt.cancelled()
         Keys.onPressed: event => {
             const none = input.selectionStart === input.selectionEnd;
-            if (event.key === Qt.Key_Right && none && input.cursorPosition === input.text.length) {
+            // A key whose release comes late, past the repeat delay, while
+            // the shell is busy, repeats as if held
+            // (modules/keyboard/repeat.nix). No field here wants a character
+            // held for many, so only keys that move or delete repeat.
+            if (event.isAutoRepeat && event.text !== "" && event.text >= " "
+                && event.text !== "\u007f") {
+                event.accepted = true;
+            } else if (event.key === Qt.Key_Right && none
+                && input.cursorPosition === input.text.length) {
                 prompt.forward();
                 event.accepted = true;
             } else if (event.key === Qt.Key_Left && prompt.leftClears && input.text !== "") {
