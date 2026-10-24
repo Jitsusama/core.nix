@@ -71,6 +71,12 @@
 # spinner at nice -10 took 81% of it against one at 0. Everything outside
 # the daemon, what Joel uses, keeps its lead.
 #
+# What needs that is a check with deadlines, not qemu itself: a check run in
+# containers or in a nested compositor keeps time the same way. So a build
+# running NixOS's test driver, systemd-nspawn, niri or sway is put ahead as
+# a VM's is, every thread in it and in its containers' cgroups, and weighed
+# at 1000. Only the daemon's builds are looked in, never Joel's own niri.
+#
 # A check can run its machines as systemd-nspawn containers rather than
 # virtual machines, which start in a second or two rather than booting a
 # kernel. A container needs a range of user ids of its own, which a build

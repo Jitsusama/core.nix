@@ -4,11 +4,13 @@
 { self, pkgs }:
 let
   # Python under qemu's name, so the kernel names it as qemu, and bash under
-  # a compiler's.
+  # a compiler's, a container's and a service's in it.
   impostors = pkgs.runCommandLocal "impostors" { } ''
     mkdir -p $out/bin
     cp ${pkgs.python3}/bin/python3 $out/bin/qemu-system-x86_64
     cp ${pkgs.bash}/bin/bash $out/bin/cc1
+    cp ${pkgs.bash}/bin/bash $out/bin/systemd-nspawn
+    cp ${pkgs.bash}/bin/bash $out/bin/service
   '';
   # A VM's threads, and a compiler that's busy until stopped.
   fakeVm = pkgs.writeShellApplication {
@@ -19,6 +21,12 @@ let
   fakeCompiler = pkgs.writeShellApplication {
     name = "fake-compiler";
     text = "exec ${impostors}/bin/cc1 -c 'while :; do ${pkgs.coreutils}/bin/sleep 1; done'";
+  };
+  # A container, as a check run in one starts it, with a service in it that
+  # bears no name of its own to be known by.
+  fakeContainer = pkgs.writeShellApplication {
+    name = "fake-container";
+    text = "exec ${impostors}/bin/systemd-nspawn -c '${impostors}/bin/service -c \"while :; do ${pkgs.coreutils}/bin/sleep 1; done\" & wait'";
   };
   # A build that writes 64 MiB through to the disk and then finishes.
   fakeWriter = pkgs.writeShellApplication {
@@ -62,12 +70,14 @@ pkgs.testers.runNixOSTest {
     system.extraDependencies = [
       fakeVm
       fakeCompiler
+      fakeContainer
       fakeWriter
       fakeLazyWriter
     ];
     environment.etc."vm-build.nix".source = buildOf "vm-build" fakeVm;
     environment.etc."compiler-build.nix".source = buildOf "compiler-build" fakeCompiler;
     environment.etc."quest-build.nix".source = buildOf "quest-build" fakeCompiler;
+    environment.etc."container-build.nix".source = buildOf "container-build" fakeContainer;
     environment.etc."writer-build.nix".source = buildOf "writer-build" fakeWriter;
     environment.etc."lazy-writer-build.nix".source = buildOf "lazy-writer-build" fakeLazyWriter;
     environment.etc."uid-range.nix".source = ./uid-range.nix;
