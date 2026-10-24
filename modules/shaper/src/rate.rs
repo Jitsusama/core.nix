@@ -39,7 +39,11 @@
 //! Wi-Fi, cut for each such spell, a download fell from 85 Mbit/s to its
 //! floor of 5 and stayed there. Pings come back late and early by turns
 //! on Wi-Fi, so a queue back within moments of a cut is still the same
-//! spell, cut again only if it grows.
+//! spell, cut again only if it grows. An upload has no arrivals to tell
+//! by, so each cut is on trial: once the line is quiet the rate climbs
+//! straight back to where it was cut from, and the cut stands only if the
+//! queue comes back on the way. A cut near where one was confirmed isn't
+//! tried again.
 
 use std::collections::{HashMap, VecDeque};
 
@@ -181,6 +185,16 @@ pub struct Direction {
     /// When its latest run of busy steps began, since it last rested or
     /// was cut.
     busy_since: Option<f64>,
+    /// The rate held before a cut still on trial, which it climbs straight
+    /// back to once the line is quiet. Late pings say a queue, not whose:
+    /// on Wi-Fi or beside a busy host they come late for no queue of ours,
+    /// and each cut a tenth, with climbing past the held rate waiting five
+    /// busy seconds, took an upload to its floor within two minutes. The
+    /// cut stands only if the queue comes back on the way.
+    on_trial: Option<u64>,
+    /// The rate at which the line's queue last came back on a trial's way
+    /// up: a cut from near it isn't tried again, since the line is there.
+    confirmed: Option<u64>,
 }
 
 impl Direction {
@@ -196,6 +210,8 @@ impl Direction {
             proving: None,
             cut_at: None,
             busy_since: None,
+            on_trial: None,
+            confirmed: None,
         }
     }
 
@@ -225,15 +241,42 @@ impl Direction {
             }
         }
         let since = *self.busy_since.get_or_insert(now);
-        if self.rate >= self.held && now - since < s.probe_after_s {
+        if self.rate >= self.held && self.on_trial.is_none() && now - since < s.probe_after_s {
             return;
         }
         self.set(climbed(s, self));
+        if self.on_trial.is_some_and(|before| self.rate >= before) {
+            self.on_trial = None;
+        }
         if self.rate > self.held {
             self.held = self.rate;
-            self.peak = self.peak.max(self.held);
+            // A trial's way up isn't yet the line's best.
+            if self.on_trial.is_none() {
+                self.peak = self.peak.max(self.held);
+            }
             self.learned = true;
         }
+    }
+
+    /// Cuts to `held`, putting the cut on trial unless the line has shown
+    /// it's there: its queue came back on this trial's way up, a trial found
+    /// it near the rate cut from, or the peak was just put back.
+    fn cut_to(&mut self, held: u64) {
+        let before = self.held;
+        let on_the_way = self.on_trial.is_some() && self.rate >= self.held;
+        let near = |rate: u64| (float(rate) * 0.9..=float(rate) * 1.1).contains(&float(before));
+        let shown = on_the_way || self.forgot || self.confirmed.is_some_and(near);
+        if on_the_way {
+            self.confirmed = Some(self.rate);
+        } else if shown && !self.forgot {
+            self.confirmed = Some(before);
+        }
+        self.on_trial = if shown {
+            None
+        } else {
+            Some(self.on_trial.unwrap_or(before))
+        };
+        self.held = held;
     }
 
     /// A resting step: forgets a cut long past, and settles towards the
@@ -314,6 +357,8 @@ fn climbed(s: &Settings, dir: &Direction) -> f64 {
     let rate = float(dir.rate);
     if dir.rate < dir.held {
         (rate * s.climb_back).min(float(dir.held))
+    } else if let Some(before) = dir.on_trial.filter(|before| dir.rate < *before) {
+        (rate * s.climb_back).min(float(before))
     } else {
         rate * s.climb
     }
@@ -477,7 +522,7 @@ impl Controller {
                     // A queue still growing after a cut says that rate too
                     // was over the line, so each cut is the line's best
                     // guess.
-                    dir.held = whole(from * s.cut).clamp(dir.bounds.min, dir.bounds.max);
+                    dir.cut_to(whole(from * s.cut).clamp(dir.bounds.min, dir.bounds.max));
                     dir.set(float(dir.held) * drain);
                     dir.learned = true;
                     if std::mem::replace(&mut dir.forgot, false) {
@@ -874,6 +919,58 @@ mod tests {
         // and none climbs past the line to fill its queue.
         let cuts = line.bursts(&mut c, 10_000.0, 120.0, 2.0, 3.0);
         assert!(cuts <= 1, "{cuts}");
+    }
+
+    /// An upload filling all it may on a `line` kbit/s line 20 ms away, as
+    /// `Line` does, with pings `late` ms late for 0.8 s of every `every`
+    /// that no queue of its made, as on Wi-Fi or a busy host. Steps for
+    /// `seconds`, and gives the lowest rate after the first ten and how many
+    /// times it cut.
+    fn upload_beside_noise(
+        c: &mut Controller,
+        line: f64,
+        seconds: f64,
+        every: f64,
+        late: f64,
+    ) -> (u64, usize) {
+        let dt = 0.2;
+        let (mut queue_kbit, mut at, mut lowest, mut cuts) = (0.0_f64, 0.0, u64::MAX, 0);
+        while at < seconds {
+            let sent = float(c.up.rate);
+            queue_kbit = (queue_kbit + (sent - line) * dt).clamp(0.0, 8_000.0);
+            let noise = if at % every < 0.8 { late } else { 0.0 };
+            pings(c, 20.0 + queue_kbit / line * 1000.0 + noise, 3);
+            at += dt;
+            if c.step(at, sent.min(line), 0.0) == State::Cut {
+                cuts += 1;
+            }
+            if at > 10.0 {
+                lowest = lowest.min(c.up.rate);
+            }
+        }
+        (lowest, cuts)
+    }
+
+    #[test]
+    fn pings_late_for_no_queue_of_ours_leave_the_upload_near_its_rate() {
+        // Cut a tenth each time, and slow to climb past what it held, an
+        // upload fell to its floor within two minutes of this.
+        let mut c = controller(3_300, 50_000);
+        pings(&mut c, 20.0, 6);
+        let (lowest, _) = upload_beside_noise(&mut c, 8_000.0, 120.0, 6.0, 18.0);
+        assert!(lowest > 2_800, "{lowest}");
+        assert!(c.up.rate >= 3_300, "{}", c.up.rate);
+    }
+
+    #[test]
+    fn a_line_a_retry_confirmed_is_cut_no_more_often() {
+        // Retrying every cut cut a steady line 50 times in two minutes,
+        // where it took 11.
+        let mut c = controller(10_000, 50_000);
+        pings(&mut c, 20.0, 6);
+        upload_beside_noise(&mut c, 8_000.0, 60.0, f64::INFINITY, 0.0);
+        let (_, cuts) = upload_beside_noise(&mut c, 8_000.0, 120.0, f64::INFINITY, 0.0);
+        assert!(cuts <= 12, "{cuts}");
     }
 
     #[test]
