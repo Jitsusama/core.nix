@@ -167,6 +167,7 @@ pub fn steps(yubikeys: &[String]) -> Vec<Box<dyn Step>> {
     steps.push(Box::new(system::SealRescueBundle));
     steps.push(Box::new(keys::KeepRecoveryKey));
     steps.push(Box::new(system::InstallSystem));
+    steps.push(Box::new(system::ReadyEnrolment));
     steps.push(Box::new(system::SetPassword));
     steps.push(Box::new(disk::WipeInstallKey {
         yubikeys: yubikeys.len(),

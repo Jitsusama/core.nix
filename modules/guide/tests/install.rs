@@ -14,7 +14,9 @@ use guide::fake::Fake;
 use guide::install::disk::{ConfirmDisk, LayOutDisk, WipeInstallKey};
 use guide::install::keys::EnrolYubikey;
 use guide::install::memory::{self, RunFromMemory};
-use guide::install::system::{CheckFirmware, KeepOnStick, SealRescueBundle, SecureBootKeys};
+use guide::install::system::{
+    CheckFirmware, KeepOnStick, ReadyEnrolment, SealRescueBundle, SecureBootKeys,
+};
 use guide::install::vault::OpenVault;
 use guide::install::{INSTALL_KEY, RECOVERY_KEY, STICK_VAULT, TARGET, Target, VAULT_KEY};
 use guide::rescue::{self, Bundle};
@@ -1413,5 +1415,123 @@ fn the_recovery_key_is_shown_alone_for_the_phone_then_typed_back_from_it() {
     assert!(matches!(
         KeepRecoveryKey.run(&mut fake, &answers),
         Err(Fault::Blocked { .. })
+    ));
+}
+
+/// The installed system's profile leading to the target's system, and
+/// that system with core's program to ready its keys, or without.
+fn installed(fake: &mut Fake, target: &Target, readies: bool) {
+    fake.pointer("/mnt/nix/var/nix/profiles/system", &target.system);
+    if readies {
+        fake.pointer(
+            &format!("/mnt{}/secure-boot-enrolment", target.system),
+            "/nix/store/def-secure-boot-enrolment",
+        );
+    }
+}
+
+/// The firmware in setup mode, or in user mode enforcing.
+fn firmware_in_setup(fake: &mut Fake, setup: bool) {
+    let (enforcing, setup): (&[u8], &[u8]) = if setup {
+        (&[6, 0, 0, 0, 0], &[6, 0, 0, 0, 1])
+    } else {
+        (&[6, 0, 0, 0, 1], &[6, 0, 0, 0, 0])
+    };
+    fake.file(
+        &format!("/sys/firmware/efi/efivars/SecureBoot-{GLOBAL}"),
+        enforcing,
+    )
+    .file(
+        &format!("/sys/firmware/efi/efivars/SetupMode-{GLOBAL}"),
+        setup,
+    )
+    .no_file(&format!("/sys/firmware/efi/efivars/AuditMode-{GLOBAL}"))
+    .no_file(&format!("/sys/firmware/efi/efivars/DeployedMode-{GLOBAL}"));
+}
+
+const AUTO: [&str; 3] = [
+    "/mnt/boot/loader/keys/auto/PK.auth",
+    "/mnt/boot/loader/keys/auto/KEK.auth",
+    "/mnt/boot/loader/keys/auto/db.auth",
+];
+
+#[test]
+fn a_firmware_in_setup_mode_gets_the_keys_readied_inside_the_installed_system() {
+    let target = target("/dev/disk/by-id/virtio-root");
+    let scratch = Scratch::new("install-ready-enrolment");
+    let mut fake = stick(&scratch, &target);
+    installed(&mut fake, &target, true);
+    firmware_in_setup(&mut fake, true);
+    for file in AUTO {
+        fake.no_file(file);
+    }
+    assert!(matches!(
+        ReadyEnrolment.observe(&mut fake).unwrap(),
+        Standing::Needed { .. }
+    ));
+    let program = format!("{}/secure-boot-enrolment", target.system);
+    fake.prints(Tool::NixosEnter, &["--root", "/mnt", "-c", &program], "");
+    ReadyEnrolment.run(&mut fake, &Answers::new()).unwrap();
+    assert!(
+        fake.calls
+            .iter()
+            .any(|call| call == &format!("nixos-enter --root /mnt -c {program}")),
+        "{:#?}",
+        fake.calls
+    );
+    // What it left on the ESP is what proves it.
+    for file in AUTO {
+        fake.file(file, b"an authenticated variable");
+    }
+    let Standing::Done { evidence } = ReadyEnrolment.observe(&mut fake).unwrap() else {
+        panic!("the keys are readied")
+    };
+    assert!(evidence.contains("before the disk is opened"), "{evidence}");
+}
+
+#[test]
+fn a_firmware_with_keys_of_its_own_gets_nothing_readied() {
+    let target = target("/dev/disk/by-id/virtio-root");
+    let scratch = Scratch::new("install-ready-nothing");
+    let mut fake = stick(&scratch, &target);
+    installed(&mut fake, &target, true);
+    firmware_in_setup(&mut fake, false);
+    let Standing::Done { evidence } = ReadyEnrolment.observe(&mut fake).unwrap() else {
+        panic!("a firmware with its own keys enrols nothing")
+    };
+    assert!(evidence.contains("isn't in setup mode"), "{evidence}");
+    ReadyEnrolment.run(&mut fake, &Answers::new()).unwrap();
+    assert!(
+        !fake
+            .calls
+            .iter()
+            .any(|call| call.starts_with("nixos-enter")),
+        "{:#?}",
+        fake.calls
+    );
+}
+
+#[test]
+fn a_system_that_readies_no_keys_itself_is_left_to_its_first_boot() {
+    let target = target("/dev/disk/by-id/virtio-root");
+    let scratch = Scratch::new("install-ready-no-program");
+    let mut fake = stick(&scratch, &target);
+    installed(&mut fake, &target, false);
+    // The firmware isn't even looked at: nothing here would ready keys.
+    assert!(matches!(
+        ReadyEnrolment.observe(&mut fake).unwrap(),
+        Standing::Done { .. }
+    ));
+}
+
+#[test]
+fn nothing_is_readied_before_the_system_is_installed() {
+    let target = target("/dev/disk/by-id/virtio-root");
+    let scratch = Scratch::new("install-ready-first");
+    let mut fake = stick(&scratch, &target);
+    fake.pointer("/mnt/nix/var/nix/profiles/system", "/nix/store/old-system");
+    assert!(matches!(
+        ReadyEnrolment.observe(&mut fake).unwrap(),
+        Standing::Needed { .. }
     ));
 }

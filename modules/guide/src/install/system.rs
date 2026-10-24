@@ -23,6 +23,31 @@ const SBCTL: &str = "/mnt/var/lib/sbctl";
 const CACHE: &str = "/mnt/var/cache/guide";
 const PROFILE: &str = "/mnt/nix/var/nix/profiles/system";
 const BOOT_LOADER: &str = "/mnt/boot/EFI/systemd/systemd-bootx64.efi";
+/// What core's lanzaboote module links at a system's top to ready its
+/// keys for systemd-boot to enrol, and where systemd-boot reads them.
+const ENROLMENT: &str = "secure-boot-enrolment";
+const ENROLLED_FROM: [&str; 3] = [
+    "/mnt/boot/loader/keys/auto/PK.auth",
+    "/mnt/boot/loader/keys/auto/KEK.auth",
+    "/mnt/boot/loader/keys/auto/db.auth",
+];
+
+/// The program that readies the installed system's keys for systemd-boot
+/// to enrol at its very first boot, when it has one and the firmware is
+/// in setup mode, so would take them. Left to that boot, it readies them
+/// once the disk is open and restarts, and the disk asks a second time.
+fn enrolment(machine: &mut dyn Machine, system: &str) -> Result<Option<String>, Fault> {
+    let program = format!("{system}/{ENROLMENT}");
+    if machine.read_link(&format!("{ROOT}{program}"))?.is_none() {
+        return Ok(None);
+    }
+    Ok(match SecureBoot::observe(machine)? {
+        Some(SecureBoot {
+            mode: Mode::Setup, ..
+        }) => Some(program),
+        _ => None,
+    })
+}
 
 /// Whether the install puts back the keys the stick carries: only when
 /// the firmware has a platform key and its db trusts them already. A
@@ -120,9 +145,10 @@ impl Step for CheckFirmware {
 /// The machine's Secure Boot keys, where the install's boot loader signs
 /// with them: put back from the vault when the stick carries the ones the
 /// firmware's db trusts already while it has a platform key, so a
-/// reinstall needs no visit to the firmware, or else made here, which the firmware takes only in setup
-/// mode. The
-/// first boot enrols them in setup mode, and restarts once either way.
+/// reinstall needs no visit to the firmware, or else made here, which the
+/// firmware takes only in setup mode. In setup mode the install readies
+/// them for systemd-boot (`ReadyEnrolment`), which enrols them as the
+/// machine first starts and restarts it, before any disk asks for a PIN.
 pub struct SecureBootKeys;
 
 /// Where the installed machine keeps its rescue bundle, under the
@@ -385,6 +411,68 @@ impl Step for InstallSystem {
             return Err(installed.refusal());
         }
         machine.remove_tree(CACHE)
+    }
+}
+
+/// The installed system's Secure Boot keys readied on its disk for
+/// systemd-boot to enrol as it first starts, before any disk is opened,
+/// when the firmware is in setup mode and so would take them. A firmware
+/// with keys of its own enrols nothing.
+pub struct ReadyEnrolment;
+
+impl Step for ReadyEnrolment {
+    fn id(&self) -> &'static str {
+        "ready-enrolment"
+    }
+
+    fn place(&self) -> Place {
+        Place::Stick
+    }
+
+    fn title(&self) -> &'static str {
+        "Ready its Secure Boot keys for the firmware"
+    }
+
+    fn observe(&self, machine: &mut dyn Machine) -> Result<Standing, Fault> {
+        let target = target(machine)?;
+        if machine.resolve_inside(ROOT, PROFILE)?.as_deref() != Some(target.system.as_str()) {
+            // Not installed yet, which comes first.
+            return Ok(Standing::Needed { asks: vec![] });
+        }
+        if enrolment(machine, &target.system)?.is_none() {
+            return Ok(Standing::Done {
+                evidence: "the firmware isn't in setup mode, so it keeps the keys it has".into(),
+            });
+        }
+        for file in ENROLLED_FROM {
+            if machine.read(file)?.is_none() {
+                return Ok(Standing::Needed { asks: vec![] });
+            }
+        }
+        Ok(Standing::Done {
+            evidence: "systemd-boot enrols its Secure Boot keys as it first starts, before the disk is opened".into(),
+        })
+    }
+
+    fn run(&self, machine: &mut dyn Machine, _answers: &Answers) -> Result<(), Fault> {
+        let target = target(machine)?;
+        let Some(program) = enrolment(machine, &target.system)? else {
+            return Ok(());
+        };
+        // Inside the installed system, as its first boot would: its own
+        // sbctl and keys, and its ESP at /boot.
+        let readied = machine.run_given(
+            Program::Tool(Tool::NixosEnter),
+            &["--root", ROOT, "-c", &program],
+            Given {
+                plain: vec![("PATH", Path::Install.get()?)],
+                ..Given::default()
+            },
+        )?;
+        if readied.status != 0 {
+            return Err(readied.refusal());
+        }
+        Ok(())
     }
 }
 

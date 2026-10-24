@@ -121,6 +121,12 @@ bootctl status | grep 'Secure Boot'   # Secure Boot: enabled (user)
 sudo sbctl verify                     # every file on the boot partition signed
 ```
 
+A machine the guide installs skips the first of those boots: the stick runs
+the same commands inside the installed system, through the
+`secure-boot-enrolment` program core's lanzaboote module puts at the system's
+top, so systemd-boot enrols the keys as the machine first starts, before any
+disk asks for a PIN.
+
 Some firmware, such as Dell's, locks itself into deployed mode once it has a
 platform key, so `enabled (deployed)` is as good as `enabled (user)`.
 

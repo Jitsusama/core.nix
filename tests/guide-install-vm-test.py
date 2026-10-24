@@ -293,14 +293,15 @@ with subtest("the stick comes out, and the machine boots its own disk with a key
         raise RuntimeError(message)
 
     machine.start(allow_reboot=True)
+    # systemd-boot enrols the keys the stick readied and restarts before
+    # any kernel starts, so the disk asks only once, with Secure Boot on.
     unlock()
     machine.connect()
-    # lanzaboote enrols the keys the guide made and restarts with
-    # Secure Boot on.
-    machine.wait_for_console_text("Linux version", timeout=300)
-    machine.connected = False
-    unlock()
-    machine.connect()
+    log = machine.get_console_log()
+    enrolled = log.rfind("Custom Secure Boot keys successfully enrolled")
+    t.assertNotEqual(enrolled, -1)
+    t.assertEqual(log[enrolled:].count("Linux version"), 1)
+    machine.succeed("journalctl -b -u prepare-sb-auto-enroll | grep -q 'unmet condition'")
     # The guide, at boot, holds multi-user.target back until it's done.
     machine.wait_until_succeeds(
         "systemctl show -P ActiveState guide-installed | grep -qx activating"
