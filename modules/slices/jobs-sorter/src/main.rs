@@ -39,11 +39,17 @@
 //! Work under a `--no-real-time` cgroup runs without real time, which
 //! `src/real_time.rs` says why and how.
 //!
+//! Work split into a `--by-quest` slice goes in its quest's slice there,
+//! weighted as the `--quests` file says, which `src/quests.rs` says why and
+//! how.
+//!
 //! Usage: jobs-sorter [--under app.slice] [--home kitty-]... [--keep pi]...
 //!        [--jobs jobs.slice/jobs.service] [--busy 500] [--ticks 2]
 //!        [--every 1000] [--split jobs.slice/jobs.service[=SLICE]]...
 //!        [--no-real-time jobs.slice/jobs-work.slice]...
+//!        [--by-quest jobs-work.slice]... [--quests FILE]
 
+mod quests;
 mod real_time;
 
 use std::collections::{HashMap, HashSet};
@@ -68,6 +74,8 @@ struct Settings {
     every: Duration,
     split: Vec<String>,
     no_real_time: Vec<String>,
+    by_quest: Vec<String>,
+    quests: Option<PathBuf>,
 }
 
 /// One process, as /proc/<pid>/stat describes it.
@@ -371,13 +379,51 @@ fn main_pid(unit: &str) -> Option<u32> {
     (pid != 0).then_some(pid)
 }
 
-/// Gives each piece of work in one split cgroup a scope of its own. A
-/// tree that left before its scope began is no loss; anything else is
-/// said once.
-fn split(root: &Path, manager: &str, value: &str, holder: &mut Option<u32>, warned: &mut bool) {
+/// Sets a quest slice's weight, unless it already has it. A failure is
+/// said once, and tried again on the next look.
+fn weigh(weights: &mut quests::Weights, slice: &str, weight: u64, warned: &mut bool) {
+    if weights.unweighed(&[(slice.to_string(), weight)]).is_empty() {
+        return;
+    }
+    match Command::new("busctl")
+        .args(quests::weigh_call(slice, weight))
+        .stdout(Stdio::null())
+        .output()
+    {
+        Ok(output) if output.status.success() => {
+            weights.weighed(slice, weight);
+            eprintln!("Weighed {slice} at {weight}.");
+        }
+        Ok(output) if !*warned => {
+            eprintln!(
+                "Couldn't weigh {slice} at {weight}: {}",
+                String::from_utf8_lossy(&output.stderr).trim()
+            );
+            *warned = true;
+        }
+        Err(error) if !*warned => {
+            eprintln!("Couldn't run busctl: {error}");
+            *warned = true;
+        }
+        _ => {}
+    }
+}
+
+/// Gives each piece of work in one split cgroup a scope of its own, in
+/// its quest's slice when its slice is sorted by quest. A tree that left
+/// before its scope began is no loss; anything else is said once.
+fn split(
+    root: &Path,
+    manager: &str,
+    value: &str,
+    holder: &mut Option<u32>,
+    by_quest: Option<&mut quests::Weights>,
+    warned: &mut bool,
+) {
     let Some((cgroup, slice, unit)) = slice_and_unit(value) else {
         return;
     };
+    let mut by_quest = by_quest;
     let procs = samples(&root.join(cgroup));
     if holder.is_none_or(|pid| !procs.iter().any(|proc| proc.pid == pid)) {
         *holder = main_pid(unit);
@@ -391,14 +437,24 @@ fn split(root: &Path, manager: &str, value: &str, holder: &mut Option<u32>, warn
             );
             continue;
         }
+        let placed = by_quest.as_deref().and_then(|weights| {
+            let environ = fs::read(format!("/proc/{}/environ", piece.root)).ok()?;
+            weights.place(slice, &environ)
+        });
+        let into = placed.as_ref().map_or(slice, |(quest, _)| quest.as_str());
         let name = format!("work-{}-{}.scope", piece.root, piece.start);
         let description = format!("{} ({}), work from {unit}", piece.comm, piece.root);
         let result = Command::new("busctl")
-            .args(scope_call(&name, slice, &description, &piece.pids))
+            .args(scope_call(&name, into, &description, &piece.pids))
             .stdout(Stdio::null())
             .output();
         match result {
-            Ok(output) if output.status.success() => {}
+            Ok(output) if output.status.success() => {
+                // Once the scope has brought the slice into being.
+                if let (Some(weights), Some((quest, weight))) = (by_quest.as_deref_mut(), &placed) {
+                    weigh(weights, quest, *weight, warned);
+                }
+            }
             // A tree whose processes have all gone has nothing to move.
             Ok(_)
                 if piece
@@ -549,6 +605,8 @@ fn settings() -> Result<Settings, String> {
         every: Duration::from_millis(1000),
         split: Vec::new(),
         no_real_time: Vec::new(),
+        by_quest: Vec::new(),
+        quests: None,
     };
     let mut args = std::env::args().skip(1);
     while let Some(flag) = args.next() {
@@ -560,6 +618,8 @@ fn settings() -> Result<Settings, String> {
             "--jobs" => settings.jobs = value()?,
             "--split" => settings.split.push(value()?),
             "--no-real-time" => settings.no_real_time.push(value()?),
+            "--by-quest" => settings.by_quest.push(value()?),
+            "--quests" => settings.quests = Some(PathBuf::from(value()?)),
             "--busy" => settings.busy_ms = value()?.parse().map_err(|_| "--busy is ms")?,
             "--ticks" => settings.ticks = value()?.parse().map_err(|_| "--ticks is a count")?,
             "--every" => {
@@ -601,6 +661,7 @@ fn run() -> Result<(), String> {
     };
     let mut warned = false;
     let mut holders: Vec<Option<u32>> = vec![None; settings.split.len()];
+    let mut weights = quests::Weights::new(settings.quests.clone().unwrap_or_default());
     let mut pass: u32 = 0;
     loop {
         thread::sleep(settings.every);
@@ -632,8 +693,17 @@ fn run() -> Result<(), String> {
             );
         }
         // After the terminals' work is moved, so what moved is split too.
+        weights.refresh();
+        for base in &settings.by_quest {
+            for (slice, weight) in weights.unweighed(&weights.current(base)) {
+                weigh(&mut weights, &slice, weight, &mut warned);
+            }
+        }
         for (cgroup, holder) in settings.split.iter().zip(holders.iter_mut()) {
-            split(&root, &manager, cgroup, holder, &mut warned);
+            let quest_slices = slice_and_unit(cgroup)
+                .is_some_and(|(_, slice, _)| settings.by_quest.iter().any(|base| base == slice));
+            let by_quest = quest_slices.then_some(&mut weights);
+            split(&root, &manager, cgroup, holder, by_quest, &mut warned);
         }
         if pass.is_multiple_of(real_time::EVERY) {
             for cgroup in &settings.no_real_time {
@@ -667,6 +737,8 @@ mod tests {
             every: Duration::from_millis(1000),
             split: vec!["jobs.slice/jobs.service".into()],
             no_real_time: vec!["jobs.slice/jobs-work.slice".into()],
+            by_quest: vec!["jobs-work.slice".into()],
+            quests: None,
         }
     }
 
