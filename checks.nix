@@ -682,6 +682,7 @@ gather (
     ./modules/pi/checks.nix
     ./modules/pipewire/checks.nix
     ./modules/plymouth/checks.nix
+    ./modules/pnpm/checks.nix
     ./modules/power-profiles-daemon/checks.nix
     ./modules/prompt/checks.nix
     ./modules/qt/checks.nix
