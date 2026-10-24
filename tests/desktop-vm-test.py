@@ -143,6 +143,20 @@ def shell_said(*words: str) -> str:
     )
 
 
+def brightness() -> int:
+    """Give the stand-in panel's brightness."""
+    return int(machine.succeed("cat /sys/class/backlight/stand-in/brightness"))
+
+
+# The kernel's stand-in battery has two supplies, mains and USB, and UPower
+# counts the machine on battery only with both off.
+def power(state: str) -> None:
+    """Turn both of the stand-in's supplies on or off."""
+    parameters = "/sys/module/test_power/parameters"
+    for supply in ["ac", "usb"]:
+        machine.succeed(f"echo {state} > {parameters}/{supply}_online")
+
+
 def wait_for_surface(namespace: str) -> None:
     """Wait until niri lists one of the shell's surfaces by its namespace."""
     machine.wait_until_succeeds(in_session(f"niri msg layers | grep -q {namespace}"), timeout=30)
@@ -594,10 +608,6 @@ with subtest("the screen follows the light, and the bar shows only for picks"):
         """Light the stand-in sensor's room with so many lux."""
         machine.succeed(f"echo {lux * 1000} > {sensor}/in_illuminance_raw")
 
-    def brightness() -> int:
-        """Give the stand-in panel's brightness."""
-        return int(machine.succeed("cat /sys/class/backlight/stand-in/brightness"))
-
     def learned(_: bool) -> bool:
         """Say whether the backlight has learned the one pick made in a dim room."""
         found = "grep -c '^2 0.100$' ~/.local/state/backlight/learned || true"
@@ -668,14 +678,6 @@ with subtest("the monitor follows the panel's brightness"):
     t.assertNotIn("left alone", backlight_said, "the monitor didn't answer")
 
 with subtest("the charge shows when power goes and comes back, then goes"):
-    # The kernel's stand-in has two supplies, mains and USB, and UPower
-    # counts the machine on battery only with both off.
-    def power(state: str) -> None:
-        """Turn both of the stand-in's supplies on or off."""
-        parameters = "/sys/module/test_power/parameters"
-        for supply in ["ac", "usb"]:
-            machine.succeed(f"echo {state} > {parameters}/{supply}_online")
-
     for state in ["off", "on"]:
         with told("drawn power"):
             power(state)
