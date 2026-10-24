@@ -115,24 +115,11 @@ let
   # time, until one is fast enough. How fast the engine runs the same code
   # differs from one process to the next by as much as half, while a
   # slower search slows every process, so the fastest of five is what's
-  # judged. A test exits 2 when it was only too slow; any other failure
-  # stops at once.
-  timedQml =
-    file:
-    let
-      qt = pkgs.qt6.qtdeclarative;
-    in
-    ''
-      ${shellFolderLint}
-      for run in 1 2 3 4 5; do
-        status=0
-        QML_IMPORT_PATH=${qt}/lib/qt-6/qml ${qt}/bin/qml ${file} || status=$?
-        [ "$status" = 0 ] && break
-        [ "$status" = 2 ] || exit "$status"
-        echo "too slow in run $run of 5"
-        [ "$run" != 5 ] || exit 1
-      done
-    '';
+  # judged (tests/qml-in-time.sh).
+  timedQml = file: ''
+    ${shellFolderLint}
+    ${lib.getExe pkgs.bash} ${./tests/qml-in-time.sh} ${pkgs.qt6.qtdeclarative} ${file}
+  '';
 
   # The line a kernel setting leaves in the finished configuration.
   kernelConfigLine =
@@ -148,33 +135,28 @@ let
   # in settings.nix is in the result: Kconfig quietly drops a setting whose
   # dependencies aren't met. An optional setting also holds when the kernel
   # doesn't offer its option at all. Only the configuration is built, in
-  # minutes; the kernel itself takes far longer than a check should.
+  # minutes; the kernel itself takes far longer than a check should
+  # (tests/kernel-settings-hold.sh).
   kernelSettingsHold =
     name: kernel:
     let
       # The kernel's own, as package.nix gave them, so a machine's theme
       # colours are held as well as the settings every kernel shares.
       settings = lib.mapAttrs (_option: setting: setting.content or setting) kernel.structuredExtraConfig;
-      expect =
+      # A setting's line in the configuration, its option, and whether it's
+      # optional, by tabs.
+      row =
         option: setting:
-        lib.escapeShellArgs [
-          "expect"
+        lib.concatStringsSep "\t" [
           (kernelConfigLine option setting)
           option
           (if setting.optional or false then "optional" else "required")
         ];
+      rows = pkgs.writeText "${name}-settings" (lib.concatLines (lib.mapAttrsToList row settings));
     in
     pkgs.runCommandLocal name { } ''
-      config=${kernel.configfile}
-      failed=
-      expect() {
-        grep -qxF "$1" "$config" && return
-        [ "$3" = optional ] && ! grep -qE "^(# )?CONFIG_$2[= ]" "$config" && return
-        echo "Kernel setting didn't hold: $1"
-        failed=1
-      }
-      ${lib.concatLines (lib.mapAttrsToList expect settings)}
-      [ -z "$failed" ] && touch $out
+      ${lib.getExe pkgs.bash} ${./tests/kernel-settings-hold.sh} ${kernel.configfile} ${rows}
+      touch $out
     '';
 
   # The machines most checks read, each evaluated once and shared, since an
