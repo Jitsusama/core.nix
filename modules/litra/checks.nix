@@ -9,7 +9,8 @@ onLinux {
   # The Litra's command finds the lights by their HID ids, builds the
   # reports they read and reads their answers, maps brightness and warmth
   # to the light's range, and counts a camera streaming only by a file
-  # that names a program, never one half-written. Its watch takes in the
+  # that names a program, never one half-written, and never while the
+  # screen is locked. Its watch takes in the
   # light's buttons and anybody's answers, asks after anybody's command,
   # and says in JSON only the lights that have said everything.
   the-litra-follows-the-cameras =

@@ -3,7 +3,9 @@
 #
 # The tuning runs as a PipeWire client of its own in every account: it
 # starts when PipeWire does, after WirePlumber, which links it to the
-# speakers whenever they're plugged in, and stops and restarts with it.
+# speakers whenever they're plugged in, and stops and restarts with it. It
+# runs in the sound server's slice, which comes before the programs'
+# (modules/slices), since a stall in it is a gap in what the speakers play.
 #
 # pebble-lights, run as the person at the machine, keeps the speakers'
 # lighting on while anything plays to them and for 15 minutes after, and puts
@@ -42,6 +44,7 @@ in
     partOf = [ "pipewire.service" ];
     wantedBy = [ "pipewire.service" ];
     serviceConfig = {
+      Slice = "session.slice";
       ExecStart = "${config.services.pipewire.package}/bin/pipewire -c ${./tuning.conf}";
       Restart = "on-failure";
       RestartSec = 2;
