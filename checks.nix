@@ -682,6 +682,7 @@ gather (
     ./modules/lid/checks.nix
     ./modules/linux-id/checks.nix
     ./modules/litra/checks.nix
+    ./modules/memory-modules/checks.nix
     ./modules/mpv/checks.nix
     ./modules/neovim/checks.nix
     ./modules/network-revive/checks.nix
