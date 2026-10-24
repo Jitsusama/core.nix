@@ -26,6 +26,7 @@ if TYPE_CHECKING:
         PICTURE_COLOURS,
         PIPEWIRE,
         RECORDING,
+        STARTING,
         SUNKEN,
         TEXT,
         TOUCHSCREEN,
@@ -346,6 +347,14 @@ with subtest("GTK programs draw in the theme's colours"):
 # and never reach the window under them as a tap. wev says every touch
 # its window gets.
 with subtest("swipes on the touchscreen move through the workspaces, not the window"):
+    # The workspace below holds a window, as it does once others have run.
+    as_account("niri msg action spawn -- kitty --title 'Below the swipes'")
+    machine.wait_until_succeeds(
+        in_session('niri msg --json windows | grep -qF \'"title":"Below the swipes"\''),
+        timeout=STARTING,
+    )
+    as_account("niri msg action move-window-to-workspace-down")
+    as_account("niri msg action focus-workspace-up")
     machine.succeed(f"systemd-run --unit=touchscreen {TOUCHSCREEN}")
     machine.wait_for_file("/run/touchscreen", timeout=30)
     as_account(
