@@ -1,0 +1,46 @@
+audioconvert, stream: replay info only to listeners that take it
+
+A full emit of a node's info toggles the SERIAL flag of every param with
+a change pending and clears the change. add_listener replays that full
+emit to the listener being added, isolated from the rest, and
+spa_node_enum_params_sync adds a listener that takes results alone, so
+each synchronous enumeration of the converter used up a pending Props
+change that no real listener heard. With one swallowed, the converter's
+next change, a mute say, toggles SERIAL back to the value the adapter
+already holds; the adapter sees no change, emits nothing, and clients
+keep the old value until something else changes. audioadapter.c already
+replays only to a listener with info or port_info.
+
+--- a/spa/plugins/audioconvert/audioconvert.c
++++ b/spa/plugins/audioconvert/audioconvert.c
+@@ -2661,7 +2661,12 @@
+ 	spa_log_trace(this->log, "%p: add listener %p", this, listener);
+ 	spa_hook_list_isolate(&this->hooks, &save, listener, events, data);
+ 
+-	emit_info(this, true);
++	/* Only replay info to listeners that take it. A full emit toggles the
++	 * SERIAL bit of pending params and clears their user count; doing that
++	 * for a result-only listener (spa_node_*_enum_params_sync) silently
++	 * consumes a pending change that the real listeners never see. */
++	if (events->info || events->port_info)
++		emit_info(this, true);
+ 
+ 	spa_hook_list_join(&this->hooks, &save);
+ 
+--- a/src/pipewire/stream.c
++++ b/src/pipewire/stream.c
+@@ -748,8 +748,12 @@
+ 
+ 	spa_hook_list_isolate(&d->hooks, &save, listener, events, data);
+ 
+-	emit_node_info(d, true);
+-	emit_port_info(d, true);
++	/* As in audioconvert: don't consume pending SERIAL toggles for
++	 * result-only listeners. */
++	if (events->info)
++		emit_node_info(d, true);
++	if (events->port_info)
++		emit_port_info(d, true);
+ 
+ 	spa_hook_list_join(&d->hooks, &save);
+ 
