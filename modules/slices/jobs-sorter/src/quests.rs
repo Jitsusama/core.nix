@@ -13,9 +13,9 @@
 //! shares it by weight when other quests want the same at once.
 //!
 //! The disk's share acts only where the disk is shared by io.cost or the
-//! BFQ scheduler. A disk run on io.latency targets with no scheduler, as
-//! optimus's NVMe drive is, orders whole slices by latency but not one
-//! quest over another, so there the weight waits for io.cost.
+//! BFQ scheduler. A disk run on io.latency targets with no scheduler, such
+//! as an NVMe drive, orders whole slices by latency but not one quest over
+//! another, so there the weight waits for io.cost.
 //!
 //! Work naming no quest, or one the file doesn't list, stays where it
 //! went before. The file is read again whenever it changes, and a quest
