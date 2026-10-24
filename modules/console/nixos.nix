@@ -100,37 +100,14 @@ let
   # stems fall on one pixel in some letters and two in others, and Medium's
   # stay at two. fontconfig answers with its nearest when the face isn't
   # there, so its answer is held to the face asked for, and the face it
-  # found is written beside the font.
-  font =
-    pkgs.runCommandLocal "console-font"
-      {
-        nativeBuildInputs = [ pkgs.fontconfig ];
-        FONTCONFIG_FILE = pkgs.makeFontsConf { fontDirectories = config.fonts.packages; };
-      }
-      ''
-        export HOME=$TMPDIR
-        found=$(fc-match --format '%{family}\n%{style}\n%{file}' ${lib.escapeShellArg "${face}:style=Medium"})
-        family=$(echo "$found" | sed -n 1p)
-        style=$(echo "$found" | sed -n 2p)
-        file=$(echo "$found" | sed -n 3p)
-        case ",$family," in
-          *,${lib.escapeShellArg face},*) ;;
-          *)
-            echo "${face} isn't among the machine's fonts (fonts.packages); fontconfig offered $family" >&2
-            exit 1
-            ;;
-        esac
-        case ",$style," in
-          *,Medium,*) ;;
-          *)
-            echo "${face} has no Medium; fontconfig offered $style" >&2
-            exit 1
-            ;;
-        esac
-        mkdir -p $out
-        ${lib.getExe (pkgs.callPackage ./font/package.nix { })} "$file" ${./glyphs.txt} $out/console.psf
-        printf '%s\n%s\n' "${face}" Medium > $out/face
-      '';
+  # found is written beside the font (font.sh).
+  font = pkgs.runCommandLocal "console-font" {
+    nativeBuildInputs = [ pkgs.fontconfig ];
+    FONTCONFIG_FILE = pkgs.makeFontsConf { fontDirectories = config.fonts.packages; };
+    inherit face;
+    glyphs = ./glyphs.txt;
+    convert = lib.getExe (pkgs.callPackage ./font/package.nix { });
+  } (builtins.readFile ./font.sh);
 in
 {
   config = lib.mkMerge [

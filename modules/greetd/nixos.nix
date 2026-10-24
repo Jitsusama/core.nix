@@ -126,27 +126,21 @@ let
     HOME=$TMPDIR niri validate -c $out/config.kdl
   '';
 
-  # Runs the greeter where everything it writes goes in the login's runtime
-  # folder, since the greeter's account has no home. When it stops without
-  # saying it signed someone in, tuigreet asks instead. greetd gives a greeter
-  # the console to write on, which tuigreet needs, so niri and the greeter
-  # write to the journal instead, as greeter.
-  greeter = pkgs.writeShellScript "greeter" ''
-    if [ -z "''${XDG_RUNTIME_DIR:-}" ] || [ ! -w "$XDG_RUNTIME_DIR" ]; then
-      XDG_RUNTIME_DIR=$(${lib.getExe' pkgs.coreutils "mktemp"} -d /tmp/greeter.XXXXXXXX)
-      export XDG_RUNTIME_DIR
-    fi
-    export XDG_CACHE_HOME=$XDG_RUNTIME_DIR/cache XDG_STATE_HOME=$XDG_RUNTIME_DIR/state
-    export XDG_DATA_HOME=$XDG_RUNTIME_DIR/data
-    ${lib.getExe' pkgs.coreutils "rm"} -f "$XDG_RUNTIME_DIR/greeter-launching"
-    ${lib.getExe' config.systemd.package "systemd-cat"} --identifier=greeter \
-      ${lib.escapeShellArgs cfg.compositor} -c ${compositor}/config.kdl
-    if [ -e "$XDG_RUNTIME_DIR/greeter-launching" ]; then
-      exit 0
-    fi
-    echo "greeter: it stopped without signing anyone in, so tuigreet asks" >&2
-    exec ${lib.escapeShellArgs tuigreet}
-  '';
+  # Runs the greeter, falling back to tuigreet (greeter.sh). It's a plain
+  # script rather than an application, since stopping at the first failure
+  # would skip the fall-back.
+  greeter = pkgs.writeShellScript "greeter" (
+    lib.concatLines [
+      (lib.concatStringsSep " " [
+        "mktemp=${lib.getExe' pkgs.coreutils "mktemp"}"
+        "rm=${lib.getExe' pkgs.coreutils "rm"}"
+        "systemd_cat=${lib.getExe' config.systemd.package "systemd-cat"}"
+      ])
+      "compositor=(${lib.escapeShellArgs cfg.compositor}) niri_config=${compositor}/config.kdl"
+      "tuigreet=(${lib.escapeShellArgs tuigreet})"
+      (builtins.readFile ./greeter.sh)
+    ]
+  );
 
   # What asks who's there: the greeter, or tuigreet alone where there's no
   # account's look for the greeter to wear.

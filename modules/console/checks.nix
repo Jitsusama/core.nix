@@ -140,6 +140,17 @@
         done
         touch $out
       '';
+
+  # The font's build takes only the face asked for at Medium, as
+  # tests/console-font.sh says, with stand-ins for fontconfig and the
+  # converter: the machine's real fonts show only the face that's there,
+  # never what a missing one would do.
+  the-console-font-refuses-a-stand-in =
+    pkgs.runCommandLocal "the-console-font-refuses-a-stand-in" { }
+      ''
+        ${lib.getExe pkgs.bash} ${../../tests/console-font.sh} ${./font.sh}
+        touch $out
+      '';
 }
 // onLinux {
   # clippy finds nothing in the console's font tool, its tests included.
