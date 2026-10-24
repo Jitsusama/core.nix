@@ -374,6 +374,7 @@
     pkgs.runCommandLocal "a-prompt-waits-for-a-person" { } ''
       export HOME=$TMPDIR
       ${lib.getExe' pkgs.dbus "dbus-run-session"} \
+        --dbus-daemon=${lib.getExe' pkgs.dbus "dbus-daemon"} \
         --config-file=${pkgs.dbus}/share/dbus-1/session.conf -- \
         ${lib.getExe python} ${../../tests/prompt-outlasts-the-bus.py} \
         ${lib.escapeShellArg timeout} ${lib.getExe' pkgs.systemd "busctl"}
