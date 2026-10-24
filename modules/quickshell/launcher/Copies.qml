@@ -3,7 +3,8 @@
 // (clipboard/src/main.rs). One connection to its socket brings every copy
 // kept, then each new one, so nothing is started per copy and nothing is
 // written to disk. A search with a match adds one row; the right arrow, or
-// Super+V, shows them all. A picture's row is named by its size, and the
+// Super+V, shows them all. A text copy's row runs its lines together, cut
+// short, and the selected one reads whole below the rows. A picture's row is named by its size, and the
 // launcher shows the picture itself while it's selected (`picture`, its
 // file). Return puts the copy back on the clipboard, a picture by asking
 // the helper, which holds it. Forget the Clipboard, found by its words
@@ -97,6 +98,8 @@ Provider {
             hue: "text",
             at: copy.at,
             text: copy.text,
+            // As it was copied, lines and all, which the row cuts short.
+            reads: copy.text.trim(),
             about: lines > 1 ? `${lines} lines` : "",
             // Copied while the launcher holds the keys, which the clipboard
             // needs.

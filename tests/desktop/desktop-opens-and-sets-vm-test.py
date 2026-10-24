@@ -46,6 +46,11 @@ with subtest("Super+V finds what was copied earlier, and copies it again"):
         as_account("printf 'the second copy\\nover two lines' | wl-copy > /dev/null 2>&1")
     machine.send_key("meta_l-v")
     launcher_ready()
+    # The newest is selected, its two lines run together in its row and
+    # read whole below the rows.
+    launcher_until(
+        lambda shown: (shown["selected"] or {}).get("reads") == "the second copy\nover two lines"
+    )
     photograph("launcher-copies-all")
     type_in("tues", selecting="Notes for Tuesday")
     photograph("launcher-copies")
