@@ -12,6 +12,7 @@ import "Zones.js" as Zones
 import "Colours.js" as Colours
 import "Asking.js" as Asking
 import "Machine.js" as Machine
+import "Links.js" as Links
 import "Standing.js" as Standing
 import "Traffic.js" as Traffic
 import "colour-cases.js" as ColourCases
@@ -514,6 +515,48 @@ QtObject {
         machine("the middle round trip", Traffic.typical(link.trips), 21.1);
         machine("the middle of an even count", Traffic.typical([{ ms: 10 }, { ms: 20 }]), 15);
         machine("no round trips", Traffic.typical([]), null);
+
+        // How each Bluetooth link is doing, from what bluetooth-links writes.
+        const btMap = `${"1".repeat(22)}${"0".repeat(18)}${"1".repeat(39)}`;
+        const btClassic = { address: "00:1B:66:AA:BB:CC", rssi: -6, quality: 230, power: 4,
+            channels: 61, map: btMap, le: false };
+        const btFile = JSON.stringify({ at: 1, links: [btClassic] });
+        machine("the links a reader writes", Links.links(btFile).length, 1);
+        machine("no links connected", Links.links(JSON.stringify({ links: [] })), []);
+        machine("no reader", Links.links(""), null);
+        machine("a file that isn't the reader's", Links.links("{}"), null);
+        machine("a link by its address", Links.of(Links.links(btFile), btClassic.address).rssi, -6);
+        machine("a device with no link", Links.of(Links.links(btFile), "C3:9C:E3:2A:F3:6E"), null);
+        machine("a classic link below its best range", Links.signal(btClassic),
+            { side: "-6 dB", value: 0.85,
+                note: "below the range its radio hears best, sending at 4 dBm" });
+        machine("a classic link in its best range", Links.signal({ rssi: 0, le: false }),
+            { side: "in range", value: 1, note: "where its radio hears best" });
+        machine("a classic link above its best range", Links.signal({ rssi: 3, le: false }).side,
+            "+3 dB");
+        machine("a classic link far below", Links.signal({ rssi: -60, le: false }).value, 0);
+        machine("a Low Energy link's signal", Links.signal({ rssi: -58, power: null, le: true }),
+            { side: "-58 dBm", value: 0.6, note: "" });
+        machine("a signal not said", Links.signal({ rssi: null, le: true }), null);
+        machine("no link, no signal", Links.signal(null), null);
+        machine("the link's quality", Links.quality(btClassic).side, "90%");
+        machine("a perfect link", Links.quality({ quality: 255 }).value, 1);
+        machine("a quality not said", Links.quality({ quality: null }), null);
+        const btChannels = Links.channels(btClassic);
+        machine("the channels clear", [btChannels.side, btChannels.clear, btChannels.note],
+            ["61 of 79 clear", 61, "the link skips the other 18 as noisy"]);
+        machine("the channels as a strip", btChannels.values, [1, 1, 1, 1, 1, 0.5, 0, 0, 0, 0,
+            1, 1, 1, 1, 1, 1, 1, 1, 1, 1]);
+        machine("every channel clear", Links.channels({ map: "1".repeat(79) }).note,
+            "the link skips none as noisy");
+        machine("no channel map", Links.channels({ map: null }), null);
+        machine("music's codec", Links.codec("aac"), { name: "AAC", note: "" });
+        machine("aptX in its own case", Links.codec("aptx_hd").name, "aptX HD");
+        machine("a call's codec", Links.codec("msbc"),
+            { name: "mSBC", note: "call quality, while its microphone is in use" });
+        machine("any Opus", Links.codec("opus_05_51").name, "Opus");
+        machine("a codec not known", Links.codec("new_one").name, "NEW_ONE");
+        machine("no codec", Links.codec(undefined), null);
 
         // Said as warnings, since Qt keeps ordinary logging quiet.
         for (const failure of failures)

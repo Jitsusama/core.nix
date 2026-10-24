@@ -408,7 +408,8 @@ in
   # The launcher answers what's asked: sums and number bases, IPv4 and IPv6
   # addresses and networks with the kind of range each is in, hardware
   # addresses, measures, the time in any zone tzdata names and the
-  # machine's figures from its files, as tests/answers.qml lists them, and leaves alone what isn't one, in Qt's
+  # machine's figures from its files, how each Bluetooth link is doing from
+  # what bluetooth-links writes, as tests/answers.qml lists them, and leaves alone what isn't one, in Qt's
   # own JavaScript engine.
   the-launcher-answers-what-is-asked =
     let
@@ -425,6 +426,7 @@ in
       cp ${./launcher/Machine.js} Machine.js
       cp ${./launcher/Standing.js} Standing.js
       cp ${./launcher/Traffic.js} Traffic.js
+      cp ${./launcher/Links.js} Links.js
       cp ${../../tests/colour-cases.js} colour-cases.js
       cp ${import ./launcher/zones.nix { inherit lib pkgs; }} zones.jsonl
       export QML_XHR_ALLOW_FILE_READ=1
@@ -1321,8 +1323,10 @@ in
   # paired, so the launcher's Bluetooth would stop following a pairing early
   # and leave the device untrusted. The VM has no radio, so this drives it
   # through Quickshell itself with stand-in devices
-  # (tests/bluetooth-pairing.qml), and with the facts desk-facts would write
-  # for a connected mouse.
+  # (tests/bluetooth-pairing.qml), with the facts desk-facts would write
+  # for a connected mouse, and how its link and some headphones' are doing,
+  # as bluetooth-links would write it: the headphones' skipping channels 22
+  # to 39, where a Wi-Fi network on its channel 6 sits.
   bluetooth-pairs-before-it-connects =
     pkgs.runCommandLocal "bluetooth-pairs-before-it-connects" { }
       ''
@@ -1335,11 +1339,21 @@ in
           ]
         }
         EOF
+        map=$(printf '1%.0s' {1..22}; printf '0%.0s' {1..18}; printf '1%.0s' {1..39})
+        cat > runtime/bluetooth-links.json <<EOF
+        {"at": 1761350400, "links": [
+          {"address": "00:1B:66:AA:BB:CC", "rssi": 0, "quality": 230, "power": 4,
+           "channels": 61, "map": "$map", "le": false},
+          {"address": "C3:9C:E3:2A:F3:6E", "rssi": -58, "quality": null, "power": 4,
+           "channels": null, "map": null, "le": true}
+        ]}
+        EOF
         cp ${./Fuzzy.js} Fuzzy.js
         cp ${./launcher/Provider.qml} launcher/Provider.qml
         cp ${./launcher/Asking.js} launcher/Asking.js
         cp ${./launcher/Numbers.js} launcher/Numbers.js
         cp ${./launcher/Accessories.qml} launcher/Accessories.qml
+        cp ${./launcher/Links.js} launcher/Links.js
         cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
         cp ${./Words.qml} Words.qml
         cp ${./launcher/words.json} launcher/words.json
