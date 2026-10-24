@@ -1,0 +1,10 @@
+# firmware-settings: holds the firmware's settings to the ones the machine
+# declares (src/main.rs says how).
+[package]
+name = "firmware-settings"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[dependencies]

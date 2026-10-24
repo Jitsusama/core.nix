@@ -193,6 +193,9 @@
   firmware-leaves-the-keyboard-light = ''
     the XPS 14 leaves the keyboard light to its key, still holding its other firmware settings
   '';
+  firmware-settings-passes-clippy = ''
+    clippy finds nothing in firmware-settings or its tests
+  '';
   formatting = ''
     everything is formatted and passes the linters
   '';
@@ -556,8 +559,8 @@
     the layer watcher finds the board and says only what it's told
   '';
   the-firmware-takes-what-is-declared = ''
-    `firmware-settings` names what differs, writes it with the password, then wipes it, and refuses
-    a value it can't read
+    `firmware-settings` names what differs, writes it with the password, then wipes it, even when
+    stopped partway, and refuses a value it can't read
   '';
   the-gpu-security-link-loads-with-the-gpu = ''
     the XPS 14's initrd loads mei_me and mei_gsc_proxy with xe, inside the 20 s xe waits for its

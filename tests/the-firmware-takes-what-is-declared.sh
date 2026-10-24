@@ -3,7 +3,8 @@
 # firmware-attributes class, and checks it names every setting that differs
 # from the declared ones, writes them with the admin password from its
 # input, wipes that password from the kernel whether the writes worked or
-# not, and refuses a value it can't read rather than calling it changed.
+# not, or it was stopped partway, and refuses a value it can't read rather
+# than calling it changed.
 # The unreadable and unwritable settings hold only for a user other than
 # root, as a build's is.
 # firmware-settings comes from PATH.
@@ -84,3 +85,20 @@ grep -qF "can't read Mode; run it as root: run0 firmware-settings check" out \
 if grep -qF "Mode is" out; then
   fail "check named a setting it couldn't read as differing"
 fi
+
+# Stopped while it waits for a setting to appear, the password already
+# given, it still wipes the password.
+echo 1 > "$admin/is_enabled"
+printf 'Late=x\n' > declared
+echo secret | FIRMWARE_SETTINGS_WAIT=30 firmware-settings apply > out 2>&1 &
+stopped=$!
+for _ in $(seq 100); do
+  [ "$(password)" != secret ] || break
+  sleep 0.1
+done
+[ "$(password)" = secret ] || fail "apply never gave the password"
+kill -TERM "$stopped"
+status=0
+wait "$stopped" || status=$?
+[ "$status" = 130 ] || fail "a stopped apply exited $status"
+[ -z "$(password)" ] || fail "a stopped apply left the password in the kernel"
