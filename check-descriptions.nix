@@ -513,6 +513,14 @@
     the XPS 14's initrd loads mei_me and mei_gsc_proxy with xe, inside the 20 s xe waits for its
     CSME link
   '';
+  the-guide-keeps-one-accounts-spare-on-the-yubikeys = ''
+    the installed guide keeps the spare SSH key of the one account `jitsusama.yubikeySpare` names
+    on each YubiKey, and a machine where two accounts want one is refused
+  '';
+  the-guide-makes-the-keys-the-modules-name = ''
+    the installed guide makes every TPM key ssh-tpm-agent's and tpm-signing's modules name, for
+    the account naming it, with the PIN each asks for
+  '';
   the-keyboard-light-is-heard = ''
     the shell finds the keyboard's light among the kernel's and hears each change its firmware
     makes, once, with its level, off as dark
@@ -744,12 +752,15 @@
   '';
   vm-guide-installs = ''
     the guide, driven by its keys, installs a machine from its stick: two keys and a recovery key of
-    seven words, shown alone for a phone and typed back, Secure Boot enforcing with its keys, then
-    seals the disk to the TPM with a PIN, which opens it at the next boot; clears the TPM, opens
-    with a YubiKey and seals again; a host writes a stick from the rescue bundle the install sealed
-    to the recovery key, which the firmware boots while enforcing; then the install's own stick,
-    which it made the machine's by carrying its keys and bundle and signing itself with them, boots
-    enforcing and reinstalls the machine with the same keys
+    seven words, shown alone for a phone and typed back, Secure Boot enforcing with its keys, its
+    firmware enrolling them before the disk first asks; then seals the disk to the TPM with a PIN,
+    which opens it at the next boot, leaving one systemd-pcrlock policy; makes the account's TPM
+    keys under one PIN and a spare SSH key on each YubiKey, refusing one asked for by the other's
+    name; clears the TPM, opens with a YubiKey, seals again and downloads a lost spare; a host
+    writes a stick from the rescue bundle the install sealed to the recovery key, which the
+    firmware boots while enforcing; then the install's own stick, which it made the machine's by
+    carrying its keys and bundle and signing itself with them, boots enforcing and reinstalls the
+    machine with the same keys, whose guide frees the first install's policy
   '';
   vm-guide-opens-the-vault = ''
     a stick's vault sealed to a FIDO2 key opens with its PIN, and without it by the passphrase
