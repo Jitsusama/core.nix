@@ -485,8 +485,11 @@ works the same way everywhere.
   listed twice.
 - **The same letters land on the same row.** The name typed whole comes
   first, then a name it starts, then a later word it starts, then a word
-  that only finds it: an act's name starts with its verb, so "pow" is
-  Power off the machine before Use power saver. What's
+  that only finds it, typed whole before only started: an act's name starts
+  with its verb, so "pow" is Power off the machine before Use power saver,
+  and "quiet" is do not disturb before the volume's "quieter". Below three
+  letters a collection's other words find it only whole, so "pi" is pi's
+  sessions and not the Clipboard's pictures. What's
   picked for what was typed is first there from then on, and at every
   shorter start of the word, so "sl", "sla" and "slac" all mean Slack. One
   slip teaches nothing: another row takes the place only when it's picked
@@ -500,7 +503,8 @@ works the same way everywhere.
   it will do now. Other words find a row but never name it: a row found by
   one shows the word in quotes after its name (Suspend the machine
   "sleep"), and a renamed row's old name is one of them. Return's word in
-  the footer is the act's own verb, or start, switch, open or copy.
+  the footer is the act's own verb, with the way a turn goes ("turn
+  down"), or start, switch, open or copy.
   Ending the session asks once more, saying what it closes ("Reboot now,
   closing 14 windows").
 - **Nothing moves that Joel didn't move.** Rows that arrive late go below

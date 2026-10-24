@@ -33,6 +33,8 @@ Provider {
     readonly property var actions: !KeyboardLayout.present ? [] : [
         member({
             key: "keyboard:show",
+            // An act, not a key, so it says no kind (docs/design.md).
+            what: "",
             verb: "show",
             name: "Show the keyboard's layout",
             keywords: "map layers overlay keys",
@@ -44,6 +46,7 @@ Provider {
         }),
         member({
             key: "keyboard:flash",
+            what: "",
             verb: "flash",
             name: "Flash the keyboard",
             keywords: "firmware write update ergodox",
@@ -54,6 +57,7 @@ Provider {
         })
     ].concat(KeyboardLayer.locked ? [member({
         key: "keyboard:release",
+        what: "",
         verb: "let go",
         name: `Let ${KeyboardLayer.name} go`,
         keywords: "unlock layer release",
@@ -64,6 +68,7 @@ Provider {
         .filter(layer => !(KeyboardLayer.locked && layer.name === KeyboardLayer.name))
         .map(layer => member({
             key: `keyboard:lock:${layer.name}`,
+            what: "",
             verb: "lock",
             name: `Lock ${layer.name} on`,
             keywords: "layer hold keep",
@@ -73,6 +78,7 @@ Provider {
         })), [
         member({
             key: "keyboard:lights-off",
+            what: "",
             verb: "turn off",
             name: "Turn off the keyboard's lights",
             keywords: "backlight leds dark",
@@ -82,6 +88,7 @@ Provider {
         }),
         member({
             key: "keyboard:lights-on",
+            what: "",
             verb: "turn on",
             name: "Turn on the keyboard's lights",
             keywords: "backlight leds",
@@ -91,6 +98,7 @@ Provider {
         }),
         member({
             key: "keyboard:brighter",
+            what: "",
             verb: "brighten",
             name: "Brighten the keyboard's lights",
             keywords: "backlight leds brighter more",
@@ -100,6 +108,7 @@ Provider {
         }),
         member({
             key: "keyboard:dimmer",
+            what: "",
             verb: "dim",
             name: "Dim the keyboard's lights",
             keywords: "backlight leds dimmer less",

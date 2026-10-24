@@ -50,6 +50,19 @@ QtObject {
         expect("a later word's start", Rank.tier("Use power saver", "pow", false), 1);
         expect("a word start", Rank.tier("Google Chrome", "chro", false), 1);
         expect("by another word", Rank.tier("Suspend", "sleep", true), 2);
+        // Another word typed whole before one only started.
+        expect("another word whole", Rank.wordTier("Turn on do not disturb dnd quiet", "quiet"), 2);
+        expect("another word started", Rank.wordTier("Turn the volume down quieter", "quiet"),
+            2.5);
+        expect("every word whole", Rank.says("Clipboard copies pictures", "pi"), false);
+        expect("a short word whole", Rank.says("Agents sessions pi ai", "pi"), true);
+
+        // Return's verb: an act's first word, and the way a turn goes.
+        expect("a first word", Rank.verbIn("Switch to it"), "switch");
+        expect("a turn's way", Rank.verbIn("Turn the volume down"), "turn down");
+        expect("a turn's way first", Rank.verbIn("Turn on do not disturb"), "turn on");
+        expect("a turn's way last", Rank.verbIn("Turn the keyboard's lights off"), "turn off");
+        expect("a way only for a turn", Rank.verbIn("Power off the machine"), "power");
         const found = [f("session:suspend", "Suspend", 2, 900), f("program:slack", "Slack", 1, 10),
             f("action:sl", "Sl", 0, 1)];
         expect("a tier wins over a score", keys(Rank.order(found, {})),

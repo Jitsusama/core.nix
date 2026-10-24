@@ -45,6 +45,8 @@ Provider {
 
     readonly property var radio: thing({
         key: "bluetooth:radio",
+        // An act, not a device, so it says no kind (docs/design.md).
+        what: "",
         verb: on ? "turn off" : "turn on",
         name: on ? "Turn off Bluetooth" : "Turn on Bluetooth",
         keywords: "bluetooth bt radio headphones airplane mode flight",

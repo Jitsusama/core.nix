@@ -19,7 +19,6 @@ import Quickshell
 import qs
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
-import "Numbers.js" as Numbers
 
 Provider {
     id: provider
@@ -102,15 +101,7 @@ Provider {
                 const program = one.program;
                 const title = one.title;
                 const workspace = Niri.workspaces[window.workspace_id];
-                const tile = window.layout?.pos_in_scrolling_layout ?? [];
-                const column = tile[0];
-                const elsewhere = workspace && !(here && workspace.id === here.id);
-                // One under another in a column says how far down, the
-                // top one only its column.
-                const down = tile[1] > 1 ? `, ${Numbers.ordinal(tile[1])} down` : "";
-                const where = [elsewhere ? `workspace ${workspace.idx}` : "",
-                    alike[title] > 1 && column ? `${Numbers.ordinal(column)} column${down}` : ""]
-                    .filter(part => part !== "").join(", ");
+                const where = provider.placeOf(window, workspace, here, alike[title]);
                 const below = entry
                     ? () => provider.launcher.grid.under(window.id, provider.command(entry)) : null;
                 return thing({

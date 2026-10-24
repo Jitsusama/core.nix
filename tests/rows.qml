@@ -31,6 +31,17 @@ ShellRoot {
             Choice { id: sideLong; name: "Weekly cap"; side: root.sentence; glyph: "$" }
             Choice { id: nameLong; name: root.long + root.long; side: "7.0× usual"; glyph: "$" }
             Choice { id: fits; name: "Today"; side: "$484 · usual"; glyph: "$" }
+            // A noun: its kind at the right edge, and what else it says after
+            // its name, in its own words.
+            Choice {
+                id: noun
+                name: "zsh"
+                kind: "window"
+                side: "kitty · workspace 1, 1st column"
+                count: "2"
+                also: "term"
+                glyph: "$"
+            }
             // The margin's row for nothing on, as Margin.qml draws it inside
             // its 440 points: whimsy that ends in an ellipsis isn't whimsy.
             Choice {
@@ -98,6 +109,11 @@ ShellRoot {
                 && cut(texts)[0] === nameLong.name, said(texts));
             texts = apart(fits, fits.width);
             expect("words that fit left whole", cut(texts).length === 0, said(texts));
+            texts = apart(noun, noun.width);
+            expect("a noun says its words after its name and its kind at the edge",
+                texts.map(t => t.text).join(" | ")
+                    === "$ | zsh | \u201cterm\u201d · 2 · kitty · workspace 1, 1st column | window",
+                said(texts));
             texts = apart(nothing, nothing.width);
             expect("the margin's words for nothing on whole", cut(texts).length === 0,
                 said(texts));

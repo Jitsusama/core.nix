@@ -51,6 +51,8 @@ Provider {
 
     readonly property var radio: thing({
         key: "wifi:radio",
+        // An act, not a network, so it says no kind (docs/design.md).
+        what: "",
         verb: on ? "turn off" : "turn on",
         name: on ? "Turn off Wi-Fi" : "Turn on Wi-Fi",
         keywords: "wifi wlan wireless radio network internet airplane mode flight",
@@ -64,6 +66,7 @@ Provider {
     // While a network wants a sign-in, it's what's next.
     readonly property var signIn: thing({
         key: "wifi:sign-in",
+        what: "",
         verb: "sign in",
         name: `Sign In to ${SignIn.network}`,
         keywords: "wifi portal captive login log in hotel airport cafe",
