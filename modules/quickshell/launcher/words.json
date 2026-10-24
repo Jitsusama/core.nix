@@ -273,9 +273,6 @@
         "jobs",
         "what's running",
         "whats running",
-        "what's waiting",
-        "whats waiting",
-        "waiting",
         "heavy work",
         "builds",
         "vm tests",
@@ -283,26 +280,198 @@
       ]
     },
     {
+      "id": "verb:job:switch",
+      "in": "jobs",
+      "name": "Switch",
+      "verb": "switch",
+      "hidden": [
+        "go to its session"
+      ]
+    },
+    {
       "id": "machine",
       "name": "Computer",
       "question": "cpu",
+      "parts": [
+        "machine:memory",
+        "machine:cpu",
+        "machine:uptime",
+        "machine:disk"
+      ]
+    },
+    {
+      "id": "machine:memory",
+      "name": "Memory",
+      "glyph": "memory",
       "answers": [
         "memory",
         "ram",
         "mem",
         "swap",
         "free memory",
-        "memory use",
+        "memory use"
+      ],
+      "parts": [
+        "machine:memory:used",
+        "machine:memory:pressure",
+        "machine:memory:swap",
+        "machine:memory:cached",
+        "machine:memory:using",
+        "machine:memory:type"
+      ]
+    },
+    {
+      "id": "machine:memory:used",
+      "in": "machine:memory",
+      "name": "Used"
+    },
+    {
+      "id": "machine:memory:pressure",
+      "in": "machine:memory",
+      "name": "Pressure",
+      "answers": [
+        "memory pressure"
+      ]
+    },
+    {
+      "id": "machine:memory:swap",
+      "in": "machine:memory",
+      "name": "Swap"
+    },
+    {
+      "id": "machine:memory:cached",
+      "in": "machine:memory",
+      "name": "Cached"
+    },
+    {
+      "id": "machine:memory:using",
+      "in": "machine:memory",
+      "name": "Using it"
+    },
+    {
+      "id": "machine:memory:type",
+      "in": "machine:memory",
+      "name": "Type",
+      "answers": [
+        "ram type",
+        "memory type",
+        "type of ram",
+        "what type of ram"
+      ]
+    },
+    {
+      "id": "machine:cpu",
+      "name": "Processor",
+      "glyph": "processor",
+      "answers": [
         "processor",
         "cpu",
         "cores",
         "load",
         "load average",
-        "cpu use",
+        "cpu use"
+      ],
+      "parts": [
+        "machine:cpu:cores",
+        "machine:cpu:maxed",
+        "machine:cpu:clock",
+        "machine:cpu:temperature",
+        "machine:cpu:using",
+        "machine:cpu:load",
+        "machine:cpu:kinds",
+        "machine:cpu:model"
+      ]
+    },
+    {
+      "id": "machine:cpu:cores",
+      "in": "machine:cpu",
+      "name": "Cores"
+    },
+    {
+      "id": "machine:cpu:core",
+      "in": "machine:cpu:cores",
+      "name": "Core {n}"
+    },
+    {
+      "id": "machine:cpu:maxed",
+      "in": "machine:cpu",
+      "name": "Maxed",
+      "answers": [
+        "maxed cores",
+        "maxed"
+      ]
+    },
+    {
+      "id": "machine:cpu:clock",
+      "in": "machine:cpu",
+      "name": "Clock",
+      "answers": [
+        "clock speed",
+        "cpu speed"
+      ]
+    },
+    {
+      "id": "machine:cpu:temperature",
+      "in": "machine:cpu",
+      "name": "Temperature"
+    },
+    {
+      "id": "machine:cpu:using",
+      "in": "machine:cpu",
+      "name": "Using it"
+    },
+    {
+      "id": "machine:cpu:load",
+      "in": "machine:cpu",
+      "name": "Load"
+    },
+    {
+      "id": "machine:cpu:kinds",
+      "in": "machine:cpu",
+      "name": "Kinds",
+      "answers": [
+        "core kinds"
+      ]
+    },
+    {
+      "id": "machine:cpu:performance",
+      "in": "machine:cpu:kinds",
+      "name": "Performance"
+    },
+    {
+      "id": "machine:cpu:efficient",
+      "in": "machine:cpu:kinds",
+      "name": "Efficient"
+    },
+    {
+      "id": "machine:cpu:low-power",
+      "in": "machine:cpu:kinds",
+      "name": "Low-power"
+    },
+    {
+      "id": "machine:cpu:model",
+      "in": "machine:cpu",
+      "name": "Model",
+      "answers": [
+        "cpu model",
+        "processor model"
+      ]
+    },
+    {
+      "id": "machine:uptime",
+      "name": "Uptime",
+      "answers": [
         "uptime",
         "since boot",
         "how long up",
-        "boot time",
+        "boot time"
+      ]
+    },
+    {
+      "id": "machine:disk",
+      "name": "Disk",
+      "glyph": "disk",
+      "answers": [
         "disk",
         "storage",
         "free space",
@@ -311,6 +480,103 @@
         "drive",
         "ssd",
         "how full"
+      ],
+      "parts": [
+        "machine:disk:space",
+        "machine:disk:speed",
+        "machine:disk:busy",
+        "machine:disk:latency",
+        "machine:disk:temperature",
+        "machine:disk:health",
+        "machine:disk:model"
+      ]
+    },
+    {
+      "id": "machine:disk:space",
+      "in": "machine:disk",
+      "name": "Space"
+    },
+    {
+      "id": "machine:disk:speed",
+      "in": "machine:disk",
+      "name": "Speed",
+      "answers": [
+        "disk speed",
+        "disk performance"
+      ]
+    },
+    {
+      "id": "machine:disk:reading",
+      "in": "machine:disk:speed",
+      "name": "Reading"
+    },
+    {
+      "id": "machine:disk:writing",
+      "in": "machine:disk:speed",
+      "name": "Writing"
+    },
+    {
+      "id": "machine:disk:busy",
+      "in": "machine:disk",
+      "name": "Busy"
+    },
+    {
+      "id": "machine:disk:latency",
+      "in": "machine:disk",
+      "name": "Latency",
+      "answers": [
+        "disk latency"
+      ]
+    },
+    {
+      "id": "machine:disk:temperature",
+      "in": "machine:disk",
+      "name": "Temperature",
+      "answers": [
+        "disk temperature",
+        "disk temp"
+      ]
+    },
+    {
+      "id": "machine:disk:health",
+      "in": "machine:disk",
+      "name": "Health",
+      "answers": [
+        "disk health",
+        "disk wear"
+      ]
+    },
+    {
+      "id": "machine:disk:spare",
+      "in": "machine:disk:health",
+      "name": "Spare"
+    },
+    {
+      "id": "machine:disk:written",
+      "in": "machine:disk:health",
+      "name": "Written"
+    },
+    {
+      "id": "machine:disk:read",
+      "in": "machine:disk:health",
+      "name": "Read"
+    },
+    {
+      "id": "machine:disk:errors",
+      "in": "machine:disk:health",
+      "name": "Errors"
+    },
+    {
+      "id": "machine:disk:shutdowns",
+      "in": "machine:disk:health",
+      "name": "Unsafe shutdowns"
+    },
+    {
+      "id": "machine:disk:model",
+      "in": "machine:disk",
+      "name": "Model",
+      "answers": [
+        "disk model"
       ]
     },
     {
@@ -337,6 +603,51 @@
         "watt",
         "ac"
       ]
+    },
+    {
+      "id": "power:charger",
+      "in": "power",
+      "name": "Charger"
+    },
+    {
+      "id": "power:charge",
+      "in": "power",
+      "name": "Charge"
+    },
+    {
+      "id": "power:rate",
+      "in": "power",
+      "name": "Drawing",
+      "states": {
+        "charging": {
+          "name": "Charging"
+        }
+      }
+    },
+    {
+      "id": "power:health",
+      "in": "power",
+      "name": "Health"
+    },
+    {
+      "id": "power:cycles",
+      "in": "power",
+      "name": "Cycles"
+    },
+    {
+      "id": "power:limit",
+      "in": "power",
+      "name": "Charge limit"
+    },
+    {
+      "id": "power:temperature",
+      "in": "power",
+      "name": "Temperature"
+    },
+    {
+      "id": "power:model",
+      "in": "power",
+      "name": "Model"
     },
     {
       "id": "heat",
@@ -392,15 +703,80 @@
         "keyboard light",
         "keyboard backlight",
         "keyboard brightness",
-        "key light",
+        "key light"
+      ]
+    },
+    {
+      "id": "light:screen",
+      "in": "light",
+      "name": "Screen",
+      "states": {
+        "numbered": {
+          "name": "Screen {n}"
+        }
+      }
+    },
+    {
+      "id": "light:keyboard",
+      "in": "light",
+      "name": "Keyboard light",
+      "states": {
+        "numbered": {
+          "name": "Keyboard light {n}"
+        }
+      }
+    },
+    {
+      "id": "light:desk",
+      "in": "light",
+      "name": "Desk light",
+      "answers": [
         "desk light",
         "desk lamp",
         "lamp",
         "litra",
         "warmer",
         "cooler",
-        "warmth"
+        "warmth",
+        "light warmth",
+        "colour temperature"
       ]
+    },
+    {
+      "id": "verb:brighter",
+      "in": "light:desk",
+      "name": "Brighter",
+      "verb": "brighter"
+    },
+    {
+      "id": "verb:dimmer",
+      "in": "light:desk",
+      "name": "Dimmer",
+      "verb": "dimmer"
+    },
+    {
+      "id": "verb:warmer",
+      "in": "light:desk",
+      "name": "Warmer",
+      "verb": "warmer"
+    },
+    {
+      "id": "verb:cooler",
+      "in": "light:desk",
+      "name": "Cooler",
+      "verb": "cooler"
+    },
+    {
+      "id": "verb:turn",
+      "in": "light:desk",
+      "name": "Put it out",
+      "verb": "off",
+      "states": {
+        "off": {
+          "name": "Light it",
+          "verb": "on"
+        }
+      }
     },
     {
       "id": "today",
@@ -453,7 +829,55 @@
       "answers": [
         "weather",
         "forecast"
+      ],
+      "started": [
+        "weather"
       ]
+    },
+    {
+      "id": "weather:now",
+      "in": "weather",
+      "name": "Now",
+      "states": {
+        "away": {
+          "name": "Now, {clock} {weekday} there"
+        }
+      }
+    },
+    {
+      "id": "weather:rain",
+      "in": "weather",
+      "name": "Rain",
+      "answers": [
+        "rain",
+        "raining",
+        "rainy",
+        "umbrella",
+        "precipitation",
+        "will it rain",
+        "when will it rain",
+        "is it going to rain",
+        "when is it going to rain"
+      ],
+      "started": [
+        "rain",
+        "umbrella"
+      ]
+    },
+    {
+      "id": "weather:wind",
+      "in": "weather",
+      "name": "Wind"
+    },
+    {
+      "id": "weather:today",
+      "in": "weather",
+      "name": "Today"
+    },
+    {
+      "id": "weather:tomorrow",
+      "in": "weather",
+      "name": "Tomorrow"
     },
     {
       "id": "time",
@@ -466,6 +890,10 @@
       "id": "sound",
       "name": "Sound",
       "noun": "devices",
+      "what": "sound",
+      "glyph": "volume",
+      "ask": "which device?",
+      "empty": "No sound devices.",
       "words": [
         "audio",
         "speakers",
@@ -489,6 +917,29 @@
         "track",
         "music"
       ]
+    },
+    {
+      "id": "verb:sound-use",
+      "in": "sound",
+      "name": "Play sound through it",
+      "verb": "use",
+      "states": {
+        "input": {
+          "name": "Listen through it"
+        }
+      }
+    },
+    {
+      "id": "verb:sound-mute",
+      "in": "sound",
+      "name": "Mute it",
+      "verb": "mute",
+      "states": {
+        "muted": {
+          "name": "Unmute it",
+          "verb": "unmute"
+        }
+      }
     },
     {
       "id": "keyboard",
@@ -2251,6 +2702,7 @@
       "start": "volume ",
       "form": "⟨level⟩",
       "says": "sets how loud",
+      "verb": "set",
       "words": [
         "loud",
         "sound"
@@ -2262,6 +2714,7 @@
       "start": "brightness ",
       "form": "⟨level⟩",
       "says": "sets the screen's light",
+      "verb": "set",
       "words": [
         "screen",
         "backlight"
@@ -2273,6 +2726,7 @@
       "start": "desk light ",
       "form": "⟨level, warmth, on or off⟩",
       "says": "sets the desk light",
+      "verb": "set",
       "words": [
         "lamp",
         "litra"

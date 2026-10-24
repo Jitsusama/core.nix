@@ -10,7 +10,9 @@
 // request for all of it, asked only when the weather is typed and kept
 // for a quarter of an hour; places are found through its geocoder and kept
 // for a day. `units` is "metric" or "imperial". With `lookups` set false it
-// answers nothing.
+// answers nothing. The words that ask it and its parts' names are the
+// vocabulary's (launcher/words.json, Words.qml).
+import qs
 import QtQuick
 import "Numbers.js" as Numbers
 
@@ -19,7 +21,16 @@ Provider {
 
     examples: ["weather", "rain", "weather in tokyo"]
     // Their starts ask them too, from three letters: "wea", "rai", "umb".
-    questions: ["weather", "rain", "umbrella"]
+    questions: Words.started("weather").concat(Words.started("weather:rain"))
+
+    // The words that ask the weather, and the rain, as one pattern each:
+    // any of them, in any case, its spaces any run of space.
+    function either(id) {
+        return Words.answers(id).map(word => word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+            .replace(/ /g, "\\s+")).join("|");
+    }
+    readonly property string weatherWords: either("weather")
+    readonly property string rainWords: either("weather:rain")
 
     readonly property bool imperial: settings.units === "imperial"
     readonly property var days: ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday",
@@ -110,13 +121,11 @@ Provider {
     // "in" or "for", so "rain" never looks a place up by another word.
     function reading(typed) {
         const text = typed.trim().replace(/\?$/, "").trim();
-        const weather = /^(?:weather|forecast)(?:\s+(?:in\s+|for\s+)?(.+))?$/i.exec(text)
-            ?? /^(.+?)\s+(?:weather|forecast)$/i.exec(text);
+        const weather = new RegExp(`^(?:${weatherWords})(?:\\s+(?:in\\s+|for\\s+)?(.+))?$`, "i")
+            .exec(text) ?? new RegExp(`^(.+?)\\s+(?:${weatherWords})$`, "i").exec(text);
         if (weather)
             return { rain: false, away: weather[1] ? weather[1].trim() : "" };
-        const rain = new RegExp("^(?:rain|raining|rainy|umbrella|precipitation"
-            + "|(?:when\\s+)?will\\s+it\\s+rain|(?:when\\s+)?is\\s+it\\s+going\\s+to\\s+rain)"
-            + "(?:\\s+(?:in|for)\\s+(.+))?$", "i").exec(text);
+        const rain = new RegExp(`^(?:${rainWords})(?:\\s+(?:in|for)\\s+(.+))?$`, "i").exec(text);
         if (rain)
             return { rain: true, away: rain[1] ? rain[1].trim() : "" };
         return null;
@@ -256,7 +265,8 @@ Provider {
             return days[new Date(y, m - 1, d).getDay()];
         };
         const rows = [copyRow({
-            name: away && clock ? `Now, ${clock} ${weekday(date)} there` : "Now",
+            name: Words.name("weather:now", away && clock ? "away" : "",
+                { clock: clock, weekday: clock ? weekday(date) : "" }),
             copy: headline,
             side: headline,
             glyph: glyph(now.weather_code, day)
@@ -266,7 +276,7 @@ Provider {
         if (hours.length > 0) {
             const inside = hourRows(hours);
             rows.push(thing({
-                name: "Rain",
+                name: Words.name("weather:rain"),
                 side: rainSaid(hours),
                 verb: "more",
                 hue: "voice",
@@ -278,7 +288,7 @@ Provider {
         }
         const wind = `${Math.round(now.wind_speed_10m)} ${speed}`;
         rows.push(copyRow({
-            name: "Wind",
+            name: Words.name("weather:wind"),
             copy: wind,
             side: wind,
             glyph: String.fromCodePoint(windy)
@@ -287,7 +297,8 @@ Provider {
             const words = `${degrees(daily.temperature_2m_min[i])} to `
                 + `${degrees(daily.temperature_2m_max[i])} \u00b7 ${said(daily.weather_code[i])}`;
             rows.push(copyRow({
-                name: i === 0 ? "Today" : i === 1 ? "Tomorrow" : weekday(daily.time[i]),
+                name: i === 0 ? Words.name("weather:today")
+                    : i === 1 ? Words.name("weather:tomorrow") : weekday(daily.time[i]),
                 copy: words,
                 side: words,
                 glyph: glyph(daily.weather_code[i], true)

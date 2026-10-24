@@ -2,6 +2,8 @@
 // outputs then inputs, the one in use first in each, every glyph saying
 // what kind of device it is and the footer its volume. Return uses one, or
 // mutes or unmutes the one in use, and the right arrow offers the rest.
+// Its name, its acts and the words that find and ask it are the
+// vocabulary's (launcher/words.json, Words.qml).
 //
 // It answers too: "volume" or "what's playing" says how loud the output in
 // use is and through what, then the input, and each program playing; with
@@ -24,16 +26,10 @@ import "../Fuzzy.js" as Fuzzy
 Provider {
     id: provider
 
-    what: "sound"
+    what: Words.of("sound").what
 
-    collection: ({
-        noun: "devices",
-        title: "Sound",
-        words: ["audio", "speakers", "headphones", "headset", "microphone", "mic", "output", "input"],
-        glyph: glyph(0xf057e),
-        ask: "which device?",
-        empty: "No sound devices"
-    })
+    // Named, and found, as the vocabulary says (Words.qml).
+    collection: Words.collection("sound")
 
     function glyph(code) {
         return String.fromCodePoint(code);
@@ -121,7 +117,10 @@ Provider {
             + (muted ? " · muted" : "");
         return member({
             key: `sound:${node.name}`,
-            verb: !used ? "use" : muted ? "unmute" : "mute",
+            // Return does what its first act would: use it, or mute or
+            // unmute the one in use.
+            verb: !used ? Words.verb("verb:sound-use")
+                : Words.verb("verb:sound-mute", muted ? "muted" : ""),
             name: named(node),
             glyph: glyph(muted ? (node.isSink ? 0xf0581 : 0xf036d) : kind(node)),
             hue: "machine",
@@ -158,15 +157,21 @@ Provider {
     }
 
     function verbs(node) {
+        const using = node.isSink ? "" : "input";
+        const muting = node.audio.muted ? "muted" : "";
         return (inUse(node) ? [] : [thing({
             key: "verb:sound-use",
-            name: node.isSink ? "Play sound through it" : "Listen through it",
+            verb: Words.verb("verb:sound-use", using),
+            name: Words.name("verb:sound-use", using),
+            keywords: Words.keywords("verb:sound-use", using),
             glyph: glyph(kind(node)),
             hue: "action",
             run: () => provider.use(node)
         })]).concat([thing({
             key: "verb:sound-mute",
-            name: node.audio.muted ? "Unmute it" : "Mute it",
+            verb: Words.verb("verb:sound-mute", muting),
+            name: Words.name("verb:sound-mute", muting),
+            keywords: Words.keywords("verb:sound-mute", muting),
             glyph: glyph(node.audio.muted ? 0xf057e : 0xf0581),
             hue: "action",
             run: () => provider.mute(node)
@@ -218,9 +223,9 @@ Provider {
             : node.audio.muted ? "muted" : `${Math.round(node.audio.volume * 100)}%`;
     }
 
-    // The words it answers whole, and by their start (Provider.qml).
-    questions: ["volume", "vol", "how loud", "loudness", "what's playing", "now playing", "playing",
-        "what song is this", "song", "track", "music"]
+    // The words it answers whole, and by their start (Provider.qml), as
+    // the vocabulary lists them.
+    questions: Words.started("sound")
 
     function answer(typed) {
         const text = typed.trim().toLowerCase().replace(/\?$/, "");
@@ -290,7 +295,7 @@ Provider {
             return null;
         return {
             headline: `set ${named(out)} to ${share}%`,
-            verb: "set",
+            verb: Words.command("command:volume").verb,
             run: () => {
                 out.audio.volume = share / 100;
                 out.audio.muted = false;

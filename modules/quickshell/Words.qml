@@ -1,10 +1,11 @@
 pragma Singleton
 // The launcher's vocabulary (launcher/words.json, from
 // jitsusama.quickshell.launcher.words): for every thing it knows, a
-// collection, an answer, an act, its name as shown, the categories it's in,
-// the other words that find it and the glyph it wears, so a name is said in
-// one place and a check (tests/words-check.py) can say no word finds two
-// things. A provider asks it by its own name, or a row by its key.
+// collection, an answer, an act or a part, its name as shown, the categories
+// it's in, the other words that find it, the words that ask its answer, its
+// verb and the glyph it wears, so a name is said in one place and a check
+// (tests/launcher-words.py) can say no word finds two things. A provider
+// asks it by its own name, or a row by its key.
 import Quickshell
 import Quickshell.Io
 import QtQuick
@@ -45,6 +46,7 @@ Singleton {
             words: [],
             hidden: [],
             parts: [],
+            answers: [],
             verb: ""
         }, entry, over);
     }
@@ -66,6 +68,26 @@ Singleton {
     function keywords(id, state) {
         const entry = of(id, state);
         return entry.words.concat(entry.hidden).join(" ");
+    }
+
+    // The words that ask its answer, typed whole, best first, as a
+    // provider's questions are (Provider.qml).
+    function answers(id) {
+        return of(id).answers;
+    }
+
+    // Those of them whose start, three letters or more, asks it too: every
+    // one, unless it says which, as the weather's "forecast" is only asked
+    // whole, so "for" doesn't ask the weather.
+    function started(id) {
+        const entry = of(id);
+        return entry.started ?? entry.answers;
+    }
+
+    // A typed command, by its id: its start, form and the verb Return does
+    // it by.
+    function command(id) {
+        return commands.find(entry => entry.id === id) ?? { id: id, verb: "" };
     }
 
     // The glyph it wears, by the theme's name for it.

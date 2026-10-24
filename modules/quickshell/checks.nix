@@ -697,6 +697,9 @@ in
     cp ${./launcher/Asking.js} launcher/Asking.js
     cp ${./launcher/Numbers.js} launcher/Numbers.js
     cp ${./launcher/Weather.qml} launcher/Weather.qml
+    cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
+    cp ${./Words.qml} Words.qml
+    cp ${./launcher/words.json} launcher/words.json
     cp ${../../tests/weather.qml} shell.qml
     export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
     mkdir -m 700 $XDG_RUNTIME_DIR
@@ -760,6 +763,8 @@ in
       cp ${./launcher/Asking.js} launcher/Asking.js
       cp ${./launcher/Numbers.js} launcher/Numbers.js
       cp ${./launcher/Light.qml} launcher/Light.qml
+      cp ${./Words.qml} Words.qml
+      cp ${./launcher/words.json} launcher/words.json
       cp ${../../tests/desk-light.qml} shell.qml
       cp ${niri} Niri.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen

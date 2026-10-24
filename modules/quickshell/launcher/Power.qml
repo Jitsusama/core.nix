@@ -5,9 +5,12 @@
 // cycles it's been through, where charging stops and starts again, its
 // temperature, and what it is and when it was made. The power profile is
 // the session's to show and change (Session.qml), and its rows come
-// beside these.
+// beside these. Each row is a part, named as the vocabulary names it
+// (launcher/words.json, Words.qml), with what it says beside it, and the
+// words that ask the answer are the vocabulary's too.
 // UPower says how it's doing and the kernel's power supply files the rest,
 // each read when asked, so nothing is spawned and nothing is watched.
+import qs
 import Quickshell.Io
 import Quickshell.Services.UPower
 import QtQuick
@@ -50,9 +53,7 @@ Provider {
     }
 
     // The words it answers whole, and by their start (Provider.qml).
-    questions: ["battery", "batteries", "power", "charge", "charging", "charger", "plugged in", "plugged",
-        "battery life", "battery left", "how much battery", "time left", "on battery", "is it charging",
-        "power supply", "adapter", "energy", "watt", "ac"]
+    questions: Words.started("power")
 
     function answer(typed) {
         if (battery === null || asks(typed) === "")
@@ -98,13 +99,20 @@ Provider {
         const path = battery.nativePath;
         const glyph = String.fromCodePoint(0xf0079);
         const rows = [];
-        const row = (name, side) => rows.push(copyRow({ name: name, side: side, glyph: glyph }));
+        // A part by its name, what it says beside it, Return copying that.
+        const part = (id, side, state, graph) => rows.push(copyRow({
+            name: Words.name(`power:${id}`, state ?? ""),
+            side: side,
+            copy: side,
+            glyph: glyph,
+            graph: graph
+        }));
 
         const plugged = chargers();
         // UPower's own device for the USB-C ports and the mains overlap, so
         // the most precise one plugged in is said.
         const charger = plugged.find(text => text.includes(" W, ")) ?? plugged[0] ?? null;
-        row(charger ?? "none plugged in", "charger");
+        part("charger", charger ?? "none plugged in");
         // The charge, as a bar: the headline says it, but not once it's
         // stepped into.
         const charge = Math.round(battery.percentage * 100);
@@ -113,29 +121,28 @@ Provider {
             values: [battery.percentage],
             warn: battery.state === UPowerDeviceState.Discharging && charge <= low
         };
-        rows.push(copyRow({ name: `${charge}%`, side: "charge", glyph: glyph, graph: bar }));
+        part("charge", `${charge}%`, "", bar);
         if (battery.changeRate >= 0.05)
-            row(`${number(battery.changeRate, 1)} W`,
-                battery.state === UPowerDeviceState.Charging ? "charging at" : "drawn from the battery");
+            part("rate", `${number(battery.changeRate, 1)} W`,
+                battery.state === UPowerDeviceState.Charging ? "charging" : "");
 
         const full = millionths(path, "charge_full");
         const design = millionths(path, "charge_full_design");
         const volts = millionths(path, "voltage_min_design");
         if (full && design)
-            row(`${Math.round(full / design * 100)}% of its design${
-                volts ? `, ${number(full * volts, 1)} of ${number(design * volts, 1)} Wh` : ""}`,
-                "health");
+            part("health", `${Math.round(full / design * 100)}% of its design${
+                volts ? `, ${number(full * volts, 1)} of ${number(design * volts, 1)} Wh` : ""}`);
         const cycles = said(path, "cycle_count");
         if (cycles !== "")
-            row(cycles === "1" ? "1 cycle" : `${cycles} cycles`, "worn");
+            part("cycles", cycles);
         const stop = said(path, "charge_control_end_threshold");
         const start = said(path, "charge_control_start_threshold");
         if (stop !== "" && stop !== "100")
-            row(start !== "" ? `stops at ${stop}%, starts below ${start}%` : `stops at ${stop}%`,
-                "charge limit");
+            part("limit",
+                start !== "" ? `stops at ${stop}%, starts below ${start}%` : `stops at ${stop}%`);
         const tenths = said(path, "temp");
         if (tenths !== "")
-            row(`${number(Number(tenths) / 10, 1)} °C`, "its temperature");
+            part("temperature", `${number(Number(tenths) / 10, 1)} °C`);
         // A date only when it's one, since some batteries say nonsense.
         const year = Number(said(path, "manufacture_year"));
         const month = Number(said(path, "manufacture_month"));
@@ -143,8 +150,7 @@ Provider {
         const what = [said(path, "manufacturer"), said(path, "model_name"), said(path, "technology")]
             .filter(part => part !== "").join(" ");
         if (what !== "")
-            row(dated ? `${what}, made ${year}-${String(month).padStart(2, "0")}` : what,
-                "the battery");
+            part("model", dated ? `${what}, made ${year}-${String(month).padStart(2, "0")}` : what);
 
         return { headline: doing(), graph: bar, rows: rows, note: "from UPower and the kernel" };
     }

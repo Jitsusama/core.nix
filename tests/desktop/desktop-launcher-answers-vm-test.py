@@ -133,7 +133,12 @@ with subtest("the launcher answers what's asked, and copies the answer"):
     answer("charger")
     launcher_until(lambda shown: shown["kind"] == "answer")
     step_in()
-    launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "mains")
+    launcher_until(
+        lambda shown: (
+            (shown["selected"] or {}).get("name") == "Charger"
+            and shown["selected"]["side"] == "mains"
+        )
+    )
     # Its charge among them, drawn as a bar, and none of them a glyph.
     photograph("launcher-charger-parts")
     machine.send_key("esc")

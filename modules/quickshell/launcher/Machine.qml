@@ -18,7 +18,8 @@
 //   harness writes (Jobs.qml).
 //
 // A part has its own words too, "disk speed" or "ram type", which answer
-// it alone. Everything is read from the kernel's files when asked, and a
+// it alone. The words that ask each, and every part's name, are the
+// vocabulary's (launcher/words.json, Words.qml). Everything is read from the kernel's files when asked, and a
 // rate is the difference between two reads, so the last is kept with its
 // time. While the launcher shows one of these, it's read again once a
 // second, and never more: nothing is read for a key. What programs are
@@ -38,40 +39,27 @@ Provider {
 
     examples: ["cpu", "memory", "uptime", "disk speed"]
 
-    // The words it answers whole, and by their start (Provider.qml).
-    // Each answer and the words that ask it, best first.
+    // Each answer by the thing the vocabulary names it as (Words.qml),
+    // whose words ask it, best first, whole and by their start
+    // (Provider.qml).
     readonly property var kinds: ({
-        memory: ["memory", "ram", "mem", "swap", "free memory", "memory use"],
-        cpu: ["processor", "cpu", "cores", "load", "load average", "cpu use"],
-        uptime: ["uptime", "since boot", "how long up", "boot time"],
-        disks: ["disk", "storage", "free space", "disk space", "space", "drive", "ssd", "how full"],
-        queue: ["queue", "jobs", "what's running", "whats running", "heavy work", "builds",
-            "vm tests", "machine queue"]
+        memory: "machine:memory",
+        cpu: "machine:cpu",
+        uptime: "machine:uptime",
+        disks: "machine:disk",
+        queue: "jobs"
     })
-    // A part asked for alone, by the thing and the part's name.
-    readonly property var parts: ({
-        "disk speed": ["disks", "Speed"],
-        "disk performance": ["disks", "Speed"],
-        "disk health": ["disks", "Health"],
-        "disk wear": ["disks", "Health"],
-        "disk temperature": ["disks", "Temperature"],
-        "disk temp": ["disks", "Temperature"],
-        "disk latency": ["disks", "Latency"],
-        "disk model": ["disks", "Model"],
-        "cpu model": ["cpu", "Model"],
-        "processor model": ["cpu", "Model"],
-        "maxed cores": ["cpu", "Maxed"],
-        "maxed": ["cpu", "Maxed"],
-        "clock speed": ["cpu", "Clock"],
-        "cpu speed": ["cpu", "Clock"],
-        "core kinds": ["cpu", "Kinds"],
-        "ram type": ["memory", "Type"],
-        "memory type": ["memory", "Type"],
-        "type of ram": ["memory", "Type"],
-        "what type of ram": ["memory", "Type"],
-        "memory pressure": ["memory", "Pressure"]
-    })
-    questions: Object.keys(kinds).reduce((all, kind) => all.concat(kinds[kind]), [])
+    // A part asked for alone, by its own words, as the thing and the
+    // part's name.
+    readonly property var parts: {
+        const out = {};
+        for (const kind of Object.keys(kinds))
+            for (const part of Words.of(kinds[kind]).parts)
+                for (const question of Words.answers(part))
+                    out[question] = [kind, Words.name(part)];
+        return out;
+    }
+    questions: Object.keys(kinds).reduce((all, kind) => all.concat(Words.started(kinds[kind])), [])
         .concat(Object.keys(parts))
 
     function answer(typed) {
@@ -81,7 +69,13 @@ Provider {
         const part = parts[question];
         if (part)
             return alone(part[0], part[1]);
-        return told(Object.keys(kinds).find(kind => kinds[kind].includes(question)));
+        return told(Object.keys(kinds).find(kind => Words.answers(kinds[kind]).includes(question)));
+    }
+
+    // A part's name, as the vocabulary says it: "Cores" for
+    // machine:cpu:cores.
+    function named(id, fill) {
+        return Words.name(`machine:${id}`, "", fill);
     }
 
     function told(kind) {
@@ -317,7 +311,7 @@ Provider {
         return fresh({
             headline: `${percent(total)} busy`,
             graph: bar(total),
-            glyph: Theme.glyph.processor,
+            glyph: Words.glyph(kinds.cpu),
             note: since(kept)
         }, cpuParts());
     }
@@ -328,15 +322,15 @@ Provider {
         const now = kept.last.said;
         const cores = Machine.loads(now.counters, kept.before ? kept.before.said.counters : null);
         const kindOf = n => info.kinds ? info.kinds[n] : "";
-        const chip = Theme.glyph.processor;
+        const chip = Words.glyph(kinds.cpu);
         const rows = [holder({
-            name: "Cores",
+            name: named("cpu:cores"),
             side: `${cores.length}`,
             graph: strip(cores.map(core => core.load)),
             glyph: chip,
             note: since(kept)
         }, () => cores.map((core, i) => figure({
-            name: `Core ${core.n}`,
+            name: named("cpu:core", { n: core.n }),
             side: percent(core.load),
             graph: bar(core.load),
             note: [kindOf(core.n) === "efficient" ? "an efficient core"
@@ -344,7 +338,7 @@ Provider {
                 now.clocks[i] > 0 ? `at ${ghz(now.clocks[i])}` : ""]
                 .filter(part => part !== "").join(", ")
         }))), figure({
-            name: "Maxed",
+            name: named("cpu:maxed"),
             side: Machine.maxed(cores),
             note: "at 95% or more"
         })];
@@ -353,7 +347,7 @@ Provider {
             const mean = clocked.reduce((a, b) => a + b, 0) / clocked.length;
             const most = info.maxes.reduce((a, b) => a + b.max, 0) / info.maxes.length;
             rows.push(figure({
-                name: "Clock",
+                name: named("cpu:clock"),
                 side: ghz(mean),
                 graph: most > 0 ? bar(mean / most) : undefined,
                 note: most > 0 ? `on average, of ${ghz(most)} at most` : "on average"
@@ -361,7 +355,7 @@ Provider {
         }
         if (now.heat)
             rows.push(figure({
-                name: "Temperature",
+                name: named("cpu:temperature"),
                 side: degrees(now.heat.value),
                 graph: bar(now.heat.value / (now.heat.most ?? 100)),
                 note: now.heat.most ? `at most ${degrees(now.heat.most)}` : ""
@@ -370,7 +364,7 @@ Provider {
             ? Machine.using(programs.last.said, programs.before?.said ?? null) : [];
         if (users.length > 0)
             rows.push(holder({
-                name: "Using it",
+                name: named("cpu:using"),
                 side: `${users[0].name} ${percent(users[0].value)}`,
                 glyph: chip,
                 note: "of the whole processor"
@@ -381,7 +375,7 @@ Provider {
             }))));
         if (now.load.length === 3)
             rows.push(figure({
-                name: "Load",
+                name: named("cpu:load"),
                 side: now.load.join(" \u00b7 "),
                 note: "over 1, 5 and 15 minutes"
             }));
@@ -391,7 +385,7 @@ Provider {
             const inKind = kind => cores.map((core, i) => ({ core: core, clock: now.clocks[i] }))
                 .filter(each => kindOf(each.core.n) === kind);
             rows.push(holder({
-                name: "Kinds",
+                name: named("cpu:kinds"),
                 side: present.map(kind => inKind(kind).length).join(" \u00b7 "),
                 glyph: chip,
                 note: present.map(kind => `${inKind(kind).length} ${kind}`).join(", ")
@@ -402,7 +396,7 @@ Provider {
                 const last = numbers[numbers.length - 1];
                 const unbroken = last - numbers[0] === numbers.length - 1;
                 return figure({
-                    name: kind.charAt(0).toUpperCase() + kind.slice(1),
+                    name: named(`cpu:${kind}`),
                     side: clocks.length > 0
                         ? `${members.length} at ${ghz(clocks.reduce((a, b) => a + b, 0)
                             / clocks.length)}`
@@ -415,7 +409,7 @@ Provider {
             })));
         }
         if (info.model !== "")
-            rows.push(leaf({ name: "Model", side: info.model }));
+            rows.push(leaf({ name: named("cpu:model"), side: info.model }));
         return rows;
     }
 
@@ -482,7 +476,7 @@ Provider {
         return fresh({
             headline: `${gib(used)} used, ${percent(used / info.MemTotal)}`,
             graph: bar(used / info.MemTotal),
-            glyph: Theme.glyph.memory,
+            glyph: Words.glyph(kinds.memory),
             note: ""
         }, memoryParts());
     }
@@ -492,27 +486,27 @@ Provider {
         const info = now.info;
         const used = info.MemTotal - info.MemAvailable;
         const rows = [figure({
-            name: "Used",
+            name: named("memory:used"),
             side: `${gib(used)} of ${gib(info.MemTotal)}`,
             graph: bar(used / info.MemTotal),
             note: `${gib(info.MemAvailable)} available`
         })];
         if (now.pressure !== null)
             rows.push(figure({
-                name: "Pressure",
+                name: named("memory:pressure"),
                 side: `${percent(now.pressure)} held up`,
                 graph: bar(now.pressure, now.pressure >= 0.1),
                 note: "of the last ten seconds, waiting for memory"
             }));
         if (info.SwapTotal > 0)
             rows.push(figure({
-                name: "Swap",
+                name: named("memory:swap"),
                 side: `${gib(info.SwapTotal - info.SwapFree)} of ${gib(info.SwapTotal)}`,
                 graph: bar((info.SwapTotal - info.SwapFree) / info.SwapTotal)
             }));
         if (info.Cached !== undefined)
             rows.push(figure({
-                name: "Cached",
+                name: named("memory:cached"),
                 side: gib(info.Cached),
                 graph: bar(info.Cached / info.MemTotal),
                 note: "files kept in memory, given up when it's wanted"
@@ -520,9 +514,9 @@ Provider {
         const holders = programs ? Machine.holding(programs.last.said) : [];
         if (holders.length > 0)
             rows.push(holder({
-                name: "Using it",
+                name: named("memory:using"),
                 side: `${holders[0].name} ${gib(holders[0].value / 1024)}`,
-                glyph: Theme.glyph.memory,
+                glyph: Words.glyph(kinds.memory),
                 note: "each program's processes together"
             }, () => holders.map(each => figure({
                 name: each.name,
@@ -535,7 +529,7 @@ Provider {
                 ? `${modules.type} at ${modules.speed}` : modules.type;
             const counted = modules.count === 1 ? "module" : "modules";
             rows.push(leaf({
-                name: "Type",
+                name: named("memory:type"),
                 side: type,
                 note: [modules.count > 0 && modules.size !== ""
                     ? `${modules.count} ${counted} of ${modules.size}` : "",
@@ -652,7 +646,7 @@ Provider {
             headline: headline,
             graph: worst ? bar(1 - worst.free / worst.total, worst.band !== "healthy")
                 : room ? bar(1 - room.free / room.total) : undefined,
-            glyph: Theme.glyph.disk,
+            glyph: Words.glyph(kinds.disks),
             note: guard
                 ? (guard.silent ? "the disk guard has stopped saying" : "from the disk guard")
                 : counted ? since(kept) : ""
@@ -660,7 +654,7 @@ Provider {
     }
 
     function diskParts(guard) {
-        const chip = Theme.glyph.disk;
+        const chip = Words.glyph(kinds.disks);
         const rows = [];
         if (guard && guard.disks.length > 0) {
             // The worst band first, as the disk piece judges it, so the
@@ -675,7 +669,7 @@ Provider {
             });
             const worst = watched[0];
             const space = {
-                name: "Space",
+                name: named("disk:space"),
                 side: `${guard.shown(worst.free)} free`,
                 graph: bar(1 - worst.free / worst.total, worst.band !== "healthy"),
                 note: watched.length > 1 ? `on ${worst.path}, the least of ${watched.length}`
@@ -686,7 +680,7 @@ Provider {
                 : figure(space));
         } else if (room) {
             rows.push(figure({
-                name: "Space",
+                name: named("disk:space"),
                 side: `${bytes(room.free)} free`,
                 graph: bar(1 - room.free / room.total),
                 note: `on /, of ${bytes(room.total)}`
@@ -698,28 +692,28 @@ Provider {
             const when = since(kept);
             const floor = 1e6;
             rows.push(holder({
-                name: "Speed",
+                name: named("disk:speed"),
                 side: rate(moved.read + moved.write),
                 graph: spark(series.moved ?? [], floor),
                 glyph: chip,
                 note: when
             }, () => [figure({
-                name: "Reading",
+                name: named("disk:reading"),
                 side: rate(moved.read),
                 graph: spark(series.read ?? [], floor),
                 note: when
             }), figure({
-                name: "Writing",
+                name: named("disk:writing"),
                 side: rate(moved.write),
                 graph: spark(series.write ?? [], floor),
                 note: when
             })]), figure({
-                name: "Busy",
+                name: named("disk:busy"),
                 side: percent(moved.busy),
                 graph: bar(moved.busy),
                 note: when
             }), figure({
-                name: "Latency",
+                name: named("disk:latency"),
                 side: moved.latency === null ? "idle"
                     : `${number(moved.latency, moved.latency < 10 ? 2 : 0)} ms`,
                 note: moved.latency === null ? "nothing asked of it"
@@ -728,7 +722,7 @@ Provider {
             const heat = kept.last.said.heat;
             if (heat)
                 rows.push(figure({
-                    name: "Temperature",
+                    name: named("disk:temperature"),
                     side: degrees(heat.value),
                     graph: bar(heat.value / (heat.most ?? 85)),
                     note: heat.most ? `at most ${degrees(heat.most)}` : ""
@@ -739,28 +733,28 @@ Provider {
             const worn = smart.percent_used / 100;
             const failing = smart.avail_spare < smart.spare_thresh || smart.media_errors > 0;
             rows.push(holder({
-                name: "Health",
+                name: named("disk:health"),
                 side: `${smart.percent_used}% worn`,
                 graph: bar(worn, failing),
                 glyph: chip,
                 note: failing ? "its controller says it's failing" : "as its controller says"
             }, () => [figure({
-                name: "Spare",
+                name: named("disk:spare"),
                 side: `${smart.avail_spare}%`,
                 graph: bar(smart.avail_spare / 100, smart.avail_spare < smart.spare_thresh),
                 note: `it warns below ${smart.spare_thresh}%`
             }), figure({
-                name: "Written",
+                name: named("disk:written"),
                 side: bytes(smart.total_data_written)
             }), figure({
-                name: "Read",
+                name: named("disk:read"),
                 side: bytes(smart.total_data_read)
             }), figure({
-                name: "Errors",
+                name: named("disk:errors"),
                 side: `${smart.media_errors}`,
                 note: "the disk couldn't read or write"
             }), figure({
-                name: "Unsafe shutdowns",
+                name: named("disk:shutdowns"),
                 side: `${smart.unsafe_shutdowns}`,
                 note: `of ${smart.power_cycles} times it was powered`
             })]));
@@ -768,7 +762,7 @@ Provider {
         const model = memo.block !== ""
             ? said(`/sys/block/${memo.block}/device/model`).replace(/\s+/g, " ") : "";
         if (model !== "")
-            rows.push(leaf({ name: "Model", side: model }));
+            rows.push(leaf({ name: named("disk:model"), side: model }));
         return rows;
     }
 
@@ -812,7 +806,7 @@ Provider {
                 plain: true
             };
             return session === null ? copyRow(fields) : thing(Object.assign(fields, {
-                verb: "switch",
+                verb: Words.verb("verb:job:switch"),
                 later: true,
                 run: () => Niri.act({ FocusWindow: { id: session.window.id } })
             }));
