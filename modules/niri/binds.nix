@@ -572,14 +572,14 @@ in
   {
     chord = "XF86MonBrightnessUp";
     does = "Brighten the screen";
-    also = "brightness brighter";
+    also = "brightness brighter light";
     action = ''spawn "brightnessctl" "--class=backlight" "set" "+5%";'';
     flags = locked;
   }
   {
     chord = "XF86MonBrightnessDown";
     does = "Dim the screen";
-    also = "brightness darker";
+    also = "brightness darker light";
     action = ''spawn "brightnessctl" "--class=backlight" "set" "5%-";'';
     flags = locked;
   }

@@ -29,7 +29,9 @@ Provider {
     }
 
     // The words it answers whole, and by their start (Provider.qml).
-    questions: ["brightness", "backlight", "screen brightness", "screen light", "display brightness", "bright",
+    // "light" asks for every light, before its start can ask the desk's.
+    questions: ["brightness", "backlight", "light", "screen brightness", "screen light",
+        "display brightness", "bright",
         "brighter", "dim", "dimmer", "keyboard light", "keyboard backlight", "keyboard brightness", "key light"]
         .concat(desks)
     // What asks for the desk light alone.

@@ -334,14 +334,14 @@ Scope {
     }
 
     // The one word the foot gives Return: the row's own, or else an act's
-    // first word ("forget", "disconnect"), which its name starts with, or
-    // "open" for a thing.
+    // first word ("forget", "disconnect"), which its name starts with, and
+    // which way for a turn ("turn off"), or "open" for a thing.
     function verbOf(row) {
         if (!row)
             return "";
         if ((row.verb ?? "") !== "")
             return row.verb;
-        return kindOf(row) !== "" ? "open" : Rank.firstWord(row.name ?? "") || "open";
+        return kindOf(row) !== "" ? "open" : Rank.verbIn(row.name ?? "") || "open";
     }
 
     // A chord as words, for the foot: its keys joined by +, those pressed
@@ -718,6 +718,9 @@ Scope {
         } else {
             const need = Fuzzy.letters(words);
             const found = [];
+            // What the next letter narrows from: everything found, and a
+            // collection held back only for being too short yet.
+            const early = [];
             for (const choice of narrowing ? candidates : choices) {
                 const byName = (choice.prepared.mask & need) === need
                     ? Fuzzy.match(choice.prepared, words, false) : { score: -1 };
@@ -734,17 +737,24 @@ Scope {
                 if (!choice.keywords || (choice.keywords.mask & need) !== need)
                     continue;
                 const byWord = Fuzzy.match(choice.keywords, words, false);
-                if (byWord.score >= 0)
+                // A collection's own words are found by their start from
+                // three letters, and below that only whole, so "pi" is pi's
+                // sessions and not the Clipboard's pictures.
+                const tooShort = choice.named && Fuzzy.plainly(letters).length < 3
+                    && !Rank.says(choice.keywords.text ?? "", letters);
+                if (byWord.score >= 0 && tooShort)
+                    early.push(choice);
+                else if (byWord.score >= 0)
                     found.push({
                         item: choice.prepared,
                         score: byWord.score * choice.weight / (choice.named ? 1 : 4),
                         grade: byWord.grade,
-                        tier: choice.named ? 1 : 2,
+                        tier: choice.named ? 1 : Rank.wordTier(choice.keywords.text ?? "", letters),
                         choice: choice,
                         byWord: true
                     });
             }
-            candidates = found.map(f => f.choice);
+            candidates = found.map(f => f.choice).concat(early);
             const learned = picks.weights(letters);
             const ordered = Rank.order(found, {
                 latched: picks.latched(letters),

@@ -9,7 +9,7 @@
 //   most to say (its `rich`).
 // - Tiers: a name that is what's typed, then a name that starts with it,
 //   then a name with a later word that starts with it, then only
-//   something else it's known by. An act's name starts with its verb, so
+//   something else it's known by, typed whole before only started. An act's name starts with its verb, so
 //   "pow" is the act that starts Power before one that uses power. Nothing lifts
 //   a row over a better tier but what was latched for what's typed.
 // - The latch: what was picked for what's typed, and for each start of a
@@ -58,6 +58,11 @@ function plainly(typed) {
 // and one whose later word starts with it.
 const NAME_START = 0.5;
 
+// The tier of a row found only by starting another word it's known by,
+// after one whose other word is typed whole: "quiet" is Turn on do not
+// disturb, known as quiet, before Turn the volume down, known as quieter.
+const WORD_START = 2.5;
+
 // Which tier a match is in: 0 for a name that is what's typed, 0.5 for a
 // name starting with it, 1 for a later word of its name starting with it,
 // 2 for something else it's known by. A row added late, at 1 unless it
@@ -72,6 +77,20 @@ function tier(name, typed, byWord) {
         return 0;
     }
     return said.startsWith(firstWord(query)) ? NAME_START : 1;
+}
+
+// The tier of a row found by its other words (`known`, as one string):
+// 2 when each word typed is one of them whole, and WORD_START when one
+// only starts.
+function wordTier(known, typed) {
+    return says(known, typed) ? 2 : WORD_START;
+}
+
+// Whether each word typed is one of a string's words whole.
+function says(text, typed) {
+    const words = plainly(text).split(" ");
+    const query = plainly(typed);
+    return query !== "" && query.split(" ").every(word => words.includes(word));
 }
 
 // The strings a pick for `typed` is latched at: it, and when it's one word,
@@ -121,6 +140,18 @@ function latched(latches, typed) {
 // taken back has to be typed past before it's latched.
 function firstWord(name) {
     return plainly(name).split(" ")[0] ?? "";
+}
+
+// The words that follow "turn" and say which way, as Return's verb says
+// them: Turn the volume down is "turn down", not "turn".
+const TURNS = ["on", "off", "up", "down"];
+
+// The verb an act's name gives Return: its first word, and for "turn" the
+// way it turns, wherever the name says it.
+function verbIn(name) {
+    const words = plainly(name).split(" ");
+    const way = words[0] === "turn" ? words.slice(1).find(word => TURNS.includes(word)) : undefined;
+    return way === undefined ? words[0] : `turn ${way}`;
 }
 
 // Two names in the alphabet's order, for a sort.

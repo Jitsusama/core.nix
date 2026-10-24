@@ -24,7 +24,7 @@ Provider {
     collection: ({
         noun: "copies",
         title: "Clipboard",
-        words: ["paste", "pasted", "copied", "history", "yank", "pictures", "images"],
+        words: ["copy", "paste", "pasted", "copied", "history", "yank", "pictures", "images"],
         glyph: String.fromCodePoint(0xf0a38),
         ask: "which copy?"
     })
@@ -34,6 +34,8 @@ Provider {
 
     readonly property var forget: thing({
         key: "copies:forget",
+        // An act, not a copy, so it says no kind (docs/design.md).
+        what: "",
         verb: "forget",
         name: "Forget the Clipboard",
         keywords: "clipboard copies history clear empty erase wipe",
