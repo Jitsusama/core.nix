@@ -755,8 +755,29 @@
   vm-commits-are-signed = ''
     commits are signed with the TPM's keys, PINs asked for
   '';
-  vm-desktop-works = ''
-    it boots clean; the desktop shows, opens, locks and asks, a USB camera's stream included
+  vm-desktop-captures-and-locks = ''
+    the desktop takes a screen, a window, a region, a recording and the camera's pictures by the
+    keys, and its lock screen, polkit's prompt and the askpass answer and hold
+  '';
+  vm-desktop-launcher-answers = ''
+    the launcher lists each thing once for everything Joel types, copies what it answers, and keeps
+    emoji in their own place
+  '';
+  vm-desktop-launcher-goes-places = ''
+    the launcher goes to pi's sessions, quests and runs and to windows, opens and moves them, sets
+    the volume, loses no letter typed after its chord, and shows the shortcuts
+  '';
+  vm-desktop-opens-and-sets = ''
+    the desktop keeps and gives back copies, opens pictures and documents, and sets sound, the
+    power profile, displays and Wi-Fi from the launcher
+  '';
+  vm-desktop-says-what-happens = ''
+    notices come, go and are acted on, and the margin, What's on, Tuple's calls and caps lock say
+    what's happening and answer the keys
+  '';
+  vm-desktop-starts-clean = ''
+    the desktop boots without an ordering cycle and its shell without an error, the meters answer
+    the keys, programs wear the theme, and swipes and Bluetooth's agent work
   '';
   vm-dictation-hears-the-chord-let-go = ''
     an account outside the input group hears how long Super and D were held and a tap's, nothing of

@@ -64,9 +64,11 @@ or offscreen Quickshell, over cases in `tests/`, in under a second each, as
 [testing][logic] lists. Logic that sits in a view file moves into a `.js`
 beside it, where those checks can reach it.
 
-`vm-desktop-works` ([`tests/desktop.nix`][desktop]) starts niri and the shell
-in a virtual machine and drives each surface by its keys, keeping a
-screenshot of each; what only a running desktop shows gets a subtest there.
+The desktop's VM tests ([`tests/desktop.nix`][desktop]), one per area, each
+named `vm-desktop-<area>`, start niri and the shell in a virtual machine and
+drive each surface by its keys, keeping a screenshot of each; what only a
+running desktop shows gets a subtest in its area's file under
+`tests/desktop/`, and a helper two areas use goes in its prelude.
 A picture is taken with `photograph`, once the screen holds still, after
 waiting on what the shell reports for the state it shows.
 
@@ -77,9 +79,9 @@ reloads it; `--type sl` opens the launcher on a query, with the test
 machine's stand-in programs. What Nix generates, such as `Theme.qml`, takes a
 new preview.
 
-To prove it, run only its subtests, with `run-subtests vm-desktop-works
+To prove it, run only its subtests, with `run-subtests vm-desktop-<area>
 <words>` from the dev shell, in under half a minute; each runs alone. Before
-pushing, run the whole test once, and compare its pictures with main's using
+pushing, run the areas it touches once, and compare their pictures with main's using
 `shots-changed`, as [testing][testing] says, looking at every one it draws:
 a change to one surface can move another.
 

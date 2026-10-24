@@ -34,3 +34,6 @@ ignore = [
 # driver's retry hands each try whether it's the last as a plain positional
 # bool, so what a script gives retry has to take one.
 "*-vm-test.py" = ["TC004", "FBT001"]
+# The desktop test's prelude is the head of each of its areas' scripts, so it's one too, named
+# as a module so they can import its names for type checkers.
+"tests/desktop/desktop_prelude.py" = ["TC004", "FBT001", "S101"]

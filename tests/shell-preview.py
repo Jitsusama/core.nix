@@ -2,7 +2,7 @@
 
     shell-preview [--type TEXT] [--check NAME] [--account NAME]
 
-It builds the shell's home from a check's machine, vm-desktop-works by default, so the
+It builds the shell's home from a check's machine, the desktop test's by default, so the
 launcher lists that machine's stand-in programs rather than the session's own. Its Quickshell
 folder is laid out afresh: each file that is a tracked file of the working copy is linked to
 it, so an edit shows as Quickshell reloads, and each the build made, the theme among them, is
@@ -223,7 +223,9 @@ def arguments(argv: Sequence[str]) -> argparse.Namespace:
     )
     parser.add_argument("--type", help="open the launcher and type this into it")
     parser.add_argument(
-        "--check", default="vm-desktop-works", help="the check whose machine's shell is shown"
+        "--check",
+        default="vm-desktop-starts-clean",
+        help="the check whose machine's shell is shown",
     )
     parser.add_argument("--account", default="jitsusama", help="the machine's account")
     return parser.parse_args(argv)

@@ -186,7 +186,7 @@ def arguments(argv: Sequence[str]) -> Options:
         prog="run-subtests",
         description="Run some of a VM test's subtests on its driver.",
     )
-    parser.add_argument("check", help="the VM test, e.g. vm-desktop-works")
+    parser.add_argument("check", help="the VM test, e.g. vm-desktop-starts-clean")
     parser.add_argument("words", nargs="*", help="words a subtest's name holds")
     parser.add_argument("--flake", default=".", help="the flake, . by default")
     parser.add_argument("--out", type=Path, help="where the pictures go, a new folder by default")
