@@ -129,6 +129,7 @@ quietly stopped holding.
 | `the-click-strength-holds-after-sleep` | a machine naming a click strength sets it as each hidraw device appears and after every sleep, and one naming none runs nothing |
 | `disk-guard-stays-in-the-background` | the disk guard yields to the account, and a command overrunning its memory never stops it |
 | `the-mac-guards-its-disk` | a Mac's guards run under launchd, with a Mac's paths and nothing to confine a run |
+| `disk-guard-finds-a-machines-programs-first` | a machine's programs for the disk guard come first on its PATH under systemd and launchd, with core's git after |
 | `spend-watch-stays-in-the-background` | the AI spend watch yields to the account, comes back when it fails, and leaves its status behind when it stops |
 
 ### The Shell's Logic
