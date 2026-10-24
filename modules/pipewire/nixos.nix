@@ -2,9 +2,10 @@
 # alike, with WirePlumber choosing where each stream goes. rtkit lets it run
 # at realtime priority, so audio doesn't crackle under a build.
 let
-  # Music at 44.1 kHz is resampled for outputs running at 48 kHz, which
-  # Bluetooth headphones always do. PipeWire's best resampler costs a few
-  # percent of one core while it resamples, and nothing otherwise.
+  # Music at 44.1 kHz is resampled to 48 kHz for every output, since
+  # PipeWire's clock runs at 48 kHz alone unless it's allowed others. Its
+  # best resampler costs a few percent of one core while it resamples, and
+  # nothing otherwise.
   resampling."stream.properties"."resample.quality" = 10;
 in
 {
