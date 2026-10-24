@@ -117,6 +117,7 @@ quietly stopped holding.
 | `call-audio-runs-in-real-time` | an app's audio thread can take SCHED_RR 8, below PipeWire's, for at most 200 ms at a time |
 | `machines-yield-to-what-the-user-works-in` | system virtual machines are weighed as a build is, and the account's containers and session machines are idle |
 | `nix-collects-before-the-disk-fills` | Nix collects garbage during a build that fills the disk |
+| `writes-go-out-sooner` | a machine with a screen keeps at most 128 KiB unsent in a socket, and sends at full speed after idle |
 | `resolved-is-set-per-network` | a laptop leaves resolved's global DNS settings as they ship |
 | `the-shutdown-mark-cannot-stop-a-reboot` | the mark a healthy stop leaves can't fail the reboot, and what reads it outlives the last stage |
 | `thermald-starts-after-its-drivers` | the XPS 14's thermal drivers load before thermald starts, and a thermald that stops is restarted |
