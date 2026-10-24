@@ -727,6 +727,23 @@ mod tests {
     }
 
     #[test]
+    fn a_line_falling_twice_is_followed_while_the_upload_carries_acks() {
+        let mut c = controller(10_000, 95_000);
+        pings(&mut c, 20.0, 6);
+        let mut line = Download {
+            queue_kbit: 0.0,
+            at: 0.0,
+        };
+        line.run(&mut c, 100_000.0, 2.0, 1_000.0);
+        // The line falls, then falls again within the spell: handing the
+        // next cut to the upload's acknowledgements mustn't stall it.
+        line.run(&mut c, 25_000.0, 3.0, 1_000.0);
+        let late = line.run(&mut c, 12_000.0, 20.0, 1_000.0);
+        assert!(c.down.rate < 12_000, "{}", c.down.rate);
+        assert!(late < 4.0, "{late}");
+    }
+
+    #[test]
     fn a_queue_a_cut_did_not_stop_is_put_to_the_other_direction() {
         let mut c = controller(10_000, 95_000);
         pings(&mut c, 20.0, 6);
