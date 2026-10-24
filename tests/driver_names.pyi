@@ -20,6 +20,9 @@ machine: QemuMachine
 client: QemuMachine
 router: QemuMachine
 
+# The guide's stick-writing test's Linux host, which the stick is written on.
+host: QemuMachine
+
 # The clock test's time server, which its machine sets its clock from, and
 # the shaper's tests' far end.
 server: QemuMachine

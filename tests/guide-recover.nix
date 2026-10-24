@@ -6,7 +6,8 @@
 # shell inside the installed system. The machine's disk is one disko's
 # image builder laid out and installed, as vm-secure-boot-installs builds
 # its own; its two YubiKeys are enrolled from the stick before the guide
-# starts, as a machine's own install leaves them.
+# starts, as a machine's own install leaves them. The script is
+# guide-recover-vm-test.py.
 { self, pkgs }:
 let
   inherit (pkgs) lib;
@@ -128,6 +129,10 @@ pkgs.testers.runNixOSTest {
       };
     };
 
+  # The driver runs on the host, so what the script needs from Nix, the
+  # images to put overlays on, the tool to make them, the keys' state files
+  # and the secrets to type, reaches it in one file rather than on the
+  # machine's path.
   testScript =
     { nodes, ... }:
     let
@@ -139,157 +144,19 @@ pkgs.testers.runNixOSTest {
         truncate -s $(( $(stat -c %s ${image}) + (128 << 20) + 7 * 512 )) $out/stick.raw
         guide write-stick ${image} $out/stick.raw
       '';
+      values = pkgs.writeText "guide-recover-values.json" (
+        builtins.toJSON {
+          qemuImg = "${qemu}/bin/qemu-img";
+          image = "${nodes.machine.system.build.diskoImages}/main.qcow2";
+          stick = "${written}/stick.raw";
+          keys = "${keys}";
+          inherit pin recovery;
+        }
+      );
+      script = builtins.readFile ./guide-recover-vm-test.py;
     in
-    ''
-      import json, os, re, shutil, subprocess, tempfile
-
-      disk = tempfile.NamedTemporaryFile(suffix=".qcow2")
-      subprocess.run([
-          "${qemu}/bin/qemu-img", "create", "-f", "qcow2",
-          "-b", "${nodes.machine.system.build.diskoImages}/main.qcow2", "-F", "qcow2", disk.name,
-      ], check=True)
-      os.environ["NIX_DISK_IMAGE"] = disk.name
-      # The stick writes to an overlay, since the image is in the store.
-      stick = tempfile.NamedTemporaryFile(suffix=".qcow2")
-      subprocess.run([
-          "${qemu}/bin/qemu-img", "create", "-f", "qcow2",
-          "-b", "${written}/stick.raw", "-F", "raw", stick.name,
-      ], check=True)
-      os.environ["STICK_IMAGE"] = stick.name
-      keys = tempfile.mkdtemp()
-      for name in ["kept", "lost", "new"]:
-          shutil.copy("${keys}/" + name, f"{keys}/{name}")
-          os.chmod(f"{keys}/{name}", 0o600)
-      os.environ["KEYS_DIR"] = keys
-
-      def screen():
-          return machine.get_tty_text("1")
-
-      def on_screen(pattern, timeout=120):
-          def shown(_):
-              text = screen()
-              if re.search(r"(?i)(try again|look again)", text):
-                  raise Exception("the guide stopped:\n" + text)
-              return re.search("(?i)" + pattern, text) is not None
-          with machine.nested(f"waiting for {pattern} on the guide's screen"):
-              try:
-                  retry(shown, timeout)
-              except Exception:
-                  print("SCREEN\n" + screen())
-                  print("LOG\n" + machine.execute("tail -n 40 /run/guide/log")[1])
-                  raise
-
-      def type(text):
-          machine.send_chars(text + "\n")
-
-      def plug(name):
-          machine.send_monitor_command("device_del key")
-          machine.wait_until_succeeds('test -z "$(fido2-token -L)"', timeout=30)
-          machine.send_monitor_command(f"device_add canokey,id=key,bus=xhci.0,file={keys}/{name}")
-          machine.wait_until_succeeds('test -n "$(fido2-token -L)"', timeout=30)
-
-      volume = "/dev/disk/by-partlabel/system"
-      plugin = "LD_LIBRARY_PATH=$(dirname $(readlink -f $(which systemd-cryptsetup)))/../lib/cryptsetup"
-
-      def opens(name):
-          plug(name)
-          return machine.execute(
-              f"echo ${pin} | {plugin} cryptsetup open --test-passphrase --token-only"
-              f" --token-type systemd-fido2 {volume}"
-          )[0] == 0
-
-      machine.start()
-
-      with subtest("the machine's disk opens with two YubiKeys, as a machine's does"):
-          machine.wait_until_succeeds('test -n "$(fido2-token -L)"', timeout=60)
-          for name in ["kept", "lost"]:
-              if name != "kept":
-                  plug(name)
-              machine.succeed("set-pin ${pin}")
-              machine.succeed("install -d -m 0700 /run/pins && printf ${pin} > /run/pins/cryptenroll.fido2-pin")
-              machine.succeed(
-                  "PASSWORD='${recovery}' CREDENTIALS_DIRECTORY=/run/pins systemd-cryptenroll --fido2-device=auto"
-                  f" --fido2-with-client-pin=yes --fido2-with-user-presence=yes {volume} >&2"
-              )
-          plug("kept")
-
-      with subtest("a repair stick boots into the guide's recovery"):
-          on_screen("Recover a machine")
-          on_screen("Check the keyboard")
-          type("keyboard")
-
-      with subtest("the machine's disk is found by its layout and opened with a YubiKey's PIN"):
-          on_screen("holds the machine")
-          t.assertIn("named system", screen())
-          type("")
-          on_screen("Or plug in a YubiKey")
-          type("${pin}")
-
-      with subtest("everything the machine mounts is mounted under /mnt"):
-          # The menu, which comes only once every mount is done: "disk is
-          # open" is shown as soon as the disk opens, before they are.
-          on_screen("What should be done")
-          for at in ["/mnt", "/mnt/nix", "/mnt/home", "/mnt/var/log", "/mnt/boot"]:
-              machine.succeed(f"findmnt {at}")
-          machine.succeed("test -e /mnt/etc/NIXOS")
-          # What bootctl lists from outside the machine, for the guide's
-          # fixtures (qemu-canokey).
-          listed = machine.succeed("bootctl --esp-path=/mnt/boot list --json=short")
-          print("FIXTURE bootctl-list-from-the-stick.json " + listed.replace("\n", "\\n"))
-
-      with subtest("a generation chosen is set to boot next, and the menu comes back"):
-          on_screen("What should be done")
-          machine.send_key("down")
-          type("")
-          on_screen("Which should it boot next")
-          t.assertIn("Generation 1", screen())
-          type("")
-          on_screen("What should be done")
-          t.assertIn("boots generation 1 next", screen())
-          # The firmware's own default, which systemd-boot reads first.
-          machine.succeed("test -e /sys/firmware/efi/efivars/LoaderEntryDefault-4a67b082-0a4c-41cf-b6c7-440b29bb8c4f")
-
-      with subtest("a lost YubiKey is replaced: the new one enrolled and proven, then the lost one's slot wiped"):
-          machine.send_key("down")
-          machine.send_key("down")
-          type("")
-          on_screen("the YubiKey you still have")
-          type("")
-          on_screen("plug in the new YubiKey")
-          plug("new")
-          machine.succeed("set-pin ${pin}")
-          type("")
-          on_screen("the new YubiKey's PIN")
-          type("${pin}")
-          on_screen("the recovery key")
-          type("${recovery}")
-          on_screen("What should be done", timeout=180)
-          t.assertIn("the lost one no longer does", screen())
-          header = json.loads(machine.succeed(f"cryptsetup luksDump --dump-json-metadata {volume}"))
-          kinds = sorted(token["type"] for token in header["tokens"].values())
-          t.assertEqual(kinds, ["systemd-fido2", "systemd-fido2"])
-          t.assertTrue(opens("new"), "the new key doesn't open the disk")
-          t.assertTrue(opens("kept"), "the kept key no longer opens the disk")
-          t.assertFalse(opens("lost"), "the lost key still opens the disk")
-
-      with subtest("an ESP that lost its boot loader gets it again from the installed system"):
-          machine.succeed("rm -r /mnt/boot/EFI/systemd /mnt/boot/loader/entries")
-          for _ in range(3):
-              machine.send_key("down")
-          # What the menu looks like on a console, its keys drawn by its font.
-          machine.screenshot("menu")
-          type("")
-          on_screen("installed again", timeout=180)
-          machine.succeed("test -s /mnt/boot/EFI/systemd/systemd-bootx64.efi")
-          machine.succeed("ls /mnt/boot/loader/entries/*.conf")
-
-      with subtest("Return gives a root shell inside the installed system"):
-          type("")
-          machine.sleep(3)
-          type("cat /etc/hostname > /recovered && nixos-version >> /recovered")
-          machine.wait_until_succeeds("test -s /mnt/recovered", timeout=30)
-          said = machine.succeed("cat /mnt/recovered")
-          print(said)
-          t.assertIn("machine", said.splitlines()[0])
-    '';
+    builtins.replaceStrings [ "@values@" ] [ "${values}" ] script;
+  # nix fmt holds the script to mypy --strict against the driver's own types,
+  # through driver_names.pyi, which the driver's lighter check can't find.
+  skipTypeCheck = true;
 }
