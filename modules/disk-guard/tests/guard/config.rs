@@ -103,7 +103,7 @@ fn a_temp_source_with_no_path_is_the_accounts_own() {
     assert_eq!(
         config.sources["mine"],
         Source::Temp {
-            path: std::env::temp_dir()
+            path: disk_guard::config::account_temp()
         }
     );
 }

@@ -153,7 +153,7 @@ pub enum Source {
     /// account's own, which on a Mac is a folder of its own under
     /// /var/folders rather than /tmp.
     Temp {
-        #[serde(default = "std::env::temp_dir")]
+        #[serde(default = "account_temp")]
         path: PathBuf,
     },
     /// A desktop trash, expired by its deletion dates.
@@ -192,6 +192,18 @@ fn urgent() -> Band {
 
 fn middle_rank() -> u8 {
     50
+}
+
+/// The running account's own temporary folder: on a Mac the one the system
+/// keeps for it, whatever TMPDIR says, so a plan read under a harness names
+/// the folder the daemon sweeps; elsewhere TMPDIR's, or /tmp.
+#[must_use]
+pub fn account_temp() -> PathBuf {
+    #[cfg(target_os = "macos")]
+    if let Some(folder) = crate::macos::account_temp() {
+        return folder;
+    }
+    std::env::temp_dir()
 }
 
 impl Source {

@@ -95,8 +95,11 @@
         ]);
       linux = given (modules: bareNixos ([ self.nixosModules.workstation ] ++ modules));
       mac = given (modules: bareDarwin ([ self.darwinModules.workstation ] ++ modules));
-      # The machine's programs, then the account's git, and nothing else.
-      wanted = home: lib.makeBinPath (first ++ [ home.programs.git.package ]);
+      # The machine's programs, then the account's git, and nothing else,
+      # written out rather than built as the module builds it.
+      wanted =
+        home:
+        "${pkgs.hello}/bin:/home/someone/.local/state/tools/profile/bin:${home.programs.git.package}/bin";
     in
     holds "disk-guard-finds-a-machines-programs-first"
       "A machine's programs for the disk guard aren't first on its PATH, or core's git is gone from it."

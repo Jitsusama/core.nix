@@ -44,6 +44,34 @@ pub fn settle(_path: &Path) -> io::Result<()> {
 /// Nothing to hand back: macOS's allocator returns what's idle itself.
 pub fn give_back() {}
 
+/// The folder macOS keeps for the running account's temporary files, under
+/// /var/folders, whatever TMPDIR says: a program the account starts is told
+/// it through TMPDIR, but a harness may set its own, and the guard's plan
+/// read there should name the folder its daemon sweeps.
+#[must_use]
+pub fn account_temp() -> Option<PathBuf> {
+    // SAFETY: a null buffer of no length asks only for the size needed.
+    let size = unsafe { libc::confstr(libc::_CS_DARWIN_USER_TEMP_DIR, ptr::null_mut(), 0) };
+    if size == 0 {
+        return None;
+    }
+    let mut folder = vec![0_u8; size];
+    // SAFETY: folder holds size bytes, which confstr writes at most.
+    let written = unsafe {
+        libc::confstr(
+            libc::_CS_DARWIN_USER_TEMP_DIR,
+            folder.as_mut_ptr().cast(),
+            size,
+        )
+    };
+    if written == 0 || written > size {
+        return None;
+    }
+    // What it wrote ends in a NUL, which a path doesn't hold.
+    folder.truncate(written - 1);
+    Some(PathBuf::from(OsStr::from_bytes(&folder)))
+}
+
 /// One reading of a clock, in seconds.
 fn clock(id: libc::clockid_t) -> io::Result<f64> {
     let mut time = libc::timespec {

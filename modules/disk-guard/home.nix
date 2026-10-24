@@ -156,7 +156,8 @@ in
         };
         # A Mac gives each account a temporary folder of its own under
         # /var/folders, where its programs' TMPDIR points, which the guard
-        # finds as it starts, since it's named only on the Mac itself.
+        # asks the Mac for as it reads its config, since only the Mac names
+        # it.
         account-tmp = lib.mkIf isDarwin (lib.mkDefault { kind = "temp"; });
         trash = lib.mkDefault {
           kind = "trash";
