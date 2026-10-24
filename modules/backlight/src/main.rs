@@ -11,6 +11,10 @@
 //! is the lid's: nothing follows it and nothing is learned from it until
 //! the lid opens, as logind says it does.
 //!
+//! What to do about the light, the lid and a pick is decided apart from the
+//! screen, the files and D-Bus (follow.rs), so it's tested without them;
+//! this file reads and writes what it decides.
+//!
 //! Whatever else writes the brightness, which is Joel with the keys, teaches
 //! the curve: that brightness, in this light, is the one he wants. The first
 //! light heard teaches it the brightness the screen already has, so starting
@@ -28,6 +32,7 @@
 
 mod curve;
 mod facts;
+mod follow;
 mod light;
 mod monitor;
 mod screen;
@@ -40,20 +45,17 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::process::ExitCode;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use zbus::export::futures_core::Stream;
 use zbus::proxy::PropertyStream;
 use zbus::{Connection, proxy};
 
 use curve::Curve;
+use follow::Follow;
 use light::{Readings, Sensor};
 use monitor::Monitors;
 use screen::Screen;
-use steer::{Ramp, Steer};
-
-/// How often a move steps while it's under way.
-const STEP: Duration = Duration::from_millis(16);
 
 /// The session this daemon runs in, which logind lets set its backlight.
 #[proxy(
@@ -195,16 +197,11 @@ async fn run() -> Result<(), Box<dyn Error>> {
     let mut backlight = Backlight {
         screen,
         session,
-        curve,
-        knows_joel,
+        follow: Follow::new(curve, knows_joel),
         learned,
         chosen,
-        steer: Steer::default(),
-        ramp: None,
-        lux: None,
         seen,
         wrote: None,
-        shut: false,
     };
     backlight.lid(shut);
     let mut monitors = Monitors::find(backlight.screen.level_of(seen));
@@ -247,52 +244,33 @@ async fn until(moment: Option<Instant>) {
 struct Backlight<'a> {
     screen: Screen,
     session: SessionProxy<'a>,
-    curve: Curve,
-    /// Whether the curve has learned anything yet.
-    knows_joel: bool,
+    follow: Follow,
     learned: PathBuf,
     chosen: PathBuf,
-    steer: Steer,
-    ramp: Option<Ramp>,
-    /// The light last heard, once there's been any.
-    lux: Option<f64>,
     /// The brightness last read, in steps.
     seen: u32,
     /// The brightness this daemon last set, in steps.
     wrote: Option<u32>,
-    /// Whether the lid is shut, so the light heard is the lid's.
-    shut: bool,
 }
 
 impl Backlight<'_> {
     /// The light changed. The first light heard teaches the curve the
     /// brightness the screen already has.
     fn heard(&mut self, lux: f64) {
-        if !lux.is_finite() || lux < 0.0 || self.shut {
-            return;
+        let shown = self.screen.level_of(self.seen);
+        if self.follow.heard(lux, shown, Instant::now()) {
+            self.keep();
         }
-        self.lux = Some(lux);
-        if !self.knows_joel {
-            self.learn(lux, self.screen.level_of(self.seen));
-        }
-        let shown = self
-            .ramp
-            .map_or_else(|| self.screen.level_of(self.seen), |ramp| ramp.to());
-        self.steer
-            .heard(self.curve.level_at(lux), shown, Instant::now());
     }
 
-    /// The lid opened or shut. Shut, any move the light asked for stops; the
-    /// light heard once it opens is followed again.
+    /// The lid opened or shut, and the light heard is the lid's until it
+    /// opens (follow.rs).
     fn lid(&mut self, shut: bool) {
-        if shut == self.shut {
+        if !self.follow.lid(shut) {
             return;
         }
-        self.shut = shut;
         if shut {
             eprintln!("<6>the lid is shut, so the light it hears is its own");
-            self.ramp = None;
-            self.steer.forget();
         } else {
             eprintln!("<6>the lid is open");
         }
@@ -314,12 +292,10 @@ impl Backlight<'_> {
     /// Joel picked this brightness: any move stops, the curve learns it for
     /// the light there is, unless the lid is shut, and the shell is told.
     fn chose(&mut self, steps: u32) {
-        self.ramp = None;
-        self.steer.forget();
         self.wrote = None;
         let level = self.screen.level_of(steps);
-        if let Some(lux) = self.lux.filter(|_| !self.shut) {
-            self.learn(lux, level);
+        if let Some(lux) = self.follow.chose(level) {
+            self.keep();
             eprintln!("<6>learns {:.0}% for {lux:.0} lux", level * 100.0);
         }
         if let Err(error) = write_whole(&self.chosen, &format!("{level:.3}\n")) {
@@ -327,47 +303,34 @@ impl Backlight<'_> {
         }
     }
 
-    fn learn(&mut self, lux: f64, level: f64) {
-        self.curve.learn(lux, level);
-        self.knows_joel = true;
-        if let Err(error) = write_whole(&self.learned, &self.curve.write()) {
+    /// Keeps what the curve has learned, for the next time the daemon starts.
+    fn keep(&self) {
+        if let Err(error) = write_whole(&self.learned, &self.follow.curve().write()) {
             eprintln!("<4>can't keep what was learned: {error}");
         }
     }
 
-    /// When to step next: soon while a move is under way, or when the move
-    /// waiting on the light is due.
+    /// When to step next (follow.rs).
     fn wake(&self) -> Option<Instant> {
-        if self.ramp.is_some() {
-            Some(Instant::now() + STEP)
-        } else {
-            self.steer.next()
-        }
+        self.follow.wake(Instant::now())
     }
 
     /// Starts the move the light asked for once it's due, and takes the next
     /// step of the move under way.
     async fn step(&mut self) {
         let now = Instant::now();
-        if self.ramp.is_none() {
-            let Some(to) = self.steer.due(now) else {
-                return;
-            };
-            let from = self.screen.level_of(self.seen);
-            let lux = self.lux.unwrap_or_default();
+        let from = self.screen.level_of(self.seen);
+        if let Some(to) = self.follow.start(from, now) {
+            let lux = self.follow.lux().unwrap_or_default();
             eprintln!(
                 "<6>follows {lux:.0} lux from {:.0}% to {:.0}%",
                 from * 100.0,
                 to * 100.0
             );
-            self.ramp = Some(Ramp::new(from, to, now));
         }
-        let Some(ramp) = self.ramp else {
+        let Some(level) = self.follow.step(now) else {
             return;
         };
-        if ramp.done(now) {
-            self.ramp = None;
-        }
         // A pick that landed since the last step, and isn't heard yet, stops
         // the move rather than being stepped over.
         match self.screen.brightness() {
@@ -379,11 +342,11 @@ impl Backlight<'_> {
             Ok(steps) => self.seen = steps,
             Err(error) => {
                 eprintln!("<4>can't read the backlight: {error}");
-                self.ramp = None;
+                self.follow.abandon();
                 return;
             }
         }
-        let steps = self.screen.steps_for(ramp.at(now));
+        let steps = self.screen.steps_for(level);
         if steps == self.seen {
             return;
         }
@@ -394,7 +357,7 @@ impl Backlight<'_> {
             .await
         {
             eprintln!("<4>can't set the backlight: {error}");
-            self.ramp = None;
+            self.follow.abandon();
         }
     }
 }
