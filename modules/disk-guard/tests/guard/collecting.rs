@@ -678,7 +678,8 @@ fn a_user_daemon_collects_itself_while_the_system_daemon_is_down() {
 #[test]
 fn a_user_daemon_leaves_garbage_to_a_system_daemon_that_answers() {
     let store = Store::new();
-    let socket = store.root.join("system.socket");
+    let sockets = crate::daemon::socket_dir();
+    let socket = sockets.path().join("system.socket");
     let _heard = crate::daemon::fake_system(&socket, false);
     let mut guard = Guard::new(
         user_config(&store, "100%"),

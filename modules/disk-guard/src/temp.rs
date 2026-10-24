@@ -111,7 +111,10 @@ pub fn survey(temp: &Path) -> Vec<Entry> {
     let mut found = Vec::new();
     for item in top.filter_map(Result::ok) {
         let Ok(meta) = item.metadata() else { continue };
-        if meta.uid() != me {
+        // A link is its own few bytes, so taking one frees nothing, and a
+        // link here is often somebody's TMPDIR into a directory that is
+        // counted where it lives.
+        if meta.uid() != me || meta.file_type().is_symlink() {
             continue;
         }
         let mut entry = Entry {
@@ -141,9 +144,16 @@ pub fn survey(temp: &Path) -> Vec<Entry> {
 /// scratch is still its own. Whether a process works in one is for the
 /// caller to judge.
 pub fn leftovers(entries: Vec<Entry>, uid: u32, tmpdirs: &[PathBuf]) -> Vec<Entry> {
+    // As named as well as resolved: a TMPDIR that is a link resolves to
+    // where it points, and the entry that holds it is the link.
     let tmpdirs: Vec<PathBuf> = tmpdirs
         .iter()
-        .map(|dir| fs::canonicalize(dir).unwrap_or_else(|_| dir.clone()))
+        .flat_map(|dir| {
+            [
+                dir.clone(),
+                fs::canonicalize(dir).unwrap_or_else(|_| dir.clone()),
+            ]
+        })
         .collect();
     let offered = |entry: &Entry| {
         let Some(name) = entry.path.file_name().and_then(|name| name.to_str()) else {

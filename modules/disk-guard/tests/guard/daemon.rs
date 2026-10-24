@@ -161,6 +161,13 @@ impl Home {
     }
 }
 
+/// Somewhere short for a socket: the temp directory as named, not
+/// resolved. A TMPDIR that is a link, as a pi quest's is, can resolve to
+/// a path that leaves a socket past its 108-byte limit.
+pub(crate) fn socket_dir() -> tempfile::TempDir {
+    tempfile::tempdir().unwrap()
+}
+
 /// A system daemon at `socket` that vouches for process 300, says it
 /// collects on every filesystem watched when `collects`, and collects
 /// whenever asked, telling what it heard.
@@ -193,7 +200,8 @@ pub(crate) fn fake_system(socket: &Path, collects: bool) -> std::sync::mpsc::Rec
 fn a_user_daemon_asks_the_system_for_the_store_garbage_in_its_turn() {
     let home = Home::new();
     home.cold_scratch("run-1");
-    let socket = home.root.join("system.socket");
+    let sockets = socket_dir();
+    let socket = sockets.path().join("system.socket");
     let heard = fake_system(&socket, true);
     let places = Places {
         system: Some(socket),
@@ -231,7 +239,8 @@ fn the_system_daemon_vouches_for_what_this_account_cant_read() {
     alone.step(&tick(), &CALM).unwrap();
     assert!(cold.exists(), "kept while process 300 can't be judged");
 
-    let socket = home.root.join("system.socket");
+    let sockets = socket_dir();
+    let socket = sockets.path().join("system.socket");
     let _heard = fake_system(&socket, false);
     let places = Places {
         system: Some(socket),
