@@ -999,6 +999,14 @@
     the sign-in window's tests pass: its proxy lets on only the window, and it follows which card
     wants a sign-in
   '';
+  without-syncfs-passes-clippy = ''
+    clippy finds nothing in without-syncfs or its tests
+  '';
+  without-syncfs-refuses-only-syncfs = ''
+    a program without-syncfs runs is answered "Function not implemented" by syncfs through a
+    seccomp filter of its own while fsync runs, the filter lets every other call and another
+    calling convention's through, and it says how it is used and what it could not run
+  '';
   work-fills-swap-alone = ''
     the sorter gives each piece of work in jobs, awaited and timed work its own scope, so oomd ends
     only the one that filled swap, and pi's scopes share one slice weighted below a terminal's
