@@ -156,6 +156,19 @@ fn niri_socket() -> Option<PathBuf> {
     found.into_iter().next()
 }
 
+/// The pid of the niri a socket belongs to, which niri writes into its
+/// name: `niri.<display>.<pid>.sock`.
+fn socket_pid(socket: &Path) -> Option<u32> {
+    let name = socket.file_name()?.to_str()?;
+    let stem = name.strip_prefix("niri.")?.strip_suffix(".sock")?;
+    stem.rsplit_once('.')?.1.parse().ok()
+}
+
+/// The niri drawing the desktop: the one answering on the session's socket.
+fn compositor() -> Option<u32> {
+    niri_socket().as_deref().and_then(socket_pid)
+}
+
 /// Asks niri its version and times the answer, in milliseconds.
 fn ask_niri(socket: &Path) -> Option<f64> {
     let at = Instant::now();
@@ -296,7 +309,7 @@ fn run() -> ExitCode {
     };
     let proc = PathBuf::from("/proc");
     started();
-    let mut threads = kernel::threads(&proc);
+    let mut threads = kernel::threads(&proc, compositor());
     let mut then = snapshot(&cgroups, &account, &threads);
     let mut answers: Vec<f64> = Vec::new();
     let mut unanswered = 0;
@@ -331,7 +344,7 @@ fn run() -> ExitCode {
         // Threads come and go with their programs: looked for again each
         // minute, with the snapshot taken again so no window spans two.
         if windows.is_multiple_of(6) {
-            threads = kernel::threads(&proc);
+            threads = kernel::threads(&proc, compositor());
             then = snapshot(&cgroups, &account, &threads);
         } else {
             then = now;
@@ -353,5 +366,15 @@ mod tests {
         assert_eq!(day(1_792_783_560), "2026-10-23");
         assert_eq!(day(1_792_800_000), "2026-10-24");
         assert_eq!(day(951_782_400), "2000-02-29");
+    }
+
+    #[test]
+    fn the_compositor_is_the_niri_its_socket_names() {
+        assert_eq!(
+            socket_pid(Path::new("/run/user/1000/niri.wayland-1.2005.sock")),
+            Some(2005)
+        );
+        assert_eq!(socket_pid(Path::new("/run/user/1000/niri.sock")), None);
+        assert_eq!(socket_pid(Path::new("/run/user/1000/other")), None);
     }
 }

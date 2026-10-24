@@ -121,8 +121,11 @@ pub const WATCHED: [Watched; 2] = [
 ];
 
 /// Every thread of the watched kinds now running under `proc`, by label,
-/// with their schedstat paths.
-pub fn threads(proc: &Path) -> Vec<(&'static str, PathBuf)> {
+/// with their schedstat paths. Once the niri drawing the desktop is known
+/// by its pid, no other niri counts: a nested one previewing a shell runs
+/// with the jobs and waits as they do, and a `niri msg` client draws
+/// nothing, so either would be read as the desktop waiting.
+pub fn threads(proc: &Path, compositor: Option<u32>) -> Vec<(&'static str, PathBuf)> {
     let mut found = Vec::new();
     let Ok(entries) = fs::read_dir(proc) else {
         return found;
@@ -136,6 +139,9 @@ pub fn threads(proc: &Path) -> Vec<(&'static str, PathBuf)> {
         let Some(w) = WATCHED.iter().find(|w| w.process == comm.trim()) else {
             continue;
         };
+        if w.label == "niri" && compositor.is_some_and(|pid| name != pid.to_string()) {
+            continue;
+        }
         if w.thread.is_empty() {
             found.push((w.label, entry.path().join("schedstat")));
             continue;
@@ -211,7 +217,7 @@ mod tests {
         write(&root.join("20/task/21/comm"), "data-loop.0\n");
         write(&root.join("30/comm"), "chrome\n");
         write(&root.join("self/comm"), "niri\n");
-        let found = threads(&root);
+        let found = threads(&root, None);
         assert_eq!(
             found,
             [
@@ -219,6 +225,20 @@ mod tests {
                 ("pipewire", root.join("20/task/21/schedstat"))
             ]
         );
+    }
+
+    #[test]
+    fn only_the_niri_drawing_the_desktop_is_watched_once_it_is_known() {
+        let root = std::env::temp_dir().join(format!("lag-watch-nested-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        write(&root.join("10/comm"), "niri\n");
+        write(&root.join("40/comm"), "niri\n");
+        write(&root.join("50/comm"), "niri\n");
+        assert_eq!(
+            threads(&root, Some(40)),
+            [("niri", root.join("40/schedstat"))]
+        );
+        assert_eq!(threads(&root, None).len(), 3);
     }
 
     #[test]
