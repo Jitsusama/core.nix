@@ -10,6 +10,12 @@ pragma Singleton
 // is counted until the collection is opened. One that arrives while notices
 // are held (Quiet.qml) is never shown, so it's missed from the start.
 //
+// One that left by itself, or was never shown, rests: it's off the screen
+// but still open, so its program keeps its actions (Reply, Open) for the
+// launcher's keys, until the program withdraws it or it's let go. Closing
+// it would tell the program it's done with, and the program would forget
+// what it offered.
+//
 // Apart from that, each is unread until it's acted on: gone to, one of its
 // actions done, marked read, or withdrawn by its program. A click only puts
 // it away, so one clicked by accident still waits, unread, in the list.
@@ -35,11 +41,15 @@ Singleton {
     readonly property int missed: history.filter(notice => notice.missed).length
     readonly property int unread: history.filter(notice => !notice.read).length
     // Those missed and gone from the screen, which wait for Joel.
-    readonly property var waiting: history.filter(notice => notice.missed && !(notice.id in live))
+    readonly property var waiting: history.filter(notice => notice.missed
+        && (!(notice.id in live) || notice.id in resting))
 
-    // The notifications still on screen, by id, whose own actions (Reply,
-    // Mark as read) can be done from the launcher's keys while they last.
+    // The notifications still open, by id, on screen or resting, whose own
+    // actions (Reply, Mark as read) can be done from the launcher's keys
+    // while they last.
     property var live: ({})
+    // Those of them resting off the screen, by id.
+    property var resting: ({})
     // Whether the launcher's collection of them is open.
     property bool gathered: false
 
@@ -96,9 +106,22 @@ Singleton {
         };
         // Live before it's kept, so it never reads as missed and gone from
         // the screen for the moment between, which would flash the margin.
-        if (!held)
-            live = Object.assign({}, live, { [notice.id]: notification });
+        // One held rests from the start; one its program sends again with
+        // the same id comes back to the screen.
+        live = Object.assign({}, live, { [notice.id]: notification });
+        const still = Object.assign({}, resting);
+        if (held)
+            still[notice.id] = true;
+        else
+            delete still[notice.id];
+        resting = still;
         history = fresh([notice].concat(history.filter(kept => kept.id !== notice.id)));
+    }
+
+    // One whose time on screen is up rests off it, still open.
+    function rest(id) {
+        if (id in live)
+            resting = Object.assign({}, resting, { [id]: true });
     }
 
     // How one left, as "expired", "dismissed" or "withdrawn": only one that
@@ -112,6 +135,11 @@ Singleton {
         const still = Object.assign({}, live);
         delete still[id];
         live = still;
+        if (id in resting) {
+            const others = Object.assign({}, resting);
+            delete others[id];
+            resting = others;
+        }
     }
 
     // Marks one read, or unread again.

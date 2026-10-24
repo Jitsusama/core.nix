@@ -2,17 +2,18 @@
 // newest first, from the shell's own history (Notices.qml), so nothing is
 // asked of another program. A search with a match adds one row; the right
 // arrow, or its row at home, shows them all, and its row at home says how
-// many were missed until it's opened. Return on one still on screen does
-// what its sender does when it's chosen, as clicking it does, which takes
-// Joel to the very conversation or tab it's about; on one gone, it goes to
+// many were missed until it's opened. Return on one still open, on screen
+// or resting off it once its time there was up (Notices.qml), does what its
+// sender does when it's chosen, as clicking it does, which takes Joel to
+// the very conversation or tab it's about; on one closed, it goes to
 // the program that sent it, its window if it has one open, or copies what
 // it said when nothing sent it that can be gone to. Whatever a sender is
 // asked to do runs while the launcher holds the keys, since that's what
 // lets it bring its window forward. The right arrow steps into what else
 // can be done: copying what it said, marking it read or unread, and while
-// it's still on screen, its own actions (Reply, Mark as read) and letting
-// it go, so a notice is driven by the keys as well as by the pointer. Each
-// says whether it's unread beside its age; acting on one reads it.
+// it's still open, its own actions (Reply, Mark as read) and letting it go,
+// so a notice is driven by the keys as well as by the pointer. Each says
+// whether it's unread beside its age; acting on one reads it.
 import qs
 import Quickshell
 import QtQuick
@@ -56,7 +57,7 @@ Provider {
             Niri.spawn(command(now.entry));
     }
 
-    // What its sender does when a notice still on screen is chosen, or null.
+    // What its sender does when a notice still open is chosen, or null.
     function opens(notice) {
         const live = Notices.live[notice.id] ?? null;
         return live ? live.actions.find(action => action.identifier === "default") ?? null : null;
@@ -96,8 +97,8 @@ Provider {
         });
     }
 
-    // What can be done to a notice: what its program offers while it's on
-    // screen, then copying what it said, then letting it go. Quickshell
+    // What can be done to a notice: what its program offers while it's
+    // open, then copying what it said, then letting it go. Quickshell
     // destroys a notification's actions when it closes or its program
     // replaces it, so each is found again by its identifier when it's run;
     // one whose notice has gone by then goes to its program instead.
@@ -209,6 +210,7 @@ Provider {
     // card says.
     function leading() {
         const index = Notices.history.findIndex(notice => notice.id in Notices.live
+            && !(notice.id in Notices.resting)
             && Notices.live[notice.id].actions.some(action => action.identifier !== "default"));
         return index < 0 ? null : all[index];
     }
