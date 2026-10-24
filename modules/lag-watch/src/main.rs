@@ -315,7 +315,7 @@ fn run() -> ExitCode {
     let mut unanswered = 0;
     let mut tick = 0u32;
     let mut windows = 0u64;
-    let mut since = None;
+    let mut last: Option<Window> = None;
     loop {
         thread::sleep(TICK);
         match niri_socket().and_then(|s| ask_niri(&s)) {
@@ -335,9 +335,9 @@ fn run() -> ExitCode {
             seconds_now(),
             &system(),
         );
-        w.carry(since);
-        since = w.since;
+        w.carry(last.as_ref());
         keep(&w);
+        last = Some(w);
         answers.clear();
         unanswered = 0;
         windows += 1;
