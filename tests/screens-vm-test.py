@@ -9,7 +9,9 @@ so they're meant to run in order.
 
 import datetime as dt
 import json
+import re
 import shlex
+import tempfile
 import time
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -227,6 +229,41 @@ with subtest("on two screens, the margin shows on each and dictation's bar on on
     )
     [listening] = held_on("dictation")
     left = both - {listening}
+
+
+# Each screen's card, by the id screens.nix gives it, so QEMU can say what
+# that card shows.
+cards = {"Virtual-1": "first", "Virtual-2": "second"}
+# More colours than a screen nothing drew on shows, one or the console's
+# few, and far fewer than the wallpaper's.
+DRAWN = 64
+
+
+def colours_on(screen: str) -> int:
+    """Count the colours QEMU sees on a screen, in every seventh pixel."""
+    with tempfile.TemporaryDirectory() as folder:
+        picture = Path(folder) / "screen.ppm"
+        said = machine.send_monitor_command(f"screendump {picture} {cards[screen]}")
+        assert picture.exists(), f"QEMU gave no picture of {screen}: {said}"
+        image = picture.read_bytes()
+    # A binary PPM: its magic, width, height and depth, one blank, then
+    # three bytes a pixel.
+    header = re.match(rb"P6\s+\d+\s+\d+\s+\d+\s", image)
+    assert header, f"{screen}'s picture isn't a PPM"
+    pixels = image[header.end() :]
+    return len({pixels[at : at + 3] for at in range(0, len(pixels) - 2, 3 * 7)})
+
+
+with subtest("niri draws on both screens, the second card's too"):
+    # The second card has no render node, so only niri drawing through the
+    # card's own node puts the wallpaper there; a screen nothing draws on
+    # keeps one colour, or the console's few.
+    for screen in sorted(both):
+        deadline = time.monotonic() + 60
+        while (seen := colours_on(screen)) <= DRAWN:
+            assert time.monotonic() < deadline, f"{screen} shows {seen} colours, so nothing drew it"
+            time.sleep(1)
+        machine.log(f"{screen} shows {seen} colours")
 
 with subtest("one of two screens goes, and the margin and dictation's bar stay on the other"):
     plug("off", listening)

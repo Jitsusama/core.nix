@@ -93,10 +93,11 @@ pkgs.testers.runNixOSTest {
         # drains, and niri waits on it for good. This card has no render
         # node, so the patch lets niri draw through the card's own node.
         # A second card is a second screen, of another size, as a dock's is,
-        # and niri draws on both.
+        # and niri draws on both. Each is named, so the script can ask QEMU
+        # for the picture on either.
         qemu.options = [
-          "-vga none -device VGA,xres=1280,yres=800,edid=on"
-          "-device secondary-vga,xres=1024,yres=768,edid=on"
+          "-vga none -device VGA,id=first,xres=1280,yres=800,edid=on"
+          "-device secondary-vga,id=second,xres=1024,yres=768,edid=on"
         ];
         # virtio-fs can't suspend, and refuses a sleep for the whole
         # machine, so the store is the image above and nothing is shared.
