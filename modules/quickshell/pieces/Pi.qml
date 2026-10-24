@@ -15,7 +15,7 @@ Piece {
     wants: active
     // Its want is said as a notice of pi's (Sessions.qml) while it's new.
     app: "pi"
-    // A program's, as π is on its notice and in Agents.
+    // A program's, as the agents' glyph is on their notices and in Agents.
     hue: "program"
     value: [`${Sessions.running.length} running`,
         Sessions.working > 0 ? `${Sessions.working} working` : "",

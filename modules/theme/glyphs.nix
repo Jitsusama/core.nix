@@ -356,10 +356,12 @@ in
     console = "?";
     means = "a way it could be better";
   };
+  # A robot rather than π, which names the program running agents, not
+  # what they are; AI's spend wears it too (Joel, 2026-10-24).
   agent = {
-    glyph = "π";
+    glyph = nerd "f06a9";
     console = "p";
-    means = "an agent: a pi session, or one paired with this editor";
+    means = "an agent, or what AI use has cost: a pi session, or one paired with this editor";
     # Something said that wants an answer.
     drawn = drawing [
       "M1 0H11A1 1 0 0 1 12 1V8A1 1 0 0 1 11 9H6.5L3 12V9H1A1 1 0 0 1 0 8V1"
