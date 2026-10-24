@@ -65,6 +65,28 @@ let
       { ${pkgs.coreutils}/bin/cat refused; echo "sync ran"; } > "$out"
     '';
   };
+  # A build that, as a container's would, mounts its cgroup, makes one below
+  # it and moves in, then asks to hand that one a controller, saying what it
+  # was answered. A cgroup it makes beside that one says it has asked, and
+  # it runs until stopped.
+  fakeNester = pkgs.writeShellApplication {
+    name = "fake-nester";
+    runtimeInputs = [
+      pkgs.coreutils
+      pkgs.util-linux
+    ];
+    text = ''
+      mkdir cgroup
+      mount -t cgroup2 none cgroup
+      mkdir cgroup/inner
+      echo $$ > cgroup/inner/cgroup.procs
+      if { echo +pids > cgroup/cgroup.subtree_control; } 2>&1; then
+        echo "handed pids on"
+      fi
+      mkdir cgroup/asked
+      while :; do sleep 1; done
+    '';
+  };
   # A build that runs one of them as the daemon runs any build, which the
   # machine's store already holds, so nothing is fetched.
   buildOf =
@@ -89,6 +111,7 @@ pkgs.testers.runNixOSTest {
       fakeWriter
       fakeLazyWriter
       fakeSyncer
+      fakeNester
     ];
     environment.etc."vm-build.nix".source = buildOf "vm-build" fakeVm;
     environment.etc."compiler-build.nix".source = buildOf "compiler-build" fakeCompiler;
@@ -98,6 +121,15 @@ pkgs.testers.runNixOSTest {
     environment.etc."lazy-writer-build.nix".source = buildOf "lazy-writer-build" fakeLazyWriter;
     environment.etc."syncer-build.nix".source = buildOf "syncer-build" fakeSyncer;
     environment.etc."uid-range.nix".source = ./uid-range.nix;
+    # As buildOf makes one, given a range of user ids as a container's is.
+    environment.etc."nester-build.nix".text = ''
+      derivation {
+        name = "nester-build";
+        system = builtins.currentSystem;
+        builder = "''${builtins.storePath "${fakeNester}"}/bin/fake-nester";
+        requiredSystemFeatures = [ "uid-range" ];
+      }
+    '';
     # getfattr, to read the mark vm-first leaves for systemd-oomd.
     environment.systemPackages = [ pkgs.attr ];
     # Looking every 20 ms rather than every second, so a hand-off racing a

@@ -53,10 +53,12 @@
 # The daemon stops only its own process when it restarts, so a switch that
 # turns this on lets the builds already running finish where they are.
 # Before each start, systemd takes the hand-off back so the new daemon can
-# start. That fails, and the restart with it, while a build has handed
-# controllers further down itself, as a systemd-nspawn container in a
-# uid-range build would; no check runs one yet, so the first that does
-# should restart the daemon beside it. As
+# start, which would fail, and the restart with it, while a build had handed
+# controllers further down itself. None can: Nix gives a build its cgroup
+# and the right to move its processes, but not its cgroup.subtree_control,
+# so a systemd-nspawn container in a uid-range build makes cgroups with no
+# controllers, and the daemon restarts beside it. A Nix that hands that on
+# too fails vm-checks-go-first before a switch can find it out. As
 # each build ends, vm-first says in its journal what the build wrote and
 # read, and for which command and quest, so the builds that wear the disk
 # most can be found: journalctl -u vm-first.
