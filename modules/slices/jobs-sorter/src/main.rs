@@ -320,6 +320,9 @@ fn made_here(cgroup: &str) -> bool {
 
 /// What busctl is given to start a scope named `name` in `slice` around
 /// `pids`: the user manager's `StartTransientUnit`, with its description.
+/// A command can exit between being read and being moved, and systemd
+/// then fails its scope, which would stay in the failed list for good; so
+/// a failed scope is unloaded as a finished one is.
 fn scope_call(name: &str, slice: &str, description: &str, pids: &[u32]) -> Vec<String> {
     let mut args: Vec<String> = [
         "--user",
@@ -332,13 +335,16 @@ fn scope_call(name: &str, slice: &str, description: &str, pids: &[u32]) -> Vec<S
         "ssa(sv)a(sa(sv))",
         name,
         "fail",
-        "3",
+        "4",
         "Slice",
         "s",
         slice,
         "Description",
         "s",
         description,
+        "CollectMode",
+        "s",
+        "inactive-or-failed",
         "PIDs",
         "au",
     ]
@@ -921,7 +927,7 @@ mod tests {
     }
 
     #[test]
-    fn a_scope_is_asked_for_with_its_slice_and_every_process() {
+    fn a_scope_is_asked_for_with_its_slice_every_process_and_no_trace_if_it_fails() {
         let args = scope_call("work-40-7.scope", "jobs.slice", "bash (40)", &[40, 41, 42]);
         let tail: Vec<&str> = args[6..].iter().map(String::as_str).collect();
         assert_eq!(
@@ -931,13 +937,16 @@ mod tests {
                 "ssa(sv)a(sa(sv))",
                 "work-40-7.scope",
                 "fail",
-                "3",
+                "4",
                 "Slice",
                 "s",
                 "jobs.slice",
                 "Description",
                 "s",
                 "bash (40)",
+                "CollectMode",
+                "s",
+                "inactive-or-failed",
                 "PIDs",
                 "au",
                 "3",
