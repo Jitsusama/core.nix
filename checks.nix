@@ -523,6 +523,19 @@ gather (
           touch $out
         '';
 
+      # What VM tests' scripts share gives the driver the command lines it
+      # means, read from a machine that only records them (tests/lib).
+      vm-helpers-say-what-they-mean =
+        let
+          tests = pkgs.writers.writePython3 "vm-helpers-test" { doCheck = false; } (
+            builtins.readFile ./tests/lib/vm-helpers-test.py
+          );
+        in
+        pkgs.runCommandLocal "vm-helpers-say-what-they-mean" { } ''
+          PYTHONPATH=${./tests/lib} ${tests}
+          touch $out
+        '';
+
       example-nixos = evaluates "example-nixos" (
         import ./examples/nixos.nix {
           core = self;
