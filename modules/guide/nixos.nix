@@ -25,8 +25,48 @@ let
       }) (home.jitsusama.tpmKeys or [ ])
     ) (config.home-manager.users or { })
   );
+  # The accounts that keep their login key's spare on each YubiKey
+  # (modules/ssh-tpm-agent/home.nix's jitsusama.yubikeySpare).
+  spares =
+    lib.mapAttrsToList
+      (account: home: {
+        inherit account;
+        folder = "${home.home.homeDirectory}/.ssh";
+        comment = "${account}@yubikey";
+      })
+      (
+        lib.filterAttrs (_: home: home.jitsusama.yubikeySpare or false) (config.home-manager.users or { })
+      );
 in
 {
+  options.jitsusama.guide.spares = lib.mkOption {
+    type = lib.types.listOf (
+      lib.types.submodule {
+        options = {
+          account = lib.mkOption {
+            type = lib.types.str;
+            description = "Whose spare it is.";
+          };
+          folder = lib.mkOption {
+            type = lib.types.str;
+            description = "Where the account keeps its SSH keys, such as its ~/.ssh.";
+          };
+          comment = lib.mkOption {
+            type = lib.types.str;
+            description = "What its public half says, before the YubiKey's name.";
+          };
+        };
+      }
+    );
+    default = spares;
+    defaultText = lib.literalMD "every account with `jitsusama.yubikeySpare`, from home-manager";
+    description = ''
+      The accounts that keep a spare SSH key on each YubiKey the machine's
+      rescue bundle names, which the guide keeps there at boot. A YubiKey
+      holds one resident SSH key, so at most one account can.
+    '';
+  };
+
   options.jitsusama.guide.keys = lib.mkOption {
     type = lib.types.listOf (
       lib.types.submodule {
@@ -59,6 +99,15 @@ in
   };
 
   config = {
+    assertions = [
+      {
+        assertion = lib.length config.jitsusama.guide.spares <= 1;
+        message = "Only one account can keep its spare SSH key on the YubiKeys, since each holds one, and ${
+          lib.concatMapStringsSep " and " (spare: spare.account) config.jitsusama.guide.spares
+        } want to: set jitsusama.yubikeySpare = false for all but one.";
+      }
+    ];
+
     # Run by hand, the guide asks for root once through run0, which systemd
     # lets a person do only when polkit says they may.
     security.polkit.enable = true;
@@ -66,7 +115,7 @@ in
     environment.systemPackages = [ guide ];
     environment.etc."guide/machine.json".text = builtins.toJSON {
       disk_name = config.jitsusama.disk.name;
-      inherit (config.jitsusama.guide) keys;
+      inherit (config.jitsusama.guide) keys spares;
     };
 
     # Every boot, before anyone signs in, the guide looks at the machine on

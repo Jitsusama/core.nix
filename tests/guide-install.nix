@@ -134,6 +134,14 @@ pkgs.testers.runNixOSTest {
           pin = false;
         }
       ];
+      # And a spare on each YubiKey, as ssh-tpm-agent's module asks.
+      jitsusama.guide.spares = [
+        {
+          account = "alice";
+          folder = "/home/alice/.ssh";
+          comment = "alice@yubikey";
+        }
+      ];
       # Nothing starts the guide but core's module, and nothing lets anyone
       # past polkit: what a machine of its own would have.
       boot.loader.timeout = 0;

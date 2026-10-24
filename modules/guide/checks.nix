@@ -46,6 +46,46 @@ onLinux {
         ]
       );
 
+  # An account with ssh-tpm-agent keeps its login key's spare on each
+  # YubiKey, which reaches what the installed guide reads; a second
+  # account wanting one is refused, since a YubiKey holds one.
+  the-guide-keeps-one-accounts-spare-on-the-yubikeys =
+    let
+      machine =
+        others:
+        bareNixos [
+          self.nixosModules.disko
+          self.nixosModules.guide
+          {
+            home-manager.users = {
+              someone.imports = [ self.homeModules.ssh-tpm-agent ];
+            }
+            // lib.genAttrs others (_: {
+              imports = [ self.homeModules.ssh-tpm-agent ];
+              home.stateVersion = "26.05";
+            });
+            users.users = lib.genAttrs others (_: {
+              isNormalUser = true;
+            });
+          }
+        ];
+      alone = machine [ ];
+      facts = builtins.fromJSON alone.config.environment.etc."guide/machine.json".text;
+      refused = lib.filter (check: !check.assertion) (machine [ "another" ]).config.assertions;
+    in
+    holds "the-guide-keeps-one-accounts-spare-on-the-yubikeys"
+      "The installed guide doesn't see the account keeping a spare on the YubiKeys, or two accounts aren't refused."
+      (
+        facts.spares == [
+          {
+            account = "someone";
+            folder = "${alone.config.home-manager.users.someone.home.homeDirectory}/.ssh";
+            comment = "someone@yubikey";
+          }
+        ]
+        && lib.any (check: lib.hasPrefix "Only one account" check.message) refused
+      );
+
   # The guide's tests run as it builds: each step proven by observing it
   # again, each parser reading what real machines printed, each stick it
   # writes read back by sfdisk and fsck.fat, and each signature compared

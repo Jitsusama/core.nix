@@ -4,7 +4,9 @@
 # desktop's shell answers (modules/quickshell). The keys are made on the
 # machine itself: jitsusama.tpmKeys names them, which the guide makes on a
 # machine it installed (modules/guide/src/installed/keys.rs), and
-# docs/installing.md says how to make them by hand.
+# docs/installing.md says how to make them by hand. The login key's spare
+# lives on each YubiKey, for when the TPM is wiped or the laptop is gone,
+# which the guide keeps there too (modules/guide/src/installed/spares.rs).
 {
   config,
   lib,
@@ -38,6 +40,17 @@
       The SSH keys this account keeps in the TPM, each named by the module
       that uses it. The guide makes each one missing on a machine it
       installed, as the account, with one PIN for every key that has one.
+    '';
+  };
+
+  options.jitsusama.yubikeySpare = lib.mkOption {
+    type = lib.types.bool;
+    default = true;
+    description = ''
+      Whether the account keeps a spare of its login key on each of its
+      YubiKeys, resident so `ssh-keygen -K` brings it back on any machine.
+      The guide keeps one on each YubiKey a machine it installed names,
+      downloading one that's there rather than making it again.
     '';
   };
 

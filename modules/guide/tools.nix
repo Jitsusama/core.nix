@@ -33,13 +33,16 @@ in
   GUIDE_BASH = lib.getExe pkgs.bash;
   GUIDE_BOOTCTL = lib.getExe' systemd "bootctl";
   GUIDE_CAT = lib.getExe' pkgs.coreutils "cat";
+  GUIDE_CHOWN = lib.getExe' pkgs.coreutils "chown";
   GUIDE_CRYPTSETUP = lib.getExe' pkgs.cryptsetup "cryptsetup";
+  GUIDE_ENV = lib.getExe' pkgs.coreutils "env";
   GUIDE_DMSETUP = lib.getExe' pkgs.lvm2 "dmsetup";
   GUIDE_FIDO2_ASSERT = lib.getExe' pkgs.libfido2 "fido2-assert";
   GUIDE_FIDO2_TOKEN = lib.getExe' pkgs.libfido2 "fido2-token";
   GUIDE_LOSETUP = lib.getExe' pkgs.util-linux "losetup";
   GUIDE_LSBLK = lib.getExe' pkgs.util-linux "lsblk";
   GUIDE_MKDIR = lib.getExe' pkgs.coreutils "mkdir";
+  GUIDE_MV = lib.getExe' pkgs.coreutils "mv";
   GUIDE_MOUNT = lib.getExe' pkgs.util-linux "mount";
   GUIDE_NIX = lib.getExe pkgs.nix;
   GUIDE_NIXOS_ENTER = lib.getExe pkgs.nixos-enter;
@@ -50,6 +53,7 @@ in
   GUIDE_RUNUSER = lib.getExe' pkgs.util-linux "runuser";
   GUIDE_SBCTL = lib.getExe pkgs.sbctl;
   GUIDE_SGDISK = lib.getExe' pkgs.gptfdisk "sgdisk";
+  GUIDE_SSH_KEYGEN = lib.getExe' pkgs.openssh "ssh-keygen";
   GUIDE_SSH_TPM_KEYGEN = lib.getExe' pkgs.ssh-tpm-agent "ssh-tpm-keygen";
   GUIDE_SYSTEMD_CRYPTENROLL = lib.getExe' systemd "systemd-cryptenroll";
   GUIDE_SYSTEMCTL = lib.getExe' systemd "systemctl";

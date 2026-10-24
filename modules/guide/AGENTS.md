@@ -184,6 +184,20 @@ driven on; the installed machine's steps come later.
   than being made over. A cleared TPM leaves the keys unable to load,
   which the guide can't see without their PIN: move them away for it to
   make new ones.
+- **The spares on the YubiKeys.** Then the installed guide keeps the
+  login key's spare, a resident ed25519-sk key, on each YubiKey the
+  machine's rescue bundle names, for the one account with
+  `jitsusama.yubikeySpare` (a YubiKey holds one, so the module refuses
+  two). It asks for each by name and first downloads what the key
+  holds, making a spare only on a key holding none, since a new one
+  would strand every place the old one was added. The installed machine
+  can't tell its YubiKeys apart by name, so the first key to give a
+  spare is remembered under that name by the disk credential it holds,
+  and a key holding another name's credential is refused. ssh-keygen
+  runs as root in /run/guide/spare, since at boot nobody is signed in
+  for the account to reach the key, and the files are the account's
+  once moved. Its `SSH_ASKPASS` is the guide, as for the TPM's keys,
+  with `-N ""` so the file's own passphrase isn't answered with the PIN.
 - **The rescue bundle.** A machine's Secure Boot keys, all seven files
   sbctl keeps, sealed under a key of their own, which is sealed to the
   machine's YubiKeys and apart to a recovery passphrase of seven words,

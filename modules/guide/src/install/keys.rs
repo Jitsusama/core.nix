@@ -39,7 +39,9 @@ pub fn holds(machine: &mut dyn Machine, device: &str, credential: &str) -> Resul
     }
 }
 
-fn slug(name: &str) -> String {
+/// A YubiKey's name as an id or a file's name takes it: "the 5C" is
+/// `5c`.
+pub(crate) fn slug(name: &str) -> String {
     name.to_lowercase()
         .split(|c: char| !c.is_ascii_alphanumeric())
         .filter(|part| !part.is_empty() && *part != "the")

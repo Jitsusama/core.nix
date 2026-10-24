@@ -36,14 +36,17 @@ tools! {
     Bash => "bash", "GUIDE_BASH";
     Bootctl => "bootctl", "GUIDE_BOOTCTL";
     Cat => "cat", "GUIDE_CAT";
+    Chown => "chown", "GUIDE_CHOWN";
     Cryptsetup => "cryptsetup", "GUIDE_CRYPTSETUP";
     Dmsetup => "dmsetup", "GUIDE_DMSETUP";
+    Env => "env", "GUIDE_ENV";
     Fido2Assert => "fido2-assert", "GUIDE_FIDO2_ASSERT";
     Fido2Token => "fido2-token", "GUIDE_FIDO2_TOKEN";
     Losetup => "losetup", "GUIDE_LOSETUP";
     Lsblk => "lsblk", "GUIDE_LSBLK";
     Mkdir => "mkdir", "GUIDE_MKDIR";
     Mount => "mount", "GUIDE_MOUNT";
+    Mv => "mv", "GUIDE_MV";
     Nix => "nix", "GUIDE_NIX";
     Run0 => "run0", "GUIDE_RUN0";
     NixosEnter => "nixos-enter", "GUIDE_NIXOS_ENTER";
@@ -52,6 +55,7 @@ tools! {
     Runuser => "runuser", "GUIDE_RUNUSER";
     Sbctl => "sbctl", "GUIDE_SBCTL";
     Sgdisk => "sgdisk", "GUIDE_SGDISK";
+    SshKeygen => "ssh-keygen", "GUIDE_SSH_KEYGEN";
     SshTpmKeygen => "ssh-tpm-keygen", "GUIDE_SSH_TPM_KEYGEN";
     SystemdCryptenroll => "systemd-cryptenroll", "GUIDE_SYSTEMD_CRYPTENROLL";
     Systemctl => "systemctl", "GUIDE_SYSTEMCTL";

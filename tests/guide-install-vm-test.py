@@ -334,8 +334,8 @@ with subtest("the guide makes alice's SSH keys in the TPM, as alice, one with he
     enter(key_pin)
     on_screen("the same PIN again")
     enter(key_pin)
-    on_screen("machine is finished", timeout=300)
-    t.assertIn("SSH keys id_ecdsa, agent-signing", " ".join(screen().split()))
+    # Made, the guide goes on to the YubiKeys' spares.
+    on_screen("Plug in the Nano", timeout=300)
     for file in ["/home/alice/.ssh/id_ecdsa", "/home/alice/.ssh/agent-signing"]:
         for half in [".tpm", ".pub"]:
             t.assertEqual(machine.succeed(f"stat -c %U {file}{half}").strip(), "alice", file + half)
@@ -349,6 +349,47 @@ with subtest("the guide makes alice's SSH keys in the TPM, as alice, one with he
     quoted = shlex.quote(key_pin)
     machine.succeed(f"runuser -u alice -- {keygen} -p -f {login} -P {quoted} -N {quoted}")
     machine.fail(f"runuser -u alice -- {keygen} -p -f {login} -P not-her-pin -N {quoted}")
+
+
+def spare(name: str) -> str:
+    """Give the public half of alice's spare from the YubiKey with this file name."""
+    return machine.succeed(f"cat /home/alice/.ssh/yubikey-{name}.pub")
+
+
+with subtest("the guide keeps a spare SSH key on each YubiKey, refusing the one it met as another"):
+    plug("nano")
+    enter("")
+    on_screen("the Nano's PIN")
+    enter(pin)
+    on_screen("Plug in the 5C", timeout=300)
+    # The Nano still in, which the guide met as the Nano.
+    enter("")
+    on_screen("the 5C's PIN")
+    enter(pin)
+    on_screen("this key is the Nano, not the 5C", timeout=300, stopped="look again")
+    plug("fivec")
+    enter("")
+    on_screen("Plug in the 5C")
+    enter("")
+    on_screen("the 5C's PIN")
+    enter(pin)
+    on_screen("machine is finished", timeout=300)
+    shown = " ".join(screen().split()).lower()
+    t.assertIn("ssh keys id_ecdsa, agent-signing", shown)
+    t.assertIn("the nano and the 5c each hold alice's spare ssh key", shown)
+    for name in ["nano", "5c"]:
+        file = f"/home/alice/.ssh/yubikey-{name}"
+        for half in ["", ".pub"]:
+            t.assertEqual(machine.succeed(f"stat -c %U {file}{half}").strip(), "alice", file + half)
+        t.assertEqual(machine.succeed(f"stat -c %a {file}").strip(), "600")
+        public = spare(name)
+        t.assertTrue(public.startswith("sk-ssh-ed25519@openssh.com "), public)
+        t.assertTrue(public.strip().endswith(f"alice@yubikey {name}"), public)
+        read = machine.succeed(f"ssh-keygen -y -f {file}")
+        t.assertEqual(read.split()[:2], public.split()[:2])
+    t.assertNotEqual(spare("nano").split()[1], spare("5c").split()[1])
+    # Nothing the guide made them in is left.
+    machine.fail("test -e /run/guide/spare")
     # Root from the boot, with no password, and the sign-in waits.
     machine.succeed("pgrep -u root -xf '.*/guide installed'")
     t.assertEqual(machine.succeed("systemctl show -P ActiveState getty@tty1").strip(), "inactive")
@@ -377,7 +418,10 @@ with subtest("after the restart the disk asks once, and opens with the TPM's PIN
 
 with subtest("a cleared TPM leaves a YubiKey to open the disk, and the guide seals it again"):
     # The guide sees nothing to do, until the TPM is cleared, which
-    # takes the NV index the disk's pcrlock policy lives in.
+    # takes the NV index the disk's pcrlock policy lives in. The Nano's
+    # spare goes too, for the guide to bring back off the Nano.
+    nano = spare("nano")
+    machine.succeed("rm /home/alice/.ssh/yubikey-nano /home/alice/.ssh/yubikey-nano.pub")
     machine.succeed(f"{tpm2_clear} -T device:/dev/tpmrm0 -c l")
     machine.reboot()
     unlock()
@@ -390,7 +434,15 @@ with subtest("a cleared TPM leaves a YubiKey to open the disk, and the guide sea
     enter("")
     on_screen("the YubiKey's PIN")
     enter(pin)
+    # The 5C is in from its spare, so the Nano goes in for its own.
+    on_screen("Plug in the Nano", timeout=300)
+    plug("nano")
+    enter("")
+    on_screen("the Nano's PIN")
+    enter(pin)
     on_screen("machine is finished", timeout=300)
+    # Downloaded from the Nano, the same key, under its own comment again.
+    t.assertEqual(spare("nano"), nano)
     header = json.loads(
         machine.succeed("cryptsetup luksDump --dump-json-metadata /dev/disk/by-partlabel/system")
     )
