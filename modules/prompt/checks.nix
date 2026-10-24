@@ -3,11 +3,14 @@
 {
   account,
   lib,
+  onLinux,
   pkgs,
   workstation,
   ...
 }:
-{
+# What the prompt starts is traced with strace, which only Linux has, on the
+# NixOS workstation's own prompt.
+onLinux {
   # The prompt starts nothing once the shell is up: across a run of prompts
   # in and out of a repository, with git-engine answering, the shell itself
   # forks and executes nothing, and its reads of HEAD show the prompts ran.
@@ -26,7 +29,8 @@
         ${lib.getExe pkgs.bash} ${../../tests/the-prompt-starts-nothing.sh} ${(account workstation).jitsusama.prompt.file}
         touch $out
       '';
-
+}
+// {
   # The prompt gives way as tests/prompt.zsh says, without gitstatusd, which
   # needs job control a shell run this way hasn't got, in a repository that
   # keeps its refs in files and in one that keeps them in reftable, as World
