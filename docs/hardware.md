@@ -720,8 +720,8 @@ type, which libinput reads as Windows reads the same flag.
 
 ### Expected in the Journal
 
-Each of these turns up at every boot or resume, has been traced to its cause,
-and is harmless, so nothing silences or patches it:
+Each of these turns up at every boot or resume, or when its entry says, has
+been traced to its cause, and is harmless, so nothing silences or patches it:
 
 - **dbus-broker's "Ignoring duplicate name", at error priority.** NixOS
   gives the bus `system-path`'s `share/dbus-1` beside each package's own, so
@@ -766,6 +766,12 @@ and is harmless, so nothing silences or patches it:
 - **"HPET dysfunctional in PC10. Force disabled."** and "no address or irqs
   in _CRS". The kernel turns HPET off on any CPU whose deepest idle state
   stops it, and the TSC keeps time.
+- **"ENERGY_PERF_BIAS: Set to 'normal', was 'performance'".** The firmware
+  leaves each CPU's energy bias at performance, and the kernel sets its own
+  default at boot. power-profiles-daemon sets it again with each profile.
+- **issei_heci's "can't derive routing for PCI INT A" and "PCI INT A: not
+  connected".** ACPI gives the security engine's legacy interrupt pin no
+  route. The driver takes MSI interrupts instead, and the engine answers.
 - **i8042's "Warning: Keylock active".** The keyboard controller's keylock
   status bit is set, which the kernel only reports.
 - **"No UUID available providing old NGUID".** The drive reports no UUID, so
@@ -778,12 +784,19 @@ and is harmless, so nothing silences or patches it:
   them because Wi-Fi 7 is off: on a card with multi-link on, the kernel
   answers nothing. stress-ng run as root repeats the warning, since it resets
   the kernel's once-only warnings.
-- **Dummy regulators** for the camera sensor, the SPI flash and the four
-  amplifiers. ACPI names no supplies for them, and all three work as they
+- **Dummy regulators** for the two camera sensors, the SPI flash and the four
+  amplifiers. ACPI names no supplies for them, and all of them work as they
   should.
 - **intel_ipu7's and intel_ipu7_isys's "module is from the staging
   directory".** The camera's image unit driver is still in staging, so the
   kernel says so as each loads and marks itself with that taint.
+- **v4l2loopback's "loading out-of-tree module taints kernel".** The camera
+  relay's loopback device is a module built outside the kernel's tree, so the
+  kernel marks itself with that taint as it loads.
+- **"Automounting of tracing to debugfs is deprecated"**, once, when a tracer
+  first reaches the tracing files through `/sys/kernel/debug`, as seen when a
+  bpftrace probe started. tracefs is mounted at `/sys/kernel/tracing` too;
+  only the old path is going.
 - **iio-sensor-proxy's "Found proximity sensor but no PROXIMITY_NEAR_LEVEL
   udev property" and "No sensors", twice.** The sensor hub offers two light
   sensors, a presence sensor and the hinge's angle. The light sensors belong
