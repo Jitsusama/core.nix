@@ -235,11 +235,15 @@ def launcher_until(test: Callable[[Json], object], timeout: int = 30) -> None:
         reported("showing ", lambda said: test(json.loads(said)), since, timeout)
 
 
+# The launcher's surface is always listed, so whether it's open is what it says of itself.
+LAUNCHER_OPEN = """qs ipc call launcher showing | grep -q '"open":true'"""
+
+
 def launcher_ready() -> None:
     """Wait until the launcher is open and holds the keys.
 
-    niri lists the layer a frame before it gives it the keys, and a letter typed in that frame
-    goes to the window underneath.
+    niri hands a surface the keys a frame after it asks for them, and a letter typed in that
+    frame goes to the window underneath.
     """
     launcher_until(lambda shown: shown["open"] and shown["keys"])
 
@@ -496,7 +500,7 @@ with subtest("the overview draws nothing of the shell's, and the launcher says h
     launcher_until(lambda shown: re.fullmatch(r"\d\d:\d\d", shown["glance"]))
     photograph("launcher-glance-typing")
     machine.send_key("esc")
-    machine.wait_until_fails(in_session("niri msg layers | grep -qw launcher"), timeout=10)
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
 
 with subtest("a notification appears"):
     with told("drawn notifications"):
@@ -671,7 +675,7 @@ with subtest("the launcher shows the volume's chords, and Escape closes it"):
     type_in("volume")
     photograph("launcher-volume")
     machine.send_key("esc")
-    machine.wait_until_fails(in_session("niri msg layers | grep -qw launcher"), timeout=10)
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
 
 with subtest("the launcher finds a pi session by its quest, and goes to its window"):
     # A session as pi keeps one: its quest's README, front matter
@@ -1052,7 +1056,7 @@ with subtest("the launcher sets the volume to a number, and says how loud it is"
     machine.wait_until_succeeds(
         in_session("wpctl get-volume @DEFAULT_AUDIO_SINK@ | grep -qx 'Volume: 0.40'"), timeout=10
     )
-    machine.wait_until_fails(in_session("niri msg layers | grep -qw launcher"), timeout=10)
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
     as_account("qs ipc call launcher toggle")
     launcher_ready()
     type_in("volume")
@@ -1061,7 +1065,7 @@ with subtest("the launcher sets the volume to a number, and says how loud it is"
     )
     photograph("launcher-volume-told")
     machine.send_key("esc")
-    machine.wait_until_fails(in_session("niri msg layers | grep -qw launcher"), timeout=10)
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
 
 with subtest("the launcher finds and opens kitty, and learns that kitty was meant"):
     as_account("qs ipc call launcher toggle")
@@ -1115,6 +1119,41 @@ with subtest("a terminal opens below the focused window"):
 
     retry(placed, timeout_seconds=15)
 
+# Joel types the moment he presses Super+Space. Whatever letters come
+# before the launcher has the keys go to the window beneath, and the
+# rest to the launcher's field, but not one may be lost or reordered
+# between the two. A terminal beneath keeps every raw key it gets, so
+# a letter the launcher missed is found there.
+with subtest("the launcher loses no letter typed straight after its chord"):
+    as_account(
+        "niri msg action spawn -- kitty --title type-ahead "
+        "sh -c 'stty -icanon -echo; cat > /tmp/type-ahead'"
+    )
+    machine.wait_until_succeeds(
+        in_session("niri msg focused-window | grep -q type-ahead"), timeout=STARTING
+    )
+    for gap in (0.01, 0.05, 0.1):
+        beneath = len(as_account("cat /tmp/type-ahead"))
+        machine.send_key("meta_l-spc")
+        machine.send_chars("slack", delay=gap)
+        launcher_ready()
+
+        def none_lost(_: bool, beneath: int = beneath, gap: float = gap) -> bool:
+            """Say whether every letter typed went beneath or to the launcher, in order."""
+            went = as_account("cat /tmp/type-ahead")[beneath:]
+            held = showing()["typed"]
+            print(f"TYPEAHEAD {gap}: '{went}' went beneath, '{held}' held")
+            return bool(went + held == "slack")
+
+        retry(none_lost, timeout_seconds=10)
+        machine.send_key("esc")
+        machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
+        machine.wait_until_succeeds(
+            in_session("niri msg focused-window | grep -q type-ahead"), timeout=10
+        )
+    as_account("pkill -f 'cat > /tmp/type-ahead'")
+    machine.wait_until_fails(in_session("niri msg windows | grep -q type-ahead"), timeout=30)
+
 # The launcher finds a window by its title, and Return goes to it.
 with subtest("the launcher switches to a window by its title"):
     as_account("niri msg action spawn -- kitty --title 'Notes for Tuesday'")
@@ -1161,7 +1200,7 @@ with subtest("Super+Tab goes back to the window before, and finds any by typing"
     machine.wait_until_succeeds(
         in_session("niri msg focused-window | grep -q 'Notes for Tuesday'"), timeout=10
     )
-    closed = in_session("niri msg layers | grep -qw launcher")
+    closed = in_session(LAUNCHER_OPEN)
 
     def tab_to(typed: str, title: str) -> None:
         """Open the windows with Super+Tab, type, and wait until the window titled is chosen."""
@@ -1215,7 +1254,7 @@ with subtest("the launcher moves a window and copies its title"):
     into_notes("copy")
     photograph("launcher-verbs")
     machine.send_key("ret")
-    machine.wait_until_fails(in_session("niri msg layers | grep -qw launcher"), timeout=10)
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
     t.assertEqual(as_account("wl-paste --no-newline"), "Notes for Tuesday")
 
     into_notes("move")
@@ -1267,7 +1306,7 @@ with subtest("the launcher answers what's asked, and copies the answer"):
         """Ask the launcher, take its answer with Return, and check that it copied this."""
         answer(typed)
         machine.send_key("ret")
-        closed = in_session("niri msg layers | grep -qw launcher")
+        closed = in_session(LAUNCHER_OPEN)
         machine.wait_until_fails(closed, timeout=10)
         t.assertEqual(as_account("wl-paste --no-newline"), expected)
 
@@ -1280,7 +1319,7 @@ with subtest("the launcher answers what's asked, and copies the answer"):
     answer("battery")
     photograph("launcher-battery")
     machine.send_key("ret")
-    machine.wait_until_fails(in_session("niri msg layers | grep -qw launcher"), timeout=10)
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
     t.assertTrue(as_account("wl-paste --no-newline").startswith(f"{charge}%, "))
     # Then what feeds it: the stand-in's mains, plugged in.
     answer("charger")
@@ -1312,7 +1351,7 @@ with subtest("the launcher answers what's asked, and copies the answer"):
     machine.send_key("tab")
     launcher_until(lambda shown: shown["typed"] == "battery")
     machine.send_key("ret")
-    machine.wait_until_fails(in_session("niri msg layers | grep -qw launcher"), timeout=10)
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
     t.assertTrue(as_account("wl-paste --no-newline").startswith(f"{charge}%, "))
     # The words a poor memory reaches for ask the same answers.
     for typed, said in [("battery life", f"{charge}%"), ("how hot", ""), ("ram", "")]:
@@ -1341,7 +1380,7 @@ with subtest("the launcher answers what's asked, and copies the answer"):
     answer("temperature")
     photograph("launcher-heat")
     machine.send_key("ret")
-    machine.wait_until_fails(in_session("niri msg layers | grep -qw launcher"), timeout=10)
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
     t.assertRegex(as_account("wl-paste --no-newline"), r"^-?\d+ \u00b0C at the ")
     # The date in full, as the machine's clock has it; the day may
     # turn while it's asked, so either will do.
@@ -1349,7 +1388,7 @@ with subtest("the launcher answers what's asked, and copies the answer"):
     answer("date")
     photograph("launcher-date")
     machine.send_key("ret")
-    machine.wait_until_fails(in_session("niri msg layers | grep -qw launcher"), timeout=10)
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
     after = machine.succeed("date '+%A %-d %B %Y'").strip()
     t.assertIn(as_account("wl-paste --no-newline"), [before, after])
     # The stand-in backlight's share, as its files say.
@@ -1367,7 +1406,7 @@ with subtest("the launcher answers what's asked, and copies the answer"):
         f"test $(cat /sys/class/backlight/stand-in/brightness) -eq {most * 30 // 100}",
         timeout=10,
     )
-    machine.wait_until_fails(in_session("niri msg layers | grep -qw launcher"), timeout=10)
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
     # The session's actions answer to what people call them; Escape,
     # never Return, since Return would do them.
     for typed, action in [
@@ -1393,7 +1432,7 @@ with subtest("the launcher answers what's asked, and copies the answer"):
             )
         )
         machine.send_key("esc")
-        machine.wait_until_fails(in_session("niri msg layers | grep -qw launcher"), timeout=10)
+        machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
     # A key's action, by the other words its bind lists.
     answer("fullscreen")
     launcher_until(
@@ -1404,7 +1443,7 @@ with subtest("the launcher answers what's asked, and copies the answer"):
         )
     )
     machine.send_key("esc")
-    machine.wait_until_fails(in_session("niri msg layers | grep -qw launcher"), timeout=10)
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
     # Each disk's room, as a disk guard says it, the tightest first.
     status = {
         "version": 1,
@@ -1429,7 +1468,7 @@ with subtest("the launcher answers what's asked, and copies the answer"):
     machine.send_key("down")
     launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "20.0 GiB free")
     machine.send_key("esc")
-    machine.wait_until_fails(in_session("niri msg layers | grep -qw launcher"), timeout=10)
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
     # A guard that stops writing is silent once its last heartbeat is
     # two minutes old, by a deadline that heartbeat set, with nothing
     # read again in between.
@@ -1441,12 +1480,12 @@ with subtest("the launcher answers what's asked, and copies the answer"):
     answer("disk")
     launcher_until(lambda shown: shown["footer"] == "from the disk guard")
     machine.send_key("esc")
-    machine.wait_until_fails(in_session("niri msg layers | grep -qw launcher"), timeout=10)
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
     time.sleep(25)
     answer("disk")
     launcher_until(lambda shown: shown["footer"] == "the disk guard has stopped saying")
     machine.send_key("esc")
-    machine.wait_until_fails(in_session("niri msg layers | grep -qw launcher"), timeout=10)
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
     machine.succeed("rm /run/disk-guard/status.json")
     # The machine's queue as pi's harness writes it, replaced whole:
     # what runs, then what waits in turn, and the room to spare.
@@ -1516,13 +1555,13 @@ with subtest("the launcher answers what's asked, and copies the answer"):
         )
     photograph("launcher-queue")
     machine.send_key("esc")
-    machine.wait_until_fails(in_session("niri msg layers | grep -qw launcher"), timeout=10)
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
     as_account("rm $XDG_RUNTIME_DIR/jobs/queue.json")
     # The keyboards QEMU gives it, however many, and caps lock.
     answer("keyboards")
     photograph("launcher-keyboards")
     machine.send_key("ret")
-    machine.wait_until_fails(in_session("niri msg layers | grep -qw launcher"), timeout=10)
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
     t.assertRegex(
         as_account("wl-paste --no-newline"),
         r"^(one keyboard|[1-9]\d* keyboards), caps lock off$",
@@ -1536,7 +1575,7 @@ with subtest("the launcher answers what's asked, and copies the answer"):
     answer("time in utc")
     photograph("launcher-time")
     machine.send_key("ret")
-    machine.wait_until_fails(in_session("niri msg layers | grep -qw launcher"), timeout=10)
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
     after = machine.succeed("date -u +%H:%M").strip()
     t.assertIn(as_account("wl-paste --no-newline"), [before, after])
     # A theme's colour is found by its role, as the theme exports it.
@@ -1567,7 +1606,7 @@ with subtest("the launcher answers what's asked, and copies the answer"):
     assert "Error:" not in log, "an answer raised an error"
 
 with subtest("the launcher finds emoji in their own place, and only there"):
-    closed = in_session("niri msg layers | grep -qw launcher")
+    closed = in_session(LAUNCHER_OPEN)
     # The main search lists no emoji, only the place they're in.
     answer("tada")
     t.assertNotIn("party popper", showing()["rows"])
@@ -1601,7 +1640,7 @@ with subtest("the launcher finds emoji in their own place, and only there"):
     t.assertEqual(as_account("wl-paste --no-newline"), "\U0001f431")
 
 with subtest("a search lists each thing once"):
-    closed = in_session("niri msg layers | grep -qw launcher")
+    closed = in_session(LAUNCHER_OPEN)
     # Tuple's place stands alone for its rows and its people; the
     # session's Lock and Do Not Disturb draw their keys' chords, so
     # those keys aren't listed again; kitty draws Super+Return's;
@@ -2003,7 +2042,7 @@ with subtest("the launcher's Sound moves sound to another output, and back"):
         machine.send_key("ret")
         used = f"wpctl inspect @DEFAULT_AUDIO_SINK@ | grep -q 'node.name = \"{output}\"'"
         machine.wait_until_succeeds(in_session(used), timeout=10)
-        machine.wait_until_fails(in_session("niri msg layers | grep -q launcher"), timeout=10)
+        machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
 
 with subtest("the launcher sets the power profile"):
     # By its name, or a word a person would call it.
@@ -2016,7 +2055,7 @@ with subtest("the launcher sets the power profile"):
         type_in(typed, selecting=name)
         machine.send_key("ret")
         machine.wait_until_succeeds(f"powerprofilesctl get | grep -qx {profile}", timeout=10)
-        machine.wait_until_fails(in_session("niri msg layers | grep -q launcher"), timeout=10)
+        machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
 
 # The right arrow on one of a collection's members offers its own
 # actions, as on anything at the top.
@@ -2035,7 +2074,7 @@ with subtest("the launcher's Displays scales a display by keys, and back"):
         type_in(f"scale {round(wanted * 100)}")
         machine.send_key("ret")
         retry(lambda _, wanted=wanted: scale() == wanted, timeout_seconds=15)
-        machine.wait_until_fails(in_session("niri msg layers | grep -q launcher"), timeout=10)
+        machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
 
 with subtest("a Wi-Fi network is joined from the launcher, a new one asking its password"):
     machine.wait_for_unit("lantern.service")
@@ -2057,7 +2096,7 @@ with subtest("a Wi-Fi network is joined from the launcher, a new one asking its 
         machine.send_key("ret")
     machine.succeed('journalctl -u wifid | grep -q "couldn\'t join Lantern: WrongPassword"')
     photograph("launcher-wifi-refused")
-    machine.succeed(in_session("niri msg layers | grep -q launcher"))
+    machine.succeed(in_session(LAUNCHER_OPEN))
     type_in("glowing in the dark")
     machine.send_key("ret")
     # Joined means an address too, and wifid says so once it's checked
@@ -2067,7 +2106,7 @@ with subtest("a Wi-Fi network is joined from the launcher, a new one asking its 
     )
     machine.succeed("networkctl status wlan1 | grep -q 10.42.0.")
     # Once it's joined, the launcher's done.
-    machine.wait_until_fails(in_session("niri msg layers | grep -q launcher"), timeout=10)
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
     # Lantern wants a sign-in, so Sign In to it comes first at home, and
     # Return opens the window on its front desk.
     described = "varlinkctl --json=short call /run/wifid/io.jitsusama.Wifi"
@@ -2115,7 +2154,7 @@ with subtest("a Wi-Fi network is joined from the launcher, a new one asking its 
     machine.wait_until_succeeds(
         "journalctl -u wifid | grep -q 'joined Office on wlan1'", timeout=60
     )
-    machine.wait_until_fails(in_session("niri msg layers | grep -q launcher"), timeout=10)
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
     # Stepped into, a network says after what can be done to it what's
     # heard of it, a row each, the selected row's footer saying more:
     # the card's link to it once the card has read it, and its access
@@ -2139,7 +2178,7 @@ with subtest("a Wi-Fi network is joined from the launcher, a new one asking its 
     assert showing()["selected"]["name"].startswith("2.4 GHz ch 1\u00a0"), showing()
     photograph("launcher-wifi-points")
     machine.send_key("esc")
-    machine.wait_until_fails(in_session("niri msg layers | grep -q launcher"), timeout=10)
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
     # Turning Wi-Fi off is an action like any.
     as_account("qs ipc call launcher toggle")
     launcher_ready()
@@ -2166,7 +2205,7 @@ with subtest("a notice that came and went is found again in the launcher"):
         return said == "Build finished\nthe laptop is ready"
 
     retry(told_again, timeout_seconds=10)
-    machine.wait_until_fails(in_session("niri msg layers | grep -q launcher"), timeout=10)
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
     # With none on screen, Super+N opens all of them, which counts
     # them seen.
     machine.wait_until_fails(in_session("niri msg layers | grep -q notifications"), timeout=30)
@@ -2205,7 +2244,7 @@ def tokened() -> None:
 
 
 with subtest("a notice's action is done by the keys, and one not acted on stays unread"):
-    machine.wait_until_fails(in_session("niri msg layers | grep -q launcher"), timeout=10)
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
     # It stays a minute, so it's still at the front when the keys come.
     with told("shows card Lunch"):
         as_account("notify-send --expire-time=60000 'Lunch' 'at noon'")
@@ -2434,7 +2473,7 @@ with subtest("the notices sit a step inside the window under them"):
 
 with subtest("the launcher keeps the machine awake, lid shut too, then lets it sleep"):
     held = "systemd-inhibit --list --no-pager | grep Caffeinate"
-    machine.wait_until_fails(in_session("niri msg layers | grep -q launcher"), timeout=10)
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
     as_account("qs ipc call launcher toggle")
     launcher_ready()
     type_in("keep awake")
@@ -2478,7 +2517,7 @@ with subtest("a camera open shows in the margin, and the launcher says by what")
     type_in("camera")
     launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "in use by chrome")
     machine.send_key("esc")
-    machine.wait_until_fails(in_session("niri msg layers | grep -qw launcher"), timeout=10)
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
     machine.succeed(
         ": > /run/camera-holders/.camera"
         " && mv /run/camera-holders/.camera /run/camera-holders/camera"
@@ -2496,7 +2535,7 @@ with subtest("a USB camera's stream shows in the margin too, and leaves with the
     type_in("camera")
     launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "in use by zoom")
     machine.send_key("esc")
-    machine.wait_until_fails(in_session("niri msg layers | grep -qw launcher"), timeout=10)
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
     machine.succeed(f"rm '{usb}'")
     machine.wait_until_fails(in_session(margin), timeout=10)
 
@@ -2537,7 +2576,7 @@ with subtest("do not disturb holds a notice, shows it held, and ends from the ma
     launcher_ready()
     photograph("launcher-held")
     machine.send_key("esc")
-    machine.wait_until_fails(in_session("niri msg layers | grep -q launcher"), timeout=10)
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
     with told("keys margin"):
         machine.send_key("meta_l-o")
     machine.send_key("ret")
@@ -2679,7 +2718,7 @@ with subtest("a copied call's link can be joined until something else is copied"
     launcher_ready()
     type_in("join", selecting="Join the Tuple call")
     machine.send_key("esc")
-    machine.wait_until_fails(in_session("niri msg layers | grep -qw launcher"), timeout=10)
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
 
     # A screenshot is copied as an image alone, with no text to read.
     as_account("printf '\\211PNG\\r\\n' | wl-copy --type image/png > /dev/null 2>&1")
@@ -2694,7 +2733,7 @@ with subtest("a copied call's link can be joined until something else is copied"
 
     launcher_until(joins_nothing)
     machine.send_key("esc")
-    machine.wait_until_fails(in_session("niri msg layers | grep -qw launcher"), timeout=10)
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
 
 with subtest("Tuple's windows find their places: the face in a corner, a shared screen wide"):
     # Through X11, as Tuple draws them, so niri starts xwayland-satellite
