@@ -38,6 +38,14 @@ DROPPED = 100
 UNSHAPED = 300
 # How many of an app's 40 pings have to come back for a median.
 ANSWERS = 20
+# CAKE's diffserv4 tins, in the order its counts list them.
+TINS = ["bulk", "best effort", "video", "voice"]
+# What an app's upload sends while the jobs' uploads go on, and the most of
+# that the jobs may send meanwhile: CAKE leaves bulk a sixteenth while
+# anything else wants the line, where five flows shared evenly would leave
+# the jobs four times the app's.
+APP_SENDS = 2_000_000
+JOBS_SHARE = 4
 
 
 def up() -> int:
@@ -50,6 +58,13 @@ def backlog() -> int:
     """Return the bytes waiting in the line's queue at the router."""
     queues: list[Json] = json.loads(router.succeed("tc -s -j qdisc show dev eth2"))
     return int(next(q for q in queues if q["kind"] == "tbf")["backlog"])
+
+
+def sent() -> dict[str, int]:
+    """Return the bytes CAKE on eth1 has sent from each tin."""
+    queues: list[Json] = json.loads(client.succeed("tc -s -j qdisc show dev eth1"))
+    cake = next(q for q in queues if q["kind"] == "cake")
+    return dict(zip(TINS, (int(tin["sent_bytes"]) for tin in cake["tins"]), strict=True))
 
 
 def line(kbit: int) -> None:
@@ -95,6 +110,24 @@ with subtest("the shaper finds the line and an app's pings stay near it"):
     t.assertGreater(rate, SETTLED)
     t.assertLess(rate, PROBED)
     t.assertLess(shaped, SHAPED, f"shaped at {rate} kbit/s")
+
+with subtest("an app's upload takes the line from the jobs' while it runs"):
+    before = sent()
+    client.succeed(
+        "systemd-run -M alice@ --user --slice=app.slice --unit=app-upload"
+        f" {BIN}/bash -c 'while true; do {BIN}/cat /dev/zero > /dev/tcp/{far}/5201; done'"
+    )
+
+    def uploaded(_last_try: bool) -> bool:
+        """Say whether the app's upload has sent its share."""
+        return sent()["best effort"] - before["best effort"] >= APP_SENDS
+
+    retry(uploaded, timeout_seconds=60)
+    after = sent()
+    client.succeed("systemctl -M alice@ --user stop app-upload.service")
+    moved = {tin: after[tin] - before[tin] for tin in TINS}
+    print(f"while an app uploads: {moved}")
+    t.assertLess(moved["bulk"], moved["best effort"] // JOBS_SHARE, f"{moved}")
 
 with subtest("when the line drops, the shaper follows it down"):
     line(HALVED)
