@@ -42,14 +42,17 @@ tools! {
     Fido2Token => "fido2-token", "GUIDE_FIDO2_TOKEN";
     Losetup => "losetup", "GUIDE_LOSETUP";
     Lsblk => "lsblk", "GUIDE_LSBLK";
+    Mkdir => "mkdir", "GUIDE_MKDIR";
     Mount => "mount", "GUIDE_MOUNT";
     Nix => "nix", "GUIDE_NIX";
     Run0 => "run0", "GUIDE_RUN0";
     NixosEnter => "nixos-enter", "GUIDE_NIXOS_ENTER";
     NixosInstall => "nixos-install", "GUIDE_NIXOS_INSTALL";
     Pcrlock => "systemd-pcrlock", "GUIDE_PCRLOCK";
+    Runuser => "runuser", "GUIDE_RUNUSER";
     Sbctl => "sbctl", "GUIDE_SBCTL";
     Sgdisk => "sgdisk", "GUIDE_SGDISK";
+    SshTpmKeygen => "ssh-tpm-keygen", "GUIDE_SSH_TPM_KEYGEN";
     SystemdCryptenroll => "systemd-cryptenroll", "GUIDE_SYSTEMD_CRYPTENROLL";
     Systemctl => "systemctl", "GUIDE_SYSTEMCTL";
     Tpm2Getcap => "tpm2_getcap", "GUIDE_TPM2_GETCAP";

@@ -219,6 +219,11 @@ off or changing its keys needs it.
 
 ## 9. Make the SSH Keys
 
+On a machine the guide installed, it makes the TPM's keys itself, at the boot
+after the disk is sealed: every key a module names in `jitsusama.tpmKeys`, as
+its account, with one PIN for each that asks for one. The YubiKey's spare is
+still made by hand, as below.
+
 Run this step as the account, never under sudo. Every key here belongs in the
 account's home, and under sudo they land in root's.
 

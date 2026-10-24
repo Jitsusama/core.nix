@@ -1,16 +1,51 @@
 # The checks of guide, which checks.nix gathers with every other folder's;
 # its opening comment says what each kind of check proves.
 {
+  bareNixos,
   clippyConfig,
   clippyLints,
+  holds,
   lib,
   onLinux,
   passesClippy,
   pkgs,
   rust-overlay,
+  self,
   ...
 }:
 onLinux {
+  # The keys an account's modules name in the TPM reach what the installed
+  # guide reads, each with its account and a comment saying whose and
+  # where: tpm-signing's two and ssh-tpm-agent's login key, which
+  # tpm-signing brings.
+  the-guide-makes-the-keys-the-modules-name =
+    let
+      machine = bareNixos [
+        self.nixosModules.disko
+        self.nixosModules.guide
+        {
+          networking.hostName = "laptop";
+          home-manager.users.someone.imports = [ self.homeModules.tpm-signing ];
+        }
+      ];
+      home = machine.config.home-manager.users.someone.home.homeDirectory;
+      facts = builtins.fromJSON machine.config.environment.etc."guide/machine.json".text;
+      key = file: comment: pin: {
+        account = "someone";
+        file = "${home}/${file}";
+        inherit comment pin;
+      };
+    in
+    holds "the-guide-makes-the-keys-the-modules-name"
+      "The installed guide doesn't see the keys in the TPM that an account's modules name."
+      (
+        lib.sort (one: other: one.file < other.file) facts.keys == [
+          (key ".local/share/signing/joel-signing" "someone@laptop signing" true)
+          (key ".ssh/agent-signing" "someone@laptop agents" false)
+          (key ".ssh/id_ecdsa" "someone@laptop" true)
+        ]
+      );
+
   # The guide's tests run as it builds: each step proven by observing it
   # again, each parser reading what real machines printed, each stick it
   # writes read back by sfdisk and fsck.fat, and each signature compared

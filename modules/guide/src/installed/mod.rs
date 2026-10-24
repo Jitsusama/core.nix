@@ -2,8 +2,11 @@
 //! own disk: Secure Boot checked to enforce with its own keys, then the
 //! disk sealed to the TPM with a PIN and its slot tried first, so every
 //! boot asks for that PIN, and a YubiKey or the recovery key opens it when
-//! the TPM won't. The guide runs as root here, at boot from core's guide
-//! module, or by hand through run0.
+//! the TPM won't, then the accounts' SSH keys made in the TPM (keys.rs).
+//! The guide runs as root here, at boot from core's guide module, or by
+//! hand through run0.
+
+pub mod keys;
 
 use serde::Deserialize;
 
@@ -24,6 +27,10 @@ pub const PCRLOCK: &str = "/var/lib/systemd/pcrlock.json";
 pub struct Facts {
     /// What core calls the disk's encrypted volume.
     pub disk_name: String,
+    /// The SSH keys each account keeps in the TPM, none when no module
+    /// names one.
+    #[serde(default)]
+    pub keys: Vec<keys::TpmKey>,
 }
 
 pub fn facts(machine: &mut dyn Machine) -> Result<Facts, Fault> {
@@ -426,5 +433,9 @@ fn prove_tpm_opens(machine: &mut dyn Machine, volume: &str, pin: &Secret) -> Res
 
 /// Every step on the installed machine, in order.
 pub fn steps() -> Vec<Box<dyn Step>> {
-    vec![Box::new(CheckSecureBoot), Box::new(SealTpm)]
+    vec![
+        Box::new(CheckSecureBoot),
+        Box::new(SealTpm),
+        Box::new(keys::MakeKeys),
+    ]
 }

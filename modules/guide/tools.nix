@@ -39,6 +39,7 @@ in
   GUIDE_FIDO2_TOKEN = lib.getExe' pkgs.libfido2 "fido2-token";
   GUIDE_LOSETUP = lib.getExe' pkgs.util-linux "losetup";
   GUIDE_LSBLK = lib.getExe' pkgs.util-linux "lsblk";
+  GUIDE_MKDIR = lib.getExe' pkgs.coreutils "mkdir";
   GUIDE_MOUNT = lib.getExe' pkgs.util-linux "mount";
   GUIDE_NIX = lib.getExe pkgs.nix;
   GUIDE_NIXOS_ENTER = lib.getExe pkgs.nixos-enter;
@@ -46,8 +47,10 @@ in
   # systemd keeps systemd-pcrlock with its private programs, not in bin.
   GUIDE_PCRLOCK = "${systemd}/lib/systemd/systemd-pcrlock";
   GUIDE_RUN0 = lib.getExe' systemd "run0";
+  GUIDE_RUNUSER = lib.getExe' pkgs.util-linux "runuser";
   GUIDE_SBCTL = lib.getExe pkgs.sbctl;
   GUIDE_SGDISK = lib.getExe' pkgs.gptfdisk "sgdisk";
+  GUIDE_SSH_TPM_KEYGEN = lib.getExe' pkgs.ssh-tpm-agent "ssh-tpm-keygen";
   GUIDE_SYSTEMD_CRYPTENROLL = lib.getExe' systemd "systemd-cryptenroll";
   GUIDE_SYSTEMCTL = lib.getExe' systemd "systemctl";
   GUIDE_TPM2_GETCAP = lib.getExe' pkgs.tpm2-tools "tpm2_getcap";

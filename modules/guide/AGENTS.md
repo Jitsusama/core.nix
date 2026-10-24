@@ -170,6 +170,20 @@ driven on; the installed machine's steps come later.
   refuse the next ordinary boot, which opens with the TPM's PIN. Its
   secrets go only as files in memory and on
   standard input, never on a command line.
+- **The keys in the TPM.** Once the disk is sealed, the installed guide
+  makes each SSH key the accounts keep in the TPM that's missing: every
+  one a home-manager module names in `jitsusama.tpmKeys`, which the
+  `guide` module gathers into `jitsusama.guide.keys` and machine.json.
+  It makes each as its account, through runuser and ssh-tpm-keygen, with
+  one PIN typed twice for every key that asks for one. ssh-tpm-keygen
+  reads a PIN only from a terminal and makes the key with none through
+  pipes, so its `SSH_ASKPASS` is the guide itself, which prints
+  `GUIDE_ASKPASS`, set only in the keygen's environment. A key counts as
+  made when both its halves are there and the public one is what
+  `--print-pubkey` reads from the private one; half a key blocks rather
+  than being made over. A cleared TPM leaves the keys unable to load,
+  which the guide can't see without their PIN: move them away for it to
+  make new ones.
 - **The rescue bundle.** A machine's Secure Boot keys, all seven files
   sbctl keeps, sealed under a key of their own, which is sealed to the
   machine's YubiKeys and apart to a recovery passphrase of seven words,

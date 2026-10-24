@@ -14,6 +14,7 @@ import contextlib
 import json
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import tempfile
@@ -37,10 +38,12 @@ toplevel: str = values["toplevel"]
 qemu_img: str = values["qemuImg"]
 guide: str = values["guide"]
 tpm2_clear: str = values["tpm2Clear"]
+keygen: str = values["keygen"]
 # What's typed at the guide: the keys' PIN, the TPM's, the account's password, the stick's
 # passphrase and the rescue bundle's.
 pin: str = values["pin"]
 tpm_pin: str = values["tpmPin"]
+key_pin: str = values["keyPin"]
 password: str = values["password"]
 passphrase: str = values["passphrase"]
 bundle_passphrase: str = values["bundlePassphrase"]
@@ -318,13 +321,34 @@ with subtest("the guide seals the disk to the TPM with a PIN, a YubiKey opening 
     enter("")
     on_screen("the YubiKey's PIN")
     enter(pin)
-    on_screen("machine is finished", timeout=300)
+    # Sealed, the guide goes on to the account's keys.
+    on_screen("a PIN for alice's SSH keys", timeout=300)
     header = json.loads(
         machine.succeed("cryptsetup luksDump --dump-json-metadata /dev/disk/by-partlabel/system")
     )
     (sealed,) = [t["keyslots"][0] for t in header["tokens"].values() if t["type"] == "systemd-tpm2"]
     t.assertEqual(header["keyslots"][sealed].get("priority"), 2)
     print("FIXTURE luks-dump-sealed.json " + json.dumps(header))
+
+with subtest("the guide makes alice's SSH keys in the TPM, as alice, one with her PIN"):
+    enter(key_pin)
+    on_screen("the same PIN again")
+    enter(key_pin)
+    on_screen("machine is finished", timeout=300)
+    t.assertIn("SSH keys id_ecdsa, agent-signing", " ".join(screen().split()))
+    for file in ["/home/alice/.ssh/id_ecdsa", "/home/alice/.ssh/agent-signing"]:
+        for half in [".tpm", ".pub"]:
+            t.assertEqual(machine.succeed(f"stat -c %U {file}{half}").strip(), "alice", file + half)
+        public = machine.succeed(f"cat {file}.pub")
+        t.assertEqual(machine.succeed(f"{keygen} --print-pubkey {file}.tpm"), public)
+    t.assertEqual(machine.succeed("stat -c %a /home/alice/.ssh").strip(), "700")
+    t.assertIn("alice@machine agents", machine.succeed("cat /home/alice/.ssh/agent-signing.pub"))
+    # The TPM holds the login key under alice's PIN, whole: it opens with it,
+    # spaces inside and all, and not with another.
+    login = "/home/alice/.ssh/id_ecdsa.tpm"
+    quoted = shlex.quote(key_pin)
+    machine.succeed(f"runuser -u alice -- {keygen} -p -f {login} -P {quoted} -N {quoted}")
+    machine.fail(f"runuser -u alice -- {keygen} -p -f {login} -P not-her-pin -N {quoted}")
     # Root from the boot, with no password, and the sign-in waits.
     machine.succeed("pgrep -u root -xf '.*/guide installed'")
     t.assertEqual(machine.succeed("systemctl show -P ActiveState getty@tty1").strip(), "inactive")
