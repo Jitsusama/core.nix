@@ -45,7 +45,7 @@ Scope {
     // glyph, kind, order, tone }.
     readonly property var lit: Facts.all
         .filter(fact => fact.entry.mark !== null && fact.piece
-            && fact.piece.present && fact.piece.active)
+            && fact.piece.present && fact.piece.active && !fact.piece.collected)
         .map(fact => ({
             entry: fact.entry,
             piece: fact.piece,

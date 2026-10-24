@@ -13,6 +13,8 @@ Piece {
     readonly property int held: Quiet.held.length
 
     active: Quiet.on
+    // On only because the screen is shared, the share's mark says it.
+    collected: !Quiet.kept
     hue: "voice"
     value: Quiet.lasts
     title: "Do Not Disturb"
