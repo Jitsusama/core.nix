@@ -399,7 +399,9 @@ with subtest("the guide keeps a spare SSH key on each YubiKey, refusing the one 
     on_screen("this key is the Nano, not the 5C", timeout=300, stopped="look again")
     plug("fivec")
     enter("")
-    on_screen("Plug in the 5C")
+    # Asked again, as the guide looks again after Return; until it has,
+    # the refusal stays on the screen, "try again" and all.
+    on_screen("Plug in the 5C, and only the 5C", stopped="look again")
     enter("")
     on_screen("the 5C's PIN")
     enter(pin)
