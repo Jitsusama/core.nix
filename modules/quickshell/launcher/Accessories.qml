@@ -7,9 +7,13 @@
 // since this pairs only as headphones and mice do, with nothing to type.
 // Turning Bluetooth off and on is an action in the main search. Everything
 // comes from BlueZ over D-Bus through Quickshell, so no process is asked,
-// and the radio looks for devices only while the launcher is open.
+// and the radio looks for devices only while the launcher is open. What a
+// connected input device's kernel side says of it (how it's carried, its
+// buttons, wheel or keys, its ids) comes from desk-facts, after its verbs.
 import qs
+import Quickshell
 import Quickshell.Bluetooth
+import Quickshell.Io
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
 
@@ -137,6 +141,29 @@ Provider {
     readonly property var all: devices.map(device => made(device))
     onAllChanged: changed()
 
+    // What desk-facts knows of each connected input device, by its address;
+    // a device it says nothing of, or no file at all, has no facts.
+    property var facts: ({})
+
+    FileView {
+        path: `${Quickshell.env("XDG_RUNTIME_DIR")}/desk/bluetooth.json`
+        watchChanges: true
+        printErrors: false
+        onFileChanged: reload()
+        onLoaded: provider.facts = provider.parsed(text())
+        onLoadFailed: provider.facts = ({})
+    }
+
+    function factRows(device) {
+        const said = facts[device.address] ?? [];
+        return said.map(fact => copyRow({
+            key: `fact:bluetooth:${device.address}:${fact.name}`,
+            name: fact.value,
+            side: fact.name,
+            glyph: kind(device)
+        }));
+    }
+
     function verbs(device) {
         const rows = [device.connected ? thing({
             key: "verb:bluetooth-disconnect",
@@ -172,7 +199,7 @@ Provider {
                 hue: "action",
                 run: () => device.forget()
             }));
-        return rows;
+        return rows.concat(factRows(device));
     }
 
     // Done with the device being connected: the launcher closes, if it's

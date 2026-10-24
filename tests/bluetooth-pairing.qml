@@ -5,8 +5,10 @@
 // pairs, since headphones start their audio the moment they're paired and
 // BlueZ refuses an untrusted device's with no agent to ask; a pairing that
 // fails says so and takes the trust back; and a device paired before is
-// done once it connects. It exits 0 once every
-// case holds, and otherwise 1, saying which case didn't.
+// done once it connects. A connected mouse's facts, from the bluetooth.json
+// the check puts where desk-facts would, follow its verbs as copy rows, in
+// the file's order. It exits 0 once every case holds, and otherwise 1,
+// saying which case didn't.
 import qs.launcher
 import Quickshell
 import QtQuick
@@ -36,6 +38,7 @@ ShellRoot {
     Device { id: linkedFirst }
     Device { id: refused }
     Device { id: known; paired: true; trusted: true }
+    Device { id: mouse; name: "Mouse"; address: "C3:9C:E3:2A:F3:6E"; paired: true; connected: true }
 
     function expect(what, holds, said) {
         if (!holds)
@@ -73,10 +76,48 @@ ShellRoot {
             expect("known connects", known.asked === 1, "it wasn't asked to connect");
             known.connected = true;
             expect("known connected", bluetooth.joining === null, "it's still connecting");
-            Qt.callLater(() => Qt.exit(0));
+            facts.start();
         } catch (error) {
             console.warn(`FAIL ${error.message}`);
             Qt.callLater(() => Qt.exit(1));
+        }
+    }
+
+    // The facts file is read a moment after start, so this waits for it,
+    // for up to five seconds.
+    Timer {
+        id: facts
+
+        property int tries: 0
+
+        interval: 50
+        repeat: true
+        onTriggered: {
+            try {
+                facts.tries++;
+                if (bluetooth.facts[mouse.address] === undefined) {
+                    root.expect("facts read", facts.tries < 100, "bluetooth.json was never read");
+                    return;
+                }
+                facts.stop();
+                const rows = bluetooth.verbs(mouse);
+                const told = rows.filter(row => row.key.startsWith("fact:"));
+                root.expect("facts after verbs", rows[0].key === "verb:bluetooth-disconnect",
+                    `the first row is ${rows[0].key}`);
+                root.expect("facts in order",
+                    told.map(row => `${row.side}=${row.name}`).join(",")
+                        === "connection=LE, HID over GATT,buttons=5",
+                    told.map(row => `${row.side}=${row.name}`).join(","));
+                root.expect("facts keyed",
+                    told[1].key === "fact:bluetooth:C3:9C:E3:2A:F3:6E:buttons", told[1].key);
+                root.expect("another device has none", bluetooth.verbs(known)
+                    .every(row => !row.key.startsWith("fact:")), "a stranger got facts");
+                Qt.callLater(() => Qt.exit(0));
+            } catch (error) {
+                facts.stop();
+                console.warn(`FAIL ${error.message}`);
+                Qt.callLater(() => Qt.exit(1));
+            }
         }
     }
 }

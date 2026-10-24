@@ -4,8 +4,9 @@
 # colours against sRGB, HDR) and what a monitor says over DDC/CI, which
 # the backlight daemon keeps beside them (../backlight); a card's formats,
 # clock, USB speed, firmware and, while it plays or records, what it runs
-# at; and a USB camera's formats, field of view, USB speed, firmware and
-# what it streams. desk-facts, run as the person at the machine, keeps them
+# at; a USB camera's formats, field of view, USB speed, firmware and what
+# it streams; and a Bluetooth input device's link, buttons, wheels or keys
+# and ids. desk-facts, run as the person at the machine, keeps them
 # as JSON in $XDG_RUNTIME_DIR/desk, one file a kind, rewriting a file only
 # when a uevent, a sound device opening or closing, a camera's holders
 # changing or a monitor's facts being kept alters what it says; facts.rs
