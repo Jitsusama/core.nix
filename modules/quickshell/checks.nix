@@ -363,6 +363,23 @@
       touch $out
     '';
 
+  # A D-Bus call from the account's shells, as run0 asks for polkit's prompt
+  # in, waits past systemd's own 25 seconds for an answer, as
+  # tests/prompt-outlasts-the-bus.py says, on a session bus of its own.
+  a-prompt-waits-for-a-person =
+    let
+      timeout = (account graphical).home.sessionVariables.SYSTEMD_BUS_TIMEOUT or "";
+      python = pkgs.python3.withPackages (python: [ python.jeepney ]);
+    in
+    pkgs.runCommandLocal "a-prompt-waits-for-a-person" { } ''
+      export HOME=$TMPDIR
+      ${lib.getExe' pkgs.dbus "dbus-run-session"} \
+        --config-file=${pkgs.dbus}/share/dbus-1/session.conf -- \
+        ${lib.getExe python} ${../../tests/prompt-outlasts-the-bus.py} \
+        ${lib.escapeShellArg timeout} ${lib.getExe' pkgs.systemd "busctl"}
+      touch $out
+    '';
+
   # Do not disturb holds notices while the screen is shared and lets them go
   # after, as tests/quiet.qml drives it through Quickshell itself, with
   # niri's casts, the notices, the recorder and the shell's options stood in
