@@ -88,8 +88,14 @@ Provider {
         Niri.act({ ScreenshotWindow: { id: window.id, write_to_disk: true, show_pointer: false } });
     }
 
-    // The window the keys were in.
-    readonly property var focused: Niri.current === null ? null : Niri.windows[Niri.current] ?? null
+    // The window the keys were in. niri names a workspace's new active window
+    // before it describes the window, and Niri.windows changes in place, so
+    // this follows Niri.revision too: on an empty workspace, Niri.current
+    // names the new window while Niri.windows doesn't hold it yet.
+    readonly property var focused: {
+        Niri.revision;
+        return Niri.current === null ? null : Niri.windows[Niri.current] ?? null;
+    }
 
     readonly property var stop: member({
         key: "capture:stop",
