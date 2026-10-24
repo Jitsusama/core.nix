@@ -2,9 +2,10 @@
 
 What to do on a bad day, for a laptop [installed][1] with Secure Boot on Joel's
 own keys and a disk the TPM opens. Each section starts from what happened:
-the disk won't open, a new generation won't start, nothing boots, a YubiKey
-is lost, the disk dies, the laptop is gone, or 1Password won't open. A machine's own repository
-adds what's particular to it, such as anything an employer manages.
+the disk won't open, the TPM or the firmware's keys were cleared, a new
+generation won't start, nothing boots, a YubiKey is lost, the disk dies, the
+laptop is gone, or 1Password won't open. A machine's own repository adds
+what's particular to it, such as anything an employer manages.
 
 ## What Makes It Recoverable
 
@@ -32,10 +33,35 @@ guide wrote can recover a machine; only the machine's own can install it.
 ## The Disk Asks Again After the PIN
 
 The TPM didn't release its key, so the prompt has moved on to the YubiKey.
-Type the YubiKey's PIN and touch it, and the disk opens. [When the TPM
+Type the YubiKey's PIN and touch it, and the disk opens. On a machine the
+guide installed that's the same PIN: the guide seals the TPM with the
+YubiKeys' PIN, so a plugged-in YubiKey is tried with what was typed and
+only asks for a touch. [When the TPM
 Refuses][2] says why that happens and how to seal the disk to the TPM again.
 Anything it doesn't name means the laptop didn't boot what it should: find
 out why before typing the recovery key.
+
+## The TPM Was Cleared
+
+A cleared TPM holds none of what it did: the disk's seal is gone, and so are
+the keys it kept, which it can never load again. The disk opens with a
+YubiKey and its PIN, as [above][9]. At that start the installed guide seals
+the disk to the TPM again, then makes the TPM's SSH and signing keys anew
+under a new PIN, saying why on screen. GitHub still holds the old public
+keys, so replace them as when [the disk dies][4]: the SSH key and both
+signing keys on GitHub, and the signing keys in the machine repository's
+`jitsusama.signing.allowedSigners`.
+
+A machine the guide didn't install does neither by itself: seal it again as
+[When the TPM Refuses][2] says, and make the keys as in [Make the SSH
+Keys][3].
+
+## The Firmware Lost Its Secure Boot Keys
+
+Nothing to do but have a YubiKey plugged in. The installed system enrols its
+keys again by itself over the next restarts. The TPM refuses those boots,
+since the firmware doesn't match what it was sealed to, so each asks for the
+YubiKey's PIN. Once the keys are back, the TPM opens the disk again.
 
 ## A New Generation Won't Start
 
@@ -54,7 +80,7 @@ sudo bootctl set-default <entry>   # bootctl list names them
 ## Nothing Boots
 
 Boot a stick the guide wrote: plug it in with the laptop off and start it
-from the stick, as the guide's last card said when the stick was written. The
+from the stick, as the guide's last screen said when the stick was written. The
 machine's own stick is signed with the machine's keys, so it boots with
 Secure Boot on. Another stick needs Secure Boot turned off in the firmware's
 setup, which asks for its password; turn it back on before booting the disk
@@ -191,3 +217,4 @@ and finishes by saying how to start that machine from it.
 [6]: #a-yubikey-is-lost
 [7]: https://support.1password.com/recovery-codes/
 [8]: https://support.1password.com/secret-key/
+[9]: #the-disk-asks-again-after-the-pin
