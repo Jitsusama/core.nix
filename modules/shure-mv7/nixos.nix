@@ -7,9 +7,11 @@
 # muting from either side mutes both, the desktop's input volume is the
 # mic's own gain, and its touch strip is the headphone volume the desktop
 # shows. In the auto level mode it's left in, the mic ignores that gain, so
-# the slider changes nothing a listener hears. Its voice is brought up to the level programs expect by a filter
-# that voice.conf describes, run as a PipeWire client of its own in every
-# account, following the sound server as the speakers' tunings do.
+# the slider changes nothing a listener hears. Its voice is brought up to the
+# level programs expect by a filter that voice.conf describes, run as a
+# PipeWire client of its own in every account, following the sound server as
+# the speakers' tunings do, and in its slice, which comes before the
+# programs' (modules/slices).
 { config, pkgs, ... }:
 let
   # The input carries the higher priority so the profile with both wins
@@ -58,9 +60,10 @@ in
     wants = [ "wireplumber.service" ];
     partOf = [ "pipewire.service" ];
     wantedBy = [ "pipewire.service" ];
-    # The limiter is an LV2 plugin, which PipeWire looks for here.
+    # Its stages are LV2 plugins, which PipeWire looks for here.
     environment.LV2_PATH = "${pkgs.lsp-plugins}/lib/lv2";
     serviceConfig = {
+      Slice = "session.slice";
       ExecStart = "${config.services.pipewire.package}/bin/pipewire -c ${./voice.conf}";
       Restart = "on-failure";
       RestartSec = 2;
