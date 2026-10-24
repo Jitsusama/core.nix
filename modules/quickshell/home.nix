@@ -761,6 +761,18 @@ in
     '';
   };
 
+  options.jitsusama.quickshell.sounds.wants = lib.mkOption {
+    type = lib.types.nullOr lib.types.path;
+    default = "${pkgs.sound-theme-freedesktop}/share/sounds/freedesktop/stereo/message.oga";
+    defaultText = lib.literalExpression ''"${pkgs.sound-theme-freedesktop}/share/sounds/freedesktop/stereo/message.oga"'';
+    description = ''
+      The one sound the shell makes, softly, when a pi session first wants
+      Joel and its notice is said, so he hears it from across the room;
+      never while notices are held, nor for a want he's already looking
+      at. Null makes none.
+    '';
+  };
+
   options.jitsusama.quickshell.surfaces = lib.mkOption {
     type = lib.types.attrsOf lib.types.path;
     default = { };
@@ -1390,6 +1402,13 @@ in
               readonly property var quiet: ${object config.jitsusama.quickshell.quiet}
               readonly property bool reports: ${lib.boolToString config.jitsusama.quickshell.reports}
               readonly property var margin: ${object config.jitsusama.quickshell.margin}
+              // The sound a want makes, and what plays it; "" for none.
+              readonly property var sounds: ${
+                object {
+                  wants = toString config.jitsusama.quickshell.sounds.wants;
+                  player = lib.getExe' pkgs.pipewire "pw-play";
+                }
+              }
               readonly property var notices: ${
                 object {
                   inherit (config.jitsusama.quickshell.notices) away;

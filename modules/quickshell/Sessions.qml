@@ -83,6 +83,9 @@ Singleton {
             Niri.spawn(["pi-wants-you", String(session.window.id), known,
                 `${session.title} ${wanted(session.presence.wants)}`,
                 plain(session.presence.wants.said ?? "")]);
+            // Softly, and never while notices are held.
+            if (Options.sounds.wants !== "" && !Quiet.on)
+                Niri.spawn([Options.sounds.player, "--volume=0.5", Options.sounds.wants]);
         }
     }
 

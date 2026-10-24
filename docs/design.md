@@ -596,7 +596,9 @@ works the same way everywhere.
   program can be kept to how far its notices reach (`notices.senders`):
   the history alone, counted as waiting but never shown, a card, or, when
   it's critical, a card that stays; a notice asking for less reaches less
-  far, and none reaches further than its program is kept to.
+  far, and none reaches further than its program is kept to. The shell
+  makes one sound, softly: when a pi session first wants Joel and its
+  notice is said (`sounds.wants`), never while notices are held.
 - **Joining waits to say how it went.** Return on a Wi-Fi network joins it
   and the launcher stays, its footer saying how far the join has got, until
   the network takes it or says why not. A locked network met for the first
