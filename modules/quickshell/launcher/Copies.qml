@@ -9,7 +9,8 @@
 // it's selected (`picture`, its file). Return pastes the copy into the
 // window the launcher opened over: it goes back on the clipboard, a
 // picture by asking the helper, which holds it, and once the window has
-// the keys again, its paste keys are pressed for it. With no window there,
+// the keys again, its paste keys are pressed for it (Pasting.qml, which
+// Super+E's emoji paste through too). With no window there,
 // Return only copies, as the right arrow's Copy always does. Forget the
 // Clipboard, found by its words while there's something to forget, has the
 // helper forget every copy, and what the clipboard holds with them.
@@ -112,36 +113,14 @@ Provider {
         });
     }
 
-    // The programs whose Ctrl+V is a key of their own, which paste with
-    // Ctrl+Shift+V instead: the terminals.
-    readonly property var terminals: ["kitty", "foot", "Alacritty", "org.wezfurlong.wezterm",
-        "com.mitchellh.ghostty"]
-
-    // The window the launcher opened over, which niri gives the keys back
-    // to as it closes; null on an empty workspace, with nowhere to paste.
-    function under() {
-        const id = Niri.current;
-        return id === null ? null : Niri.windows[id] ?? null;
-    }
-
-    // Copies, and then pastes into the window under, if there is one.
-    function paste(copied) {
-        const window = under();
-        copied();
-        if (window === null)
-            return;
-        pasting = window.app_id ?? "";
-        pasted.restart();
-    }
-
     // A row that pastes on Return, and steps into Paste and Copy, or Copy
     // alone with no window to paste into. Its verb follows, so the foot says
     // which Return does.
     function pastes(row, copied) {
-        row.run = () => provider.paste(copied);
+        row.run = () => Pasting.paste(copied);
         Object.defineProperty(row, "verb", {
             enumerable: true,
-            get: () => provider.under() === null ? "copy" : "paste"
+            get: () => Pasting.verb()
         });
         row.verbs = () => {
             const act = (id, run) => thing({
@@ -155,27 +134,10 @@ Provider {
                 run: run
             });
             const copy = act("verb:copy:copy", copied);
-            return provider.under() === null ? [copy]
-                : [act("verb:copy:paste", () => provider.paste(copied)), copy];
+            return Pasting.under() === null ? [copy]
+                : [act("verb:copy:paste", () => Pasting.paste(copied)), copy];
         };
         return row;
-    }
-
-    // The program pasted into, once the launcher has closed.
-    property string pasting: ""
-
-    // The paste keys wait as a window the launcher goes to does
-    // (Launcher.qml's later), for niri to have given the window its keys
-    // back, or they'd reach the launcher.
-    Timer {
-        id: pasted
-        interval: Theme.motion.short
-        onTriggered: {
-            const terminal = provider.terminals.includes(provider.pasting);
-            Niri.spawn(["wtype", "-M", "ctrl"].concat(terminal ? ["-M", "shift"] : [], ["-k", "v"],
-                terminal ? ["-m", "shift"] : [], ["-m", "ctrl"]));
-            Report.say(`pastes into ${provider.pasting}`);
-        }
     }
 
     // A picture's type and size, in the fewest words.
