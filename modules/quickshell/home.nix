@@ -86,6 +86,7 @@ let
     "Fuzzy.js"
     "Picks.qml"
     "Words.qml"
+    "Pasting.qml"
     "Notices.qml"
     "Sessions.qml"
     "SpendWatch.qml"

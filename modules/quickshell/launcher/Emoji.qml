@@ -1,6 +1,7 @@
 // Emoji, a collection: what's typed finds them by name or meaning (Emoji.js
 // says how), the best shows as one row with a count of the rest, and Return
-// copies it. The list is Unicode's, with CLDR's English keywords, built at
+// pastes it into the window the launcher opened over (Pasting.qml), or
+// copies it with no window there; a step in are Paste and Copy. The list is Unicode's, with CLDR's English keywords, built at
 // build time into `list` in the skin tone `tone` names, and read once,
 // a moment after the shell starts, so no keystroke waits on it.
 import qs
@@ -41,18 +42,46 @@ Provider {
         return all;
     }
 
-    // An emoji's row, made once.
+    // An act inside an emoji's row, Paste or Copy.
+    function act(id, run) {
+        return thing({
+            key: id,
+            verb: Words.verb(id),
+            name: Words.name(id),
+            keywords: Words.keywords(id),
+            glyph: Words.glyph(id),
+            hue: "action",
+            now: true,
+            run: run
+        });
+    }
+
+    // An emoji's row, made once. Its verb follows the window under, so the
+    // foot says whether Return pastes or only copies.
     function row(e) {
-        if (!e.row)
-            e.row = member({
+        if (!e.row) {
+            const copied = () => {
+                Quickshell.clipboardText = e.emoji;
+            };
+            const made = member({
                 key: `emoji:${e.name}`,
-                verb: "copy",
                 name: e.name,
                 glyph: e.emoji,
                 hue: "text",
                 now: true,
-                run: () => Quickshell.clipboardText = e.emoji
+                run: () => Pasting.paste(copied),
+                verbs: () => {
+                    const copy = provider.act("verb:emoji:copy", copied);
+                    return Pasting.under() === null ? [copy]
+                        : [provider.act("verb:emoji:paste", () => Pasting.paste(copied)), copy];
+                }
             });
+            Object.defineProperty(made, "verb", {
+                enumerable: true,
+                get: () => Pasting.verb()
+            });
+            e.row = made;
+        }
         return e.row;
     }
 

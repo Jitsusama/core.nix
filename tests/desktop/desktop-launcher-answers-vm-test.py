@@ -18,6 +18,7 @@ if TYPE_CHECKING:
     from desktop_prelude import (
         LAUNCHER_OPEN,
         ROWS_LOOKED_AT,
+        STARTING,
         Json,
         answer,
         as_account,
@@ -28,6 +29,7 @@ if TYPE_CHECKING:
         shell_said,
         showing,
         step_in,
+        told,
         type_in,
     )
     from driver_names import machine, subtest, t
@@ -599,6 +601,31 @@ with subtest("the launcher finds emoji in their own place, and only there"):
     machine.send_key("ret")
     machine.wait_until_fails(closed, timeout=10)
     t.assertEqual(as_account("wl-paste --no-newline"), "\U0001f431")
+    # Over a window, Return pastes the emoji into it as well as copying
+    # it, as Super+V's copies do, and a step in are Paste and Copy.
+    as_account(
+        "niri msg action spawn -- kitty --title emoji-here "
+        "sh -c 'stty -icanon -echo; cat > /tmp/emoji-pasted'"
+    )
+    machine.wait_until_succeeds(
+        in_session("niri msg focused-window | grep -q emoji-here"),
+        timeout=dt.timedelta(seconds=STARTING),
+    )
+    machine.send_key("meta_l-e")
+    launcher_ready()
+    type_in("tada", selecting="party popper")
+    launcher_until(lambda shown: (shown["selected"] or {}).get("verb") == "paste")
+    step_in()
+    launcher_until(lambda shown: shown["rows"] == ["Paste", "Copy"])
+    with told("pastes into kitty"):
+        machine.send_key("ret")
+    machine.wait_until_succeeds(
+        in_session("grep -q \U0001f389 /tmp/emoji-pasted"), timeout=dt.timedelta(seconds=10)
+    )
+    as_account("pkill -f 'cat > /tmp/emoji-pasted'")
+    machine.wait_until_fails(
+        in_session("niri msg windows | grep -q emoji-here"), timeout=dt.timedelta(seconds=30)
+    )
 
 with subtest("a category's word and a space step into it, and a command finishes by Tab"):
     closed = in_session(LAUNCHER_OPEN)

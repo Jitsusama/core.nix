@@ -718,6 +718,11 @@ works the same way everywhere.
 - **A key's action is its row.** A key's action that a row already does
   is that row, drawing the key's chord: Super+L is the session's Lock,
   Super+Return is kitty, and the screenshot keys are Capture's rows.
+- **Return pastes where the launcher opened.** On a copy in Super+V or an
+  emoji in Super+E, Return puts it on the clipboard and pastes it into the
+  window the launcher opened over, Ctrl+Shift+V in a terminal and Ctrl+V
+  elsewhere (Pasting.qml); a step in are Paste and Copy, for only copying.
+  Over no window, Return only copies, and the foot says which it does.
 - **Copies stay in memory.** One program hears every copy for the session,
   text and pictures, and the shell asks it for them, so none is written to
   disk, a picture's file sitting in the runtime directory, and none is kept
