@@ -297,6 +297,29 @@ with subtest("the stick comes out, and the machine boots its own disk with a key
         message = "the disk never opened with the key's PIN"
         raise RuntimeError(message)
 
+    def unlock_as_asked() -> str:
+        """Answer the disk's prompts as docs/installing.md says, and say whose PIN opened it."""
+        asked = r"Please enter (LUKS2 token|TPM2|security token) PIN"
+        opened = "Finished .*Cryptography Setup for system"
+        answered = ""
+        tokens_asked = 0
+        for _ in range(8):
+            machine.wait_for_console_text(f"{asked}|{opened}")
+            last = list(re.finditer(f"{asked}|{opened}", machine.get_console_log()))[-1]
+            if last.group(1) is None:
+                return answered
+            # systemd's one prompt tries what's typed on every key, so the
+            # TPM's PIN goes first, and the YubiKey's when it comes back.
+            # Its own fallbacks name whose PIN they want.
+            if last.group(1) == "LUKS2 token":
+                tokens_asked += 1
+                answered = "the TPM" if tokens_asked == 1 else "the key"
+            else:
+                answered = "the key" if last.group(1) == "security token" else "the TPM"
+            machine.send_console((pin if answered == "the key" else tpm_pin) + "\n")
+        message = "the disk never opened with the PINs its prompts named"
+        raise RuntimeError(message)
+
     machine.start(allow_reboot=True)
     # systemd-boot enrols the keys the stick readied and restarts before
     # any kernel starts, so the disk asks only once, with Secure Boot on.
@@ -329,6 +352,17 @@ def policies() -> list[int]:
     # VM's TPM, so each is a policy.
     indices = [int(index, 16) for index in re.findall(r"0x[0-9A-Fa-f]+", listed)]
     return [index for index in indices if index in UNASSIGNED]
+
+
+def lockouts() -> int:
+    """Give how many failed authorisations the TPM is counting towards its lockout."""
+    getcap = Path(tpm2_clear).parent / "tpm2_getcap"
+    shown = machine.succeed(f"{getcap} -T device:/dev/tpmrm0 properties-variable")
+    counted = re.search(r"TPM2_PT_LOCKOUT_COUNTER: (0x[0-9A-Fa-f]+)", shown)
+    if counted is None:
+        message = "the TPM didn't say its lockout counter:\n" + shown
+        raise RuntimeError(message)
+    return int(counted.group(1), 16)
 
 
 def own_policy() -> int:
@@ -669,15 +703,18 @@ with subtest("a firmware cleared of its keys gets them back once the machine's a
     machine.succeed(
         f"cp /run/current-system/systemd/lib/systemd/boot/efi/systemd-bootx64.efi {unsigned}"
     )
+    lockouts_before = lockouts()
     # A firmware's setup clearing its keys leaves it as a fresh copy of
     # OVMF's variables is: in setup mode, with no keys and no boot
     # entries, so it starts systemd-boot from the disk's fallback path.
     machine.shutdown()
     machine.efi_vars_path.unlink()
     machine.start(allow_reboot=True)
-    # Without Secure Boot the TPM's policy doesn't hold, so a YubiKey
-    # opens the disk.
-    unlock()
+    # Without Secure Boot the TPM's policy doesn't hold, so it refuses
+    # its PIN for the boot, and a YubiKey opens the disk. Each PIN typed
+    # goes to both, so the TPM's may cost the YubiKey a try and the
+    # YubiKey's the TPM one, never more.
+    t.assertEqual(unlock_as_asked(), "the key")
     machine.connect()
     # lanzaboote readies the keys again, from the machine's own, and
     # fails only at predicting the TPM's policy, which systemd-pcrlock
@@ -701,16 +738,27 @@ with subtest("a firmware cleared of its keys gets them back once the machine's a
     # any kernel starts.
     machine.succeed(f"rm {unsigned}")
     machine.reboot()
-    unlock()
+    rebooted = len(machine.get_console_log())
+    t.assertEqual(unlock_as_asked(), "the key")
     machine.wait_for_console_text("Custom Secure Boot keys successfully enrolled")
+    # A boot that restarted itself may have greeted the driver first, and
+    # the driver takes the first greeting it reads for the boot it's in.
+    restarted_boot = machine.get_console_log()[rebooted:]
+    greeted = "Started backdoor.service" in restarted_boot
     # Enforcing with the same keys, the TPM's policy, which the boot
     # without them couldn't rewrite, holds again, and its PIN alone opens
     # the disk.
-    unlock(tpm_pin)
+    t.assertEqual(unlock_as_asked(), "the TPM")
     machine.connect()
+    if greeted:
+        machine.connected = False
+        machine.connect()
     log = machine.get_console_log()
     enrolled = log.rfind("Custom Secure Boot keys successfully enrolled")
     t.assertEqual(log[enrolled:].count("Linux version"), 1)
+    # Each of the two boots the TPM refused cost it at most the one try
+    # the YubiKey's PIN took on its way to the YubiKey.
+    t.assertLessEqual(lockouts() - lockouts_before, 2)
     # The guide finds the TPM still sealed, and goes on to the keys.
     on_screen("a PIN for alice's SSH keys", timeout=300)
     t.assertIn("Secure Boot: enabled (user)", machine.succeed("bootctl status"))
