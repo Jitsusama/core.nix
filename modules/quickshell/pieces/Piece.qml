@@ -51,6 +51,10 @@ Item {
     // him now, not soon (`now`): the battery about to die, a call ringing.
     property string kind: wants ? "wants" : "leftOn"
     property bool now: false
+    // The program whose notices say this piece's news, as a notification
+    // names it, so its mark waits while one of its cards is on screen:
+    // a card or a mark, never both.
+    property string app: ""
     property string hue: "machine"
     // { glyph, name, chord, run(shell) }
     property var actions: []

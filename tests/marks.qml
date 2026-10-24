@@ -94,6 +94,21 @@ QtObject {
         expect("let go while it lingers, it lingers once",
             Marks.lingers(kept, [camera], [], { at: 5000, linger: 15000 }).map(one => one.until), [16000]);
 
+        // What a notice will say waits a moment, so its glyph never shows
+        // only to go as the card comes; the rest is drawn at once.
+        const said = { mark: "agent", app: "pi" };
+        const plain = { mark: "awake", app: "" };
+        let waits = Marks.awaited([], [], [said, plain], { at: 1000, wait: 1000 });
+        expect("pi's want waits, Keep Awake doesn't",
+            waits, [{ mark: "agent", until: 2000 }]);
+        expect("still lit, it keeps its time",
+            Marks.awaited(waits, [said], [said], { at: 1500, wait: 1000 }),
+            [{ mark: "agent", until: 2000 }]);
+        expect("then it's drawn",
+            Marks.awaited(waits, [said], [said], { at: 2000, wait: 1000 }), []);
+        expect("gone, it waits no more", Marks.awaited(waits, [said], [], { at: 1500, wait: 1000 }),
+            []);
+
         for (const failure of failures)
             console.warn(`FAIL ${failure}`);
         Qt.exit(failures.length === 0 ? 0 : 1);

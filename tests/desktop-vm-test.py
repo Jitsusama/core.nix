@@ -882,8 +882,15 @@ with subtest("the launcher finds a pi session by its quest, and goes to its wind
     # on what follows, so Super+N takes the stack at once: held, it waits.
     with told("keys notices"):
         machine.send_key("meta_l-n")
-    reported("holds margin ", lambda rest: "agent" in rest.split(), since)
-    photograph("margin-pi-wants")
+    # The card says it, so pi's mark waits for the card to go: a card or
+    # a mark, never both.
+    told_since = as_account(
+        "journalctl --user --unit=quickshell --no-pager --output=cat"
+        f" --after-cursor={shlex.quote(since)}"
+    )
+    t.assertNotRegex(
+        told_since, r"holds margin [^\n]*\bagent\b", "pi's mark showed beside its card"
+    )
     # The same want, its file replaced again, says nothing new.
     presence_says({"addresses": ["TESTQA"], "busy": False, "wants": question})
     time.sleep(3)
@@ -892,11 +899,15 @@ with subtest("the launcher finds a pi session by its quest, and goes to its wind
         " | grep -c 'report\\[shows card A quest of its own & whole asks you'"
     )
     t.assertEqual(as_account(cards).strip(), "1", "the same want was said twice")
+    since = mark()
     machine.send_key("ret")
     machine.wait_until_succeeds(
         in_session("niri msg --json focused-window | grep -q TESTQA"), timeout=10
     )
     machine.wait_until_fails(in_session("niri msg layers | grep -q notifications"), timeout=10)
+    # Its card gone, the want still stands, so pi's mark shows.
+    reported("holds margin ", lambda rest: "agent" in rest.split(), since)
+    photograph("margin-pi-wants")
     # Another, unanswered, from the other window: its notice says what
     # it wants, and goes when the want does, missed by nobody. Notices
     # missed earlier are let go first, so the margin's notices mark is
@@ -2984,9 +2995,9 @@ with subtest("a Tuple call ringing wants Joel, and one not answered is kept as m
     machine.wait_until_fails(in_session(margin), timeout=10)
     with told("shows card Someone is calling"):
         tuple_said("received incoming call: a caller")
-    wait_for_surface("margin")
     machine.succeed(offered)
-    photograph("margin-ringing")
+    # The ring's card says it, so the margin's phone waits for it to go.
+    photograph("notice-ringing")
     # The caller gives up: the ring's notice goes, and a missed call stays.
     tuple_said("Caller.cpp:985|invalidating call")
     machine.wait_until_fails(offered, timeout=10)

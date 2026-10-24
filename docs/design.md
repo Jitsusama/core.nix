@@ -324,7 +324,10 @@ a call ringing. Nothing else in the margin has a hue, no glyph carries a
 badge, and no line underlines one, since a glyph that pictures its thing
 needs nothing told twice. Something on air that goes stays fifteen
 seconds in its place, muted (`margin.linger`), so a camera that was on
-for a moment is still seen to have been on; nothing else lingers.
+for a moment is still seen to have been on; nothing else lingers. A card
+or a mark, never both: while a program's notice is on screen saying the
+same thing, as pi's want or a call ringing does, its glyph waits for the
+card to go.
 
 What each is, in words, is the launcher's What's on, opened by Super+O or by
 clicking a glyph, on that glyph's row: a row each, its glyph as the margin

@@ -19,7 +19,9 @@
 //
 // What each is, in words, and what can be done about it, is the launcher's
 // What's on (launcher/WhatsOn.qml): Super+O opens it, and clicking a glyph
-// opens it on that glyph's row. The overview draws nothing of its own, so
+// opens it on that glyph's row. A piece whose program has a card on screen
+// saying the same, as pi's want or a call ringing, waits for the card to
+// go: a card or a mark, never both. The overview draws nothing of its own, so
 // the margin stays while it's open, the one place that says what's on.
 pragma ComponentBehavior: Bound
 import Quickshell
@@ -48,6 +50,7 @@ Scope {
             entry: fact.entry,
             piece: fact.piece,
             mark: fact.entry.mark,
+            app: fact.piece.app,
             glyph: Theme.glyph[fact.entry.mark],
             kind: fact.piece.kind,
             order: fact.entry.order,
@@ -58,24 +61,45 @@ Scope {
     property var kept: []
     property var before: []
     readonly property int linger: Options.margin.linger * 1000
-    // What's drawn: what's lit and what lingers, left to right, the
-    // corner's last.
-    readonly property var on: Marks.arranged(lit.concat(kept.map(one => one.thing)))
+    // What has just come true and waits a moment for its card
+    // (Marks.awaited), long enough for a notice to be sent and shown on a
+    // busy machine; with no card coming, as for a want in the window Joel's
+    // in, the glyph is that much late, which nobody waits on.
+    property var waits: []
+    readonly property int wait: 2000
+    readonly property var waiting: waits.map(one => one.mark)
+    // The programs with a card on screen, whose pieces' marks wait for it
+    // to go, as a card or a mark, never both; none while the launcher has
+    // gathered them.
+    readonly property var carded: Notices.gathered ? []
+        : Object.keys(Notices.live).map(id => Notices.live[id].appName.toLowerCase())
+    // What's drawn: what's lit and has no card up, and what lingers, left
+    // to right, the corner's last.
+    readonly property var on: Marks.arranged(lit
+        .filter(thing => !root.waiting.includes(thing.mark))
+        .filter(thing => thing.piece.app === ""
+            || !root.carded.includes(thing.piece.app.toLowerCase()))
+        .concat(kept.map(one => one.thing)))
 
-    // Lingers what just went, and wakes when the soonest is due to go.
+    // Lingers what just went, holds back what just came for its card, and
+    // wakes when the soonest of either is due.
     function settle() {
         const at = Date.now();
         root.kept = Marks.lingers(root.kept, root.before, root.lit, {
             at,
             linger: root.linger
         });
+        root.waits = Marks.awaited(root.waits, root.before, root.lit, {
+            at,
+            wait: root.wait
+        });
         root.before = root.lit;
-        if (root.kept.length === 0) {
+        const times = root.kept.concat(root.waits).map(one => one.until);
+        if (times.length === 0) {
             due.stop();
             return;
         }
-        const soonest = root.kept.reduce((soon, one) => Math.min(soon, one.until),
-            root.kept[0].until);
+        const soonest = times.reduce((soon, until) => Math.min(soon, until), times[0]);
         due.interval = Math.max(0, soonest - at);
         due.restart();
     }

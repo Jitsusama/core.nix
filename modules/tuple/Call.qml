@@ -35,6 +35,8 @@ Piece {
     wants: rings
     kind: rings ? "wants" : "onAir"
     now: rings
+    // Who's calling, joining or leaving is said as a notice of Tuple's.
+    app: "Tuple"
     hue: "person"
     value: rings ? `${caller} is calling`
         : length + (Tuple.muted === true ? ", muted" : "")

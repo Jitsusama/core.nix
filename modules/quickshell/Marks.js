@@ -44,6 +44,23 @@ function tone(piece) {
     return piece.kind === "leftOn" ? "muted" : "strong";
 }
 
+// What waits a moment before it's drawn, as { mark, until }: a thing whose
+// program says its news as a notice (`app`) and has just come true, since
+// its card follows a moment later, and a glyph drawn only to go as the card
+// comes would flash. One still lit keeps its time; one gone or past it goes.
+function awaited(waits, before, after, clock) {
+    const { at, wait } = clock;
+    const was = before.map(thing => thing.mark);
+    const lit = after.map(thing => thing.mark);
+    const stays = waits.filter(one => lit.includes(one.mark) && one.until > at);
+    const held = stays.map(one => one.mark);
+    const come = after
+        .filter(thing => thing.app !== "" && !was.includes(thing.mark)
+            && !held.includes(thing.mark))
+        .map(thing => ({ mark: thing.mark, until: at + wait }));
+    return stays.concat(come);
+}
+
 // What lingers at a time, as { mark, until, thing }: something on air
 // that was lit before and isn't now stays a while, muted, in its place,
 // so a camera let go is still seen to have been on. One lit again stops
