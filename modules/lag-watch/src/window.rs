@@ -402,6 +402,22 @@ fn trouble(w: &Window, then: &Snapshot, now: &Snapshot) -> Found {
             ),
         );
     }
+    // A thread asleep on a page that compaction is moving waits through
+    // io_schedule, so PSI counts it as I/O, not memory (mm/filemap.c,
+    // softleaf_entry_wait_on_locked). From 09:40 to 12:00, the windows
+    // holding niri's stalls of 25 ms and more, each while a build moved its
+    // memory, read 0.1 to 0.9% here, and the 789 without one 0.094% at p99.
+    if s("session").io_some >= FRAME_OF_A_WINDOW {
+        found.add(
+            Who::Desktop,
+            4,
+            Cause::Disk,
+            format!(
+                "the desktop waited on the disk or on memory being moved {:.2}% of the time",
+                s("session").io_some
+            ),
+        );
+    }
     if s("app").memory_full > 0.1 {
         found.add(
             Who::Apps,
@@ -606,6 +622,34 @@ mod tests {
         assert!(w.trouble.is_empty(), "{:?}", w.trouble);
         assert_eq!((w.worst.as_str(), w.who.as_str()), ("", ""));
         assert!((w.waits["niri"].mean_us - 20.0).abs() < 1e-9);
+    }
+
+    fn waiting_on_io(us: u64) -> Group {
+        Group {
+            io: Stall { some: us, full: 0 },
+            ..Group::default()
+        }
+    }
+
+    #[test]
+    fn the_desktop_waiting_a_frame_on_a_page_or_the_disk_is_trouble() {
+        let then = snapshot(0.0, &[("session", waiting_on_io(0))], 0, 0);
+        // niri asleep 27 ms while a build moved a page of its memory.
+        let now = snapshot(10.0, &[("session", waiting_on_io(27_000))], 0, 0);
+        let w = between(&then, &now, quiet_niri(), 0, "gen");
+        assert_eq!(
+            w.trouble,
+            ["the desktop waited on the disk or on memory being moved 0.27% of the time"]
+        );
+        assert_eq!((w.worst.as_str(), w.who.as_str()), ("disk", "desktop"));
+    }
+
+    #[test]
+    fn the_desktop_waiting_under_a_frame_on_the_disk_is_no_trouble() {
+        let then = snapshot(0.0, &[("session", waiting_on_io(0))], 0, 0);
+        let now = snapshot(10.0, &[("session", waiting_on_io(5_000))], 0, 0);
+        let w = between(&then, &now, quiet_niri(), 0, "gen");
+        assert!(w.trouble.is_empty(), "{:?}", w.trouble);
     }
 
     #[test]
