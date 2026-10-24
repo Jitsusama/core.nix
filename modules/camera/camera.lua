@@ -1,7 +1,9 @@
 -- The camera's viewfinder, inside mpv (home.nix): the picture mirrored, as a
 -- mirror shows Joel to himself, and a panel below saying what the keys do.
--- Return takes a picture, or starts and stops a video; Tab changes which;
--- Escape closes it, finishing a video first. Nothing else is bound, so no
+-- Return takes a picture, or starts a video and then stops it, and either
+-- way the viewfinder goes once it's done, as a screenshot's would; Tab
+-- changes which; Escape closes it, finishing a video first. Nothing else is
+-- bound, so no
 -- stray key seeks or pauses a camera.
 --
 -- A picture is the frame on screen, turned back the way others see it, as
@@ -109,7 +111,7 @@ local function hints()
   elseif recording and recording.stopping then
     return { { 'Esc', 'close' } }
   elseif recording then
-    return { { '↵', 'stop' }, { 'Esc', 'stop and close' } }
+    return { { '↵', 'stop' } }
   end
   local other = mode == 'picture' and 'video' or 'picture'
   return {
@@ -273,9 +275,10 @@ local function save(frame, file, tries)
   end
   flash = true
   draw()
+  -- The shutter's moment shown, the viewfinder goes: the picture is saved
+  -- by a program of its own, which outlives this window.
   mp.add_timeout(0.12, function()
-    flash = false
-    draw()
+    mp.command('quit')
   end)
   run(
     table.concat({
@@ -450,7 +453,7 @@ local function act()
   if mode == 'picture' then
     take()
   elseif recording then
-    finish()
+    close()
   else
     start()
   end
