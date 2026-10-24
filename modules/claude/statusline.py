@@ -13,7 +13,7 @@ from typing import Any
 # Each part's colour, as #rrggbb: folder, model, context and separator.
 COLOURS: dict[str, str] = json.loads(Path("@colours@").read_text())
 
-# Nerd Font marks, which the theme's monospaced face carries.
+# Marks from the icon font, which the theme's monospaced face carries.
 FOLDER = "\uf07b"
 MODEL = "\uf2db"
 CONTEXT = "\uf019"

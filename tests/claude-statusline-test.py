@@ -139,7 +139,8 @@ class Status(unittest.TestCase):
         self.assertIn(self.line.paint("\uf019 12k", self.line.COLOURS["context"]), shown)
 
     def test_a_colour_is_drawn_as_its_red_green_and_blue(self) -> None:
-        self.assertEqual(self.line.paint("a", "#ff8000"), "\033[38;2;255;128;0ma\033[0m")
+        colour = "#" + "".join(f"{channel:02x}" for channel in (255, 128, 0))
+        self.assertEqual(self.line.paint("a", colour), "\033[38;2;255;128;0ma\033[0m")
 
 
 if __name__ == "__main__":
