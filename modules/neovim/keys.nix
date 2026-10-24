@@ -1,5 +1,5 @@
-# Neovim's keys, one home for each: home.nix writes them as lua/keys.lua,
-# which binds every one, and they go into the key map (jitsusama.keys.neovim)
+# Neovim's keys, one home for each: home.nix writes them as lua/bindings.lua,
+# which keys.lua binds every one of, and they go into the key map (jitsusama.keys.neovim)
 # where the launcher finds them by what they do. Space is Neovim's layer,
 # its leader, and after it come the words every layer shares
 # (docs/design.md, The Keyboard): w closes, Tab goes back to the one used
