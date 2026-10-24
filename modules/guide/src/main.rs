@@ -512,7 +512,7 @@ fn installed() -> Result<(), Fault> {
     let mut machine = System::new(journal, host_log());
     // At boot it's looked at every time, so a machine with nothing to do
     // shows nothing, and the sign-in follows at once.
-    let journey = Journey::new(guide::installed::steps())
+    let journey = Journey::new(guide::installed::steps(&mut machine)?)
         .map_err(|why| Fault::unreadable("the installed machine's steps", why))?;
     if matches!(
         journey.next(Place::Installed, &mut machine),

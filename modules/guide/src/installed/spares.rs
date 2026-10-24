@@ -46,9 +46,34 @@ const MAKING: &str = "/run/guide/spare";
 /// `ssh:` and which has no user, by its kind, ed25519 first.
 const DOWNLOADED: [&str; 2] = ["id_ed25519_sk_rk", "id_ecdsa_sk_rk"];
 
-pub struct SpareKeys;
+/// One YubiKey's spare, for the name the stick enrolled it under: a step
+/// for each, as the stick enrols each, since each is plugged in and
+/// unlocked with its own PIN.
+pub struct SpareKey {
+    name: String,
+    id: &'static str,
+}
 
-const ID: &str = "spare-keys";
+impl SpareKey {
+    pub fn new(name: &str) -> SpareKey {
+        // A machine has a step for each of a handful of keys, made once,
+        // so its id lives as long as the guide does.
+        let id = Box::leak(format!("spare-{}", slug(name)).into_boxed_str());
+        SpareKey {
+            name: name.into(),
+            id,
+        }
+    }
+}
+
+/// A step for each YubiKey the stick named here, and none on a machine
+/// the guide didn't install.
+pub fn steps(machine: &mut dyn Machine) -> Result<Vec<Box<dyn Step>>, Fault> {
+    Ok(named(machine)?
+        .iter()
+        .map(|key| Box::new(SpareKey::new(&key.name)) as Box<dyn Step>)
+        .collect())
+}
 
 /// The YubiKeys the stick enrolled, by name, none on a machine the
 /// guide didn't install.
@@ -100,55 +125,47 @@ fn kept(machine: &mut dyn Machine, file: &str) -> Result<Kept, Fault> {
     }
 }
 
-/// What's still to do: the first spare missing, by its account and its
-/// YubiKey's name, or why nothing can be done.
+/// What's still to do on one YubiKey: the spare missing from it, by the
+/// account keeping it, or why nothing can be done.
 enum Next {
     Nothing { evidence: String },
     Make { spare: Spare, key: Named },
     Refused(String),
 }
 
-fn next(machine: &mut dyn Machine) -> Result<Next, Fault> {
+fn next(machine: &mut dyn Machine, name: &str) -> Result<Next, Fault> {
     let spares = facts(machine)?.spares;
-    let names = named(machine)?;
     if spares.is_empty() {
         return Ok(Next::Nothing {
             evidence: "no account here keeps a spare SSH key on its YubiKeys".into(),
         });
     }
-    if names.is_empty() {
+    let Some(key) = named(machine)?.into_iter().find(|key| key.name == name) else {
         return Ok(Next::Nothing {
-            evidence: "the stick named no YubiKeys here to keep a spare SSH key on".into(),
+            evidence: format!("the stick didn't name {name} among this machine's YubiKeys"),
         });
-    }
+    };
     for spare in &spares {
-        for key in &names {
-            match kept(machine, &spare.file(&key.name))? {
-                Kept::Whole => {}
-                Kept::Missing => {
-                    return Ok(Next::Make {
-                        spare: spare.clone(),
-                        key: key.clone(),
-                    });
-                }
-                Kept::Mismatched(why) => return Ok(Next::Refused(why)),
+        match kept(machine, &spare.file(name))? {
+            Kept::Whole => {}
+            Kept::Missing => {
+                return Ok(Next::Make {
+                    spare: spare.clone(),
+                    key,
+                });
             }
+            Kept::Mismatched(why) => return Ok(Next::Refused(why)),
         }
     }
     let accounts: Vec<&str> = spares.iter().map(|spare| spare.account.as_str()).collect();
-    let names: Vec<&str> = names.iter().map(|key| key.name.as_str()).collect();
     Ok(Next::Nothing {
-        evidence: format!(
-            "{} each hold {}'s spare SSH key",
-            names.join(" and "),
-            accounts.join(" and ")
-        ),
+        evidence: format!("{name} holds {}'s spare SSH key", accounts.join(" and ")),
     })
 }
 
-impl Step for SpareKeys {
+impl Step for SpareKey {
     fn id(&self) -> &'static str {
-        ID
+        self.id
     }
 
     fn place(&self) -> Place {
@@ -156,11 +173,11 @@ impl Step for SpareKeys {
     }
 
     fn title(&self) -> &'static str {
-        "Keep a spare SSH key on each YubiKey"
+        "Keep a spare SSH key on a YubiKey"
     }
 
     fn observe(&self, machine: &mut dyn Machine) -> Result<Standing, Fault> {
-        Ok(match next(machine)? {
+        Ok(match next(machine, &self.name)? {
             Next::Nothing { evidence } => Standing::Done { evidence },
             Next::Refused(why) => Standing::Blocked {
                 why,
@@ -185,18 +202,16 @@ impl Step for SpareKeys {
     }
 
     fn run(&self, machine: &mut dyn Machine, answers: &crate::Answers) -> Result<(), Fault> {
-        let (spare, key) = match next(machine)? {
+        let step = self.id;
+        let (spare, key) = match next(machine, &self.name)? {
             Next::Nothing { .. } => return Ok(()),
-            Next::Refused(why) => return Err(Fault::Blocked { step: ID, why }),
+            Next::Refused(why) => return Err(Fault::Blocked { step, why }),
             Next::Make { spare, key } => (spare, key),
         };
         let name = key.name.clone();
-        let pin = secret(answers, "pin").ok_or(Fault::Unanswered {
-            step: ID,
-            ask: "pin",
-        })?;
-        let device = only_plugged(machine, &name)?;
-        is_the_one(machine, &device, &key)?;
+        let pin = secret(answers, "pin").ok_or(Fault::Unanswered { step, ask: "pin" })?;
+        let device = only_plugged(machine, step, &name)?;
+        is_the_one(machine, step, &device, &key)?;
 
         machine.remove_tree(MAKING)?;
         let made = spare_from(machine, &device, pin, &spare, &name);
@@ -207,15 +222,19 @@ impl Step for SpareKeys {
 }
 
 /// The one YubiKey plugged in, or why it isn't there to use.
-fn only_plugged(machine: &mut dyn Machine, name: &str) -> Result<String, Fault> {
+fn only_plugged(
+    machine: &mut dyn Machine,
+    step: &'static str,
+    name: &str,
+) -> Result<String, Fault> {
     match fido2::plugged(machine)?.as_slice() {
         [one] => Ok(one.path.clone()),
         [] => Err(Fault::Blocked {
-            step: ID,
+            step,
             why: format!("no key is plugged in; plug in {name}"),
         }),
         many => Err(Fault::Blocked {
-            step: ID,
+            step,
             why: format!("{} keys are plugged in; leave only {name}", many.len()),
         }),
     }
@@ -224,7 +243,12 @@ fn only_plugged(machine: &mut dyn Machine, name: &str) -> Result<String, Fault> 
 /// Whether the key at `device` is `key`: it holds the credential that
 /// key enrolled, and when it doesn't, which it is instead, if it's one
 /// of the person's at all.
-fn is_the_one(machine: &mut dyn Machine, device: &str, key: &Named) -> Result<(), Fault> {
+fn is_the_one(
+    machine: &mut dyn Machine,
+    step: &'static str,
+    device: &str,
+    key: &Named,
+) -> Result<(), Fault> {
     if holds(machine, device, &key.credential)? {
         return Ok(());
     }
@@ -232,13 +256,13 @@ fn is_the_one(machine: &mut dyn Machine, device: &str, key: &Named) -> Result<()
     for other in named(machine)? {
         if other.name != *name && holds(machine, device, &other.credential)? {
             return Err(Fault::Blocked {
-                step: ID,
+                step,
                 why: format!("this key is {}, not {name}; plug in {name}", other.name),
             });
         }
     }
     Err(Fault::Blocked {
-        step: ID,
+        step,
         why: format!("this key doesn't open the disk, so it isn't {name}"),
     })
 }

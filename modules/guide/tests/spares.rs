@@ -2,13 +2,14 @@
 //! the key hold: asked for by the name the stick enrolled it under, made
 //! only on a key holding none and downloaded from one that does, the PIN
 //! only ever in ssh-keygen's environment, and a key holding another
-//! name's credential, or one that doesn't open the disk, refused.
+//! name's credential, or one that doesn't open the disk, refused; a
+//! step for each key, each done on its own.
 
 use guide::fake::Fake;
 use guide::install::keys::NAMED;
 use guide::installed::FACTS;
 use guide::installed::keys::ASKPASS;
-use guide::installed::spares::SpareKeys;
+use guide::installed::spares::{SpareKey, steps};
 use guide::{Answer, Answers, Ask, Fault, Program, Secret, Standing, Step, Tool};
 
 const DEVICE: &str = "/dev/hidraw1";
@@ -115,6 +116,14 @@ fn whole(fake: &mut Fake, file: &str, matching: bool) {
     fake.prints(Tool::SshKeygen, &["-y", "-f", file], &read);
 }
 
+fn nano() -> SpareKey {
+    SpareKey::new("the Nano")
+}
+
+fn five_c() -> SpareKey {
+    SpareKey::new("the 5C")
+}
+
 fn answers() -> Answers {
     let mut answers = Answers::new();
     answers.give("plugged", Answer::Done);
@@ -207,7 +216,7 @@ fn makes(fake: &mut Fake, comment: &str) {
 #[test]
 fn a_missing_spare_is_asked_for_by_the_name_the_stick_enrolled_its_key_under() {
     let mut fake = machine();
-    let Standing::Needed { asks } = SpareKeys.observe(&mut fake).unwrap() else {
+    let Standing::Needed { asks } = nano().observe(&mut fake).unwrap() else {
         panic!("the Nano's spare is still to keep")
     };
     let ids: Vec<&str> = asks.iter().map(Ask::id).collect();
@@ -232,7 +241,7 @@ fn a_key_holding_no_spare_has_one_made_as_root_and_given_to_the_account() {
     downloads(&mut fake, None);
     makes(&mut fake, "alice@yubikey nano");
     keeps(&mut fake, &format!("{MAKING}/made"), NANO);
-    SpareKeys.run(&mut fake, &answers()).unwrap();
+    nano().run(&mut fake, &answers()).unwrap();
 
     let keygen: Vec<&String> = fake
         .calls
@@ -271,7 +280,7 @@ fn a_key_holding_a_spare_has_it_downloaded_rather_than_made_over() {
         "Comment 'ssh:' changed\n",
     );
     keeps(&mut fake, &downloaded, NANO);
-    SpareKeys.run(&mut fake, &answers()).unwrap();
+    nano().run(&mut fake, &answers()).unwrap();
     assert!(
         !fake.calls.iter().any(|call| call.contains("-t ed25519-sk")),
         "{:#?}",
@@ -285,15 +294,14 @@ fn a_key_holding_another_names_credential_is_refused() {
     // Not the 5C's credential, asked first, but the Nano's.
     opens(&mut fake, false);
     opens(&mut fake, true);
-    whole(&mut fake, NANO, true);
-    let Standing::Needed { asks } = SpareKeys.observe(&mut fake).unwrap() else {
+    let Standing::Needed { asks } = five_c().observe(&mut fake).unwrap() else {
         panic!("the 5C's spare is still to keep")
     };
     let Ask::Act { what, .. } = &asks[0] else {
         panic!("plugging it in is something to do")
     };
     assert!(what.contains("Plug in the 5C"), "{what}");
-    let refused = SpareKeys.run(&mut fake, &answers());
+    let refused = five_c().run(&mut fake, &answers());
     assert!(
         matches!(&refused, Err(Fault::Blocked { why, .. }) if why.contains("this key is the Nano, not the 5C")),
         "{refused:?}"
@@ -313,7 +321,7 @@ fn a_key_holding_another_names_credential_is_refused() {
 fn a_key_that_doesnt_open_the_disk_is_refused() {
     let mut fake = machine();
     opens(&mut fake, false);
-    let refused = SpareKeys.run(&mut fake, &answers());
+    let refused = nano().run(&mut fake, &answers());
     assert!(
         matches!(&refused, Err(Fault::Blocked { why, .. }) if why.contains("doesn't open the disk, so it isn't the Nano")),
         "{refused:?}"
@@ -325,20 +333,47 @@ fn spares_whose_halves_match_are_done_and_nothing_is_asked() {
     let mut fake = machine();
     whole(&mut fake, NANO, true);
     whole(&mut fake, FIVE_C, true);
-    let Standing::Done { evidence } = SpareKeys.observe(&mut fake).unwrap() else {
-        panic!("both keys hold alice's spare")
+    for (step, name) in [(nano(), "the Nano"), (five_c(), "the 5C")] {
+        let Standing::Done { evidence } = step.observe(&mut fake).unwrap() else {
+            panic!("{name} holds alice's spare")
+        };
+        assert_eq!(evidence, format!("{name} holds alice's spare SSH key"));
+    }
+}
+
+#[test]
+fn one_keys_spare_kept_leaves_the_other_still_to_keep() {
+    let mut fake = machine();
+    whole(&mut fake, NANO, true);
+    assert!(matches!(
+        nano().observe(&mut fake).unwrap(),
+        Standing::Done { .. }
+    ));
+    let Standing::Needed { asks } = five_c().observe(&mut fake).unwrap() else {
+        panic!("the 5C's spare is still to keep")
     };
-    assert_eq!(
-        evidence,
-        "the Nano and the 5C each hold alice's spare SSH key"
-    );
+    let Ask::Act { what, .. } = &asks[0] else {
+        panic!("plugging it in is something to do")
+    };
+    assert!(what.contains("Plug in the 5C"), "{what}");
+}
+
+#[test]
+fn each_key_the_stick_named_has_a_step_of_its_own() {
+    let mut fake = machine();
+    let ids: Vec<&str> = steps(&mut fake)
+        .unwrap()
+        .iter()
+        .map(|step| step.id())
+        .collect();
+    assert_eq!(ids, ["spare-nano", "spare-5c"]);
 }
 
 #[test]
 fn a_public_half_that_isnt_the_spares_blocks() {
     let mut fake = machine();
     whole(&mut fake, NANO, false);
-    let Standing::Blocked { why, .. } = SpareKeys.observe(&mut fake).unwrap() else {
+    let Standing::Blocked { why, .. } = nano().observe(&mut fake).unwrap() else {
         panic!("a mismatched spare is left alone")
     };
     assert!(why.contains("isn't the public half"), "{why}");
@@ -348,7 +383,7 @@ fn a_public_half_that_isnt_the_spares_blocks() {
 fn half_a_spare_blocks_rather_than_being_made_over() {
     let mut fake = machine();
     fake.file(NANO, b"-----BEGIN OPENSSH PRIVATE KEY-----");
-    let Standing::Blocked { why, .. } = SpareKeys.observe(&mut fake).unwrap() else {
+    let Standing::Blocked { why, .. } = nano().observe(&mut fake).unwrap() else {
         panic!("half a spare is left alone")
     };
     assert!(why.contains("without its public half"), "{why}");
@@ -358,8 +393,12 @@ fn half_a_spare_blocks_rather_than_being_made_over() {
 fn a_machine_the_guide_didnt_install_has_nothing_to_keep() {
     let mut fake = machine();
     fake.no_file(NAMED);
-    let Standing::Done { evidence } = SpareKeys.observe(&mut fake).unwrap() else {
+    assert!(steps(&mut fake).unwrap().is_empty());
+    let Standing::Done { evidence } = nano().observe(&mut fake).unwrap() else {
         panic!("no YubiKey is named here")
     };
-    assert!(evidence.contains("named no YubiKeys"), "{evidence}");
+    assert!(
+        evidence.contains("didn't name the Nano among this machine's YubiKeys"),
+        "{evidence}"
+    );
 }

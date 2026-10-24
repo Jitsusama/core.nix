@@ -406,7 +406,8 @@ with subtest("the guide keeps a spare SSH key on each YubiKey, refusing the one 
     on_screen("machine is finished", timeout=300)
     shown = " ".join(screen().split()).lower()
     t.assertIn("ssh keys id_ecdsa, agent-signing", shown)
-    t.assertIn("the nano and the 5c each hold alice's spare ssh key", shown)
+    t.assertIn("the nano holds alice's spare ssh key", shown)
+    t.assertIn("the 5c holds alice's spare ssh key", shown)
     for name in ["nano", "5c"]:
         file = f"/home/alice/.ssh/yubikey-{name}"
         for half in ["", ".pub"]:

@@ -438,13 +438,15 @@ fn prove_tpm_opens(machine: &mut dyn Machine, volume: &str, pin: &Secret) -> Res
     Ok(())
 }
 
-/// Every step on the installed machine, in order.
-pub fn steps() -> Vec<Box<dyn Step>> {
-    vec![
+/// Every step on the installed machine, in order, with a spare's for
+/// each YubiKey the stick named.
+pub fn steps(machine: &mut dyn Machine) -> Result<Vec<Box<dyn Step>>, Fault> {
+    let mut steps: Vec<Box<dyn Step>> = vec![
         Box::new(CheckSecureBoot),
         Box::new(SealTpm),
         Box::new(policies::FreeOldPolicies),
         Box::new(keys::MakeKeys),
-        Box::new(spares::SpareKeys),
-    ]
+    ];
+    steps.extend(spares::steps(machine)?);
+    Ok(steps)
 }
