@@ -89,20 +89,9 @@ Provider {
         return copyRow(Object.assign({ copy: "", hue: "machine", glyph: "", note: "" }, fields));
     }
 
+    // A part holding more wears the network speed's glyph, dimmed.
     function holder(fields, inside) {
-        const row = copyRow(Object.assign({
-            copy: "",
-            hue: "machine",
-            note: "",
-            glyph: Theme.glyph.traffic
-        }, fields));
-        return Object.assign(row, {
-            verb: "more",
-            stays: true,
-            now: false,
-            verbs: inside,
-            run: () => provider.launcher?.enter(row)
-        });
+        return holderRow(Object.assign({ glyph: Theme.glyph.traffic }, fields), inside);
     }
 
     // The last two reads, { last, before }, each { at, all }, where `all`

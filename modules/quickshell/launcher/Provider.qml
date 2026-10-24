@@ -255,6 +255,20 @@ Scope {
         }, fields));
     }
 
+    // A figure holding more, as a CPU's Cores or a display's Scale: it says
+    // a value, wears its glyph dimmed (Choice.qml's "more"), and steps in
+    // on Return as on the right arrow to what `inside` gives, made then.
+    function holderRow(fields, inside) {
+        const row = copyRow(Object.assign({ copy: "", hue: "machine", note: "" }, fields));
+        return Object.assign(row, {
+            verb: "more",
+            stays: true,
+            now: false,
+            verbs: inside,
+            run: () => provider.launcher?.enter(row)
+        });
+    }
+
     // What each URL said, and when: { pending, value, failed, at }.
     property var asked: ({})
 

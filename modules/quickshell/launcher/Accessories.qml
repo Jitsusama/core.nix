@@ -311,24 +311,13 @@ Provider {
             copy: "",
             glyph: glyph,
             note: "",
-            rows: told.map(each => {
-                const row = copyRow({
-                    key: `link:bluetooth:${each.device.address}`,
-                    name: each.device.name,
-                    side: said(each),
-                    graph: graph(each),
-                    glyph: kind(each.device),
-                    hue: "machine",
-                    copy: ""
-                });
-                return Object.assign(row, {
-                    verb: "more",
-                    stays: true,
-                    now: false,
-                    verbs: () => each.rows,
-                    run: () => provider.launcher?.enter(row)
-                });
-            }),
+            rows: told.map(each => holderRow({
+                key: `link:bluetooth:${each.device.address}`,
+                name: each.device.name,
+                side: said(each),
+                graph: graph(each),
+                glyph: kind(each.device)
+            }, () => each.rows)),
             live: provider
         };
     }
