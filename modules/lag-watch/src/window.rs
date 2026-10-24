@@ -288,6 +288,34 @@ fn trouble(w: &Window, then: &Snapshot, now: &Snapshot) -> Vec<String> {
             naming(most(then, now, |g| g.io), 1)
         ));
     }
+    // A program ended for memory is the worst a wait comes to.
+    let ended = |name: &str| {
+        let was = then.groups.get(name).map_or(0, |g| g.killed);
+        now.groups
+            .get(name)
+            .map_or(0, |g| g.killed.saturating_sub(was))
+    };
+    if ended("session") > 0 {
+        found.push(format!(
+            "the desktop lost {} programs to the kernel's OOM killer",
+            ended("session")
+        ));
+    }
+    if ended("app") > 0 {
+        let unit = now
+            .apps
+            .iter()
+            .find(|(name, g)| {
+                then.apps
+                    .get(*name)
+                    .is_some_and(|old| g.killed > old.killed)
+            })
+            .map_or_else(String::new, |(name, _)| format!(", in {name}"));
+        found.push(format!(
+            "apps lost {} programs to the kernel's OOM killer{unit}",
+            ended("app")
+        ));
+    }
     if let (Some(now), Some(old)) = (w.memory.get("session"), then.groups.get("session"))
         && now.swap_mib > old.swap >> 20
     {
@@ -439,6 +467,32 @@ mod tests {
                 "apps stalled on memory 0.50% of the time",
                 "the desktop went to swap, 64 MiB now"
             ]
+        );
+    }
+
+    #[test]
+    fn a_program_the_kernel_ended_for_memory_is_trouble_and_named() {
+        let mut then = snapshot(
+            0.0,
+            &[("app", group(0, 0, 0)), ("jobs", group(0, 0, 0))],
+            0,
+            0,
+        );
+        let mut now = then.clone();
+        now.at = 10.0;
+        let killed = |n| Group {
+            killed: n,
+            ..Group::default()
+        };
+        then.apps.insert("chrome.scope".to_string(), killed(0));
+        now.apps.insert("chrome.scope".to_string(), killed(2));
+        now.groups.insert("app".to_string(), killed(2));
+        // Work's programs ended are no wait of Joel's.
+        now.groups.insert("jobs".to_string(), killed(5));
+        let w = between(&then, &now, quiet_niri(), 0, "gen");
+        assert_eq!(
+            w.trouble,
+            ["apps lost 2 programs to the kernel's OOM killer, in chrome.scope"]
         );
     }
 
