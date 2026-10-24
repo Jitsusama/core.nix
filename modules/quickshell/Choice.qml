@@ -31,9 +31,10 @@ Rectangle {
     // say (Suspend the machine "sleep").
     property string also
     // What's said after the name: the word it was found by, its count, and
-    // for a noun what would have been on the right.
-    readonly property string detail: [also !== "" ? `\u201c${also}\u201d` : "", count,
-        kind !== "" ? side : ""].filter(part => part !== "").join(" \u00b7 ")
+    // for a noun what would have been on the right. Each is named through
+    // the row, since a bare name here would find an id before a property.
+    readonly property string detail: [row.also !== "" ? `\u201c${row.also}\u201d` : "",
+        row.count, row.kind !== "" ? row.side : ""].filter(part => part !== "").join(" \u00b7 ")
     // Said by the shell rather than found, so it's muted and can't be picked.
     property bool quiet: false
 
@@ -94,8 +95,8 @@ Rectangle {
         readonly property string said: row.kind !== "" ? row.kind : row.side
         readonly property bool sided: !chorded && said !== ""
 
-        width: chorded ? keys.width : sided ? side.width : 0
-        height: chorded ? keys.height : side.height
+        width: chorded ? keys.width : sided ? sideText.width : 0
+        height: chorded ? keys.height : sideText.height
 
         Chord {
             id: keys
@@ -104,7 +105,7 @@ Rectangle {
         }
 
         Text {
-            id: side
+            id: sideText
             visible: right.sided
             // What a row is never takes more than its share of the row, so
             // however long it runs it can't reach the name.
