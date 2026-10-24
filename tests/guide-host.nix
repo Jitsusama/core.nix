@@ -10,6 +10,7 @@
 # with its passphrase and signs the stick with the machine's db key.
 # polkit lets the person open a removable disk without the password a
 # desktop's agent would ask for, since a test has no agent to answer it.
+# The script is guide-host-vm-test.py.
 { self, pkgs }:
 let
   inherit (pkgs) lib;
@@ -133,97 +134,24 @@ pkgs.testers.runNixOSTest {
     };
   };
 
-  testScript = ''
-    import json, os, re, subprocess, tempfile
-
-    stick = tempfile.NamedTemporaryFile(suffix=".qcow2")
-    subprocess.run(["${pkgs.qemu}/bin/qemu-img", "create", "-f", "qcow2", "-b", "${used}/stick.raw", "-F", "raw", stick.name, "6G"], check=True)
-    os.environ["STICK_IMAGE"] = stick.name
-
-    def screen():
-        return host.get_tty_text("1")
-
-    def on_screen(pattern, timeout=120):
-        def shown(_):
-            text = screen()
-            if re.search(r"(?i)(try again|look again)", text):
-                raise Exception("the guide stopped:\n" + text)
-            return re.search("(?i)" + pattern, text) is not None
-        with host.nested(f"waiting for {pattern} on the guide's screen"):
-            retry(shown, timeout)
-
-    def type(text):
-        host.send_chars(text + "\n")
-
-    host.wait_for_unit("multi-user.target")
-
-    with subtest("the stick, once used, has a partition the desktop mounted"):
-        host.succeed("udevadm settle")
-        # udisks lets only someone signed in at the machine mount a stick, and
-        # takes alice for someone at another seat until her sign-in on the
-        # first console is open, which multi-user.target doesn't wait for.
-        host.wait_until_succeeds("test \"$(loginctl show-user alice --property=State --value)\" = active")
-        host.succeed("su alice -c 'udisksctl mount --block-device /dev/sda1'")
-        host.succeed("findmnt /dev/sda1")
-
-    with subtest("the bundle the host keeps for the machine is opened with its passphrase"):
-        on_screen("Write laptop's stick")
-        # Sealed to no YubiKey, since the payload carries no recipients.
-        on_screen("which opens")
-        type(${builtins.toJSON bundlePassphrase})
-
-    with subtest("the one stick is named, by what it is"):
-        on_screen("is the stick to write")
-        type("")
-
-    with subtest("the passphrase is seven words shown alone for a phone, then typed back"):
-        on_screen("Copy All")
-        type("")
-        retry(lambda _: len(screen().split()) == 7, 30)
-        words = " ".join(screen().split())
-        type("")
-        on_screen("reading it off your phone")
-        # Another's words are refused and left to be put right, and
-        # nothing is written.
-        other = "abacus abdomen abdominal abide abiding ability ablaze"
-        type(other)
-        on_screen("that isn't it")
-        assert other in screen(), screen()
-        host.fail("sfdisk --json /dev/sda | grep -q store-verity")
-        for _ in other:
-            host.send_key("backspace")
-        # The words are read whatever their case.
-        type(words.upper())
-
-    with subtest("the stick is written as the person, and read back"):
-        on_screen("The stick is written", timeout=900)
-        host.fail("findmnt /dev/sda1")
-        # Written by alice's guide, never as root.
-        host.succeed("pgrep -u alice -f 'guide host'")
-        host.fail("pgrep -u root -f 'guide host'")
-        verified = host.succeed("sfdisk --verify /dev/sda")
-        assert "No errors detected" in verified, verified
-        # From the disk itself, not udev's record of what was there before.
-        listed = json.loads(host.succeed("sfdisk --json /dev/sda"))
-        names = [p.get("name") for p in listed["partitiontable"]["partitions"]]
-        assert names == ["esp", "store-verity", "store", "vault"], names
-
-    with subtest("the old stick's bundles and the host's own are kept, and carried on"):
-        host.succeed("udevadm settle && mkdir -p /run/vault && mount -o ro /dev/sda4 /run/vault")
-        kept = "/home/alice/.local/state/guide/rescue"
-        for machine, bundle in [("desktop", "${bundle "desktop"}"), ("laptop", "/var/lib/guide/rescue-bundle.json")]:
-            host.succeed(f"cmp {bundle} /run/vault/{machine}-rescue-bundle.json")
-            host.succeed(f"cmp {bundle} {kept}/{machine}-rescue-bundle.json")
-        host.succeed(f"test $(stat -c %U {kept}) = alice")
-        host.succeed("umount /run/vault")
-        # The old vault was mounted for alice to be read, not its disk
-        # opened, and unmounted again: UDisks2 says so only as it takes
-        # the mount point away.
-        host.succeed("journalctl -u udisks2 --grep 'Cleaning up mount point /run/media/alice/.* \\(device 8:2 is not mounted\\)'")
-
-    with subtest("the stick's boot program is signed with the machine's db key, from its bundle"):
-        host.succeed("mkdir -p /run/esp && mount -o ro /dev/sda1 /run/esp")
-        host.succeed("sbverify --cert /var/lib/sbctl/keys/db/db.pem /run/esp/EFI/BOOT/BOOTX64.EFI")
-        host.succeed("umount /run/esp")
-  '';
+  # The driver runs beside the machine, not on it, so what the script needs
+  # from Nix, the used stick, the tool to put an overlay on it, the old
+  # stick's bundle and the passphrase of the host's own, reaches it in one
+  # file rather than on the machine's path.
+  testScript =
+    let
+      values = pkgs.writeText "guide-host-values.json" (
+        builtins.toJSON {
+          qemuImg = "${pkgs.qemu}/bin/qemu-img";
+          used = "${used}/stick.raw";
+          desktopBundle = "${bundle "desktop"}";
+          inherit bundlePassphrase;
+        }
+      );
+      script = builtins.readFile ./guide-host-vm-test.py;
+    in
+    builtins.replaceStrings [ "@values@" ] [ "${values}" ] script;
+  # nix fmt holds the script to mypy --strict against the driver's own types,
+  # through driver_names.pyi, which the driver's lighter check can't find.
+  skipTypeCheck = true;
 }
