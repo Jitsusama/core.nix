@@ -157,11 +157,24 @@ pub struct Window {
 impl Window {
     /// Fills in `since` from the window before's: kept while trouble goes
     /// on, begun with this window when it starts, cleared when it stops.
-    pub fn carry(&mut self, before: Option<u64>) {
+    ///
+    /// A wait doesn't go on across more than two windows' length between
+    /// their ends, which is the machine asleep. A window's own length stops
+    /// with the machine, but its end is the wall clock's, so a wait from
+    /// before the lid shut would otherwise read as lasting through the
+    /// sleep the moment it opened.
+    pub fn carry(&mut self, before: Option<&Window>) {
+        let went_on = before
+            .filter(|b| {
+                let apart = u32::try_from(self.ended.saturating_sub(b.ended))
+                    .map_or(f64::INFINITY, f64::from);
+                apart <= 2.0 * self.seconds.max(b.seconds)
+            })
+            .and_then(|b| b.since);
         self.since = if self.trouble.is_empty() {
             None
         } else {
-            Some(before.unwrap_or(self.ended))
+            Some(went_on.unwrap_or(self.ended))
         };
     }
 }
@@ -717,15 +730,38 @@ mod tests {
         let then = snapshot(0.0, &[("session", group(0, 0, 0))], 0, 0);
         let busy = snapshot(10.0, &[("session", group(300_000, 0, 0))], 0, 0);
         let quiet = snapshot(10.0, &[("session", group(0, 0, 0))], 0, 0);
-        let mut since = None;
+        assert_eq!(
+            since_of(
+                &then,
+                &[(100, &quiet), (110, &busy), (120, &busy), (130, &quiet)]
+            ),
+            [None, Some(110), Some(110), None]
+        );
+    }
+
+    #[test]
+    fn a_wait_does_not_last_through_the_machine_asleep() {
+        let then = snapshot(0.0, &[("session", group(0, 0, 0))], 0, 0);
+        let busy = snapshot(10.0, &[("session", group(300_000, 0, 0))], 0, 0);
+        // The window's own clock stops while the machine sleeps, so the one
+        // it wakes in reads ten seconds though it ends 160 after the last.
+        assert_eq!(
+            since_of(&then, &[(110, &busy), (270, &busy), (280, &busy)]),
+            [Some(110), Some(270), Some(270)]
+        );
+    }
+
+    /// Each window's `since`, carried along the windows ending at each time.
+    fn since_of(then: &Snapshot, windows: &[(u64, &Snapshot)]) -> Vec<Option<u64>> {
+        let mut last: Option<Window> = None;
         let mut seen = Vec::new();
-        for (ended, now) in [(100, &quiet), (110, &busy), (120, &busy), (130, &quiet)] {
-            let mut w = between(&then, now, quiet_niri(), ended, "gen");
-            w.carry(since);
-            since = w.since;
-            seen.push(since);
+        for &(ended, now) in windows {
+            let mut w = between(then, now, quiet_niri(), ended, "gen");
+            w.carry(last.as_ref());
+            seen.push(w.since);
+            last = Some(w);
         }
-        assert_eq!(seen, [None, Some(110), Some(110), None]);
+        seen
     }
 
     #[test]
