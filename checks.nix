@@ -274,6 +274,9 @@ let
     # Whether the swap comes down while udev probes its device shows only with
     # the device there and held open.
     vm-swap-comes-down-while-probed = import ./tests/zram.nix { inherit self pkgs; };
+    # Whether systemd-oomd ends the work that filled swap before the kernel's
+    # OOM killer picks a program shows only with swap filling for real.
+    vm-full-swap-ends-what-filled-it = import ./tests/full-swap.nix { inherit self pkgs; };
     # Whether the kernel took a slice's disk latency shows only with the
     # account's manager starting it on a real drive.
     vm-apps-come-first = import ./tests/slices.nix { inherit self pkgs; };

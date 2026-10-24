@@ -50,6 +50,16 @@
   # build, rather than whichever process the kernel picks.
   systemd.oomd.enableUserSlices = true;
 
+  # Pressure alone misses memory that fills without stalling: work that
+  # swaps out steadily under its own MemoryHigh, as a git repack or an
+  # evaluation does, until swap and memory are both gone and the kernel's
+  # OOM killer ends whichever program it picks. Once swap is 90% used and
+  # less than a tenth of memory is left, systemd-oomd ends the cgroup holding
+  # the most swap instead, which is the work that filled it. Fedora sets
+  # this on the root slice by default; NixOS's enableRootSlice watches
+  # pressure there and leaves swap unwatched.
+  systemd.slices."-".sliceConfig.ManagedOOMSwap = "kill";
+
   # systemd 261 watches CPU and IO pressure as well as memory, and hands each
   # service the cgroup file to watch. Its user@.service turns that off for
   # memory alone, so a user manager is handed IO pressure for every program in
