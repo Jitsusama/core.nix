@@ -13,6 +13,13 @@
 //! answered at once. The microphone is read by pw-record into memory on a
 //! thread of its own, and Whisper runs on another, which loads the models
 //! as listening starts and lets them go after ten minutes unused.
+//!
+//! A first load compiles the encoder for the NPU, which took 44 s on a
+//! busy machine, and Joel's first words waited on it. So where there's an
+//! NPU, the service loads the models once as it starts, at sign-in, which
+//! fills OpenVINO's cache,
+//! and lets them go again, since they hold 1.2 GiB: a load from the cache
+//! takes about 1.5 s.
 
 use std::io::{BufRead, BufReader, Read, Write};
 use std::os::fd::FromRawFd;
@@ -22,7 +29,7 @@ use std::process::{Child, Command, Stdio};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use crate::mel::{RATE, SAMPLES};
 use crate::whisper::Whisper;
@@ -57,6 +64,7 @@ enum Event {
 }
 
 enum Job {
+    Prime,
     Warm,
     Transcribe(Vec<f32>),
 }
@@ -83,7 +91,11 @@ pub fn socket() -> PathBuf {
 pub fn serve(model: &Path, device: String, cache: Option<PathBuf>) -> Result<(), String> {
     let listener = listener()?;
     let (events, heard) = mpsc::channel();
+    let prime = device != "CPU" && accelerated();
     let jobs = worker(model.to_owned(), device, cache, events.clone());
+    if prime {
+        let _ = jobs.send(Job::Prime);
+    }
     let coordinator = thread::spawn({
         let events = events.clone();
         move || coordinate(&heard, &events, &jobs)
@@ -107,6 +119,14 @@ pub fn serve(model: &Path, device: String, cache: Option<PathBuf>) -> Result<(),
     }
     drop(coordinator);
     Ok(())
+}
+
+/// Whether the machine has an NPU, which shows as an accel device. Only its
+/// compile is slow enough to do ahead; without one the encoder compiles for
+/// the CPU as quickly as it loads, so loading at sign-in would only take
+/// memory for nothing.
+fn accelerated() -> bool {
+    std::fs::read_dir("/dev/accel").is_ok_and(|mut entries| entries.next().is_some())
 }
 
 fn listener() -> Result<UnixListener, String> {
@@ -142,23 +162,10 @@ fn coordinate(heard: &Receiver<Event>, events: &Sender<Event>, jobs: &Sender<Job
                 }
             }
             Event::Toggle(mut stream) => {
-                match state {
-                    State::Idle => match listen(events, generation) {
-                        Ok(started) => {
-                            recording = Some(started);
-                            let _ = jobs.send(Job::Warm);
-                            // The shell shows that it's listening, from the
-                            // watchers' stream; a notice is only for what
-                            // went wrong.
-                            state = State::Listening;
-                        }
-                        Err(error) => notice("Dictation can't listen", &error),
-                    },
-                    State::Listening => {
-                        generation += 1;
-                        state = stop(recording.take(), jobs);
-                    }
-                    State::Transcribing => {}
+                let said;
+                (state, said) = press(state, &mut recording, &mut generation, events, jobs);
+                if let Some((summary, body)) = said {
+                    notice(summary, &body);
                 }
                 let _ = stream.write_all(format!("{}\n", state.word()).as_bytes());
             }
@@ -184,6 +191,41 @@ fn coordinate(heard: &Receiver<Event>, events: &Sender<Event>, jobs: &Sender<Job
         if state != before {
             tell(state, &mut watchers);
         }
+    }
+}
+
+/// What a press does in each state: start listening, stop and hand what
+/// was heard to Whisper, or, while Whisper works, say so rather than
+/// nothing, since it can't listen again until what it heard is typed. The
+/// shell shows listening from the watchers' stream, so a notice is only
+/// for what can't happen.
+fn press(
+    state: State,
+    recording: &mut Option<Recording>,
+    generation: &mut u64,
+    events: &Sender<Event>,
+    jobs: &Sender<Job>,
+) -> (State, Option<(&'static str, String)>) {
+    match state {
+        State::Idle => match listen(events, *generation) {
+            Ok(started) => {
+                *recording = Some(started);
+                let _ = jobs.send(Job::Warm);
+                (State::Listening, None)
+            }
+            Err(error) => (State::Idle, Some(("Dictation can't listen", error))),
+        },
+        State::Listening => {
+            *generation += 1;
+            (stop(recording.take(), jobs), None)
+        }
+        State::Transcribing => (
+            State::Transcribing,
+            Some((
+                "Dictation is still writing",
+                "It types what you said as soon as it's done; press again then.".to_owned(),
+            )),
+        ),
     }
 }
 
@@ -307,6 +349,18 @@ fn worker(
                 Err(RecvTimeoutError::Disconnected) => return,
             };
             match job {
+                Job::Prime => {
+                    if whisper.is_none() {
+                        let started = Instant::now();
+                        match Whisper::load(&model, &device, cache.as_deref()) {
+                            Ok(_) => eprintln!(
+                                "dictation: ready in {} ms",
+                                started.elapsed().as_millis()
+                            ),
+                            Err(error) => eprintln!("dictation: {error}"),
+                        }
+                    }
+                }
                 Job::Warm => {
                     if let Err(error) = load(&mut whisper) {
                         eprintln!("dictation: {error}");
@@ -398,6 +452,35 @@ mod tests {
             [State::Idle, State::Listening, State::Transcribing].map(State::word),
             ["idle", "listening", "transcribing"]
         );
+    }
+
+    #[test]
+    fn a_press_while_writing_says_so_and_waits() {
+        let (events, _heard) = mpsc::channel();
+        let (jobs, work) = mpsc::channel();
+        let mut generation = 3;
+        let (state, said) = press(
+            State::Transcribing,
+            &mut None,
+            &mut generation,
+            &events,
+            &jobs,
+        );
+        assert_eq!(state, State::Transcribing);
+        assert!(matches!(said, Some((summary, _)) if summary.contains("still writing")));
+        assert_eq!(generation, 3);
+        assert!(work.try_recv().is_err());
+    }
+
+    #[test]
+    fn a_press_while_listening_stops_quietly() {
+        let (events, _heard) = mpsc::channel();
+        let (jobs, _work) = mpsc::channel();
+        let mut generation = 3;
+        let (state, said) = press(State::Listening, &mut None, &mut generation, &events, &jobs);
+        assert_eq!(state, State::Idle);
+        assert!(said.is_none());
+        assert_eq!(generation, 4);
     }
 
     #[test]
