@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from desktop_prelude import (
+        ACCOUNT,
         CAPITALS,
         FROM_THE_CORNER,
         FROM_THE_EDGE,
@@ -52,6 +53,25 @@ if TYPE_CHECKING:
         window_titled,
     )
     from driver_names import machine, retry, subtest, t
+
+with subtest("niri's settings failing to load is said until they load again"):
+    # niri keeps the settings it had when a load fails, and says so for a
+    # few seconds only. A setting it doesn't know stands in for one only a
+    # newer niri knows, as srgb-gamut was to the niri running on 2026-10-24.
+    settings = f"/home/{ACCOUNT}/.config/niri/config.kdl"
+    meant = machine.succeed(f"readlink {settings}").strip()
+    with told("shows card The window manager kept its old settings"):
+        machine.succeed(
+            f"cp --remove-destination {meant} {settings}"
+            f" && echo 'a-setting-niri-does-not-know' >> {settings}"
+            f" && chown {ACCOUNT} {settings}"
+        )
+    with told("gone notifications"):
+        machine.succeed(f"ln -sfn {meant} {settings}")
+    machine.wait_until_fails(
+        in_session("test -e $XDG_RUNTIME_DIR/niri-settings-notice"), timeout=10
+    )
+
 
 with subtest("a notice that came and went is found again in the launcher"):
     # The notice the first notification's subtest left to go by itself,

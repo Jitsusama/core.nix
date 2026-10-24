@@ -419,6 +419,26 @@ Scope {
         }
     }
 
+    // A screen coming or going (a dock, the lid, a monitor) can leave the
+    // notices' surface nowhere: with no screen left, Qt moves the window
+    // onto a stand-in that can hold no surface, then onto the screen that
+    // comes back by itself, so Quickshell never makes the surface again
+    // (Launcher.qml says more). A critical notice never goes by itself, so
+    // nothing would bring it back. So once the screens change, a surface
+    // that's up is let go for a turn and made again.
+    property bool remaking: false
+
+    Connections {
+        target: Quickshell
+
+        function onScreensChanged() {
+            root.remaking = true;
+            Qt.callLater(() => {
+                root.remaking = false;
+            });
+        }
+    }
+
     PanelWindow {
         id: window
 
@@ -440,7 +460,7 @@ Scope {
         }
 
         visible: (server.trackedNotifications.values.length > 0 || root.playing)
-            && !Notices.gathered
+            && !Notices.gathered && !root.remaking
         anchors.top: true
         anchors.right: true
         implicitWidth: stack.width + root.inside.right + Theme.floating.reach
