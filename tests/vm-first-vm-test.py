@@ -1,9 +1,15 @@
-"""A check's VM goes ahead of the builds beside it; a container's build gets ids.
+"""A check's VM goes ahead of the builds beside it, each build in a cgroup of its own.
 
-A process named as qemu is, started as a build user in the Nix daemon's
-cgroup as batch at nice 5, has every thread put to the normal policy at
-nice -10, a thread it starts afterwards included, while a compiler beside
-it stays as it was. A build asking for a range of user ids gets 65,536.
+The daemon moves into a cgroup beside its builds, and each build gets one,
+handed the controllers for CPU, disk, memory and pids. A build running a
+process named as qemu is has every thread of it put to the normal policy at
+nice -10, a thread it starts afterwards included, and its cgroup weighed at
+1000 for CPU and disk, while a compiler's build beside it stays as the
+daemon set it, at 100. The daemon's own cgroup is marked for systemd-oomd
+to spare while a build can go instead. Restarting the daemon, ten times
+over with vm-first looking every 20 ms, leaves both running, and the new
+daemon starts and builds again. Stopping a build leaves nothing of it. A
+build asking for a range of user ids gets 65,536.
 """
 
 from typing import TYPE_CHECKING
@@ -14,9 +20,10 @@ if TYPE_CHECKING:
 # What a thread of the VM is put to, and what a build is left at: nice and
 # scheduling class, as ps writes them.
 AHEAD = "-10 TS"
-AS_BUILT = "5 B"
+AS_BUILT = "0 B"
 # The ids a build that asks for a range of them is given.
 RANGE = "65536"
+DAEMON = "/sys/fs/cgroup/build.slice/nix-daemon.service"
 
 
 def scheduling(pid: str) -> str:
@@ -26,10 +33,68 @@ def scheduling(pid: str) -> str:
     ).strip()
 
 
+# Through the daemon, as every agent's build goes: root alone may build in
+# its own process, which puts the build in the caller's cgroup instead.
+NIX_BUILD = "nix-build --store daemon --no-out-link"
+
+
+def build(name: str) -> None:
+    """Start a build of one of the machine's derivations, left running."""
+    machine.succeed(f"systemd-run --unit={name} {NIX_BUILD} /etc/{name}.nix")
+
+
+def found(comm: str) -> str:
+    """Wait for the process the kernel names so, and give its id."""
+    machine.wait_until_succeeds(f"pgrep -x {comm}", timeout=60)
+    return machine.succeed(f"pgrep -x {comm}").strip()
+
+
+def cgroup_of(pid: str) -> str:
+    """Give the process's cgroup, as a path under the cgroup file system."""
+    return "/sys/fs/cgroup" + machine.succeed(f"cut -d: -f3 /proc/{pid}/cgroup").strip()
+
+
+def wait_for_the_daemon_aside() -> None:
+    """Wait for the daemon to move itself into a cgroup beside its builds.
+
+    systemd starts it in the service's own cgroup, and it moves a moment
+    later, so a single look can land before the move.
+    """
+    machine.wait_until_succeeds(
+        "grep -qx '0::/build.slice/nix-daemon.service/nix-daemon' "
+        "/proc/$(systemctl show -P MainPID nix-daemon.service)/cgroup",
+        timeout=10,
+    )
+
+
+def wait_for_the_controllers() -> None:
+    """Wait for vm-first to hand the builds every controller."""
+    machine.wait_until_succeeds(
+        f"[ \"$(cat {DAEMON}/cgroup.subtree_control)\" = 'cpu io memory pids' ]", timeout=10
+    )
+
+
 machine.wait_for_unit("vm-first.service")
 machine.succeed("systemctl start nix-daemon.service")
-vm = machine.succeed("as-build fake-vm").strip()
-compiler = machine.succeed("as-build fake-compiler").strip()
+build("vm-build")
+build("compiler-build")
+vm = found("qemu-system-x86")
+compiler = found("cc1")
+
+with subtest("the daemon sits beside its builds, each in a cgroup of its own"):
+    wait_for_the_daemon_aside()
+    for pid in [vm, compiler]:
+        assert cgroup_of(pid).startswith(f"{DAEMON}/nix-build-uid-"), cgroup_of(pid)
+    assert cgroup_of(vm) != cgroup_of(compiler)
+
+with subtest("the builds are handed the controllers to weigh and count them by"):
+    wait_for_the_controllers()
+
+with subtest("systemd-oomd is asked to take a build before the daemon"):
+    machine.wait_until_succeeds(
+        f'[ "$(getfattr -n user.oomd_avoid --only-values {DAEMON}/nix-daemon)" = 1 ]',
+        timeout=10,
+    )
 
 with subtest("every thread of the VM goes ahead, one started later too"):
     machine.wait_until_succeeds(f"[ $(ls /proc/{vm}/task | wc -l) -ge 5 ]", timeout=20)
@@ -42,12 +107,38 @@ with subtest("every thread of the VM goes ahead, one started later too"):
 
     assert "Brought qemu-system-x86" in told, told
 
-with subtest("a compiler beside it stays as the daemon set it"):
-    assert scheduling(compiler) == AS_BUILT, scheduling(compiler)
+with subtest("the VM's build is weighed above the builds beside it"):
+    machine.wait_until_succeeds(f"grep -qx 1000 {cgroup_of(vm)}/cpu.weight", timeout=10)
+    assert machine.succeed(f"cat {cgroup_of(vm)}/io.weight").strip() == "default 1000"
 
-with subtest("a build asking for a range of user ids gets one"):
-    built = machine.succeed("nix-build --no-out-link /etc/uid-range.nix").strip()
+with subtest("a compiler's build stays as the daemon set it"):
+    assert scheduling(compiler) == AS_BUILT, scheduling(compiler)
+    assert machine.succeed(f"cat {cgroup_of(compiler)}/cpu.weight").strip() == "100"
+
+with subtest("a restarted daemon leaves its builds running, and builds again"):
+    # Between the old daemon going and the new one moving aside, the
+    # service's cgroup must take no controllers, or systemd can't start
+    # the new daemon in it. One restart can miss that window; ten, with
+    # vm-first looking every 20 ms, don't. Each restart forgets the ones
+    # before, which would otherwise pass systemd's limit on starts.
+    for _ in range(10):
+        machine.succeed("systemctl reset-failed nix-daemon.service")
+        machine.succeed("systemctl restart nix-daemon.service")
+        machine.wait_for_unit("nix-daemon.service")
+        wait_for_the_daemon_aside()
+
+    machine.succeed(f"kill -0 {vm} {compiler}")
+    wait_for_the_controllers()
+
+    # A build asking for a range of user ids, as a container's check does.
+    built = machine.succeed(f"{NIX_BUILD} /etc/uid-range.nix").strip()
 
     given = machine.succeed(f"cat {built}").strip()
 
     assert given == RANGE, f"the build was given {given} ids"
+
+with subtest("a stopped build leaves nothing running, nor its cgroup"):
+    machine.succeed("systemctl stop vm-build compiler-build")
+
+    machine.wait_until_fails("pgrep -x qemu-system-x86 || pgrep -x cc1", timeout=60)
+    machine.wait_until_fails(f"ls -d {DAEMON}/nix-build-*", timeout=60)
