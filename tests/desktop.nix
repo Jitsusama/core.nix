@@ -379,10 +379,12 @@ pkgs.testers.runNixOSTest {
       # its own never did in six hundred. The tone gives something to record
       # from the start, as a real microphone does, and a recording with
       # sound waits for its first sound before it writes anything. It follows
-      # the dummy driver, in its group, rather than driving: a test tone
-      # driving stops for good the first time a slow reader keeps every
-      # buffer, as a recording did under load, and it says it drives itself,
-      # over any node.driver it's given.
+      # the dummy driver, in its group, rather than driving: driving, it once
+      # stopped for good under load the first time a slow reader kept every
+      # buffer, and it says it drives itself, over any node.driver it's
+      # given. With PipeWire 1.6.9 a reader stopped for 10 s no longer stops
+      # a tone that drives, so no subtest can show this; when the sound did
+      # stop, captures-and-locks's recordings failed ("video 1 never grew").
       services.pipewire.extraConfig.pipewire."91-stand-in-microphone" = {
         "context.spa-libs".audiotestsrc = "audiotestsrc/libspa-audiotestsrc";
         "context.objects" = [
@@ -539,7 +541,6 @@ pkgs.testers.runNixOSTest {
           inherit (pkgs)
             coreutils
             dbus
-            pipewire
             wev
             zenity
             ;
