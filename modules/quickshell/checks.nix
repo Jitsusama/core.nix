@@ -435,8 +435,9 @@
     '';
 
   # The launcher's quests find pi's quests in a store written here, as the
-  # real pi-quests reads it, and open pi on one or go to its session
-  # (tests/quests.qml), with niri and pi's sessions stood in.
+  # real pi-quests reads it (tests/quests-store.sh), and open pi on one or
+  # go to its session (tests/quests.qml), with niri and pi's sessions stood
+  # in.
   the-launcher-finds-the-quests =
     let
       singleton =
@@ -464,64 +465,8 @@
       };
     in
     pkgs.runCommandLocal "the-launcher-finds-the-quests" { } ''
-      mkdir -p store/QEST-20261005-NOTES store/QEST-20261006-PLAIN launcher \
-        older newer session later/QEST-20261020-NEWONE
-      quest() {
-        mkdir -p store/$1
-        { echo ---; echo id: $1; cat; echo ---; echo; echo "# $2"; echo; echo "# Not the title"; } \
-          > store/$1/README.md
-      }
-      quest QEST-20261001-LAPTOP "Bootstrap the laptop" <<EOF
-      kind: quest
-      parent: null
-      status: active
-      priority: driving
-      rank: 1
-      updated: 2026-10-22
-      trees:
-        - path: $PWD/older
-        - path: $PWD/newer
-          providerId: dev-tree
-      EOF
-      quest QEST-20261003-PROMPT "Retune the prompt" <<EOF
-      kind: subquest
-      parent: QEST-20261001-LAPTOP
-      status: active
-      priority: queued
-      rank: 2
-      updated: 2026-10-21
-      sessions:
-        - id: one
-          cwd: $PWD/session
-          started: 2026-10-03T10:00:00.000Z
-        - id: two
-          cwd: $PWD/gone
-          started: 2026-10-04T10:00:00.000Z
-      trees:
-        - path: $PWD/missing
-      EOF
-      quest QEST-20261004-STICK "Wait on the stick" <<EOF
-      kind: quest
-      status: blocked
-      priority: bench
-      rank: 1
-      updated: 2026-10-04
-      EOF
-      quest QEST-20250105-BANNER "Tune the banner" <<EOF
-      kind: quest
-      status: concluded
-      priority: someday
-      updated: 2025-01-05
-      EOF
-      echo "# No front matter" > store/QEST-20261006-PLAIN/README.md
-      quest QEST-20261020-NEWONE "Newly made" <<EOF
-      kind: quest
-      status: active
-      priority: someday
-      updated: 2026-10-20
-      EOF
-      mv store/QEST-20261020-NEWONE/README.md later/QEST-20261020-NEWONE/
-      rmdir store/QEST-20261020-NEWONE
+      mkdir launcher
+      ${lib.getExe pkgs.bash} ${../../tests/quests-store.sh} $PWD
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
       cp ${./Fuzzy.js} Fuzzy.js
       cp ${./launcher/Provider.qml} launcher/Provider.qml
@@ -607,10 +552,10 @@
     '';
 
   # The launcher's runs find pi's fleets and review rounds in a harness's
-  # state written here, as the real pi-runs reads it, and go to the session
-  # that started one or read a participant's answer (tests/runs.qml), with
-  # niri, pi's sessions and the screen's sharing stood in. pi-runs gives
-  # the answer whole, for the pager.
+  # state written here (tests/runs-state.sh), as the real pi-runs reads it,
+  # and go to the session that started one or read a participant's answer
+  # (tests/runs.qml), with niri, pi's sessions and the screen's sharing
+  # stood in. pi-runs gives the answer whole, for the pager.
   the-launcher-finds-the-runs =
     let
       singleton =
@@ -638,42 +583,14 @@
     in
     pkgs.runCommandLocal "the-launcher-finds-the-runs" { } ''
       state=$PWD/state
-      fleets=$state/subagent-workflow/runs
-      rounds=$state/review/transcripts/runs
-      at() { date -u -d "$1" +%FT%T.000Z; }
-      # One still at work, its process this sleep, beside one done.
+      # One still at work, its process this sleep.
       sleep 300 &
       live=$!
-      member() {
-        mkdir -p $1
-        echo '{"cwd":"/src/thing","args":["cli.js","--model","anthropic/opus","--thinking","high"]}' \
-          > $1/request.json
-        echo "{\"parentPid\":4242,\"childPid\":$2}" > $1/lease.json
-        echo "{\"state\":\"$3\",\"activity\":\"$4\"}" > $1/progress.json
-      }
-      result() {
-        printf '{"state":"complete","startedAt":"%s","completedAt":"%s",%s,"finalAssistantText":"%s"}' \
-          "$2" "$3" "\"usage\":{\"cost\":{\"total\":$4}}" "$5" > $1/result.json
-      }
-      member $fleets/fleet-live/reviewers/a $live running "reading checks.nix"
-      member $fleets/fleet-live/reviewers/b 1 complete ""
-      result $fleets/fleet-live/reviewers/b "$(at '-10 min')" "$(at now)" 1.25 'All good.\n\n- One \"finding\".'
-      # One whose process is gone, and one older than a day.
-      member $fleets/fleet-dead/reviewers/y 4000000000 running ""
-      member $fleets/fleet-old/reviewers/x 1 complete ""
-      result $fleets/fleet-old/reviewers/x "$(at '-3 days')" "$(at '-3 days')" 1 ""
-      touch -d '2 days ago' $fleets/fleet-old/reviewers/x/*
-      # A council, named for its change by the review file listing it.
-      council=council-20261022T100000000-000001
-      for who in tests safety; do member $rounds/$council/reviewers/$who 1 complete ""; done
-      result $rounds/$council/reviewers/tests 2026-10-22T10:00:00.000Z 2026-10-22T10:02:00.000Z 0.5 ""
-      result $rounds/$council/reviewers/safety 2026-10-22T10:00:30.000Z 2026-10-22T10:03:00.000Z 0.75 ""
-      mkdir -p $state/review/runs
-      echo "{\"runs\":[{\"id\":\"$council\",\"round\":\"council\"}]}" \
-        > $state/review/runs/github_github_Jitsusama_core.nix_380.json
+      ${lib.getExe pkgs.bash} ${../../tests/runs-state.sh} $state $live
 
       printf 'All good.\n\n- One "finding".\n' > expected
-      ${lib.getExe' runs "pi-runs"} answer $fleets/fleet-live/reviewers/b/result.json > answered
+      ${lib.getExe' runs "pi-runs"} answer $state/subagent-workflow/runs/fleet-live/reviewers/b/result.json \
+        > answered
       cmp expected answered
 
       mkdir launcher
