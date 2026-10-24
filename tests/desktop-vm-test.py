@@ -99,6 +99,9 @@ PICTURES_AT_ONCE = 2
 # other machines and builds, a cold kitty or GIMP took past 30
 # seconds, and a wait on a program starting fails then, not the step.
 STARTING = 120
+# More rows than this name something across everything the launcher is asked for in its
+# survey, so the rows were looked at rather than all empty.
+ROWS_LOOKED_AT = 100
 # The same for the Wi-Fi sign-in window, which starts GTK and WebKit cold.
 SIGNING_IN = 180
 # How far in, in pixels, from the screen's edges and what niri keeps clear along them, a
@@ -1290,7 +1293,7 @@ with subtest("the launcher remembers where it was when stepping back"):
         launcher_until(
             lambda shown: (shown["selected"] or {}).get("name", "") != before  # noqa: B023
         )
-        if showing()["selected"]["verb"] == "open":
+        if showing()["selected"]["is"].startswith("collection:"):
             break
     chosen = selected()
     step_in()
@@ -1301,6 +1304,45 @@ with subtest("the launcher remembers where it was when stepping back"):
     )
     machine.send_key("esc")
     launcher_until(lambda shown: not shown["open"])
+
+# Seeing one thing twice costs Joel more than any other mess in the
+# list, so for everything he typed in a week of picks, every word of
+# the launcher's photo survey and every case its audit found listed
+# twice, no two rows may be the same thing, nor read the same.
+with subtest("the launcher lists each thing once, for everything Joel types"):
+    picked_in_a_week = [
+        "1p", "a", "agents", "ai", "b", "bto", "btop", "ca", "caf", "caff", "came",
+        "captu", "ch", "chr", "chro", "chrom", "chrome", "close", "donot", "dot", "gimp",
+        "ink", "kit", "kitt", "kitty", "left", "light", "lo", "loc", "lock", "mute", "ova",
+        "pow", "powe", "re", "reb", "rebo", "rest", "runs", "shrim", "sl", "sla", "slac",
+        "slack", "slack theme", "soun", "spend", "spo", "spot", "spoti", "sus", "susp",
+        "time", "time in gmt", "tme", "tupl", "tuple", "volume", "wifi",
+    ]  # fmt: skip
+    surveyed = [
+        "s", "tu", "batt", "12*7", "sound", "pi", "emoji", "copy", "key", "screen",
+        "notes", "power", "open", "turn",
+    ]  # fmt: skip
+    audited = [
+        "keyboard layout", "stop rec", "tuesday", "this window", "headphones",
+        "bluetooth", "clipboard", "keyboard", "dim", "keyboard backlight", "camera",
+        "quest", "terminal", "below", "zsh",
+    ]  # fmt: skip
+    listed_twice: list[str] = []
+    looked_at = 0
+    for query in picked_in_a_week + surveyed + audited:
+        answer(query)
+        things: list[Json] = showing()["things"]
+        looked_at += len([thing for thing in things if thing["is"]])
+        for field in ("is", "reads"):
+            given = [thing[field] for thing in things if thing[field]]
+            again = sorted({one for one in given if given.count(one) > 1})
+            if again:
+                listed_twice.append(f"{query!r}: {field} {again}")
+        machine.send_key("esc")
+        machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
+    t.assertEqual(listed_twice, [], "a thing was listed twice")
+    # Most of those find something, so the rows were looked at.
+    t.assertGreater(looked_at, ROWS_LOOKED_AT)
 
 with subtest("the launcher answers what's asked, and copies the answer"):
 
@@ -1323,9 +1365,11 @@ with subtest("the launcher answers what's asked, and copies the answer"):
     machine.send_key("ret")
     machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
     t.assertTrue(as_account("wl-paste --no-newline").startswith(f"{charge}%, "))
-    # Then what feeds it: the stand-in's mains, plugged in.
+    # Then what feeds it: the stand-in's mains, plugged in, a step
+    # into the answer's row.
     answer("charger")
-    machine.send_key("down")
+    launcher_until(lambda shown: shown["kind"] == "answer")
+    step_in()
     launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "mains")
     machine.send_key("esc")
     # A collection is found by what a person calls it, not only its
@@ -1411,10 +1455,10 @@ with subtest("the launcher answers what's asked, and copies the answer"):
     machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
     # The session's actions answer to what people call them; Escape,
     # never Return, since Return would do them.
-    for typed, action in [
-        ("shut down", "Power Off"),
-        ("restart", "Reboot"),
-        ("sign out", "Log Out"),
+    for typed, action, verb in [
+        ("shut down", "Power off the machine", "Power off"),
+        ("restart", "Reboot the machine", "Reboot"),
+        ("sign out", "Log out", "Log out"),
     ]:
         answer(typed)
         # Each wait ends before the loop moves on, so it reads this pass's action.
@@ -1425,12 +1469,17 @@ with subtest("the launcher answers what's asked, and copies the answer"):
             )
         )
         # Return asks rather than doing it: it holds the action, its
-        # one verb saying what a second Return would do.
+        # one verb saying what a second Return would do and what it
+        # closes.
         machine.send_key("ret")
         launcher_until(
             lambda shown: (
                 shown["held"] == [action]  # noqa: B023
-                and (shown["selected"] or {}).get("name", "").startswith("Yes, ")
+                and re.fullmatch(
+                    f"{verb} now(, closing (the window|\\d+ windows))?",  # noqa: B023
+                    (shown["selected"] or {}).get("name", ""),
+                )
+                is not None
             )
         )
         machine.send_key("esc")
@@ -1466,8 +1515,8 @@ with subtest("the launcher answers what's asked, and copies the answer"):
         lambda shown: (shown["selected"] or {}).get("name", "").endswith(" free on /nix")
     )
     photograph("launcher-disks")
-    # Its first row is the headline's disk.
-    machine.send_key("down")
+    # Its first part, a step in, is the headline's disk.
+    step_in()
     launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "20.0 GiB free")
     machine.send_key("esc")
     machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
@@ -1537,16 +1586,21 @@ with subtest("the launcher answers what's asked, and copies the answer"):
         )
     )
     # At a glance its place in line or how long it's run, a minute
-    # turning over allowed for; since when below it.
-    for name, side, footer in [
-        (
-            "Build the desktop",
-            r"build \u00b7 (just begun|for 1 min)",
-            r"running since \d\d:\d\d",
-        ),
-        ("Test the camera", r"VM test \u00b7 1st in line", r"waiting since \d\d:\d\d"),
-    ]:
-        machine.send_key("down")
+    # turning over allowed for; since when below it. They're a step
+    # into the answer, the first selected there.
+    step_in()
+    for index, (name, side, footer) in enumerate(
+        [
+            (
+                "Build the desktop",
+                r"build \u00b7 (just begun|for 1 min)",
+                r"running since \d\d:\d\d",
+            ),
+            ("Test the camera", r"VM test \u00b7 1st in line", r"waiting since \d\d:\d\d"),
+        ]
+    ):
+        if index > 0:
+            machine.send_key("down")
         # The wait ends before the loop moves on, so it reads this pass's row.
         launcher_until(
             lambda shown: (
@@ -1644,8 +1698,9 @@ with subtest("the launcher finds emoji in their own place, and only there"):
 with subtest("a search lists each thing once"):
     closed = in_session(LAUNCHER_OPEN)
     # Tuple's place stands alone for its rows and its people; the
-    # session's Lock and Do Not Disturb draw their keys' chords, so
-    # those keys aren't listed again; kitty draws Super+Return's;
+    # session's locking and do not disturb draw their keys' chords, so
+    # those keys aren't listed again, the lock by its own name;
+    # kitty draws Super+Return's;
     # and Capture holds the screenshots its keys take. Nothing is
     # found by letters scattered through it.
     stood_for = {
@@ -1659,9 +1714,9 @@ with subtest("a search lists each thing once"):
     def once(leading: list[str]) -> Callable[[Json], bool]:
         """Give a test that the rows lead with these, list nothing stood for, and home none twice.
 
-        Open windows are found by their program too, and two may share a title, so a search's
-        rows are held to what stands for what; home's, with no windows but the focused one, are
-        held to once.
+        Two windows may share a title, told apart by where they are, so a search's rows are
+        held to what stands for what; home's, with no windows but the focused one, are held to
+        once.
         """
 
         def holds(shown: Json) -> bool:
@@ -1669,7 +1724,7 @@ with subtest("a search lists each thing once"):
             return (
                 rows[: len(leading)] == leading
                 and (shown["typed"] != "" or len(set(rows)) == len(rows))
-                and not set(rows) & stood_for
+                and all(rows.count(name) == leading.count(name) for name in stood_for)
             )
 
         return holds
@@ -1679,9 +1734,9 @@ with subtest("a search lists each thing once"):
     # either, a collection picked often staying in its own place.
     for typed, leading in [
         ("tuple", ["Tuple"]),
-        ("lock", ["Lock"]),
+        ("lock", ["Lock the screen"]),
         ("kitty", ["kitty"]),
-        ("do not disturb", ["Do Not Disturb"]),
+        ("do not disturb", ["Turn on do not disturb"]),
         ("screenshot", ["Capture"]),
         ("", []),
     ]:
@@ -1858,17 +1913,22 @@ with subtest("Forget the Clipboard forgets every copy, and what it held"):
     # The pictures' files go with them.
     t.assertEqual(as_account("ls -A $XDG_RUNTIME_DIR/clipboard-history"), "")
 
-with subtest("the launcher's home shows each collection, and opens it"):
+# Home is a shelf that keeps its shape: what's in front and the likely
+# picks, then the same three collections last, in the same order.
+# The rest are a word away.
+with subtest("the launcher's home keeps its shelf, and a collection opens by name"):
     windows = len(json.loads(as_account("niri msg --json windows")))
     as_account("qs ipc call launcher toggle")
     launcher_ready()
     photograph("launcher-home")
-    # The last row at home is the last collection, the shortcuts; a page
-    # down stops there, so more than home's pages reach it as it grows.
+    t.assertEqual(showing()["rows"][-3:], ["Windows", "Clipboard", "Notices"])
+    # A page down stops on the last of them.
     for _page in range(4):
         machine.send_key("pgdn")
+    launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Notices")
     # Opening a collection keeps the launcher open, where a program
     # picked instead would close it.
+    type_in("shortcuts", selecting="Shortcuts")
     step_in("ret")
     type_in("open a terminal")
     machine.send_key("ret")
@@ -2049,8 +2109,8 @@ with subtest("the launcher's Sound moves sound to another output, and back"):
 with subtest("the launcher sets the power profile"):
     # By its name, or a word a person would call it.
     for typed, profile, name in [
-        ("eco", "power-saver", "Power Saver"),
-        ("balanced power", "balanced", "Balanced Power"),
+        ("eco", "power-saver", "Use power saver"),
+        ("balanced power", "balanced", "Use balanced power"),
     ]:
         as_account("qs ipc call launcher toggle")
         launcher_ready()
