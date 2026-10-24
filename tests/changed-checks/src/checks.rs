@@ -9,11 +9,17 @@ use std::path::{Path, PathBuf};
 /// doesn't evaluate.
 pub type Derivations = BTreeMap<String, Option<String>>;
 
-/// How many checks one nix eval takes. Nix's evaluator never gives memory
-/// back, so one holds everything its checks share and each machine they
-/// build: a quarter of core's 231 checks held 11.3 GB at their peak and
-/// took 77 s at a load of 59, and every check at once about 24 GB.
-pub const CHUNK: usize = 40;
+/// How much one nix eval takes, by its checks' weight. Nix's evaluator
+/// never gives memory back, so one holds everything its checks share and
+/// each machine they build. Measured on core's 277 checks, an evaluation
+/// holds about 2 GiB of its own, an ordinary check about 75 MB more and a
+/// VM test about 300 MB, so a VM test weighs four: forty VM tests in one
+/// evaluation peaked at 13.8 GiB, ten at 5.6 GiB, forty ordinary checks at
+/// 4.9 GiB. Smaller chunks than these only add evaluations' own cost.
+pub const WEIGHT: usize = 40;
+
+/// What a VM test weighs against an ordinary check.
+const VM_TEST: usize = 4;
 
 /// What a check's name may hold beside letters and digits, so a name is
 /// never read as Nix code.
@@ -73,6 +79,24 @@ pub fn compare(before: &Derivations, after: &Derivations) -> Comparison {
         .cloned()
         .collect();
     comparison
+}
+
+/// Split the names, in order, into chunks weighing at most `WEIGHT` each.
+pub fn chunks(names: &[String]) -> Vec<&[String]> {
+    let weight = |name: &String| if name.starts_with("vm-") { VM_TEST } else { 1 };
+    let mut chunks = Vec::new();
+    let (mut start, mut held) = (0, 0);
+    for (at, name) in names.iter().enumerate() {
+        if held + weight(name) > WEIGHT {
+            chunks.push(&names[start..at]);
+            (start, held) = (at, 0);
+        }
+        held += weight(name);
+    }
+    if start < names.len() {
+        chunks.push(&names[start..]);
+    }
+    chunks
 }
 
 /// Give the Nix function taking a flake's checks to these ones'
@@ -226,12 +250,32 @@ mod tests {
     #[test]
     fn every_name_is_in_one_chunk_in_its_order() {
         let all: Vec<String> = (0..85).map(|at| format!("check-{at}")).collect();
-        let chunks: Vec<&[String]> = all.chunks(CHUNK).collect();
-        assert_eq!(
-            chunks.iter().map(|chunk| chunk.len()).collect::<Vec<_>>(),
-            [40, 40, 5]
-        );
+        let chunks = chunks(&all);
+        assert_eq!(sizes(&chunks), [40, 40, 5]);
         assert_eq!(chunks.concat(), all);
+    }
+
+    fn sizes(chunks: &[&[String]]) -> Vec<usize> {
+        chunks.iter().map(|chunk| chunk.len()).collect()
+    }
+
+    #[test]
+    fn a_vm_test_weighs_four_ordinary_checks() {
+        let all: Vec<String> = (0..12).map(|at| format!("vm-{at}")).collect();
+        assert_eq!(sizes(&chunks(&all)), [10, 2]);
+    }
+
+    #[test]
+    fn ordinary_checks_and_vm_tests_share_a_chunk_by_weight() {
+        let mut all: Vec<String> = (0..30).map(|at| format!("check-{at}")).collect();
+        all.extend((0..5).map(|at| format!("vm-{at}")));
+        // Thirty and two VM tests weigh 38; a third would bring it to 42.
+        assert_eq!(sizes(&chunks(&all)), [32, 3]);
+    }
+
+    #[test]
+    fn no_checks_need_no_evaluation() {
+        assert!(chunks(&[]).is_empty());
     }
 
     #[test]
