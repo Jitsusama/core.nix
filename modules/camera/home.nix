@@ -54,27 +54,10 @@ let
       pkgs.xdg-utils
       pkgs.coreutils
     ];
-    text = ''
-      mode=''${1:-picture}
-      case $mode in
-          picture | video) ;;
-          *) echo "usage: camera [picture | video]" >&2; exit 2 ;;
-      esac
-      device=${lib.escapeShellArg device}
-      # A camera made at boot is named by a file.
-      [ -c "$device" ] || device=$(cat "$device")
-      # Drawn on the GPU through Wayland, or in shared memory where there's
-      # no GPU to draw with. It idles between sources, so the camera can pass
-      # to a recording and back (camera.lua).
-      exec mpv "av://v4l2:$device" \
-          --vo=gpu-next,wlshm --gpu-context=wayland \
-          --title=Camera --wayland-app-id=camera --force-window=immediate \
-          --profile=low-latency --untimed --cache=no --hwdec=no --aid=no \
-          --vf=hflip --osc=no --input-default-bindings=no \
-          --keep-open=no --idle=yes --save-position-on-quit=no --resume-playback=no \
-          --script=${./camera.lua} \
-          --script-opts=${lib.escapeShellArg look},camera-mode="$mode",camera-device="$device"
-    '';
+    text = lib.concatLines [
+      "device=${lib.escapeShellArg device} look=${lib.escapeShellArg look} script=${./camera.lua}"
+      (builtins.readFile ./camera.sh)
+    ];
   };
 in
 {
