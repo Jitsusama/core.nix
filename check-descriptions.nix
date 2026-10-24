@@ -48,10 +48,20 @@
   bluetooth-keeps-its-power-limits = ''
     the XPS 14's kernel reads Bluetooth's revision 2 SAR table and antenna gain setting from UEFI
   '';
+  bluetooth-links-passes-clippy = ''
+    clippy finds nothing in bluetooth-links or its tests
+  '';
+  bluetooth-links-reads-the-replies = ''
+    bluetooth-links reads the kernel's lists of adapters and of the connections that are up, writes
+    each HCI command as the controller takes it and picks its answer out of the events, reads the
+    signal, link quality, power and channel map from reply bytes, leaves a failed one null, writes
+    nothing connected once, and replaces its file whole, readable by everyone
+  '';
   bluetooth-pairs-before-it-connects = ''
     the launcher trusts a Bluetooth device before pairing it, follows it past its link coming up
     until it's paired, untrusts one that fails, and connects one paired before, and lists a
-    connected device's facts after its verbs
+    connected device's facts after its verbs, after how its link is doing from the file
+    bluetooth-links would write, and answers how the links are doing
   '';
   boot-lock-is-whole = ''
     the splash's lock, at each scale, holds all the ink its glyph has drawn with room to spare, and

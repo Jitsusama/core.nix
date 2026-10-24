@@ -7,7 +7,10 @@
 // fails says so and takes the trust back; and a device paired before is
 // done once it connects. A connected mouse's facts, from the bluetooth.json
 // the check puts where desk-facts would, follow its verbs as copy rows, in
-// the file's order. It exits 0 once every case holds, and otherwise 1,
+// the file's order. How a connected device's link is doing, from the file
+// the check puts where bluetooth-links would write, comes between the two
+// as figures, and answers how the links are doing; with no such file,
+// neither says a thing. It exits 0 once every case holds, and otherwise 1,
 // saying which case didn't.
 import qs.launcher
 import Quickshell
@@ -39,6 +42,13 @@ ShellRoot {
     Device { id: refused }
     Device { id: known; paired: true; trusted: true }
     Device { id: mouse; name: "Mouse"; address: "C3:9C:E3:2A:F3:6E"; paired: true; connected: true }
+    Device {
+        id: headphones
+        name: "Headphones"
+        address: "00:1B:66:AA:BB:CC"
+        paired: true
+        connected: true
+    }
 
     function expect(what, holds, said) {
         if (!holds)
@@ -47,7 +57,64 @@ ShellRoot {
 
     Accessories {
         id: bluetooth
-        settings: ({})
+        settings: ({ links: `${Quickshell.env("XDG_RUNTIME_DIR")}/bluetooth-links.json` })
+    }
+
+    // A machine without the link reader.
+    Accessories {
+        id: unread
+        settings: ({ links: `${Quickshell.env("XDG_RUNTIME_DIR")}/nothing.json` })
+    }
+
+    // What each row of a list says, by its name and what's at its right.
+    function said(rows) {
+        return rows.map(row => `${row.name}=${row.side}`).join(",");
+    }
+
+    // How the links are doing, beside each connected device's verbs and as
+    // an answer.
+    function linksHold() {
+        const heard = bluetooth.verbs(headphones);
+        expect("links after verbs, before facts", heard.map(row => row.key).join(",")
+            === ["verb:bluetooth-disconnect", "verb:bluetooth-forget"]
+                .concat(["signal", "quality", "channels"]
+                    .map(part => `link:bluetooth:${headphones.address}:${part}`)).join(","),
+            heard.map(row => row.key).join(","));
+        const figures = heard.slice(2);
+        expect("a classic link's figures", said(figures)
+            === "Signal=in range,Link=90%,Channels=61 of 79 clear", said(figures));
+        expect("figures wear no glyph", figures.every(row => row.glyph === "" && row.copied
+            === undefined && row.verb === "close"), "a figure wears a glyph or copies");
+        expect("the signal's note says the power", figures[0].note
+            === "where its radio hears best, sending at 4 dBm", figures[0].note);
+        const strip = figures[2].graph;
+        expect("the channels drawn as a strip", strip.shape === "strip" && strip.values.length
+            === 20 && strip.values[6] === 0 && strip.values[0] === 1 && strip.warn === false,
+            JSON.stringify(strip));
+        expect("the skipped said", figures[2].note === "the link skips the other 18 as noisy",
+            figures[2].note);
+
+        const pointed = bluetooth.verbs(mouse).filter(row => row.key.startsWith("link:"));
+        expect("a Low Energy link's signal", said(pointed) === "Signal=-58 dBm", said(pointed));
+        expect("a device not connected has no link", bluetooth.verbs(known)
+            .every(row => !row.key.startsWith("link:")), "a device away has a link");
+        expect("no reader, no link", unread.verbs(headphones)
+            .every(row => !row.key.startsWith("link:")), "rows came from no file");
+
+        const one = bluetooth.linksAnswer([headphones]);
+        expect("one link answered", one.headline === "in range, 61 of 79 clear"
+            && said(one.rows) === "Signal=in range,Channels=61 of 79 clear"
+            && one.note === "the link to Headphones", JSON.stringify(one.headline));
+        const both = bluetooth.linksAnswer([headphones, mouse]);
+        expect("two links answered", both.headline === "2 connected"
+            && said(both.rows) === "Headphones=in range, 61 of 79 clear,Mouse=-58 dBm",
+            said(both.rows));
+        expect("each a step in", said(both.rows[0].verbs())
+            === "Signal=in range,Channels=61 of 79 clear", said(both.rows[0].verbs()));
+        expect("nothing connected, nothing answered", bluetooth.linksAnswer([]) === null,
+            "it answered with nothing connected");
+        expect("no reader, no answer", unread.linksAnswer([headphones]) === null,
+            "it answered with no file");
     }
 
     Component.onCompleted: {
@@ -112,6 +179,7 @@ ShellRoot {
                     told[1].key === "fact:bluetooth:C3:9C:E3:2A:F3:6E:buttons", told[1].key);
                 root.expect("another device has none", bluetooth.verbs(known)
                     .every(row => !row.key.startsWith("fact:")), "a stranger got facts");
+                root.linksHold();
                 Qt.callLater(() => Qt.exit(0));
             } catch (error) {
                 facts.stop();

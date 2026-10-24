@@ -1,0 +1,13 @@
+# bluetooth-links asks the Bluetooth controller how each connected link is
+# doing, for the launcher (src/main.rs says how).
+[package]
+name = "bluetooth-links"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[dependencies]
+libc = "0.2"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"

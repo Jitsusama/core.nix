@@ -109,6 +109,7 @@ let
     "launcher/Sensors.qml"
     "launcher/Machine.js"
     "launcher/Traffic.js"
+    "launcher/Links.js"
     "launcher/Numbers.js"
     "launcher/Addresses.js"
     "launcher/Units.js"

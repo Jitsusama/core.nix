@@ -41,7 +41,8 @@
         "networks",
         "wifi:radio",
         "bluetooth:radio",
-        "wifi:sign-in"
+        "wifi:sign-in",
+        "bluetooth:links"
       ]
     },
     {
@@ -2163,6 +2164,19 @@
           ]
         }
       }
+    },
+    {
+      "id": "bluetooth:links",
+      "name": "Bluetooth performance",
+      "provider": "bluetooth",
+      "question": "bluetooth performance",
+      "answers": [
+        "bluetooth performance",
+        "bluetooth signal",
+        "interference",
+        "bluetooth interference",
+        "bluetooth noise"
+      ]
     },
     {
       "id": "verb:copy:paste",
