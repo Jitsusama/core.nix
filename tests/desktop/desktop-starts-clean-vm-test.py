@@ -423,7 +423,6 @@ with subtest("swipes on the touchscreen move through the workspaces, not the win
     workspaces = json.loads(as_account("niri msg --json workspaces"))
     last = max(w["idx"] for w in workspaces)
     as_account(f"niri msg action move-column-to-workspace {last}")
-    first = focused_workspace()
     as_account(f"systemd-run --user --collect --quiet --unit=wev-right -- {WEV}/bin/wev")
     retry(lambda _: focused() != left, timeout_seconds=30)
     right = focused()
@@ -441,6 +440,10 @@ with subtest("swipes on the touchscreen move through the workspaces, not the win
     as_account("niri msg action focus-column-right")
     as_account("niri msg action set-column-width 50%")
     t.assertTrue(held_still(), "the view never settled")
+    # niri drops the workspace the column left only once its switch has
+    # ended, which renumbers those below, so where the view is is read
+    # once it holds still.
+    first = focused_workspace()
     landed = touches("down")
     swiped(3, "DU", lambda: focused_workspace() == first + 1, across=0.25)
     t.assertEqual(touches("down"), landed + 2, "the swipe missed the window beside")
