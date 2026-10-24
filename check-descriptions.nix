@@ -589,7 +589,12 @@
   the-margins-glyphs-stand-level = ''
     every glyph in the margin stands one height on the gap's middle line, read from the corner by
     kind, in the colour that says how much it asks; what was on air lingers, what a notice will say
-    waits for its card, and a wait shows once the same one lasts
+    waits for its card, and a wait shows once the same one lasts; each stands in a square cell with
+    the same room all round, grown while What's on is open, which points at the row the keys are on
+  '';
+  the-margins-marks-are-drawn-level = ''
+    every mark the margin can show is the theme's drawing of it, standing the grid's full height and
+    centred across it as Qt draws it
   '';
   the-music-follows-the-player = ''
     the music is the player that started last, never playerctld's echo

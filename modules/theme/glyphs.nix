@@ -3,11 +3,23 @@
 # monospace font has so columns stay aligned. The theme module's glyphs
 # option starts from it (home.nix), and the guide draws from it too, since
 # it runs where no account's theme is (../guide/theme.nix).
+#
+# A mark the margin's corner shows is drawn as well (`drawn`): an SVG path
+# on a 12 by 12 grid, filled even-odd, every one touching the grid's top and
+# bottom and centred across it. A font's glyph is drawn for text's size and
+# goes to mush at half the gap, where these are drawn; the same drawing
+# grows, whole, when What's on opens.
 { lib }:
 let
   # A mark from the icon font by its code point, since an editor may not
   # show one.
   nerd = import ./nerd.nix { inherit lib; };
+  # A drawing of several shapes, each its own part of the path.
+  drawing = lib.concatStringsSep " ";
+  # A struck mark is the mark with a gap cut along one side of the slash,
+  # and the slash, as flat outlines worked out once. A slash filled even-odd
+  # over the mark flips the mark under it instead, which at the margin's
+  # size reads as neither.
 in
 {
   cursor = {
@@ -99,11 +111,22 @@ in
     glyph = nerd "f0176";
     console = "C";
     means = "the machine is kept from sleeping";
+    # A cup on its saucer.
+    drawn = drawing [
+      "M0 0H9V5A4.5 4.5 0 0 1 0 5Z"
+      "M9 1H10A2 2 0 0 1 10 5H9V4H10A1 1 0 0 0 10 2H9Z"
+      "M0 11H12V12H0Z"
+    ];
   };
   waiting = {
     glyph = nerd "f116b";
     console = "N";
     means = "notices came and went unseen";
+    # A bell, its clapper below.
+    drawn = drawing [
+      "M6 0C8.8 0 10 2.4 10 5V8L12 10H0L2 8V5C2 2.4 3.2 0 6 0Z"
+      "M4.5 10.5H7.5A1.5 1.5 0 0 1 4.5 10.5Z"
+    ];
   };
   quiet = {
     # The bell struck through, since the bell asleep, with its small z,
@@ -111,6 +134,14 @@ in
     glyph = nerd "f009b";
     console = "Q";
     means = "notices are held, not shown";
+    # Waiting's bell, struck through.
+    drawn = drawing [
+      "M4.2 0.4 L3.7 0.7 L3.3 1.1 L2.95 1.55 L11.4 10 L12 10 L10 8 L10 5 L9.95 4.35"
+      "L9.9 3.75 L9.75 3.1 L9.6 2.55 L9.35 2 L9.05 1.5 L8.7 1.1 L8.3 0.7 L7.8 0.4 L7.25 0.2"
+      "L6.65 0.05 L6 0 L5.35 0.05 L4.75 0.2Z M0 10 L7.15 10 L2 4.85 L2 8Z M4.95 11.55"
+      "L5.25 11.8 L5.6 11.95 L6 12 L6.4 11.95 L6.75 11.8 L7.05 11.55 L7.3 11.25 L7.45 10.9"
+      "L7.5 10.5 L4.5 10.5 L4.55 10.9 L4.7 11.25Z M12 10.6 L1.4 0 L0 1.4 L10.6 12Z"
+    ];
   };
   dictating = {
     glyph = nerd "f05cb";
@@ -121,21 +152,44 @@ in
     glyph = nerd "f036d";
     console = "M";
     means = "the microphone hears nothing";
+    # The microphone on its stand, struck through.
+    drawn = drawing [
+      "M4.75 0.35 L4.5 0.5 L4.25 0.75 L4 1 L3.85 1.25 L3.7 1.55 L3.55 2.1 L1.4 0 L0 1.4"
+      "L10.6 12 L12 10.6 L9.6 8.2 L10 7.55 L10.25 7.05 L10.4 6.55 L10.45 6.05 L10.5 5.5"
+      "L9 5.5 L8.9 6.3 L8.6 7 L8.5 7.1 L8.15 6.75 L8.4 6.15 L8.5 5.5 L8.5 2.15 L8.4 1.85"
+      "L8.3 1.55 L8.15 1.25 L8 1 L7.75 0.75 L7.5 0.5 L7.25 0.35 L6.95 0.2 L6.65 0.1 L6.35 0"
+      "L6 0 L5.65 0 L5.35 0.1 L5.05 0.2Z M2 7.55 L2.25 8 L2.55 8.4 L2.9 8.8 L3.35 9.1"
+      "L3.75 9.4 L4.25 9.65 L4.75 9.8 L5.25 9.95 L5.25 10.5 L3 10.5 L3 12 L9 12 L9 11.85"
+      "L7.65 10.5 L6.75 10.5 L6.75 9.95 L7.05 9.85 L5.6 8.45 L5.2 8.4 L4.5 8.1 L3.9 7.6"
+      "L3.4 7 L3.1 6.3 L3.05 5.9 L2.65 5.5 L1.5 5.5 L1.55 6.05 L1.6 6.55 L1.75 7.05Z"
+    ];
   };
   call = {
     glyph = nerd "f03f2";
     console = "T";
     means = "a call is under way";
+    # A handset.
+    drawn = drawing [
+      "M0 2.5L2.5 0L5.5 3L4 4.5C4.8 6.3 5.7 7.2 7.5 8L9 6.5L12 9.5L9.5 12"
+      "C4.5 11.5 0.5 7.5 0 2.5Z"
+    ];
   };
   sharing = {
     glyph = nerd "f1483";
     console = "V";
     means = "another program sees the screen";
+    # A screen on its stand.
+    drawn = drawing [
+      "M0 0H12V8.5H0Z M1.5 1.5V7H10.5V1.5Z"
+      "M5.25 8.5H6.75V10.5H5.25Z M3 10.5H9V12H3Z"
+    ];
   };
   recording = {
     glyph = nerd "f0ec2";
     console = "R";
     means = "the screen is being recorded";
+    # The dot every recorder lights.
+    drawn = "M0 6A6 6 0 1 0 12 6A6 6 0 1 0 0 6Z";
   };
   # A webcam, unlike the camera that stands for taking a picture, and its
   # console letter K, since C is awake's.
@@ -143,41 +197,62 @@ in
     glyph = nerd "f05a0";
     console = "K";
     means = "a program has a camera open";
+    # A camera, its lens cut out.
+    drawn = drawing [
+      "M0 3H3L4 0H8L9 3H12V12H0Z"
+      "M3.5 7.5A2.5 2.5 0 1 0 8.5 7.5A2.5 2.5 0 1 0 3.5 7.5Z"
+    ];
   };
   playing = {
     glyph = nerd "f075a";
     console = "P";
     means = "music is playing";
+    drawn = "M1 0L11 6L1 12Z";
   };
   capitals = {
     glyph = nerd "f0632";
     console = "A";
     means = "caps lock is on";
+    # Caps lock's own key: the arrow up, on its bar.
+    drawn = "M6 0L12 6H8.5V9H3.5V6H0Z M3.5 10.5H8.5V12H3.5Z";
   };
   layer = {
     glyph = nerd "f0328";
     console = "L";
     means = "the keyboard is locked on another layer";
+    # One layer above another.
+    drawn = "M6 0L12 3.5L6 7L0 3.5Z M0 8.5L1.75 7.5L6 10L10.25 7.5L12 8.5L6 12Z";
   };
   low = {
     glyph = nerd "f0083";
     console = "B";
     means = "the battery is running low";
+    # A battery standing, a little left at its foot.
+    drawn = "M4 0H8V1.5H10V12H2V1.5H4Z M3.5 3H8.5V8.5H3.5Z";
   };
   disk = {
     glyph = nerd "f02ca";
     console = "D";
     means = "a disk is short of room, a writer was frozen, or nothing watches it";
+    # A store, as a cylinder with a band.
+    drawn = drawing [
+      "M0 2A6 2 0 0 1 12 2V10A6 2 0 0 1 0 10Z"
+      "M0 5A6 2 0 0 0 12 5V6.5A6 2 0 0 1 0 6.5Z"
+    ];
   };
   lag = {
     glyph = nerd "f051f";
     console = "W";
     means = "the desktop or its apps have waited on the same thing a while";
+    # An hourglass.
+    drawn = "M1 0H11V1.5L7 6L11 10.5V12H1V10.5L5 6L1 1.5Z";
   };
   spend = {
     glyph = nerd "f01c1";
     console = "$";
     means = "AI spend wants a look: a cap near or reached, a burn, or nothing watching it";
+    # A price tag.
+    drawn = "M0 0H7L12 6L7 12H0Z M2 5H4V7H2Z";
   };
   # What a glance at the desktop reads each value by (the launcher's foot),
   # so a number says what it's of without a word.
@@ -285,6 +360,11 @@ in
     glyph = "π";
     console = "p";
     means = "an agent: a pi session, or one paired with this editor";
+    # Something said that wants an answer.
+    drawn = drawing [
+      "M1 0H11A1 1 0 0 1 12 1V8A1 1 0 0 1 11 9H6.5L3 12V9H1A1 1 0 0 1 0 8V1"
+      "A1 1 0 0 1 1 0Z"
+    ];
   };
   thinking = {
     glyph = nerd "f09d1";

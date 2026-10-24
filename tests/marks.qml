@@ -120,6 +120,32 @@ QtObject {
             Marks.lasted(waited("disk", "desktop", 40), lag, 120), { worst: "disk", since: 120 });
         expect("once it ends, it's gone", Marks.lasted(waited("", "", null), lag, 130), null);
 
+        // Each mark stands in a square cell the gap's height, its drawing
+        // half that, so the room above, below and either side is the same.
+        // When What's on opens, every cell grows to twice the gap, and its
+        // drawing with it, to the size it's drawn at.
+        expect("at rest, a cell the gap's height, its mark half",
+            Marks.sized(12, false), { cell: 12, ink: 6, room: 3 });
+        expect("open, all of it twice", Marks.sized(12, true), { cell: 24, ink: 12, room: 6 });
+
+        // What's on points at the row the keys are on, or at the thing
+        // stepped into, as its actions are; anything else points nowhere.
+        const launcher = (open, collection, keys) => ({ open, collection, keys });
+        expect("shut, What's on isn't asked", Marks.asked(launcher(false, "on", [])), false);
+        expect("open on What's on, it is", Marks.asked(launcher(true, "on", [])), true);
+        expect("open on another collection, it isn't",
+            Marks.asked(launcher(true, "notices", ["on:camera"])), false);
+        expect("the row the keys are on",
+            Marks.pointed(launcher(true, "on", ["on:camera"])), "camera");
+        expect("a thing stepped into, on one of its actions",
+            Marks.pointed(launcher(true, "on", ["on:awake", "verb:on:awake:Let it sleep"])),
+            "awake");
+        expect("an action alone says its thing",
+            Marks.pointed(launcher(true, "on", ["verb:on:muted:Unmute it"])), "muted");
+        expect("nothing selected points nowhere",
+            Marks.pointed(launcher(true, "on", [""])), "");
+        expect("shut points nowhere", Marks.pointed(launcher(false, "on", ["on:camera"])), "");
+
         for (const failure of failures)
             console.warn(`FAIL ${failure}`);
         Qt.exit(failures.length === 0 ? 0 : 1);

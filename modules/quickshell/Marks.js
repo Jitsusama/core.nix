@@ -29,6 +29,44 @@ function fit(ink, height, middle) {
 
 // Things as { kind, order }, left to right: the corner's last, since it's
 // read from there inward, by kind and then the overview's order.
+// How much bigger the corner's marks grow while What's on is open, and how
+// much of its cell a mark's drawing fills: half, so the room left above,
+// below and either side is the same.
+const GROWN = 2;
+const FILLS = 2;
+
+// The square cell each mark stands in, its drawing's height, and the room
+// around it: at rest the gap's height, a mark that wants nothing of the
+// window below; grown, twice that, as large as the drawing is drawn.
+function sized(gap, grown) {
+    const cell = grown ? gap * GROWN : gap;
+    const ink = cell / FILLS;
+    return { cell, ink, room: (cell - ink) / FILLS };
+}
+
+// Whether the launcher has What's on open, from { open, collection }: the
+// name of the collection it holds first, empty for none.
+function asked(launcher) {
+    return launcher.open && launcher.collection === "on";
+}
+
+// The mark What's on points at, from the launcher's `keys`: the key of each
+// row it holds and of the one selected, in order. A thing's row is
+// `on:<mark>` and its actions' `verb:on:<mark>:<name>`, so the last key
+// that names a thing names the one the keys are on. Empty for none.
+function pointed(launcher) {
+    if (!asked(launcher)) {
+        return "";
+    }
+    const marks = launcher.keys
+        .map(key => key.split(":"))
+        .map(parts => (parts[0] === "verb" ? parts.slice(1) : parts))
+        .filter(parts => parts[0] === "on" && parts.length > 1)
+        .map(parts => parts[1]);
+    const [last] = marks.slice(-1);
+    return last ?? "";
+}
+
 function arranged(things) {
     const rank = thing => KINDS.indexOf(thing.kind);
     return things.slice().sort((a, b) => rank(b) - rank(a) || b.order - a.order);

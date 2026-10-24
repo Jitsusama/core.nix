@@ -306,6 +306,16 @@ let
         default = "";
         description = "What the mark means, wherever it's drawn.";
       };
+      drawn = lib.mkOption {
+        type = lib.types.str;
+        default = "";
+        description = ''
+          The mark drawn, for where it stands too small for a font's glyph to
+          read, as the margin's corner: an SVG path on a 12 by 12 grid,
+          filled even-odd, touching the grid's top and bottom and centred
+          across it. Empty draws the glyph instead.
+        '';
+      };
     };
   };
 in
