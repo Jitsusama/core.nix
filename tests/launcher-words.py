@@ -6,11 +6,13 @@ WORDS is the vocabulary (modules/quickshell/launcher/words.json), GLYPHS a
 JSON list of the theme's glyph names. A shown name, another word or an
 answer's question that finds two different things at the same strength, in
 the same place, fails, unless the vocabulary lists it as meant to, and each
-clash is printed. So does a word listed as meant that finds only one, a
-category's word that names a thing it doesn't hold, a name for something
-the vocabulary doesn't know, a glyph the theme hasn't got, a thing with
-no place: not in a category, nor a part of one, nor found inside another,
-and a name or an empty list's words in another case than the rest: a
+clash is printed; an answer is asked from anywhere, so its questions clash
+wherever the thing is. So does a word listed as meant that finds only one, a
+word listed as asked by its start that doesn't ask it whole, a category's
+word that names a thing it doesn't hold, a name for something the
+vocabulary doesn't know, a glyph the theme hasn't got, a thing with no
+place: not in a category, nor a part of one, nor found inside another, and
+a name or an empty list's words in another case than the rest: a
 category's or a thing's name starts with a capital, as every row's does, and
 what an empty list says is a sentence.
 """
@@ -56,8 +58,9 @@ def clashes(vocabulary: Entry) -> list[str]:
     """Say each word that finds two things at once, and each meant that needn't be."""
     finds: dict[tuple[str, str, str], set[str]] = defaultdict(set)
     for entry in vocabulary["things"]:
-        scope = entry.get("in", "")
         for strength, word in spoken(entry):
+            # A question asks its answer from the top, wherever the thing is.
+            scope = "" if strength == ANSWER else entry.get("in", "")
             finds[scope, strength, word].add(entry["id"])
     for category in vocabulary["categories"]:
         for word in [category["id"], *category.get("words", [])]:
@@ -133,6 +136,12 @@ def misplaced(vocabulary: Entry, glyphs: set[str]) -> list[str]:
             out.append(f"{entry['id']} has no place: no category holds it, nor anything else.")
         if entry.get("by") and entry["by"] not in placed:
             out.append(f"{entry['id']} is given by {entry['by']}, which has no place.")
+        asked = {plainly(word) for word in entry.get("answers", [])}
+        out.extend(
+            f"{entry['id']} is asked by the start of {word!r}, which doesn't ask it whole."
+            for word in entry.get("started", [])
+            if plainly(word) not in asked
+        )
     return out
 
 

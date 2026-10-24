@@ -1,11 +1,12 @@
 // How bright the screen and the keyboard are, answered in the field:
 // "brightness", "backlight", "screen light" or "keyboard light". The
 // headline is the screen's brightness; the rows are each screen's light and
-// each keyboard's, as a share and as the steps its driver counts. With a
-// number, "brightness 40", Return sets the screen to that share, as the
-// brightness keys do, so the backlight daemon (modules/backlight), which
-// follows the room, learns it as Joel's pick. Read from the kernel's files when asked, their
-// folders listed once by Qt, so nothing is spawned and nothing is watched.
+// each keyboard's, named as the vocabulary names them (Words.qml), with the
+// share and the steps its driver counts. With a number, "brightness 40",
+// Return sets the screen to that share, as the brightness keys do, so the
+// backlight daemon (modules/backlight), which follows the room, learns it
+// as Joel's pick. Read from the kernel's files when asked, their folders
+// listed once by Qt, so nothing is spawned and nothing is watched.
 //
 // And the desk light, as DeskLight.qml hears it: "desk light", "lamp" or
 // "litra" answers how it's lit, "desk light 60" sets its brightness,
@@ -28,15 +29,12 @@ Provider {
         return read(probe).trim();
     }
 
-    // The words it answers whole, and by their start (Provider.qml).
-    // "light" asks for every light, before its start can ask the desk's.
-    questions: ["brightness", "backlight", "light", "screen brightness", "screen light",
-        "display brightness", "bright",
-        "brighter", "dim", "dimmer", "keyboard light", "keyboard backlight", "keyboard brightness", "key light"]
-        .concat(desks)
+    // The words it answers whole, and by their start (Provider.qml), as
+    // the vocabulary lists them. "light" asks for every light, before its
+    // start can ask the desk's.
+    questions: Words.started("light").concat(desks)
     // What asks for the desk light alone.
-    readonly property var desks: ["desk light", "desk lamp", "lamp", "litra", "warmer", "cooler", "warmth",
-        "light warmth", "colour temperature"]
+    readonly property var desks: Words.started("light:desk")
 
     // How far a step goes: a tenth of its brightness, or about the warmth
     // between two of its own button's steps.
@@ -71,7 +69,7 @@ Provider {
         const kept = Math.max(1, share);
         return {
             headline: `set the screen to ${kept}%`,
-            verb: "set",
+            verb: Words.command("command:brightness").verb,
             run: () => Niri.spawn(["brightnessctl", "--class=backlight", "set", `${kept}%`]),
             rows: shown.rows,
             note: `now ${shown.headline}`
@@ -83,28 +81,39 @@ Provider {
         const light = DeskLight.light;
         if (light === null)
             return [];
-        const step = (key, name, run) => thing({
-            key: `verb:${key}`,
-            name: name,
+        // An act on it, as the vocabulary says it, in the state it's in.
+        const step = (key, state, run) => thing({
+            key: key,
+            verb: Words.verb(key, state),
+            name: Words.name(key, state),
+            keywords: Words.keywords(key, state),
             glyph: String.fromCodePoint(0xf095f),
             hue: "action",
             now: true,
             run: run
         });
+        const lit = deskLit();
         return [copyRow({
-            name: light.on ? `${light.percent}%, ${light.kelvin} K` : "off",
-            side: "the desk light",
+            name: Words.name("light:desk"),
+            side: lit,
+            copy: lit,
             glyph: String.fromCodePoint(0xf095f),
             hue: "machine",
             graph: level(light.on ? light.percent : 0, 100),
             verbs: () => [
-                step("brighter", "Brighter", () => DeskLight.brighten(DeskLight.light.percent + brightnessStep)),
-                step("dimmer", "Dimmer", () => DeskLight.brighten(DeskLight.light.percent - brightnessStep)),
-                step("warmer", "Warmer", () => DeskLight.warm(DeskLight.light.kelvin - warmthStep)),
-                step("cooler", "Cooler", () => DeskLight.warm(DeskLight.light.kelvin + warmthStep)),
-                step("turn", DeskLight.light.on ? "Put it out" : "Light it", () => DeskLight.turn(!DeskLight.light.on))
+                step("verb:brighter", "", () => DeskLight.brighten(DeskLight.light.percent + brightnessStep)),
+                step("verb:dimmer", "", () => DeskLight.brighten(DeskLight.light.percent - brightnessStep)),
+                step("verb:warmer", "", () => DeskLight.warm(DeskLight.light.kelvin - warmthStep)),
+                step("verb:cooler", "", () => DeskLight.warm(DeskLight.light.kelvin + warmthStep)),
+                step("verb:turn", DeskLight.light.on ? "" : "off", () => DeskLight.turn(!DeskLight.light.on))
             ]
         })];
+    }
+
+    // How the desk light is lit, in a few words.
+    function deskLit() {
+        const light = DeskLight.light;
+        return light.on ? `${light.percent}%, ${light.kelvin} K` : "off";
     }
 
     function deskTold() {
@@ -112,7 +121,7 @@ Provider {
         if (rows.length === 0)
             return null;
         return {
-            headline: DeskLight.light.on ? `the desk light is ${rows[0].name}` : "the desk light is off",
+            headline: `the desk light is ${deskLit()}`,
             rows: rows,
             note: "a camera lights it; → steps it"
         };
@@ -134,7 +143,11 @@ Provider {
             headline: `set the desk light to ${kelvin} K`,
             run: () => DeskLight.warm(Number(kelvin))
         };
-        return Object.assign(done, { verb: "set", rows: shown.rows, note: `now ${shown.rows[0].name}` });
+        return Object.assign(done, {
+            verb: Words.command("command:desk").verb,
+            rows: shown.rows,
+            note: `now ${deskLit()}`
+        });
     }
 
     function stepDesk(way) {
@@ -145,10 +158,10 @@ Provider {
         const kept = Math.max(DeskLight.warmest, Math.min(DeskLight.coolest, kelvin));
         return {
             headline: `make the desk light ${way}, ${kept} K`,
-            verb: "set",
+            verb: Words.command("command:desk").verb,
             run: () => DeskLight.warm(kept),
             rows: shown.rows,
-            note: `now ${shown.rows[0].name}`
+            note: `now ${deskLit()}`
         };
     }
 
@@ -180,19 +193,27 @@ Provider {
         if (screens.length === 0 && keyboards.length === 0 && desk.length === 0)
             return null;
         const share = light => `${Math.round(light.now / light.most * 100)}%`;
-        const rows = screens.map(light => copyRow({
-            name: share(light),
-            side: `the screen, ${light.now} of ${light.most}`,
+        // Named by what it lights, numbered only when there's more than
+        // one, so no two rows read alike.
+        const part = (id, lights, i) => Words.name(id, lights.length > 1 ? "numbered" : "",
+            { n: i + 1 });
+        const keyed = light => light.now === 0 ? "off" : `${light.now} of ${light.most}`;
+        const rows = screens.map((light, i) => copyRow({
+            name: part("light:screen", screens, i),
+            side: `${share(light)}, ${light.now} of ${light.most}`,
+            copy: share(light),
             glyph: String.fromCodePoint(0xf00df),
             graph: level(light.now, light.most)
-        })).concat(keyboards.map(light => copyRow({
-            name: light.now === 0 ? "off" : `${light.now} of ${light.most}`,
-            side: "the keyboard's light",
+        })).concat(keyboards.map((light, i) => copyRow({
+            name: part("light:keyboard", keyboards, i),
+            side: keyed(light),
+            copy: keyed(light),
             glyph: String.fromCodePoint(0xf030c),
             graph: level(light.now, light.most)
         }))).concat(desk);
         return {
-            headline: screens.length > 0 ? `${share(screens[0])} bright` : rows[0].name,
+            headline: screens.length > 0 ? `${share(screens[0])} bright`
+                : keyboards.length > 0 ? keyed(keyboards[0]) : deskLit(),
             rows: rows,
             note: "the screen follows the room; the keys set it"
         };

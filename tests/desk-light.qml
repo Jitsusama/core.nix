@@ -103,8 +103,9 @@ ShellRoot {
         const told = light.answer("desk light");
         expect("how it's lit", told !== null && told.headline === "the desk light is 40%, 4000 K",
             told?.headline);
-        expect("its row", told.rows.length === 1 && told.rows[0].side === "the desk light",
-            JSON.stringify(told.rows.map(row => row.side)));
+        expect("its row", told.rows.length === 1 && told.rows[0].name === "Desk light"
+            && told.rows[0].side === "40%, 4000 K",
+            JSON.stringify(told.rows.map(row => [row.name, row.side])));
         expect("the litra answers too", light.answer("litra")?.headline === told.headline,
             light.answer("litra")?.headline);
         expect("nothing told the bar at first", root.brightened === 0 && root.warmed === 0,
@@ -138,6 +139,9 @@ ShellRoot {
         expect("the verbs",
             verbs.map(verb => verb.name).join(", ") === "Brighter, Dimmer, Warmer, Cooler, Put it out",
             verbs.map(verb => verb.name).join(", "));
+        expect("each its one word",
+            verbs.map(verb => verb.verb).join(" ") === "brighter dimmer warmer cooler off",
+            verbs.map(verb => verb.verb).join(" "));
         verbs[0].run();
         root.step("a verb's step", () => root.lit(70, 4100), root.stepped);
     }

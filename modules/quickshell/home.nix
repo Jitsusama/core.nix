@@ -963,12 +963,26 @@ in
       enable = lib.mkOption {
         type = lib.types.bool;
         default = true;
-        description = "Whether what's picked for what was typed ranks it first next time.";
+        description = ''
+          Whether what's picked for what was typed reorders what those letters
+          find. A row comes first for them, and for the longer words they
+          start, once it's been picked there two more times than anything
+          else, and keeps the place until another leads it by two, so one
+          slip teaches nothing. A name typed whole still comes first, unless
+          something else was picked for exactly those letters twice. It only
+          orders: every match still shows. Off, nothing is kept or leaned on.
+        '';
       };
       halfLife = lib.mkOption {
         type = lib.types.number;
         default = 14;
-        description = "Days until a pick counts half as much, so old habits fade.";
+        description = ''
+          Days until a pick counts half as much in ordering the rest of a
+          list, so old habits fade; who leads by two counts every pick, never
+          fading. It's also how long a row that's gone, such as a closed
+          window or a dismissed notice, keeps its picks: gone and unpicked for
+          longer, they're forgotten.
+        '';
       };
       remember = lib.mkOption {
         type = lib.types.ints.positive;
