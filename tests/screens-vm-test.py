@@ -54,16 +54,19 @@ def wait_for_surfaces(*namespaces: str, timeout: int = 60) -> None:
     assert not missing, f"niri holds no surface for {sorted(missing)}"
 
 
-def plug(status: str) -> None:
-    """Force the screen's connector to a status and tell niri, as a cable coming or going does.
+def plug(status: str, *named: str) -> None:
+    """Force screens' connectors to a status and tell niri, as a cable coming or going does.
 
-    The VM's display driver doesn't watch its connectors, so a forced status alone announces
-    nothing; niri looks at the card's screens again on any change to it.
+    It takes every screen at once, as an undock does, unless some are named. The VM's display
+    driver doesn't watch its connectors, so a forced status alone announces nothing; niri
+    looks at a card's screens again on any change to it.
     """
-    machine.succeed(
-        f"echo {status} > {connector}/status"
-        " && udevadm trigger --action=change --settle /sys/class/drm/card0"
-    )
+    for name in named or connectors:
+        path = connectors[name]
+        card = path.rsplit("-", 2)[0]
+        machine.succeed(
+            f"echo {status} > {path}/status && udevadm trigger --action=change --settle {card}"
+        )
 
 
 def displays_say(*, named: bool) -> None:
@@ -78,7 +81,12 @@ def displays_say(*, named: bool) -> None:
 
 machine.wait_for_unit("multi-user.target")
 wait_for_surfaces("wallpaper", "launcher", timeout=300)
-connector = machine.succeed("ls -d /sys/class/drm/card0-Virtual-1").strip()
+# Each screen's connector, by the name niri gives the screen: one on each card.
+connectors = {
+    path.split("-", 1)[1]: path
+    for path in machine.succeed("ls -d /sys/class/drm/card*-Virtual-*").split()
+}
+assert sorted(connectors) == ["Virtual-1", "Virtual-2"], f"the screens are {connectors}"
 
 with subtest("a critical notice is up before the screen goes"):
     machine.succeed(
@@ -114,7 +122,8 @@ with subtest("the margin's mark and dictation's bar come back with the screen"):
 with subtest("desk-facts names the screen again once it's back"):
     # bochs-drm reads the screen's EDID from QEMU at each probe, as a real display's driver
     # does at a replug, so the screen comes back whole.
-    machine.log(f"EDID: {machine.succeed(f'wc -c < {connector}/edid').strip()} bytes")
+    edid = f"{connectors['Virtual-1']}/edid"
+    machine.log(f"EDID: {machine.succeed(f'wc -c < {edid}').strip()} bytes")
     displays_say(named=True)
 
 
@@ -187,3 +196,50 @@ with subtest("after the wake, Keep Awake let go takes its mark away"):
     # With nothing else on, the margin goes with its last mark.
     machine.succeed(in_niri("systemctl --user stop caffeinate.service"))
     wait_for_no_surface("margin")
+
+
+def held_on(namespace: str) -> set[str]:
+    """Give the screens niri holds a surface of a namespace on, by name."""
+    held = json.loads(machine.succeed(in_niri("niri msg --json layers")))
+    return {layer["output"] for layer in held if layer["namespace"] == namespace}
+
+
+def wait_for_held_on(namespace: str, screens: set[str], timeout: int = 60) -> None:
+    """Wait until niri holds a namespace's surfaces on exactly these screens."""
+    deadline = time.monotonic() + timeout
+    while (now := held_on(namespace)) != screens:
+        assert time.monotonic() < deadline, f"{namespace} is on {sorted(now)}, not {screens}"
+        time.sleep(1)
+
+
+# Joel docks with two screens, and an undock can take either. The margin is
+# a surface on each screen; dictation's bar is one, on the screen niri
+# gives it, so the screen to take is the one it's on.
+both = set(connectors)
+
+with subtest("on two screens, the margin shows on each and dictation's bar on one"):
+    machine.succeed(in_niri("systemctl --user start caffeinate.service"))
+    machine.succeed(in_niri("dictation toggle"))
+    wait_for_held_on("margin", both)
+    machine.wait_until_succeeds(
+        in_niri("niri msg --json layers | grep -qF '\"dictation\"'"),
+        timeout=dt.timedelta(seconds=30),
+    )
+    [listening] = held_on("dictation")
+    left = both - {listening}
+
+with subtest("one of two screens goes, and the margin and dictation's bar stay on the other"):
+    plug("off", listening)
+    machine.wait_until_succeeds(
+        in_niri(f"! niri msg --json outputs | grep -qF '\"{listening}\"'"),
+        timeout=dt.timedelta(seconds=60),
+    )
+    wait_for_held_on("margin", left)
+    wait_for_held_on("dictation", left)
+
+with subtest("the screen comes back, and the margin is on both again"):
+    plug("detect", listening)
+    wait_for_held_on("margin", both)
+    # Still listening through it all, so the second press ends it.
+    machine.succeed(in_niri("dictation toggle"))
+    wait_for_no_surface("dictation")
