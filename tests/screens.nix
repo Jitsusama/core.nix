@@ -5,7 +5,9 @@
 # and dictation listening. Then the console is switched away and back, and
 # the machine sleeps as a laptop does and wakes at a key, and they must all
 # be there again after each; after the wake, the shell must still hear what
-# it's told over the bus, dictation's socket and a unit's state. The script
+# it's told over the bus, dictation's socket and a unit's state. Last, as a
+# dock's two screens, one goes and comes back: the margin and dictation's
+# bar must stay on the other and the margin come back on both. The script
 # is screens-vm-test.py.
 { self, pkgs }:
 let
@@ -90,7 +92,12 @@ pkgs.testers.runNixOSTest {
         # can't suspend yet (Linux 6.18): after a wake its queue never
         # drains, and niri waits on it for good. This card has no render
         # node, so the patch lets niri draw through the card's own node.
-        qemu.options = [ "-vga none -device VGA,xres=1280,yres=800,edid=on" ];
+        # A second card is a second screen, of another size, as a dock's is,
+        # and niri draws on both.
+        qemu.options = [
+          "-vga none -device VGA,xres=1280,yres=800,edid=on"
+          "-device secondary-vga,xres=1024,yres=768,edid=on"
+        ];
         # virtio-fs can't suspend, and refuses a sleep for the whole
         # machine, so the store is the image above and nothing is shared.
         # The host's store stays on in name, so NixOS still registers the
