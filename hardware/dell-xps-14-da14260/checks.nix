@@ -10,6 +10,26 @@
   self,
   ...
 }:
+let
+  # The XPS 14's kernel, and the camera's drivers built beside it.
+  inherit ((bareNixos [ self.nixosModules.dell-xps-14-da14260 ]).config.boot.kernelPackages)
+    kernel
+    ipu7-drivers
+    ;
+  # A few files of a source, with each patch given applied to them, as the
+  # machine builds them (tests/patched-kernel-source.sh).
+  patched =
+    source: patches: files:
+    pkgs.runCommandLocal "patched-source" { nativeBuildInputs = [ pkgs.patchutils ]; } ''
+      ${lib.getExe pkgs.bash} ${../../tests/patched-kernel-source.sh} ${source} ${
+        pkgs.writeText "patches" (lib.concatMapStrings (patch: "${patch}\n") patches)
+      } $out ${lib.escapeShellArgs files}
+    '';
+  # A few files of the kernel's source, as the XPS 14 builds them.
+  kernelSource = patched kernel.src (
+    lib.filter (patch: patch != null) (map (patch: patch.patch) kernel.kernelPatches)
+  );
+in
 {
   # A model runs on the NPU only once its compiler has turned it into the
   # NPU's program, and the driver looks for the compiler in its own
@@ -123,9 +143,6 @@
         && lib.hasInfix "ignore_adaptive" (systemd.services.thermald.serviceConfig.ExecStartPre or "")
       );
 
-  # A machine that names a click strength sets it on each hidraw device as it
-  # appears and again after every kind of sleep. One that names none runs
-  # nothing.
   # The XPS 14's camera takes Dell's tuning only for a module a machine names,
   # and otherwise keeps Intel's, fetching nothing from Dell.
   the-camera-takes-its-modules-tuning =
@@ -190,15 +207,7 @@
         GST_REGISTRY = "registry.bin";
       }
       ''
-        python3 - <<'EOF'
-        w, h = 1920, 1080
-        y = bytes(x * 256 // w for x in range(w)) * h
-        uv = bytes(
-            v for r in range(h // 2) for x in range(w // 2)
-            for v in (x * 256 // (w // 2), r * 256 // (h // 2))
-        )
-        open("ramp.nv12", "wb").write(y + uv)
-        EOF
+        python3 ${../../tests/camera-range.py} ramp ramp.nv12
         # gst-launch takes each argument as one word, so the pipelines are
         # split at their spaces, which parses them as the relay's own
         # gst_parse_launch does.
@@ -206,24 +215,7 @@
         written=${lib.escapeShellArg "${pinned "relayed.nv12" caps} ! ${written} ! ${loopback} ! filesink location=written.nv12"}
         ${launch} -q $relayed 2> relayed.log || { cat relayed.log; exit 1; }
         ${launch} -q $written 2> written.log || { cat written.log; exit 1; }
-        python3 - <<'EOF'
-        import sys
-        w, h = 1920, 1080
-        ramp = open("ramp.nv12", "rb").read()
-        relayed = open("relayed.nv12", "rb").read()
-        written = open("written.nv12", "rb").read()
-        # The relay turns the picture around, so compare against it turned.
-        y = ramp[: w * h][::-1]
-        uv = ramp[w * h :]
-        pairs = [uv[i : i + 2] for i in range(0, len(uv), 2)][::-1]
-        want = bytes(round(16 + v * 219 / 255) for v in y) + bytes(
-            round(128 + (v - 128) * 224 / 255) for p in pairs for v in p
-        )
-        if relayed != want:
-            sys.exit("The relay doesn't squeeze full range into limited range exactly.")
-        if written != relayed:
-            sys.exit("The relay's output side changes the frames it's given.")
-        EOF
+        python3 ${../../tests/camera-range.py} compare ramp.nv12 relayed.nv12 written.nv12
         touch $out
       '';
 
@@ -253,156 +245,74 @@
   # The SoundWire machine driver binds each amplifier by the names of the
   # DAIs it lists for it, and one the amplifiers' driver doesn't register
   # leaves no sound card at all. 7.2.11 named the OT25 DAI before it had
-  # one. Read from the source the XPS 14 builds, with its patches.
+  # one. Read from the source the XPS 14 builds, with its patches
+  # (tests/amps-have-every-dai-named.sh).
   speaker-amps-have-every-dai-named =
     let
-      inherit ((bareNixos [ self.nixosModules.dell-xps-14-da14260 ]).config.boot.kernelPackages)
-        kernel
-        ;
       codec = "sound/soc/codecs/cs35l56.c";
       machine = "sound/soc/sdw_utils/soc_sdw_utils.c";
-      patches = lib.filter (patch: patch != null) (map (patch: patch.patch) kernel.kernelPatches);
     in
-    pkgs.runCommandLocal "speaker-amps-have-every-dai-named"
-      { nativeBuildInputs = [ pkgs.patchutils ]; }
-      ''
-        tar xf ${kernel.src} --strip-components=1 --wildcards '*/${codec}' '*/${machine}'
-        for patch in ${lib.escapeShellArgs (map (patch: "${patch}") patches)}; do
-          filterdiff -p1 -i ${codec} -i ${machine} "$patch" | patch -p1 --forward --batch --silent
-        done
-        named=$(
-          { grep -o '\.dai_name = "cs35l56-[^"]*"' ${machine} || true; } |
-            cut -d '"' -f 2 | sort -u
-        )
-        if [ -z "$named" ]; then
-          echo "The SoundWire machine driver names no cs35l56 DAI, so there's nothing to hold."
-          exit 1
-        fi
-        missing=
-        for dai in $named; do
-          grep -qF ".name = \"$dai\"" ${codec} || missing="$missing $dai"
-        done
-        if [ -n "$missing" ]; then
-          echo "The SoundWire machine driver names DAIs no amplifier registers:$missing"
-          exit 1
-        fi
-        touch $out
-      '';
+    pkgs.runCommandLocal "speaker-amps-have-every-dai-named" { } ''
+      cd ${
+        kernelSource [
+          codec
+          machine
+        ]
+      }
+      ${lib.getExe pkgs.bash} ${../../tests/amps-have-every-dai-named.sh} ${machine} ${codec}
+      touch $out
+    '';
 
   # The XPS 14's EC sends type 0x0012 events with code 0x0000 about hourly,
   # and dell-wmi logs each as an unknown key unless its keymap for that
-  # type ignores the code. Read from the XPS 14's patched source.
+  # type ignores the code. Read from the XPS 14's patched source
+  # (tests/dell-wmi-ignores-the-hourly-event.py).
   dell-events-are-known =
     let
-      inherit ((bareNixos [ self.nixosModules.dell-xps-14-da14260 ]).config.boot.kernelPackages)
-        kernel
-        ;
       driver = "drivers/platform/x86/dell/dell-wmi-base.c";
-      patches = lib.filter (patch: patch != null) (map (patch: patch.patch) kernel.kernelPatches);
     in
-    pkgs.runCommandLocal "dell-events-are-known"
-      {
-        nativeBuildInputs = [
-          pkgs.patchutils
-          pkgs.python3
-        ];
-      }
-      ''
-        tar xf ${kernel.src} --strip-components=1 --wildcards '*/${driver}'
-        for patch in ${lib.escapeShellArgs (map (patch: "${patch}") patches)}; do
-          filterdiff -p1 -i ${driver} "$patch" | patch -p1 --forward --batch --silent
-        done
-        python3 - ${driver} <<'EOF'
-        import re, sys
-        source = open(sys.argv[1]).read()
-        keymap = re.search(r"dell_wmi_keymap_type_0012\[\] = \{(.*?)\n\};", source, re.S)
-        if not keymap:
-            sys.exit("dell-wmi has no keymap for type 0x0012 events.")
-        if not re.search(r"\{ KE_IGNORE, 0x0000,", keymap.group(1)):
-            sys.exit("dell-wmi logs the XPS 14's hourly type 0x0012 event as an unknown key.")
-        EOF
-        touch $out
-      '';
+    pkgs.runCommandLocal "dell-events-are-known" { nativeBuildInputs = [ pkgs.python3 ]; } ''
+      python3 ${../../tests/dell-wmi-ignores-the-hourly-event.py} ${kernelSource [ driver ]}/${driver}
+      touch $out
+    '';
 
   # The XPS 14's colour sensor, OVTI08F4, is mounted upside down, and its
   # firmware says it isn't. The bridge reports 180 degrees for a sensor in
   # its upside-down table that matches the machine, whatever the firmware
-  # says, and nothing else says so. Read from the XPS 14's patched source.
+  # says, and nothing else says so. Read from the XPS 14's patched source
+  # (tests/ipu-bridge-knows-the-upside-down-sensor.py).
   the-colour-camera-says-it-is-upside-down =
     let
-      inherit ((bareNixos [ self.nixosModules.dell-xps-14-da14260 ]).config.boot.kernelPackages)
-        kernel
-        ;
       bridge = "drivers/media/pci/intel/ipu-bridge.c";
-      patches = lib.filter (patch: patch != null) (map (patch: patch.patch) kernel.kernelPatches);
     in
     pkgs.runCommandLocal "the-colour-camera-says-it-is-upside-down"
-      {
-        nativeBuildInputs = [
-          pkgs.patchutils
-          pkgs.python3
-        ];
-      }
+      { nativeBuildInputs = [ pkgs.python3 ]; }
       ''
-        tar xf ${kernel.src} --strip-components=1 --wildcards '*/${bridge}'
-        for patch in ${lib.escapeShellArgs (map (patch: "${patch}") patches)}; do
-          filterdiff -p1 -i ${bridge} "$patch" | patch -p1 --forward --batch --silent
-        done
-        python3 - ${bridge} <<'EOF'
-        import re, sys
-        source = open(sys.argv[1]).read()
-        table = re.search(r"upside_down_sensor_dmi_ids\[\] = \{(.*?)\n\};", source, re.S)
-        if not table:
-            sys.exit("The bridge has no upside-down sensor table.")
-        ours = [
-            entry for entry in re.split(r"\n\t\{\n", table.group(1))
-            if '"Dell Inc."' in entry and '"XPS 14 DA14260"' in entry
-        ]
-        if not any('.driver_data = "OVTI08F4"' in entry for entry in ours):
-            sys.exit("The bridge doesn't know the XPS 14's colour sensor is upside down.")
-        EOF
+        python3 ${../../tests/ipu-bridge-knows-the-upside-down-sensor.py} \
+          ${kernelSource [ bridge ]}/${bridge}
         touch $out
       '';
 
   # The legacy profile file, the one power-profiles-daemon writes, offers
   # only what every profile driver takes, so a profile Dell's driver offers
   # that the SoC slider doesn't never reaches either. Without quiet there,
-  # power-saver runs as balanced. Read from the XPS 14's patched source.
+  # power-saver runs as balanced. Read from the XPS 14's patched source
+  # (tests/platform-profiles-reach-the-legacy-file.sh).
   platform-profiles-reach-the-legacy-file =
     let
-      inherit ((bareNixos [ self.nixosModules.dell-xps-14-da14260 ]).config.boot.kernelPackages)
-        kernel
-        ;
       dell = "drivers/platform/x86/dell/dell-pc.c";
       slider = "drivers/thermal/intel/int340x_thermal/processor_thermal_soc_slider.c";
-      patches = lib.filter (patch: patch != null) (map (patch: patch.patch) kernel.kernelPatches);
     in
-    pkgs.runCommandLocal "platform-profiles-reach-the-legacy-file"
-      { nativeBuildInputs = [ pkgs.patchutils ]; }
-      ''
-        tar xf ${kernel.src} --strip-components=1 --wildcards '*/${dell}' '*/${slider}'
-        for patch in ${lib.escapeShellArgs (map (patch: "${patch}") patches)}; do
-          filterdiff -p1 -i ${dell} -i ${slider} "$patch" | patch -p1 --forward --batch --silent
-        done
-        profiles() {
-          { grep -o 'set_bit(PLATFORM_PROFILE_[A-Z_]*' "$1" || true; } | cut -d '(' -f 2 | sort -u
-        }
-        offered=$(profiles ${dell})
-        if [ -z "$offered" ]; then
-          echo "Dell's profile driver offers no profile, so there's nothing to hold."
-          exit 1
-        fi
-        taken=$(profiles ${slider})
-        missing=
-        for profile in $offered; do
-          echo "$taken" | grep -qx "$profile" || missing="$missing $profile"
-        done
-        if [ -n "$missing" ]; then
-          echo "The SoC slider doesn't take profiles Dell's driver offers:$missing"
-          exit 1
-        fi
-        touch $out
-      '';
+    pkgs.runCommandLocal "platform-profiles-reach-the-legacy-file" { } ''
+      cd ${
+        kernelSource [
+          dell
+          slider
+        ]
+      }
+      ${lib.getExe pkgs.bash} ${../../tests/platform-profiles-reach-the-legacy-file.sh} ${dell} ${slider}
+      touch $out
+    '';
 
   # The capture side of the XPS 14's IPU, and the ports its video nodes sit
   # in, are freed at the V4L2 device's last reference rather than with the
@@ -410,17 +320,10 @@
   # reaches them as it closes.
   ipu7-outlives-its-open-files =
     let
-      inherit ((bareNixos [ self.nixosModules.dell-xps-14-da14260 ]).config.boot.kernelPackages)
-        kernel
-        ;
       isys = "drivers/staging/media/ipu7/ipu7-isys.c";
-      patches = lib.filter (patch: patch != null) (map (patch: patch.patch) kernel.kernelPatches);
     in
-    pkgs.runCommandLocal "ipu7-outlives-its-open-files" { nativeBuildInputs = [ pkgs.patchutils ]; } ''
-      tar xf ${kernel.src} --strip-components=1 --wildcards '*/${isys}'
-      for patch in ${lib.escapeShellArgs (map (patch: "${patch}") patches)}; do
-        filterdiff -p1 -i ${isys} "$patch" | patch -p1 --forward --batch --silent
-      done
+    pkgs.runCommandLocal "ipu7-outlives-its-open-files" { } ''
+      cd ${kernelSource [ isys ]}
       fail() { echo "The IPU7's capture side $1, so a node still open after an unbind reads freed memory as it closes."; exit 1; }
       grep -q 'sizeof(\*isys)' ${isys} || fail "isn't allocated where this check looks"
       ! grep -q 'devm_kzalloc(&auxdev->dev, sizeof(\*isys)' ${isys} || fail "is freed with its device"
@@ -436,32 +339,23 @@
   # sources, the logger's code taken out as it is when built.
   the-camera-holds-no-memory-it-never-uses =
     let
-      inherit ((bareNixos [ self.nixosModules.dell-xps-14-da14260 ]).config.boot.kernelPackages)
-        kernel
-        ipu7-drivers
-        ;
       isys = "drivers/staging/media/ipu7/ipu7-isys.c";
       psys = "drivers/media/pci/intel/ipu7/psys/ipu-psys.c";
-      patches = lib.filter (patch: patch != null) (map (patch: patch.patch) kernel.kernelPatches);
-      apply = file: patches: ''
-        for patch in ${lib.escapeShellArgs (map (patch: "${patch}") patches)}; do
-          filterdiff -p1 -i ${file} "$patch" | patch -p1 --forward --batch --silent
-        done
-        unifdef -m -UENABLE_FW_OFFLINE_LOGGER ${file} || [ $? = 1 ]
-      '';
+      sources = pkgs.symlinkJoin {
+        name = "camera-sources";
+        paths = [
+          (kernelSource [ isys ])
+          (patched ipu7-drivers.src ipu7-drivers.patches [ psys ])
+        ];
+      };
     in
     pkgs.runCommandLocal "the-camera-holds-no-memory-it-never-uses"
-      {
-        nativeBuildInputs = [
-          pkgs.patchutils
-          pkgs.unifdef
-        ];
-      }
+      { nativeBuildInputs = [ pkgs.unifdef ]; }
       ''
-        tar xf ${kernel.src} --strip-components=1 --wildcards '*/${isys}'
-        install -D -m 644 ${ipu7-drivers.src}/${psys} ${psys}
-        ${apply isys patches}
-        ${apply psys ipu7-drivers.patches}
+        for file in ${isys} ${psys}; do
+          install -D -m 644 ${sources}/$file $file
+          unifdef -m -UENABLE_FW_OFFLINE_LOGGER $file || [ $? = 1 ]
+        done
         moved() { echo "The camera's $1 side isn't probed where this check looks."; exit 1; }
         asks() { echo "The camera's $1 side asks for 4 MiB for a log nothing reads."; exit 1; }
         grep -q 'isys_register_devices(isys)' ${isys} || moved capture
@@ -480,86 +374,71 @@
   # Read from the XPS 14's patched source.
   bluetooth-keeps-its-power-limits =
     let
-      inherit ((bareNixos [ self.nixosModules.dell-xps-14-da14260 ]).config.boot.kernelPackages)
-        kernel
-        ;
       btintel = "drivers/bluetooth/btintel.c";
-      patches = lib.filter (patch: patch != null) (map (patch: patch.patch) kernel.kernelPatches);
       without = what: "The kernel ${what}, so Bluetooth runs without its power limits.";
     in
-    pkgs.runCommandLocal "bluetooth-keeps-its-power-limits" { nativeBuildInputs = [ pkgs.patchutils ]; }
-      ''
-        tar xf ${kernel.src} --strip-components=1 --wildcards '*/${btintel}'
-        for patch in ${lib.escapeShellArgs (map (patch: "${patch}") patches)}; do
-          filterdiff -p1 -i ${btintel} "$patch" | patch -p1 --forward --batch --silent
-        done
-        if ! grep -q 'btintel_set_sar_rev2(hdev, sar)' ${btintel}; then
-          echo "${without "rejects revision 2 Bluetooth SAR tables"}"
-          exit 1
-        fi
-        if ! grep -Eq '^[[:space:]]+ret = btintel_uefi_set_sar\(hdev, ver\);' ${btintel}; then
-          echo "${without "never reads Bluetooth's SAR table from UEFI"}"
-          exit 1
-        fi
-        if ! grep -Eq '^[[:space:]]+if \(!btintel_uefi_get_ppag\(&mode\)\)' ${btintel}; then
-          echo "${without "never reads Bluetooth's antenna gain setting from UEFI"}"
-          exit 1
-        fi
-        touch $out
-      '';
+    pkgs.runCommandLocal "bluetooth-keeps-its-power-limits" { } ''
+      cd ${kernelSource [ btintel ]}
+      if ! grep -q 'btintel_set_sar_rev2(hdev, sar)' ${btintel}; then
+        echo "${without "rejects revision 2 Bluetooth SAR tables"}"
+        exit 1
+      fi
+      if ! grep -Eq '^[[:space:]]+ret = btintel_uefi_set_sar\(hdev, ver\);' ${btintel}; then
+        echo "${without "never reads Bluetooth's SAR table from UEFI"}"
+        exit 1
+      fi
+      if ! grep -Eq '^[[:space:]]+if \(!btintel_uefi_get_ppag\(&mode\)\)' ${btintel}; then
+        echo "${without "never reads Bluetooth's antenna gain setting from UEFI"}"
+        exit 1
+      fi
+      touch $out
+    '';
 
   # The XPS 14's panel gives its variable refresh range only in DisplayID's
   # Adaptive Sync block, so a kernel that doesn't read it never offers
   # variable refresh. Read from the XPS 14's patched source.
   the-panel-offers-variable-refresh =
     let
-      inherit ((bareNixos [ self.nixosModules.dell-xps-14-da14260 ]).config.boot.kernelPackages)
-        kernel
-        ;
       edid = "drivers/gpu/drm/drm_edid.c";
       displayid = "drivers/gpu/drm/drm_displayid_internal.h";
-      patches = lib.filter (patch: patch != null) (map (patch: patch.patch) kernel.kernelPatches);
     in
-    pkgs.runCommandLocal "the-panel-offers-variable-refresh"
-      { nativeBuildInputs = [ pkgs.patchutils ]; }
-      ''
-        tar xf ${kernel.src} --strip-components=1 --wildcards '*/${edid}' '*/${displayid}'
-        for patch in ${lib.escapeShellArgs (map (patch: "${patch}") patches)}; do
-          filterdiff -p1 -i ${edid} -i ${displayid} "$patch" | patch -p1 --forward --batch --silent
-        done
-        if ! grep -Eq '^#define DATA_BLOCK_2_ADAPTIVE_SYNC[[:space:]]+0x2b$' ${displayid}; then
-          echo "The kernel doesn't know DisplayID's Adaptive Sync block, so the panel's variable refresh is never offered."
-          exit 1
-        fi
-        if ! grep -q 'block->tag != DATA_BLOCK_2_ADAPTIVE_SYNC' ${edid}; then
-          echo "The kernel reads no refresh range from DisplayID's Adaptive Sync block, so the panel's variable refresh is never offered."
-          exit 1
-        fi
-        touch $out
-      '';
+    pkgs.runCommandLocal "the-panel-offers-variable-refresh" { } ''
+      cd ${
+        kernelSource [
+          edid
+          displayid
+        ]
+      }
+      if ! grep -Eq '^#define DATA_BLOCK_2_ADAPTIVE_SYNC[[:space:]]+0x2b$' ${displayid}; then
+        echo "The kernel doesn't know DisplayID's Adaptive Sync block, so the panel's variable refresh is never offered."
+        exit 1
+      fi
+      if ! grep -q 'block->tag != DATA_BLOCK_2_ADAPTIVE_SYNC' ${edid}; then
+        echo "The kernel reads no refresh range from DisplayID's Adaptive Sync block, so the panel's variable refresh is never offered."
+        exit 1
+      fi
+      touch $out
+    '';
 
   # The XPS 14's panel gives its luminance only in DisplayID's Display
   # Parameters block, so a kernel that doesn't read it guesses the panel's
   # brightness range. Read from the XPS 14's patched source.
   the-panel-knows-its-luminance =
     let
-      inherit ((bareNixos [ self.nixosModules.dell-xps-14-da14260 ]).config.boot.kernelPackages)
-        kernel
-        ;
       edid = "drivers/gpu/drm/drm_edid.c";
       displayid = "drivers/gpu/drm/drm_displayid_internal.h";
-      patches = lib.filter (patch: patch != null) (map (patch: patch.patch) kernel.kernelPatches);
     in
-    pkgs.runCommandLocal "the-panel-knows-its-luminance" { nativeBuildInputs = [ pkgs.patchutils ]; } ''
+    pkgs.runCommandLocal "the-panel-knows-its-luminance" { } ''
+      cd ${
+        kernelSource [
+          edid
+          displayid
+        ]
+      }
       guess() {
         echo "The kernel $1, so the panel's brightness range is a guess."
         exit 1
       }
-      tar xf ${kernel.src} --strip-components=1 --wildcards '*/${edid}' '*/${displayid}'
-      for patch in ${lib.escapeShellArgs (map (patch: "${patch}") patches)}; do
-        filterdiff -p1 -i ${edid} -i ${displayid} "$patch" |
-          patch -p1 --forward --batch --silent
-      done
       grep -q 'block->tag != DATA_BLOCK_2_DISPLAY_PARAMETERS' ${edid} ||
         guess "reads no luminance from DisplayID's Display Parameters block"
       grep -Eq '^[[:space:]]+drm_get_luminance_range_displayid\(connector,' ${edid} ||
