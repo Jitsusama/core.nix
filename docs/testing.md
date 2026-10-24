@@ -132,8 +132,8 @@ run-subtests -I vm-desktop-launcher-goes-places "opens kitty"  # then a Python p
 run-subtests -K vm-desktop-launcher-goes-places "opens kitty"  # keep the disks for next time
 ```
 
-A subtest that uses what an earlier one left, a window or a notice, needs
-that one named too. Each run has its own short runtime folder, since the
+Each subtest makes what it needs, a window or a notice, when an earlier one
+hasn't, so it runs alone. Each run has its own short runtime folder, since the
 driver keeps its network switch's socket and the machines' state under
 `XDG_RUNTIME_DIR`, so two runs at once don't collide; the folder has to be
 short, as a socket's path can't pass 108 bytes. The pictures land in the
