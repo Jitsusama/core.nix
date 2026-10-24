@@ -208,6 +208,16 @@ let
       text = nerd "f040e";
       wide = true;
     };
+    # The lock key and the Do Not Disturb key, as a padlock and the moon a
+    # Mac keyboard prints on its Focus key, rather than their long names.
+    XF86ScreenSaver = {
+      text = nerd "f033e";
+      wide = true;
+    };
+    XF86DoNotDisturb = {
+      text = nerd "f0594";
+      wide = true;
+    };
   };
   face' = key: { wide = false; } // (keyFaces.${key} or { text = key; });
 
