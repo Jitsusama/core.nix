@@ -4,6 +4,10 @@
 // the shell starts, and a reading is read only when asked, so only sensors
 // that are there are read: some chips answer every read through the
 // firmware, which is slow, and it's the shell's own thread that waits.
+// What a chip says of itself that never changes, its name and each
+// sensor's label and most, is read once, so asking again each second
+// reads only the readings: a third of the files the processor's chip has,
+// which under a loaded processor was most of the time a read took.
 import Qt.labs.folderlistmodel
 import Quickshell
 import Quickshell.Io
@@ -18,6 +22,16 @@ Scope {
         probe.reload();
         probe.waitForJob();
         return probe.text().trim();
+    }
+
+    // What's read once, by file. Forgotten whenever the chips listed
+    // change, since the number one unplugged leaves can go to another.
+    property var kept: ({})
+
+    function fixed(file) {
+        if (!(file in kept))
+            kept[file] = said(file);
+        return kept[file];
     }
 
     // What a chip measures, by the name the kernel gives it, or "" for one
@@ -47,7 +61,7 @@ Scope {
             if (!listed)
                 continue;
             const dir = `/sys/class/hwmon/${folders.get(i, "fileName")}`;
-            const name = said(`${dir}/name`);
+            const name = fixed(`${dir}/name`);
             found.push({ dir: dir, name: name, part: part(name), listed: listed });
         }
         return found;
@@ -69,7 +83,7 @@ Scope {
                 continue;
             found.push({
                 n: Number(n[1]),
-                label: said(`${chip.dir}/${kind}${n[1]}_label`),
+                label: fixed(`${chip.dir}/${kind}${n[1]}_label`),
                 value: Number(value)
             });
         }
@@ -81,7 +95,7 @@ Scope {
     // A temperature in degrees, with the most it's meant to reach where the
     // chip says, or null.
     function degrees(chip, sensor) {
-        const most = Number(said(`${chip.dir}/temp${sensor.n}_crit`));
+        const most = Number(fixed(`${chip.dir}/temp${sensor.n}_crit`));
         return { value: sensor.value / 1000, most: most > 0 ? most / 1000 : null };
     }
 
@@ -99,7 +113,7 @@ Scope {
         const all = chips().filter(each => each.part === "disk");
         const own = said(`/sys/block/${block}/device/dev`);
         const chip = all.length === 1 ? all[0]
-            : all.find(each => own !== "" && said(`${each.dir}/device/dev`) === own);
+            : all.find(each => own !== "" && fixed(`${each.dir}/device/dev`) === own);
         if (!chip)
             return null;
         const temps = readings(chip, "temp");
@@ -123,6 +137,8 @@ Scope {
     Instantiator {
         id: files
         model: folders
+        onObjectAdded: sensors.kept = {}
+        onObjectRemoved: sensors.kept = {}
 
         FolderListModel {
             required property string fileName

@@ -693,6 +693,24 @@
       ]
     },
     {
+      "id": "shortcuts:desktop:workspaces:going",
+      "in": "shortcuts",
+      "name": "Going to one",
+      "glyph": "workspace"
+    },
+    {
+      "id": "shortcuts:desktop:workspaces:column",
+      "in": "shortcuts",
+      "name": "Moving a column",
+      "glyph": "columns"
+    },
+    {
+      "id": "shortcuts:desktop:workspaces:window",
+      "in": "shortcuts",
+      "name": "Moving a window",
+      "glyph": "windows"
+    },
+    {
       "id": "shortcuts:terminal:tabs",
       "in": "shortcuts",
       "name": "Tabs"
@@ -882,6 +900,281 @@
         "marks",
         "settings"
       ]
+    },
+    {
+      "id": "shortcuts:neovim:files:finding",
+      "in": "shortcuts",
+      "name": "Finding a file"
+    },
+    {
+      "id": "shortcuts:neovim:files:browser",
+      "in": "shortcuts",
+      "name": "File browser",
+      "hidden": [
+        "oil"
+      ]
+    },
+    {
+      "id": "shortcuts:neovim:code:definitions",
+      "in": "shortcuts",
+      "name": "Definitions and calls",
+      "words": [
+        "references"
+      ]
+    },
+    {
+      "id": "shortcuts:neovim:code:hints",
+      "in": "shortcuts",
+      "name": "Hints and fixes",
+      "words": [
+        "code actions",
+        "code lenses"
+      ]
+    },
+    {
+      "id": "shortcuts:neovim:code:refactoring",
+      "in": "shortcuts",
+      "name": "Refactoring",
+      "words": [
+        "rename",
+        "extract"
+      ]
+    },
+    {
+      "id": "shortcuts:neovim:code:formatting",
+      "in": "shortcuts",
+      "name": "Formatting"
+    },
+    {
+      "id": "shortcuts:neovim:code:selecting",
+      "in": "shortcuts",
+      "name": "Selecting code",
+      "words": [
+        "text objects"
+      ]
+    },
+    {
+      "id": "shortcuts:neovim:code:through",
+      "in": "shortcuts",
+      "name": "Moving through code"
+    },
+    {
+      "id": "shortcuts:neovim:code:server",
+      "in": "shortcuts",
+      "name": "Language server's folders"
+    },
+    {
+      "id": "shortcuts:neovim:problems:showing",
+      "in": "shortcuts",
+      "name": "Showing problems"
+    },
+    {
+      "id": "shortcuts:neovim:problems:through",
+      "in": "shortcuts",
+      "name": "Moving through problems"
+    },
+    {
+      "id": "shortcuts:neovim:problems:opening",
+      "in": "shortcuts",
+      "name": "Opening a problem"
+    },
+    {
+      "id": "shortcuts:neovim:problems:list",
+      "in": "shortcuts",
+      "name": "The problems list"
+    },
+    {
+      "id": "shortcuts:neovim:problems:folding",
+      "in": "shortcuts",
+      "name": "Folding the list"
+    },
+    {
+      "id": "shortcuts:neovim:outline:showing",
+      "in": "shortcuts",
+      "name": "Showing the outline"
+    },
+    {
+      "id": "shortcuts:neovim:outline:symbols",
+      "in": "shortcuts",
+      "name": "Going to a symbol"
+    },
+    {
+      "id": "shortcuts:neovim:outline:folding",
+      "in": "shortcuts",
+      "name": "Folding the outline"
+    },
+    {
+      "id": "shortcuts:neovim:outline:walking",
+      "in": "shortcuts",
+      "name": "Walking the outline"
+    },
+    {
+      "id": "shortcuts:neovim:git:changes",
+      "in": "shortcuts",
+      "name": "Changes",
+      "words": [
+        "hunks"
+      ]
+    },
+    {
+      "id": "shortcuts:neovim:git:staging",
+      "in": "shortcuts",
+      "name": "Staging"
+    },
+    {
+      "id": "shortcuts:neovim:git:commits",
+      "in": "shortcuts",
+      "name": "Commits",
+      "words": [
+        "blame"
+      ]
+    },
+    {
+      "id": "shortcuts:neovim:git:branches",
+      "in": "shortcuts",
+      "name": "Branches and tags"
+    },
+    {
+      "id": "shortcuts:neovim:git:stashes",
+      "in": "shortcuts",
+      "name": "Stashes"
+    },
+    {
+      "id": "shortcuts:neovim:git:remote",
+      "in": "shortcuts",
+      "name": "Pushing and pulling",
+      "words": [
+        "remote",
+        "fetch"
+      ]
+    },
+    {
+      "id": "shortcuts:neovim:git:status",
+      "in": "shortcuts",
+      "name": "Git's status"
+    },
+    {
+      "id": "shortcuts:neovim:github:repositories",
+      "in": "shortcuts",
+      "name": "Repositories",
+      "words": [
+        "repos",
+        "forks"
+      ]
+    },
+    {
+      "id": "shortcuts:neovim:github:gists",
+      "in": "shortcuts",
+      "name": "Gists"
+    },
+    {
+      "id": "shortcuts:neovim:github:notifications",
+      "in": "shortcuts",
+      "name": "Notifications"
+    },
+    {
+      "id": "shortcuts:neovim:github:keys",
+      "in": "shortcuts",
+      "name": "Finding keys",
+      "hidden": [
+        "which-key"
+      ]
+    },
+    {
+      "id": "shortcuts:neovim:github:pulls:finding",
+      "in": "shortcuts",
+      "name": "Finding pull requests"
+    },
+    {
+      "id": "shortcuts:neovim:github:pulls:pull",
+      "in": "shortcuts",
+      "name": "The pull request"
+    },
+    {
+      "id": "shortcuts:neovim:github:pulls:merging",
+      "in": "shortcuts",
+      "name": "Merging and checks",
+      "words": [
+        "merge queue"
+      ]
+    },
+    {
+      "id": "shortcuts:neovim:github:pulls:reviewing",
+      "in": "shortcuts",
+      "name": "Starting a review",
+      "words": [
+        "approve"
+      ]
+    },
+    {
+      "id": "shortcuts:neovim:github:pulls:people",
+      "in": "shortcuts",
+      "name": "People and labels"
+    },
+    {
+      "id": "shortcuts:neovim:github:pulls:comments",
+      "in": "shortcuts",
+      "name": "Comments"
+    },
+    {
+      "id": "shortcuts:neovim:github:pulls:reactions",
+      "in": "shortcuts",
+      "name": "Reactions"
+    },
+    {
+      "id": "shortcuts:neovim:github:issues:finding",
+      "in": "shortcuts",
+      "name": "Finding issues"
+    },
+    {
+      "id": "shortcuts:neovim:github:issues:issue",
+      "in": "shortcuts",
+      "name": "The issue"
+    },
+    {
+      "id": "shortcuts:neovim:github:issues:people",
+      "in": "shortcuts",
+      "name": "People and labels"
+    },
+    {
+      "id": "shortcuts:neovim:github:issues:comments",
+      "in": "shortcuts",
+      "name": "Comments"
+    },
+    {
+      "id": "shortcuts:neovim:github:issues:reactions",
+      "in": "shortcuts",
+      "name": "Reactions"
+    },
+    {
+      "id": "shortcuts:neovim:github:reviews:threads",
+      "in": "shortcuts",
+      "name": "Threads"
+    },
+    {
+      "id": "shortcuts:neovim:github:reviews:diffs",
+      "in": "shortcuts",
+      "name": "Diffs"
+    },
+    {
+      "id": "shortcuts:neovim:github:reviews:files",
+      "in": "shortcuts",
+      "name": "Changed files"
+    },
+    {
+      "id": "shortcuts:neovim:github:reviews:submitting",
+      "in": "shortcuts",
+      "name": "Submitting"
+    },
+    {
+      "id": "shortcuts:neovim:github:reviews:threads:comments",
+      "in": "shortcuts",
+      "name": "Comments"
+    },
+    {
+      "id": "shortcuts:neovim:github:reviews:threads:reactions",
+      "in": "shortcuts",
+      "name": "Reactions"
     },
     {
       "id": "shortcuts:pi:typing",
@@ -2134,6 +2427,32 @@
         "shortcuts:neovim:tabs"
       ],
       "why": "The terminal and Neovim both have tabs, and each group says its layer beside it."
+    },
+    {
+      "word": "comments",
+      "things": [
+        "shortcuts:neovim:github:pulls:comments",
+        "shortcuts:neovim:github:issues:comments",
+        "shortcuts:neovim:github:reviews:threads:comments"
+      ],
+      "why": "A pull request, an issue and a review's thread each have comments, and each group says what holds it beside it."
+    },
+    {
+      "word": "people and labels",
+      "things": [
+        "shortcuts:neovim:github:pulls:people",
+        "shortcuts:neovim:github:issues:people"
+      ],
+      "why": "A pull request and an issue each have people and labels, and each group says what holds it beside it."
+    },
+    {
+      "word": "reactions",
+      "things": [
+        "shortcuts:neovim:github:pulls:reactions",
+        "shortcuts:neovim:github:issues:reactions",
+        "shortcuts:neovim:github:reviews:threads:reactions"
+      ],
+      "why": "A pull request, an issue and a review's thread each take reactions, and each group says what holds it beside it."
     }
   ]
 }

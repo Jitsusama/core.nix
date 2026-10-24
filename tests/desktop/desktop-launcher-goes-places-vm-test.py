@@ -6,6 +6,7 @@ and the helpers every area shares, so the names it takes from there are imported
 checkers.
 """
 
+import datetime as dt
 import json
 import re
 import shlex
@@ -55,7 +56,7 @@ with subtest("the launcher shows the volume's chords, and Escape closes it"):
     type_in("volume")
     photograph("launcher-volume")
     machine.send_key("esc")
-    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
 
 
 with subtest("the launcher finds a pi session by its quest, and goes to its window"):
@@ -147,7 +148,8 @@ with subtest("the launcher finds a pi session by its quest, and goes to its wind
     type_in("testqa", selecting="A quest of its own & whole")
     machine.send_key("ret")
     machine.wait_until_succeeds(
-        in_session("niri msg --json focused-window | grep -q TESTQA"), timeout=10
+        in_session("niri msg --json focused-window | grep -q TESTQA"),
+        timeout=dt.timedelta(seconds=10),
     )
     # Its title is read once, outside what's drawn, so nothing drawn
     # reads it again as it changes.
@@ -196,9 +198,12 @@ with subtest("the launcher finds a pi session by its quest, and goes to its wind
     since = mark()
     machine.send_key("ret")
     machine.wait_until_succeeds(
-        in_session("niri msg --json focused-window | grep -q TESTQA"), timeout=10
+        in_session("niri msg --json focused-window | grep -q TESTQA"),
+        timeout=dt.timedelta(seconds=10),
     )
-    machine.wait_until_fails(in_session("niri msg layers | grep -q notifications"), timeout=10)
+    machine.wait_until_fails(
+        in_session("niri msg layers | grep -q notifications"), timeout=dt.timedelta(seconds=10)
+    )
     # Its card gone, the want still stands, so pi's mark shows.
     reported("holds margin ", lambda rest: "agent" in rest.split(), since)
     photograph("margin-pi-wants")
@@ -226,7 +231,9 @@ with subtest("the launcher finds a pi session by its quest, and goes to its wind
     # Ended while its notice is up, the notice goes with it, well
     # before its own ten seconds would.
     presence_says({"addresses": ["TESTQA"], "busy": False})
-    machine.wait_until_fails(in_session("niri msg layers | grep -q notifications"), timeout=5)
+    machine.wait_until_fails(
+        in_session("niri msg layers | grep -q notifications"), timeout=dt.timedelta(seconds=5)
+    )
     # A third, left to time out while its want stands: it isn't
     # missed, since pi's mark says the want; ended, the mark goes.
     with told("shows card A quest of its own & whole is stuck without you"):
@@ -237,7 +244,9 @@ with subtest("the launcher finds a pi session by its quest, and goes to its wind
                 "wants": {"kind": "blocked", "since": begun(), "said": "Out of ideas."},
             }
         )
-    machine.wait_until_fails(in_session("niri msg layers | grep -q notifications"), timeout=30)
+    machine.wait_until_fails(
+        in_session("niri msg layers | grep -q notifications"), timeout=dt.timedelta(seconds=30)
+    )
     time.sleep(2)
 
     def margin_holds() -> list[str]:
@@ -299,7 +308,8 @@ with subtest(
     )
     machine.send_key("ret")
     machine.wait_until_succeeds(
-        in_session("niri msg --json focused-window | grep -q TESTQA"), timeout=10
+        in_session("niri msg --json focused-window | grep -q TESTQA"),
+        timeout=dt.timedelta(seconds=10),
     )
     # One with no session, found by a word of its title, opens pi on
     # it in its tree.
@@ -309,7 +319,7 @@ with subtest(
     machine.send_key("ret")
     machine.wait_until_succeeds(
         in_session('grep -qx "$HOME/hallway QEST-20261022-HALLWY" $XDG_RUNTIME_DIR/pi-opened'),
-        timeout=30,
+        timeout=dt.timedelta(seconds=30),
     )
     as_account(f"rm -rf {another} ~/hallway $XDG_RUNTIME_DIR/pi-opened")
 
@@ -393,7 +403,8 @@ with subtest(
     machine.send_key("ret")
     reading = "paint-crew \u00b7 roller"
     machine.wait_until_succeeds(
-        in_session(f"niri msg --json windows | grep -q '{reading}'"), timeout=STARTING
+        in_session(f"niri msg --json windows | grep -q '{reading}'"),
+        timeout=dt.timedelta(seconds=STARTING),
     )
     # Still open a moment on, so the pager holds the answer.
     time.sleep(1)
@@ -407,14 +418,16 @@ with subtest(
     launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "paint-crew")
     machine.send_key("ret")
     machine.wait_until_succeeds(
-        in_session("niri msg --json focused-window | grep -q TESTQA"), timeout=10
+        in_session("niri msg --json focused-window | grep -q TESTQA"),
+        timeout=dt.timedelta(seconds=10),
     )
     as_account("rm -rf ~/.local/state/pi/agentic-harness.pi/subagent-workflow/runs/paint-crew")
     for title in [PI_WINDOW, "Elsewhere"]:
         as_account(f"niri msg action close-window --id {window_titled(title)['id']}")
     as_account(f"rm -rf {PI_QUEST} {PI_PRESENCE}/testqa.json")
     machine.wait_until_fails(
-        in_session("niri msg --json windows | grep -q 'TESTQA\\|\"Elsewhere\"'"), timeout=30
+        in_session("niri msg --json windows | grep -q 'TESTQA\\|\"Elsewhere\"'"),
+        timeout=dt.timedelta(seconds=30),
     )
 
 with subtest("the launcher sets the volume to a number, and says how loud it is"):
@@ -427,9 +440,10 @@ with subtest("the launcher sets the volume to a number, and says how loud it is"
     machine.send_key("ret")
     # Exactly that, and no longer muted.
     machine.wait_until_succeeds(
-        in_session("wpctl get-volume @DEFAULT_AUDIO_SINK@ | grep -qx 'Volume: 0.40'"), timeout=10
+        in_session("wpctl get-volume @DEFAULT_AUDIO_SINK@ | grep -qx 'Volume: 0.40'"),
+        timeout=dt.timedelta(seconds=10),
     )
-    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
     as_account("qs ipc call launcher toggle")
     launcher_ready()
     type_in("volume")
@@ -441,7 +455,7 @@ with subtest("the launcher sets the volume to a number, and says how loud it is"
     step_in()
     photograph("launcher-volume-parts")
     machine.send_key("esc")
-    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
 
 with subtest("the launcher finds and opens kitty, and learns that kitty was meant"):
     as_account("qs ipc call launcher toggle")
@@ -450,11 +464,14 @@ with subtest("the launcher finds and opens kitty, and learns that kitty was mean
     photograph("launcher")
     machine.send_key("ret")
     # The first window opened can take as long as the first GTK one.
-    machine.wait_until_succeeds(in_session("niri msg windows | grep -i kitty"), timeout=STARTING)
+    machine.wait_until_succeeds(
+        in_session("niri msg windows | grep -i kitty"), timeout=dt.timedelta(seconds=STARTING)
+    )
     # What was picked for what was typed is kept for next time.
     picked = '\'"kitty":{"program:kitty"\''
     machine.wait_until_succeeds(
-        in_session(f"grep -rqsF {picked} ~/.local/state/quickshell"), timeout=10
+        in_session(f"grep -rqsF {picked} ~/.local/state/quickshell"),
+        timeout=dt.timedelta(seconds=10),
     )
 
 # The border is all that marks the focused window, and niri leaves
@@ -482,7 +499,9 @@ with subtest("a terminal opens below the focused window"):
     anchor = focused_kitty()
     as_account("qs ipc call grid below kitty")
     kitties = 'niri msg --json windows | grep -o \'"app_id":"kitty"\' | wc -l'
-    machine.wait_until_succeeds(in_session(f"{kitties} | grep -qx 2"), timeout=STARTING)
+    machine.wait_until_succeeds(
+        in_session(f"{kitties} | grep -qx 2"), timeout=dt.timedelta(seconds=STARTING)
+    )
 
     def placed(_: bool) -> bool:
         """Say whether the new terminal sits just below the one focused before."""
@@ -492,7 +511,7 @@ with subtest("a terminal opens below the focused window"):
         here, there = at[anchor["id"]], at[new]
         return bool(there[0] == here[0] and there[1] == here[1] + 1)
 
-    retry(placed, timeout_seconds=15)
+    retry(placed, timeout=dt.timedelta(seconds=15))
 
 # Joel types the moment he presses Super+Space. Whatever letters come
 # before the launcher has the keys go to the window beneath, and the
@@ -505,7 +524,8 @@ with subtest("the launcher loses no letter typed straight after its chord"):
         "sh -c 'stty -icanon -echo; cat > /tmp/type-ahead'"
     )
     machine.wait_until_succeeds(
-        in_session("niri msg focused-window | grep -q type-ahead"), timeout=STARTING
+        in_session("niri msg focused-window | grep -q type-ahead"),
+        timeout=dt.timedelta(seconds=STARTING),
     )
     for gap in (0.01, 0.05, 0.1):
         beneath = len(as_account("cat /tmp/type-ahead"))
@@ -520,24 +540,29 @@ with subtest("the launcher loses no letter typed straight after its chord"):
             print(f"TYPEAHEAD {gap}: '{went}' went beneath, '{held}' held")
             return bool(went + held == "slack")
 
-        retry(none_lost, timeout_seconds=10)
+        retry(none_lost, timeout=dt.timedelta(seconds=10))
         machine.send_key("esc")
-        machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
+        machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
         machine.wait_until_succeeds(
-            in_session("niri msg focused-window | grep -q type-ahead"), timeout=10
+            in_session("niri msg focused-window | grep -q type-ahead"),
+            timeout=dt.timedelta(seconds=10),
         )
     as_account("pkill -f 'cat > /tmp/type-ahead'")
-    machine.wait_until_fails(in_session("niri msg windows | grep -q type-ahead"), timeout=30)
+    machine.wait_until_fails(
+        in_session("niri msg windows | grep -q type-ahead"), timeout=dt.timedelta(seconds=30)
+    )
 
 # The launcher finds a window by its title, and Return goes to it.
 with subtest("the launcher switches to a window by its title"):
     as_account("niri msg action spawn -- kitty --title 'Notes for Tuesday'")
     machine.wait_until_succeeds(
-        in_session("niri msg windows | grep -q 'Notes for Tuesday'"), timeout=STARTING
+        in_session("niri msg windows | grep -q 'Notes for Tuesday'"),
+        timeout=dt.timedelta(seconds=STARTING),
     )
     as_account("niri msg action focus-window-previous")
     machine.wait_until_fails(
-        in_session("niri msg focused-window | grep -q 'Notes for Tuesday'"), timeout=10
+        in_session("niri msg focused-window | grep -q 'Notes for Tuesday'"),
+        timeout=dt.timedelta(seconds=10),
     )
     as_account("qs ipc call launcher toggle")
     launcher_ready()
@@ -545,7 +570,8 @@ with subtest("the launcher switches to a window by its title"):
     photograph("launcher-window")
     machine.send_key("ret")
     machine.wait_until_succeeds(
-        in_session("niri msg focused-window | grep -q 'Notes for Tuesday'"), timeout=10
+        in_session("niri msg focused-window | grep -q 'Notes for Tuesday'"),
+        timeout=dt.timedelta(seconds=10),
     )
 
 # Super+Tab opens the launcher on every other window, the one used last
@@ -569,12 +595,14 @@ with subtest("Super+Tab goes back to the window before, and finds any by typing"
             f" --instance-group scratch --title '{title}'"
         )
         machine.wait_until_succeeds(
-            in_session(f"niri msg windows | grep -q '{title}'"), timeout=STARTING
+            in_session(f"niri msg windows | grep -q '{title}'"),
+            timeout=dt.timedelta(seconds=STARTING),
         )
     notes = window_titled("Notes for Tuesday")
     as_account(f"niri msg action focus-window --id {notes['id']}")
     machine.wait_until_succeeds(
-        in_session("niri msg focused-window | grep -q 'Notes for Tuesday'"), timeout=10
+        in_session("niri msg focused-window | grep -q 'Notes for Tuesday'"),
+        timeout=dt.timedelta(seconds=10),
     )
     closed = in_session(LAUNCHER_OPEN)
 
@@ -590,9 +618,10 @@ with subtest("Super+Tab goes back to the window before, and finds any by typing"
     def went(title: str) -> None:
         """Press Return, and wait until the launcher closes on the window titled."""
         machine.send_key("ret")
-        machine.wait_until_fails(closed, timeout=10)
+        machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
         machine.wait_until_succeeds(
-            in_session(f"niri msg focused-window | grep -q '{title}'"), timeout=10
+            in_session(f"niri msg focused-window | grep -q '{title}'"),
+            timeout=dt.timedelta(seconds=10),
         )
 
     # The window used last is chosen as it opens, and this one isn't
@@ -608,10 +637,12 @@ with subtest("Super+Tab goes back to the window before, and finds any by typing"
     # A program's name finds its windows, the one used last first.
     tab_to("kitty", "Notes for Tuesday")
     machine.send_key("esc")
-    machine.wait_until_fails(closed, timeout=10)
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
     for title in scratch:
         as_account(f"niri msg action close-window --id {window_titled(title)['id']}")
-    machine.wait_until_fails(in_session("niri msg windows | grep -q Scratch"), timeout=30)
+    machine.wait_until_fails(
+        in_session("niri msg windows | grep -q Scratch"), timeout=dt.timedelta(seconds=30)
+    )
     as_account(f"niri msg action focus-window --id {notes['id']}")
 
 # The right arrow steps into what can be done to a window, and a verb
@@ -630,7 +661,7 @@ with subtest("the launcher moves a window and copies its title"):
     into_notes("copy")
     photograph("launcher-verbs")
     machine.send_key("ret")
-    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
     t.assertEqual(as_account("wl-paste --no-newline"), "Notes for Tuesday")
 
     into_notes("move")
@@ -644,7 +675,7 @@ with subtest("the launcher moves a window and copies its title"):
         now = next(w for w in windows if w["id"] == notes["id"])
         return bool(now["workspace_id"] != notes["workspace_id"])
 
-    retry(moved, timeout_seconds=10)
+    retry(moved, timeout=dt.timedelta(seconds=10))
 
 # Stepping back out of a collection finds the launcher as it was left,
 # on the row that was selected, not back at the top.
@@ -733,7 +764,8 @@ with subtest("the launcher's agents hold still as one changes, the selection on 
     present("TESTQB", {"addresses": ["TESTQB"], "busy": True})
     as_account(f"niri msg action spawn -- kitty --title '{other}'")
     machine.wait_until_succeeds(
-        in_session(f"niri msg --json windows | grep -qF '{other}'"), timeout=STARTING
+        in_session(f"niri msg --json windows | grep -qF '{other}'"),
+        timeout=dt.timedelta(seconds=STARTING),
     )
     as_account("qs ipc call launcher toggle")
     launcher_ready()
@@ -776,7 +808,48 @@ with subtest("the launcher's agents hold still as one changes, the selection on 
     as_account(f"niri msg action close-window --id {window_titled(other)['id']}")
     as_account(f"rm -f {PI_PRESENCE}/testqb.json")
     present("TESTQA", {"addresses": ["TESTQA"], "busy": False})
-    machine.wait_until_fails(in_session("niri msg --json windows | grep -q TESTQB"), timeout=30)
+    machine.wait_until_fails(
+        in_session("niri msg --json windows | grep -q TESTQB"), timeout=dt.timedelta(seconds=30)
+    )
+
+# A window's verbs, stepped into from Super+Tab, follow it as it changes
+# while its row reads the same: floated, its Float says Tile.
+with subtest("a window's verbs follow it while they're shown"):
+    notes = notes_window()
+    # Another window in front, so the notes' is among Super+Tab's.
+    as_account("niri msg action spawn -- kitty --title 'In front of the notes'")
+    machine.wait_until_succeeds(
+        in_session("niri msg focused-window | grep -q 'In front of the notes'"),
+        timeout=dt.timedelta(seconds=STARTING),
+    )
+    machine.send_key("meta_l-tab")
+    launcher_ready()
+    launcher_until(lambda shown: shown["held"] == ["windows"])
+    type_in("tuesday", selecting="Notes for Tuesday")
+    step_in()
+    launcher_until(lambda shown: "Float" in shown["rows"])
+    as_account(f"niri msg action toggle-window-floating --id {notes['id']}")
+    launcher_until(lambda shown: "Tile" in shown["rows"] and "Float" not in shown["rows"])
+    machine.send_key("esc")
+    launcher_until(lambda shown: not shown["open"])
+    as_account(f"niri msg action toggle-window-floating --id {notes['id']}")
+    front = window_titled("In front of the notes")
+    as_account(f"niri msg action close-window --id {front['id']}")
+    machine.wait_until_fails(
+        in_session("niri msg windows | grep -q 'In front of'"),
+        timeout=dt.timedelta(seconds=30),
+    )
+
+# The programs using the processors and the memory are read as the
+# launcher opens, so they're among the parts the first time each is
+# asked, even stepped into at once, where nothing is asked again.
+with subtest("the machine's programs are there the first time it's asked"):
+    for figure in ("cpu", "memory"):
+        answer(figure)
+        step_in()
+        launcher_until(lambda shown: "Using it" in shown["rows"])
+        machine.send_key("esc")
+        launcher_until(lambda shown: not shown["open"])
 
 with subtest("a word typed whole lands on what it says"):
     # "pi" is meant for pi's sessions, so there has to be one.
@@ -804,7 +877,7 @@ with subtest("a word typed whole lands on what it says"):
         answer(typed)
         launcher_until(holds)
         machine.send_key("esc")
-        machine.wait_until_fails(closed, timeout=10)
+        machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
 
 with subtest("Super+Shift+/ shows every layer's shortcuts, and runs the desktop's"):
     windows = len(json.loads(as_account("niri msg --json windows")))
@@ -824,12 +897,15 @@ with subtest("Super+Shift+/ shows every layer's shortcuts, and runs the desktop'
     launcher_until(lambda shown: shown["rows"][: len(groups)] == groups)
     photograph("launcher-shortcut-groups")
     # What's typed there finds a group by its name, before every chord in
-    # the layer that its words start, flat; a group holds its chords.
+    # the layer that its words start, flat; a group as big as Workspaces
+    # holds groups of its own, then what none of them takes.
     type_in("work", selecting="Workspaces")
     t.assertIn("Go to workspace 3", showing()["rows"])
     step_in()
     launcher_until(lambda shown: shown["held"] == ["shortcuts", "desktop", "workspaces"])
-    t.assertIn("Go to workspace 3", showing()["rows"])
+    inner = ["Going to one", "Moving a column", "Moving a window"]
+    t.assertEqual(showing()["rows"][: len(inner)], inner)
+    t.assertIn("Show every workspace", showing()["rows"])
     # The field says where that is as one path, in the rows' own case.
     t.assertEqual(showing()["path"], ["Shortcuts", "Desktop", "Workspaces"])
     # Back out: to the desktop with "work" typed, cleared, then the top.
@@ -859,7 +935,7 @@ with subtest("Super+Shift+/ shows every layer's shortcuts, and runs the desktop'
     # kitty starts cold, drawn in software, which on a machine running
     # other tests too has taken 10 seconds and more than 19, so it's
     # given a minute.
-    retry(opened, timeout_seconds=60)
+    retry(opened, timeout=dt.timedelta(minutes=1))
 
     # In the shortcuts category, a group is found by its name too, as the
     # Shortcuts row there.
@@ -869,8 +945,9 @@ with subtest("Super+Shift+/ shows every layer's shortcuts, and runs the desktop'
     launcher_until(lambda shown: shown["held"] == ["shortcuts"])
     # It holds Shortcuts alone, no second Desktop beside the layer.
     t.assertNotIn("Desktop", showing()["rows"])
-    type_in("workspaces")
-    launcher_until(lambda shown: "Workspaces" in shown["rows"])
+    # A group named what's typed, whole, comes first, and is Return's row.
+    type_in("workspaces", selecting="Workspaces")
+    t.assertEqual(showing()["rows"][0], "Workspaces")
     # Stepping into Shortcuts from its category says Shortcuts once.
     for _ in "workspaces":
         machine.send_key("backspace")
@@ -878,7 +955,7 @@ with subtest("Super+Shift+/ shows every layer's shortcuts, and runs the desktop'
     step_in()
     launcher_until(lambda shown: shown["path"] == ["Shortcuts"])
     machine.send_key("esc")
-    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
 
 # A binding that throws or assigns the wrong type only warns, and
 # only once a surface draws it, which can be long after the start.

@@ -837,8 +837,11 @@ its count and its first groups; inside a layer its groups, by what a chord
 acts on (the desktop's Windows, Columns, Workspaces, Screens, Programs,
 Launcher, Capture, Sound, Brightness, Dictation and Session; Neovim's by its
 leader's letters, and GitHub's by the window a key works in); inside a group
-its chords, each with its chord and where it works. A layer of a dozen
-chords or fewer is its chords alone. The groups come from a small table
+its chords, each with its chord and where it works, or, for one too big to
+read whole, groups of its own by what their chords act on, a dozen or so
+each (the desktop's Workspaces, Neovim's Code, Problems, Outline and Git,
+and GitHub's). A group found by typing below the next level says what
+holds it. A layer of a dozen chords or fewer is its chords alone. The groups come from a small table
 (launcher/KeyGroups.js) reading each chord's action, so a new chord falls
 into one without being told, and a bind the table puts wrong names its own
 (`group`). Typing at any level finds a group below it by its name, then any

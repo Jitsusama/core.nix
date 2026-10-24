@@ -220,6 +220,21 @@ Singleton {
         socket.flush();
     }
 
+    // What's drawn from the windows names each one's program by its desktop
+    // entry, and gives a program its windows by it (`revision`). Quickshell
+    // reads the entries in the background as the shell starts, and niri
+    // describes its windows as soon as the stream begins, so a list drawn
+    // from that first description could name no program, and give none its
+    // windows, until niri next said something. The entries arriving, or
+    // changing, are a change those lists show.
+    Connections {
+        target: DesktopEntries
+
+        function onApplicationsChanged(): void {
+            root.revision++;
+        }
+    }
+
     Socket {
         id: socket
         path: Quickshell.env("NIRI_SOCKET")
