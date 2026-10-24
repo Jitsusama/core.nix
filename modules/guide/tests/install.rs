@@ -924,6 +924,23 @@ fn a_firmware_trusting_the_carried_keys_lets_the_install_go_on() {
     );
 }
 
+#[test]
+fn once_the_keys_are_made_the_firmware_check_says_what_it_found_not_what_they_are() {
+    let target = target("/dev/disk/by-id/virtio-root");
+    let scratch = Scratch::new("install-firmware-after-keys");
+    let mut fake = stick(&scratch, &target);
+    fake.file(&format!("{SBCTL}/keys/db/db.key"), b"key")
+        .file(&format!("{SBCTL}/GUID"), b"guid");
+    let evidence = |standing: Standing| match standing {
+        Standing::Done { evidence } => evidence,
+        other => panic!("{other:?}"),
+    };
+    let firmware = evidence(CheckFirmware.observe(&mut fake).unwrap());
+    let keys = evidence(SecureBootKeys.observe(&mut fake).unwrap());
+    assert_ne!(firmware, keys, "each step done is listed once");
+    assert!(firmware.contains("firmware"), "{firmware}");
+}
+
 const BUNDLE: &str = "/mnt/var/lib/guide/rescue-bundle.json";
 const RECOVERY: &str = "fkhvbicb-urbtgcbh-gdbbcbkf-ekdjvcrg-jhcvdbbe-jtbifkkv-ncdvurrb-tutbkbcl";
 

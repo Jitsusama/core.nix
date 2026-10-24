@@ -125,9 +125,11 @@ impl Step for CheckFirmware {
 
     fn observe(&self, machine: &mut dyn Machine) -> Result<Standing, Fault> {
         // Once the machine's keys are in place the install has passed this.
+        // It says so in its own words, as the keys' step says they're there.
         if machine.read(&format!("{SBCTL}/keys/db/db.key"))?.is_some() {
             return Ok(Standing::Done {
-                evidence: "the machine's own Secure Boot keys are in place".into(),
+                evidence: "the firmware was ready for the machine's keys before they were made"
+                    .into(),
             });
         }
         Ok(match firmware_takes_keys(machine)? {

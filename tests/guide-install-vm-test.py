@@ -212,6 +212,9 @@ def keep_the_recovery_key() -> str:
     words = " ".join(screen().split())
     enter("")
     on_screen("reading it off your phone")
+    # The firmware's check and the keys' step each say their own line,
+    # though a short screen may have let the earlier go.
+    t.assertLessEqual(screen().count("Secure Boot keys are in place"), 1, screen())
     enter(words)
     return words
 
