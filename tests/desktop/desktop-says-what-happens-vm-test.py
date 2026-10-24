@@ -14,8 +14,6 @@ if TYPE_CHECKING:
     from desktop_prelude import (
         ACCOUNT,
         CAPITALS,
-        CELL_AT_REST,
-        CELL_GROWN,
         FROM_THE_CORNER,
         FROM_THE_EDGE,
         LAUNCHER_OPEN,
@@ -26,7 +24,7 @@ if TYPE_CHECKING:
         Json,
         answered,
         as_account,
-        changed_in_the_corner,
+        changed_at_the_top,
         click,
         drawn_at,
         held_still,
@@ -35,7 +33,7 @@ if TYPE_CHECKING:
         launcher_until,
         listen,
         margin,
-        margin_grows,
+        margin_points,
         margin_sets,
         mark,
         notices,
@@ -362,8 +360,8 @@ with subtest("Keep Awake shows in the margin, and What's on says it and lets it 
     machine.wait_until_fails(in_session(margin), timeout=10)
     # Its own, so it runs alone: whether something holds the machine awake.
     held = "systemd-inhibit --list --no-pager | grep Caffeinate"
-    # A camera's card from before is gone first, so what changes in the
-    # corner is the glyph alone.
+    # A camera's card from before is gone first, so what changes along the
+    # top is the glyph alone.
     machine.wait_until_fails(in_session(notices), timeout=30)
     # Left on, so muted.
     held_still()
@@ -373,21 +371,20 @@ with subtest("Keep Awake shows in the margin, and What's on says it and lets it 
         as_account("systemctl --user start caffeinate.service")
     reported("sets margin ", margin_sets(("awake", "leftOn", "muted")), since)
     photograph("margin-awake")
-    # Super+O opens What's on at its row, and the corner's marks grow while
-    # it's open, the one its keys are on in the accent; closed, they shrink
-    # back.
-    glyph = changed_in_the_corner(empty, screen_now())
+    # Super+O opens What's on at its row, and while it's open the mark its
+    # keys are on wears the accent, nothing grown; closed, it's as it was.
+    glyph = changed_at_the_top(empty, screen_now())
     since = mark()
     machine.send_key("meta_l-o")
     whats_on("Keep Awake")
-    reported("sets margin ", margin_grows(CELL_GROWN, "awake"), since)
-    # Grown all the way, as Joel sees it once it settles.
+    reported("sets margin ", margin_points("awake"), since)
+    # Settled, as Joel sees it.
     held_still()
     photograph("launcher-whats-on")
     since = mark()
     machine.send_key("esc")
     machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
-    reported("sets margin ", margin_grows(CELL_AT_REST, ""), since)
+    reported("sets margin ", margin_points(""), since)
     # A click on the glyph opens it the same, and Return lets the
     # machine sleep.
     click(*glyph)

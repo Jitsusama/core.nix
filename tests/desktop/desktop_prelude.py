@@ -645,9 +645,8 @@ def answered() -> str:
 # or a click on a glyph opens it, Return does a thing's first action and
 # the right arrow steps into the rest.
 margin = "niri msg layers | grep -q margin"
-# The margin's cells: the theme's gap at rest, twice it while What's on is open.
-CELL_AT_REST = 12
-CELL_GROWN = 24
+# The margin's cells: the theme's gap, open or shut, since nothing grows.
+CELL = 12
 notices = "niri msg layers | grep -q notifications"
 
 
@@ -661,21 +660,21 @@ def margin_sets(*wanted: tuple[str, str, str]) -> Callable[[str], bool]:
     return sets
 
 
-def margin_grows(cell: int, pointed: str) -> Callable[[str], bool]:
-    """Test the margin's cells are this size, and only the pointed mark wears the accent.
+def margin_points(pointed: str) -> Callable[[str], bool]:
+    """Test the margin's cells stay the gap's size, and only the pointed mark wears the accent.
 
-    At rest a cell is the gap's height; while What's on is open, twice that, and the mark
-    of the row the keys are on wears the accent. An empty pointed means none does.
+    While What's on is open, the mark of the row the keys are on wears the accent, and
+    nothing grows. An empty pointed means none does.
     """
 
-    def grows(rest: str) -> bool:
+    def points(rest: str) -> bool:
         drawn = json.loads(rest)
         return bool(drawn) and all(
-            glyph["cell"] == cell and (glyph["hue"] == "accent") == (glyph["mark"] == pointed)
+            glyph["cell"] == CELL and (glyph["hue"] == "accent") == (glyph["mark"] == pointed)
             for glyph in drawn
         )
 
-    return grows
+    return points
 
 
 def screen_now() -> Image.Image:
@@ -686,10 +685,10 @@ def screen_now() -> Image.Image:
         return Image.open(shot).convert("RGB")
 
 
-def changed_in_the_corner(before: Image.Image, after: Image.Image) -> tuple[float, float]:
-    """Give the middle of what changed in the screen's top right corner, as a fraction of it.
+def changed_at_the_top(before: Image.Image, after: Image.Image) -> tuple[float, float]:
+    """Give the middle of what changed along the screen's top, as a fraction of it.
 
-    That's a glyph the margin drew, and its shadows, which fall round it.
+    That's a glyph the margin drew, at the top centre, and its shade, which falls round it.
     """
     width, height = after.size
     was, now = before.tobytes(), after.tobytes()
@@ -698,14 +697,11 @@ def changed_in_the_corner(before: Image.Image, after: Image.Image) -> tuple[floa
         at = 3 * (y * width + x)
         return sum(abs(was[at + c] - now[at + c]) for c in range(3))
 
-    corner = [
-        (x, y)
-        for y in range(height // 20)
-        for x in range(width - width // 8, width)
-        if moved(x, y) > NEAR_THE_ACTION
+    top = [
+        (x, y) for y in range(height // 20) for x in range(width) if moved(x, y) > NEAR_THE_ACTION
     ]
-    assert corner, "nothing changed in the top right corner"
-    xs, ys = [x for x, _ in corner], [y for _, y in corner]
+    assert top, "nothing changed along the top"
+    xs, ys = [x for x, _ in top], [y for _, y in top]
     return (min(xs) + max(xs)) / 2 / width, (min(ys) + max(ys)) / 2 / height
 
 

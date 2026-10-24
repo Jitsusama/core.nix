@@ -1540,6 +1540,13 @@ in
                     inherit (s) blur;
                     opacity = builtins.fromJSON s.opacity;
                   }) wallpaper.halo;
+                  # Centred on the mark, in the shape Lifted reads.
+                  marks = map (s: {
+                    inherit (s) blur;
+                    x = 0;
+                    y = 0;
+                    opacity = builtins.fromJSON s.opacity;
+                  }) wallpaper.marks;
                 }
               }
           }

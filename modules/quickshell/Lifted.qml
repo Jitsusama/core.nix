@@ -3,9 +3,12 @@
 // behind it, so the picture shows whole and the text still reads. Whatever
 // goes inside is drawn once with the nearest shadow, and that again with
 // the next, so each shadow falls under the text and the ones before it.
+// Something drawn at another size takes shadows of its own, as the margin's
+// marks take jitsusama.theme.wallpaper.marks.
 //
 // The shadows reach past the text, by `reach`, and a window holding lifted
 // text leaves that much room around it.
+pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Effects
 
@@ -14,7 +17,10 @@ Item {
 
     default property alias content: body.data
 
-    readonly property real reach: Math.max(0, ...Theme.wallpaper.shadows
+    // Nearest first, as { x, y, blur, opacity }; two are drawn at most.
+    property var shadows: Theme.wallpaper.shadows
+
+    readonly property real reach: Math.max(0, ...root.shadows
         .map(s => Math.max(Math.abs(s.x), Math.abs(s.y)) + s.blur))
 
     implicitWidth: body.childrenRect.width
@@ -43,9 +49,9 @@ Item {
         y: -root.reach
         width: root.width + 2 * root.reach
         height: root.height + 2 * root.reach
-        layer.enabled: Theme.wallpaper.shadows.length > 1
+        layer.enabled: root.shadows.length > 1
         layer.effect: Shade {
-            shadow: Theme.wallpaper.shadows[1]
+            shadow: root.shadows[1]
         }
 
         Item {
@@ -55,9 +61,9 @@ Item {
             y: root.reach
             width: root.width
             height: root.height
-            layer.enabled: Theme.wallpaper.shadows.length > 0
+            layer.enabled: root.shadows.length > 0
             layer.effect: Shade {
-                shadow: Theme.wallpaper.shadows[0]
+                shadow: root.shadows[0]
             }
         }
     }
