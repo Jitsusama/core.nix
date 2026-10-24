@@ -143,6 +143,20 @@ def shell_said(*words: str) -> str:
     )
 
 
+def brightness() -> int:
+    """Give the stand-in panel's brightness."""
+    return int(machine.succeed("cat /sys/class/backlight/stand-in/brightness"))
+
+
+# The kernel's stand-in battery has two supplies, mains and USB, and UPower
+# counts the machine on battery only with both off.
+def power(state: str) -> None:
+    """Turn both of the stand-in's supplies on or off."""
+    parameters = "/sys/module/test_power/parameters"
+    for supply in ["ac", "usb"]:
+        machine.succeed(f"echo {state} > {parameters}/{supply}_online")
+
+
 def wait_for_surface(namespace: str) -> None:
     """Wait until niri lists one of the shell's surfaces by its namespace."""
     machine.wait_until_succeeds(in_session(f"niri msg layers | grep -q {namespace}"), timeout=30)
@@ -299,6 +313,39 @@ def window_titled(title: str) -> Json:
     """Give the window niri lists under this title."""
     windows: list[Json] = json.loads(as_account("niri msg --json windows"))
     return next(window for window in windows if window["title"] == title)
+
+
+def focused_kitty() -> Json:
+    """Give a kitty window, focused, opening one first if there's none."""
+    windows: list[Json] = json.loads(as_account("niri msg --json windows"))
+    kitties = [window for window in windows if window["app_id"] == "kitty"]
+    if not kitties:
+        as_account("niri msg action spawn -- kitty")
+        machine.wait_until_succeeds(
+            in_session('niri msg --json windows | grep -qF \'"app_id":"kitty"\''),
+            timeout=STARTING,
+        )
+        windows = json.loads(as_account("niri msg --json windows"))
+        kitties = [window for window in windows if window["app_id"] == "kitty"]
+    as_account(f"niri msg action focus-window --id {kitties[0]['id']}")
+    return kitties[0]
+
+
+# The window the launcher's window subtests find by its title.
+NOTES = "Notes for Tuesday"
+
+
+def notes_window() -> Json:
+    """Give the notes' window, focused, opening it first if it isn't open."""
+    windows: list[Json] = json.loads(as_account("niri msg --json windows"))
+    if not any(window["title"] == NOTES for window in windows):
+        as_account(f"niri msg action spawn -- kitty --title '{NOTES}'")
+        machine.wait_until_succeeds(
+            in_session(f"niri msg windows | grep -q '{NOTES}'"), timeout=STARTING
+        )
+    notes = window_titled(NOTES)
+    as_account(f"niri msg action focus-window --id {notes['id']}")
+    return notes
 
 
 def drawn_at(window: Json) -> tuple[int, int, int, int]:
@@ -594,10 +641,6 @@ with subtest("the screen follows the light, and the bar shows only for picks"):
         """Light the stand-in sensor's room with so many lux."""
         machine.succeed(f"echo {lux * 1000} > {sensor}/in_illuminance_raw")
 
-    def brightness() -> int:
-        """Give the stand-in panel's brightness."""
-        return int(machine.succeed("cat /sys/class/backlight/stand-in/brightness"))
-
     def learned(_: bool) -> bool:
         """Say whether the backlight has learned the one pick made in a dim room."""
         found = "grep -c '^2 0.100$' ~/.local/state/backlight/learned || true"
@@ -668,14 +711,6 @@ with subtest("the monitor follows the panel's brightness"):
     t.assertNotIn("left alone", backlight_said, "the monitor didn't answer")
 
 with subtest("the charge shows when power goes and comes back, then goes"):
-    # The kernel's stand-in has two supplies, mains and USB, and UPower
-    # counts the machine on battery only with both off.
-    def power(state: str) -> None:
-        """Turn both of the stand-in's supplies on or off."""
-        parameters = "/sys/module/test_power/parameters"
-        for supply in ["ac", "usb"]:
-            machine.succeed(f"echo {state} > {parameters}/{supply}_online")
-
     for state in ["off", "on"]:
         with told("drawn power"):
             power(state)
@@ -692,21 +727,50 @@ with subtest("the launcher shows the volume's chords, and Escape closes it"):
     machine.send_key("esc")
     machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
 
-with subtest("the launcher finds a pi session by its quest, and goes to its window"):
-    # A session as pi keeps one: its quest's README, front matter
-    # first, and its presence while it runs.
-    quest = "~/.local/share/pi/agentic-harness.pi/quest-workflow/quests/QEST-20261022-TESTQA"
-    presence = "~/.local/state/pi/agentic-harness.pi/mesh-workflow/presence"
+# A session as pi keeps one: its quest's README, front matter first, and
+# its presence while it runs; and its window, titled as pi titles its own:
+# its address, its quest cut short, its folder, which a hyphen doesn't end.
+PI_QUEST = "~/.local/share/pi/agentic-harness.pi/quest-workflow/quests/QEST-20261022-TESTQA"
+PI_PRESENCE = "~/.local/state/pi/agentic-harness.pi/mesh-workflow/presence"
+PI_WINDOW = "\u03c0 - TESTQA A quest of\u2026 - my-tree"
+
+
+def presence_says(said: Json) -> None:
+    """Replace the session's presence with this, by rename, as pi does."""
     as_account(
-        f"mkdir -p {quest} {presence} && printf '%s\\n' '---' 'title: no' '---'"
+        f"echo '{json.dumps(said)}' > {PI_PRESENCE}/.testqa"
+        f" && mv {PI_PRESENCE}/.testqa {PI_PRESENCE}/testqa.json"
+    )
+
+
+def pi_session() -> None:
+    """Make pi's session, working, with its window and another to be in, unless they're there.
+
+    Each of pi's subtests starts from it, so any of them runs alone.
+    """
+    as_account(
+        f"mkdir -p {PI_QUEST} {PI_PRESENCE} && printf '%s\\n' '---' 'title: no' '---'"
         " '# A quest of its own & whole'"
-        f' > {quest}/README.md && echo \'{{"session":"01a1face-test",'
+        f' > {PI_QUEST}/README.md && echo \'{{"session":"01a1face-test",'
         '"addresses":["TESTQA"],"busy":true,'
         '"owns":["QEST-20261022-TESTQA"],"worksOn":"Tidy the tests",'
         '"groups":["#desk"],'
         '"owner":{"startedAt":\'$(date +%s%3N)\'}}\''
-        f" > {presence}/testqa.json"
+        f" > {PI_PRESENCE}/testqa.json"
     )
+    windows: list[Json] = json.loads(as_account("niri msg --json windows"))
+    for title in [PI_WINDOW, "Elsewhere"]:
+        if any(window["title"] == title for window in windows):
+            continue
+        as_account(f"niri msg action spawn -- kitty --title '{title}'")
+        machine.wait_until_succeeds(
+            in_session(f'niri msg --json windows | grep -qF \'"title":"{title}"\''),
+            timeout=STARTING,
+        )
+
+
+with subtest("the launcher finds a pi session by its quest, and goes to its window"):
+    pi_session()
     # What it spent today, as spend-watch writes it, replaced whole.
     spent = {
         "v": 2,
@@ -739,18 +803,7 @@ with subtest("the launcher finds a pi session by its quest, and goes to its wind
         f"echo '{json.dumps(lined)}' > $XDG_RUNTIME_DIR/jobs/.q"
         " && mv $XDG_RUNTIME_DIR/jobs/.q $XDG_RUNTIME_DIR/jobs/queue.json"
     )
-    # Its window, titled as pi titles its own: its address, its
-    # quest cut short, its folder, which a hyphen doesn't end.
-    agent = "\u03c0 - TESTQA A quest of\u2026 - my-tree"
-    as_account(f"niri msg action spawn -- kitty --title '{agent}'")
-    machine.wait_until_succeeds(
-        in_session("niri msg --json windows | grep -q TESTQA"), timeout=STARTING
-    )
-    # Another window to be in, so going to the session's means a move.
-    as_account("niri msg action spawn -- kitty --title Elsewhere")
-    machine.wait_until_succeeds(
-        in_session("niri msg --json windows | grep -q '\"Elsewhere\"'"), timeout=STARTING
-    )
+    # From the other window, so going to the session's means a move.
     as_account(f"niri msg action focus-window --id {window_titled('Elsewhere')['id']}")
     # The launcher's foot counts it, working, as its presence says.
     since = mark()
@@ -809,13 +862,6 @@ with subtest("the launcher finds a pi session by its quest, and goes to its wind
 
     # It comes to want Joel, its presence replaced by rename as pi's
     # is: the margin hangs pi's mark, and lets it go once answered.
-    def presence_says(said: Json) -> None:
-        """Replace the session's presence with this, by rename, as pi does."""
-        as_account(
-            f"echo '{json.dumps(said)}' > {presence}/.testqa"
-            f" && mv {presence}/.testqa {presence}/testqa.json"
-        )
-
     # From another window, so it's said as a notice too, whose
     # Return goes to the session's window.
     as_account(f"niri msg action focus-window --id {window_titled('Elsewhere')['id']}")
@@ -905,12 +951,14 @@ with subtest("the launcher finds a pi session by its quest, and goes to its wind
 with subtest(
     "the launcher finds pi's quests, going to the session on one and opening pi on another"
 ):
+    pi_session()
     # Their READMEs as pi keeps them, front matter first: the session's
     # quest, and another in a tree of its own with no session on it.
     another = "~/.local/share/pi/agentic-harness.pi/quest-workflow/quests/QEST-20261022-HALLWY"
     as_account(
         "printf '%s\\n' '---' 'id: QEST-20261022-TESTQA' 'kind: quest' 'status: active'"
-        f" 'priority: driving' 'rank: 1' '---' '# A quest of its own & whole' > {quest}/README.md"
+        " 'priority: driving' 'rank: 1' '---' '# A quest of its own & whole'"
+        f" > {PI_QUEST}/README.md"
         f" && mkdir -p {another} ~/hallway && printf '%s\\n' '---' 'id: QEST-20261022-HALLWY'"
         " 'kind: quest' 'status: active' 'priority: queued' 'rank: 1' 'trees:'"
         ' "  - path: $HOME/hallway"'
@@ -962,10 +1010,11 @@ with subtest(
 with subtest(
     "the launcher finds pi's runs, going to the session that started one and reading an answer"
 ):
+    pi_session()
     # A fleet as the harness keeps one, started by the session, whose
     # window's process stands in for pi's: one member still at work,
     # its process the other window's, and one done with its answer.
-    leader = window_titled(agent)["pid"]
+    leader = window_titled(PI_WINDOW)["pid"]
     crew = "~/.local/state/pi/agentic-harness.pi/subagent-workflow/runs/paint-crew/reviewers"
 
     def keeps(path: str, said: Json) -> None:
@@ -1054,9 +1103,9 @@ with subtest(
         in_session("niri msg --json focused-window | grep -q TESTQA"), timeout=10
     )
     as_account("rm -rf ~/.local/state/pi/agentic-harness.pi/subagent-workflow/runs/paint-crew")
-    for title in [agent, "Elsewhere"]:
+    for title in [PI_WINDOW, "Elsewhere"]:
         as_account(f"niri msg action close-window --id {window_titled(title)['id']}")
-    as_account(f"rm -rf {quest} {presence}/testqa.json")
+    as_account(f"rm -rf {PI_QUEST} {PI_PRESENCE}/testqa.json")
     machine.wait_until_fails(
         in_session("niri msg --json windows | grep -q 'TESTQA\\|\"Elsewhere\"'"), timeout=30
     )
@@ -1101,9 +1150,9 @@ with subtest("the launcher finds and opens kitty, and learns that kitty was mean
 # The border is all that marks the focused window, and niri leaves
 # borders off unless its config turns them on.
 with subtest("the focused window is framed in the accent"):
-    machine.wait_until_succeeds(in_session("niri msg focused-window | grep -qi kitty"), timeout=30)
-    window = json.loads(as_account("niri msg --json focused-window"))
-    as_account(f"niri msg action move-window-to-floating --id {window['id']}")
+    # The kitty the launcher opened, or one of its own when run alone.
+    bordered = focused_kitty()
+    as_account(f"niri msg action move-window-to-floating --id {bordered['id']}")
 
     def beside() -> str:
         """Give the colour just left of the focused window, where its border is."""
@@ -1115,13 +1164,13 @@ with subtest("the focused window is framed in the accent"):
         return "#{:02x}{:02x}{:02x}".format(*pixel)
 
     framed = settles_on(ACCENT.lower(), beside)
-    as_account(f"niri msg action move-window-to-tiling --id {window['id']}")
+    as_account(f"niri msg action move-window-to-tiling --id {bordered['id']}")
     t.assertEqual(framed, ACCENT.lower())
 
 # niri opens a window in a column of its own, and the shell folds it
 # in just below the focused one.
 with subtest("a terminal opens below the focused window"):
-    anchor = json.loads(as_account("niri msg --json focused-window"))
+    anchor = focused_kitty()
     as_account("qs ipc call grid below kitty")
     kitties = 'niri msg --json windows | grep -o \'"app_id":"kitty"\' | wc -l'
     machine.wait_until_succeeds(in_session(f"{kitties} | grep -qx 2"), timeout=STARTING)
@@ -1195,6 +1244,7 @@ with subtest("the launcher switches to a window by its title"):
 # among two dozen as easily as among two, with nothing held down. The
 # windows are one kitty's, so the machine holds them all.
 with subtest("Super+Tab goes back to the window before, and finds any by typing"):
+    notes_window()
     # The last one's title is far wider than the launcher, as a
     # browser tab's can be.
     scratch = [
@@ -1258,7 +1308,7 @@ with subtest("Super+Tab goes back to the window before, and finds any by typing"
 # The right arrow steps into what can be done to a window, and a verb
 # that needs a target asks for it in the same field.
 with subtest("the launcher moves a window and copies its title"):
-    notes = json.loads(as_account("niri msg --json focused-window"))
+    notes = notes_window()
 
     def into_notes(verb: str) -> None:
         """Find the notes' window in the launcher, step into it, and type a verb."""
@@ -2294,6 +2344,16 @@ with subtest("a Wi-Fi network is joined from the launcher, a new one asking its 
     machine.succeed("rfkill unblock wifi")
 
 with subtest("a notice that came and went is found again in the launcher"):
+    # The notice the first notification's subtest left to go by itself,
+    # sent and let go here when that one hasn't run.
+    kept = as_account(
+        "find ~/.local/state/quickshell -name notices.json"
+        ' -exec grep -l \'"summary":"Build finished"\' {} + 2>/dev/null; true'
+    )
+    if not kept.strip():
+        with told("drawn notifications"):
+            as_account("notify-send 'Build finished' 'the laptop is ready'")
+        machine.wait_until_fails(in_session("niri msg layers | grep -q notifications"), timeout=30)
     # One its sender says not to keep isn't, though it's the newest match.
     as_account("notify-send --transient 'Build finished twice' 'not kept'")
     as_account("qs ipc call launcher toggle")
@@ -2745,6 +2805,17 @@ with subtest("what's playing shows in the margin, and a media key shows what it 
     machine.wait_until_fails(in_session(notices), timeout=15)
     as_account("systemctl --user stop player")
 
+# Tuple's log, which only a call writes, and which the daemon rewrites as
+# it starts.
+TUPLE_LOG = "~/.local/share/tuple/0/log.txt"
+
+
+def tuple_said(message: str, ago: int = 0) -> None:
+    """Write a line to Tuple's log as the daemon writes it, as if so many seconds since."""
+    line = f"$(date -u -d '-{ago} sec' +%H:%M:%S.000)|1|1|info|{message}"
+    as_account(f'mkdir -p $(dirname {TUPLE_LOG}) && echo "{line}" >> {TUPLE_LOG}')
+
+
 # A call comes before the other apps when the machine is busy.
 with subtest("Tuple's daemon comes before the other apps"):
     comes = as_account("systemctl --user show tuple --property=CPUWeight --property=Nice")
@@ -2754,13 +2825,6 @@ with subtest("a Tuple call shows in the margin while it lasts"):
     # Only a call writes these lines, so they're written here, with
     # the daemon stopped, since it rewrites its log as it starts.
     as_account("systemctl --user stop tuple")
-    written = "~/.local/share/tuple/0/log.txt"
-
-    def tuple_said(message: str, ago: int = 0) -> None:
-        """Write a line to Tuple's log as the daemon writes it, as if so many seconds since."""
-        line = f"$(date -u -d '-{ago} sec' +%H:%M:%S.000)|1|1|info|{message}"
-        as_account(f'mkdir -p $(dirname {written}) && echo "{line}" >> {written}')
-
     machine.wait_until_fails(in_session(margin), timeout=10)
     with told("drawn margin"):
         tuple_said("call connected")
@@ -2771,6 +2835,9 @@ with subtest("a Tuple call shows in the margin while it lasts"):
 with subtest("people coming and going in a Tuple call are said, and Joel can leave"):
     # Whoever comes is "a guest", not a number, which Tuple's contacts
     # would be asked about, and with the daemon stopped it starts one.
+    # The call before stops it too, so this one stops it itself and runs
+    # alone the same.
+    as_account("systemctl --user stop tuple")
     offered = "pgrep -f '[n]otify-send --app-name=Tuple .*--action={0}'"
     # Those there as Joel joins aren't news, so the call connected a
     # while before the guest comes.
@@ -2892,14 +2959,16 @@ with subtest("Tuple's windows find their places: the face in a corner, a shared 
         in_session("niri msg --json windows | grep -q 'tuple-\\|at work'"), timeout=30
     )
 
+# Where keyboard-lights says whether caps lock is on.
+CAPITALS = "/run/keyboard-lights/capslock"
+
 with subtest("caps lock shows in the margin while it's on"):
-    capitals = "/run/keyboard-lights/capslock"
     machine.send_key("caps_lock")
-    machine.wait_until_succeeds(f"grep -qx 1 {capitals}", timeout=10)
+    machine.wait_until_succeeds(f"grep -qx 1 {CAPITALS}", timeout=10)
     wait_for_surface("margin")
     photograph("margin-capitals")
     machine.send_key("caps_lock")
-    machine.wait_until_succeeds(f"grep -qx 0 {capitals}", timeout=10)
+    machine.wait_until_succeeds(f"grep -qx 0 {CAPITALS}", timeout=10)
     machine.wait_until_fails(in_session(margin), timeout=10)
 
 with subtest("caps lock still shows after its watcher restarts"):
@@ -2907,7 +2976,7 @@ with subtest("caps lock still shows after its watcher restarts"):
     machine.succeed("systemctl restart keyboard-lights")
     machine.wait_for_unit("keyboard-lights.service")
     machine.send_key("caps_lock")
-    machine.wait_until_succeeds(f"grep -qx 1 {capitals}", timeout=10)
+    machine.wait_until_succeeds(f"grep -qx 1 {CAPITALS}", timeout=10)
     wait_for_surface("margin")
     machine.send_key("caps_lock")
     machine.wait_until_fails(in_session(margin), timeout=10)
@@ -3249,37 +3318,41 @@ with subtest("polkit's prompt lets the account start a system service"):
     machine.send_chars(f"{SECRET}\n")
     machine.wait_for_file("/run/polkit-allowed", timeout=30)
 
+
 # ssh-tpm-agent asks before a key confirmed on use signs, and for a
 # key's PIN, and ssh for a security key's touch, all through the
 # shell's askpass, which answers as OpenSSH's contract says.
+def ask(kind: str, prompt: str) -> None:
+    """Ask through the askpass, started by the account's systemd as ssh-tpm-agent is.
+
+    That way it has what the agent has.
+    """
+    as_account(f"systemd-run --user --collect --quiet -- {ASKING} {kind} '{prompt}'")
+
+
+def answered_with(kind: str, code: int, answer: str = "", timeout: int = 30) -> None:
+    """Wait until an ask is answered, and check how it exited and what it gave back."""
+    exited = f"$XDG_RUNTIME_DIR/asked-{kind}.exit"
+    machine.wait_until_succeeds(in_session(f"test -e {exited}"), timeout=timeout)
+    t.assertEqual(as_account(f"cat {exited}").strip(), str(code))
+    t.assertEqual(as_account(f"cat $XDG_RUNTIME_DIR/asked-{kind}.answer"), answer)
+
+
+# What ssh-tpm-agent asks before Joel's key signs.
+SIGNING = (
+    "Allow use of key joel-signing?\\nKey fingerprint SHA256:abc."
+    "\\nRequested by ssh-keygen (1234) \u2190 tpm-sign \u2190 git \u2190 zsh"
+)
+
 with subtest("the askpass asks for a yes, a PIN and a touch"):
-
-    def ask(kind: str, prompt: str) -> None:
-        """Ask through the askpass, started by the account's systemd as ssh-tpm-agent is.
-
-        That way it has what the agent has.
-        """
-        as_account(f"systemd-run --user --collect --quiet -- {ASKING} {kind} '{prompt}'")
-
-    def answered_with(kind: str, code: int, answer: str = "", timeout: int = 30) -> None:
-        """Wait until an ask is answered, and check how it exited and what it gave back."""
-        exited = f"$XDG_RUNTIME_DIR/asked-{kind}.exit"
-        machine.wait_until_succeeds(in_session(f"test -e {exited}"), timeout=timeout)
-        t.assertEqual(as_account(f"cat {exited}").strip(), str(code))
-        t.assertEqual(as_account(f"cat $XDG_RUNTIME_DIR/asked-{kind}.answer"), answer)
-
-    signing = (
-        "Allow use of key joel-signing?\\nKey fingerprint SHA256:abc."
-        "\\nRequested by ssh-keygen (1234) \u2190 tpm-sign \u2190 git \u2190 zsh"
-    )
     with told("keys askpass"):
-        ask("confirm", signing)
+        ask("confirm", SIGNING)
     photograph("askpass")
     machine.send_key("ret")
     answered_with("confirm", 0)
 
     with told("keys askpass"):
-        ask("confirm", signing)
+        ask("confirm", SIGNING)
     with told("gone askpass"):
         machine.send_key("esc")
     answered_with("confirm", 1)
@@ -3301,14 +3374,14 @@ with subtest("the askpass asks for a yes, a PIN and a touch"):
 # The shell holds an ask only in memory, as a switch restarts it.
 with subtest("the askpass asks a restarted shell again, and gives up on a gone one"):
     with told("keys askpass"):
-        ask("confirm", signing)
+        ask("confirm", SIGNING)
     with told("keys askpass", timeout=60):
         as_account("systemctl --user restart quickshell")
     machine.send_key("ret")
     answered_with("confirm", 0)
 
     with told("keys askpass"):
-        ask("confirm", signing)
+        ask("confirm", SIGNING)
     as_account("systemctl --user stop quickshell")
     answered_with("confirm", 1, timeout=60)
     as_account("! ls $XDG_RUNTIME_DIR | grep -q '^askpass'")
