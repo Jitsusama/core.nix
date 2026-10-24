@@ -5,8 +5,14 @@
 # Documentation/admin-guide/sysctl/vm.rst and mm/multigen_lru.rst.
 { pkgs, ... }:
 {
-  # Swap to zstd-compressed RAM, which NixOS sizes at half of memory.
+  # Swap to zstd-compressed RAM, as much as memory holds. At NixOS's half,
+  # a 62 GiB laptop's builds filled zram's 31 GiB and sent 0.42 of 2.02 TiB
+  # swapped in a 13-hour day to the swapfile on its SSD, which wears it and
+  # reads back in milliseconds rather than microseconds; a full zram sends
+  # the newest pages there, not the coldest. Full, zram held its 31 GiB in
+  # 9.7 GiB of memory, so all of memory's worth costs about a third of it.
   zramSwap.enable = true;
+  zramSwap.memoryPercent = 100;
   # Taking the swap down resets its device, which the kernel refuses while
   # anything holds it open, and udev opens it to probe it as swapoff closes
   # it. One shutdown in 18 failed that way, and a restart by hand would
