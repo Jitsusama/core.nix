@@ -1,12 +1,14 @@
 // Another program seeing the screen, as a call shares it through the portal:
 // true while niri says a PipeWire screencast streams, and what it sees, the
 // whole screen or one window. niri's events say when, so nothing is asked.
+// A window being recorded streams the same way, and is left to Recording.
 import qs
 import QtQuick
 
 Piece {
     readonly property var casts: Object.values(Niri.casts)
-        .filter(cast => cast.kind === "PipeWire" && cast.is_active)
+        .filter(cast => cast.kind === "PipeWire" && cast.is_active
+            && cast.session_id !== Recorder.windowSession)
     // A window's title as it is now: windows change in place, and the
     // revision says when.
     readonly property var seen: {

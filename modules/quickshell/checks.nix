@@ -296,7 +296,8 @@
 
   # Do not disturb holds notices while the screen is shared and lets them go
   # after, as tests/quiet.qml drives it through Quickshell itself, with
-  # niri's casts, the notices and the shell's options stood in for.
+  # niri's casts, the notices, the recorder and the shell's options stood in
+  # for.
   do-not-disturb-holds-while-sharing =
     let
       singleton =
@@ -315,6 +316,7 @@
       cp ${../../tests/quiet.qml} shell.qml
       cp ${singleton "Niri.qml" "property var casts: ({})"} Niri.qml
       cp ${singleton "Notices.qml" "property var history: []"} Notices.qml
+      cp ${singleton "Recorder.qml" "property var windowSession: null"} Recorder.qml
       cp ${options} Options.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}

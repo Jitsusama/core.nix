@@ -1,6 +1,7 @@
 // Drives do not disturb (modules/quickshell/Quiet.qml) through what can
-// happen to it, with niri's casts and the notices stood in for: sharing the
-// screen holds notices and stopping lets them go, recording doesn't, ending
+// happen to it, with niri's casts, the notices and the recorder stood in
+// for: sharing the screen holds notices and stopping lets them go,
+// recording the screen or a window through its own screencast doesn't, ending
 // it while sharing lasts until the sharing stops, and what Joel turned on
 // outlasts the sharing. It exits 0 once every case holds, and otherwise 1,
 // saying which case didn't.
@@ -9,8 +10,8 @@ import Quickshell
 import QtQuick
 
 ShellRoot {
-    function share(kind) {
-        Niri.casts = kind === "" ? {} : { 1: { kind: kind, is_active: true } };
+    function share(kind, session = 1) {
+        Niri.casts = kind === "" ? {} : { 1: { kind: kind, is_active: true, session_id: session } };
     }
 
     function expect(what, on, lasts) {
@@ -27,6 +28,10 @@ ShellRoot {
             expect("after sharing", false);
             share("WlrScreencopy");
             expect("recording", false);
+            Recorder.windowSession = 7;
+            share("PipeWire", 7);
+            expect("recording a window", false);
+            Recorder.windowSession = null;
             share("PipeWire");
             Quiet.end();
             expect("ended while sharing", false);
