@@ -2201,6 +2201,28 @@
       ]
     },
     {
+      "id": "verb:emoji:paste",
+      "in": "emoji",
+      "name": "Paste",
+      "verb": "paste",
+      "glyph": "paste",
+      "hidden": [
+        "paste it",
+        "put it in the window"
+      ]
+    },
+    {
+      "id": "verb:emoji:copy",
+      "in": "emoji",
+      "name": "Copy",
+      "verb": "copy",
+      "glyph": "copy",
+      "hidden": [
+        "copy it",
+        "only copy it"
+      ]
+    },
+    {
       "id": "copies:forget",
       "name": "Forget the clipboard",
       "verb": "forget",
