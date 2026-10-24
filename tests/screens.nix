@@ -25,7 +25,40 @@ pkgs.testers.runNixOSTest {
   node.pkgsReadOnly = false;
 
   nodes.machine =
-    { lib, ... }:
+    {
+      config,
+      lib,
+      pkgs,
+      ...
+    }:
+    let
+      # The machine's store as a read-only image, packed as NixOS packs one
+      # for useNixStoreImage, but built once, as a derivation of its own,
+      # rather than afresh at every start. Packing it wrote about 17 GiB
+      # each run; now that's written once for each closure, and a run
+      # writes a few MiB. The registration the machine loads at boot goes
+      # in with it.
+      registration =
+        (import "${pkgs.path}/nixos/lib/store-registration-info.nix" {
+          hostPkgs = pkgs;
+          rootPaths = config.virtualisation.additionalPaths;
+        }).regInfo;
+      storeImage = pkgs.runCommand "screens-store.img" { } (
+        import "${pkgs.path}/nixos/lib/erofs-store-image.nix" {
+          hostPkgs = pkgs;
+          storePaths = "${
+            pkgs.closureInfo {
+              rootPaths = [
+                config.system.build.toplevel
+                registration
+              ];
+            }
+          }/store-paths";
+          label = "nix-store";
+          destination = "$out";
+        }
+      );
+    in
     {
       imports = [ self.nixosModules.graphical ];
 
@@ -49,13 +82,29 @@ pkgs.testers.runNixOSTest {
         # node, so the patch lets niri draw through the card's own node.
         qemu.options = [ "-vga none -device VGA,xres=1280,yres=800,edid=on" ];
         # virtio-fs can't suspend, and refuses a sleep for the whole
-        # machine, so the store is a disk image and nothing is shared. It's
-        # writable over the image, since Home Manager writes the account's
-        # profile.
-        useNixStoreImage = true;
-        mountHostNixStore = false;
+        # machine, so the store is the image above and nothing is shared.
+        # The host's store stays on in name, so NixOS still registers the
+        # store and lays a writable layer over it, where Home Manager writes
+        # the account's profile; the image stands where the share was.
+        mountHostNixStore = true;
         writableStore = true;
         sharedDirectories = lib.mkForce { };
+        qemu.drives = [
+          {
+            name = "nix-store";
+            file = "${storeImage}";
+            driveExtraOpts = {
+              format = "raw";
+              readonly = "on";
+            };
+          }
+        ];
+        fileSystems."/nix/.ro-store" = {
+          device = "/dev/disk/by-label/nix-store";
+          fsType = "erofs";
+          neededForBoot = true;
+          options = [ "ro" ];
+        };
       };
 
       # greetd signs the account in by itself, into niri's own session.
