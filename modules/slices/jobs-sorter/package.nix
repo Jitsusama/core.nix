@@ -14,7 +14,7 @@ rustPlatform.buildRustPackage {
   };
   cargoLock.lockFile = ./Cargo.lock;
   meta = {
-    description = "Moves a terminal's busy work into the jobs slice";
+    description = "Sorts work into the jobs slice, each piece in a scope of its own";
     license = lib.licenses.mit;
     mainProgram = "jobs-sorter";
   };

@@ -306,14 +306,46 @@ in
       };
     };
 
+    # Each command written into a holder's cgroup, pi's into jobs.service, a
+    # terminal's into awaited.service and the queue's timed work into
+    # timed.service, the sorter moves on into a scope of its own in the same
+    # slice. systemd-oomd ends the leaf cgroup holding the most swap when
+    # swap runs out (modules/memory), and one cgroup for every session's
+    # commands was that leaf: at 03:5x one night, 110 processes and 21 GiB
+    # of swap, so all their builds would have ended for the one that filled
+    # it. The holders stay, as somewhere the next write lands. A scope takes
+    # the weight of the slice it's in, so pi's scopes share jobs-work.slice,
+    # at jobs.service's weight, rather than each taking that weight beside
+    # jobs-awaited: ten agents' commands would then weigh as much as Joel's.
+    systemd.user.slices.jobs-work.sliceConfig = {
+      CPUWeight = 100;
+      IOWeight = 100;
+    };
+
     systemd.user.services.jobs-sorter = {
-      description = "Moves a terminal's busy work, and scopes work in jobs starts, into jobs";
+      description = "Sorts work into jobs, each piece in a scope of its own";
       wantedBy = [ "default.target" ];
       requires = [ "awaited.service" ];
       after = [ "awaited.service" ];
+      # busctl starts each scope, and systemctl names each holder.
+      path = [ config.systemd.package ];
       serviceConfig = {
         Slice = "session.slice";
-        ExecStart = "${sorter}/bin/jobs-sorter --home kitty- --keep pi --jobs jobs.slice/jobs-awaited.slice/awaited.service";
+        ExecStart = lib.escapeShellArgs [
+          "${sorter}/bin/jobs-sorter"
+          "--home"
+          "kitty-"
+          "--keep"
+          "pi"
+          "--jobs"
+          "jobs.slice/jobs-awaited.slice/awaited.service"
+          "--split"
+          "jobs.slice/jobs.service=jobs-work.slice"
+          "--split"
+          "jobs.slice/jobs-awaited.slice/awaited.service"
+          "--split"
+          "jobs.slice/jobs-timed.slice/timed.service"
+        ];
         Restart = "on-failure";
         RestartSec = 5;
       };

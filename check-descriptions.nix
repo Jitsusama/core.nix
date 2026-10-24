@@ -695,7 +695,9 @@
     its `disk-order-<disk>` unit turns io.cost off; every slice's io.weight follows its CPU weight;
     app.slice holds a hard 13% of memory, session.slice 1.5 GiB and every slice above them 16%, and
     jobs is slowed past half; timed work sits at 10000 inside idle jobs, and work in jobs can move
-    itself there; a scope work in jobs starts goes back to jobs, and one with a memory ceiling stays
+    itself there; a scope work in jobs starts goes back to the scope of the work that started it,
+    and one with a memory ceiling stays; each command written into jobs.service gets a scope of its
+    own in jobs-work.slice, at weight 100, with its own swap, and the holder stays
   '';
   vm-boot-asks-in-the-theme = ''
     the splash asks for the disk, names a slow job, and lasts a restart to its end; a sign-in
@@ -843,6 +845,10 @@
   wifid-sign-in-reads-its-network = ''
     the sign-in window's tests pass: its proxy lets on only the window, and it follows which card
     wants a sign-in
+  '';
+  work-fills-swap-alone = ''
+    the sorter gives each piece of work in jobs, awaited and timed work its own scope, so oomd ends
+    only the one that filled swap, and pi's scopes share one slice weighted below a terminal's
   '';
   work-swaps-its-own-memory = ''
     jobs is slowed past half of memory, with no hard limit that would end its work

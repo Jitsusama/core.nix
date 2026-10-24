@@ -108,8 +108,31 @@
         && weight < systemd.user.slices.jobs-timed.sliceConfig.CPUWeight
         && awaited.Delegate
         && (awaited.Restart or "no") == "always"
-        && lib.hasSuffix " --jobs jobs.slice/jobs-awaited.slice/awaited.service" sorter.serviceConfig.ExecStart
+        && lib.hasInfix " --jobs jobs.slice/jobs-awaited.slice/awaited.service " sorter.serviceConfig.ExecStart
         && lib.elem "awaited.service" sorter.requires
+      );
+
+  # systemd-oomd ends the whole of the leaf cgroup holding the most swap, so
+  # every holder's work is split into a scope for each piece, and a full
+  # swap ends the piece that filled it rather than every session's. pi's
+  # pieces share one slice at their holder's weight, below a terminal's.
+  work-fills-swap-alone =
+    let
+      inherit (graphical.config.systemd.user) slices;
+      sorter = graphical.config.systemd.user.services.jobs-sorter;
+      # As the unit quotes it: a value with "=" in it is quoted.
+      splits =
+        cgroup: lib.hasInfix " --split ${lib.escapeShellArg cgroup} " "${sorter.serviceConfig.ExecStart} ";
+    in
+    holds "work-fills-swap-alone"
+      "A holder's cgroup keeps every command written into it together, so a full swap ends them all at once, or pi's commands each weigh as a terminal's work does."
+      (
+        splits "jobs.slice/jobs.service=jobs-work.slice"
+        && slices.jobs-work.sliceConfig.CPUWeight < slices.jobs-awaited.sliceConfig.CPUWeight
+        && slices.jobs-work.sliceConfig.IOWeight < slices.jobs-awaited.sliceConfig.IOWeight
+        && splits "jobs.slice/jobs-awaited.slice/awaited.service"
+        && splits "jobs.slice/jobs-timed.slice/timed.service"
+        && lib.elem graphical.config.systemd.package sorter.path
       );
 
   # A machine runs behind what the user works in only while libvirt's system
