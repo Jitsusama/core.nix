@@ -191,10 +191,9 @@ fn network_of(uplink: &links::Uplink) -> String {
 
 /// The most a link can carry, in kbit/s: Ethernet says, Wi-Fi doesn't.
 fn ceiling(link: &str) -> u64 {
-    match read_number(&Path::new("/sys/class/net").join(link).join("speed")) {
-        Some(mbit) if mbit > 0 && mbit < 1_000_000 => mbit * 1000,
-        _ => 2_000_000,
-    }
+    links::ceiling(read_number(
+        &Path::new("/sys/class/net").join(link).join("speed"),
+    ))
 }
 
 fn start(

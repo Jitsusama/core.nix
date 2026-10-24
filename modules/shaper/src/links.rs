@@ -5,6 +5,29 @@ use serde::Deserialize;
 use std::collections::BTreeMap;
 use std::net::{Ipv4Addr, Ipv6Addr};
 
+/// What a wire spends on each full frame beyond the 1,514 bytes CAKE
+/// counts: the frame check, preamble and the gap between frames.
+const FRAMING: u64 = 4 + 8 + 12;
+
+/// How far under the wire the shaper holds a link, in hundredths: the
+/// queue must be the shaper's, and two equal rates leave it to chance.
+const UNDER: u64 = 95;
+
+/// The most a link can carry in the shaper's own counting, in kbit/s, from
+/// the Mbit/s Ethernet says; Wi-Fi says nothing, and is left to the line.
+/// A link speed counts the wire's framing, which CAKE doesn't, so a rate
+/// of 100 Mbit/s on a 100 Mbit/s wire sent it 1.6% more than it carried:
+/// the router's port toward the machine held a queue of 8 ms, under the
+/// delay the shaper cuts at, for as long as a download ran.
+pub fn ceiling(mbit: Option<u64>) -> u64 {
+    match mbit {
+        Some(mbit) if mbit > 0 && mbit < 1_000_000 => {
+            mbit * 1000 * 1514 / (1514 + FRAMING) * UNDER / 100
+        }
+        _ => 2_000_000,
+    }
+}
+
 #[derive(Deserialize)]
 struct Route {
     dev: Option<String>,
@@ -136,6 +159,17 @@ pub fn gateway_address(json: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_link_s_ceiling_is_under_what_its_wire_carries() {
+        // A 100 Mbit/s wire carries 98.4 of CAKE's frames, so the shaper
+        // must hold under that, not at 100, or the router's port queues.
+        assert_eq!(ceiling(Some(100)), 93_517);
+        assert_eq!(ceiling(Some(1_000)), 935_175);
+        // Wi-Fi gives no speed, and a link down gives -1 or nothing.
+        assert_eq!(ceiling(None), 2_000_000);
+        assert_eq!(ceiling(Some(0)), 2_000_000);
+    }
 
     #[test]
     fn a_link_to_the_same_router_follows_the_one_before_it() {
