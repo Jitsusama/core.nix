@@ -11,23 +11,17 @@ let
   inherit (config.jitsusama.theme) appearance roles terminal;
   mix = import ../theme/mix.nix { inherit lib; };
 
-  # The status line (statusline.py), each part in the theme's colour for
+  # The status line (statusline/), and each part's colour in the theme for
   # what it is: the folder strong, the model a program's, the context's
   # size a success, and the separators the rules'.
-  statusline = pkgs.writers.writePython3Bin "claude-statusline" { doCheck = false; } (
-    builtins.replaceStrings
-      [ "@colours@" ]
-      [
-        "${builtins.toFile "claude-statusline-colours.json" (
-          builtins.toJSON {
-            folder = roles.strong;
-            model = roles.program;
-            context = roles.success;
-            separator = roles.rule;
-          }
-        )}"
-      ]
-      (builtins.readFile ./statusline.py)
+  statusline = pkgs.callPackage ./statusline/package.nix { };
+  statuslineColours = builtins.toFile "claude-statusline-colours.json" (
+    builtins.toJSON {
+      folder = roles.strong;
+      model = roles.program;
+      context = roles.success;
+      separator = roles.rule;
+    }
   );
 
   # A diff's lines and words are tinted backgrounds under the text, so a
@@ -110,10 +104,9 @@ in
     mutableSettings = true;
     settings.statusLine = {
       type = "command";
-      command = lib.getExe statusline;
+      command = "${lib.getExe statusline} ${statuslineColours}";
     };
   };
-  home.packages = [ statusline ];
   programs.git.ignores = [ "CLAUDE.local.md" ];
 
   # Claude Code keeps its choice of theme in ~/.claude.json, a file it

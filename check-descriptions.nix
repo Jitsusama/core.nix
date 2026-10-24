@@ -84,7 +84,11 @@
   '';
   claude-status-line-says-how-it-stands = ''
     Claude Code's status line shows the folder, the model and the context's size, cached tokens
-    counted, in the theme's colours
+    counted, in the theme's colours, and the command a workstation gives Claude Code draws the
+    folder in the theme's strong colour
+  '';
+  claude-statusline-passes-clippy = ''
+    clippy finds nothing in Claude Code's status line or its tests
   '';
   claude-wears-the-theme = ''
     Claude Code's theme has the account's text colour and only hex colours, and the mix its tints
