@@ -882,6 +882,30 @@ in
     touch $out
   '';
 
+  # A row's graph is ten braille characters over a dim track of every dot,
+  # a bar filling from the left, a spark from the right with the newest last
+  # and a strip a reading for each member, in the warning colour at 95% or
+  # when it says it warns; rows' graphs stand in one column, and a figure
+  # wears no glyph, as tests/graphs.qml draws them through Quickshell in the
+  # theme's own face and sizes, at a panel's width.
+  palette-graphs-draw-in-braille =
+    let
+      machine = graphical.config;
+    in
+    pkgs.runCommandLocal "palette-graphs-draw-in-braille" { } ''
+      cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
+      cp ${./Choice.qml} Choice.qml
+      cp ${./Graph.qml} Graph.qml
+      cp ${./Chord.qml} Chord.qml
+      cp ${../../tests/graphs.qml} shell.qml
+      export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
+      mkdir -m 700 $XDG_RUNTIME_DIR
+      export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = machine.fonts.packages; }}
+      ${shellFolderLint}
+      timeout 60 ${lib.getExe' graphical.pkgs.quickshell "qs"} -p shell.qml
+      touch $out
+    '';
+
   # A palette's row and its field keep their words apart and inside their
   # edges however long they run, ending what doesn't fit in an ellipsis, as
   # tests/rows.qml draws them through Quickshell in the theme's own face and
@@ -899,6 +923,7 @@ in
     pkgs.runCommandLocal "palette-rows-keep-their-words-apart" { } ''
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
       cp ${./Choice.qml} Choice.qml
+      cp ${./Graph.qml} Graph.qml
       cp ${./Chord.qml} Chord.qml
       cp ${./Prompt.qml} Prompt.qml
       cp ${lights} Lights.qml

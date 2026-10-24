@@ -1262,6 +1262,13 @@ Scope {
                             // A gap sets the collections apart at home.
                             readonly property int apart: root.matches.some(row => row.gap)
                                 ? Theme.space.m : 0
+                            // How many characters the widest of what graphed rows
+                            // say at their right runs to, as Choice says it, so
+                            // their graphs stand in one column.
+                            readonly property int figures: Math.max(0, ...root.matches
+                                .filter(row => !!row.graph).map(row => ((root.held.length === 0
+                                    ? root.kindOf(row) : "") || ((row.chord ?? []).length > 0 ? ""
+                                    : row.side ?? "")).length))
                             clip: true
                             boundsBehavior: Flickable.StopAtBounds
                             model: root.matches
@@ -1271,6 +1278,19 @@ Scope {
 
                                 required property var modelData
                                 required property int index
+                                // What it's inside, whose glyph an act of its
+                                // own without one wears.
+                                readonly property var thing: root.held.length > 0
+                                    ? root.held[root.held.length - 1].row : null
+                                // Its own glyph, or its thing's, for an act.
+                                readonly property bool own: (modelData.glyph ?? "") !== ""
+                                // Holding more (an answer's parts, a row of rows, a
+                                // collection) before doing, and a figure only once
+                                // it does nothing else (Provider.qml's copyRow).
+                                readonly property string sort:
+                                    modelData.opens || modelData.nested ? "holds"
+                                    : modelData.figure === true && !modelData.verbs ? "figure"
+                                    : "act"
 
                                 width: list.width
                                 height: Theme.space.xxxl + (modelData.gap ? list.apart : 0)
@@ -1278,9 +1298,16 @@ Scope {
                                 Choice {
                                     anchors.bottom: parent.bottom
                                     selected: entry.index === root.current
-                                    glyph: entry.modelData.glyph
+                                    glyph: entry.own || entry.sort !== "act"
+                                        ? entry.modelData.glyph ?? "" : entry.thing?.glyph ?? ""
                                     // A colour's swatch wears the colour itself.
-                                    hue: entry.modelData.swatch ?? Theme[entry.modelData.hue]
+                                    hue: entry.modelData.swatch
+                                        ?? Theme[(entry.own ? entry.modelData.hue
+                                            : entry.thing?.hue) ?? ""] ?? Theme.text
+                                    swatch: !!entry.modelData.swatch
+                                    sort: entry.sort
+                                    graph: entry.modelData.graph ?? null
+                                    figures: list.figures
                                     name: selected ? entry.modelData.name
                                         : root.marked(entry.modelData)
                                     chord: entry.modelData.chord

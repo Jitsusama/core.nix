@@ -57,6 +57,7 @@ let
     "KeyHints.qml"
     "Launcher.qml"
     "Choice.qml"
+    "Graph.qml"
     "Chord.qml"
     "Margin.qml"
     "Marks.js"

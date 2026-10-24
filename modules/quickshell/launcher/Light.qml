@@ -96,6 +96,7 @@ Provider {
             side: "the desk light",
             glyph: String.fromCodePoint(0xf095f),
             hue: "machine",
+            graph: level(light.on ? light.percent : 0, 100),
             verbs: () => [
                 step("brighter", "Brighter", () => DeskLight.brighten(DeskLight.light.percent + brightnessStep)),
                 step("dimmer", "Dimmer", () => DeskLight.brighten(DeskLight.light.percent - brightnessStep)),
@@ -166,6 +167,12 @@ Provider {
         return found;
     }
 
+    // A light's level as a bar. However bright, it wants nothing, so the
+    // bar never warns.
+    function level(now, most) {
+        return { shape: "bar", values: [now / most], warn: false };
+    }
+
     function told() {
         const screens = lights("/sys/class/backlight", backlights, /./);
         const keyboards = lights("/sys/class/leds", leds, /kbd_backlight$/);
@@ -176,11 +183,13 @@ Provider {
         const rows = screens.map(light => copyRow({
             name: share(light),
             side: `the screen, ${light.now} of ${light.most}`,
-            glyph: String.fromCodePoint(0xf00df)
+            glyph: String.fromCodePoint(0xf00df),
+            graph: level(light.now, light.most)
         })).concat(keyboards.map(light => copyRow({
             name: light.now === 0 ? "off" : `${light.now} of ${light.most}`,
             side: "the keyboard's light",
-            glyph: String.fromCodePoint(0xf030c)
+            glyph: String.fromCodePoint(0xf030c),
+            graph: level(light.now, light.most)
         }))).concat(desk);
         return {
             headline: screens.length > 0 ? `${share(screens[0])} bright` : rows[0].name,

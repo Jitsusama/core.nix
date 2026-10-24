@@ -97,6 +97,8 @@ with subtest("the launcher answers what's asked, and copies the answer"):
     launcher_until(lambda shown: shown["kind"] == "answer")
     step_in()
     launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "mains")
+    # Its charge among them, drawn as a bar, and none of them a glyph.
+    photograph("launcher-charger-parts")
     machine.send_key("esc")
     # A collection is found by what a person calls it, not only its
     # title, and Return goes straight into it.

@@ -430,6 +430,9 @@ with subtest("the launcher sets the volume to a number, and says how loud it is"
         lambda shown: (shown["selected"] or {}).get("name", "").startswith("40%, through ")
     )
     photograph("launcher-volume-told")
+    # A step in, each device's level drawn as a bar.
+    step_in()
+    photograph("launcher-volume-parts")
     machine.send_key("esc")
     machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
 

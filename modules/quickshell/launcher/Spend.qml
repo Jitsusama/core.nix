@@ -93,6 +93,7 @@ Provider {
                 key: `spend:${given.key}:copy`,
                 name: "Copy what it found",
                 copy: given.copy,
+                figure: false,
                 glyph: glyph(given.role),
                 hue: hue(given.role)
             }));

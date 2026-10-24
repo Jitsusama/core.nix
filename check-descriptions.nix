@@ -370,6 +370,11 @@
   open-with-passes-clippy = ''
     clippy finds nothing in the portal's chooser or its tests
   '';
+  palette-graphs-draw-in-braille = ''
+    a row's graph is ten braille characters over a dim track, a bar from the left, a spark from the
+    right and a strip a reading a member, warning at 95%; graphs line up in one column, and a
+    figure wears no glyph
+  '';
   palette-rows-keep-their-words-apart = ''
     a palette's row and field keep their words apart and inside them, however long, ending what
     doesn't fit in an ellipsis
