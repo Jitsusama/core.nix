@@ -140,14 +140,6 @@ Provider {
     // it says nothing of, or no file at all, has no facts.
     property var facts: ({})
 
-    function parsed(text) {
-        try {
-            return JSON.parse(text) ?? {};
-        } catch (error) {
-            return {};
-        }
-    }
-
     FileView {
         path: `${Quickshell.env("XDG_RUNTIME_DIR")}/desk/displays.json`
         watchChanges: true

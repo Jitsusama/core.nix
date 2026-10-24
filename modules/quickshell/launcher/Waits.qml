@@ -29,14 +29,6 @@ Provider {
         return told();
     }
 
-    function parsed(text) {
-        try {
-            return JSON.parse(text);
-        } catch (error) {
-            return null;
-        }
-    }
-
     function ms(value) {
         return `${Numbers.format(value, value < 10 ? 1 : 0, settings.group, settings.point)} ms`;
     }
