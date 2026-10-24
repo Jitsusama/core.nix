@@ -266,10 +266,12 @@
   '';
   lag-watch-tells-who-waited = ''
     lag-watch counts the desktop or apps waiting as trouble, the desktop's memory stalls only from a
-    120 Hz frame's worth of the window, and work waiting on work as none, names the app's unit that
-    stalled most, tells of the desktop's or an app's program the kernel ended for memory, names in a
-    word the wait felt most, whose it was and since when trouble has lasted, finds the threads it
-    watches by name, of niri only the one its socket names, and sums each generation by its load
+    120 Hz frame's worth of the window, and its waits on the disk or a page being moved from the
+    same, niri's turns for a CPU only past 3% of a frame, and work waiting on work as none, names
+    the app's unit that stalled most, tells of the desktop's or an app's program the kernel ended
+    for memory, names in a word the wait felt most, whose it was and since when trouble has lasted,
+    finds the threads it watches by name, of niri only the one its socket names, and sums each
+    generation by its load
   '';
   lid-docked-passes-clippy = ''
     clippy finds nothing in lid-docked or its tests

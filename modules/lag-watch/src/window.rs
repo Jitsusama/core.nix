@@ -370,8 +370,7 @@ const FRAME_OF_A_WINDOW: f64 = 8.3 / 10_000.0 * 100.0;
 /// these were measured at with the machine quiet and under sixteen
 /// spinning threads: session.slice's CPU stall read 0.00% while jobs
 /// stalled 23%; a wakeup in session waited at most 0.75 ms and in app
-/// 1.3 ms; niri's main thread waited 23 us a turn on average across a
-/// day of builds; one 120 Hz frame is 8.3 ms.
+/// 1.3 ms; one 120 Hz frame is 8.3 ms.
 ///
 /// The desktop's memory stalls count from a frame's worth of the window
 /// on. In a day's 457 windows with any, the median was 0.6 ms and nine in
@@ -400,6 +399,22 @@ fn trouble(w: &Window, then: &Snapshot, now: &Snapshot) -> Found {
             format!(
                 "the desktop stalled on memory {:.2}% of the time",
                 s("session").memory_full
+            ),
+        );
+    }
+    // A thread asleep on a page that compaction is moving waits through
+    // io_schedule, so PSI counts it as I/O, not memory (mm/filemap.c,
+    // softleaf_entry_wait_on_locked). From 09:40 to 12:00, the windows
+    // holding niri's stalls of 25 ms and more, each while a build moved its
+    // memory, read 0.1 to 0.9% here, and the 789 without one 0.094% at p99.
+    if s("session").io_some >= FRAME_OF_A_WINDOW {
+        found.add(
+            Who::Desktop,
+            4,
+            Cause::Disk,
+            format!(
+                "the desktop waited on the disk or on memory being moved {:.2}% of the time",
+                s("session").io_some
             ),
         );
     }
@@ -484,10 +499,18 @@ fn lost(w: &Window, then: &Snapshot, now: &Snapshot, found: &mut Found) {
     }
 }
 
+/// How long niri's main thread may wait on average for a CPU each turn
+/// before the desktop counts as waiting: 3% of a 120 Hz frame, so the few
+/// turns a frame takes still leave it most of the frame. It was 50 us, twice
+/// a day's average, and beside twenty builds and more niri sat at 39 us at
+/// the median and 94 at worst. That marked a quarter of a morning's windows
+/// and six spells of a minute or more, none a wait anyone could see.
+const NIRI_TURN_US: f64 = 250.0;
+
 /// niri's and sound's turns for a CPU, and how niri answered.
 fn turns(w: &Window, found: &mut Found) {
     if let Some(niri) = w.waits.get("niri")
-        && niri.mean_us > 50.0
+        && niri.mean_us > NIRI_TURN_US
     {
         found.add(
             Who::Desktop,
@@ -601,13 +624,50 @@ mod tests {
         assert!((w.waits["niri"].mean_us - 20.0).abs() < 1e-9);
     }
 
+    fn waiting_on_io(us: u64) -> Group {
+        Group {
+            io: Stall { some: us, full: 0 },
+            ..Group::default()
+        }
+    }
+
+    #[test]
+    fn the_desktop_waiting_a_frame_on_a_page_or_the_disk_is_trouble() {
+        let then = snapshot(0.0, &[("session", waiting_on_io(0))], 0, 0);
+        // niri asleep 27 ms while a build moved a page of its memory.
+        let now = snapshot(10.0, &[("session", waiting_on_io(27_000))], 0, 0);
+        let w = between(&then, &now, quiet_niri(), 0, "gen");
+        assert_eq!(
+            w.trouble,
+            ["the desktop waited on the disk or on memory being moved 0.27% of the time"]
+        );
+        assert_eq!((w.worst.as_str(), w.who.as_str()), ("disk", "desktop"));
+    }
+
+    #[test]
+    fn the_desktop_waiting_under_a_frame_on_the_disk_is_no_trouble() {
+        let then = snapshot(0.0, &[("session", waiting_on_io(0))], 0, 0);
+        let now = snapshot(10.0, &[("session", waiting_on_io(5_000))], 0, 0);
+        let w = between(&then, &now, quiet_niri(), 0, "gen");
+        assert!(w.trouble.is_empty(), "{:?}", w.trouble);
+    }
+
+    #[test]
+    fn niri_waiting_what_a_day_of_builds_costs_it_is_no_trouble() {
+        let then = snapshot(0.0, &[("session", group(0, 0, 0))], 0, 0);
+        // The worst of a morning's windows beside twenty builds and more.
+        let now = snapshot(10.0, &[("session", group(0, 0, 0))], 94_000_000, 1_000);
+        let w = between(&then, &now, quiet_niri(), 0, "gen");
+        assert!(w.trouble.is_empty(), "{:?}", w.trouble);
+    }
+
     #[test]
     fn the_desktop_waiting_is_trouble() {
         let then = snapshot(0.0, &[("session", group(0, 0, 0))], 0, 0);
         let now = snapshot(
             10.0,
             &[("session", group(300_000, 0, 0))],
-            90_000_000,
+            300_000_000,
             1_000,
         );
         let w = between(&then, &now, quiet_niri(), 0, "gen");
@@ -616,7 +676,7 @@ mod tests {
             w.trouble,
             [
                 "the desktop waited for a CPU 3.0% of the time",
-                "niri waited 90 us a turn for a CPU"
+                "niri waited 300 us a turn for a CPU"
             ]
         );
         assert_eq!(w.worst, "cpu");
