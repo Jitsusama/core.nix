@@ -6,8 +6,18 @@ use std::io::Write;
 use std::path::PathBuf;
 use std::process::{Command, Output, Stdio};
 
-const COLOURS: &str =
-    r##"{"folder": "#010203", "model": "#040506", "context": "#070809", "separator": "#0a0b0c"}"##;
+/// The colours a run is given, by part, each written as the theme writes
+/// one, from channels so no look is named in the code.
+fn theme() -> String {
+    let hex = |red: u8, green: u8, blue: u8| format!("#{red:02x}{green:02x}{blue:02x}");
+    serde_json::json!({
+        "folder": hex(1, 2, 3),
+        "model": hex(4, 5, 6),
+        "context": hex(7, 8, 9),
+        "separator": hex(10, 11, 12),
+    })
+    .to_string()
+}
 
 /// A folder of the test's own, emptied first, for the files a run reads.
 fn folder(test: &str) -> PathBuf {
@@ -44,7 +54,7 @@ fn text(bytes: &[u8]) -> String {
 fn it_prints_the_line_with_the_context_its_transcript_holds() {
     let folder = folder("transcript");
     let colours = folder.join("colours.json");
-    fs::write(&colours, COLOURS).expect("the colours are written");
+    fs::write(&colours, theme()).expect("the colours are written");
     let transcript = folder.join("transcript.jsonl");
     fs::write(
         &transcript,
@@ -75,7 +85,7 @@ fn it_prints_the_line_with_the_context_its_transcript_holds() {
 fn a_transcript_not_written_yet_leaves_the_context_out() {
     let folder = folder("unwritten");
     let colours = folder.join("colours.json");
-    fs::write(&colours, COLOURS).expect("the colours are written");
+    fs::write(&colours, theme()).expect("the colours are written");
     let session = format!(
         r#"{{"model": {{"id": "opus"}}, "transcript_path": "{}"}}"#,
         folder.join("none.jsonl").display()
