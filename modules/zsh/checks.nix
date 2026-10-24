@@ -39,29 +39,7 @@
         ];
       }
       ''
-        export HOME=$TMPDIR/home TERM=xterm-kitty
-        mkdir -p $HOME
-        ln -s ${(account machine).home-files}/{.zshrc,.zshenv} $HOME/
-        # Typed ahead, each line a prompt; the two reads mark where to count.
-        touch begin end
-        printf '%s\r' ": < $PWD/begin" true true true ": < $PWD/end" exit > keys
-        start() {
-          script -q -c "stty cols 90 rows 30; $1 zsh -i" /dev/null < keys > /dev/null
-        }
-        # The first start makes the completion dump the rest are read from.
-        start ""
-        start "strace -f -qq -o trace -e trace=process,openat"
-        names() {
-          grep 'execve("' | grep -v '= -1 ' | sed 's|.*execve("\([^"]*\)".*|\1|; s|.*/||' |
-            sort -u | tr '\n' ' '
-        }
-        shell=$(head -1 trace | cut -d' ' -f1)
-        mark() { grep -n "^$shell .*$1" trace | head -1 | cut -d: -f1; }
-        started=$(head -n $(mark $PWD/begin) trace | names)
-        prompts=$(sed -n "$(mark $PWD/begin),$(mark $PWD/end)p" trace | names)
-        [ "$started" = "direnv git-engine mkfifo zsh " ] ||
-          { echo "Starting the shell ran: $started" >&2; exit 1; }
-        [ "$prompts" = "direnv " ] || { echo "Its prompts ran: $prompts" >&2; exit 1; }
+        ${lib.getExe pkgs.bash} ${../../tests/the-shell-starts-nothing.sh} ${(account machine).home-files}
         touch $out
       '';
 }
