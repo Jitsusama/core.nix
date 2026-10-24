@@ -54,6 +54,8 @@ class Values(TypedDict):
     action: str
     sunken: str
     mono_family: str
+    # Whether this is the gallery, which keeps pictures for a person to look at.
+    photographs: bool
 
 
 VALUES: Values = json.loads(Path("@values@").read_text())
@@ -78,6 +80,7 @@ ACCENT = VALUES["accent"]
 ACTION = VALUES["action"]
 SUNKEN = VALUES["sunken"]
 MONO_FAMILY = VALUES["mono_family"]
+PHOTOGRAPHS = VALUES["photographs"]
 
 # A picture holds more colours than this, and a flat colour, or a screen not yet drawn, far
 # fewer.
@@ -235,12 +238,26 @@ def held_still(timeout: int = 10, span: float = 0.5) -> bool:
 
 
 def photograph(name: str, timeout: int = 10) -> None:
-    """Photograph the screen once it holds still, for a person to look at.
+    """Photograph the screen once it holds still, for a person to look at, in the gallery.
 
-    One that never holds still is kept as it is.
+    One that never holds still is kept as it is. Outside the gallery it takes nothing and
+    waits for nothing, so a subtest must never lean on it to let the screen settle.
+    """
+    if PHOTOGRAPHS:
+        held_still(timeout)
+        machine.screenshot(name)
+
+
+def settled_screen(name: str, timeout: int = 10) -> Image.Image:
+    """Give the screen once it holds still, or as it is when it never does, to measure.
+
+    The gallery keeps it too, by its name, for a person to look at.
     """
     held_still(timeout)
-    machine.screenshot(name)
+    image = screen_now()
+    if PHOTOGRAPHS:
+        image.save(machine.out_dir / f"{name}.png")
+    return image
 
 
 def showing() -> Json:
@@ -392,9 +409,8 @@ def commonest_colour_in(title: str, picture: str, wanted: str) -> str | None:
     as_account(f"niri msg action move-window-to-floating --id {window_titled(title)['id']}")
 
     def commonest() -> str:
-        photograph(picture)
+        image = settled_screen(picture)
         left, top, width, height = drawn_at(window_titled(title))
-        image = Image.open(machine.out_dir / f"{picture}.png").convert("RGB")
         inside = image.crop((left + 20, top + 20, left + width - 20, top + height - 20))
         # Pillow gives no counts when there are more colours than asked
         # for, and there can't be more than there are pixels.
@@ -604,8 +620,7 @@ def offer_to_play(picture: str, offers: str = "") -> tuple[float, float]:
 
     # The card's first frames may not hold the glyph yet.
     def glyph_drawn(last: bool) -> bool:
-        photograph(picture)
-        image = Image.open(machine.out_dir / f"{picture}.png").convert("RGB")
+        image = settled_screen(picture)
         pixels = image.tobytes()
         size[:] = [image.width, image.height]
         drawn[:] = [

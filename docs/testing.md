@@ -192,15 +192,19 @@ login. It lives in [`tests/secure-boot.nix`][4].
 
 ### What Changed on Screen
 
-The desktop test photographs every state it puts the desktop in, each once
-the screen holds still, and keeps the pictures in its result. No check
+Each area of the desktop test has a gallery, `vm-desktop-<area>.gallery`,
+the same test photographing every state it puts the desktop in, each once
+the screen holds still, and keeping the pictures in its result. The area
+itself takes none, since proving a change needs none and each photograph
+waits for the screen to hold still; a subtest that measures the screen uses
+`settled_screen`, which the gallery keeps as a picture too. No check
 compares them with stored ones: a stored picture would fail on every change
 meant, and two runs of the same code don't draw every picture the same, as a
 clock or a notice's age moves on. Instead, a change to how anything looks is
 compared with main, and every picture it changed is looked at:
 
 ```sh
-area=checks.x86_64-linux.vm-desktop-launcher-answers  # each area the change touches
+area=checks.x86_64-linux.vm-desktop-launcher-answers.gallery  # each area the change touches
 main=$(nix build --no-link --print-out-paths "github:Jitsusama/core.nix#$area")
 here=$(nix build --no-link --print-out-paths ".#$area")
 nix develop -c shots-changed "$main" "$here" changed

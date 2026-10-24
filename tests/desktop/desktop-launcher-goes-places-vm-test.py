@@ -12,8 +12,6 @@ import shlex
 import time
 from typing import TYPE_CHECKING, cast
 
-from PIL import Image
-
 if TYPE_CHECKING:
     from collections.abc import Callable
 
@@ -38,6 +36,7 @@ if TYPE_CHECKING:
         pi_session,
         presence_says,
         reported,
+        settled_screen,
         settles_on,
         shell_said,
         showing,
@@ -457,9 +456,8 @@ with subtest("the focused window is framed in the accent"):
 
     def beside() -> str:
         """Give the colour just left of the focused window, where its border is."""
-        photograph("focused")
+        image = settled_screen("focused")
         left, top, _, height = drawn_at(json.loads(as_account("niri msg --json focused-window")))
-        image = Image.open(machine.out_dir / "focused.png").convert("RGB")
         # An RGB picture's pixels are each a red, a green and a blue.
         pixel = cast("tuple[int, int, int]", image.getpixel((left - 1, top + height // 2)))
         return "#{:02x}{:02x}{:02x}".format(*pixel)

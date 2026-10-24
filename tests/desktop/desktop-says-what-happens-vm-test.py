@@ -42,6 +42,7 @@ if TYPE_CHECKING:
         power,
         reported,
         screen_now,
+        settled_screen,
         shell_said,
         showing,
         step_in,
@@ -370,10 +371,9 @@ with subtest("Keep Awake shows in the margin, and What's on says it and lets it 
     with told("drawn margin"):
         as_account("systemctl --user start caffeinate.service")
     reported("sets margin ", margin_sets(("awake", "leftOn", "muted")), since)
-    photograph("margin-awake")
     # Super+O opens What's on at its row, and while it's open the mark its
     # keys are on wears the accent, nothing grown; closed, it's as it was.
-    glyph = changed_at_the_top(empty, screen_now())
+    glyph = changed_at_the_top(empty, settled_screen("margin-awake"))
     since = mark()
     machine.send_key("meta_l-o")
     whats_on("Keep Awake")
