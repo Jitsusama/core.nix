@@ -13,7 +13,8 @@
   # its fastest rate on the charger. Only the panel's modes at the size it shows
   # count, and a line from UPower that isn't a change does nothing. UPower and
   # niri are stand-ins: each time the service asks whether the machine is on
-  # battery, UPower answers with the next of the states listed below.
+  # battery, UPower answers with the next of the states listed below
+  # (tests/battery-stand-ins).
   the-panel-slows-on-a-low-battery =
     let
       xps = bareNixos [
@@ -49,75 +50,34 @@
         echo "The XPS 14 has no panel-refresh service started with the session." >&2
         exit 1
       ''}
-      export STATE=$PWD
-      mkdir bin
-      cat > steps <<'EOF'
-      false 79
-      true 35
-      true 30
-      true 29
-      true 31
-      true 27
-      false 27
-      true 25
-      EOF
-      cat > bin/busctl <<'EOF'
-      #!${pkgs.bash}/bin/bash
-      case "$*" in
-        *OnBattery*)
-          if [ ! -s "$STATE/steps" ]; then
-            echo "asked once too often" >> "$STATE/errors"
-            exit 1
-          fi
-          head -n 1 "$STATE/steps" > "$STATE/now"
-          tail -n +2 "$STATE/steps" > "$STATE/rest"
-          mv "$STATE/rest" "$STATE/steps"
-          read -r battery _ < "$STATE/now"
-          echo "b $battery"
-          ;;
-        *Percentage*)
-          read -r _ percent < "$STATE/now"
-          echo "d $percent.6"
-          ;;
-      esac
-      EOF
-      cat > bin/niri <<'EOF'
-      #!${pkgs.bash}/bin/bash
-      case "$1 $2" in
-        "msg --json") cat ${outputs} ;;
-        "msg output") echo "$(cat "$STATE/now"): $3 $4 $5" >> "$STATE/calls" ;;
-      esac
-      EOF
-      cat > bin/gdbus <<'EOF'
-      #!${pkgs.bash}/bin/bash
-      changed="org.freedesktop.DBus.Properties.PropertiesChanged"
-      echo "The name org.freedesktop.UPower is owned by :1.12"
-      for _ in 1 2 3 4 5 6 7; do
-        echo "/org/freedesktop/UPower/devices/DisplayDevice: $changed ('org.freedesktop.UPower.Device', ...)"
-      done
-      EOF
-      chmod +x bin/*
-      export PATH=$PWD/bin:${
-        lib.makeBinPath [
-          pkgs.coreutils
-          pkgs.diffutils
-          pkgs.gnugrep
-          pkgs.jq
+      OUTPUTS=${outputs} ${lib.getExe pkgs.bash} ${../../tests/battery-stand-ins}/run.sh ${
+        lib.escapeShellArgs [
+          (unit.serviceConfig.ExecStart or "false")
+          # On battery or not, and its percentage, as UPower gives them.
+          (pkgs.writeText "steps" ''
+            false 79
+            true 35
+            true 30
+            true 29
+            true 31
+            true 27
+            false 27
+            true 25
+          '')
+          (pkgs.writeText "expected" ''
+            true 29: eDP-1 mode 2880x1800@60.000
+            false 27: eDP-1 mode 2880x1800@120.001
+            true 25: eDP-1 mode 2880x1800@60.000
+          '')
+          "The panel's rate"
+          (lib.makeBinPath [
+            pkgs.coreutils
+            pkgs.diffutils
+            pkgs.gnugrep
+            pkgs.jq
+          ])
         ]
       }
-      if ${unit.serviceConfig.ExecStart or "false"}; then
-        echo "The service ended without its monitor failing." >&2
-        exit 1
-      fi
-      cat > expected <<'EOF'
-      true 29: eDP-1 mode 2880x1800@60.000
-      false 27: eDP-1 mode 2880x1800@120.001
-      true 25: eDP-1 mode 2880x1800@60.000
-      EOF
-      if [ -e errors ] || [ -s steps ] || ! diff expected calls; then
-        echo "The panel's rate didn't follow the battery as listed." >&2
-        exit 1
-      fi
       touch $out
     '';
 }
