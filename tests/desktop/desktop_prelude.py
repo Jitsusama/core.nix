@@ -73,7 +73,6 @@ COREUTILS = VALUES["coreutils"]
 DBUS = VALUES["dbus"]
 FFMPEG_HEADLESS = VALUES["ffmpeg_headless"]
 FONTCONFIG_BIN = VALUES["fontconfig_bin"]
-PIPEWIRE = VALUES["pipewire"]
 WEV = VALUES["wev"]
 ZENITY = VALUES["zenity"]
 ACCENT = VALUES["accent"]
@@ -113,9 +112,6 @@ FROM_THE_EDGE = 48
 NEARLY_ALL = 0.9
 # CAP_SYS_NICE's bit among a process's capabilities.
 CAP_SYS_NICE = 23
-# Bytes of sound: a recording past this many has started, and one that grows by more after
-# a stall is still recording.
-RECORDING = 100000
 
 # A JSON object as niri or the shell gives it, whose fields the test reads as it finds them.
 type Json = dict[str, Any]

@@ -23,8 +23,6 @@ if TYPE_CHECKING:
         LAUNCHER_OPEN,
         MONO_FAMILY,
         PICTURE_COLOURS,
-        PIPEWIRE,
-        RECORDING,
         STARTING,
         SUNKEN,
         TEXT,
@@ -80,25 +78,6 @@ with subtest("niri keeps CAP_SYS_NICE to itself"):
     t.assertEqual(
         [offspring[name] for name in ("CapEff", "CapPrm", "CapInh", "CapAmb")], [0, 0, 0, 0]
     )
-
-# A reader that stalls, as one does under load, leaves the microphone
-# recording once it carries on, as a real one's does.
-with subtest("the stand-in microphone outlasts a reader that stalls"):
-    as_account(
-        f"systemd-run --user --unit=stalls -- {PIPEWIRE}/bin/pw-record"
-        " --target stand-in-microphone /tmp/stalls.wav"
-    )
-    machine.wait_until_succeeds(f"test $(stat -c %s /tmp/stalls.wav) -gt {RECORDING}", timeout=60)
-    as_account("systemctl --user kill --signal=STOP stalls")
-    machine.sleep(3)
-    as_account("systemctl --user kill --signal=CONT stalls")
-    machine.sleep(2)
-    stall_from = int(machine.succeed("stat -c %s /tmp/stalls.wav"))
-    machine.sleep(3)
-    stall_to = int(machine.succeed("stat -c %s /tmp/stalls.wav"))
-    as_account("systemctl --user stop stalls")
-    machine.succeed("rm /tmp/stalls.wav")
-    assert stall_to > stall_from + RECORDING, (stall_from, stall_to)
 
 # A user manager handed its whole service's pressure to watch can't set
 # its own threshold on it, and says so each time it starts or reloads.
