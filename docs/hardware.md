@@ -207,12 +207,13 @@ at all. `next.nix` carries them in `next/`, applied after the backports from
 7.3 with no offset or fuzz, each patch's header naming where it comes from:
 linux-next's commits and their series, a posting to a list, or a local fix.
 
-| Patch                            | What it gives                                          |
-| -------------------------------- | ------------------------------------------------------ |
-| `xe-shrinker-spares-buffers`     | window buffers reclaimed last, so keys don't repeat    |
-| `dp-byte-reads-only-when-longer` | a failed 1-byte DPCD read isn't sent again             |
-| `dp-mst-dsc-skips-empty-ports`   | an MST hub's empty port isn't asked for its DSC caps   |
-| `edp-wakes-the-panel`            | the panel is woken before its eDP revision is read     |
+| Patch                                | What it gives                                          |
+| ------------------------------------ | ------------------------------------------------------ |
+| `xe-shrinker-spares-buffers`         | window buffers reclaimed last, so keys don't repeat    |
+| `dp-byte-reads-only-when-longer`     | a failed 1-byte DPCD read isn't sent again             |
+| `dp-mst-dsc-skips-empty-ports`       | an MST hub's empty port isn't asked for its DSC caps   |
+| `edp-wakes-the-panel`                | the panel is woken before its eDP revision is read     |
+| `xe-shared-buffers-keep-their-place` | buffers shared between programs aren't reclaimed first |
 
 `xe-shrinker-spares-buffers` is linux-next's split of xe's buffer shrinker
 into purgeable and non-purgeable halves. Buffers that cost a backup and a
@@ -243,6 +244,15 @@ every plug and boot.
 connector, and a panel left asleep at power on can fail those reads however
 often they're retried. It now sets the panel to D0 first; The Panel's
 Brightness says what a failed read cost here.
+
+`xe-shared-buffers-keep-their-place` is linux-next's d2ce8fcd778e, marked
+for stable from 6.8. Each draw moved a program's private buffers to the
+fresh end of the list reclaim works from, but never the buffers it shares
+with another program, so the windows a compositor imports from its clients
+looked unused however often they were drawn, and went first. Bringing
+one back happens with its lock held. A trace of niri overnight caught its
+draws waiting on a client's buffer lock for 122 to 250 ms, three times in
+five minutes; whether reclaim held them there is still to be measured.
 
 An assertion fails once the kernel is 7.4, which may have them, and the way
 through is to drop each patch that kernel has, then `next.nix`.
