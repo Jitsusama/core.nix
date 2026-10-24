@@ -744,6 +744,14 @@ been traced to its cause, and is harmless, so nothing silences or patches it:
   that dump also logs "Controller device warning": a bit the controller's
   own firmware sets in its boot stage register, which the driver reports and
   does nothing with.
+- **bluetoothd's "Unable to register device interface" and "Unable to
+  create object for found device"**, a pair now and then while something
+  scans. BlueZ 5.87 looks a device up by its address and address type, but
+  names its D-Bus object by the address alone, so an advert from an address
+  it already holds under another type finds no device and can't take the
+  name (src/adapter.c, src/device.c). That advert is dropped and the device
+  already known is untouched. It has named the address of zeros as well as
+  nearby devices' own.
 - **"Returned feature report did not match the request"** from the
   touchpad, which answers one feature request with another report and works
   as it should.
