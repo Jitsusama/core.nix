@@ -315,6 +315,39 @@ def window_titled(title: str) -> Json:
     return next(window for window in windows if window["title"] == title)
 
 
+def focused_kitty() -> Json:
+    """Give a kitty window, focused, opening one first if there's none."""
+    windows: list[Json] = json.loads(as_account("niri msg --json windows"))
+    kitties = [window for window in windows if window["app_id"] == "kitty"]
+    if not kitties:
+        as_account("niri msg action spawn -- kitty")
+        machine.wait_until_succeeds(
+            in_session('niri msg --json windows | grep -qF \'"app_id":"kitty"\''),
+            timeout=STARTING,
+        )
+        windows = json.loads(as_account("niri msg --json windows"))
+        kitties = [window for window in windows if window["app_id"] == "kitty"]
+    as_account(f"niri msg action focus-window --id {kitties[0]['id']}")
+    return kitties[0]
+
+
+# The window the launcher's window subtests find by its title.
+NOTES = "Notes for Tuesday"
+
+
+def notes_window() -> Json:
+    """Give the notes' window, focused, opening it first if it isn't open."""
+    windows: list[Json] = json.loads(as_account("niri msg --json windows"))
+    if not any(window["title"] == NOTES for window in windows):
+        as_account(f"niri msg action spawn -- kitty --title '{NOTES}'")
+        machine.wait_until_succeeds(
+            in_session(f"niri msg windows | grep -q '{NOTES}'"), timeout=STARTING
+        )
+    notes = window_titled(NOTES)
+    as_account(f"niri msg action focus-window --id {notes['id']}")
+    return notes
+
+
 def drawn_at(window: Json) -> tuple[int, int, int, int]:
     """Give where a floating window draws on the screen: left, top, width, height."""
     layout = window["layout"]
@@ -1117,9 +1150,9 @@ with subtest("the launcher finds and opens kitty, and learns that kitty was mean
 # The border is all that marks the focused window, and niri leaves
 # borders off unless its config turns them on.
 with subtest("the focused window is framed in the accent"):
-    machine.wait_until_succeeds(in_session("niri msg focused-window | grep -qi kitty"), timeout=30)
-    window = json.loads(as_account("niri msg --json focused-window"))
-    as_account(f"niri msg action move-window-to-floating --id {window['id']}")
+    # The kitty the launcher opened, or one of its own when run alone.
+    bordered = focused_kitty()
+    as_account(f"niri msg action move-window-to-floating --id {bordered['id']}")
 
     def beside() -> str:
         """Give the colour just left of the focused window, where its border is."""
@@ -1131,13 +1164,13 @@ with subtest("the focused window is framed in the accent"):
         return "#{:02x}{:02x}{:02x}".format(*pixel)
 
     framed = settles_on(ACCENT.lower(), beside)
-    as_account(f"niri msg action move-window-to-tiling --id {window['id']}")
+    as_account(f"niri msg action move-window-to-tiling --id {bordered['id']}")
     t.assertEqual(framed, ACCENT.lower())
 
 # niri opens a window in a column of its own, and the shell folds it
 # in just below the focused one.
 with subtest("a terminal opens below the focused window"):
-    anchor = json.loads(as_account("niri msg --json focused-window"))
+    anchor = focused_kitty()
     as_account("qs ipc call grid below kitty")
     kitties = 'niri msg --json windows | grep -o \'"app_id":"kitty"\' | wc -l'
     machine.wait_until_succeeds(in_session(f"{kitties} | grep -qx 2"), timeout=STARTING)
@@ -1211,6 +1244,7 @@ with subtest("the launcher switches to a window by its title"):
 # among two dozen as easily as among two, with nothing held down. The
 # windows are one kitty's, so the machine holds them all.
 with subtest("Super+Tab goes back to the window before, and finds any by typing"):
+    notes_window()
     # The last one's title is far wider than the launcher, as a
     # browser tab's can be.
     scratch = [
@@ -1274,7 +1308,7 @@ with subtest("Super+Tab goes back to the window before, and finds any by typing"
 # The right arrow steps into what can be done to a window, and a verb
 # that needs a target asks for it in the same field.
 with subtest("the launcher moves a window and copies its title"):
-    notes = json.loads(as_account("niri msg --json focused-window"))
+    notes = notes_window()
 
     def into_notes(verb: str) -> None:
         """Find the notes' window in the launcher, step into it, and type a verb."""
