@@ -526,10 +526,18 @@ works the same way everywhere.
   and "quiet" is do not disturb before the volume's "quieter". Below three
   letters a collection's other words find it only whole, so "pi" is pi's
   sessions and not the Clipboard's pictures. What's
-  picked for what was typed is first there from then on, and at every
-  shorter start of the word, so "sl", "sla" and "slac" all mean Slack. One
-  slip teaches nothing: another row takes the place only when it's picked
-  twice running. Something that can't be taken back, such as powering off,
+  picked most for what was typed, counting the longer words it starts, is
+  first there once it's been picked two more times than anything else, so
+  "sl", "sla" and "slac" all mean Slack, and "l" means what its words were
+  picked for most, never what one stray pick for "light" was. One slip
+  teaches nothing: it neither takes a place nor loosens one, and another
+  row takes the place only once it's been picked there two more times than
+  the row holding it. A name typed whole is first over anything else
+  learned, unless that was picked for exactly those letters twice, so
+  "slack" is Slack. A row that's gone (a notice, a closed window) counts
+  for nothing, and its picks are forgotten once it's been gone and unpicked
+  for a half-life. Learning only orders: every match still shows.
+  Something that can't be taken back, such as powering off,
   is learned only once its first word is typed whole. When fewer letters
   would do, the field's end says so ("sl is enough"), so the habit gets
   quicker by itself, and there are no aliases to set up or remember.

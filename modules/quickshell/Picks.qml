@@ -5,13 +5,15 @@
 //
 // Each pick is kept against the query it answered, as a count that halves
 // every halfLife days, so habits that change are followed and old ones
-// fade. It lives in a small file in the shell's state folder, written when
-// a pick is made, and nothing else is spawned or stored.
+// fade, beside every pick, which never does. It lives in a small file in
+// the shell's state folder, written when a pick is made, and nothing else
+// is spawned or stored.
 //
-// Beside the counts it keeps the latch (launcher/Rank.js): the one thing
-// each string lands on, which never fades and moves only when something
-// else is picked there twice running, in a file of its own. Started from
-// the counts the first time, so what Joel had taught it holds.
+// The latch (launcher/Rank.js), the one thing each string lands on, is
+// worked out from every pick each time it's asked, so a mistake latched
+// before heals by the same rule. Only the row each was left on is kept,
+// in a file of its own, so a near thing stays put until another leads by
+// two.
 import Quickshell
 import Quickshell.Io
 import QtQuick
@@ -82,22 +84,29 @@ Scope {
         return out;
     }
 
-    // query -> { on, rival, times }, as Rank.js keeps them.
+    // query -> the row its latch was left on, as Rank.js's relatch keeps it.
     property var latches: ({})
 
-    // The thing latched for what's typed, or "".
-    function latched(typed) {
-        return learns ? Rank.latched(latches, typed) : "";
+    // The thing latched for what's typed, or "". `there(key)` says who can
+    // count (Rank.js's foundNow and maybeThere), and `whole` the keys of
+    // rows named what's typed.
+    function latched(typed, there, whole) {
+        return learns ? Rank.latched(picks, typed, {
+            there: there,
+            whole: whole,
+            held: Rank.heldAt(latches, typed)
+        }) : "";
     }
 
-    // Remember that this thing was picked for what was typed. One that
-    // can't be taken back is latched only at `least` letters or more.
-    function picked(typed, thing, least) {
+    // Remember that this thing was picked for what was typed, and forget
+    // the picks of rows no longer in `known` (key -> the fewest letters it's
+    // learned at, for every row there now), as Rank.js's forget says, unless
+    // picked within a half-life, since some rows, such as a call's, come and
+    // go.
+    function picked(typed, thing, known) {
         const query = key(typed);
         if (!learns || query === "" || !thing)
             return;
-        latches = Rank.latch(latches, query, thing, least ?? 1);
-        latching.setText(JSON.stringify(latches));
         const now = Date.now();
         const answers = picks[query] ?? {};
         const entry = answers[thing];
@@ -105,6 +114,9 @@ Scope {
             ? { n: fade(entry, now) + 1, c: entry.c + 1, t: now }
             : { n: 1, c: 1, t: now };
         picks[query] = answers;
+        const there = known ? Rank.standing(known) : Rank.maybeThere({});
+        if (known)
+            picks = Rank.forget(picks, known, now, halfLife * day);
 
         // Forget the queries least recently answered once there are too many.
         const queries = Object.keys(picks);
@@ -115,6 +127,8 @@ Scope {
                 delete picks[asked];
         }
         file.setText(JSON.stringify(picks));
+        latches = Rank.relatch(latches, picks, query, there);
+        latching.setText(JSON.stringify(latches));
     }
 
     FileView {
@@ -131,20 +145,6 @@ Scope {
         printErrors: false
     }
 
-    // What each query was picked for most, latched, for the first time
-    // there are latches: the latest of those picked as often.
-    function begun() {
-        const out = {};
-        for (const asked in picks) {
-            const answers = picks[asked];
-            const best = Object.keys(answers).sort((a, b) => answers[b].c - answers[a].c
-                || answers[b].t - answers[a].t)[0];
-            if (best)
-                out[asked] = { on: best, rival: "", times: 0 };
-        }
-        return out;
-    }
-
     Component.onCompleted: {
         try {
             const kept = JSON.parse(file.text() || "{}");
@@ -153,13 +153,13 @@ Scope {
             console.warn(`The launcher's picks couldn't be read, so it starts afresh: ${e}`);
             picks = {};
         }
-        const text = latching.text();
+        // None at first: what's latched is worked out from the picks.
         try {
-            const kept = text === "" ? begun() : JSON.parse(text);
+            const kept = JSON.parse(latching.text() || "{}");
             latches = kept && typeof kept === "object" ? kept : {};
         } catch (e) {
             console.warn(`The launcher's latches couldn't be read, so they start afresh: ${e}`);
-            latches = begun();
+            latches = {};
         }
     }
 }
