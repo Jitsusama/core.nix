@@ -23,10 +23,16 @@
 # helpers, then its area's subtests from desktop/desktop-<area>-vm-test.py,
 # so a change to one area reruns only that one, and the areas run side by
 # side. checks.nix names each area.
+#
+# The pictures it takes for a person to look at, which `shots-changed`
+# compares, are taken only by an area's gallery, `.gallery`, the same test
+# with them on: proving a change needs none, and each waits for the screen
+# to hold still.
 {
   self,
   pkgs,
   area,
+  gallery ? false,
 }:
 let
   account = "jitsusama";
@@ -148,7 +154,7 @@ let
   };
 in
 pkgs.testers.runNixOSTest {
-  name = "desktop-${area}";
+  name = "desktop-${area}${pkgs.lib.optionalString gallery "-gallery"}";
   # Reads the colours of the windows it photographs, and paces its waits
   # to the host (tests/lib/vm_helpers.py).
   extraPythonPackages = python: [
@@ -541,6 +547,7 @@ pkgs.testers.runNixOSTest {
           fontconfig_bin = pkgs.fontconfig.bin;
           inherit (roles) accent action sunken;
           mono_family = font.mono.family;
+          photographs = gallery;
         }
       );
     in
@@ -555,4 +562,10 @@ pkgs.testers.runNixOSTest {
   # the driver's own lint reads them joined, where an area's imports, which
   # its type checking needs, repeat the prelude's.
   skipLint = true;
+}
+// pkgs.lib.optionalAttrs (!gallery) {
+  gallery = import ./desktop.nix {
+    inherit self pkgs area;
+    gallery = true;
+  };
 }

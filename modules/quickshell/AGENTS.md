@@ -66,11 +66,14 @@ beside it, where those checks can reach it.
 
 The desktop's VM tests ([`tests/desktop.nix`][desktop]), one per area, each
 named `vm-desktop-<area>`, start niri and the shell in a virtual machine and
-drive each surface by its keys, keeping a screenshot of each; what only a
+drive each surface by its keys; what only a
 running desktop shows gets a subtest in its area's file under
 `tests/desktop/`, and a helper two areas use goes in its prelude.
 A picture is taken with `photograph`, once the screen holds still, after
-waiting on what the shell reports for the state it shows.
+waiting on what the shell reports for the state it shows. Only an area's
+gallery, `vm-desktop-<area>.gallery`, takes them, so a subtest never leans
+on `photograph` to let the screen settle; one that measures the screen uses
+`settled_screen`.
 
 To see a surface while changing it, run `shell-preview` from the dev shell.
 It opens the desktop test's shell in a niri window of its own, built from the
@@ -81,7 +84,7 @@ new preview.
 
 To prove it, run only its subtests, with `run-subtests vm-desktop-<area>
 <words>` from the dev shell, in under half a minute; each runs alone. Before
-pushing, run the areas it touches once, and compare their pictures with main's using
+pushing, run the areas it touches once, and compare their galleries with main's using
 `shots-changed`, as [testing][testing] says, looking at every one it draws:
 a change to one surface can move another.
 
