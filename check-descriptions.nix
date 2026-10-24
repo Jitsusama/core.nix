@@ -940,6 +940,10 @@
   vm-swap-comes-down-while-probed = ''
     the compressed swap comes down, its reset waiting out udev's probe
   '';
+  vm-the-desk-lights-come-back = ''
+    a Litra plugged back in while a camera streams is told to light again, and the camera stopping
+    puts it out; a Pebble X Plus plugged back in still has its lighting put out at a lock
+  '';
   vm-the-line-stays-quick = ''
     under four uploads on an 8 Mbit/s line 20 ms away, an app's ping stays under 80 ms with the
     shaper and passes 300 without; an app's upload leaves the jobs' under a quarter of what it

@@ -226,6 +226,9 @@ let
     # Which input WirePlumber picks comes from the rank it gives each
     # microphone as udev reports its card, so only a running machine shows it.
     vm-webcam-microphones-yield = import ./tests/microphones.nix { inherit pkgs; };
+    # A light plugged back in is uhid, hidraw, udev's nodes in /dev and the
+    # lights' watches together, which only a running machine has.
+    vm-the-desk-lights-come-back = import ./tests/desk-lights.nix { inherit self pkgs; };
     # A card plugged in and pulled out is the kernel's uevents and its USB
     # audio driver together, which only a running machine has.
     vm-desk-facts-follow-a-replug = import ./tests/desk-facts.nix { inherit self pkgs; };

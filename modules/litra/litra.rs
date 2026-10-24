@@ -127,6 +127,22 @@ fn lights(sys: &Path, dev: &Path) -> Vec<PathBuf> {
         .collect()
 }
 
+/// Every light plugged in, each with the HID device behind its node. hidraw
+/// gives a light plugged back in the name it had before, as nothing took it
+/// meanwhile, but the HID device is made anew at every plug, so it tells a
+/// light just plugged in, which comes up dark, from one that never left.
+fn plugged(sys: &Path, dev: &Path) -> Vec<(PathBuf, Option<PathBuf>)> {
+    lights(sys, dev)
+        .into_iter()
+        .map(|node| {
+            let device = node.file_name().and_then(|name| {
+                fs::canonicalize(sys.join("class/hidraw").join(name).join("device")).ok()
+            });
+            (node, device)
+        })
+        .collect()
+}
+
 /// A report the light reads: its header, the command, then the values.
 fn report(command: u8, values: &[u8]) -> [u8; REPORT] {
     let mut report = [0; REPORT];
@@ -498,8 +514,9 @@ fn follow(folder: &Path, lock: Option<&Path>) -> ExitCode {
     let mut buffer = [0u8; 4096];
     loop {
         let wanted = wanted(folder, lock);
-        // A light that has come since is told too, whatever it was doing.
-        let now = lights(Path::new("/sys"), Path::new("/dev"));
+        // A light that has come since is told too, whatever it was doing,
+        // and so is one plugged back in under its old name.
+        let now = plugged(Path::new("/sys"), Path::new("/dev"));
         if Some(wanted) != lit || now != lights_seen {
             light_all(wanted);
             lit = Some(wanted);
@@ -787,6 +804,33 @@ mod tests {
             [PathBuf::from("/dev/hidraw1"), PathBuf::from("/dev/hidraw3")]
         );
         assert!(lights(&root.join("nothing"), Path::new("/dev")).is_empty());
+    }
+
+    /// A light's node as the kernel makes it: hidraw's entry linked to the
+    /// HID device behind it, which is numbered anew at each plug.
+    fn plugged_in(root: &Path, name: &str, device: &str) {
+        let hid = root.join("sys/devices/virtual/misc/uhid").join(device);
+        fs::create_dir_all(&hid).unwrap();
+        fs::write(hid.join("uevent"), "HID_ID=0003:0000046D:0000C900\n").unwrap();
+        let entry = root.join("sys/class/hidraw").join(name);
+        let _ = fs::remove_dir_all(&entry);
+        fs::create_dir_all(&entry).unwrap();
+        std::os::unix::fs::symlink(&hid, entry.join("device")).unwrap();
+    }
+
+    #[test]
+    fn a_light_plugged_back_in_under_its_old_name_is_told_from_one_that_stayed() {
+        let root = root("replugged");
+        plugged_in(&root, "hidraw0", "0003:046D:C900.0001");
+        let before = plugged(&root.join("sys"), Path::new("/dev"));
+        assert_eq!(before, plugged(&root.join("sys"), Path::new("/dev")));
+        plugged_in(&root, "hidraw0", "0003:046D:C900.0002");
+        let after = plugged(&root.join("sys"), Path::new("/dev"));
+        assert_eq!(
+            lights(&root.join("sys"), Path::new("/dev")),
+            [PathBuf::from("/dev/hidraw0")]
+        );
+        assert_ne!(before, after);
     }
 
     #[test]
