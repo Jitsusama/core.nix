@@ -41,8 +41,9 @@ file here names a machine, a machine repository or an employer.
    ```
 
 4. Run `nix fmt` and `nix flake check`. The checks pick the new module up
-   through the examples once a role or another module imports it; see
-   [Testing][2].
+   through the examples once a role or another module imports it. Checks
+   of its own go in `modules/jq/checks.nix`, which the root `checks.nix`
+   lists; see [Testing][2].
 
 Keep the tool's configuration in its own format beside the module, such as
 `modules/glow/glow.yml`, and read it in rather than translating it to Nix.
