@@ -52,7 +52,8 @@ Ctrl+P step through what was typed before.
 ## Finding a Key
 
 Every key is in [keys.nix](keys.nix), with what it does in plain words, and
-nowhere else. Home-manager writes it into `lua/keys.lua`, which binds them,
+nowhere else. Home-manager writes it into `lua/bindings.lua`, which
+[keys.lua](keys.lua) binds,
 and into the map every layer shares, so either of these finds any key by
 what it does:
 

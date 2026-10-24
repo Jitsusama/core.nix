@@ -445,6 +445,17 @@ gather (
             touch $out
           '';
 
+      # changed-checks names a check by how its derivation moved, so what it
+      # builds is what a change touched (tests/changed-checks-test.py).
+      changed-checks-names-what-moved =
+        let
+          changed-checks = pkgs.callPackage ./tests/changed-checks.nix { };
+        in
+        pkgs.runCommandLocal "changed-checks-names-what-moved" { } ''
+          CHANGED_CHECKS=${lib.getExe changed-checks.tool} ${changed-checks.tests}
+          touch $out
+        '';
+
       # run-subtests keeps a test script's boot and helpers and only the subtests
       # named, so what it runs is what was asked for (tests/run-subtests-test.py).
       run-subtests-keeps-what-is-named =

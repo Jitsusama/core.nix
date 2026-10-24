@@ -69,6 +69,7 @@ meaning each; [docs/architecture.md][2] defines them.
 nix fmt                                # format, and lint every language strictly
 nix build .#checks.x86_64-linux.<name> # the checks a change touches, as you go
 run-subtests vm-desktop-works <words>  # a VM test's subtests named, in seconds
+changed-checks --build --no-vm         # every check the change touched, VM tests aside
 nix flake check --keep-going           # everything, once, before pushing
 ```
 
@@ -85,8 +86,10 @@ everything once, before pushing, never after each edit:
 | A module        | `example-nixos`, `example-laptop`, `example-darwin` |                          |
 | Any script      | `nix fmt`, its own check                          |                            |
 
-`nix build --dry-run` on a check says what it would build, so a change that
-reaches a VM test is seen before it's paid for. Watching a check fail is done
+`changed-checks` names each check whose derivation the change moved from its
+merge base with origin's main, and `nix build --dry-run` on a check says what
+it would build, so a change that reaches a VM test is seen before it's paid
+for. Watching a check fail is done
 the same narrow way, never by copying the tree and running everything.
 
 A change is done when `nix flake check` passes locally, and its machine builds
