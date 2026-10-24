@@ -367,11 +367,18 @@ with subtest("the guide makes alice's SSH keys in the TPM, as alice, one with he
     t.assertEqual(machine.succeed("stat -c %a /home/alice/.ssh").strip(), "700")
     t.assertIn("alice@machine agents", machine.succeed("cat /home/alice/.ssh/agent-signing.pub"))
     # The TPM holds the login key under alice's PIN, whole: it opens with it,
-    # spaces inside and all, and not with another.
+    # spaces inside and all, and not with another. ssh-tpm-keygen 0.9.0's -p
+    # hands its -N to the TPM as the old PIN and its -P as the new one
+    # (cmd/ssh-tpm-keygen/main.go's ChangeAuth call swaps them), so each
+    # try gives the same PIN as both, which holds whichever way round.
     login = "/home/alice/.ssh/id_ecdsa.tpm"
-    quoted = shlex.quote(key_pin)
-    machine.succeed(f"runuser -u alice -- {keygen} -p -f {login} -P {quoted} -N {quoted}")
-    machine.fail(f"runuser -u alice -- {keygen} -p -f {login} -P not-her-pin -N {quoted}")
+    for pin_tried, opens in [(key_pin, True), ("not her PIN", False)]:
+        quoted = shlex.quote(pin_tried)
+        command = f"runuser -u alice -- {keygen} -p -f {login} -P {quoted} -N {quoted}"
+        if opens:
+            machine.succeed(command)
+        else:
+            machine.fail(command)
 
 
 def spare(name: str) -> str:
