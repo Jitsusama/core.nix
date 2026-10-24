@@ -119,8 +119,10 @@ with subtest("a restarted daemon leaves its builds running, and builds again"):
     # Between the old daemon going and the new one moving aside, the
     # service's cgroup must take no controllers, or systemd can't start
     # the new daemon in it. One restart can miss that window; ten, with
-    # vm-first looking every 20 ms, don't.
+    # vm-first looking every 20 ms, don't. Each restart forgets the ones
+    # before, which would otherwise pass systemd's limit on starts.
     for _ in range(10):
+        machine.succeed("systemctl reset-failed nix-daemon.service")
         machine.succeed("systemctl restart nix-daemon.service")
         machine.wait_for_unit("nix-daemon.service")
         wait_for_the_daemon_aside()
