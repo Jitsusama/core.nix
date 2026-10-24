@@ -1,5 +1,6 @@
 //! Writes what the launcher can't learn for itself about the desk's displays,
-//! sound cards and cameras, for it to show behind each one's row.
+//! sound cards, cameras and Bluetooth input devices, for it to show behind
+//! each one's row.
 //!
 //! ```text
 //! desk-facts FOLDER
@@ -27,15 +28,18 @@
 //! holders file in /run/camera-holders is named, with what it streams while
 //! it streams, the largest and the fastest mode of each format it offers,
 //! its field of view where a Logitech Brio says it, and its USB speed and
-//! firmware.
+//! firmware. `bluetooth.json` is keyed by a connected Bluetooth input
+//! device's address, as bluetoothd gives it to the launcher, with how it's
+//! carried (LE's HID over GATT or Classic's HIDP), its buttons and wheels
+//! or its keys, and its ids and release, from the kernel's HID devices.
 //!
 //! A file is written only when what it says changes, by writing a copy and
 //! renaming it over the old one, and all are removed when this is stopped,
 //! so a fact is never left behind its device. It hears the kernel's uevents
-//! for displays, cards and cameras coming, going and changing, and inotify
-//! for a playback or capture device opening and closing, the lighting's
-//! file being written, a camera's holders changing and a monitor's DDC/CI
-//! facts being kept or removed; nothing is looked at
+//! for displays, cards, cameras and HID devices coming, going and changing,
+//! and inotify for a playback or capture device opening and closing, the
+//! lighting's file being written, a camera's holders changing and a
+//! monitor's DDC/CI facts being kept or removed; nothing is looked at
 //! between, and each kind is read again only when what it hears is about
 //! it.
 //!
@@ -49,7 +53,7 @@ use std::io::{self, Read};
 use std::os::fd::{AsRawFd, FromRawFd};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 const AF_NETLINK: c_int = 16;
 const SOCK_DGRAM: c_int = 2;
@@ -75,12 +79,15 @@ const SFD_CLOEXEC: c_int = 0o2_000_000;
 const DISPLAYS: u8 = 1;
 const SOUND: u8 = 2;
 const CAMERAS: u8 = 4;
+const BLUETOOTH: u8 = 8;
 /// The kernel's uevents that change a fact, and the kinds each changes.
-const HEARD: [(&[u8], u8); 4] = [
+const HEARD: [(&[u8], u8); 6] = [
     (b"SUBSYSTEM=drm", DISPLAYS),
     (b"SUBSYSTEM=sound", SOUND),
     (b"SUBSYSTEM=usb", SOUND | CAMERAS),
     (b"SUBSYSTEM=video4linux", CAMERAS),
+    (b"SUBSYSTEM=hid", BLUETOOTH),
+    (b"SUBSYSTEM=input", BLUETOOTH),
 ];
 /// Where each camera's holders are kept (modules/usb-camera-holders).
 const HOLDERS: &str = "/run/camera-holders";
@@ -1008,6 +1015,173 @@ fn write(path: &Path, text: &str) -> io::Result<()> {
     fs::rename(&copy, path)
 }
 
+// --- Bluetooth input devices, from the kernel's HID and input layers ---
+
+/// The Bluetooth bus, as the HID layer numbers it.
+const BLUETOOTH_BUS: &str = "0005";
+/// The kernel's mouse buttons, `BTN_LEFT` to `BTN_TASK`.
+const MOUSE_BUTTONS: std::ops::RangeInclusive<usize> = 0x110..=0x117;
+/// A keyboard's keys, `KEY_ESC` to the last of the first page's.
+const KEYBOARD_KEYS: std::ops::RangeInclusive<usize> = 0x01..=0xFF;
+/// Fewer keys than this are a mouse's or a remote's, not a keyboard's.
+const FEWEST_KEYS: usize = 20;
+/// The wheels, as relative axes.
+const REL_HWHEEL: usize = 0x06;
+const REL_WHEEL: usize = 0x08;
+
+/// The bits a capabilities file sets: hex words, the highest first.
+fn set_bits(text: &str) -> Vec<usize> {
+    let words: Vec<&str> = text.split_whitespace().collect();
+    let mut set = Vec::new();
+    for (place, word) in words.iter().rev().enumerate() {
+        let Ok(value) = u64::from_str_radix(word, 16) else {
+            return Vec::new();
+        };
+        set.extend(
+            (0..64)
+                .filter(|bit| value >> bit & 1 == 1)
+                .map(|bit| place * 64 + bit),
+        );
+    }
+    set
+}
+
+/// What one Bluetooth device's HID devices and their inputs have said.
+#[derive(Default)]
+struct Heard {
+    link: String,
+    id: String,
+    release: String,
+    keys: Vec<usize>,
+    axes: Vec<usize>,
+}
+
+impl Heard {
+    fn facts(mut self) -> Facts {
+        self.keys.sort_unstable();
+        self.keys.dedup();
+        let buttons = self
+            .keys
+            .iter()
+            .filter(|key| MOUSE_BUTTONS.contains(key))
+            .count();
+        let keys = self
+            .keys
+            .iter()
+            .filter(|key| KEYBOARD_KEYS.contains(key))
+            .count();
+        let wheel = match (
+            self.axes.contains(&REL_WHEEL),
+            self.axes.contains(&REL_HWHEEL),
+        ) {
+            (true, true) => "vertical and horizontal",
+            (true, false) => "vertical",
+            (false, true) => "horizontal",
+            (false, false) => "",
+        };
+        let mut facts = Facts::new();
+        fact(&mut facts, "connection", self.link);
+        if buttons > 0 {
+            fact(&mut facts, "buttons", buttons.to_string());
+        }
+        fact(&mut facts, "wheel", wheel);
+        if keys >= FEWEST_KEYS {
+            fact(&mut facts, "keys", keys.to_string());
+        }
+        fact(&mut facts, "id", self.id);
+        fact(&mut facts, "release", self.release);
+        facts
+    }
+}
+
+/// A HID device on the Bluetooth bus: its address, as bluetoothd writes it,
+/// and how it's carried, its ids, and what its inputs take. One that
+/// bluetoothd made through uhid is HID over GATT, on LE; the kernel's own
+/// HIDP is Bluetooth Classic's.
+fn hid_device(hid: &Path) -> Option<(String, Heard)> {
+    let uevent = fs::read_to_string(hid.join("uevent")).ok()?;
+    let field = |name: &str| {
+        uevent
+            .lines()
+            .find_map(|line| line.strip_prefix(name)?.strip_prefix('='))
+            .map(str::trim)
+    };
+    let address = field("HID_UNIQ")?.to_uppercase();
+    // Its bus, vendor and product, as "0005:000025A7:0000FAA0".
+    let mut ids = field("HID_ID")?.split(':');
+    let (Some(BLUETOOTH_BUS), Some(vendor), Some(product)) = (ids.next(), ids.next(), ids.next())
+    else {
+        return None;
+    };
+    if address.is_empty() {
+        return None;
+    }
+    let last = |id: &str| {
+        id.get(id.len().saturating_sub(4)..)
+            .unwrap_or(id)
+            .to_lowercase()
+    };
+    let over_gatt = fs::canonicalize(hid)
+        .is_ok_and(|real| real.components().any(|part| part.as_os_str() == "uhid"));
+    let mut heard = Heard {
+        link: if over_gatt {
+            "LE, HID over GATT"
+        } else {
+            "Classic, HIDP"
+        }
+        .to_owned(),
+        id: format!("{}:{}", last(vendor), last(product)),
+        ..Heard::default()
+    };
+    let inputs = fs::read_dir(hid.join("input"))
+        .into_iter()
+        .flatten()
+        .flatten();
+    for input in inputs.map(|entry| entry.path()) {
+        let read = |name: &str| fs::read_to_string(input.join(name)).unwrap_or_default();
+        if heard.release.is_empty() {
+            let version = read("id/version");
+            if !version.trim().is_empty() {
+                heard.release = release(&version);
+            }
+        }
+        heard.keys.extend(set_bits(&read("capabilities/key")));
+        heard.axes.extend(set_bits(&read("capabilities/rel")));
+    }
+    Some((address, heard))
+}
+
+/// Each Bluetooth input device connected, by its address, from its HID
+/// devices: a device with several, as a keyboard with a touchpad has, is
+/// told as one.
+fn bluetooth(sys: &Path) -> Vec<(String, Facts)> {
+    let Ok(entries) = fs::read_dir(sys.join("bus/hid/devices")) else {
+        return Vec::new();
+    };
+    let mut devices: Vec<(String, Heard)> = Vec::new();
+    for (address, heard) in entries
+        .flatten()
+        .filter_map(|entry| hid_device(&entry.path()))
+    {
+        match devices.iter_mut().find(|(each, _)| *each == address) {
+            Some((_, was)) => {
+                was.keys.extend(heard.keys);
+                was.axes.extend(heard.axes);
+                if was.release.is_empty() {
+                    was.release = heard.release;
+                }
+            }
+            None => devices.push((address, heard)),
+        }
+    }
+    let mut found: Vec<(String, Facts)> = devices
+        .into_iter()
+        .map(|(address, heard)| (address, heard.facts()))
+        .collect();
+    found.sort();
+    found
+}
+
 // --- Hearing changes ---
 
 /// The kernel's uevents, as a socket.
@@ -1064,6 +1238,34 @@ fn watches(watched: &[(PathBuf, u32)]) -> io::Result<File> {
         unsafe { inotify_add_watch(fd, path.as_ptr(), mask) };
     }
     Ok(file)
+}
+
+/// When sound is read again after a sound device is heard, from then. A
+/// stream's parameters are set, and it starts running, a moment after its
+/// device opens, and nothing is heard when it does, so the first read
+/// finds it not yet running.
+const SETTLING: [Duration; 4] = [
+    Duration::from_millis(250),
+    Duration::from_millis(500),
+    Duration::from_secs(1),
+    Duration::from_secs(2),
+];
+
+/// How long poll waits: until the next read while sound settles, and
+/// otherwise until something is heard.
+fn waiting_for(settling: Option<(Instant, usize)>, now: Instant) -> c_int {
+    settling
+        .and_then(|(since, step)| SETTLING.get(step).map(|after| since + *after))
+        .map_or(-1, |at| {
+            let left = at.saturating_duration_since(now).as_millis();
+            c_int::try_from(left).unwrap_or(c_int::MAX)
+        })
+}
+
+/// The read after this one while sound settles, if there's one left.
+fn settled_once(settling: Option<(Instant, usize)>) -> Option<(Instant, usize)> {
+    let (since, step) = settling?;
+    (step + 1 < SETTLING.len()).then_some((since, step + 1))
 }
 
 /// Whether inotify's events name a sound device or the lighting's file, or
@@ -1125,8 +1327,9 @@ fn heard(file: &mut File, heard: &dyn Fn(&[u8]) -> u8) -> u8 {
     kinds
 }
 
-/// Writes the files of the kinds that are due: displays, sound, cameras.
-fn rewrite(due: u8, files: &[PathBuf; 3], folder: &Path, lighting: &Path) {
+/// Writes the files of the kinds that are due: displays, sound, cameras
+/// and Bluetooth.
+fn rewrite(due: u8, files: &[PathBuf; 4], folder: &Path, lighting: &Path) {
     let (sys, dev) = (Path::new("/sys"), Path::new("/dev"));
     let mut written = Ok(());
     if due & DISPLAYS != 0 {
@@ -1145,6 +1348,9 @@ fn rewrite(due: u8, files: &[PathBuf; 3], folder: &Path, lighting: &Path) {
             &files[2],
             &json(&cameras(sys, dev, Path::new(HOLDERS))),
         ));
+    }
+    if due & BLUETOOTH != 0 {
+        written = written.and(write(&files[3], &json(&bluetooth(sys))));
     }
     if let Err(error) = written {
         eprintln!("<4>can't write the desk's facts: {error}");
@@ -1195,8 +1401,10 @@ fn run(folder: &Path) -> ExitCode {
         folder.join("displays.json"),
         folder.join("sound.json"),
         folder.join("cameras.json"),
+        folder.join("bluetooth.json"),
     ];
-    let mut due = DISPLAYS | SOUND | CAMERAS;
+    let mut due = DISPLAYS | SOUND | CAMERAS | BLUETOOTH;
+    let mut settling = None;
     loop {
         rewrite(due, &files, folder, &lighting);
         let mut waiting = [
@@ -1213,8 +1421,15 @@ fn run(folder: &Path) -> ExitCode {
         });
         due = 0;
         while due == 0 {
+            let wait = waiting_for(settling, Instant::now());
             // SAFETY: five valid pollfds for the length given.
-            if unsafe { poll(waiting.as_mut_ptr(), 5, -1) } < 0 {
+            let ready = unsafe { poll(waiting.as_mut_ptr(), 5, wait) };
+            if ready < 0 {
+                continue;
+            }
+            if ready == 0 {
+                settling = settled_once(settling);
+                due |= SOUND;
                 continue;
             }
             if waiting[0].revents & POLLIN != 0 {
@@ -1241,6 +1456,9 @@ fn run(folder: &Path) -> ExitCode {
             due |= heard(&mut said, &|events| {
                 if names_a_monitor(events) { DISPLAYS } else { 0 }
             });
+            if due & SOUND != 0 {
+                settling = Some((Instant::now(), 0));
+            }
         }
     }
 }
@@ -1478,6 +1696,143 @@ Capture:
         assert_eq!(matters(&plugged), SOUND | CAMERAS);
         let battery = uevent(&["change@/devices/.../BAT0", "SUBSYSTEM=power_supply"]);
         assert_eq!(matters(&battery), 0);
+        let mouse = uevent(&[
+            "add@/devices/virtual/misc/uhid/0005:25A7:FAA0.0001",
+            "SUBSYSTEM=hid",
+        ]);
+        assert_eq!(matters(&mouse), BLUETOOTH);
+        let input = uevent(&["add@/devices/.../input/input42", "SUBSYSTEM=input"]);
+        assert_eq!(matters(&input), BLUETOOTH);
+    }
+
+    #[test]
+    fn sound_is_read_again_as_it_settles_and_then_only_when_heard() {
+        let since = Instant::now();
+        assert_eq!(
+            waiting_for(None, since),
+            -1,
+            "nothing settling waits for events"
+        );
+        assert_eq!(waiting_for(Some((since, 0)), since), 250);
+        assert_eq!(waiting_for(Some((since, 3)), since), 2000);
+        assert_eq!(
+            waiting_for(Some((since, 1)), since + Duration::from_secs(9)),
+            0,
+            "one overdue reads at once"
+        );
+        let mut settling = Some((since, 0));
+        let mut reads = 0;
+        while settling.is_some() {
+            settling = settled_once(settling);
+            reads += 1;
+        }
+        assert_eq!(reads, SETTLING.len());
+    }
+
+    #[test]
+    fn a_capabilities_file_s_words_give_their_bits_the_highest_word_first() {
+        assert_eq!(set_bits("903"), vec![0, 1, 8, 11]);
+        assert_eq!(set_bits("1f0000 0 0 0 0"), vec![272, 273, 274, 275, 276]);
+        assert_eq!(set_bits("0"), Vec::<usize>::new());
+        assert_eq!(set_bits("not hex"), Vec::<usize>::new());
+    }
+
+    /// A stand-in sysfs, gone when the test is.
+    struct Sys(PathBuf);
+
+    impl Sys {
+        fn new(name: &str) -> Sys {
+            let root = std::env::temp_dir().join(format!("desk-{name}-{}", std::process::id()));
+            let _ = fs::remove_dir_all(&root);
+            fs::create_dir_all(root.join("bus/hid/devices")).unwrap();
+            Sys(root)
+        }
+
+        /// A HID device where the kernel keeps it, linked from the bus as
+        /// the kernel links it, with one input.
+        fn hid(&self, home: &str, name: &str, uevent: &str, input: [&str; 3]) {
+            let real = self.0.join(home).join(name);
+            let [version, keys, axes] = input;
+            fs::create_dir_all(real.join("input/input42/id")).unwrap();
+            fs::create_dir_all(real.join("input/input42/capabilities")).unwrap();
+            fs::write(real.join("uevent"), uevent).unwrap();
+            fs::write(real.join("input/input42/id/version"), version).unwrap();
+            fs::write(real.join("input/input42/capabilities/key"), keys).unwrap();
+            fs::write(real.join("input/input42/capabilities/rel"), axes).unwrap();
+            std::os::unix::fs::symlink(&real, self.0.join("bus/hid/devices").join(name)).unwrap();
+        }
+    }
+
+    impl Drop for Sys {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[test]
+    fn a_bluetooth_mouse_says_how_it_s_carried_and_what_it_takes() {
+        let sys = Sys::new("mouse");
+        sys.hid(
+            "devices/virtual/misc/uhid",
+            "0005:25A7:FAA0.0001",
+            "DRIVER=hid-generic\nHID_ID=0005:000025A7:0000FAA0\nHID_NAME=ProtoArc EM11 NL\n\
+             HID_PHYS=b4:8c:9d:00:00:01\nHID_UNIQ=c3:9c:e3:2a:f3:6e\n",
+            ["0508\n", "1f0000 0 0 0 0\n", "903\n"],
+        );
+        let said = |pairs: &[(&str, &str)]| -> Facts {
+            pairs
+                .iter()
+                .map(|(name, value)| ((*name).to_owned(), (*value).to_owned()))
+                .collect()
+        };
+        assert_eq!(
+            bluetooth(&sys.0),
+            vec![(
+                "C3:9C:E3:2A:F3:6E".to_owned(),
+                said(&[
+                    ("connection", "LE, HID over GATT"),
+                    ("buttons", "5"),
+                    ("wheel", "vertical"),
+                    ("id", "25a7:faa0"),
+                    ("release", "5.08"),
+                ])
+            )]
+        );
+    }
+
+    #[test]
+    fn a_classic_keyboard_says_its_keys_and_a_usb_device_is_left_out() {
+        let sys = Sys::new("keyboard");
+        sys.hid(
+            "devices/pci0000:00/0000:00:14.7/bluetooth/hci0/hci0:3",
+            "0005:05AC:0255.0002",
+            "HID_ID=0005:000005AC:00000255\nHID_UNIQ=aa:bb:cc:dd:ee:ff\n",
+            ["0050\n", "fffffffffffffffe ffffffffffffffff\n", "0\n"],
+        );
+        sys.hid(
+            "devices/pci0000:00/0000:00:14.0/usb3/3-1",
+            "0003:3297:4976.0003",
+            "HID_ID=0003:00003297:00004976\nHID_UNIQ=\n",
+            ["0100\n", "fffffffffffffffe ffffffffffffffff\n", "0\n"],
+        );
+        let found = bluetooth(&sys.0);
+        assert_eq!(found.len(), 1, "{found:?}");
+        let (address, facts) = &found[0];
+        assert_eq!(address, "AA:BB:CC:DD:EE:FF");
+        assert_eq!(
+            facts[0],
+            ("connection".to_owned(), "Classic, HIDP".to_owned())
+        );
+        // Bits 0 to 63 and 65 to 127, of which 126 are keys from KEY_ESC.
+        assert!(
+            facts.contains(&("keys".to_owned(), "126".to_owned())),
+            "{facts:?}"
+        );
+        assert!(
+            !facts
+                .iter()
+                .any(|(name, _)| name == "buttons" || name == "wheel")
+        );
     }
 
     #[test]

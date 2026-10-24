@@ -38,7 +38,8 @@
   '';
   bluetooth-pairs-before-it-connects = ''
     the launcher trusts a Bluetooth device before pairing it, follows it past its link coming up
-    until it's paired, untrusts one that fails, and connects one paired before
+    until it's paired, untrusts one that fails, and connects one paired before, and lists a
+    connected device's facts after its verbs
   '';
   boot-lock-is-whole = ''
     the splash's lock, at each scale, holds all the ink its glyph has drawn with room to spare, and
@@ -90,8 +91,9 @@
     the XPS 14's dell-wmi ignores the EC's hourly type 0x0012 event rather than log an unknown key
   '';
   desk-facts-read-the-desk = ''
-    desk-facts reads a monitor's EDID, a USB sound card's modes and a camera's formats as the desk's
-    own report them, and writes the launcher's JSON in order
+    desk-facts reads a monitor's EDID, a USB sound card's modes, a camera's formats and a
+    Bluetooth input device's link and inputs as the desk's own report them, and writes the
+    launcher's JSON in order
   '';
   device-check-passes-clippy = ''
     clippy finds nothing in device-check, device-check-disk or their tests

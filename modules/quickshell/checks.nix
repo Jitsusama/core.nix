@@ -956,11 +956,21 @@
   # BlueZ says a new device is connected once its link is up, before it's
   # paired, so the launcher's Bluetooth would stop following a pairing early
   # and leave the device untrusted. The VM has no radio, so this drives it
-  # through Quickshell itself with stand-in devices (tests/bluetooth-pairing.qml).
+  # through Quickshell itself with stand-in devices
+  # (tests/bluetooth-pairing.qml), and with the facts desk-facts would write
+  # for a connected mouse.
   bluetooth-pairs-before-it-connects =
     pkgs.runCommandLocal "bluetooth-pairs-before-it-connects" { }
       ''
-        mkdir runtime launcher && chmod 700 runtime
+        mkdir -p runtime/desk launcher && chmod 700 runtime
+        cat > runtime/desk/bluetooth.json <<'EOF'
+        {
+          "C3:9C:E3:2A:F3:6E": [
+            {"name": "connection", "value": "LE, HID over GATT"},
+            {"name": "buttons", "value": "5"}
+          ]
+        }
+        EOF
         cp ${./Fuzzy.js} Fuzzy.js
         cp ${./launcher/Provider.qml} launcher/Provider.qml
         cp ${./launcher/Asking.js} launcher/Asking.js
