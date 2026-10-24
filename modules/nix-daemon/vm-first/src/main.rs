@@ -1,18 +1,23 @@
-//! Puts the virtual machines Nix's checks start ahead of the builds they
-//! share the daemon with.
+//! Puts the checks with deadlines that Nix runs, VM tests first among them,
+//! ahead of the builds they share the daemon with.
 //!
 //! Every build runs as `SCHED_BATCH`, so a VM test's qemu shares each CPU
 //! with whatever compilers run beside it, and a batch thread never
 //! preempts another as it wakes. Its guest's timers then fire late, and a
-//! test's timeouts fail on a busy machine. So once a second this finds
-//! every process whose name starts with a `--name` in `--cgroup`, the
-//! daemon's, and in each build's cgroup Nix makes under it, and puts each
-//! of its threads back to `SCHED_OTHER` at `--nice`. Threads a VM starts
-//! afterwards take that from the thread that starts them.
+//! test's timeouts fail on a busy machine. A container's test and a nested
+//! compositor's keep time the same way, with no qemu. So once a second
+//! this looks for a process whose name starts with a `--name`: by default
+//! qemu, NixOS's test driver, systemd-nspawn, niri or sway. In each build's
+//! cgroup Nix makes under `--cgroup`, the daemon's, finding one puts every
+//! thread of the build, in the cgroups its containers make too, back to
+//! `SCHED_OTHER` at `--nice`. In the daemon's own cgroup, where builds from
+//! before it moved aside run, only the processes named move. Threads
+//! started afterwards take that from the thread that starts them.
 //!
 //! Inside one cgroup the CPU is split by nice, but between cgroups by
-//! weight, so a build in a cgroup of its own holding a VM is weighed at
-//! `--weight` for CPU and disk, against the 100 of every other build.
+//! weight, so a build in a cgroup of its own holding such a check is
+//! weighed at `--weight` for CPU and disk, against the 100 of every other
+//! build.
 //! Nix 3.21 makes the builds' cgroups without handing them the
 //! controllers to weigh them by, so this hands them on too. Everything
 //! outside the daemon's cgroup, what Joel uses, keeps its lead.
@@ -33,7 +38,7 @@
 //! what asked for it.
 //!
 //! Usage: vm-first [--cgroup /sys/fs/cgroup/build.slice/nix-daemon.service]
-//!        [--name qemu-system]... [--nice -10] [--weight 1000] [--every 1000]
+//!        [--name nixos-test-driver]... [--nice -10] [--weight 1000] [--every 1000]
 
 use std::collections::HashMap;
 use std::ffi::{CStr, CString, c_char};
@@ -362,16 +367,51 @@ fn tally(tallies: &mut HashMap<PathBuf, Tally>, builds: &[PathBuf]) {
     });
 }
 
-/// Whether a process's name marks it as a VM. A name is at most 15
-/// characters, and Nix's wrapped programs start with a dot.
-fn is_vm(comm: &str, names: &[String]) -> bool {
+/// What runs in a check with deadlines, whatever it runs its machine on: a
+/// VM's qemu, NixOS's test driver, which runs a container's test as it runs
+/// a VM's, a container itself, and a nested compositor's niri or sway. Only
+/// the daemon's builds are looked in, so Joel's own niri never counts.
+const TIMED: [&str; 6] = [
+    "qemu-system",
+    "qemu-kvm",
+    "nixos-test-driver",
+    "systemd-nspawn",
+    "niri",
+    "sway",
+];
+
+/// Every process in a cgroup and the cgroups under it, as a container in a
+/// build makes its own.
+fn pids_under(cgroup: &Path) -> Vec<String> {
+    let mut pids: Vec<String> = fs::read_to_string(cgroup.join("cgroup.procs"))
+        .unwrap_or_default()
+        .lines()
+        .map(String::from)
+        .collect();
+    if let Ok(entries) = fs::read_dir(cgroup) {
+        for entry in entries.filter_map(Result::ok) {
+            if entry.file_type().is_ok_and(|kind| kind.is_dir()) {
+                pids.extend(pids_under(&entry.path()));
+            }
+        }
+    }
+    pids
+}
+
+/// The longest name the kernel keeps for a process.
+const COMM_LENGTH: usize = 15;
+
+/// Whether a process's name marks a check with deadlines. Nix's wrapped
+/// programs start with a dot, and the kernel cuts a name at 15 characters,
+/// so `.nixos-test-dri` is the test driver: a cut name is matched by every
+/// name that starts with what is left of it.
+fn is_timed(comm: &str, names: &[String]) -> bool {
     let comm = comm.trim_end();
-    names.iter().any(|name| {
-        comm.starts_with(name.as_str())
-            || comm
-                .strip_prefix('.')
-                .is_some_and(|bare| bare.starts_with(name.as_str()))
-    })
+    let cut = comm.len() == COMM_LENGTH;
+    let bare = comm.strip_prefix('.').unwrap_or(comm);
+    names
+        .iter()
+        .any(|name| bare.starts_with(name.as_str()) || (cut && name.starts_with(bare)))
 }
 
 /// The controllers a build's cgroup is given, as Nix itself does from
@@ -593,8 +633,8 @@ fn look(settings: &Settings, tallies: &mut HashMap<PathBuf, Tally>, warned: &mut
     let builds = build_cgroups(&settings.cgroup);
     tally(tallies, &builds);
     for build in builds {
-        if sort_cgroup(&build, settings, warned) {
-            weigh(&build, settings.weight, "VM", warned);
+        if let Some(reason) = sort_build(&build, settings, warned) {
+            weigh(&build, settings.weight, reason, warned);
         } else if let Some(quest) = weight_of_quest(&build) {
             weigh(
                 &build,
@@ -606,30 +646,64 @@ fn look(settings: &Settings, tallies: &mut HashMap<PathBuf, Tally>, warned: &mut
     }
 }
 
-/// Brings each VM in one cgroup ahead, saying whether it holds one.
-fn sort_cgroup(cgroup: &Path, settings: &Settings, warned: &mut bool) -> bool {
+/// Brings each process named a check with deadlines in one cgroup ahead, as
+/// in the daemon's own, where builds from before it moved aside still run.
+fn sort_cgroup(cgroup: &Path, settings: &Settings, warned: &mut bool) {
     let Ok(procs) = fs::read_to_string(cgroup.join("cgroup.procs")) else {
-        return false;
+        return;
     };
-    let mut found = false;
     for pid in procs.lines() {
         let Ok(comm) = fs::read_to_string(format!("/proc/{pid}/comm")) else {
             continue;
         };
-        if !is_vm(&comm, &settings.names) {
-            continue;
-        }
-        found = true;
-        let moved = sort_vm(pid, settings, warned);
-        if moved > 0 {
-            eprintln!(
-                "Brought {} ({pid}) ahead of the builds: {moved} threads to nice {}.",
-                comm.trim_end(),
-                settings.nice
-            );
+        if is_timed(&comm, &settings.names) {
+            bring_process_ahead(pid, &comm, settings, warned);
         }
     }
-    found
+}
+
+/// Brings every process of a build ahead, its containers' too, once one of
+/// them marks a check with deadlines: a container's services and a nested
+/// compositor keep time as a VM's qemu does. Says what it's weighed for, a
+/// VM or a test, or nothing for a build without one.
+fn sort_build(build: &Path, settings: &Settings, warned: &mut bool) -> Option<&'static str> {
+    let pids = pids_under(build);
+    let comms: Vec<(String, String)> = pids
+        .into_iter()
+        .filter_map(|pid| {
+            let comm = fs::read_to_string(format!("/proc/{pid}/comm")).ok()?;
+            Some((pid, comm))
+        })
+        .collect();
+    let timed: Vec<&str> = comms
+        .iter()
+        .filter(|(_, comm)| is_timed(comm, &settings.names))
+        .map(|(_, comm)| comm.trim_start_matches('.'))
+        .collect();
+    if timed.is_empty() {
+        return None;
+    }
+    let reason = if timed.iter().any(|comm| comm.starts_with("qemu")) {
+        "VM"
+    } else {
+        "test"
+    };
+    for (pid, comm) in &comms {
+        bring_process_ahead(pid, comm, settings, warned);
+    }
+    Some(reason)
+}
+
+/// Brings every thread of one process ahead, saying so when any moved.
+fn bring_process_ahead(pid: &str, comm: &str, settings: &Settings, warned: &mut bool) {
+    let moved = sort_vm(pid, settings, warned);
+    if moved > 0 {
+        eprintln!(
+            "Brought {} ({pid}) ahead of the builds: {moved} threads to nice {}.",
+            comm.trim_end(),
+            settings.nice
+        );
+    }
 }
 
 fn settings() -> Result<Settings, String> {
@@ -662,7 +736,7 @@ fn settings() -> Result<Settings, String> {
         }
     }
     if settings.names.is_empty() {
-        settings.names = vec!["qemu-system".into(), "qemu-kvm".into()];
+        settings.names = TIMED.iter().map(|&name| name.into()).collect();
     }
     Ok(settings)
 }
@@ -699,7 +773,7 @@ mod tests {
     fn defaults() -> Settings {
         Settings {
             cgroup: PathBuf::new(),
-            names: vec!["qemu-system".into(), "qemu-kvm".into()],
+            names: TIMED.iter().map(|&name| name.into()).collect(),
             nice: -10,
             weight: 1000,
             every: Duration::from_millis(1000),
@@ -957,14 +1031,41 @@ mod tests {
     }
 
     #[test]
-    fn knows_qemu_by_its_name_wrapped_or_not() {
+    fn knows_a_timed_test_by_what_runs_in_it_wrapped_or_not() {
         let names = defaults().names;
-        assert!(is_vm("qemu-system-x86\n", &names));
-        assert!(is_vm(".qemu-system-x8\n", &names));
-        assert!(is_vm("qemu-kvm\n", &names));
-        assert!(!is_vm("cc1\n", &names));
-        assert!(!is_vm("nixos-test-driv\n", &names));
-        assert!(!is_vm("vde_switch\n", &names));
+        for comm in [
+            "qemu-system-x86\n",
+            ".qemu-system-x8\n",
+            "qemu-kvm\n",
+            "nixos-test-driv\n",
+            ".nixos-test-dri\n",
+            "systemd-nspawn\n",
+            "niri\n",
+            ".niri-wrapped\n",
+            "sway\n",
+            ".sway-wrapped\n",
+        ] {
+            assert!(is_timed(comm, &names), "{comm}");
+        }
+        for comm in ["cc1\n", "vde_switch\n", "rustc\n", "python3.14\n", "bash\n"] {
+            assert!(!is_timed(comm, &names), "{comm}");
+        }
+    }
+
+    #[test]
+    fn finds_every_process_under_a_build_its_containers_too() {
+        let root = std::env::temp_dir().join(format!("vm-first-under-{}", process::id()));
+        let payload = root.join("payload");
+        fs::create_dir_all(payload.join("init.scope")).unwrap();
+        fs::write(root.join("cgroup.procs"), "10\n11\n").unwrap();
+        fs::write(payload.join("cgroup.procs"), "").unwrap();
+        fs::write(payload.join("init.scope/cgroup.procs"), "30\n").unwrap();
+
+        let mut found = pids_under(&root);
+        found.sort();
+        fs::remove_dir_all(&root).unwrap();
+
+        assert_eq!(found, vec!["10", "11", "30"]);
     }
 
     #[test]

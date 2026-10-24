@@ -5,8 +5,10 @@ handed the controllers for CPU, disk, memory and pids. A build running a
 process named as qemu is has every thread of it put to the normal policy at
 nice -10, a thread it starts afterwards included, and its cgroup weighed at
 1000 for CPU and disk, while a compiler's build beside it stays as the
-daemon set it, at 100. A build asked for from a quest's slice, as an agent's
-command asks, takes that slice's weight, and follows it when it changes.
+daemon set it, at 100. A container's build, with no qemu in it, goes ahead
+the same way, a service in it named nothing in particular too. A build
+asked for from a quest's slice, as an agent's command asks, takes that
+slice's weight, and follows it when it changes.
 The daemon's own cgroup is marked for systemd-oomd to spare while a build
 can go instead. Restarting the daemon, ten times over with vm-first looking
 every 20 ms, leaves the builds running, and the new daemon starts and
@@ -187,6 +189,22 @@ def mib(said: str, before: str) -> float:
     scale = {"B": 1 / 1024**2, "KiB": 1 / 1024, "MiB": 1, "GiB": 1024}
     return float(found.group(1)) * scale[found.group(2)]
 
+
+with subtest("a container's build goes ahead as a VM's does, every process in it"):
+    build("container-build")
+    container = found("systemd-nspawn")
+    service = found("service")
+
+    machine.wait_until_succeeds(f"grep -qx 1000 {cgroup_of(container)}/cpu.weight", timeout=10)
+    machine.wait_until_succeeds(
+        f"[ \"$(ps -L -o ni=,cls= -p {service} | awk '{{print $1, $2}}' | sort -u)\" = '{AHEAD}' ]",
+        timeout=10,
+    )
+    told = machine.succeed("journalctl -u vm-first.service -o cat")
+    assert f"Weighed {cgroup_of(container)}/cpu.weight at 1000 for its test." in told, told
+    assert scheduling(compiler) == AS_BUILT, scheduling(compiler)
+
+    machine.succeed("systemctl stop container-build")
 
 with subtest("a finished build says what it wrote, and who asked for it"):
     line = told_of("writer-build.nix")
