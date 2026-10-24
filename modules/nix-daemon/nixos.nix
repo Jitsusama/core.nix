@@ -51,7 +51,12 @@
 # gives, once the daemon has moved aside, since systemd can't start a new
 # daemon in a cgroup that hands controllers on; Nix 2.35 does that itself.
 # The daemon stops only its own process when it restarts, so a switch that
-# turns this on lets the builds already running finish where they are. As
+# turns this on lets the builds already running finish where they are.
+# Before each start, systemd takes the hand-off back so the new daemon can
+# start. That fails, and the restart with it, while a build has handed
+# controllers further down itself, as a systemd-nspawn container in a
+# uid-range build would; no check runs one yet, so the first that does
+# should restart the daemon beside it. As
 # each build ends, vm-first says in its journal what the build wrote and
 # read, and for which command and quest, so the builds that wear the disk
 # most can be found: journalctl -u vm-first.

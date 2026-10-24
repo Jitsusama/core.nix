@@ -777,8 +777,9 @@
     follows it; the daemon's own cgroup carries oomd's mark to pass it over; ten restarts of the
     daemon, vm-first looking every 20 ms, each start and leave the builds running, the daemon builds
     again, a build asking for a range of user ids gets 65,536, a finished build that wrote 64 MiB is
-    said with at least that and its client's command, a stopped quest's build is said with its
-    quest, and a stopped build leaves no process nor cgroup
+    said with at least that and its client's command, one that wrote 64 MiB without waiting for the
+    disk says at least that between what it wrote and what it left, a stopped quest's build is said
+    with its quest, and a stopped build leaves no process nor cgroup
   '';
   vm-clock-keeps-time = ''
     the clock sets from the machine's servers past a network's silent one
@@ -824,7 +825,7 @@
   vm-first-finds-the-vms = ''
     vm-first reads a thread's nice and policy, knows qemu by its name and nothing else, knows the
     daemon from the workers it leaves behind, finds a worker's client and the quest's slice it sits
-    in, keeps a quest's build below a VM's, adds up what a build read and wrote on every disk, and
+    in, keeps a quest's build below a VM's, adds up what a build read and wrote on every disk and what it left to write, and
     says a size, a client's command and a build's quest as a person reads them
   '';
   vm-first-passes-clippy = ''

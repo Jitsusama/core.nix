@@ -31,6 +31,17 @@ let
       ${pkgs.coreutils}/bin/touch "$out"
     '';
   };
+  # A build that writes 64 MiB and finishes without waiting for the disk.
+  fakeLazyWriter = pkgs.writeShellApplication {
+    name = "fake-lazy-writer";
+    # Nix gives a builder $out in its environment.
+    excludeShellChecks = [ "SC2154" ];
+    text = ''
+      ${pkgs.coreutils}/bin/dd if=/dev/zero of=written bs=1M count=64 status=none
+      ${pkgs.coreutils}/bin/sleep 1
+      ${pkgs.coreutils}/bin/touch "$out"
+    '';
+  };
   # A build that runs one of them as the daemon runs any build, which the
   # machine's store already holds, so nothing is fetched.
   buildOf =
@@ -52,11 +63,13 @@ pkgs.testers.runNixOSTest {
       fakeVm
       fakeCompiler
       fakeWriter
+      fakeLazyWriter
     ];
     environment.etc."vm-build.nix".source = buildOf "vm-build" fakeVm;
     environment.etc."compiler-build.nix".source = buildOf "compiler-build" fakeCompiler;
     environment.etc."quest-build.nix".source = buildOf "quest-build" fakeCompiler;
     environment.etc."writer-build.nix".source = buildOf "writer-build" fakeWriter;
+    environment.etc."lazy-writer-build.nix".source = buildOf "lazy-writer-build" fakeLazyWriter;
     environment.etc."uid-range.nix".source = ./uid-range.nix;
     # getfattr, to read the mark vm-first leaves for systemd-oomd.
     environment.systemPackages = [ pkgs.attr ];

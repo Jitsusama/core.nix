@@ -196,11 +196,28 @@ struct Asker {
 /// by its build user, and the next build of that user makes it again, so a
 /// build is known by its cgroup's inode, which the kernel never reuses
 /// while vm-first runs.
+///
+/// A disk counts a write only once writeback sends it, which waits until
+/// enough is dirty or 30 s have passed, so a build often ends with some of
+/// its writes still in memory. `unwritten` keeps what was dirty or being
+/// written at the last look; a file the build deleted before then never
+/// reaches the disk, so it's the most still to come.
 struct Tally {
     cgroup: u64,
     read: u64,
     written: u64,
+    unwritten: u64,
     asked: Option<Asker>,
+}
+
+/// The bytes of a cgroup's file pages dirty or being written back, from its
+/// `memory.stat`.
+fn parse_unwritten(stat: &str) -> u64 {
+    stat.lines()
+        .filter_map(|line| line.split_once(' '))
+        .filter(|(key, _)| matches!(*key, "file_dirty" | "file_writeback"))
+        .filter_map(|(_, value)| value.trim().parse::<u64>().ok())
+        .sum()
 }
 
 /// The bytes a cgroup has read and written, every disk's together, from
@@ -252,15 +269,23 @@ fn command_of(cmdline: &[u8]) -> String {
     if said.chars().count() <= COMMAND_LENGTH {
         return said;
     }
-    let mut cut: String = said.chars().take(COMMAND_LENGTH - 1).collect();
-    cut.push('\u{2026}');
+    let mut cut: String = said.chars().take(COMMAND_LENGTH - 3).collect();
+    cut.push_str("...");
     cut
 }
 
 /// The line vm-first says when a build has gone.
 fn told(tally: &Tally) -> String {
+    let left = if tally.unwritten == 0 {
+        String::new()
+    } else {
+        format!(
+            ", leaving up to {} more in memory to write",
+            size(tally.unwritten)
+        )
+    };
     let did = format!(
-        "wrote {} and read {}.",
+        "wrote {} and read {}{left}.",
         size(tally.written),
         size(tally.read)
     );
@@ -314,6 +339,7 @@ fn tally(tallies: &mut HashMap<PathBuf, Tally>, builds: &[PathBuf]) {
             cgroup,
             read: 0,
             written: 0,
+            unwritten: 0,
             asked: None,
         });
         if known.asked.is_none() {
@@ -321,6 +347,9 @@ fn tally(tallies: &mut HashMap<PathBuf, Tally>, builds: &[PathBuf]) {
         }
         if let Ok(stat) = fs::read_to_string(build.join("io.stat")) {
             (known.read, known.written) = parse_io_stat(&stat);
+        }
+        if let Ok(stat) = fs::read_to_string(build.join("memory.stat")) {
+            known.unwritten = parse_unwritten(&stat);
         }
         seen.push(build);
     }
@@ -820,7 +849,7 @@ mod tests {
         let long = [b"nix\x00build\x00".as_slice(), &[b'x'; 400]].concat();
         let said = command_of(&long);
         assert!(said.starts_with("nix build xxx"), "{said}");
-        assert!(said.ends_with('\u{2026}'), "{said}");
+        assert!(said.ends_with("..."), "{said}");
         assert!(said.chars().count() <= 120, "{said}");
     }
 
@@ -830,6 +859,7 @@ mod tests {
             cgroup: 1,
             read: 0,
             written: 1 << 30,
+            unwritten: 0,
             asked: Some(Asker {
                 command: "nix build .#checks".into(),
                 quest: Some("qestabc".into()),
@@ -852,6 +882,20 @@ mod tests {
             told(&tally),
             "A build whose client had gone wrote 1.0 GiB and read 0 B."
         );
+        tally.unwritten = 64 << 20;
+        assert_eq!(
+            told(&tally),
+            "A build whose client had gone wrote 1.0 GiB and read 0 B, \
+             leaving up to 64.0 MiB more in memory to write."
+        );
+    }
+
+    #[test]
+    fn counts_what_a_build_left_to_write() {
+        let stat = "anon 4096\nfile 9000\nfile_dirty 3000\nfile_writeback 500\n\
+                    file_mapped 0\n";
+        assert_eq!(parse_unwritten(stat), 3500);
+        assert_eq!(parse_unwritten(""), 0);
     }
 
     #[test]
