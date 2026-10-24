@@ -15,7 +15,9 @@ every 20 ms, leaves the builds running, and the new daemon starts and
 builds again. A build that has gone is said in vm-first's journal, with
 what its client ran, its quest, what it wrote and read, and what it left
 in memory still to write. Stopping a build leaves nothing of it. A build
-asking for a range of user ids gets 65,536.
+asking for a range of user ids gets 65,536. A build asking for its
+filesystem to be synced is told the call isn't implemented, while sync
+itself still runs, there and outside the daemon.
 """
 
 import re
@@ -213,6 +215,16 @@ with subtest("a finished build says what it wrote, and who asked for it"):
 with subtest("a build that ends before the disk has its writes says what it left"):
     line = told_of("lazy-writer-build.nix")
     assert mib(line, "wrote") + mib(line, "leaving up to") >= WRITTEN_MIB, line
+
+with subtest("a build's syncfs is refused as not implemented, and sync still runs"):
+    built = machine.succeed(f"{NIX_BUILD} /etc/syncer-build.nix").strip()
+
+    answered = machine.succeed(f"cat {built}")
+
+    assert "Function not implemented" in answered, answered
+    assert "sync ran" in answered, answered
+    # Only the daemon and its builds are refused it.
+    machine.succeed("sync -f /")
 
 with subtest("a stopped build leaves nothing running, nor its cgroup"):
     machine.succeed("systemctl stop vm-build compiler-build quest-build")

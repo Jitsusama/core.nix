@@ -50,6 +50,21 @@ let
       ${pkgs.coreutils}/bin/touch "$out"
     '';
   };
+  # A build that asks for its filesystem to be synced, then for everything,
+  # and keeps what each answered.
+  fakeSyncer = pkgs.writeShellApplication {
+    name = "fake-syncer";
+    # Nix gives a builder $out in its environment.
+    excludeShellChecks = [ "SC2154" ];
+    text = ''
+      if ${pkgs.coreutils}/bin/sync -f . 2> refused; then
+        echo "sync -f was let through" > "$out"
+        exit 0
+      fi
+      ${pkgs.coreutils}/bin/sync
+      { ${pkgs.coreutils}/bin/cat refused; echo "sync ran"; } > "$out"
+    '';
+  };
   # A build that runs one of them as the daemon runs any build, which the
   # machine's store already holds, so nothing is fetched.
   buildOf =
@@ -73,6 +88,7 @@ pkgs.testers.runNixOSTest {
       fakeContainer
       fakeWriter
       fakeLazyWriter
+      fakeSyncer
     ];
     environment.etc."vm-build.nix".source = buildOf "vm-build" fakeVm;
     environment.etc."compiler-build.nix".source = buildOf "compiler-build" fakeCompiler;
@@ -80,6 +96,7 @@ pkgs.testers.runNixOSTest {
     environment.etc."container-build.nix".source = buildOf "container-build" fakeContainer;
     environment.etc."writer-build.nix".source = buildOf "writer-build" fakeWriter;
     environment.etc."lazy-writer-build.nix".source = buildOf "lazy-writer-build" fakeLazyWriter;
+    environment.etc."syncer-build.nix".source = buildOf "syncer-build" fakeSyncer;
     environment.etc."uid-range.nix".source = ./uid-range.nix;
     # getfattr, to read the mark vm-first leaves for systemd-oomd.
     environment.systemPackages = [ pkgs.attr ];
