@@ -203,7 +203,15 @@ with subtest("the notices sit a step inside the window under them"):
     under = window_titled("Under the notices")
     as_account(f"niri msg action focus-window --id {under['id']}")
     screen = json.loads(as_account("niri msg --json focused-output"))["logical"]["width"]
-    as_account(f"niri msg action set-column-width {int(screen * 2 / 3)}")
+    wide = int(screen * 2 / 3)
+    as_account(f"niri msg action set-column-width {wide}")
+    # niri centres a column by the width its window has, and kitty takes
+    # its new width only when it next draws, so centring before then
+    # leaves the column to grow rightwards from where it was centred.
+    retry(
+        lambda _: window_titled("Under the notices")["layout"]["tile_size"][0] >= wide,
+        timeout_seconds=15,
+    )
     as_account("niri msg action center-column")
     space = json.loads(as_account("cat ~/.config/jitsusama/theme.json"))["space"]
 
