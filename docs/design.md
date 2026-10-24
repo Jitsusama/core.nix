@@ -532,7 +532,8 @@ works the same way everywhere.
   right edge, with its parts a step in, so a question never lists a column
   of bare figures. So is the machine itself, in its own words: "battery" or
   "charger", "temperature" or "fans", "date" or "epoch", "brightness",
-  "volume", "keyboards". The start of one of those words, three letters
+  "volume", "keyboards", and "lag" or "slow" for whether anything waited
+  in the last ten seconds. The start of one of those words, three letters
   or more, asks it too: "batt" shows the battery, the rest of the word in
   grey, and Tab finishes it. A row whose name starts the same way is
   chosen first, so "pow" is still Power Off. A colour's first row wears
