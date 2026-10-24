@@ -387,7 +387,7 @@
     clippy finds nothing in plymouth-waits or its tests
   '';
   pnpm-keeps-one-store = ''
-    pnpm 10 and 12 keep an account's packages in its one store, wherever the project sits
+    pnpm 10 and 12 find an account's one store from what its shells and user manager are given
   '';
   qt-programs-wear-the-theme = ''
     Qt programs in the session take GTK's platform theme, and Quickshell is started without it
