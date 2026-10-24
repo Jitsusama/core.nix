@@ -534,6 +534,7 @@ gather (
     ./modules/btop/checks.nix
     ./modules/btrfs/checks.nix
     ./modules/cargo/checks.nix
+    ./modules/claude/checks.nix
     ./modules/clippy/checks.nix
     ./modules/console/checks.nix
     ./modules/creative-pebble-x-plus/checks.nix

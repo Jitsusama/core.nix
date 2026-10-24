@@ -11,6 +11,25 @@ let
   inherit (config.jitsusama.theme) appearance roles terminal;
   mix = import ../theme/mix.nix { inherit lib; };
 
+  # The status line (statusline.py), each part in the theme's colour for
+  # what it is: the folder strong, the model a program's, the context's
+  # size a success, and the separators the rules'.
+  statusline = pkgs.writers.writePython3Bin "claude-statusline" { doCheck = false; } (
+    builtins.replaceStrings
+      [ "@colours@" ]
+      [
+        "${builtins.toFile "claude-statusline-colours.json" (
+          builtins.toJSON {
+            folder = roles.strong;
+            model = roles.program;
+            context = roles.success;
+            separator = roles.rule;
+          }
+        )}"
+      ]
+      (builtins.readFile ./statusline.py)
+  );
+
   # A diff's lines and words are tinted backgrounds under the text, so a
   # change reads at a glance without the text itself changing colour. The
   # alert is the brighter of the two, so it takes less to weigh the same.
@@ -82,14 +101,19 @@ in
 {
   imports = [ ../theme/home.nix ];
 
-  # settings is deliberately unset. home-manager would render it as a
-  # read-only store link, and Claude Code writes that file at runtime
-  # (permissions, /model, onboarding, sandbox setup), failing with
-  # EACCES. Left unset, Claude Code keeps a normal, writable file.
-  programs.claude-code.enable = true;
-  home.packages = [
-    (pkgs.writeScriptBin "claude-statusline" (builtins.readFile ./claude-statusline.rb))
-  ];
+  programs.claude-code = {
+    enable = true;
+    # Claude Code writes its settings file as it runs (permissions, /model,
+    # onboarding, sandbox setup), so each switch merges what's declared into
+    # a writable file rather than linking a read-only one, and what Claude
+    # Code saved stays.
+    mutableSettings = true;
+    settings.statusLine = {
+      type = "command";
+      command = lib.getExe statusline;
+    };
+  };
+  home.packages = [ statusline ];
   programs.git.ignores = [ "CLAUDE.local.md" ];
 
   # Claude Code keeps its choice of theme in ~/.claude.json, a file it

@@ -132,6 +132,7 @@ quietly stopped holding.
 | `the-mac-guards-its-disk` | a Mac's guards run under launchd, with a Mac's paths and nothing to confine a run |
 | `disk-guard-finds-a-machines-programs-first` | a machine's programs for the disk guard come first on its PATH under systemd and launchd, with core's git after |
 | `spend-watch-stays-in-the-background` | the AI spend watch yields to the account, comes back when it fails, and leaves its status behind when it stops |
+| `claude-shows-its-status-line` | Claude Code is told of its status line on Linux and macOS, in settings it can still write |
 
 ### The Shell's Logic
 
@@ -256,6 +257,7 @@ kernel guide][2] says what that catches.
 | `wifid-reads-the-air`             | wifid's tests pass: what it hears and offers, how each network is joined, the addresses it shows, what it keeps, and sign-ins |
 | `wifid-sign-in-reads-its-network` | the sign-in window's tests pass: its proxy lets on only the window, and it follows which card wants a sign-in |
 | `wifid-passes-clippy`             | clippy finds nothing in wifid, its sign-in window or their tests |
+| `claude-status-line-says-how-it-stands` | Claude Code's status line shows the folder, the model and the context's size, cached tokens counted, in the theme's colours |
 
 ### Virtual Machines
 
