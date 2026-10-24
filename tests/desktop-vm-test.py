@@ -133,6 +133,18 @@ def as_account(command: str) -> str:
     return machine.succeed(in_session(command))
 
 
+def shell_said(*words: str) -> str:
+    """Give which of these words the shell's journal holds, one a line.
+
+    It's searched in the machine: by the end of a run the whole journal is
+    megabytes, and a busy host has hung the driver bringing it back.
+    """
+    wanted = " ".join(f"-e {shlex.quote(word)}" for word in words)
+    return as_account(
+        f"journalctl --user -u quickshell --no-pager -o cat | grep -o -F {wanted} | sort -u; true"
+    )
+
+
 def wait_for_surface(namespace: str) -> None:
     """Wait until niri lists one of the shell's surfaces by its namespace."""
     machine.wait_until_succeeds(in_session(f"niri msg layers | grep -q {namespace}"), timeout=30)
@@ -794,7 +806,7 @@ with subtest("the launcher finds a pi session by its quest, and goes to its wind
     )
     # Its title is read once, outside what's drawn, so nothing drawn
     # reads it again as it changes.
-    log = as_account("journalctl --user -u quickshell --no-pager -o cat")
+    log = shell_said("Binding loop")
     assert "Binding loop" not in log, "a session's title is read inside a binding"
 
     # It comes to want Joel, its presence replaced by rename as pi's
@@ -1659,7 +1671,7 @@ with subtest("the launcher answers what's asked, and copies the answer"):
     answer("weather tokyo")
     photograph("launcher-offline")
     machine.send_key("esc")
-    log = as_account("journalctl --user -u quickshell --no-pager -o cat")
+    log = shell_said("ERROR", "Error:")
     assert "ERROR" not in log, "an answer raised an error"
     assert "Error:" not in log, "an answer raised an error"
 
@@ -2323,7 +2335,7 @@ with subtest("a notice's action is done by the keys, and one not acted on stays 
     photograph("notice-with-action")
     # Qt only warns when a layout never settles, which left the
     # card's words piled at its top.
-    log = as_account("journalctl --user -u quickshell --no-pager -o cat")
+    log = shell_said("polish() loop")
     assert "polish() loop" not in log, "a notice's layout never settles"
     # Super+N takes the stack, which waits while it holds the keys.
     # The newer notice waits behind the older; Down brings it to the
@@ -2739,13 +2751,15 @@ with subtest("people coming and going in a Tuple call are said, and Joel can lea
     photograph("notice-joined")
     with told("shows card Someone left the call"):
         tuple_said("peer left call: a guest")
+    # Its card goes by itself after ten seconds, which a busy host spends
+    # on what follows, so Super+N takes the stack at once: held, it waits.
+    with told("keys notices"):
+        machine.send_key("meta_l-n")
     machine.succeed(offered.format("leave"))
     photograph("notice-alone")
     # Leaving runs tuple call leave, which starts the stopped daemon,
-    # whose new log ends the call. Super+N takes the stack, and again opens
-    # the history on the newest notice's offers.
-    with told("keys notices"):
-        machine.send_key("meta_l-n")
+    # whose new log ends the call. Super+N again opens the history on the
+    # newest notice's offers.
     machine.send_key("meta_l-n")
     launcher_ready()
     launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Leave the call")
