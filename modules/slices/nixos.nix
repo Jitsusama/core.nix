@@ -107,7 +107,11 @@ let
   settings = attrs: lib.concatStringsSep " " (lib.mapAttrsToList (k: v: "${k}=${toString v}") attrs);
   diskOrder = pkgs.writeShellApplication {
     name = "disk-order";
-    runtimeInputs = [ pkgs.coreutils ];
+    runtimeInputs = [
+      pkgs.coreutils
+      pkgs.findutils
+      pkgs.gnugrep
+    ];
     text = builtins.readFile ./disk-order.sh;
   };
 

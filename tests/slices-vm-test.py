@@ -260,6 +260,16 @@ with subtest("with it, no slice holds a latency target"):
     for path in [f"{account}/app.slice", f"{account}/session.slice", "/sys/fs/cgroup/user.slice"]:
         t.assertEqual(ordered.succeed(f"cat {path}/io.latency").strip(), "", msg=path)
 
+with subtest("latency targets left from before the disk was measured go as it turns on"):
+    # A switch from a machine that had targets keeps them: systemd doesn't write over a
+    # target it no longer manages, so they stay in the kernel until a reboot.
+    held = [f"{account}/app.slice", f"{account}/session.slice", "/sys/fs/cgroup/user.slice"]
+    for path in held:
+        ordered.succeed(f"echo '{vda} target=1000' > {path}/io.latency")
+    ordered.succeed("systemctl restart disk-order-vda.service")
+    for path in held:
+        t.assertEqual(ordered.succeed(f"cat {path}/io.latency").strip(), "", msg=path)
+
 with subtest("stopping it hands the disk back to first come, first served"):
     ordered.succeed("systemctl stop disk-order-vda.service")
     t.assertIn("enable=0", cost("qos"))
