@@ -3,6 +3,7 @@
 {
   account,
   bareDarwin,
+  bareNixos,
   clippyConfig,
   clippyLints,
   holds,
@@ -69,10 +70,34 @@
         && user.sources.go-build.path == "/Users/someone/Library/Caches/go-build"
         && user.sources.sccache.path == "/Users/someone/Library/Caches/Mozilla.sccache"
         && user.sources.pnpm.path == "/Users/someone/Library/pnpm/store"
+        && user.sources.go-mod.path == "/Users/someone/go/pkg/mod"
+        && user.sources.lima.path == "/Users/someone/Library/Caches/lima"
         && !(user.sources ? homebrew)
         && builtins.elemAt brewing.homebrew.command 1 == "cleanup"
         && !((account macWorkstation).systemd.user.services ? disk-guard)
       );
+
+  # A machine's own programs, which its own sources run, come first on the
+  # guard's PATH, under systemd and launchd alike, with core's git after.
+  disk-guard-finds-a-machines-programs-first =
+    let
+      first = [ pkgs.hello ];
+      given =
+        machine:
+        account (machine [
+          { home-manager.sharedModules = [ { jitsusama.disk-guard.path = first; } ]; }
+        ]);
+      onLinux =
+        (given (modules: bareNixos ([ self.nixosModules.workstation ] ++ modules)))
+        .systemd.user.services.disk-guard.Service.Environment;
+      onMac =
+        (given (modules: bareDarwin ([ self.darwinModules.workstation ] ++ modules)))
+        .launchd.agents.disk-guard.config.EnvironmentVariables.PATH;
+      leads = path: lib.hasPrefix "${pkgs.hello}/bin:" path && lib.hasInfix "-git-" path;
+    in
+    holds "disk-guard-finds-a-machines-programs-first"
+      "A machine's programs for the disk guard aren't first on its PATH, or core's git is gone from it."
+      (leads (lib.removePrefix "PATH=" (builtins.head onLinux)) && leads onMac);
 }
 // onLinux {
   # The disk guard reads the configs a workstation and its account get:
