@@ -431,8 +431,8 @@
     clippy finds nothing in the shaper or its tests
   '';
   shell-preview-follows-the-working-copy = ''
-    shell-preview links each built file the working copy holds back to it, and copies what the build
-    made
+    shell-preview links each built file the working copy holds back to it, copies what the build
+    made, and ends the nested desktop it started however it's ended
   '';
   shutdown-status-passes-clippy = ''
     clippy finds nothing in shutdown-status or its tests
