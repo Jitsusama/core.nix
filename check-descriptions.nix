@@ -498,6 +498,10 @@
     a console greets the account by its description's first word, or its name, with the keys back to
     the desktop, and keeps NixOS's banner with no account
   '';
+  the-console-font-refuses-a-stand-in = ''
+    the console font's build draws the face asked for at Medium, among its other names too, and
+    refuses another face or one without a Medium, saying what fontconfig offered
+  '';
   the-console-wears-the-face = ''
     the initrd's console font is the account's mono face at Medium, PSF 2 at 16 by 32 with at most
     256 glyphs and a blank slot 32; none without an account
