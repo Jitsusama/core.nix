@@ -233,6 +233,7 @@ kernel guide][2] says what that catches.
 | `dictation-works-it-out`          | dictation's spectrogram, transform and vocabulary match their references |
 | `dictation-hears-the-clip`        | Whisper on the CPU types a public clip back word for word |
 | `dictation-passes-clippy`         | clippy finds nothing in dictation or its tests            |
+| `dictation-switches-to-the-new-one` | a switch restarts dictation after reloading its units |
 | `shutdown-status-reads-the-last-stage` | shutdown-status reads only the last stage's steps, says forced once when it begins unmarked, and leftovers after three quiet seconds |
 | `shutdown-status-passes-clippy`   | clippy finds nothing in shutdown-status or its tests      |
 | `open-with-passes-clippy`         | clippy finds nothing in the portal's chooser or its tests |

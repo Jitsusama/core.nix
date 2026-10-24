@@ -1,6 +1,9 @@
 # The checks of dictation, which checks.nix gathers with every other folder's;
 # its opening comment says what each kind of check proves.
 {
+  account,
+  graphical,
+  holds,
   lib,
   onLinux,
   passesClippy,
@@ -8,6 +11,13 @@
   ...
 }:
 {
+  # A switch restarts dictation after it reloads the units, so the service
+  # the shell's watch reaches is never the one from before the switch.
+  dictation-switches-to-the-new-one =
+    holds "dictation-switches-to-the-new-one"
+      "A switch stops dictation before reloading, so the shell's watch starts the old one again."
+      (((account graphical).systemd.user.services.dictation.Unit.X-SwitchMethod or null) == "restart");
+
   # dictation's tests run as it builds: its spectrogram matches the one that
   # transcribed a clip word for word, its transform the plain sum, its
   # vocabulary reads back into text, and silence or a moment isn't heard.

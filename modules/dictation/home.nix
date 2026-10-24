@@ -39,7 +39,14 @@ in
   };
 
   systemd.user.services.dictation = {
-    Unit.Description = "Dictation, Whisper's encoder on the NPU";
+    Unit = {
+      Description = "Dictation, Whisper's encoder on the NPU";
+      # Stopped before a switch reloads the units, the shell's watch starts
+      # it again through the socket at once, from the old unit, and the
+      # switch's start then finds it running; restarted after the reload,
+      # it comes back as the new one.
+      X-SwitchMethod = "restart";
+    };
     Service = {
       ExecStart = "${lib.getExe dictation} serve ${model}";
       CacheDirectory = "dictation";
