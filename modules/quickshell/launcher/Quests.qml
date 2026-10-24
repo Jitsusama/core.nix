@@ -73,7 +73,7 @@ Provider {
         }
         return String(b.updated).localeCompare(String(a.updated));
     }).map(quest => made(quest))
-    onAllChanged: changed()
+    onAllChanged: changedTo(all)
 
     // A day as a clock's calendar says it, with its year when it isn't this one.
     function day(updated) {

@@ -603,6 +603,18 @@
   the-launcher-finds-what-is-meant = ''
     the right row comes first for each query, within budget
   '';
+  the-launcher-groups-every-shortcut = ''
+    every shortcut of every layer lands in one place in Shortcuts, a desktop chord always in a group,
+    a new chord finds a group of its own accord, every group is named in the vocabulary, and
+    Shortcuts steps from the layers to their groups to the chords, typing finding any of them flat
+  '';
+  the-launcher-holds-a-programs-controls = ''
+    a program's step holds its windows, its own actions, Quit asked once, then Media, Sound and
+    Notifications, in order and only where they apply, each reaching only that program
+  '';
+  the-launcher-holds-still-as-it-refreshes = ''
+    a list the launcher shows keeps its order and its selection as what's in it changes
+  '';
   the-launcher-lands-where-it-did = ''
     a thing is one row, the same letters keep their row, one slip teaches nothing
   '';

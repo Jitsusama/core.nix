@@ -27,8 +27,9 @@ Provider {
 
     collection: Words.collection("windows", { searched: false })
 
-    // An open list follows windows opening, closing and being renamed.
-    onThingsChanged: changed()
+    // An open list follows windows opening, closing and being renamed, and
+    // only those, not each event niri sends.
+    onThingsChanged: changedTo(things)
 
     function everything() {
         return things.filter(window => !window.focused);

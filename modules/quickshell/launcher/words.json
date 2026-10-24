@@ -518,6 +518,381 @@
       ]
     },
     {
+      "id": "shortcuts:desktop",
+      "in": "shortcuts",
+      "name": "Desktop",
+      "glyph": "desktop",
+      "hidden": [
+        "niri"
+      ]
+    },
+    {
+      "id": "shortcuts:touchscreen",
+      "in": "shortcuts",
+      "name": "Touchscreen",
+      "glyph": "touchscreen",
+      "words": [
+        "swipes",
+        "gestures",
+        "fingers"
+      ]
+    },
+    {
+      "id": "shortcuts:terminal",
+      "in": "shortcuts",
+      "name": "Terminal",
+      "hidden": [
+        "kitty"
+      ]
+    },
+    {
+      "id": "shortcuts:neovim",
+      "in": "shortcuts",
+      "name": "Neovim",
+      "words": [
+        "editor",
+        "vim"
+      ],
+      "hidden": [
+        "nvim"
+      ]
+    },
+    {
+      "id": "shortcuts:pi",
+      "in": "shortcuts",
+      "name": "Agents",
+      "glyph": "agent",
+      "hidden": [
+        "pi"
+      ]
+    },
+    {
+      "id": "shortcuts:desktop:windows",
+      "in": "shortcuts",
+      "name": "Windows",
+      "glyph": "windows",
+      "words": [
+        "floating",
+        "fullscreen"
+      ]
+    },
+    {
+      "id": "shortcuts:desktop:columns",
+      "in": "shortcuts",
+      "name": "Columns",
+      "glyph": "columns",
+      "words": [
+        "width"
+      ]
+    },
+    {
+      "id": "shortcuts:desktop:workspaces",
+      "in": "shortcuts",
+      "name": "Workspaces",
+      "glyph": "workspace",
+      "words": [
+        "overview"
+      ]
+    },
+    {
+      "id": "shortcuts:desktop:screens",
+      "in": "shortcuts",
+      "name": "Screens",
+      "glyph": "display",
+      "words": [
+        "monitors",
+        "displays"
+      ]
+    },
+    {
+      "id": "shortcuts:desktop:programs",
+      "in": "shortcuts",
+      "name": "Programs",
+      "glyph": "below",
+      "words": [
+        "apps",
+        "applications"
+      ]
+    },
+    {
+      "id": "shortcuts:desktop:launcher",
+      "in": "shortcuts",
+      "name": "Launcher",
+      "glyph": "launcher",
+      "words": [
+        "margin"
+      ],
+      "hidden": [
+        "quickshell"
+      ]
+    },
+    {
+      "id": "shortcuts:desktop:capture",
+      "in": "shortcuts",
+      "name": "Capture",
+      "glyph": "capture",
+      "words": [
+        "screenshots",
+        "recording",
+        "sharing"
+      ]
+    },
+    {
+      "id": "shortcuts:desktop:sound",
+      "in": "shortcuts",
+      "name": "Sound",
+      "glyph": "volume",
+      "words": [
+        "media",
+        "music",
+        "volume"
+      ]
+    },
+    {
+      "id": "shortcuts:desktop:brightness",
+      "in": "shortcuts",
+      "name": "Brightness",
+      "glyph": "brightness",
+      "words": [
+        "lights"
+      ]
+    },
+    {
+      "id": "shortcuts:desktop:dictation",
+      "in": "shortcuts",
+      "name": "Dictation",
+      "glyph": "dictating",
+      "words": [
+        "dictate",
+        "speech"
+      ]
+    },
+    {
+      "id": "shortcuts:desktop:session",
+      "in": "shortcuts",
+      "name": "Session",
+      "glyph": "session",
+      "words": [
+        "lock",
+        "power"
+      ]
+    },
+    {
+      "id": "shortcuts:terminal:tabs",
+      "in": "shortcuts",
+      "name": "Tabs"
+    },
+    {
+      "id": "shortcuts:terminal:scrollback",
+      "in": "shortcuts",
+      "name": "Scrollback",
+      "words": [
+        "pager"
+      ]
+    },
+    {
+      "id": "shortcuts:terminal:clipboard",
+      "in": "shortcuts",
+      "name": "Clipboard",
+      "glyph": "clipboard",
+      "words": [
+        "copy",
+        "paste"
+      ]
+    },
+    {
+      "id": "shortcuts:terminal:text",
+      "in": "shortcuts",
+      "name": "Text",
+      "words": [
+        "font",
+        "size"
+      ]
+    },
+    {
+      "id": "shortcuts:neovim:files",
+      "in": "shortcuts",
+      "name": "Files",
+      "words": [
+        "folders",
+        "file browser"
+      ]
+    },
+    {
+      "id": "shortcuts:neovim:open",
+      "in": "shortcuts",
+      "name": "Open files",
+      "words": [
+        "buffers"
+      ]
+    },
+    {
+      "id": "shortcuts:neovim:splits",
+      "in": "shortcuts",
+      "name": "Splits",
+      "words": [
+        "panes"
+      ]
+    },
+    {
+      "id": "shortcuts:neovim:tabs",
+      "in": "shortcuts",
+      "name": "Tabs"
+    },
+    {
+      "id": "shortcuts:neovim:search",
+      "in": "shortcuts",
+      "name": "Search",
+      "words": [
+        "grep"
+      ]
+    },
+    {
+      "id": "shortcuts:neovim:moving",
+      "in": "shortcuts",
+      "name": "Moving",
+      "words": [
+        "jumps"
+      ]
+    },
+    {
+      "id": "shortcuts:neovim:code",
+      "in": "shortcuts",
+      "name": "Code",
+      "words": [
+        "language server"
+      ]
+    },
+    {
+      "id": "shortcuts:neovim:problems",
+      "in": "shortcuts",
+      "name": "Problems",
+      "words": [
+        "errors",
+        "diagnostics",
+        "quickfix"
+      ],
+      "hidden": [
+        "trouble"
+      ]
+    },
+    {
+      "id": "shortcuts:neovim:outline",
+      "in": "shortcuts",
+      "name": "Outline",
+      "words": [
+        "symbols"
+      ]
+    },
+    {
+      "id": "shortcuts:neovim:tests",
+      "in": "shortcuts",
+      "name": "Tests",
+      "words": [
+        "testing"
+      ]
+    },
+    {
+      "id": "shortcuts:neovim:git",
+      "in": "shortcuts",
+      "name": "Git",
+      "glyph": "branch",
+      "words": [
+        "commits",
+        "branches",
+        "stash"
+      ],
+      "hidden": [
+        "fugitive"
+      ]
+    },
+    {
+      "id": "shortcuts:neovim:github",
+      "in": "shortcuts",
+      "name": "GitHub",
+      "hidden": [
+        "octo"
+      ]
+    },
+    {
+      "id": "shortcuts:neovim:github:pulls",
+      "in": "shortcuts",
+      "name": "Pull requests",
+      "words": [
+        "prs"
+      ]
+    },
+    {
+      "id": "shortcuts:neovim:github:issues",
+      "in": "shortcuts",
+      "name": "Issues"
+    },
+    {
+      "id": "shortcuts:neovim:github:reviews",
+      "in": "shortcuts",
+      "name": "Reviews"
+    },
+    {
+      "id": "shortcuts:neovim:github:runs",
+      "in": "shortcuts",
+      "name": "Workflow runs",
+      "words": [
+        "ci"
+      ]
+    },
+    {
+      "id": "shortcuts:neovim:suggestions",
+      "in": "shortcuts",
+      "name": "Suggestions",
+      "words": [
+        "completion",
+        "command line"
+      ]
+    },
+    {
+      "id": "shortcuts:neovim:looks",
+      "in": "shortcuts",
+      "name": "Looks",
+      "words": [
+        "colours",
+        "colour scheme"
+      ]
+    },
+    {
+      "id": "shortcuts:neovim:insides",
+      "in": "shortcuts",
+      "name": "Insides",
+      "words": [
+        "registers",
+        "marks",
+        "settings"
+      ]
+    },
+    {
+      "id": "shortcuts:pi:typing",
+      "in": "shortcuts",
+      "name": "Typing",
+      "words": [
+        "message"
+      ]
+    },
+    {
+      "id": "shortcuts:pi:conversation",
+      "in": "shortcuts",
+      "name": "Conversation",
+      "words": [
+        "history"
+      ]
+    },
+    {
+      "id": "shortcuts:pi:models",
+      "in": "shortcuts",
+      "name": "Models",
+      "words": [
+        "thinking"
+      ]
+    },
+    {
       "id": "on",
       "name": "Now",
       "noun": "now",
@@ -1097,6 +1472,160 @@
       ]
     },
     {
+      "id": "verb:program:switch",
+      "in": "applications",
+      "name": "Switch",
+      "verb": "switch",
+      "glyph": "windows",
+      "words": [
+        "last window"
+      ],
+      "hidden": [
+        "switch to it"
+      ]
+    },
+    {
+      "id": "verb:program:quit",
+      "in": "applications",
+      "name": "Quit",
+      "verb": "quit",
+      "glyph": "close",
+      "sure": "Quit now",
+      "words": [
+        "close all",
+        "close every window",
+        "exit"
+      ]
+    },
+    {
+      "id": "program:media",
+      "in": "applications",
+      "name": "Media",
+      "verb": "more",
+      "glyph": "playing",
+      "words": [
+        "music",
+        "player",
+        "playing",
+        "song",
+        "track"
+      ]
+    },
+    {
+      "id": "verb:program:play",
+      "in": "program:media",
+      "name": "Play",
+      "verb": "play",
+      "words": [
+        "resume"
+      ],
+      "states": {
+        "playing": {
+          "name": "Pause",
+          "verb": "pause",
+          "hidden": [
+            "stop"
+          ]
+        }
+      }
+    },
+    {
+      "id": "verb:program:next",
+      "in": "program:media",
+      "name": "Next",
+      "verb": "next",
+      "words": [
+        "skip",
+        "next track",
+        "forward"
+      ]
+    },
+    {
+      "id": "verb:program:previous",
+      "in": "program:media",
+      "name": "Previous",
+      "verb": "previous",
+      "words": [
+        "last track",
+        "previous track",
+        "rewind"
+      ]
+    },
+    {
+      "id": "program:sound",
+      "in": "applications",
+      "name": "Sound",
+      "verb": "more",
+      "glyph": "volume",
+      "words": [
+        "audio",
+        "volume",
+        "loudness"
+      ]
+    },
+    {
+      "id": "verb:program:mute",
+      "in": "program:sound",
+      "name": "Mute",
+      "verb": "mute",
+      "glyph": "silent",
+      "words": [
+        "silence",
+        "hush"
+      ],
+      "states": {
+        "muted": {
+          "name": "Unmute",
+          "verb": "unmute",
+          "glyph": "volume"
+        }
+      }
+    },
+    {
+      "id": "verb:program:louder",
+      "in": "program:sound",
+      "name": "Louder",
+      "verb": "louder",
+      "words": [
+        "turn up",
+        "raise",
+        "volume up"
+      ]
+    },
+    {
+      "id": "verb:program:quieter",
+      "in": "program:sound",
+      "name": "Quieter",
+      "verb": "quieter",
+      "words": [
+        "turn down",
+        "lower",
+        "softer",
+        "volume down"
+      ]
+    },
+    {
+      "id": "program:volume",
+      "in": "program:sound",
+      "name": "Volume",
+      "words": [
+        "level",
+        "how loud"
+      ]
+    },
+    {
+      "id": "program:notices",
+      "in": "applications",
+      "name": "Notifications",
+      "verb": "more",
+      "glyph": "notifications",
+      "words": [
+        "notices",
+        "messages",
+        "alerts"
+      ]
+    },
+    {
       "id": "verb:float",
       "in": "windows",
       "name": "Float",
@@ -1560,6 +2089,14 @@
         "tuple:mute"
       ],
       "why": "In a call, muting the microphone there is found beside the microphones themselves."
+    },
+    {
+      "word": "tabs",
+      "things": [
+        "shortcuts:terminal:tabs",
+        "shortcuts:neovim:tabs"
+      ],
+      "why": "The terminal and Neovim both have tabs, and each group says its layer beside it."
     }
   ]
 }

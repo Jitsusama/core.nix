@@ -82,6 +82,17 @@ let
             finds it too, as a terminal is found by "kitty" or "shell".
           '';
         };
+        group = lib.mkOption {
+          type = lib.types.str;
+          default = "";
+          example = "workspaces";
+          description = ''
+            The group the launcher's Shortcuts lists the chord in, for the
+            rare chord its table of groups (launcher/KeyGroups.js) puts in
+            the wrong one, or a group and the one inside it, as
+            github/pulls. Empty, the table works it out.
+          '';
+        };
         run = lib.mkOption {
           type = lib.types.listOf lib.types.str;
           default = [ ];

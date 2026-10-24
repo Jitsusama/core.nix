@@ -100,7 +100,9 @@ Rectangle {
     Text {
         id: countText
         x: nameText.x + nameText.width + Theme.space.m
-        width: Math.min(implicitWidth, row.width * 0.3)
+        // As much as the name leaves, and never less than its share, so a
+        // short name's detail (what a category holds) says all it can.
+        width: Math.min(implicitWidth, Math.max(row.width * 0.3, row.ends - x - Theme.space.xxl))
         elide: Text.ElideRight
         anchors.verticalCenter: parent.verticalCenter
         visible: row.detail !== ""

@@ -29,7 +29,7 @@ Provider {
     readonly property var all: Sessions.wanting
         .concat(Sessions.running.filter(session => !(session.presence && session.presence.wants)))
         .map(session => made(session))
-    onAllChanged: changed()
+    onAllChanged: changedTo(all)
 
     // Where a session's first job waiting for its turn stands in line.
     function inLine(presence) {

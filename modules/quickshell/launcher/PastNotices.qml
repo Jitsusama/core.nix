@@ -164,6 +164,13 @@ Provider {
         return rows;
     }
 
+    // Those a program sent, newest first, each as it is here, so a program's
+    // own row (Applications.qml) holds them and Return on one does what it
+    // does here. `sent` says whether a sender's name is the program.
+    function sentBy(sent) {
+        return aged(all.filter((row, index) => sent(Notices.history[index]?.app ?? "")));
+    }
+
     function search(typed) {
         const words = Fuzzy.words(typed);
         const need = Fuzzy.letters(words);

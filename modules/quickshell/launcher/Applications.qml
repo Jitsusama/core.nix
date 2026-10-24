@@ -2,11 +2,19 @@
 // is: "browser" finds Chrome. A program is one row whether it's running or
 // not, saying how many windows it has open: Return switches to the one
 // used last, or starts it when none is, and Shift+Return opens a new one
-// below the focused window. The right arrow lists its windows by title,
-// then what else can be done. A desktop action that opens just the
-// program, as Super+Return opens kitty, is its row too: the row answers to
-// the action's words ("open a terminal") and the foot teaches its chord,
-// so the two aren't listed side by side.
+// below the focused window. A desktop action that opens just the program,
+// as Super+Return opens kitty, is its row too: the row answers to the
+// action's words ("open a terminal") and the foot teaches its chord, so
+// the two aren't listed side by side.
+//
+// The right arrow steps into everything the program can be told, the same
+// for every program, each row there only when it applies: what can be done
+// first (Switch, New window, New window below, its other windows by title,
+// its desktop entry's own actions, Quit), then its parts (Media while it
+// has a player, Sound while it has a stream open, Notifications while the
+// history holds any of its), then any part another provider gives it, such
+// as Slack's theme (ByHand.qml). All of it is made as the arrow is
+// pressed, never as letters are typed, and nothing is read from a file.
 import Quickshell
 import qs
 import QtQuick
@@ -15,6 +23,13 @@ Provider {
     id: provider
 
     what: "program"
+
+    // Held from the start, so the streams it binds say which program each
+    // is before a program is first stepped into.
+    readonly property var playing: Playing
+
+    // How far Louder and Quieter go, as a share of the whole.
+    readonly property real step: 0.05
 
     // The desktop's actions that run exactly this command.
     function opening(command) {
@@ -49,29 +64,308 @@ Provider {
         return open === 0 ? "" : open === 1 ? "1 window" : `${open} windows`;
     }
 
-    // Its windows as rows Return goes to, each by its own title, saying
-    // where it is as the Windows collection does: nothing on the workspace
-    // in front, and a column when two are titled alike.
+    // A window's title as its rows say it, without the program's name.
+    function titled(window, entry) {
+        return provider.tidy(window.title ?? "", entry.name) || entry.name;
+    }
+
+    // Its windows but the one used last, which Switch already goes to, as
+    // rows Return goes to, each by its own title, saying where it is as the
+    // Windows collection does: nothing on the workspace in front, and a
+    // column when two are titled alike.
     function windowsOf(entry) {
         const windows = running[entry.id] ?? [];
         const here = Niri.workspace();
-        const titled = window => provider.tidy(window.title ?? "", entry.name) || entry.name;
         const alike = {};
         for (const window of windows)
-            alike[titled(window)] = (alike[titled(window)] ?? 0) + 1;
-        return windows.map(window => {
+            alike[titled(window, entry)] = (alike[titled(window, entry)] ?? 0) + 1;
+        return windows.slice(1).map(window => {
             const workspace = Niri.workspaces[window.workspace_id];
             return thing({
                 key: `window:${window.app_id}:${provider.tidy(window.title ?? "", entry.name)}`,
                 is: `window:${window.id}`,
                 verb: "switch",
-                name: titled(window),
+                name: titled(window, entry),
                 glyph: programGlyph(entry.id),
                 hue: "program",
-                side: provider.placeOf(window, workspace, here, alike[titled(window)]),
+                side: provider.placeOf(window, workspace, here, alike[titled(window, entry)]),
                 run: () => Niri.act({ FocusWindow: { id: window.id } })
             });
         });
+    }
+
+    // An act or a part as the vocabulary says it (Words.qml), in the state
+    // it's in. One the vocabulary gives no glyph wears what it's inside.
+    function said(key, state, fields) {
+        return thing(Object.assign({
+            key: key,
+            verb: Words.verb(key, state),
+            name: Words.name(key, state),
+            keywords: Words.keywords(key, state),
+            glyph: Words.glyph(key, state),
+            hue: "action"
+        }, fields));
+    }
+
+    // A figure inside a part, whose name, side and any graph are read as
+    // it's drawn, so it follows what Louder or Next just did. Return copies
+    // nothing.
+    function figure(key, name, side, graph) {
+        const row = copyRow({ key: key, name: name(), copy: "" });
+        Object.defineProperties(row, {
+            name: { enumerable: true, get: name },
+            side: { enumerable: true, get: side }
+        });
+        if (graph)
+            Object.defineProperty(row, "graph", { enumerable: true, get: graph });
+        return row;
+    }
+
+    // Whether a name another program gives, a player's desktop entry or
+    // identity, a stream's application or a notice's sender, is this
+    // program: its id or its name, or the entry the name leads to, each
+    // name looked up once a step (`looked`).
+    function names(entry, given, looked) {
+        if (!given)
+            return false;
+        const name = String(given).toLowerCase();
+        if (name === entry.id.toLowerCase() || name === entry.name.toLowerCase())
+            return true;
+        if (!(name in looked))
+            looked[name] = DesktopEntries.heuristicLookup(String(given))?.id ?? "";
+        return looked[name] === entry.id;
+    }
+
+    // An action's name from its desktop entry, without the program's name
+    // leading it ("Spotify: Play" is "Play"), since the step already says
+    // whose it is.
+    function shortened(name, program) {
+        if (!name.toLowerCase().startsWith(program.toLowerCase()))
+            return name;
+        const after = name.slice(program.length);
+        const rest = after.replace(/^[\s:\u2013\u2014-]+/, "");
+        if (rest === "" || rest === after)
+            return name;
+        return rest[0].toUpperCase() + rest.slice(1);
+    }
+
+    // The desktop entry's own actions, as its menu lists them, each run as
+    // the entry runs: in a terminal when it asks for one, and from its own
+    // directory. One that's another act here already (Chrome's own "New
+    // Window") is left to that act, so nothing reads twice.
+    function menu(entry, taken) {
+        const own = Array.from(entry.command).join("\u0000");
+        return Array.from(entry.actions).map(action => ({
+            action: action,
+            name: provider.shortened(action.name, entry.name)
+        })).filter(one => one.name !== "" && !taken.includes(one.name.toLowerCase())
+            && Array.from(one.action.command).join("\u0000") !== own)
+            .map(one => thing({
+            key: `verb:desktop:${one.action.id}`,
+            // A new window is started; anything else is run.
+            verb: /^new\b/i.test(one.name) ? "start" : "run",
+            name: one.name,
+            keywords: one.name === one.action.name ? "" : one.action.name,
+            hue: "program",
+            run: () => Niri.spawn(provider.command({
+                command: Array.from(one.action.command),
+                runInTerminal: entry.runInTerminal,
+                workingDirectory: entry.workingDirectory
+            }))
+        }));
+    }
+
+    // Quit asks once, as ending the session does (Session.qml): Return
+    // steps in to a row saying what it closes, and a second Return closes
+    // each of its windows, as they are then, through niri, so a program
+    // asks about anything unsaved as its window's close button would.
+    function quit(entry, windows) {
+        const key = "verb:program:quit";
+        const closing = windows.length === 1 ? "its window" : `${windows.length} windows`;
+        return said(key, "", {
+            targets: () => [provider.thing({
+                key: `${key}:sure`,
+                verb: Words.verb(key),
+                name: `${Words.of(key).sure}, closing ${closing}`,
+                glyph: Words.glyph(key),
+                hue: "alert",
+                run: () => {
+                    for (const window of provider.running[entry.id] ?? [])
+                        Niri.act({ CloseWindow: { id: window.id } });
+                }
+            })]
+        });
+    }
+
+    // Its player that matters: the one playing, or else the first.
+    function playerOf(same) {
+        const players = Playing.players.filter(player => same(player.desktopEntry)
+            || same(player.identity));
+        return players.find(player => player.isPlaying) ?? players[0] ?? null;
+    }
+
+    function nowPlaying(player) {
+        return player.trackArtist === "" ? player.trackTitle
+            : `${player.trackTitle}, ${player.trackArtist}`;
+    }
+
+    // Media: playing or pausing, one row by how it stands, then the next
+    // and the last track, then what's playing. Next and Previous keep the
+    // launcher, since they're pressed again and again, and the foot and
+    // the last row say what's on now; a toggle is pressed once and goes.
+    function media(player) {
+        const row = said("program:media", "", {
+            hue: "program",
+            targets: () => {
+                const rows = [];
+                const going = player.isPlaying;
+                if (going ? player.canPause : player.canPlay)
+                    rows.push(provider.said("verb:program:play", going ? "playing" : "", {
+                        run: () => {
+                            if (player.isPlaying)
+                                player.pause();
+                            else
+                                player.play();
+                        }
+                    }));
+                if (player.canGoNext)
+                    rows.push(provider.said("verb:program:next", "", {
+                        stays: true,
+                        state: () => provider.nowPlaying(player),
+                        run: () => player.next()
+                    }));
+                if (player.canGoPrevious)
+                    rows.push(provider.said("verb:program:previous", "", {
+                        stays: true,
+                        state: () => provider.nowPlaying(player),
+                        run: () => player.previous()
+                    }));
+                if (player.trackTitle !== "")
+                    rows.push(provider.figure("program:playing", () => player.trackTitle,
+                        () => player.trackArtist, null));
+                return rows;
+            }
+        });
+        Object.defineProperty(row, "side", {
+            enumerable: true,
+            get: () => player.isPlaying ? "playing" : "paused"
+        });
+        return row;
+    }
+
+    // Its streams open to play sound through, by the name each gives, as
+    // the Sound collection finds them. A filter's own stream, such as the
+    // speakers' tuning, is no program's: it carries its filter's link group.
+    function streamsOf(same) {
+        return Playing.streams.filter(node => !!node.audio && !node.properties["node.link-group"]
+            && (same(node.properties["application.name"])
+                || same(node.properties["application.process.binary"]) || same(node.name)));
+    }
+
+    // How loud it is: its loudest stream, as a share of the whole.
+    function level(streams) {
+        return Math.max(0, ...streams.map(node => node.audio.volume));
+    }
+
+    function muted(streams) {
+        return streams.every(node => node.audio.muted);
+    }
+
+    function loudness(streams) {
+        return muted(streams) ? "muted" : `${Math.round(level(streams) * 100)}%`;
+    }
+
+    // Its volume as a bar, empty while muted. Loud wants nothing, so it
+    // never warns.
+    function bar(streams) {
+        return {
+            shape: "bar",
+            values: [muted(streams) ? 0 : Math.min(1, level(streams))],
+            warn: false
+        };
+    }
+
+    // Every stream a step louder or quieter, from the loudest, so they move
+    // as one; louder is meant to be heard, so it unmutes.
+    function turn(streams, by) {
+        const to = Math.min(1, Math.max(0, Math.round((level(streams) + by) / step) * step));
+        for (const node of streams) {
+            node.audio.volume = to;
+            if (by > 0)
+                node.audio.muted = false;
+        }
+    }
+
+    // Sound: muting or unmuting, by how it stands, Louder and Quieter, which
+    // keep the launcher to be pressed again, and its volume.
+    function sound(streams) {
+        const row = said("program:sound", "", {
+            hue: "program",
+            targets: () => {
+                const stepping = by => ({
+                    stays: true,
+                    state: () => `now ${provider.loudness(streams)}`,
+                    run: () => provider.turn(streams, by)
+                });
+                return [provider.said("verb:program:mute", provider.muted(streams) ? "muted" : "", {
+                    run: () => {
+                        const hushed = provider.muted(streams);
+                        for (const node of streams)
+                            node.audio.muted = !hushed;
+                    }
+                }), provider.said("verb:program:louder", "", stepping(step)),
+                provider.said("verb:program:quieter", "", stepping(-step)),
+                provider.figure("program:volume", () => Words.name("program:volume"),
+                    () => provider.loudness(streams), () => provider.bar(streams))];
+            }
+        });
+        Object.defineProperties(row, {
+            side: { enumerable: true, get: () => provider.loudness(streams) },
+            graph: { enumerable: true, get: () => provider.bar(streams) }
+        });
+        return row;
+    }
+
+    // Notifications: those it sent, newest first, each as the collection
+    // of them has it (PastNotices.qml), so Return on one does what it does
+    // there, and the right arrow steps into what else can be done to one.
+    // Without that collection in the launcher, there's none to hold.
+    function notices(same) {
+        const past = (provider.launcher?.sources ?? [])
+            .find(source => typeof source.sentBy === "function") ?? null;
+        const sent = past ? past.sentBy(same) : [];
+        if (sent.length === 0)
+            return [];
+        const unread = sent.filter(row => row.unread).length;
+        return [said("program:notices", "", {
+            hue: "program",
+            count: String(sent.length),
+            side: unread > 0 ? `${unread} unread` : "",
+            ask: "which?",
+            nested: true,
+            targets: () => past.sentBy(same)
+        })];
+    }
+
+    // Everything the right arrow holds for a program, as it stands now.
+    function controls(entry, start, below) {
+        const looked = {};
+        const same = given => provider.names(entry, given, looked);
+        const windows = running[entry.id] ?? [];
+        const latest = windows[0] ?? null;
+        const acts = (latest ? [said("verb:program:switch", "", {
+                side: titled(latest, entry),
+                run: () => Niri.act({ FocusWindow: { id: latest.id } })
+            })] : []).concat([said("verb:start", "", { run: start }),
+            said("verb:below", "", { chord: provider.launcher?.belowChord ?? [], run: below })],
+            windowsOf(entry));
+        const taken = ["verb:program:switch", "verb:start", "verb:below", "verb:program:quit"]
+            .map(key => Words.name(key).toLowerCase());
+        const player = playerOf(same);
+        const streams = streamsOf(same);
+        return acts.concat(menu(entry, taken), latest ? [quit(entry, windows)] : [],
+            player ? [media(player)] : [], streams.length > 0 ? [sound(streams)] : [],
+            notices(same));
     }
 
     things: DesktopEntries.applications.values
@@ -98,27 +392,7 @@ Provider {
                 // its name, as a collection's do (Launcher.qml).
                 named: binds.length > 0,
                 below: below,
-                verbs: () => provider.windowsOf(entry).concat([
-                    thing({
-                        key: "verb:start",
-                        verb: Words.verb("verb:start"),
-                        name: Words.name("verb:start"),
-                        keywords: Words.keywords("verb:start"),
-                        glyph: Words.glyph("verb:start"),
-                        hue: "action",
-                        run: start
-                    }),
-                    thing({
-                        key: "verb:below",
-                        verb: Words.verb("verb:below"),
-                        name: Words.name("verb:below"),
-                        keywords: Words.keywords("verb:below"),
-                        glyph: Words.glyph("verb:below"),
-                        hue: "action",
-                        chord: provider.launcher.belowChord,
-                        run: below
-                    })
-                ])
+                verbs: () => provider.controls(entry, start, below)
             });
             // Whether it's running, and so what Return does, is asked as
             // the row is read, never kept.

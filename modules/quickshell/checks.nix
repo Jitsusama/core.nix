@@ -276,6 +276,81 @@ in
       touch $out
     '';
 
+  # Shortcuts groups every layer's chords by what each acts on, as
+  # tests/key-groups.qml holds launcher/KeyGroups.js to an account's own
+  # binds, Neovim's and pi's among them, in Qt's own engine, each group
+  # named in the account's vocabulary; and steps through them in levels, as
+  # tests/key-map.qml drives launcher/KeyMap.qml through Quickshell itself
+  # over the same account's shortcuts, with niri stood in for.
+  the-launcher-groups-every-shortcut =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+      home = account (bareNixos [
+        self.nixosModules.graphical
+        {
+          home-manager.users.someone.imports = [
+            self.homeModules.neovim
+            self.homeModules.pi
+          ];
+        }
+      ]);
+      fields = map (b: {
+        inherit (b)
+          chord
+          keys
+          does
+          when
+          run
+          group
+          ;
+      });
+      layers = pkgs.writeText "layers.json" (
+        builtins.toJSON (lib.mapAttrs (_: fields) home.jitsusama.keys)
+      );
+      files = home.xdg.configFile;
+      words = pkgs.writeText "words.json" files."quickshell/launcher/words.json".text;
+      niri = pkgs.writeText "Niri.qml" ''
+        pragma Singleton
+        import Quickshell
+        import QtQuick
+        Singleton {
+            property var spawned: []
+            function spawn(command) { spawned = command; }
+        }
+      '';
+    in
+    pkgs.runCommandLocal "the-launcher-groups-every-shortcut" { } ''
+      export QML_XHR_ALLOW_FILE_READ=1
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+      mkdir groups shell
+      cd $TMPDIR/groups
+      cp ${../../tests/key-groups.qml} key-groups.qml
+      cp ${./launcher/KeyGroups.js} KeyGroups.js
+      cp ${layers} layers.json
+      cp ${words} words.json
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml ${qt}/bin/qml key-groups.qml
+      cd $TMPDIR/shell
+      mkdir -p runtime launcher && chmod 700 runtime
+      cp ${../../tests/key-map.qml} shell.qml
+      cp ${./Fuzzy.js} Fuzzy.js
+      cp ${./launcher/Provider.qml} launcher/Provider.qml
+      cp ${./launcher/Asking.js} launcher/Asking.js
+      cp ${./launcher/Numbers.js} launcher/Numbers.js
+      cp ${./launcher/KeyMap.qml} launcher/KeyMap.qml
+      cp ${./launcher/KeyGroups.js} launcher/KeyGroups.js
+      cp ${files."quickshell/Theme.qml".source} Theme.qml
+      cp ${files."quickshell/Shortcuts.qml".source} Shortcuts.qml
+      cp ${./Words.qml} Words.qml
+      cp ${words} launcher/words.json
+      cp ${niri} Niri.qml
+      export XDG_RUNTIME_DIR=$TMPDIR/shell/runtime
+      ${shellFolderLint}
+      timeout 60 ${lib.getExe' graphical.pkgs.quickshell "qs"} -p shell.qml
+      touch $out
+    '';
+
   # The launcher lands where it did: a thing is one row, the same letters
   # keep their row, and one slip teaches nothing, as tests/ranking.qml holds
   # launcher/Rank.js to it in Qt's own engine.
@@ -290,6 +365,23 @@ in
       export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
       ${shellFolderLint}
       QML_IMPORT_PATH=${qt}/lib/qt-6/qml ${qt}/bin/qml ranking.qml
+      touch $out
+    '';
+
+  # A list the launcher shows holds still as what's in it changes: its rows
+  # keep their order, new ones come last and the selection keeps its row, as
+  # tests/steady.qml holds launcher/Steady.js to it in Qt's own engine.
+  the-launcher-holds-still-as-it-refreshes =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "the-launcher-holds-still-as-it-refreshes" { } ''
+      cp ${../../tests/steady.qml} steady.qml
+      cp ${./launcher/Steady.js} Steady.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml steady.qml
       touch $out
     '';
 
@@ -671,6 +763,193 @@ in
       cp ${niri} Niri.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
       export PATH=${litra}/bin:$PATH
+      mkdir -m 700 $XDG_RUNTIME_DIR
+      export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+      ${shellFolderLint}
+      timeout 60 ${lib.getExe' graphical.pkgs.quickshell "qs"} -p shell.qml
+      touch $out
+    '';
+
+  # A program's step in the launcher holds what controls it, each only where
+  # it applies, in order (tests/program-controls.qml): over three desktop
+  # entries, with niri, the desktop's shortcuts, the notices' history and
+  # what's playing stood in, a player, two streams and two notices its own
+  # and one of each another's.
+  the-launcher-holds-a-programs-controls =
+    let
+      singleton =
+        name: body:
+        pkgs.writeText name ''
+          pragma Singleton
+          import Quickshell
+          import QtQuick
+          Singleton { ${body} }
+        '';
+      # Two of the tester's windows, the one on the workspace in front
+      # used last.
+      niri = singleton "Niri.qml" ''
+        property int revision: 0
+        property var windows: ({
+          "11": { id: 11, app_id: "tester", title: "Logbook - Tester", workspace_id: 1,
+            focus_timestamp: { secs: 200, nanos: 0 } },
+          "12": { id: 12, app_id: "tester", title: "Draft - Tester", workspace_id: 2,
+            focus_timestamp: { secs: 100, nanos: 0 } }
+        })
+        property var workspaces: ({
+          "1": { id: 1, idx: 1, is_focused: true, active_window_id: 11 },
+          "2": { id: 2, idx: 2, is_focused: false, active_window_id: 12 }
+        })
+        readonly property int current: 11
+        property var acted: []
+        property var spawned: []
+        function workspace(id) { return workspaces[id ?? "1"] ?? null; }
+        function act(action) { acted = acted.concat([action]); }
+        function spawn(command) { spawned = command; }
+      '';
+      notices = singleton "Notices.qml" ''
+        property var history: [
+          { id: 3, at: Date.now() - 60000, app: "Tester", summary: "Newest", body: "",
+            glyph: 0xf0f3, hue: "program", read: false, missed: false },
+          { id: 2, at: Date.now() - 120000, app: "Other", summary: "Not its", body: "",
+            glyph: 0xf0f3, hue: "program", read: false, missed: false },
+          { id: 1, at: Date.now() - 180000, app: "tester", summary: "Oldest", body: "said",
+            glyph: 0xf0f3, hue: "program", read: true, missed: false }
+        ]
+        property var live: ({})
+        property var waiting: []
+        property bool gathered: false
+        property var marked: []
+        function mark(id, read) { marked = marked.concat([id]); }
+        function seen() {}
+      '';
+      # The tester's player, found by its desktop entry, a radio's, found
+      # only by its identity, and one nobody's; the tester's two streams, a
+      # filter's carrying its name too, and another program's.
+      playing = singleton "Playing.qml" ''
+        property var players: [tester, radio, nobody]
+        property var streams: [first, second, filter, other]
+        QtObject {
+          id: tester
+          property string desktopEntry: "tester"
+          property string identity: "The Tester"
+          property bool isPlaying: true
+          property bool canPlay: true
+          property bool canPause: true
+          property bool canGoNext: true
+          property bool canGoPrevious: true
+          property string trackTitle: "Song of the test"
+          property string trackArtist: "The Testers"
+          property int nexts: 0
+          property int previouses: 0
+          function play() { isPlaying = true; }
+          function pause() { isPlaying = false; }
+          function next() { nexts += 1; }
+          function previous() { previouses += 1; }
+        }
+        QtObject {
+          id: radio
+          property string desktopEntry: ""
+          property string identity: "Radio"
+          property bool isPlaying: false
+          property bool canPlay: true
+          property bool canPause: true
+          property bool canGoNext: false
+          property bool canGoPrevious: false
+          property string trackTitle: ""
+          property string trackArtist: ""
+        }
+        QtObject {
+          id: nobody
+          property string desktopEntry: "elsewhere"
+          property string identity: "Elsewhere"
+          property bool isPlaying: true
+          property bool canPlay: true
+          property bool canPause: true
+          property bool canGoNext: true
+          property bool canGoPrevious: true
+          property string trackTitle: "Not its song"
+          property string trackArtist: ""
+        }
+        // A stream is its own audio, as a PipeWire node's volume and mute
+        // are its audio's.
+        component Stream: QtObject {
+          id: stream
+          property string name
+          property var properties: ({})
+          property real volume: 0.4
+          property bool muted: false
+          readonly property var audio: stream
+        }
+        Stream { id: first; name: "Tester"; properties: ({ "application.name": "Tester" }) }
+        Stream { id: second; name: "stream-2"; properties: ({ "application.process.binary": "tester" }) }
+        Stream {
+          id: filter
+          name: "Tester"
+          properties: ({ "application.name": "Tester", "node.link-group": "tuning" })
+          volume: 0.9
+        }
+        Stream {
+          id: other
+          name: "Other"
+          properties: ({ "application.name": "Other" })
+          volume: 0.7
+        }
+      '';
+      entry =
+        name: lines:
+        pkgs.writeText "${name}.desktop" ''
+          [Desktop Entry]
+          Type=Application
+          ${lines}
+        '';
+      tester = entry "tester" ''
+        Name=Tester
+        GenericName=Logbook
+        Exec=tester
+        Actions=private;new;logbook;
+
+        [Desktop Action private]
+        Name=Tester: Private window
+        Exec=tester --private
+
+        [Desktop Action new]
+        Name=New Window
+        Exec=tester --new-window
+
+        [Desktop Action logbook]
+        Name=Open the logbook
+        Exec=tester --logbook
+      '';
+      quiet = entry "quiet" ''
+        Name=Quiet
+        Exec=quiet
+      '';
+      radio = entry "radio" ''
+        Name=Radio
+        Exec=radio
+      '';
+    in
+    pkgs.runCommandLocal "the-launcher-holds-a-programs-controls" { } ''
+      mkdir -p launcher share/applications
+      cp ${tester} share/applications/tester.desktop
+      cp ${quiet} share/applications/quiet.desktop
+      cp ${radio} share/applications/radio.desktop
+      cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
+      cp ${./Fuzzy.js} Fuzzy.js
+      cp ${./launcher/Provider.qml} launcher/Provider.qml
+      cp ${./launcher/Asking.js} launcher/Asking.js
+      cp ${./launcher/Numbers.js} launcher/Numbers.js
+      cp ${./launcher/Applications.qml} launcher/Applications.qml
+      cp ${./launcher/PastNotices.qml} launcher/PastNotices.qml
+      cp ${./Words.qml} Words.qml
+      cp ${./launcher/words.json} launcher/words.json
+      cp ${../../tests/program-controls.qml} shell.qml
+      cp ${niri} Niri.qml
+      cp ${notices} Notices.qml
+      cp ${playing} launcher/Playing.qml
+      cp ${singleton "Shortcuts.qml" "property var actions: []"} Shortcuts.qml
+      export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
+      export XDG_DATA_HOME=$TMPDIR/data XDG_DATA_DIRS=$PWD/share
       mkdir -m 700 $XDG_RUNTIME_DIR
       export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
       ${shellFolderLint}

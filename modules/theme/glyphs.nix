@@ -445,6 +445,37 @@ in
     console = "K";
     means = "every layer's shortcuts";
   };
+  # The shortcuts' layers and groups that no mark above means already.
+  desktop = {
+    glyph = nerd "f01c4";
+    console = "d";
+    means = "the desktop: its windows, columns, workspaces and screens";
+  };
+  touchscreen = {
+    glyph = nerd "f0d76";
+    console = "~";
+    means = "the touchscreen's swipes";
+  };
+  columns = {
+    glyph = nerd "f056d";
+    console = "|";
+    means = "a column of windows, or moving one";
+  };
+  launcher = {
+    glyph = nerd "f0349";
+    console = "/";
+    means = "the launcher and the margin, finding what's there";
+  };
+  brightness = {
+    glyph = nerd "f00e0";
+    console = "*";
+    means = "how bright the screen is, or the lights";
+  };
+  session = {
+    glyph = nerd "f033e";
+    console = "L";
+    means = "the session: locking it, or ending it";
+  };
   keyboard = {
     glyph = nerd "f030c";
     console = "k";
