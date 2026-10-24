@@ -172,10 +172,13 @@ impl Settings {
     /// pings took its upload of about 10 Mbit/s to 1 or 2 and its download
     /// from 50 to 6 or 17. Joel wants the line's whole rate kept, and a
     /// shaper over the line only leaves it as unshaped, so a cut there
-    /// never goes more than a fifth under the best the line has carried.
+    /// never goes more than a twentieth under the best the line has
+    /// carried, as a cable's ceiling sits. At a fifth, live under the
+    /// agents' load, 104 of 115 cuts in 13 minutes ended at that floor,
+    /// holding an upload of 10.5 Mbit/s at 8.
     pub fn for_link(wireless: bool) -> Self {
         Settings {
-            least_of_best: if wireless { 0.8 } else { 0.0 },
+            least_of_best: if wireless { 0.95 } else { 0.0 },
             ..Settings::default()
         }
     }
@@ -853,8 +856,8 @@ mod tests {
             c.step(at, 0.6 * float(c.up.rate), 0.6 * float(c.down.rate));
             lowest = [lowest[0].min(c.up.rate), lowest[1].min(c.down.rate)];
         }
-        assert!(lowest[0] >= 8_000, "{lowest:?}");
-        assert!(lowest[1] >= 40_000, "{lowest:?}");
+        assert!(lowest[0] >= 9_500, "{lowest:?}");
+        assert!(lowest[1] >= 47_500, "{lowest:?}");
     }
 
     #[test]
@@ -887,7 +890,7 @@ mod tests {
             lowest = lowest.min(c.up.rate);
         }
         assert!(
-            float(lowest) >= 0.8 * float(climbed) - 1.0,
+            float(lowest) >= 0.95 * float(climbed) - 1.0,
             "{lowest} of {climbed}"
         );
     }
