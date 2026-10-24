@@ -87,17 +87,17 @@
         account (machine [
           { home-manager.sharedModules = [ { jitsusama.disk-guard.path = first; } ]; }
         ]);
-      onLinux =
-        (given (modules: bareNixos ([ self.nixosModules.workstation ] ++ modules)))
-        .systemd.user.services.disk-guard.Service.Environment;
-      onMac =
-        (given (modules: bareDarwin ([ self.darwinModules.workstation ] ++ modules)))
-        .launchd.agents.disk-guard.config.EnvironmentVariables.PATH;
-      leads = path: lib.hasPrefix "${pkgs.hello}/bin:" path && lib.hasInfix "-git-" path;
+      linux = given (modules: bareNixos ([ self.nixosModules.workstation ] ++ modules));
+      mac = given (modules: bareDarwin ([ self.darwinModules.workstation ] ++ modules));
+      # The machine's programs, then the account's git, and nothing else.
+      wanted = home: lib.makeBinPath (first ++ [ home.programs.git.package ]);
     in
     holds "disk-guard-finds-a-machines-programs-first"
       "A machine's programs for the disk guard aren't first on its PATH, or core's git is gone from it."
-      (leads (lib.removePrefix "PATH=" (builtins.head onLinux)) && leads onMac);
+      (
+        builtins.head linux.systemd.user.services.disk-guard.Service.Environment == "PATH=${wanted linux}"
+        && mac.launchd.agents.disk-guard.config.EnvironmentVariables.PATH == wanted mac
+      );
 }
 // onLinux {
   # The disk guard reads the configs a workstation and its account get:
