@@ -34,6 +34,10 @@
   backlight-passes-clippy = ''
     clippy finds nothing in the backlight daemon or its tests
   '';
+  bat-builds-no-cache = ''
+    an account's switch builds no bat cache, having no themes or syntaxes for one, and clears one
+    left from before
+  '';
   batteries-leave-time-to-power-off = ''
     UPower powers a laptop off at 5%, before it goes flat
   '';
