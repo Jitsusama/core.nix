@@ -311,6 +311,27 @@ with subtest("the stick comes out, and the machine boots its own disk with a key
     t.assertIn("Secure Boot: enabled (user)", status)
     machine.succeed("grep -q '^alice:\\$' /etc/shadow")
 
+
+# The range systemd picks a policy's NV index from (src/shared/tpm2-util.h).
+UNASSIGNED = range(0x01800000, 0x01BFFFFF + 1)
+
+
+def policies() -> list[int]:
+    """Give the NV indices in the range systemd-pcrlock picks a policy's from."""
+    getcap = Path(tpm2_clear).parent / "tpm2_getcap"
+    listed = machine.succeed(f"{getcap} -T device:/dev/tpmrm0 handles-nv-index")
+    # Nothing but systemd-pcrlock defines an index in that range on the
+    # VM's TPM, so each is a policy.
+    indices = [int(index, 16) for index in re.findall(r"0x[0-9A-Fa-f]+", listed)]
+    return [index for index in indices if index in UNASSIGNED]
+
+
+def own_policy() -> int:
+    """Give the NV index this disk's policy file names."""
+    policy: int = json.loads(machine.succeed("cat /var/lib/systemd/pcrlock.json"))["nvIndex"]
+    return policy
+
+
 with subtest("the guide seals the disk to the TPM with a PIN, a YubiKey opening it to do so"):
     on_screen("a PIN for the TPM")
     # The units still starting don't write across it.
@@ -330,6 +351,7 @@ with subtest("the guide seals the disk to the TPM with a PIN, a YubiKey opening 
     (sealed,) = [t["keyslots"][0] for t in header["tokens"].values() if t["type"] == "systemd-tpm2"]
     t.assertEqual(header["keyslots"][sealed].get("priority"), 2)
     print("FIXTURE luks-dump-sealed.json " + json.dumps(header))
+    t.assertEqual(policies(), [own_policy()])
 
 with subtest("the guide makes alice's SSH keys in the TPM, as alice, one with her PIN"):
     enter(key_pin)
@@ -578,3 +600,23 @@ with subtest("the reinstalled machine enforces with the same keys, the firmware 
     machine.succeed("test ! -e /boot/loader/keys/auto")
     t.assertIn("Secure Boot: enabled (user)", machine.succeed("bootctl status"))
     t.assertIn(owner, machine.succeed("sbctl status"))
+
+with subtest("the reinstalled machine's guide frees the TPM of the first install's policy"):
+    # The first install's policy outlived its wiped disk, beside the one
+    # this boot made.
+    earlier = [index for index in policies() if index != own_policy()]
+    t.assertEqual(len(earlier), 1)
+    machine.reboot()
+    unlock()
+    machine.connect()
+    on_screen("a PIN for the TPM")
+    enter(tpm_pin)
+    on_screen("the same PIN again")
+    enter(tpm_pin)
+    on_screen("Plug in a YubiKey")
+    enter("")
+    on_screen("the YubiKey's PIN")
+    enter(pin)
+    # Sealed, and freed before the guide asks for the account's keys.
+    on_screen("a PIN for alice's SSH keys", timeout=300)
+    t.assertEqual(policies(), [own_policy()])

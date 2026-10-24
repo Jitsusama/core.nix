@@ -72,6 +72,98 @@ pub fn nv_indices(text: &str) -> Result<Vec<u32>, Fault> {
 /// The arguments that list the TPM's NV indices.
 pub const NV_INDICES: &[&str] = &["-T", "device:/dev/tpmrm0", "handles-nv-index"];
 
+/// One NV index's public area, from `tpm2_nvreadpublic`: enough of it to
+/// say whose kind of index it is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct NvPublic {
+    pub index: u32,
+    /// The TPM's code for the hash naming it, 0xB for SHA-256.
+    pub name_alg: u32,
+    pub attributes: u32,
+    /// How many bytes it holds.
+    pub size: u32,
+}
+
+/// Where systemd picks an NV index for a policy it hasn't one for: the
+/// TCG's range left to anyone (systemd's src/shared/tpm2-util.h).
+pub const UNASSIGNED: std::ops::RangeInclusive<u32> = 0x0180_0000..=0x01BF_FFFF;
+
+/// The index's attributes once written: `TPMA_NV_WRITTEN`, which the TPM
+/// sets itself.
+const WRITTEN: u32 = 0x2000_0000;
+/// What systemd-pcrlock's `tpm2_define_policy_nv_index` defines its policy
+/// index with (systemd's src/shared/tpm2-util.c): an ordinary index,
+/// `TPMA_NV_WRITEALL`, `TPMA_NV_POLICYWRITE` and `TPMA_NV_OWNERREAD`, named
+/// by SHA-256 and holding one SHA-256 `TPMT_HA`, 34 bytes.
+const PCRLOCKS: u32 = 0x0000_1000 | 0x0000_0008 | 0x0002_0000;
+const SHA256: u32 = 0xB;
+const PCRLOCKS_SIZE: u32 = 34;
+
+impl NvPublic {
+    /// The arguments that read one index's public area.
+    pub fn args(index: u32) -> Vec<String> {
+        [DEVICE[0], DEVICE[1], &format!("{index:#x}")]
+            .iter()
+            .map(ToString::to_string)
+            .collect()
+    }
+
+    /// `tpm2_nvreadpublic`'s listing of one index: its handle, then each
+    /// field indented under it, nested by two spaces a level.
+    pub fn parse(text: &str) -> Result<NvPublic, Fault> {
+        let unreadable = |why: String| Fault::unreadable("the TPM's NV index", why);
+        let mut index = None;
+        let mut fields = BTreeMap::new();
+        let mut path: Vec<String> = Vec::new();
+        for line in text.lines() {
+            let Some((name, value)) = line.split_once(':') else {
+                continue;
+            };
+            let depth = (line.len() - line.trim_start().len()) / 2;
+            if depth == 0 {
+                index = Some(name.trim().to_string());
+                path.clear();
+                continue;
+            }
+            path.truncate(depth - 1);
+            path.push(name.trim().to_string());
+            let value = value.trim();
+            if !value.is_empty() {
+                fields.insert(path.join("."), value.to_string());
+            }
+        }
+        let number = |text: &str| -> Result<u32, Fault> {
+            match text.strip_prefix("0x") {
+                Some(hex) => u32::from_str_radix(hex, 16),
+                None => text.parse(),
+            }
+            .map_err(|_| unreadable(format!("{text} isn't a number")))
+        };
+        let field = |name: &str| -> Result<u32, Fault> {
+            number(
+                fields
+                    .get(name)
+                    .ok_or_else(|| unreadable(format!("no {name}")))?,
+            )
+        };
+        Ok(NvPublic {
+            index: number(&index.ok_or_else(|| unreadable("no index".into()))?)?,
+            name_alg: field("hash algorithm.value")?,
+            attributes: field("attributes.value")?,
+            size: field("size")?,
+        })
+    }
+
+    /// Whether it's an index systemd-pcrlock keeps a disk's policy in, by
+    /// the range and shape it defines every one with.
+    pub fn is_pcrlocks(&self) -> bool {
+        UNASSIGNED.contains(&self.index)
+            && self.name_alg == SHA256
+            && self.attributes & !WRITTEN == PCRLOCKS
+            && self.size == PCRLOCKS_SIZE
+    }
+}
+
 /// What the TPM says of itself that never changes.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Fixed {
@@ -182,6 +274,42 @@ mod tests {
         let lockout = Lockout::parse(xps!("tpm2-properties-variable.txt")).unwrap();
         assert!(!lockout.guarded && !lockout.locked);
         assert_eq!(lockout.left(), 32);
+    }
+
+    #[test]
+    fn the_xpss_pcrlock_index_is_read_as_pcrlocks() {
+        let public = NvPublic::parse(xps!("tpm2-nvreadpublic-0x1accce4.txt")).unwrap();
+        assert_eq!(
+            public,
+            NvPublic {
+                index: 0x01AC_CCE4,
+                name_alg: 0xB,
+                attributes: 0x2002_1008,
+                size: 34,
+            }
+        );
+        assert!(public.is_pcrlocks());
+        // The index its policy file names.
+        assert!(xps!("pcrlock-nvindex.json").contains(&public.index.to_string()));
+    }
+
+    #[test]
+    fn an_index_of_another_shape_isnt_pcrlocks() {
+        let nvpcr = NvPublic::parse(xps!("tpm2-nvreadpublic-0x1d10200.txt")).unwrap();
+        assert_eq!(nvpcr.size, 32);
+        assert!(!nvpcr.is_pcrlocks());
+        let pcrlock = NvPublic::parse(xps!("tpm2-nvreadpublic-0x1accce4.txt")).unwrap();
+        // Someone else's index in the same range, deletable by its policy.
+        let deletable = NvPublic {
+            attributes: pcrlock.attributes | 0x0000_0400,
+            ..pcrlock
+        };
+        assert!(!deletable.is_pcrlocks());
+        let elsewhere = NvPublic {
+            index: 0x01C0_0002,
+            ..pcrlock
+        };
+        assert!(!elsewhere.is_pcrlocks());
     }
 
     #[test]

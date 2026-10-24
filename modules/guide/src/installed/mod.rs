@@ -3,11 +3,13 @@
 //! disk sealed to the TPM with a PIN and its slot tried first, so every
 //! boot asks for that PIN, and a YubiKey or the recovery key opens it when
 //! the TPM won't, then the accounts' SSH keys made in the TPM (keys.rs)
-//! and a spare kept on each YubiKey (spares.rs).
+//! and a spare kept on each YubiKey (spares.rs). The TPM is freed of the
+//! policies earlier installs left in it (policies.rs).
 //! The guide runs as root here, at boot from core's guide module, or by
 //! hand through run0.
 
 pub mod keys;
+pub mod policies;
 pub mod spares;
 
 use serde::Deserialize;
@@ -441,6 +443,7 @@ pub fn steps() -> Vec<Box<dyn Step>> {
     vec![
         Box::new(CheckSecureBoot),
         Box::new(SealTpm),
+        Box::new(policies::FreeOldPolicies),
         Box::new(keys::MakeKeys),
         Box::new(spares::SpareKeys),
     ]

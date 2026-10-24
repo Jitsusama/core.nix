@@ -60,6 +60,8 @@ tools! {
     SystemdCryptenroll => "systemd-cryptenroll", "GUIDE_SYSTEMD_CRYPTENROLL";
     Systemctl => "systemctl", "GUIDE_SYSTEMCTL";
     Tpm2Getcap => "tpm2_getcap", "GUIDE_TPM2_GETCAP";
+    Tpm2Nvreadpublic => "tpm2_nvreadpublic", "GUIDE_TPM2_NVREADPUBLIC";
+    Tpm2Nvundefine => "tpm2_nvundefine", "GUIDE_TPM2_NVUNDEFINE";
     Udevadm => "udevadm", "GUIDE_UDEVADM";
     Umount => "umount", "GUIDE_UMOUNT";
     Veritysetup => "veritysetup", "GUIDE_VERITYSETUP";

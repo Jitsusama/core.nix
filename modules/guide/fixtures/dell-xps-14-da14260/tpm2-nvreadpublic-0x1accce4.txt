@@ -1,0 +1,11 @@
+0x1accce4:
+  name: 000bca053a9c9f1e5813c36e862c0b9cc476b6c7c6bf68fb738ffd137821e463aad0
+  hash algorithm:
+    friendly: sha256
+    value: 0xB
+  attributes:
+    friendly: policywrite|writeall|ownerread|written
+    value: 0x20021008
+  size: 34
+  authorization policy: CBDCDE7C30EDF9703A87284C59BD1D9C00DD086FBA4F2F352ECAEC28189C2E08
+

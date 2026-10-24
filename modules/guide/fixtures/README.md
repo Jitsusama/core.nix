@@ -19,6 +19,7 @@ that changes what it prints fails a test rather than a person's install.
 | `sbctl-db.pem`                 | that certificate, `/var/lib/sbctl/keys/db/db.pem`, on the Surface |
 | `tpm2-properties-<kind>.txt`   | `tpm2_getcap properties-<kind>`, which prints the same with the guide's `-T device:/dev/tpmrm0` |
 | `tpm2-handles-nv-index.txt`    | `tpm2_getcap handles-nv-index`, the same                      |
+| `tpm2-nvreadpublic-<index>.txt` | `tpm2_nvreadpublic -T device:/dev/tpmrm0 <index>` on the XPS 14, captured on 2026-10-24: its pcrlock policy's index, and an NvPCR's |
 | `pcrlock-nvindex.json`         | `jq -c '{nvIndex}' /var/lib/systemd/pcrlock.json`, the NV index in that list systemd-pcrlock keeps the disk's policy in; the rest of the file is sealed to that TPM and of no use to a test |
 
 A missing file is one the machine doesn't have: the Surface's firmware keeps

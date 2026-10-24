@@ -170,7 +170,15 @@ driven on; the installed machine's steps come later.
   refuse the next ordinary boot, which opens with the TPM's PIN. Its
   secrets go only as files in memory and on
   standard input, never on a command line.
-- **The keys in the TPM.** Once the disk is sealed, the installed guide
+- **Earlier installs' policies.** Once the disk is sealed, the
+  installed guide frees every NV index an earlier install's
+  systemd-pcrlock left in the TPM, since a wiped disk takes the file
+  naming its index along and each reinstall would leave one more. It
+  takes for one only an index in the range systemd picks from, shaped as
+  pcrlock defines every policy's (`observe::tpm::NvPublic::is_pcrlocks`,
+  read from systemd's own source), and only while the TPM holds this
+  install's, so a cleared TPM or a missing policy file frees nothing.
+- **The keys in the TPM.** Then the installed guide
   makes each SSH key the accounts keep in the TPM that's missing: every
   one a home-manager module names in `jitsusama.tpmKeys`, which the
   `guide` module gathers into `jitsusama.guide.keys` and machine.json.

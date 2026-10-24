@@ -58,6 +58,8 @@ in
   GUIDE_SYSTEMD_CRYPTENROLL = lib.getExe' systemd "systemd-cryptenroll";
   GUIDE_SYSTEMCTL = lib.getExe' systemd "systemctl";
   GUIDE_TPM2_GETCAP = lib.getExe' pkgs.tpm2-tools "tpm2_getcap";
+  GUIDE_TPM2_NVREADPUBLIC = lib.getExe' pkgs.tpm2-tools "tpm2_nvreadpublic";
+  GUIDE_TPM2_NVUNDEFINE = lib.getExe' pkgs.tpm2-tools "tpm2_nvundefine";
   GUIDE_UDEVADM = lib.getExe' systemd "udevadm";
   GUIDE_UMOUNT = lib.getExe' pkgs.util-linux "umount";
   GUIDE_VERITYSETUP = lib.getExe' pkgs.cryptsetup "veritysetup";
