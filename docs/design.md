@@ -604,7 +604,19 @@ works the same way everywhere.
   of bare figures. So is the machine itself, in its own words: "battery" or
   "charger", "temperature" or "fans", "date" or "epoch", "brightness",
   "volume", "keyboards", and "lag" or "slow" for whether anything waited
-  in the last ten seconds. The start of one of those words, three letters
+  in the last ten seconds. The machine's own things answer the same way,
+  each with its parts a step in: "cpu" (its Cores, one reading each in
+  order, which are Maxed, the Clock, the Temperature as "temperature"
+  says it, the programs Using it, the Load, the Kinds of core and the
+  Model), "memory" (Used, Pressure, Swap, Cached, Using it and the Type
+  read at boot), "disk" (the Space the disk guard says, Speed, Busy,
+  Latency, Temperature, Health as UDisks has it, and the Model), "uptime"
+  and "queue". A part answers alone by its own words, "disk speed" or
+  "ram type". A rate is the difference between two reads, read again
+  once a second while it's shown and never for a key, and the footer says
+  whether it's just now or since last asked. A part holding more steps in
+  on Return as on the right arrow; a figure copies nothing, and a model
+  does. The start of one of those words, three letters
   or more, asks it too: "batt" shows the battery, the rest of the word in
   grey, and Tab finishes it. A row whose name starts the same way is
   chosen first, so "pow" is still Power Off. A colour's first row wears

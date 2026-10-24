@@ -300,8 +300,8 @@ in
 
   # The launcher answers what's asked: sums and number bases, IPv4 and IPv6
   # addresses and networks with the kind of range each is in, hardware
-  # addresses, measures and the time in any zone tzdata names, as
-  # tests/answers.qml lists them, and leaves alone what isn't one, in Qt's
+  # addresses, measures, the time in any zone tzdata names and the
+  # machine's figures from its files, as tests/answers.qml lists them, and leaves alone what isn't one, in Qt's
   # own JavaScript engine.
   the-launcher-answers-what-is-asked =
     let
@@ -315,6 +315,7 @@ in
       cp ${./launcher/Zones.js} Zones.js
       cp ${./launcher/Colours.js} Colours.js
       cp ${./launcher/Asking.js} Asking.js
+      cp ${./launcher/Machine.js} Machine.js
       cp ${../../tests/colour-cases.js} colour-cases.js
       cp ${import ./launcher/zones.nix { inherit lib pkgs; }} zones.jsonl
       export QML_XHR_ALLOW_FILE_READ=1

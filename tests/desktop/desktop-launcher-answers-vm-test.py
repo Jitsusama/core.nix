@@ -249,9 +249,38 @@ with subtest("the launcher answers what's asked, and copies the answer"):
         lambda shown: (shown["selected"] or {}).get("name", "").endswith(" free on /nix")
     )
     photograph("launcher-disks")
-    # Its first part, a step in, is the headline's disk.
+    # Its first part, a step in, is the space the headline's disk has,
+    # and the disk's speed, how busy it is and its latency come after.
     step_in()
-    launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "20.0 GiB free")
+    launcher_until(
+        lambda shown: (
+            (shown["selected"] or {}).get("name") == "Space"
+            and shown["selected"]["side"] == "20.0 GiB free"
+            and {"Speed", "Busy", "Latency"} <= set(shown["rows"])
+        )
+    )
+    # A step further, each disk the guard watches, the headline's first.
+    step_in()
+    launcher_until(
+        lambda shown: (
+            shown["rows"][:1] == ["/nix"]
+            and shown["selected"]["side"] == "20.0 GiB free \u00b7 pressure"
+        )
+    )
+    machine.send_key("esc")
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
+    # A part asked for alone, by its own words: how fast the disk
+    # reads and writes, each a step in.
+    answer("disk speed")
+    launcher_until(
+        lambda shown: (
+            shown["kind"] == "answer"
+            and re.fullmatch(r"[\d.,]+ (B|kB|MB|GB)/s", (shown["selected"] or {}).get("name", ""))
+            is not None
+        )
+    )
+    step_in()
+    launcher_until(lambda shown: shown["rows"] == ["Reading", "Writing"])
     machine.send_key("esc")
     machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
     # A guard that stops writing is silent once its last heartbeat is
@@ -347,6 +376,30 @@ with subtest("the launcher answers what's asked, and copies the answer"):
     machine.send_key("esc")
     machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
     as_account("rm $XDG_RUNTIME_DIR/jobs/queue.json")
+    # How busy the processors are, read again while it's shown, so a
+    # moment on it says just now; a step in, each core and the rest.
+    answer("cpu")
+    launcher_until(
+        lambda shown: (
+            re.fullmatch(r"\d+% busy", (shown["selected"] or {}).get("name", "")) is not None
+            and shown["footer"] == "just now"
+        )
+    )
+    step_in()
+    launcher_until(lambda shown: {"Cores", "Maxed", "Load"} <= set(shown["rows"]))
+    step_in()
+    launcher_until(lambda shown: shown["rows"][0] == "Core 0")
+    machine.send_key("esc")
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
+    # The memory, and the programs holding most of it, read once it's
+    # asked.
+    answer("memory")
+    launcher_until(lambda shown: "GiB used" in (shown["selected"] or {}).get("name", ""))
+    time.sleep(2)
+    step_in()
+    launcher_until(lambda shown: {"Used", "Cached", "Using it"} <= set(shown["rows"]))
+    machine.send_key("esc")
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
     # The keyboards QEMU gives it, however many, and caps lock.
     answer("keyboards")
     photograph("launcher-keyboards")

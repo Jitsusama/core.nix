@@ -1,0 +1,323 @@
+// What the launcher's machine answers make of the kernel's files, in plain
+// JavaScript so a check can run it in Qt's own engine, as the shell does:
+// how busy the processors and each core were between two reads, which kind
+// each core is, how fast a disk read and wrote between two reads, which
+// programs use the processors and the memory, and the memory modules the
+// machine read at boot. Machine.qml reads the files and says the figures.
+.pragma library
+
+// A line of /proc/stat counting a processor's time: "cpu" for them all,
+// "cpu3" for one.
+const CPU_LINE = /^cpu(\d*)\s/;
+const SPACES = /\s+/;
+// A process's line of /proc/<pid>/stat: its id and its name in brackets.
+const PROCESS_LINE = /^(\d+) \(/;
+// The ranges a CPU list is written in: "0-3,8".
+const RANGE = /^(\d+)(?:-(\d+))?$/;
+// Memory pressure: the share of the last ten seconds something waited.
+const SOME_PRESSURE = /^some avg10=([\d.]+)/m;
+// A line of /proc/meminfo.
+const MEMINFO_LINE = /^(\w+):\s+(\d+)/;
+// The marks a processor's maker puts in its name, and the clock some add.
+const MARKS = /\((R|TM)\)|\bCPU\b|@.*$/gi;
+
+// The fields of a processor's line that count time spent, from user to
+// steal; guest time is counted in user time already.
+const COUNTED = 8;
+const IDLE = 3;
+const WAITING_ON_IO = 4;
+// The fields of a process's stat after its name: its user and system
+// time in ticks, and its resident pages.
+const USER_TIME = 11;
+const SYSTEM_TIME = 12;
+const RESIDENT = 21;
+// The fields of a disk's stat: reads and writes done, sectors read and
+// written, the milliseconds each spent, and the milliseconds it was busy.
+const READS = 0;
+const SECTORS_READ = 2;
+const READING_MS = 3;
+const WRITES = 4;
+const SECTORS_WRITTEN = 6;
+const WRITING_MS = 7;
+const BUSY_MS = 9;
+// The kernel counts a disk's sectors in 512 bytes, whatever the disk's own.
+const SECTOR = 512;
+const MILLISECONDS = 1000;
+const PERCENT = 100;
+
+// A core this busy or busier is maxed.
+const MAXED = 0.95;
+// Past this many maxed cores they're counted, not named.
+const NAMED = 4;
+// How many programs are named as using the machine.
+const TOP = 3;
+// The longest a process's name is kept by the kernel, after which it's cut.
+const NAME_KEPT = 15;
+const WRAPPED = "-wrapped";
+
+// What each processor's counters say, the whole first and then each core
+// by its number: the time it's been busy, and all its time.
+function counters(text) {
+    const cores = [];
+    let whole = null;
+    for (const line of text.split("\n").filter(each => CPU_LINE.test(each))) {
+        const named = CPU_LINE.exec(line);
+        const fields = line.trim().split(SPACES).slice(1, 1 + COUNTED).map(Number);
+        const all = fields.reduce((sum, field) => sum + field, 0);
+        const idle = fields[IDLE] + (fields[WAITING_ON_IO] ?? 0);
+        const counted = { busy: all - idle, all };
+        if (named[1] === "") {
+            whole = counted;
+        } else {
+            cores.push(Object.assign({ n: Number(named[1]) }, counted));
+        }
+    }
+    cores.sort((a, b) => a.n - b.n);
+    return { whole, cores };
+}
+
+// How busy a processor was between two reads of its counters, from 0 to 1;
+// with no read before, since the machine started.
+function busy(now, then) {
+    const all = now.all - (then ? then.all : 0);
+    return all > 0 ? (now.busy - (then ? then.busy : 0)) / all : 0;
+}
+
+// Each core's share between two reads, in core order.
+function loads(now, then) {
+    return now.cores.map(core => ({
+        n: core.n,
+        load: busy(core, then ? then.cores.find(before => before.n === core.n) : null)
+    }));
+}
+
+// The maxed cores, as a row says them: none, by number while they're few,
+// or how many of how many.
+function maxed(cores) {
+    const flat = cores.filter(core => core.load >= MAXED).map(core => core.n);
+    if (flat.length === 0) {
+        return "none";
+    }
+    if (flat.length > NAMED) {
+        return `${flat.length} of ${cores.length}`;
+    }
+    if (flat.length === 1) {
+        return `core ${flat[0]}`;
+    }
+    return `cores ${flat.slice(0, -1).join(", ")} and ${flat.slice(-1)[0]}`;
+}
+
+// A processor's model as /proc/cpuinfo names it, without its trade marks:
+// "Intel(R) Core(TM) Ultra X7 358H" is an Intel Core Ultra X7 358H.
+function model(name) {
+    return name.replace(MARKS, " ").trim().split(SPACES).join(" ");
+}
+
+// The CPU numbers a list such as /sys/devices/cpu_core/cpus names.
+function cpus(text) {
+    const listed = [];
+    const ranges = text.trim().split(",").map(part => RANGE.exec(part.trim()))
+        .filter(range => range !== null);
+    for (const range of ranges) {
+        const last = Number(range[2] ?? range[1]);
+        for (let n = Number(range[1]); n <= last; n += 1) {
+            listed.push(n);
+        }
+    }
+    return listed;
+}
+
+// Each core's kind, by its number, on a processor of more than one kind:
+// those the kernel calls cores are for performance, and of its smaller
+// ones, those that clock highest are efficient and the rest low-power.
+// Null when the kernel says no core is a performance core.
+function kinds(performance, cores) {
+    if (performance.length === 0) {
+        return null;
+    }
+    const small = cores.filter(core => !performance.includes(core.n));
+    const fastest = Math.max(...small.map(core => core.max));
+    const kind = {};
+    for (const core of cores) {
+        if (performance.includes(core.n)) {
+            kind[core.n] = "performance";
+        } else {
+            kind[core.n] = core.max >= fastest ? "efficient" : "low-power";
+        }
+    }
+    return kind;
+}
+
+// A disk's counters, from its /sys/block/<disk>/stat.
+function disk(text) {
+    const fields = text.trim().split(SPACES).map(Number);
+    return fields.length > BUSY_MS && !fields.some(Number.isNaN) ? fields : null;
+}
+
+// How a disk did between two reads, `seconds` apart: bytes a second read
+// and written, its share of the time busy, and the milliseconds a request
+// took, or null with none made. With no read before, since it started.
+function rates(now, then, seconds) {
+    const change = field => now[field] - (then ? then[field] : 0);
+    const requests = change(READS) + change(WRITES);
+    const time = seconds > 0 ? seconds : 1;
+    return {
+        read: change(SECTORS_READ) * SECTOR / time,
+        write: change(SECTORS_WRITTEN) * SECTOR / time,
+        busy: Math.min(1, change(BUSY_MS) / (time * MILLISECONDS)),
+        latency: requests > 0 ? (change(READING_MS) + change(WRITING_MS)) / requests : null
+    };
+}
+
+// A program by the name it's known by: the kernel keeps fifteen letters of
+// a process's name, and Nix runs a wrapped program as ".kitty-wrapped",
+// cut short as ".firefox-wrappe" when the name is long.
+function program(name) {
+    if (!name.startsWith(".")) {
+        return name;
+    }
+    const bare = name.slice(1);
+    for (let cut = WRAPPED.length; cut > 0; cut -= 1) {
+        const end = WRAPPED.slice(0, cut);
+        const whole = cut === WRAPPED.length || name.length === NAME_KEPT;
+        if (whole && bare.endsWith(end) && bare.length > end.length) {
+            return bare.slice(0, -end.length);
+        }
+    }
+    return bare;
+}
+
+// What one read of the processes says: the page size first, then
+// /proc/stat, then each process's stat line. The whole machine's ticks, and
+// each process by its id with its program, its ticks and its resident
+// bytes.
+function processes(text) {
+    const lines = text.split("\n");
+    const page = Number(lines[0]) || 1;
+    const programs = {};
+    const machine = lines.find(line => line.startsWith("cpu "));
+    const ticks = machine ? counters(machine).whole.all : 0;
+    for (const line of lines.filter(each => PROCESS_LINE.test(each))) {
+        const started = PROCESS_LINE.exec(line);
+        const close = line.lastIndexOf(")");
+        const fields = line.slice(close + 2).split(" ");
+        programs[started[1]] = {
+            name: program(line.slice(started[0].length, close)),
+            ticks: Number(fields[USER_TIME]) + Number(fields[SYSTEM_TIME]),
+            bytes: Number(fields[RESIDENT]) * page
+        };
+    }
+    return { ticks, programs };
+}
+
+// The programs using most of something, by name, each program's
+// processes summed: [{ name, value }], at most three, none at nothing.
+function top(values) {
+    return Object.keys(values)
+        .map(name => ({ name, value: values[name] }))
+        .filter(each => each.value > 0)
+        .sort((a, b) => b.value - a.value || (a.name < b.name ? -1 : 1))
+        .slice(0, TOP);
+}
+
+// The programs that used the processors most between two reads, each
+// with its share of the whole machine, from 0 to 1. A process that started
+// between them is left out, since its time before can't be told.
+function using(now, then) {
+    const all = now.ticks - then.ticks;
+    const ticks = {};
+    if (all <= 0) {
+        return [];
+    }
+    for (const id of Object.keys(now.programs)) {
+        const before = then.programs[id];
+        const process = now.programs[id];
+        if (before && before.name === process.name) {
+            ticks[process.name] = (ticks[process.name] ?? 0) + process.ticks - before.ticks;
+        }
+    }
+    return top(ticks).map(each => ({ name: each.name, value: each.value / all }));
+}
+
+// The programs holding the most memory, in bytes.
+function holding(now) {
+    const bytes = {};
+    for (const process of Object.values(now.programs)) {
+        bytes[process.name] = (bytes[process.name] ?? 0) + process.bytes;
+    }
+    return top(bytes);
+}
+
+// /proc/meminfo's fields, in KiB.
+function meminfo(text) {
+    const info = {};
+    for (const line of text.split("\n")) {
+        const field = MEMINFO_LINE.exec(line);
+        if (field) {
+            info[field[1]] = Number(field[2]);
+        }
+    }
+    return info;
+}
+
+// The share of the last ten seconds something waited for memory, 0 to 1,
+// or null where the kernel doesn't say.
+function pressure(text) {
+    const some = SOME_PRESSURE.exec(text);
+    return some ? Number(some[1]) / PERCENT : null;
+}
+
+// The memory modules the machine read at boot, as /run/memory-modules.json
+// lists them: their type and speed where every module says the same, how
+// many and how big, and who made them. Null with none listed or no type.
+function modules(text) {
+    let said = null;
+    try {
+        said = JSON.parse(text);
+    } catch (_error) {
+        return null;
+    }
+    const listed = Array.isArray(said?.modules) ? said.modules : [];
+    const alike = field => {
+        const values = listed.map(each => String(each[field] ?? "").trim())
+            .filter(value => value !== "");
+        return values.length > 0 && values.every(value => value === values[0]) ? values[0] : "";
+    };
+    const type = alike("type");
+    if (type === "") {
+        return null;
+    }
+    return {
+        type,
+        speed: alike("speed"),
+        size: alike("size"),
+        maker: alike("manufacturer"),
+        count: listed.length
+    };
+}
+
+// A spark's values, from 0 to 1 against the most of them or `least`,
+// whichever is more, so a disk all but idle draws as all but empty.
+function spark(values, least) {
+    const most = Math.max(least, ...values);
+    return values.map(value => (most > 0 ? value / most : 0));
+}
+
+// The processor's own temperature among its chip's sensors, as Heat says
+// it: the package's or the die's, else its hottest core's, else its first.
+const WHOLE = /^(Package|Tctl|Tdie)/;
+const CORE = /^Core/;
+
+function hottestCore(temps) {
+    return temps.filter(sensor => CORE.test(sensor.label))
+        .reduce((hottest, sensor) => (hottest && hottest.value >= sensor.value ? hottest : sensor),
+            null);
+}
+
+function wholeProcessor(temps) {
+    return temps.find(sensor => WHOLE.test(sensor.label)) ?? null;
+}
+
+function processor(temps) {
+    return wholeProcessor(temps) ?? hottestCore(temps) ?? temps[0] ?? null;
+}

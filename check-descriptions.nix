@@ -570,7 +570,7 @@
     makes, once, with its level, off as dark
   '';
   the-launcher-answers-what-is-asked = ''
-    sums, addresses, measures, zones and colours answer
+    sums, addresses, measures, zones, colours and the machine's figures answer
   '';
   the-launcher-finds-emoji = ''
     emoji are found by name and meaning, best first
