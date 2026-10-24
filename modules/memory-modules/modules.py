@@ -77,6 +77,12 @@ MEMORY_TYPES = {
     0x24: "HBM3",
 }
 
+# SMBIOS has no code for LPDDR5X, so firmware lists it as LPDDR5. JEDEC's LPDDR5 runs at
+# 6400 MT/s at most, so LPDDR5 rated faster than that can only be LPDDR5X.
+LPDDR5 = "LPDDR5"
+LPDDR5X = "LPDDR5X"
+LPDDR5_FASTEST = 6400
+
 # What firmware writes in a string it has nothing to put in, which says nothing either.
 NOTHING_SAID = {"", "not specified", "unknown", "undefined", "none", "to be filled by o.e.m."}
 
@@ -149,6 +155,17 @@ def speed_said(raw: bytes) -> str:
     return f"{speed} MT/s" if speed else ""
 
 
+def type_said(raw: bytes) -> str:
+    """Say the memory's type as the specification names it, LPDDR5X where it can only be that."""
+    said = MEMORY_TYPES.get(number(raw, MEMORY_TYPE, 1) or 0, "")
+    rated = speed_at(raw, SPEED, EXTENDED_SPEED) or speed_at(
+        raw, CONFIGURED_SPEED, EXTENDED_CONFIGURED_SPEED
+    )
+    if said == LPDDR5 and rated is not None and rated > LPDDR5_FASTEST:
+        return LPDDR5X
+    return said
+
+
 def module_of(raw: bytes) -> dict[str, str] | None:
     """Give a memory device as the launcher reads it, or None for an empty slot."""
     kibibytes = kibibytes_of(raw)
@@ -158,7 +175,7 @@ def module_of(raw: bytes) -> dict[str, str] | None:
     return {
         "locator": string_at(raw, DEVICE_LOCATOR, texts) or string_at(raw, BANK_LOCATOR, texts),
         "size": size_said(kibibytes),
-        "type": MEMORY_TYPES.get(number(raw, MEMORY_TYPE, 1) or 0, ""),
+        "type": type_said(raw),
         "speed": speed_said(raw),
         "manufacturer": string_at(raw, MANUFACTURER, texts),
         "part": string_at(raw, PART_NUMBER, texts),
