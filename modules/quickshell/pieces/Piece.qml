@@ -63,6 +63,7 @@ Item {
     // the share's, whose words say notices are held.
     property bool collected: false
     property string hue: "machine"
-    // { glyph, name, chord, run(shell) }
+    // { glyph, name, chord, run(shell) }, and a `verb` where the name is
+    // too long for the launcher's foot to say beside Return.
     property var actions: []
 }

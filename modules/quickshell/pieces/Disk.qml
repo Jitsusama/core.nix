@@ -74,6 +74,7 @@ Piece {
     }] : []).concat([{
         glyph: String.fromCodePoint(0xf0349),
         name: "See what it would take",
+        verb: "see",
         run: () => Niri.spawn(["kitty", "--hold", "disk-guard", "plan"])
     }]).concat(silent ? [{
         glyph: String.fromCodePoint(0xf040a),
