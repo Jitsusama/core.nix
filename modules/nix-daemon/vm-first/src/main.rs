@@ -365,7 +365,7 @@ mod tests {
             to_enable("cpuset cpu io memory hugetlb pids\n", "\n").as_deref(),
             Some("+cpu +io +memory +pids")
         );
-        // As optimus's daemon is given them today, without cpu.
+        // As a daemon whose unit delegates no controllers is given them, without cpu.
         assert_eq!(
             to_enable("io memory pids\n", "memory\n").as_deref(),
             Some("+io +pids")
