@@ -27,6 +27,12 @@
 //! rests long after its last cut holds its best rate again. Should the
 //! line still be slow, the first burst's queue cuts it within a second or
 //! two, and that cut is kept rather than forgotten again.
+//! Only a direction busy for some seconds climbs past its held rate. pi's
+//! requests, a megabyte or two each, kept the upload busy a second or two
+//! at a time, and each such burst climbed past the line and was cut, so
+//! every few seconds a queue of about 20 ms built that calls shared. A
+//! burst now fits under the held rate, and a transfer that lasts still
+//! looks for more.
 
 use std::collections::{HashMap, VecDeque};
 
@@ -90,6 +96,9 @@ pub struct Settings {
     /// Seconds a forgotten-back peak must carry a busy line without delay
     /// before it's the line's again, and a later cut is forgotten too.
     pub proven_s: f64,
+    /// Seconds a direction must stay busy before it climbs past its held
+    /// rate.
+    pub probe_after_s: f64,
 }
 
 impl Default for Settings {
@@ -118,6 +127,9 @@ impl Default for Settings {
             // over its rate for its first several seconds. A peak not yet
             // proven costs little: one the line does carry is climbed to.
             proven_s: 15.0,
+            // Longer than a request's burst, and short beside a download
+            // or a push that a faster line would help.
+            probe_after_s: 5.0,
         }
     }
 }
@@ -145,6 +157,9 @@ pub struct Direction {
     /// When this direction was last cut: the other's cuts say nothing of
     /// whether this one's is old.
     cut_at: Option<f64>,
+    /// When its latest run of busy steps began, since it last rested or
+    /// was cut.
+    busy_since: Option<f64>,
 }
 
 impl Direction {
@@ -159,6 +174,7 @@ impl Direction {
             forgot: false,
             proving: None,
             cut_at: None,
+            busy_since: None,
         }
     }
 
@@ -166,9 +182,14 @@ impl Direction {
         self.rate = whole(rate).clamp(self.bounds.min, self.bounds.max);
     }
 
-    /// A busy step on a quiet line: climbs, and proves a peak put back.
+    /// A busy step on a quiet line: climbs back to the held rate, past it
+    /// once it has been busy a while, and proves a peak put back.
     fn climb(&mut self, s: &Settings, now: f64) {
+        let since = *self.busy_since.get_or_insert(now);
         let rate = climbed(s, self);
+        if self.rate >= self.held && now - since < s.probe_after_s {
+            return;
+        }
         self.set(rate);
         if self.rate > self.held {
             self.held = self.rate;
@@ -187,6 +208,7 @@ impl Direction {
     /// held rate. Gives whether it forgot one.
     fn rest(&mut self, s: &Settings, now: f64) -> bool {
         self.proving = None;
+        self.busy_since = None;
         let old = self.cut_at.is_some_and(|at| now - at >= s.forget_s);
         let forgot = old && self.held < self.peak;
         if forgot {
@@ -412,6 +434,7 @@ impl Controller {
                     }
                     dir.proving = None;
                     dir.cut_at = Some(now);
+                    dir.busy_since = None;
                     cuts[i] = true;
                 }
             }
@@ -623,10 +646,13 @@ mod tests {
     }
 
     #[test]
-    fn a_busy_line_without_delay_climbs() {
+    fn a_busy_line_without_delay_climbs_once_it_has_been_busy_a_while() {
         let mut c = controller(10_000, 100_000);
         pings(&mut c, 20.0, 6);
         assert_eq!(c.step(1.0, 9_500.0, 1_000.0), State::Climbing);
+        assert_eq!(c.up.rate, 10_000);
+        assert!(!c.up.learned);
+        c.step(6.0, 9_500.0, 1_000.0);
         assert_eq!(c.up.rate, 10_050);
         assert_eq!(c.up.held, 10_050);
         assert!(c.up.learned);
@@ -640,7 +666,8 @@ mod tests {
         pings(&mut c, 20.0, 6);
         c.step(1.0, 5_000.0, 0.0);
         assert_eq!((c.up.rate, c.up.held), (5_100, 10_000));
-        // Back in about seven seconds, then only probing past it.
+        // Back in about seven seconds, then probing past it only once busy
+        // for five.
         let mut steps = 0;
         while c.up.rate < c.up.held && steps < 100 {
             c.step(1.0, float(c.up.rate), 0.0);
@@ -649,6 +676,8 @@ mod tests {
         assert_eq!(c.up.rate, 10_000);
         assert!(steps <= 36, "{steps}");
         c.step(1.0, 10_000.0, 0.0);
+        assert_eq!(c.up.rate, 10_000);
+        c.step(6.0, 10_000.0, 0.0);
         assert_eq!(c.up.rate, 10_050);
     }
 
@@ -695,6 +724,49 @@ mod tests {
             }
             self.queue_kbit / line * 1000.0
         }
+
+        /// Uploads `on` seconds of every `on + off`, as requests do, for
+        /// `seconds`, and gives how many times the shaper cut.
+        fn bursts(
+            &mut self,
+            c: &mut Controller,
+            line: f64,
+            seconds: f64,
+            on: f64,
+            off: f64,
+        ) -> usize {
+            let dt = 0.2;
+            let start = self.at;
+            let mut cuts = 0;
+            while self.at < start + seconds {
+                let sending = (self.at - start) % (on + off) < on;
+                let sent = if sending { float(c.up.rate) } else { 0.0 };
+                self.queue_kbit = (self.queue_kbit + (sent - line) * dt).clamp(0.0, 8_000.0);
+                let delay = self.queue_kbit / line * 1000.0;
+                pings(c, 20.0 + delay, 3);
+                self.at += dt;
+                if c.step(self.at, sent.min(line), 0.0) == State::Cut {
+                    cuts += 1;
+                }
+            }
+            cuts
+        }
+    }
+
+    #[test]
+    fn requests_sent_in_bursts_fit_under_the_line_without_probing_past_it() {
+        let mut c = controller(12_000, 50_000);
+        pings(&mut c, 20.0, 6);
+        let mut line = Line {
+            queue_kbit: 0.0,
+            at: 0.0,
+        };
+        // A long upload finds the line.
+        line.run(&mut c, 10_000.0, 30.0);
+        // Then two seconds of every five: each fits under what was held,
+        // and none climbs past the line to fill its queue.
+        let cuts = line.bursts(&mut c, 10_000.0, 120.0, 2.0, 3.0);
+        assert!(cuts <= 1, "{cuts}");
     }
 
     #[test]
@@ -836,7 +908,8 @@ mod tests {
             upload.run(&mut c, 5_000.0, 5.0);
             line.at = upload.at;
         }
-        assert!(c.up.held < 6_000, "{}", c.up.held);
+        // The upload was cut each time it ran.
+        assert!(c.up.held < 7_000, "{}", c.up.held);
         assert!(c.down.held > 90_000, "{}", c.down.held);
     }
 
