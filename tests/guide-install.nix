@@ -9,6 +9,8 @@
 # them, so it boots again with Secure Boot enforced and reinstalls the
 # machine with its keys put back, the firmware never visited. Once the disk
 # is sealed to the TPM, the guide makes the account's SSH keys there too.
+# Last, the firmware is cleared of its keys, and the machine's next boot
+# puts them back.
 #
 # One machine plays the whole of it, as a laptop does, since lanzaboote
 # predicts the TPM's policy as it installs and the stick runs on the

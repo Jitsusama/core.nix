@@ -630,3 +630,34 @@ with subtest("the reinstalled machine's guide frees the TPM of the first install
     # Sealed, and freed before the guide asks for the account's keys.
     on_screen("a PIN for alice's SSH keys", timeout=300)
     t.assertEqual(policies(), [own_policy()])
+
+with subtest("a firmware cleared of its keys gets them back from the machine itself"):
+    # A firmware's setup clearing its keys leaves it as a fresh copy of
+    # OVMF's variables is: in setup mode, with no keys and no boot
+    # entries, so it starts systemd-boot from the disk's fallback path.
+    machine.shutdown()
+    machine.efi_vars_path.unlink()
+    machine.start(allow_reboot=True)
+    # Without Secure Boot the TPM's policy doesn't hold, so a YubiKey
+    # opens the disk. lanzaboote then readies the keys again, from the
+    # machine's own, and core restarts for systemd-boot to enrol them
+    # before any kernel starts.
+    unlock()
+    machine.wait_for_console_text("Custom Secure Boot keys successfully enrolled")
+    # Enforcing with the same keys, the TPM's policy holds again, and
+    # its PIN alone opens the disk.
+    unlock(tpm_pin)
+    machine.connect()
+    # systemd-boot enrolled them and restarted before a kernel started.
+    log = machine.get_console_log()
+    enrolled = log.rfind("Custom Secure Boot keys successfully enrolled")
+    t.assertEqual(log[enrolled:].count("Linux version"), 1)
+    # What the boot without the keys made of the TPM's policy.
+    print(machine.succeed("journalctl -b -1 -o cat -u systemd-pcrlock-make-policy"))
+    # The guide finds the TPM still sealed, and goes on to the keys.
+    on_screen("a PIN for alice's SSH keys", timeout=300)
+    t.assertIn("Secure Boot: enabled (user)", machine.succeed("bootctl status"))
+    t.assertIn(owner, machine.succeed("sbctl status"))
+    # And the files it enrolled from go, so a later clearing can't have
+    # them enrolled again behind the person's back.
+    machine.wait_until_succeeds("test ! -e /boot/loader/keys/auto")
