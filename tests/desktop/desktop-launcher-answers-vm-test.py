@@ -6,6 +6,7 @@ the helpers every area shares, so the names it takes from there are imported onl
 checkers.
 """
 
+import datetime as dt
 import json
 import re
 import time
@@ -34,8 +35,32 @@ if TYPE_CHECKING:
 # Seeing one thing twice costs Joel more than any other mess in the
 # list, so for everything he typed in a week of picks, every word of
 # the launcher's photo survey and every case its audit found listed
-# twice, no two rows may be the same thing, nor read the same.
+# twice, no two rows may be the same thing, nor read the same. The
+# launcher stays open through them all, the left arrow taking away
+# what's typed whole between one and the next, as Joel would: opening
+# and closing it for each, each a login as the account, took most of
+# the time.
 with subtest("the launcher lists each thing once, for everything Joel types"):
+
+    def settled_on(query: str) -> Json:
+        """Wait until the launcher holds exactly this query, with Return's row settled.
+
+        Give what it shows then. Exactly, so a left arrow lost on a busy host can't pass the
+        last query's letters off as this one's. It's asked first, since it has mostly settled
+        by then, and asked again after a report says it has: a report is made as each of its
+        properties changes, so one may pair the new query with the last one's rows.
+        """
+
+        def holds(shown: Json) -> bool:
+            row = shown["selected"]
+            return bool(shown["typed"] == query and (row is None or row["settled"]))
+
+        shown = showing()
+        while not holds(shown):
+            launcher_until(holds)
+            shown = showing()
+        return shown
+
     picked_in_a_week = [
         "1p", "a", "agents", "ai", "b", "bto", "btop", "ca", "caf", "caff", "came",
         "captu", "ch", "chr", "chro", "chrom", "chrome", "close", "donot", "dot", "gimp",
@@ -55,17 +80,29 @@ with subtest("the launcher lists each thing once, for everything Joel types"):
     ]  # fmt: skip
     listed_twice: list[str] = []
     looked_at = 0
+    as_account("qs ipc call launcher toggle")
+    launcher_ready()
     for query in picked_in_a_week + surveyed + audited:
-        answer(query)
-        things: list[Json] = showing()["things"]
+        machine.send_chars(query)
+        shown = settled_on(query)
+        things: list[Json] = shown["things"]
         looked_at += len([thing for thing in things if thing["is"]])
         for field in ("is", "reads"):
             given = [thing[field] for thing in things if thing[field]]
             again = sorted({one for one in given if given.count(one) > 1})
             if again:
                 listed_twice.append(f"{query!r}: {field} {again}")
-        machine.send_key("esc")
-        machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
+        # None of these leaves a step held, but one that did would
+        # have the next typed inside it, so it's closed and opened.
+        if shown["held"]:
+            machine.send_key("esc")
+            machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
+            as_account("qs ipc call launcher toggle")
+            launcher_ready()
+        else:
+            machine.send_key("left")
+    machine.send_key("esc")
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
     t.assertEqual(listed_twice, [], "a thing was listed twice")
     # Most of those find something, so the rows were looked at.
     t.assertGreater(looked_at, ROWS_LOOKED_AT)
