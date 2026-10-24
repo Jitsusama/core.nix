@@ -254,8 +254,18 @@ impl Direction {
     /// rate to forget back to, and held a download on Wi-Fi at 5 Mbit/s
     /// where the line carried 85. Should the line be slower now, the first
     /// burst's queue cuts it within a second or two.
-    pub fn remembered(&self) -> u64 {
-        self.peak
+    ///
+    /// A line no cut goes far under keeps its best instead. There a cut
+    /// after the peak was put back lowers the peak to the floor, a share
+    /// of the best; a restart made that the best, and so each restart
+    /// took the floor down by that share again. Live, one restart moved a
+    /// Wi-Fi download's floor from 40 Mbit/s to 38.
+    pub fn remembered(&self, s: &Settings) -> u64 {
+        if s.least_of_best > 0.0 {
+            self.best
+        } else {
+            self.peak
+        }
     }
 
     /// A busy step on a quiet line: climbs back to the held rate, past it
@@ -896,6 +906,44 @@ mod tests {
     }
 
     #[test]
+    fn a_wi_fi_line_remembers_its_best_past_a_cut_at_its_floor() {
+        let bounds = |min| Bounds {
+            min,
+            max: 1_000_000,
+        };
+        let mut c = Controller::new(
+            Settings::for_link(true),
+            Direction::new(bounds(1_000), 10_000),
+            Direction::new(bounds(5_000), 50_000),
+        );
+        pings(&mut c, 20.0, 6);
+        // Live, late pings cut the download to its floor, a quiet spell
+        // put its best back, and the next late pings cut that too: the
+        // memory kept the floor, and the restart after made it the best,
+        // so its floor fell from 40 Mbit/s to 38.
+        let mut at = 0.0;
+        let late_for = |c: &mut Controller, at: &mut f64, until: f64| {
+            while *at < until {
+                let late = if *at % 3.0 < 1.0 { 60.0 } else { 0.0 };
+                pings(c, 20.0 + late, 3);
+                *at += 0.2;
+                c.step(*at, 0.6 * float(c.up.rate), 0.6 * float(c.down.rate));
+            }
+        };
+        late_for(&mut c, &mut at, 60.0);
+        while at < 760.0 {
+            pings(&mut c, 20.0, 3);
+            at += 0.2;
+            c.step(at, 0.0, 0.0);
+        }
+        late_for(&mut c, &mut at, 820.0);
+        let s = c.settings.clone();
+        assert!(c.down.peak < 50_000, "{}", c.down.peak);
+        assert_eq!(c.down.remembered(&s), 50_000);
+        assert_eq!(c.up.remembered(&s), 10_000);
+    }
+
+    #[test]
     fn a_cut_waits_for_pings_sent_after_it() {
         let mut c = controller(20_000, 100_000);
         pings(&mut c, 20.0, 6);
@@ -1262,7 +1310,7 @@ mod tests {
         // place of the best held a download on Wi-Fi at 5 Mbit/s with no
         // peak to forget back to, where the line carried 85.
         let (c, _) = cut_by_a_dip();
-        assert_eq!(c.down.remembered(), 95_000);
+        assert_eq!(c.down.remembered(&c.settings), 95_000);
     }
 
     #[test]
@@ -1272,7 +1320,8 @@ mod tests {
         // The line stayed at 50: the peak put back is cut again, and that
         // cut is what the line now holds.
         line.run(&mut c, 50_000.0, 10.0, 1_000.0);
-        assert!(c.down.remembered() < 50_000, "{}", c.down.remembered());
+        let remembered = c.down.remembered(&c.settings);
+        assert!(remembered < 50_000, "{remembered}");
     }
 
     #[test]
