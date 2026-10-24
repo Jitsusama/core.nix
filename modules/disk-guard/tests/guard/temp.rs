@@ -213,7 +213,7 @@ fn a_live_tmpdir_named_by_a_link_keeps_the_link() {
         ..entry("pi-QEST-A1B2C3")
     }];
 
-    assert!(leftovers(entries, 1000, &[link]).is_empty());
+    assert_eq!(leftovers(entries, 1000, &[link]), Vec::<Entry>::new());
 }
 
 #[test]

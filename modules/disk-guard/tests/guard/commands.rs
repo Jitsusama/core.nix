@@ -188,6 +188,63 @@ fn a_child_holding_the_output_open_cant_hold_the_guard() {
     assert!(started.elapsed() < Duration::from_secs(2));
 }
 
+/// The guard blocks its stop signals in every thread, so it stops only
+/// between steps; a command it starts answers them still, so a stop's
+/// SIGTERM to the unit ends what a step is waiting on at once.
+#[cfg(target_os = "linux")]
+#[test]
+fn a_command_answers_the_stop_signals_its_guard_blocks() {
+    let mask = std::thread::spawn(|| {
+        // SAFETY: set is a valid sigset_t, filled before it's read.
+        unsafe {
+            let mut set = std::mem::zeroed::<libc::sigset_t>();
+            libc::sigemptyset(&raw mut set);
+            for signal in [libc::SIGTERM, libc::SIGINT, libc::SIGHUP] {
+                libc::sigaddset(&raw mut set, signal);
+            }
+            assert_eq!(
+                libc::pthread_sigmask(libc::SIG_BLOCK, &raw const set, std::ptr::null_mut()),
+                0
+            );
+        }
+        let output = finished(run(&job(&["grep", "^SigBlk", "/proc/self/status"])).unwrap());
+        String::from_utf8(output.stdout).unwrap()
+    })
+    .join()
+    .unwrap();
+    assert_eq!(mask.trim(), "SigBlk:\t0000000000000000");
+}
+
+/// A stop asked during a pass, waiting while the guard blocks it, means no
+/// new command starts: systemd signals the unit once, so a command started
+/// after it would run on unasked until systemd kills it.
+#[cfg(target_os = "linux")]
+#[test]
+fn no_command_starts_once_a_stop_is_waiting() {
+    let (refused, ran) = std::thread::spawn(|| {
+        // SAFETY: set is a valid sigset_t; the signal goes to this thread,
+        // which blocks it, and is taken back before the thread ends.
+        unsafe {
+            let mut set = std::mem::zeroed::<libc::sigset_t>();
+            libc::sigemptyset(&raw mut set);
+            libc::sigaddset(&raw mut set, libc::SIGTERM);
+            libc::pthread_sigmask(libc::SIG_BLOCK, &raw const set, std::ptr::null_mut());
+            libc::pthread_kill(libc::pthread_self(), libc::SIGTERM);
+            let marker = tempfile::tempdir().unwrap();
+            let made = marker.path().join("ran");
+            let started = run(&job(&["touch", made.to_str().unwrap()]));
+            let ran = made.exists();
+            let mut taken = 0;
+            libc::sigwait(&raw const set, &raw mut taken);
+            (started.is_err(), ran)
+        }
+    })
+    .join()
+    .unwrap();
+    assert!(refused, "a command started with a stop waiting");
+    assert!(!ran, "the command ran");
+}
+
 #[test]
 fn a_missing_program_is_an_error() {
     assert!(run(&job(&["/nonexistent/program"])).is_err());

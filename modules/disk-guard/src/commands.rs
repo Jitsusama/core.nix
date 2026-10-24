@@ -85,6 +85,40 @@ fn idle() {
 
 /// Runs `job` as `run` does, until `stop` is set: then its group is asked
 /// to end, and killed if it hasn't within `grace`.
+/// Whether a stop signal has come and waits, blocked, for the guard to take
+/// it between steps. systemd sends a unit's stop signal once, so a command
+/// started after it would run unasked until systemd kills the whole unit,
+/// as it did when a stop's SIGTERM ended one nix and the pass started the
+/// next.
+fn stop_waiting() -> bool {
+    // SAFETY: waiting is a valid sigset_t, filled by sigpending before it's
+    // read.
+    unsafe {
+        let mut waiting = std::mem::zeroed::<libc::sigset_t>();
+        if libc::sigpending(&raw mut waiting) != 0 {
+            return false;
+        }
+        [libc::SIGTERM, libc::SIGINT, libc::SIGHUP]
+            .iter()
+            .any(|&signal| libc::sigismember(&raw const waiting, signal) == 1)
+    }
+}
+
+/// Lets the command take every signal. The guard blocks its stop signals in
+/// each of its threads so it stops between steps, and a child keeps the mask
+/// it's forked with, which would leave what a step waits on deaf to the
+/// SIGTERM a stop sends the whole unit; systemd then waited out its stop
+/// timeout and killed both.
+fn answer_stops() {
+    // SAFETY: an empty set made on the stack, then sigprocmask, which is
+    // async-signal-safe.
+    unsafe {
+        let mut none = std::mem::zeroed::<libc::sigset_t>();
+        libc::sigemptyset(&raw mut none);
+        libc::sigprocmask(libc::SIG_SETMASK, &raw const none, std::ptr::null_mut());
+    }
+}
+
 pub fn stoppable(job: &Job, stop: &AtomicBool, grace: Duration) -> io::Result<Ran> {
     running(job, Some((stop, grace)))
 }
@@ -97,6 +131,9 @@ fn running(job: &Job, stop: Option<(&AtomicBool, Duration)>) -> io::Result<Ran> 
     let Some((program, args)) = job.argv.split_first() else {
         return Err(io::Error::new(io::ErrorKind::InvalidInput, "no program"));
     };
+    if stop_waiting() {
+        return Err(io::Error::new(io::ErrorKind::Interrupted, "stopping"));
+    }
     let mut command = Command::new(program);
     command
         .args(args)
@@ -108,15 +145,17 @@ fn running(job: &Job, stop: Option<(&AtomicBool, Duration)>) -> io::Result<Ran> 
     if let Some(cwd) = &job.cwd {
         command.current_dir(cwd);
     }
-    if job.idle {
-        // SAFETY: between fork and exec, only two system calls, both safe
-        // in a forked child, touching nothing of the parent's.
-        unsafe {
-            command.pre_exec(|| {
+    let idling = job.idle;
+    // SAFETY: between fork and exec, only system calls that are safe in a
+    // forked child, touching nothing of the parent's.
+    unsafe {
+        command.pre_exec(move || {
+            answer_stops();
+            if idling {
                 idle();
-                Ok(())
-            });
-        }
+            }
+            Ok(())
+        });
     }
     let mut child = command.spawn()?;
     let deadline = Instant::now() + job.timeout;
