@@ -287,7 +287,8 @@ driven on; the installed machine's steps come later.
   passphrase, or a YubiKey and its PIN) is one field under both, never
   two screens. Each step done stays listed above the step at hand with
   what showed it done, the latest nearest, the earliest giving way on a
-  short screen. A step at work is drawn again once a second, from a
+  short screen, and listed once, though the whole install walks again
+  the steps that opened its vault. A step at work is drawn again once a second, from a
   thread of its own, with what the machine's meter says (`progress.rs`):
   the bytes done of how many, how fast and how long is left, where the
   step feeds it, and otherwise how long it has run, so a wait never looks

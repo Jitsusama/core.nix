@@ -178,6 +178,9 @@ def fixture(name: str, command: str) -> None:
 with subtest("the disk is shown and the machine's name typed back"):
     on_screen("Confirm the disk to wipe")
     on_screen("wipes")
+    # The whole install walks again the steps the vault was opened by,
+    # and each is listed once.
+    t.assertEqual(screen().count("The stick's vault is open"), 1, screen())
     fixture("lsblk-blank.json", "lsblk --json --output-all --bytes")
     enter("machine")
 
