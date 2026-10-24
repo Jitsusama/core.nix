@@ -182,8 +182,12 @@ let
 in
 pkgs.testers.runNixOSTest {
   name = "desktop-${area}";
-  # Reads the colours of the windows it photographs.
-  extraPythonPackages = python: [ python.pillow ];
+  # Reads the colours of the windows it photographs, and paces its waits
+  # to the host (tests/lib/vm_helpers.py).
+  extraPythonPackages = python: [
+    python.pillow
+    (pkgs.callPackage ./lib/vm-helpers.nix { } python)
+  ];
   # The base role sets nixpkgs' own settings.
   node.pkgsReadOnly = false;
 
