@@ -1824,6 +1824,8 @@ with subtest("a search lists each thing once"):
     machine.wait_until_fails(closed, timeout=10)
 
 with subtest("a word typed whole lands on what it says"):
+    # "pi" is meant for pi's sessions, so there has to be one.
+    pi_session()
     closed = in_session(LAUNCHER_OPEN)
 
     def selects(key: str) -> Callable[[Json], bool]:
