@@ -325,10 +325,11 @@ with subtest("a slow job is named while it runs, and goes when it ends"):
         "systemctl restart plymouth-start.service",
         "systemctl start plymouth-waits.service",
         "systemd-run --no-block --collect --unit=slow -p Type=oneshot"
-        " -p Description='Slow Hello' sleep 60",
+        " -p Description='Slow Hello' sleep infinity",
     )
-    # Slow Hello lasts only 60 seconds, so the wait for its name can't outlast it.
-    machine.wait_for_text("waiting on Slow Hello", timeout=60)
+    # Slow Hello lasts until it's stopped, so however long a busy host takes
+    # to read its name off the screen, it's still running when that's done.
+    machine.wait_for_text("waiting on Slow Hello", timeout=reading)
     photographed("waiting")
     machine.succeed("systemctl stop slow.service")
     retry(lambda _: "Slow" not in machine.get_screen_text(), reading)
