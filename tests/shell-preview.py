@@ -9,13 +9,15 @@ it, so an edit shows as Quickshell reloads, and each the build made, the theme a
 copied. niri then starts nested in the session's compositor, running that Quickshell with a
 runtime folder, a D-Bus session and state of its own, so nothing reaches the session's own
 shell. With --type, the launcher opens and the text is typed into it, to see the rows a query
-gives. Closing the window ends it. A change to what Nix generates needs a new preview.
+gives. Closing the window ends it, as do Ctrl-C and a stop, which end all it started. A
+change to what Nix generates needs a new preview.
 """
 
 import argparse
 import hashlib
 import json
 import os
+import signal
 import subprocess
 import sys
 import tempfile
@@ -26,6 +28,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
+    from types import FrameType
 
 # dbus-run-session and wtype, which tests/shell-preview.nix puts in place of the markers.
 DBUS_RUN_SESSION = "@dbus_run_session@"
@@ -33,6 +36,11 @@ WTYPE = "@wtype@"
 # How long the nested shell may take to answer, in seconds: it starts cold, drawn in software
 # when the GPU is the session's.
 STARTING = 60
+# How long the nested desktop may take to end once asked, in seconds, before it's killed.
+ENDING = 5
+# The signals that end a preview: Ctrl-C, a stop, and the terminal or the caller's shell
+# going away.
+STOPS = (signal.SIGINT, signal.SIGTERM, signal.SIGHUP)
 # The nested D-Bus session's config: a bus anyone in the account may use, with no services
 # to start, so no portal starts and mounts its documents in the runtime folder, which the
 # preview then couldn't take away. The shell serves what it needs itself.
@@ -221,8 +229,58 @@ def arguments(argv: Sequence[str]) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
+def stops_as_exit() -> None:
+    """End the preview as an exit at each of its stop signals, so it ends what it started.
+
+    Python ends at once at a SIGTERM or a SIGHUP, running nothing on its way out, which left
+    nested desktops running for hours after the shell that started them had gone.
+    """
+
+    def leave(number: int, _frame: FrameType | None) -> None:
+        raise SystemExit(128 + number)
+
+    for stop in STOPS:
+        signal.signal(stop, leave)
+
+
+def present(group: int) -> bool:
+    """Say whether any process is left in a process group."""
+    try:
+        os.killpg(group, 0)
+    except ProcessLookupError:
+        return False
+    return True
+
+
+def end(session: subprocess.Popen[bytes], grace: float = ENDING) -> None:
+    """End every process in the session's group: asked, then killed once grace runs out.
+
+    The whole group, since dbus-run-session passes no signal on to the niri it runs.
+    """
+    group = session.pid
+    for stop in (signal.SIGTERM, signal.SIGKILL):
+        if present(group):
+            os.killpg(group, stop)
+        if emptied(session, grace):
+            break
+    session.wait()
+
+
+def emptied(session: subprocess.Popen[bytes], grace: float) -> bool:
+    """Wait up to grace for the session's group to empty, and say whether it did."""
+    deadline = time.monotonic() + grace
+    # The group gives no word when it empties, so it's looked at; the session is reaped as it
+    # ends, since one ended but not reaped still counts as in the group.
+    while session.poll() is None or present(session.pid):
+        if time.monotonic() >= deadline:
+            return False
+        time.sleep(0.05)
+    return True
+
+
 def main(argv: Sequence[str]) -> int:
     """Show the shell, and wait for its window to close."""
+    stops_as_exit()
     options = arguments(argv)
     root = Path(run("git", "rev-parse", "--show-toplevel"))
     system = run("nix", "eval", "--raw", "--impure", "--expr", "builtins.currentSystem")
@@ -247,15 +305,18 @@ def main(argv: Sequence[str]) -> int:
                 str(config),
             ],
             env=environment,
+            start_new_session=True,
         )
-        if options.type is not None:
-            if not ready(built.quickshell, shell, environment):
-                print("the shell never answered", file=sys.stderr)
-                niri.terminate()
-                return 1
-            type_into(built.quickshell, shell, environment, options.type)
-            print(f"typed {options.type!r} into the launcher", file=sys.stderr)
-        return niri.wait()
+        try:
+            if options.type is not None:
+                if not ready(built.quickshell, shell, environment):
+                    print("the shell never answered", file=sys.stderr)
+                    return 1
+                type_into(built.quickshell, shell, environment, options.type)
+                print(f"typed {options.type!r} into the launcher", file=sys.stderr)
+            return niri.wait()
+        finally:
+            end(niri)
 
 
 if __name__ == "__main__":
