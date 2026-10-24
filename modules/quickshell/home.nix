@@ -62,6 +62,7 @@ let
     "Marks.js"
     "Arrivals.qml"
     "Levels.js"
+    "Stack.js"
     "Notifications.qml"
     "Music.qml"
     "Music.js"

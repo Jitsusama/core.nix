@@ -44,6 +44,7 @@ import Quickshell.Wayland
 import QtQuick
 import QtQuick.Effects
 import "Levels.js" as Levels
+import "Stack.js" as Stack
 
 Scope {
     id: root
@@ -118,16 +119,11 @@ Scope {
     // The launcher, for the history the stack hands on to.
     property var launcher: null
 
-    // The notices on screen, as one stack: their ids, the front first. A
-    // critical one goes to the front and the rest in the order they came,
-    // so a newer one waits its turn behind the one before it. One kept
-    // across a reload of the shell, which arrives unheard, joins the back.
+    // The notices on screen, as one stack: their ids, the front first, in
+    // the order Stack.js keeps.
     property var order: []
-    readonly property var shown: {
-        const live = server.trackedNotifications.values.map(notification => notification.id);
-        const known = order.filter(id => live.includes(id));
-        return known.concat(live.filter(id => !known.includes(id)));
-    }
+    readonly property var shown: Stack.shown(order,
+        server.trackedNotifications.values.map(notification => notification.id))
     readonly property var front: {
         const id = shown[0];
         return server.trackedNotifications.values.find(notification => notification.id === id)
@@ -255,10 +251,9 @@ Scope {
 
     // Turns the stack, so the next comes to the front, or the one before.
     function turn(by) {
-        const ids = shown.slice();
-        if (ids.length < 2)
-            return;
-        order = by > 0 ? ids.slice(1).concat(ids.slice(0, 1)) : ids.slice(-1).concat(ids.slice(0, -1));
+        // A stack of one or none is left alone, so nothing it binds to moves.
+        if (shown.length > 1)
+            order = Stack.turned(shown, by);
     }
 
     // The keys while the stack holds them, as the launcher's are: Return
@@ -410,7 +405,7 @@ Scope {
                 Report.say(`held ${notification.summary}`);
             const id = notification.id;
             if (!held)
-                root.order = urgent ? [id].concat(root.order) : root.order.concat([id]);
+                root.order = Stack.arrived(root.order, id, urgent);
             notification.closed.connect(reason => Notices.left(id,
                 reason === NotificationCloseReason.Expired ? "expired"
                 : reason === NotificationCloseReason.CloseRequested ? "withdrawn"
@@ -718,8 +713,7 @@ Scope {
                         height: card.front ? words.height : parent.height
                         onClicked: {
                             if (!card.front) {
-                                root.order = [card.modelData.id].concat(
-                                    root.shown.filter(id => id !== card.modelData.id));
+                                root.order = Stack.forward(root.shown, card.modelData.id);
                             } else if (card.opens) {
                                 Notices.mark(card.modelData.id, true);
                                 card.opens.invoke();
