@@ -164,7 +164,7 @@ Scope {
         // And a thing found more than one way is one row, as the one
         // with the most to say.
         const below = Rank.once(Rank.placed(found.filter(once),
-            gathered.filter(row => !whole.has(row.from.settings.name)), picks.latched(typed)));
+            gathered.filter(row => !whole.has(row.from.settings.name)), latch));
         matches = rows.concat(below);
         // An answer only started gives way to a name that starts the same.
         const meant = answer && !(answer.question && below.length > 0 && startsAWord(below[0].name, typed));
@@ -382,12 +382,48 @@ Scope {
         const letters = Fuzzy.plainly(typed);
         if (!row || letters.includes(" "))
             return "";
+        // What's found at a shorter start isn't known, so any row picked
+        // there counts against this one, and it's said only when sure.
+        const there = Rank.maybeThere(foundHere);
         for (let length = 1; length < letters.length; length++) {
             const start = letters.slice(0, length);
-            if (picks.latched(start) === row.key)
+            if (picks.latched(start, there, namedAs[start] ?? []) === row.key)
                 return start;
         }
         return "";
+    }
+
+    // What's latched for what's typed, worked out once a search, and the
+    // rows it found, by key, each with the fewest letters it's learned at
+    // (Rank.js's leastOf), so a row that's gone counts for nothing.
+    property string latch: ""
+    property var foundHere: ({})
+
+    // The keys of the rows named each name, so a name typed whole is first
+    // over another row latched there (Rank.js's latched).
+    readonly property var namedAs: {
+        const out = {};
+        for (const choice of choices) {
+            const name = Rank.plainly(choice.name);
+            (out[name] ?? (out[name] = [])).push(choice.key);
+        }
+        return out;
+    }
+
+    // Every row there is now, by key, each with the fewest letters it's
+    // learned at, for forgetting the picks of those that are gone: what the
+    // main search finds from, and what each collection holds. Made only
+    // when something's picked.
+    function knowing() {
+        const out = {};
+        const add = row => {
+            if (row && row.key)
+                out[row.key] = Rank.leastOf(row);
+        };
+        choices.forEach(add);
+        for (const source of collections)
+            source.everything().forEach(add);
+        return out;
     }
 
     // The collections home keeps on its shelf, in this order, each with
@@ -713,6 +749,8 @@ Scope {
             return;
         }
         gathered = gathering(letters);
+        latch = "";
+        foundHere = {};
         if (words.length === 0) {
             candidates = [];
             root.found = home();
@@ -757,8 +795,17 @@ Scope {
             }
             candidates = found.map(f => f.choice).concat(early);
             const learned = picks.weights(letters);
+            const here = {};
+            for (const f of found)
+                here[f.choice.key] = Rank.leastOf(f.choice);
+            for (const row of gathered)
+                for (const member of row.verbs())
+                    here[member.key] = Rank.leastOf(member);
+            foundHere = here;
+            latch = picks.latched(letters, Rank.foundNow(here),
+                namedAs[Rank.plainly(letters)] ?? []);
             const ordered = Rank.order(found, {
-                latched: picks.latched(letters),
+                latched: latch,
                 picked: learned,
                 often: often
             });
@@ -845,7 +892,7 @@ Scope {
         }
         // One that opens a collection steps into it, the launcher kept open.
         if (choice.opens) {
-            picks.picked(typed, choice.key);
+            picks.picked(typed, choice.key, knowing());
             into(choice.opens);
             return;
         }
@@ -858,9 +905,9 @@ Scope {
         const first = held.length > 0 ? held[0] : { row: choice, typed: typed };
         const meant = first.row.from ? choice : first.row;
         // One that can't be taken back is latched only once its first word's
-        // been typed, so a slip of two letters never powers off.
-        picks.picked(first.row.from ? typed : first.typed, meant.key,
-            meant.confirm ? Rank.firstWord(meant.name).length : 1);
+        // been typed (Rank.js's leastOf), so a slip of two letters never
+        // powers off.
+        picks.picked(first.row.from ? typed : first.typed, meant.key, knowing());
         if (choice.now)
             return;
         if (below && choice.below)
