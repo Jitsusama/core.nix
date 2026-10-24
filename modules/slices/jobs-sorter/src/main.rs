@@ -380,8 +380,9 @@ fn main_pid(unit: &str) -> Option<u32> {
 }
 
 /// Sets a quest slice's weight, unless it already has it. A failure is
-/// said once, and tried again on the next look.
-fn weigh(weights: &mut quests::Weights, slice: &str, weight: u64, warned: &mut bool) {
+/// said once, apart from the sorter's other failures, and tried again on
+/// the next look.
+fn weigh(weights: &mut quests::Weights, slice: &str, weight: u64) {
     if weights.unweighed(&[(slice.to_string(), weight)]).is_empty() {
         return;
     }
@@ -394,18 +395,19 @@ fn weigh(weights: &mut quests::Weights, slice: &str, weight: u64, warned: &mut b
             weights.weighed(slice, weight);
             eprintln!("Weighed {slice} at {weight}.");
         }
-        Ok(output) if !*warned => {
-            eprintln!(
-                "Couldn't weigh {slice} at {weight}: {}",
-                String::from_utf8_lossy(&output.stderr).trim()
-            );
-            *warned = true;
+        Ok(output) => {
+            if weights.first_failure() {
+                eprintln!(
+                    "Couldn't weigh {slice} at {weight}: {}",
+                    String::from_utf8_lossy(&output.stderr).trim()
+                );
+            }
         }
-        Err(error) if !*warned => {
-            eprintln!("Couldn't run busctl: {error}");
-            *warned = true;
+        Err(error) => {
+            if weights.first_failure() {
+                eprintln!("Couldn't run busctl to weigh {slice}: {error}");
+            }
         }
-        _ => {}
     }
 }
 
@@ -452,7 +454,7 @@ fn split(
             Ok(output) if output.status.success() => {
                 // Once the scope has brought the slice into being.
                 if let (Some(weights), Some((quest, weight))) = (by_quest.as_deref_mut(), &placed) {
-                    weigh(weights, quest, *weight, warned);
+                    weigh(weights, quest, *weight);
                 }
             }
             // A tree whose processes have all gone has nothing to move.
@@ -696,7 +698,7 @@ fn run() -> Result<(), String> {
         weights.refresh();
         for base in &settings.by_quest {
             for (slice, weight) in weights.unweighed(&weights.current(base)) {
-                weigh(&mut weights, &slice, weight, &mut warned);
+                weigh(&mut weights, &slice, weight);
             }
         }
         for (cgroup, holder) in settings.split.iter().zip(holders.iter_mut()) {

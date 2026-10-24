@@ -118,6 +118,9 @@ pub struct Weights {
     by_quest: HashMap<String, u64>,
     /// Each quest slice's weight as last set.
     weighed: HashMap<String, u64>,
+    /// Whether a failure to weigh has been said, apart from the sorter's
+    /// other failures, so neither kind hides the other.
+    failed: bool,
 }
 
 impl Weights {
@@ -127,6 +130,7 @@ impl Weights {
             modified: None,
             by_quest: HashMap::new(),
             weighed: HashMap::new(),
+            failed: false,
         }
     }
 
@@ -189,6 +193,11 @@ impl Weights {
     pub fn weighed(&mut self, slice: &str, weight: u64) {
         self.weighed.insert(slice.to_string(), weight);
     }
+
+    /// Whether this is the first failure to weigh, and so worth saying.
+    pub fn first_failure(&mut self) -> bool {
+        !std::mem::replace(&mut self.failed, true)
+    }
 }
 
 #[cfg(test)]
@@ -196,6 +205,13 @@ mod tests {
     use super::*;
 
     const FILE: &str = "{\n\t\"QEST-20261023-R82FBP\": 200,\n\t\"QEST-20261024-ABC123\": 400\n}\n";
+
+    #[test]
+    fn a_weighing_failure_is_said_once_whatever_else_failed() {
+        let mut weights = Weights::new(PathBuf::from("/nonexistent"));
+        assert!(weights.first_failure());
+        assert!(!weights.first_failure());
+    }
 
     #[test]
     fn the_harness_file_is_read() {
