@@ -817,6 +817,10 @@ with subtest("the launcher finds a pi session by its quest, and goes to its wind
     # Said as written: the summary is plain, so its & isn't escaped.
     with told("shows card A quest of its own & whole asks you"):
         presence_says({"addresses": ["TESTQA"], "busy": False, "wants": question})
+    # Its card goes by itself after ten seconds, which a busy host spends
+    # on what follows, so Super+N takes the stack at once: held, it waits.
+    with told("keys notices"):
+        machine.send_key("meta_l-n")
     reported("holds margin ", lambda rest: "agent" in rest.split(), since)
     photograph("margin-pi-wants")
     # The same want, its file replaced again, says nothing new.
@@ -827,8 +831,6 @@ with subtest("the launcher finds a pi session by its quest, and goes to its wind
         " | grep -c 'report\\[shows card A quest of its own & whole asks you'"
     )
     t.assertEqual(as_account(cards).strip(), "1", "the same want was said twice")
-    with told("keys notices"):
-        machine.send_key("meta_l-n")
     machine.send_key("ret")
     machine.wait_until_succeeds(
         in_session("niri msg --json focused-window | grep -q TESTQA"), timeout=10
