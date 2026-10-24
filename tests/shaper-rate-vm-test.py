@@ -112,7 +112,13 @@ server.wait_for_open_port(5201)
 router.wait_for_unit("line.service")
 client.wait_for_unit("user@1000.service")
 client.wait_until_succeeds("tc -j qdisc show dev eth1 | grep -q cake", timeout=30)
-far = server.succeed("ip -4 -o address show dev eth1").split()[3].split("/")[0]
+# The sink listens on every address, so its port can open before the
+# server's link has its own; wait for the address itself.
+far = (
+    server.wait_until_succeeds("ip -4 -o address show dev eth1 | grep inet", timeout=60)
+    .split()[3]
+    .split("/")[0]
+)
 
 uploads()
 
