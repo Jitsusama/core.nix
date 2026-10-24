@@ -83,9 +83,12 @@ Singleton {
     // player plays, whichever order MPRIS says it took over, began playing
     // and changed track in, so a player starting shows itself every time.
     function arrived(): void {
-        if (!playing)
+        // Read from the player itself: when it goes, this can run before
+        // playing and title have heard it's gone.
+        const current = root.player;
+        if (current === null || !current.isPlaying)
             return;
-        const now = `${player.dbusName} ${title}`;
+        const now = `${current.dbusName} ${current.trackTitle}`;
         if (now === announced)
             return;
         announced = now;
