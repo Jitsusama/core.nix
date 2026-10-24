@@ -10,10 +10,13 @@ command asks, takes that slice's weight, and follows it when it changes.
 The daemon's own cgroup is marked for systemd-oomd to spare while a build
 can go instead. Restarting the daemon, ten times over with vm-first looking
 every 20 ms, leaves the builds running, and the new daemon starts and
-builds again. Stopping a build leaves nothing of it. A build asking for a
-range of user ids gets 65,536.
+builds again. A build that has gone is said in vm-first's journal, with
+what its client ran, its quest, what it wrote and read, and what it left
+in memory still to write. Stopping a build leaves nothing of it. A build
+asking for a range of user ids gets 65,536.
 """
 
+import re
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -26,6 +29,8 @@ AS_BUILT = "0 B"
 # The ids a build that asks for a range of them is given.
 RANGE = "65536"
 DAEMON = "/sys/fs/cgroup/build.slice/nix-daemon.service"
+# What the writer's build puts through to the disk, in MiB.
+WRITTEN_MIB = 64
 # A quest's slice, named as jobs-sorter names one under jobs-work.slice.
 QUEST = "jobs-work-qestabc.slice"
 
@@ -161,8 +166,40 @@ with subtest("a restarted daemon leaves its builds running, and builds again"):
 
     assert given == RANGE, f"the build was given {given} ids"
 
+
+def told_of(etc: str) -> str:
+    """Run the build in /etc/<etc> to its end, and read what vm-first said of it."""
+    machine.succeed(f"{NIX_BUILD} /etc/{etc}")
+    start = f"A build for `{NIX_BUILD} /etc/{etc}`, for no quest"
+    machine.wait_until_succeeds(
+        f"journalctl -u vm-first.service -o cat | grep -qF '{start}'", timeout=10
+    )
+    told = machine.succeed("journalctl -u vm-first.service -o cat")
+    (line,) = [line for line in told.splitlines() if line.startswith(start)]
+    return line
+
+
+def mib(said: str, before: str) -> float:
+    """Read the size a line says just after `before`, in MiB, or 0 when it says none."""
+    found = re.search(rf"{before} ([\d.]+) (B|KiB|MiB|GiB)", said)
+    if found is None:
+        return 0
+    scale = {"B": 1 / 1024**2, "KiB": 1 / 1024, "MiB": 1, "GiB": 1024}
+    return float(found.group(1)) * scale[found.group(2)]
+
+
+with subtest("a finished build says what it wrote, and who asked for it"):
+    line = told_of("writer-build.nix")
+    assert mib(line, "wrote") >= WRITTEN_MIB, line
+
+with subtest("a build that ends before the disk has its writes says what it left"):
+    line = told_of("lazy-writer-build.nix")
+    assert mib(line, "wrote") + mib(line, "leaving up to") >= WRITTEN_MIB, line
+
 with subtest("a stopped build leaves nothing running, nor its cgroup"):
     machine.succeed("systemctl stop vm-build compiler-build quest-build")
 
     machine.wait_until_fails("pgrep -x qemu-system-x86 || pgrep -x cc1", timeout=60)
     machine.wait_until_fails(f"ls -d {DAEMON}/nix-build-*", timeout=60)
+    told = machine.succeed("journalctl -u vm-first.service -o cat")
+    assert "/etc/quest-build.nix`, for quest qestabc, wrote" in told, told
