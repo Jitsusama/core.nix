@@ -213,6 +213,9 @@ with subtest("the notices sit a step inside the window under them"):
         layout = window_titled("Under the notices")["layout"]
         place = layout["tile_pos_in_workspace_view"]
         if last:
+            # Where niri has it, and what else is on the screen, to say why when it's elsewhere.
+            print(f"UNDER THE NOTICES at {place}, {layout['tile_size']} wide, screen {screen}")
+            print(as_account("niri msg windows"))
             t.assertIsNotNone(place, "niri doesn't say where a tiled window is")
         return place is not None and screen - (place[0] + layout["tile_size"][0]) > FROM_THE_CORNER
 
