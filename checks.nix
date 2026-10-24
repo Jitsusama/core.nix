@@ -470,6 +470,18 @@ gather (
           touch $out
         '';
 
+      # shell-preview links each built file the working copy holds back to it, so
+      # an edit shows without a build, and copies what the build made
+      # (tests/shell-preview-test.py).
+      shell-preview-follows-the-working-copy =
+        let
+          shell-preview = pkgs.callPackage ./tests/shell-preview.nix { };
+        in
+        pkgs.runCommandLocal "shell-preview-follows-the-working-copy" { } ''
+          SHELL_PREVIEW=${lib.getExe shell-preview.tool} ${shell-preview.tests}
+          touch $out
+        '';
+
       example-nixos = evaluates "example-nixos" (
         import ./examples/nixos.nix {
           core = self;
