@@ -7,6 +7,7 @@ start, runs whichever subtests are chosen. The frames' size, the one value it ne
 comes in a JSON file, its path put in place of the marker.
 """
 
+import datetime as dt
 import json
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -78,9 +79,22 @@ with subtest("the next reader never gets the last one's frames"):
 
 with subtest("a relay started with its loopback gone waits for it rather than retrying"):
     machine.succeed("systemctl stop ir-camera.service")
+    machine.succeed("touch /tmp/before-gone")
     machine.succeed("v4l2loopback-ctl delete $(readlink /run/ir-camera-loopback/sink)")
     machine.succeed("systemctl start --no-block ir-camera.service")
-    machine.sleep(7)
+    # Bound to the loopback's device, the relay's start waits for it, so the
+    # relay itself never runs to fail.
+    machine.wait_until_succeeds(
+        "systemctl list-jobs --no-legend ir-camera.service | grep -q waiting",
+        timeout=dt.timedelta(seconds=30),
+    )
+    # The holders watcher says nobody as the node goes, then looks for it
+    # once a second without a word, so two looks follow the saying.
+    machine.wait_until_succeeds(
+        "test /run/camera-holders/ir-camera -nt /tmp/before-gone",
+        timeout=dt.timedelta(seconds=30),
+    )
+    machine.sleep(dt.timedelta(seconds=2))
     restarts = machine.succeed("systemctl show -P NRestarts ir-camera.service").strip()
     t.assertEqual(restarts, "0", "The relay kept retrying a loopback that had gone")
     holders = machine.succeed("systemctl show -P NRestarts ir-camera-holders.service")
