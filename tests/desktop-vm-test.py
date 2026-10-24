@@ -1,0 +1,3383 @@
+"""The graphical role's desktop, started in a virtual machine and used the way Joel uses it.
+
+tests/desktop.nix runs this, and its opening comment says what the test proves. run-subtests
+cuts the script into subtests at each top-level `with subtest(`, so every subtest stays at
+the top level under its own name, and what sits outside them, the boot and the helpers, runs
+whichever subtests are chosen. The Nix values the script needs reach it through one JSON
+file, which it reads once, below.
+"""
+
+import contextlib
+import json
+import re
+import shlex
+import tempfile
+import time
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, TypedDict, cast
+
+from PIL import Image, ImageStat
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Iterator
+
+    from driver_names import machine, retry, subtest, t
+
+
+class Values(TypedDict):
+    """What tests/desktop.nix gives the script: the account, the theme and paths in the store."""
+
+    # The account the desktop runs as, and its password.
+    account: str
+    secret: str
+    # The programs tests/desktop.nix writes for the test to run inside the machine.
+    asking: str
+    ask_portal: str
+    touchscreen: str
+    tuple_window: str
+    # A picture, a document, a text and a track to open, as a download would be.
+    picture: str
+    page: str
+    text: str
+    track: str
+    # The packages whose programs the test runs by their paths.
+    coreutils: str
+    dbus: str
+    ffmpeg_headless: str
+    fontconfig_bin: str
+    pipewire: str
+    wev: str
+    zenity: str
+    # The theme's colours the test looks for, and its monospaced face.
+    accent: str
+    action: str
+    sunken: str
+    mono_family: str
+
+
+VALUES: Values = json.loads(Path("@values@").read_text())
+ACCOUNT = VALUES["account"]
+SECRET = VALUES["secret"]
+ASKING = VALUES["asking"]
+ASK_PORTAL = VALUES["ask_portal"]
+TOUCHSCREEN = VALUES["touchscreen"]
+TUPLE_WINDOW = VALUES["tuple_window"]
+PICTURE = VALUES["picture"]
+PAGE = VALUES["page"]
+TEXT = VALUES["text"]
+TRACK = VALUES["track"]
+COREUTILS = VALUES["coreutils"]
+DBUS = VALUES["dbus"]
+FFMPEG_HEADLESS = VALUES["ffmpeg_headless"]
+FONTCONFIG_BIN = VALUES["fontconfig_bin"]
+PIPEWIRE = VALUES["pipewire"]
+WEV = VALUES["wev"]
+ZENITY = VALUES["zenity"]
+ACCENT = VALUES["accent"]
+ACTION = VALUES["action"]
+SUNKEN = VALUES["sunken"]
+MONO_FAMILY = VALUES["mono_family"]
+
+# A picture holds more colours than this, and a flat colour, or a screen not yet drawn, far
+# fewer.
+PICTURE_COLOURS = 1000
+# The stand-in panel's brightness above which it has followed a brighter room up from the
+# dim screen picked in a dim one.
+FOLLOWED_THE_ROOM = 15
+# How far a pixel can be from the action's colour, summed over red, green and blue, and
+# still be its glyph's.
+NEAR_THE_ACTION = 40
+# How wide and how high one glyph is at most, in pixels.
+ONE_GLYPH = 30
+# How far in from the screen's right edge, in pixels, the window under the notices rests,
+# so its edge is far from the corner's.
+FROM_THE_CORNER = 100
+# How many pictures the camera is asked for at once.
+PICTURES_AT_ONCE = 2
+# The longest a program may take to start and show its window. A wait
+# ends when it does, so this is only a ceiling: on a host busy with
+# other machines and builds, a cold kitty or GIMP took past 30
+# seconds, and a wait on a program starting fails then, not the step.
+STARTING = 120
+# The same for the Wi-Fi sign-in window, which starts GTK and WebKit cold.
+SIGNING_IN = 180
+# How far in, in pixels, from the screen's edges and what niri keeps clear along them, a
+# window set in a corner rests at most.
+FROM_THE_EDGE = 48
+# The share of the screen's width a window set wide takes at least.
+NEARLY_ALL = 0.9
+# CAP_SYS_NICE's bit among a process's capabilities.
+CAP_SYS_NICE = 23
+# Bytes of sound: a recording past this many has started, and one that grows by more after
+# a stall is still recording.
+RECORDING = 100000
+
+# A JSON object as niri or the shell gives it, whose fields the test reads as it finds them.
+type Json = dict[str, Any]
+
+
+def in_session(command: str) -> str:
+    """Give a command as the account, inside its niri session, where qs finds the shell."""
+    environment = (
+        "export XDG_RUNTIME_DIR=/run/user/1000; "
+        "export $(systemctl --user show-environment | grep -E '^(WAYLAND_DISPLAY|NIRI_SOCKET)='); "
+    )
+    return f"su - {ACCOUNT} -c " + shlex.quote(environment + command)
+
+
+def as_account(command: str) -> str:
+    """Run a command as the account, inside its session, and give what it printed."""
+    return machine.succeed(in_session(command))
+
+
+def wait_for_surface(namespace: str) -> None:
+    """Wait until niri lists one of the shell's surfaces by its namespace."""
+    machine.wait_until_succeeds(in_session(f"niri msg layers | grep -q {namespace}"), timeout=30)
+
+
+# The shell reports what it does to its journal (Report.qml), so the test
+# waits on what happened, never on a guess at how long it takes. A point
+# in the journal is marked before the step that should bring a report,
+# and only what's said after it counts, so a report made before the wait
+# begins still ends it.
+def mark() -> str:
+    """Mark the point the shell's journal has reached."""
+    said = as_account("journalctl --user --unit=quickshell --lines=1 --show-cursor --output=cat")
+    return said.rsplit("-- cursor: ", 1)[1].strip()
+
+
+def reported(prefix: str, test: Callable[[str], object], since: str, timeout: int = 30) -> None:
+    """Wait until something said after a point starts with the prefix and passes the test.
+
+    The point is one mark gave, or "" for the boot. What the shell did say is printed when it
+    never says what's wanted.
+    """
+    deadline = time.monotonic() + timeout
+    start = since
+
+    def never() -> str:
+        point = f"--after-cursor={shlex.quote(start)}" if start else "--boot"
+        print(as_account(f"journalctl --user --unit=quickshell --no-pager --output=cat {point}"))
+        return f"the shell never reported {prefix!r} as wanted"
+
+    while True:
+        left = int(deadline - time.monotonic())
+        assert left > 0, never()
+        status, said = machine.execute(
+            in_session(f"reports {shlex.quote(since)} {left} {shlex.quote(prefix)}"),
+            timeout=left + 30,
+        )
+        assert status == 0, never()
+        for line in said.splitlines():
+            kind, what = line.split("\t", 1)
+            if kind == "cursor":
+                since = what
+            elif what.startswith(prefix) and test(what[len(prefix) :]):
+                return
+
+
+@contextlib.contextmanager
+def told(what: str, timeout: int = 30) -> Iterator[None]:
+    """Wait, after what's done inside it, for the shell to say exactly this."""
+    since = mark()
+    yield
+    reported(what, lambda rest: rest == "", since, timeout)
+
+
+def held_still(timeout: int = 10, span: float = 0.5) -> bool:
+    """Say whether the screen holds still for half a second before the time is up.
+
+    Half a second is twice the theme's longest movement: niri composes a frame a moment after
+    it's asked to, windows and surfaces move as they come, and a busy host can draw two frames
+    in a row the same mid-motion.
+    """
+    deadline = time.monotonic() + timeout
+    with tempfile.TemporaryDirectory() as folder:
+        shot = Path(folder) / "shot.ppm"
+        last: bytes | None = None
+        since = time.monotonic()
+        while time.monotonic() < deadline:
+            machine.send_monitor_command(f"screendump {shot}")
+            now = shot.read_bytes()
+            if now != last:
+                last, since = now, time.monotonic()
+            elif time.monotonic() - since >= span:
+                return True
+    return False
+
+
+def photograph(name: str, timeout: int = 10) -> None:
+    """Photograph the screen once it holds still, for a person to look at.
+
+    One that never holds still is kept as it is.
+    """
+    held_still(timeout)
+    machine.screenshot(name)
+
+
+def showing() -> Json:
+    """Give what the launcher shows, from its showing call.
+
+    That's whether it holds the keys, what's typed and held, and the row Return takes. Under
+    load the launcher lags the keys sent to it, so each step waits on this.
+    """
+    return cast("Json", json.loads(as_account("qs ipc call launcher showing")))
+
+
+def launcher_until(test: Callable[[Json], object], timeout: int = 30) -> None:
+    """Wait until what the launcher shows passes the test.
+
+    The launcher reports its state each time it changes, so a wait reads it once and then
+    hears every change.
+    """
+    since = mark()
+    if not test(showing()):
+        reported("showing ", lambda said: test(json.loads(said)), since, timeout)
+
+
+def launcher_ready() -> None:
+    """Wait until the launcher is open and holds the keys.
+
+    niri lists the layer a frame before it gives it the keys, and a letter typed in that frame
+    goes to the window underneath.
+    """
+    launcher_until(lambda shown: shown["open"] and shown["keys"])
+
+
+def type_in(text: str, selecting: str = "") -> None:
+    """Type into the launcher, and wait until it holds every letter with Return's row settled.
+
+    An answer still being looked up closes the launcher without copying. A row that comes from
+    something found later, such as a window or a copy, can be named to wait for as well.
+    """
+    machine.send_chars(text)
+
+    def holds(shown: Json) -> object:
+        row = shown["selected"]
+        name = row["name"].lower() if row else ""
+        settled = row is None or row["settled"]
+        return shown["typed"].endswith(text) and settled and selecting.lower() in name
+
+    launcher_until(holds)
+
+
+def answer(typed: str) -> None:
+    """Open the launcher, and ask it what's typed."""
+    as_account("qs ipc call launcher toggle")
+    launcher_ready()
+    type_in(typed)
+
+
+def step_in(key: str = "right") -> None:
+    """Press a key that steps into the selected row, and wait until the launcher holds it.
+
+    That's the right arrow into a thing's verbs, or Return into what a verb asks.
+    """
+    before = len(showing()["held"])
+    machine.send_key(key)
+    launcher_until(lambda shown: len(shown["held"]) > before)
+
+
+def window_titled(title: str) -> Json:
+    """Give the window niri lists under this title."""
+    windows: list[Json] = json.loads(as_account("niri msg --json windows"))
+    return next(window for window in windows if window["title"] == title)
+
+
+def drawn_at(window: Json) -> tuple[int, int, int, int]:
+    """Give where a floating window draws on the screen: left, top, width, height."""
+    layout = window["layout"]
+    left = int(layout["tile_pos_in_workspace_view"][0] + layout["window_offset_in_tile"][0])
+    top = int(layout["tile_pos_in_workspace_view"][1] + layout["window_offset_in_tile"][1])
+    width, height = layout["window_size"]
+    return left, top, width, height
+
+
+def settles_on(wanted: str, read: Callable[[], str], timeout: int = 15) -> str | None:
+    """Give what a reading of the screen settles on.
+
+    It's read until it gives the colour wanted, since niri moves a window to where it says it
+    is over a few frames, and the last reading is given if it never does. A reading niri can't
+    give yet, a window not yet floating, reads as nothing.
+    """
+    readings: list[str | None] = [None]
+
+    def settled(_: bool) -> bool:
+        try:
+            readings.append(read())
+        except KeyError, TypeError:
+            readings.append(None)
+        return readings[-1] == wanted
+
+    with contextlib.suppress(Exception):
+        retry(settled, timeout_seconds=timeout)
+    return readings[-1]
+
+
+def commonest_colour_in(title: str, picture: str, wanted: str) -> str | None:
+    """Give the commonest colour inside a window, a little in from its edges, once it's wanted.
+
+    niri says where a window is only once it floats, so it floats first. The first GTK window
+    has taken over 30 seconds to open on a CI runner building the kernel beside the test, so
+    this waits longer than the rest.
+    """
+    machine.wait_until_succeeds(
+        in_session(f'niri msg --json windows | grep -qF \'"title":"{title}"\''), timeout=120
+    )
+    as_account(f"niri msg action move-window-to-floating --id {window_titled(title)['id']}")
+
+    def commonest() -> str:
+        photograph(picture)
+        left, top, width, height = drawn_at(window_titled(title))
+        image = Image.open(machine.out_dir / f"{picture}.png").convert("RGB")
+        inside = image.crop((left + 20, top + 20, left + width - 20, top + height - 20))
+        # Pillow gives no counts when there are more colours than asked
+        # for, and there can't be more than there are pixels.
+        counts = inside.getcolors(inside.width * inside.height)
+        assert counts is not None
+        _, colour = max(counts)
+        # An RGB picture's colours are each a red, a green and a blue.
+        return "#{:02x}{:02x}{:02x}".format(*cast("tuple[int, int, int]", colour))
+
+    colour = settles_on(wanted, commonest)
+    as_account(f"niri msg action close-window --id {window_titled(title)['id']}")
+    return colour
+
+
+machine.wait_for_unit("multi-user.target")
+machine.wait_until_succeeds("ls /run/user/1000/niri.*.sock", timeout=60)
+as_account(
+    "NIRI_SOCKET=$(ls /run/user/1000/niri.*.sock) niri msg action spawn --"
+    " systemctl --user import-environment WAYLAND_DISPLAY NIRI_SOCKET"
+)
+machine.wait_until_succeeds(
+    in_session("systemctl --user show-environment | grep -q WAYLAND_DISPLAY")
+)
+# niri sets these as a session, then starts it.
+as_account("systemctl --user set-environment XDG_CURRENT_DESKTOP=niri XDG_SESSION_TYPE=wayland")
+as_account("systemctl --user start compositor")
+# Every subtest past the first few needs the shell, so it starts with
+# the session rather than in a subtest, and any subtest can run alone.
+as_account("systemctl --user start quickshell")
+machine.wait_until_succeeds(in_session("qs ipc show | grep -q launcher"), timeout=STARTING)
+
+# A loop in the order units start breaks nothing at a switch, when the
+# targets are already reached, so only a boot shows it.
+with subtest("the machine boots without an ordering cycle"):
+    machine.fail("journalctl -b -o cat | grep -F 'ordering cycle'")
+
+# niri holds CAP_SYS_NICE, so the GPU draws its frames first, from the
+# wrapper it starts through; that wrapper puts it in the inheritable
+# and ambient sets too, which niri clears, so what it starts holds
+# none of it, nor can take it up.
+with subtest("niri keeps CAP_SYS_NICE to itself"):
+
+    def caps_of(status: str) -> dict[str, int]:
+        """Give each capability set a process's status lists, by its name, as a number."""
+        return {
+            line.split(":")[0]: int(line.split()[1], 16)
+            for line in status.splitlines()
+            if line.startswith("Cap")
+        }
+
+    compositor = machine.succeed(f"pgrep -x -u {ACCOUNT} niri | head -n 1").strip()
+    niri_caps = caps_of(machine.succeed(f"cat /proc/{compositor}/status"))
+    assert niri_caps["CapEff"] & (1 << CAP_SYS_NICE), niri_caps
+    t.assertEqual((niri_caps["CapInh"], niri_caps["CapAmb"]), (0, 0))
+    as_account("niri msg action spawn -- sh -c 'grep ^Cap /proc/self/status > /tmp/child-caps'")
+    machine.wait_until_succeeds("test -s /tmp/child-caps", timeout=30)
+    offspring = caps_of(machine.succeed("cat /tmp/child-caps"))
+    t.assertEqual(
+        [offspring[name] for name in ("CapEff", "CapPrm", "CapInh", "CapAmb")], [0, 0, 0, 0]
+    )
+
+# A reader that stalls, as one does under load, leaves the microphone
+# recording once it carries on, as a real one's does.
+with subtest("the stand-in microphone outlasts a reader that stalls"):
+    as_account(
+        f"systemd-run --user --unit=stalls -- {PIPEWIRE}/bin/pw-record"
+        " --target stand-in-microphone /tmp/stalls.wav"
+    )
+    machine.wait_until_succeeds(f"test $(stat -c %s /tmp/stalls.wav) -gt {RECORDING}", timeout=60)
+    as_account("systemctl --user kill --signal=STOP stalls")
+    machine.sleep(3)
+    as_account("systemctl --user kill --signal=CONT stalls")
+    machine.sleep(2)
+    stall_from = int(machine.succeed("stat -c %s /tmp/stalls.wav"))
+    machine.sleep(3)
+    stall_to = int(machine.succeed("stat -c %s /tmp/stalls.wav"))
+    as_account("systemctl --user stop stalls")
+    machine.succeed("rm /tmp/stalls.wav")
+    assert stall_to > stall_from + RECORDING, (stall_from, stall_to)
+
+# A user manager handed its whole service's pressure to watch can't set
+# its own threshold on it, and says so each time it starts or reloads.
+with subtest("every user manager watches its own pressure"):
+    as_account("systemctl --user daemon-reload")
+    machine.fail("journalctl -b -o cat | grep -F 'pressure threshold'")
+
+with subtest("the power profile follows the charger from boot"):
+    machine.wait_until_succeeds(
+        "journalctl -b -o cat -u power-profile-follows-the-charger | grep -F 'power profile:'",
+        timeout=30,
+    )
+
+with subtest("Quickshell starts without a QML error"):
+    log = as_account("journalctl --user -u quickshell --no-pager -o cat")
+    print(log)
+    assert "ERROR" not in log, "Quickshell reported an error"
+    assert "Error:" not in log, "Quickshell reported an error"
+
+
+def colours_and_light(
+    picture: str, part: tuple[float, float, float, float] = (0, 0, 1, 1)
+) -> tuple[Image.Image, int, float]:
+    """Take a picture of the screen, and give how many colours a part holds and how bright it is.
+
+    A flat colour holds one, and the light is from 0 to 255. The part is a box of fractions of
+    the screen: left, top, right and bottom.
+    """
+    machine.screenshot(picture)
+    image = Image.open(machine.out_dir / f"{picture}.png").convert("RGB")
+    w, h = image.size
+    box = image.crop((int(part[0] * w), int(part[1] * h), int(part[2] * w), int(part[3] * h)))
+    counts = box.getcolors(box.width * box.height)
+    assert counts is not None
+    return image, len(counts), ImageStat.Stat(box.convert("L")).mean[0]
+
+
+with subtest("the wallpaper stands behind the workspaces"):
+    wait_for_surface("wallpaper")
+
+    # It fades in once it's read, which takes longer on a slower machine.
+    def painted(last: bool) -> bool:
+        """Say whether the workspace shows the picture rather than a flat colour."""
+        _, colours, _ = colours_and_light("workspace")
+        if last:
+            t.assertGreater(
+                colours, PICTURE_COLOURS, "the workspace shows a flat colour, not the picture"
+            )
+        return colours > PICTURE_COLOURS
+
+    retry(painted, timeout_seconds=30)
+    # The picture to look at, once its fade has finished and the
+    # microphone's meter, which can show as the session starts, has
+    # gone.
+    machine.wait_until_fails(in_session("niri msg layers | grep -q microphone"), timeout=30)
+    photograph("workspace")
+
+with subtest("the overview draws nothing of the shell's, and the launcher says how things stand"):
+    as_account("niri msg action open-overview")
+    machine.wait_until_succeeds(
+        in_session("niri msg --json overview-state | grep -q '\"is_open\":true'"), timeout=10
+    )
+    photograph("overview")
+    machine.fail(in_session("niri msg layers | grep -qw status"))
+    as_account("niri msg action close-overview")
+    # The time, the battery's charge and the cable, at least, as
+    # drawn once the keys beside them are: each read by its glyph
+    # rather than a word, the battery saying its least, its charge,
+    # before the network gives way.
+    charge = machine.succeed("cat /sys/class/power_supply/test_battery/capacity").strip()
+    as_account("qs ipc call launcher toggle")
+    launcher_ready()
+    launcher_until(
+        lambda shown: (
+            re.match(r"\d\d:\d\d  ", shown["glance"])
+            and f"\U000f0079 {charge}%  " in shown["glance"]
+            and "\U000f0200" in shown["glance"]
+        )
+    )
+    photograph("launcher-standing")
+    # Typing narrows it to what never gives way, the time, so it
+    # never pulls the eye from the rows; here what's typed finds
+    # nothing, so no row's note takes its place.
+    type_in("zqxj")
+    launcher_until(lambda shown: re.fullmatch(r"\d\d:\d\d", shown["glance"]))
+    photograph("launcher-glance-typing")
+    machine.send_key("esc")
+    machine.wait_until_fails(in_session("niri msg layers | grep -qw launcher"), timeout=10)
+
+with subtest("a notification appears"):
+    with told("drawn notifications"):
+        as_account("notify-send 'Build finished' 'the laptop is ready'")
+    photograph("notification")
+    # It leaves on its own, before the meters, whose pictures it would
+    # be in for as long as the host takes to reach them.
+    machine.wait_until_fails(in_session("niri msg layers | grep -q notifications"), timeout=30)
+
+
+def meter_shows(namespace: str, kind: str, change: str) -> None:
+    """Make a change the shell is sure to hear, and photograph the meter that answers it.
+
+    Quickshell hears a node change only once it has bound the node's audio, a moment after
+    WirePlumber names it the default, which the meter says, so one change is made after that
+    and its meter answers it.
+    """
+    said = as_account(f"wpctl inspect @DEFAULT_AUDIO_{kind}@")
+    found = re.search(r'node\.name = "([^"]+)"', said)
+    assert found is not None, f"no default {kind.lower()} has a name"
+    node = found.group(1)
+    reported(f"hears {namespace} {node}", lambda rest: rest == "", "", timeout=60)
+    with told(f"drawn {namespace}"):
+        as_account(change)
+    photograph(namespace)
+
+
+with subtest("the volume shows when it changes, then goes"):
+    # WirePlumber picks the defaults a moment after Pipewire lists the nodes.
+    defaults = "wpctl inspect @DEFAULT_AUDIO_SINK@ && wpctl inspect @DEFAULT_AUDIO_SOURCE@"
+    machine.wait_until_succeeds(in_session(defaults), timeout=30)
+    meter_shows("volume", "SINK", "wpctl set-volume @DEFAULT_AUDIO_SINK@ 10%-")
+    machine.succeed(in_session("wpctl inspect @DEFAULT_AUDIO_SINK@ | grep -q stand-in-speakers"))
+    machine.wait_until_fails(in_session("niri msg layers | grep -q volume"), timeout=10)
+
+# The microphone's key mutes it through the same command, which niri runs.
+with subtest("the microphone shows when it mutes, then goes"):
+    toggle = "niri msg action spawn -- wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle"
+    meter_shows("microphone", "SOURCE", toggle)
+    machine.wait_until_fails(in_session("niri msg layers | grep -q microphone"), timeout=10)
+    # Unmuted again, which the margin hears, so it's empty for what's next.
+    since = mark()
+    as_account("wpctl set-mute @DEFAULT_AUDIO_SOURCE@ 0")
+    print(as_account("wpctl get-volume @DEFAULT_AUDIO_SOURCE@"))
+    reported("holds margin", lambda rest: "muted" not in rest.split(), since)
+
+# niri runs the brightness keys' command inside Joel's session, which is
+# the one logind lets change a backlight, so the test has niri run it too.
+# Twice, so the bar must say the pick just made, as the backlight
+# daemon wrote it, not the one before.
+with subtest("the brightness shows when the keys' command changes it, then goes"):
+
+    def as_chosen(rest: str) -> bool:
+        """Say whether the bar says the level the backlight daemon chose."""
+        level = float(as_account("cat $XDG_RUNTIME_DIR/backlight-chosen"))
+        return rest == f"{round(level * 100)}%"
+
+    for share in [80, 30]:
+        since = mark()
+        as_account(f"niri msg action spawn -- brightnessctl --class=backlight set {share}%")
+        machine.wait_until_succeeds(f"grep -qx {share} /sys/class/backlight/stand-in/brightness")
+        reported("level brightness ", as_chosen, since)
+    photograph("brightness")
+    machine.wait_until_fails(in_session("niri msg layers | grep -q brightness"), timeout=10)
+
+# The VM's light sensor is a stand-in whose light is what the test writes
+# to it, which it puts in the buffer udev turned on. Joel picks a dim
+# screen in a dim room; as the room brightens the screen follows it, and
+# the bar, which is for his picks, stays away.
+with subtest("the screen follows the light, and the bar shows only for picks"):
+    named = machine.succeed("grep -lx als /sys/bus/iio/devices/*/name")
+    sensor = named.strip().rsplit("/", 1)[0]
+    machine.succeed(f"grep -qx 1 {sensor}/buffer/enable")
+
+    def light(lux: int) -> None:
+        """Light the stand-in sensor's room with so many lux."""
+        machine.succeed(f"echo {lux * 1000} > {sensor}/in_illuminance_raw")
+
+    def brightness() -> int:
+        """Give the stand-in panel's brightness."""
+        return int(machine.succeed("cat /sys/class/backlight/stand-in/brightness"))
+
+    def learned(_: bool) -> bool:
+        """Say whether the backlight has learned the one pick made in a dim room."""
+        found = "grep -c '^2 0.100$' ~/.local/state/backlight/learned || true"
+        return as_account(found).strip() == "1"
+
+    light(2)
+    with told("drawn brightness"):
+        as_account("niri msg action spawn -- brightnessctl --class=backlight set 10%")
+    retry(learned, timeout_seconds=10)
+    machine.wait_until_fails(in_session("niri msg layers | grep -q brightness"), timeout=10)
+    since = mark()
+    light(30)
+    retry(lambda _: brightness() > FOLLOWED_THE_ROOM, timeout_seconds=30)
+    after = f"--after-cursor={shlex.quote(since)}"
+    shell = as_account(f"journalctl --user --unit=quickshell --no-pager --output=cat {after}")
+    t.assertNotIn("drawn brightness", shell, "the bar showed for the light")
+
+    # The sensor sits in the lid, so with the lid shut its dark is the
+    # lid's and the screen keeps its brightness; opened, it follows
+    # the room again.
+    def lid_says(said: str) -> None:
+        """Wait until the backlight says this of the lid."""
+        machine.wait_until_succeeds(
+            in_session(
+                f"journalctl --user --unit=backlight --no-pager --output=cat | grep -qF '{said}'"
+            ),
+            timeout=10,
+        )
+
+    machine.succeed("echo 1 > /sys/module/stand_in_lid/parameters/shut")
+    lid_says("the lid is shut")
+    held_at = brightness()
+    light(0)
+    # Longer than dimmer light waits to be followed, with room.
+    time.sleep(8)
+    t.assertEqual(brightness(), held_at, "the screen followed the shut lid's dark")
+    machine.succeed("echo 0 > /sys/module/stand_in_lid/parameters/shut")
+    lid_says("the lid is open")
+    light(1)
+    retry(lambda _: brightness() < held_at, timeout_seconds=30)
+
+# The VM's monitor is a stand-in on a bus named as an MST hub's, which
+# answers DDC/CI for its brightness as the desk's does. It follows the
+# panel, at the same share of its own brightest, whatever moves the
+# panel: a pick here, the room's light above.
+with subtest("the monitor follows the panel's brightness"):
+    machine.wait_until_succeeds(
+        in_session(
+            "journalctl --user --unit=backlight --no-pager --output=cat"
+            " | grep -q 'the monitor on i2c-[0-9]* follows'"
+        ),
+        timeout=10,
+    )
+    panel_brightest = int(machine.succeed("cat /sys/class/backlight/stand-in/max_brightness"))
+
+    def on_monitor(_: bool) -> bool:
+        """Say whether the monitor is at the panel's share of its brightest."""
+        shown = int(machine.succeed("cat /sys/module/stand_in_monitor/parameters/brightness"))
+        return shown == round(brightness() / panel_brightest * 100)
+
+    retry(on_monitor, timeout_seconds=10)
+    for share in [70, 20]:
+        as_account(f"niri msg action spawn -- brightnessctl --class=backlight set {share}%")
+        machine.wait_until_succeeds(f"grep -qx {share} /sys/class/backlight/stand-in/brightness")
+        retry(on_monitor, timeout_seconds=10)
+    backlight_said = as_account("journalctl --user --unit=backlight --no-pager --output=cat")
+    t.assertNotIn("can't set the monitor", backlight_said, "the monitor refused a level")
+    t.assertNotIn("left alone", backlight_said, "the monitor didn't answer")
+
+with subtest("the charge shows when power goes and comes back, then goes"):
+    # The kernel's stand-in has two supplies, mains and USB, and UPower
+    # counts the machine on battery only with both off.
+    def power(state: str) -> None:
+        """Turn both of the stand-in's supplies on or off."""
+        parameters = "/sys/module/test_power/parameters"
+        for supply in ["ac", "usb"]:
+            machine.succeed(f"echo {state} > {parameters}/{supply}_online")
+
+    for state in ["off", "on"]:
+        with told("drawn power"):
+            power(state)
+        photograph(f"power-{state}")
+        machine.wait_until_fails(in_session("niri msg layers | grep -q power"), timeout=10)
+
+# A photograph of the media keys' chords, whose marks lie past U+FFFF,
+# and Escape leaving.
+with subtest("the launcher shows the volume's chords, and Escape closes it"):
+    as_account("qs ipc call launcher toggle")
+    launcher_ready()
+    type_in("volume")
+    photograph("launcher-volume")
+    machine.send_key("esc")
+    machine.wait_until_fails(in_session("niri msg layers | grep -qw launcher"), timeout=10)
+
+with subtest("the launcher finds a pi session by its quest, and goes to its window"):
+    # A session as pi keeps one: its quest's README, front matter
+    # first, and its presence while it runs.
+    quest = "~/.local/share/pi/agentic-harness.pi/quest-workflow/quests/QEST-20261022-TESTQA"
+    presence = "~/.local/state/pi/agentic-harness.pi/mesh-workflow/presence"
+    as_account(
+        f"mkdir -p {quest} {presence} && printf '%s\\n' '---' 'title: no' '---'"
+        " '# A quest of its own & whole'"
+        f' > {quest}/README.md && echo \'{{"session":"01a1face-test",'
+        '"addresses":["TESTQA"],"busy":true,'
+        '"owns":["QEST-20261022-TESTQA"],"worksOn":"Tidy the tests",'
+        '"groups":["#desk"],'
+        '"owner":{"startedAt":\'$(date +%s%3N)\'}}\''
+        f" > {presence}/testqa.json"
+    )
+    # What it spent today, as spend-watch writes it, replaced whole.
+    spent = {
+        "v": 2,
+        "sessions": {"01a1face-test": "$12.50"},
+        "helpers": {"01a1face-test": [{"on": "councils", "spent": "$4.00"}]},
+    }
+    as_account(
+        f"mkdir -p $XDG_RUNTIME_DIR/spend-watch && echo '{json.dumps(spent)}'"
+        " > $XDG_RUNTIME_DIR/spend-watch/.c"
+        " && mv $XDG_RUNTIME_DIR/spend-watch/.c $XDG_RUNTIME_DIR/spend-watch/collection.json"
+    )
+    # A VM test of its waiting its turn in the machine's queue.
+    lined = {
+        "v": 1,
+        "heartbeat": float(machine.succeed("date +%s")),
+        "machine": {},
+        "jobs": [
+            {
+                "id": "t",
+                "kind": "vm-test",
+                "state": "waiting",
+                "owner": {"session": "01a1face-test"},
+                "what": "Test the shell",
+                "since": machine.succeed("date -u +%FT%TZ").strip(),
+                "place": 2,
+            },
+        ],
+    }
+    as_account(
+        f"echo '{json.dumps(lined)}' > $XDG_RUNTIME_DIR/jobs/.q"
+        " && mv $XDG_RUNTIME_DIR/jobs/.q $XDG_RUNTIME_DIR/jobs/queue.json"
+    )
+    # Its window, titled as pi titles its own: its address, its
+    # quest cut short, its folder, which a hyphen doesn't end.
+    agent = "\u03c0 - TESTQA A quest of\u2026 - my-tree"
+    as_account(f"niri msg action spawn -- kitty --title '{agent}'")
+    machine.wait_until_succeeds(
+        in_session("niri msg --json windows | grep -q TESTQA"), timeout=STARTING
+    )
+    # Another window to be in, so going to the session's means a move.
+    as_account("niri msg action spawn -- kitty --title Elsewhere")
+    machine.wait_until_succeeds(
+        in_session("niri msg --json windows | grep -q '\"Elsewhere\"'"), timeout=STARTING
+    )
+    as_account(f"niri msg action focus-window --id {window_titled('Elsewhere')['id']}")
+    # The launcher's foot counts it, working, as its presence says.
+    since = mark()
+    as_account("qs ipc call launcher toggle")
+    reported("stands ", lambda rest: "\u03c0 1 working" in rest, since)
+    launcher_ready()
+    # Its collection by what it's called, then the session named
+    # whole, as its README is, not as its window's title.
+    type_in("agents")
+    launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Agents")
+    machine.send_key("ret")
+    launcher_until(
+        lambda shown: (
+            shown["held"] == ["sessions"]
+            and (shown["selected"] or {}).get("name") == "A quest of its own & whole"
+            and "$12.50 today" in shown["selected"]["side"]
+            and "2nd in line" in shown["selected"]["side"]
+        )
+    )
+    photograph("launcher-agents")
+    # Stepped into, what's known of it, each a row of its own.
+    step_in()
+    launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Go to its window")
+    for name, side in [
+        (r"QEST-20261022-TESTQA", "its quest"),
+        (r"TESTQA", "its address"),
+        (r"\d\d:\d\d", "started"),
+        (r"\$12\.50", "spent today"),
+        (r"\$4\.00", "on councils"),
+        (r"Test the shell", "2nd in line"),
+        (r"Tidy the tests", "works on"),
+        (r"#desk", "hears"),
+    ]:
+        machine.send_key("down")
+        # The wait ends before the loop moves on, so it reads this pass's names.
+        launcher_until(
+            lambda shown: (
+                re.fullmatch(name, (shown["selected"] or {}).get("name", ""))  # noqa: B023
+                and shown["selected"]["side"] == side  # noqa: B023
+            )
+        )
+    photograph("launcher-agent-facts")
+    machine.send_key("left")
+    launcher_until(lambda shown: shown["held"] == ["sessions"])
+    as_account("rm $XDG_RUNTIME_DIR/spend-watch/collection.json $XDG_RUNTIME_DIR/jobs/queue.json")
+    # Found by its address too.
+    type_in("testqa", selecting="A quest of its own & whole")
+    machine.send_key("ret")
+    machine.wait_until_succeeds(
+        in_session("niri msg --json focused-window | grep -q TESTQA"), timeout=10
+    )
+    # Its title is read once, outside what's drawn, so nothing drawn
+    # reads it again as it changes.
+    log = as_account("journalctl --user -u quickshell --no-pager -o cat")
+    assert "Binding loop" not in log, "a session's title is read inside a binding"
+
+    # It comes to want Joel, its presence replaced by rename as pi's
+    # is: the margin hangs pi's mark, and lets it go once answered.
+    def presence_says(said: Json) -> None:
+        """Replace the session's presence with this, by rename, as pi does."""
+        as_account(
+            f"echo '{json.dumps(said)}' > {presence}/.testqa"
+            f" && mv {presence}/.testqa {presence}/testqa.json"
+        )
+
+    # From another window, so it's said as a notice too, whose
+    # Return goes to the session's window.
+    as_account(f"niri msg action focus-window --id {window_titled('Elsewhere')['id']}")
+
+    # The margin may hold other marks, a notice missed earlier among
+    # them, so it's pi's own that's waited on.
+    # Wants begun now, as the shell only says those it saw begin.
+    def begun() -> str:
+        """Give the machine's time now, as pi writes when a want began."""
+        return machine.succeed("date -u +%Y-%m-%dT%H:%M:%SZ").strip()
+
+    question = {"kind": "question", "since": begun(), "said": "Which <way> & why?"}
+    since = mark()
+    # Said as written: the summary is plain, so its & isn't escaped.
+    with told("shows card A quest of its own & whole asks you"):
+        presence_says({"addresses": ["TESTQA"], "busy": False, "wants": question})
+    reported("holds margin ", lambda rest: "agent" in rest.split(), since)
+    photograph("margin-pi-wants")
+    # The same want, its file replaced again, says nothing new.
+    presence_says({"addresses": ["TESTQA"], "busy": False, "wants": question})
+    time.sleep(3)
+    cards = (
+        "journalctl --user --unit=quickshell --no-pager --output=cat"
+        " | grep -c 'report\\[shows card A quest of its own & whole asks you'"
+    )
+    t.assertEqual(as_account(cards).strip(), "1", "the same want was said twice")
+    with told("keys notices"):
+        machine.send_key("meta_l-n")
+    machine.send_key("ret")
+    machine.wait_until_succeeds(
+        in_session("niri msg --json focused-window | grep -q TESTQA"), timeout=10
+    )
+    machine.wait_until_fails(in_session("niri msg layers | grep -q notifications"), timeout=10)
+    # Another, unanswered, from the other window: its notice says what
+    # it wants, and goes when the want does, missed by nobody. Notices
+    # missed earlier are let go first, so the margin's notices mark is
+    # this one's alone.
+    held = as_account(
+        "journalctl --user --unit=quickshell --no-pager --output=cat"
+        " | grep -o 'report\\[holds margin [^]]*' | tail -n 1"
+    )
+    since = mark()
+    as_account("qs ipc call notices seen")
+    if "waiting" in held.split()[2:]:
+        reported("holds margin ", lambda rest: "waiting" not in rest.split(), since)
+    as_account(f"niri msg action focus-window --id {window_titled('Elsewhere')['id']}")
+    with told("shows card A quest of its own & whole wants your yes"):
+        presence_says(
+            {
+                "addresses": ["TESTQA"],
+                "busy": False,
+                "wants": {"kind": "approval", "since": begun(), "said": "Push it?"},
+            }
+        )
+    # Ended while its notice is up, the notice goes with it, well
+    # before its own ten seconds would.
+    presence_says({"addresses": ["TESTQA"], "busy": False})
+    machine.wait_until_fails(in_session("niri msg layers | grep -q notifications"), timeout=5)
+    # A third, left to time out while its want stands: it isn't
+    # missed, since pi's mark says the want; ended, the mark goes.
+    with told("shows card A quest of its own & whole is stuck without you"):
+        presence_says(
+            {
+                "addresses": ["TESTQA"],
+                "busy": False,
+                "wants": {"kind": "blocked", "since": begun(), "said": "Out of ideas."},
+            }
+        )
+    machine.wait_until_fails(in_session("niri msg layers | grep -q notifications"), timeout=30)
+    time.sleep(2)
+
+    def margin_holds() -> list[str]:
+        """Give what the margin last said it holds."""
+        return as_account(
+            "journalctl --user --unit=quickshell --no-pager --output=cat"
+            " | grep -o 'report\\[holds margin [^]]*' | tail -n 1"
+        ).split()[2:]
+
+    t.assertNotIn("waiting", margin_holds(), "pi's notice counted as missed")
+    since = mark()
+    presence_says({"addresses": ["TESTQA"], "busy": False})
+    reported("holds margin ", lambda rest: "agent" not in rest.split(), since)
+    t.assertNotIn("waiting", margin_holds(), "pi's notice counted as missed")
+
+with subtest(
+    "the launcher finds pi's quests, going to the session on one and opening pi on another"
+):
+    # Their READMEs as pi keeps them, front matter first: the session's
+    # quest, and another in a tree of its own with no session on it.
+    another = "~/.local/share/pi/agentic-harness.pi/quest-workflow/quests/QEST-20261022-HALLWY"
+    as_account(
+        "printf '%s\\n' '---' 'id: QEST-20261022-TESTQA' 'kind: quest' 'status: active'"
+        f" 'priority: driving' 'rank: 1' '---' '# A quest of its own & whole' > {quest}/README.md"
+        f" && mkdir -p {another} ~/hallway && printf '%s\\n' '---' 'id: QEST-20261022-HALLWY'"
+        " 'kind: quest' 'status: active' 'priority: queued' 'rank: 1' 'trees:'"
+        ' "  - path: $HOME/hallway"'
+        f" '---' '# Paint the hallway' > {another}/README.md"
+    )
+    presence_says({"addresses": ["TESTQA"], "busy": False, "owns": ["QEST-20261022-TESTQA"]})
+    as_account(f"niri msg action focus-window --id {window_titled('Elsewhere')['id']}")
+    as_account("qs ipc call launcher toggle")
+    launcher_ready()
+    type_in("quests")
+    launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Quests")
+    machine.send_key("ret")
+    # The one driving first, naming the session that has it loaded.
+    launcher_until(
+        lambda shown: (
+            shown["held"] == ["quests"]
+            and (shown["selected"] or {}).get("name") == "A quest of its own & whole"
+            and shown["selected"]["side"] == "driving \u00b7 TESTQA"
+        )
+    )
+    machine.send_key("down")
+    launcher_until(
+        lambda shown: (
+            (shown["selected"] or {}).get("name") == "Paint the hallway"
+            and shown["selected"]["side"] == "queued"
+        )
+    )
+    photograph("launcher-quests")
+    machine.send_key("up")
+    launcher_until(
+        lambda shown: (shown["selected"] or {}).get("name") == "A quest of its own & whole"
+    )
+    machine.send_key("ret")
+    machine.wait_until_succeeds(
+        in_session("niri msg --json focused-window | grep -q TESTQA"), timeout=10
+    )
+    # One with no session, found by a word of its title, opens pi on
+    # it in its tree.
+    as_account("qs ipc call launcher toggle")
+    launcher_ready()
+    type_in("hallway", selecting="Paint the hallway")
+    machine.send_key("ret")
+    machine.wait_until_succeeds(
+        in_session('grep -qx "$HOME/hallway QEST-20261022-HALLWY" $XDG_RUNTIME_DIR/pi-opened'),
+        timeout=30,
+    )
+    as_account(f"rm -rf {another} ~/hallway $XDG_RUNTIME_DIR/pi-opened")
+
+with subtest(
+    "the launcher finds pi's runs, going to the session that started one and reading an answer"
+):
+    # A fleet as the harness keeps one, started by the session, whose
+    # window's process stands in for pi's: one member still at work,
+    # its process the other window's, and one done with its answer.
+    leader = window_titled(agent)["pid"]
+    crew = "~/.local/state/pi/agentic-harness.pi/subagent-workflow/runs/paint-crew/reviewers"
+
+    def keeps(path: str, said: Json) -> None:
+        """Write what the harness keeps of the fleet, at a path inside it."""
+        as_account(
+            f"mkdir -p {crew}/{path.split('/', maxsplit=1)[0]}"
+            f" && echo '{json.dumps(said)}' > {crew}/{path}"
+        )
+
+    asked = {"cwd": "/src/house", "args": ["cli.js", "--model", "anthropic/opus"]}
+    for member, child, stands in [
+        ("brush", window_titled("Elsewhere")["pid"], "running"),
+        ("roller", 1, "complete"),
+    ]:
+        keeps(f"{member}/request.json", asked)
+        keeps(f"{member}/lease.json", {"parentPid": leader, "childPid": child})
+        keeps(
+            f"{member}/progress.json",
+            {"state": stands, "activity": "painting the trim" if stands == "running" else ""},
+        )
+    stamp = machine.succeed("date -u +%FT%T.000Z").strip()
+    keeps(
+        "roller/result.json",
+        {
+            "state": "complete",
+            "startedAt": stamp,
+            "completedAt": stamp,
+            "usage": {"cost": {"total": 2.5}},
+            "finalAssistantText": "Two coats.",
+        },
+    )
+    presence_says({"addresses": ["TESTQA"], "busy": False, "owner": {"pid": leader}})
+    as_account(f"niri msg action focus-window --id {window_titled('Elsewhere')['id']}")
+    as_account("qs ipc call launcher toggle")
+    launcher_ready()
+    type_in("runs")
+    launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Runs")
+    machine.send_key("ret")
+    launcher_until(
+        lambda shown: (
+            shown["held"] == ["runs"]
+            and (shown["selected"] or {}).get("name") == "paint-crew"
+            and re.fullmatch(
+                r"fleet \u00b7 1 of 2 done \u00b7 (<1|\d+) min \u00b7 TESTQA",
+                shown["selected"]["side"],
+            )
+        )
+    )
+    photograph("launcher-runs")
+    # Stepped into, its members after the way to its session.
+    step_in()
+    launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Go to its session")
+    machine.send_key("down")
+    launcher_until(
+        lambda shown: (
+            (shown["selected"] or {}).get("name") == "brush"
+            and shown["selected"]["side"].startswith("painting the trim \u00b7 opus")
+        )
+    )
+    machine.send_key("down")
+    launcher_until(
+        lambda shown: (
+            (shown["selected"] or {}).get("name") == "roller"
+            and shown["selected"]["side"] == "opus \u00b7 $2.50 \u00b7 <1 min"
+        )
+    )
+    photograph("launcher-run-members")
+    # Its answer, read in a terminal named for the run and the member.
+    machine.send_key("ret")
+    reading = "paint-crew \u00b7 roller"
+    machine.wait_until_succeeds(
+        in_session(f"niri msg --json windows | grep -q '{reading}'"), timeout=STARTING
+    )
+    # Still open a moment on, so the pager holds the answer.
+    time.sleep(1)
+    as_account(f"niri msg action close-window --id {window_titled(reading)['id']}")
+    # Return on the run itself goes to its session.
+    as_account("qs ipc call launcher toggle")
+    launcher_ready()
+    type_in("runs")
+    launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Runs")
+    machine.send_key("ret")
+    launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "paint-crew")
+    machine.send_key("ret")
+    machine.wait_until_succeeds(
+        in_session("niri msg --json focused-window | grep -q TESTQA"), timeout=10
+    )
+    as_account("rm -rf ~/.local/state/pi/agentic-harness.pi/subagent-workflow/runs/paint-crew")
+    for title in [agent, "Elsewhere"]:
+        as_account(f"niri msg action close-window --id {window_titled(title)['id']}")
+    as_account(f"rm -rf {quest} {presence}/testqa.json")
+    machine.wait_until_fails(
+        in_session("niri msg --json windows | grep -q 'TESTQA\\|\"Elsewhere\"'"), timeout=30
+    )
+
+with subtest("the launcher sets the volume to a number, and says how loud it is"):
+    # Muted first, since a level asked for is one to be heard.
+    as_account("wpctl set-mute @DEFAULT_AUDIO_SINK@ 1")
+    as_account("qs ipc call launcher toggle")
+    launcher_ready()
+    type_in("volume 40")
+    launcher_until(lambda shown: (shown["selected"] or {}).get("name", "").endswith(" to 40%"))
+    machine.send_key("ret")
+    # Exactly that, and no longer muted.
+    machine.wait_until_succeeds(
+        in_session("wpctl get-volume @DEFAULT_AUDIO_SINK@ | grep -qx 'Volume: 0.40'"), timeout=10
+    )
+    machine.wait_until_fails(in_session("niri msg layers | grep -qw launcher"), timeout=10)
+    as_account("qs ipc call launcher toggle")
+    launcher_ready()
+    type_in("volume")
+    launcher_until(
+        lambda shown: (shown["selected"] or {}).get("name", "").startswith("40%, through ")
+    )
+    photograph("launcher-volume-told")
+    machine.send_key("esc")
+    machine.wait_until_fails(in_session("niri msg layers | grep -qw launcher"), timeout=10)
+
+with subtest("the launcher finds and opens kitty, and learns that kitty was meant"):
+    as_account("qs ipc call launcher toggle")
+    launcher_ready()
+    type_in("kitty", selecting="kitty")
+    photograph("launcher")
+    machine.send_key("ret")
+    # The first window opened can take as long as the first GTK one.
+    machine.wait_until_succeeds(in_session("niri msg windows | grep -i kitty"), timeout=STARTING)
+    # What was picked for what was typed is kept for next time.
+    picked = '\'"kitty":{"program:kitty"\''
+    machine.wait_until_succeeds(
+        in_session(f"grep -rqsF {picked} ~/.local/state/quickshell"), timeout=10
+    )
+
+# The border is all that marks the focused window, and niri leaves
+# borders off unless its config turns them on.
+with subtest("the focused window is framed in the accent"):
+    machine.wait_until_succeeds(in_session("niri msg focused-window | grep -qi kitty"), timeout=30)
+    window = json.loads(as_account("niri msg --json focused-window"))
+    as_account(f"niri msg action move-window-to-floating --id {window['id']}")
+
+    def beside() -> str:
+        """Give the colour just left of the focused window, where its border is."""
+        photograph("focused")
+        left, top, _, height = drawn_at(json.loads(as_account("niri msg --json focused-window")))
+        image = Image.open(machine.out_dir / "focused.png").convert("RGB")
+        # An RGB picture's pixels are each a red, a green and a blue.
+        pixel = cast("tuple[int, int, int]", image.getpixel((left - 1, top + height // 2)))
+        return "#{:02x}{:02x}{:02x}".format(*pixel)
+
+    framed = settles_on(ACCENT.lower(), beside)
+    as_account(f"niri msg action move-window-to-tiling --id {window['id']}")
+    t.assertEqual(framed, ACCENT.lower())
+
+# niri opens a window in a column of its own, and the shell folds it
+# in just below the focused one.
+with subtest("a terminal opens below the focused window"):
+    anchor = json.loads(as_account("niri msg --json focused-window"))
+    as_account("qs ipc call grid below kitty")
+    kitties = 'niri msg --json windows | grep -o \'"app_id":"kitty"\' | wc -l'
+    machine.wait_until_succeeds(in_session(f"{kitties} | grep -qx 2"), timeout=STARTING)
+
+    def placed(_: bool) -> bool:
+        """Say whether the new terminal sits just below the one focused before."""
+        windows = json.loads(as_account("niri msg --json windows"))
+        at = {w["id"]: w["layout"]["pos_in_scrolling_layout"] for w in windows}
+        new = next(w["id"] for w in windows if w["id"] != anchor["id"])
+        here, there = at[anchor["id"]], at[new]
+        return bool(there[0] == here[0] and there[1] == here[1] + 1)
+
+    retry(placed, timeout_seconds=15)
+
+# The launcher finds a window by its title, and Return goes to it.
+with subtest("the launcher switches to a window by its title"):
+    as_account("niri msg action spawn -- kitty --title 'Notes for Tuesday'")
+    machine.wait_until_succeeds(
+        in_session("niri msg windows | grep -q 'Notes for Tuesday'"), timeout=STARTING
+    )
+    as_account("niri msg action focus-window-previous")
+    machine.wait_until_fails(
+        in_session("niri msg focused-window | grep -q 'Notes for Tuesday'"), timeout=10
+    )
+    as_account("qs ipc call launcher toggle")
+    launcher_ready()
+    type_in("tuesday", selecting="Notes for Tuesday")
+    photograph("launcher-window")
+    machine.send_key("ret")
+    machine.wait_until_succeeds(
+        in_session("niri msg focused-window | grep -q 'Notes for Tuesday'"), timeout=10
+    )
+
+# Super+Tab opens the launcher on every other window, the one used last
+# first, so Return goes back to it, and a few letters find any other,
+# among two dozen as easily as among two, with nothing held down. The
+# windows are one kitty's, so the machine holds them all.
+with subtest("Super+Tab goes back to the window before, and finds any by typing"):
+    # The last one's title is far wider than the launcher, as a
+    # browser tab's can be.
+    scratch = [
+        *[f"Scratch {n:02}" for n in range(1, 25)],
+        (
+            "Scratch 25 and a title that goes on well past the edge of the launcher"
+            " and the screen, as the titles of web pages often do"
+        ),
+    ]
+    for title in scratch:
+        as_account(
+            "niri msg action spawn -- kitty --single-instance"
+            f" --instance-group scratch --title '{title}'"
+        )
+        machine.wait_until_succeeds(
+            in_session(f"niri msg windows | grep -q '{title}'"), timeout=STARTING
+        )
+    notes = window_titled("Notes for Tuesday")
+    as_account(f"niri msg action focus-window --id {notes['id']}")
+    machine.wait_until_succeeds(
+        in_session("niri msg focused-window | grep -q 'Notes for Tuesday'"), timeout=10
+    )
+    closed = in_session("niri msg layers | grep -qw launcher")
+
+    def tab_to(typed: str, title: str) -> None:
+        """Open the windows with Super+Tab, type, and wait until the window titled is chosen."""
+        machine.send_key("meta_l-tab")
+        launcher_ready()
+        launcher_until(lambda shown: shown["held"] == ["windows"])
+        if typed:
+            type_in(typed, selecting=title)
+        launcher_until(lambda shown: shown["selected"] and shown["selected"]["name"] == title)
+
+    def went(title: str) -> None:
+        """Press Return, and wait until the launcher closes on the window titled."""
+        machine.send_key("ret")
+        machine.wait_until_fails(closed, timeout=10)
+        machine.wait_until_succeeds(
+            in_session(f"niri msg focused-window | grep -q '{title}'"), timeout=10
+        )
+
+    # The window used last is chosen as it opens, and this one isn't
+    # there to choose.
+    tab_to("", scratch[-1])
+    photograph("launcher-windows")
+    went("Scratch 25")
+    tab_to("", "Notes for Tuesday")
+    went("Notes for Tuesday")
+    # A few letters find one among them all, and nothing looser.
+    tab_to("scr 07", "Scratch 07")
+    went("Scratch 07")
+    # A program's name finds its windows, the one used last first.
+    tab_to("kitty", "Notes for Tuesday")
+    machine.send_key("esc")
+    machine.wait_until_fails(closed, timeout=10)
+    for title in scratch:
+        as_account(f"niri msg action close-window --id {window_titled(title)['id']}")
+    machine.wait_until_fails(in_session("niri msg windows | grep -q Scratch"), timeout=30)
+    as_account(f"niri msg action focus-window --id {notes['id']}")
+
+# The right arrow steps into what can be done to a window, and a verb
+# that needs a target asks for it in the same field.
+with subtest("the launcher moves a window and copies its title"):
+    notes = json.loads(as_account("niri msg --json focused-window"))
+
+    def into_notes(verb: str) -> None:
+        """Find the notes' window in the launcher, step into it, and type a verb."""
+        as_account("qs ipc call launcher toggle")
+        launcher_ready()
+        type_in("tuesday", selecting="Notes for Tuesday")
+        step_in()
+        type_in(verb)
+
+    into_notes("copy")
+    photograph("launcher-verbs")
+    machine.send_key("ret")
+    machine.wait_until_fails(in_session("niri msg layers | grep -qw launcher"), timeout=10)
+    t.assertEqual(as_account("wl-paste --no-newline"), "Notes for Tuesday")
+
+    into_notes("move")
+    step_in("ret")
+    photograph("launcher-target")
+    machine.send_key("ret")
+
+    def moved(_: bool) -> bool:
+        """Say whether the notes' window is on another workspace now."""
+        windows = json.loads(as_account("niri msg --json windows"))
+        now = next(w for w in windows if w["id"] == notes["id"])
+        return bool(now["workspace_id"] != notes["workspace_id"])
+
+    retry(moved, timeout_seconds=10)
+
+# Stepping back out of a collection finds the launcher as it was left,
+# on the row that was selected, not back at the top.
+with subtest("the launcher remembers where it was when stepping back"):
+    as_account("qs ipc call launcher toggle")
+    launcher_ready()
+
+    def selected() -> str:
+        """Give the name of the launcher's selected row, or nothing."""
+        return cast("str", (showing()["selected"] or {}).get("name", ""))
+
+    # Down past the first row to a collection's.
+    while True:
+        before = selected()
+        machine.send_key("down")
+        # The wait ends before the loop moves on, so it reads this pass's name.
+        launcher_until(
+            lambda shown: (shown["selected"] or {}).get("name", "") != before  # noqa: B023
+        )
+        if showing()["selected"]["verb"] == "open":
+            break
+    chosen = selected()
+    step_in()
+    machine.send_key("down")
+    machine.send_key("left")
+    launcher_until(
+        lambda shown: shown["held"] == [] and (shown["selected"] or {}).get("name") == chosen
+    )
+    machine.send_key("esc")
+    launcher_until(lambda shown: not shown["open"])
+
+with subtest("the launcher answers what's asked, and copies the answer"):
+
+    def copied(typed: str, expected: str) -> None:
+        """Ask the launcher, take its answer with Return, and check that it copied this."""
+        answer(typed)
+        machine.send_key("ret")
+        closed = in_session("niri msg layers | grep -qw launcher")
+        machine.wait_until_fails(closed, timeout=10)
+        t.assertEqual(as_account("wl-paste --no-newline"), expected)
+
+    copied("12*7", "84")
+    # The vendor comes from the list built from hwdata, so this proves it's there.
+    copied("3c:22:fb:12:34:56", "Apple, Inc.")
+    copied("5 km in mi", "3.10686")
+    # The battery's charge leads, as the kernel's stand-in has it.
+    charge = machine.succeed("cat /sys/class/power_supply/test_battery/capacity").strip()
+    answer("battery")
+    photograph("launcher-battery")
+    machine.send_key("ret")
+    machine.wait_until_fails(in_session("niri msg layers | grep -qw launcher"), timeout=10)
+    t.assertTrue(as_account("wl-paste --no-newline").startswith(f"{charge}%, "))
+    # Then what feeds it: the stand-in's mains, plugged in.
+    answer("charger")
+    machine.send_key("down")
+    launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "mains")
+    machine.send_key("esc")
+    # A collection is found by what a person calls it, not only its
+    # title, and Return goes straight into it.
+    # Beside the field, it says what sort of thing each is.
+    for typed, collection in [("audio", "Sound"), ("notifications", "Notices")]:
+        answer(typed)
+        # The wait ends before the loop moves on, so it reads this pass's name.
+        launcher_until(
+            lambda shown: (
+                (shown["selected"] or {}).get("name") == collection  # noqa: B023
+                and shown["kind"] == "collection"
+            )
+        )
+        machine.send_key("esc")
+    # Half a word asks its question too: "batt" is the battery, and
+    # Tab finishes the word.
+    answer("batt")
+    launcher_until(
+        lambda shown: (
+            shown["kind"] == "answer"
+            and (shown["selected"] or {}).get("name", "").startswith(f"{charge}%")
+        )
+    )
+    machine.send_key("tab")
+    launcher_until(lambda shown: shown["typed"] == "battery")
+    machine.send_key("ret")
+    machine.wait_until_fails(in_session("niri msg layers | grep -qw launcher"), timeout=10)
+    t.assertTrue(as_account("wl-paste --no-newline").startswith(f"{charge}%, "))
+    # The words a poor memory reaches for ask the same answers.
+    for typed, said in [("battery life", f"{charge}%"), ("how hot", ""), ("ram", "")]:
+        answer(typed)
+        # The wait ends before the loop moves on, so it reads this pass's answer.
+        launcher_until(
+            lambda shown: (
+                shown["kind"] == "answer"
+                and (shown["selected"] or {}).get("name", "").startswith(said)  # noqa: B023
+            )
+        )
+        machine.send_key("esc")
+    # A name starting the same way is chosen over an answer only
+    # started: "pow" is Power Off, the battery's answer above it.
+    answer("pow")
+    launcher_until(
+        lambda shown: (
+            shown["kind"] not in ("", "answer")
+            and (shown["selected"] or {}).get("name", "").lower().startswith("pow")
+        )
+    )
+    machine.send_key("esc")
+    # The hottest part, from the sensors the kernel lists, of which
+    # the stand-in battery is one.
+    print(machine.succeed("grep -H . /sys/class/hwmon/*/name"))
+    answer("temperature")
+    photograph("launcher-heat")
+    machine.send_key("ret")
+    machine.wait_until_fails(in_session("niri msg layers | grep -qw launcher"), timeout=10)
+    t.assertRegex(as_account("wl-paste --no-newline"), r"^-?\d+ \u00b0C at the ")
+    # The date in full, as the machine's clock has it; the day may
+    # turn while it's asked, so either will do.
+    before = machine.succeed("date '+%A %-d %B %Y'").strip()
+    answer("date")
+    photograph("launcher-date")
+    machine.send_key("ret")
+    machine.wait_until_fails(in_session("niri msg layers | grep -qw launcher"), timeout=10)
+    after = machine.succeed("date '+%A %-d %B %Y'").strip()
+    t.assertIn(as_account("wl-paste --no-newline"), [before, after])
+    # The stand-in backlight's share, as its files say.
+    now, most = (
+        int(machine.succeed(f"cat /sys/class/backlight/stand-in/{f}"))
+        for f in ("brightness", "max_brightness")
+    )
+    # Rounded half up, as JavaScript's Math.round does.
+    copied("brightness", f"{int(now * 100 / most + 0.5)}% bright")
+    # With a number, Return sets it, as the brightness keys do.
+    answer("brightness 30")
+    launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "set the screen to 30%")
+    machine.send_key("ret")
+    machine.wait_until_succeeds(
+        f"test $(cat /sys/class/backlight/stand-in/brightness) -eq {most * 30 // 100}",
+        timeout=10,
+    )
+    machine.wait_until_fails(in_session("niri msg layers | grep -qw launcher"), timeout=10)
+    # The session's actions answer to what people call them; Escape,
+    # never Return, since Return would do them.
+    for typed, action in [
+        ("shut down", "Power Off"),
+        ("restart", "Reboot"),
+        ("sign out", "Log Out"),
+    ]:
+        answer(typed)
+        # Each wait ends before the loop moves on, so it reads this pass's action.
+        launcher_until(
+            lambda shown: (
+                (shown["selected"] or {}).get("name") == action  # noqa: B023
+                and shown["kind"] == "session"
+            )
+        )
+        # Return asks rather than doing it: it holds the action, its
+        # one verb saying what a second Return would do.
+        machine.send_key("ret")
+        launcher_until(
+            lambda shown: (
+                shown["held"] == [action]  # noqa: B023
+                and (shown["selected"] or {}).get("name", "").startswith("Yes, ")
+            )
+        )
+        machine.send_key("esc")
+        machine.wait_until_fails(in_session("niri msg layers | grep -qw launcher"), timeout=10)
+    # A key's action, by the other words its bind lists.
+    answer("fullscreen")
+    launcher_until(
+        lambda shown: (
+            (shown["selected"] or {}).get("name")
+            == "Fill the screen with the window, or put it back"
+            and shown["kind"] == "shortcut"
+        )
+    )
+    machine.send_key("esc")
+    machine.wait_until_fails(in_session("niri msg layers | grep -qw launcher"), timeout=10)
+    # Each disk's room, as a disk guard says it, the tightest first.
+    status = {
+        "version": 1,
+        "heartbeat": time.time() + 3600,
+        "filesystems": [
+            # Less room than /nix, but healthy, so /nix still leads.
+            {"path": "/", "band": "healthy", "free": 10 * 2**30, "total": 30 * 2**30},
+            {"path": "/nix", "band": "pressure", "free": 20 * 2**30, "total": 900 * 2**30},
+        ],
+        "frozen": [],
+    }
+    machine.succeed(
+        f"echo '{json.dumps(status)}' > /run/disk-guard/.status"
+        " && mv /run/disk-guard/.status /run/disk-guard/status.json"
+    )
+    answer("disk")
+    launcher_until(
+        lambda shown: (shown["selected"] or {}).get("name", "").endswith(" free on /nix")
+    )
+    photograph("launcher-disks")
+    # Its first row is the headline's disk.
+    machine.send_key("down")
+    launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "20.0 GiB free")
+    machine.send_key("esc")
+    machine.wait_until_fails(in_session("niri msg layers | grep -qw launcher"), timeout=10)
+    # A guard that stops writing is silent once its last heartbeat is
+    # two minutes old, by a deadline that heartbeat set, with nothing
+    # read again in between.
+    status["heartbeat"] = float(machine.succeed("date +%s")) - 100
+    machine.succeed(
+        f"echo '{json.dumps(status)}' > /run/disk-guard/.status"
+        " && mv /run/disk-guard/.status /run/disk-guard/status.json"
+    )
+    answer("disk")
+    launcher_until(lambda shown: shown["footer"] == "from the disk guard")
+    machine.send_key("esc")
+    machine.wait_until_fails(in_session("niri msg layers | grep -qw launcher"), timeout=10)
+    time.sleep(25)
+    answer("disk")
+    launcher_until(lambda shown: shown["footer"] == "the disk guard has stopped saying")
+    machine.send_key("esc")
+    machine.wait_until_fails(in_session("niri msg layers | grep -qw launcher"), timeout=10)
+    machine.succeed("rm /run/disk-guard/status.json")
+    # The machine's queue as pi's harness writes it, replaced whole:
+    # what runs, then what waits in turn, and the room to spare.
+    queued_at = machine.succeed("date -u +%Y-%m-%dT%H:%M:%SZ").strip()
+    queued = {
+        "v": 1,
+        "heartbeat": float(machine.succeed("date +%s")),
+        "machine": {
+            "cores": 4,
+            "availableGib": 3,
+            "pressure": {"cpu": 12.5, "memory": 0, "io": 0},
+        },
+        "quiet": None,
+        "jobs": [
+            {
+                "id": "a",
+                "class": "bulk",
+                "kind": "build",
+                "state": "running",
+                "owner": {"session": "elsewhere", "pid": 1},
+                "what": "Build the desktop",
+                "since": queued_at,
+                "slice": "jobs.slice",
+            },
+            {
+                "id": "b",
+                "class": "timed",
+                "kind": "vm-test",
+                "state": "waiting",
+                "owner": {"session": "elsewhere", "pid": 1},
+                "what": "Test the camera",
+                "since": queued_at,
+                "place": 1,
+            },
+        ],
+        "wasted": {"today": 0},
+    }
+    as_account(
+        f"echo '{json.dumps(queued)}' > $XDG_RUNTIME_DIR/jobs/.q"
+        " && mv $XDG_RUNTIME_DIR/jobs/.q $XDG_RUNTIME_DIR/jobs/queue.json"
+    )
+    answer("what's running")
+    launcher_until(
+        lambda shown: (
+            (shown["selected"] or {}).get("name") == "1 running, 1 waiting"
+            and shown["footer"] == "3 GiB to spare \u00b7 the processors 13% held up"
+        )
+    )
+    # At a glance its place in line or how long it's run, a minute
+    # turning over allowed for; since when below it.
+    for name, side, footer in [
+        (
+            "Build the desktop",
+            r"build \u00b7 (just begun|for 1 min)",
+            r"running since \d\d:\d\d",
+        ),
+        ("Test the camera", r"VM test \u00b7 1st in line", r"waiting since \d\d:\d\d"),
+    ]:
+        machine.send_key("down")
+        # The wait ends before the loop moves on, so it reads this pass's row.
+        launcher_until(
+            lambda shown: (
+                (shown["selected"] or {}).get("name") == name  # noqa: B023
+                and re.fullmatch(side, shown["selected"]["side"]) is not None  # noqa: B023
+                and re.fullmatch(footer, shown["footer"]) is not None  # noqa: B023
+            )
+        )
+    photograph("launcher-queue")
+    machine.send_key("esc")
+    machine.wait_until_fails(in_session("niri msg layers | grep -qw launcher"), timeout=10)
+    as_account("rm $XDG_RUNTIME_DIR/jobs/queue.json")
+    # The keyboards QEMU gives it, however many, and caps lock.
+    answer("keyboards")
+    photograph("launcher-keyboards")
+    machine.send_key("ret")
+    machine.wait_until_fails(in_session("niri msg layers | grep -qw launcher"), timeout=10)
+    t.assertRegex(
+        as_account("wl-paste --no-newline"),
+        r"^(one keyboard|[1-9]\d* keyboards), caps lock off$",
+    )
+    answer("350 f in c")
+    photograph("launcher-units")
+    machine.send_key("esc")
+    # The zones come from the list built from tzdata, so this proves it's
+    # there. The minute may turn while it's asked, so either will do.
+    before = machine.succeed("date -u +%H:%M").strip()
+    answer("time in utc")
+    photograph("launcher-time")
+    machine.send_key("ret")
+    machine.wait_until_fails(in_session("niri msg layers | grep -qw launcher"), timeout=10)
+    after = machine.succeed("date -u +%H:%M").strip()
+    t.assertIn(as_account("wl-paste --no-newline"), [before, after])
+    # A theme's colour is found by its role, as the theme exports it.
+    theme = json.loads(as_account("cat ~/.config/jitsusama/theme.json"))
+    copied("colour accent", theme["roles"]["accent"].lower())
+    # Slack takes its theme only by hand, so the launcher copies it,
+    # in the theme's own roles.
+    slack = ["accent", "selection", "success", "warning"]
+    copied("slack theme", ",".join(theme["roles"][role] for role in slack))
+    answer("#f53")
+    photograph("launcher-colour")
+    machine.send_key("esc")
+    answer("10.0.0.0/22")
+    photograph("launcher-answer")
+    machine.send_key("esc")
+    # With no network, what has to ask one says it couldn't, and nothing
+    # breaks. Each waits for its answer to settle, failed; asked again
+    # while that failure stands, it says so at once. When a failure is
+    # asked again is the launcher's answers check's to say.
+    for typed in ["8.8.8.8", "weather tokyo", "100 usd in cad", "ip"]:
+        answer(typed)
+        machine.send_key("esc")
+    answer("weather tokyo")
+    photograph("launcher-offline")
+    machine.send_key("esc")
+    log = as_account("journalctl --user -u quickshell --no-pager -o cat")
+    assert "ERROR" not in log, "an answer raised an error"
+    assert "Error:" not in log, "an answer raised an error"
+
+with subtest("the launcher finds emoji in their own place, and only there"):
+    closed = in_session("niri msg layers | grep -qw launcher")
+    # The main search lists no emoji, only the place they're in.
+    answer("tada")
+    t.assertNotIn("party popper", showing()["rows"])
+    machine.send_key("esc")
+    machine.wait_until_fails(closed, timeout=10)
+    answer("emoji")
+    launcher_until(lambda shown: shown["rows"] == ["Emoji"])
+    machine.send_key("ret")
+    launcher_until(lambda shown: shown["held"] == ["emoji"])
+    type_in("tada", selecting="party popper")
+    machine.send_key("ret")
+    machine.wait_until_fails(closed, timeout=10)
+    t.assertEqual(as_account("wl-paste --no-newline"), "\U0001f389")
+    machine.send_key("meta_l-e")
+    launcher_ready()
+    type_in("smiling")
+    photograph("launcher-emoji")
+    type_in(" cat")
+    photograph("launcher-emoji-all")
+    machine.send_key("ret")
+    machine.wait_until_fails(closed, timeout=10)
+    # The grinning cat with smiling eyes, first among the smiling cats.
+    t.assertEqual(as_account("wl-paste --no-newline"), "\U0001f638")
+    # Super+E opens the emoji straight away, so "kitty" is a cat there,
+    # where the main search would open the terminal.
+    machine.send_key("meta_l-e")
+    launcher_ready()
+    type_in("kitty")
+    machine.send_key("ret")
+    machine.wait_until_fails(closed, timeout=10)
+    t.assertEqual(as_account("wl-paste --no-newline"), "\U0001f431")
+
+with subtest("a search lists each thing once"):
+    closed = in_session("niri msg layers | grep -qw launcher")
+    # Tuple's place stands alone for its rows and its people; the
+    # session's Lock and Do Not Disturb draw their keys' chords, so
+    # those keys aren't listed again; kitty draws Super+Return's;
+    # and Capture holds the screenshots its keys take. Nothing is
+    # found by letters scattered through it.
+    stood_for = {
+        "Lock the screen",
+        "Hold notices, or let them show",
+        "Open a terminal",
+        "Take a screenshot of the screen",
+        "Take a screenshot of the window",
+    }
+
+    def once(leading: list[str]) -> Callable[[Json], bool]:
+        """Give a test that the rows lead with these, list nothing stood for, and home none twice.
+
+        Open windows are found by their program too, and two may share a title, so a search's
+        rows are held to what stands for what; home's, with no windows but the focused one, are
+        held to once.
+        """
+
+        def holds(shown: Json) -> bool:
+            rows: list[str] = shown["rows"]
+            return (
+                rows[: len(leading)] == leading
+                and (shown["typed"] != "" or len(set(rows)) == len(rows))
+                and not set(rows) & stood_for
+            )
+
+        return holds
+
+    # What a keyboard's caps lock says may follow "lock": that's
+    # another thing. Home, with nothing typed, lists nothing twice
+    # either, a collection picked often staying in its own place.
+    for typed, leading in [
+        ("tuple", ["Tuple"]),
+        ("lock", ["Lock"]),
+        ("kitty", ["kitty"]),
+        ("do not disturb", ["Do Not Disturb"]),
+        ("screenshot", ["Capture"]),
+        ("", []),
+    ]:
+        answer(typed)
+        launcher_until(once(leading))
+        machine.send_key("esc")
+        machine.wait_until_fails(closed, timeout=10)
+    answer("zqxj")
+    launcher_until(lambda shown: shown["rows"] == [])
+    machine.send_key("esc")
+    machine.wait_until_fails(closed, timeout=10)
+    # The speakers' tuning plays through them, and is no program.
+    answer("volume")
+    launcher_until(lambda shown: "Turn the volume up" in shown["rows"])
+    t.assertNotIn("pebble_x_plus_tuning_output", showing()["rows"])
+    machine.send_key("esc")
+    machine.wait_until_fails(closed, timeout=10)
+
+with subtest("Super+Shift+/ shows every layer's shortcuts, and runs the desktop's"):
+    windows = len(json.loads(as_account("niri msg --json windows")))
+    machine.send_key("meta_l-shift-slash")
+    launcher_ready()
+    type_in("paste")
+    photograph("launcher-shortcuts")
+    for _ in "paste":
+        machine.send_key("backspace")
+    # The touchscreen's swipes are among them, found by "swipe", each
+    # drawn as its fingers and then its way.
+    swipe = "swipe workspace below"
+    type_in(swipe, selecting="Go to the workspace below")
+    t.assertTrue(showing()["selected"]["chord"].startswith("3 "))
+    photograph("launcher-swipes")
+    for _ in swipe:
+        machine.send_key("backspace")
+    type_in("open a terminal")
+    machine.send_key("ret")
+
+    def opened(_: bool) -> bool:
+        """Say whether a window has opened since the shortcuts did."""
+        return len(json.loads(as_account("niri msg --json windows"))) > windows
+
+    # kitty starts cold, drawn in software, which on a machine running
+    # other tests too has taken 10 seconds and more than 19, so it's
+    # given a minute.
+    retry(opened, timeout_seconds=60)
+
+with subtest("Super+V finds what was copied earlier, and copies it again"):
+    keeping = as_account("systemctl --user is-active clipboard-history")
+    t.assertEqual(keeping.strip(), "active")
+    # Each copy is waited on until the shell has heard it, so they're
+    # kept in the order made.
+    with told("heard copy Notes for Tuesday"):
+        as_account("echo -n 'Notes for Tuesday' | wl-copy > /dev/null 2>&1")
+    with told("heard copy the second copy"):
+        as_account("printf 'the second copy\\nover two lines' | wl-copy > /dev/null 2>&1")
+    machine.send_key("meta_l-v")
+    launcher_ready()
+    photograph("launcher-copies-all")
+    type_in("tues", selecting="Notes for Tuesday")
+    photograph("launcher-copies")
+    machine.send_key("ret")
+
+    def copied_again(_: bool) -> bool:
+        """Say whether the clipboard holds the notes' title again."""
+        return as_account("wl-paste --no-newline") == "Notes for Tuesday"
+
+    retry(copied_again, timeout_seconds=10)
+
+
+def copied_then_closed(text: str, flags: str = "", served: str | None = None) -> None:
+    """Copy from a program that then closes.
+
+    wl-copy in the foreground serves the copy until it's stopped. It's stopped once the
+    clipboard hands the copy back, not after a guess: a two-second guess once ended a copy the
+    history never heard.
+    """
+    served = served or f"[ \"$(wl-paste --no-newline 2>/dev/null)\" = '{text}' ]"
+    as_account(
+        f"echo -n '{text}' | wl-copy --foreground {flags} > /dev/null 2>&1 & p=$!; "
+        f"for i in $(seq 100); do {served} && break; sleep 0.1; done; kill $p"
+    )
+
+
+with subtest("a copy outlives the program that made it, unless it wasn't kept"):
+    with told("heard copy gone with its program"):
+        copied_then_closed("gone with its program")
+
+    # Empty for a moment between its program going and the helper's
+    # offer, which the retry waits out.
+    def still_there(_: bool) -> bool:
+        """Say whether the clipboard still holds the copy its program made."""
+        return as_account("wl-paste --no-newline 2>&1 || true") == "gone with its program"
+
+    retry(still_there, timeout_seconds=10)
+    # One the history didn't keep, such as a password manager's, goes
+    # with its program, leaving the clipboard empty rather than handing
+    # back an older copy. The helper answers the moment it empties, so
+    # empty twice over is empty for good.
+    copied_then_closed(
+        "a password",
+        flags="--type x-kde-passwordManagerHint",
+        served="wl-paste --list-types 2>/dev/null | grep -qx x-kde-passwordManagerHint",
+    )
+    machine.wait_until_fails(in_session("wl-paste --list-types > /dev/null 2>&1"), timeout=10)
+    machine.fail(in_session("wl-paste --list-types > /dev/null 2>&1"))
+
+with subtest("a copy made as another's program closes is the one kept"):
+    # The helper reads one event at a time, so the clipboard emptying
+    # can wait behind a newer copy, as it does while a slow program
+    # hands over what it copied. Paused, it hears both late.
+    with told("heard copy closing as another copies"):
+        as_account(
+            "systemd-run --user --unit=closing sh -c "
+            "\"printf %s 'closing as another copies' | wl-copy --foreground\""
+        )
+    as_account("systemctl --user kill --signal=SIGSTOP clipboard-history")
+    as_account("systemctl --user stop closing")
+    as_account("echo -n 'copied meanwhile' | wl-copy > /dev/null 2>&1")
+    with told("heard copy copied meanwhile"):
+        as_account("systemctl --user kill --signal=SIGCONT clipboard-history")
+    # Nothing takes it back a moment later.
+    machine.sleep(1)
+    t.assertEqual(as_account("wl-paste --no-newline"), "copied meanwhile")
+
+
+def pasted_the_picture(_: bool) -> bool:
+    """Say whether the clipboard hands back the picture as it was copied."""
+    pasted = in_session(f"wl-paste --type image/png | cmp -s - {PICTURE}")
+    return machine.execute(pasted)[0] == 0
+
+
+with subtest("a picture copied is kept, shown as it is, and copied again"):
+    with told("heard copy Image 256 \u00d7 256"):
+        as_account(f"wl-copy --type image/png < {PICTURE} > /dev/null 2>&1")
+    with told("heard copy something after the picture"):
+        as_account("echo -n 'something after the picture' | wl-copy > /dev/null 2>&1")
+    machine.send_key("meta_l-v")
+    launcher_ready()
+    with told("showed Image 256 \u00d7 256"):
+        type_in("image", selecting="Image 256 \u00d7 256")
+    photograph("launcher-copies-picture")
+    machine.send_key("ret")
+    retry(pasted_the_picture, timeout_seconds=10)
+
+with subtest("a picture outlives the program that copied it"):
+    # The helper holds the same picture already, so wl-copy serves it
+    # once the clipboard's types no longer include the helper's own.
+    with told("heard copy Image 256 \u00d7 256"):
+        as_account(
+            f"wl-copy --foreground --type image/png < {PICTURE} > /dev/null 2>&1 & p=$!; "
+            "for i in $(seq 100); do t=$(wl-paste --list-types 2>/dev/null); "
+            'echo "$t" | grep -qx image/png && '
+            '! echo "$t" | grep -qx application/x-clipboard-history-kept && break; '
+            "sleep 0.1; done; kill $p"
+        )
+    retry(pasted_the_picture, timeout_seconds=10)
+
+with subtest("Forget the Clipboard forgets every copy, and what it held"):
+    with told("heard copy kept until forgotten"):
+        copied_then_closed("kept until forgotten")
+
+    def still_kept(_: bool) -> bool:
+        """Say whether the clipboard still holds the copy its program made."""
+        return as_account("wl-paste --no-newline 2>&1 || true") == "kept until forgotten"
+
+    retry(still_kept, timeout_seconds=10)
+    as_account("qs ipc call launcher toggle")
+    launcher_ready()
+    type_in("forget the clip", selecting="Forget the Clipboard")
+    photograph("launcher-forget-copies")
+    with told("forgot the copies"):
+        machine.send_key("ret")
+    t.assertEqual(as_account("wl-paste --no-newline 2>&1 || true"), "")
+    # The pictures' files go with them.
+    t.assertEqual(as_account("ls -A $XDG_RUNTIME_DIR/clipboard-history"), "")
+
+with subtest("the launcher's home shows each collection, and opens it"):
+    windows = len(json.loads(as_account("niri msg --json windows")))
+    as_account("qs ipc call launcher toggle")
+    launcher_ready()
+    photograph("launcher-home")
+    # The last row at home is the last collection, the shortcuts; a page
+    # down stops there, so more than home's pages reach it as it grows.
+    for _page in range(4):
+        machine.send_key("pgdn")
+    # Opening a collection keeps the launcher open, where a program
+    # picked instead would close it.
+    step_in("ret")
+    type_in("open a terminal")
+    machine.send_key("ret")
+
+    def another_opened(_: bool) -> bool:
+        """Say whether a window has opened since the launcher did."""
+        return len(json.loads(as_account("niri msg --json windows"))) > windows
+
+    retry(another_opened, timeout_seconds=15)
+
+with subtest("a screenshot just taken is at the launcher's home, and opens in GIMP"):
+    pictures = f"/home/{ACCOUNT}/Pictures/Screenshots"
+    # Made at login, since niri makes it only with its first screenshot
+    # and the launcher watches it from the start.
+    machine.succeed(f"test -d {pictures}")
+    as_account("niri msg action screenshot-screen")
+    machine.wait_until_succeeds(f"ls {pictures}/*.png", timeout=15)
+    picture = machine.succeed(f"ls {pictures}/*.png").strip()
+    as_account("qs ipc call launcher toggle")
+    launcher_ready()
+    # Just below the window in front, which home always puts first.
+    machine.send_key("down")
+    launcher_until(
+        lambda shown: (shown["selected"] or {}).get("name") == "Edit the screenshot in GIMP"
+    )
+    machine.send_key("ret")
+    machine.wait_until_succeeds(f"pgrep -u {ACCOUNT} -f '[g]imp.*{picture}'", timeout=STARTING)
+    # GIMP goes before it draws, so no window of its own takes the keys
+    # meant for what follows, and the picture too, since the region
+    # screenshot's subtest waits for one of its own. GIMP takes any other
+    # signal as a crash, and writes its backtrace to the log.
+    machine.succeed(f"pkill -KILL -u {ACCOUNT} -f '[g]imp'")
+    machine.wait_until_fails(f"pgrep -u {ACCOUNT} -f '[g]imp'", timeout=30)
+    machine.succeed(f"rm {pictures}/*.png")
+
+# A program asks the portal what to open a picture with, as one does when
+# more than one app could, and the launcher asks rather than GNOME's
+# dialog, holding the apps the portal offers. Return opens the picture
+# with the one taken, and the portal says it opened; asked again, Escape
+# opens nothing, and the portal says it was refused; and each ask's
+# socket goes once it's answered. Each time the apps offered change
+# while it waits, as the portal says when apps are installed, so a
+# pick and a refusal still answer the ask as it was first held.
+with subtest("the launcher asks what to open a picture with, for the portal"):
+    portal_png = f"/home/{ACCOUNT}/portal-picked.png"
+    machine.succeed(
+        "echo iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk"
+        "+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+        f" | base64 -d > {portal_png} && chown {ACCOUNT} {portal_png}"
+    )
+    opened_with = f"pgrep -u {ACCOUNT} -af '[p]ortal-picked.png' | grep -v ask-portal"
+    sockets_gone = "! ls /run/user/1000/open-with/*.sock"
+    portal_said = "/run/user/1000/portal-said"
+
+    def portal_told() -> str:
+        """Give what the shell, the chooser, the portal and the caller made of an ask.
+
+        It's said when the launcher never holds the apps.
+        """
+        _, said = machine.execute(
+            in_session(
+                "qs ipc show | grep -A4 open-with; ls -la /run/user/1000/open-with; "
+                f"cat {portal_said}; pgrep -af ask-portal; "
+                "busctl --user list | grep -i -e portal -e ask; "
+                "journalctl --user --no-pager --output=cat --lines=80 "
+                "--unit=ask-portal --unit=open-with --unit=xdg-desktop-portal"
+            )
+        )
+        return said
+
+    def ask_portal() -> None:
+        """Ask the portal to open the picture, and wait until the launcher holds its apps."""
+        machine.succeed(f"rm -f {portal_said}")
+        # Under the account's manager, on the bus the portal is on.
+        as_account(f"systemd-run --user --collect --unit=ask-portal {ASK_PORTAL} {portal_png}")
+        try:
+            launcher_until(
+                lambda shown: (
+                    shown["keys"] and shown["held"] == ["apps"] and shown["selected"] is not None
+                ),
+                timeout=60,
+            )
+        except AssertionError as unheard:
+            unanswered = f"{unheard}; what was said:\n{portal_told()}"
+            raise AssertionError(unanswered) from None
+
+    def offer_only_swayimg() -> None:
+        """Offer only swayimg now, one of the apps first offered."""
+        reply = machine.succeed("ls /run/user/1000/open-with/*.sock").strip()
+        as_account(f"qs ipc call open-with update {reply} swayimg")
+        launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Swayimg")
+
+    ask_portal()
+    photograph("open-with")
+    offer_only_swayimg()
+    machine.send_key("ret")
+    machine.wait_until_succeeds(f"grep -qx 0 {portal_said}", timeout=60)
+    machine.wait_until_succeeds(opened_with, timeout=60)
+    launcher_until(lambda shown: not shown["open"])
+    machine.wait_until_succeeds(sockets_gone, timeout=10)
+    machine.succeed(f"pkill -KILL -u {ACCOUNT} -f '[p]ortal-picked.png'")
+    machine.wait_until_fails(f"pgrep -u {ACCOUNT} -f '[p]ortal-picked.png'", timeout=30)
+
+    ask_portal()
+    offer_only_swayimg()
+    machine.send_key("esc")
+    launcher_until(lambda shown: not shown["open"])
+    machine.wait_until_succeeds(f"grep -qx 1 {portal_said}", timeout=60)
+    machine.wait_until_succeeds(sockets_gone, timeout=10)
+    machine.fail(opened_with)
+    machine.succeed(f"rm {portal_png}")
+
+
+def opens_in(path: str, kind: str, app_id: str) -> None:
+    """Open a file as a click on it would, and wait for the program meant for it to take focus.
+
+    A program's first start here, drawn in software, has taken 17 seconds on a busy host. If
+    none does, it says what would open the file, what opening it said, and what's open.
+    """
+    as_account(f"niri msg action spawn -- sh -c 'xdg-open {path} > /tmp/opened 2>&1'")
+    try:
+        machine.wait_until_succeeds(
+            in_session(f'niri msg --json focused-window | grep -q \'"app_id":"{app_id}"\''),
+            timeout=60,
+        )
+    except Exception:
+        print(as_account(f"xdg-mime query default {kind}; cat /tmp/opened; niri msg windows"))
+        raise
+
+
+with subtest("a picture opens floating in swayimg, and e takes it to GIMP"):
+    # Beside the screenshots, never among them, since the region
+    # screenshot's subtest waits for a picture there of its own.
+    looked = f"/home/{ACCOUNT}/snowflake.png"
+    as_account(f"cp {PICTURE} {looked}")
+    opens_in(looked, "image/png", "swayimg")
+    swayimg = window_titled("Swayimg: snowflake.png")
+    assert swayimg["is_floating"], swayimg
+    # Four fifths of the screen, centred, at the size niri gave it,
+    # less the gaps and border niri takes out of it. Without swayimg's
+    # size given again, it's twice that, off the screen.
+    left, top, width, height = drawn_at(swayimg)
+    wide = json.loads(as_account("niri msg --json focused-output"))["logical"]["width"]
+    assert abs(width - wide * 0.8) <= wide * 0.02, swayimg
+    assert abs(left + width / 2 - wide / 2) <= wide * 0.02, swayimg
+    # The steps before leave notices, which go on their own.
+    machine.wait_until_fails(in_session("niri msg layers | grep -q notifications"), timeout=30)
+    photograph("swayimg")
+    machine.send_key("e")
+    machine.wait_until_succeeds(f"pgrep -u {ACCOUNT} -f '[g]imp.*{looked}'", timeout=STARTING)
+    machine.wait_until_fails(f"pgrep -u {ACCOUNT} -x swayimg", timeout=10)
+    # As in the screenshot's subtest: GIMP goes before it draws.
+    machine.succeed(f"pkill -KILL -u {ACCOUNT} -f '[g]imp'")
+    machine.wait_until_fails(f"pgrep -u {ACCOUNT} -f '[g]imp'", timeout=30)
+    machine.succeed(f"rm {looked}")
+
+with subtest("a document opens in zathura, beside the rest, and q closes it"):
+    opens_in(PAGE, "application/pdf", "org.pwmt.zathura")
+    windows = json.loads(as_account("niri msg --json windows"))
+    zathura = next(window for window in windows if window["app_id"] == "org.pwmt.zathura")
+    assert not zathura["is_floating"], zathura
+    photograph("zathura")
+    machine.send_key("q")
+    machine.wait_until_fails(f"pgrep -u {ACCOUNT} -f '[z]athura'", timeout=10)
+
+with subtest("the launcher's Sound moves sound to another output, and back"):
+    for output in ["stand-in-headphones", "stand-in-speakers"]:
+        as_account("qs ipc call launcher collection sound")
+        launcher_ready()
+        photograph(f"launcher-sound-{output}")
+        kind = output.removeprefix("stand-in-")
+        type_in(kind, selecting=kind)
+        machine.send_key("ret")
+        used = f"wpctl inspect @DEFAULT_AUDIO_SINK@ | grep -q 'node.name = \"{output}\"'"
+        machine.wait_until_succeeds(in_session(used), timeout=10)
+        machine.wait_until_fails(in_session("niri msg layers | grep -q launcher"), timeout=10)
+
+with subtest("the launcher sets the power profile"):
+    # By its name, or a word a person would call it.
+    for typed, profile, name in [
+        ("eco", "power-saver", "Power Saver"),
+        ("balanced power", "balanced", "Balanced Power"),
+    ]:
+        as_account("qs ipc call launcher toggle")
+        launcher_ready()
+        type_in(typed, selecting=name)
+        machine.send_key("ret")
+        machine.wait_until_succeeds(f"powerprofilesctl get | grep -qx {profile}", timeout=10)
+        machine.wait_until_fails(in_session("niri msg layers | grep -q launcher"), timeout=10)
+
+# The right arrow on one of a collection's members offers its own
+# actions, as on anything at the top.
+with subtest("the launcher's Displays scales a display by keys, and back"):
+
+    def scale() -> float:
+        """Give the scale niri draws the display at."""
+        outputs = json.loads(as_account("niri msg --json outputs"))
+        return cast("float", next(iter(outputs.values()))["logical"]["scale"])
+
+    for wanted in [1.5, scale()]:
+        as_account("qs ipc call launcher collection displays")
+        launcher_ready()
+        step_in()
+        photograph("launcher-displays")
+        type_in(f"scale {round(wanted * 100)}")
+        machine.send_key("ret")
+        retry(lambda _, wanted=wanted: scale() == wanted, timeout_seconds=15)
+        machine.wait_until_fails(in_session("niri msg layers | grep -q launcher"), timeout=10)
+
+with subtest("a Wi-Fi network is joined from the launcher, a new one asking its password"):
+    machine.wait_for_unit("lantern.service")
+    machine.wait_for_unit("wifid.service")
+    wifi = "varlinkctl call /run/wifid/io.jitsusama.Wifi io.jitsusama.Wifi"
+    machine.wait_until_succeeds(
+        f"{wifi}.Scan '{{}}' && {wifi}.Describe '{{}}' | grep -q '\"Lantern\"'", timeout=60
+    )
+    as_account("qs ipc call launcher collection wifi")
+    launcher_ready()
+    photograph("launcher-wifi")
+    type_in("lant", selecting="Lantern")
+    # Never joined, it asks for its password, which a wrong one doesn't
+    # satisfy; the launcher stays to say so.
+    step_in("ret")
+    type_in("not the password")
+    photograph("launcher-wifi-password")
+    with told("refused wifi Lantern", timeout=60):
+        machine.send_key("ret")
+    machine.succeed('journalctl -u wifid | grep -q "couldn\'t join Lantern: WrongPassword"')
+    photograph("launcher-wifi-refused")
+    machine.succeed(in_session("niri msg layers | grep -q launcher"))
+    type_in("glowing in the dark")
+    machine.send_key("ret")
+    # Joined means an address too, and wifid says so once it's checked
+    # how far the network reaches.
+    machine.wait_until_succeeds(
+        "journalctl -u wifid | grep -q 'joined Lantern on wlan1'", timeout=60
+    )
+    machine.succeed("networkctl status wlan1 | grep -q 10.42.0.")
+    # Once it's joined, the launcher's done.
+    machine.wait_until_fails(in_session("niri msg layers | grep -q launcher"), timeout=10)
+    # Lantern wants a sign-in, so Sign In to it comes first at home, and
+    # Return opens the window on its front desk.
+    described = "varlinkctl --json=short call /run/wifid/io.jitsusama.Wifi"
+    described += " io.jitsusama.Wifi.Describe '{}'"
+    machine.wait_until_succeeds(f'{described} | grep -qF \'"reach":"signIn"\'', timeout=60)
+    as_account("qs ipc call launcher toggle")
+    launcher_ready()
+    photograph("launcher-sign-in")
+    type_in("sign in", selecting="Sign In to Lantern")
+    machine.send_key("ret")
+    # The window is GTK and WebKit started cold, drawn in software,
+    # which on a machine running other tests too has taken 42 seconds
+    # to show and more than 60, so it's given three minutes for both.
+    window = 'niri msg --json windows | grep -qF \'"app_id":"io.jitsusama.WifiSignIn"\''
+    machine.wait_until_succeeds(in_session(window), timeout=SIGNING_IN)
+    # Its button can only be pressed once the front desk has served
+    # the page, which a window that has to try again does later.
+    machine.wait_until_succeeds(
+        "journalctl -u lantern-front-desk | grep -q 'GET /sign-in'", timeout=SIGNING_IN
+    )
+    photograph("sign-in", timeout=20)
+    # Its one button signs in, and the window closes as Lantern lets
+    # the machine through, its notice taken back with it.
+    with told("withdrew sign-in Lantern", timeout=60):
+        machine.send_key("ret")
+    machine.wait_until_fails(in_session(window), timeout=60)
+    machine.succeed(f'{described} | grep -qF \'"reach":"online"\'')
+    # The Office asks for an account: met for the first time, it asks
+    # the account's name, its server's domain and its password in
+    # turn, and joins.
+    machine.wait_until_succeeds(
+        f"{wifi}.Scan '{{}}' && {wifi}.Describe '{{}}' | grep -q '\"Office\"'", timeout=60
+    )
+    as_account("qs ipc call launcher collection wifi")
+    launcher_ready()
+    type_in("office", selecting="Office")
+    step_in("ret")
+    type_in("joel")
+    step_in("ret")
+    type_in("radius.office.test")
+    step_in("ret")
+    type_in("hunter22")
+    photograph("launcher-wifi-account")
+    machine.send_key("ret")
+    machine.wait_until_succeeds(
+        "journalctl -u wifid | grep -q 'joined Office on wlan1'", timeout=60
+    )
+    machine.wait_until_fails(in_session("niri msg layers | grep -q launcher"), timeout=10)
+    # Stepped into, a network says after what can be done to it what's
+    # heard of it, a row each, the selected row's footer saying more:
+    # the card's link to it once the card has read it, and its access
+    # points a step further in.
+    as_account("qs ipc call launcher collection wifi")
+    launcher_ready()
+    type_in("office", selecting="Office")
+    step_in()
+    # The link's row by its signal, which is always read; its rates
+    # say in and out only while they differ, which the simulated
+    # radio's don't always.
+    type_in("dbm", selecting="dBm \u00b7")
+    launcher_until(lambda shown: "over the noise" in shown["footer"])
+    for _ in "dbm":
+        machine.send_key("backspace")
+    launcher_until(lambda shown: shown["typed"] == "")
+    photograph("launcher-wifi-detail")
+    type_in("access", selecting="1 access point")
+    step_in()
+    launcher_until(lambda shown: shown["footer"].startswith("02:00:00:00:02:00 \u00b7 "))
+    assert showing()["selected"]["name"].startswith("2.4 GHz ch 1\u00a0"), showing()
+    photograph("launcher-wifi-points")
+    machine.send_key("esc")
+    machine.wait_until_fails(in_session("niri msg layers | grep -q launcher"), timeout=10)
+    # Turning Wi-Fi off is an action like any.
+    as_account("qs ipc call launcher toggle")
+    launcher_ready()
+    type_in("wifi off")
+    machine.send_key("ret")
+    machine.wait_until_succeeds("rfkill list wifi | grep -q 'Soft blocked: yes'", timeout=15)
+    machine.succeed("rfkill unblock wifi")
+
+with subtest("a notice that came and went is found again in the launcher"):
+    # One its sender says not to keep isn't, though it's the newest match.
+    as_account("notify-send --transient 'Build finished twice' 'not kept'")
+    as_account("qs ipc call launcher toggle")
+    launcher_ready()
+    # Its row at home counts the one missed earlier, since it left by itself.
+    photograph("launcher-home-missed")
+    type_in("build fin", selecting="the laptop is ready")
+    photograph("launcher-notices")
+    # Nothing sent it that can be gone to, so Return copies what it said.
+    machine.send_key("ret")
+
+    def told_again(_: bool) -> bool:
+        """Say whether the clipboard holds what the notice said."""
+        said = as_account("wl-paste --no-newline")
+        return said == "Build finished\nthe laptop is ready"
+
+    retry(told_again, timeout_seconds=10)
+    machine.wait_until_fails(in_session("niri msg layers | grep -q launcher"), timeout=10)
+    # With none on screen, Super+N opens all of them, which counts
+    # them seen.
+    machine.wait_until_fails(in_session("niri msg layers | grep -q notifications"), timeout=30)
+    machine.send_key("meta_l-n")
+    launcher_ready()
+    photograph("launcher-notices-all")
+    machine.send_key("esc")
+
+
+def listen() -> None:
+    """Listen to what the notification server says to programs, as they hear it."""
+    as_account(
+        f"{DBUS}/bin/dbus-monitor --session"
+        " \"type='signal',interface='org.freedesktop.Notifications'\""
+        " > /tmp/signals 2>&1 < /dev/null & echo $! > /tmp/listening"
+    )
+    # It's listening once it hears a signal of its own.
+    probe = (
+        f"{DBUS}/bin/dbus-send --session --type=signal /probe org.freedesktop.Notifications.Probe"
+    )
+    machine.wait_until_succeeds(
+        in_session(f"{probe}; grep -q member=Probe /tmp/signals"), timeout=10
+    )
+
+
+def tokened() -> None:
+    """Check that the program was sent a token to bring its window forward, then the choice.
+
+    That's the order a compositor needs.
+    """
+    said = machine.succeed("cat /tmp/signals")
+    machine.succeed("kill $(cat /tmp/listening)")
+    token = re.search(r"member=ActivationToken\n\s+uint32 \d+\n\s+string \"([^\"]+)\"", said)
+    t.assertIsNotNone(token, said)
+    t.assertLess(said.index("member=ActivationToken"), said.index("member=ActionInvoked"), said)
+
+
+with subtest("a notice's action is done by the keys, and one not acted on stays unread"):
+    machine.wait_until_fails(in_session("niri msg layers | grep -q launcher"), timeout=10)
+    # It stays a minute, so it's still at the front when the keys come.
+    with told("shows card Lunch"):
+        as_account("notify-send --expire-time=60000 'Lunch' 'at noon'")
+    # notify-send waits for the answer, so it runs on its own. The
+    # photograph waits for its card's frames to settle, which is when
+    # Qt would have warned of a layout that never does.
+    with told("shows card Recording saved"):
+        as_account(
+            "notify-send --action=play='Play it' 'Recording saved' 'x.mp4'"
+            " > /tmp/answer 2>&1 < /dev/null &"
+        )
+    photograph("notice-with-action")
+    # Qt only warns when a layout never settles, which left the
+    # card's words piled at its top.
+    log = as_account("journalctl --user -u quickshell --no-pager -o cat")
+    assert "polish() loop" not in log, "a notice's layout never settles"
+    # Super+N takes the stack, which waits while it holds the keys.
+    # The newer notice waits behind the older; Down brings it to the
+    # front, the right arrow steps into its verbs, what it offers
+    # first, as a launcher row's are, Down chooses the next and Left
+    # steps back, and Return does the one chosen, with a token to
+    # come forward.
+    listen()
+    with told("keys notices"):
+        machine.send_key("meta_l-n")
+    photograph("notices-held")
+    machine.send_key("down")
+    with told("notice verb Play it"):
+        machine.send_key("right")
+    with told("notice verb Copy what it said"):
+        machine.send_key("down")
+    photograph("notices-held-verbs")
+    with told("notice back"):
+        machine.send_key("left")
+    with told("notice verb Play it"):
+        machine.send_key("right")
+    machine.send_key("ret")
+    machine.wait_until_succeeds("grep -qx play /tmp/answer", timeout=15)
+    tokened()
+    # Shift+Backspace lets the rest go, which gives the keys back.
+    with told("lets notices go"):
+        machine.send_key("shift-backspace")
+    machine.wait_until_fails(in_session("niri msg layers | grep -q notifications"), timeout=10)
+    # The history is kept on disk, the one acted on read and the one
+    # that only arrived still unread.
+    kept = "cat ~/.local/state/quickshell/by-shell/*/notices.json"
+    machine.wait_until_succeeds(
+        in_session(kept + ' | grep -q \'"summary":"Recording saved"[^}]*"read":true\''),
+        timeout=10,
+    )
+    as_account(kept + ' | grep -q \'"summary":"Lunch"[^}]*"read":false\'')
+
+
+def offer_to_play(picture: str, offers: str = "") -> tuple[float, float]:
+    """Show a notice offering to play, and give where its action's glyph is drawn.
+
+    Where is a fraction of the screen, and the glyph is the only thing in the action colour.
+    notify-send waits for the answer, so it runs on its own, and the notice stays a minute, so
+    only a click closes it sooner.
+    """
+    machine.wait_until_fails(in_session("niri msg layers | grep -q notifications"), timeout=30)
+    with told(f"shows card {picture}"):
+        as_account(
+            f"notify-send --expire-time=60000 {offers} --action=play='Play it' '{picture}'"
+            " 'y.mp4' > /tmp/answer 2>&1 < /dev/null &"
+        )
+    action = [int(ACTION[i : i + 2], 16) for i in (1, 3, 5)]
+    drawn: list[tuple[int, int]] = []
+    size = [1, 1]
+
+    # The card's first frames may not hold the glyph yet.
+    def glyph_drawn(last: bool) -> bool:
+        photograph(picture)
+        image = Image.open(machine.out_dir / f"{picture}.png").convert("RGB")
+        pixels = image.tobytes()
+        size[:] = [image.width, image.height]
+        drawn[:] = [
+            (x, y)
+            for y in range(image.height)
+            for x in range(image.width)
+            if sum(abs(pixels[3 * (y * image.width + x) + c] - action[c]) for c in range(3))
+            < NEAR_THE_ACTION
+        ]
+        if last:
+            assert drawn, "the action's glyph isn't drawn"
+        return bool(drawn)
+
+    retry(glyph_drawn, timeout_seconds=15)
+    xs, ys = [x for x, _ in drawn], [y for _, y in drawn]
+    assert max(xs) - min(xs) < ONE_GLYPH, f"more than one glyph: {drawn}"
+    assert max(ys) - min(ys) < ONE_GLYPH, f"more than one glyph: {drawn}"
+    return sum(xs) / len(xs) / size[0], sum(ys) / len(ys) / size[1]
+
+
+def click(x: float, y: float) -> None:
+    """Click there, by QEMU's tablet, which spans the screen from 0 to 32767.
+
+    The driver says a command's arguments are strings, so the events go through JSON to reach
+    it as they are.
+    """
+
+    def tablet(*events: Json) -> None:
+        assert machine.qmp_client is not None
+        machine.qmp_client.send("input-send-event", json.loads(json.dumps({"events": events})))
+
+    tablet(
+        {"type": "abs", "data": {"axis": "x", "value": int(x * 32767)}},
+        {"type": "abs", "data": {"axis": "y", "value": int(y * 32767)}},
+    )
+    # QEMU hands the guest each batch in the order sent, so the press
+    # lands where the pointer went.
+    tablet({"type": "btn", "data": {"down": True, "button": "left"}})
+    tablet({"type": "btn", "data": {"down": False, "button": "left"}})
+
+
+def answered() -> str:
+    """Give what notify-send said once its notice closed.
+
+    That's the action if one was done, and nothing if the notice was only put away.
+    """
+    machine.wait_until_fails("pgrep -f '[n]otify-send .*--action=play'", timeout=15)
+    return machine.succeed("cat /tmp/answer").strip()
+
+
+with subtest("a click on a notice's action does it, and anywhere else puts it away"):
+    since = mark()
+    x, y = offer_to_play("notice-to-click")
+    click(x, y)
+    assert answered() == "play", "a click on the action put the notice away instead"
+    # A little above the action is the notice's message.
+    x, y = offer_to_play("notice-to-put-away")
+    click(x, y - 0.04)
+    assert answered() == "", "a click on the message did the action"
+    # Neither was missed, so the margin never once said one waits: a
+    # notice arriving or leaving mustn't flash it.
+    said = as_account(
+        "journalctl --user --unit=quickshell --no-pager --output=cat"
+        f" --after-cursor={shlex.quote(since)}"
+    )
+    t.assertNotIn("holds margin waiting", said, "the margin flashed a waiting notice")
+
+with subtest("a click on a notice opens what it's about, with a token to come forward"):
+    listen()
+    # Its default is the card's click, so the one glyph is Play it's.
+    x, y = offer_to_play("notice-to-open", offers="--action=default=Open")
+    click(x, y - 0.04)
+    assert answered() == "default", "a click on the message didn't open what it's about"
+    tokened()
+
+with subtest("Return on a notice in the launcher opens what it's about, with a token"):
+    machine.wait_until_fails(in_session("niri msg layers | grep -q notifications"), timeout=30)
+    listen()
+    with told("shows card Thread with Sam"):
+        as_account(
+            "notify-send --expire-time=60000 --action=default=Open 'Thread with Sam' 'see it'"
+            " > /tmp/answer 2>&1 < /dev/null &"
+        )
+    # Super+N takes the stack, and again hands on to the history.
+    with told("keys notices"):
+        machine.send_key("meta_l-n")
+    machine.send_key("meta_l-n")
+    launcher_ready()
+    launcher_until(
+        lambda shown: (shown["selected"] or {}).get("name", "").startswith("Thread with Sam")
+    )
+    machine.send_key("ret")
+    machine.wait_until_succeeds("grep -qx default /tmp/answer", timeout=15)
+    tokened()
+
+with subtest("the notices sit a step inside the window under them"):
+    machine.wait_until_fails(in_session("niri msg layers | grep -q notifications"), timeout=30)
+    # A window of its own, the only one in view, two thirds of the
+    # screen wide and centred, so its edge is far from the corner's;
+    # it goes again after.
+    as_account("niri msg action spawn -- kitty --title 'Under the notices'")
+    machine.wait_until_succeeds(
+        in_session("niri msg --json windows | grep -q '\"Under the notices\"'"), timeout=30
+    )
+    under = window_titled("Under the notices")
+    as_account(f"niri msg action focus-window --id {under['id']}")
+    screen = json.loads(as_account("niri msg --json focused-output"))["logical"]["width"]
+    as_account(f"niri msg action set-column-width {int(screen * 2 / 3)}")
+    as_account("niri msg action center-column")
+    space = json.loads(as_account("cat ~/.config/jitsusama/theme.json"))["space"]
+
+    # Where it will be once the view rests, from niri.
+    def settled(last: bool) -> bool:
+        """Say whether niri has the window where it will be once the view rests."""
+        layout = window_titled("Under the notices")["layout"]
+        place = layout["tile_pos_in_workspace_view"]
+        if last:
+            t.assertIsNotNone(place, "niri doesn't say where a tiled window is")
+        return place is not None and screen - (place[0] + layout["tile_size"][0]) > FROM_THE_CORNER
+
+    retry(settled, timeout_seconds=15)
+    with told("shows card Inside the window"):
+        as_account("notify-send --expire-time=60000 'Inside the window' 'a step from its edges'")
+    photograph("notice-inside")
+    # The nearest window wholly on screen, as the shell picks it.
+    ws = window_titled("Under the notices")["workspace_id"]
+    tiles = [
+        (w["layout"]["tile_pos_in_workspace_view"], w["layout"]["tile_size"])
+        for w in json.loads(as_account("niri msg --json windows"))
+        if w["workspace_id"] == ws and w["layout"]["tile_pos_in_workspace_view"]
+    ]
+    whole = [(p, s) for p, s in tiles if p[0] >= 0 and p[0] + s[0] <= screen]
+    (left, top), (width, _) = min(whole, key=lambda t: (-(t[0][0] + t[1][0]), t[0][1]))
+    step = space["s"]
+    wanted_at = [
+        int(screen - (left + width) + step + 0.5),
+        int(max(top, 0) + step + 0.5),
+        min(380, int(width - 2 * step)),
+    ]
+    notices_at = as_account(
+        "journalctl --user --unit=quickshell --no-pager --output=cat"
+        " | grep -o 'report\\[places notices [0-9 ]*' | tail -n 1"
+    ).split()[-3:]
+    t.assertEqual(
+        [int(n) for n in notices_at], wanted_at, "the notices aren't a step inside the window"
+    )
+    as_account("qs ipc call notices putAway")
+    as_account(f"niri msg action close-window --id {under['id']}")
+    machine.wait_until_fails(
+        in_session("niri msg --json windows | grep -q '\"Under the notices\"'"), timeout=30
+    )
+
+with subtest("the launcher keeps the machine awake, lid shut too, then lets it sleep"):
+    held = "systemd-inhibit --list --no-pager | grep Caffeinate"
+    machine.wait_until_fails(in_session("niri msg layers | grep -q launcher"), timeout=10)
+    as_account("qs ipc call launcher toggle")
+    launcher_ready()
+    type_in("keep awake")
+    photograph("launcher-keep-awake")
+    machine.send_key("ret")
+    machine.wait_until_succeeds(f"{held} | grep -qw idle", timeout=10)
+    machine.wait_until_succeeds(f"{held} | grep -q handle-lid-switch", timeout=10)
+    # Kept awake, a suspend asked for by the power key or the launcher
+    # still goes through, and so does the lid's on battery.
+    machine.fail(f"{held} | grep -q sleep")
+    # Without power the lid is let go, and taken again when it's back.
+    power("off")
+    machine.wait_until_fails(f"{held} | grep -q handle-lid-switch", timeout=10)
+    machine.succeed(f"{held} | grep -qw idle")
+    power("on")
+    machine.wait_until_succeeds(f"{held} | grep -q handle-lid-switch", timeout=10)
+    as_account("qs ipc call launcher toggle")
+    launcher_ready()
+    photograph("launcher-home-awake")
+    type_in("let it sleep")
+    machine.send_key("ret")
+    machine.wait_until_fails(held, timeout=10)
+
+# The margin is there only while something's on, and every part of it
+# is reached by the keys: Super+O brings out the drawer with what wants
+# Joel selected, the arrows move, Return does the action.
+margin = "niri msg layers | grep -q margin"
+notices = "niri msg layers | grep -q notifications"
+
+with subtest("a camera open shows in the margin, and the launcher says by what"):
+    machine.wait_until_fails(in_session(margin), timeout=10)
+    # Written whole, as the camera's module writes it.
+    with told("drawn margin"):
+        machine.succeed(
+            "echo chrome > /run/camera-holders/.camera"
+            " && mv /run/camera-holders/.camera /run/camera-holders/camera"
+        )
+    photograph("margin-camera")
+    as_account("qs ipc call launcher toggle")
+    launcher_ready()
+    type_in("camera")
+    launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "in use by chrome")
+    machine.send_key("esc")
+    machine.wait_until_fails(in_session("niri msg layers | grep -qw launcher"), timeout=10)
+    machine.succeed(
+        ": > /run/camera-holders/.camera"
+        " && mv /run/camera-holders/.camera /run/camera-holders/camera"
+    )
+    machine.wait_until_fails(in_session(margin), timeout=10)
+
+with subtest("a USB camera's stream shows in the margin too, and leaves with the camera"):
+    # A camera the machine doesn't name, written as usb-camera-holders
+    # writes one: a file named for the camera, there only while it is.
+    usb = "/run/camera-holders/MX Brio 705 for Business"
+    with told("drawn margin"):
+        machine.succeed(f"echo zoom > '{usb}.1' && mv '{usb}.1' '{usb}'")
+    as_account("qs ipc call launcher toggle")
+    launcher_ready()
+    type_in("camera")
+    launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "in use by zoom")
+    machine.send_key("esc")
+    machine.wait_until_fails(in_session("niri msg layers | grep -qw launcher"), timeout=10)
+    machine.succeed(f"rm '{usb}'")
+    machine.wait_until_fails(in_session(margin), timeout=10)
+
+with subtest("Super+O shows Keep Awake in the margin, and Return lets it sleep"):
+    # Keep Awake was just let go, and the margin leaves as it fades.
+    machine.wait_until_fails(in_session(margin), timeout=10)
+    with told("drawn margin"):
+        as_account("systemctl --user start caffeinate.service")
+    photograph("margin-awake")
+    # The panel takes the keys, and a click anywhere else puts it away.
+    with told("keys margin"):
+        machine.send_key("meta_l-o")
+    wait_for_surface("outside")
+    photograph("margin-drawer")
+    machine.send_key("ret")
+    machine.wait_until_fails(held, timeout=10)
+    machine.wait_until_fails(in_session(margin), timeout=10)
+
+with subtest("do not disturb holds a notice, shows it held, and ends from the margin"):
+    machine.wait_until_fails(in_session(notices), timeout=30)
+    as_account("qs ipc call launcher toggle")
+    launcher_ready()
+    type_in("do not disturb")
+    machine.send_key("ret")
+    wait_for_surface("margin")
+    # The shell decides as the notice arrives, so once it says it held
+    # one, there's no card to come.
+    with told("held Held back"):
+        as_account("notify-send 'Held back' 'until it ends'")
+    machine.fail(in_session(notices))
+    # Its panel offers ending it, an hour more, then what's held.
+    with told("keys margin"):
+        machine.send_key("meta_l-o")
+    photograph("margin-quiet")
+    machine.send_key("down")
+    machine.send_key("down")
+    machine.send_key("ret")
+    launcher_ready()
+    photograph("launcher-held")
+    machine.send_key("esc")
+    machine.wait_until_fails(in_session("niri msg layers | grep -q launcher"), timeout=10)
+    with told("keys margin"):
+        machine.send_key("meta_l-o")
+    machine.send_key("ret")
+    machine.wait_until_fails(in_session(margin), timeout=10)
+    as_account("test ! -s $XDG_RUNTIME_DIR/quiet")
+
+with subtest("a missed notice lights its pull, and Return shows the notices"):
+    # On screen it isn't waiting yet; once it goes by itself, it is.
+    with told("drawn margin"), told("shows card Peter"):
+        as_account("notify-send --expire-time=1000 'Peter' 'are you there?'")
+    machine.wait_until_fails(in_session(notices), timeout=15)
+    photograph("margin-waiting")
+    with told("keys margin"):
+        machine.send_key("meta_l-o")
+    machine.send_key("ret")
+    launcher_ready()
+    photograph("launcher-from-margin")
+    machine.send_key("esc")
+    # Opening them counted them seen, so nothing's waiting.
+    machine.wait_until_fails(in_session(margin), timeout=10)
+
+with subtest("the microphone muted shows in the margin, and Return unmutes it"):
+    try:
+        with told("drawn margin"):
+            as_account("wpctl set-mute @DEFAULT_AUDIO_SOURCE@ 1")
+    except AssertionError:
+        # Which source Pipewire calls the default, whether it's muted,
+        # and what Pipewire holds for it, beside what Quickshell heard.
+        print(as_account("wpctl status; wpctl get-volume @DEFAULT_AUDIO_SOURCE@"))
+        print(as_account("pw-dump stand-in-microphone"))
+        raise
+    machine.wait_until_fails(in_session("niri msg layers | grep -q microphone"), timeout=10)
+    with told("keys margin"):
+        machine.send_key("meta_l-o")
+    photograph("margin-muted")
+    machine.send_key("ret")
+    muted = "wpctl get-volume @DEFAULT_AUDIO_SOURCE@ | grep -q MUTED"
+    machine.wait_until_fails(in_session(muted), timeout=10)
+    machine.wait_until_fails(in_session(margin), timeout=10)
+    # Unmuting shows the meter a moment, which the next pictures
+    # would hold for as long as the host takes to reach them.
+    machine.wait_until_fails(in_session("niri msg layers | grep -q microphone"), timeout=10)
+
+# Any player that tells the desktop what it plays shows in the margin
+# while it plays, and the media keys' command shows what it is.
+with subtest("what's playing shows in the margin, and a media key shows what it is"):
+    machine.wait_until_fails(in_session(margin), timeout=10)
+    # A track that starts by itself shows its card a moment, which
+    # goes before the margin is photographed.
+    with told("drawn notifications"), told("drawn margin"):
+        as_account(f"systemd-run --user --unit=player mpv --ao=null --no-video --loop {TRACK}")
+    machine.wait_until_fails(in_session("niri msg layers | grep -q notifications"), timeout=30)
+    photograph("margin-playing")
+    # The play key pauses it, and the card says what was paused.
+    with told("drawn notifications"):
+        as_account("qs ipc call music toggle")
+    photograph("music-card")
+    # Paused, nothing's playing, so the margin goes; the card goes by itself.
+    machine.wait_until_fails(in_session(margin), timeout=10)
+    machine.wait_until_fails(in_session(notices), timeout=15)
+    as_account("systemctl --user stop player")
+
+# A call comes before the other apps when the machine is busy.
+with subtest("Tuple's daemon comes before the other apps"):
+    comes = as_account("systemctl --user show tuple --property=CPUWeight --property=Nice")
+    t.assertEqual(sorted(comes.split()), ["CPUWeight=1000", "Nice=-10"])
+
+with subtest("a Tuple call shows in the margin while it lasts"):
+    # Only a call writes these lines, so they're written here, with
+    # the daemon stopped, since it rewrites its log as it starts.
+    as_account("systemctl --user stop tuple")
+    written = "~/.local/share/tuple/0/log.txt"
+
+    def tuple_said(message: str, ago: int = 0) -> None:
+        """Write a line to Tuple's log as the daemon writes it, as if so many seconds since."""
+        line = f"$(date -u -d '-{ago} sec' +%H:%M:%S.000)|1|1|info|{message}"
+        as_account(f'mkdir -p $(dirname {written}) && echo "{line}" >> {written}')
+
+    machine.wait_until_fails(in_session(margin), timeout=10)
+    with told("drawn margin"):
+        tuple_said("call connected")
+    photograph("margin-call")
+    tuple_said("Caller.cpp:985|invalidating call")
+    machine.wait_until_fails(in_session(margin), timeout=10)
+
+with subtest("people coming and going in a Tuple call are said, and Joel can leave"):
+    # Whoever comes is "a guest", not a number, which Tuple's contacts
+    # would be asked about, and with the daemon stopped it starts one.
+    offered = "pgrep -f '[n]otify-send --app-name=Tuple .*--action={0}'"
+    # Those there as Joel joins aren't news, so the call connected a
+    # while before the guest comes.
+    with told("drawn margin"):
+        tuple_said("call connected", ago=10)
+    with told("shows card Someone joined the call"):
+        tuple_said("peer joined call: a guest")
+    photograph("notice-joined")
+    with told("shows card Someone left the call"):
+        tuple_said("peer left call: a guest")
+    machine.succeed(offered.format("leave"))
+    photograph("notice-alone")
+    # Leaving runs tuple call leave, which starts the stopped daemon,
+    # whose new log ends the call. Super+N takes the stack, and again opens
+    # the history on the newest notice's offers.
+    with told("keys notices"):
+        machine.send_key("meta_l-n")
+    machine.send_key("meta_l-n")
+    launcher_ready()
+    launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Leave the call")
+    machine.send_key("ret")
+    machine.wait_until_fails(in_session(margin), timeout=15)
+    machine.wait_until_fails(offered.format("leave"), timeout=10)
+    as_account("tuple stop")
+
+with subtest("a Tuple call ringing wants Joel, and one not answered is kept as missed"):
+    offered = "pgrep -f '[n]otify-send --app-name=Tuple .*--action=show'"
+    machine.wait_until_fails(in_session(margin), timeout=10)
+    with told("shows card Someone is calling"):
+        tuple_said("received incoming call: a caller")
+    wait_for_surface("margin")
+    machine.succeed(offered)
+    photograph("margin-ringing")
+    # The caller gives up: the ring's notice goes, and a missed call stays.
+    tuple_said("Caller.cpp:985|invalidating call")
+    machine.wait_until_fails(offered, timeout=10)
+    kept = "grep -q 'Missed a call from someone' ~/.local/state/quickshell/by-shell/*/notices.json"
+    machine.wait_until_succeeds(in_session(kept), timeout=10)
+    # Once it goes by itself it waits, and the margin shows it.
+    machine.wait_until_fails(in_session(notices), timeout=15)
+    wait_for_surface("margin")
+    machine.send_key("meta_l-n")
+    launcher_ready()
+    machine.send_key("esc")
+    machine.wait_until_fails(in_session(margin), timeout=10)
+
+with subtest("a copied call's link can be joined until something else is copied"):
+    link = "https://tuple.app/c/from-a-chat"
+    as_account(f"echo -n 'pair with me? {link}' | wl-copy > /dev/null 2>&1")
+    as_account("qs ipc call launcher toggle")
+    launcher_ready()
+    type_in("join", selecting="Join the Tuple call")
+    machine.send_key("esc")
+    machine.wait_until_fails(in_session("niri msg layers | grep -qw launcher"), timeout=10)
+
+    # A screenshot is copied as an image alone, with no text to read.
+    as_account("printf '\\211PNG\\r\\n' | wl-copy --type image/png > /dev/null 2>&1")
+    as_account("qs ipc call launcher toggle")
+    launcher_ready()
+    type_in("join")
+
+    def joins_nothing(shown: Json) -> bool:
+        """Say whether the launcher's selected row joins no Tuple call."""
+        row = shown["selected"]
+        return row is None or "Tuple" not in row["name"]
+
+    launcher_until(joins_nothing)
+    machine.send_key("esc")
+    machine.wait_until_fails(in_session("niri msg layers | grep -qw launcher"), timeout=10)
+
+with subtest("Tuple's windows find their places: the face in a corner, a shared screen wide"):
+    # Through X11, as Tuple draws them, so niri starts xwayland-satellite
+    # for them, and they reach it titled by their part. Tuple's daemon
+    # is a service, started with no token from niri to be let take the
+    # keys, which xwayland-satellite would hand on, so neither has one.
+    def tuple_opens(part: str) -> Json:
+        """Open a window as Tuple's part of this name does, and give it as niri lists it."""
+        as_account(f"niri msg action spawn -- env -u XDG_ACTIVATION_TOKEN {TUPLE_WINDOW} {part}")
+        machine.wait_until_succeeds(
+            in_session(f'niri msg --json windows | grep -q \'"title":"{part}"\''),
+            timeout=STARTING,
+        )
+        return window_titled(part)
+
+    span = json.loads(as_account("niri msg --json focused-output"))["logical"]
+    # Tuple's own panel floats.
+    tuple_panel = tuple_opens("tuple-main")
+    assert tuple_panel["is_floating"], tuple_panel
+    # Joel is at work in a window of his own when the other's face
+    # comes, and keeps the keys. (xwayland-satellite hands a new X11
+    # window the keys while another of its windows has them, which no
+    # rule of niri's overrides.)
+    as_account("niri msg action spawn -- kitty --title 'at work'")
+    machine.wait_until_succeeds(
+        in_session('niri msg --json focused-window | grep -q \'"title":"at work"\''),
+        timeout=STARTING,
+    )
+    tuple_face = tuple_opens("tuple-webcams")
+    t.assertEqual(tuple_face["app_id"], "Tuple")
+    assert tuple_face["is_floating"], tuple_face
+    assert not tuple_face["is_focused"], tuple_face
+    assert window_titled("at work")["is_focused"], tuple_face
+    left, top, width, height = drawn_at(tuple_face)
+    t.assertEqual((width, height), (384, 216))
+    # In the bottom-right corner, a little in from the screen's edges
+    # and whatever niri keeps clear along them.
+    assert 0 < span["width"] - (left + width) <= FROM_THE_EDGE, tuple_face
+    assert 0 < span["height"] - (top + height) <= FROM_THE_EDGE, tuple_face
+
+    tuple_view = tuple_opens("tuple-screen")
+    assert not tuple_view["is_floating"], tuple_view
+    assert tuple_view["layout"]["window_size"][0] >= span["width"] * NEARLY_ALL, tuple_view
+    photograph("tuple-windows")
+    as_account("pkill -f '[t]uple-window'")
+    as_account(f"niri msg action close-window --id {window_titled('at work')['id']}")
+    machine.wait_until_fails(
+        in_session("niri msg --json windows | grep -q 'tuple-\\|at work'"), timeout=30
+    )
+
+with subtest("caps lock shows in the margin while it's on"):
+    capitals = "/run/keyboard-lights/capslock"
+    machine.send_key("caps_lock")
+    machine.wait_until_succeeds(f"grep -qx 1 {capitals}", timeout=10)
+    wait_for_surface("margin")
+    photograph("margin-capitals")
+    machine.send_key("caps_lock")
+    machine.wait_until_succeeds(f"grep -qx 0 {capitals}", timeout=10)
+    machine.wait_until_fails(in_session(margin), timeout=10)
+
+with subtest("caps lock still shows after its watcher restarts"):
+    # Quickshell keeps running, so it must still hear the file.
+    machine.succeed("systemctl restart keyboard-lights")
+    machine.wait_for_unit("keyboard-lights.service")
+    machine.send_key("caps_lock")
+    machine.wait_until_succeeds(f"grep -qx 1 {capitals}", timeout=10)
+    wait_for_surface("margin")
+    machine.send_key("caps_lock")
+    machine.wait_until_fails(in_session(margin), timeout=10)
+
+# Print opens the launcher's Capture collection, where a picture of the
+# screen, a window or a region is chosen by the keys, and niri says
+# when it's taken.
+pictures = f"/home/{ACCOUNT}/Pictures/Screenshots"
+
+
+def capture() -> None:
+    """Press Print, which opens Capture, and wait until its rows are ready for the keys."""
+    machine.send_key("sysrq")
+    launcher_until(
+        lambda shown: (
+            shown["keys"] and shown["held"] == ["captures"] and shown["selected"] is not None
+        )
+    )
+
+
+@contextlib.contextmanager
+def captured() -> Iterator[None]:
+    """Wait for niri to say it took a picture, after what's done inside this."""
+    since = mark()
+    yield
+    reported("captured ", lambda path: path.startswith(f"{pictures}/"), since)
+
+
+def newest_size() -> tuple[int, int]:
+    """Give the newest picture's width and height.
+
+    A PNG says them in its header, from byte 16.
+    """
+    newest = f"ls -t {pictures}/*.png | head -1"
+    size = machine.succeed(f"{newest} | xargs -d '\\n' od -An -tu1 -j16 -N8")
+    b = [int(n) for n in size.split()]
+    return (b[2] * 256 + b[3], b[6] * 256 + b[7])
+
+
+with subtest("Print opens Capture, where Return takes the whole screen"):
+    capture()
+    screen = showing()["selected"]
+    t.assertEqual(screen["name"], "The whole screen")
+    t.assertEqual(screen["chord"], "\u21e7 Print", "the whole screen's row shows its chord")
+    photograph("capture")
+    with told("shows card Screenshot captured"), captured():
+        machine.send_key("ret")
+
+with subtest("Capture takes a window found by its title, on any workspace"):
+    as_account("niri msg action spawn -- kitty --title Seashells")
+    machine.wait_until_succeeds(
+        in_session('niri msg --json windows | grep -qF \'"title":"Seashells"\''),
+        timeout=STARTING,
+    )
+    # The window the keys were in, though niri says none has focus
+    # while the launcher has the keys.
+    capture()
+    type_in("this window", selecting="This window \u00b7 Seashells")
+    t.assertEqual(showing()["selected"]["chord"], "Alt Print")
+    with captured():
+        machine.send_key("ret")
+    windows = json.loads(as_account("niri msg --json windows"))
+    seashells = next(w for w in windows if w["title"] == "Seashells")
+    t.assertEqual(newest_size(), tuple(seashells["layout"]["window_size"]))
+    # Moved to a workspace of its own and left there.
+    as_account("niri msg action move-window-to-workspace-down")
+    as_account("niri msg action focus-workspace-up")
+    capture()
+    type_in("seashells", selecting="Seashells")
+    with captured():
+        machine.send_key("ret")
+    windows = json.loads(as_account("niri msg --json windows"))
+    seashells = next(w for w in windows if w["title"] == "Seashells")
+    t.assertEqual(newest_size(), tuple(seashells["layout"]["window_size"]))
+    as_account(f"niri msg action close-window --id {seashells['id']}")
+
+with subtest("Capture records the window, and says why when niri can't share it"):
+    as_account("niri msg action spawn -- kitty --title Tidepool")
+    machine.wait_until_succeeds(
+        in_session('niri msg --json windows | grep -qF \'"title":"Tidepool"\''),
+        timeout=STARTING,
+    )
+    capture()
+    type_in("record this window", selecting="Record this window \u00b7 Tidepool")
+    t.assertEqual(showing()["selected"]["chord"], "Ctrl Alt Print")
+    # niri here offers no screencast on the session bus, so the
+    # recording can't start, and the notice says why rather than it
+    # failing unseen.
+    with told("shows card The window could not be recorded"):
+        machine.send_key("ret")
+    kept = "cat ~/.local/state/quickshell/by-shell/*/notices.json"
+    print(
+        machine.wait_until_succeeds(
+            in_session(kept + ' | grep -o \'"summary":"The window could not[^}]*\''),
+            timeout=10,
+        )
+    )
+    windows = json.loads(as_account("niri msg --json windows"))
+    pool = next(w for w in windows if w["title"] == "Tidepool")
+    as_account(f"niri msg action close-window --id {pool['id']}")
+
+with subtest("A region is picked by the keys, and Escape goes back to Capture"):
+    # The picker covers the screen niri gives it, whatever cage leaves.
+    logical = json.loads(as_account("niri msg --json focused-output"))["logical"]
+    wide, high = logical["width"], logical["height"]
+    # It opens on the middle quarter; an arrow moves it a step, and
+    # Shift and an arrow size it from its bottom right corner.
+    width, height = round(wide / 2), round(high / 2)
+    x, y = round((wide - width) / 2), round((high - height) / 2)
+    pictures_before = int(machine.succeed(f"ls {pictures}/*.png | wc -l"))
+
+    # Return at once takes the box it opened on, which has to be there
+    # from its first frame, though the window learns its size later.
+    capture()
+    type_in("region", selecting="A region")
+    with told("keys picker"):
+        machine.send_key("ret")
+    with told(f"picked {x},{y} {width}x{height}"):
+        machine.send_key("ret")
+    machine.wait_until_succeeds(
+        f"ls {pictures}/*.png | wc -l | grep -qx {pictures_before + 1}", timeout=15
+    )
+    t.assertEqual(newest_size(), (width, height))
+
+    capture()
+    type_in("region", selecting="A region")
+    with told("keys picker"):
+        machine.send_key("ret")
+    for key in ("left", "up", "shift-right", "shift-right"):
+        machine.send_key(key)
+    # The pictures before leave their notices, which go on their own.
+    machine.wait_until_fails(in_session("niri msg layers | grep -q notifications"), timeout=30)
+    photograph("picker")
+    with told(f"picked {x - 16},{y - 16} {width + 32}x{height}"):
+        machine.send_key("ret")
+    machine.wait_until_succeeds(
+        f"ls {pictures}/*.png | wc -l | grep -qx {pictures_before + 2}", timeout=15
+    )
+    t.assertEqual(newest_size(), (width + 32, height))
+
+    # One cell's letters and another's make the box between them.
+    capture()
+    type_in("region", selecting="A region")
+    with told("keys picker"):
+        machine.send_key("ret")
+    with told("picker typed b"):
+        machine.send_chars("aab")
+    machine.wait_until_fails(in_session("niri msg layers | grep -q notifications"), timeout=30)
+    photograph("picker-cells")
+    rows = round(16 * high / wide)
+    with told(f"picked 0,0 {round(2 * wide / 16)}x{round(2 * high / rows)}"):
+        machine.send_chars("b\n")
+
+    # Escape clears the letters typed first, then goes back to Capture,
+    # taking nothing.
+    capture()
+    type_in("region", selecting="A region")
+    with told("keys picker"):
+        machine.send_key("ret")
+    machine.send_chars("c")
+    machine.send_key("esc")
+    with told("gone picker"):
+        machine.send_key("esc")
+    launcher_until(lambda shown: shown["keys"] and shown["held"] == ["captures"])
+    machine.send_key("esc")
+    launcher_until(lambda shown: not shown["open"])
+
+with subtest("the camera takes a picture and a video by the keys"):
+    camera = 'niri msg --json windows | grep -qF \'"app_id":"camera"\''
+    capture()
+    type_in("picture from the camera", selecting="camera")
+    machine.send_key("ret")
+    machine.wait_until_succeeds(in_session(camera), timeout=60)
+    # Return before the camera wakes takes the picture once it has.
+    with told("shows card Picture copied", timeout=60):
+        machine.send_key("ret")
+    photograph("camera")
+    # Two at once are both kept, under names of their own.
+    since = mark()
+    machine.send_key("ret")
+    machine.send_key("ret")
+    pictures_taken: list[str] = []
+
+    def two_taken(rest: str) -> bool:
+        """Keep what a picture's notice said, and say whether two have been said."""
+        pictures_taken.append(rest)
+        return len(pictures_taken) == PICTURES_AT_ONCE
+
+    reported("shows card Picture copied", two_taken, since, timeout=60)
+
+    def probe(entries: str, files: str) -> str:
+        """Give what ffprobe says of each file there, which it reads one at a time."""
+        ffprobe = f"{FFMPEG_HEADLESS}/bin/ffprobe -v error -of csv=p=0"
+        each = f'for f in {files}; do {ffprobe} -show_entries {entries} "$f" || exit; done'
+        return machine.succeed(each)
+
+    sizes = probe("stream=width,height", f"/home/{ACCOUNT}/Pictures/Camera/*.jpg")
+    t.assertEqual(sizes.split(), ["640,480"] * 3)
+
+    videos = f"/home/{ACCOUNT}/Videos/Camera"
+    kept = in_session("cat ~/.local/state/quickshell/by-shell/*/notices.json")
+
+    def recording(count: int, last: bool) -> bool:
+        """Say whether there are so many videos, the newest grown, so recording."""
+        failed = re.search(
+            r'"summary":"The video could not be recorded",[^}]*', machine.succeed(kept)
+        )
+        if failed is not None:
+            # What the recording said, and who had the camera then.
+            print(machine.execute("cat /run/user/1000/camera-recording.log")[1])
+            holders = (
+                "for p in /proc/[0-9]*; do"
+                " ls -l $p/fd 2>/dev/null | grep -q video9 && echo open $p $(cat $p/comm);"
+                " grep -qs video9 $p/maps && echo mapped $p $(cat $p/comm); done; true"
+            )
+            print(machine.succeed(holders))
+            raise AssertionError(failed.group(0))
+        grown = (
+            f"[ $(ls {videos}/*.mp4 | wc -l) = {count} ]"
+            f' && [ $(stat -c %s "$(ls -t {videos}/*.mp4 | head -1)") -gt 50000 ]'
+        )
+        status, _ = machine.execute(grown)
+        if last and status != 0:
+            print(machine.execute("ps -eww -o pid,args | grep -aE 'ffmpeg|mpv|sh -c'")[1])
+            print(as_account("pw-top -b -n 2 || true"))
+            print(machine.execute(f"ls -la /run/user/1000 {videos}")[1])
+            print(machine.execute("cat /run/user/1000/camera-recording.log")[1])
+            print(as_account("journalctl --user --no-pager -n 60 -o cat"))
+        assert not last or status == 0, f"video {count} never grew"
+        return status == 0
+
+    def saved(key: str) -> None:
+        """Press a key that stops the recording, and wait for the notice that it's saved.
+
+        A run has gone a minute without it, so what the recording was doing then is printed.
+        """
+        try:
+            with told("shows card Video saved", timeout=60):
+                machine.send_key(key)
+        except AssertionError:
+            print(
+                machine.execute("ps -eww -o pid,stat,wchan:32,args | grep -aE '[f]fmpeg|[m]pv'")[1]
+            )
+            print(
+                machine.execute(
+                    "ls -la /run/user/1000/camera-*; cat /run/user/1000/camera-recording.log"
+                )[1]
+            )
+            print(as_account("pw-top -b -n 2 || true"))
+            print(as_account("journalctl --user --no-pager -n 60 -o cat"))
+            raise
+
+    # Tab makes Return record, and Return again stops it.
+    machine.send_key("tab")
+    machine.send_key("ret")
+    retry(lambda last: recording(1, last), timeout_seconds=60)
+    saved("ret")
+    # Escape while recording saves the video, then closes.
+    machine.wait_until_succeeds(in_session(camera), timeout=10)
+    machine.send_key("ret")
+    retry(lambda last: recording(2, last), timeout_seconds=60)
+    saved("esc")
+    machine.wait_until_fails(in_session(camera), timeout=30)
+    streams = probe("stream=codec_name", f"{videos}/*.mp4")
+    t.assertEqual(streams.split(), ["h264", "aac"] * 2)
+
+    # A picture is kept as others see Joel, not mirrored as the viewfinder
+    # shows him: it matches what the camera gives better than its mirror.
+    ffmpeg = f"{FFMPEG_HEADLESS}/bin/ffmpeg"
+    machine.succeed(f"{ffmpeg} -v error -f v4l2 -i /dev/video9 -frames:v 1 -y /tmp/given.png")
+    picture = machine.succeed(f"ls /home/{ACCOUNT}/Pictures/Camera/*.jpg | head -1").strip()
+
+    def likeness(turn: str) -> float:
+        """Give how alike the picture kept and the camera's own are, turned this way."""
+        compared = f"[1]{turn}format=yuv420p[given];[0]format=yuv420p[kept];[kept][given]psnr"
+        said = machine.succeed(
+            f'{ffmpeg} -i "{picture}" -i /tmp/given.png -lavfi "{compared}" -f null - 2>&1'
+        )
+        found = re.search(r"average:([0-9.]+)", said)
+        assert found is not None, said
+        return float(found.group(1))
+
+    t.assertGreater(likeness(""), likeness("hflip,") + 3)
+
+# Super+Shift+N puts the cards away, and each is still there unread.
+with subtest("Super+Shift+N puts the notices away"):
+    with told("shows card Standup"):
+        as_account("notify-send --urgency=critical 'Standup' 'in five minutes'")
+    with told("gone notifications"):
+        machine.send_key("meta_l-shift-n")
+    kept = "cat ~/.local/state/quickshell/by-shell/*/notices.json"
+    machine.wait_until_succeeds(
+        in_session(kept + ' | grep -q \'"summary":"Standup"[^}]*"read":false\''),
+        timeout=10,
+    )
+
+with subtest("the lock screen takes only the right password"):
+    with told("keys lock"):
+        machine.send_key("meta_l-l")
+    as_account("qs ipc call lock isLocked | grep -q true")
+    # PAM answers a wrong password after a delay, which the lock says.
+    with told("refused lock"):
+        machine.send_chars("wrong-password\n")
+    as_account("qs ipc call lock isLocked | grep -q true")
+
+    # Its picture fades in, as the wallpaper's does.
+    def pictured(last: bool) -> bool:
+        """Say whether the lock screen shows its picture rather than a flat colour."""
+        _, colours, _ = colours_and_light("locked")
+        if last:
+            t.assertGreater(
+                colours, PICTURE_COLOURS, "the lock screen shows a flat colour, not its picture"
+            )
+        return colours > PICTURE_COLOURS
+
+    retry(pictured, timeout_seconds=30)
+    with told("released lock"):
+        machine.send_chars(f"{SECRET}\n")
+    as_account("qs ipc call lock isLocked | grep -q false")
+
+# What locks before the machine sleeps returns only once niri has drawn
+# the lock on every screen, so nothing else shows on waking.
+with subtest("lock-screen returns once the lock is drawn"):
+    marker = "$XDG_RUNTIME_DIR/quickshell-locked"
+    as_account(f"grep -qx unlocked {marker}")
+    as_account("lock-screen")
+    as_account(f"grep -qx locked {marker}")
+    with told("released lock"):
+        machine.send_chars(f"{SECRET}\n")
+    as_account(f"grep -qx unlocked {marker}")
+
+with subtest("polkit's prompt lets the account start a system service"):
+    with told("keys polkit"):
+        as_account("niri msg action spawn -- systemctl start polkit-allowed.service")
+    photograph("polkit")
+    machine.send_chars(f"{SECRET}\n")
+    machine.wait_for_file("/run/polkit-allowed", timeout=30)
+
+# ssh-tpm-agent asks before a key confirmed on use signs, and for a
+# key's PIN, and ssh for a security key's touch, all through the
+# shell's askpass, which answers as OpenSSH's contract says.
+with subtest("the askpass asks for a yes, a PIN and a touch"):
+
+    def ask(kind: str, prompt: str) -> None:
+        """Ask through the askpass, started by the account's systemd as ssh-tpm-agent is.
+
+        That way it has what the agent has.
+        """
+        as_account(f"systemd-run --user --collect --quiet -- {ASKING} {kind} '{prompt}'")
+
+    def answered_with(kind: str, code: int, answer: str = "", timeout: int = 30) -> None:
+        """Wait until an ask is answered, and check how it exited and what it gave back."""
+        exited = f"$XDG_RUNTIME_DIR/asked-{kind}.exit"
+        machine.wait_until_succeeds(in_session(f"test -e {exited}"), timeout=timeout)
+        t.assertEqual(as_account(f"cat {exited}").strip(), str(code))
+        t.assertEqual(as_account(f"cat $XDG_RUNTIME_DIR/asked-{kind}.answer"), answer)
+
+    signing = (
+        "Allow use of key joel-signing?\\nKey fingerprint SHA256:abc."
+        "\\nRequested by ssh-keygen (1234) \u2190 tpm-sign \u2190 git \u2190 zsh"
+    )
+    with told("keys askpass"):
+        ask("confirm", signing)
+    photograph("askpass")
+    machine.send_key("ret")
+    answered_with("confirm", 0)
+
+    with told("keys askpass"):
+        ask("confirm", signing)
+    with told("gone askpass"):
+        machine.send_key("esc")
+    answered_with("confirm", 1)
+
+    with told("keys askpass"):
+        ask("secret", f"Enter PIN for ED25519-SK key /home/{ACCOUNT}/.ssh/id_ed25519_sk: ")
+    photograph("askpass-pin")
+    machine.send_chars("2468\n")
+    answered_with("secret", 0, "2468\n")
+
+    # A touch takes no keys, and goes once ssh stops waiting on it.
+    with told("drawn askpass"):
+        ask("none", "Confirm user presence for key ED25519-SK SHA256:abc")
+    with told("gone askpass"):
+        as_account("pkill -TERM -f '^[^ ]*bash [^ ]*ssh-askpass Confirm'")
+    answered_with("none", 1)
+    as_account("! ls $XDG_RUNTIME_DIR | grep -q '^askpass'")
+
+# The shell holds an ask only in memory, as a switch restarts it.
+with subtest("the askpass asks a restarted shell again, and gives up on a gone one"):
+    with told("keys askpass"):
+        ask("confirm", signing)
+    with told("keys askpass", timeout=60):
+        as_account("systemctl --user restart quickshell")
+    machine.send_key("ret")
+    answered_with("confirm", 0)
+
+    with told("keys askpass"):
+        ask("confirm", signing)
+    as_account("systemctl --user stop quickshell")
+    answered_with("confirm", 1, timeout=60)
+    as_account("! ls $XDG_RUNTIME_DIR | grep -q '^askpass'")
+    as_account("systemctl --user start quickshell")
+    machine.wait_until_succeeds(in_session("qs ipc show | grep -q askpass"), timeout=STARTING)
+
+# A switch restarts the shell, and can come while Joel is away and the
+# screens are locked. niri holds a lock whose shell died, so the shell
+# it starts again has to take that lock back, or nothing is left to
+# type the password into.
+with subtest("the lock holds when the shell restarts, and only for its niri"):
+    locked = "$XDG_RUNTIME_DIR/quickshell-locked"
+    holder = "$XDG_RUNTIME_DIR/quickshell-lock-holder"
+    as_account("lock-screen")
+    since = mark()
+    as_account("systemctl --user restart quickshell")
+    for word in ("secured lock", "keys lock"):
+        reported(word, lambda rest: rest == "", since, timeout=60)
+    as_account("qs ipc call lock isLocked | grep -qx true")
+    as_account(f"grep -qx locked {locked}")
+    with told("released lock"):
+        machine.send_chars(f"{SECRET}\n")
+    as_account(f"grep -qx unlocked {locked}")
+
+    def started_unlocked() -> None:
+        """Restart the shell, and check that it starts with the screens unlocked."""
+        as_account("systemctl --user restart quickshell")
+        machine.wait_until_succeeds(in_session("qs ipc show | grep -q askpass"), timeout=STARTING)
+        as_account("qs ipc call lock isLocked | grep -qx false")
+        as_account(f"grep -qx unlocked {locked}")
+
+    # Let go, the lock isn't taken again.
+    started_unlocked()
+    # The runtime directory outlives a session while the account
+    # lingers, so a lock a crashed niri held is left to that niri.
+    as_account(f"echo $XDG_RUNTIME_DIR/niri.wayland-1.1.sock > {holder}")
+    as_account(f"echo locked > {locked}")
+    started_unlocked()
+
+# Chrome and Slack ask the desktop portal, and websites hear it from them.
+with subtest("the desktop says it prefers dark"):
+    reply = as_account(
+        "busctl --user call org.freedesktop.portal.Desktop /org/freedesktop/portal/desktop"
+        " org.freedesktop.portal.Settings ReadOne ss org.freedesktop.appearance color-scheme"
+    )
+    t.assertIn("u 1", reply)
+
+with subtest("programs in a terminal reach the clipboard"):
+    # wl-copy stays behind to serve what it copied, so it lets go of the
+    # output the test reads.
+    as_account("echo -n 'from a terminal' | wl-copy > /dev/null 2>&1")
+    t.assertEqual(as_account("wl-paste --no-newline"), "from a terminal")
+
+with subtest("monospace is the theme's font"):
+    family = as_account(f"{FONTCONFIG_BIN}/bin/fc-match -f '%{{family}}' monospace")
+    t.assertIn(MONO_FAMILY, family)
+
+with subtest("GTK programs draw in the theme's colours"):
+    zenity = f"{ZENITY}/bin/zenity --text-info --title=libadwaita --filename={TEXT}"
+    # Here niri runs in Cage's system service, and the portal refuses the
+    # programs it starts ("Unable to open /proc/<pid>/root"), so zenity
+    # runs under the account's user manager, where niri's own unit puts
+    # them on the laptop.
+    as_account(f"systemd-run --user --collect {zenity}")
+    sunken = SUNKEN.lower()
+    t.assertEqual(commonest_colour_in("libadwaita", "libadwaita", sunken), sunken)
+    # The file chooser Chrome and Slack open, which the GTK portal draws
+    # with GTK 3, asked for the way they ask.
+    as_account(
+        "busctl --user call org.freedesktop.portal.Desktop /org/freedesktop/portal/desktop"
+        " org.freedesktop.portal.FileChooser OpenFile 'ssa{sv}' \"\" Open 0"
+    )
+    t.assertEqual(commonest_colour_in("Open", "file-chooser", sunken), sunken)
+
+# Swipes on a touchscreen move through the desktop as the touchpad's do,
+# and never reach the window under them as a tap. wev says every touch
+# its window gets.
+with subtest("swipes on the touchscreen move through the workspaces, not the window"):
+    machine.succeed(f"systemd-run --unit=touchscreen {TOUCHSCREEN}")
+    machine.wait_for_file("/run/touchscreen", timeout=30)
+    as_account(
+        "systemd-run --user --collect --quiet --unit=wev -- sh -c "
+        f"'{COREUTILS}/bin/stdbuf -oL {WEV}/bin/wev > /tmp/wev.log 2>&1'"
+    )
+
+    def wev_open(_: bool) -> bool:
+        """Say whether wev's window is open."""
+        windows = json.loads(as_account("niri msg --json windows"))
+        return any(window["title"] == "wev" for window in windows)
+
+    retry(wev_open, timeout_seconds=30)
+    as_account("niri msg action maximize-column")
+
+    def touches(kind: str) -> int:
+        """Give how many touches of a kind wev has heard."""
+        return int(machine.succeed(f"grep -c 'wl_touch] {kind}' /tmp/wev.log || true"))
+
+    def focused_workspace() -> int:
+        """Give the index of the workspace niri has focused."""
+        workspaces = json.loads(as_account("niri msg --json workspaces"))
+        return cast("int", next(w["idx"] for w in workspaces if w["is_focused"]))
+
+    def overview_open() -> bool:
+        """Say whether niri's overview is open."""
+        return cast("bool", json.loads(as_account("niri msg --json overview-state"))["is_open"])
+
+    # niri nested in Cage says its screen is Flipped180, and touches
+    # reach it upside down, so the stand-in swipes up and down the way a
+    # person seeing it would.
+    outputs = json.loads(as_account("niri msg --json outputs"))
+    turn = next(iter(outputs.values()))["logical"]["transform"]
+    assert turn in ("Normal", "Flipped180"), f"no swipes for a screen turned {turn}"
+    over = {"DU": "UD", "UD": "DU"} if turn == "Flipped180" else {}
+
+    def swiped(fingers: int, way: str, until: Callable[[], object], across: float = 0.5) -> None:
+        """Swipe with so many fingers one way, as a person sees it, until something holds."""
+        drawn = over.get(way, way)
+        machine.succeed(f"echo '{fingers} {drawn} {across}' > /run/touchscreen")
+        try:
+            retry(lambda _: until(), timeout_seconds=10)
+        except Exception:
+            print(machine.succeed("cat /tmp/wev.log | grep wl_touch || true"))
+            raise
+
+    # One finger is the window's: wev hears it touched and let go.
+    swiped(1, "tap", lambda: touches("up") == 1)
+    first = focused_workspace()
+    swiped(3, "DU", lambda: focused_workspace() == first + 1)
+    # The two fingers wev already had are cancelled, not let go.
+    retry(lambda _: touches("cancel") >= 1, timeout_seconds=10)
+    swiped(3, "UD", lambda: focused_workspace() == first)
+    swiped(4, "DU", overview_open)
+    swiped(4, "UD", lambda: not overview_open())
+
+    # A second window opens in a column to the right; the view follows
+    # the fingers back to the first and on to the second again. Earlier
+    # windows share this workspace, so the two go to the empty one at
+    # the end, where nothing else is beside them.
+    def focused() -> int:
+        """Give the id of the window niri has focused."""
+        return cast("int", json.loads(as_account("niri msg --json focused-window"))["id"])
+
+    left = focused()
+    workspaces = json.loads(as_account("niri msg --json workspaces"))
+    last = max(w["idx"] for w in workspaces)
+    as_account(f"niri msg action move-column-to-workspace {last}")
+    first = focused_workspace()
+    as_account(f"systemd-run --user --collect --quiet --unit=wev-right -- {WEV}/bin/wev")
+    retry(lambda _: focused() != left, timeout_seconds=30)
+    right = focused()
+    t.assertTrue(held_still(), "the view never settled")
+    swiped(3, "LR", lambda: focused() == left)
+    swiped(3, "RL", lambda: focused() == right)
+    t.assertEqual(touches("up"), 1, "a swipe reached the window as a tap")
+
+    # Side by side, with the right one focused: a swipe over the left
+    # one leaves the focus where it was, as a tap would not. The left one
+    # hears the swipe's first two fingers land, which is how the test
+    # knows they landed on it.
+    as_account("niri msg action focus-column-left")
+    as_account("niri msg action set-column-width 50%")
+    as_account("niri msg action focus-column-right")
+    as_account("niri msg action set-column-width 50%")
+    t.assertTrue(held_still(), "the view never settled")
+    landed = touches("down")
+    swiped(3, "DU", lambda: focused_workspace() == first + 1, across=0.25)
+    t.assertEqual(touches("down"), landed + 2, "the swipe missed the window beside")
+    swiped(3, "UD", lambda: focused_workspace() == first, across=0.25)
+    t.assertEqual(focused(), right, "a swipe focused the window under it")
+    as_account("systemctl --user stop wev wev-right")
+
+    # kitty scrolls by touch: a finger dragged down its whole window
+    # brings back what had scrolled off the top, and the last line goes.
+    as_account(
+        "systemd-run --user --collect --quiet --unit=touched -- "
+        "kitty --title touched sh -c 'seq 1 3000; exec sleep infinity'"
+    )
+
+    def touched_focused(_: bool) -> bool:
+        """Say whether the touched terminal is open and focused."""
+        windows = json.loads(as_account("niri msg --json windows"))
+        return any(w["title"] == "touched" and w["is_focused"] for w in windows)
+
+    retry(touched_focused, timeout_seconds=60)
+    as_account("niri msg action set-column-width 100%")
+    kitty = f"kitty @ --to unix:@kitty-{window_titled('touched')['pid']} get-text"
+    retry(lambda _: "3000" in as_account(kitty).split(), timeout_seconds=30)
+    swiped(1, "UD", lambda: "3000" not in as_account(kitty).split())
+    as_account("systemctl --user stop touched")
+    machine.succeed("systemctl stop touchscreen")
+
+# With no agent BlueZ refuses every pairing, even one asked for here.
+# BlueZ starts when a radio appears, which the VM has none of, so it's
+# started as a radio would, once the kernel's Bluetooth is loaded. It
+# comes last, since BlueZ starting midway disturbs the session's audio
+# for the subtests after it.
+with subtest("a Bluetooth agent answers for paired devices"):
+    machine.succeed("modprobe bluetooth && systemctl start bluetooth.service")
+    machine.wait_until_succeeds(
+        "journalctl -u bluetooth-agent | grep -q 'Default agent requested'", timeout=30
+    )
+    machine.succeed("systemctl is-active bluetooth-agent")
+
+# Taking its agent back from BlueZ is a call over the bus, which only
+# an agent still reading the bus can make, and stopping it promptly
+# is what keeps it from holding up every shutdown.
+with subtest("the Bluetooth agent stops at once, handing its agent back"):
+    machine.succeed("timeout 15 systemctl stop bluetooth-agent")
+    machine.succeed("journalctl -u bluetooth-agent | grep -q 'unregistering agent'")
+    machine.fail("systemctl is-failed --quiet bluetooth-agent")
+
+# A binding that throws or assigns the wrong type only warns, and
+# only once a surface draws it, which can be long after the start.
+with subtest("Quickshell warned of nothing it drew all along"):
+    # Quickshell colours its levels and categories even in the journal,
+    # so a colour code may stand between the two words.
+    log = as_account(
+        "journalctl --user -u quickshell --no-pager -o cat | grep -a -E 'WARN[^ ]* scene' || true"
+    )
+    assert log.strip() == "", f"Quickshell warned of a scene: {log}"
+
+photograph("desktop")
