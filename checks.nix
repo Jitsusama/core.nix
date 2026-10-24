@@ -575,6 +575,7 @@ gather (
     ./modules/qt/checks.nix
     ./modules/quickshell/checks.nix
     ./modules/shaper/checks.nix
+    ./modules/signing/checks.nix
     ./modules/slices/checks.nix
     ./modules/spend-watch/checks.nix
     ./modules/spotify/checks.nix
