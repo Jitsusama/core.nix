@@ -750,8 +750,8 @@ in
           ];
           description = ''
             The shadows, in the shadow colour, that lift text set straight on
-            a picture, the lock screen's time and the margin's glyphs, so it
-            reads while the picture shows whole. Nearest first.
+            a picture, the lock screen's time, so it reads while the picture
+            shows whole. Nearest first.
           '';
         };
         halo = lib.mkOption {
@@ -798,6 +798,37 @@ in
             hold text off whatever is behind it when that may be a picture or
             a window: the overview's status, which lies over the workspaces.
             Tightest first.
+          '';
+        };
+        marks = lib.mkOption {
+          type = lib.types.listOf (
+            lib.types.submodule {
+              options = {
+                blur = lib.mkOption {
+                  type = lib.types.ints.unsigned;
+                  description = "How far the shadow spreads round the mark, in pixels.";
+                };
+                opacity = lib.mkOption {
+                  type = number;
+                  description = "How dark the shadow is, from 0 to 1.";
+                };
+              };
+            }
+          );
+          # One tight shade, a pixel round each mark, so it holds the mark
+          # off a bright patch of the picture and stays inside the room its
+          # cell leaves, never reaching the window below.
+          default = given "wallpaper" "marks" [
+            {
+              blur = 1;
+              opacity = "0.8";
+            }
+          ];
+          description = ''
+            The shadows, in the shadow colour and centred on each mark, that
+            lift the margin's marks off the picture. Centred, so a mark has
+            the same shade on every side, and tight, so the shade stays in
+            the mark's cell. Nearest first.
           '';
         };
       };

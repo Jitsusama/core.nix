@@ -5,8 +5,8 @@
 // on the baseline, so its top is negative.
 .pragma library
 
-// From the corner inward, how much each kind asks: what's on air nearest
-// the corner, then what wants Joel, then what was left on.
+// From the right, how much each kind asks: what's on air rightmost, then
+// what wants Joel, then what was left on.
 const KINDS = ["onAir", "wants", "leftOn"];
 
 // How a glyph measured at one size is drawn so its ink stands `height`
@@ -27,21 +27,16 @@ function fit(ink, height, middle) {
     };
 }
 
-// Things as { kind, order }, left to right: the corner's last, since it's
-// read from there inward, by kind and then the overview's order.
-// How much bigger the corner's marks grow while What's on is open, and how
-// much of its cell a mark's drawing fills: half, so the room left above,
-// below and either side is the same.
-const GROWN = 2;
+// How much of its cell a mark's drawing fills: half, so the room left
+// above, below and either side is the same.
 const FILLS = 2;
 
 // The square cell each mark stands in, its drawing's height, and the room
-// around it: at rest the gap's height, a mark that wants nothing of the
-// window below; grown, twice that, as large as the drawing is drawn.
-function sized(gap, grown) {
-    const cell = grown ? gap * GROWN : gap;
-    const ink = cell / FILLS;
-    return { cell, ink, room: (cell - ink) / FILLS };
+// around it: the gap's height, so a mark wants nothing of the windows
+// below, and nothing grows past it.
+function sized(gap) {
+    const ink = gap / FILLS;
+    return { cell: gap, ink, room: (gap - ink) / FILLS };
 }
 
 // Whether the launcher has What's on open, from { open, collection }: the
@@ -67,6 +62,8 @@ function pointed(launcher) {
     return last ?? "";
 }
 
+// Things as { kind, order }, left to right: the rightmost last, since it's
+// read from there, by kind and then the overview's order.
 function arranged(things) {
     const rank = thing => KINDS.indexOf(thing.kind);
     return things.slice().sort((a, b) => rank(b) - rank(a) || b.order - a.order);

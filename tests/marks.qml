@@ -122,11 +122,11 @@ QtObject {
 
         // Each mark stands in a square cell the gap's height, its drawing
         // half that, so the room above, below and either side is the same.
-        // When What's on opens, every cell grows to twice the gap, and its
-        // drawing with it, to the size it's drawn at.
-        expect("at rest, a cell the gap's height, its mark half",
-            Marks.sized(12, false), { cell: 12, ink: 6, room: 3 });
-        expect("open, all of it twice", Marks.sized(12, true), { cell: 24, ink: 12, room: 6 });
+        // Nothing grows, so nothing ever reaches a window.
+        expect("a cell the gap's height, its mark half", Marks.sized(12),
+            { cell: 12, ink: 6, room: 3 });
+        expect("and a gap of another size the same", Marks.sized(16),
+            { cell: 16, ink: 8, room: 4 });
 
         // What's on points at the row the keys are on, or at the thing
         // stepped into, as its actions are; anything else points nowhere.

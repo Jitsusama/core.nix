@@ -1,6 +1,6 @@
-// The margin: what's on that Joel would otherwise forget, in the top right
-// corner, without covering a window (docs/design.md, Shape and Kinds, the
-// margin). Each overview piece with a mark that's true right now (the
+// The margin: what's on that Joel would otherwise forget, at the top centre
+// of each screen, without covering a window (docs/design.md, Shape and
+// Kinds, the margin). Each overview piece with a mark that's true right now (the
 // camera, the screen shared or recorded, a pi session or a notice waiting,
 // the battery low, Keep Awake, do not disturb, the microphone muted) is
 // its mark alone, in the gap the windows already leave above them.
@@ -8,27 +8,30 @@
 //
 // Each mark stands in a square cell the gap's height, drawn half that
 // (Marks.sized), so it has the same room above, below and either side. The
-// cells touch, and the last ends where the windows do, the gap in from the
-// screen's edge, so the row lines up with the windows below it and each
-// mark is inlaid from that line by its room. A mark is the theme's drawing
-// of it (Theme.drawn), made for this size, where a font's glyph would blur;
-// one with no drawing is its glyph, its ink fitted to the same height.
+// cells touch, and the row is centred on the screen, on the line the
+// launcher is centred on, so it's as far from either side and half as far
+// from where Joel looks as a corner would be; one coming or going moves
+// the rest smoothly to stay centred. A mark is the theme's drawing of it
+// (Theme.drawn), made for this size, where a font's glyph would blur; one
+// with no drawing is its glyph, its ink fitted to the same height.
 //
-// They read from the corner inward by how much each asks (Marks.js): what's
-// on air nearest the corner, then what wants Joel, then what was left on.
+// They read from the right by how much each asks (Marks.js): what's on air
+// rightmost, then what wants Joel, then what was left on.
 // Colour says only how much: strong for what's on air or wants him, muted
 // for what was left on, the alert for what needs him now. Something on air
 // that goes stays a while in its place, muted
 // (jitsusama.quickshell.margin.linger), so a camera let go is still seen to
-// have been on. The marks are lifted off the picture by the theme's text
-// shadows, as the clock on the lock screen is.
+// have been on. The marks are lifted off the picture by a shade of their
+// own (jitsusama.theme.wallpaper.marks), centred and tight, so it's the
+// same on every side and stays in the cell, off the windows below.
 //
 // What each is, in words, and what can be done about it, is the launcher's
 // What's on (launcher/WhatsOn.qml): Super+O opens it, and clicking a mark
-// opens it on that mark's row. While it's open on a screen, that screen's
-// marks grow to twice their size, over the windows' tops, so the eye joins
-// the corner to the list, and the mark of the row the keys are on wears the
-// accent, as where the keys are always does. A piece whose program has a
+// opens it on that mark's row. While it's open on a screen, the mark of
+// the row the keys are on wears the accent on that screen, as where the
+// keys are always does, so the eye joins the row to its mark straight up
+// the line they share. Nothing grows, since anything past the gap would lie
+// over a window. A piece whose program has a
 // card on screen saying the same, as pi's want or a call ringing, waits for
 // the card to go: a card or a mark, never both. The overview draws nothing
 // of its own, so the margin stays while it's open, the one place that says
@@ -46,12 +49,10 @@ Scope {
     // The launcher, which says what the marks are.
     required property var launcher
 
-    // The right edge everything in the corner shares: the windows' own.
-    readonly property int corner: Theme.gap
     // The grid the theme's drawings are made on (jitsusama.theme.glyphs).
     readonly property int grid: 12
-    // The cells at rest and grown, which the window is always big enough for.
-    readonly property var most: Marks.sized(Theme.gap, true)
+    // Each mark's cell, its drawing and the room around it.
+    readonly property var size: Marks.sized(Theme.gap)
 
     // What the launcher shows, as Marks.pointed reads it: whether it's
     // open, the collection it holds first, and the key of each row it holds
@@ -151,34 +152,20 @@ Scope {
 
             required property ShellScreen modelData
 
-            // Grown only on the screen What's on is open on, since that's
+            // Pointed only on the screen What's on is open on, since that's
             // where the eye goes between the two.
-            readonly property bool grown: root.asked
-                && modelData.name === (root.launcher.screenHere?.name ?? "")
-            readonly property string pointed: grown ? root.pointed : ""
-            // The cell's size it's going to, and the one drawn, which moves
-            // there smoothly; the drawing and its room follow from that.
-            readonly property var size: Marks.sized(Theme.gap, grown)
-            property real cell: size.cell
-            readonly property var drawn: Marks.sized(cell, false)
-
-            Behavior on cell {
-                NumberAnimation {
-                    duration: Theme.motion.medium
-                    easing.type: Easing.BezierSpline
-                    easing.bezierCurve: Theme.motion.curve
-                }
-            }
+            readonly property string pointed: root.asked
+                && modelData.name === (root.launcher.screenHere?.name ?? "") ? root.pointed : ""
 
             screen: modelData
             visible: root.on.length > 0
+            // The screen's whole width, so the marks move along it to stay
+            // centred and the surface never resizes under them; it's clear,
+            // and only the marks take the pointer.
             anchors.top: true
+            anchors.left: true
             anchors.right: true
-            // Always big enough for the marks grown, so growing never
-            // resizes the surface under them; it's clear, and only the
-            // marks take the pointer.
-            implicitWidth: root.on.length * root.most.cell + root.corner + lifted.reach
-            implicitHeight: root.most.cell + lifted.reach
+            implicitHeight: root.size.cell + lifted.reach
             exclusionMode: ExclusionMode.Ignore
             color: "transparent"
             WlrLayershell.layer: WlrLayer.Overlay
@@ -207,7 +194,6 @@ Scope {
                 }
             }
 
-            onSizeChanged: later()
             onPointedChanged: later()
 
             // Says what's drawn once the pieces' words have caught up.
@@ -217,7 +203,7 @@ Scope {
             }
 
             // What the margin holds, and how each is drawn, so a test sees
-            // what Joel sees: the role each wears, and the cell it's grown to.
+            // what Joel sees: the role each wears, and the cell it stands in.
             function tell() {
                 Report.say(`holds margin ${root.on.map(thing => thing.entry.mark).join(" ")}`);
                 Report.say(`sets margin ${JSON.stringify(root.on.map(thing => ({
@@ -225,14 +211,23 @@ Scope {
                     kind: thing.kind,
                     tone: thing.tone,
                     hue: thing.mark === window.pointed ? "accent" : thing.tone,
-                    cell: window.size.cell,
+                    cell: root.size.cell,
                     state: thing.piece.value
                 })))}`);
             }
 
             Lifted {
                 id: lifted
-                x: window.width - root.corner - marks.width
+                x: Math.round((window.width - marks.width) / 2)
+                shadows: Theme.wallpaper.marks
+
+                Behavior on x {
+                    NumberAnimation {
+                        duration: Theme.motion.medium
+                        easing.type: Easing.BezierSpline
+                        easing.bezierCurve: Theme.motion.curve
+                    }
+                }
 
                 Row {
                     id: marks
@@ -248,8 +243,8 @@ Scope {
                             property color hue: modelData.mark === window.pointed
                                 ? Theme.accent : Theme[modelData.tone]
 
-                            width: window.cell
-                            height: window.cell
+                            width: root.size.cell
+                            height: root.size.cell
 
                             Behavior on hue {
                                 ColorAnimation {
@@ -259,11 +254,11 @@ Scope {
 
                             Shape {
                                 visible: slot.drawing !== ""
-                                x: window.drawn.room
-                                y: window.drawn.room
+                                x: root.size.room
+                                y: root.size.room
                                 width: root.grid
                                 height: root.grid
-                                scale: window.drawn.ink / root.grid
+                                scale: root.size.ink / root.grid
                                 transformOrigin: Item.TopLeft
                                 preferredRendererType: Shape.CurveRenderer
 
@@ -290,10 +285,10 @@ Scope {
 
                             Text {
                                 readonly property var set: Marks.fit(measured.tightBoundingRect,
-                                    window.drawn.ink, window.cell / 2)
+                                    root.size.ink, root.size.cell / 2)
 
                                 visible: slot.drawing === ""
-                                x: (window.cell - set.width) / 2 + set.x
+                                x: (root.size.cell - set.width) / 2 + set.x
                                 y: set.baseline - baselineOffset
                                 text: slot.modelData.glyph
                                 textFormat: Text.PlainText

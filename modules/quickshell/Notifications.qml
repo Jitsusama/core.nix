@@ -16,7 +16,8 @@
 // The notices sit a step inside the window under the top right corner, so
 // a notice lies on one window rather than across a border, or a step inside
 // where a window's corner would be when there's none (`inside` says how),
-// below the margin's glyphs, which stand in the gap above the windows.
+// clear of the margin's marks, which stand at the top centre in the gap
+// above the windows.
 //
 // Each is kept in the session's history as it arrives (Notices.qml), for
 // the launcher to find later, where the ones still here can be answered

@@ -178,7 +178,10 @@ surface names a meaning, never a colour value:
 Nothing else gets the accent, so it always means "here". The wallpaper is
 never dimmed or faded to make room for text: text set straight on a picture
 is lifted off it by the theme's text shadows (`wallpaper.shadows`), a crisp
-one set off down and right and a soft one around it. Text that may lie over a
+one set off down and right and a soft one around it. The margin's marks,
+six pixels tall, take a shade of their own (`wallpaper.marks`): one pixel,
+centred, so it's even on every side and stays in the mark's cell rather
+than spilling onto the window below. Text that may lie over a
 window as well gets no box either: the theme's halo
 (`wallpaper.halo`) holds it off whatever is behind, shadows of the letters
 in the shadow colour, centred, stacked from tight to wide so the shade is all
@@ -302,27 +305,29 @@ its frame, and a meter is `space.xxxl` tall with `space.l` at its sides.
 
 **A notice sits a step inside the windows' edge,** `space.s` past their
 gap, so it never lines up with a window's border by chance and reads as its
-own thing. The margin's marks end on that edge instead, the row of them
-lined up with the windows below it.
+own thing. The margin's marks sit at the top centre instead, on the line
+the launcher is centred on.
 
 **The margin** is how the shell shows what's on that Joel would otherwise
 forget, without covering a window or taking a pixel from one. It isn't a
 surface at all: each thing that's true is its glyph alone, set straight on
 the picture in the gap the windows already leave above them, lifted off it
-by the wallpaper's text shadows, as the lock screen's time is. Nothing true,
-nothing drawn, so an empty corner says all is well.
+by a tight shade of its own that never reaches a window. Nothing true,
+nothing drawn, so an empty strip says all is well.
 
 Each mark stands in a square cell the gap's height, drawn half that, so it
 has the same room above, below and on either side, and the cells touch. The
-last cell ends where a maximised window does, the gap in from the screen's
-edge, so each mark is inlaid from the windows' edge by its room. A mark is
+row is centred on the screen, as far from either side, on the launcher's
+line, and about half as far from where Joel looks as a corner; with two
+windows side by side it sits where the gap between them meets the gap
+above. One coming or going slides the rest along to stay centred. A mark is
 the theme's drawing of it (a glyph's `drawn`, a path on a twelve by twelve
 grid), made simple enough to read at six pixels, since a font's glyph is
 drawn for text and goes to mush that small; six is also whole pixels at
 both of Joel's screens' scales. Every drawing touches its grid's top and
 bottom and is centred across it, so a row of them is level and nothing
-moves when one comes. They read from the corner inward by how much each
-asks: what's on air first (a camera, a share, a recording, a call),
+jumps when one comes. They read from the right by how much each asks:
+what's on air rightmost (a camera, a share, a recording, a call),
 then what wants Joel, then what was left on (Keep Awake, do not disturb, the
 mic muted, caps lock), and within each in the overview's order. Colour says
 only how much: strong for what's on air or wants him, muted for what was
@@ -348,15 +353,15 @@ What each is, in words, is the launcher's What's on, opened by Super+O or by
 clicking a mark, on that mark's row: a row each, its glyph, its name, how it
 stands at the right, and what more there is to know in the footer, grouped
 by how much it asks with what wants Joel first. Return does its first
-action and the right arrow steps into the rest. While it's open, the marks
-on its screen grow smoothly to twice their size, over the windows' tops,
-the same drawings whole, so the eye joins the corner to the list; the mark
-of the row the keys are on wears the accent, as where the keys are always
-does, and closing it shrinks them back. It
+action and the right arrow steps into the rest. While it's open, the mark
+on its screen of the row the keys are on wears the accent, as where the
+keys are always does, straight up the line the list and the marks share,
+so the eye joins the two. Nothing grows: anything past the gap would lie
+over a window. It
 stays while the overview is open, which draws nothing of the shell's own,
 and it shows in a screenshot or a share: niri can only black out a layer
-it's asked to keep from a capture, which would put a black patch in the
-corner of every one.
+it's asked to keep from a capture, which would put a black patch at the
+top of every one.
 
 What takes the keys appears on the next frame, a notice slides in from its
 corner, and a prompt's scrim fades in.
@@ -459,7 +464,7 @@ it. Owners go by layer:
 | Window titles                                                          | a terminal's unseen tabs; the launcher's windows   | the launcher's windows       |
 
 The margin mark is the one always-visible desktop element: a glyph at the
-top right for each thing that's true (Shape and Kinds), nothing at all when nothing is
+top centre for each thing that's true (Shape and Kinds), nothing at all when nothing is
 true, so the screen is calm by default. The launcher's foot is the other
 glance: one line, its keys on the right, and on the left what the
 selection has to say or, when it says nothing, how things stand. It's the
@@ -972,6 +977,23 @@ as an exception with the reason.
 ## Decisions
 
 What each studio round settled, newest first, with the reason.
+
+- **The margin's marks sit at the top centre, lit rather than grown**
+  (2026-10-24, at Joel's word on the drawn marks: "i don't like the line
+  under the teacup"; "they also seem to be shadowing on top of a window
+  which i don't like. they seem to still be breaking my aeshetic
+  somehow"). The marks wore the lock screen's text shadows, one set off
+  down and right, which is lopsided at six pixels, and one sixteen pixels
+  soft, which reached past the twelve pixel gap onto the window. Grown to
+  twice the gap in What's on, they crossed the windows' borders wherever
+  they sat, as anything past the gap must. So each mark has a shade of
+  its own, a pixel round it, and nothing grows: the accent alone points,
+  since Joel is already looking once he's asked. Research on placement
+  found the top centre about half as far from where he looks as a corner,
+  less crowded and symmetric, and the iPhone's island grows from there;
+  against it, status sits at the right on every desktop, and a centred
+  row shifts when one comes, so it slides. The cup lost its saucer, whose
+  line read as a mark of its own.
 
 - **The margin's marks are drawn, each in a square, and grow in What's
   on** (2026-10-24, at Joel's word on the built glyphs: "the icons are super
