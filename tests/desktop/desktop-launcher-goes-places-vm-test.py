@@ -810,6 +810,31 @@ with subtest("Super+Shift+/ shows every layer's shortcuts, and runs the desktop'
     windows = len(json.loads(as_account("niri msg --json windows")))
     machine.send_key("meta_l-shift-slash")
     launcher_ready()
+    # Its top is the layers, each with its count and as many of its first
+    # groups as fit whole; the machine has no Neovim or pi, so no layer of
+    # theirs.
+    layers = ["Desktop", "Touchscreen", "Terminal"]
+    launcher_until(lambda shown: shown["rows"] == layers)
+    desktop = showing()["things"][0]["reads"]
+    t.assertRegex(desktop, r"^Desktop \u00b7 \d+ \u00b7 Windows, Columns$")
+    photograph("launcher-shortcut-layers")
+    # The desktop holds its groups, by what a chord acts on.
+    step_in()
+    groups = ["Windows", "Columns", "Workspaces", "Screens", "Programs", "Launcher"]
+    launcher_until(lambda shown: shown["rows"][: len(groups)] == groups)
+    photograph("launcher-shortcut-groups")
+    # What's typed there finds a group by its name, before every chord in
+    # the layer that its words start, flat; a group holds its chords.
+    type_in("work", selecting="Workspaces")
+    t.assertIn("Go to workspace 3", showing()["rows"])
+    step_in()
+    launcher_until(lambda shown: shown["held"] == ["shortcuts", "desktop", "workspaces"])
+    t.assertIn("Go to workspace 3", showing()["rows"])
+    # Back out: to the desktop with "work" typed, cleared, then the top.
+    for _step in range(3):
+        machine.send_key("left")
+    launcher_until(lambda shown: shown["held"] == ["shortcuts"] and shown["rows"] == layers)
+    # At the top, what's typed finds a chord in any layer, flat.
     type_in("paste")
     photograph("launcher-shortcuts")
     for _ in "paste":
@@ -833,6 +858,17 @@ with subtest("Super+Shift+/ shows every layer's shortcuts, and runs the desktop'
     # other tests too has taken 10 seconds and more than 19, so it's
     # given a minute.
     retry(opened, timeout_seconds=60)
+
+    # In the shortcuts category, a group is found by its name too, as the
+    # Shortcuts row there.
+    as_account("qs ipc call launcher toggle")
+    launcher_ready()
+    machine.send_chars("shortcuts ")
+    launcher_until(lambda shown: shown["held"] == ["shortcuts"])
+    type_in("workspaces")
+    launcher_until(lambda shown: "Workspaces" in shown["rows"])
+    machine.send_key("esc")
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
 
 # A binding that throws or assigns the wrong type only warns, and
 # only once a surface draws it, which can be long after the start.

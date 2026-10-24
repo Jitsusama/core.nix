@@ -58,6 +58,16 @@ let
         type = lib.types.str;
         description = ''niri's action, as config.kdl would spell it: spawn "kitty";'';
       };
+      group = lib.mkOption {
+        type = lib.types.str;
+        default = "";
+        example = "windows";
+        description = ''
+          The group the launcher's Shortcuts lists it in, for the rare bind
+          whose action its table (Quickshell's launcher/KeyGroups.js) puts
+          in the wrong one. Empty, the group is worked out from the action.
+        '';
+      };
       flags = lib.mkOption {
         type = lib.types.attrsOf lib.types.str;
         default = { };
@@ -181,7 +191,7 @@ in
     in
     {
       inherit (b) chord does;
-      inherit (b) also;
+      inherit (b) also group;
       run =
         if name == "spawn" then
           arguments

@@ -590,7 +590,18 @@ works the same way everywhere.
   Helpers and AI spend; the Keyboard holds its layout and keys, the
   keyboards plugged in and every shortcut; Slack holds its theme, so
   "slack" is Slack and "slack theme" the theme. A part is still found
-  from anywhere by its own name.
+  from anywhere by its own name. A program holds what controls it, the
+  same for every program and each only while it applies, made as it's
+  stepped into: first what can be done (Switch to the window used last,
+  New window, New window below, its other windows by title, its desktop
+  entry's own actions such as Chrome's New Incognito Window, and Quit,
+  asked once since a window may hold unsaved work), then Media while it
+  has a player (Play or Pause, Next, Previous, and what's playing), Sound
+  while it has a stream open (Mute or Unmute, Louder, Quieter, and its
+  volume as a bar), its Notifications, newest first, and any part of its
+  own, such as the theme. Next, Previous, Louder and Quieter keep the
+  launcher open to be pressed again, its figures following; Media, Sound
+  and Notifications are found only inside it.
 - **Categories are levels.** Fifteen categories gather everything by
   what it's about: computer, network, sound, now, ai, apps, shortcuts,
   notifications, clipboard, weather, time, calls, capture, typing and
@@ -808,8 +819,18 @@ twice in the same place, and writes the whole map to
 `~/.config/jitsusama/keys.json` for the launcher and the "what's here" views.
 
 Any key is found by what it does. Super+Shift+/ opens the launcher's
-collection of every layer's shortcuts, Neovim's and pi's among them, each
-with its chord and where it works. Inside a layer its own "what's here"
+collection of every layer's shortcuts in levels, each flat: at its top the
+layers (Desktop, Touchscreen, Terminal, Neovim and Agents, pi's), each with
+its count and its first groups; inside a layer its groups, by what a chord
+acts on (the desktop's Windows, Columns, Workspaces, Screens, Programs,
+Launcher, Capture, Sound, Brightness, Dictation and Session; Neovim's by its
+leader's letters, and GitHub's by the window a key works in); inside a group
+its chords, each with its chord and where it works. A layer of a dozen
+chords or fewer is its chords alone. The groups come from a small table
+(launcher/KeyGroups.js) reading each chord's action, so a new chord falls
+into one without being told, and a bind the table puts wrong names its own
+(`group`). Typing at any level finds a group below it by its name, then any
+chord below it by what it does, flat. Inside a layer its own "what's here"
 shows only its keys: Ctrl+Shift+/ in the terminal, Space ? in Neovim.
 
 Nothing the shell shows is reached only by pointing. Super+O opens Now,

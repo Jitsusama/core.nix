@@ -105,6 +105,7 @@ let
     "pieces/Piece.qml"
     "pieces/StatusFile.qml"
     "launcher/Provider.qml"
+    "launcher/Playing.qml"
     "launcher/Sensors.qml"
     "launcher/Machine.js"
     "launcher/Numbers.js"
@@ -116,6 +117,7 @@ let
     "launcher/Rank.js"
     "launcher/Steady.js"
     "launcher/Emoji.js"
+    "launcher/KeyGroups.js"
   ];
 
   # A service holding one of logind's locks for as long as it runs, with a
@@ -271,16 +273,24 @@ let
     map face (held ++ [ key ]);
 
   # Every layer's shortcuts, top to bottom, for the launcher's collection of
-  # them: what each does, its chord, and for the desktop's, the command that
-  # does the same and the glyph its action wears. The touchscreen's swipes
-  # come after the desktop's chords, since they do what its chords do.
+  # them: what each does, its chord, in its one spelling too, and the group
+  # it names, if any, for launcher/KeyGroups.js to group it by, and for the
+  # desktop's, the command that does the same and the glyph its action
+  # wears. The touchscreen's swipes come after the desktop's chords, since
+  # they do what its chords do.
   shortcutLayers =
     let
       keyed = layer: {
         name = layer;
         glyph = layerGlyphs.${layer};
         binds = map (b: {
-          inherit (b) does run when;
+          inherit (b)
+            does
+            run
+            when
+            keys
+            group
+            ;
           chord = chordFaces b.keys;
           glyph = if layer == "desktop" then actionGlyph b.run else "";
         }) config.jitsusama.keys.${layer};
@@ -314,6 +324,8 @@ let
       {
         inherit (swipe) does;
         inherit run;
+        keys = "";
+        group = "";
         chord = [
           {
             text = toString swipe.fingers;
