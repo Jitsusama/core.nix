@@ -845,7 +845,8 @@
     tin both ways, what Joel waits on at a terminal and an app's pages best effort, its calls and
     Tuple's daemon video, names and the shaper's pings voice; a slice made again keeps its class;
     the client's own network isn't slowed; inside a WireGuard tunnel the same classes reach the
-    tunnel's own CAKE; the queues follow the default route and go when the shaper stops
+    tunnel's own CAKE; the queues follow the default route, udev sets nothing on the IFBs, and they
+    go when the shaper stops
   '';
   vm-webcam-microphones-yield = ''
     a webcam's microphone ranks below a USB microphone's
