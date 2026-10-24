@@ -126,11 +126,14 @@ pkgs.testers.runNixOSTest {
     };
   };
 
-  # What VM tests' scripts share (tests/lib).
+  # What VM tests' scripts share, and pytest, which runs this one's tests (tests/lib).
   extraPythonPackages = python: [ (pkgs.callPackage ./lib/vm-helpers.nix { } python) ];
 
-  testScript = builtins.readFile ./network-revive-vm-test.py;
-  # nix fmt holds the script to mypy --strict against the driver's own types,
-  # through driver_names.pyi, which the driver's lighter check can't find.
+  # Run by hand, the driver takes pytest's options from PYTEST_ADDOPTS, so
+  # PYTEST_ADDOPTS='-k reload' runs only the tests that name a reload.
+  testScript = ''import vm_pytest; vm_pytest.run(globals(), "${./network-revive-vm-test.py}")'';
+  # nix fmt holds the tests and vm_pytest to mypy --strict against the
+  # driver's own types, so the driver's check of this one line would add only
+  # its time.
   skipTypeCheck = true;
 }

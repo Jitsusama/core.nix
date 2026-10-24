@@ -19,16 +19,28 @@ set -euo pipefail
 
 # How many times it asks whether systemd still answers before giving up.
 LOOKS=1000
+# How many of those it waits, still answered, before asking to execute
+# again. A request can go unheard: in one run systemd logged none and
+# answered all 1,000 looks.
+ASK_AGAIN=100
 
 reaches() {
   [[ $(ip -o route get 10.0.0.53 2> /dev/null) == *" dev uplink "* ]]
 }
 
-# Has systemd execute itself again, and returns once it stops answering.
-reexecute() {
-  touch "$HOME/reexecuted" "$HOME/hold"
+# Asks systemd to execute itself again, without waiting, since it answers
+# only by going.
+ask_to_reexecute() {
   busctl --user call --expect-reply=no org.freedesktop.systemd1 \
     /org/freedesktop/systemd1 org.freedesktop.systemd1.Manager Reexecute
+}
+
+# Has systemd execute itself again, and returns once it stops answering.
+# Giving up, it takes back what says it asked, so the next check asks
+# again rather than passing as though systemd had gone.
+reexecute() {
+  touch "$HOME/reexecuted" "$HOME/hold"
+  ask_to_reexecute
   # Asked with call, since get-property does not keep to --timeout.
   local looks=0
   while busctl --user --timeout=0.5 call org.freedesktop.systemd1 \
@@ -36,8 +48,12 @@ reexecute() {
     ss org.freedesktop.systemd1.Manager Version > /dev/null 2>&1; do
     looks=$((looks + 1))
     if [ "$looks" -ge "$LOOKS" ]; then
+      rm -f "$HOME/reexecuted" "$HOME/hold"
       echo "systemd kept answering" >&2
       exit 1
+    fi
+    if [ $((looks % ASK_AGAIN)) -eq 0 ]; then
+      ask_to_reexecute
     fi
   done
   touch "$HOME/away"

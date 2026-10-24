@@ -29,17 +29,23 @@ let
     root = ../../tests;
     fileset = ../../tests/driver_names.pyi;
   };
-  # What VM tests' scripts share, which a script imports as vm_helpers in any
-  # repository that takes these linters, as its driver does (tests/lib).
+  # What VM tests' scripts share, which a script imports as vm_helpers and
+  # vm_pytest in any repository that takes these linters, as its driver does
+  # (tests/lib).
   vmHelpers = lib.fileset.toSource {
     root = ../../tests/lib;
-    fileset = ../../tests/lib/vm_helpers.py;
+    fileset = lib.fileset.unions [
+      ../../tests/lib/vm_helpers.py
+      ../../tests/lib/vm_pytest.py
+    ];
   };
   python = pkgs.python3.withPackages (
     python:
     [
       python.mypy
       driverTypes
+      # Tests written for pytest, VM tests' among them, and vm_pytest itself.
+      python.pytest
     ]
     ++ config.jitsusama.mypy.packages python
   );
