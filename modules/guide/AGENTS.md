@@ -290,8 +290,8 @@ driven on; the installed machine's steps come later.
   short screen, and listed once, though the whole install walks again
   the steps that opened its vault. A step at work is drawn again once a second, from a
   thread of its own, with what the machine's meter says (`progress.rs`):
-  the bytes done of how many, how fast and how long is left, where the
-  step feeds it, and otherwise how long it has run, so a wait never looks
+  the bytes done of how many, how fast and, once a hundredth is done,
+  how long is left, where the step feeds it, and otherwise how long it has run, so a wait never looks
   like a hang. The stick's write and read-back count every byte through
   the disk; copying off the stick counts what it writes; a copy a program
   does, as `nix copy` onto the disk, is counted by what that program has

@@ -284,7 +284,11 @@ fn told(done: u64, total: Option<u64>, rate: Option<f64>) -> String {
         }
         Some(rate) => {
             parts.push(format!("{} a second", bytes(whole(rate))));
-            let left = total.filter(|total| *total > done).and_then(|total| {
+            // A pace from under a hundredth of the work says nothing of
+            // the rest, as a copy's slow start said 72 hours for five
+            // minutes, so how long is left waits for that much.
+            let reckoned = |total: &u64| *total > done && done >= total / 100;
+            let left = total.filter(reckoned).and_then(|total| {
                 Duration::try_from_secs_f64(approximately(total - done) / rate).ok()
             });
             if let Some(left) = left {
@@ -378,6 +382,20 @@ mod tests {
         assert_eq!(
             said(0, None, Duration::from_secs(60)),
             "Running for 1 minute"
+        );
+    }
+
+    #[test]
+    fn under_a_hundredth_done_it_says_no_time_left() {
+        // A copy off a stick starts slowly while nix lists what it has to
+        // copy: 575 KB in 20 seconds of 7.8 GB said 72 hours left.
+        assert_eq!(
+            told(575_000, Some(7_800_000_000), Some(30_000.0)),
+            "575 KB of 7.8 GB, 30 KB a second"
+        );
+        assert_eq!(
+            told(78_000_000, Some(7_800_000_000), Some(22_000_000.0)),
+            "78.0 MB of 7.8 GB, 22.0 MB a second, about 6 minutes left"
         );
     }
 
