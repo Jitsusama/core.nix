@@ -68,12 +68,22 @@ fn main() -> ExitCode {
     match args.iter().map(String::as_str).collect::<Vec<_>>()[..] {
         ["observe"] => observe(),
         ["tools"] => tools(),
-        ["install"] => reported(install()),
-        ["installed"] => reported(installed()),
-        ["recover"] => reported(recover()),
+        ["install"] => {
+            let _awake = guide::awake::hold("installing this machine");
+            reported(install())
+        }
+        ["installed"] => {
+            let _awake = guide::awake::hold("finishing this machine");
+            reported(installed())
+        }
+        ["recover"] => {
+            let _awake = guide::awake::hold("recovering this machine");
+            reported(recover())
+        }
         ["seal-keys", target, bundle] => reported(seal_keys(target, bundle)),
         ["host", image, ref options @ ..] => {
             if let Some(written) = Written::parse(options) {
+                let _awake = guide::awake::hold("writing a stick");
                 reported(written.open().and_then(|(signer, payload, bundle)| {
                     host(image, signer, payload, bundle, written.uses_kept())
                 }))
@@ -84,6 +94,7 @@ fn main() -> ExitCode {
         }
         ["write-stick", image, target, ref options @ ..] => {
             if let Some(written) = Written::parse(options) {
+                let _awake = guide::awake::hold("writing a stick");
                 reported(written.open().and_then(|(signer, payload, bundle)| {
                     write_stick(image, target, signer, payload, bundle)
                 }))

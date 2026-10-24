@@ -95,6 +95,7 @@ mod fixtures {
     );
 }
 
+pub mod awake;
 pub mod fake;
 pub mod fault;
 pub mod host;

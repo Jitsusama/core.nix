@@ -116,6 +116,12 @@ with subtest("the passphrase is seven words shown alone for a phone, then typed 
 with subtest("the stick is written as the person, and read back"):
     on_screen("The stick is written", timeout=900)
     host.fail("findmnt /dev/sda1")
+    # Held awake through the write, by alice's guide, against sleep,
+    # idling and the lid, for as long as the guide runs.
+    held = host.succeed("systemd-inhibit --list --no-legend --no-pager")
+    assert re.search(
+        r"guide +1000 +alice .*sleep:idle:handle-lid-switch +writing a stick +block", held
+    ), held
     # Written by alice's guide, never as root.
     host.succeed("pgrep -u alice -f 'guide host'")
     host.fail("pgrep -u root -f 'guide host'")

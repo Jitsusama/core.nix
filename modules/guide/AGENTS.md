@@ -311,6 +311,13 @@ driven on; the installed machine's steps come later.
   /run/guide when the vault opens, so they go on with the stick out; a
   step that needs the vault itself says to put the stick back, and goes
   on once it's in.
+- **Awake.** Installing, finishing, recovering and writing a stick each
+  hold logind's block lock on sleep, idling and the lid's switch
+  (`src/awake.rs`) until the guide exits, so a lid closed partway
+  through a long copy doesn't leave a step half done and a stick or
+  YubiKey come back as another device. A Mac runs caffeinate instead,
+  which can't keep it awake with its lid closed. A refused lock leaves
+  the guide working on.
 - **The vault.** A FAT32 partition any machine can read, holding files
   sealed with age to a vault key made for it. The key is sealed to each
   YubiKey, and separately to the recovery passphrase, since age won't mix a

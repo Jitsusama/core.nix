@@ -148,6 +148,11 @@ with subtest(
     on_screen("The stick's system runs from memory")
     table = machine.succeed("dmsetup table usr")
     t.assertRegex(table, r" verity 1 7:\d+ 7:\d+ ", "the store reads from the copies")
+    # Held awake while the guide works: sleep, idling and the lid.
+    held = machine.succeed("systemd-inhibit --list --no-legend --no-pager")
+    t.assertRegex(
+        held, r"guide .*sleep:idle:handle-lid-switch +installing this machine +block", held
+    )
     enter("keyboard")
 
 with subtest("the vault opens with the stick's passphrase, named as it's kept on the phone"):
@@ -336,6 +341,11 @@ with subtest("the guide seals the disk to the TPM with a PIN, a YubiKey opening 
     on_screen("a PIN for the TPM")
     # The units still starting don't write across it.
     t.assertEqual(machine.succeed("systemctl show -P ShowStatus").strip(), "no")
+    # Held awake while the guide works: sleep, idling and the lid.
+    held = machine.succeed("systemd-inhibit --list --no-legend --no-pager")
+    t.assertRegex(
+        held, r"guide .*sleep:idle:handle-lid-switch +finishing this machine +block", held
+    )
     enter(tpm_pin)
     on_screen("the same PIN again")
     enter(tpm_pin)
