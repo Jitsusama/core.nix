@@ -31,6 +31,9 @@ pub(crate) fn subvolume(dir: &Path, name: &str) {
     assert_eq!(made, 0, "{}", std::io::Error::last_os_error());
 }
 
+/// On Linux a filesystem that isn't Btrfs is its device, and `/proc` is
+/// another.
+#[cfg(target_os = "linux")]
 #[test]
 fn a_filesystem_of_one_volume_is_known_by_its_device() {
     let dir = tempfile::tempdir().unwrap();
@@ -46,6 +49,26 @@ fn a_filesystem_of_one_volume_is_known_by_its_device() {
         );
     }
     assert_ne!(pool(Path::new("/proc")).unwrap(), pool(dir.path()).unwrap());
+    assert!(pool(&dir.path().join("gone")).is_err());
+}
+
+/// On a Mac the sealed system volume, the data volume the temporary
+/// folder lies on and the rest of the startup disk's container share its
+/// free space, so they're one pool, and devfs, which isn't APFS, is its
+/// device.
+#[cfg(target_os = "macos")]
+#[test]
+fn the_volumes_of_a_macs_startup_container_are_one_pool() {
+    let dir = tempfile::tempdir().unwrap();
+    fs::create_dir(dir.path().join("inside")).unwrap();
+    let data = pool(dir.path()).unwrap();
+    assert_eq!(data, pool(&dir.path().join("inside")).unwrap());
+    assert_ne!(data & 1 << 63, 0, "the container's, not a device's");
+    assert_eq!(pool(Path::new("/")).unwrap(), data, "the system volume");
+    assert_eq!(pool(Path::new("/System/Volumes/Data")).unwrap(), data);
+    let devfs = pool(Path::new("/dev")).unwrap();
+    assert_eq!(devfs, fs::metadata("/dev").unwrap().dev());
+    assert_ne!(devfs, data);
     assert!(pool(&dir.path().join("gone")).is_err());
 }
 
