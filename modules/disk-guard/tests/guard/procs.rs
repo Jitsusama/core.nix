@@ -278,10 +278,8 @@ fn this_process_reads_as_itself() {
         me.exe.as_deref(),
         Some(std::env::current_exe().unwrap().as_path())
     );
-    assert!(
-        me.files.iter().any(|file| file == held.path()),
-        "{:?}",
-        me.files
-    );
+    // Resolved, as /proc gives it, since a TMPDIR may be a link.
+    let held_at = fs::canonicalize(held.path()).unwrap();
+    assert!(me.files.contains(&held_at), "{:?}", me.files);
     assert!(me.maps.contains(&std::env::current_exe().unwrap()));
 }
