@@ -9,7 +9,6 @@ there are imported only for type checkers.
 import json
 import re
 import shlex
-import time
 from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
@@ -264,9 +263,10 @@ with subtest("the screen follows the light, and the bar shows only for picks"):
     shell = as_account(f"journalctl --user --unit=quickshell --no-pager --output=cat {after}")
     t.assertNotIn("drawn brightness", shell, "the bar showed for the light")
 
-    # The sensor sits in the lid, so with the lid shut its dark is the
-    # lid's and the screen keeps its brightness; opened, it follows
-    # the room again.
+    # The sensor sits in the lid, so logind's word that the lid shut
+    # reaches the backlight, and opened, the screen follows the room
+    # again. That a shut lid's dark moves nothing is its unit tests'
+    # (modules/backlight/src/follow.rs), which need no wait to show it.
     def lid_says(said: str) -> None:
         """Wait until the backlight says this of the lid."""
         machine.wait_until_succeeds(
@@ -279,10 +279,6 @@ with subtest("the screen follows the light, and the bar shows only for picks"):
     machine.succeed("echo 1 > /sys/module/stand_in_lid/parameters/shut")
     lid_says("the lid is shut")
     held_at = brightness()
-    light(0)
-    # Longer than dimmer light waits to be followed, with room.
-    time.sleep(8)
-    t.assertEqual(brightness(), held_at, "the screen followed the shut lid's dark")
     machine.succeed("echo 0 > /sys/module/stand_in_lid/parameters/shut")
     lid_says("the lid is open")
     light(1)
