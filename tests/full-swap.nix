@@ -31,9 +31,9 @@ pkgs.testers.runNixOSTest {
     { lib, ... }:
     {
       imports = [ self.nixosModules.memory ];
-      # Small, so swap fills in about a minute: zram takes half of it, and a
-      # swapfile on the disk the rest, as on a machine whose swap outgrows
-      # zram.
+      # Small, so swap fills in about a minute: zram takes as much as memory,
+      # and a swapfile on the disk as much again, as on a machine whose swap
+      # outgrows zram.
       virtualisation.memorySize = 1024;
       virtualisation.diskSize = 3072;
       # The test VM empties swapDevices at this priority, and lists set at
