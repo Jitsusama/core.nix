@@ -141,3 +141,24 @@ window-rule {
     match app-id="^1Password$"
     block-out-from "screencast"
 }
+
+// Chrome's bar saying a page shares the screen. Its Hide asks to be
+// minimized, which niri has no way to do, so it opens out of the way at the
+// bottom edge instead of the middle, never taking the keys, and is kept out
+// of the share itself.
+window-rule {
+    match app-id="^$" title=" is sharing (your screen|a window|a Chrome tab)( and audio)?\\.$"
+    open-floating true
+    open-focused false
+    default-floating-position x=0 y=16 relative-to="bottom"
+    block-out-from "screencast"
+}
+
+// Slack's huddle, the small floating window of faces and controls it keeps
+// up during a call. Its main windows are titled after the channel, so only
+// the huddle is plain "Slack". The others in the call are in it already,
+// so a share leaves it out.
+window-rule {
+    match app-id="^slack$" title="^Slack$"
+    block-out-from "screencast"
+}
