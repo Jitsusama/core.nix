@@ -414,11 +414,29 @@ with subtest("the launcher's Displays scales a display by keys, and back"):
         as_account("qs ipc call launcher collection displays")
         launcher_ready()
         step_in()
+        # Its settings lead, each saying how it's set, their choices a step
+        # in, and found from here by what's typed.
+        launcher_until(
+            lambda shown: shown["rows"][:4] == ["Scale", "Refresh", "Resolution", "Rotation"]
+        )
         photograph("launcher-displays")
         type_in(f"scale {round(wanted * 100)}")
         machine.send_key("ret")
         retry(lambda _, wanted=wanted: scale() == wanted, timeout_seconds=15)
         machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
+
+    # A part is asked by its words from the top: the refresh rate.
+    as_account("qs ipc call launcher toggle")
+    launcher_ready()
+    type_in("refresh rate")
+    launcher_until(
+        lambda shown: (
+            shown["kind"] == "answer"
+            and str((shown["selected"] or {}).get("name", "")).endswith(" Hz")
+        )
+    )
+    machine.send_key("esc")
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
 
 with subtest("a Wi-Fi network is joined from the launcher, a new one asking its password"):
     machine.wait_for_unit("lantern.service")

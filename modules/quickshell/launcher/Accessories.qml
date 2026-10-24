@@ -227,7 +227,7 @@ Provider {
         const signal = Links.signal(link);
         return signal === null ? null : figure({
             key: `link:bluetooth:${device.address}:signal`,
-            name: "Signal",
+            name: Words.name("bluetooth:signal"),
             side: signal.side,
             graph: bar(signal.value),
             note: signal.note
@@ -238,7 +238,7 @@ Provider {
         const channels = Links.channels(link);
         return channels === null ? null : figure({
             key: `link:bluetooth:${device.address}:channels`,
-            name: "Channels",
+            name: Words.name("bluetooth:channels"),
             side: channels.side,
             graph: { shape: "strip", values: channels.values, warn: false },
             note: channels.note
@@ -254,13 +254,13 @@ Provider {
         const sent = codec(device);
         return [signalRow(device, link), quality === null ? null : figure({
             key: `link:bluetooth:${device.address}:quality`,
-            name: "Link",
+            name: Words.name("bluetooth:quality"),
             side: quality.side,
             graph: bar(quality.value),
             note: quality.note
         }), sent === null ? null : figure({
             key: `link:bluetooth:${device.address}:codec`,
-            name: "Codec",
+            name: Words.name("bluetooth:codec"),
             side: sent.name,
             note: sent.note
         }), channelsRow(device, link)].filter(row => row !== null);
@@ -268,8 +268,7 @@ Provider {
 
     // How the links are doing, as an answer: one device's Signal and
     // Channels, or a row each of several, with theirs a step in.
-    questions: ["bluetooth performance", "bluetooth signal", "interference",
-        "bluetooth interference", "bluetooth noise"]
+    questions: Words.started("bluetooth:links")
 
     function answer(typed) {
         if (asks(typed) === "" || !on)
@@ -364,14 +363,14 @@ Provider {
     function verbs(device) {
         const rows = [device.connected ? thing({
             key: "verb:bluetooth-disconnect",
-            name: "Disconnect it",
+            name: Words.name("verb:bluetooth-disconnect"),
             glyph: glyph(0xf00b2),
             hue: "action",
             run: () => device.disconnect()
         }) : thing({
             key: "verb:bluetooth-connect",
             verb: device.paired ? "connect" : "pair",
-            name: device.paired ? "Connect it" : "Pair and connect it",
+            name: Words.name("verb:bluetooth-connect", device.paired ? "" : "unpaired"),
             glyph: glyph(0xf00b1),
             hue: "action",
             device: device,
@@ -382,7 +381,8 @@ Provider {
         if (!device.paired)
             rows.push(thing({
                 key: "verb:bluetooth-passkey",
-                name: "Pair it in bluetoothctl",
+                name: Words.name("verb:bluetooth-passkey"),
+                keywords: Words.keywords("verb:bluetooth-passkey"),
                 glyph: glyph(0xf030c),
                 hue: "action",
                 later: true,
@@ -391,7 +391,7 @@ Provider {
         if (device.paired)
             rows.push(thing({
                 key: "verb:bluetooth-forget",
-                name: "Forget it",
+                name: Words.name("verb:bluetooth-forget"),
                 glyph: glyph(0xf16c5),
                 hue: "action",
                 run: () => device.forget()

@@ -1772,6 +1772,108 @@
       "empty": "No displays."
     },
     {
+      "id": "displays:scale",
+      "in": "displays",
+      "name": "Scale",
+      "answers": [
+        "display scale",
+        "screen scale",
+        "scaling"
+      ]
+    },
+    {
+      "id": "displays:refresh",
+      "in": "displays",
+      "name": "Refresh",
+      "answers": [
+        "refresh rate",
+        "frame rate",
+        "hz"
+      ]
+    },
+    {
+      "id": "displays:resolution",
+      "in": "displays",
+      "name": "Resolution",
+      "answers": [
+        "screen resolution",
+        "display resolution",
+        "pixels"
+      ]
+    },
+    {
+      "id": "displays:rotation",
+      "in": "displays",
+      "name": "Rotation",
+      "answers": [
+        "rotation",
+        "orientation"
+      ]
+    },
+    {
+      "id": "displays:depth",
+      "in": "displays",
+      "name": "Colour depth",
+      "answers": [
+        "colour depth",
+        "color depth",
+        "bit depth",
+        "display colour depth",
+        "display color depth",
+        "bits per colour"
+      ]
+    },
+    {
+      "id": "displays:colours",
+      "in": "displays",
+      "name": "Colours",
+      "answers": [
+        "colour gamut",
+        "color gamut",
+        "gamut",
+        "colour space"
+      ]
+    },
+    {
+      "id": "displays:hdr",
+      "in": "displays",
+      "name": "HDR",
+      "answers": [
+        "hdr",
+        "high dynamic range"
+      ]
+    },
+    {
+      "id": "displays:maker",
+      "in": "displays",
+      "name": "Maker"
+    },
+    {
+      "id": "displays:model",
+      "in": "displays",
+      "name": "Model"
+    },
+    {
+      "id": "displays:made",
+      "in": "displays",
+      "name": "Made"
+    },
+    {
+      "id": "displays:size",
+      "in": "displays",
+      "name": "Size"
+    },
+    {
+      "id": "displays:input",
+      "in": "displays",
+      "name": "Input"
+    },
+    {
+      "id": "displays:edid",
+      "in": "displays",
+      "name": "EDID"
+    },
+    {
       "id": "capture",
       "name": "Capture",
       "noun": "captures",
@@ -2177,6 +2279,55 @@
         "bluetooth interference",
         "bluetooth noise"
       ]
+    },
+    {
+      "id": "bluetooth:signal",
+      "in": "bluetooth",
+      "name": "Signal"
+    },
+    {
+      "id": "bluetooth:quality",
+      "in": "bluetooth",
+      "name": "Link"
+    },
+    {
+      "id": "bluetooth:codec",
+      "in": "bluetooth",
+      "name": "Codec"
+    },
+    {
+      "id": "bluetooth:channels",
+      "in": "bluetooth",
+      "name": "Channels"
+    },
+    {
+      "id": "verb:bluetooth-connect",
+      "in": "bluetooth",
+      "name": "Connect it",
+      "states": {
+        "unpaired": {
+          "name": "Pair and connect it"
+        }
+      }
+    },
+    {
+      "id": "verb:bluetooth-disconnect",
+      "in": "bluetooth",
+      "name": "Disconnect it"
+    },
+    {
+      "id": "verb:bluetooth-passkey",
+      "in": "bluetooth",
+      "name": "Pair it with a passkey",
+      "hidden": [
+        "bluetoothctl",
+        "pin"
+      ]
+    },
+    {
+      "id": "verb:bluetooth-forget",
+      "in": "bluetooth",
+      "name": "Forget it"
     },
     {
       "id": "verb:copy:paste",
