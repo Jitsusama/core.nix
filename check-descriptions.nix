@@ -1060,8 +1060,8 @@
     jobs is idle beside app.slice, pi finds it, and a window's scope is not idle
   '';
   writes-go-out-sooner = ''
-    a machine with a screen keeps at most 128 KiB unsent in a socket, and sends at full speed after
-    idle
+    a machine with a screen keeps at most 128 KiB unsent in a socket, sends at full speed after
+    idle, and asks for ECN with its fallback
   '';
   xdg-open-opens-each-kind-in-its-app = ''
     xdg-open opens markdown in the editor declared for text, in the terminal named for it, and a
