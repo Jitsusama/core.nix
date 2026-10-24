@@ -814,3 +814,7 @@ with subtest("the card stays awake on mains power, and dozes on battery"):
     chargers("on")
     dozes("off")
     machine.succeed("journalctl -t wifi-power-save -o cat | grep -qx 'wlan2: power save on'")
+    # As after a switch, which reloads udev's rules without running them: a card
+    # left dozing on mains power is woken by the service the switch starts.
+    machine.succeed("iw dev wlan2 set power_save on", "systemctl restart wifi-power-save.service")
+    dozes("off")
