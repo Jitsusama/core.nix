@@ -59,7 +59,10 @@ def main(argv: list[str]) -> None:
     said = talk(fd, argv[0])
     os.waitpid(pid, 0)
     sys.stderr.write(said)
-    print(re.findall(r"age1fido2-hmac1[0-9a-z]+", said)[-1])
+    recipients = re.findall(r"age1fido2-hmac1[0-9a-z]+", said)
+    if not recipients:
+        sys.exit("the plugin made no recipient")
+    print(recipients[-1])
 
 
 if __name__ == "__main__":
