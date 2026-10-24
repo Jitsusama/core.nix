@@ -37,6 +37,9 @@ pub struct Snapshot {
     /// Seconds, from a clock that only goes forward.
     pub at: f64,
     pub groups: BTreeMap<String, Group>,
+    /// Each of app.slice's own units and scopes, by its name: what an app
+    /// is to Joel isn't always what runs there, so a stall names its unit.
+    pub apps: BTreeMap<String, Group>,
     /// Each watched thread's schedstat, by its label and path.
     pub threads: BTreeMap<(String, String), Sched>,
 }
@@ -224,8 +227,30 @@ pub fn between(then: &Snapshot, now: &Snapshot, niri: Answers, ended: u64, syste
         niri,
         trouble: Vec::new(),
     };
-    window.trouble = trouble(&window, then);
+    window.trouble = trouble(&window, then, now);
     window
+}
+
+/// The app whose tasks all stalled longest on one kind, from `full` of
+/// the pressure `of` picks, with its share of the window in percent; none
+/// when no app's did.
+fn most(then: &Snapshot, now: &Snapshot, of: fn(&Group) -> Stall) -> Option<(String, f64)> {
+    let seconds = (now.at - then.at).max(0.001);
+    now.apps
+        .iter()
+        .filter_map(|(name, g)| {
+            let old = then.apps.get(name)?;
+            let (_, full) = share(of(g), of(old), seconds);
+            (full > 0.0).then(|| (name.clone(), full))
+        })
+        .max_by(|a, b| a.1.total_cmp(&b.1))
+}
+
+/// ", most in <unit> (<share>)", for a trouble line, or nothing.
+fn naming(most: Option<(String, f64)>, digits: usize) -> String {
+    most.map_or_else(String::new, |(name, pct)| {
+        format!(", most in {name} ({pct:.digits$}%)")
+    })
 }
 
 /// What in a window counts as Joel waiting. Each threshold is from what
@@ -234,7 +259,7 @@ pub fn between(then: &Snapshot, now: &Snapshot, niri: Answers, ended: u64, syste
 /// stalled 23%; a wakeup in session waited at most 0.75 ms and in app
 /// 1.3 ms; niri's main thread waited 23 us a turn on average across a
 /// day of builds; one 120 Hz frame is 8.3 ms.
-fn trouble(w: &Window, then: &Snapshot) -> Vec<String> {
+fn trouble(w: &Window, then: &Snapshot, now: &Snapshot) -> Vec<String> {
     let mut found = Vec::new();
     let s = |name: &str| w.stalls.get(name).copied().unwrap_or_default();
     if s("session").cpu_some > 1.0 {
@@ -251,14 +276,16 @@ fn trouble(w: &Window, then: &Snapshot) -> Vec<String> {
     }
     if s("app").memory_full > 0.1 {
         found.push(format!(
-            "apps stalled on memory {:.2}% of the time",
-            s("app").memory_full
+            "apps stalled on memory {:.2}% of the time{}",
+            s("app").memory_full,
+            naming(most(then, now, |g| g.memory), 2)
         ));
     }
     if s("app").io_full > 1.0 {
         found.push(format!(
-            "apps stalled on the disk {:.1}% of the time",
-            s("app").io_full
+            "apps stalled on the disk {:.1}% of the time{}",
+            s("app").io_full,
+            naming(most(then, now, |g| g.io), 1)
         ));
     }
     if let (Some(now), Some(old)) = (w.memory.get("session"), then.groups.get("session"))
@@ -411,6 +438,29 @@ mod tests {
             [
                 "apps stalled on memory 0.50% of the time",
                 "the desktop went to swap, 64 MiB now"
+            ]
+        );
+    }
+
+    #[test]
+    fn an_app_s_stall_names_the_unit_that_stalled_most() {
+        let mut then = snapshot(0.0, &[("app", group(0, 0, 0))], 0, 0);
+        let mut now = snapshot(10.0, &[("app", group(0, 225_000, 0))], 0, 0);
+        for (name, stalled) in [
+            ("dev.up.backend-dev.service", 220_000),
+            ("kitty-1.scope", 5_000),
+        ] {
+            then.apps.insert(name.to_string(), group(0, 0, 0));
+            now.apps.insert(name.to_string(), group(0, stalled, 0));
+        }
+        // One that came in the window has nothing to compare with.
+        now.apps
+            .insert("new.scope".to_string(), group(0, 900_000, 0));
+        let w = between(&then, &now, quiet_niri(), 0, "gen");
+        assert_eq!(
+            w.trouble,
+            [
+                "apps stalled on memory 2.25% of the time, most in dev.up.backend-dev.service (2.20%)"
             ]
         );
     }
