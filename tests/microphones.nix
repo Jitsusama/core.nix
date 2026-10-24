@@ -3,7 +3,8 @@
 # udev marks the second a webcam, as systemd's sound rules do for a USB
 # camera with a microphone. WirePlumber picks the input it ranks highest, so
 # the webcam's must rank below a USB microphone's 2100 and above a laptop's
-# own, which starts from 1600. The script is microphones-vm-test.py.
+# own, which starts from 1600. The webcam's card is then unplugged and plugged
+# back in, and must yield again. The script is microphones-vm-test.py.
 { pkgs }:
 pkgs.testers.runNixOSTest {
   name = "microphones";
