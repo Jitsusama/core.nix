@@ -175,6 +175,29 @@ path, or as one JSON file of values it reads at its top, never spliced into
 its text. Every subtest stays at the top of the file, where `run-subtests`
 finds it.
 
+A test written for pytest instead, as `tests/network-revive-vm-test.py`
+is, is a file of test functions that pytest runs inside the driver,
+through `tests/lib/vm_pytest.py`; its `testScript` is the one line
+`import vm_pytest; vm_pytest.run(globals(), "${./<name>-vm-test.py}")`.
+The driver's machines are fixtures (`machine`, `machines`, `driver`), and
+each state a test starts from, booted or with the network let down, is a
+fixture of its own, made once a run however many tests ask for it. Each
+test is one of the driver's subtests in the log, named by its docstring's
+first line, so a test runs alone, after only what it asks for, with
+`PYTEST_ADDOPTS` and the driver itself:
+
+```sh
+driver=$(nix build --print-out-paths .#checks.x86_64-linux.vm-network-revives-units.driver)
+XDG_RUNTIME_DIR=$(mktemp -d -p /run/user/$UID vm.XXXX) \
+  PYTEST_ADDOPTS='-k reload' $driver/bin/nixos-test-driver --output_directory "$(mktemp -d)"
+```
+
+A selection that picks no test fails the run, so a mistyped name can't pass
+for a proof. A failed assert says what each side held, and the run ends by
+listing the tests and fixtures that took a second or more. Durations given
+to the driver are `datetime.timedelta`s, since NixOS 26.11 warns of bare
+numbers, and pytest shows those warnings at the end of the run.
+
 A test waits on what shows the state it needs: a unit's readiness, a line
 in the journal, a file, the compositor's event stream. A fixed sleep only
 guesses how long a loaded machine takes, and fails or wastes time when it's

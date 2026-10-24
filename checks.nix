@@ -570,16 +570,19 @@ gather (
           touch $out
         '';
 
-      # What VM tests' scripts share gives the driver the command lines it
-      # means, read from a machine that only records them (tests/lib).
-      vm-helpers-say-what-they-mean =
+      # What VM tests share (tests/lib), proven against stand-ins for the
+      # driver and its machines, which record what they're handed. Named
+      # without vm- so the machine queue doesn't take these milliseconds for
+      # a VM test.
+      what-vm-tests-share-does-what-it-says =
         let
-          tests = pkgs.writers.writePython3 "vm-helpers-test" { doCheck = false; } (
-            builtins.readFile ./tests/lib/vm-helpers-test.py
-          );
+          python = pkgs.python3.withPackages (python: [ python.pytest ]);
         in
-        pkgs.runCommandLocal "vm-helpers-say-what-they-mean" { } ''
-          PYTHONPATH=${./tests/lib} ${tests}
+        pkgs.runCommandLocal "what-vm-tests-share-does-what-it-says" { } ''
+          cd ${./tests/lib}
+          PYTHONPATH=. PYTHONDONTWRITEBYTECODE=1 ${python}/bin/python -m pytest \
+            -p no:cacheprovider --import-mode=importlib --quiet \
+            vm-helpers-test.py vm-pytest-test.py
           touch $out
         '';
 

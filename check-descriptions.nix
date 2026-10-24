@@ -915,12 +915,6 @@
     it keeps for itself is opened with its passphrase and signs the stick's boot program with the
     machine's db key
   '';
-  vm-helpers-say-what-they-mean = ''
-    the helpers VM tests' scripts share run a command as the account asked, with its runtime folder
-    and bus, read a journal's cursor or refuse output without one, and pace each wait to how busy
-    the host is as it starts, from as long as it says to four times that, describing the machine
-    when one fails
-  '';
   vm-ir-camera-opens-for-readers = ''
     the IR camera waits for udev and its loopback, opens only while read, its frames grey, no frame
     from before a reader opened
@@ -1001,6 +995,14 @@
   vm-wifi-joins = ''
     wifid joins, moves past a silent access point, nudges a stuck look, finds sign-ins, keeps
     others' routing rules, keeps the card awake on mains power
+  '';
+  what-vm-tests-share-does-what-it-says = ''
+    the helpers VM tests share run a command as the account asked, with its runtime folder and
+    bus, read a journal's cursor or refuse output without one, and pace each wait to how busy the
+    host is as it starts, from as long as it says to four times that, describing the machine when
+    one fails; a VM test written for pytest gets the driver's machines as fixtures, each test is a
+    subtest named by its docstring, a failure fails it with pytest's account of why, and the
+    driver ends as a failed subtest ends it
   '';
   wifid-passes-clippy = ''
     clippy finds nothing in wifid, its sign-in window or their tests
