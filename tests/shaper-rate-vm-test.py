@@ -46,6 +46,9 @@ TINS = ["bulk", "best effort", "video", "voice"]
 # the jobs four times the app's.
 APP_SENDS = 2_000_000
 JOBS_SHARE = 4
+# What the app's upload sends before the count starts, so its first round
+# trips, while the jobs still have the line, aren't counted against it.
+APP_STARTS = 500_000
 
 
 def up() -> int:
@@ -112,11 +115,18 @@ with subtest("the shaper finds the line and an app's pings stay near it"):
     t.assertLess(shaped, SHAPED, f"shaped at {rate} kbit/s")
 
 with subtest("an app's upload takes the line from the jobs' while it runs"):
-    before = sent()
+    started = sent()["best effort"]
     client.succeed(
         "systemd-run -M alice@ --user --slice=app.slice --unit=app-upload"
         f" {BIN}/bash -c 'while true; do {BIN}/cat /dev/zero > /dev/tcp/{far}/5201; done'"
     )
+
+    def under_way(_last_try: bool) -> bool:
+        """Say whether the app's upload is past its first round trips."""
+        return sent()["best effort"] - started >= APP_STARTS
+
+    retry(under_way, timeout_seconds=60)
+    before = sent()
 
     def uploaded(_last_try: bool) -> bool:
         """Say whether the app's upload has sent its share."""
