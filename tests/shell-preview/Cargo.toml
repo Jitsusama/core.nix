@@ -1,0 +1,13 @@
+# shell-preview: shows the desktop's shell from the working copy, in a niri
+# window of its own (src/main.rs says how).
+[package]
+name = "shell-preview"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[dependencies]
+# Process groups and waiting on signals, which std doesn't offer.
+libc = "0.2"
+serde_json = "1"

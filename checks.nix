@@ -556,20 +556,6 @@ gather (
           touch $out
         '';
 
-      # shell-preview links each built file the working copy holds back to it, so
-      # an edit shows without a build, and copies what the build made, and ends
-      # the nested desktop it started however it's ended
-      # (tests/shell-preview-test.py). Its stand-in desktops run in the build's
-      # own shell.
-      shell-preview-follows-the-working-copy =
-        let
-          shell-preview = pkgs.callPackage ./tests/shell-preview.nix { };
-        in
-        pkgs.runCommandLocal "shell-preview-follows-the-working-copy" { } ''
-          BASH=$BASH SHELL_PREVIEW=${lib.getExe shell-preview.tool} ${shell-preview.tests}
-          touch $out
-        '';
-
       # What VM tests share (tests/lib), proven against stand-ins for the
       # driver and its machines, which record what they're handed. Named
       # without vm- so the machine queue doesn't take these milliseconds for
@@ -644,6 +630,21 @@ gather (
           touch $out
         '';
     }
+    # shell-preview shows the shell nested in a Wayland session, which only
+    # Linux has.
+    (onLinux {
+      # shell-preview links each built file the working copy holds back to it,
+      # so an edit shows without a build, and copies what the build made, and
+      # ends the nested desktop it started however it's ended: its tests run
+      # as it builds, the whole program among them, against stand-ins for git,
+      # nix and the desktop (tests/shell-preview).
+      shell-preview-follows-the-working-copy = pkgs.callPackage ./tests/shell-preview/package.nix { };
+
+      # clippy finds nothing in shell-preview, its tests included.
+      shell-preview-passes-clippy = passesClippy "shell-preview-passes-clippy" (
+        pkgs.callPackage ./tests/shell-preview/package.nix { }
+      );
+    })
     (onLinux vmTests)
   ]
   ++ map (file: import file given) [

@@ -392,7 +392,7 @@
           # VM tests boot under QEMU, which they need Linux for.
           ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [
             (pkgs.callPackage ./tests/run-subtests.nix { }).tool
-            (pkgs.callPackage ./tests/shell-preview.nix { }).tool
+            (pkgs.callPackage ./tests/shell-preview/package.nix { })
           ]
           ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [
             pkgs.dosfstools
