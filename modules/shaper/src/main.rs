@@ -421,22 +421,23 @@ fn run(options: &Options) -> ExitCode {
 /// Remembers what a link learned of its network's rates, each direction
 /// only if its own load taught it, keeping what memory holds for the other.
 fn keep(memory: &mut Memory, s: &mut Shaped) {
-    let (up, down) = (&mut s.controller.up, &mut s.controller.down);
+    let c = &mut s.controller;
+    let (settings, up, down) = (&c.settings, &mut c.up, &mut c.down);
     if !up.learned && !down.learned {
         return;
     }
     let known = memory.get(&s.network).unwrap_or(Held {
-        up: up.remembered(),
-        down: down.remembered(),
+        up: up.remembered(settings),
+        down: down.remembered(settings),
     });
     let held = Held {
         up: if up.learned {
-            up.remembered()
+            up.remembered(settings)
         } else {
             known.up
         },
         down: if down.learned {
-            down.remembered()
+            down.remembered(settings)
         } else {
             known.down
         },
