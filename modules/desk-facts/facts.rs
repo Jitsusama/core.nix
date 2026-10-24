@@ -1,5 +1,5 @@
-//! Writes what the launcher can't learn for itself about the desk's displays
-//! and sound cards, for it to show behind each one's row.
+//! Writes what the launcher can't learn for itself about the desk's displays,
+//! sound cards and cameras, for it to show behind each one's row.
 //!
 //! ```text
 //! desk-facts FOLDER
@@ -17,14 +17,20 @@
 //! speed and firmware, and, while it plays or records, the format, period
 //! and buffer it runs at and the rate the kernel measures it taking. The
 //! Pebble X Plus's lighting comes from the file `pebble-lights` keeps beside
-//! the folder.
+//! the folder. `cameras.json` is keyed by a USB camera's name as its holders
+//! file in /run/camera-holders is named, with what it streams while it
+//! streams, the largest and the fastest mode of each format it offers, its
+//! field of view where a Logitech Brio says it, and its USB speed and
+//! firmware.
 //!
 //! A file is written only when what it says changes, by writing a copy and
-//! renaming it over the old one, and both are removed when this is stopped,
+//! renaming it over the old one, and all are removed when this is stopped,
 //! so a fact is never left behind its device. It hears the kernel's uevents
-//! for displays and cards coming, going and changing, and inotify for a
-//! playback or capture device opening and closing and the lighting's file
-//! being written; nothing is looked at between.
+//! for displays, cards and cameras coming, going and changing, and inotify
+//! for a playback or capture device opening and closing, the lighting's
+//! file being written and a camera's holders changing; nothing is looked at
+//! between, and each kind is read again only when what it hears is about
+//! it.
 //!
 //! It needs only the standard library, which already links the C library
 //! these few calls come from.
@@ -58,8 +64,19 @@ const SIGINT: c_int = 2;
 const SIGTERM: c_int = 15;
 const SFD_CLOEXEC: c_int = 0o2_000_000;
 
-/// The kernel's uevents for these are the ones that change a fact.
-const HEARD: [&[u8]; 3] = [b"SUBSYSTEM=drm", b"SUBSYSTEM=sound", b"SUBSYSTEM=usb"];
+/// The kinds of fact, as bits, so a change reads again only its own.
+const DISPLAYS: u8 = 1;
+const SOUND: u8 = 2;
+const CAMERAS: u8 = 4;
+/// The kernel's uevents that change a fact, and the kinds each changes.
+const HEARD: [(&[u8], u8); 4] = [
+    (b"SUBSYSTEM=drm", DISPLAYS),
+    (b"SUBSYSTEM=sound", SOUND),
+    (b"SUBSYSTEM=usb", SOUND | CAMERAS),
+    (b"SUBSYSTEM=video4linux", CAMERAS),
+];
+/// Where each camera's holders are kept (modules/usb-camera-holders).
+const HOLDERS: &str = "/run/camera-holders";
 /// The Pebble X Plus, as its USB device names itself.
 const PEBBLE: &str = "041e:329a";
 
@@ -92,6 +109,7 @@ unsafe extern "C" {
     fn sigaddset(set: *mut SigSet, signal: c_int) -> c_int;
     fn sigprocmask(how: c_int, set: *const SigSet, old: *mut SigSet) -> c_int;
     fn signalfd(fd: c_int, set: *const SigSet, flags: c_int) -> c_int;
+    fn ioctl(fd: c_int, request: u64, ...) -> c_int;
 }
 
 /// A device's facts, in the order they're shown.
@@ -606,6 +624,273 @@ fn sound(asound: &Path, sys: &Path, lighting: Option<&str>) -> Vec<(String, Fact
     found
 }
 
+// --- Cameras, from V4L2 and their USB descriptors ---
+
+/// V4L2's requests, each `_IOWR('V', number, size)` as videodev2.h has it.
+const VIDIOC_ENUM_FMT: u64 = 0xC040_5602;
+const VIDIOC_G_FMT: u64 = 0xC0D0_5604;
+const VIDIOC_G_PARM: u64 = 0xC0CC_5615;
+const VIDIOC_ENUM_FRAMESIZES: u64 = 0xC02C_564A;
+const VIDIOC_ENUM_FRAMEINTERVALS: u64 = 0xC034_564B;
+/// uvcvideo's extension unit query, `_IOWR('u', 0x21, 16)`.
+const UVCIOC_CTRL_QUERY: u64 = 0xC010_7521;
+const CAPTURE: u32 = 1;
+const UVC_GET_CUR: u8 = 0x81;
+/// The Logitech Brio's own extension unit, as its descriptor gives the GUID
+/// 49e40215-f434-47fe-b158-0e885023e51b; selector 5 is its field of view.
+const BRIO_UNIT: [u8; 16] = [
+    0x15, 0x02, 0xE4, 0x49, 0x34, 0xF4, 0xFE, 0x47, 0xB1, 0x58, 0x0E, 0x88, 0x50, 0x23, 0xE5, 0x1B,
+];
+
+fn word(bytes: &[u8], at: usize) -> u32 {
+    u32::from_ne_bytes([bytes[at], bytes[at + 1], bytes[at + 2], bytes[at + 3]])
+}
+
+/// Asks a V4L2 or UVC question of an open node, saying whether it answered.
+fn ask(node: &File, request: u64, buffer: &mut [u8]) -> bool {
+    // SAFETY: each request is given a buffer of the size its number says.
+    unsafe { ioctl(node.as_raw_fd(), request, buffer.as_mut_ptr()) == 0 }
+}
+
+/// A pixel format's name, from its four letters.
+fn format_name(fourcc: u32) -> String {
+    let letters: String = fourcc
+        .to_le_bytes()
+        .iter()
+        .map(|byte| char::from(*byte))
+        .collect();
+    match letters.trim() {
+        "MJPG" => "MJPEG".to_owned(),
+        "H264" => "H.264".to_owned(),
+        "HEVC" | "H265" => "H.265".to_owned(),
+        other => other.to_owned(),
+    }
+}
+
+/// A mode, as its width, height and frames a second.
+type Mode = (u32, u32, u32);
+
+fn mode(width: u32, height: u32, rate: u32) -> String {
+    format!("{width} \u{d7} {height} at {rate}")
+}
+
+/// A format's largest mode and its fastest, or the one when they're one.
+fn summary(modes: &[Mode]) -> String {
+    let pixels = |(width, height, _): &Mode| u64::from(*width) * u64::from(*height);
+    let Some(largest) = modes.iter().max_by_key(|each| (pixels(each), each.2)) else {
+        return String::new();
+    };
+    let fastest = modes
+        .iter()
+        .max_by_key(|each| (each.2, pixels(each)))
+        .unwrap_or(largest);
+    if fastest.2 == largest.2 {
+        mode(largest.0, largest.1, largest.2)
+    } else {
+        format!(
+            "{}; {}",
+            mode(largest.0, largest.1, largest.2),
+            mode(fastest.0, fastest.1, fastest.2)
+        )
+    }
+}
+
+/// Frames a second from a frame interval, rounded.
+fn rate(numerator: u32, denominator: u32) -> u32 {
+    denominator
+        .saturating_add(numerator / 2)
+        .checked_div(numerator)
+        .unwrap_or(0)
+}
+
+/// The fastest a node offers a format at a size.
+fn fastest(node: &File, format: u32, width: u32, height: u32) -> u32 {
+    let mut best = 0;
+    for index in 0..64u32 {
+        let mut asked = [0u8; 52];
+        for (at, value) in [(0, index), (4, format), (8, width), (12, height)] {
+            asked[at..at + 4].copy_from_slice(&value.to_ne_bytes());
+        }
+        if !ask(node, VIDIOC_ENUM_FRAMEINTERVALS, &mut asked) {
+            break;
+        }
+        // A discrete interval, or a range's shortest.
+        best = best.max(rate(word(&asked, 20), word(&asked, 24)));
+        if word(&asked, 16) != 1 {
+            break;
+        }
+    }
+    best
+}
+
+/// Every format a node offers, with each of its modes.
+fn formats(node: &File) -> Vec<(u32, Vec<Mode>)> {
+    let mut found = Vec::new();
+    for index in 0..32u32 {
+        let mut asked = [0u8; 64];
+        asked[..4].copy_from_slice(&index.to_ne_bytes());
+        asked[4..8].copy_from_slice(&CAPTURE.to_ne_bytes());
+        if !ask(node, VIDIOC_ENUM_FMT, &mut asked) {
+            break;
+        }
+        let format = word(&asked, 44);
+        let mut modes = Vec::new();
+        for size in 0..128u32 {
+            let mut sizes = [0u8; 44];
+            sizes[..4].copy_from_slice(&size.to_ne_bytes());
+            sizes[4..8].copy_from_slice(&format.to_ne_bytes());
+            if !ask(node, VIDIOC_ENUM_FRAMESIZES, &mut sizes) {
+                break;
+            }
+            // A discrete size, or a range's largest.
+            let discrete = word(&sizes, 8) == 1;
+            let (width, height) = if discrete {
+                (word(&sizes, 12), word(&sizes, 16))
+            } else {
+                (word(&sizes, 16), word(&sizes, 28))
+            };
+            modes.push((width, height, fastest(node, format, width, height)));
+            if !discrete {
+                break;
+            }
+        }
+        found.push((format, modes));
+    }
+    found
+}
+
+/// What a node streams now: its size, format and rate.
+fn now_streaming(node: &File) -> Option<String> {
+    let mut format = [0u8; 208];
+    format[..4].copy_from_slice(&CAPTURE.to_ne_bytes());
+    let mut parameters = [0u8; 204];
+    parameters[..4].copy_from_slice(&CAPTURE.to_ne_bytes());
+    if !ask(node, VIDIOC_G_FMT, &mut format) || !ask(node, VIDIOC_G_PARM, &mut parameters) {
+        return None;
+    }
+    Some(format!(
+        "{} {}",
+        format_name(word(&format, 16)),
+        mode(
+            word(&format, 8),
+            word(&format, 12),
+            rate(word(&parameters, 12), word(&parameters, 16))
+        )
+    ))
+}
+
+/// The id of the extension unit a camera's descriptors give this GUID.
+fn unit(descriptors: &[u8], guid: &[u8; 16]) -> Option<u8> {
+    let mut rest = descriptors;
+    while let [length, ..] = rest {
+        let length = usize::from(*length);
+        if length < 2 || length > rest.len() {
+            return None;
+        }
+        let (descriptor, after) = rest.split_at(length);
+        // A class-specific interface descriptor that is an extension unit.
+        if descriptor.len() >= 20
+            && descriptor[1] == 0x24
+            && descriptor[2] == 0x06
+            && &descriptor[4..20] == guid
+        {
+            return Some(descriptor[3]);
+        }
+        rest = after;
+    }
+    None
+}
+
+/// A Brio's field of view, as its own unit has it set.
+fn field_of_view(node: &File, unit: u8) -> Option<&'static str> {
+    let mut value = [0u8; 1];
+    let mut query = [0u8; 16];
+    query[..3].copy_from_slice(&[unit, 5, UVC_GET_CUR]);
+    query[4..6].copy_from_slice(&1u16.to_ne_bytes());
+    query[8..].copy_from_slice(&(value.as_mut_ptr() as usize as u64).to_ne_bytes());
+    if !ask(node, UVCIOC_CTRL_QUERY, &mut query) {
+        return None;
+    }
+    match value[0] {
+        0 => Some("90\u{b0}"),
+        1 => Some("78\u{b0}"),
+        2 => Some("65\u{b0}"),
+        _ => None,
+    }
+}
+
+/// A USB speed in Mbit/s, as it's said.
+fn speed(megabits: &str) -> String {
+    match megabits.trim().parse::<u32>() {
+        Ok(fast) if fast >= 1000 && fast % 1000 == 0 => format!("{} Gbit/s", fast / 1000),
+        Ok(speed) => format!("{speed} Mbit/s"),
+        Err(_) => String::new(),
+    }
+}
+
+/// A camera's name as its holders file is named: trimmed, one plain file
+/// name (modules/v4l2loopback/holders' `camera_file`).
+fn holders_name(name: &str) -> String {
+    let called: String = name
+        .trim()
+        .chars()
+        .map(|c| if c.is_control() { '?' } else { c })
+        .collect();
+    called.replace('/', "-").trim_start_matches('.').to_owned()
+}
+
+/// Every USB camera's facts, by its holders file's name, from the video
+/// nodes `sys` lists, their nodes in `dev` and their holders in `holders`.
+fn cameras(sys: &Path, dev: &Path, holders: &Path) -> Vec<(String, Facts)> {
+    let Ok(entries) = fs::read_dir(sys.join("class/video4linux")) else {
+        return Vec::new();
+    };
+    let mut found = Vec::new();
+    for entry in entries.flatten() {
+        let folder = entry.path();
+        let read = |name: &str| fs::read_to_string(folder.join(name)).unwrap_or_default();
+        // A UVC camera's first node is the one it streams pictures through.
+        let usb = folder.join("device/..");
+        if read("index").trim() != "0" || !usb.join("idVendor").exists() {
+            continue;
+        }
+        let name = holders_name(&read("name"));
+        let Ok(node) = File::open(dev.join(entry.file_name())) else {
+            continue;
+        };
+        let mut facts = Facts::new();
+        let held = fs::read_to_string(holders.join(&name)).unwrap_or_default();
+        if !held.trim().is_empty() {
+            fact(
+                &mut facts,
+                "streaming",
+                now_streaming(&node).unwrap_or_default(),
+            );
+        }
+        for (format, modes) in formats(&node) {
+            let said = summary(&modes);
+            fact(&mut facts, &format_name(format), said);
+        }
+        let descriptors = fs::read(usb.join("descriptors")).unwrap_or_default();
+        if let Some(view) = unit(&descriptors, &BRIO_UNIT).and_then(|id| field_of_view(&node, id)) {
+            fact(&mut facts, "field of view", view);
+        }
+        let at = |name: &str| fs::read_to_string(usb.join(name)).unwrap_or_default();
+        fact(&mut facts, "USB", speed(&at("speed")));
+        let firmware = at("bcdDevice");
+        if !firmware.trim().is_empty() {
+            fact(
+                &mut facts,
+                "firmware",
+                format!("release {}", release(&firmware)),
+            );
+        }
+        found.push((name, facts));
+    }
+    found.sort();
+    found
+}
+
 // --- Writing ---
 
 fn quoted(text: &str) -> String {
@@ -690,16 +975,19 @@ fn uevents() -> io::Result<File> {
     }
 }
 
-/// Whether a uevent is about a display, a sound card or a USB device.
-fn matters(uevent: &[u8]) -> bool {
+/// The kinds of fact a uevent changes: displays, sound cards, cameras, or
+/// none.
+fn matters(uevent: &[u8]) -> u8 {
     uevent
         .split(|byte| *byte == 0)
-        .any(|field| HEARD.contains(&field))
+        .filter_map(|field| HEARD.iter().find(|(said, _)| *said == field))
+        .fold(0, |kinds, (_, kind)| kinds | kind)
 }
 
-/// inotify, watching /dev/snd for devices opening, closing, coming and
-/// going, and the folder `pebble-lights` writes its file in.
-fn watches(lighting: &Path) -> io::Result<File> {
+/// inotify, watching each of these folders for what the mask names. A
+/// folder that isn't there yet, as /dev/snd is on a machine with no sound
+/// card, is heard of by its uevent instead.
+fn watches(watched: &[(PathBuf, u32)]) -> io::Result<File> {
     // SAFETY: a plain call.
     let fd = unsafe { inotify_init1(IN_NONBLOCK | IN_CLOEXEC) };
     if fd < 0 {
@@ -707,18 +995,10 @@ fn watches(lighting: &Path) -> io::Result<File> {
     }
     // SAFETY: the descriptor is ours alone, and the file closes it.
     let file = unsafe { File::from_raw_fd(fd) };
-    let mut watched = vec![(
-        PathBuf::from("/dev/snd"),
-        IN_OPEN | IN_CLOSE_WRITE | IN_CLOSE_NOWRITE | IN_CREATE | IN_DELETE,
-    )];
-    if let Some(folder) = lighting.parent() {
-        watched.push((folder.to_owned(), IN_CLOSE_WRITE | IN_MOVED_TO));
-    }
     for (path, mask) in watched {
+        let mask = *mask;
         let path = CString::new(path.as_os_str().as_encoded_bytes()).map_err(io::Error::other)?;
-        // SAFETY: the path is a valid C string for the call. A machine with
-        // no sound card yet has no /dev/snd, and the uevent for one coming
-        // is heard instead.
+        // SAFETY: the path is a valid C string for the call.
         unsafe { inotify_add_watch(fd, path.as_ptr(), mask) };
     }
     Ok(file)
@@ -769,61 +1049,91 @@ fn stopping() -> io::Result<File> {
     Ok(unsafe { File::from_raw_fd(fd) })
 }
 
-/// Reads everything waiting on a descriptor, saying whether `heard` found
-/// any of it to matter.
-fn heard(file: &mut File, heard: &dyn Fn(&[u8]) -> bool) -> bool {
-    let mut any = false;
+/// Reads everything waiting on a descriptor, saying which kinds of fact
+/// `heard` found it to change.
+fn heard(file: &mut File, heard: &dyn Fn(&[u8]) -> u8) -> u8 {
+    let mut kinds = 0;
     let mut buffer = [0; 8192];
     while let Ok(read) = file.read(&mut buffer) {
         if read == 0 {
             break;
         }
-        any |= heard(&buffer[..read]);
+        kinds |= heard(&buffer[..read]);
     }
-    any
+    kinds
 }
 
 fn run(folder: &Path) -> ExitCode {
     let lighting = folder
         .parent()
         .map_or_else(PathBuf::new, |runtime| runtime.join("pebble-lights"));
-    let (mut stop, mut kernel, mut changes) = match (stopping(), uevents(), watches(&lighting)) {
-        (Ok(stop), Ok(kernel), Ok(changes)) => (stop, kernel, changes),
-        (Err(error), _, _) | (_, Err(error), _) | (_, _, Err(error)) => {
-            eprintln!("<3>can't hear the desk's devices: {error}");
-            return ExitCode::FAILURE;
-        }
-    };
+    let mut sounds = vec![(
+        PathBuf::from("/dev/snd"),
+        IN_OPEN | IN_CLOSE_WRITE | IN_CLOSE_NOWRITE | IN_CREATE | IN_DELETE,
+    )];
+    if let Some(runtime) = lighting.parent() {
+        sounds.push((runtime.to_owned(), IN_CLOSE_WRITE | IN_MOVED_TO));
+    }
+    let holders = vec![(
+        PathBuf::from(HOLDERS),
+        IN_CLOSE_WRITE | IN_MOVED_TO | IN_CREATE | IN_DELETE,
+    )];
+    let (mut stop, mut kernel, mut changes, mut held) =
+        match (stopping(), uevents(), watches(&sounds), watches(&holders)) {
+            (Ok(stop), Ok(kernel), Ok(changes), Ok(held)) => (stop, kernel, changes, held),
+            (Err(error), ..) | (_, Err(error), ..) | (_, _, Err(error), _) | (.., Err(error)) => {
+                eprintln!("<3>can't hear the desk's devices: {error}");
+                return ExitCode::FAILURE;
+            }
+        };
     if let Err(error) = fs::create_dir_all(folder) {
         eprintln!("<3>can't make {}: {error}", folder.display());
         return ExitCode::FAILURE;
     }
-    let files = [folder.join("displays.json"), folder.join("sound.json")];
+    let files = [
+        folder.join("displays.json"),
+        folder.join("sound.json"),
+        folder.join("cameras.json"),
+    ];
+    let (sys, dev) = (Path::new("/sys"), Path::new("/dev"));
+    let mut due = DISPLAYS | SOUND | CAMERAS;
     loop {
-        let said = fs::read_to_string(&lighting).ok();
-        let written = write(&files[0], &json(&displays(Path::new("/sys")))).and_then(|()| {
-            write(
+        let mut written = Ok(());
+        if due & DISPLAYS != 0 {
+            written = written.and(write(&files[0], &json(&displays(sys))));
+        }
+        if due & SOUND != 0 {
+            let said = fs::read_to_string(&lighting).ok();
+            let lit = said.as_deref().map(str::trim);
+            written = written.and(write(
                 &files[1],
-                &json(&sound(
-                    Path::new("/proc/asound"),
-                    Path::new("/sys"),
-                    said.as_deref().map(str::trim),
-                )),
-            )
-        });
+                &json(&sound(Path::new("/proc/asound"), sys, lit)),
+            ));
+        }
+        if due & CAMERAS != 0 {
+            written = written.and(write(
+                &files[2],
+                &json(&cameras(sys, dev, Path::new(HOLDERS))),
+            ));
+        }
         if let Err(error) = written {
             eprintln!("<4>can't write the desk's facts: {error}");
         }
-        let mut waiting =
-            [stop.as_raw_fd(), kernel.as_raw_fd(), changes.as_raw_fd()].map(|fd| PollFd {
-                fd,
-                events: POLLIN,
-                revents: 0,
-            });
-        let mut news = false;
-        while !news {
-            // SAFETY: three valid pollfds for the length given.
-            if unsafe { poll(waiting.as_mut_ptr(), 3, -1) } < 0 {
+        let mut waiting = [
+            stop.as_raw_fd(),
+            kernel.as_raw_fd(),
+            changes.as_raw_fd(),
+            held.as_raw_fd(),
+        ]
+        .map(|fd| PollFd {
+            fd,
+            events: POLLIN,
+            revents: 0,
+        });
+        due = 0;
+        while due == 0 {
+            // SAFETY: four valid pollfds for the length given.
+            if unsafe { poll(waiting.as_mut_ptr(), 4, -1) } < 0 {
                 continue;
             }
             if waiting[0].revents & POLLIN != 0 {
@@ -836,8 +1146,17 @@ fn run(folder: &Path) -> ExitCode {
             // A card's devices, a display's EDID and a stream's parameters
             // settle a moment after the first word of them.
             std::thread::sleep(Duration::from_millis(150));
-            news |= heard(&mut kernel, &matters);
-            news |= heard(&mut changes, &|events| names_one(events, "pebble-lights"));
+            due |= heard(&mut kernel, &matters);
+            due |= heard(&mut changes, &|events| {
+                if names_one(events, "pebble-lights") {
+                    SOUND
+                } else {
+                    0
+                }
+            });
+            due |= heard(&mut held, &|events| {
+                if events.is_empty() { 0 } else { CAMERAS }
+            });
         }
     }
 }
@@ -1051,21 +1370,84 @@ Capture:
     }
 
     #[test]
-    fn only_displays_sound_cards_and_usb_devices_matter() {
-        assert!(matters(&uevent(&[
+    fn each_uevent_reads_again_only_the_kinds_it_changes() {
+        let display = uevent(&[
             "change@/devices/pci0000:00/0000:00:02.0/drm/card0",
             "ACTION=change",
             "SUBSYSTEM=drm",
-            "HOTPLUG=1"
-        ])));
-        assert!(matters(&uevent(&[
-            "add@/devices/.../sound/card1",
-            "SUBSYSTEM=sound"
-        ])));
-        assert!(!matters(&uevent(&[
-            "change@/devices/.../power_supply/BAT0",
-            "SUBSYSTEM=power_supply"
-        ])));
+            "HOTPLUG=1",
+        ]);
+        assert_eq!(matters(&display), DISPLAYS);
+        let card = uevent(&["add@/devices/.../sound/card1", "SUBSYSTEM=sound"]);
+        assert_eq!(matters(&card), SOUND);
+        let camera = uevent(&[
+            "add@/devices/.../video4linux/video1",
+            "SUBSYSTEM=video4linux",
+        ]);
+        assert_eq!(matters(&camera), CAMERAS);
+        let plugged = uevent(&["add@/devices/.../usb3/3-4", "SUBSYSTEM=usb"]);
+        assert_eq!(matters(&plugged), SOUND | CAMERAS);
+        let battery = uevent(&["change@/devices/.../BAT0", "SUBSYSTEM=power_supply"]);
+        assert_eq!(matters(&battery), 0);
+    }
+
+    #[test]
+    fn a_format_says_its_largest_mode_and_its_fastest() {
+        // The MX Brio 705's MJPEG modes, some of them.
+        let modes = [
+            (640, 480, 30),
+            (1920, 1080, 60),
+            (2560, 1440, 30),
+            (3840, 2160, 30),
+        ];
+        assert_eq!(
+            summary(&modes),
+            "3840 \u{d7} 2160 at 30; 1920 \u{d7} 1080 at 60"
+        );
+        assert_eq!(summary(&[(1920, 1080, 30)]), "1920 \u{d7} 1080 at 30");
+        assert_eq!(summary(&[]), "");
+        assert_eq!(rate(1, 30), 30);
+        assert_eq!(rate(1001, 60000), 60);
+        assert_eq!(rate(0, 30), 0);
+    }
+
+    #[test]
+    fn a_pixel_format_is_named_as_people_say_it() {
+        assert_eq!(format_name(u32::from_le_bytes(*b"MJPG")), "MJPEG");
+        assert_eq!(format_name(u32::from_le_bytes(*b"YUYV")), "YUYV");
+        assert_eq!(format_name(u32::from_le_bytes(*b"NV12")), "NV12");
+        assert_eq!(format_name(u32::from_le_bytes(*b"H264")), "H.264");
+    }
+
+    #[test]
+    fn the_brio_s_unit_is_found_among_its_descriptors() {
+        // An interface descriptor, then an extension unit with id 10.
+        let mut descriptors = vec![9, 0x04, 0, 0, 0, 0x0E, 0x01, 0, 0];
+        let mut unit_descriptor = vec![27, 0x24, 0x06, 10];
+        unit_descriptor.extend_from_slice(&BRIO_UNIT);
+        unit_descriptor.resize(27, 0);
+        descriptors.extend(unit_descriptor);
+        assert_eq!(unit(&descriptors, &BRIO_UNIT), Some(10));
+        assert_eq!(unit(&descriptors, &[0; 16]), None);
+        assert_eq!(unit(&[0, 1, 2], &BRIO_UNIT), None, "a zero length ends it");
+    }
+
+    #[test]
+    fn a_usb_speed_is_said_in_its_own_unit() {
+        assert_eq!(speed("5000\n"), "5 Gbit/s");
+        assert_eq!(speed("480"), "480 Mbit/s");
+        assert_eq!(speed("12"), "12 Mbit/s");
+        assert_eq!(speed(""), "");
+    }
+
+    #[test]
+    fn a_camera_is_keyed_as_its_holders_file_is_named() {
+        assert_eq!(
+            holders_name("MX Brio 705 for Business\n"),
+            "MX Brio 705 for Business"
+        );
+        assert_eq!(holders_name("A/B .cam"), "A-B .cam");
+        assert_eq!(holders_name(".hidden"), "hidden");
     }
 
     /// An inotify event for a name, padded as the kernel pads it.

@@ -10,8 +10,10 @@ onLinux {
   # panel by its product code when it names nothing else, says wider colours
   # against sRGB's area and finds HDR in a CTA block, reads what a USB sound
   # card offers and runs at from the kernel's stream file and hw_params,
-  # writes the launcher's JSON escaped and in order, and hears only the
-  # uevents and sound devices that change a fact.
+  # says a camera format's largest and fastest modes, finds a Brio's own
+  # unit among its descriptors and keys a camera as its holders file is
+  # named, writes the launcher's JSON escaped and in order, and reads again
+  # only the kinds a uevent or a sound device changes.
   desk-facts-read-the-desk =
     pkgs.runCommandCC "desk-facts-read-the-desk" { nativeBuildInputs = [ pkgs.rustc ]; }
       ''

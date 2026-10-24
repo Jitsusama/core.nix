@@ -17,7 +17,13 @@
 // the camera" says which programs read it, each a row by the camera it
 // reads, from the margin's camera piece (pieces/Camera.qml), so the fact
 // has one home. A machine whose cameras say nothing of it gets no answer.
+// After them come what desk-facts knows of each USB camera
+// (modules/desk-facts): what it streams, the largest and fastest mode of
+// each format, its field of view, USB speed and firmware, Return copying
+// one.
 import qs
+import Quickshell
+import Quickshell.Io
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
 
@@ -248,6 +254,40 @@ Provider {
         return Recorder.recording ? "recording" : "";
     }
 
+    // What desk-facts knows of each USB camera, by the name its holders
+    // file has; a camera it says nothing of, or no file at all, has no
+    // facts.
+    property var facts: ({})
+
+    function parsed(text) {
+        try {
+            return JSON.parse(text) ?? {};
+        } catch (e) {
+            return {};
+        }
+    }
+
+    FileView {
+        path: `${Quickshell.env("XDG_RUNTIME_DIR")}/desk/cameras.json`
+        watchChanges: true
+        printErrors: false
+        onFileChanged: reload()
+        onLoaded: provider.facts = provider.parsed(text())
+        onLoadFailed: provider.facts = ({})
+    }
+
+    // Each camera's facts, its own name beside each only when more than
+    // one camera has some.
+    function factRows(names) {
+        const known = names.filter(name => (facts[name] ?? []).length > 0);
+        return known.reduce((rows, name) => rows.concat(facts[name].map(fact => copyRow({
+            key: `fact:cameras:${name}:${fact.name}`,
+            name: fact.value,
+            side: known.length > 1 ? `${fact.name}, ${name}` : fact.name,
+            glyph: Theme.glyph.camera
+        }))), []);
+    }
+
     // The words it answers whole, and by their start (Provider.qml).
     questions: ["camera", "webcam", "camera in use", "is the camera on", "who has the camera"]
 
@@ -266,7 +306,7 @@ Provider {
         }))), []);
         return {
             headline: camera.active ? `in use by ${camera.programs.join(", ")}` : "not in use",
-            rows: rows,
+            rows: rows.concat(factRows(camera.names)),
             note: "from the cameras' own records"
         };
     }
