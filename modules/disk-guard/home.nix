@@ -146,17 +146,25 @@ in
           path = if isDarwin then "${home}/.Trash" else "${dataHome}/Trash";
         };
         npm = lib.mkDefault (cache 10 "${home}/.npm/_cacache");
-        pnpm = lib.mkDefault (cache 10 "${dataHome}/pnpm/store");
+        # On a Mac, pnpm, Go and sccache keep their caches where a Mac's
+        # programs do, under ~/Library, rather than where XDG says: pnpm
+        # unless XDG_DATA_HOME is set, and Go and sccache unless GOCACHE or
+        # SCCACHE_DIR is. Nothing here sets any of the three.
+        pnpm = lib.mkDefault (
+          cache 10 (if isDarwin then "${home}/Library/pnpm/store" else "${dataHome}/pnpm/store")
+        );
         nix = lib.mkDefault (cache 20 "${cacheHome}/nix");
         # Go trims its own by when each entry was last used, so the guard
         # takes the oldest first rather than all of it.
         go-build = lib.mkDefault (
-          cache 40 "${cacheHome}/go-build"
+          cache 40 (if isDarwin then "${home}/Library/Caches/go-build" else "${cacheHome}/go-build")
           // {
             protocol = "go-build";
           }
         );
-        sccache = lib.mkDefault (cache 60 "${cacheHome}/sccache");
+        sccache = lib.mkDefault (
+          cache 60 (if isDarwin then "${home}/Library/Caches/Mozilla.sccache" else "${cacheHome}/sccache")
+        );
         # Xcode's builds, which it makes again as a target is.
         derived-data = lib.mkIf isDarwin (
           lib.mkDefault (cache 50 "${home}/Library/Developer/Xcode/DerivedData")
