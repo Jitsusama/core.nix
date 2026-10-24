@@ -15,6 +15,14 @@
 //! named by `--keep`, pi say. A heavy process inside one of those, a
 //! language server under an editor, is moved alone, with what it started.
 //!
+//! A scope that `systemd-run --user --scope` makes without a slice lands in
+//! the apps' slice too, at an app's CPU, memory floor and disk, even when an
+//! agent's shell in jobs started it: one such evaluation held memory
+//! pressure near half while Joel's keys came 440 ms late. So a scope there
+//! whose first process was started from inside jobs goes back at once to
+//! where its starter is, unless it sets limits of its own, which moving it
+//! out of the scope would drop.
+//!
 //! Usage: jobs-sorter [--under app.slice] [--home kitty-]... [--keep pi]...
 //!        [--jobs jobs.slice/jobs.service] [--busy 500] [--ticks 2]
 //!        [--every 1000]
@@ -270,6 +278,65 @@ fn homes(under: &Path, prefixes: &[String]) -> Vec<PathBuf> {
         .collect()
 }
 
+/// Where a scope's work goes back to: the cgroup of the process that
+/// started it, outside the scope, when that sits in `jobs` or under it.
+/// Paths are the user manager's, as /proc/<pid>/cgroup gives them below it.
+fn returns_to(
+    procs: &[Sample],
+    cgroup_of: impl Fn(u32) -> Option<String>,
+    jobs: &str,
+) -> Option<String> {
+    let here: HashSet<u32> = procs.iter().map(|proc| proc.pid).collect();
+    let inside = format!("{jobs}/");
+    procs
+        .iter()
+        .filter(|proc| !here.contains(&proc.ppid))
+        .filter_map(|proc| cgroup_of(proc.ppid))
+        .find(|cgroup| cgroup == jobs || cgroup.starts_with(&inside))
+}
+
+/// Whether a cgroup holds only systemd's defaults for what a scope may set:
+/// no memory ceiling, quota, weight of its own or disk limit. Its task
+/// limit isn't asked, since systemd gives every scope one.
+fn unlimited(read: impl Fn(&str) -> Option<String>) -> bool {
+    let reads = |file: &str, unset: &str| read(file).is_none_or(|value| value.trim() == unset);
+    reads("memory.max", "max")
+        && reads("memory.high", "max")
+        && reads("memory.swap.max", "max")
+        && reads("cpu.weight", "100")
+        && reads("io.max", "")
+        && read("cpu.max").is_none_or(|value| value.split_whitespace().next() == Some("max"))
+}
+
+/// Every scope under `under` but the terminals'.
+#[expect(
+    clippy::case_sensitive_file_extension_comparisons,
+    reason = "a systemd unit's suffix is case-sensitive"
+)]
+fn strays(under: &Path, homes: &[String]) -> Vec<PathBuf> {
+    let Ok(entries) = fs::read_dir(under) else {
+        return Vec::new();
+    };
+    entries
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|path| {
+            path.file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| {
+                    name.ends_with(".scope") && !homes.iter().any(|home| name.starts_with(home))
+                })
+        })
+        .collect()
+}
+
+/// A process's cgroup below the user manager's, or `None` outside it.
+fn cgroup_of(pid: u32, manager: &str) -> Option<String> {
+    let text = fs::read_to_string(format!("/proc/{pid}/cgroup")).ok()?;
+    let path = text.lines().find_map(|line| line.strip_prefix("0::"))?;
+    path.strip_prefix(manager).map(str::to_owned)
+}
+
 /// Writes each process into the jobs cgroup. One that has exited since is
 /// no loss; anything else is said once.
 fn send(jobs: &Path, pids: &[u32], warned: &mut bool) {
@@ -324,6 +391,10 @@ fn run() -> Result<(), String> {
     let root = Path::new(CGROUPS).join(manager.trim_start_matches('/'));
     let under = root.join(&settings.under);
     let jobs = root.join(&settings.jobs);
+    let slice = format!(
+        "/{}",
+        settings.jobs.split('/').next().unwrap_or(&settings.jobs)
+    );
     if !jobs.join("cgroup.procs").exists() {
         return Err(format!("{} doesn't exist", jobs.display()));
     }
@@ -350,6 +421,22 @@ fn run() -> Result<(), String> {
                 send(&jobs, &found.pids, &mut warned);
                 eprintln!("{}", found.says);
             }
+        }
+        for scope in strays(&under, &settings.homes) {
+            let procs = samples(&scope);
+            if procs.is_empty() || !unlimited(|file| fs::read_to_string(scope.join(file)).ok()) {
+                continue;
+            }
+            let Some(back) = returns_to(&procs, |pid| cgroup_of(pid, &manager), &slice) else {
+                continue;
+            };
+            let pids: Vec<u32> = procs.iter().map(|proc| proc.pid).collect();
+            send(&root.join(back.trim_start_matches('/')), &pids, &mut warned);
+            let name = scope.file_name().unwrap_or_default().to_string_lossy();
+            eprintln!(
+                "Moved {name} ({} processes) back to {back}, which started it.",
+                pids.len()
+            );
         }
         sorter.finish(&alive, now);
     }
@@ -504,6 +591,47 @@ mod tests {
         let moves = looks(&mut sorter, &[old.clone()]);
         assert!(moves[0].is_empty());
         assert_eq!(sorter.busy.len(), 0);
+    }
+
+    /// An agent's shell in jobs (pid 5) ran `systemd-run --scope`, whose
+    /// command (40) started a child (41) inside the scope.
+    fn scope() -> Vec<Sample> {
+        vec![proc(40, 5, 40, "nix", 0), proc(41, 40, 40, "nix", 0)]
+    }
+
+    #[test]
+    fn a_scope_started_from_jobs_goes_back_to_its_starter() {
+        let back = returns_to(
+            &scope(),
+            |pid| (pid == 5).then(|| "/jobs.slice/jobs.service".to_owned()),
+            "/jobs.slice",
+        );
+        assert_eq!(back.as_deref(), Some("/jobs.slice/jobs.service"));
+    }
+
+    #[test]
+    fn a_scope_started_from_a_terminal_stays() {
+        let starter = |pid: u32| (pid == 5).then(|| "/app.slice/kitty-1-1.scope".to_owned());
+        assert_eq!(returns_to(&scope(), starter, "/jobs.slice"), None);
+        let lookalike = |pid: u32| (pid == 5).then(|| "/jobs.slicer/x.service".to_owned());
+        assert_eq!(returns_to(&scope(), lookalike, "/jobs.slice"), None);
+    }
+
+    #[test]
+    fn a_scope_with_limits_of_its_own_is_left_alone() {
+        let defaults = |file: &str| match file {
+            "cpu.max" => Some("max 100000\n".to_owned()),
+            "cpu.weight" => Some("100\n".to_owned()),
+            "io.max" => Some(String::new()),
+            "pids.max" => Some("76479\n".to_owned()),
+            _ => Some("max\n".to_owned()),
+        };
+        assert!(unlimited(defaults));
+        assert!(unlimited(|_| None));
+        let capped = |file: &str| (file == "memory.max").then(|| "1073741824\n".to_owned());
+        assert!(!unlimited(capped));
+        let quota = |file: &str| (file == "cpu.max").then(|| "50000 100000\n".to_owned());
+        assert!(!unlimited(quota));
     }
 
     #[test]

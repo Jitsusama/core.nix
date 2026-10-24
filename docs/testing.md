@@ -111,6 +111,7 @@ quietly stopped holding.
 | `icon-marks-past-the-basic-plane` | an icon mark past U+FFFF reaches the shell whole |
 | `nix-builds-yield-to-the-user` | Nix's builds run at a lower weight than the user's programs |
 | `work-yields-to-what-the-user-works-in` | jobs is idle beside app.slice, pi finds it, and a window's scope is not idle |
+| `work-swaps-its-own-memory`         | jobs is slowed past half of memory, with no hard limit that would end its work |
 | `timed-work-goes-ahead-of-other-work` | timed work sits inside jobs above its holder, held by a unit that comes back, and pi finds it |
 | `joels-work-goes-before-agents` | the sorter moves a terminal's work inside jobs, above pi's work and below timed work |
 | `call-audio-runs-in-real-time` | an app's audio thread can take SCHED_RR 8, below PipeWire's, for at most 200 ms at a time |
@@ -222,7 +223,7 @@ kernel guide][2] says what that catches.
 | `disk-guard-compiles-for-macos`   | the disk guard and its scenarios compile for macOS, clean |
 | `network-revive-passes-clippy`    | clippy finds nothing in network-revive or its tests       |
 | `lid-docked-passes-clippy`        | clippy finds nothing in lid-docked or its tests           |
-| `jobs-sorter-sorts-by-behaviour`  | the sorter moves a group busy two seconds running, never the shell's or pi's |
+| `jobs-sorter-sorts-by-behaviour`  | the sorter moves a group busy two seconds running, never the shell's or pi's, and sends a scope started from jobs back there unless it sets limits |
 | `jobs-sorter-passes-clippy`       | clippy finds nothing in the jobs sorter or its tests      |
 | `shaper-finds-the-rate`           | the shaper reads a queue from delayed pings, not one late ping or a silent host; cuts under what the line carried, holds while it drains, and climbs while it's quiet; reads sets, routes and queues from what the kernel prints |
 | `shaper-passes-clippy`            | clippy finds nothing in the shaper or its tests           |
@@ -331,7 +332,7 @@ emptying, and then look.
 | `vm-ir-camera-opens-for-readers`  | the IR camera waits for udev and its loopback, opens only while read, its frames grey, no frame from before a reader opened |
 | `vm-loopback-says-who-holds-it`   | a loopback camera's file names each program another account holds it with, not its relay's unit however a program names itself, one line a name, catches a holder that forks, empties when they close it or the camera stops, keeps its folder, follows a new loopback, and takes no loopback of another name |
 | `vm-swap-comes-down-while-probed` | the compressed swap comes down, its reset waiting out udev's probe |
-| `vm-apps-come-first`              | the account's app and session slices, and the system's user.slice, hold a 1 ms latency on the drive behind /home, through the kernel (jobs, background, machine and system none); app.slice holds a hard 13% of memory and every slice above it 15%; timed work sits at 10000 inside idle jobs, and work in jobs can move itself there |
+| `vm-apps-come-first`              | the account's app and session slices, and the system's user.slice, hold a 1 ms latency on the drive behind /home, through the kernel (jobs, background, machine and system none); app.slice holds a hard 13% of memory, session.slice 1.5 GiB and every slice above them 16%, and jobs is slowed past half; timed work sits at 10000 inside idle jobs, and work in jobs can move itself there; a scope work in jobs starts goes back to jobs, and one with a memory ceiling stays |
 | `vm-the-network-keeps-its-order`  | an account's jobs, background, the system's builds and a guest it forwards for go in CAKE's bulk tin both ways, what Joel waits on at a terminal and an app's pages best effort, its calls and Tuple's daemon video, names and the shaper's pings voice; a slice made again keeps its class; the client's own network isn't slowed; inside a WireGuard tunnel the same classes reach the tunnel's own CAKE; the queues follow the default route and go when the shaper stops |
 | `vm-the-line-stays-quick`         | under four uploads on an 8 Mbit/s line 20 ms away, an app's ping stays under 80 ms with the shaper and passes 300 without; an app's upload leaves the jobs' under a quarter of what it sends; the shaper follows the line down to 4 Mbit/s and back |
 | `vm-checks-go-first`              | a build user's qemu in the daemon's cgroup goes from batch at nice 5 to normal at nice -10, every thread and a later one, and a compiler beside it doesn't |

@@ -76,11 +76,17 @@ def near(path: str, share: float) -> None:
 
 with subtest("apps keep a hard share of memory, and every slice above more"):
     near(f"{account}/app.slice", 0.13)
-    t.assertEqual(floor(f"{account}/session.slice"), 2**30)
-    near(account, 0.15)
-    near("/sys/fs/cgroup/user.slice/user-1000.slice", 0.15)
-    near("/sys/fs/cgroup/user.slice", 0.15)
+    t.assertEqual(floor(f"{account}/session.slice"), 1536 * 2**20)
+    near(account, 0.16)
+    near("/sys/fs/cgroup/user.slice/user-1000.slice", 0.16)
+    near("/sys/fs/cgroup/user.slice", 0.16)
     t.assertEqual(floor(f"{account}/jobs.slice"), 0)
+
+
+with subtest("work in jobs is slowed past half of memory, and never ended"):
+    high = int(machine.succeed(f"cat {account}/jobs.slice/memory.high"))
+    t.assertAlmostEqual(high, total * 0.5, delta=2**20)
+    t.assertEqual(machine.succeed(f"cat {account}/jobs.slice/memory.max").strip(), "max")
 
 jobs = f"{account}/jobs.slice"
 timed = f"{jobs}/jobs-timed.slice"
@@ -103,3 +109,27 @@ with subtest("work in jobs moves itself in, as pi's waiting shell does"):
         " cat /proc/self/cgroup > /tmp/moved; exec sleep infinity'"
     )
     machine.wait_until_succeeds("grep -q timed.service /tmp/moved", timeout=30)
+
+
+def cgroup_of(seconds: int) -> str:
+    """Give the cgroup of the sleep that waits the given seconds."""
+    return machine.succeed(f"cat /proc/$(pgrep -xf '{sleep} {seconds}')/cgroup").strip()
+
+
+with subtest("a scope that work in jobs starts goes back, unless it sets limits"):
+    # An agent's shell in jobs starts two scopes with no slice, which
+    # systemd puts in app.slice: one with a memory ceiling, then, once
+    # that one runs, one without, so the sorter has looked at both by the
+    # time it moves the second.
+    machine.succeed(
+        "systemd-run -M alice@ --user --slice=jobs.slice --unit=agent"
+        f" --expand-environment=no -p KillMode=process {bash} -c"
+        f" 'echo $$ > {jobs}/jobs.service/cgroup.procs;"
+        f" systemd-run --user --scope --unit=kept -p MemoryMax=1G {sleep} 1002 &"
+        " until systemctl --user is-active --quiet kept.scope; do sleep 0.1; done;"
+        f" systemd-run --user --scope --unit=stray {sleep} 1001 & wait'"
+    )
+    machine.wait_until_succeeds(
+        f"grep -q jobs.slice/jobs.service /proc/$(pgrep -xf '{sleep} 1001')/cgroup", timeout=30
+    )
+    t.assertIn("app.slice/kept.scope", cgroup_of(1002))
