@@ -153,6 +153,8 @@ struct Shaped {
     state: State,
     /// The link whose rate this one takes, when both reach the same router.
     follows: Option<String>,
+    /// Whether the journal has been told of the line's queue building now.
+    told: bool,
 }
 
 impl Shaped {
@@ -239,6 +241,7 @@ fn start(
         counted: (0, 0, Instant::now()),
         state: State::Resting,
         follows: None,
+        told: false,
     };
     let (tx, rx) = shaped.bytes();
     shaped.counted = (tx, rx, Instant::now());
@@ -520,8 +523,46 @@ fn step(s: &mut Shaped, t: f64) {
     let seconds = at.elapsed().as_secs_f64().max(0.001);
     s.counted = (tx, rx, Instant::now());
     let kbit = |now: u64, then: u64| float(now.saturating_sub(then)) * 8.0 / 1000.0 / seconds;
-    s.state = s.controller.step(t, kbit(tx, tx0), kbit(rx, rx0));
+    let was = (s.controller.up.rate, s.controller.down.rate);
+    let (sent, received) = (kbit(tx, tx0), kbit(rx, rx0));
+    s.state = s.controller.step(t, sent, received);
+    tell(s, was, sent, received);
     apply(s);
+}
+
+/// Tells the journal of each cut, and of a queue on the line that builds
+/// while the shaper holds its rates, once a spell: a spike in a ping with
+/// neither in the journal was never the line's queue, and a spike with only
+/// the second was one this machine doesn't fill, or couldn't cut yet.
+fn tell(s: &mut Shaped, was: (u64, u64), sent: f64, received: f64) {
+    let name = &s.uplink.name;
+    let (up, down) = (s.controller.up.rate, s.controller.down.rate);
+    match s.state {
+        State::Cut => {
+            eprintln!(
+                "{name}: the line's queue reached {:.0} ms; up {} to {}, down {} to {}",
+                s.controller.cut_level(),
+                mbit(was.0),
+                mbit(up),
+                mbit(was.1),
+                mbit(down)
+            );
+            s.told = true;
+        }
+        State::Holding if s.controller.building() && !s.told => {
+            eprintln!(
+                "{name}: the line's queue is building and the rates hold: up carries {:.0}% \
+                 of {}, down {:.0}% of {}",
+                sent / float(up.max(1)) * 100.0,
+                mbit(up),
+                received / float(down.max(1)) * 100.0,
+                mbit(down)
+            );
+            s.told = true;
+        }
+        _ if !s.controller.building() => s.told = false,
+        _ => {}
+    }
 }
 
 /// Puts a link's rates on its queues when they moved by more than 1%.

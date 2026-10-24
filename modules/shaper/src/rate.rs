@@ -243,6 +243,12 @@ impl Controller {
         all.get(all.len() / 2).copied().unwrap_or(0.0)
     }
 
+    /// How far over their baselines the pings had come at the latest cut,
+    /// in ms.
+    pub fn cut_level(&self) -> f64 {
+        self.cut_level
+    }
+
     /// Whether the line's queue is building now.
     pub fn building(&self) -> bool {
         self.recent.iter().filter(|d| **d).count() >= self.settings.delayed_needed
@@ -284,7 +290,10 @@ impl Controller {
             // queue half drained.
             let drain = 1.0 - (level / s.drain_ms).min(0.5);
             let mut cut = false;
-            let shares = [sent / float(self.up.rate), received / float(self.down.rate)];
+            let shares = [
+                sent / float(self.up.rate.max(1)),
+                received / float(self.down.rate.max(1)),
+            ];
             let fullest = shares[0].max(shares[1]);
             for ((dir, carried), share) in [(&mut self.up, sent), (&mut self.down, received)]
                 .into_iter()
