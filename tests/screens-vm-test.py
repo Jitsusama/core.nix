@@ -64,6 +64,15 @@ def plug(status: str) -> None:
     )
 
 
+def displays_say(*, named: bool) -> None:
+    """Wait until desk-facts' displays.json names the screen, or no longer names it."""
+    facts = "/run/user/1000/desk/displays.json"
+    machine.wait_until_succeeds(
+        f"test -s {facts} && {'' if named else '! '}grep -qF '\"Virtual-1\"' {facts}", timeout=30
+    )
+    machine.log(f"displays.json: {machine.succeed(f'cat {facts}')}")
+
+
 machine.wait_for_unit("multi-user.target")
 wait_for_surfaces("wallpaper", "launcher", timeout=300)
 connector = machine.succeed("ls -d /sys/class/drm/card0-Virtual-1").strip()
@@ -81,9 +90,15 @@ with subtest("the margin shows a mark, and dictation listens, before the screen 
     machine.succeed(in_niri("dictation toggle"))
     wait_for_surfaces("margin", "dictation")
 
+with subtest("desk-facts says what the screen is before it goes"):
+    displays_say(named=True)
+
 with subtest("the screen goes, and niri lets it go"):
     plug("off")
     machine.wait_until_succeeds(in_niri("niri msg --json outputs | grep -qx '{}'"), timeout=60)
+
+with subtest("desk-facts no longer names the screen once it's gone"):
+    displays_say(named=False)
 
 with subtest("the screen comes back, and the launcher and the notice with it"):
     plug("detect")
@@ -92,3 +107,8 @@ with subtest("the screen comes back, and the launcher and the notice with it"):
 
 with subtest("the margin's mark and dictation's bar come back with the screen"):
     wait_for_surfaces("margin", "dictation")
+
+# desk-facts naming the screen again isn't held here: the VM's display driver reads the
+# screen's EDID only when QEMU says its screens changed, so a forced detect brings the
+# connector back with an empty EDID, and desk-facts rightly says nothing of a screen with
+# none. A real DisplayPort replug reads the EDID afresh.
