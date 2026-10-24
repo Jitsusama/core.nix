@@ -132,10 +132,41 @@ with subtest("a scope that work in jobs starts goes back, unless it sets limits"
         " until systemctl --user is-active --quiet kept.scope; do sleep 0.1; done;"
         f" systemd-run --user --scope --unit=stray {sleep} 1001 & wait'"
     )
+    # The shell itself was given a scope of its own in jobs by then, and
+    # the stray goes back to it.
     machine.wait_until_succeeds(
-        f"grep -q jobs.slice/jobs.service /proc/$(pgrep -xf '{sleep} 1001')/cgroup", timeout=30
+        f"grep -q 'jobs-work.slice/work-.*\\.scope$' /proc/$(pgrep -xf '{sleep} 1001')/cgroup",
+        timeout=30,
     )
     t.assertIn("app.slice/kept.scope", cgroup_of(1002))
+
+with subtest("each piece of work written into jobs gets a scope of its own"):
+    # Two commands written into jobs.service as pi writes its shells, one
+    # starting a child once its own scope is there.
+    for seconds in [1003, 1004]:
+        machine.succeed(
+            f"systemd-run -M alice@ --user --slice=jobs.slice --unit=piece-{seconds}"
+            f" --expand-environment=no -p KillMode=process {bash} -c"
+            f" 'echo $$ > {jobs}/jobs.service/cgroup.procs;"
+            " until grep -q /work- /proc/$$/cgroup; do sleep 0.1; done;"
+            f" {sleep} {seconds} & wait'"
+        )
+    for seconds in [1003, 1004]:
+        machine.wait_until_succeeds(
+            f"grep -q 'jobs.slice/jobs-work.slice/work-.*\\.scope$'"
+            f" /proc/$(pgrep -xf '{sleep} {seconds}')/cgroup",
+            timeout=30,
+        )
+    first, second = cgroup_of(1003), cgroup_of(1004)
+    t.assertNotEqual(first, second)
+    # Together they weigh as jobs.service did, below a terminal's work.
+    t.assertEqual(machine.succeed(f"cat {jobs}/jobs-work.slice/cpu.weight").strip(), "100")
+    # oomd reads each one's swap, as it does any leaf's.
+    scope = first.removeprefix("0::").removeprefix("/user.slice/user-1000.slice/user@1000.service")
+    machine.succeed(f"test -e {account}{scope}/memory.swap.current")
+    # The holder stays, so the next write still lands.
+    holder = machine.succeed("systemctl -M alice@ --user show -P MainPID jobs.service").strip()
+    t.assertIn(holder, machine.succeed(f"cat {jobs}/jobs.service/cgroup.procs").split())
 
 
 def weight(path: str) -> str:

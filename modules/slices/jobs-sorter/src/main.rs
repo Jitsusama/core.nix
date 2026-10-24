@@ -23,14 +23,27 @@
 //! where its starter is, unless it sets limits of its own, which moving it
 //! out of the scope would drop.
 //!
+//! Work lands in a few services' cgroups, pi's in jobs.service and a
+//! terminal's in awaited.service, each one cgroup for every command written
+//! there. systemd-oomd, when swap runs out, ends the whole leaf cgroup that
+//! holds the most of it, so it would end every session's builds at once
+//! rather than the one that filled swap. Each `--split` cgroup's work, a
+//! process tree whose root was written there, goes into a scope of its own,
+//! work-<pid>-<start>.scope, which systemd drops once it empties. The scopes
+//! go in the slice named after `=`, or else the one the unit sits in. Its
+//! scopes share that slice's weight, as the work shared the unit's, so a
+//! cgroup that sits beside slices of other weights names a slice of its own.
+//! A process forked as its tree moved goes to its parent's scope. The
+//! unit's own holder stays, so the cgroup is there for the next write.
+//!
 //! Usage: jobs-sorter [--under app.slice] [--home kitty-]... [--keep pi]...
 //!        [--jobs jobs.slice/jobs.service] [--busy 500] [--ticks 2]
-//!        [--every 1000]
+//!        [--every 1000] [--split jobs.slice/jobs.service[=SLICE]]...
 
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process;
+use std::process::{self, Command, Stdio};
 use std::thread;
 use std::time::Duration;
 
@@ -47,6 +60,7 @@ struct Settings {
     busy_ms: u64,
     ticks: u32,
     every: Duration,
+    split: Vec<String>,
 }
 
 /// One process, as /proc/<pid>/stat describes it.
@@ -236,6 +250,166 @@ fn descendants(top: u32, procs: &[Sample]) -> Vec<u32> {
     found
 }
 
+/// A process tree to give a scope of its own: its root, the first process
+/// written into the cgroup, and every process under it there.
+#[derive(Debug, PartialEq)]
+struct Piece {
+    root: u32,
+    ppid: u32,
+    comm: String,
+    start: u64,
+    pids: Vec<u32>,
+}
+
+/// The trees in a cgroup, one for each process whose parent is elsewhere,
+/// but the unit's own holder.
+fn pieces(procs: &[Sample], holder: Option<u32>) -> Vec<Piece> {
+    let here: HashSet<u32> = procs.iter().map(|proc| proc.pid).collect();
+    procs
+        .iter()
+        .filter(|proc| Some(proc.pid) != holder && !here.contains(&proc.ppid))
+        .map(|root| Piece {
+            root: root.pid,
+            ppid: root.ppid,
+            comm: root.comm.clone(),
+            start: root.start,
+            pids: descendants(root.pid, procs),
+        })
+        .collect()
+}
+
+/// A `--split` value's cgroup, the slice its scopes go in, and its unit.
+/// The slice is the one named after `=`, or else the one the unit sits in:
+/// jobs-awaited.slice for jobs.slice/jobs-awaited.slice/awaited.service.
+/// Its unit is the cgroup's last part.
+#[expect(
+    clippy::case_sensitive_file_extension_comparisons,
+    reason = "a systemd unit's suffix is case-sensitive"
+)]
+fn slice_and_unit(split: &str) -> Option<(&str, &str, &str)> {
+    let (cgroup, named) = match split.split_once('=') {
+        Some((cgroup, slice)) => (cgroup, Some(slice)),
+        None => (split, None),
+    };
+    let (path, unit) = cgroup.rsplit_once('/')?;
+    let slice = named.or_else(|| path.rsplit('/').next())?;
+    slice
+        .ends_with(".slice")
+        .then_some((cgroup, slice, unit))
+        .filter(|_| !unit.is_empty())
+}
+
+/// Whether a cgroup path is a scope this made, so a straggler joins it.
+#[expect(
+    clippy::case_sensitive_file_extension_comparisons,
+    reason = "a systemd unit's suffix is case-sensitive"
+)]
+fn made_here(cgroup: &str) -> bool {
+    cgroup
+        .rsplit('/')
+        .next()
+        .is_some_and(|name| name.starts_with("work-") && name.ends_with(".scope"))
+}
+
+/// What busctl is given to start a scope named `name` in `slice` around
+/// `pids`: the user manager's `StartTransientUnit`, with its description.
+fn scope_call(name: &str, slice: &str, description: &str, pids: &[u32]) -> Vec<String> {
+    let mut args: Vec<String> = [
+        "--user",
+        "--quiet",
+        "call",
+        "org.freedesktop.systemd1",
+        "/org/freedesktop/systemd1",
+        "org.freedesktop.systemd1.Manager",
+        "StartTransientUnit",
+        "ssa(sv)a(sa(sv))",
+        name,
+        "fail",
+        "3",
+        "Slice",
+        "s",
+        slice,
+        "Description",
+        "s",
+        description,
+        "PIDs",
+        "au",
+    ]
+    .iter()
+    .map(|arg| (*arg).to_string())
+    .collect();
+    args.push(pids.len().to_string());
+    args.extend(pids.iter().map(u32::to_string));
+    args.push("0".into());
+    args
+}
+
+/// The main process systemd knows a unit by, its holder.
+fn main_pid(unit: &str) -> Option<u32> {
+    let output = Command::new("systemctl")
+        .args(["--user", "show", "--property=MainPID", "--value", unit])
+        .stderr(Stdio::null())
+        .output()
+        .ok()?;
+    let pid: u32 = String::from_utf8_lossy(&output.stdout)
+        .trim()
+        .parse()
+        .ok()?;
+    (pid != 0).then_some(pid)
+}
+
+/// Gives each piece of work in one split cgroup a scope of its own. A
+/// tree that left before its scope began is no loss; anything else is
+/// said once.
+fn split(root: &Path, manager: &str, value: &str, holder: &mut Option<u32>, warned: &mut bool) {
+    let Some((cgroup, slice, unit)) = slice_and_unit(value) else {
+        return;
+    };
+    let procs = samples(&root.join(cgroup));
+    if holder.is_none_or(|pid| !procs.iter().any(|proc| proc.pid == pid)) {
+        *holder = main_pid(unit);
+    }
+    for piece in pieces(&procs, *holder) {
+        if let Some(parent) = cgroup_of(piece.ppid, manager).filter(|path| made_here(path)) {
+            send(
+                &root.join(parent.trim_start_matches('/')),
+                &piece.pids,
+                warned,
+            );
+            continue;
+        }
+        let name = format!("work-{}-{}.scope", piece.root, piece.start);
+        let description = format!("{} ({}), work from {unit}", piece.comm, piece.root);
+        let result = Command::new("busctl")
+            .args(scope_call(&name, slice, &description, &piece.pids))
+            .stdout(Stdio::null())
+            .output();
+        match result {
+            Ok(output) if output.status.success() => {}
+            // A tree whose processes have all gone has nothing to move.
+            Ok(_)
+                if piece
+                    .pids
+                    .iter()
+                    .all(|pid| !Path::new(&format!("/proc/{pid}")).exists()) => {}
+            Ok(output) if !*warned => {
+                eprintln!(
+                    "Couldn't give {} ({}) a scope of its own: {}",
+                    piece.comm,
+                    piece.root,
+                    String::from_utf8_lossy(&output.stderr).trim()
+                );
+                *warned = true;
+            }
+            Err(error) if !*warned => {
+                eprintln!("Couldn't run busctl: {error}");
+                *warned = true;
+            }
+            _ => {}
+        }
+    }
+}
+
 #[expect(
     clippy::cast_possible_truncation,
     clippy::cast_sign_loss,
@@ -360,6 +534,7 @@ fn settings() -> Result<Settings, String> {
         busy_ms: 500,
         ticks: 2,
         every: Duration::from_millis(1000),
+        split: Vec::new(),
     };
     let mut args = std::env::args().skip(1);
     while let Some(flag) = args.next() {
@@ -369,6 +544,7 @@ fn settings() -> Result<Settings, String> {
             "--home" => settings.homes.push(value()?),
             "--keep" => settings.keep.push(value()?),
             "--jobs" => settings.jobs = value()?,
+            "--split" => settings.split.push(value()?),
             "--busy" => settings.busy_ms = value()?.parse().map_err(|_| "--busy is ms")?,
             "--ticks" => settings.ticks = value()?.parse().map_err(|_| "--ticks is a count")?,
             "--every" => {
@@ -409,6 +585,7 @@ fn run() -> Result<(), String> {
         ..Sorter::default()
     };
     let mut warned = false;
+    let mut holders: Vec<Option<u32>> = vec![None; settings.split.len()];
     loop {
         thread::sleep(settings.every);
         let now = uptime_ticks().ok_or("can't read /proc/uptime")?;
@@ -438,6 +615,10 @@ fn run() -> Result<(), String> {
                 pids.len()
             );
         }
+        // After the terminals' work is moved, so what moved is split too.
+        for (cgroup, holder) in settings.split.iter().zip(holders.iter_mut()) {
+            split(&root, &manager, cgroup, holder, &mut warned);
+        }
         sorter.finish(&alive, now);
     }
 }
@@ -462,6 +643,7 @@ mod tests {
             busy_ms: 500,
             ticks: 2,
             every: Duration::from_millis(1000),
+            split: vec!["jobs.slice/jobs.service".into()],
         }
     }
 
@@ -641,5 +823,113 @@ mod tests {
         let moves = looks(&mut sorter, &[frame(0), frame(90), frame(180)]);
         assert_eq!(moves[2].len(), 1);
         assert_eq!(moves[2][0].pids, vec![31]);
+    }
+
+    // jobs.service as two sessions' commands leave it: the holder, a shell
+    // pi 900 wrote there with the build it started, a subagent's pi with
+    // its own shell, and an orphan the user manager took in.
+    fn jobs_service() -> Vec<Sample> {
+        vec![
+            proc(5, 2, 5, "sleep", 0),
+            proc(40, 900, 40, "bash", 1),
+            proc(41, 40, 40, "cargo", 90),
+            proc(42, 41, 40, "rustc", 300),
+            proc(50, 901, 50, "pi", 20),
+            proc(51, 50, 51, "bash", 1),
+            proc(60, 2, 60, "git", 5),
+        ]
+    }
+
+    #[test]
+    fn each_command_written_into_jobs_is_a_piece_with_what_it_started() {
+        let pieces = pieces(&jobs_service(), Some(5));
+        let trees: Vec<(u32, Vec<u32>)> = pieces
+            .iter()
+            .map(|piece| (piece.root, piece.pids.clone()))
+            .collect();
+        assert_eq!(
+            trees,
+            vec![(40, vec![40, 41, 42]), (50, vec![50, 51]), (60, vec![60])]
+        );
+        assert_eq!(pieces[0].comm, "bash");
+        assert_eq!(pieces[0].ppid, 900);
+    }
+
+    #[test]
+    fn the_holder_stays_however_it_looks() {
+        let roots: Vec<u32> = pieces(&jobs_service(), Some(5))
+            .iter()
+            .map(|piece| piece.root)
+            .collect();
+        assert!(!roots.contains(&5), "{roots:?}");
+        // An orphan shares the holder's parent, so only the unit's word
+        // tells them apart.
+        assert!(roots.contains(&60), "{roots:?}");
+    }
+
+    #[test]
+    fn a_work_scope_goes_in_the_slice_its_unit_is_in() {
+        assert_eq!(
+            slice_and_unit("jobs.slice/jobs.service"),
+            Some(("jobs.slice/jobs.service", "jobs.slice", "jobs.service"))
+        );
+        assert_eq!(
+            slice_and_unit("jobs.slice/jobs-awaited.slice/awaited.service"),
+            Some((
+                "jobs.slice/jobs-awaited.slice/awaited.service",
+                "jobs-awaited.slice",
+                "awaited.service"
+            ))
+        );
+        assert_eq!(slice_and_unit("jobs.service"), None);
+        assert_eq!(slice_and_unit("jobs.slice/"), None);
+    }
+
+    #[test]
+    fn a_work_scope_goes_in_the_slice_named_for_it() {
+        assert_eq!(
+            slice_and_unit("jobs.slice/jobs.service=jobs-work.slice"),
+            Some(("jobs.slice/jobs.service", "jobs-work.slice", "jobs.service"))
+        );
+        assert_eq!(slice_and_unit("jobs.slice/jobs.service=work"), None);
+    }
+
+    #[test]
+    fn only_its_own_scopes_take_a_straggler() {
+        assert!(made_here("/jobs.slice/work-40-1234.scope"));
+        assert!(made_here("/jobs.slice/jobs-awaited.slice/work-7-1.scope"));
+        assert!(!made_here("/jobs.slice/jobs.service"));
+        assert!(!made_here("/app.slice/kitty-1-2.scope"));
+        assert!(!made_here("/jobs.slice/work-40-1234.scope/inner"));
+    }
+
+    #[test]
+    fn a_scope_is_asked_for_with_its_slice_and_every_process() {
+        let args = scope_call("work-40-7.scope", "jobs.slice", "bash (40)", &[40, 41, 42]);
+        let tail: Vec<&str> = args[6..].iter().map(String::as_str).collect();
+        assert_eq!(
+            tail,
+            vec![
+                "StartTransientUnit",
+                "ssa(sv)a(sa(sv))",
+                "work-40-7.scope",
+                "fail",
+                "3",
+                "Slice",
+                "s",
+                "jobs.slice",
+                "Description",
+                "s",
+                "bash (40)",
+                "PIDs",
+                "au",
+                "3",
+                "40",
+                "41",
+                "42",
+                "0",
+            ]
+        );
+        assert_eq!(&args[..3], ["--user", "--quiet", "call"]);
     }
 }
