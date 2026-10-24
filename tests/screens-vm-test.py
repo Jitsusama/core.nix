@@ -9,6 +9,7 @@ so they're meant to run in order.
 
 import json
 import shlex
+import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -112,3 +113,40 @@ with subtest("the margin's mark and dictation's bar come back with the screen"):
 # screen's EDID only when QEMU says its screens changed, so a forced detect brings the
 # connector back with an empty EDID, and desk-facts rightly says nothing of a screen with
 # none. A real DisplayPort replug reads the EDID afresh.
+
+
+def niri_answers(after: str) -> None:
+    """Fail, saying where each of niri's threads waits, unless niri answers."""
+    answered, _ = machine.execute(in_niri("timeout 10 niri msg --json layers"), timeout=30)
+    waits = ""
+    if answered != 0:
+        _, waits = machine.execute(
+            "for t in /proc/$(pgrep -o niri)/task/*; do"
+            ' echo "$(cat $t/comm): $(cat $t/wchan)"; cat $t/stack; done',
+            timeout=60,
+        )
+    assert answered == 0, f"niri stopped answering after {after}:\n{waits}"
+
+
+with subtest("a console switch away and back keeps them all"):
+    console = machine.succeed("cat /sys/class/tty/tty0/active").strip().removeprefix("tty")
+    machine.succeed(f"chvt 2 && sleep 2 && chvt {console}")
+    niri_answers("a console switch")
+    wait_for_surfaces("wallpaper", "launcher", "notifications", "margin", "dictation")
+
+with subtest("the machine sleeps and wakes at a key, and keeps them all"):
+    sleeps = machine.succeed("cat /sys/power/mem_sleep").strip()
+    assert "[s2idle]" in sleeps, f"the machine sleeps by {sleeps}, not as a laptop does"
+    # A key wakes a laptop, so the keyboard may wake the machine.
+    machine.succeed("for w in /sys/bus/serio/devices/*/power/wakeup; do echo enabled > $w; done")
+    machine.succeed("systemctl suspend")
+    machine.wait_for_console_text("PM: suspend entry", timeout=60)
+    # A key while it's still going to sleep would only stop it going, and
+    # the wait is the driver's, since the sleeping machine runs nothing.
+    time.sleep(5)
+    machine.send_key("shift")
+    machine.wait_for_console_text("PM: suspend exit", timeout=60)
+    slept = machine.succeed("journalctl --boot --identifier=systemd-sleep --output=cat")
+    assert "System returned from sleep" in slept, f"the machine never slept: {slept}"
+    niri_answers("a sleep")
+    wait_for_surfaces("wallpaper", "launcher", "notifications", "margin", "dictation")
