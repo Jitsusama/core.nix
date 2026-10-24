@@ -2338,6 +2338,16 @@ with subtest("a Wi-Fi network is joined from the launcher, a new one asking its 
     machine.succeed("rfkill unblock wifi")
 
 with subtest("a notice that came and went is found again in the launcher"):
+    # The notice the first notification's subtest left to go by itself,
+    # sent and let go here when that one hasn't run.
+    kept = as_account(
+        "find ~/.local/state/quickshell -name notices.json"
+        ' -exec grep -l \'"summary":"Build finished"\' {} + 2>/dev/null; true'
+    )
+    if not kept.strip():
+        with told("drawn notifications"):
+            as_account("notify-send 'Build finished' 'the laptop is ready'")
+        machine.wait_until_fails(in_session("niri msg layers | grep -q notifications"), timeout=30)
     # One its sender says not to keep isn't, though it's the newest match.
     as_account("notify-send --transient 'Build finished twice' 'not kept'")
     as_account("qs ipc call launcher toggle")
