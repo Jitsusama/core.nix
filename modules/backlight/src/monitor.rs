@@ -22,8 +22,10 @@
 //! only the latest level it was asked for: a move of many steps becomes as
 //! many writes as the monitor takes, never a queue of them.
 //!
-//! Monitors come and go as their buses do, which a watch on /dev hears, so
-//! nothing is looked for until one does.
+//! Monitors come and go as their buses do, which a watch on /dev hears, or
+//! as a connector's cable does, which the kernel's uevents say, since a
+//! connector's bus stays whether anything is on it. Nothing is looked for
+//! until one of them does.
 //!
 //! HP's Z27k G3 shows nothing during a boot with the laptop's lid shut unless
 //! its DisplayPort hot-plug detection is set to Always on, and a reset or a
@@ -58,6 +60,17 @@ unsafe extern "C" {
     fn ioctl(fd: c_int, request: c_ulong, ...) -> c_int;
     fn inotify_init1(flags: c_int) -> c_int;
     fn inotify_add_watch(fd: c_int, path: *const c_char, mask: u32) -> c_int;
+    fn socket(domain: c_int, kind: c_int, protocol: c_int) -> c_int;
+    fn bind(fd: c_int, address: *const NetlinkAddress, length: u32) -> c_int;
+}
+
+/// A netlink socket's address, as the kernel's `sockaddr_nl` lays it out.
+#[repr(C)]
+struct NetlinkAddress {
+    family: u16,
+    pad: u16,
+    pid: u32,
+    groups: u32,
 }
 
 /// The ioctl that says which address on the bus reads and writes go to.
@@ -102,6 +115,15 @@ const IN_CREATE: u32 = 0x100;
 const IN_DELETE: u32 = 0x200;
 /// Events were lost, so anything could have changed.
 const IN_Q_OVERFLOW: u32 = 0x4000;
+
+/// The netlink family, as an address holds it.
+const AF_NETLINK: u16 = 16;
+const SOCK_DGRAM: c_int = 2;
+const SOCK_NONBLOCK: c_int = 0o4000;
+const SOCK_CLOEXEC: c_int = 0o2_000_000;
+const NETLINK_KOBJECT_UEVENT: c_int = 15;
+/// The group the kernel's own uevents go to, rather than udev's.
+const KERNEL_UEVENTS: u32 = 1;
 
 /// A message from the host: who it's from, how long it is, what it says, and
 /// a checksum that counts the monitor's address too.
@@ -681,6 +703,68 @@ fn names_a_bus(events: &[u8]) -> bool {
     false
 }
 
+/// Whether a kernel uevent says a DRM connector's cable came or went.
+fn says_a_cable_moved(event: &[u8]) -> bool {
+    // The first field is the action and path; the rest are KEY=value.
+    let fields: Vec<&[u8]> = event.split(|byte| *byte == 0).skip(1).collect();
+    fields.contains(&&b"SUBSYSTEM=drm"[..]) && fields.contains(&&b"HOTPLUG=1"[..])
+}
+
+/// A socket that hears the kernel's uevents, which anyone may read.
+fn uevents() -> io::Result<AsyncFd<File>> {
+    // SAFETY: it takes only numbers.
+    let fd = unsafe {
+        socket(
+            c_int::from(AF_NETLINK),
+            SOCK_DGRAM | SOCK_NONBLOCK | SOCK_CLOEXEC,
+            NETLINK_KOBJECT_UEVENT,
+        )
+    };
+    if fd < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    // SAFETY: the descriptor was just made, and nothing else holds it.
+    let file = File::from(unsafe { OwnedFd::from_raw_fd(fd) });
+    let address = NetlinkAddress {
+        family: AF_NETLINK,
+        pad: 0,
+        pid: 0,
+        groups: KERNEL_UEVENTS,
+    };
+    let length = u32::try_from(std::mem::size_of::<NetlinkAddress>()).unwrap_or(u32::MAX);
+    // SAFETY: the address is a sockaddr_nl that outlives the call, and the
+    // length is its size.
+    if unsafe { bind(file.as_raw_fd(), &raw const address, length) } < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    // SAFETY: the File is moved into the AsyncFd, which owns it until it's
+    // dropped, and a File keeps one descriptor open for its life.
+    unsafe { AsyncFd::register_with_interest(file, Interest::READABLE) }.map_err(io::Error::from)
+}
+
+/// Reads all that's waiting on `source`, saying whether any of it passed
+/// `test`, or waits forever when there's no source to hear.
+async fn heard(source: Option<&AsyncFd<File>>, test: fn(&[u8]) -> bool) -> io::Result<bool> {
+    let Some(source) = source else {
+        return std::future::pending().await;
+    };
+    let mut ready = source.readable().await?;
+    // A uevent is at most a few KiB, and inotify's events are far smaller.
+    let mut read = [0; 8192];
+    let mut passed = false;
+    loop {
+        let mut file = ready.get_inner();
+        match file.read(&mut read) {
+            Ok(length) => passed |= test(&read[..length]),
+            Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
+                ready.clear_ready();
+                return Ok(passed);
+            }
+            Err(error) => return Err(error),
+        }
+    }
+}
+
 /// A watch on `dev` that wakes when a node is made, removed, or opened to
 /// someone.
 fn watch(dev: &Path) -> io::Result<AsyncFd<File>> {
@@ -712,6 +796,9 @@ pub struct Monitors {
     /// Each bus found, by name.
     buses: HashMap<String, Found>,
     watch: Option<AsyncFd<File>>,
+    /// The kernel's uevents, which say when a connector's cable comes or
+    /// goes: its bus stays in /dev either way, so the watch can't hear it.
+    cables: Option<AsyncFd<File>>,
 }
 
 /// A bus that reaches a monitor.
@@ -737,12 +824,16 @@ impl Monitors {
         let watch = watch(&dev)
             .inspect_err(|error| eprintln!("<4>can't hear monitors come and go: {error}"))
             .ok();
+        let cables = uevents()
+            .inspect_err(|error| eprintln!("<4>can't hear cables come and go: {error}"))
+            .ok();
         let mut monitors = Monitors {
             class: PathBuf::from("/sys/class/i2c-dev"),
             dev,
             level,
             buses: HashMap::new(),
             watch,
+            cables,
         };
         monitors.look();
         monitors
@@ -763,28 +854,23 @@ impl Monitors {
         }
     }
 
-    /// Waits for a bus to come, go or be opened to the seat, or forever when
-    /// that can't be heard.
+    /// Waits for a bus to come, go or be opened to the seat, or a
+    /// connector's cable to come or go, or forever when neither can be heard.
     pub async fn changed(&mut self) -> io::Result<()> {
-        let Some(watch) = &self.watch else {
-            return std::future::pending().await;
-        };
-        let mut events = [0; 4096];
         loop {
-            let mut ready = watch.readable().await?;
-            let mut heard = false;
-            loop {
-                let mut file = ready.get_inner();
-                match file.read(&mut events) {
-                    Ok(read) => heard |= names_a_bus(&events[..read]),
-                    Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
-                        ready.clear_ready();
-                        break;
+            // Each waits only on its source's readiness, so the one that
+            // loses the race has read nothing, and loses nothing.
+            let moved = tokio::select! {
+                moved = heard(self.watch.as_ref(), names_a_bus) => moved?,
+                moved = heard(self.cables.as_ref(), says_a_cable_moved) => {
+                    let moved = moved?;
+                    if moved {
+                        eprintln!("<7>a connector's cable came or went, so monitors are looked for");
                     }
-                    Err(error) => return Err(error),
+                    moved
                 }
-            }
-            if heard {
+            };
+            if moved {
                 return Ok(());
             }
         }
@@ -1274,5 +1360,48 @@ mod tests {
     #[test]
     fn lost_events_might_have_named_a_bus() {
         assert!(names_a_bus(&event(IN_Q_OVERFLOW, "")));
+    }
+
+    /// A kernel uevent as it comes off the netlink socket: its action and
+    /// path, then each of its fields, each ended by a NUL.
+    fn uevent(fields: &[&str]) -> Vec<u8> {
+        fields
+            .iter()
+            .flat_map(|field| [field.as_bytes(), b"\0"].concat())
+            .collect()
+    }
+
+    #[test]
+    fn a_connector_s_cable_coming_or_going_is_heard() {
+        let hotplug = uevent(&[
+            "change@/devices/pci0000:00/0000:00:02.0/drm/card0",
+            "ACTION=change",
+            "DEVPATH=/devices/pci0000:00/0000:00:02.0/drm/card0",
+            "SUBSYSTEM=drm",
+            "HOTPLUG=1",
+            "CONNECTOR=287",
+            "DEVNAME=dri/card0",
+            "SEQNUM=5123",
+        ]);
+        assert!(says_a_cable_moved(&hotplug));
+    }
+
+    #[test]
+    fn other_uevents_are_not_a_cable() {
+        let lease = uevent(&[
+            "change@/devices/pci0000:00/0000:00:02.0/drm/card0",
+            "ACTION=change",
+            "SUBSYSTEM=drm",
+            "LEASE=1",
+        ]);
+        let usb = uevent(&[
+            "add@/devices/pci0000:00/0000:00:14.0/usb3/3-1",
+            "ACTION=add",
+            "SUBSYSTEM=usb",
+            "HOTPLUG=1",
+        ]);
+        assert!(!says_a_cable_moved(&lease));
+        assert!(!says_a_cable_moved(&usb));
+        assert!(!says_a_cable_moved(b""));
     }
 }
