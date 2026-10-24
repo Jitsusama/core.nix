@@ -1,8 +1,9 @@
 # What the launcher shows behind each display's and USB sound card's row,
 # and in its camera answer, that it can't learn for itself: a display's EDID
 # (who made it and when, its size, native mode, refresh range, colour depth,
-# colours against sRGB, HDR) and what a monitor says over DDC/CI, which
-# the backlight daemon keeps beside them (../backlight); a card's formats,
+# colours against sRGB, HDR), its USB-C cable's data mode and power, and
+# what a monitor says over DDC/CI, which the backlight daemon keeps beside
+# them (../backlight); a card's formats,
 # clock, USB speed, firmware and, while it plays or records, what it runs
 # at; a USB camera's formats, field of view, USB speed, firmware and what
 # it streams; and a Bluetooth input device's link, buttons, wheels or keys
