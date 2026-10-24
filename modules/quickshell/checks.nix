@@ -15,22 +15,27 @@
   timedQml,
   ...
 }:
-{
-  # The notices, from the account's own shell files, draw a notice a program
-  # sends as a card on a layer of the account's real niri, with its own
-  # configuration, nested in a headless sway in the sandbox rather than in
-  # a machine (tests/nested-niri.sh, tests/notices-on-niri.sh).
-  the-notices-land-on-niri =
+let
+  # The account's notices on its real niri, with its own configuration,
+  # nested in a headless sway in the sandbox rather than in a machine
+  # (tests/nested-niri.sh): a script run against them, given the shell's
+  # folder, the logs and what more it's given. The account says what its
+  # shell does, as the desktop test's does, and counts as away after so
+  # many seconds of nothing typed or moved.
+  noticesOnNiri =
+    {
+      name,
+      away,
+      script,
+      given ? [ ],
+    }:
     let
-      # The graphical account, saying what its shell does, as the desktop
-      # test's does, and away only after an hour, since nobody types here
-      # but the check.
       home = account (bareNixos [
         self.nixosModules.graphical
         {
           home-manager.users.someone.jitsusama.quickshell = {
             reports = true;
-            notices.away = 3600;
+            notices.away = away;
           };
         }
       ]);
@@ -42,20 +47,8 @@
           lib.mapAttrsToList (name: file: "install -D -m 644 ${file.source} ${lib.escapeShellArg name}") files
         );
       inherit (pkgs) mesa;
-      # What Super+Shift+N runs, as the account's niri binds it: niri in a
-      # window reads keys through its own keymap, and no keyboard here types
-      # into it, so the check runs the bind's own command.
-      puttingAway =
-        let
-          bind = lib.findFirst (
-            bind: bind.chord == "Super+Shift+N"
-          ) (throw "Nothing puts the notices away.") home.jitsusama.niri.binds;
-          spawned = builtins.match "spawn (.*);" bind.action;
-        in
-        assert spawned != null;
-        lib.filter (word: word != "" && word != " ") (lib.splitString "\"" (lib.head spawned));
     in
-    pkgs.runCommandLocal "the-notices-land-on-niri"
+    pkgs.runCommandLocal name
       {
         nativeBuildInputs = [
           graphical.config.programs.niri.package
@@ -80,10 +73,41 @@
         ${copied niri}
         install -m 644 ${../../tests/notices.qml} quickshell/shell.qml
         ${lib.getExe pkgs.bash} ${../../tests/nested-niri.sh} niri/config.kdl logs \
-          ${lib.getExe pkgs.bash} ${../../tests/notices-on-niri.sh} quickshell logs \
-          ${lib.escapeShellArgs puttingAway}
+          ${lib.getExe pkgs.bash} ${script} quickshell logs ${lib.escapeShellArgs given}
         touch $out
       '';
+in
+{
+  # The notices draw a notice a program sends as a card on a layer niri
+  # lists, and Super+Shift+N puts away one that stays
+  # (tests/notices-on-niri.sh). Away only after an hour, since nobody types
+  # here but the check.
+  the-notices-land-on-niri = noticesOnNiri {
+    name = "the-notices-land-on-niri";
+    away = 3600;
+    script = ../../tests/notices-on-niri.sh;
+    # What Super+Shift+N runs, as the account's niri binds it: niri in a
+    # window reads keys through its own keymap, and no keyboard here types
+    # into it, so the check runs the bind's own command.
+    given =
+      let
+        bind = lib.findFirst (
+          bind: bind.chord == "Super+Shift+N"
+        ) (throw "Nothing puts the notices away.") (account graphical).jitsusama.niri.binds;
+        spawned = builtins.match "spawn (.*);" bind.action;
+      in
+      assert spawned != null;
+      lib.filter (word: word != "" && word != " ") (lib.splitString "\"" (lib.head spawned));
+  };
+
+  # A notice that comes while Joel's away waits, past the time its sender
+  # gave it (tests/notices-wait-while-away.sh). Away after a second, so he
+  # is before it comes.
+  the-notices-wait-while-joel-is-away = noticesOnNiri {
+    name = "the-notices-wait-while-joel-is-away";
+    away = 1;
+    script = ../../tests/notices-wait-while-away.sh;
+  };
 
   # A switch restarts Quickshell when any file it reads changes, so the shell
   # on screen is never the one from before the switch.
