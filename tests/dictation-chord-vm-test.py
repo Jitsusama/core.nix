@@ -60,3 +60,20 @@ with subtest("D alone, another key, or Super after D says nothing"):
     t.assertEqual(press("d+", "300", "d-"), [])
     t.assertEqual(press("leftmeta+", "a+", "300", "a-", "leftmeta-"), [])
     t.assertEqual(press("d+", "leftmeta+", "300", "leftmeta-", "d-"), [])
+
+with subtest("a keyboard unplugged mid-chord ends it once, and the next is heard afresh"):
+    # The stand-in keyboard goes when chord-keys exits, half a second after
+    # its last step, with both keys still down, as a dock's keyboard does
+    # when the cable comes out during dictation. What's heard then comes as
+    # the keyboard is taken down, after chord-keys has returned, so the line
+    # is waited for, then a moment more for a second one that mustn't come.
+    # The kernel lets a vanishing keyboard's keys go before its readers see
+    # it gone, so the chord most often ends on those key-ups, and otherwise
+    # on the daemon's own letting go when the read fails; either way, once.
+    before = len(machine.succeed(f"cat {heard}").splitlines())
+    machine.succeed("chord-keys leftmeta+ d+ 600")
+    machine.wait_until_succeeds(f"test $(wc -l < {heard}) -gt {before}", timeout=10)
+    machine.sleep(1)
+    ms = held(machine.succeed(f"cat {heard}").splitlines()[before:])
+    t.assertGreaterEqual(ms, 550)
+    t.assertLess(held(press("leftmeta+", "d+", "d-", "leftmeta-")), 400)
