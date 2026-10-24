@@ -6,7 +6,8 @@
 // typing finds it, after the open ones that match as well. Each wears its
 // status's glyph, and says its kind unless it's a quest, its priority while
 // it's open or when it was last touched once it's not, and the session
-// that has it loaded, if one does.
+// that has it loaded, if one does. The selected one reads its summary's
+// first paragraph below the rows, for what it's about.
 // Return goes to that session's window, or opens pi on it in a new
 // terminal, autoloaded as the harness's spawn does, in the folder the
 // harness would pick (quests.rs); the right arrow steps into what's known
@@ -111,6 +112,7 @@ Provider {
                 session ? session.address : ""]
                 .filter(part => part !== "").join(" \u00b7 "),
             note: quest.id,
+            reads: quest.summary ?? "",
             later: true,
             run: () => provider.go(quest),
             verbs: () => provider.verbs(quest)

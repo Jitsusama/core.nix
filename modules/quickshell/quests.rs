@@ -1,14 +1,17 @@
 //! The launcher's quests (launcher/Quests.qml): every quest in pi's quest
-//! store, read from the front matter and first heading of its README, as one
-//! JSON array on standard output. Each says its id, title, kind, parent,
-//! status, priority, rank, when it was last updated, and the folder pi
-//! would be opened in for it, chosen as the harness chooses a spawned
-//! session's: the newest of its trees still there, then the newest of its
-//! sessions' folders still there, then the quest's own folder.
+//! store, read from the front matter, first heading and summary of its
+//! README, as one JSON array on standard output. Each says its id, title,
+//! kind, parent, status, priority, rank, when it was last updated, the
+//! first paragraph of its summary, and the folder pi would be opened in
+//! for it, chosen as the harness chooses a spawned session's: the newest
+//! of its trees still there, then the newest of its sessions' folders still
+//! there, then the quest's own folder.
 //!
 //! The store is the folder given as the only argument. A README that can't
 //! be read, or has no front matter, is left out. It reads only as far as
-//! the heading, since the rest is the quest's story.
+//! the summary's first paragraph, since the rest is the quest's story, and
+//! a README whose first section after the heading isn't its summary has
+//! none.
 
 use std::env;
 use std::fmt::Write as _;
@@ -28,6 +31,7 @@ struct Quest {
     priority: String,
     rank: String,
     updated: String,
+    summary: String,
     trees: Vec<String>,
     sessions: Vec<(String, String)>,
 }
@@ -60,11 +64,21 @@ fn field<'a>(line: &'a str, name: &str) -> Option<&'a str> {
     line.strip_prefix(name)?.strip_prefix(':')
 }
 
-/// Reads a README's front matter and title, line by line.
+/// Where a README's reading is, past its front matter.
+#[derive(PartialEq)]
+enum Past {
+    FrontMatter,
+    Title,
+    Summary,
+}
+
+/// Reads a README's front matter, title and the first paragraph of its
+/// summary, line by line.
 fn parse(lines: impl Iterator<Item = String>) -> Option<Quest> {
     let mut quest = Quest::default();
     let mut fences = 0;
     let mut list = String::new();
+    let mut past = Past::FrontMatter;
     for line in lines {
         if line == "---" {
             fences += 1;
@@ -107,12 +121,39 @@ fn parse(lines: impl Iterator<Item = String>) -> Option<Quest> {
                     }
                 }
             }
-            _ => {
-                if let Some(title) = line.strip_prefix("# ") {
-                    quest.title = title.trim().to_string();
-                    break;
+            _ => match past {
+                Past::FrontMatter => {
+                    if let Some(title) = line.strip_prefix("# ") {
+                        quest.title = title.trim().to_string();
+                        past = Past::Title;
+                    }
                 }
-            }
+                // The first section opens the story, and only a summary
+                // is read.
+                Past::Title => {
+                    if line.starts_with('#') {
+                        let summary =
+                            line.starts_with("## ") && line.trim_end().ends_with("Summary");
+                        if !summary {
+                            break;
+                        }
+                        past = Past::Summary;
+                    }
+                }
+                // Its first paragraph, its lines run together.
+                Past::Summary => {
+                    let words = line.trim();
+                    if words.starts_with('#') || (words.is_empty() && !quest.summary.is_empty()) {
+                        break;
+                    }
+                    if !words.is_empty() {
+                        if !quest.summary.is_empty() {
+                            quest.summary.push(' ');
+                        }
+                        quest.summary.push_str(words);
+                    }
+                }
+            },
         }
     }
     (fences >= 2 && !quest.id.is_empty()).then_some(quest)
@@ -166,6 +207,7 @@ fn json(quest: &Quest, folder: &str) -> String {
         ("priority", &quest.priority),
         ("rank", &quest.rank),
         ("updated", &quest.updated),
+        ("summary", &quest.summary),
     ];
     let mut out = String::from("{");
     for (name, value) in fields {
@@ -238,7 +280,13 @@ trees:
 
 # Bootstrap the laptop to replace the old one
 
-## Summary
+## \u{1f4dc} Summary
+
+Make the laptop a full replacement
+for the old one.
+
+Not the first paragraph.
+
 # Not the title
 ";
 
@@ -253,6 +301,10 @@ trees:
         assert_eq!(quest.priority, "driving");
         assert_eq!(quest.rank, "1");
         assert_eq!(quest.updated, "2026-10-22");
+        assert_eq!(
+            quest.summary,
+            "Make the laptop a full replacement for the old one."
+        );
         assert_eq!(quest.trees, ["/first", "/second"]);
         assert_eq!(
             quest.sessions,
@@ -260,6 +312,21 @@ trees:
                 ("/old".to_string(), "2026-10-10T00:09:53.403Z".to_string()),
                 ("/new".to_string(), "2026-10-12T18:32:23.032Z".to_string())
             ]
+        );
+    }
+
+    #[test]
+    fn a_summary_is_only_the_first_section_after_the_title() {
+        let quest = |rest: &str| parse(lines(&format!("---\nid: Q\n---\n# Q\n{rest}"))).unwrap();
+        assert_eq!(quest("").summary, "");
+        assert_eq!(
+            quest("\n## Purpose\n\nWhy.\n\n## Summary\n\nWhat.\n").summary,
+            ""
+        );
+        assert_eq!(quest("\n## Summary\n\n## Purpose\n\nWhy.\n").summary, "");
+        assert_eq!(
+            quest("\n## Summary\nAt once,\n  and on.").summary,
+            "At once, and on."
         );
     }
 
@@ -297,7 +364,7 @@ trees:
         assert_eq!(
             json(&quest, "/f"),
             "{\"id\":\"Q\",\"title\":\"Say \\\"hi\\\"\\\\ now\\n\",\"kind\":\"\",\"parent\":\"\",\
-             \"status\":\"\",\"priority\":\"\",\"rank\":\"\",\"updated\":\"\",\"folder\":\"/f\"}"
+             \"status\":\"\",\"priority\":\"\",\"rank\":\"\",\"updated\":\"\",\"summary\":\"\",\"folder\":\"/f\"}"
         );
     }
 }
