@@ -139,6 +139,8 @@ nix build --override-input core path:$HOME/src/core.nix \
 - [Machines][2]: building a machine from core.nix.
 - [Installing][11]: a laptop from a blank disk to Secure Boot and a disk the
   TPM unlocks.
+- [Recovering][13]: what to do when the disk won't open, nothing boots, a
+  YubiKey is lost, the disk dies or the laptop is gone.
 - [Testing][6]: what the checks catch.
 - [The kernel][9]: the kernel core.nix builds for NixOS, and how to change it.
 - [Hardware][10]: each machine model core.nix supports, and what's left.
@@ -158,3 +160,4 @@ nix build --override-input core path:$HOME/src/core.nix \
 [10]: docs/hardware.md
 [11]: docs/installing.md
 [12]: docs/ergodox.md
+[13]: docs/recovering.md
