@@ -12,6 +12,10 @@
   a-faint-theme-is-refused = ''
     a theme with text under WCAG's 4.5:1 doesn't build
   '';
+  a-prompt-waits-for-a-person = ''
+    a D-Bus call from the account's shells, as run0 asks for polkit's prompt in, outlasts systemd's
+    25 seconds
+  '';
   a-quiet-file-says-nothing = ''
     Quickshell's FileView, told not to print errors, says nothing of a file that opens and refuses
     every read, as one not told still warns
