@@ -1164,7 +1164,10 @@ in
         order = 20;
         source = "clock";
         format = "ddd d MMM";
-        collapse = 30;
+        # Early, after the volume: the time, the battery, the network, the
+        # agents and the day's spend are what Joel looks to the launcher's
+        # foot for (2026-10-24), and the date is a word away.
+        collapse = 3;
       };
       battery = {
         order = 30;
@@ -1200,12 +1203,15 @@ in
       };
       # What AI use cost today against usual, where spend-watch runs
       # (modules/spend-watch), and a glyph in the margin while something
-      # wants a look. It gives way before the network.
+      # wants a look. It gives way before the network. It wears the
+      # agents' glyph, since a dollar sign before a dollar figure said
+      # nothing of what was spent on (Joel, 2026-10-24), and the launcher's
+      # foot draws it once for the two.
       spend = {
         order = 52;
         source = "spend";
         label = "ai";
-        sign = "cost";
+        sign = "agent";
         collapse = 5;
         mark = "spend";
       };

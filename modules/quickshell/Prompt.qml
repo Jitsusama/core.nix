@@ -33,6 +33,13 @@ Item {
     readonly property string said: capitals ? "caps lock" : aside
     // What's being acted on, each drawn as a chip: { text }.
     property var chips: []
+    // Whether the left arrow takes what's typed away whole before it goes
+    // back out, as the launcher's levels want: what's typed there is a few
+    // letters narrowing a list, never text worth walking through, so the
+    // arrow is the one key for "not that", and a second press goes up.
+    property bool leftClears: false
+    // Says how far an aside may run, so a long one never crowds what's typed.
+    property real asideMost: width * 0.4
     property alias text: input.text
 
     // Where what's typed has to end: before the aside, and before caps
@@ -47,8 +54,8 @@ Item {
     signal completed
     signal cancelled
     // The right arrow past the end of what's typed, and the left arrow before
-    // its start or Backspace with nothing typed: into what's selected, and
-    // back out.
+    // its start (or anywhere, with leftClears, once what's typed is gone) or
+    // Backspace with nothing typed: into what's selected, and back out.
     signal forward
     signal backward
 
@@ -79,6 +86,8 @@ Item {
         anchors.right: parent.right
         anchors.rightMargin: Theme.space.l
         anchors.verticalCenter: parent.verticalCenter
+        width: Math.min(implicitWidth, prompt.asideMost)
+        elide: Text.ElideRight
         text: prompt.said
         color: Theme.muted
         font.family: Theme.mono.family
@@ -184,6 +193,9 @@ Item {
             const none = input.selectionStart === input.selectionEnd;
             if (event.key === Qt.Key_Right && none && input.cursorPosition === input.text.length) {
                 prompt.forward();
+                event.accepted = true;
+            } else if (event.key === Qt.Key_Left && prompt.leftClears && input.text !== "") {
+                input.text = "";
                 event.accepted = true;
             } else if ((event.key === Qt.Key_Left && none && input.cursorPosition === 0)
                 || (event.key === Qt.Key_Backspace && input.text === "")) {

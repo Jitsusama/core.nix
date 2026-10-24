@@ -98,7 +98,7 @@ with subtest("the launcher finds a pi session by its quest, and goes to its wind
     # The launcher's foot counts it, working, as its presence says.
     since = mark()
     as_account("qs ipc call launcher toggle")
-    reported("stands ", lambda rest: "\u03c0 1 working" in rest, since)
+    reported("stands ", lambda rest: "1 working" in rest, since)
     launcher_ready()
     # Its collection by what it's called, then the session named
     # whole, as its README is, not as its window's title.

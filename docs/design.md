@@ -46,8 +46,8 @@ one is answered for it in [the surfaces table][surfaces].
 7. **No hidden modes.** A mode always shows that it's on, and Escape always
    leaves it.
 8. **One gesture per meaning.** Arrows move, Enter opens or confirms, the
-   left arrow backs out one step, Escape leaves, typing filters, and each
-   layer has one "what's here" key.
+   left arrow takes away what's typed and then backs out one step, Escape
+   leaves, typing filters, and each layer has one "what's here" key.
 9. **Collapses on purpose.** As space shrinks, a surface gives way in a
    written order, never by truncation.
 10. **The theme, whole.** Type, colour, glyphs, space and motion come from
@@ -466,18 +466,21 @@ it. Owners go by layer:
 The margin mark is the one always-visible desktop element: a glyph at the
 top centre for each thing that's true (Shape and Kinds), nothing at all when nothing is
 true, so the screen is calm by default. The launcher's foot is the other
-glance: one line, its keys on the right, and on the left what the
-selection has to say or, when it says nothing, how things stand. It's the
+glance: one line, its keys on the right, and on the left how things
+stand, always, whatever's typed, held or asked, since Joel looks there
+for the battery and the network; what the selection has to say goes at
+the field's right end instead. It's the
 quietest thing in the launcher, below the field, the rows and the keys:
 all muted but a fact that wants Joel, each fact its glyph and the least
 that tells him something, as a key hint is its key and what it does, at
 the hints' size and step. The battery is its charge, and its time left
 while it drains; the network and the volume are their glyph alone while
-all is well; pi is what's moving. At home it's the whole glance, the
-time, the date, the battery, the network, the volume, the day's AI spend
-and pi; with something typed, held or asked, only the time and what wants
-him. Short of room, each says its least first, the battery its charge
-alone, and then the rest give way by collapse rank, and each
+all is well; the agents are what's moving. It's the time, the date, the
+battery, the network, the volume, the day's AI spend and the agents, the
+last two both AI's and so under the agents' glyph, drawn once for both.
+Short of room, each says its least first, the battery its charge
+alone, and then the rest give way by collapse rank, the volume and
+the date first, since they're not what Joel looks there for, and each
 fact's detail is a word away ("battery", Wi-Fi, Sound, Agents). Both draw from the same pieces,
 so a piece with a mark is in each. The overview draws nothing of the
 shell's own: it's for finding windows (2026-10-21, at Joel's word: "having
@@ -528,7 +531,7 @@ works the same way everywhere.
   slip teaches nothing: another row takes the place only when it's picked
   twice running. Something that can't be taken back, such as powering off,
   is learned only once its first word is typed whole. When fewer letters
-  would do, the footer says so ("sl is enough"), so the habit gets
+  would do, the field's end says so ("sl is enough"), so the habit gets
   quicker by itself, and there are no aliases to set up or remember.
 - **One way of naming.** A thing is its own name ("Slack"); a set is a
   plural noun ("Windows"); an act says what it does to what, in sentence
@@ -552,11 +555,15 @@ works the same way everywhere.
   one each time it opens, drawn from what the providers can answer; Tab
   takes it.
 - **Every row is a thing with verbs.** The right arrow at the end of the line
-  steps into the selected row: what can be done to it, searched the same way,
-  each with its chord, and a verb needing a target asks for it in the same
-  field. What's held shows as chips; the left arrow steps back out, and
-  Escape always closes. The footer names what Return does and where the
-  arrows go.
+  steps into the selected row, and so does Tab when the row holds more, so a
+  few letters reach inside a thing from anywhere: what can be done to it,
+  searched the same way, each with its chord, and a verb needing a target
+  asks for it in the same field. What was typed found the row, so stepping
+  in takes it away, and everything inside shows. What's held shows as
+  chips. The left arrow takes away what's typed, whole, and with nothing
+  typed steps back out, putting back what was typed before with the same
+  row selected; Backspace in an empty field does the same. Escape always
+  closes. The foot names what Return does and where the arrows go.
 - **Answers first.** A sum is answered in grey right after what's typed,
   and that's its only home. A base, a measure in another unit, a colour in
   its other forms, an address or network, a hardware address, money, the
@@ -573,16 +580,16 @@ works the same way everywhere.
   it, and so does the theme's nearest pigment. Return copies it, Tab puts
   a sum in place of the question, and the right arrow steps into an
   answer's parts, each copied the same way. A level typed after its name, "brightness 40" or "volume
-  40", is an answer that does: Return sets it. The footer says where an
-  answer came from.
+  40", is an answer that does: Return sets it. The field's end says where
+  an answer came from.
   Nothing leaves the machine unless the question needs the network, never
   for a private address, and never with the launcher's `lookups` off.
 - **Large sets are one row each.** The clipboard's history, past notices
   and the Wi-Fi networks in reach are too many to mix into the search: each
   that has a match adds one row, its best match with a count of the rest,
   so there's no haystack and no mode to enter first. Return uses that
-  match; the right arrow sees all of them, with what was typed still
-  searching. The row sits below the other matches. Emoji add none, since a
+  match; the right arrow sees all of them, and what's typed then searches
+  them afresh. The row sits below the other matches. Emoji add none, since a
   name like what was typed ("turkey" for "tu") is a row to rule out; they
   are found in their own place. A collection is found whole by its name or
   what a person would call it ("audio" is Sound, "notifications" the
@@ -951,7 +958,7 @@ by them isn't done.
 | The terminal                              | kitty                    | monospace      |        |        |           |         |          |
 | The prompt                                | prompt, kitty            | monospace      | where Joel is, told from the nearest root (the root in text, the folders between muted, the folder he's in strong); the glyph where his keys go, in the accent, red after a failure, # in gold as root | another machine, @ and its name; a rebase, merge or pick under way, a rebase drawn as its steps, red while a conflict waits; a development shell and jobs as glyphs; a long command's time; the branch, muted, with a mark for unsaved work and one for unpushed; over ssh in kitty, the window a little towards the machine hue | git status, and a wider window | nothing | laid out per prompt, never per keystroke: a long run's time, the shell's glyphs, the branch's middle, the path's middle, the branch to its glyph, the right side, then what's under way to its glyph, the more mark wherever something's hidden; the left keeps to a third of the window; zsh clears the right side once typing reaches it |
 | Terminal programs                         | each tool's module       | monospace      |        |        |           |         |          |
-| Neovim                                    | neovim                   | monospace      | the status line's one line at the bottom, on Neovim's own background: the file told from its root as the prompt tells a folder (the root in text, the folders between muted, the file strong), or a buffer's kind by name (help, terminal, quickfix, a plugin's window) | a mark while the buffer is unsaved, a padlock on a file that can't be changed; what git is in the middle of, drawn as the prompt draws it; the mode, in the accent, whenever it isn't Normal; what's selected, in lines or characters, or which match of a search; errors and warnings, each its mark and count; a language server at work; π while an agent is paired; the branch, muted, with the prompt's marks for unsaved and unpushed work; a tab line only with two tabs or more | the problems list, the outline, git's status | nothing | the language server's words, the branch's middle, the path's middle, the branch to its glyph, what's under way to its glyph, the path to the file's name, the right side but for the problems, then the name's own middle; the more mark wherever something's hidden |
+| Neovim                                    | neovim                   | monospace      | the status line's one line at the bottom, on Neovim's own background: the file told from its root as the prompt tells a folder (the root in text, the folders between muted, the file strong), or a buffer's kind by name (help, terminal, quickfix, a plugin's window) | a mark while the buffer is unsaved, a padlock on a file that can't be changed; what git is in the middle of, drawn as the prompt draws it; the mode, in the accent, whenever it isn't Normal; what's selected, in lines or characters, or which match of a search; errors and warnings, each its mark and count; a language server at work; the agents' glyph while an agent is paired; the branch, muted, with the prompt's marks for unsaved and unpushed work; a tab line only with two tabs or more | the problems list, the outline, git's status | nothing | the language server's words, the branch's middle, the path's middle, the branch to its glyph, what's under way to its glyph, the path to the file's name, the right side but for the problems, then the name's own middle; the more mark wherever something's hidden |
 | pi                                        | its theme, its harness   | monospace      | the status line's one line at the bottom: where pi works, told from its root as the prompt tells a folder (the root in text, the folders between muted, the folder strong); the model, muted; context's mark and reading, and what the next turn costs | what git is in the middle of, drawn as the prompt draws it; how hard the model thinks, its mark in the level's colour and the word muted; each extension's mark while its state holds; the panel's height when it isn't the usual one; the session's total; the branch, muted, with the prompt's marks for unsaved and unpushed work | each mark's own command (`/guards`, `/jobs`), `/settings` | nothing | the total, the branch's middle, the path's middle, context to a share, the model to its short name, how hard it thinks, the branch to its glyph, what's under way to its glyph, the path to the folder's name, the model, then the name's own middle; the next turn's cost never; the more mark wherever something's hidden |
 
 Where a surface can't take the design (web pages in a browser, a chat app's

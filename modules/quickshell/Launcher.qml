@@ -570,8 +570,9 @@ Scope {
         held = held.concat([Object.assign(here(), { row: row, rows: into })]);
         if (row.from)
             row.from.opened();
-        // A collection is stepped into with what was typed still searching it.
-        restart(row.from ? typed : "");
+        // What was typed found the row, so it goes: inside, everything the row
+        // holds shows, and the left arrow puts it back on the way out.
+        restart("");
         return true;
     }
 
@@ -953,8 +954,8 @@ Scope {
                     || !(root.answer && root.answer.asking)
             },
             kind: root.kind,
-            footer: foot.glancing ? "" : note.said,
-            glance: foot.glancing ? standing.said : ""
+            footer: foot.said,
+            glance: standing.said
         });
     }
 
@@ -1128,12 +1129,18 @@ Scope {
                         hint: root.held.length === 0 ? "what next?"
                             : root.held[root.held.length - 1].row.ask ?? "what to do?"
                         ghost: root.completion
-                        // At home, something to try; elsewhere, where the
-                        // selection is, once there's more than fits.
-                        // The row says what it is, so this doesn't.
+                        // At home, something to try; elsewhere what the
+                        // selection has to say, since the foot always says
+                        // how things stand; else where the selection is,
+                        // once there's more than fits. The row says what
+                        // it is, so this doesn't.
                         aside: root.atHome && root.example !== "" ? `try  ${root.example}`
+                            : foot.said !== "" ? foot.said
                             : root.matches.length > root.rows && root.current >= 0
                                 ? `${root.current + 1} of ${root.matches.length}` : ""
+                        // What's typed narrows a list, so the left arrow
+                        // takes it away whole before it steps back out.
+                        leftClears: true
                         onTextChanged: root.search(text)
                         onAccepted: below => root.asking ? root.give()
                             : root.run(root.selected, below)
@@ -1148,6 +1155,12 @@ Scope {
                             else if (root.question !== ""
                                 && (root.current === -1 || root.selected?.answered))
                                 text = root.question;
+                            // A row that holds more is stepped into, so a
+                            // few letters and Tab reach inside a thing from
+                            // anywhere, as the right arrow would.
+                            else if (root.typed !== "" && root.current !== -1
+                                && root.enter(root.matches[root.current]))
+                                return;
                             else if (root.current !== -1 || !root.answer)
                                 text = text + root.completion;
                             // An answer that does something has nothing to
@@ -1317,118 +1330,96 @@ Scope {
                     // The foot, one line, the one place that teaches, so the
                     // rows stay clean. On the right, what Return does here,
                     // Shift+Return where it can, and where the arrows step.
-                    // On the left, what the selection has to say: why it's
+                    // How things stand, always, on the left, and the keys on
+                    // the right. What the selection has to say (why it's
                     // first when learning put it there, where a held thing
-                    // is, where an answer came from; and when it says
-                    // nothing, how things stand, which is the launcher's
-                    // glance at the desktop.
+                    // is, where an answer came from) is said at the field's
+                    // right end instead, so the glance never gives way to
+                    // it: Joel often didn't see the battery or the network.
                     Item {
                         id: foot
 
                         readonly property var choice: root.selected ?? root.asking
-                        // The glance while nothing's typed, held or asked,
-                        // and whenever the selection has nothing to say.
-                        readonly property bool glancing: note.said === ""
-                            || (root.typed === "" && root.held.length === 0 && root.asking === null)
                         // The room the left has, short of the keys.
                         readonly property real room: keys.x - Theme.space.xl - Theme.space.l
+
+                        // An answer's footer says where it came from.
+                        readonly property string said: !choice ? ""
+                            : choice.state ? choice.state()
+                            : (choice.note ?? "") !== "" ? choice.note
+                            : choice.plain && root.answer ? root.answer.note ?? ""
+                            : root.held.length > 0 ? root.held[0].row.context ?? ""
+                            // A thing's row says its kind where a chord
+                            // would be, so its chord is taught here.
+                            // What's typed is longer than it need be.
+                            : root.enough(choice) !== "" ? `${root.enough(choice)} is enough`
+                            : root.kindOf(choice) !== "" && (choice.chord ?? []).length > 0
+                                ? `next time ${root.chordText(choice.chord)}`
+                            : ""
 
                         width: parent.width
                         height: Theme.space.xxl + Theme.space.s
 
-                        Text {
-                            id: note
-                            x: Theme.space.l
-                            anchors.verticalCenter: parent.verticalCenter
-                            width: keys.x - x - Theme.space.xl
-                            elide: Text.ElideRight
-
-                            // An answer's footer says where it came from.
-                            readonly property string said: !foot.choice ? ""
-                                : foot.choice.state ? foot.choice.state()
-                                : (foot.choice.note ?? "") !== "" ? foot.choice.note
-                                : foot.choice.plain && root.answer ? root.answer.note ?? ""
-                                : root.held.length > 0 ? root.held[0].row.context ?? ""
-                                // A thing's row says its kind where a chord
-                                // would be, so its chord is taught here.
-                                // What's typed is longer than it need be.
-                                : root.enough(foot.choice) !== ""
-                                    ? `${root.enough(foot.choice)} is enough`
-                                : root.kindOf(foot.choice) !== ""
-                                    && (foot.choice.chord ?? []).length > 0
-                                    ? `next time ${root.chordText(foot.choice.chord)}`
-                                : ""
-                            // What it said last, kept while it fades out.
-                            property string drawn: ""
-                            onSaidChanged: {
-                                if (note.said !== "")
-                                    note.drawn = note.said;
-                            }
-                            Component.onCompleted: {
-                                note.drawn = note.said;
-                            }
-
-                            text: note.drawn
-                            color: Theme.muted
-                            font.family: Theme.mono.family
-                            font.pointSize: Theme.mono.large
-                            opacity: foot.glancing ? 0 : 1
-
-                            Behavior on opacity {
-                                NumberAnimation {
-                                    duration: Theme.motion.short
-                                }
-                            }
-                        }
-
                         // How things stand, the quietest thing here: the
                         // facts the margin's pieces hold that are always
                         // true (the time, the date, the battery, the
-                        // network, the volume, the day's AI spend, pi),
-                        // each its glyph and the least that tells Joel
-                        // something, as a key hint is its key and what it
-                        // does, at the hints' size and step, all muted
-                        // but a fact that wants him, which wears its
-                        // colour. At home it's the whole glance; with
-                        // something typed, held or asked, only what never
-                        // gives way and what wants him, so it never pulls
-                        // the eye from the rows. The rest give way by
-                        // collapse rank, lowest first, as room runs short.
+                        // network, the volume, the day's AI spend, the
+                        // agents), each its glyph and the least that
+                        // tells Joel something, as a key hint is its key
+                        // and what it does, at the hints' size and step,
+                        // all muted but a fact that wants him, which
+                        // wears its colour. It's the same whatever's
+                        // typed, held or asked, so it's always where he
+                        // looks for it; the facts give way by collapse
+                        // rank, lowest first, as room runs short. Two
+                        // facts side by side under one glyph (the day's
+                        // AI spend and the agents, both AI's) wear it
+                        // once.
                         Row {
                             id: standing
 
-                            readonly property bool home: root.typed === "" && root.held.length === 0
-                                && root.asking === null
                             readonly property var facts: Facts.all
                                 .filter(fact => fact.entry.tier !== "when" && fact.piece
-                                    && fact.piece.present && fact.piece.value !== ""
-                                    && (home || fact.piece.wants || fact.entry.collapse === null))
-                                .map(fact => {
-                                    const sign = fact.piece.sign !== "" ? Theme.glyph[fact.piece.sign] ?? "" : "";
-                                    const told = words => [sign, words].filter(part => part !== "").join(" ");
-                                    return {
-                                        entry: fact.entry,
-                                        said: told(fact.piece.glance),
-                                        least: told(fact.piece.least),
-                                        piece: fact.piece
-                                    };
-                                })
-                                .filter(fact => fact.said !== "")
+                                    && fact.piece.present && fact.piece.value !== "")
+                                .map(fact => ({
+                                    entry: fact.entry,
+                                    sign: fact.piece.sign !== "" ? Theme.glyph[fact.piece.sign] ?? "" : "",
+                                    glance: fact.piece.glance ?? "",
+                                    least: fact.piece.least ?? "",
+                                    piece: fact.piece
+                                }))
+                                // The network's glyph alone says all is well.
+                                .filter(fact => fact.sign !== "" || fact.glance !== "")
+
+                            // Each fact as it reads, its glance or its least,
+                            // among those kept: a glyph that the fact before
+                            // wears too is drawn once, and a fact left with
+                            // no words then says nothing.
+                            function told(facts, field) {
+                                return facts.map((fact, index) => {
+                                    const shared = index > 0 && fact.sign !== "" && facts[index - 1].sign === fact.sign;
+                                    const said = [shared ? "" : fact.sign, fact[field]].filter(part => part !== "").join(" ");
+                                    return Object.assign({}, fact, { said: said });
+                                }).filter(fact => fact.said !== "");
+                            }
+
                             // Short of room, every fact says its least before
                             // any gives way.
                             readonly property var kept: {
                                 const wide = facts => facts.reduce((sum, fact) => sum + measure.advanceWidth(fact.said), 0)
                                     + Math.max(0, facts.length - 1) * spacing;
-                                if (wide(facts) <= foot.room)
-                                    return facts;
-                                let kept = facts.map(fact => Object.assign({}, fact, { said: fact.least }));
+                                const whole = told(facts, "glance");
+                                if (wide(whole) <= foot.room)
+                                    return whole;
+                                let left = facts;
                                 for (;;) {
-                                    const ranks = kept.map(fact => fact.entry.collapse)
+                                    const kept = told(left, "least");
+                                    const ranks = left.map(fact => fact.entry.collapse)
                                         .filter(rank => rank !== null && rank !== undefined);
                                     if (wide(kept) <= foot.room || ranks.length === 0)
                                         return kept;
                                     const lowest = Math.min(...ranks);
-                                    kept = kept.filter(fact => fact.entry.collapse !== lowest);
+                                    left = left.filter(fact => fact.entry.collapse !== lowest);
                                 }
                             }
                             // As it's drawn, for a test.
@@ -1437,13 +1428,6 @@ Scope {
                             x: Theme.space.l
                             anchors.verticalCenter: parent.verticalCenter
                             spacing: keys.spacing
-                            opacity: foot.glancing ? 1 : 0
-
-                            Behavior on opacity {
-                                NumberAnimation {
-                                    duration: Theme.motion.short
-                                }
-                            }
 
                             FontMetrics {
                                 id: measure
@@ -1483,7 +1467,10 @@ Scope {
                                     keys.push(["\u21e7\u21b5", "below"]);
                                 if ((root.held.length === 0 || root.collecting) && choice.verbs)
                                     keys.push(["\u2192", choice.from ? "see all" : "more"]);
-                                if (root.held.length > 0)
+                                // The left arrow takes what's typed first, then goes back.
+                                if (root.typed !== "")
+                                    keys.push(["\u2190", "clear"]);
+                                else if (root.held.length > 0)
                                     keys.push(["\u2190", "back"]);
                                 if (root.atHome && root.example !== "")
                                     keys.push(["\u21e5", "try it"]);

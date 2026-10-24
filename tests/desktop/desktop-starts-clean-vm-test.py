@@ -163,11 +163,17 @@ with subtest("the overview draws nothing of the shell's, and the launcher says h
         )
     )
     photograph("launcher-standing")
-    # Typing narrows it to what never gives way, the time, so it
-    # never pulls the eye from the rows; here what's typed finds
-    # nothing, so no row's note takes its place.
+    # Typing leaves it as it was, so how things stand is always where
+    # Joel looks for it, a row's note going to the field's end instead.
     type_in("zqxj")
-    launcher_until(lambda shown: re.fullmatch(r"\d\d:\d\d", shown["glance"]))
+    launcher_until(
+        lambda shown: (
+            shown["typed"] == "zqxj"
+            and re.match(r"\d\d:\d\d  ", shown["glance"])
+            and f"\U000f0079 {charge}%" in shown["glance"]
+            and "\U000f0200" in shown["glance"]
+        )
+    )
     photograph("launcher-glance-typing")
     machine.send_key("esc")
     machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
