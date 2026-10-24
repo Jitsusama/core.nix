@@ -17,7 +17,6 @@ Piece {
     hue: "voice"
     value: `${missed.length} waiting`
     title: "Notices"
-    badge: String(missed.length)
     hint: missed.length === 1 ? "A notice came in" : `${missed.length} notices came in`
     context: senders.length === 0 ? ""
         : senders.length === 1 ? `from ${senders[0]}`

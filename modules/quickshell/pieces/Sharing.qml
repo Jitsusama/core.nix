@@ -19,6 +19,7 @@ Piece {
     }
 
     active: casts.length > 0
+    kind: "onAir"
     value: seen.length === 1 ? seen[0] : `${seen.length} things`
     title: "Sharing"
     hint: seen.length === 1 ? `Sharing ${seen[0]}` : `Sharing ${seen.length} things`

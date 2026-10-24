@@ -998,6 +998,24 @@
       touch $out
     '';
 
+  # Every glyph in the margin stands the same height on the gap's middle
+  # line, however tall its font draws it, and they line up from the corner
+  # by how much each asks, in the colour that says so, as tests/marks.qml
+  # holds them.
+  the-margins-glyphs-stand-level =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "the-margins-glyphs-stand-level" { } ''
+      cp ${../../tests/marks.qml} marks.qml
+      cp ${./Marks.js} Marks.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml marks.qml
+      touch $out
+    '';
+
   # Whether Joel's in a Tuple call comes from the daemon's log, which only a
   # real call writes, so tests/tuple.qml gives Tuple.js lines like its own:
   # what starts a call, what ends one, when it began, and a call's link.

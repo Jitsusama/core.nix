@@ -62,14 +62,14 @@ in
     # first letter typed after the chord (Quickshell's home.nix).
     action = ''spawn "launcher-say" "toggle";'';
   }
-  # The margin's drawer: what's on, Keep Awake or do not disturb or the mic
-  # muted, and what can be done about it. O is a home key, under the right
-  # hand while the left thumb holds Super.
+  # What the margin's glyphs are, in words, in the launcher: Keep Awake or do
+  # not disturb or the mic muted, and what can be done about each. O is a
+  # home key, under the right hand while the left thumb holds Super.
   {
     chord = "Super+O";
     does = "Show what's on";
-    also = "margin status drawer";
-    action = ''spawn "qs" "ipc" "call" "margin" "toggle";'';
+    also = "margin status glyphs";
+    action = ''spawn "launcher-say" "collection" "on";'';
   }
   # The launcher's largest collections, each opened straight. Tab is the one
   # used last: every other window, that one first, so Super+Tab and Return

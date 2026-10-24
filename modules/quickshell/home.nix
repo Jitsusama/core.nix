@@ -57,6 +57,7 @@ let
     "Choice.qml"
     "Chord.qml"
     "Margin.qml"
+    "Marks.js"
     "Notifications.qml"
     "Music.qml"
     "Music.js"
@@ -361,11 +362,9 @@ let
         clipboard = nerd "f0a38";
         emoji = nerd "f01f5";
         notices = nerd "f009c";
+        on = nerd "f1513";
       }
       .${lib.last run} or (nerd "f097b")
-    # The margin's drawer, which hangs from the top of the screen.
-    else if program == "qs" && lib.elem "margin" run then
-      nerd "f1513"
     else if program == "qs" && lib.elem "keyboard" run then
       nerd "f030c"
     else
@@ -490,6 +489,7 @@ let
     keyboard = ./launcher/Keyboard.qml;
     clipboard = ./launcher/Copies.qml;
     notices = ./launcher/PastNotices.qml;
+    on = ./launcher/WhatsOn.qml;
     wifi = ./launcher/Wireless.qml;
     sound = ./launcher/Sound.qml;
     bluetooth = ./launcher/Accessories.qml;
@@ -1052,6 +1052,12 @@ in
         source = "runs";
         weight = 0.9;
       };
+      # The margin's glyphs in words, opened by Super+O or a glyph's click,
+      # not shown in a search.
+      on = {
+        order = 113;
+        source = "on";
+      };
       # Opened by its own chord, not shown in a search.
       shortcuts = {
         order = 120;
@@ -1113,7 +1119,7 @@ in
         mark = "awake";
       };
       # What AI use cost today against usual, where spend-watch runs
-      # (modules/spend-watch), and a pull in the margin while something
+      # (modules/spend-watch), and a glyph in the margin while something
       # wants a look. It gives way before the network.
       spend = {
         order = 52;
@@ -1135,7 +1141,7 @@ in
         # In the margin while a session wants Joel.
         mark = "agent";
       };
-      # What's on only now and then, each also a pull in the margin while
+      # What's on only now and then, each also a glyph in the margin while
       # it's true (Margin.qml), in the order the overview gives them.
       notices = {
         order = 54;
@@ -1370,6 +1376,9 @@ in
               readonly property int border: ${toString shape.border}
               readonly property int radius: ${toString shape.radius}
               readonly property int inset: ${toString shape.inset}
+              // The gap niri leaves between windows and round the screen's
+              // edge, which the margin's glyphs stand in.
+              readonly property int gap: ${toString shape.gap}
               // A part's corners: the whole's radius less its border and the
               // inset, so the curves run parallel.
               readonly property int inner: ${toString inner}

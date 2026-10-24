@@ -12,13 +12,14 @@
 // Its settings from Nix, its format or its thresholds, are in `settings`.
 //
 // A piece with a mark is also drawn in the margin while it's true
-// (Margin.qml): its mark in the drawer, a short `badge` beside it, the
-// `hint` said when it's pointed at, and its panel, which is the launcher
-// holding it: its `title` in a chip, how it stands (`value`), what can be
-// done (`actions`, launcher rows that run with the margin's `shell`) and
-// what more there is to know (`context`). It `wants` Joel when it needs
-// him now, and only then wears its kind's colour (`hue`), or its role's
-// when that isn't plain text.
+// (Margin.qml), as its mark alone, placed and coloured by its `kind` and
+// whether it's needed `now`. The launcher's What's on says it in words
+// (launcher/WhatsOn.qml): its `title`, how it stands (`value`), what more
+// there is to know (`context`), and what can be done (`actions`, launcher
+// rows that run with the launcher as `shell.launcher`); `hint` is the
+// sentence that says it whole. It `wants` Joel when he should act on it,
+// and the launcher's foot then wears its kind's colour (`hue`), or its
+// role's when that isn't plain text.
 import QtQuick
 
 Item {
@@ -39,11 +40,17 @@ Item {
     // Its glance cut to the least of all, for a glance short of room.
     property string least: glance
 
-    property string badge: ""
     property string hint: value
     property string title: settings.label ?? ""
     property string context: ""
     property bool wants: false
+    // How much it asks of Joel while it's true, which places its mark and
+    // its colour: on air (`onAir`) while something of his reaches others,
+    // a camera, a share, a recording, a call; `wants` while it needs him;
+    // `leftOn` for a mode he set and might forget. And whether it needs
+    // him now, not soon (`now`): the battery about to die, a call ringing.
+    property string kind: wants ? "wants" : "leftOn"
+    property bool now: false
     property string hue: "machine"
     // { glyph, name, chord, run(shell) }
     property var actions: []

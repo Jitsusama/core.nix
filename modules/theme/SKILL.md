@@ -86,8 +86,8 @@ constrain".
   without a wobble.
 - **Whimsy.** The warmth that keeps minimalism from going cold: glyphs in
   their kind's colour, the padlock beside the password dots, a strong
-  picture behind everything, pulls hanging from the screen's edge like a
-  drawer's handles, a suggestion in the field that changes each time. It
+  picture behind everything, a row of glyphs in the corner saying what's
+  on, a suggestion in the field that changes each time. It
   lives at thresholds and in marks, never on the numbers or the controls he
   needs mid-task. Pure text with no glyphs grows dull.
 - **Simple, never constraining.** Few ideas, each reaching far. Nothing
@@ -109,9 +109,11 @@ constrain".
 - **The picture shines.** A strong wallpaper, never dimmed. Text on it is
   lifted by offset shadows of its own letters, and text that may lie over
   windows too by a halo, never by a dark block.
-- **Things that feel physical.** The drawer is drawn out of the top edge
-  with depth inside it, its handles outside it, the same height before and
-  after. Motion carries a thing the way it would move.
+- **Things that feel physical.** Motion carries a thing the way it would
+  move.
+- **Glyphs one height.** A row of glyphs stands level, every one's ink the
+  same height on one middle line, however tall its font draws it; uneven
+  heights set off "my autism infused OCD" (2026-10-24).
 - **Margin round a highlight, not padding inside it.** A selected item's
   fill sits close round its ink, with room outside it, so it doesn't float.
 - **A step inside the edge.** Things in a corner sit a little inside the
@@ -141,6 +143,14 @@ constrain".
   windows at rest.
 - **Glow, and colour without contrast.** Glowing marks, and coloured bands
   that sit on the picture without an edge to hold them.
+- **Signs to learn.** Short lines of a few colours and widths for what's on:
+  "having different width lines of a few colours does not tell me
+  anything". A mark pictures its thing, or its words are one key away.
+- **A surface no other looks like.** The margin's drawer "really feels out
+  of place with the rest of the launcher and lock screen". Where a notice
+  or the launcher will do, nothing new is made.
+- **Taking pixels.** "every pixel of my screen is precious": what's always
+  there lives in room the windows already leave, and never moves them.
 - **Floating in the sky.** Too much space round a thing, so it loses what it
   belongs to. Space groups; too much of it scatters.
 - **Busy lines.** A prompt carrying everything at once, a line that repeats

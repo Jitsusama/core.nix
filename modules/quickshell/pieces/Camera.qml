@@ -60,6 +60,7 @@ Piece {
 
     present: names.length > 0
     active: programs.length > 0
+    kind: "onAir"
     value: programs.length === 0 ? "off" : programs.join(", ")
     title: "Camera"
     hint: `${programs.join(" and ")} ${programs.length === 1 ? "has" : "have"} the camera open`

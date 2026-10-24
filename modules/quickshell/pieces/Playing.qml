@@ -1,5 +1,5 @@
 // Music playing, from whichever player matters (Music.qml): true while it
-// plays, so paused is nothing to show. Its panel says the track, the artist
+// plays, so paused is nothing to show. What's on says the track, the artist
 // and the player, and offers what the media keys do, with their chords, and
 // a way to the player. Mpris says when anything changes, so nothing is asked.
 import qs

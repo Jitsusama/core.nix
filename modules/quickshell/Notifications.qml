@@ -16,7 +16,7 @@
 // The notices sit a step inside the window under the top right corner, so
 // a notice lies on one window rather than across a border, or a step inside
 // where a window's corner would be when there's none (`inside` says how),
-// and they make way below the margin's drawer while it's out.
+// below the margin's glyphs, which stand in the gap above the windows.
 //
 // Each is kept in the session's history as it arrives (Notices.qml), for
 // the launcher to find later, where the ones still here can be answered
@@ -454,7 +454,7 @@ Scope {
         Column {
             id: stack
             x: Theme.floating.reach
-            y: Math.max(root.inside.top, Theme.space.m + Theme.space.s + Notices.below)
+            y: Math.max(root.inside.top, Theme.space.m + Theme.space.s)
             onHeightChanged: reported.changed()
             // Where the pointer reaches and what niri blurs follow a card
             // only as it moves within the column, so they're gathered again
@@ -464,7 +464,7 @@ Scope {
 
             Behavior on y {
                 NumberAnimation {
-                    duration: Notices.below > 0 ? Theme.motion.medium : Theme.motion.short
+                    duration: Theme.motion.short
                     easing.type: Easing.BezierSpline
                     easing.bezierCurve: Theme.motion.curve
                 }

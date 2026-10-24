@@ -555,6 +555,11 @@
   the-mac-guards-its-disk = ''
     a Mac's guards run under launchd, with a Mac's paths and nothing to confine a run
   '';
+  the-margins-glyphs-stand-level = ''
+    every glyph in the margin stands one height on the gap's middle line, read from the corner by
+    kind, in the colour that says how much it asks; what was on air lingers, what a notice will say
+    waits for its card, and a wait shows once the same one lasts
+  '';
   the-music-follows-the-player = ''
     the music is the player that started last, never playerctld's echo
   '';

@@ -37,10 +37,6 @@ Singleton {
     // Those missed and gone from the screen, which wait for Joel.
     readonly property var waiting: history.filter(notice => notice.missed && !(notice.id in live))
 
-    // How far down the notices make way for the margin's drawer while it's
-    // out, so neither covers the other (Margin.qml).
-    property real below: 0
-
     // The notifications still on screen, by id, whose own actions (Reply,
     // Mark as read) can be done from the launcher's keys while they last.
     property var live: ({})

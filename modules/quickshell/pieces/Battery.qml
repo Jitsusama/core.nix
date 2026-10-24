@@ -1,8 +1,8 @@
 // The battery: its charge, the time left or until full, or that it's on
 // power and holding, and the power it's drawing when there's any to tell.
-// It's true while it runs low on battery, below `low` percent, and takes the
-// warning colour then and the alert colour below `critical`, when it wants
-// Joel: the margin lights it, and offers to save power.
+// It's true while it runs low on battery, below `low` percent, when it wants
+// Joel to plug in and takes the warning colour, and below `critical` it
+// wants him now, in the alert colour. It offers to save power.
 import Quickshell.Services.UPower
 import QtQuick
 
@@ -17,7 +17,9 @@ Piece {
     present: battery.isLaptopBattery
     active: draining && charge <= (settings.low ?? 20)
     role: !active ? "text" : critical ? "alert" : "warning"
-    wants: critical
+    // Low, it wants Joel to plug in; critical, it wants him now.
+    wants: active
+    now: critical
     sign: battery.state === UPowerDeviceState.Charging ? "charging" : settings.sign ?? ""
     // The charge, and the time left while it drains.
     least: charge + "%"
@@ -38,7 +40,6 @@ Piece {
     }
 
     title: "Battery"
-    badge: charge + "%"
     hint: battery.timeToEmpty > 0
         ? `${charge}% left, about ${Math.round(battery.timeToEmpty / 60)} minutes`
         : `${charge}% left`

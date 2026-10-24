@@ -14,6 +14,7 @@ Piece {
         ?? { chord: [] }
 
     active: Dictation.busy
+    kind: "onAir"
     hue: "voice"
     value: Dictation.listening ? "listening" : "typing"
     title: "Dictation"

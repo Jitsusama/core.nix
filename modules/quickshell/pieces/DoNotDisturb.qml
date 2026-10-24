@@ -16,7 +16,6 @@ Piece {
     hue: "voice"
     value: Quiet.lasts
     title: "Do Not Disturb"
-    badge: ends
     hint: `Quiet ${Quiet.lasts}` + (held === 0 ? "" : `, ${held} held`)
     context: held === 0 ? "nothing held yet" : held === 1 ? "1 notice held" : `${held} notices held`
     actions: [{

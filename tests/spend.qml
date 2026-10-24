@@ -5,9 +5,8 @@
 // shortcuts stood in for. With nothing written there's no piece and no
 // collection; what the watch wrote is drawn as it says, with a way to see
 // where it went; a cap near its end wants Joel, in the alert colour, with
-// its badge and the finding's action first; while the screen is shared the
-// amounts go; a watch that stopped writing is a warning with a way to start
-// it; a file of another version is no piece, and nor is one taken away
+// the finding's action first; while the screen is shared the amounts go; a
+// watch that stopped writing is a warning with a way to start it; a file of another version is no piece, and nor is one taken away
 // again. The collection answers "spend", "cap" and a report by its words,
 // leaves alone what isn't one, steps from a period into its cuts and from a
 // cut into its rows, each with its footer, shows no amount while the screen
@@ -85,7 +84,7 @@ ShellRoot {
         what: "a cap close to its end",
         status: root.alert,
         holds: piece => piece.active && piece.role === "alert" && piece.wants
-            && piece.value === "$3,642 of $4,000 this week" && piece.badge === "91%"
+            && piece.value === "$3,642 of $4,000 this week"
             && piece.hint === "The weekly cap is 91% spent"
             && piece.actions[0].name === "Go to the session"
             && piece.actions[0].glyph === String.fromCodePoint(0xf03cb)
@@ -105,7 +104,7 @@ ShellRoot {
         what: "a watch that stopped",
         status: status({ heartbeat: root.now - 600 }),
         holds: piece => piece.active && piece.role === "warning" && !piece.wants
-            && piece.value === "not watching" && piece.badge === ""
+            && piece.value === "not watching"
             && piece.actions.some(action => action.name === "Start the watch")
     }, {
         what: "a file of another version",
@@ -198,7 +197,7 @@ ShellRoot {
                 stop();
                 console.warn(`FAIL ${step.what}: present ${piece.present}, active ${piece.active},`
                     + ` role ${piece.role}, wants ${piece.wants}, value "${piece.value}",`
-                    + ` badge "${piece.badge}", hint "${piece.hint}", context "${piece.context}",`
+                    + ` hint "${piece.hint}", context "${piece.context}",`
                     + ` actions ${piece.actions.map(action => action.name).join(", ")}`);
                 Qt.exit(1);
             }
