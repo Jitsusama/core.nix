@@ -717,6 +717,16 @@ in
     '';
   };
 
+  options.jitsusama.quickshell.notices.away = lib.mkOption {
+    type = lib.types.ints.positive;
+    default = 30;
+    description = ''
+      How many seconds with nothing typed or moved count as Joel being away,
+      while a notice on screen waits rather than counting down, so one that
+      comes while he's gone is there when he's back.
+    '';
+  };
+
   options.jitsusama.quickshell.surfaces = lib.mkOption {
     type = lib.types.attrsOf lib.types.path;
     default = { };
@@ -1346,6 +1356,7 @@ in
               readonly property var quiet: ${object config.jitsusama.quickshell.quiet}
               readonly property bool reports: ${lib.boolToString config.jitsusama.quickshell.reports}
               readonly property var margin: ${object config.jitsusama.quickshell.margin}
+              readonly property var notices: ${object config.jitsusama.quickshell.notices}
               // Other modules' surfaces, by file, from jitsusama.quickshell.surfaces.
               readonly property var surfaces: ${
                 builtins.toJSON (map (name: "${name}.qml") (lib.attrNames config.jitsusama.quickshell.surfaces))

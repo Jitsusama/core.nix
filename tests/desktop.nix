@@ -645,6 +645,10 @@ pkgs.testers.runNixOSTest {
         # Something on air lingers in the margin once it goes; a moment is
         # enough to see it, and keeps the test's waits for it to go short.
         jitsusama.quickshell.margin.linger = 2;
+        # The test types nothing for long stretches while it reads the
+        # journal, so it never counts as away, and its notices go by
+        # themselves when they're meant to.
+        jitsusama.quickshell.notices.away = 3600;
         # Dictation's own service would load Whisper in the VM.
         systemd.user.services.dictation.Service.ExecStart = lib.mkForce "${standInDictation}";
         # No key repeats. A key the test presses is let go when the host gets

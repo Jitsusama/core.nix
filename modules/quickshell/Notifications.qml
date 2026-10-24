@@ -142,6 +142,11 @@ Scope {
     // are notices; whether they've stepped into the front one's verbs, as
     // the right arrow does into a launcher row's; and which verb is chosen.
     property bool holding: false
+    // Whether Joel's away: nothing typed or moved for a while, whatever
+    // keeps the screen awake, since a call or Keep Awake does that while
+    // he's gone too. A card waits while he's away, so one that comes while
+    // he's gone is there when he's back, counting again in full.
+    readonly property bool away: idle.isIdle
     property bool stepped: false
     property int chosen: 0
     onShownChanged: {
@@ -154,6 +159,13 @@ Scope {
         Report.say(holding ? "holds notices" : "lets notices go");
     }
     onSteppedChanged: if (!stepped) Report.say("notice back")
+    onAwayChanged: Report.say(away ? "away" : "back")
+
+    IdleMonitor {
+        id: idle
+        timeout: Options.notices.away
+        respectInhibitors: false
+    }
     onChosenChanged: if (stepped) Report.say(`notice verb ${verbs[chosen]?.name ?? ""}`)
 
     // What can be done with the front one besides what Return does, the
@@ -952,9 +964,11 @@ Scope {
                     // one counts, so one behind waits its turn and is seen
                     // whole; and it waits while the keys hold the notices,
                     // here or in the launcher, so one being acted on can't
-                    // go from under them, starting again in full after.
+                    // go from under them, or while Joel's away, starting
+                    // again in full after.
                     Timer {
                         running: !card.urgent && !Notices.gathered && card.front && !root.holding
+                            && !root.away
                         onRunningChanged: Report.say(
                             `${running ? "counts" : "waits"} card ${card.modelData.summary}`)
                         interval: card.modelData.expireTimeout > 0

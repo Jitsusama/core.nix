@@ -582,7 +582,10 @@ works the same way everywhere.
   shell's memory. One clicked, or withdrawn by its program because it was
   read there, was seen; one that left by itself was missed, and the notices'
   row at home says how many until they're opened. Return on one goes to the
-  program that sent it, its window when one is open.
+  program that sent it, its window when one is open. A notice on screen
+  waits while Joel's away, thirty seconds with nothing typed or moved
+  (`notices.away`), whatever keeps the screen awake, so one that comes
+  while he's gone is there when he's back, counting again in full.
 - **Joining waits to say how it went.** Return on a Wi-Fi network joins it
   and the launcher stays, its footer saying how far the join has got, until
   the network takes it or says why not. A locked network met for the first
