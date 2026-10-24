@@ -1289,10 +1289,12 @@ Scope {
                                 // Its own glyph, or its thing's, for an act.
                                 readonly property bool own: (modelData.glyph ?? "") !== ""
                                 // Holding more (an answer's parts, a row of rows, a
-                                // collection) before doing, and a figure only once
-                                // it does nothing else (Provider.qml's copyRow).
-                                readonly property string sort:
-                                    modelData.opens || modelData.nested ? "holds"
+                                // collection, a part whose verb is "more") before
+                                // doing, and a figure only once it does nothing
+                                // else (Provider.qml's copyRow).
+                                readonly property bool holds: !!(modelData.opens
+                                    || modelData.nested || modelData.verb === "more")
+                                readonly property string sort: holds ? "holds"
                                     : modelData.figure === true && !modelData.verbs ? "figure"
                                     : "act"
 
