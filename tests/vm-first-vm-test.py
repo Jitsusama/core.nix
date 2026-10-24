@@ -12,7 +12,9 @@ slice's weight, and follows it when it changes.
 The daemon's own cgroup is marked for systemd-oomd to spare while a build
 can go instead. Restarting the daemon, ten times over with vm-first looking
 every 20 ms, leaves the builds running, and the new daemon starts and
-builds again. A build that has gone is said in vm-first's journal, with
+builds again. A build making cgroups of its own, as a container does, is
+refused handing them controllers, so the daemon restarts beside it too.
+A build that has gone is said in vm-first's journal, with
 what its client ran, its quest, what it wrote and read, and what it left
 in memory still to write. Stopping a build leaves nothing of it. A build
 asking for a range of user ids gets 65,536. A build asking for its
@@ -169,6 +171,27 @@ with subtest("a restarted daemon leaves its builds running, and builds again"):
     given = machine.succeed(f"cat {built}").strip()
 
     assert given == RANGE, f"the build was given {given} ids"
+
+with subtest("a build can't hand controllers on itself, so the daemon restarts beside it"):
+    # systemd takes the daemon's hand-off back before each start, which
+    # would fail while a build's own cgroups held controllers, as a
+    # container's would if Nix let its build hand them on.
+    build("nester-build")
+    machine.wait_until_succeeds(f"ls -d {DAEMON}/nix-build-*/asked", timeout=60)
+    nester = machine.succeed(f"dirname {DAEMON}/nix-build-*/asked").strip()
+
+    told = machine.succeed("journalctl -u nester-build.service -o cat")
+
+    assert "cgroup.subtree_control: Permission denied" in told, told
+    assert machine.succeed(f"cat {nester}/cgroup.subtree_control").strip() == ""
+
+    machine.succeed("systemctl reset-failed nix-daemon.service")
+    machine.succeed("systemctl restart nix-daemon.service")
+    machine.wait_for_unit("nix-daemon.service")
+    wait_for_the_daemon_aside()
+
+    machine.succeed(f"grep -q . {nester}/inner/cgroup.procs")
+    machine.succeed("systemctl stop nester-build")
 
 
 def told_of(etc: str) -> str:
