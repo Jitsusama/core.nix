@@ -7,18 +7,21 @@
 { pkgs, ... }:
 {
   # The libraries core's own Python imports.
-  jitsusama.mypy.packages = python: [
-    python.dbus-fast
-    # The desktop test's touchscreen.
-    python.evdev
-    python.fido2
-    # The desktop test's caller of the portal.
-    python.jeepney
-    # The desktop test reads its photographs with Pillow.
-    python.pillow
-    # The desktop test's window named as Tuple's.
-    python.xlib
-  ];
+  jitsusama.mypy.packages =
+    python:
+    [
+      python.dbus-fast
+      python.fido2
+      # The desktop test's caller of the portal.
+      python.jeepney
+      # The desktop test reads its photographs with Pillow.
+      python.pillow
+      # The desktop test's window named as Tuple's.
+      python.xlib
+    ]
+    # The desktop test's touchscreen, which only Linux builds, so a Mac's
+    # `nix fmt` still evaluates (mypy.ini says how it's read without it).
+    ++ pkgs.lib.optional pkgs.stdenv.hostPlatform.isLinux python.evdev;
 
   # biome reads the JavaScript QML imports as the modules it means
   # (tests/qt-javascript-lint.sh).
