@@ -114,7 +114,10 @@ impl Default for Settings {
             // A line's dips, from a neighbour's upload or a busy evening,
             // come and go within minutes; ten of them quiet is long past.
             forget_s: 600.0,
-            proven_s: 5.0,
+            // Past a cable modem's burst allowance, which can carry a line
+            // over its rate for its first several seconds. A peak not yet
+            // proven costs little: one the line does carry is climbed to.
+            proven_s: 15.0,
         }
     }
 }
@@ -139,6 +142,9 @@ pub struct Direction {
     /// When the latest run of busy steps without delay began, while
     /// `forgot` holds.
     proving: Option<f64>,
+    /// When this direction was last cut: the other's cuts say nothing of
+    /// whether this one's is old.
+    cut_at: Option<f64>,
 }
 
 impl Direction {
@@ -152,11 +158,43 @@ impl Direction {
             peak: held,
             forgot: false,
             proving: None,
+            cut_at: None,
         }
     }
 
     fn set(&mut self, rate: f64) {
         self.rate = whole(rate).clamp(self.bounds.min, self.bounds.max);
+    }
+
+    /// A busy step on a quiet line: climbs, and proves a peak put back.
+    fn climb(&mut self, s: &Settings, now: f64) {
+        let rate = climbed(s, self);
+        self.set(rate);
+        if self.rate > self.held {
+            self.held = self.rate;
+            self.peak = self.peak.max(self.held);
+            self.learned = true;
+        }
+        if self.forgot {
+            let since = *self.proving.get_or_insert(now);
+            if now - since >= s.proven_s {
+                self.forgot = false;
+            }
+        }
+    }
+
+    /// A resting step: forgets a cut long past, and settles towards the
+    /// held rate. Gives whether it forgot one.
+    fn rest(&mut self, s: &Settings, now: f64) -> bool {
+        self.proving = None;
+        let old = self.cut_at.is_some_and(|at| now - at >= s.forget_s);
+        let forgot = old && self.held < self.peak;
+        if forgot {
+            self.held = self.peak;
+            self.forgot = true;
+        }
+        self.set(float(self.rate) + (float(self.held) - float(self.rate)) * s.settle);
+        forgot
     }
 }
 
@@ -320,6 +358,13 @@ impl Controller {
         if !self.building() {
             self.quiet_shares = shares;
         }
+        // A proof is of steps without delay one after another. A delayed
+        // step while busy is cut, which ends the forgetting, and one while
+        // resting ends the run below; this says so for every other path.
+        if !self.quiet() {
+            self.up.proving = None;
+            self.down.proving = None;
+        }
         if self.building() {
             let resting = self.last_cut.is_some_and(|at| now - at < s.after_cut_s);
             let new_spell = !self.in_spell;
@@ -366,6 +411,7 @@ impl Controller {
                         dir.peak = dir.held;
                     }
                     dir.proving = None;
+                    dir.cut_at = Some(now);
                     cuts[i] = true;
                 }
             }
@@ -391,32 +437,12 @@ impl Controller {
         }
         let mut climbing = false;
         let mut forgot = false;
-        let forgetting = self.last_cut.is_some_and(|at| now - at >= s.forget_s);
         for (dir, carried) in [(&mut self.up, sent), (&mut self.down, received)] {
             if carried >= float(dir.rate) * s.busy {
-                let rate = climbed(&s, dir);
-                dir.set(rate);
-                if dir.rate > dir.held {
-                    dir.held = dir.rate;
-                    dir.peak = dir.peak.max(dir.held);
-                    dir.learned = true;
-                }
-                if dir.forgot {
-                    let since = *dir.proving.get_or_insert(now);
-                    if now - since >= s.proven_s {
-                        dir.forgot = false;
-                    }
-                }
+                dir.climb(&s, now);
                 climbing = true;
             } else {
-                dir.proving = None;
-                if forgetting && dir.held < dir.peak {
-                    dir.held = dir.peak;
-                    dir.forgot = true;
-                    forgot = true;
-                }
-                let rate = float(dir.rate) + (float(dir.held) - float(dir.rate)) * s.settle;
-                dir.set(rate);
+                forgot |= dir.rest(&s, now);
             }
         }
         if climbing {
@@ -791,10 +817,26 @@ mod tests {
         // line's again, and a later dip's cut is forgotten back to it. The
         // line is faster than the climb reaches, so no probe past it is
         // cut on the way.
-        line.run(&mut c, 200_000.0, 10.0, 1_000.0);
+        line.run(&mut c, 200_000.0, 20.0, 1_000.0);
         line.rest(&mut c, 60.0);
         line.run(&mut c, 50_000.0, 10.0, 1_000.0);
         line.rest(&mut c, 700.0);
+        assert!(c.down.held > 90_000, "{}", c.down.held);
+    }
+
+    #[test]
+    fn an_upload_cut_now_and_then_leaves_an_old_download_cut_to_be_forgotten() {
+        let (mut c, mut line) = cut_by_a_dip();
+        for _ in 0..4 {
+            line.rest(&mut c, 300.0);
+            let mut upload = Line {
+                queue_kbit: 0.0,
+                at: line.at,
+            };
+            upload.run(&mut c, 5_000.0, 5.0);
+            line.at = upload.at;
+        }
+        assert!(c.up.held < 6_000, "{}", c.up.held);
         assert!(c.down.held > 90_000, "{}", c.down.held);
     }
 
