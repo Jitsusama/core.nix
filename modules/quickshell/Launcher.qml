@@ -167,7 +167,7 @@ Scope {
         const things = new Set(root.found.filter(row => !row.category)
             .map(row => Fuzzy.plainly(row.name)));
         const found = root.found.filter(row => !row.category || atHome
-            || !(things.has(row.name) || (answer && !answer.question)));
+            || !(things.has(Fuzzy.plainly(row.name)) || (answer && !answer.question)));
         // A thing shows once: a collection found whole stands for what's in
         // it, so neither its own rows, nor the things that live in it
         // (`inside` names it), nor a shortcut that opens it, whose chord its
@@ -211,6 +211,7 @@ Scope {
             plain: true,
             name: said.headline,
             chip: said.question ?? Fuzzy.plainly(typed),
+            title: root.capitalised(said.question ?? Fuzzy.plainly(typed)),
             glyph: said.glyph ?? first.glyph,
             graph: said.graph,
             hue: first.hue,
@@ -322,7 +323,7 @@ Scope {
     readonly property var categories: Words.categories.map(category => {
         const row = {
             key: `category:${category.id}`,
-            name: category.id,
+            name: category.name ?? category.id,
             verb: "open",
             plain: true,
             category: category,
@@ -346,6 +347,21 @@ Scope {
         return row;
     })
 
+    // Where Joel is, as the field shows it: each step as its row named it,
+    // in the rows' own case (Shortcuts, Desktop), so the path reads as the
+    // rows he picked did. A step named as the one before it (the Shortcuts
+    // category's Shortcuts) is said once.
+    readonly property var path: held.reduce((steps, step) => {
+        const said = step.row.title ?? step.row.name;
+        const last = steps.length > 0 ? steps[steps.length - 1] : "";
+        return said.toLowerCase() === last.toLowerCase() ? steps : steps.concat([said]);
+    }, [])
+
+    // Words with their first letter a capital, as a row's name starts.
+    function capitalised(words) {
+        return words === "" ? "" : words[0].toUpperCase() + words.slice(1);
+    }
+
     // The category held, or null.
     readonly property var category: held.length > 0 ? held[held.length - 1].row.category ?? null
         : null
@@ -367,17 +383,17 @@ Scope {
     }
 
     // What a category holds, said after its name at home so scrolling
-    // through them says what's there: its members' names in its order, in
-    // Joel's case ("agents, tasks, helpers, AI spend"), as many whole as fit
-    // in `room` characters, but for one its own name already says (sound's
-    // Sound). Read from the vocabulary as home is made, so no answer is
-    // asked for it.
+    // through them says what's there: its members' names in its order, as
+    // their rows name them ("Agents, Tasks, Helpers, AI spend"), as many
+    // whole as fit in `room` characters, but for one its own name already
+    // says (Sound's Sound). Read from the vocabulary as home is made, so no
+    // answer is asked for it.
     function holding(category, room) {
         const names = category.id === "commands"
             ? commands().map(row => row.start.trim() || row.key.replace(/^command:/, ""))
             : (category.holds ?? []).map(id => heldName(id)).filter(name => name !== "");
-        const cased = names.map(name => name.split(" ").map(word => /[A-Z].*[A-Z]/.test(word)
-            ? word : word.toLowerCase()).join(" ")).filter(name => name !== category.id);
+        const own = (category.name ?? category.id).toLowerCase();
+        const cased = names.filter(name => name.toLowerCase() !== own);
         const more = ", \u2026";
         let said = "";
         for (let at = 0; at < cased.length; at++) {
@@ -436,6 +452,7 @@ Scope {
             side: "",
             count: String(things.length),
             chip: entry.name.toLowerCase(),
+            title: entry.name,
             nested: true,
             group: true,
             verbs: () => things
@@ -579,6 +596,7 @@ Scope {
             rows.push(Object.assign({}, best, {
                 side: found.length > 1 ? `${found.length - 1} more ${noun}` : noun,
                 chip: noun,
+                title: source.collection.title,
                 ask: source.collection.ask,
                 lead: source.collection.glyph,
                 leadHue: "voice",
@@ -828,6 +846,7 @@ Scope {
             opens: name,
             from: source,
             chip: collection.noun,
+            title: collection.title,
             ask: collection.ask,
             lead: collection.glyph,
             leadHue: "voice",
@@ -1371,6 +1390,7 @@ Scope {
             keys: root.open && prompt.Window.active,
             typed: root.typed,
             held: root.held.map(step => step.row.chip ?? step.row.name),
+            path: root.path,
             rows: root.matches.slice(0, 20).map(row => row.name),
             // What each of those rows is, and how it reads whole, so a
             // test can say no thing is listed twice.
@@ -1386,6 +1406,8 @@ Scope {
                 verb: root.verbOf(row),
                 chord: (row.chord ?? []).map(key => key.text).join(" "),
                 side: row.side ?? "",
+                // The whole words drawn below the rows for it, if any.
+                reads: row.reads ?? "",
                 settled: !(row === root.headline || row.answered)
                     || !(root.answer && root.answer.asking)
             },
@@ -1415,6 +1437,7 @@ Scope {
                 key: "",
                 name: source.collection.noun,
                 chip: source.collection.noun,
+                title: source.collection.title,
                 ask: source.collection.ask,
                 lead: source.collection.glyph,
                 leadHue: "voice",
@@ -1560,7 +1583,7 @@ Scope {
                         hue: secret ? Theme.machine
                             : thing ? Theme[thing.leadHue ?? thing.hue] : Theme.muted
                         glyphWidth: Theme.space.xxl
-                        chips: root.held.map(step => ({ text: step.row.chip ?? step.row.name }))
+                        chips: root.path.map(step => ({ text: step }))
                         hint: root.held.length === 0 ? "what next?"
                             : root.held[root.held.length - 1].row.ask ?? "what to do?"
                         ghost: root.completion
@@ -1807,8 +1830,10 @@ Scope {
                         x: Theme.space.l
                         width: parent.width - 2 * Theme.space.l
                         topPadding: Theme.space.m
+                        // The column skips it while it's hidden. A height bound
+                        // to its own layout would loop, since elided text lays
+                        // out to the height it's given.
                         visible: said !== ""
-                        height: visible ? implicitHeight : 0
                         text: said
                         textFormat: Text.PlainText
                         wrapMode: Text.Wrap

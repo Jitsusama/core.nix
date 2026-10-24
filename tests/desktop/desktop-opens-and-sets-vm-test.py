@@ -155,11 +155,11 @@ with subtest("the launcher's home keeps its shelf, and a collection opens by nam
     photograph("launcher-home")
     rows = showing()["rows"]
     shelf = rows.index("Windows")
-    t.assertEqual(rows[shelf : shelf + 4], ["Windows", "Clipboard", "Notifications", "computer"])
+    t.assertEqual(rows[shelf : shelf + 4], ["Windows", "Clipboard", "Notifications", "Computer"])
     # A page down stops on the last of the categories.
     for _page in range(6):
         machine.send_key("pgdn")
-    launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "commands")
+    launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Commands")
     # Opening a collection keeps the launcher open, where a program
     # picked instead would close it.
     type_in("shortcuts", selecting="Shortcuts")

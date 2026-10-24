@@ -8,8 +8,11 @@ answer's question that finds two different things at the same strength, in
 the same place, fails, unless the vocabulary lists it as meant to, and each
 clash is printed. So does a word listed as meant that finds only one, a
 category's word that names a thing it doesn't hold, a name for something
-the vocabulary doesn't know, a glyph the theme hasn't got, and a thing with
-no place: not in a category, nor a part of one, nor found inside another.
+the vocabulary doesn't know, a glyph the theme hasn't got, a thing with
+no place: not in a category, nor a part of one, nor found inside another,
+and a name or an empty list's words in another case than the rest: a
+category's or a thing's name starts with a capital, as every row's does, and
+what an empty list says is a sentence.
 """
 
 import json
@@ -133,11 +136,35 @@ def misplaced(vocabulary: Entry, glyphs: set[str]) -> list[str]:
     return out
 
 
+def capitalised(said: str) -> bool:
+    """Say whether words start with a capital, or with no letter at all (a sum's form)."""
+    return not said[:1].isalpha() or said[:1].isupper()
+
+
+def miscased(vocabulary: Entry) -> list[str]:
+    """Say what's shown in another case than the rest of the rows."""
+    out = [
+        f"The {category['id']} category's name {category.get('name', '')!r} isn't capitalised."
+        for category in vocabulary["categories"]
+        if not category.get("name") or not capitalised(category["name"])
+    ]
+    for entry in vocabulary["things"]:
+        out.extend(
+            f"{entry['id']}'s name {state['name']!r} isn't capitalised."
+            for state in [entry, *entry.get("states", {}).values()]
+            if state.get("name") and not capitalised(state["name"])
+        )
+        empty = entry.get("empty", "")
+        if empty and not (capitalised(empty) and empty.endswith(".")):
+            out.append(f"{entry['id']}'s empty {empty!r} isn't a sentence.")
+    return out
+
+
 def main(argv: list[str]) -> None:
     """Print every ambiguous word and stray name, and fail if there are any."""
     vocabulary = json.loads(Path(argv[0]).read_text())
     glyphs = set(json.loads(Path(argv[1]).read_text()))
-    found = clashes(vocabulary) + misplaced(vocabulary, glyphs)
+    found = clashes(vocabulary) + misplaced(vocabulary, glyphs) + miscased(vocabulary)
     for said in found:
         print(said)
     if found:
