@@ -51,7 +51,7 @@ pkgs.testers.runNixOSTest {
 
     users.users.joel.isNormalUser = true;
     home-manager.users.joel = {
-      imports = [ self.homeModules.signing ];
+      imports = [ self.homeModules.tpm-signing ];
       jitsusama.identity.email = "joel@test";
       jitsusama.signing.allowedSigners = [ otherSigner ];
       home.stateVersion = "26.05";

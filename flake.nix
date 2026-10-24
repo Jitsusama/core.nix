@@ -171,6 +171,7 @@
         qt = ./modules/qt/home.nix;
         quickshell = moduleFrom ./modules/quickshell/home.nix { inherit wallpapers; };
         ripgrep = ./modules/ripgrep/home.nix;
+        secure-enclave-signing = ./modules/secure-enclave-signing/home.nix;
         signing = ./modules/signing/home.nix;
         spend-watch = ./modules/spend-watch/home.nix;
         spotify = moduleFrom ./modules/spotify/home.nix { inherit spicetify-nix; };
@@ -179,6 +180,7 @@
         swayimg = moduleFrom ./modules/swayimg/home.nix { inherit (self.homeModules) niri quickshell; };
         telnet = ./modules/telnet/home.nix;
         theme = ./modules/theme/home.nix;
+        tpm-signing = ./modules/tpm-signing/home.nix;
         tree = ./modules/tree/home.nix;
         tree-sitter = ./modules/tree-sitter/home.nix;
         tuple = moduleFrom ./modules/tuple/home.nix { inherit (self.homeModules) niri quickshell; };

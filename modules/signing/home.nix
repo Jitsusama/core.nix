@@ -1,21 +1,23 @@
-# Joel's commits and tags are signed with SSH keys sealed in the TPM, which
-# ssh-tpm-agent holds. There are two, as the Macs keep in their Secure
-# Enclave:
+# Joel's commits and tags are signed, on every machine, with one of two
+# keys held in its hardware, where they can't be copied out:
 #
-#   joel-signing   a PIN once a session, then a confirmation on every signature
+#   joel-signing   asks first (a PIN or Touch ID), then on every signature
 #   agent-signing  never asks, for pi and the other harnesses
 #
-# tpm-sign, git's signing program, picks one each time it signs. When its
-# standard input is a terminal and it can open its controlling terminal, a
-# person is at the keyboard and Joel's key signs; otherwise a harness is
-# driving git over pipes and the agent's key signs. git hands the signer its
-# own standard input, so this is the input of `git commit` itself. A harness
-# started from a terminal can still open /dev/tty, which is why both are
-# checked. TPM_SIGNER=joel or TPM_SIGNER=agent decides it outright.
+# The hardware differs, so this module is never imported alone: a Linux
+# machine's TPM (../tpm-signing) or a Mac's Secure Enclave
+# (../secure-enclave-signing) imports it and says, in
+# jitsusama.signing.signer, how its ssh-keygen reaches the keys. What's the
+# same lives here: git's settings, the register of allowed signers, and the
+# signing program (sign.sh), which picks a key each time it signs.
 #
-# ssh-tpm-agent loads every key under ~/.ssh when it starts, without asking
-# to confirm, so Joel's key lives outside it and the signing-key unit adds it
-# with confirmation whenever the agent starts. docs/installing.md makes both.
+# When the program's standard input is a terminal and it can open its
+# controlling terminal, a person is at the keyboard and Joel's key signs;
+# otherwise a harness is driving git over pipes and the agent's key signs.
+# git hands the signer its own standard input, so this is the input of `git
+# commit` itself. A harness started from a terminal can still open /dev/tty,
+# which is why both are checked. SIGN_AS=joel or SIGN_AS=agent decides it
+# outright.
 {
   config,
   lib,
@@ -24,41 +26,86 @@
 }:
 let
   cfg = config.jitsusama.signing;
+  inherit (cfg) signer;
 
-  joelKey = "${config.xdg.dataHome}/signing/joel-signing";
-  agentKey = "${config.home.homeDirectory}/.ssh/agent-signing";
-  sshTpmAdd = lib.getExe' config.services.ssh-tpm-agent.package "ssh-tpm-add";
-
-  # Signs with the key for whoever drives git (tpm-sign.sh), given both.
-  tpmSign = pkgs.writeShellApplication {
-    name = "tpm-sign";
-    runtimeInputs = [ pkgs.openssh ];
-    text = lib.concatLines [
-      "joel_key=${lib.escapeShellArg joelKey} agent_key=${lib.escapeShellArg agentKey}"
-      (builtins.readFile ./tpm-sign.sh)
-    ];
+  # Signs with the key for whoever drives git (sign.sh), given both.
+  program = pkgs.writeShellApplication {
+    inherit (signer) name;
+    text = lib.concatLines (
+      [
+        (lib.concatStringsSep " " [
+          "name=${lib.escapeShellArg signer.name}"
+          "real=${lib.escapeShellArg signer.sshKeygen}"
+          "joel_key=${lib.escapeShellArg signer.joelKey}"
+          "agent_key=${lib.escapeShellArg signer.agentKey}"
+          "makes_keys=${lib.escapeShellArg signer.makesKeys}"
+        ])
+      ]
+      ++ lib.mapAttrsToList (variable: value: "export ${variable}=\"${value}\"") signer.environment
+      ++ [ (builtins.readFile ./sign.sh) ]
+    );
   };
 in
 {
-  imports = [
-    ../git/home.nix
-    ../ssh-tpm-agent/home.nix
-  ];
+  imports = [ ../git/home.nix ];
 
-  options.jitsusama.signing.allowedSigners = lib.mkOption {
-    type = lib.types.listOf lib.types.str;
-    default = [ ];
-    example = [ ''joel@example.com namespaces="git" ecdsa-sha2-nistp256 AAAA...'' ];
-    description = ''
-      Lines of git's allowed_signers file: every key that has signed Joel's
-      work, on every machine, so git can say whose a signature is. It's a
-      register that only grows; a retired key gets valid-before="YYYYMMDD"
-      rather than being removed, so what it signed still verifies.
-    '';
+  options.jitsusama.signing = {
+    allowedSigners = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [ ];
+      example = [ ''joel@example.com namespaces="git" ecdsa-sha2-nistp256 AAAA...'' ];
+      description = ''
+        Lines of git's allowed_signers file: every key that has signed Joel's
+        work, on every machine, so git can say whose a signature is. It's a
+        register that only grows; a retired key gets valid-before="YYYYMMDD"
+        rather than being removed, so what it signed still verifies.
+      '';
+    };
+
+    signer = lib.mkOption {
+      internal = true;
+      description = ''
+        How this machine's hardware signs, which the module for that hardware
+        sets, never a machine.
+      '';
+      type = lib.types.submodule {
+        options = {
+          name = lib.mkOption {
+            type = lib.types.str;
+            description = "The signing program's name, which a prompt shows as what asked.";
+          };
+          sshKeygen = lib.mkOption {
+            type = lib.types.str;
+            description = "The ssh-keygen that signs and verifies.";
+          };
+          joelKey = lib.mkOption {
+            type = lib.types.str;
+            description = "What ssh-keygen's -f takes to sign with Joel's key, which git names too.";
+          };
+          agentKey = lib.mkOption {
+            type = lib.types.str;
+            description = "What ssh-keygen's -f takes to sign with the agent's key.";
+          };
+          makesKeys = lib.mkOption {
+            type = lib.types.str;
+            description = "What makes a key that's missing, as the program says when one is.";
+          };
+          environment = lib.mkOption {
+            type = lib.types.attrsOf lib.types.str;
+            default = { };
+            description = ''
+              Variables the ssh-keygen needs to reach the keys, each exported
+              in double quotes when the program runs, so a value may expand
+              another variable.
+            '';
+          };
+        };
+      };
+    };
   };
 
   config = {
-    home.packages = [ tpmSign ];
+    home.packages = [ program ];
 
     # Last, so an include another tool writes, such as dev's YubiKey
     # settings, can't take signing back.
@@ -70,8 +117,8 @@ in
           lib.recursiveUpdate
             {
               gpg.format = "ssh";
-              gpg.ssh.program = lib.getExe tpmSign;
-              user.signingKey = "${joelKey}.pub";
+              gpg.ssh.program = lib.getExe program;
+              user.signingKey = signer.joelKey;
               commit.gpgSign = true;
               tag.gpgSign = true;
             }
@@ -85,21 +132,6 @@ in
 
     xdg.configFile."git/allowed_signers" = lib.mkIf (cfg.allowedSigners != [ ]) {
       text = lib.concatLines cfg.allowedSigners;
-    };
-
-    systemd.user.services.signing-key = {
-      Unit = {
-        Description = "Joel's signing key in ssh-tpm-agent, confirmed on every use";
-        After = [ "ssh-tpm-agent.service" ];
-        PartOf = [ "ssh-tpm-agent.service" ];
-        ConditionPathExists = "${joelKey}.tpm";
-      };
-      Service = {
-        Type = "oneshot";
-        RemainAfterExit = true;
-        ExecStart = "${sshTpmAdd} -c ${joelKey}.tpm";
-      };
-      Install.WantedBy = [ "ssh-tpm-agent.service" ];
     };
   };
 }

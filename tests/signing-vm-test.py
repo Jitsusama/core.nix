@@ -99,8 +99,8 @@ with subtest("a commit at a terminal is Joel's, after his PIN and a confirmation
     t.assertIn("confirm", asked())
     t.assertIn("pin", asked())
 
-with subtest("TPM_SIGNER picks the key outright"):
-    as_joel(at_terminal("TPM_SIGNER=agent git -C repo commit -q --allow-empty -m 'chosen'"))
+with subtest("SIGN_AS picks the key outright"):
+    as_joel(at_terminal("SIGN_AS=agent git -C repo commit -q --allow-empty -m 'chosen'"))
     t.assertEqual(signer_of_last_commit(), ["G", fingerprint(f"{agent_key}.pub")])
 
 with subtest("a refused confirmation leaves no commit"):

@@ -241,8 +241,8 @@ place the old one was added holding a key nothing can use. Add both public
 keys to GitHub as authentication keys.
 
 Commits and tags are signed with two more keys in the TPM, as the Macs keep
-theirs in the Secure Enclave. [`signing`][6] picks Joel's when he commits at a
-terminal and the agents' when a harness commits over pipes:
+theirs in the Secure Enclave. [`tpm-signing`][6] picks Joel's when he commits
+at a terminal and the agents' when a harness commits over pipes:
 
 ```sh
 mkdir -p ~/.local/share/signing
@@ -324,4 +324,4 @@ should: find out why before typing the recovery key.
 [3]: ../examples/laptop.nix
 [4]: decisions/0008-own-keys-and-a-tpm-sealed-disk.md
 [5]: ../modules/ssh-tpm-agent/home.nix
-[6]: ../modules/signing/home.nix
+[6]: ../modules/tpm-signing/home.nix

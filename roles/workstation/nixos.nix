@@ -36,6 +36,6 @@
     homeModules.podman
     homeModules.spend-watch
     homeModules.ssh-tpm-agent
-    homeModules.signing
+    homeModules.tpm-signing
   ];
 }
