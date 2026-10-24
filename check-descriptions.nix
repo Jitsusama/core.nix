@@ -615,6 +615,10 @@
   the-music-follows-the-player = ''
     the music is the player that started last, never playerctld's echo
   '';
+  the-notices-keep-their-order = ''
+    the notices' stack puts a critical one in front and the rest in the order they came, one unheard
+    at the back, and turns and brings one forward as the keys and a click ask
+  '';
   the-notices-land-on-niri = ''
     the account's notices, on its real niri nested in a headless sway in the sandbox, draw a notice
     sent as a card on niri's notices layer, and what Super+Shift+N runs puts a critical one away

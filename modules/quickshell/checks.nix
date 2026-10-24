@@ -1058,6 +1058,23 @@ in
       touch $out
     '';
 
+  # The notices' stack keeps the order tests/stack.qml holds: a critical one
+  # in front, the rest as they came, one unheard at the back, and turning and
+  # bringing one forward as the keys and a click do.
+  the-notices-keep-their-order =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "the-notices-keep-their-order" { } ''
+      cp ${../../tests/stack.qml} stack.qml
+      cp ${./Stack.js} Stack.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml stack.qml
+      touch $out
+    '';
+
   # A sender kept to a level reaches no further, however urgent it says it
   # is, and each level shows, counts and stays as tests/levels.qml holds.
   a-sender-keeps-to-its-level =
