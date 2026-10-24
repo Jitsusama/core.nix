@@ -4,13 +4,16 @@ A helper's whole job is the command line it hands the driver, so each test reads
 from a machine that only records it, which keeps these tests to milliseconds.
 """
 
+import datetime as dt
 import shlex
 import unittest
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import vm_helpers
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from test_driver.machine import BaseMachine
 
 
@@ -87,6 +90,102 @@ class JournalCursor(unittest.TestCase):
     def test_output_with_no_cursor_is_refused_saying_what_it_was(self) -> None:
         with self.assertRaisesRegex(ValueError, "printed no cursor"):
             vm_helpers.journal_cursor("No entries\n")
+
+
+class Pace(unittest.TestCase):
+    """How much longer a wait may take on a host this busy."""
+
+    def test_a_host_with_processors_to_spare_waits_as_long_as_stated(self) -> None:
+        self.assertEqual(vm_helpers.pace(0.3), 1.0)
+
+    def test_a_host_with_more_tasks_than_processors_waits_as_many_times_longer(self) -> None:
+        self.assertEqual(vm_helpers.pace(2.5), 2.5)
+
+    def test_however_busy_the_host_a_wait_takes_at_most_four_times_as_long(self) -> None:
+        self.assertEqual(vm_helpers.pace(9.0), 4.0)
+
+
+class StandInRetry:
+    """The driver's retry, which records how long it was told to wait, and fails if asked."""
+
+    def __init__(self, *, fails: bool = False) -> None:
+        """Start with nothing recorded."""
+        self.fails = fails
+        self.told: list[tuple[int | dt.timedelta | None, dt.timedelta | None]] = []
+
+    def __call__(
+        self,
+        fn: Callable[..., Any],
+        timeout_seconds: int | dt.timedelta | None = None,
+        timeout: dt.timedelta | None = None,
+    ) -> None:
+        """Record the time given, calling fn once as the last try."""
+        self.told.append((timeout_seconds, timeout))
+        fn(True)  # noqa: FBT003 # As the driver calls it, last.
+        if self.fails:
+            message = "action timed out"
+            raise AssertionError(message)
+
+
+def nothing(_: bool) -> bool:  # noqa: FBT001 # The driver tells it whether it's the last try.
+    """Say yes at once, as a wait for what's already so does."""
+    return True
+
+
+class Paced(unittest.TestCase):
+    """Waiting through the driver's retry, paced to how busy the host is."""
+
+    def test_a_wait_in_seconds_is_given_as_a_time_that_much_longer(self) -> None:
+        retry = StandInRetry()
+        vm_helpers.paced(retry, busy=lambda: 3.0)(nothing, timeout_seconds=10)
+        self.assertEqual(retry.told, [(None, dt.timedelta(seconds=30))])
+
+    def test_a_wait_given_as_the_machine_gives_it_is_paced_the_same(self) -> None:
+        retry = StandInRetry()
+        vm_helpers.paced(retry, busy=lambda: 2.0)(nothing, dt.timedelta(seconds=60))
+        self.assertEqual(retry.told, [(None, dt.timedelta(minutes=2))])
+
+    def test_a_wait_told_no_time_paces_the_drivers_fifteen_minutes(self) -> None:
+        retry = StandInRetry()
+        vm_helpers.paced(retry, busy=lambda: 1.5)(nothing)
+        self.assertEqual(retry.told, [(None, dt.timedelta(minutes=22, seconds=30))])
+
+    def test_a_quiet_host_waits_exactly_as_stated(self) -> None:
+        retry = StandInRetry()
+        vm_helpers.paced(retry, busy=lambda: 0.1)(nothing, timeout=dt.timedelta(seconds=7))
+        self.assertEqual(retry.told, [(None, dt.timedelta(seconds=7))])
+
+    def test_busyness_is_read_as_each_wait_starts(self) -> None:
+        retry = StandInRetry()
+        readings = iter([1.0, 3.0])
+        waits = vm_helpers.paced(retry, busy=lambda: next(readings))
+        waits(nothing, timeout_seconds=10)
+        waits(nothing, timeout_seconds=10)
+        self.assertEqual(
+            [told for _, told in retry.told], [dt.timedelta(seconds=s) for s in (10, 30)]
+        )
+
+    def test_both_kinds_of_time_reach_the_driver_to_be_refused(self) -> None:
+        retry = StandInRetry()
+        vm_helpers.paced(retry, busy=lambda: 2.0)(nothing, 5, dt.timedelta(seconds=5))
+        self.assertEqual(retry.told, [(5, dt.timedelta(seconds=5))])
+
+    def test_a_wait_that_fails_describes_the_machine_then_fails(self) -> None:
+        described: list[str] = []
+        waits = vm_helpers.paced(
+            StandInRetry(fails=True), busy=lambda: 1.0, describe=lambda: described.append("shown")
+        )
+        with self.assertRaisesRegex(AssertionError, "timed out"):
+            waits(nothing, timeout_seconds=10)
+        self.assertEqual(described, ["shown"])
+
+    def test_a_wait_that_succeeds_describes_nothing(self) -> None:
+        described: list[str] = []
+        waits = vm_helpers.paced(
+            StandInRetry(), busy=lambda: 1.0, describe=lambda: described.append("shown")
+        )
+        waits(nothing, timeout_seconds=10)
+        self.assertEqual(described, [])
 
 
 if __name__ == "__main__":
