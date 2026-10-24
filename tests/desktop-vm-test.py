@@ -2755,6 +2755,17 @@ with subtest("what's playing shows in the margin, and a media key shows what it 
     machine.wait_until_fails(in_session(notices), timeout=15)
     as_account("systemctl --user stop player")
 
+# Tuple's log, which only a call writes, and which the daemon rewrites as
+# it starts.
+TUPLE_LOG = "~/.local/share/tuple/0/log.txt"
+
+
+def tuple_said(message: str, ago: int = 0) -> None:
+    """Write a line to Tuple's log as the daemon writes it, as if so many seconds since."""
+    line = f"$(date -u -d '-{ago} sec' +%H:%M:%S.000)|1|1|info|{message}"
+    as_account(f'mkdir -p $(dirname {TUPLE_LOG}) && echo "{line}" >> {TUPLE_LOG}')
+
+
 # A call comes before the other apps when the machine is busy.
 with subtest("Tuple's daemon comes before the other apps"):
     comes = as_account("systemctl --user show tuple --property=CPUWeight --property=Nice")
@@ -2764,13 +2775,6 @@ with subtest("a Tuple call shows in the margin while it lasts"):
     # Only a call writes these lines, so they're written here, with
     # the daemon stopped, since it rewrites its log as it starts.
     as_account("systemctl --user stop tuple")
-    written = "~/.local/share/tuple/0/log.txt"
-
-    def tuple_said(message: str, ago: int = 0) -> None:
-        """Write a line to Tuple's log as the daemon writes it, as if so many seconds since."""
-        line = f"$(date -u -d '-{ago} sec' +%H:%M:%S.000)|1|1|info|{message}"
-        as_account(f'mkdir -p $(dirname {written}) && echo "{line}" >> {written}')
-
     machine.wait_until_fails(in_session(margin), timeout=10)
     with told("drawn margin"):
         tuple_said("call connected")
@@ -2781,6 +2785,9 @@ with subtest("a Tuple call shows in the margin while it lasts"):
 with subtest("people coming and going in a Tuple call are said, and Joel can leave"):
     # Whoever comes is "a guest", not a number, which Tuple's contacts
     # would be asked about, and with the daemon stopped it starts one.
+    # The call before stops it too, so this one stops it itself and runs
+    # alone the same.
+    as_account("systemctl --user stop tuple")
     offered = "pgrep -f '[n]otify-send --app-name=Tuple .*--action={0}'"
     # Those there as Joel joins aren't news, so the call connected a
     # while before the guest comes.
