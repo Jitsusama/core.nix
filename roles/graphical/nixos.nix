@@ -14,7 +14,8 @@
 # asks rather than GNOME's dialog. A chord types what Joel says where he's
 # typing. The compositor and sound get the CPU and memory before
 # anything Joel starts, and calls, music and what he waits on get the
-# network before the work he started; lag-watch keeps a standing watch
+# network before the work he started, and a write a program makes behind
+# an upload goes out soon after; lag-watch keeps a standing watch
 # on whether they wait.
 { nixosModules, homeModules }:
 {
@@ -43,6 +44,7 @@
     nixosModules.shure-mv7
     nixosModules.slices
     nixosModules.swayimg
+    nixosModules.tcp
     nixosModules.usb-camera-holders
     nixosModules.zathura
   ];
