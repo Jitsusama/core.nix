@@ -185,22 +185,23 @@ impl Direction {
     /// A busy step on a quiet line: climbs back to the held rate, past it
     /// once it has been busy a while, and proves a peak put back.
     fn climb(&mut self, s: &Settings, now: f64) {
-        let since = *self.busy_since.get_or_insert(now);
-        let rate = climbed(s, self);
-        if self.rate >= self.held && now - since < s.probe_after_s {
-            return;
-        }
-        self.set(rate);
-        if self.rate > self.held {
-            self.held = self.rate;
-            self.peak = self.peak.max(self.held);
-            self.learned = true;
-        }
+        // A peak put back is proved by carrying the line, whether or not
+        // it may climb past it yet.
         if self.forgot {
             let since = *self.proving.get_or_insert(now);
             if now - since >= s.proven_s {
                 self.forgot = false;
             }
+        }
+        let since = *self.busy_since.get_or_insert(now);
+        if self.rate >= self.held && now - since < s.probe_after_s {
+            return;
+        }
+        self.set(climbed(s, self));
+        if self.rate > self.held {
+            self.held = self.rate;
+            self.peak = self.peak.max(self.held);
+            self.learned = true;
         }
     }
 
@@ -908,8 +909,10 @@ mod tests {
             upload.run(&mut c, 5_000.0, 5.0);
             line.at = upload.at;
         }
-        // The upload was cut each time it ran.
-        assert!(c.up.held < 7_000, "{}", c.up.held);
+        // The upload was cut by its last run, from the peak put back after
+        // 600 s, rather than left at its own: an upload that fits under
+        // its line isn't cut at all.
+        assert!(c.up.peak < 10_000, "{}", c.up.peak);
         assert!(c.down.held > 90_000, "{}", c.down.held);
     }
 
