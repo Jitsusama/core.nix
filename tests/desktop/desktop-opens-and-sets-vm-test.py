@@ -7,6 +7,8 @@ checkers.
 """
 
 import json
+import time
+from datetime import timedelta
 from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
@@ -18,15 +20,18 @@ if TYPE_CHECKING:
         PICTURE,
         SIGNING_IN,
         STARTING,
+        ZENITY,
         as_account,
         copied_then_closed,
         drawn_at,
         in_session,
         launcher_ready,
         launcher_until,
+        mark,
         opens_in,
         pasted_the_picture,
         photograph,
+        reported,
         showing,
         step_in,
         told,
@@ -61,6 +66,59 @@ with subtest("Super+V finds what was copied earlier, and copies it again"):
         return as_account("wl-paste --no-newline") == "Notes for Tuesday"
 
     retry(copied_again, timeout_seconds=10)
+
+
+# Return pastes into the window Super+V opened over, with the keys it
+# pastes by: a terminal's Ctrl+Shift+V, as a terminal takes Ctrl+V as a key
+# of its own, and Ctrl+V in a GTK program's field.
+with subtest("Super+V pastes into the window it opened over, a terminal or not"):
+    as_account(
+        "niri msg action spawn -- kitty --title paste-here "
+        "sh -c 'stty -icanon -echo; cat > /tmp/pasted'"
+    )
+    machine.wait_until_succeeds(
+        in_session("niri msg focused-window | grep -q paste-here"),
+        timeout=timedelta(seconds=STARTING),
+    )
+    machine.send_key("meta_l-v")
+    launcher_ready()
+    type_in("tues", selecting="Notes for Tuesday")
+    # Paste first, and Copy beside it for only copying.
+    step_in()
+    launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Paste")
+    with told("pastes into kitty"):
+        machine.send_key("ret")
+    machine.wait_until_succeeds(
+        in_session("grep -qx 'Notes for Tuesday' /tmp/pasted"), timeout=timedelta(seconds=10)
+    )
+    as_account("pkill -f 'cat > /tmp/pasted'")
+    machine.wait_until_fails(
+        in_session("niri msg windows | grep -q paste-here"), timeout=timedelta(seconds=30)
+    )
+
+    # zenity says what its field holds once Return closes it.
+    entry = f"{ZENITY}/bin/zenity --entry --title=paste-gtk"
+    as_account(f"systemd-run --user --collect sh -c '{entry} > /tmp/entered'")
+    machine.wait_until_succeeds(
+        in_session("niri msg focused-window | grep -q paste-gtk"),
+        timeout=timedelta(seconds=STARTING),
+    )
+    machine.send_key("meta_l-v")
+    launcher_ready()
+    type_in("tues", selecting="Notes for Tuesday")
+    before_paste = mark()
+    machine.send_key("ret")
+    reported("pastes into ", lambda program: program != "", before_paste)
+    machine.wait_until_succeeds(
+        in_session("niri msg focused-window | grep -q paste-gtk"), timeout=timedelta(seconds=10)
+    )
+    # The shell says so as it starts wtype, which then presses the keys;
+    # Return any sooner would close the field still empty.
+    time.sleep(1)
+    machine.send_key("ret")
+    machine.wait_until_succeeds(
+        in_session("grep -qx 'Notes for Tuesday' /tmp/entered"), timeout=timedelta(seconds=10)
+    )
 
 
 with subtest("a copy outlives the program that made it, unless it wasn't kept"):
