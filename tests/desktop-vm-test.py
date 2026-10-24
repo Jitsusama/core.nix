@@ -2181,7 +2181,7 @@ with subtest("a Wi-Fi network is joined from the launcher, a new one asking its 
     machine.succeed("networkctl status wlan1 | grep -q 10.42.0.")
     # Once it's joined, the launcher's done.
     machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
-    # Lantern wants a sign-in, so Sign In to it comes first at home, and
+    # Lantern wants a sign-in, so Sign in to it comes first at home, and
     # Return opens the window on its front desk.
     described = "varlinkctl --json=short call /run/wifid/io.jitsusama.Wifi"
     described += " io.jitsusama.Wifi.Describe '{}'"
@@ -2189,7 +2189,7 @@ with subtest("a Wi-Fi network is joined from the launcher, a new one asking its 
     as_account("qs ipc call launcher toggle")
     launcher_ready()
     photograph("launcher-sign-in")
-    type_in("sign in", selecting="Sign In to Lantern")
+    type_in("sign in", selecting="Sign in to Lantern")
     machine.send_key("ret")
     # The window is GTK and WebKit started cold, drawn in software,
     # which on a machine running other tests too has taken 42 seconds
