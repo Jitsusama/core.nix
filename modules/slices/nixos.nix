@@ -380,7 +380,8 @@ in
           # An agent's command for a quest goes in that quest's slice under
           # jobs-work.slice, at the weight pi's sessions give the quest by
           # its priority, so a quest Joel drives gets more of what agents'
-          # work gets, and never more than that.
+          # work gets, and never more than that. The disk's share acts only
+          # under io.cost or BFQ, not on io.latency targets alone.
           "--by-quest"
           "jobs-work.slice"
           "--quests"
