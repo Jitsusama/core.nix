@@ -45,13 +45,13 @@ Provider {
             + "end donotdisturb",
         side: Quiet.on ? Quiet.lasts : "for an hour",
         chord: bound(holds),
-        glyph: String.fromCodePoint(0xf00a0),
+        glyph: Theme.glyph.quiet,
         hue: "voice",
         run: () => Quiet.on ? Quiet.end() : Quiet.keep(60),
         verbs: Quiet.on ? null : () => [60, 0].map(minutes => provider.thing({
             key: `session:quiet:${minutes}`,
             name: minutes > 0 ? "For an hour" : "Until it's ended",
-            glyph: String.fromCodePoint(minutes > 0 ? 0xf1862 : 0xf00a0),
+            glyph: minutes > 0 ? String.fromCodePoint(0xf1862) : Theme.glyph.quiet,
             hue: "action",
             run: () => Quiet.keep(minutes)
         }))

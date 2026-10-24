@@ -106,7 +106,9 @@ in
     means = "notices came and went unseen";
   };
   quiet = {
-    glyph = nerd "f00a0";
+    # The bell struck through, since the bell asleep, with its small z,
+    # reads as a plain bell at the margin's size, beside the notices'.
+    glyph = nerd "f009b";
     console = "Q";
     means = "notices are held, not shown";
   };
