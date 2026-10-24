@@ -1696,7 +1696,7 @@ pkgs.testers.runNixOSTest {
               before = selected()
               machine.send_key("down")
               launcher_until(lambda shown: (shown["selected"] or {}).get("name", "") != before)
-              if showing()["selected"]["verb"] == "open":
+              if showing()["selected"]["is"].startswith("collection:"):
                   break
           chosen = selected()
           step_in()
@@ -1853,18 +1853,27 @@ pkgs.testers.runNixOSTest {
           machine.wait_until_fails(in_session(launcher_open), timeout=10)
           # The session's actions answer to what people call them; Escape,
           # never Return, since Return would do them.
-          for typed, action in [("shut down", "Power Off"), ("restart", "Reboot"), ("sign out", "Log Out")]:
+          for typed, action, verb in [
+              ("shut down", "Power off the machine", "Power off"),
+              ("restart", "Reboot the machine", "Reboot"),
+              ("sign out", "Log out", "Log out"),
+          ]:
               answer(typed)
               launcher_until(
                   lambda shown: (shown["selected"] or {}).get("name") == action
                   and shown["kind"] == "session"
               )
               # Return asks rather than doing it: it holds the action, its
-              # one verb saying what a second Return would do.
+              # one verb saying what a second Return would do and what it
+              # closes.
               machine.send_key("ret")
               launcher_until(
-                  lambda shown: shown["held"] == [action]
-                  and (shown["selected"] or {}).get("name", "").startswith("Yes, ")
+                  lambda shown, verb=verb: shown["held"] == [action]
+                  and re.fullmatch(
+                      f"{verb} now(, closing (the window|\\d+ windows))?",
+                      (shown["selected"] or {}).get("name", ""),
+                  )
+                  is not None
               )
               machine.send_key("esc")
               machine.wait_until_fails(in_session(launcher_open), timeout=10)
@@ -2045,8 +2054,9 @@ pkgs.testers.runNixOSTest {
       with subtest("a search lists each thing once"):
           closed = in_session(launcher_open)
           # Tuple's place stands alone for its rows and its people; the
-          # session's Lock and Do Not Disturb draw their keys' chords, so
-          # those keys aren't listed again; kitty draws Super+Return's;
+          # session's locking and do not disturb draw their keys' chords, so
+          # those keys aren't listed again, the lock by its own name;
+          # kitty draws Super+Return's;
           # and Capture holds the screenshots its keys take. Nothing is
           # found by letters scattered through it.
           stood_for = [
@@ -2065,7 +2075,7 @@ pkgs.testers.runNixOSTest {
               return (
                   rows[: len(leading)] == leading
                   and (shown["typed"] != "" or len(set(rows)) == len(rows))
-                  and not set(rows) & set(stood_for)
+                  and all(rows.count(name) == leading.count(name) for name in stood_for)
               )
 
           # What a keyboard's caps lock says may follow "lock": that's
@@ -2073,9 +2083,9 @@ pkgs.testers.runNixOSTest {
           # either, a collection picked often staying in its own place.
           for typed, leading in [
               ("tuple", ["Tuple"]),
-              ("lock", ["Lock"]),
+              ("lock", ["Lock the screen"]),
               ("kitty", ["kitty"]),
-              ("do not disturb", ["Do Not Disturb"]),
+              ("do not disturb", ["Turn on do not disturb"]),
               ("screenshot", ["Capture"]),
               ("", []),
           ]:
@@ -2431,8 +2441,8 @@ pkgs.testers.runNixOSTest {
       with subtest("the launcher sets the power profile"):
           # By its name, or a word a person would call it.
           for typed, profile, name in [
-              ("eco", "power-saver", "Power Saver"),
-              ("balanced power", "balanced", "Balanced Power"),
+              ("eco", "power-saver", "Use power saver"),
+              ("balanced power", "balanced", "Use balanced power"),
           ]:
               as_account("qs ipc call launcher toggle")
               launcher_ready()

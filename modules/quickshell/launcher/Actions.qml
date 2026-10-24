@@ -10,7 +10,9 @@ Provider {
     what: "shortcut"
     things: Shortcuts.actions.map(action => thing({
         key: `action:${action.does}`,
-        verb: action.opens === "" ? "run" : "open",
+        // Return says the act's own verb, the first word of what it does
+        // ("move", "focus"), as the foot's every other word is one.
+        verb: action.opens === "" ? action.does.split(" ")[0].toLowerCase() : "open",
         name: action.does,
         keywords: action.also,
         glyph: action.glyph,

@@ -74,7 +74,7 @@ Provider {
         member({
             key: "keyboard:lights-off",
             verb: "turn off",
-            name: "Turn the keyboard's lights off",
+            name: "Turn off the keyboard's lights",
             keywords: "backlight leds dark",
             glyph: glyph(0xf0e4f),
             hue: "machine",
@@ -83,7 +83,7 @@ Provider {
         member({
             key: "keyboard:lights-on",
             verb: "turn on",
-            name: "Turn the keyboard's lights on",
+            name: "Turn on the keyboard's lights",
             keywords: "backlight leds",
             glyph: glyph(0xf06e8),
             hue: "machine",

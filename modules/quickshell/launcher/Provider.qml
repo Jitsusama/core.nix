@@ -341,8 +341,15 @@ Scope {
         made.weight = provider.weight;
         made.prepared = Fuzzy.prepare(made.name);
         // Its keywords beside its name, so a search can say some words of
-        // each: "wifi off" finds Turn Wi-Fi Off, "wifi" being a keyword.
-        made.keywords = fields.keywords ? Fuzzy.prepare(`${made.name} ${fields.keywords}`) : null;
+        // each: "wifi off" finds Turn off Wi-Fi, "wifi" being a keyword.
+        // A word of its name joined by a hyphen is found closed up too, as
+        // it's typed: "wifi" finds Wi-Fi.
+        const closed = Fuzzy.words(made.name).filter(word => word.includes("-"))
+            .map(word => word.replace(/-/g, ""));
+        made.keywords = fields.keywords || closed.length > 0
+            ? Fuzzy.prepare([made.name].concat(closed, fields.keywords ? [fields.keywords] : [])
+                .join(" "))
+            : null;
         return made;
     }
 }

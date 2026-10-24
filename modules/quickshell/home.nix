@@ -764,6 +764,72 @@ in
         Off, nothing the launcher does leaves the machine.
       '';
     };
+    synonyms = lib.mkOption {
+      type = lib.types.attrsOf (lib.types.listOf lib.types.str);
+      default = { };
+      example = {
+        "session:Suspend" = [ "zzz" ];
+        "program:com.onepassword.OnePassword" = [ "vault" ];
+      };
+      description = ''
+        Other words that find a row, by the key it's learned by (the
+        launcher's picks file names them). They find it, never name it: a
+        row found by one shows the word in quotes after its name.
+      '';
+    };
+    home = {
+      likely = lib.mkOption {
+        type = lib.types.ints.unsigned;
+        default = 3;
+        description = "How many of the likeliest picks home shows.";
+      };
+      pinned = lib.mkOption {
+        type = lib.types.listOf lib.types.str;
+        default = [ ];
+        example = [ "program:slack" ];
+        description = ''
+          Rows that lead home's likely picks, by the key each is learned by,
+          whether picked or not.
+        '';
+      };
+      shelf = lib.mkOption {
+        type = lib.types.listOf lib.types.str;
+        default = [
+          "windows"
+          "clipboard"
+          "notices"
+        ];
+        description = ''
+          The collections home ends with, by provider, in this order. The
+          rest are found by their names.
+        '';
+      };
+    };
+    kinds = lib.mkOption {
+      type = lib.types.attrsOf lib.types.str;
+      default = {
+        program = "program";
+        window = "window";
+        "pi session" = "pi";
+        quest = "quest";
+        run = "run";
+        copy = "copy";
+        notice = "notice";
+        emoji = "emoji";
+        key = "key";
+        "Wi-Fi" = "network";
+        Bluetooth = "device";
+        sound = "device";
+        display = "display";
+        person = "person";
+        call = "call";
+      };
+      description = ''
+        The word a thing's row says at its right edge, by what its provider
+        calls its things. A provider not named here is an act or a set,
+        whose words say what it is, so its rows keep their chords there.
+      '';
+    };
     learning = {
       enable = lib.mkOption {
         type = lib.types.bool;
@@ -1220,6 +1286,7 @@ in
                 )
               }
               readonly property var learning: ${object launcher.learning}
+              readonly property var launcher: ${object { inherit (launcher) synonyms home kinds; }}
           }
         '';
         "quickshell/Options.qml".text = ''
