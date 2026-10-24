@@ -784,11 +784,18 @@ Scope {
 
     // The categories as home lists them, in the vocabulary's order, each
     // with what it holds after its name, as much as the row has room for.
+    // One led by a collection the shelf already shows (Clipboard,
+    // Notifications) is left to the shelf's row, chord and all, so home
+    // never says the same thing twice.
     function browsed() {
         const glyphs = Theme.space.l + Theme.space.xxl;
         const room = Math.floor((list.width - glyphs - Theme.space.xxl - Theme.space.m
             - Theme.space.l) / Math.max(1, measure.advanceWidth("0")));
-        return categories.map(row => Object.assign({}, row, {
+        const shelved = row => {
+            const first = (row.category.holds ?? [])[0];
+            return first !== undefined && shelf.includes(Words.of(first).provider ?? first);
+        };
+        return categories.filter(row => !shelved(row)).map(row => Object.assign({}, row, {
             count: holding(row.category, room > 0 ? room - row.name.length : Infinity)
         }));
     }
@@ -1784,6 +1791,32 @@ Scope {
                                 layer.enabled: true
                             }
                         }
+                    }
+
+                    // A row's whole words, while it's selected, when one line
+                    // cuts them short: a past notice's summary and body, wrapped
+                    // below the rows as a picture is shown, at most six lines,
+                    // aligned with the footer's words. Joel couldn't tell what
+                    // a notice had said from its one line.
+                    Text {
+                        id: reading
+
+                        readonly property string said: root.selected
+                            ? root.selected.reads ?? "" : ""
+
+                        x: Theme.space.l
+                        width: parent.width - 2 * Theme.space.l
+                        topPadding: Theme.space.m
+                        visible: said !== ""
+                        height: visible ? implicitHeight : 0
+                        text: said
+                        textFormat: Text.PlainText
+                        wrapMode: Text.Wrap
+                        maximumLineCount: 6
+                        elide: Text.ElideRight
+                        color: Theme.text
+                        font.family: Theme.mono.family
+                        font.pointSize: Theme.mono.large
                     }
 
                     // The foot, one line, the one place that teaches, so the
