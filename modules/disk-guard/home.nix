@@ -11,6 +11,8 @@
 # jitsusama.disk-guard.settings is the guard's own config, rendered as it is,
 # and the build refuses one check-config refuses. Each source core gives is a
 # default, replaced whole by a machine's own, or dropped by setting it null.
+# jitsusama.disk-guard.path puts the programs a machine's own sources run
+# ahead of the guard's, under systemd and launchd alike.
 {
   config,
   lib,
@@ -81,8 +83,8 @@ let
   inherit (pkgs.stdenv.hostPlatform) isDarwin isLinux;
 
   # Predicates and worktree pruning ask git, which the guard finds on PATH
-  # as the account's own programs do.
-  path = lib.makeBinPath [ config.programs.git.package ];
+  # as the account's own programs do, after what a machine puts first.
+  path = lib.makeBinPath (config.jitsusama.disk-guard.path ++ [ config.programs.git.package ]);
 
   rendered = settings // {
     version = 1;
@@ -109,6 +111,16 @@ in
     description = ''
       The account's guard's config: its bands, its sources and how it treats
       the account's Nix generations. A source set to null is dropped.
+    '';
+  };
+
+  options.jitsusama.disk-guard.path = lib.mkOption {
+    type = lib.types.listOf lib.types.package;
+    default = [ ];
+    description = ''
+      Programs the guard finds first on its PATH, for what a machine's own
+      sources and predicates run, such as a git of its own or a producer's
+      command, ahead of the git core gives it.
     '';
   };
 
@@ -162,8 +174,18 @@ in
             protocol = "go-build";
           }
         );
+        # The modules Go downloads, which it fetches again as a build asks.
+        # Go makes them read-only, and the guard makes each folder its
+        # owner's to write before it empties it.
+        go-mod = lib.mkDefault (cache 45 "${home}/go/pkg/mod");
         sccache = lib.mkDefault (
           cache 60 (if isDarwin then "${home}/Library/Caches/Mozilla.sccache" else "${cacheHome}/sccache")
+        );
+        # The images Lima's machines start from, fetched again when one is
+        # made, which is a large download, so they go last. Lima keeps them
+        # where Go's programs keep a cache.
+        lima = lib.mkDefault (
+          cache 70 (if isDarwin then "${home}/Library/Caches/lima" else "${cacheHome}/lima")
         );
         # Xcode's builds, which it makes again as a target is.
         derived-data = lib.mkIf isDarwin (
