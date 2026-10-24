@@ -8,7 +8,7 @@
 # unplugged and plugged back in, as a dock's adapter is, it's shaped afresh;
 # and when the shaper stops, it takes them all away. Inside a WireGuard tunnel to the
 # server, named as a machine names its VPN's, the same classes reach the
-# tunnel's own CAKE. The script is shaper-vm-test.py.
+# tunnel's own CAKE. The tests are shaper-vm-test.py, run through pytest.
 { self, pkgs }:
 let
   inherit (pkgs) lib;
@@ -89,8 +89,14 @@ pkgs.testers.runNixOSTest {
     };
   };
 
-  testScript = builtins.readFile ./shaper-vm-test.py;
-  # nix fmt holds the script to mypy --strict against the driver's own types,
-  # through driver_names.pyi, which the driver's lighter check can't find.
+  # What VM tests' scripts share, and pytest, which runs this one's tests (tests/lib).
+  extraPythonPackages = python: [ (pkgs.callPackage ./lib/vm-helpers.nix { } python) ];
+
+  # Run by hand, the driver takes pytest's options from PYTEST_ADDOPTS, so
+  # PYTEST_ADDOPTS='-k replug' runs only the tests that name a replug.
+  testScript = ''import vm_pytest; vm_pytest.run(globals(), "${./shaper-vm-test.py}")'';
+  # nix fmt holds the tests and vm_pytest to mypy --strict against the
+  # driver's own types, so the driver's check of this one line would add only
+  # its time.
   skipTypeCheck = true;
 }
