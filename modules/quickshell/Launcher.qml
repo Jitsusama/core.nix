@@ -1126,16 +1126,21 @@ Scope {
                     : within(partsOf(from), words)
                         .concat(learnedFirst(from.search(letters).rows, letters));
             // A step's rows, all of them in their order until something's
-            // typed, then those it finds, best first.
+            // typed, then those it finds, best first, and with them the
+            // choices of a part that offers them (a display's Scale), so
+            // what's typed reaches them without a step in: "scale 150".
             else if (words.length === 0)
                 matches = offered.slice();
             else {
                 const found = [];
-                for (const row of offered) {
-                    const m = Fuzzy.match(row.prepared, words, false);
+                const pool = offered.reduce((all, row) => all.concat([row],
+                    row.offers && row.verbs ? row.verbs() : []), []);
+                for (const row of pool) {
+                    const prepared = row.prepared ?? Fuzzy.prepare(row.name);
+                    const m = Fuzzy.match(prepared, words, false);
                     if (m.score >= 0)
                         found.push({
-                            item: row.prepared,
+                            item: prepared,
                             score: m.score,
                             grade: m.grade,
                             choice: row

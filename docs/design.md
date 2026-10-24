@@ -605,6 +605,11 @@ works the same way everywhere.
   own, such as the theme. Next, Previous, Louder and Quieter keep the
   launcher open to be pressed again, its figures following; Media, Sound
   and Notifications are found only inside it.
+  A setting is a part saying how it's set, its choices a step in, so a
+  thing's right arrow lists a few parts rather than every choice: a
+  display's Scale "175%", Refresh, Resolution and Rotation, then what
+  its EDID says (Colour depth "10 bit"). What's typed beside them finds
+  their choices too, so "scale 150" is Scale to 150% without a step in.
 - **Categories are levels.** Fifteen categories gather everything by
   what it's about: Computer, Network, Sound, Now, AI, Apps, Shortcuts,
   Notifications, Clipboard, Weather, Time, Calls, Capture, Typing and
