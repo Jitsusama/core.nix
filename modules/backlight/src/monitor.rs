@@ -27,8 +27,15 @@
 //! its DisplayPort hot-plug detection is set to Always on, and a reset or a
 //! firmware update would quietly put it back to Low power. So each time one
 //! is found, its setting is read, and set to Always on only if it isn't.
+//!
+//! What a monitor says of itself goes to a file for the launcher (facts.rs):
+//! its capabilities string, then the contrast, colour preset, panel,
+//! controller and firmware level it lists, read by its thread only while
+//! no brightness is waiting to be set, so a key press never waits behind
+//! them.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
+use std::env;
 use std::ffi::{CString, c_char, c_int, c_ulong};
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Read, Write};
@@ -41,6 +48,8 @@ use std::time::Duration;
 
 use tokio::io::Interest;
 use tokio::io::unix::AsyncFd;
+
+use crate::facts::{self, Told};
 
 // std links libc, so these come from it.
 unsafe extern "C" {
@@ -70,6 +79,18 @@ const Z27K_G3: [u8; 4] = [0x22, 0x0E, 0xD3, 0x36];
 const ANSWERING: Duration = Duration::from_millis(40);
 /// How long a monitor wants between one command and the next.
 const BETWEEN: Duration = Duration::from_millis(50);
+/// How long a monitor takes to have a piece of its capabilities ready.
+const DESCRIBING: Duration = Duration::from_millis(50);
+/// The capabilities request, and the longest string read for it.
+const CAPABILITIES: u8 = 0xF3;
+const LONGEST_CAPABILITIES: u16 = 4096;
+/// The VCP codes read for a monitor's facts, if it lists them: its contrast,
+/// colour preset, panel, display controller and firmware level.
+const CONTRAST: u8 = 0x12;
+const PRESET: u8 = 0x14;
+const PANEL: u8 = 0xB6;
+const CONTROLLER: u8 = 0xC8;
+const FIRMWARE: u8 = 0xC9;
 
 const IN_NONBLOCK: c_int = 0o4000;
 const IN_CLOEXEC: c_int = 0o2_000_000;
@@ -99,6 +120,12 @@ fn get_vcp(vcp: u8) -> Vec<u8> {
 fn set_vcp(vcp: u8, value: u16) -> Vec<u8> {
     let [high, low] = value.to_be_bytes();
     message(&[0x03, vcp, high, low])
+}
+
+/// Asks for a monitor's capabilities string from an offset.
+fn capabilities_request(offset: u16) -> Vec<u8> {
+    let [high, low] = offset.to_be_bytes();
+    message(&[CAPABILITIES, high, low])
 }
 
 /// What a monitor says a VCP code holds.
@@ -144,7 +171,7 @@ fn reading(reply: &[u8], vcp: u8) -> io::Result<Reading> {
         )));
     }
     let max = u16::from_be_bytes([max_high, max_low]);
-    if max == 0 {
+    if max == 0 && vcp == BRIGHTNESS {
         return Err(refused("its brightest is 0".into()));
     }
     Ok(Reading {
@@ -188,36 +215,49 @@ fn hot_plug_to_set(now: u16) -> Option<u16> {
     (low == 0).then_some(now | ALWAYS_ON)
 }
 
-/// Reads a Z27k G3's hot-plug detection, and sets it to Always on if it isn't.
-fn hold_hot_plug(name: &str, bus: &mut Bus) {
+/// Reads a Z27k G3's hot-plug detection, and sets it to Always on if it
+/// isn't, giving what it holds after, if that's known.
+fn hold_hot_plug(name: &str, bus: &mut Bus) -> Option<u16> {
     let now = match bus.read_vcp(HOT_PLUG) {
         Ok(Reading { now, .. }) => now,
         Err(error) => {
             eprintln!("<4>can't read the hot-plug detection of the monitor on {name}: {error}");
-            return;
+            return None;
         }
     };
     let Some(value) = hot_plug_to_set(now) else {
         eprintln!("<6>the monitor on {name} keeps hot-plug detection always on ({now:#06x})");
-        return;
+        return Some(now);
     };
     if let Err(error) = bus.write_vcp(HOT_PLUG, value) {
         eprintln!(
             "<4>the monitor on {name} has hot-plug detection at low power ({now:#06x}), \
              and it can't be set: {error}"
         );
-        return;
+        return Some(now);
     }
     match bus.read_vcp(HOT_PLUG) {
-        Ok(Reading { now: after, .. }) => eprintln!(
-            "<5>the monitor on {name} had hot-plug detection at low power ({now:#06x}), \
-             and now has {after:#06x}"
-        ),
-        Err(error) => eprintln!(
-            "<4>the monitor on {name} had hot-plug detection at low power ({now:#06x}), \
-             and was set to {value:#06x}, but can't be read back: {error}"
-        ),
+        Ok(Reading { now: after, .. }) => {
+            eprintln!(
+                "<5>the monitor on {name} had hot-plug detection at low power ({now:#06x}), \
+                 and now has {after:#06x}"
+            );
+            Some(after)
+        }
+        Err(error) => {
+            eprintln!(
+                "<4>the monitor on {name} had hot-plug detection at low power ({now:#06x}), \
+                 and was set to {value:#06x}, but can't be read back: {error}"
+            );
+            None
+        }
     }
+}
+
+/// Hot-plug detection, as the monitor's menu names it.
+fn hot_plug_named(value: u16) -> &'static str {
+    let [_, low] = value.to_be_bytes();
+    if low == 0 { "low power" } else { "always on" }
 }
 
 /// An I2C bus, its reads and writes going to one address.
@@ -278,6 +318,19 @@ impl Bus {
         thread::sleep(BETWEEN);
         sent
     }
+
+    /// One piece of the capabilities string, from an offset: none once it's
+    /// ended.
+    fn read_capabilities(&mut self, offset: u16) -> io::Result<Vec<u8>> {
+        self.send(&capabilities_request(offset))?;
+        thread::sleep(DESCRIBING);
+        let mut reply = [0; 38];
+        let read = self.file.read(&mut reply);
+        thread::sleep(BETWEEN);
+        facts::fragment(&reply[..read?], offset)
+            .map(<[u8]>::to_vec)
+            .map_err(refused)
+    }
 }
 
 /// What a monitor's thread is asked for: the latest level, and whether its
@@ -312,15 +365,19 @@ impl Shared {
         self.wanted.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
-    /// Waits for a level to be asked for, or none once the bus has gone.
-    fn next(&self) -> Option<f64> {
+    /// Waits for a level to be asked for, the bus to go, or, while there's
+    /// other work, gives the thread a turn for it; a level comes first.
+    fn next(&self, busy: bool) -> Next {
         let mut wanted = self.wanted();
         loop {
             if wanted.gone {
-                return None;
+                return Next::Gone;
             }
             if let Some(level) = wanted.take() {
-                return Some(level);
+                return Next::Level(level);
+            }
+            if busy {
+                return Next::Idle;
             }
             wanted = self
                 .woken
@@ -328,6 +385,91 @@ impl Shared {
                 .unwrap_or_else(PoisonError::into_inner);
         }
     }
+}
+
+/// What a monitor's thread does next.
+#[derive(Debug, PartialEq)]
+enum Next {
+    Level(f64),
+    Idle,
+    Gone,
+}
+
+/// Work a monitor's thread does while no level is waiting.
+enum Chore {
+    /// Read its capabilities string from an offset, with what's read so far
+    /// and how many times this piece has failed.
+    Capabilities {
+        offset: u16,
+        read: Vec<u8>,
+        failed: u8,
+    },
+    /// Read a VCP code it lists, for a fact.
+    Read(u8),
+}
+
+/// Does one chore, giving those it leads to.
+fn chore(name: &str, bus: &mut Bus, told: &mut Told, chore: Chore) -> Vec<Chore> {
+    match chore {
+        Chore::Capabilities {
+            offset,
+            mut read,
+            failed,
+        } => match bus.read_capabilities(offset) {
+            Ok(piece) if !piece.is_empty() && offset < LONGEST_CAPABILITIES => {
+                read.extend_from_slice(&piece);
+                let offset = offset + u16::try_from(piece.len()).unwrap_or(u16::MAX);
+                vec![Chore::Capabilities {
+                    offset,
+                    read,
+                    failed: 0,
+                }]
+            }
+            Ok(_) => {
+                let capabilities = String::from_utf8_lossy(&read);
+                if let Some(version) = facts::mccs_version(&capabilities) {
+                    told.set("MCCS", version);
+                }
+                let codes = facts::listed(&capabilities);
+                [CONTRAST, PRESET, PANEL, CONTROLLER, FIRMWARE]
+                    .into_iter()
+                    .filter(|code| codes.contains(code))
+                    .map(Chore::Read)
+                    .collect()
+            }
+            Err(_) if failed < 2 => vec![Chore::Capabilities {
+                offset,
+                read,
+                failed: failed + 1,
+            }],
+            Err(error) => {
+                eprintln!("<5>the monitor on {name} doesn't say what it takes: {error}");
+                Vec::new()
+            }
+        },
+        Chore::Read(code) => {
+            // One that fails is left out, rather than failing the rest.
+            if let Ok(Reading { max, now }) = bus.read_vcp(code) {
+                match code {
+                    CONTRAST => told.set("contrast", share(now, max)),
+                    PRESET => told.set("colour preset", facts::preset(now)),
+                    PANEL => told.set("panel", facts::panel(now)),
+                    CONTROLLER => told.set("controller", facts::controller(now)),
+                    FIRMWARE => told.set("firmware level", facts::firmware(now)),
+                    _ => {}
+                }
+            }
+            Vec::new()
+        }
+    }
+}
+
+/// A monitor's brightness, as a share of its brightest.
+fn share(value: u16, max: u16) -> String {
+    format!(
+        "{}%",
+        (u32::from(value) * 100 + u32::from(max) / 2) / u32::from(max.max(1))
+    )
 }
 
 /// A monitor's thread, which ends once this is dropped.
@@ -382,12 +524,37 @@ fn follow(name: &str, mut bus: Bus, identity: Option<Identity>, shared: &Shared)
         }
     };
     eprintln!("<6>the monitor on {name} follows the panel, {now} of {max}");
-    if identity.as_ref().is_some_and(holds_hot_plug) {
-        hold_hot_plug(name, &mut bus);
+    let runtime = env::var_os("XDG_RUNTIME_DIR").map(PathBuf::from);
+    let mut told = Told::new(runtime.as_deref(), identity.as_ref().map(|each| &each[..]));
+    told.set("brightness", share(now, max));
+    if identity.as_ref().is_some_and(holds_hot_plug)
+        && let Some(held) = hold_hot_plug(name, &mut bus)
+    {
+        told.set("hot-plug detection", hot_plug_named(held).to_owned());
+    }
+    let mut chores = VecDeque::new();
+    if told.kept() {
+        chores.push_back(Chore::Capabilities {
+            offset: 0,
+            read: Vec::new(),
+            failed: 0,
+        });
     }
     let mut shown = now;
     let mut failing = false;
-    while let Some(level) = shared.next() {
+    loop {
+        let busy = !chores.is_empty() || told.unsaid();
+        let level = match shared.next(busy) {
+            Next::Gone => break,
+            Next::Idle => {
+                match chores.pop_front() {
+                    Some(work) => chores.extend(chore(name, &mut bus, &mut told, work)),
+                    None => told.say(),
+                }
+                continue;
+            }
+            Next::Level(level) => level,
+        };
         let value = value_for(level, max);
         if value == shown {
             continue;
@@ -396,6 +563,7 @@ fn follow(name: &str, mut bus: Bus, identity: Option<Identity>, shared: &Shared)
             Ok(()) => {
                 shown = value;
                 failing = false;
+                told.set("brightness", share(shown, max));
             }
             // Once, rather than for every step of a move.
             Err(error) if !failing => {
@@ -830,7 +998,51 @@ mod tests {
             }),
             woken: Condvar::new(),
         };
-        assert_eq!(shared.next(), None);
+        assert_eq!(shared.next(true), Next::Gone);
+    }
+
+    #[test]
+    fn a_level_waiting_comes_before_other_work_and_other_work_before_waiting() {
+        let shared = Shared {
+            wanted: Mutex::new(Wanted {
+                level: Some(0.5),
+                gone: false,
+            }),
+            woken: Condvar::new(),
+        };
+        assert_eq!(shared.next(true), Next::Level(0.5));
+        assert_eq!(shared.next(true), Next::Idle);
+    }
+
+    #[test]
+    fn asking_for_capabilities_is_framed_and_summed() {
+        let sent = capabilities_request(0x0020);
+        assert_eq!(sent[..5], [0x51, 0x83, 0xF3, 0x00, 0x20]);
+        let sum = [0x6E, 0x51, 0x83, 0xF3, 0x00, 0x20]
+            .iter()
+            .fold(0, |sum, byte| sum ^ byte);
+        assert_eq!(sent[5], sum);
+    }
+
+    #[test]
+    fn a_firmware_level_with_no_brightest_is_still_read() {
+        assert_eq!(
+            reading(&answer(0, FIRMWARE, 0, 0x0100), FIRMWARE).unwrap(),
+            Reading {
+                max: 0,
+                now: 0x0100
+            }
+        );
+        assert!(reading(&answer(0, BRIGHTNESS, 0, 0), BRIGHTNESS).is_err());
+    }
+
+    #[test]
+    fn a_monitor_s_brightness_and_hot_plug_detection_are_named() {
+        assert_eq!(share(40, 100), "40%");
+        assert_eq!(share(1, 3), "33%");
+        assert_eq!(share(0, 0), "0%");
+        assert_eq!(hot_plug_named(0x0001), "always on");
+        assert_eq!(hot_plug_named(0x0100), "low power");
     }
 
     /// A stand-in sysfs and /dev, gone when the test is.
