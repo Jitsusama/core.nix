@@ -520,19 +520,21 @@ works the same way everywhere.
   field. What's held shows as chips; the left arrow steps back out, and
   Escape always closes. The footer names what Return does and where the
   arrows go.
-- **Answers in the field.** A sum, a base, a measure in another unit, a
-  colour in its other forms, an address or network, a hardware address,
-  money, the time or the weather somewhere, or how the machine is doing is
-  answered in grey right after what's typed, and that's the answer's only
-  home. So is the machine itself, in its own words: "battery" or
+- **Answers first.** A sum is answered in grey right after what's typed,
+  and that's its only home. A base, a measure in another unit, a colour in
+  its other forms, an address or network, a hardware address, money, the
+  time or the weather somewhere, or how the machine is doing is one row
+  first in the list, named by what it says and saying it's an answer at its
+  right edge, with its parts a step in, so a question never lists a column
+  of bare figures. So is the machine itself, in its own words: "battery" or
   "charger", "temperature" or "fans", "date" or "epoch", "brightness",
   "volume", "keyboards". The start of one of those words, three letters
   or more, asks it too: "batt" shows the battery, the rest of the word in
   grey, and Tab finishes it. A row whose name starts the same way is
   chosen first, so "pow" is still Power Off. A colour's first row wears
   it, and so does the theme's nearest pigment. Return copies it, Tab puts
-  it in place of the question, and Down walks its detail, each row copied
-  the same way. A level typed after its name, "brightness 40" or "volume
+  a sum in place of the question, and the right arrow steps into an
+  answer's parts, each copied the same way. A level typed after its name, "brightness 40" or "volume
   40", is an answer that does: Return sets it. The footer says where an
   answer came from.
   Nothing leaves the machine unless the question needs the network, never
@@ -886,7 +888,7 @@ by them isn't done.
 | The compositor                            | niri                     | none           |        |        |           |         |          |
 | The wallpaper                             | Quickshell, niri         | none           |        |        |           |         |          |
 | The launcher's foot and the margin mark   | Quickshell               | both           | the foot, when the selection says nothing: the time, the date, the battery with its time and watts, the network, the volume, the day's AI spend, pi, each after its glyph | the battery running low, offline, a network wanting a sign-in, muted | step 2's doors | step 2 | volume, network, battery, date; the time stays |
-| The launcher and palette                  | Quickshell               | monospace      |        |        |           |         |          |
+| The launcher and palette                  | Quickshell               | monospace      | what's typed; the selected row: its glyph, its name, its kind or its chord; Return's verb at the foot's right | the foot's note: "sl is enough", the chord that opens a thing next time, where an answer came from | a thing's verbs, a collection's members and an answer's parts, a step in by the right arrow | the accent frame, a command line over a list split by a hairline, a quarter down | past eight rows the list scrolls, keeping the height it opened at; a note takes the glance's place in the foot |
 | Notifications                             | Quickshell               | both           |        |        |           |         |          |
 | Menus and overlays                        | Quickshell               | both           |        |        |           |         |          |
 | The lock screen, polkit and PIN prompts   | Quickshell               | both           |        |        |           |         |          |

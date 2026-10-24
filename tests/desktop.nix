@@ -1774,9 +1774,11 @@ pkgs.testers.runNixOSTest {
           machine.send_key("ret")
           machine.wait_until_fails(in_session(launcher_open), timeout=10)
           t.assertTrue(as_account("wl-paste --no-newline").startswith(f"{charge}%, "))
-          # Then what feeds it: the stand-in's mains, plugged in.
+          # Then what feeds it: the stand-in's mains, plugged in, a step
+          # into the answer's row.
           answer("charger")
-          machine.send_key("down")
+          launcher_until(lambda shown: shown["kind"] == "answer")
+          step_in()
           launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "mains")
           machine.send_key("esc")
           # A collection is found by what a person calls it, not only its
@@ -1906,8 +1908,8 @@ pkgs.testers.runNixOSTest {
               lambda shown: (shown["selected"] or {}).get("name", "").endswith(" free on /nix")
           )
           photograph("launcher-disks")
-          # Its first row is the headline's disk.
-          machine.send_key("down")
+          # Its first part, a step in, is the headline's disk.
+          step_in()
           launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "20.0 GiB free")
           machine.send_key("esc")
           machine.wait_until_fails(in_session(launcher_open), timeout=10)
@@ -1956,12 +1958,15 @@ pkgs.testers.runNixOSTest {
               and shown["footer"] == "3 GiB to spare \u00b7 the processors 13% held up"
           )
           # At a glance its place in line or how long it's run, a minute
-          # turning over allowed for; since when below it.
-          for name, side, footer in [
+          # turning over allowed for; since when below it. They're a step
+          # into the answer, the first selected there.
+          step_in()
+          for index, (name, side, footer) in enumerate([
               ("Build the desktop", r"build \u00b7 (just begun|for 1 min)", r"running since \d\d:\d\d"),
               ("Test the camera", r"VM test \u00b7 1st in line", r"waiting since \d\d:\d\d"),
-          ]:
-              machine.send_key("down")
+          ]):
+              if index > 0:
+                  machine.send_key("down")
               launcher_until(
                   lambda shown: (shown["selected"] or {}).get("name") == name
                   and re.fullmatch(side, shown["selected"]["side"]) is not None

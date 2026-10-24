@@ -140,13 +140,15 @@ Scope {
         return false;
     }
 
-    // An answer's rows above what was found. Asked afresh, the selection
-    // goes to the top; when a late answer arrives, a selection already
-    // moved stays on the row it was on.
+    // An answer with detail is one row above what was found, named by what
+    // it says, its detail a step in, so a question never lists a column of
+    // bare figures. A sum's, with none, is said in the field. Asked afresh,
+    // the selection goes to the top; when a late answer arrives, a
+    // selection already moved stays on the row it was on.
     function compose(fresh) {
-        const before = answer ? answer.rows.length : 0;
+        const before = matches.length > 0 && matches[0].answered ? 1 : 0;
         answer = answering(typed, fresh);
-        const rows = answer ? answer.rows : [];
+        const rows = answer && answer.rows.length > 0 ? [answered(answer)] : [];
         // A thing shows once: a collection found whole stands for what's in
         // it, so neither its own rows, nor the things that live in it
         // (`inside` names it), nor a shortcut that opens it, whose chord its
@@ -167,9 +169,44 @@ Scope {
         // An answer only started gives way to a name that starts the same.
         const meant = answer && !(answer.question && below.length > 0 && startsAWord(below[0].name, typed));
         if (fresh || (current === -1 && !answer))
-            current = meant ? -1 : answer ? rows.length : 0;
+            current = meant ? (rows.length > 0 ? 0 : -1) : answer ? rows.length : 0;
+        else if (current === -1 && rows.length > 0)
+            current = 0;
         else if (current >= 0)
             current = Rank.pinned(matches, was, current + rows.length - before);
+    }
+
+    // An answer as a row: what it says as its name, Return copying it or
+    // doing what it does, and its detail behind the right arrow, each part
+    // copied the same way. Its kind says it's an answer.
+    function answered(said) {
+        const first = said.rows[0];
+        return {
+            // Nothing to learn: an answer is always first for its question.
+            key: "",
+            is: "answer",
+            answered: true,
+            nested: true,
+            // Named by what it says, not by what was typed, so nothing in
+            // it is marked as matched.
+            plain: true,
+            name: said.headline,
+            chip: said.question ?? Fuzzy.plainly(typed),
+            glyph: first.glyph,
+            hue: first.hue,
+            swatch: first.swatch,
+            side: "",
+            chord: [],
+            verb: said.verb ?? ((said.copy ?? said.headline) === "" ? "close" : "copy"),
+            now: true,
+            note: said.note ?? "",
+            run: said.run ?? (() => {
+                const copy = said.copy ?? said.headline;
+                if (copy !== "")
+                    Quickshell.clipboardText = copy;
+            }),
+            verbs: () => said.rows
+        };
     }
 
     function reanswer() {
@@ -200,7 +237,7 @@ Scope {
     readonly property string kind: {
         if (typed === "" || held.length > 0 || !selected)
             return "";
-        if (selected === headline || (answer && answer.rows.includes(selected)))
+        if (selected === headline || selected.answered)
             return "answer";
         // A collection's own row has no provider's kind; a shortcut that
         // opens one is still a shortcut.
@@ -289,7 +326,9 @@ Scope {
     readonly property var kinds: Providers.launcher.kinds
 
     function kindOf(row) {
-        if (!row || row.opens || row.plain || (answer && answer.rows.includes(row)))
+        if (row && row.answered)
+            return "answer";
+        if (!row || row.opens || row.plain)
             return "";
         return kinds[row.what ?? ""] ?? "";
     }
@@ -740,6 +779,10 @@ Scope {
         const choice = matches[current];
         if (!choice || typed === "")
             return "";
+        // An answer's row says the answer; the field finishes its question.
+        if (choice.answered)
+            return answer && answer.question
+                ? answer.question.slice(Fuzzy.plainly(typed).length) : "";
         const name = choice.name;
         const at = name.toLowerCase().indexOf(typed.toLowerCase());
         if (at < 0 || (at > 0 && name[at - 1] !== " "))
@@ -896,7 +939,8 @@ Scope {
                 verb: root.verbOf(row),
                 chord: (row.chord ?? []).map(key => key.text).join(" "),
                 side: row.side ?? "",
-                settled: row !== root.headline || !root.answer.asking
+                settled: !(row === root.headline || row.answered)
+                    || !(root.answer && root.answer.asking)
             },
             kind: root.kind,
             footer: foot.glancing ? "" : note.said,
@@ -1066,11 +1110,12 @@ Scope {
                             // At home, Tab takes the suggestion to try.
                             if (root.atHome && root.example !== "")
                                 text = root.example;
+                            // A question only started is finished first.
+                            else if (root.question !== ""
+                                && (root.current === -1 || root.selected?.answered))
+                                text = root.question;
                             else if (root.current !== -1 || !root.answer)
                                 text = text + root.completion;
-                            // A question only started is finished first.
-                            else if (root.question !== "")
-                                text = root.question;
                             // An answer that does something has nothing to
                             // put in the question's place.
                             else if (!root.answer.run && (root.answer.copy ?? root.answer.headline) !== "")
@@ -1081,7 +1126,8 @@ Scope {
                         onBackward: root.back()
                         // The highest the selection goes: an answer's headline
                         // sits above the rows, at -1.
-                        readonly property int highest: root.answer ? -1 : 0
+                        readonly property int highest: root.answer && root.answer.rows.length === 0
+                            ? -1 : 0
                         Keys.onUpPressed: root.current = Math.max(root.current - 1, highest)
                         Keys.onDownPressed: root.current
                             = Math.max(highest, Math.min(root.current + 1, root.matches.length - 1))
