@@ -2,8 +2,9 @@
 # link 20 ms away with a second of buffer, as a cable modem's is, and loads
 # it with the account's uploads. With the shaper, an app's ping stays near
 # the line's own 20 ms; without it, the buffer fills and the ping waits a
-# good part of a second. When the line drops to 4 Mbit/s the shaper follows
-# it down within seconds, and back up when it returns.
+# good part of a second. An app's upload takes the line from the jobs' while
+# it runs, leaving them CAKE's sixteenth. When the line drops to 4 Mbit/s
+# the shaper follows it down within seconds, and back up when it returns.
 #
 # The margins are wide, so a loaded host running the machines slower
 # can't turn one into the other.
