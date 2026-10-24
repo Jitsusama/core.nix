@@ -222,16 +222,18 @@ function top(values) {
 
 // The programs that used the processors most between two reads, each
 // with its share of the whole machine, from 0 to 1. A process that started
-// between them is left out, since its time before can't be told.
+// between them is left out, since its time before can't be told. With no
+// read before (`then` null), since the machine started, as the processors'
+// own first figure is, so a first read has its programs too.
 function using(now, then) {
-    const all = now.ticks - then.ticks;
+    const all = now.ticks - (then ? then.ticks : 0);
     const ticks = {};
     if (all <= 0) {
         return [];
     }
     for (const id of Object.keys(now.programs)) {
-        const before = then.programs[id];
         const process = now.programs[id];
+        const before = then ? then.programs[id] : { name: process.name, ticks: 0 };
         if (before && before.name === process.name) {
             ticks[process.name] = (ticks[process.name] ?? 0) + process.ticks - before.ticks;
         }

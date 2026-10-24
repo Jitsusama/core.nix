@@ -24,7 +24,8 @@
 // second, and never more: nothing is read for a key. What programs are
 // running is read by one spawned cat, the disk's health by asking UDisks,
 // with no prompt, and the file system's room by stat where no guard says it,
-// each at most once a second while shown, and the health once a minute.
+// each at most once a second while shown, and the health once a minute;
+// the programs once as the launcher opens, too.
 import qs
 import Qt.labs.folderlistmodel
 import Quickshell.Io
@@ -365,8 +366,8 @@ Provider {
                 graph: bar(now.heat.value / (now.heat.most ?? 100)),
                 note: now.heat.most ? `at most ${degrees(now.heat.most)}` : ""
             }));
-        const users = programs?.before
-            ? Machine.using(programs.last.said, programs.before.said) : [];
+        const users = programs
+            ? Machine.using(programs.last.said, programs.before?.said ?? null) : [];
         if (users.length > 0)
             rows.push(holder({
                 name: "Using it",
@@ -420,20 +421,45 @@ Provider {
 
     // The processes, read by one cat of each one's stat after the page
     // size and /proc/stat, so their ticks and the machine's come from one
-    // moment: { last, before }, as reads keeps a thing's.
+    // moment: { last, before }, as reads keeps a thing's. They're read as
+    // the launcher opens too, so the programs Using the processors and the
+    // memory are there the first time either is asked, rather than a read
+    // or two later: the processors' since the last read, or since the
+    // machine started, until another a moment later says now. A read is
+    // made sense of only when it's asked, so opening costs one cat and
+    // nothing on the shell's own thread.
     property var programs: null
 
     function list() {
-        if (!lister.running && due(programs, Date.now()) && (settings.processes ?? "") !== "")
+        if (lister.running || (settings.processes ?? "") === "")
+            return;
+        if (due(programs, Date.now()))
             lister.running = true;
+        else if (!settled(programs) && !soon.running)
+            soon.restart();
     }
 
     function listed(text) {
-        programs = {
-            last: { at: Date.now(), said: Machine.processes(text) },
-            before: programs?.last ?? null
-        };
-        provider.answered();
+        let said = null;
+        const last = { at: Date.now() };
+        Object.defineProperty(last, "said", {
+            enumerable: true,
+            get: () => said ?? (said = Machine.processes(text))
+        });
+        programs = { last: last, before: programs?.last ?? null };
+        if (!settled(programs))
+            soon.restart();
+        if (shown)
+            provider.answered();
+    }
+
+    Connections {
+        target: provider.launcher
+
+        function onOpenChanged() {
+            if (provider.launcher.open)
+                provider.list();
+        }
     }
 
     // The memory.

@@ -68,18 +68,47 @@ Scope {
     // Says `changed` only when what its rows show has, for a collection
     // whose rows are made again whenever anything they're made from moves,
     // as the agents' are every few seconds, since each change searches an
-    // open list again. What they show is each row's identity, name, words
-    // at the right and after it, note and glyph, as one string.
+    // open list again. What they show is each row's identity, name, what
+    // Return does, words at the right and after it, note and glyph, as one
+    // string; and for the row the launcher has stepped into, what it holds,
+    // as far down as it's held, since that can change while the row reads
+    // the same, as a window's do when it's floated or moved. Only the rows
+    // held are asked what they hold, as the launcher would ask them again,
+    // so a change makes no row's verbs that nobody's looking at.
     property string lastSaid: ""
 
     function changedTo(rows) {
-        const now = rows.map(row => [row.is ?? "", row.key ?? "", row.name ?? "",
-            row.side ?? "", row.count ?? "", row.note ?? "", row.glyph ?? ""]
-            .join("\u241f")).join("\u241e");
+        const now = says(rows, heldKeys(), true);
         if (now === lastSaid)
             return;
         lastSaid = now;
         changed();
+    }
+
+    // The keys of the rows held below its collection in the launcher, in
+    // order, or none while it's closed or holds none of this provider's.
+    function heldKeys() {
+        const steps = launcher && launcher.open ? launcher.held ?? [] : [];
+        const from = steps.findIndex(step => step.row.from === provider);
+        return from < 0 ? [] : steps.slice(from + 1).map(step => step.row.key ?? "");
+    }
+
+    // What rows show, as `changedTo` compares them; the first row keyed as
+    // the next held step says what it holds too: a thing's verbs, or, below
+    // a row that isn't nested, a verb's targets, as the launcher steps in.
+    function says(rows, held, things) {
+        let open = held.length > 0;
+        return rows.map(row => {
+            const own = [row.is ?? "", row.key ?? "", row.name ?? "", row.verb ?? "",
+                row.side ?? "", row.count ?? "", row.note ?? "", row.glyph ?? ""]
+                .join("\u241f");
+            if (!open || row.key !== held[0])
+                return own;
+            open = false;
+            const asked = things ? row.verbs : row.targets;
+            const inside = typeof asked === "function" ? asked() ?? [] : [];
+            return `${own}\u241d${says(inside, held.slice(1), !!row.nested)}\u241c`;
+        }).join("\u241e");
     }
 
     function answer(typed) {
