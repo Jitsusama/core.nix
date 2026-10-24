@@ -15,6 +15,9 @@ struct Tally {
     session_cpu: Vec<f64>,
     app_memory: Vec<f64>,
     kinds: BTreeMap<String, usize>,
+    /// For each kind, how often each unit was named as the one that
+    /// stalled most.
+    units: BTreeMap<String, BTreeMap<String, usize>>,
 }
 
 fn median(v: &mut [f64]) -> f64 {
@@ -36,6 +39,12 @@ fn kind(line: &str) -> String {
         .find(|c: char| c.is_ascii_digit())
         .unwrap_or(line.len());
     line[..cut].trim().trim_end_matches(',').to_string()
+}
+
+/// The unit a trouble line names as the one that stalled most.
+fn unit(line: &str) -> Option<&str> {
+    let (_, after) = line.split_once(", most in ")?;
+    after.split_once(" (").map(|(name, _)| name)
 }
 
 /// The report, in the order the generations were first seen.
@@ -63,6 +72,13 @@ pub fn render(windows: &[Window]) -> String {
         }
         for line in &w.trouble {
             *t.kinds.entry(kind(line)).or_default() += 1;
+            if let Some(u) = unit(line) {
+                *t.units
+                    .entry(kind(line))
+                    .or_default()
+                    .entry(u.to_string())
+                    .or_default() += 1;
+            }
         }
     }
     let mut out = String::new();
@@ -95,7 +111,12 @@ pub fn render(windows: &[Window]) -> String {
             let mut kinds: Vec<(&String, &usize)> = t.kinds.iter().collect();
             kinds.sort_by(|a, b| b.1.cmp(a.1));
             for (k, n) in kinds.into_iter().take(4) {
-                let _ = writeln!(out, "            {n:>4} x {k}");
+                let most = t
+                    .units
+                    .get(k)
+                    .and_then(|u| u.iter().max_by_key(|(_, n)| **n))
+                    .map_or_else(String::new, |(u, n)| format!(", most often in {u} ({n})"));
+                let _ = writeln!(out, "            {n:>4} x {k}{most}");
             }
         }
     }
@@ -155,6 +176,35 @@ mod tests {
         assert!(text.contains("waited in 50.0%"));
         assert!(text.contains("1 x niri took"));
         assert!(!text.contains("busy"));
+    }
+
+    #[test]
+    fn the_unit_named_most_often_is_given_beside_its_kind() {
+        let all = [
+            window(
+                "gen",
+                Band::Busy,
+                1.0,
+                &["apps stalled on memory 2.25% of the time, most in dev.service (2.20%)"],
+            ),
+            window(
+                "gen",
+                Band::Busy,
+                1.0,
+                &["apps stalled on memory 0.40% of the time, most in dev.service (0.30%)"],
+            ),
+            window(
+                "gen",
+                Band::Busy,
+                1.0,
+                &["apps stalled on memory 0.20% of the time, most in kitty-1.scope (0.20%)"],
+            ),
+        ];
+        assert!(
+            render(&all).contains("3 x apps stalled on memory, most often in dev.service (2)"),
+            "{}",
+            render(&all)
+        );
     }
 
     #[test]

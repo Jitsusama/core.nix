@@ -99,6 +99,20 @@ fn snapshot(cgroups: &Path, account: &Path, threads: &[(&'static str, PathBuf)])
             s.groups.insert(name.to_string(), g);
         }
     }
+    for entry in fs::read_dir(account.join("app.slice"))
+        .into_iter()
+        .flatten()
+        .flatten()
+    {
+        let path = entry.path();
+        let unit = path
+            .extension()
+            .is_some_and(|e| e == "service" || e == "scope" || e == "slice");
+        if unit && let Some(g) = kernel::group(&path) {
+            s.apps
+                .insert(entry.file_name().to_string_lossy().to_string(), g);
+        }
+    }
     for (label, path) in threads {
         let text = fs::read_to_string(path).unwrap_or_default();
         if let Some(sched) = kernel::sched(&text) {
