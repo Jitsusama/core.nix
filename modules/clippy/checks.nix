@@ -14,6 +14,7 @@ onLinux {
   rust-programs-pass-clippy =
     let
       programs = [
+        ../creative-pebble-x-plus/lights.rs
         ../ergodox/ergodox-watch.rs
         ../linux-id/pinentry.rs
         ../litra/litra.rs
