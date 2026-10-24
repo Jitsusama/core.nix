@@ -69,6 +69,7 @@ meaning each; [docs/architecture.md][2] defines them.
 nix fmt                                # format, and lint every language strictly
 nix build .#checks.x86_64-linux.<name> # the checks a change touches, as you go
 run-subtests vm-desktop-works <words>  # a VM test's subtests named, in seconds
+shell-preview --type <words>           # the shell from the working copy, in a niri window
 changed-checks --build --no-vm         # every check the change touched, VM tests aside
 nix flake check --keep-going           # everything, once, before pushing
 ```
@@ -79,7 +80,7 @@ everything once, before pushing, never after each edit:
 | Changed         | While editing, in seconds                         | Before pushing             |
 | --------------- | ------------------------------------------------- | -------------------------- |
 | Shell logic     | its own check, `quickshell-passes-qmllint`        | the VM tests it changes    |
-| A shell surface | `quickshell-passes-qmllint`, `run-subtests`       | `vm-desktop-works`, `shots-changed` |
+| A shell surface | `shell-preview`, `quickshell-passes-qmllint`, `run-subtests` | `vm-desktop-works`, `shots-changed` |
 | A Rust crate    | `cargo test`, then `<crate>-passes-clippy`        | its VM test, if any        |
 | A theme         | `a-faint-theme-is-refused`, `a-theme-changes-everything` | the VM tests it changes |
 | The kernel      | `kernel-settings-hold-<model>`                    | the machine's kernel       |

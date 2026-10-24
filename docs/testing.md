@@ -14,6 +14,7 @@ schedule.
 nix fmt                                  # format, and lint every language strictly
 nix build .#checks.x86_64-linux.<name>   # the checks the change touches, as you go
 run-subtests <vm-test> <words>           # a VM test's subtests named, in seconds
+shell-preview --type <words>             # the shell from the working copy, in a niri window
 changed-checks --build --no-vm           # every check the change touched, VM tests aside
 nix flake check --keep-going             # everything, once, before pushing
 ```
@@ -158,6 +159,7 @@ written beside each in `tests/`.
 | `formatting`                        | everything is formatted and passes the linters            |
 | `stands-alone`                      | nothing here names a machine, its repository or employer  |
 | `run-subtests-keeps-what-is-named`  | run-subtests keeps a script's boot and helpers and only the subtests named |
+| `shell-preview-follows-the-working-copy` | shell-preview links each built file the working copy holds back to it, and copies what the build made |
 | `changed-checks-names-what-moved`   | changed-checks names a check added, changed, removed or broken by its derivation, and builds VM tests only when asked |
 
 ### Examples

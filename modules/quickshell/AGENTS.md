@@ -70,9 +70,15 @@ screenshot of each; what only a running desktop shows gets a subtest there.
 A picture is taken with `photograph`, once the screen holds still, after
 waiting on what the shell reports for the state it shows.
 
-While changing a surface, run only its subtests, with `run-subtests
-vm-desktop-works <words>` from the dev shell, in under half a minute; a
-subtest that uses what an earlier one left needs that one named too. Before
+To see a surface while changing it, run `shell-preview` from the dev shell.
+It opens the desktop test's shell in a niri window of its own, built from the
+working copy, and an edit to any QML or JavaScript file shows as Quickshell
+reloads it; `--type sl` opens the launcher on a query, with the test
+machine's stand-in programs. What Nix generates, such as `Theme.qml`, takes a
+new preview.
+
+To prove it, run only its subtests, with `run-subtests vm-desktop-works
+<words>` from the dev shell, in under half a minute; each runs alone. Before
 pushing, run the whole test once, and compare its pictures with main's using
 `shots-changed`, as [testing][testing] says, looking at every one it draws:
 a change to one surface can move another.

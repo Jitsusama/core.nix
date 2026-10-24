@@ -361,7 +361,8 @@
       # holds shots-changed, which compares two runs of the desktop test's
       # pictures, changed-checks, which names and builds the checks a change
       # touches, and on Linux run-subtests, which runs some of a VM test's
-      # subtests in seconds (docs/testing.md).
+      # subtests in seconds, and shell-preview, which shows the shell from
+      # the working copy in a niri window (docs/testing.md).
       devShells = forEachSystem (pkgs: {
         default = pkgs.mkShell {
           # wifid's sign-in window builds against GTK and WebKit, which
@@ -383,6 +384,7 @@
           # VM tests boot under QEMU, which they need Linux for.
           ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [
             (pkgs.callPackage ./tests/run-subtests.nix { }).tool
+            (pkgs.callPackage ./tests/shell-preview.nix { }).tool
           ]
           ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [
             pkgs.dosfstools
