@@ -206,12 +206,20 @@ pub fn status(session: &Session, colours: &Colours, read: Option<u64>) -> String
 mod tests {
     use super::*;
 
+    /// Write a colour as the theme does, from its red, green and blue. The
+    /// tests build theirs from channels, so no look is named in the code.
+    fn hex(red: u8, green: u8, blue: u8) -> String {
+        format!("#{red:02x}{green:02x}{blue:02x}")
+    }
+
     fn colours() -> Colours {
-        Colours::from_json(
-            r##"{"folder": "#010203", "model": "#040506", "context": "#070809",
-                "separator": "#0a0b0c"}"##,
-        )
-        .expect("the colours are good")
+        let colours = serde_json::json!({
+            "folder": hex(1, 2, 3),
+            "model": hex(4, 5, 6),
+            "context": hex(7, 8, 9),
+            "separator": hex(10, 11, 12),
+        });
+        Colours::from_json(&colours.to_string()).expect("the colours are good")
     }
 
     fn session(written: &str) -> Session {
@@ -274,7 +282,7 @@ mod tests {
 
     #[test]
     fn a_colour_is_drawn_as_its_red_green_and_blue() {
-        let orange = Colour::parse("#ff8000").expect("a colour");
+        let orange = Colour::parse(&hex(255, 128, 0)).expect("a colour");
         assert_eq!(
             paint("a", orange, Weight::Regular),
             "\x1b[38;2;255;128;0ma\x1b[0m"
@@ -294,7 +302,8 @@ mod tests {
 
     #[test]
     fn colours_missing_a_part_say_which() {
-        let refused = Colours::from_json(r##"{"folder": "#000000", "model": "#000000"}"##);
+        let partial = serde_json::json!({"folder": hex(0, 0, 0), "model": hex(0, 0, 0)});
+        let refused = Colours::from_json(&partial.to_string());
         assert_eq!(refused, Err("the colours give no context".to_owned()));
     }
 
