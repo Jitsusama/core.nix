@@ -2909,14 +2909,16 @@ with subtest("Tuple's windows find their places: the face in a corner, a shared 
         in_session("niri msg --json windows | grep -q 'tuple-\\|at work'"), timeout=30
     )
 
+# Where keyboard-lights says whether caps lock is on.
+CAPITALS = "/run/keyboard-lights/capslock"
+
 with subtest("caps lock shows in the margin while it's on"):
-    capitals = "/run/keyboard-lights/capslock"
     machine.send_key("caps_lock")
-    machine.wait_until_succeeds(f"grep -qx 1 {capitals}", timeout=10)
+    machine.wait_until_succeeds(f"grep -qx 1 {CAPITALS}", timeout=10)
     wait_for_surface("margin")
     photograph("margin-capitals")
     machine.send_key("caps_lock")
-    machine.wait_until_succeeds(f"grep -qx 0 {capitals}", timeout=10)
+    machine.wait_until_succeeds(f"grep -qx 0 {CAPITALS}", timeout=10)
     machine.wait_until_fails(in_session(margin), timeout=10)
 
 with subtest("caps lock still shows after its watcher restarts"):
@@ -2924,7 +2926,7 @@ with subtest("caps lock still shows after its watcher restarts"):
     machine.succeed("systemctl restart keyboard-lights")
     machine.wait_for_unit("keyboard-lights.service")
     machine.send_key("caps_lock")
-    machine.wait_until_succeeds(f"grep -qx 1 {capitals}", timeout=10)
+    machine.wait_until_succeeds(f"grep -qx 1 {CAPITALS}", timeout=10)
     wait_for_surface("margin")
     machine.send_key("caps_lock")
     machine.wait_until_fails(in_session(margin), timeout=10)
