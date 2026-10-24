@@ -881,6 +881,9 @@
     a reboot forces on after a minute of a service not stopping, the watchdog resets a stuck last
     stage, and Plymouth hears which
   '';
+  vm-screens-come-and-go = ''
+    the launcher and a notice come back after the screen goes and returns
+  '';
   vm-secure-boot-installs = ''
     the whole install works, and the disk opens only for it
   '';

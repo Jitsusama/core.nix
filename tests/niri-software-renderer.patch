@@ -1,0 +1,40 @@
+Lets niri drive a display through a software renderer, for the screens
+VM test alone (tests/screens.nix): the VM has no GPU, only llvmpipe, and
+niri as it ships skips a software EGL device, so it would find nothing to
+draw with. A software device names no render node either, so the device's
+own stands in for it, which is the one niri took as its primary.
+
+--- a/src/backend/tty.rs
++++ b/src/backend/tty.rs
+@@ -784,22 +784,26 @@
+             // Software EGL devices (e.g., llvmpipe/softpipe) are rejected for now. They have some
+             // problems (segfault on importing dmabufs from other renderers) and need to be
+             // excluded from some places like DRM leasing.
+-            ensure!(
+-                !egl_device.is_software(),
+-                "software EGL renderers are skipped"
+-            );
++            // A virtual machine's test has no GPU, only llvmpipe, so the
++            // test's niri takes a software renderer rather than none.
++            if egl_device.is_software() {
++                warn!("driving the display with a software renderer, as a test does");
++            }
+ 
++            // A software renderer names no render node, so the device's own
++            // stands in for it, which is the one niri took as primary.
+             let render_node = egl_device
+                 .try_get_render_node()
+                 .ok()
+                 .flatten()
++                .or_else(|| node.node_with_type(NodeType::Render).and_then(Result::ok))
+                 .unwrap_or(node);
+             self.gpu_manager
+                 .as_mut()
+                 .add_node(render_node, gbm.clone())
+                 .context("error adding render node to GPU manager")?;
+ 
+-            Ok(render_node)
++            Ok::<_, anyhow::Error>(render_node)
+         };
+ 
+         let render_node = match try_initialize_gpu() {
