@@ -1,0 +1,33 @@
+Turns a screen off without waiting on it, for niri's smithay: a panel's
+power-down delay (about 200 ms on the XPS 14's eDP) ran inside niri's
+commit, holding up its main thread at every lid shut and monitor
+power-off. A commit refused as busy behind another on the same CRTC
+waits as before.
+
+--- a/src/backend/drm/surface/atomic.rs
++++ b/src/backend/drm/surface/atomic.rs
+@@ -980,9 +980,22 @@
+         req.reset_crtc(self.crtc)?;
+         std::mem::drop(current);
+ 
+-        let res = self
++        // Turning a panel off waits out its power-down delay (about 200 ms
++        // on an eDP panel) inside the commit, so a blocking commit stalls
++        // the compositor, every other screen with it. Nonblocking, the
++        // kernel waits in its own worker; a commit that would have to wait
++        // behind another on this CRTC is refused as busy, and then waits.
++        let req = req.build()?;
++        let res = match self
+             .fd
+-            .atomic_commit(AtomicCommitFlags::ALLOW_MODESET, req.build()?)
++            .atomic_commit(AtomicCommitFlags::ALLOW_MODESET | AtomicCommitFlags::NONBLOCK, req.clone())
++        {
++            Err(err) if err.kind() == std::io::ErrorKind::ResourceBusy => {
++                self.fd.atomic_commit(AtomicCommitFlags::ALLOW_MODESET, req)
++            }
++            other => other,
++        };
++        let res = res
+             .map_err(|source| {
+                 Error::Access(AccessError {
+                     errmsg: "Failed to commit on clear_state",
