@@ -599,6 +599,11 @@
   the-music-follows-the-player = ''
     the music is the player that started last, never playerctld's echo
   '';
+  the-notices-land-on-niri = ''
+    the account's notices, on its real niri nested in a headless sway in the sandbox, draw a notice
+    sent as a card on niri's notices layer, and what Super+Shift+N runs puts a critical one away
+    unread in the history
+  '';
   the-npu-finds-its-compiler = ''
     the XPS 14's graphics drivers hold the NPU's driver and Intel's compiler beside it
   '';

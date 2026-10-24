@@ -113,6 +113,21 @@ The kernel checks build only its configuration: the patched source, run
 through Kconfig, which drops a setting whose dependencies aren't met. [The
 kernel guide][2] says what that catches.
 
+### The Shell on niri
+
+The account's shell files and its real niri configuration, run on a real
+niri nested in a headless sway drawn in software, inside the build sandbox
+(`tests/nested-niri.sh`), in seconds rather than a machine's minutes. It
+proves what the shell does on niri that needs no system service: a surface
+landing as niri's layer, what a bind's command does. It asserts through the
+shell's reports and `niri msg`, never pixels. `the-notices-land-on-niri` is
+the first.
+
+Two things it can't do, so they stay in a machine. Nested, niri has one
+output that never goes, so screens coming and going need a VM. And keys
+typed there with wtype never reached niri's binds, so a check runs what a
+bind runs rather than pressing it.
+
 ### Virtual Machines
 
 Each boots a machine under QEMU, which takes minutes, so each covers what only

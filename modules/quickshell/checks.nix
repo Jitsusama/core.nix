@@ -16,6 +16,75 @@
   ...
 }:
 {
+  # The notices, from the account's own shell files, draw a notice a program
+  # sends as a card on a layer of the account's real niri, with its own
+  # configuration, nested in a headless sway in the sandbox rather than in
+  # a machine (tests/nested-niri.sh, tests/notices-on-niri.sh).
+  the-notices-land-on-niri =
+    let
+      # The graphical account, saying what its shell does, as the desktop
+      # test's does, and away only after an hour, since nobody types here
+      # but the check.
+      home = account (bareNixos [
+        self.nixosModules.graphical
+        {
+          home-manager.users.someone.jitsusama.quickshell = {
+            reports = true;
+            notices.away = 3600;
+          };
+        }
+      ]);
+      shell = lib.filterAttrs (name: _: lib.hasPrefix "quickshell/" name) home.xdg.configFile;
+      niri = lib.filterAttrs (name: _: lib.hasPrefix "niri/" name) home.xdg.configFile;
+      copied =
+        files:
+        lib.concatLines (
+          lib.mapAttrsToList (name: file: "install -D -m 644 ${file.source} ${lib.escapeShellArg name}") files
+        );
+      inherit (pkgs) mesa;
+      # What Super+Shift+N runs, as the account's niri binds it: niri in a
+      # window reads keys through its own keymap, and no keyboard here types
+      # into it, so the check runs the bind's own command.
+      puttingAway =
+        let
+          bind = lib.findFirst (
+            bind: bind.chord == "Super+Shift+N"
+          ) (throw "Nothing puts the notices away.") home.jitsusama.niri.binds;
+          spawned = builtins.match "spawn (.*);" bind.action;
+        in
+        assert spawned != null;
+        lib.filter (word: word != "" && word != " ") (lib.splitString "\"" (lib.head spawned));
+    in
+    pkgs.runCommandLocal "the-notices-land-on-niri"
+      {
+        nativeBuildInputs = [
+          graphical.config.programs.niri.package
+          graphical.pkgs.quickshell
+          pkgs.dbus
+          pkgs.libnotify
+          pkgs.sway-unwrapped
+        ];
+        LANG = "C.UTF-8";
+        FONTCONFIG_FILE = pkgs.makeFontsConf { fontDirectories = graphical.config.fonts.packages; };
+        # niri and Qt draw in software, as the desktop's machine does.
+        __EGL_VENDOR_LIBRARY_FILENAMES = "${mesa}/share/glvnd/egl_vendor.d/50_mesa.json";
+        LIBGL_DRIVERS_PATH = "${mesa}/lib/dri";
+        GBM_BACKENDS_PATH = "${mesa}/lib/gbm";
+        LIBGL_ALWAYS_SOFTWARE = 1;
+        QT_QPA_PLATFORM = "wayland";
+        QT_QUICK_BACKEND = "software";
+      }
+      ''
+        export HOME=$PWD XDG_CONFIG_HOME=$PWD XDG_STATE_HOME=$PWD/state
+        ${copied shell}
+        ${copied niri}
+        install -m 644 ${../../tests/notices.qml} quickshell/shell.qml
+        ${lib.getExe pkgs.bash} ${../../tests/nested-niri.sh} niri/config.kdl logs \
+          ${lib.getExe pkgs.bash} ${../../tests/notices-on-niri.sh} quickshell logs \
+          ${lib.escapeShellArgs puttingAway}
+        touch $out
+      '';
+
   # A switch restarts Quickshell when any file it reads changes, so the shell
   # on screen is never the one from before the switch.
   quickshell-restarts-with-its-files =
