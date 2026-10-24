@@ -537,6 +537,7 @@ gather (
     ./modules/clippy/checks.nix
     ./modules/console/checks.nix
     ./modules/creative-pebble-x-plus/checks.nix
+    ./modules/desk-facts/checks.nix
     ./modules/device-check/checks.nix
     ./modules/dictation/checks.nix
     ./modules/disk-guard/checks.nix

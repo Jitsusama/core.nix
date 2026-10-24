@@ -6,8 +6,14 @@
 // so they last the session, and what lasts belongs in the configuration.
 // Everything goes over niri's socket, asked again whenever the launcher
 // opens or the workspaces change, as they do when a display comes or goes,
-// since niri sends no event for a display itself.
+// since niri sends no event for a display itself. What a display's EDID
+// says of itself, who made it and when, its size, native mode, refresh
+// range, colour depth, colours and HDR, desk-facts writes to a file
+// (modules/desk-facts), and the right arrow lists after the choices,
+// Return copying one.
 import qs
+import Quickshell
+import Quickshell.Io
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
 
@@ -130,7 +136,41 @@ Provider {
         });
     }
 
+    // What desk-facts knows of each display, by its connector's name; one
+    // it says nothing of, or no file at all, has no facts.
+    property var facts: ({})
+
+    function parsed(text) {
+        try {
+            return JSON.parse(text) ?? {};
+        } catch (error) {
+            return {};
+        }
+    }
+
+    FileView {
+        path: `${Quickshell.env("XDG_RUNTIME_DIR")}/desk/displays.json`
+        watchChanges: true
+        printErrors: false
+        onFileChanged: reload()
+        onLoaded: provider.facts = provider.parsed(text())
+        onLoadFailed: provider.facts = ({})
+    }
+
+    function factRows(output) {
+        return (facts[output.name] ?? []).map(fact => copyRow({
+            key: `fact:displays:${output.name}:${fact.name}`,
+            name: fact.value,
+            side: fact.name,
+            glyph: glyph(builtIn(output) ? 0xf0322 : 0xf0379)
+        }));
+    }
+
     function verbs(output) {
+        return choices(output).concat(factRows(output));
+    }
+
+    function choices(output) {
         if (output.logical === null)
             return [choice("on", "Turn it on", 0xf0425, false, () => change(output, "On"))];
         const now = mode(output);

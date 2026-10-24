@@ -26,6 +26,7 @@
     nixosModules.console
     nixosModules.creative-pebble-x-plus
     nixosModules.ddcutil
+    nixosModules.desk-facts
     nixosModules.fonts
     nixosModules.gnome-keyring
     nixosModules.greetd
