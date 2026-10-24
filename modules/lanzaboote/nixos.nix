@@ -311,7 +311,7 @@ in
       );
     };
     # At the system's top, where an installer finds it by the profile.
-    system.extraSystemBuilderCmds = lib.mkIf enrolment.enable ''
+    system.systemBuilderCommands = lib.mkIf enrolment.enable ''
       ln -s ${enrolBeforeFirstBoot} $out/secure-boot-enrolment
     '';
 
