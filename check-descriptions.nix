@@ -770,8 +770,11 @@
     corner on the smaller one included
   '';
   vm-checks-go-first = ''
-    a build user's qemu in the daemon's cgroup goes from batch at nice 5 to normal at nice -10,
-    every thread and a later one, and a compiler beside it doesn't
+    the daemon sits in a cgroup beside its builds, each build in one of its own handed cpu, io,
+    memory and pids; a build's qemu goes from batch to normal at nice -10, every thread and a later
+    one, and its build's cgroup is weighed at 1000 for CPU and disk, while a compiler's build beside
+    it stays batch at 100; a restarted daemon leaves both running and builds again, a build asking
+    for a range of user ids gets 65,536, and a stopped build leaves no process nor cgroup
   '';
   vm-clock-keeps-time = ''
     the clock sets from the machine's servers past a network's silent one

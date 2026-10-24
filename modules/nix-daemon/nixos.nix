@@ -36,26 +36,34 @@
 # those to finish while the collection runs, and 40 GiB more keeps it from
 # running again with the next build.
 #
+# Each build runs in a cgroup of its own, which Nix makes under the daemon's
+# as nix-build-uid-<its user>, having moved the daemon itself into a
+# nix-daemon cgroup beside them. So a build's processes end with it, none
+# left running, each build's CPU, memory and disk use can be read from its
+# cgroup, and the CPU is shared by build rather than by thread, so a build
+# on sixteen threads no longer crowds out one on a single thread. They all
+# stay in build.slice, under its weight and its limits. Nix 3.21 makes the
+# cgroups without handing them any controllers, and systemd handed the
+# daemon none for the CPU until asked, so vm-first hands on what systemd
+# gives; Nix 2.35 does that itself. The daemon stops only its own process
+# when it restarts, so a switch that turns this on lets the builds already
+# running finish where they are.
+#
 # A check's virtual machine is a build too, and on a busy machine it shared
 # each CPU evenly with the compilers beside it, as batch, which never
 # preempts as it wakes: its guest's timers fired late and the check's
-# timeouts failed, so other sessions held their builds while one ran. Inside
-# the daemon's one cgroup the CPU goes by nice, so vm-first puts every qemu
-# thread there back to the normal policy at nice -10 within a second of it
-# starting. On one CPU, a spinner at nice -10 took 81% of it against one at
-# 0. Everything outside the daemon, what Joel uses, keeps its lead. Nix's own
-# use-cgroups would give each build a cgroup, but never hands them the CPU
-# controller, and turning it on restarts the daemon under every build.
+# timeouts failed, so other sessions held their builds while one ran. So
+# vm-first puts every qemu thread back to the normal policy at nice -10
+# within a second of it starting, and weighs the build holding it at 1000
+# against every other build's 100, as nice -10 is to 0. On one CPU, a
+# spinner at nice -10 took 81% of it against one at 0. Everything outside
+# the daemon, what Joel uses, keeps its lead.
 #
 # A check can run its machines as systemd-nspawn containers rather than
 # virtual machines, which start in a second or two rather than booting a
 # kernel. A container needs a range of user ids of its own, which a build
 # asking for the uid-range feature gets once the daemon allocates build users
-# itself rather than taking nixbld's. Only those builds get a cgroup of their
-# own, which Nix makes under the daemon's, so they stay in build.slice and
-# under its limits; every other build runs as before. vm-first looks only in
-# the daemon's own cgroup, where every check's virtual machine still runs,
-# since none asks for a range of ids; one beside a container would be missed.
+# itself rather than taking nixbld's.
 { pkgs, ... }:
 let
   gib = 1024 * 1024 * 1024;
@@ -66,6 +74,7 @@ in
   nix.daemonIOSchedClass = "idle";
 
   nix.settings.auto-allocate-uids = true;
+  nix.settings.use-cgroups = true;
   nix.settings.experimental-features = [
     "auto-allocate-uids"
     "cgroups"
@@ -79,6 +88,12 @@ in
 
   systemd.services.nix-daemon.serviceConfig = {
     Slice = "build.slice";
+    # Nix's own unit says `Delegate=`, which delegates but asks for no
+    # controllers, so the daemon got only those systemd already ran for its
+    # slice, and no unit there asks for the CPU's. Named here, after it, they
+    # are asked for. (DelegateControllers is the property systemd reports,
+    # not a key it reads.)
+    Delegate = "cpu io memory pids";
     ManagedOOMMemoryPressure = "kill";
     ManagedOOMMemoryPressureLimit = "80%";
   };
@@ -90,8 +105,11 @@ in
       ExecStart = "${vmFirst}/bin/vm-first";
       Restart = "on-failure";
       RestartSec = 5;
-      DynamicUser = true;
-      # Only to change another user's threads' policy and nice.
+      # As root, which owns the daemon's cgroup and its builds' weights. It
+      # holds no capability but the one below, and ProtectSystem leaves it
+      # nothing to write outside /sys, /proc and /dev.
+      # The capability, only to change another user's threads' policy and
+      # nice.
       AmbientCapabilities = [ "CAP_SYS_NICE" ];
       CapabilityBoundingSet = [ "CAP_SYS_NICE" ];
       NoNewPrivileges = true;
