@@ -3,8 +3,10 @@
 # doing, once or as it changes (`litra watch`, for the shell), and a watch,
 # run as the person at the machine, that lights it while any camera streams
 # and puts it out once none does, so a call is lit without a hand to the
-# button. systemd's hwdb opens the light's hidraw node to the person at the
-# seat, so nothing else needs to.
+# button. It keeps the light out while the screen is locked, as it is before
+# the machine sleeps, by the file Quickshell's lock writes. systemd's hwdb
+# opens the light's hidraw node to the person at the seat, so nothing else
+# needs to.
 #
 # Which cameras stream it reads from /run/camera-holders, as the shell's
 # camera piece does, so the light and the piece always agree: the loopback
@@ -29,7 +31,7 @@ in
     description = "Lights the Litra Glow while a camera streams";
     wantedBy = [ "default.target" ];
     serviceConfig = {
-      ExecStart = "${litra}/bin/litra follow /run/camera-holders";
+      ExecStart = "${litra}/bin/litra follow /run/camera-holders %t/quickshell-locked";
       Restart = "on-failure";
       RestartSec = 5;
       NoNewPrivileges = true;

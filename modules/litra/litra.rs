@@ -4,7 +4,7 @@
 //! litra on | off | status [--format json]
 //! litra brightness PERCENT
 //! litra temperature KELVIN
-//! litra follow FOLDER
+//! litra follow FOLDER [LOCKED]
 //! litra watch
 //! ```
 //!
@@ -15,8 +15,12 @@
 //! `follow` lights every light while any camera streams, by the files a
 //! camera's watch keeps in FOLDER (one program a line, empty while nobody
 //! streams), puts them out once none does, and puts them out when it's
-//! stopped. It sleeps until a file in the folder changes, a light is
-//! plugged in, or it's told to stop, so it costs nothing in between.
+//! stopped. Given LOCKED, a file that says "locked" while the screen is,
+//! it keeps them out while it says so, which covers sleep too where the
+//! screen locks before the machine sleeps; once unlocked, they follow the
+//! cameras again, so one lit by its own button stays out. It sleeps until
+//! a file in the folder changes, LOCKED is written, a light is plugged in,
+//! or it's told to stop, so it costs nothing in between.
 //!
 //! `watch` prints every light's state as one line of JSON, the same as
 //! `status --format json` gives, once at the start and again whenever it
@@ -391,6 +395,18 @@ fn streaming(folder: &Path) -> bool {
     })
 }
 
+/// Whether a lock's file says the screen is locked. No file says it isn't,
+/// as before the shell first writes one.
+fn locked(marker: &Path) -> bool {
+    fs::read_to_string(marker).is_ok_and(|text| text.trim() == "locked")
+}
+
+/// Whether the lights should be lit: while a camera streams, unless the
+/// screen is locked.
+fn wanted(folder: &Path, lock: Option<&Path>) -> bool {
+    streaming(folder) && !lock.is_some_and(locked)
+}
+
 /// Sets every light plugged in on or off, saying what failed.
 fn light_all(on: bool) {
     for node in lights(Path::new("/sys"), Path::new("/dev")) {
@@ -424,8 +440,9 @@ fn stopping() -> io::Result<File> {
 }
 
 /// Watches the folder and /dev, the folder for a camera's file and /dev
-/// for a light coming, or the permissions udev gives it after.
-fn changes(folder: &Path) -> io::Result<File> {
+/// for a light coming, or the permissions udev gives it after, and the
+/// lock's folder, if there is one, for the lock's file being written.
+fn changes(folder: &Path, lock: Option<&Path>) -> io::Result<File> {
     // SAFETY: a plain call.
     let fd = unsafe { inotify_init1(IN_CLOEXEC) };
     if fd < 0 {
@@ -433,13 +450,17 @@ fn changes(folder: &Path) -> io::Result<File> {
     }
     // SAFETY: the descriptor is ours alone, and the file closes it.
     let file = unsafe { File::from_raw_fd(fd) };
-    let watches = [
+    let mut watches = vec![
         (
             folder.as_os_str(),
             IN_CLOSE_WRITE | IN_MOVED_TO | IN_CREATE | IN_DELETE | IN_DELETE_SELF,
         ),
         (Path::new("/dev").as_os_str(), IN_CREATE | IN_ATTRIB),
     ];
+    // Its folder rather than the file, since the file can be replaced.
+    if let Some(parent) = lock.and_then(Path::parent) {
+        watches.push((parent.as_os_str(), IN_CLOSE_WRITE | IN_MOVED_TO));
+    }
     for (path, mask) in watches {
         let path = CString::new(path.as_encoded_bytes()).map_err(io::Error::other)?;
         // SAFETY: the path is a valid C string for the call.
@@ -464,8 +485,8 @@ fn folder_gone(events: &[u8]) -> bool {
     false
 }
 
-fn follow(folder: &Path) -> ExitCode {
-    let (mut stop, mut changed) = match (stopping(), changes(folder)) {
+fn follow(folder: &Path, lock: Option<&Path>) -> ExitCode {
+    let (mut stop, mut changed) = match (stopping(), changes(folder, lock)) {
         (Ok(stop), Ok(changed)) => (stop, changed),
         (Err(error), _) | (_, Err(error)) => {
             eprintln!("{}: {error}", folder.display());
@@ -476,7 +497,7 @@ fn follow(folder: &Path) -> ExitCode {
     let mut lights_seen = Vec::new();
     let mut buffer = [0u8; 4096];
     loop {
-        let wanted = streaming(folder);
+        let wanted = wanted(folder, lock);
         // A light that has come since is told too, whatever it was doing.
         let now = lights(Path::new("/sys"), Path::new("/dev"));
         if Some(wanted) != lit || now != lights_seen {
@@ -683,7 +704,7 @@ fn number(text: &str, unit: &[char]) -> Option<u16> {
 }
 
 const USAGE: &str = "usage: litra on | off | status [--format json] | brightness PERCENT | \
-                     temperature KELVIN | follow FOLDER | watch";
+                     temperature KELVIN | follow FOLDER [LOCKED] | watch";
 
 fn main() -> ExitCode {
     let arguments: Vec<String> = std::env::args().skip(1).collect();
@@ -702,7 +723,8 @@ fn main() -> ExitCode {
             let warmth = number(warmth, &['K', 'k']).unwrap_or_default();
             every(TEMPERATURE, &kelvin(warmth).to_be_bytes())
         }
-        ["follow", folder] => follow(Path::new(folder)),
+        ["follow", folder] => follow(Path::new(folder), None),
+        ["follow", folder, lock] => follow(Path::new(folder), Some(Path::new(lock))),
         _ => {
             eprintln!("{USAGE}");
             ExitCode::from(2)
@@ -922,6 +944,23 @@ mod tests {
         fs::write(root.join("MX Brio 705 for Business"), "zoom\n").unwrap();
         assert!(streaming(&root));
         assert!(!streaming(&root.join("nothing")));
+    }
+
+    #[test]
+    fn a_locked_screen_keeps_the_lights_out_while_a_camera_streams() {
+        let root = root("locked");
+        let cameras = root.join("cameras");
+        fs::create_dir_all(&cameras).unwrap();
+        fs::write(cameras.join("MX Brio 705 for Business"), "zoom\n").unwrap();
+        let marker = root.join("quickshell-locked");
+        assert!(wanted(&cameras, None));
+        assert!(wanted(&cameras, Some(&marker)), "no file says unlocked");
+        fs::write(&marker, "locked\n").unwrap();
+        assert!(!wanted(&cameras, Some(&marker)));
+        fs::write(&marker, "unlocked\n").unwrap();
+        assert!(wanted(&cameras, Some(&marker)));
+        fs::write(cameras.join("MX Brio 705 for Business"), "").unwrap();
+        assert!(!wanted(&cameras, Some(&marker)));
     }
 
     #[test]
