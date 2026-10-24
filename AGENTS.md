@@ -15,6 +15,7 @@ no framework, and nothing found by scanning the file tree.
 | `hardware/<model>/` | one machine model's needs, and the kernel it runs         |
 | `examples/`         | machines built only from the outputs, as a consumer would |
 | `checks.nix`        | what `nix flake check` runs: every folder's `checks.nix`  |
+| `check-descriptions.nix` | what each check proves, by its name                  |
 | `treefmt.nix`       | what `nix fmt` runs                                       |
 | `docs/`             | architecture, conventions, guides and decision records    |
 | `.agents/skills/`   | how to do this repository's recurring jobs, step by step  |
