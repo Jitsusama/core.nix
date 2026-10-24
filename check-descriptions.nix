@@ -750,7 +750,10 @@
     jobs is slowed past half; timed work sits at 10000 inside idle jobs, and work in jobs can move
     itself there; a scope work in jobs starts goes back to the scope of the work that started it,
     and one with a memory ceiling stays; each command written into jobs.service gets a scope of its
-    own in jobs-work.slice, at weight 100, with its own swap, and the holder stays
+    own in jobs-work.slice, at weight 100, with its own swap, and the holder stays; one naming a
+    quest pi's sessions weigh goes in that quest's slice under jobs-work.slice at its weight for
+    CPU and disk, which follows the file as it changes, and one naming none or an unlisted quest
+    stays; two quests' work on one CPU shares it four to one by weight, and one alone takes it all
   '';
   vm-boot-asks-in-the-theme = ''
     the splash asks for the disk, names a slow job, and lasts a restart to its end; a sign-in

@@ -20,6 +20,7 @@ values = json.loads(Path("@values@").read_text())
 sleep: str = values["sleep"]
 bash: str = values["bash"]
 chrt: str = values["chrt"]
+taskset: str = values["taskset"]
 
 account = "/sys/fs/cgroup/user.slice/user-1000.slice/user@1000.service"
 # Both machines boot at once, rather than the measured one only once the first is done with, so
@@ -173,6 +174,93 @@ with subtest("each piece of work written into jobs gets a scope of its own"):
     # The holder stays, so the next write still lands.
     holder = machine.succeed("systemctl -M alice@ --user show -P MainPID jobs.service").strip()
     t.assertIn(holder, machine.succeed(f"cat {jobs}/jobs.service/cgroup.procs").split())
+
+
+work = f"{jobs}/jobs-work.slice"
+
+
+def weigh_quests(weights: dict[str, int]) -> None:
+    """Write each quest's weight where pi's sessions keep it."""
+    machine.succeed("install -d -o alice -m 700 /run/user/1000/jobs")
+    machine.succeed(
+        f"echo '{json.dumps(weights)}' > /run/user/1000/jobs/quests.json.tmp"
+        " && mv /run/user/1000/jobs/quests.json.tmp /run/user/1000/jobs/quests.json"
+    )
+
+
+def for_quest(unit: str, quest: str | None, command: str) -> None:
+    """Write a shell into jobs as pi does, naming its quest, to run a command once sorted."""
+    named = f" -E PI_QUEST={quest}" if quest else ""
+    machine.succeed(
+        f"systemd-run -M alice@ --user --slice=jobs.slice --unit={unit}{named}"
+        f" --expand-environment=no -p KillMode=process {bash} -c"
+        f" 'echo $$ > {jobs}/jobs.service/cgroup.procs;"
+        " until grep -q /work- /proc/$$/cgroup; do sleep 0.1; done;"
+        f" {command} & wait'"
+    )
+
+
+with subtest("an agent's work for a quest goes in its quest's slice, at its weight"):
+    weigh_quests({"QEST-20261024-DRIVEN": 400, "QEST-20261024-BENCHD": 50})
+    for_quest("quest-1011", "QEST-20261024-DRIVEN", f"{sleep} 1011")
+    for_quest("quest-1012", None, f"{sleep} 1012")
+    for_quest("quest-1013", "QEST-20260101-UNLIST", f"{sleep} 1013")
+    machine.wait_until_succeeds(
+        f"grep -q 'jobs-work.slice/jobs-work-qest20261024driven.slice/work-.*\\.scope$'"
+        f" /proc/$(pgrep -xf '{sleep} 1011')/cgroup",
+        timeout=30,
+    )
+    driven = f"{work}/jobs-work-qest20261024driven.slice"
+    machine.wait_until_succeeds(f"grep -qx 400 {driven}/cpu.weight", timeout=30)
+    t.assertEqual(machine.succeed(f"cat {driven}/io.weight").strip(), "default 400")
+    # Work naming no quest, or one pi's sessions don't list, stays as it was.
+    for seconds in [1012, 1013]:
+        machine.wait_until_succeeds(
+            f"grep -q 'jobs-work.slice/work-.*\\.scope$'"
+            f" /proc/$(pgrep -xf '{sleep} {seconds}')/cgroup",
+            timeout=30,
+        )
+    # The quests' weights rank only agents' work: jobs-work.slice keeps its own.
+    t.assertEqual(machine.succeed(f"cat {work}/cpu.weight").strip(), "100")
+
+with subtest("a quest's slice follows its weight when pi's sessions change it"):
+    weigh_quests({"QEST-20261024-DRIVEN": 50})
+    machine.wait_until_succeeds(
+        f"grep -qx 50 {work}/jobs-work-qest20261024driven.slice/cpu.weight", timeout=30
+    )
+    machine.succeed("systemctl -M alice@ --user stop jobs-work-qest20261024driven.slice")
+
+
+def used(quest_slice: str) -> int:
+    """Give the CPU, in microseconds, a quest's slice has used."""
+    stat = machine.succeed(f"cat {work}/{quest_slice}/cpu.stat")
+    return int(next(line.split()[1] for line in stat.splitlines() if line.startswith("usage_usec")))
+
+
+def spin(unit: str, quest: str) -> None:
+    """Keep the first CPU busy for a quest, as a build would."""
+    for_quest(unit, quest, f'exec {taskset} -c 0 {bash} -c "while :; do :; done"')
+
+
+with subtest("quests share the CPU by weight, and one alone takes all of it"):
+    weigh_quests({"QEST-20261024-HEAVY0": 400, "QEST-20261024-LIGHT0": 100})
+    heavy, light = "jobs-work-qest20261024heavy0.slice", "jobs-work-qest20261024light0.slice"
+    spin("spin-light", "QEST-20261024-LIGHT0")
+    machine.wait_until_succeeds(f"grep -qx 100 {work}/{light}/cpu.weight", timeout=30)
+    # Alone, the light quest has the whole CPU, nobody else wanting it.
+    before = used(light)
+    machine.succeed("sleep 3")
+    t.assertGreater(used(light) - before, 3_000_000 * 0.8)
+    spin("spin-heavy", "QEST-20261024-HEAVY0")
+    machine.wait_until_succeeds(f"grep -qx 400 {work}/{heavy}/cpu.weight", timeout=30)
+    machine.succeed("sleep 1")
+    was = used(heavy), used(light)
+    machine.succeed("sleep 5")
+    ratio = (used(heavy) - was[0]) / max(used(light) - was[1], 1)
+    # Four to one by weight, within what a virtual CPU's scheduling allows.
+    t.assertGreater(ratio, 2.5, f"heavy against light: {ratio:.2f}")
+    t.assertLess(ratio, 6.5, f"heavy against light: {ratio:.2f}")
+    machine.succeed(f"systemctl -M alice@ --user stop {heavy} {light}")
 
 
 def real_time(seconds: int, cgroup: str) -> None:
