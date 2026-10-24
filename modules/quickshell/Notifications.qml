@@ -120,10 +120,15 @@ Scope {
     property var launcher: null
 
     // The notices on screen, as one stack: their ids, the front first, in
-    // the order Stack.js keeps.
+    // the order Stack.js keeps. Those resting off it (Notices.qml) are
+    // still open, but not here.
     property var order: []
     readonly property var shown: Stack.shown(order,
-        server.trackedNotifications.values.map(notification => notification.id))
+        server.trackedNotifications.values.map(notification => notification.id)
+            .filter(id => !(id in Notices.resting)))
+    // How many may rest at once before the oldest is closed, so no program
+    // is asked to hold its notices for ever.
+    readonly property int rests: 30
     readonly property var front: {
         const id = shown[0];
         return server.trackedNotifications.values.find(notification => notification.id === id)
@@ -314,8 +319,27 @@ Scope {
     }
 
     function putAway() {
-        for (const notification of server.trackedNotifications.values.slice())
+        for (const notification of server.trackedNotifications.values
+            .filter(notification => root.shown.includes(notification.id)))
             notification.dismiss();
+    }
+
+    // One whose time is up leaves the screen but stays open, resting, so
+    // its program still answers its actions from the launcher; one its
+    // sender asked not to be kept closes. Past `rests` of them, the oldest
+    // closes.
+    function rest(notification) {
+        if (notification.transient) {
+            notification.expire();
+            return;
+        }
+        Notices.rest(notification.id);
+        Report.say(`rests ${notification.summary}`);
+        const resting = server.trackedNotifications.values
+            .filter(one => one.id in Notices.resting)
+            .sort((a, b) => (root.arrived[a.id] ?? 0) - (root.arrived[b.id] ?? 0));
+        for (const oldest of resting.slice(0, Math.max(0, resting.length - root.rests)))
+            oldest.expire();
     }
 
     // The session's notices in the launcher, where past ones are too.
@@ -410,8 +434,9 @@ Scope {
                 reason === NotificationCloseReason.Expired ? "expired"
                 : reason === NotificationCloseReason.CloseRequested ? "withdrawn"
                 : "dismissed"));
-            // One held is let go at once, so it never shows.
-            notification.tracked = !held;
+            // One held rests from the start, so it never shows but keeps
+            // its actions, unless its sender asked not to keep it.
+            notification.tracked = !held || !notification.transient;
         }
     }
 
@@ -455,7 +480,7 @@ Scope {
             areas = found;
         }
 
-        visible: (server.trackedNotifications.values.length > 0 || root.playing)
+        visible: (root.shown.length > 0 || root.playing)
             && !Notices.gathered && !root.remaking
         anchors.top: true
         anchors.right: true
@@ -696,7 +721,10 @@ Scope {
                     onRankChanged: Qt.callLater(window.gather)
                     onHeightChanged: Qt.callLater(window.gather)
 
-                    Component.onCompleted: Report.say(`shows card ${modelData.summary}`)
+                    Component.onCompleted: {
+                        if (!(card.modelData.id in Notices.resting))
+                            Report.say(`shows card ${card.modelData.summary}`);
+                    }
 
                     // What its sender does when the notice itself is
                     // chosen, such as opening the conversation it's about,
@@ -995,7 +1023,7 @@ Scope {
                         interval: card.modelData.expireTimeout > 0
                             ? card.modelData.expireTimeout
                             : card.modelData.actions.length > 0 ? 10000 : 5000
-                        onTriggered: card.modelData.expire()
+                        onTriggered: root.rest(card.modelData)
                     }
                 }
             }

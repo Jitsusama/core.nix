@@ -8,6 +8,7 @@ area shares, so the names it takes from there are imported only for type checker
 import json
 import shlex
 import time
+from datetime import timedelta
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -217,6 +218,35 @@ with subtest("Return on a notice in the launcher opens what it's about, with a t
     machine.send_key("ret")
     machine.wait_until_succeeds("grep -qx default /tmp/answer", timeout=15)
     tokened()
+
+with subtest("a notice whose time is up still does what it offers from the launcher"):
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
+    machine.wait_until_fails(in_session(notices), timeout=timedelta(seconds=30))
+    # It says no time of its own, so it goes by itself after the ten
+    # seconds one offering something has, unanswered; and notify-send,
+    # which stops waiting once a time it was given is up, waits on.
+    with told("rests Quarry take"):
+        as_account(
+            "notify-send --expire-time=0 --action=play='Play it' 'Quarry take' 'z.mp4'"
+            " > /tmp/answer 2>&1 < /dev/null &"
+        )
+    machine.wait_until_fails(in_session(notices), timeout=timedelta(seconds=10))
+    # Gone from the screen but still open: closing it would have ended
+    # notify-send, as it ends a program's hold on what it offered.
+    machine.succeed("pgrep -f '[n]otify-send .*--action=play'")
+    listen()
+    # With none on screen, Super+N opens the history, newest first.
+    machine.send_key("meta_l-n")
+    launcher_ready()
+    launcher_until(
+        lambda shown: (shown["selected"] or {}).get("name", "").startswith("Quarry take")
+    )
+    step_in()
+    launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Play it")
+    machine.send_key("ret")
+    assert answered() == "play", "a notice whose time was up lost what it offered"
+    tokened()
+
 
 with subtest("the notices sit a step inside the window under them"):
     machine.wait_until_fails(in_session("niri msg layers | grep -q notifications"), timeout=30)

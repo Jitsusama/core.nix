@@ -95,9 +95,10 @@ Scope {
     readonly property var waiting: waits.map(one => one.mark)
     // The programs with a card on screen, whose pieces' marks wait for it
     // to go, as a card or a mark, never both; none while the launcher has
-    // gathered them.
+    // gathered them. One resting off the screen has no card up.
     readonly property var carded: Notices.gathered ? []
-        : Object.keys(Notices.live).map(id => Notices.live[id].appName.toLowerCase())
+        : Object.keys(Notices.live).filter(id => !(id in Notices.resting))
+            .map(id => Notices.live[id].appName.toLowerCase())
     // What's drawn: what's lit and has no card up, and what lingers, left
     // to right, the corner's last.
     readonly property var on: Marks.arranged(lit
