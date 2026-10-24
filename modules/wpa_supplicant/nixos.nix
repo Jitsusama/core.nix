@@ -66,6 +66,18 @@ in
     SUBSYSTEM=="net", ACTION=="add", ENV{DEVTYPE}=="wlan", RUN+="${lib.getExe powerSave}"
     SUBSYSTEM=="power_supply", ATTR{type}=="Mains|USB", RUN+="${lib.getExe powerSave}"
   '';
+  # A switch reloads those rules without running them, so this sets every
+  # card once more as the boot reaches its services, and whenever a switch
+  # brings a different script.
+  systemd.services.wifi-power-save = {
+    description = "Keep Wi-Fi awake on mains power";
+    wantedBy = [ "multi-user.target" ];
+    serviceConfig = {
+      Type = "oneshot";
+      RemainAfterExit = true;
+      ExecStart = lib.getExe powerSave;
+    };
+  };
 
   users.users.wpa_supplicant = {
     isSystemUser = true;
