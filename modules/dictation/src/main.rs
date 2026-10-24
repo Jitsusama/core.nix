@@ -1,8 +1,9 @@
 //! dictation: types what's said into the focused window.
 //!
-//! A chord runs `dictation toggle`: the first press starts listening to the
+//! A chord runs `dictation hold`: the first press starts listening to the
 //! microphone, and the next stops, works out what was said with Whisper and
-//! types it where the focus is. Listening also stops at 30 s, Whisper's
+//! types it where the focus is. Held, the chord listens until it's let go,
+//! which dictation-chord hears. Listening also stops at 30 s, Whisper's
 //! window. The service (service.rs) holds the models between presses,
 //! Whisper's encoder on the NPU, so 11 s of speech is worked out in under
 //! a second, even while a kernel builds. Nothing is written to disk: the
@@ -13,6 +14,8 @@
 //! ```text
 //! dictation serve MODEL_DIR      the service, on the socket it's given
 //! dictation toggle               start listening, or stop and type
+//! dictation hold                 the same, and stop when the chord held
+//!                                is let go
 //! dictation watch                print each change of state as it comes
 //! dictation transcribe MODEL_DIR FILE.wav
 //!                                print what's said in a 16 kHz mono WAV
@@ -38,6 +41,7 @@ fn main() -> ExitCode {
     let result = match args.iter().map(String::as_str).collect::<Vec<_>>()[..] {
         ["serve", model] => service::serve(Path::new(model), device(), cache()),
         ["toggle"] => service::ask("toggle"),
+        ["hold"] => service::ask("hold"),
         ["watch"] => service::ask("watch"),
         ["transcribe", model, file] => transcribe(Path::new(model), Path::new(file)),
         _ => Err(format!("{USAGE} (got {args:?})")),
@@ -52,7 +56,7 @@ fn main() -> ExitCode {
 }
 
 const USAGE: &str =
-    "usage: dictation serve MODEL_DIR | toggle | watch | transcribe MODEL_DIR FILE.wav";
+    "usage: dictation serve MODEL_DIR | toggle | hold | watch | transcribe MODEL_DIR FILE.wav";
 
 fn device() -> String {
     std::env::var("DICTATION_DEVICE").unwrap_or_else(|_| "NPU".to_owned())

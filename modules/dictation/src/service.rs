@@ -6,6 +6,11 @@
 //!
 //! - `toggle`: start listening, or stop and type; the answer is the state
 //!   it's in after, one line.
+//! - `hold`: the same, from the chord as it's pressed. When it starts
+//!   listening and the chord is then held at least 400 ms, letting it go
+//!   stops and types; a tap's release is no stop, so a tap still toggles.
+//!   dictation-chord, which may read the keys, says when the chord is let
+//!   go; without it, `hold` is `toggle`.
 //! - `watch`: the state now, then a line at each change, until the client
 //!   goes: `idle`, `listening` or `transcribing`. Between them come words
 //!   for what the shell says: `still-writing` for a press while Whisper
@@ -40,6 +45,8 @@ use crate::mel::{RATE, SAMPLES};
 use crate::whisper::Whisper;
 
 const UNUSED: Duration = Duration::from_mins(10);
+// A chord let go sooner than this was a tap, which leaves it listening.
+const HELD_MS: u128 = 400;
 // Under -40 dBFS throughout is silence, which Whisper would otherwise hear
 // words in.
 const SILENT: f32 = 0.01;
@@ -92,7 +99,10 @@ enum Said {
 const STILL_WRITING: &str = "still-writing";
 
 enum Event {
-    Toggle(UnixStream),
+    /// A press, and whether it came from the chord, which may be held.
+    Press(UnixStream, bool),
+    /// The chord let go, after this many ms held.
+    Released(u128),
     Watch(UnixStream),
     Full(u64),
     Heard(Result<String, String>),
@@ -136,6 +146,7 @@ pub fn serve(model: &Path, device: String, cache: Option<PathBuf>) -> Result<(),
         let events = events.clone();
         move || coordinate(&heard, &events, &jobs)
     });
+    hear_the_chord(events.clone());
     for stream in listener.incoming() {
         let Ok(stream) = stream else { continue };
         let events = events.clone();
@@ -146,7 +157,8 @@ pub fn serve(model: &Path, device: String, cache: Option<PathBuf>) -> Result<(),
                 return;
             }
             let event = match line.trim() {
-                "toggle" => Event::Toggle(stream),
+                "toggle" => Event::Press(stream, false),
+                "hold" => Event::Press(stream, true),
                 "watch" => Event::Watch(stream),
                 _ => return,
             };
@@ -181,11 +193,48 @@ fn listener() -> Result<UnixListener, String> {
     UnixListener::bind(&path).map_err(|e| format!("binding {}: {e}", path.display()))
 }
 
+/// Where dictation-chord says the chord was let go.
+fn chord_socket() -> PathBuf {
+    std::env::var_os("DICTATION_CHORD").map_or_else(
+        || PathBuf::from("/run/dictation-chord/socket"),
+        PathBuf::from,
+    )
+}
+
+/// Hears dictation-chord on a thread of its own, and tries again every few
+/// seconds while it's not there, as on a machine without it.
+fn hear_the_chord(events: Sender<Event>) {
+    thread::spawn(move || {
+        loop {
+            if let Ok(stream) = UnixStream::connect(chord_socket()) {
+                for line in BufReader::new(stream).lines() {
+                    let Ok(line) = line else { break };
+                    let Some(ms) = line.strip_prefix("up ").and_then(|ms| ms.parse().ok()) else {
+                        continue;
+                    };
+                    if events.send(Event::Released(ms)).is_err() {
+                        return;
+                    }
+                }
+            }
+            thread::sleep(Duration::from_secs(5));
+        }
+    });
+}
+
+/// Whether letting go of the chord stops listening: only what a held
+/// chord started, and only once it was held long enough not to be a tap.
+fn let_go(state: State, held: Option<u64>, generation: u64, ms: u128) -> bool {
+    state == State::Listening && held == Some(generation) && ms >= HELD_MS
+}
+
 fn coordinate(heard: &Receiver<Event>, events: &Sender<Event>, jobs: &Sender<Job>) {
     let mut state = State::Idle;
     let mut watchers: Vec<UnixStream> = Vec::new();
     let mut recording: Option<Recording> = None;
     let mut generation = 0_u64;
+    // The listening a held chord started, by its generation.
+    let mut held: Option<u64> = None;
     for event in heard {
         let before = state;
         match event {
@@ -197,13 +246,23 @@ fn coordinate(heard: &Receiver<Event>, events: &Sender<Event>, jobs: &Sender<Job
                     watchers.push(stream);
                 }
             }
-            Event::Toggle(mut stream) => {
+            Event::Press(mut stream, chord) => {
                 let said;
                 (state, said) = press(state, &mut recording, &mut generation, events, jobs);
+                if chord && before == State::Idle && state == State::Listening {
+                    held = Some(generation);
+                }
                 if let Some(said) = said {
                     say(said, &mut watchers);
                 }
                 let _ = stream.write_all(format!("{}\n", state.word()).as_bytes());
+            }
+            Event::Released(ms) => {
+                if let_go(state, held, generation, ms) {
+                    generation += 1;
+                    held = None;
+                    state = stopped(stop(recording.take(), jobs), &mut watchers);
+                }
             }
             Event::Full(at) => {
                 if state == State::Listening && at == generation {
@@ -554,6 +613,27 @@ mod tests {
         assert_eq!(said, Some(Said::Word("still-writing")));
         assert_eq!(generation, 3);
         assert!(work.try_recv().is_err());
+    }
+
+    #[test]
+    fn letting_go_of_a_held_chord_stops_what_it_started() {
+        assert!(let_go(State::Listening, Some(4), 4, 400));
+        assert!(let_go(State::Listening, Some(4), 4, 9_000));
+    }
+
+    #[test]
+    fn a_tap_s_release_leaves_it_listening() {
+        assert!(!let_go(State::Listening, Some(4), 4, 399));
+    }
+
+    #[test]
+    fn a_release_stops_nothing_it_didnt_start() {
+        // A toggle started it, or the press that started it was stopped
+        // since, or it's no longer listening.
+        assert!(!let_go(State::Listening, None, 4, 900));
+        assert!(!let_go(State::Listening, Some(3), 4, 900));
+        assert!(!let_go(State::Transcribing, Some(4), 4, 900));
+        assert!(!let_go(State::Idle, Some(4), 4, 900));
     }
 
     #[test]

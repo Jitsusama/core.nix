@@ -1,8 +1,9 @@
-# Dictation: a chord (niri's binds.nix) runs `dictation toggle`, which
+# Dictation: a chord (niri's binds.nix) runs `dictation hold`, which
 # starts listening and, pressed again, types what was said into the focused
-# window. The service starts from its socket, and holds Whisper's models in
-# app.slice beside the apps from the first press; it lets them go after ten
-# minutes unused. Quickshell watches the same socket (Dictation.qml), and
+# window; held, it types when let go, which the system's dictation-chord
+# (nixos.nix) hears. The service starts from its socket, and holds Whisper's
+# models in app.slice beside the apps from the first press; it lets them go
+# after ten minutes unused. Quickshell watches the same socket (Dictation.qml), and
 # while it listens or types, the overview says so and the margin wears its
 # mark (Listening.qml), so what's heard is never heard unseen.
 #

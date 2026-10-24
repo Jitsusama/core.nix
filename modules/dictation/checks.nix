@@ -18,6 +18,19 @@
       "A switch stops dictation before reloading, so the shell's watch starts the old one again."
       (((account graphical).systemd.user.services.dictation.Unit.X-SwitchMethod or null) == "restart");
 
+  # The margin's "Stop and type it" wears the chord that dictates, so the
+  # action Listening.qml looks for is the one the bind runs.
+  dictation-stops-by-its-chord =
+    let
+      bound =
+        lib.any (b: lib.hasInfix ''spawn "dictation" "hold";'' b.action)
+          (account graphical).jitsusama.niri.binds;
+      sought = lib.hasInfix ''"dictation hold"'' (builtins.readFile ./Listening.qml);
+    in
+    holds "dictation-stops-by-its-chord"
+      "The margin's dictation piece looks for an action no chord runs, so its stop shows no chord."
+      (bound && sought);
+
   # dictation's tests run as it builds: its spectrogram matches the one that
   # transcribed a clip word for word, its transform the plain sum, its
   # vocabulary reads back into text, and silence or a moment isn't heard.

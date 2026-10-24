@@ -11,12 +11,12 @@
 # with: swayimg, which opens pictures and drawings, zathura, which opens
 # documents, GIMP, Inkscape, mpv, which opens video, the camera, Spotify
 # and Tuple. When a program asks what to open something with, the launcher
-# asks rather than GNOME's dialog. A chord types what Joel says where he's
-# typing. The compositor and sound get the CPU and memory before
-# anything Joel starts, and calls, music and what he waits on get the
-# network before the work he started, and a write a program makes behind
-# an upload goes out soon after; lag-watch keeps a standing watch
-# on whether they wait.
+# asks rather than GNOME's dialog. A chord, tapped or held, types what Joel
+# says where he's typing. The compositor and sound get the CPU and memory
+# before anything Joel starts, and calls, music and what he waits on get the
+# network before the work he started, and a write a program makes behind an
+# upload goes out soon after; lag-watch keeps a standing watch on whether
+# they wait.
 { nixosModules, homeModules }:
 {
   imports = [
@@ -28,6 +28,7 @@
     nixosModules.creative-pebble-x-plus
     nixosModules.ddcutil
     nixosModules.desk-facts
+    nixosModules.dictation
     nixosModules.fonts
     nixosModules.gnome-keyring
     nixosModules.greetd

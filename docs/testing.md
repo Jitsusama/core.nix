@@ -235,10 +235,11 @@ kernel guide][2] says what that catches.
 | `lag-watch-passes-clippy`         | clippy finds nothing in lag-watch or its tests            |
 | `vm-first-finds-the-vms`          | vm-first reads a thread's nice and policy, knows qemu by its name and nothing else |
 | `vm-first-passes-clippy`          | clippy finds nothing in vm-first or its tests             |
-| `dictation-works-it-out`          | dictation's spectrogram, transform and vocabulary match their references |
+| `dictation-works-it-out`          | dictation's spectrogram, transform and vocabulary match their references; a held chord's release stops only what it started, and a tap's none |
 | `dictation-hears-the-clip`        | Whisper on the CPU types a public clip back word for word |
 | `dictation-passes-clippy`         | clippy finds nothing in dictation or its tests            |
 | `dictation-switches-to-the-new-one` | a switch restarts dictation after reloading its units |
+| `dictation-stops-by-its-chord` | the margin's dictation piece looks for the action Super+D runs |
 | `shutdown-status-reads-the-last-stage` | shutdown-status reads only the last stage's steps, says forced once when it begins unmarked, and leftovers after three quiet seconds |
 | `shutdown-status-passes-clippy`   | clippy finds nothing in shutdown-status or its tests      |
 | `open-with-passes-clippy`         | clippy finds nothing in the portal's chooser or its tests |
@@ -334,6 +335,7 @@ emptying, and then look.
 | `vm-network-revives-units`        | what the network let down starts, and reloads on change  |
 | `vm-clock-keeps-time`             | the clock sets from the machine's servers past a network's silent one |
 | `vm-libvirt-stops-quickly`        | libvirt's daemon stops at once, its udev thread starved  |
+| `vm-dictation-hears-the-chord-let-go` | an account outside the input group hears how long Super and D were held and a tap's, nothing of D alone, another key or Super after D, and can't read the keyboard itself |
 | `vm-ir-camera-opens-for-readers`  | the IR camera waits for udev and its loopback, opens only while read, its frames grey, no frame from before a reader opened |
 | `vm-loopback-says-who-holds-it`   | a loopback camera's file names each program another account holds it with, not its relay's unit however a program names itself, one line a name, catches a holder that forks, empties when they close it or the camera stops, keeps its folder, follows a new loopback, and takes no loopback of another name |
 | `vm-swap-comes-down-while-probed` | the compressed swap comes down, its reset waiting out udev's probe |
