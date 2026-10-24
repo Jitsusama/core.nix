@@ -9,8 +9,8 @@ runs at once don't share the driver's network switch or machine state.
     run-subtests [options] <check> [<words>...]
 
 Each subtest whose name holds any of the words runs, in the script's order;
-with none, the subtests are listed. A subtest that uses what an earlier one
-left, a window or a notice, needs that one named too. The pictures are kept
+with none, the subtests are listed. Each subtest makes what it needs when an
+earlier one hasn't, so any runs alone. The pictures are kept
 in the folder it prints at the end.
 """
 
@@ -186,7 +186,7 @@ def arguments(argv: Sequence[str]) -> Options:
         prog="run-subtests",
         description="Run some of a VM test's subtests on its driver.",
     )
-    parser.add_argument("check", help="the VM test, e.g. vm-desktop-works")
+    parser.add_argument("check", help="the VM test, e.g. vm-desktop-starts-clean")
     parser.add_argument("words", nargs="*", help="words a subtest's name holds")
     parser.add_argument("--flake", default=".", help="the flake, . by default")
     parser.add_argument("--out", type=Path, help="where the pictures go, a new folder by default")

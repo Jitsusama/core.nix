@@ -126,14 +126,14 @@ whose names hold the words given, in under half a minute for one desktop
 subtest, boot included:
 
 ```sh
-run-subtests vm-desktop-works                       # list its subtests
-run-subtests vm-desktop-works "opens kitty"         # run those named
-run-subtests -I vm-desktop-works "opens kitty"      # then a Python prompt, machines up
-run-subtests -K vm-desktop-works "opens kitty"      # keep the disks for the next run
+run-subtests vm-desktop-launcher-goes-places                   # list its subtests
+run-subtests vm-desktop-launcher-goes-places "opens kitty"     # run those named
+run-subtests -I vm-desktop-launcher-goes-places "opens kitty"  # then a Python prompt
+run-subtests -K vm-desktop-launcher-goes-places "opens kitty"  # keep the disks for next time
 ```
 
-A subtest that uses what an earlier one left, a window or a notice, needs
-that one named too. Each run has its own short runtime folder, since the
+Each subtest makes what it needs, a window or a notice, when an earlier one
+hasn't, so it runs alone. Each run has its own short runtime folder, since the
 driver keeps its network switch's socket and the machines' state under
 `XDG_RUNTIME_DIR`, so two runs at once don't collide; the folder has to be
 short, as a socket's path can't pass 108 bytes. The pictures land in the
@@ -182,9 +182,9 @@ clock or a notice's age moves on. Instead, a change to how anything looks is
 compared with main, and every picture it changed is looked at:
 
 ```sh
-desktop=checks.x86_64-linux.vm-desktop-works
-main=$(nix build --no-link --print-out-paths "github:Jitsusama/core.nix#$desktop")
-here=$(nix build --no-link --print-out-paths ".#$desktop")
+area=checks.x86_64-linux.vm-desktop-launcher-answers  # each area the change touches
+main=$(nix build --no-link --print-out-paths "github:Jitsusama/core.nix#$area")
+here=$(nix build --no-link --print-out-paths ".#$area")
 nix develop -c shots-changed "$main" "$here" changed
 ```
 

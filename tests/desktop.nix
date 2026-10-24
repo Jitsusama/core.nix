@@ -16,8 +16,18 @@
 # the rest, and GTK programs and monospaced text are in the theme. niri says which surfaces it drew,
 # photographs show their colours, to the test and to a person looking, and
 # the portal and fontconfig answer for the settings. Quickshell has to
-# start without a single QML error. The script is desktop-vm-test.py.
-{ self, pkgs }:
+# start without a single QML error.
+#
+# The test runs as one VM test per area of the desktop, each on this same
+# machine: its script is desktop/desktop_prelude.py, the boot and the
+# helpers, then its area's subtests from desktop/desktop-<area>-vm-test.py,
+# so a change to one area reruns only that one, and the areas run side by
+# side. checks.nix names each area.
+{
+  self,
+  pkgs,
+  area,
+}:
 let
   account = "jitsusama";
   secret = "correct-horse";
@@ -370,7 +380,7 @@ let
   };
 in
 pkgs.testers.runNixOSTest {
-  name = "desktop";
+  name = "desktop-${area}";
   # Reads the colours of the windows it photographs.
   extraPythonPackages = python: [ python.pillow ];
   # The base role sets nixpkgs' own settings.
@@ -762,8 +772,15 @@ pkgs.testers.runNixOSTest {
         }
       );
     in
-    builtins.replaceStrings [ "@values@" ] [ "${values}" ] (builtins.readFile ./desktop-vm-test.py);
+    builtins.replaceStrings [ "@values@" ] [ "${values}" ] (
+      builtins.readFile ./desktop/desktop_prelude.py
+      + builtins.readFile ./desktop/desktop-${area}-vm-test.py
+    );
   # nix fmt holds the script to mypy --strict against the driver's own types,
   # through driver_names.pyi, which the driver's lighter check can't find.
   skipTypeCheck = true;
+  # nix fmt lints the prelude and each area as files, with every ruff rule;
+  # the driver's own lint reads them joined, where an area's imports, which
+  # its type checking needs, repeat the prelude's.
+  skipLint = true;
 }

@@ -244,7 +244,32 @@ let
     # Which input WirePlumber picks comes from the rank it gives each
     # microphone as udev reports its card, so only a running machine shows it.
     vm-webcam-microphones-yield = import ./tests/microphones.nix { inherit pkgs; };
-    vm-desktop-works = import ./tests/desktop.nix { inherit self pkgs; };
+    # The desktop, in areas of a minute or two each on one machine
+    # (tests/desktop.nix).
+    vm-desktop-starts-clean = import ./tests/desktop.nix {
+      inherit self pkgs;
+      area = "starts-clean";
+    };
+    vm-desktop-launcher-goes-places = import ./tests/desktop.nix {
+      inherit self pkgs;
+      area = "launcher-goes-places";
+    };
+    vm-desktop-launcher-answers = import ./tests/desktop.nix {
+      inherit self pkgs;
+      area = "launcher-answers";
+    };
+    vm-desktop-opens-and-sets = import ./tests/desktop.nix {
+      inherit self pkgs;
+      area = "opens-and-sets";
+    };
+    vm-desktop-says-what-happens = import ./tests/desktop.nix {
+      inherit self pkgs;
+      area = "says-what-happens";
+    };
+    vm-desktop-captures-and-locks = import ./tests/desktop.nix {
+      inherit self pkgs;
+      area = "captures-and-locks";
+    };
     # Joining Wi-Fi is the kernel, wifid, wpa_supplicant and networkd
     # together, and what it leaves of other programs' routing only shows
     # once it has.
