@@ -263,7 +263,7 @@ impl Step for SealTpm {
         });
         if proven && policy_current(machine)? {
             return Ok(Standing::Done {
-                evidence: "the TPM opens the disk with its PIN, tried before the others".into(),
+                evidence: "the TPM opens the disk with the YubiKeys' PIN, tried before them".into(),
             });
         }
         // Sealing again now would lock this boot's firmware programs in,

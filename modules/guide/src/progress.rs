@@ -20,9 +20,9 @@ struct Reading {
     stage: Option<(String, Instant)>,
     done: u64,
     total: Option<u64>,
-    /// Whether the stage is counted by what the program it runs reads,
-    /// for work done by a program the guide only waits on.
-    by_reads: bool,
+    /// Whether the stage is counted by what the program it runs reads or
+    /// writes, for work done by a program the guide only waits on.
+    by: Option<Io>,
     /// The program running now, by its process id.
     program: Option<u32>,
     /// How much was done when the screen last looked, and when.
@@ -94,7 +94,7 @@ impl Meter {
         reading.stage = Some((name.to_string(), Instant::now()));
         reading.done = 0;
         reading.total = total;
-        reading.by_reads = false;
+        reading.by = None;
         reading.looked.clear();
     }
 
@@ -103,7 +103,15 @@ impl Meter {
     /// is.
     pub fn stage_by_reads(&self, name: &str, total: Option<u64>) {
         self.stage(name, total);
-        self.reading().by_reads = true;
+        self.reading().by = Some(Io::Reads);
+    }
+
+    /// Begins a part of the work a program does, counted by how many bytes
+    /// it has written, for one whose reads Linux can't count, as Nix maps
+    /// the files it copies from rather than reading them.
+    pub fn stage_by_writes(&self, name: &str, total: Option<u64>) {
+        self.stage(name, total);
+        self.reading().by = Some(Io::Writes);
     }
 
     /// The program running now, or that none is.
@@ -140,10 +148,10 @@ impl Meter {
     pub fn said(&self) -> String {
         let reading = {
             let mut reading = self.reading();
-            if let (true, Some(program)) = (reading.by_reads, reading.program)
-                && let Some(read) = read_by(program)
+            if let (Some(by), Some(program)) = (reading.by, reading.program)
+                && let Some(count) = counted_by(program, by)
             {
-                reading.done = read;
+                reading.done = count;
             }
             let done = reading.done;
             let pace = pace(&mut reading.looked, Instant::now(), done);
@@ -181,13 +189,24 @@ impl Meter {
     }
 }
 
-/// How many bytes a running program has read, every read it made counted
-/// whether or not it reached a disk, as Linux says in /proc; none where
-/// it doesn't.
-fn read_by(program: u32) -> Option<u64> {
+/// Which of a program's counts a stage goes by.
+#[derive(Clone, Copy, Debug)]
+enum Io {
+    Reads,
+    Writes,
+}
+
+/// How many bytes a running program has read or written, every call it
+/// made counted whether or not it reached a disk, as Linux says in /proc;
+/// none where it doesn't.
+fn counted_by(program: u32, by: Io) -> Option<u64> {
     let io = std::fs::read_to_string(format!("/proc/{program}/io")).ok()?;
+    let field = match by {
+        Io::Reads => "rchar:",
+        Io::Writes => "wchar:",
+    };
     io.lines()
-        .find_map(|line| line.strip_prefix("rchar:"))
+        .find_map(|line| line.strip_prefix(field))
         .and_then(|count| count.trim().parse().ok())
 }
 
@@ -517,6 +536,34 @@ mod tests {
         }
         assert!(meter.counted() >= 300_000, "{}", meter.said());
         drop(stdin);
+        program.wait().unwrap();
+        meter.running(None);
+    }
+
+    #[test]
+    fn a_stage_a_program_does_can_be_counted_by_what_it_has_written() {
+        let meter = Meter::new();
+        meter.start();
+        meter.stage_by_writes("Copying", Some(1 << 30));
+        // head writes what it reads; with nothing read by the meter, only
+        // its writes can have counted.
+        let mut program = std::process::Command::new("head")
+            .args(["-c", "300000", "/dev/zero"])
+            .stdout(std::process::Stdio::piped())
+            .spawn()
+            .unwrap();
+        meter.running(Some(program.id()));
+        let mut out = program.stdout.take().unwrap();
+        let mut taken = vec![0u8; 100_000];
+        std::io::Read::read_exact(&mut out, &mut taken).unwrap();
+        let mut waited = 0;
+        while meter.counted() < 100_000 && waited < 50 {
+            let _ = meter.said();
+            std::thread::sleep(Duration::from_millis(20));
+            waited += 1;
+        }
+        assert!(meter.counted() >= 100_000, "{}", meter.said());
+        drop(out);
         program.wait().unwrap();
         meter.running(None);
     }
