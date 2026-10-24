@@ -59,6 +59,9 @@ pkgs.testers.runNixOSTest {
   };
 
   # The script reads the values from the file put in place of its marker.
+  # What VM tests' scripts share (tests/lib).
+  extraPythonPackages = python: [ (pkgs.callPackage ./lib/vm-helpers.nix { } python) ];
+
   testScript = builtins.replaceStrings [ "@values@" ] [ "${values}" ] (
     builtins.readFile ./signing-vm-test.py
   );
