@@ -9,9 +9,14 @@
 // since a level asked for is one to be heard.
 //
 // Everything comes from PipeWire through Quickshell, so nothing is asked
-// and nothing is spawned.
+// and nothing is spawned, but for what a USB sound card says only to the
+// kernel: what it offers and runs at, its clock, USB speed and firmware,
+// which desk-facts writes to a file (modules/desk-facts), and which the
+// right arrow lists after the actions, Return copying one.
 import qs
+import Quickshell
 import Quickshell.Bluetooth
+import Quickshell.Io
 import Quickshell.Services.Pipewire
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
@@ -127,6 +132,39 @@ Provider {
         });
     }
 
+    // What desk-facts knows of each USB card, by its ALSA id and direction;
+    // a card it says nothing of, or no file at all, has no facts.
+    property var facts: ({})
+
+    function parsed(text) {
+        try {
+            return JSON.parse(text) ?? {};
+        } catch (error) {
+            return {};
+        }
+    }
+
+    FileView {
+        path: `${Quickshell.env("XDG_RUNTIME_DIR")}/desk/sound.json`
+        watchChanges: true
+        printErrors: false
+        onFileChanged: reload()
+        onLoaded: provider.facts = provider.parsed(text())
+        onLoadFailed: provider.facts = ({})
+    }
+
+    function factRows(node) {
+        const card = node.properties["alsa.id"];
+        const id = `${card}:${node.isSink ? "out" : "in"}`;
+        const said = card ? facts[id] ?? [] : [];
+        return said.map(fact => copyRow({
+            key: `fact:sound:${id}:${fact.name}`,
+            name: fact.value,
+            side: fact.name,
+            glyph: glyph(kind(node))
+        }));
+    }
+
     function verbs(node) {
         return (inUse(node) ? [] : [thing({
             key: "verb:sound-use",
@@ -140,7 +178,7 @@ Provider {
             glyph: glyph(node.audio.muted ? 0xf057e : 0xf0581),
             hue: "action",
             run: () => provider.mute(node)
-        })]);
+        })]).concat(factRows(node));
     }
 
     // In use first, then by name, outputs before inputs.

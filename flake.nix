@@ -224,6 +224,7 @@
         coredump = ./modules/coredump/nixos.nix;
         creative-pebble-x-plus = ./modules/creative-pebble-x-plus/nixos.nix;
         ddcutil = ./modules/ddcutil/nixos.nix;
+        desk-facts = ./modules/desk-facts/nixos.nix;
         device-check = ./modules/device-check/nixos.nix;
         disk-guard = ./modules/disk-guard/nixos.nix;
         disko = moduleFrom ./modules/disko/nixos.nix { inherit disko; };
