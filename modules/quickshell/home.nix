@@ -46,6 +46,8 @@ let
 
   # A JavaScript object of the values, which QML reads as Theme.space.m.
   object = values: "(${builtins.toJSON values})";
+  # The marks the theme draws as paths, for Theme.drawn.
+  drawn = lib.mapAttrs (_: mark: mark.drawn) (lib.filterAttrs (_: mark: mark.drawn != "") glyphs);
   slowed = milliseconds: builtins.floor (milliseconds * builtins.fromJSON motion.slowdown + 0.5);
   face = family: sizes: object ({ inherit family; } // lib.mapAttrs (_: builtins.fromJSON) sizes);
 
@@ -1522,6 +1524,9 @@ in
                 }
               }
               readonly property var glyph: ${object (lib.mapAttrs (_: mark: mark.glyph) glyphs)}
+              // The marks drawn as paths, for where a glyph is too small to
+              // read: on a 12 by 12 grid, filled even-odd.
+              readonly property var drawn: ${object drawn}
               // Each picture's file, empty for none.
               readonly property var wallpaper: ${
                 object {

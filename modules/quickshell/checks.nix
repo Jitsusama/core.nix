@@ -943,6 +943,35 @@
       touch $out
     '';
 
+  # Every mark the margin can show is the theme's drawing of it, standing the
+  # grid's full height and centred across it as Qt draws it, so a row of
+  # them is level and each has the same room either side (tests/drawings.qml).
+  the-margins-marks-are-drawn-level =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+      home = account graphical;
+      marks = lib.unique (
+        lib.filter (mark: mark != null) (
+          lib.mapAttrsToList (_: piece: piece.mark) home.jitsusama.quickshell.overview.pieces
+        )
+      );
+      drawn = lib.mapAttrs (_: mark: mark.drawn) home.jitsusama.theme.glyphs;
+      drawings = pkgs.writeText "Drawings.js" ''
+        .pragma library
+        var marks = ${builtins.toJSON marks};
+        var drawn = ${builtins.toJSON drawn};
+      '';
+    in
+    pkgs.runCommandLocal "the-margins-marks-are-drawn-level" { } ''
+      cp ${../../tests/drawings.qml} drawings.qml
+      cp ${drawings} Drawings.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml drawings.qml
+      touch $out
+    '';
+
   # A sender kept to a level reaches no further, however urgent it says it
   # is, and each level shows, counts and stays as tests/levels.qml holds.
   a-sender-keeps-to-its-level =

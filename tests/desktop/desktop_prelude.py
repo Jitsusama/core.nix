@@ -645,6 +645,9 @@ def answered() -> str:
 # or a click on a glyph opens it, Return does a thing's first action and
 # the right arrow steps into the rest.
 margin = "niri msg layers | grep -q margin"
+# The margin's cells: the theme's gap at rest, twice it while What's on is open.
+CELL_AT_REST = 12
+CELL_GROWN = 24
 notices = "niri msg layers | grep -q notifications"
 
 
@@ -656,6 +659,23 @@ def margin_sets(*wanted: tuple[str, str, str]) -> Callable[[str], bool]:
         return drawn == list(wanted)
 
     return sets
+
+
+def margin_grows(cell: int, pointed: str) -> Callable[[str], bool]:
+    """Test the margin's cells are this size, and only the pointed mark wears the accent.
+
+    At rest a cell is the gap's height; while What's on is open, twice that, and the mark
+    of the row the keys are on wears the accent. An empty pointed means none does.
+    """
+
+    def grows(rest: str) -> bool:
+        drawn = json.loads(rest)
+        return bool(drawn) and all(
+            glyph["cell"] == cell and (glyph["hue"] == "accent") == (glyph["mark"] == pointed)
+            for glyph in drawn
+        )
+
+    return grows
 
 
 def screen_now() -> Image.Image:

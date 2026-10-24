@@ -46,7 +46,27 @@ PanelWindow {
             Report.say(`says dictation ${root.words}`);
     }
 
-    visible: face !== null
+    // A screen coming or going (a dock, the lid, a monitor) can leave the
+    // surface nowhere: with no screen left, Qt moves the window onto a
+    // stand-in that can hold no surface, then onto the screen that comes
+    // back by itself, so Quickshell never makes the surface again
+    // (Launcher.qml says more). A listen under way then would go unseen to
+    // its end, so once the screens change, a surface that's up is let go
+    // for a turn and made again, as the notices' is.
+    property bool remaking: false
+
+    Connections {
+        target: Quickshell
+
+        function onScreensChanged() {
+            root.remaking = true;
+            Qt.callLater(() => {
+                root.remaking = false;
+            });
+        }
+    }
+
+    visible: face !== null && !remaking
     anchors.bottom: true
     implicitWidth: length + 2 * Theme.floating.reach
     implicitHeight: card.height + Theme.space.xxxl + Theme.floating.reach

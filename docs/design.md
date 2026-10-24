@@ -300,9 +300,10 @@ sits in rows of `space.xxxl`, each region an inset inside the border and its
 text `space.l` inside its row. A notice keeps `space.l` from its letters to
 its frame, and a meter is `space.xxxl` tall with `space.l` at its sides.
 
-**The top right corner sits a step inside the windows' edge,** `space.s`
-past their gap, so a notice or the margin's glyphs never line up with a
-window's border by chance and read as their own thing.
+**A notice sits a step inside the windows' edge,** `space.s` past their
+gap, so it never lines up with a window's border by chance and reads as its
+own thing. The margin's marks end on that edge instead, the row of them
+lined up with the windows below it.
 
 **The margin** is how the shell shows what's on that Joel would otherwise
 forget, without covering a window or taking a pixel from one. It isn't a
@@ -311,11 +312,17 @@ the picture in the gap the windows already leave above them, lifted off it
 by the wallpaper's text shadows, as the lock screen's time is. Nothing true,
 nothing drawn, so an empty corner says all is well.
 
-Every glyph's ink stands the same height, `shape.gap` less `space.xs`,
-centred on the gap's middle line, however tall its font draws it, so a row
-of them is level and nothing moves when one comes. They sit `space.s` apart,
-measured to the ink, the last at the corner, read from there inward by how
-much each asks: what's on air first (a camera, a share, a recording, a call),
+Each mark stands in a square cell the gap's height, drawn half that, so it
+has the same room above, below and on either side, and the cells touch. The
+last cell ends where a maximised window does, the gap in from the screen's
+edge, so each mark is inlaid from the windows' edge by its room. A mark is
+the theme's drawing of it (a glyph's `drawn`, a path on a twelve by twelve
+grid), made simple enough to read at six pixels, since a font's glyph is
+drawn for text and goes to mush that small; six is also whole pixels at
+both of Joel's screens' scales. Every drawing touches its grid's top and
+bottom and is centred across it, so a row of them is level and nothing
+moves when one comes. They read from the corner inward by how much each
+asks: what's on air first (a camera, a share, a recording, a call),
 then what wants Joel, then what was left on (Keep Awake, do not disturb, the
 mic muted, caps lock), and within each in the overview's order. Colour says
 only how much: strong for what's on air or wants him, muted for what was
@@ -338,10 +345,14 @@ lag-watch's windows; a moment's wait never does, since Joel feels it
 himself, and the launcher's "lag" says what waited.
 
 What each is, in words, is the launcher's What's on, opened by Super+O or by
-clicking a glyph, on that glyph's row: a row each, its glyph as the margin
-draws it, its name, how it stands at the right, and what more there is to
-know in the footer, grouped by how much it asks with what wants Joel first.
-Return does its first action and the right arrow steps into the rest. It
+clicking a mark, on that mark's row: a row each, its glyph, its name, how it
+stands at the right, and what more there is to know in the footer, grouped
+by how much it asks with what wants Joel first. Return does its first
+action and the right arrow steps into the rest. While it's open, the marks
+on its screen grow smoothly to twice their size, over the windows' tops,
+the same drawings whole, so the eye joins the corner to the list; the mark
+of the row the keys are on wears the accent, as where the keys are always
+does, and closing it shrinks them back. It
 stays while the overview is open, which draws nothing of the shell's own,
 and it shows in a screenshot or a share: niri can only black out a layer
 it's asked to keep from a capture, which would put a black patch in the
@@ -961,6 +972,22 @@ as an exception with the reason.
 ## Decisions
 
 What each studio round settled, newest first, with the reason.
+
+- **The margin's marks are drawn, each in a square, and grow in What's
+  on** (2026-10-24, at Joel's word on the built glyphs: "the icons are super
+  small and feel very tight"; "everythng has to be symmetrical for my
+  OCD"; "i want them to be inset from the right edge to where a maximal
+  windows right edge should be and slightly inlayed from that"; "when i
+  open what's on, they enlarge and overlay"). Measured on the laptop, the
+  gap above the windows and the one beside them were both twelve pixels;
+  the glyphs looked tight because they filled the strip, two pixels off
+  each side, eight apart, and ended twenty pixels in, lining up with
+  nothing. A taller gap would take room from every window, which he
+  wouldn't give, so each mark got a square cell with the same room all
+  round, the row ending on the windows' edge. Font glyphs went to mush at
+  six pixels in the mock, so the theme draws its own, and the struck bell
+  and microphone cut a gap along one side of the slash, since one filled
+  over the mark read as neither.
 
 - **The margin is glyphs alone, and the drawer goes** (2026-10-24, at
   Joel's word: "having a little square in my top right doesn't really let
