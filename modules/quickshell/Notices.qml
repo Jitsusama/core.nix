@@ -75,9 +75,9 @@ Singleton {
             .slice(0, keep);
     }
 
-    // Keeps a notification as it arrives, missed until it's seen, and held
-    // when it's never shown.
-    function arrived(notification, urgent, held) {
+    // Keeps a notification as it arrives, missed until it's seen unless
+    // it's never counted, and held when it's never shown.
+    function arrived(notification, urgent, held, counted) {
         const from = sender(notification.appName);
         const notice = {
             id: notification.id,
@@ -91,7 +91,7 @@ Singleton {
             hue: from.hue,
             urgent: urgent,
             held: held,
-            missed: !from.answers,
+            missed: counted && !from.answers,
             read: false
         };
         // Live before it's kept, so it never reads as missed and gone from

@@ -592,7 +592,11 @@ works the same way everywhere.
   program that sent it, its window when one is open. A notice on screen
   waits while Joel's away, thirty seconds with nothing typed or moved
   (`notices.away`), whatever keeps the screen awake, so one that comes
-  while he's gone is there when he's back, counting again in full.
+  while he's gone is there when he's back, counting again in full. Each
+  program can be kept to how far its notices reach (`notices.senders`):
+  the history alone, counted as waiting but never shown, a card, or, when
+  it's critical, a card that stays; a notice asking for less reaches less
+  far, and none reaches further than its program is kept to.
 - **Joining waits to say how it went.** Return on a Wi-Fi network joins it
   and the launcher stays, its footer saying how far the join has got, until
   the network takes it or says why not. A locked network met for the first

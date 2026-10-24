@@ -59,6 +59,7 @@ let
     "Margin.qml"
     "Marks.js"
     "Arrivals.qml"
+    "Levels.js"
     "Notifications.qml"
     "Music.qml"
     "Music.js"
@@ -728,6 +729,38 @@ in
     '';
   };
 
+  options.jitsusama.quickshell.notices.senders = lib.mkOption {
+    type = lib.types.attrsOf (
+      lib.types.submodule {
+        options.level = lib.mkOption {
+          type = lib.types.enum [
+            "history"
+            "count"
+            "card"
+            "urgent"
+          ];
+          description = ''
+            The furthest a sender's notices reach: kept in the history alone,
+            counted as waiting in the margin but never shown, shown as a card,
+            or, when the notice is critical, shown as one that stays until
+            it's answered. A notice reaches less far when it asks for less,
+            never further than this.
+          '';
+        };
+      }
+    );
+    default = { };
+    example = {
+      Spotify.level = "history";
+      Slack.level = "card";
+    };
+    description = ''
+      How far each program's notices reach, by the name a notice gives as
+      its sender, in any case. A program not named reaches as far as it
+      asks.
+    '';
+  };
+
   options.jitsusama.quickshell.surfaces = lib.mkOption {
     type = lib.types.attrsOf lib.types.path;
     default = { };
@@ -1357,7 +1390,14 @@ in
               readonly property var quiet: ${object config.jitsusama.quickshell.quiet}
               readonly property bool reports: ${lib.boolToString config.jitsusama.quickshell.reports}
               readonly property var margin: ${object config.jitsusama.quickshell.margin}
-              readonly property var notices: ${object config.jitsusama.quickshell.notices}
+              readonly property var notices: ${
+                object {
+                  inherit (config.jitsusama.quickshell.notices) away;
+                  senders = lib.mapAttrs' (
+                    name: sender: lib.nameValuePair (lib.toLower name) sender.level
+                  ) config.jitsusama.quickshell.notices.senders;
+                }
+              }
               // Other modules' surfaces, by file, from jitsusama.quickshell.surfaces.
               readonly property var surfaces: ${
                 builtins.toJSON (map (name: "${name}.qml") (lib.attrNames config.jitsusama.quickshell.surfaces))

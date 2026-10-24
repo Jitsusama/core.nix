@@ -42,6 +42,7 @@ import Quickshell.Services.Notifications
 import Quickshell.Wayland
 import QtQuick
 import QtQuick.Effects
+import "Levels.js" as Levels
 
 Scope {
     id: root
@@ -393,12 +394,17 @@ Scope {
         keepOnReload: true
         onNotification: notification => {
             root.arrived[notification.id] = Date.now();
+            // How far it reaches is its sender's level at most (Levels.js):
+            // one never shown is held, as one is while notices are.
+            const level = Levels.reached(Options.notices.senders[notification.appName
+                .toLowerCase()], notification.urgency === NotificationUrgency.Critical);
+            const reach = Levels.reach(level);
+            const urgent = reach.urgent;
+            const held = !reach.shown || (Quiet.on && !urgent);
             // One its sender marks transient asks not to be kept, as niri's
             // screenshot notice does.
-            const urgent = notification.urgency === NotificationUrgency.Critical;
-            const held = Quiet.on && !urgent;
             if (!notification.transient)
-                Notices.arrived(notification, urgent, held);
+                Notices.arrived(notification, urgent, held, reach.counted);
             if (held)
                 Report.say(`held ${notification.summary}`);
             const id = notification.id;

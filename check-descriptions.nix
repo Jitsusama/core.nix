@@ -16,6 +16,10 @@
     Quickshell's FileView, told not to print errors, says nothing of a file that opens and refuses
     every read, as one not told still warns
   '';
+  a-sender-keeps-to-its-level = ''
+    a notice reaches no further than its sender is kept to, however critical, and each level shows,
+    counts and stays as it says
+  '';
   a-theme-changes-everything = ''
     another theme leaves none of the first's colours behind
   '';

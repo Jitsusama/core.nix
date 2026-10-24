@@ -1016,6 +1016,22 @@
       touch $out
     '';
 
+  # A sender kept to a level reaches no further, however urgent it says it
+  # is, and each level shows, counts and stays as tests/levels.qml holds.
+  a-sender-keeps-to-its-level =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "a-sender-keeps-to-its-level" { } ''
+      cp ${../../tests/levels.qml} levels.qml
+      cp ${./Levels.js} Levels.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml levels.qml
+      touch $out
+    '';
+
   # Whether Joel's in a Tuple call comes from the daemon's log, which only a
   # real call writes, so tests/tuple.qml gives Tuple.js lines like its own:
   # what starts a call, what ends one, when it began, and a call's link.
