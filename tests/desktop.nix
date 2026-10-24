@@ -779,4 +779,8 @@ pkgs.testers.runNixOSTest {
   # nix fmt holds the script to mypy --strict against the driver's own types,
   # through driver_names.pyi, which the driver's lighter check can't find.
   skipTypeCheck = true;
+  # nix fmt lints the prelude and each area as files, with every ruff rule;
+  # the driver's own lint reads them joined, where an area's imports, which
+  # its type checking needs, repeat the prelude's.
+  skipLint = true;
 }
