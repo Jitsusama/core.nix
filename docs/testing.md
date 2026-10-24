@@ -186,13 +186,16 @@ the tests need from Nix is one JSON file, handed to `run` as `values=`,
 which a test reads parsed through the `values` fixture, as
 `tests/signing.nix` does. Each
 test is one of the driver's subtests in the log, named by its docstring's
-first line, so a test runs alone, after only what it asks for, with
-`PYTEST_ADDOPTS` and the driver itself:
+first line, so a test runs alone, after only what it asks for.
+`run-subtests` knows such a test by its `vm_pytest.run` and runs its script
+whole, telling pytest to pick the tests whose function names hold the words
+(a word's spaces read as underscores); with no words, pytest lists the tests
+and nothing boots. Any `PYTEST_ADDOPTS` of your own still holds:
 
 ```sh
-driver=$(nix build --print-out-paths .#checks.x86_64-linux.vm-network-revives-units.driver)
-XDG_RUNTIME_DIR=$(mktemp -d -p /run/user/$UID vm.XXXX) \
-  PYTEST_ADDOPTS='-k reload' $driver/bin/nixos-test-driver --output_directory "$(mktemp -d)"
+run-subtests vm-network-revives-units           # list its tests
+run-subtests vm-network-revives-units reload    # run those named, and what they need
+PYTEST_ADDOPTS=-x run-subtests vm-commits-are-signed terminal
 ```
 
 A selection that picks no test fails the run, so a mistyped name can't pass

@@ -12,12 +12,18 @@ Each subtest whose name holds any of the words runs, in the script's order;
 with none, the subtests are listed. Each subtest makes what it needs when an
 earlier one hasn't, so any runs alone. The pictures are kept
 in the folder it prints at the end.
+
+A test written for pytest (tests/lib/vm_pytest.py) is run whole instead, and
+pytest picks the tests: each word, its spaces read as underscores, is matched
+against the tests' names, and with none they're listed, which boots nothing.
 """
 
 import argparse
 import ast
 import contextlib
 import os
+import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -36,6 +42,12 @@ LONGEST_RUNTIME_BASE = 40
 
 # What a run asked for is refused with, as sysexits.h numbers it.
 USAGE = 64
+
+# What a word may hold to be matched against a pytest test's name, as
+# pytest's -k reads a name, so no word is read as more of the expression.
+KEYWORD = re.compile(r"[A-Za-z0-9_ -]+")
+# The words -k reads as its own, which a word may not be alone.
+OPERATORS = frozenset({"and", "or", "not"})
 
 type Chunk = tuple[str | None, list[str]]
 
@@ -110,6 +122,32 @@ def cut(script: str, words: Sequence[str]) -> str:
     )
 
 
+def pytest_driven(script: str) -> bool:
+    """Say whether the script hands its tests to pytest, through vm_pytest.run."""
+    return any(
+        isinstance(statement, ast.Expr)
+        and isinstance(statement.value, ast.Call)
+        and isinstance(statement.value.func, ast.Attribute)
+        and isinstance(statement.value.func.value, ast.Name)
+        and statement.value.func.value.id == "vm_pytest"
+        and statement.value.func.attr == "run"
+        for statement in ast.parse(script).body
+    )
+
+
+def selecting(words: Sequence[str]) -> str:
+    """Give the pytest options that pick the tests whose names hold any of the words.
+
+    A test's name is its function's, so a word's spaces are read as underscores.
+    """
+    keywords = ["_".join(word.split()) for word in words]
+    for word, keyword in zip(words, keywords, strict=True):
+        if not KEYWORD.fullmatch(word) or not keyword or keyword.lower() in OPERATORS:
+            message = f"{word!r} can't be matched against a test's name"
+            raise ValueError(message)
+    return "-k " + shlex.quote(" or ".join(keywords))
+
+
 def nix(*arguments: str) -> str:
     """Run nix, the one on the path, and give what it printed."""
     # The nix run is the person's own, with their settings, so it's found
@@ -156,8 +194,8 @@ def runtime_folder(check: str, *, keep: bool) -> Iterator[Path]:
         shutil.rmtree(folder, ignore_errors=True)
 
 
-def run(driver: Path, script: str, out: Path, options: Options) -> int:
-    """Run the script on the driver, its pictures kept in out."""
+def run(driver: Path, script: str, out: Path, options: Options, pytest: str = "") -> int:
+    """Run the script on the driver, its pictures kept in out, pytest given those options."""
     with runtime_folder(options.check, keep=options.keep_machine_state) as runtime:
         script_path = runtime / "test-script.py"
         script_path.write_text(script)
@@ -173,9 +211,14 @@ def run(driver: Path, script: str, out: Path, options: Options) -> int:
         if options.keep_machine_state:
             command.append("--keep-machine-state")
         # A failing test is reported by its status, not raised.
+        environment = {**os.environ, "XDG_RUNTIME_DIR": str(runtime)}
+        if pytest:
+            # After any the person set, so theirs hold too.
+            given = os.environ.get("PYTEST_ADDOPTS", "")
+            environment["PYTEST_ADDOPTS"] = f"{given} {pytest}".strip()
         return subprocess.run(  # noqa: S603
             command,
-            env={**os.environ, "XDG_RUNTIME_DIR": str(runtime)},
+            env=environment,
             check=False,
         ).returncode
 
@@ -218,6 +261,8 @@ def main(argv: Sequence[str]) -> int:
     options = arguments(argv)
     driver = build_driver(options.flake, options.check)
     script = (driver / "test-script").read_text()
+    if pytest_driven(script):
+        return run_pytest(driver, script, options)
     if not options.words:
         print("\n".join(names(script)))
         return 0
@@ -229,6 +274,30 @@ def main(argv: Sequence[str]) -> int:
     out = options.out or Path(tempfile.mkdtemp(prefix=f"{options.check}."))
     out.mkdir(parents=True, exist_ok=True)
     status = run(driver, cut(script, options.words), out, options)
+    print(f"pictures: {out}", file=sys.stderr)
+    return status
+
+
+def run_pytest(driver: Path, script: str, options: Options) -> int:
+    """List a pytest-driven check's tests, or run those the words name.
+
+    A selection naming no test fails the run, as vm_pytest makes it.
+    """
+    if not options.words:
+        out = Path(tempfile.mkdtemp(prefix=f"{options.check}."))
+        try:
+            return run(driver, script, out, options, "--collect-only --quiet")
+        finally:
+            shutil.rmtree(out, ignore_errors=True)
+    try:
+        chosen = selecting(options.words)
+    except ValueError as error:
+        print(f"run-subtests: {error}", file=sys.stderr)
+        return USAGE
+    print(f"running the tests pytest picks with {chosen}", file=sys.stderr)
+    out = options.out or Path(tempfile.mkdtemp(prefix=f"{options.check}."))
+    out.mkdir(parents=True, exist_ok=True)
+    status = run(driver, script, out, options, chosen)
     print(f"pictures: {out}", file=sys.stderr)
     return status
 

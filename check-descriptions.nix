@@ -455,7 +455,8 @@
     a laptop leaves resolved's global DNS settings as they ship
   '';
   run-subtests-keeps-what-is-named = ''
-    run-subtests keeps a script's boot and helpers and only the subtests named
+    run-subtests keeps a script's boot and helpers and only the subtests named, and runs a pytest
+    test whole with pytest picking the tests named, refusing a word pytest would read as more
   '';
   rust-programs-pass-clippy = ''
     clippy finds nothing in the single-file programs or their tests
