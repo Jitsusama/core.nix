@@ -3,6 +3,7 @@
 // home.nix writes from jitsusama.theme. Quickshell's own guide to every type:
 // https://quickshell.org/docs/
 import Quickshell
+import QtQuick
 
 ShellRoot {
     Wallpaper {}
@@ -35,5 +36,17 @@ ShellRoot {
 
     Margin {
         launcher: launcher
+    }
+
+    // What other modules add, such as dictation's look, each its own file.
+    Variants {
+        model: Options.surfaces
+
+        LazyLoader {
+            required property string modelData
+
+            active: true
+            source: Qt.resolvedUrl(`surfaces/${modelData}`)
+        }
     }
 }

@@ -102,8 +102,12 @@
   dictation-passes-clippy = ''
     clippy finds nothing in dictation or its tests
   '';
+  dictation-says-what-its-doing = ''
+    dictation's surface says listening with the time, counts down from 25 s, says typing once it
+    lasts, still writing, and why it heard nothing; its wave keeps the loudest peak of each step
+  '';
   dictation-stops-by-its-chord = ''
-    the margin's dictation piece looks for the action Super+D runs
+    a chord runs `dictation hold`, so dictation can be held to talk
   '';
   dictation-switches-to-the-new-one = ''
     a switch restarts dictation after reloading its units

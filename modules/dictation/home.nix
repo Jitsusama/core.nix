@@ -3,9 +3,9 @@
 # window; held, it types when let go, which the system's dictation-chord
 # (nixos.nix) hears. The service starts from its socket, and holds Whisper's
 # models in app.slice beside the apps from the first press; it lets them go
-# after ten minutes unused. Quickshell watches the same socket (Dictation.qml), and
-# while it listens or types, the overview says so and the margin wears its
-# mark (Listening.qml), so what's heard is never heard unseen.
+# after ten minutes unused. Quickshell watches the same socket
+# (Dictation.qml), and while it listens or types a surface of its own at the
+# bottom centre says so (Speaking.qml), so what's heard is never heard unseen.
 #
 # The encoder runs on the NPU, whose plugin finds Level Zero only on the
 # library path; on a machine with no NPU it runs on the CPU, several times
@@ -23,15 +23,10 @@ in
   home.packages = [ dictation ];
 
   xdg.configFile."quickshell/Dictation.qml".source = ./Dictation.qml;
-  # Among what's on only now and then, beside the microphone's mute, since
-  # both say what the microphone is doing.
-  jitsusama.quickshell.overview.pieces.dictation = {
-    order = 69;
-    source = ./Listening.qml;
-    label = "dictation";
-    tier = "when";
-    mark = "listening";
-  };
+  # Its own surface rather than a glyph in the margin, since it's for the
+  # moment it's used and says more than a glyph can: the time, a wave.
+  jitsusama.quickshell.surfaces.Speaking = ./Speaking.qml;
+  xdg.configFile."quickshell/surfaces/Speaking.js".source = ./Speaking.js;
 
   systemd.user.sockets.dictation = {
     Unit.Description = "Dictation's socket, which a chord and the shell reach it by";

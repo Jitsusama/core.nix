@@ -2873,6 +2873,30 @@ with subtest("the microphone muted shows in the margin, and Return unmutes it"):
     # would hold for as long as the host takes to reach them.
     machine.wait_until_fails(in_session("niri msg layers | grep -q microphone"), timeout=10)
 
+# Dictation shows at the bottom centre, never in the margin, and says what
+# it heard, from a stand-in for its service (desktop.nix).
+with subtest("dictation says what it's doing, and when it heard nothing"):
+    dictation = "niri msg layers | grep -q dictation"
+    # The volume's and the microphone's meters share the bottom centre, and
+    # show for a moment as the shell first hears them, so they're let go.
+    meters = "niri msg layers | grep -Eq 'Namespace: \"(volume|microphone)\"'"
+    machine.wait_until_fails(in_session(meters), timeout=15)
+    since = mark()
+    as_account("dictation toggle")
+    reported("says dictation listening", lambda rest: rest == "", since)
+    wait_for_surface("dictation")
+    photograph("dictation-listening")
+    # Typing shows once it lasts, and a press meanwhile says it's still
+    # writing; the stand-in types for five seconds.
+    as_account("dictation toggle")
+    reported("says dictation typing", lambda rest: rest == "", since)
+    as_account("dictation toggle")
+    reported("says dictation still writing", lambda rest: rest == "", since)
+    photograph("dictation-still-writing")
+    reported("says dictation heard nothing", lambda rest: rest == "", since)
+    photograph("dictation-heard-nothing")
+    machine.wait_until_fails(in_session(dictation), timeout=10)
+
 # Any player that tells the desktop what it plays shows in the margin
 # while it plays, and the media keys' command shows what it is.
 with subtest("what's playing shows in the margin, and a media key shows what it is"):

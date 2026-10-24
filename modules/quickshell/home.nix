@@ -707,6 +707,17 @@ in
     '';
   };
 
+  options.jitsusama.quickshell.surfaces = lib.mkOption {
+    type = lib.types.attrsOf lib.types.path;
+    default = { };
+    description = ''
+      Surfaces another module adds to the shell, by a name starting with a
+      capital, each a QML file whose root is a window or a Scope holding
+      them, as dictation's own look at the bottom centre is. The shell
+      loads each beside its own, as surfaces/<name>.qml.
+    '';
+  };
+
   options.jitsusama.quickshell.quiet.whileSharing = lib.mkOption {
     type = lib.types.bool;
     default = true;
@@ -1262,6 +1273,9 @@ in
           piece: lib.nameValuePair "quickshell/pieces/${fileName piece}" { source = linked piece; }
         ) overview
       )
+      // lib.mapAttrs' (
+        name: source: lib.nameValuePair "quickshell/surfaces/${name}.qml" { inherit source; }
+      ) config.jitsusama.quickshell.surfaces
       // lib.listToAttrs (
         map (
           provider:
@@ -1321,6 +1335,10 @@ in
           Singleton {
               readonly property var quiet: ${object config.jitsusama.quickshell.quiet}
               readonly property bool reports: ${lib.boolToString config.jitsusama.quickshell.reports}
+              // Other modules' surfaces, by file, from jitsusama.quickshell.surfaces.
+              readonly property var surfaces: ${
+                builtins.toJSON (map (name: "${name}.qml") (lib.attrNames config.jitsusama.quickshell.surfaces))
+              }
           }
         '';
         "quickshell/Overview.qml".text = ''

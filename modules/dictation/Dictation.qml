@@ -3,8 +3,10 @@ pragma ComponentBehavior: Bound
 // Dictation, as modules/dictation's service tells it: idle, listening, or
 // transcribing, the moment between the second press and the typing. Asked
 // to watch, the service says its state and then each change, so nothing is
-// asked twice. Its socket starts it, and it loads no model until the first
-// toggle, so watching costs nothing while it's unused.
+// asked twice, and a moment's answer between them: still-writing for a
+// press while it types, and heard-nothing, with why, just before an idle
+// that typed nothing. Its socket starts it, and it loads no model until the
+// first toggle, so watching costs nothing while it's unused.
 import Quickshell
 import Quickshell.Io
 import QtQuick
@@ -16,6 +18,10 @@ Singleton {
     readonly property bool listening: state === "listening"
     readonly property bool transcribing: state === "transcribing"
     readonly property bool busy: listening || transcribing
+
+    // A moment's answer: "still-writing", or why it heard nothing (muted,
+    // short, silent or unclear).
+    signal answered(string word)
 
     // What its chord does: listening starts, or stops and types what was said.
     function toggle() {
@@ -42,8 +48,14 @@ Singleton {
         parser: SplitParser {
             onRead: line => {
                 const said = line.trim();
+                // A word it doesn't know is from a newer service, and
+                // says nothing here.
                 if (["idle", "listening", "transcribing"].includes(said))
                     root.state = said;
+                else if (said === "still-writing")
+                    root.answered(said);
+                else if (said.startsWith("heard-nothing "))
+                    root.answered(said.slice("heard-nothing ".length));
             }
         }
     }

@@ -8,9 +8,26 @@
   onLinux,
   passesClippy,
   pkgs,
+  shellFolderLint,
   ...
 }:
 {
+  # What dictation's surface says in each state, its wave and its count
+  # down, as tests/speaking.qml holds them, in Qt's own engine.
+  dictation-says-what-its-doing =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "dictation-says-what-its-doing" { } ''
+      cp ${../../tests/speaking.qml} speaking.qml
+      cp ${./Speaking.js} Speaking.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml speaking.qml
+      touch $out
+    '';
+
   # A switch restarts dictation after it reloads the units, so the service
   # the shell's watch reaches is never the one from before the switch.
   dictation-switches-to-the-new-one =
@@ -18,18 +35,17 @@
       "A switch stops dictation before reloading, so the shell's watch starts the old one again."
       (((account graphical).systemd.user.services.dictation.Unit.X-SwitchMethod or null) == "restart");
 
-  # The margin's "Stop and type it" wears the chord that dictates, so the
-  # action Listening.qml looks for is the one the bind runs.
+  # Holding to talk needs the chord to run `dictation hold`, whose release
+  # dictation-chord hears; a bind back on `toggle` would only toggle.
   dictation-stops-by-its-chord =
     let
       bound =
         lib.any (b: lib.hasInfix ''spawn "dictation" "hold";'' b.action)
           (account graphical).jitsusama.niri.binds;
-      sought = lib.hasInfix ''"dictation hold"'' (builtins.readFile ./Listening.qml);
     in
     holds "dictation-stops-by-its-chord"
-      "The margin's dictation piece looks for an action no chord runs, so its stop shows no chord."
-      (bound && sought);
+      "No chord runs dictation hold, so dictation can't be held to talk."
+      bound;
 
   # dictation's tests run as it builds: its spectrogram matches the one that
   # transcribed a clip word for word, its transform the plain sum, its

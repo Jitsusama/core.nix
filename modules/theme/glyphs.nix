@@ -110,8 +110,8 @@ in
     console = "Q";
     means = "notices are held, not shown";
   };
-  listening = {
-    glyph = nerd "f036c";
+  dictating = {
+    glyph = nerd "f05cb";
     console = "D";
     means = "dictation hears what's said, to type it";
   };
