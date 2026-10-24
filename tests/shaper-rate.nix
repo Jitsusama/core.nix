@@ -5,6 +5,8 @@
 # good part of a second. An app's upload takes the line from the jobs' while
 # it runs, leaving them CAKE's sixteenth. When the line drops to 4 Mbit/s
 # the shaper follows it down within seconds, and back up when it returns.
+# It does so too when the uploads ride a second link to the same router, as
+# Wi-Fi beside a cable does: the one line carries both links' traffic.
 #
 # The margins are wide, so a loaded host running the machines slower
 # can't turn one into the other.
@@ -27,12 +29,46 @@ pkgs.testers.runNixOSTest {
       address = "192.168.1.2";
       interface = "eth1";
     };
+    # A second link to the same router, as Wi-Fi is beside a cable: its own
+    # address and a default route behind the first's. Naming an interface
+    # empties vlans' default, so the first link's is named too. QEMU names
+    # a card's hardware address by its network and machine alone, so the
+    # second has its own, or the switch sends both links' frames to one.
+    virtualisation.vlans = [ 1 ];
+    virtualisation.interfaces.eth2.vlan = 1;
+    networking.interfaces.eth2.macAddress = "52:54:00:12:01:11";
+    networking.interfaces.eth2.ipv4 = {
+      addresses = [
+        {
+          address = "192.168.1.11";
+          prefixLength = 24;
+        }
+      ];
+      routes = [
+        {
+          address = "0.0.0.0";
+          prefixLength = 0;
+          via = "192.168.1.2";
+          options.metric = "600";
+        }
+      ];
+    };
+    # Each address answers on its own link, and the server's replies to the
+    # second's may come in on either, so the reverse-path check is loose.
+    boot.kernel.sysctl = {
+      "net.ipv4.conf.all.arp_ignore" = 1;
+      "net.ipv4.conf.all.arp_announce" = 2;
+    };
+    networking.firewall.checkReversePath = "loose";
     systemd.services.shaper.environment.SHAPER_HOSTS = server;
     users.users.alice = {
       isNormalUser = true;
       linger = true;
     };
-    environment.systemPackages = [ pkgs.jq ];
+    environment.systemPackages = [
+      pkgs.jq
+      pkgs.socat
+    ];
   };
 
   nodes.router = {

@@ -46,6 +46,12 @@ TINS = ["bulk", "best effort", "video", "voice"]
 # the jobs four times the app's.
 APP_SENDS = 2_000_000
 JOBS_SHARE = 4
+# The most a link that carries no uploads sends between two looks a second
+# apart: the shaper's pings and the test's own commands.
+QUIET = 20_000
+# How many looks running a link must be that quiet, past the shaper's
+# window of 1.2 s.
+QUIET_LOOKS = 2
 # What the app's upload sends before the count starts, so its first round
 # trips, while the jobs still have the line, aren't counted against it.
 APP_STARTS = 500_000
@@ -70,9 +76,23 @@ def sent() -> dict[str, int]:
     return dict(zip(TINS, (int(tin["sent_bytes"]) for tin in cake["tins"]), strict=True))
 
 
+def sent_by(link: str) -> int:
+    """Return the bytes the client has sent on a link."""
+    return int(client.succeed(f"cat /sys/class/net/{link}/statistics/tx_bytes"))
+
+
 def line(kbit: int) -> None:
     """Set the line's rate."""
     router.succeed(f"tc qdisc change dev eth2 parent 1: handle 2: {LINE.format(f'{kbit}kbit')}")
+
+
+def uploads() -> None:
+    """Start four uploads from the account's jobs, until they're stopped."""
+    client.succeed(
+        "systemd-run -M alice@ --user --slice=jobs.slice --unit=uploads"
+        f" {BIN}/bash -c 'for i in 1 2 3 4; do"
+        f" (while true; do {BIN}/cat /dev/zero > /dev/tcp/{far}/5201; done) & done; wait'"
+    )
 
 
 def ping(name: str) -> float:
@@ -94,12 +114,7 @@ client.wait_for_unit("user@1000.service")
 client.wait_until_succeeds("tc -j qdisc show dev eth1 | grep -q cake", timeout=30)
 far = server.succeed("ip -4 -o address show dev eth1").split()[3].split("/")[0]
 
-# Four uploads from the account's jobs, for as long as the test runs.
-client.succeed(
-    "systemd-run -M alice@ --user --slice=jobs.slice --unit=uploads"
-    f" {BIN}/bash -c 'for i in 1 2 3 4; do"
-    f" (while true; do {BIN}/cat /dev/zero > /dev/tcp/{far}/5201; done) & done; wait'"
-)
+uploads()
 
 with subtest("the shaper finds the line and an app's pings stay near it"):
 
@@ -157,6 +172,51 @@ with subtest("and back up when it returns"):
         return up() > SETTLED
 
     retry(climbed, timeout_seconds=120)
+
+with subtest("uploads over a second link to the same router count against the line"):
+    client.succeed("systemctl -M alice@ --user stop uploads.service")
+
+    def follows(_last_try: bool) -> bool:
+        """Say whether eth2 takes eth1's rate, as both reach the one router."""
+        status: list[Json] = json.loads(client.succeed("cat /run/shaper/status.json"))
+        return any(link["name"] == "eth2" and link.get("follows") == "eth1" for link in status)
+
+    retry(follows, timeout_seconds=60)
+    # eth1's controller judges by its last second or so of traffic, so it
+    # must have none of its own left before only eth2 carries the uploads:
+    # then it sees the line fill only if it counts what eth2 sends.
+    last = {"sent": sent_by("eth1"), "quiet": 0}
+
+    def quiet(_last_try: bool) -> bool:
+        """Say whether eth1 has sent next to nothing for QUIET_LOOKS looks running."""
+        now = sent_by("eth1")
+        last["quiet"] = last["quiet"] + 1 if now - last["sent"] < QUIET else 0
+        last["sent"] = now
+        return last["quiet"] >= QUIET_LOOKS
+
+    retry(quiet, timeout_seconds=60)
+    client.succeed(
+        "systemd-run --unit=second-link-uploads"
+        f" {BIN}/bash -c 'for i in 1 2 3 4; do (while true; do"
+        f" {BIN}/socat -u /dev/zero TCP:{far}:5201,so-bindtodevice=eth2; done) & done; wait'"
+    )
+    started = sent_by("eth2")
+
+    def sending(_last_try: bool) -> bool:
+        """Say whether eth2's uploads are under way."""
+        return sent_by("eth2") - started >= APP_SENDS
+
+    retry(sending, timeout_seconds=60)
+    line(HALVED)
+
+    def followed_both(_last_try: bool) -> bool:
+        """Say whether the shaper holds under the halved line with its queue drained."""
+        return up() < HALVED and backlog() < DRAINED
+
+    retry(followed_both, timeout_seconds=60)
+    client.succeed("systemctl stop second-link-uploads.service")
+    line(FULL)
+    uploads()
 
 with subtest("without the shaper, the line's buffer fills"):
     client.succeed("systemctl stop shaper.service")

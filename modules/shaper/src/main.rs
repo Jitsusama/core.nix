@@ -170,6 +170,17 @@ impl Shaped {
         };
         (stat("tx_bytes"), stat("rx_bytes"))
     }
+
+    /// What the link sent and received since it was last counted, in
+    /// kbit/s.
+    fn carried(&mut self) -> (f64, f64) {
+        let (tx, rx) = self.bytes();
+        let (tx0, rx0, at) = self.counted;
+        let seconds = at.elapsed().as_secs_f64().max(0.001);
+        self.counted = (tx, rx, Instant::now());
+        let kbit = |now: u64, then: u64| float(now.saturating_sub(then)) * 8.0 / 1000.0 / seconds;
+        (kbit(tx, tx0), kbit(rx, rx0))
+    }
 }
 
 /// Names the network an uplink is on: its router's hardware address, or
@@ -361,8 +372,22 @@ fn run(options: &Options) -> ExitCode {
             }
         }
         let t = (now - began).as_secs_f64();
-        for s in shaped.values_mut().filter(|s| s.follows.is_none()) {
-            step(s, t);
+        // Every link is counted, followers too: their traffic crosses the
+        // leader's line, and a leader blind to it reads the queue a
+        // download over Wi-Fi builds against an idle download, and cuts
+        // its upload.
+        let carried: BTreeMap<String, (f64, f64)> = shaped
+            .iter_mut()
+            .map(|(n, s)| (n.clone(), s.carried()))
+            .collect();
+        let follows: BTreeMap<String, String> = shaped
+            .iter()
+            .filter_map(|(n, s)| s.follows.clone().map(|l| (n.clone(), l)))
+            .collect();
+        for (name, (sent, received)) in links::line_loads(&carried, &follows) {
+            if let Some(s) = shaped.get_mut(&name) {
+                step(s, t, sent, received);
+            }
         }
         // A follower holds its leader's rates, so the two together stay
         // under the one line; its own controller only keeps its pings.
@@ -515,15 +540,10 @@ fn look(
     order
 }
 
-/// One step of an uplink's controller, applying its rates when they moved.
-fn step(s: &mut Shaped, t: f64) {
-    let (tx, rx) = s.bytes();
-    let (tx0, rx0, at) = s.counted;
-    let seconds = at.elapsed().as_secs_f64().max(0.001);
-    s.counted = (tx, rx, Instant::now());
-    let kbit = |now: u64, then: u64| float(now.saturating_sub(then)) * 8.0 / 1000.0 / seconds;
+/// One step of an uplink's controller on what its line carried, in kbit/s,
+/// applying its rates when they moved.
+fn step(s: &mut Shaped, t: f64, sent: f64, received: f64) {
     let was = (s.controller.up.rate, s.controller.down.rate);
-    let (sent, received) = (kbit(tx, tx0), kbit(rx, rx0));
     s.state = s.controller.step(t, sent, received);
     tell(s, was, sent, received);
     apply(s);

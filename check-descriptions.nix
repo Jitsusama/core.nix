@@ -837,7 +837,8 @@
   vm-the-line-stays-quick = ''
     under four uploads on an 8 Mbit/s line 20 ms away, an app's ping stays under 80 ms with the
     shaper and passes 300 without; an app's upload leaves the jobs' under a quarter of what it
-    sends; the shaper follows the line down to 4 Mbit/s and back
+    sends; the shaper follows the line down to 4 Mbit/s and back, and down again when the uploads
+    ride a second link to the same router
   '';
   vm-the-network-keeps-its-order = ''
     an account's jobs, background, the system's builds and a guest it forwards for go in CAKE's bulk
