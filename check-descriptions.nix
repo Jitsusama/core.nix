@@ -840,11 +840,12 @@
   '';
   vm-first-finds-the-vms = ''
     vm-first reads a thread's nice and policy, knows a check with deadlines by its qemu, test
-    driver, container or nested compositor, wrapped or cut short, and not a compiler by its name,
-    finds every process under a build and its containers' cgroups, knows the daemon from the
-    workers it leaves behind, finds a worker's client and the quest's slice it sits in, keeps a
-    quest's build below a VM's, adds up what a build read and wrote on every disk and what it left
-    to write, and says a size, a client's command and a build's quest as a person reads them
+    driver, container or nested compositor, wrapped or cut short, and not a compiler nor a niri
+    build's own test programs by their names, finds every process under a build and its
+    containers' cgroups, knows the daemon from the workers it leaves behind, finds a worker's client
+    and the quest's slice it sits in, keeps a quest's build below a VM's, adds up what a build read
+    and wrote on every disk and what it left to write, and says a size, a client's command and a
+    build's quest as a person reads them
   '';
   vm-first-passes-clippy = ''
     clippy finds nothing in vm-first or its tests

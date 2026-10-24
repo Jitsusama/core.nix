@@ -6,10 +6,12 @@
 //! preempts another as it wakes. Its guest's timers then fire late, and a
 //! test's timeouts fail on a busy machine. A container's test and a nested
 //! compositor's keep time the same way, with no qemu. So once a second
-//! this looks for a process whose name starts with a `--name`: by default
-//! qemu, NixOS's test driver, systemd-nspawn, niri or sway. In each build's
-//! cgroup Nix makes under `--cgroup`, the daemon's, finding one puts every
-//! thread of the build, in the cgroups its containers make too, back to
+//! this looks for a process with a `--name`: by default qemu, NixOS's test
+//! driver or systemd-nspawn, by what their names start with, or niri or
+//! sway by their whole names, since cargo names a niri build's test
+//! programs `niri-<hash>`. A name ending in `*` is matched as a prefix.
+//! In each build's cgroup Nix makes under `--cgroup`, the daemon's,
+//! finding one puts every thread of the build, in the cgroups its containers make too, back to
 //! `SCHED_OTHER` at `--nice`. In the daemon's own cgroup, where builds from
 //! before it moved aside run, only the processes named move. Threads
 //! started afterwards take that from the thread that starts them.
@@ -38,7 +40,7 @@
 //! what asked for it.
 //!
 //! Usage: vm-first [--cgroup /sys/fs/cgroup/build.slice/nix-daemon.service]
-//!        [--name nixos-test-driver]... [--nice -10] [--weight 1000] [--every 1000]
+//!        [--name nixos-test-driver\*]... [--nice -10] [--weight 1000] [--every 1000]
 
 use std::collections::HashMap;
 use std::ffi::{CStr, CString, c_char};
@@ -371,11 +373,13 @@ fn tally(tallies: &mut HashMap<PathBuf, Tally>, builds: &[PathBuf]) {
 /// VM's qemu, NixOS's test driver, which runs a container's test as it runs
 /// a VM's, a container itself, and a nested compositor's niri or sway. Only
 /// the daemon's builds are looked in, so Joel's own niri never counts.
+/// A name ending in `*` matches as a prefix; niri and sway match whole,
+/// since a niri build's own test programs are named `niri-<hash>`.
 const TIMED: [&str; 6] = [
-    "qemu-system",
-    "qemu-kvm",
-    "nixos-test-driver",
-    "systemd-nspawn",
+    "qemu-system*",
+    "qemu-kvm*",
+    "nixos-test-driver*",
+    "systemd-nspawn*",
     "niri",
     "sway",
 ];
@@ -404,14 +408,16 @@ const COMM_LENGTH: usize = 15;
 /// Whether a process's name marks a check with deadlines. Nix's wrapped
 /// programs start with a dot, and the kernel cuts a name at 15 characters,
 /// so `.nixos-test-dri` is the test driver: a cut name is matched by every
-/// name that starts with what is left of it.
+/// prefix that starts with what is left of it. A whole name matches only
+/// itself, or Nix's wrapper of it, as `.niri-wrapped` is.
 fn is_timed(comm: &str, names: &[String]) -> bool {
     let comm = comm.trim_end();
     let cut = comm.len() == COMM_LENGTH;
     let bare = comm.strip_prefix('.').unwrap_or(comm);
-    names
-        .iter()
-        .any(|name| bare.starts_with(name.as_str()) || (cut && name.starts_with(bare)))
+    names.iter().any(|name| match name.strip_suffix('*') {
+        Some(prefix) => bare.starts_with(prefix) || (cut && prefix.starts_with(bare)),
+        None => bare == name || bare.strip_suffix("-wrapped") == Some(name.as_str()),
+    })
 }
 
 /// The controllers a build's cgroup is given, as Nix itself does from
@@ -744,8 +750,8 @@ fn settings() -> Result<Settings, String> {
 fn run() -> Result<(), String> {
     let settings = settings()?;
     eprintln!(
-        "Bringing {}* in {} ahead at nice {}.",
-        settings.names.join("*, "),
+        "Bringing {} in {} ahead at nice {}.",
+        settings.names.join(", "),
         settings.cgroup.display(),
         settings.nice
     );
@@ -1047,7 +1053,19 @@ mod tests {
         ] {
             assert!(is_timed(comm, &names), "{comm}");
         }
-        for comm in ["cc1\n", "vde_switch\n", "rustc\n", "python3.14\n", "bash\n"] {
+        // A niri build's own test programs, which cargo names after the
+        // crate and a hash, are a compiler's work, not a compositor.
+        for comm in [
+            "cc1\n",
+            "vde_switch\n",
+            "rustc\n",
+            "python3.14\n",
+            "bash\n",
+            "niri-3f2a1b9c0d\n",
+            "niri_config-ab1\n",
+            "niri_ipc-9e8d7c\n",
+            "swaybg\n",
+        ] {
             assert!(!is_timed(comm, &names), "{comm}");
         }
     }
