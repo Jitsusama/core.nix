@@ -179,10 +179,13 @@ with subtest("a build can't hand controllers on itself, so the daemon restarts b
     build("nester-build")
     machine.wait_until_succeeds(f"ls -d {DAEMON}/nix-build-*/asked", timeout=60)
     nester = machine.succeed(f"dirname {DAEMON}/nix-build-*/asked").strip()
-
-    told = machine.succeed("journalctl -u nester-build.service -o cat")
-
-    assert "cgroup.subtree_control: Permission denied" in told, told
+    # The refusal reaches the journal through the daemon and its client,
+    # so it can land just after the cgroup it was asked for.
+    machine.wait_until_succeeds(
+        "journalctl -u nester-build.service -o cat"
+        " | grep -q 'cgroup.subtree_control: Permission denied'",
+        timeout=30,
+    )
     assert machine.succeed(f"cat {nester}/cgroup.subtree_control").strip() == ""
 
     machine.succeed("systemctl reset-failed nix-daemon.service")
