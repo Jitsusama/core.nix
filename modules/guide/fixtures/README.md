@@ -21,6 +21,7 @@ that changes what it prints fails a test rather than a person's install.
 | `tpm2-handles-nv-index.txt`    | `tpm2_getcap handles-nv-index`, the same                      |
 | `tpm2-nvreadpublic-<index>.txt` | `tpm2_nvreadpublic -T device:/dev/tpmrm0 <index>` on the XPS 14, captured on 2026-10-24: its pcrlock policy's index, and an NvPCR's |
 | `pcrlock-nvindex.json`         | `jq -c '{nvIndex}' /var/lib/systemd/pcrlock.json`, the NV index in that list systemd-pcrlock keeps the disk's policy in; the rest of the file is sealed to that TPM and of no use to a test |
+| `tpm2-load-another-tpms-key.err` | `tpm2_load -T device:/dev/tpmrm0 -C parent.ctx -u public -r private` on the XPS 14, captured on 2026-10-24: `tpm-simulator/`'s key, its halves taken out of its file, under the storage key the guide makes from the owner's seed, as a cleared TPM refuses a key made before |
 
 A missing file is one the machine doesn't have: the Surface's firmware keeps
 no `AuditMode` or `DeployedMode`.
@@ -37,6 +38,13 @@ disk (a LUKS2 volume formatted with a random key, each key enrolled with
 `systemd-cryptenroll --fido2-device`, then a recovery key), and the rest
 on the stick in core's `vm-guide-installs`, its disk `/dev/vda` and the
 stick `/dev/sda`.
+
+## In a TPM Simulator
+
+`tpm-simulator/ssh-tpm-keygen.tpm` and its `.pub` are a key ssh-tpm-keygen
+0.9.0 made in go-tpm-tools' simulator (`SSH_TPM_AGENT_SWTPM=1`), with no
+PIN and the comment `alice@machine`, on 2026-10-24: a TSS2 private key file
+as a real machine's, made by no machine's TPM.
 
 | File                           | Command                                           |
 | ------------------------------ | ------------------------------------------------- |

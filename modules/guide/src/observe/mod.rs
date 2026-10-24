@@ -7,6 +7,7 @@ pub mod disks;
 pub mod efi;
 pub mod entries;
 pub mod fido2;
+pub mod keyfile;
 pub mod luks;
 pub mod pcrlock;
 pub mod sbctl;

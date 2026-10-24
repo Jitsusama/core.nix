@@ -189,9 +189,15 @@ driven on; the installed machine's steps come later.
   `GUIDE_ASKPASS`, set only in the keygen's environment. A key counts as
   made when both its halves are there and the public one is what
   `--print-pubkey` reads from the private one; half a key blocks rather
-  than being made over. A cleared TPM leaves the keys unable to load,
-  which the guide can't see without their PIN: move them away for it to
-  make new ones.
+  than being made over. A cleared TPM has another seed, so a key made
+  before can't load: the guide loads each whole key as root, no PIN
+  needed, under the storage key go-tpm-keyfiles makes from the owner's
+  seed (the TCG's ECC template H-2), in `/run/guide/tpm-key`, and a key
+  the TPM refuses with `TPM_RC_INTEGRITY` (`Esys_Load(0x1DF)`) is
+  removed and made again under a new PIN. tpm2-tools 5.8 can't read a
+  key file with a description, as ssh-tpm-keygen writes, so the guide
+  takes its halves out itself (`observe::keyfile`). Any other refusal
+  is a fault, and a key under another parent is taken as it stands.
 - **The spares on the YubiKeys.** Then the installed guide keeps the
   login key's spare, a resident ed25519-sk key, on each YubiKey the
   stick enrolled, for the one account with

@@ -897,13 +897,13 @@
     firmware enrolling them before the disk first asks; then seals the disk to the TPM with a PIN,
     which opens it at the next boot, leaving one systemd-pcrlock policy; makes the account's TPM
     keys under one PIN and a spare SSH key on each YubiKey, refusing one asked for by the other's
-    name; clears the TPM, opens with a YubiKey, seals again and downloads a lost spare; a host
-    writes a stick from the rescue bundle the install sealed to the recovery key, which the
-    firmware boots while enforcing; then the install's own stick, which it made the machine's by
-    carrying its keys and bundle and signing itself with them, boots enforcing and reinstalls the
-    machine with the same keys, whose guide frees the first install's policy; and a firmware cleared
-    of its keys gets them back from the machine's next boot, its TPM's PIN alone opening the disk
-    once they're enrolled
+    name; clears the TPM, opens with a YubiKey, seals again, makes the keys it lost again and
+    downloads a lost spare; a host writes a stick from the rescue bundle the install sealed to the
+    recovery key, which the firmware boots while enforcing; then the install's own stick, which it
+    made the machine's by carrying its keys and bundle and signing itself with them, boots enforcing
+    and reinstalls the machine with the same keys, whose guide frees the first install's policy; and
+    a firmware cleared of its keys gets them back from the machine's next boot, its TPM's PIN alone
+    opening the disk once they're enrolled
   '';
   vm-guide-opens-the-vault = ''
     a stick's vault sealed to a FIDO2 key opens with its PIN, and without it by the passphrase

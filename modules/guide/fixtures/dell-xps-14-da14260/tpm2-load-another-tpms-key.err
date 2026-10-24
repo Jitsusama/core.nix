@@ -1,0 +1,4 @@
+WARNING:esys:src/tss2-esys/api/Esys_Load.c:314:Esys_Load_Finish() Received TPM Error 
+ERROR:esys:src/tss2-esys/api/Esys_Load.c:110:Esys_Load() Esys Finish ErrorCode (0x000001df) 
+ERROR: Esys_Load(0x1DF) - tpm:parameter(1):integrity check failed
+ERROR: Unable to run /nix/store/j5sxmm0fr48ivavb63kxrgc6wmk5aq2k-tpm2-tools-5.8/bin/tpm2_load

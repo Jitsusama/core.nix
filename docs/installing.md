@@ -227,9 +227,10 @@ off or changing its keys needs it.
 
 On a machine the guide installed, it makes the TPM's keys itself, at the boot
 after the disk is sealed: every key a module names in `jitsusama.tpmKeys`, as
-its account, with one PIN for each that asks for one. Then it keeps the login
-key's spare on each YubiKey the stick enrolled, asking for each by name: it
-downloads the spare a YubiKey already holds, and makes one only on a YubiKey
+its account, with one PIN for each that asks for one. After a cleared TPM, which
+can never load the keys it held before, it makes them again. Then it keeps the
+login key's spare on each YubiKey the stick enrolled, asking for each by name:
+it downloads the spare a YubiKey already holds, and makes one only on a YubiKey
 holding none. On any other machine, make them by hand, as below.
 
 Run this step as the account, never under sudo. Every key here belongs in the

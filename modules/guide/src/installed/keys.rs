@@ -3,10 +3,16 @@
 //! ssh-tpm-agent's login key and the signing keys, each named by the
 //! module that wants it (core's `jitsusama.tpmKeys`) and listed in the
 //! machine's facts. One PIN, typed twice, goes to every key that has one.
+//!
+//! A key's file holds its private half sealed to the storage key its TPM's
+//! seed makes, and clearing the TPM gives it another seed, so a key made
+//! before can never load again. The guide loads each key to see, and makes
+//! one the TPM refuses again, as it makes a missing one.
 
 use serde::Deserialize;
 
-use super::{facts, secret};
+use super::{as_root, facts, secret};
+use crate::observe::keyfile::{self, KeyFile};
 use crate::{Ask, Fault, Given, Machine, Place, Program, Secret, Standing, Step, Tool};
 
 /// What the guide prints, and nothing else, when ssh-tpm-keygen runs it
@@ -44,18 +50,67 @@ impl TpmKey {
 
 pub struct MakeKeys;
 
+/// Where the guide loads a key to see the TPM still takes it: root's
+/// alone, and gone once it's looked.
+const LOADING: &str = "/run/guide/tpm-key";
+const PUBLIC: &str = "/run/guide/tpm-key/public";
+const PRIVATE: &str = "/run/guide/tpm-key/private";
+
+/// The storage key go-tpm-keyfiles loads a key under when its parent is
+/// the owner: the TCG's ECC template H-2 (its tpm.go's
+/// `ECCSRK_H2_Template`), which the owner's seed makes the same every
+/// time, until the TPM is cleared.
+const STORAGE_KEY: &[&str] = &[
+    "-T",
+    "device:/dev/tpmrm0",
+    "-C",
+    "o",
+    "-g",
+    "sha256",
+    "-G",
+    "ecc256:aes128cfb",
+    "-a",
+    "fixedtpm|fixedparent|sensitivedataorigin|userwithauth|noda|restricted|decrypt",
+    "-c",
+    "/run/guide/tpm-key/parent.ctx",
+];
+
+/// Loads the key's halves under that storage key.
+const LOAD: &[&str] = &[
+    "-T",
+    "device:/dev/tpmrm0",
+    "-C",
+    "/run/guide/tpm-key/parent.ctx",
+    "-u",
+    PUBLIC,
+    "-r",
+    PRIVATE,
+    "-c",
+    "/run/guide/tpm-key/key.ctx",
+];
+
+/// What `tpm2_load` says when the TPM finds a key's private half wasn't
+/// sealed by the storage key it's loaded under: `TPM_RC_INTEGRITY` on
+/// its first parameter, that half. Any other refusal says nothing of the
+/// key, so it's a fault rather than a key to make again.
+const NOT_ITS_SEED: &str = "Esys_Load(0x1DF)";
+
 /// How a key stands on the disk.
 enum Kept {
-    /// Both halves, the public one read from the private one.
+    /// Both halves, the public one read from the private one, which the
+    /// TPM loads.
     Whole,
     /// Neither half, so it's to make.
     Missing,
+    /// Both halves, but the TPM, cleared since, refuses the private one,
+    /// so it's to make again.
+    Lost,
     /// One half, or a public half that isn't the private one's: something
     /// nothing should overwrite.
     Mismatched(String),
 }
 
-fn kept(machine: &mut dyn Machine, key: &TpmKey) -> Result<Kept, Fault> {
+fn kept(machine: &mut dyn Machine, key: &TpmKey, storage: &mut bool) -> Result<Kept, Fault> {
     let private = machine.read(&key.private())?;
     let public = machine.read(&key.public())?;
     match (private, public) {
@@ -70,7 +125,7 @@ fn kept(machine: &mut dyn Machine, key: &TpmKey) -> Result<Kept, Fault> {
             key.public(),
             key.private()
         ))),
-        (Some(_), Some(public)) => {
+        (Some(private), Some(public)) => {
             let read = machine
                 .run_given(
                     Program::Tool(Tool::SshTpmKeygen),
@@ -78,16 +133,49 @@ fn kept(machine: &mut dyn Machine, key: &TpmKey) -> Result<Kept, Fault> {
                     Given::default(),
                 )?
                 .ok()?;
-            if read.trim() == String::from_utf8_lossy(&public).trim() {
-                Ok(Kept::Whole)
-            } else {
+            if read.trim() != String::from_utf8_lossy(&public).trim() {
                 Ok(Kept::Mismatched(format!(
                     "{} isn't the public half of {}",
                     key.public(),
                     key.private()
                 )))
+            } else if loads(machine, &private, storage)? {
+                Ok(Kept::Whole)
+            } else {
+                Ok(Kept::Lost)
             }
         }
+    }
+}
+
+/// Whether the TPM still loads a key, which one cleared since it was made
+/// won't. A key under any parent but the owner's storage key, or not one
+/// to load, is taken as it stands, since the guide can't tell. `storage`
+/// says whether that storage key is made already, once for every key.
+fn loads(machine: &mut dyn Machine, file: &[u8], storage: &mut bool) -> Result<bool, Fault> {
+    let key = KeyFile::parse(file)?;
+    if !key.loadable || key.parent != keyfile::OWNER {
+        return Ok(true);
+    }
+    machine.write(PUBLIC, &key.public)?;
+    machine.write(PRIVATE, &key.private)?;
+    if !*storage {
+        machine
+            .run_given(
+                Program::Tool(Tool::Tpm2Createprimary),
+                STORAGE_KEY,
+                as_root(),
+            )?
+            .ok()?;
+        *storage = true;
+    }
+    let loaded = machine.run_given(Program::Tool(Tool::Tpm2Load), LOAD, as_root())?;
+    if loaded.status == 0 {
+        Ok(true)
+    } else if String::from_utf8_lossy(&loaded.stderr).contains(NOT_ITS_SEED) {
+        Ok(false)
+    } else {
+        Err(loaded.refusal())
     }
 }
 
@@ -102,13 +190,28 @@ fn whose(keys: &[&TpmKey]) -> String {
     accounts.join(" and ")
 }
 
+/// A key to make, and whether a cleared TPM lost the one there.
+struct ToMake {
+    key: TpmKey,
+    lost: bool,
+}
+
 /// The keys still to make, or why none can be.
-fn to_make(machine: &mut dyn Machine) -> Result<Result<Vec<TpmKey>, String>, Fault> {
+fn to_make(machine: &mut dyn Machine) -> Result<Result<Vec<ToMake>, String>, Fault> {
+    machine.remove_tree(LOADING)?;
+    let made = to_make_looking(machine);
+    machine.remove_tree(LOADING)?;
+    made
+}
+
+fn to_make_looking(machine: &mut dyn Machine) -> Result<Result<Vec<ToMake>, String>, Fault> {
+    let mut storage = false;
     let mut missing = vec![];
     for key in facts(machine)?.keys {
-        match kept(machine, &key)? {
+        match kept(machine, &key, &mut storage)? {
             Kept::Whole => {}
-            Kept::Missing => missing.push(key),
+            Kept::Missing => missing.push(ToMake { key, lost: false }),
+            Kept::Lost => missing.push(ToMake { key, lost: true }),
             Kept::Mismatched(why) => return Ok(Err(why)),
         }
     }
@@ -149,18 +252,27 @@ impl Step for MakeKeys {
                 },
             });
         }
-        let missing: Vec<&TpmKey> = missing.iter().collect();
+        let lost = missing.iter().any(|making| making.lost);
+        let missing: Vec<&TpmKey> = missing.iter().map(|making| &making.key).collect();
         if !missing.iter().any(|key| key.pin) {
             return Ok(Standing::Needed { asks: vec![] });
         }
+        let name = if lost {
+            format!(
+                "a PIN for {}'s new SSH keys, made again since the TPM was cleared and can't open the old ones; they ask for it once after each sign-in",
+                whose(&missing)
+            )
+        } else {
+            format!(
+                "a PIN for {}'s SSH keys, which they ask for once after each sign-in",
+                whose(&missing)
+            )
+        };
         Ok(Standing::Needed {
             asks: vec![
                 Ask::Secret {
                     id: "key-pin",
-                    name: format!(
-                        "a PIN for {}'s SSH keys, which they ask for once after each sign-in",
-                        whose(&missing)
-                    ),
+                    name,
                 },
                 Ask::Secret {
                     id: "again",
@@ -181,7 +293,7 @@ impl Step for MakeKeys {
             }
         };
         let none = Secret::new(String::new());
-        let pin = if missing.iter().any(|key| key.pin) {
+        let pin = if missing.iter().any(|making| making.key.pin) {
             let (Some(pin), Some(again)) = (secret(answers, "key-pin"), secret(answers, "again"))
             else {
                 return Err(Fault::Unanswered {
@@ -213,7 +325,13 @@ impl Step for MakeKeys {
             })?
             .to_string_lossy()
             .into_owned();
-        for key in &missing {
+        for ToMake { key, lost } in &missing {
+            // Nothing can ever load a key the TPM's old seed sealed, and
+            // ssh-tpm-keygen asks before making one over it.
+            if *lost {
+                machine.remove(&key.private())?;
+                machine.remove(&key.public())?;
+            }
             let folder = key.file.rsplit_once('/').map_or(".", |(folder, _)| folder);
             machine
                 .run_given(

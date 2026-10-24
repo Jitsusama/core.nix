@@ -59,7 +59,9 @@ tools! {
     SshTpmKeygen => "ssh-tpm-keygen", "GUIDE_SSH_TPM_KEYGEN";
     SystemdCryptenroll => "systemd-cryptenroll", "GUIDE_SYSTEMD_CRYPTENROLL";
     Systemctl => "systemctl", "GUIDE_SYSTEMCTL";
+    Tpm2Createprimary => "tpm2_createprimary", "GUIDE_TPM2_CREATEPRIMARY";
     Tpm2Getcap => "tpm2_getcap", "GUIDE_TPM2_GETCAP";
+    Tpm2Load => "tpm2_load", "GUIDE_TPM2_LOAD";
     Tpm2Nvreadpublic => "tpm2_nvreadpublic", "GUIDE_TPM2_NVREADPUBLIC";
     Tpm2Nvundefine => "tpm2_nvundefine", "GUIDE_TPM2_NVUNDEFINE";
     Udevadm => "udevadm", "GUIDE_UDEVADM";

@@ -451,9 +451,12 @@ with subtest("after the restart the disk asks once, and opens with the TPM's PIN
 
 with subtest("a cleared TPM leaves a YubiKey to open the disk, and the guide seals it again"):
     # The guide sees nothing to do, until the TPM is cleared, which
-    # takes the NV index the disk's pcrlock policy lives in. The Nano's
-    # spare goes too, for the guide to bring back off the Nano.
+    # takes the NV index the disk's pcrlock policy lives in, and the seed
+    # alice's keys were sealed under. The Nano's spare goes too, for the
+    # guide to bring back off the Nano.
     nano = spare("nano")
+    tpm_keys = ["/home/alice/.ssh/id_ecdsa", "/home/alice/.ssh/agent-signing"]
+    before_clear = {file: machine.succeed(f"cat {file}.pub") for file in tpm_keys}
     machine.succeed("rm /home/alice/.ssh/yubikey-nano /home/alice/.ssh/yubikey-nano.pub")
     machine.succeed(f"{tpm2_clear} -T device:/dev/tpmrm0 -c l")
     machine.reboot()
@@ -467,6 +470,13 @@ with subtest("a cleared TPM leaves a YubiKey to open the disk, and the guide sea
     enter("")
     on_screen("the YubiKey's PIN")
     enter(pin)
+    # The TPM refuses the keys it sealed before, so the guide makes them
+    # again, saying why.
+    on_screen("a PIN for alice's new SSH keys", timeout=300)
+    t.assertIn("the tpm was cleared", " ".join(screen().split()).lower())
+    enter(key_pin)
+    on_screen("the same PIN again")
+    enter(key_pin)
     # The 5C is in from its spare, so the Nano goes in for its own.
     on_screen("Plug in the Nano", timeout=300)
     plug("nano")
@@ -476,6 +486,17 @@ with subtest("a cleared TPM leaves a YubiKey to open the disk, and the guide sea
     on_screen("machine is finished", timeout=300)
     # Downloaded from the Nano, the same key, under its own comment again.
     t.assertEqual(spare("nano"), nano)
+    # New keys in place of the old, which this TPM loads, and nothing the
+    # guide loaded them in is left.
+    for file in tpm_keys:
+        public = machine.succeed(f"cat {file}.pub")
+        t.assertNotEqual(public.split()[1], before_clear[file].split()[1], file)
+        t.assertEqual(machine.succeed(f"stat -c %U {file}.tpm").strip(), "alice", file)
+        t.assertEqual(machine.succeed(f"{keygen} --print-pubkey {file}.tpm"), public)
+    # Changing its PIN to itself loads the login key, as only this TPM can.
+    quoted = shlex.quote(key_pin)
+    machine.succeed(f"runuser -u alice -- {keygen} -p -f {tpm_keys[0]}.tpm -P {quoted} -N {quoted}")
+    machine.fail("test -e /run/guide/tpm-key")
     header = json.loads(
         machine.succeed("cryptsetup luksDump --dump-json-metadata /dev/disk/by-partlabel/system")
     )
