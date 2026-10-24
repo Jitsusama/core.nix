@@ -1,8 +1,8 @@
 # Pictures and videos from the camera, through `camera picture` or `camera
 # video`, which the launcher's Capture collection runs. Both open a
 # viewfinder in mpv (camera.lua) that's driven by the keys: Return takes a
-# picture, or starts and stops a video, Tab changes which, and Escape closes
-# it. Pictures go to Pictures/Camera and are copied, and videos to
+# picture, or starts and then stops a video, and the viewfinder goes once
+# it's done; Tab changes which, and Escape closes it. Pictures go to Pictures/Camera and are copied, and videos to
 # Videos/Camera, beside the screen's own.
 #
 # The viewfinder plays the camera with nothing buffered and nothing timed,

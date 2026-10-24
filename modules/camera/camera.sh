@@ -18,12 +18,16 @@ esac
 [ -c "$device" ] || device=$(cat "$device")
 # Drawn on the GPU through Wayland, or in shared memory where there's
 # no GPU to draw with. It idles between sources, so the camera can pass
-# to a recording and back (camera.lua).
+# to a recording and back (camera.lua). A picture's frame is kept
+# uncompressed, since mpv waits on it and the JPEG made of it is what's
+# kept: compressed, a busy machine took seconds over each, and the keys
+# waited behind it.
 exec mpv "av://v4l2:$device" \
   --vo=gpu-next,wlshm --gpu-context=wayland \
   --title=Camera --wayland-app-id=camera --force-window=immediate \
   --profile=low-latency --untimed --cache=no --hwdec=no --aid=no \
   --vf=hflip --osc=no --input-default-bindings=no \
   --keep-open=no --idle=yes --save-position-on-quit=no --resume-playback=no \
+  --screenshot-png-compression=0 \
   --script="$script" \
   --script-opts="$look",camera-mode="$mode",camera-device="$device"

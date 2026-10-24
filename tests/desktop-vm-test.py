@@ -92,8 +92,6 @@ ONE_GLYPH = 30
 # How far in from the screen's right edge, in pixels, the window under the notices rests,
 # so its edge is far from the corner's.
 FROM_THE_CORNER = 100
-# How many pictures the camera is asked for at once.
-PICTURES_AT_ONCE = 2
 # The longest a program may take to start and show its window. A wait
 # ends when it does, so this is only a ceiling: on a host busy with
 # other machines and builds, a cold kitty or GIMP took past 30
@@ -3051,22 +3049,18 @@ with subtest("the camera takes a picture and a video by the keys"):
     type_in("picture from the camera", selecting="camera")
     machine.send_key("ret")
     machine.wait_until_succeeds(in_session(camera), timeout=60)
-    # Return before the camera wakes takes the picture once it has.
+    # Return before the camera wakes takes the picture once it has, and then the viewfinder
+    # goes, as a screenshot's would.
     with told("shows card Picture copied", timeout=60):
         machine.send_key("ret")
-    photograph("camera")
-    # Two at once are both kept, under names of their own.
-    since = mark()
-    machine.send_key("ret")
-    machine.send_key("ret")
-    pictures_taken: list[str] = []
+    machine.wait_until_fails(in_session(camera), timeout=10)
 
-    def two_taken(rest: str) -> bool:
-        """Keep what a picture's notice said, and say whether two have been said."""
-        pictures_taken.append(rest)
-        return len(pictures_taken) == PICTURES_AT_ONCE
-
-    reported("shows card Picture copied", two_taken, since, timeout=60)
+    def viewfinder(opened_for: str) -> None:
+        """Open the camera again from Capture's row for it."""
+        capture()
+        type_in(opened_for, selecting=f"A {opened_for}")
+        machine.send_key("ret")
+        machine.wait_until_succeeds(in_session(camera), timeout=60)
 
     def probe(entries: str, files: str) -> str:
         """Give what ffprobe says of each file there, which it reads one at a time."""
@@ -3075,10 +3069,13 @@ with subtest("the camera takes a picture and a video by the keys"):
         return machine.succeed(each)
 
     sizes = probe("stream=width,height", f"/home/{ACCOUNT}/Pictures/Camera/*.jpg")
-    t.assertEqual(sizes.split(), ["640,480"] * 3)
+    t.assertEqual(sizes.split(), ["640,480"])
 
     videos = f"/home/{ACCOUNT}/Videos/Camera"
-    kept = in_session("cat ~/.local/state/quickshell/by-shell/*/notices.json")
+    # The notices kept, none until one that isn't transient arrives.
+    kept = in_session(
+        "find ~/.local/state/quickshell -name notices.json -exec cat {} + 2>/dev/null; true"
+    )
 
     def recording(count: int, last: bool) -> bool:
         """Say whether there are so many videos, the newest grown, so recording."""
@@ -3130,13 +3127,17 @@ with subtest("the camera takes a picture and a video by the keys"):
             print(as_account("journalctl --user --no-pager -n 60 -o cat"))
             raise
 
-    # Tab makes Return record, and Return again stops it.
+    # Tab makes Return record, and Return again stops it, the viewfinder going once the video
+    # is saved.
+    viewfinder("picture from the camera")
     machine.send_key("tab")
     machine.send_key("ret")
     retry(lambda last: recording(1, last), timeout_seconds=60)
+    photograph("camera")
     saved("ret")
+    machine.wait_until_fails(in_session(camera), timeout=30)
     # Escape while recording saves the video, then closes.
-    machine.wait_until_succeeds(in_session(camera), timeout=10)
+    viewfinder("video from the camera")
     machine.send_key("ret")
     retry(lambda last: recording(2, last), timeout_seconds=60)
     saved("esc")
