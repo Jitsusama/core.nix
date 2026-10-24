@@ -85,6 +85,27 @@ pub fn leaders(order: &[(&str, &str)]) -> BTreeMap<String, String> {
     follows
 }
 
+/// What each leading link's line carries, in kbit/s sent and received,
+/// from what every link carried: its own and its followers', since they
+/// reach the line through the one router.
+pub fn line_loads(
+    carried: &BTreeMap<String, (f64, f64)>,
+    follows: &BTreeMap<String, String>,
+) -> BTreeMap<String, (f64, f64)> {
+    let mut loads: BTreeMap<String, (f64, f64)> = carried
+        .iter()
+        .filter(|(name, _)| !follows.contains_key(*name))
+        .map(|(name, load)| (name.clone(), *load))
+        .collect();
+    for (name, (sent, received)) in carried {
+        if let Some(load) = follows.get(name).and_then(|l| loads.get_mut(l)) {
+            load.0 += sent;
+            load.1 += received;
+        }
+    }
+    loads
+}
+
 #[derive(Deserialize)]
 struct Link {
     #[serde(default)]
@@ -184,6 +205,23 @@ mod tests {
         assert_eq!(follows.get("eth1").map(String::as_str), Some("eth0"));
         assert_eq!(follows.get("eth0"), None);
         assert_eq!(follows.get("usb0"), None);
+    }
+
+    #[test]
+    fn a_line_carries_what_every_link_to_its_router_carries() {
+        // A download over Wi-Fi while the cable leads fills the one line:
+        // the cable's controller must see it, or it reads the line's queue
+        // against an idle download and cuts the upload instead.
+        let carried = BTreeMap::from([
+            ("eth0".to_string(), (500.0, 2_000.0)),
+            ("wlan0".to_string(), (300.0, 90_000.0)),
+            ("usb0".to_string(), (100.0, 400.0)),
+        ]);
+        let follows = BTreeMap::from([("wlan0".to_string(), "eth0".to_string())]);
+        let loads = line_loads(&carried, &follows);
+        assert_eq!(loads.get("eth0"), Some(&(800.0, 92_000.0)));
+        assert_eq!(loads.get("usb0"), Some(&(100.0, 400.0)));
+        assert_eq!(loads.get("wlan0"), None);
     }
 
     #[test]
