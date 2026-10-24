@@ -23,6 +23,15 @@ const PAST_THE_EDGE = /-or-(to-)?(monitor|workspace)-[a-z]+$/;
 // A table with no groups, whose chords are all loose.
 const NONE = { order: [], rules: [] };
 
+// What a pull request, an issue and a review's thread each have alike, by
+// GitHub's leader's letters: its reactions, its comments and threads, and
+// the people and labels on it.
+const CONVERSATION = [
+    ["reactions", "keys", /^space g h t\b/],
+    ["comments", "keys", /^space g h (c|shift\+t)\b|^[[\]] shift\+c$/],
+    ["people", "keys", /^space g h [al]\b/]
+];
+
 // The groups, layer by layer, in the order a layer lists them, and the rules
 // that fill them. A rule reads one of a chord's facts:
 //
@@ -34,7 +43,10 @@ const NONE = { order: [], rules: [] };
 //
 // The desktop's groups say what a chord acts on, the terminal's and pi's
 // what it does in their words; Neovim's follow its leader's letters, and
-// the window a key works in. `within` holds a group's own groups.
+// the window a key works in. `within` holds a group's own groups, for a
+// group too big to read whole (Joel, 2026-10-24: Code held 64 chords and
+// Problems 45), split by what its chords act on into groups of about
+// twelve, so no level lists more than about twenty chords.
 const TABLE = {
     desktop: {
         order: ["windows", "columns", "workspaces", "screens", "programs", "launcher", "capture",
@@ -61,7 +73,20 @@ const TABLE = {
             // is spawned is a program.
             ["windows", "action", /./],
             ["programs", "command", /./]
-        ]
+        ],
+        within: {
+            // Each workspace by its number, and the one above and below,
+            // to go to or to move a column or a window to. Moving the
+            // workspace itself and showing them all are left loose.
+            workspaces: {
+                order: ["going", "column", "window"],
+                rules: [
+                    ["going", "action", /^focus-workspace/],
+                    ["column", "action", /^move-column/],
+                    ["window", "action", /^move-window/]
+                ]
+            }
+        }
     },
     terminal: {
         order: ["tabs", "scrollback", "clipboard", "text"],
@@ -87,6 +112,9 @@ const TABLE = {
             // The leader's groups, by their letters.
             ["github", "keys", /^space g h\b/],
             ["git", "keys", /^space g\b/],
+            // The outline's own keys sit under the code's letter, but
+            // are looked for with the outline.
+            ["outline", "keys", /^space c o\b/],
             ["code", "keys", /^space [ck]\b/],
             ["problems", "keys", /^space e\b|^ctrl\+q$/],
             ["files", "keys", /^space f\b|^-$/],
@@ -107,17 +135,127 @@ const TABLE = {
             ["moving", "keys", /^g (s|shift\+s|l|w)$|^(up|down)$/]
         ],
         within: {
-            // GitHub's keys work in octo's windows, each kind its own.
-            github: {
-                order: ["pulls", "issues", "reviews", "runs"],
+            // Finding a file, and the file browser, which shows a folder
+            // as a file to edit.
+            files: {
+                order: ["finding", "browser"],
                 rules: [
+                    ["browser", "when", /\bfile browser\b/],
+                    ["browser", "keys", /^(space f e|-)$/],
+                    ["finding", "keys", /^space f\b/]
+                ]
+            },
+            // What the language server knows of the code, by the leader's
+            // letters, the text it selects, and [ and ] through it.
+            code: {
+                order: ["definitions", "hints", "refactoring", "formatting", "selecting",
+                    "through", "server"],
+                rules: [
+                    ["selecting", "when", /\boperator\b/],
+                    ["refactoring", "keys", /^space c (r|shift\+r)\b/],
+                    ["hints", "keys", /^space c ([ahlt]|shift\+h)\b/],
+                    ["formatting", "keys", /^space c (f|shift\+f|n)\b/],
+                    ["selecting", "keys", /^space c s\b/],
+                    ["definitions", "keys", /^space c (space|u|c)\b|^g /],
+                    ["through", "keys", /^[[\]] /],
+                    ["server", "keys", /^space k\b/]
+                ]
+            },
+            // Finding and showing problems, going through them, and the
+            // problems list's own keys: going to one, the list itself,
+            // and folding it.
+            problems: {
+                order: ["showing", "through", "opening", "list", "folding"],
+                rules: [
+                    ["showing", "keys", /^space e\b|^ctrl\+q$/],
+                    ["through", "keys", /^[[\]] /],
+                    ["folding", "keys", /^z /],
+                    ["opening", "keys", /^(enter|o|ctrl\+[sv]|p|shift\+p|escape|[{}])$/],
+                    ["list", "when", /\bproblems list\b/]
+                ]
+            },
+            // Showing the outline, then its window's keys: going to a
+            // symbol and folding them, and walking it.
+            outline: {
+                order: ["showing", "symbols", "folding", "walking"],
+                rules: [
+                    ["walking", "when", /^walking\b/],
+                    ["showing", "keys", /^space c o\b|^[?q]$/],
+                    ["folding", "keys", /^z |^(shift\+)?[hl]$/],
+                    ["symbols", "when", /\boutline\b/]
+                ]
+            },
+            // Git's leader's letters, and its status window's keys.
+            git: {
+                order: ["changes", "staging", "commits", "branches", "stashes", "remote",
+                    "status"],
+                rules: [
+                    ["status", "when", /\bgit's status\b/],
+                    ["changes", "keys", /^space g w\b|^[[\]] g$|^i h$/],
+                    ["staging", "keys", /^space g s\b/],
+                    ["commits", "keys", /^space g c\b/],
+                    ["branches", "keys", /^space g [bt]\b/],
+                    ["stashes", "keys", /^space g a\b/],
+                    ["remote", "keys", /^space g n\b/]
+                ]
+            },
+            // GitHub's keys work in octo's windows, each kind its own, and
+            // its leader's other letters say what else they act on. Each
+            // letter's key that finds a key, by what it does, is one group.
+            github: {
+                order: ["pulls", "issues", "reviews", "runs", "repositories", "gists",
+                    "notifications", "keys"],
+                rules: [
+                    ["keys", "keys", /^space g h ((a|b|c|f|k|l|m|m q|t|shift\+t|v) )?space$/],
                     ["reviews", "when", /\breview\b/],
                     ["pulls", "when", /\bpull request\b/],
                     ["issues", "when", /\bissue\b/],
                     ["runs", "when", /\bworkflow run\b/],
+                    ["notifications", "when", /\bnotifications\b/],
                     ["pulls", "keys", /^space g h [ph]\b/],
-                    ["issues", "keys", /^space g h i\b/]
-                ]
+                    ["issues", "keys", /^space g h i\b/],
+                    ["notifications", "keys", /^space g h n\b/],
+                    ["gists", "keys", /^space g h g\b/],
+                    ["repositories", "keys", /^space g h [rsf]\b/]
+                ],
+                within: {
+                    pulls: {
+                        order: ["finding", "pull", "merging", "reviewing", "people", "comments",
+                            "reactions"],
+                        rules: CONVERSATION.concat([
+                            ["finding", "keys", /^space g h [hp]\b/],
+                            ["merging", "keys", /^space g h (m [^o]|k)\b/],
+                            ["reviewing", "keys", /^space g h v\b/],
+                            ["pull", "when", /\bpull request\b/]
+                        ])
+                    },
+                    issues: {
+                        order: ["finding", "issue", "people", "comments", "reactions"],
+                        rules: CONVERSATION.concat([
+                            ["issue", "when", /\bissue\b/],
+                            ["finding", "keys", /^space g h i\b/]
+                        ])
+                    },
+                    // A review's windows, each its own keys.
+                    reviews: {
+                        order: ["threads", "diffs", "files", "submitting"],
+                        rules: [
+                            ["files", "when", /\bchanged files\b/],
+                            ["diffs", "when", /\breview's change\b/],
+                            ["threads", "when", /\bthread\b/],
+                            ["submitting", "when", /\bsubmitting\b/]
+                        ],
+                        within: {
+                            // Its moves between files are left loose.
+                            threads: {
+                                order: ["comments", "reactions"],
+                                rules: CONVERSATION.concat([
+                                    ["comments", "keys", /^space g h i\b/]
+                                ])
+                            }
+                        }
+                    }
+                }
             }
         }
     },

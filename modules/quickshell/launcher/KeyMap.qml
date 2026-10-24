@@ -7,9 +7,10 @@
 // whole, since what follows a name is cut short at a third of the row
 // (Choice.qml). A layer holds its groups, by what a chord acts on
 // (KeyGroups.js), then any chord no group takes; a group holds its chords,
-// or groups of its own, and a short layer holds its chords alone. Typing at any level finds a group below it by its name or
-// its words, then any chord below it by what it does or by its program's
-// name, flat. Each chord shows its chord, and in the footer the layer it
+// or groups of its own, and a short layer holds its chords alone. Typing
+// at any level finds a group below it by its name or its words, saying
+// what holds it when that's further down, then any chord below it by what
+// it does or by its program's name, flat. Each chord shows its chord, and in the footer the layer it
 // belongs to and where in it the chord works; a swipe is drawn as its
 // fingers and its way, and found by "swipe" or "touch" as well. It's opened
 // by its own chord, or by finding "Show these shortcuts", rather than
@@ -86,17 +87,23 @@ Provider {
 
     // A layer or a group, by its word in the vocabulary (shortcuts:desktop,
     // shortcuts:neovim:github:pulls), and what's in it as KeyGroups.js
-    // arranged it: its row, and every level below it. A group the
-    // vocabulary doesn't know, one a bind named itself, is named by its id.
+    // arranged it: its row, every level below it as its own search finds
+    // them, and as a search above it does. A group the vocabulary doesn't
+    // know, one a bind named itself, is named by its id.
     function levelOf(id, arranged, places, chords, glyph) {
         const groups = arranged.groups.map(group => levelOf(`${id}:${group.id}`, group.inside,
             group.at, chords, glyph));
         const rows = groups.map(group => group.row).concat(arranged.loose.map(at => chords[at]));
         const held = places.map(at => chords[at]);
-        const below = groups.reduce((all, group) => all.concat([group.row], group.below), []);
         const entry = Words.of(id);
         const last = id.split(":").pop();
         const name = Words.things[id] ? entry.name : last.charAt(0).toUpperCase() + last.slice(1);
+        // Found inside this level, a group of its own says its first
+        // groups, as it does listed; one further down says the group
+        // holding it, since Pull requests, Issues and Threads each have
+        // Comments. Found from further up, its own groups say this one.
+        const deeper = groups.reduce((all, group) => all.concat(group.deeper), []);
+        const below = groups.map(group => group.row).concat(deeper);
         // Its first groups, as many as fit whole.
         let first = "";
         for (const group of groups) {
@@ -123,7 +130,8 @@ Provider {
             from: level(rows, below, held),
             verbs: () => rows
         });
-        return { row: row, below: below, chords: held };
+        const said = groups.map(group => Object.assign({}, group.row, { side: name }));
+        return { row: row, below: below, deeper: said.concat(deeper), chords: held };
     }
 
     // Each layer this machine has, as a level.
@@ -138,10 +146,10 @@ Provider {
 
     readonly property var all: layers.reduce((rows, layer) => rows.concat(layer.chords), [])
 
-    // Every level, found by its name from the top, a group saying its
-    // layer beside it, since the terminal and Neovim both have tabs.
+    // Every level, found by its name from the top, a group saying what
+    // holds it beside it, since the terminal and Neovim both have tabs.
     readonly property var levels: layers.reduce((rows, layer) => rows.concat([layer.row],
-        layer.below.map(row => Object.assign({}, row, { side: layer.row.name }))), [])
+        layer.deeper), [])
 
     function search(typed) {
         return found(typed, levels, all);

@@ -512,12 +512,22 @@ Scope {
 
     // What's typed in a category: what it holds, and what's held in the
     // things it holds as one row (Programs' programs), found by their
-    // words, then each of its collections' best match, as at the top.
+    // words, then each of its collections' best match, as at the top. A
+    // row named what's typed, whole, comes first wherever it was found, so
+    // "workspaces" in Shortcuts is its Workspaces group, before any chord
+    // or act that only uses the word.
     function inCategory(letters) {
         const pool = offered.reduce((all, row) => all.concat([row], row.group ? row.verbs() : []),
             []);
         const inside = offered.filter(row => row.from).map(row => row.from);
-        return within(pool, words).concat(gathering(letters, inside));
+        return namedFirst(within(pool, words).concat(gathering(letters, inside)), letters);
+    }
+
+    // Rows named what's typed, whole, before the rest, each in its order.
+    function namedFirst(rows, letters) {
+        const said = Fuzzy.plainly(letters);
+        const named = row => Fuzzy.plainly(row.name) === said;
+        return rows.filter(named).concat(rows.filter(row => !named(row)));
     }
 
     // What a category's own answers make of what's typed in it: in
@@ -589,7 +599,10 @@ Scope {
             if (source.collection.searched === false && !among)
                 continue;
             const said = source.gather(letters);
-            const found = learnedFirst(said.rows, letters);
+            // Inside a category, its best is one named what's typed before
+            // one picked for it.
+            const learned = learnedFirst(said.rows, letters);
+            const found = among ? namedFirst(learned, letters) : learned;
             if (found.length === 0)
                 continue;
             const best = found[0];
