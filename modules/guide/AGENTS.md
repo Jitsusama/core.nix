@@ -209,6 +209,10 @@ driven on; the installed machine's steps come later.
   for the account to reach the key, and the files are the account's
   once moved. Its `SSH_ASKPASS` is the guide, as for the TPM's keys,
   with `-N ""` so the file's own passphrase isn't answered with the PIN.
+  Its ssh-keygen carries openssh-empty-key.patch, since OpenSSH 10.5p1
+  fails `-K` on a key holding no resident keys, which a key with nothing
+  to download always is, and the guide must tell that apart from a
+  failure before it makes one.
 - **The rescue bundle.** A machine's Secure Boot keys, all seven files
   sbctl keeps, sealed under a key of their own, which is sealed to the
   machine's YubiKeys and apart to a recovery passphrase of seven words,

@@ -53,7 +53,12 @@ in
   GUIDE_RUNUSER = lib.getExe' pkgs.util-linux "runuser";
   GUIDE_SBCTL = lib.getExe pkgs.sbctl;
   GUIDE_SGDISK = lib.getExe' pkgs.gptfdisk "sgdisk";
-  GUIDE_SSH_KEYGEN = lib.getExe' pkgs.openssh "ssh-keygen";
+  # Built for the guide alone, so nothing else on a machine rebuilds: its
+  # spares step reads a YubiKey holding no resident keys as having none to
+  # download, where OpenSSH 10.5p1 fails (openssh-empty-key.patch says why).
+  GUIDE_SSH_KEYGEN = lib.getExe' (pkgs.openssh.overrideAttrs (old: {
+    patches = old.patches or [ ] ++ [ ./openssh-empty-key.patch ];
+  })) "ssh-keygen";
   GUIDE_SSH_TPM_KEYGEN = lib.getExe' pkgs.ssh-tpm-agent "ssh-tpm-keygen";
   GUIDE_SYSTEMD_CRYPTENROLL = lib.getExe' systemd "systemd-cryptenroll";
   GUIDE_SYSTEMCTL = lib.getExe' systemd "systemctl";

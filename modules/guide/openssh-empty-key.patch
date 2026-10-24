@@ -1,0 +1,27 @@
+Lets `ssh-keygen -K` download nothing from a FIDO2 key holding no resident
+keys, rather than failing with "Unable to load resident keys: invalid
+format".
+
+CTAP 2.1's authenticatorCredentialManagement answers enumerateRPsBegin with
+CTAP2_ERR_NO_CREDENTIALS when the key holds no discoverable credentials,
+which libfido2's fido_credman_get_dev_rp hands back as
+FIDO_ERR_NO_CREDENTIALS. OpenSSH 10.5p1's read_rks treats that as any
+other failure, so a new key can't be told from a broken one. Here it's a
+key with nothing to download, as sk_load_resident_keys already counts a
+key that doesn't do credential management at all.
+
+--- a/sk-usbhid.c
++++ b/sk-usbhid.c
+@@ -1297,6 +1297,12 @@
+ 		goto out;
+ 	}
+ 	if ((r = fido_credman_get_dev_rp(sk->dev, rp, pin)) != 0) {
++		if (r == FIDO_ERR_NO_CREDENTIALS) {
++			skdebug(__func__, "device %s holds no resident keys",
++			    sk->path);
++			ret = 0;
++			goto out;
++		}
+ 		skdebug(__func__, "get RPs for %s failed: %s",
+ 		    sk->path, fido_strerr(r));
+ 		goto out;
