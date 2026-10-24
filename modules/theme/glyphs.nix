@@ -169,6 +169,11 @@ in
     console = "D";
     means = "a disk is short of room, a writer was frozen, or nothing watches it";
   };
+  lag = {
+    glyph = nerd "f051f";
+    console = "W";
+    means = "the desktop or its apps have waited on the same thing a while";
+  };
   spend = {
     glyph = nerd "f01c1";
     console = "$";

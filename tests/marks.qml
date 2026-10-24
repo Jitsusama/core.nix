@@ -109,6 +109,17 @@ QtObject {
         expect("gone, it waits no more", Marks.awaited(waits, [said], [], { at: 1500, wait: 1000 }),
             []);
 
+        // Lag lasts while the same thing keeps the desktop or apps waiting.
+        const waited = (worst, who, since) => ({ worst, who, since });
+        expect("nothing waits, nothing lasts", Marks.lasted(waited("", "", null), null, 100), null);
+        let lag = Marks.lasted(waited("memory", "apps", 40), null, 100);
+        expect("a run lag-watch began counts from then", lag, { worst: "memory", since: 40 });
+        expect("the same worst keeps its start",
+            Marks.lasted(waited("memory", "apps", 40), lag, 110), { worst: "memory", since: 40 });
+        expect("another worst starts again from now",
+            Marks.lasted(waited("disk", "desktop", 40), lag, 120), { worst: "disk", since: 120 });
+        expect("once it ends, it's gone", Marks.lasted(waited("", "", null), lag, 130), null);
+
         for (const failure of failures)
             console.warn(`FAIL ${failure}`);
         Qt.exit(failures.length === 0 ? 0 : 1);

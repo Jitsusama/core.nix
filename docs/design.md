@@ -331,7 +331,11 @@ card to go. What comes true by itself, a camera a program opened or the
 battery running low, arrives as one notice of its own, signed with its
 glyph and name and carrying what can be done about it, and again, urgent,
 when it comes to need Joel now; what his own keys turned on, and what was
-already true as the shell started, says nothing, since he knows.
+already true as the shell started, says nothing, since he knows. The
+desktop or its apps kept waiting on the same thing, memory, the disk, the
+processor or niri, for a minute shows quietly, as something left on, from
+lag-watch's windows; a moment's wait never does, since Joel feels it
+himself, and the launcher's "lag" says what waited.
 
 What each is, in words, is the launcher's What's on, opened by Super+O or by
 clicking a glyph, on that glyph's row: a row each, its glyph as the margin

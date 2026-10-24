@@ -2872,6 +2872,47 @@ with subtest("a missed notice shows its glyph, and What's on shows the notices")
     # Opening them counted them seen, so nothing's waiting.
     machine.wait_until_fails(in_session(margin), timeout=10)
 
+with subtest("waiting that lasts a minute shows in the margin, quietly"):
+    # lag-watch would write its own window over a stand-in's, so it rests.
+    as_account("systemctl --user stop lag-watch.service")
+    lagged = "$XDG_RUNTIME_DIR/lag-watch/status.json"
+
+    def lag_says(worst: str, who: str, ago: int) -> None:
+        """Write a window as lag-watch does, renamed in, its run begun so long ago."""
+        now = int(machine.succeed("date +%s").strip())
+        window = {
+            "ended": now,
+            "trouble": [f"{who} waited on {worst}"] if worst else [],
+            "worst": worst,
+            "who": who,
+            "since": now - ago if worst else None,
+        }
+        as_account(
+            f"mkdir -p $(dirname {lagged}) && echo '{json.dumps(window)}' > {lagged}.new"
+            f" && mv {lagged}.new {lagged}"
+        )
+
+    # A moment's wait says nothing.
+    since = mark()
+    lag_says("memory", "apps", 10)
+    time.sleep(2)
+    said = as_account(
+        "journalctl --user --unit=quickshell --no-pager --output=cat"
+        f" --after-cursor={shlex.quote(since)}"
+    )
+    t.assertNotRegex(said, r"holds margin [^\n]*\blag\b", "a moment's wait showed")
+    # A minute of it does, left on, so muted. A run that began a minute
+    # ago is another run, so the last one ends first.
+    lag_says("", "", 0)
+    time.sleep(2)
+    lag_says("memory", "apps", 70)
+    reported("sets margin ", margin_sets(("lag", "leftOn", "muted")), since)
+    photograph("margin-lag")
+    # Over, it goes.
+    lag_says("", "", 0)
+    reported("holds margin", lambda rest: "lag" not in rest.split(), since)
+    as_account("systemctl --user start lag-watch.service")
+
 with subtest("the microphone muted shows in the margin, and Return unmutes it"):
     try:
         with told("drawn margin"):

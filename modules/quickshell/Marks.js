@@ -61,6 +61,21 @@ function awaited(waits, before, after, clock) {
     return stays.concat(come);
 }
 
+// How long the desktop or its apps have waited on the same thing, from
+// lag-watch's last window (modules/lag-watch), as { worst, since } in epoch
+// seconds, or null while nothing waits. The run lag-watch counts is of any
+// trouble, so one whose worst changes starts again from now.
+function lasted(window, kept, at) {
+    if (!(window?.worst && window?.who)) {
+        return null;
+    }
+    if (kept && kept.worst === window.worst) {
+        return kept;
+    }
+    const since = kept || window.since === null || window.since === undefined ? at : window.since;
+    return { worst: window.worst, since };
+}
+
 // What lingers at a time, as { mark, until, thing }: something on air
 // that was lit before and isn't now stays a while, muted, in its place,
 // so a camera let go is still seen to have been on. One lit again stops

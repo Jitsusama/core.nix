@@ -440,6 +440,7 @@ let
     volume = ./pieces/Volume.qml;
     awake = ./pieces/Awake.qml;
     disk = ./pieces/Disk.qml;
+    lag = ./pieces/Lag.qml;
     spend = ./pieces/Spend.qml;
     notices = ./pieces/Waiting.qml;
     quiet = ./pieces/DoNotDisturb.qml;
@@ -1242,6 +1243,15 @@ in
         label = "disks";
         tier = "when";
         mark = "disk";
+      };
+      # Only once the same thing has kept the desktop or its apps waiting a
+      # minute, from lag-watch; a moment's wait Joel feels for himself.
+      lag = {
+        order = 59;
+        source = "lag";
+        label = "lag";
+        tier = "when";
+        mark = "lag";
       };
       microphone = {
         order = 70;
