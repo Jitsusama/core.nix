@@ -23,6 +23,8 @@ let
   # A build that writes 64 MiB through to the disk and then finishes.
   fakeWriter = pkgs.writeShellApplication {
     name = "fake-writer";
+    # Nix gives a builder $out in its environment.
+    excludeShellChecks = [ "SC2154" ];
     text = ''
       ${pkgs.coreutils}/bin/dd if=/dev/zero of=written bs=1M count=64 conv=fsync status=none
       ${pkgs.coreutils}/bin/sleep 1
