@@ -1412,7 +1412,13 @@ with subtest("the launcher answers what's asked, and copies the answer"):
     machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
     t.assertTrue(as_account("wl-paste --no-newline").startswith(f"{charge}%, "))
     # The words a poor memory reaches for ask the same answers.
-    for typed, said in [("battery life", f"{charge}%"), ("how hot", ""), ("ram", "")]:
+    # "lag" answers from lag-watch's last ten seconds.
+    for typed, said in [
+        ("battery life", f"{charge}%"),
+        ("how hot", ""),
+        ("ram", ""),
+        ("lag", ""),
+    ]:
         answer(typed)
         # The wait ends before the loop moves on, so it reads this pass's answer.
         launcher_until(

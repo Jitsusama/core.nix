@@ -481,6 +481,7 @@ let
     machine = ./launcher/Machine.qml;
     power = ./launcher/Power.qml;
     heat = ./launcher/Heat.qml;
+    waits = ./launcher/Waits.qml;
     today = ./launcher/Today.qml;
     light = ./launcher/Light.qml;
     keyboards = ./launcher/Keyboards.qml;
@@ -948,6 +949,12 @@ in
       heat = {
         order = 98;
         source = "heat";
+      };
+      # Whether anything Joel uses waited, from lag-watch, which a machine
+      # without it simply doesn't answer.
+      waits = {
+        order = 93;
+        source = "waits";
       };
       # The date's week, day of the year, UTC, zone and epoch.
       today = {
