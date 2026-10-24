@@ -5,11 +5,13 @@
 # its half is proven here by what a Mac's account is given.
 {
   account,
+  bareNixos,
   holds,
   lib,
   macWorkstation,
   onLinux,
   pkgs,
+  self,
   workstation,
   ...
 }:
@@ -18,7 +20,9 @@ let
   # writes last.
   signing =
     home:
-    (lib.findFirst (include: include ? contents.gpg.format) { } home.programs.git.includes).contents;
+    (lib.findFirst (include: include ? contents.gpg.format) {
+      contents = { };
+    } home.programs.git.includes).contents;
 in
 {
   # Each machine signs with its own hardware through the same program: a
@@ -30,12 +34,22 @@ in
     let
       linux = account workstation;
       mac = account macWorkstation;
+      # What a layer that only lists the signers is given, with no hardware's
+      # module to say how to sign.
+      listing = account (bareNixos [
+        {
+          home-manager.sharedModules = [
+            self.homeModules.signing
+            { jitsusama.signing.allowedSigners = [ "someone@example.com ssh-ed25519 AAAA" ]; }
+          ];
+        }
+      ]);
       onLinux = signing linux;
       onMac = signing mac;
       macPackages = map (package: package.name or "") mac.home.packages;
     in
     holds "each-machine-signs-with-its-hardware"
-      "A machine signs without its hardware's program or key, a Mac is given Linux's TPM agent, or a Mac has no se-keys to make its keys."
+      "A machine signs without its hardware's program or key, a Mac is given Linux's TPM agent, a Mac has no se-keys to make its keys, or signing alone, with no hardware, signs or fails."
       (
         lib.hasSuffix "/bin/tpm-sign" onLinux.gpg.ssh.program
         && onLinux.user.signingKey == "/home/someone/.local/share/signing/joel-signing.pub"
@@ -47,6 +61,8 @@ in
         && !(mac.services.ssh-tpm-agent.enable or false)
         && !(mac.systemd.user.services ? signing-key)
         && builtins.elem "se-keys" macPackages
+        && signing listing == { }
+        && !(listing.xdg.configFile ? "git/allowed_signers")
         && builtins.all (on: on.commit.gpgSign && on.tag.gpgSign && on.gpg.format == "ssh") [
           onLinux
           onMac
