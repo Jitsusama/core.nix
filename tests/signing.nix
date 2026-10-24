@@ -4,8 +4,8 @@
 # made at a terminal is signed with Joel's key, after its PIN and a
 # confirmation; a refused confirmation leaves no commit. git verifies each
 # signature against the key that should have made it, and trusts the signers
-# the module lists without losing how it signs. The script is
-# signing-vm-test.py.
+# the module lists without losing how it signs. The tests are
+# signing-vm-test.py, run under pytest.
 { self, pkgs }:
 let
   pin = "2468";
@@ -25,7 +25,7 @@ let
   # runs, so the test verifies against its own file; this one is what a
   # machine lists, which must leave the rest of git's signing settings alone.
   otherSigner = ''someone@test namespaces="git" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPE3v5gInXpF9AF9ZJDHfv+dG7ISngMHkCkmp/EeRCjL'';
-  # What the script needs of the above, which it reads at its top.
+  # What the tests need of the above, as their values fixture.
   values = pkgs.writeText "signing-values.json" (
     builtins.toJSON {
       inherit
@@ -58,14 +58,17 @@ pkgs.testers.runNixOSTest {
     };
   };
 
-  # The script reads the values from the file put in place of its marker.
-  # What VM tests' scripts share (tests/lib).
+  # What VM tests share (tests/lib), pytest and its runner among them.
   extraPythonPackages = python: [ (pkgs.callPackage ./lib/vm-helpers.nix { } python) ];
 
-  testScript = builtins.replaceStrings [ "@values@" ] [ "${values}" ] (
-    builtins.readFile ./signing-vm-test.py
-  );
-  # nix fmt holds the script to mypy --strict against the driver's own types,
-  # through driver_names.pyi, which the driver's lighter check can't find.
+  # Run by hand, the driver takes pytest's options from PYTEST_ADDOPTS, so
+  # PYTEST_ADDOPTS='-k terminal' runs only the commit made at a terminal.
+  testScript = ''
+    import vm_pytest
+    vm_pytest.run(globals(), "${./signing-vm-test.py}", values="${values}")
+  '';
+  # nix fmt holds the tests and vm_pytest to mypy --strict against the
+  # driver's own types, so the driver's check of this one line would add only
+  # its time.
   skipTypeCheck = true;
 }
