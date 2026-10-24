@@ -247,10 +247,11 @@
     clippy finds nothing in lag-watch or its tests
   '';
   lag-watch-tells-who-waited = ''
-    lag-watch counts the desktop or apps waiting as trouble and work waiting on work as none, names
-    the app's unit that stalled most, tells of the desktop's or an app's program the kernel ended
-    for memory, names in a word the wait felt most, whose it was and since when trouble has lasted,
-    finds the threads it watches by name, and sums each generation by its load
+    lag-watch counts the desktop or apps waiting as trouble, the desktop's memory stalls only from a
+    120 Hz frame's worth of the window, and work waiting on work as none, names the app's unit that
+    stalled most, tells of the desktop's or an app's program the kernel ended for memory, names in a
+    word the wait felt most, whose it was and since when trouble has lasted, finds the threads it
+    watches by name, and sums each generation by its load
   '';
   lid-docked-passes-clippy = ''
     clippy finds nothing in lid-docked or its tests

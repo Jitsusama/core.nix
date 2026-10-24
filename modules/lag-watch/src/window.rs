@@ -350,12 +350,21 @@ fn naming(most: Option<(String, f64)>, digits: usize) -> String {
     })
 }
 
+/// One 120 Hz frame, 8.3 ms, as a share of a ten-second window in percent.
+const FRAME_OF_A_WINDOW: f64 = 8.3 / 10_000.0 * 100.0;
+
 /// What in a window counts as Joel waiting. Each threshold is from what
 /// these were measured at with the machine quiet and under sixteen
 /// spinning threads: session.slice's CPU stall read 0.00% while jobs
 /// stalled 23%; a wakeup in session waited at most 0.75 ms and in app
 /// 1.3 ms; niri's main thread waited 23 us a turn on average across a
 /// day of builds; one 120 Hz frame is 8.3 ms.
+///
+/// The desktop's memory stalls count from a frame's worth of the window
+/// on. In a day's 457 windows with any, the median was 0.6 ms and nine in
+/// ten were under 7; through the 35 of a frame or more, niri still
+/// answered within a millisecond in 33. A stall too short to cost a frame
+/// is no wait of Joel's, and niri late for one is counted on its own.
 fn trouble(w: &Window, then: &Snapshot, now: &Snapshot) -> Found {
     let mut found = Found::default();
     let s = |name: &str| w.stalls.get(name).copied().unwrap_or_default();
@@ -370,7 +379,7 @@ fn trouble(w: &Window, then: &Snapshot, now: &Snapshot) -> Found {
             ),
         );
     }
-    if s("session").memory_full > 0.0 {
+    if s("session").memory_full >= FRAME_OF_A_WINDOW {
         found.add(
             Who::Desktop,
             4,
@@ -626,6 +635,22 @@ mod tests {
             ]
         );
         assert_eq!(w.worst, "memory");
+    }
+
+    #[test]
+    fn the_desktop_stalling_on_memory_is_trouble_from_a_frame_on() {
+        let then = snapshot(0.0, &[("session", group(0, 0, 0))], 0, 0);
+        // 6 ms of 10 s, under one 120 Hz frame: most windows' stalls are
+        // this size, and niri answered within a millisecond through them.
+        let under = snapshot(10.0, &[("session", group(0, 6_000, 0))], 0, 0);
+        let w = between(&then, &under, quiet_niri(), 0, "gen");
+        assert!(w.trouble.is_empty(), "{:?}", w.trouble);
+        let frame = snapshot(10.0, &[("session", group(0, 9_000, 0))], 0, 0);
+        let w = between(&then, &frame, quiet_niri(), 0, "gen");
+        assert_eq!(
+            w.trouble,
+            ["the desktop stalled on memory 0.09% of the time"]
+        );
     }
 
     #[test]
