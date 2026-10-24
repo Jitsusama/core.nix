@@ -694,21 +694,50 @@ with subtest("the launcher shows the volume's chords, and Escape closes it"):
     machine.send_key("esc")
     machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
 
-with subtest("the launcher finds a pi session by its quest, and goes to its window"):
-    # A session as pi keeps one: its quest's README, front matter
-    # first, and its presence while it runs.
-    quest = "~/.local/share/pi/agentic-harness.pi/quest-workflow/quests/QEST-20261022-TESTQA"
-    presence = "~/.local/state/pi/agentic-harness.pi/mesh-workflow/presence"
+# A session as pi keeps one: its quest's README, front matter first, and
+# its presence while it runs; and its window, titled as pi titles its own:
+# its address, its quest cut short, its folder, which a hyphen doesn't end.
+PI_QUEST = "~/.local/share/pi/agentic-harness.pi/quest-workflow/quests/QEST-20261022-TESTQA"
+PI_PRESENCE = "~/.local/state/pi/agentic-harness.pi/mesh-workflow/presence"
+PI_WINDOW = "\u03c0 - TESTQA A quest of\u2026 - my-tree"
+
+
+def presence_says(said: Json) -> None:
+    """Replace the session's presence with this, by rename, as pi does."""
     as_account(
-        f"mkdir -p {quest} {presence} && printf '%s\\n' '---' 'title: no' '---'"
+        f"echo '{json.dumps(said)}' > {PI_PRESENCE}/.testqa"
+        f" && mv {PI_PRESENCE}/.testqa {PI_PRESENCE}/testqa.json"
+    )
+
+
+def pi_session() -> None:
+    """Make pi's session, working, with its window and another to be in, unless they're there.
+
+    Each of pi's subtests starts from it, so any of them runs alone.
+    """
+    as_account(
+        f"mkdir -p {PI_QUEST} {PI_PRESENCE} && printf '%s\\n' '---' 'title: no' '---'"
         " '# A quest of its own & whole'"
-        f' > {quest}/README.md && echo \'{{"session":"01a1face-test",'
+        f' > {PI_QUEST}/README.md && echo \'{{"session":"01a1face-test",'
         '"addresses":["TESTQA"],"busy":true,'
         '"owns":["QEST-20261022-TESTQA"],"worksOn":"Tidy the tests",'
         '"groups":["#desk"],'
         '"owner":{"startedAt":\'$(date +%s%3N)\'}}\''
-        f" > {presence}/testqa.json"
+        f" > {PI_PRESENCE}/testqa.json"
     )
+    windows: list[Json] = json.loads(as_account("niri msg --json windows"))
+    for title in [PI_WINDOW, "Elsewhere"]:
+        if any(window["title"] == title for window in windows):
+            continue
+        as_account(f"niri msg action spawn -- kitty --title '{title}'")
+        machine.wait_until_succeeds(
+            in_session(f'niri msg --json windows | grep -qF \'"title":"{title}"\''),
+            timeout=STARTING,
+        )
+
+
+with subtest("the launcher finds a pi session by its quest, and goes to its window"):
+    pi_session()
     # What it spent today, as spend-watch writes it, replaced whole.
     spent = {
         "v": 2,
@@ -741,18 +770,7 @@ with subtest("the launcher finds a pi session by its quest, and goes to its wind
         f"echo '{json.dumps(lined)}' > $XDG_RUNTIME_DIR/jobs/.q"
         " && mv $XDG_RUNTIME_DIR/jobs/.q $XDG_RUNTIME_DIR/jobs/queue.json"
     )
-    # Its window, titled as pi titles its own: its address, its
-    # quest cut short, its folder, which a hyphen doesn't end.
-    agent = "\u03c0 - TESTQA A quest of\u2026 - my-tree"
-    as_account(f"niri msg action spawn -- kitty --title '{agent}'")
-    machine.wait_until_succeeds(
-        in_session("niri msg --json windows | grep -q TESTQA"), timeout=STARTING
-    )
-    # Another window to be in, so going to the session's means a move.
-    as_account("niri msg action spawn -- kitty --title Elsewhere")
-    machine.wait_until_succeeds(
-        in_session("niri msg --json windows | grep -q '\"Elsewhere\"'"), timeout=STARTING
-    )
+    # From the other window, so going to the session's means a move.
     as_account(f"niri msg action focus-window --id {window_titled('Elsewhere')['id']}")
     # The launcher's foot counts it, working, as its presence says.
     since = mark()
@@ -811,13 +829,6 @@ with subtest("the launcher finds a pi session by its quest, and goes to its wind
 
     # It comes to want Joel, its presence replaced by rename as pi's
     # is: the margin hangs pi's mark, and lets it go once answered.
-    def presence_says(said: Json) -> None:
-        """Replace the session's presence with this, by rename, as pi does."""
-        as_account(
-            f"echo '{json.dumps(said)}' > {presence}/.testqa"
-            f" && mv {presence}/.testqa {presence}/testqa.json"
-        )
-
     # From another window, so it's said as a notice too, whose
     # Return goes to the session's window.
     as_account(f"niri msg action focus-window --id {window_titled('Elsewhere')['id']}")
@@ -907,12 +918,14 @@ with subtest("the launcher finds a pi session by its quest, and goes to its wind
 with subtest(
     "the launcher finds pi's quests, going to the session on one and opening pi on another"
 ):
+    pi_session()
     # Their READMEs as pi keeps them, front matter first: the session's
     # quest, and another in a tree of its own with no session on it.
     another = "~/.local/share/pi/agentic-harness.pi/quest-workflow/quests/QEST-20261022-HALLWY"
     as_account(
         "printf '%s\\n' '---' 'id: QEST-20261022-TESTQA' 'kind: quest' 'status: active'"
-        f" 'priority: driving' 'rank: 1' '---' '# A quest of its own & whole' > {quest}/README.md"
+        " 'priority: driving' 'rank: 1' '---' '# A quest of its own & whole'"
+        f" > {PI_QUEST}/README.md"
         f" && mkdir -p {another} ~/hallway && printf '%s\\n' '---' 'id: QEST-20261022-HALLWY'"
         " 'kind: quest' 'status: active' 'priority: queued' 'rank: 1' 'trees:'"
         ' "  - path: $HOME/hallway"'
@@ -964,10 +977,11 @@ with subtest(
 with subtest(
     "the launcher finds pi's runs, going to the session that started one and reading an answer"
 ):
+    pi_session()
     # A fleet as the harness keeps one, started by the session, whose
     # window's process stands in for pi's: one member still at work,
     # its process the other window's, and one done with its answer.
-    leader = window_titled(agent)["pid"]
+    leader = window_titled(PI_WINDOW)["pid"]
     crew = "~/.local/state/pi/agentic-harness.pi/subagent-workflow/runs/paint-crew/reviewers"
 
     def keeps(path: str, said: Json) -> None:
@@ -1056,9 +1070,9 @@ with subtest(
         in_session("niri msg --json focused-window | grep -q TESTQA"), timeout=10
     )
     as_account("rm -rf ~/.local/state/pi/agentic-harness.pi/subagent-workflow/runs/paint-crew")
-    for title in [agent, "Elsewhere"]:
+    for title in [PI_WINDOW, "Elsewhere"]:
         as_account(f"niri msg action close-window --id {window_titled(title)['id']}")
-    as_account(f"rm -rf {quest} {presence}/testqa.json")
+    as_account(f"rm -rf {PI_QUEST} {PI_PRESENCE}/testqa.json")
     machine.wait_until_fails(
         in_session("niri msg --json windows | grep -q 'TESTQA\\|\"Elsewhere\"'"), timeout=30
     )
