@@ -153,6 +153,10 @@ in
           kind = "temp";
           path = if isDarwin then "/private/var/tmp" else "/var/tmp";
         };
+        # A Mac gives each account a temporary folder of its own under
+        # /var/folders, where its programs' TMPDIR points, which the guard
+        # finds as it starts, since it's named only on the Mac itself.
+        account-tmp = lib.mkIf isDarwin (lib.mkDefault { kind = "temp"; });
         trash = lib.mkDefault {
           kind = "trash";
           path = if isDarwin then "${home}/.Trash" else "${dataHome}/Trash";

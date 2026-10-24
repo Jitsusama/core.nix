@@ -149,8 +149,13 @@ pub enum Source {
     },
     /// Quest workspaces, judged by their quest's README.
     Workspaces { path: PathBuf, quests: PathBuf },
-    /// A temporary directory's per-run leftovers.
-    Temp { path: PathBuf },
+    /// A temporary directory's per-run leftovers: the one named, or the
+    /// account's own, which on a Mac is a folder of its own under
+    /// /var/folders rather than /tmp.
+    Temp {
+        #[serde(default = "std::env::temp_dir")]
+        path: PathBuf,
+    },
     /// A desktop trash, expired by its deletion dates.
     Trash { path: PathBuf },
     /// Logs, each kept to its last part once past a limit.

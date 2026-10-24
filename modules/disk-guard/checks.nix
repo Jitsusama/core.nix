@@ -72,6 +72,8 @@
         && user.sources.pnpm.path == "/Users/someone/Library/pnpm/store"
         && user.sources.go-mod.path == "/Users/someone/go/pkg/mod"
         && user.sources.lima.path == "/Users/someone/Library/Caches/lima"
+        && user.sources.account-tmp == { kind = "temp"; }
+        && !((account workstation).jitsusama.disk-guard.settings.sources ? account-tmp)
         && !(user.sources ? homebrew)
         && builtins.elemAt brewing.homebrew.command 1 == "cleanup"
         && !((account macWorkstation).systemd.user.services ? disk-guard)
