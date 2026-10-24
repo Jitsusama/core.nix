@@ -8,7 +8,10 @@
 # through $XDG_RUNTIME_DIR/backlight-chosen.
 # A monitor on a DisplayPort or MST bus that answers DDC/CI follows the
 # panel at the same share of its own brightest (src/monitor.rs), once
-# udev opens its bus to the seat, as modules/ddcutil does.
+# udev opens its bus to the seat, as modules/ddcutil does. What such a
+# monitor says of itself (src/facts.rs) is kept in $XDG_RUNTIME_DIR/desk
+# for the launcher's Displays facts, which desk-facts adds to its own
+# (../desk-facts).
 {
   config,
   lib,
@@ -82,6 +85,9 @@ in
       ExecStart = "${lib.getExe package} ${standard}";
       Restart = "on-failure";
       RestartSec = 1;
+      # A monitor's facts go with the monitor, and with the daemon however
+      # it ends, a stop or a crash, so none is shown that nobody keeps.
+      ExecStopPost = "${pkgs.runtimeShell} -c '${pkgs.coreutils}/bin/rm -f %t/desk/ddc-*'";
     };
     Install.WantedBy = [ "graphical-session.target" ];
   };

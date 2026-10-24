@@ -27,6 +27,7 @@
 //! What it learns is kept in `$XDG_STATE_HOME/backlight/learned`.
 
 mod curve;
+mod facts;
 mod light;
 mod monitor;
 mod screen;
