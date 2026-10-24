@@ -96,6 +96,19 @@ fn bands_default_to_shares_of_the_filesystem() {
 }
 
 #[test]
+fn a_temp_source_with_no_path_is_the_accounts_own() {
+    let config =
+        Config::parse(r#"{"version": 1, "scope": "user", "sources": {"mine": {"kind": "temp"}}}"#)
+            .unwrap();
+    assert_eq!(
+        config.sources["mine"],
+        Source::Temp {
+            path: disk_guard::config::account_temp()
+        }
+    );
+}
+
+#[test]
 fn a_band_may_be_set_in_bytes() {
     let config = Config::parse(&with(USER, r#""urgent": "8%""#, r#""urgent": 80000000000"#));
     assert_eq!(config.unwrap().bands.urgent, Size::Bytes(80_000_000_000));

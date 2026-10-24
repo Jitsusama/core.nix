@@ -115,12 +115,13 @@ in
   };
 
   options.jitsusama.disk-guard.path = lib.mkOption {
-    type = lib.types.listOf lib.types.package;
+    type = lib.types.listOf (lib.types.either lib.types.package lib.types.str);
     default = [ ];
     description = ''
       Programs the guard finds first on its PATH, for what a machine's own
       sources and predicates run, such as a git of its own or a producer's
-      command, ahead of the git core gives it.
+      command, ahead of the git core gives it: packages, or the folders of
+      profiles kept outside the store, each of whose bin is searched.
     '';
   };
 
@@ -153,6 +154,11 @@ in
           kind = "temp";
           path = if isDarwin then "/private/var/tmp" else "/var/tmp";
         };
+        # A Mac gives each account a temporary folder of its own under
+        # /var/folders, where its programs' TMPDIR points, which the guard
+        # asks the Mac for as it reads its config, since only the Mac names
+        # it.
+        account-tmp = lib.mkIf isDarwin (lib.mkDefault { kind = "temp"; });
         trash = lib.mkDefault {
           kind = "trash";
           path = if isDarwin then "${home}/.Trash" else "${dataHome}/Trash";
