@@ -238,9 +238,9 @@ with subtest("a notice whose time is up still does what it offers from the launc
     # With none on screen, Super+N opens the history, newest first.
     machine.send_key("meta_l-n")
     launcher_ready()
-    launcher_until(
-        lambda shown: (shown["selected"] or {}).get("name", "").startswith("Quarry take")
-    )
+    # Its row is one line; below the rows it reads whole, summary over
+    # body.
+    launcher_until(lambda shown: (shown["selected"] or {}).get("reads") == "Quarry take\nz.mp4")
     step_in()
     launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Play it")
     machine.send_key("ret")

@@ -13,7 +13,9 @@
 // can be done: copying what it said, marking it read or unread, and while
 // it's still open, its own actions (Reply, Mark as read) and letting it go,
 // so a notice is driven by the keys as well as by the pointer. Each says
-// whether it's unread beside its age; acting on one reads it.
+// whether it's unread beside its age; acting on one reads it, and the
+// selected one's whole message reads below the rows, wrapped, since one
+// row cuts it short.
 import qs
 import Quickshell
 import QtQuick
@@ -72,6 +74,8 @@ Provider {
             verb: opened || (!from.window && from.entry) ? "open" : from.window ? "switch" : "copy",
             name: notice.body === "" ? notice.summary
                 : `${notice.summary} · ${notice.body.replace(/\s+/g, " ")}`,
+            // The whole of what it said, summary over body.
+            reads: said,
             glyph: String.fromCodePoint(notice.glyph),
             hue: notice.hue,
             note: notice.app,
