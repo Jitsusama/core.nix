@@ -994,7 +994,7 @@
     shaped afresh both ways, udev sets nothing on the IFBs, and they go when the shaper stops
   '';
   vm-webcam-microphones-yield = ''
-    a webcam's microphone ranks below a USB microphone's
+    a webcam's microphone ranks below a USB microphone's, again once it's plugged back in
   '';
   vm-wifi-joins = ''
     wifid joins, moves past a silent access point, nudges a stuck look, finds sign-ins, keeps
