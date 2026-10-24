@@ -303,7 +303,7 @@ Its detail, a window count, a workspace or what the program is, follows its
 name, muted. A row for an act or a set already says what it is in its name
 ("Lock the screen", "Windows"), so its chord stays at the right. A thing's
 chord is taught in the foot instead, "next time" and the keys. Inside a
-collection the chip says the kind, so its rows don't.
+collection the path in the field says the kind, so its rows don't.
 
 **A figure with a range draws a graph,** set in braille in the monospace
 face and always ten characters wide, so every graph is the same size: a
@@ -603,10 +603,10 @@ works the same way everywhere.
   launcher open to be pressed again, its figures following; Media, Sound
   and Notifications are found only inside it.
 - **Categories are levels.** Fifteen categories gather everything by
-  what it's about: computer, network, sound, now, ai, apps, shortcuts,
-  notifications, clipboard, weather, time, calls, capture, typing and
-  commands. Each is a row found by its word, stepping in lists what it
-  holds, and its word and a space becomes a chip, so what's typed after
+  what it's about: Computer, Network, Sound, Now, AI, Apps, Shortcuts,
+  Notifications, Clipboard, Weather, Time, Calls, Capture, Typing and
+  Commands. Each is a row found by its word, stepping in lists what it
+  holds, and its word and a space steps into it, so what's typed after
   it searches only inside it ("ai " and then "tas"). A category named as
   a thing is ("sound", "clipboard") gives way to the thing, and its word
   and a space still step into it; what's typed after the word that asks
@@ -614,7 +614,11 @@ works the same way everywhere.
   the question it is. **commands** lists every typed command with its
   form muted ("ip ⟨address or network⟩", "time in ⟨place⟩", "⟨amount⟩
   ⟨unit⟩ in ⟨unit⟩"), and Tab or Return on one puts its start in the
-  field, out at the top, to finish there.
+  field, out at the top, to finish there. A command is the one row
+  written as it's typed, in lowercase; every other row's name, and every
+  step of the path, starts with a capital, and what an empty list says is
+  a sentence. The-launcher-means-one-thing-a-word holds the vocabulary to
+  it.
 - **Nothing moves that Joel didn't move.** Rows that arrive late go below
   the ones of their kind already shown, the selection stays on its thing
   as rows come and go, and the list keeps the height it opened at, so the
@@ -631,8 +635,9 @@ works the same way everywhere.
   three likeliest picks, then after a gap the same three collections in the
   same order, Windows, Clipboard and Notifications, so home's shape never
   changes, and below them the fifteen categories in their order, each
-  saying what it holds after its name, muted (ai: "agents, tasks,
-  helpers, AI spend"), as many names whole as fit, so scrolling down
+  saying what it holds after its name, muted, by its members' own names
+  (AI: "Agents, Tasks, Helpers, AI spend"), as many whole as fit, so
+  scrolling down
   reminds Joel what there is. Tab goes to the first of them, and the foot
   says so ("⇥ browse"). Every other collection is its name away, and every
   typed command is in **commands**.
@@ -641,11 +646,15 @@ works the same way everywhere.
   few letters reach inside a thing from anywhere: what can be done to it,
   searched the same way, each with its chord, and a verb needing a target
   asks for it in the same field. What was typed found the row, so stepping
-  in takes it away, and everything inside shows. What's held shows as
-  chips. The left arrow takes away what's typed, whole, and with nothing
-  typed steps back out, putting back what was typed before with the same
-  row selected; Backspace in an empty field does the same. Escape always
-  closes. The foot names what Return does and where the arrows go.
+  in takes it away, and everything inside shows. Where Joel is shows as
+  one path in the field, each step named as the row he picked was, joined
+  by a muted › ("Shortcuts › Desktop › Workspaces"), and a step named as
+  the one before it (the Shortcuts category's Shortcuts) is said once, so
+  it reads as a place, not as tags side by side. The left arrow takes
+  away what's typed, whole, and with nothing typed steps back out,
+  putting back what was typed before with the same row selected;
+  Backspace in an empty field does the same. Escape always closes. The
+  foot names what Return does and where the arrows go.
 - **Answers first.** A sum is answered in grey right after what's typed,
   and that's its only home. A base, a measure in another unit, a colour in
   its other forms, an address or network, a hardware address, money, the

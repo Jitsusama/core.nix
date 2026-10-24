@@ -697,7 +697,7 @@ with subtest("the launcher's home lists the categories to browse, each saying wh
     # Each says what it holds after its name, from the vocabulary.
     reads = {thing["is"]: thing["reads"] for thing in showing()["things"]}
     t.assertTrue(
-        reads["category:ai"].startswith("ai \u00b7 agents, tasks, helpers, AI spend"),
+        reads["category:ai"].startswith("AI \u00b7 Agents, Tasks, Helpers, AI spend"),
         f"ai reads {reads['category:ai']!r}",
     )
     photograph("launcher-home-categories")
@@ -830,6 +830,8 @@ with subtest("Super+Shift+/ shows every layer's shortcuts, and runs the desktop'
     step_in()
     launcher_until(lambda shown: shown["held"] == ["shortcuts", "desktop", "workspaces"])
     t.assertIn("Go to workspace 3", showing()["rows"])
+    # The field says where that is as one path, in the rows' own case.
+    t.assertEqual(showing()["path"], ["Shortcuts", "Desktop", "Workspaces"])
     # Back out: to the desktop with "work" typed, cleared, then the top.
     for _step in range(3):
         machine.send_key("left")
@@ -865,8 +867,16 @@ with subtest("Super+Shift+/ shows every layer's shortcuts, and runs the desktop'
     launcher_ready()
     machine.send_chars("shortcuts ")
     launcher_until(lambda shown: shown["held"] == ["shortcuts"])
+    # It holds Shortcuts alone, no second Desktop beside the layer.
+    t.assertNotIn("Desktop", showing()["rows"])
     type_in("workspaces")
     launcher_until(lambda shown: "Workspaces" in shown["rows"])
+    # Stepping into Shortcuts from its category says Shortcuts once.
+    for _ in "workspaces":
+        machine.send_key("backspace")
+    type_in("shortcuts", selecting="Shortcuts")
+    step_in()
+    launcher_until(lambda shown: shown["path"] == ["Shortcuts"])
     machine.send_key("esc")
     machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
 

@@ -113,12 +113,17 @@ Item {
         font.pointSize: Theme.mono.large
     }
 
-    // Each chip's words' width: what it needs where it fits, and otherwise
+    // What stands between two steps of the path, so they read as one place
+    // reached through the other rather than as tags side by side.
+    readonly property string between: " \u203a "
+
+    // Each step's words' width: what it needs where it fits, and otherwise
     // an even share of what the shorter ones leave.
     readonly property var fitted: {
         const typing = Math.max(chipFace.advanceWidth(hint), 12 * chipFace.averageCharacterWidth);
         let left = Math.max(0, end - Theme.space.l - glyphWidth - Theme.space.m - typing
-            - Theme.space.s * Math.max(0, chips.length - 1) - 2 * Theme.space.m * chips.length);
+            - chipFace.advanceWidth(between) * Math.max(0, chips.length - 1)
+            - 2 * Theme.space.m);
         const wanted = chips.map(chip => Math.ceil(chipFace.advanceWidth(chip.text)) + 1);
         const given = wanted.slice();
         const order = wanted.map((_, index) => index).sort((a, b) => wanted[a] - wanted[b]);
@@ -129,37 +134,48 @@ Item {
         return given;
     }
 
-    // A chip is a part of the frame, so its corners are the part's radius,
-    // raised from the surface and set in the strong colour.
-    Row {
+    // Where Joel is, one chip: a part of the frame, so its corners are the
+    // part's radius, raised from the surface, each step named as its row
+    // was in the strong colour, and the marks between them muted.
+    Rectangle {
         id: held
         x: Theme.space.l + prompt.glyphWidth
         anchors.verticalCenter: parent.verticalCenter
-        spacing: Theme.space.s
+        visible: prompt.chips.length > 0
+        width: visible ? path.width + 2 * Theme.space.m : 0
+        height: Theme.space.xxl
+        radius: Theme.inner
+        color: Theme.raised
 
-        Repeater {
-            model: prompt.chips
+        Row {
+            id: path
+            anchors.centerIn: parent
 
-            Rectangle {
-                id: chip
+            Repeater {
+                model: prompt.chips
 
-                required property var modelData
-                required property int index
+                Row {
+                    id: step
 
-                width: chipText.width + 2 * Theme.space.m
-                height: Theme.space.xxl
-                radius: Theme.inner
-                color: Theme.raised
+                    required property var modelData
+                    required property int index
 
-                Text {
-                    id: chipText
-                    anchors.centerIn: parent
-                    width: prompt.fitted[chip.index] ?? implicitWidth
-                    text: chip.modelData.text
-                    elide: Text.ElideRight
-                    color: Theme.strong
-                    font.family: Theme.mono.family
-                    font.pointSize: Theme.mono.large
+                    Text {
+                        visible: step.index > 0
+                        text: prompt.between
+                        color: Theme.muted
+                        font.family: Theme.mono.family
+                        font.pointSize: Theme.mono.large
+                    }
+
+                    Text {
+                        width: prompt.fitted[step.index] ?? implicitWidth
+                        text: step.modelData.text
+                        elide: Text.ElideRight
+                        color: Theme.strong
+                        font.family: Theme.mono.family
+                        font.pointSize: Theme.mono.large
+                    }
                 }
             }
         }
