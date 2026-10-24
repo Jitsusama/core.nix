@@ -343,7 +343,10 @@ impl Step for InstallSystem {
             && machine.read(BOOT_LOADER)?.is_some();
         Ok(if installed {
             Standing::Done {
-                evidence: format!("{} is installed, with its boot loader", target.machine),
+                evidence: format!(
+                    "the system is installed as {}, with its boot loader",
+                    target.machine
+                ),
             }
         } else {
             Standing::Needed { asks: vec![] }
@@ -452,7 +455,9 @@ impl Step for ReadyEnrolment {
             }
         }
         Ok(Standing::Done {
-            evidence: "systemd-boot enrols its Secure Boot keys as it first starts, before the disk is opened".into(),
+            // Not opening with systemd-boot's name, which a done line would
+            // capitalise.
+            evidence: "the boot loader enrols its Secure Boot keys as it first starts, before the disk is opened".into(),
         })
     }
 
@@ -622,7 +627,7 @@ impl Step for SetPassword {
         Ok(
             if has_password(&String::from_utf8_lossy(&shadow), &target.account) {
                 Standing::Done {
-                    evidence: format!("{} has a password", target.account),
+                    evidence: format!("the account {} has a password", target.account),
                 }
             } else {
                 Standing::Needed {
