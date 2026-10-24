@@ -1342,6 +1342,12 @@ in
     home.sessionVariables.SSH_ASKPASS = lib.getExe askpass;
     systemd.user.sessionVariables.SSH_ASKPASS = lib.getExe askpass;
 
+    # run0 waits for polkit's prompt inside one D-Bus call, which systemd
+    # gives up on after 25 seconds, cancelling a prompt Joel hadn't reached
+    # yet (twice on 2026-10-24). A shell's calls wait two minutes instead;
+    # services keep systemd's own limit.
+    home.sessionVariables.SYSTEMD_BUS_TIMEOUT = "2min";
+
     xdg.configFile =
       lib.genAttrs (map (file: "quickshell/${file}") qml) (path: {
         source = ./. + "/${lib.removePrefix "quickshell/" path}";
