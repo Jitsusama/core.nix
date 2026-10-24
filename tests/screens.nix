@@ -4,7 +4,9 @@
 # there again after: the launcher, a notice that was up, the margin's marks
 # and dictation listening. Then the console is switched away and back, and
 # the machine sleeps as a laptop does and wakes at a key, and they must all
-# be there again after each. The script is screens-vm-test.py.
+# be there again after each; after the wake, the shell must still hear what
+# it's told over the bus, dictation's socket and a unit's state. The script
+# is screens-vm-test.py.
 { self, pkgs }:
 let
   account = "jitsusama";

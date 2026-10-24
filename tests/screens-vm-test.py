@@ -150,3 +150,37 @@ with subtest("the machine sleeps and wakes at a key, and keeps them all"):
     assert "System returned from sleep" in slept, f"the machine never slept: {slept}"
     niri_answers("a sleep")
     wait_for_surfaces("wallpaper", "launcher", "notifications", "margin", "dictation")
+
+
+def wait_for_no_surface(namespace: str, timeout: int = 60) -> None:
+    """Wait until niri holds no surface for a namespace, saying it stayed."""
+    deadline = time.monotonic() + timeout
+    while namespace in surfaces():
+        assert time.monotonic() < deadline, f"niri still holds a surface for {namespace!r}"
+        time.sleep(1)
+
+
+# A surface drawn again says nothing of what it hears. Each of these goes
+# by what the shell is told, over the bus, a socket or a unit's state, so
+# a connection that died in the sleep and wasn't made again would leave it
+# standing.
+
+with subtest("after the wake, a notice still arrives"):
+    machine.succeed(in_niri("notify-send 'After the wake' 'Heard over the bus'"))
+    machine.wait_until_succeeds(
+        in_niri(
+            "journalctl --user --unit=quickshell --output=cat"
+            " | grep -qF 'report[shows card After the wake]'"
+        ),
+        timeout=30,
+    )
+
+with subtest("after the wake, dictation still hears its keys, and its bar goes when it's done"):
+    # The second press types, then says it heard nothing, and the bar goes.
+    machine.succeed(in_niri("dictation toggle"))
+    wait_for_no_surface("dictation")
+
+with subtest("after the wake, Keep Awake let go takes its mark away"):
+    # With nothing else on, the margin goes with its last mark.
+    machine.succeed(in_niri("systemctl --user stop caffeinate.service"))
+    wait_for_no_surface("margin")
