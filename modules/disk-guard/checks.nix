@@ -55,7 +55,7 @@
         ])).jitsusama.disk-guard.settings.sources;
     in
     holds "the-mac-guards-its-disk"
-      "A Mac's guards don't run under launchd, their config names Linux's paths or systemd-run, or a Mac's own sources are missing."
+      "A Mac's guards don't run under launchd, their config names Linux's paths or systemd-run, a cache is looked for where a Mac's programs don't keep it, or a Mac's own sources are missing."
       (
         builtins.elemAt daemon.ProgramArguments 1 == "system"
         && daemon.KeepAlive
@@ -66,6 +66,9 @@
         && system.sources.tmp.path == "/private/tmp"
         && user.sources.trash.path == "/Users/someone/.Trash"
         && user.sources.derived-data.kind == "cache"
+        && user.sources.go-build.path == "/Users/someone/Library/Caches/go-build"
+        && user.sources.sccache.path == "/Users/someone/Library/Caches/Mozilla.sccache"
+        && user.sources.pnpm.path == "/Users/someone/Library/pnpm/store"
         && !(user.sources ? homebrew)
         && builtins.elemAt brewing.homebrew.command 1 == "cleanup"
         && !((account macWorkstation).systemd.user.services ? disk-guard)
