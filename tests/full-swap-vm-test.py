@@ -1,7 +1,8 @@
 """Full swap ends the work that filled it, through systemd-oomd, and nothing else.
 
 tests/full-swap.nix runs this, and its opening comment says what fills memory. grow, on the
-machine's path, takes random data up to the MiB it's told and keeps it. The script needs no
+machine's path, takes data that compresses about two to one up to the MiB it's told and keeps
+it. The script needs no
 value from Nix.
 """
 
@@ -12,6 +13,7 @@ if TYPE_CHECKING:
 
 machine.wait_for_unit("systemd-oomd.service")
 machine.wait_for_unit("dev-zram0.swap")
+machine.wait_for_unit("var-swapfile.swap")
 
 with subtest("swap is watched from the root slice"):
     t.assertIn("Path: /\n", machine.succeed("oomctl"))
@@ -24,7 +26,7 @@ machine.succeed("systemd-run --unit=big -p Type=exec grow 4096")
 with subtest("the work that filled swap is ended by systemd-oomd"):
     machine.wait_until_succeeds(
         "journalctl -u systemd-oomd -o cat | grep -F 'Killed /system.slice/big.service'",
-        timeout=180,
+        timeout=300,
     )
     t.assertNotIn("Out of memory", machine.succeed("journalctl -k -o cat"))
 
