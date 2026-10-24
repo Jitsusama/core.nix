@@ -12,22 +12,6 @@
   ...
 }:
 {
-  # What dictation's surface says in each state, its wave and its count
-  # down, as tests/speaking.qml holds them, in Qt's own engine.
-  dictation-says-what-its-doing =
-    let
-      qt = pkgs.qt6.qtdeclarative;
-    in
-    pkgs.runCommandLocal "dictation-says-what-its-doing" { } ''
-      cp ${../../tests/speaking.qml} speaking.qml
-      cp ${./Speaking.js} Speaking.js
-      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
-      export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
-      ${shellFolderLint}
-      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml speaking.qml
-      touch $out
-    '';
-
   # A switch restarts dictation after it reloads the units, so the service
   # the shell's watch reaches is never the one from before the switch.
   dictation-switches-to-the-new-one =
@@ -46,6 +30,25 @@
     holds "dictation-stops-by-its-chord"
       "No chord runs dictation hold, so dictation can't be held to talk."
       bound;
+}
+# Dictation runs on OpenVINO and its surface in Quickshell, both only on
+# Linux, so a Mac doesn't evaluate these.
+// onLinux {
+  # What dictation's surface says in each state, its wave and its count
+  # down, as tests/speaking.qml holds them, in Qt's own engine.
+  dictation-says-what-its-doing =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "dictation-says-what-its-doing" { } ''
+      cp ${../../tests/speaking.qml} speaking.qml
+      cp ${./Speaking.js} Speaking.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml speaking.qml
+      touch $out
+    '';
 
   # dictation's tests run as it builds: its spectrogram matches the one that
   # transcribed a clip word for word, its transform the plain sum, its
@@ -72,8 +75,7 @@
       fi
       touch $out
     '';
-}
-// onLinux {
+
   # clippy finds nothing in dictation, its tests included.
   dictation-passes-clippy = passesClippy "dictation-passes-clippy" (
     pkgs.callPackage ./package.nix { }
