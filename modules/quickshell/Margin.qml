@@ -173,9 +173,13 @@ Scope {
             WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
 
             // Only the marks take the pointer, so the gap beside them is
-            // still the windows'.
+            // still the windows'. A region given an item follows only that
+            // item's own place, and the marks sit still inside the lifting
+            // that slides them, so this one is given where they are.
             mask: Region {
-                item: marks
+                x: Math.round(lifted.x)
+                width: marks.width
+                height: marks.height
             }
 
             // A mark coming or going changes what's drawn while the margin
