@@ -14,15 +14,21 @@ schedule.
 nix fmt                                  # format, and lint every language strictly
 nix build .#checks.x86_64-linux.<name>   # the checks the change touches, as you go
 run-subtests <vm-test> <words>           # a VM test's subtests named, in seconds
+changed-checks --build --no-vm           # every check the change touched, VM tests aside
 nix flake check --keep-going             # everything, once, before pushing
 ```
 
 While editing, a change is proven by the cheapest checks that show it,
 which [AGENTS.md][6] lists by kind of change, and a VM test only by the
-subtests it touches. `nix flake check` runs once, before pushing, not after
-each edit: on a machine shared with other work, a whole run each time is
-what makes the loop slow, and the load it adds is what makes VM tests time
-out.
+subtests it touches. `changed-checks`, in the dev shell, finds them all: it
+evaluates every check at the change's merge base with origin's main and in
+the working tree, and names each whose derivation was added, changed or
+removed, or no longer evaluates. A check whose derivation is the same
+proves what it proved before, so `--build` builds only the others, and
+`--no-vm` leaves out the VM tests, for `run-subtests` to take a piece of.
+`nix flake check` runs once, before pushing, not after each edit: on a
+machine shared with other work, a whole run each time is what makes the
+loop slow, and the load it adds is what makes VM tests time out.
 
 `nix fmt` lints as it formats, at each linter's strictest, test code
 included: ruff with every rule and mypy `--strict` for Python (`ruff.toml`,
@@ -147,6 +153,7 @@ written beside each in `tests/`.
 | `formatting`                        | everything is formatted and passes the linters            |
 | `stands-alone`                      | nothing here names a machine, its repository or employer  |
 | `run-subtests-keeps-what-is-named`  | run-subtests keeps a script's boot and helpers and only the subtests named |
+| `changed-checks-names-what-moved`   | changed-checks names a check added, changed, removed or broken by its derivation, and builds VM tests only when asked |
 
 ### Examples
 

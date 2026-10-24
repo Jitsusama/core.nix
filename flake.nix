@@ -355,7 +355,8 @@
       # nothing but Nix has to be installed first. direnv enters it in a
       # program's directory, or `nix develop` then cargo there. It also
       # holds shots-changed, which compares two runs of the desktop test's
-      # pictures, and on Linux run-subtests, which runs some of a VM test's
+      # pictures, changed-checks, which names and builds the checks a change
+      # touches, and on Linux run-subtests, which runs some of a VM test's
       # subtests in seconds (docs/testing.md).
       devShells = forEachSystem (pkgs: {
         default = pkgs.mkShell {
@@ -370,6 +371,7 @@
             pkgs.rust-analyzer
             pkgs.rustc
             pkgs.rustfmt
+            (pkgs.callPackage ./tests/changed-checks.nix { }).tool
             (pkgs.callPackage ./tests/shots-changed.nix { })
           ]
           # The guide's tests check the sticks it writes with sfdisk,
