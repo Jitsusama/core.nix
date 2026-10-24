@@ -22,6 +22,11 @@
 //! probe past what the line takes builds a few milliseconds of queue before
 //! the pings see it, not a few hundred. While a direction rests, its rate
 //! settles back towards the held rate, so the next burst starts there.
+//! A cut long past says little about the line now, and climbing back from
+//! it took a download most of a minute at half speed, so a direction that
+//! rests long after its last cut holds its best rate again. Should the
+//! line still be slow, the first burst's queue cuts it within a second or
+//! two, and that cut is kept rather than forgotten again.
 
 use std::collections::{HashMap, VecDeque};
 
@@ -80,6 +85,11 @@ pub struct Settings {
     /// A queue this deep, in ms, is drained at half the held rate; a
     /// shallower one at a share of it as much under as it is deep.
     pub drain_ms: f64,
+    /// Seconds after a cut before a resting direction forgets it.
+    pub forget_s: f64,
+    /// Seconds a forgotten-back peak must carry a busy line without delay
+    /// before it's the line's again, and a later cut is forgotten too.
+    pub proven_s: f64,
 }
 
 impl Default for Settings {
@@ -101,6 +111,13 @@ impl Default for Settings {
             settle: 0.05,
             after_cut_s: 0.6,
             drain_ms: 1000.0,
+            // A line's dips, from a neighbour's upload or a busy evening,
+            // come and go within minutes; ten of them quiet is long past.
+            forget_s: 600.0,
+            // Past a cable modem's burst allowance, which can carry a line
+            // over its rate for its first several seconds. A peak not yet
+            // proven costs little: one the line does carry is climbed to.
+            proven_s: 15.0,
         }
     }
 }
@@ -116,6 +133,18 @@ pub struct Direction {
     /// last remembered, rather than from memory: two links on one router
     /// share a memory, and an idle one mustn't write back what it was told.
     pub learned: bool,
+    /// The highest rate it held under load without delay, which an old cut
+    /// is forgotten back to.
+    pub peak: u64,
+    /// Whether the held rate is the peak put back since the last cut, so a
+    /// cut that follows shows the peak is no longer the line's.
+    forgot: bool,
+    /// When the latest run of busy steps without delay began, while
+    /// `forgot` holds.
+    proving: Option<f64>,
+    /// When this direction was last cut: the other's cuts say nothing of
+    /// whether this one's is old.
+    cut_at: Option<f64>,
 }
 
 impl Direction {
@@ -126,11 +155,46 @@ impl Direction {
             rate: held,
             held,
             learned: false,
+            peak: held,
+            forgot: false,
+            proving: None,
+            cut_at: None,
         }
     }
 
     fn set(&mut self, rate: f64) {
         self.rate = whole(rate).clamp(self.bounds.min, self.bounds.max);
+    }
+
+    /// A busy step on a quiet line: climbs, and proves a peak put back.
+    fn climb(&mut self, s: &Settings, now: f64) {
+        let rate = climbed(s, self);
+        self.set(rate);
+        if self.rate > self.held {
+            self.held = self.rate;
+            self.peak = self.peak.max(self.held);
+            self.learned = true;
+        }
+        if self.forgot {
+            let since = *self.proving.get_or_insert(now);
+            if now - since >= s.proven_s {
+                self.forgot = false;
+            }
+        }
+    }
+
+    /// A resting step: forgets a cut long past, and settles towards the
+    /// held rate. Gives whether it forgot one.
+    fn rest(&mut self, s: &Settings, now: f64) -> bool {
+        self.proving = None;
+        let old = self.cut_at.is_some_and(|at| now - at >= s.forget_s);
+        let forgot = old && self.held < self.peak;
+        if forgot {
+            self.held = self.peak;
+            self.forgot = true;
+        }
+        self.set(float(self.rate) + (float(self.held) - float(self.rate)) * s.settle);
+        forgot
     }
 }
 
@@ -206,6 +270,8 @@ pub enum State {
     Climbing,
     Holding,
     Cut,
+    /// Resting, and a direction put back its peak in place of an old cut.
+    Forgot,
 }
 
 impl Controller {
@@ -292,6 +358,13 @@ impl Controller {
         if !self.building() {
             self.quiet_shares = shares;
         }
+        // A proof is of steps without delay one after another. A delayed
+        // step while busy is cut, which ends the forgetting, and one while
+        // resting ends the run below; this says so for every other path.
+        if !self.quiet() {
+            self.up.proving = None;
+            self.down.proving = None;
+        }
         if self.building() {
             let resting = self.last_cut.is_some_and(|at| now - at < s.after_cut_s);
             let new_spell = !self.in_spell;
@@ -334,6 +407,11 @@ impl Controller {
                     dir.held = whole(from * s.cut).clamp(dir.bounds.min, dir.bounds.max);
                     dir.set(float(dir.held) * drain);
                     dir.learned = true;
+                    if std::mem::replace(&mut dir.forgot, false) {
+                        dir.peak = dir.held;
+                    }
+                    dir.proving = None;
+                    dir.cut_at = Some(now);
                     cuts[i] = true;
                 }
             }
@@ -358,22 +436,19 @@ impl Controller {
             return State::Holding;
         }
         let mut climbing = false;
+        let mut forgot = false;
         for (dir, carried) in [(&mut self.up, sent), (&mut self.down, received)] {
             if carried >= float(dir.rate) * s.busy {
-                let rate = climbed(&s, dir);
-                dir.set(rate);
-                if dir.rate > dir.held {
-                    dir.held = dir.rate;
-                    dir.learned = true;
-                }
+                dir.climb(&s, now);
                 climbing = true;
             } else {
-                let rate = float(dir.rate) + (float(dir.held) - float(dir.rate)) * s.settle;
-                dir.set(rate);
+                forgot |= dir.rest(&s, now);
             }
         }
         if climbing {
             State::Climbing
+        } else if forgot {
+            State::Forgot
         } else {
             State::Resting
         }
@@ -688,6 +763,102 @@ mod tests {
             }
             late
         }
+
+        /// Nothing sent or received for `seconds`, the line quiet.
+        fn rest(&mut self, c: &mut Controller, seconds: f64) {
+            let end = self.at + seconds;
+            self.queue_kbit = 0.0;
+            while self.at < end {
+                pings(c, 20.0, 3);
+                self.at += 0.2;
+                c.step(self.at, 0.0, 0.0);
+            }
+        }
+    }
+
+    /// A download whose line dipped to 50 of its 95 Mbit/s, and was cut.
+    fn cut_by_a_dip() -> (Controller, Download) {
+        let mut c = controller(10_000, 95_000);
+        pings(&mut c, 20.0, 6);
+        let mut line = Download {
+            queue_kbit: 0.0,
+            at: 0.0,
+        };
+        line.run(&mut c, 100_000.0, 2.0, 1_000.0);
+        line.run(&mut c, 50_000.0, 10.0, 1_000.0);
+        assert!(c.down.held < 50_000, "{}", c.down.held);
+        (c, line)
+    }
+
+    #[test]
+    fn a_cut_long_past_is_forgotten_by_the_next_download() {
+        let (mut c, mut line) = cut_by_a_dip();
+        // Said once, on the step it's forgotten.
+        let mut told = 0;
+        for _ in 0..3_500 {
+            pings(&mut c, 20.0, 3);
+            line.at += 0.2;
+            if c.step(line.at, 0.0, 0.0) == State::Forgot {
+                told += 1;
+            }
+        }
+        assert_eq!(told, 1);
+        // The line is back: the download starts near what it carried
+        // before the dip, not half way up a half-minute climb.
+        line.run(&mut c, 100_000.0, 2.0, 1_000.0);
+        assert!(c.down.rate > 85_000, "{}", c.down.rate);
+    }
+
+    #[test]
+    fn a_peak_the_line_carried_again_outlasts_the_next_dip() {
+        let (mut c, mut line) = cut_by_a_dip();
+        line.rest(&mut c, 700.0);
+        // The peak put back carries a download for a while: it's the
+        // line's again, and a later dip's cut is forgotten back to it. The
+        // line is faster than the climb reaches, so no probe past it is
+        // cut on the way.
+        line.run(&mut c, 200_000.0, 20.0, 1_000.0);
+        line.rest(&mut c, 60.0);
+        line.run(&mut c, 50_000.0, 10.0, 1_000.0);
+        line.rest(&mut c, 700.0);
+        assert!(c.down.held > 90_000, "{}", c.down.held);
+    }
+
+    #[test]
+    fn an_upload_cut_now_and_then_leaves_an_old_download_cut_to_be_forgotten() {
+        let (mut c, mut line) = cut_by_a_dip();
+        for _ in 0..4 {
+            line.rest(&mut c, 300.0);
+            let mut upload = Line {
+                queue_kbit: 0.0,
+                at: line.at,
+            };
+            upload.run(&mut c, 5_000.0, 5.0);
+            line.at = upload.at;
+        }
+        assert!(c.up.held < 6_000, "{}", c.up.held);
+        assert!(c.down.held > 90_000, "{}", c.down.held);
+    }
+
+    #[test]
+    fn a_recent_cut_is_still_held() {
+        let (mut c, mut line) = cut_by_a_dip();
+        line.rest(&mut c, 60.0);
+        assert_ne!(c.step(line.at + 0.2, 0.0, 0.0), State::Forgot);
+        assert!(c.down.held < 50_000, "{}", c.down.held);
+    }
+
+    #[test]
+    fn a_line_that_stayed_slow_is_cut_once_and_kept() {
+        let (mut c, mut line) = cut_by_a_dip();
+        line.rest(&mut c, 700.0);
+        // Forgotten, but the line is still slow: the first download's
+        // queue is drained within a couple of seconds, and its cut is
+        // kept rather than forgotten again.
+        let late = line.run(&mut c, 50_000.0, 10.0, 1_000.0);
+        assert!(late < 2.0, "{late}");
+        line.rest(&mut c, 700.0);
+        assert!(c.down.held < 50_000, "{}", c.down.held);
     }
 
     #[test]

@@ -532,7 +532,9 @@ fn step(s: &mut Shaped, t: f64) {
 /// Tells the journal of each cut, and of a queue on the line that builds
 /// while the shaper holds its rates, once a spell: a spike in a ping with
 /// neither in the journal was never the line's queue, and a spike with only
-/// the second was one this machine doesn't fill, or couldn't cut yet.
+/// the second was one this machine doesn't fill, or couldn't cut yet. It
+/// tells of an old cut forgotten too, so a rate that jumps back is
+/// explained.
 fn tell(s: &mut Shaped, was: (u64, u64), sent: f64, received: f64) {
     let name = &s.uplink.name;
     let (up, down) = (s.controller.up.rate, s.controller.down.rate);
@@ -558,6 +560,14 @@ fn tell(s: &mut Shaped, was: (u64, u64), sent: f64, received: f64) {
                 mbit(down)
             );
             s.told = true;
+        }
+        State::Forgot => {
+            eprintln!(
+                "{name}: no cut for {:.0} minutes, so the line's best is held again: up {}, down {}",
+                s.controller.settings.forget_s / 60.0,
+                mbit(s.controller.up.held),
+                mbit(s.controller.down.held)
+            );
         }
         _ if !s.controller.building() => s.told = false,
         _ => {}
