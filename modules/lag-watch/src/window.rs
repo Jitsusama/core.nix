@@ -135,6 +135,95 @@ pub struct Window {
     pub niri: Answers,
     /// What counted as Joel waiting, in words.
     pub trouble: Vec<String>,
+    /// What the wait he'd feel most was on, in one word (`Cause::word`),
+    /// or empty when nothing waited: a shell showing a mark rather than
+    /// sentences reads this instead of parsing them. Windows written
+    /// before it was added read as empty.
+    #[serde(default)]
+    pub worst: String,
+    /// Whose wait that was (`Who::word`), or empty when nothing waited.
+    /// Work waiting on work is never trouble, so it is never named.
+    #[serde(default)]
+    pub who: String,
+    /// When the run of windows with trouble that this one ends began, as
+    /// the end of its first window in seconds since 1970; none when
+    /// nothing waited. A shell can mark trouble that lasts, rather than
+    /// every window's. `between` sees one window, so the watch's loop
+    /// fills it in with `Window::carry`.
+    #[serde(default)]
+    pub since: Option<u64>,
+}
+
+impl Window {
+    /// Fills in `since` from the window before's: kept while trouble goes
+    /// on, begun with this window when it starts, cleared when it stops.
+    pub fn carry(&mut self, before: Option<u64>) {
+        self.since = if self.trouble.is_empty() {
+            None
+        } else {
+            Some(before.unwrap_or(self.ended))
+        };
+    }
+}
+
+/// Whose wait a trouble line is about: the desktop's (session.slice, niri
+/// and sound among it) or the apps'.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Who {
+    Desktop,
+    Apps,
+}
+
+impl Who {
+    pub fn word(self) -> &'static str {
+        match self {
+            Who::Desktop => "desktop",
+            Who::Apps => "apps",
+        }
+    }
+}
+
+/// What a trouble line's wait was on. The desktop and the apps wait on a
+/// CPU, memory or the disk; niri slow to answer is its own, whatever
+/// held it, since that is the screen not keeping up.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Cause {
+    Cpu,
+    Memory,
+    Disk,
+    Niri,
+}
+
+impl Cause {
+    pub fn word(self) -> &'static str {
+        match self {
+            Cause::Cpu => "cpu",
+            Cause::Memory => "memory",
+            Cause::Disk => "disk",
+            Cause::Niri => "niri",
+        }
+    }
+}
+
+/// The trouble lines found in a window, and the cause of the one Joel
+/// would feel most.
+#[derive(Default)]
+struct Found {
+    lines: Vec<String>,
+    worst: Option<(u8, Who, Cause)>,
+}
+
+impl Found {
+    /// Adds a line, `felt` saying how much more it's felt than others:
+    /// a stall of a few percent costs a moment, a screen that doesn't
+    /// answer costs a frame or more, and a program ended costs its work.
+    /// Between lines felt alike, the first stays the worst.
+    fn add(&mut self, who: Who, felt: u8, cause: Cause, line: String) {
+        if self.worst.is_none_or(|(worst, _, _)| felt > worst) {
+            self.worst = Some((felt, who, cause));
+        }
+        self.lines.push(line);
+    }
 }
 
 fn share(now: Stall, then: Stall, seconds: f64) -> (f64, f64) {
@@ -226,8 +315,16 @@ pub fn between(then: &Snapshot, now: &Snapshot, niri: Answers, ended: u64, syste
         waits,
         niri,
         trouble: Vec::new(),
+        worst: String::new(),
+        who: String::new(),
+        since: None,
     };
-    window.trouble = trouble(&window, then, now);
+    let found = trouble(&window, then, now);
+    window.trouble = found.lines;
+    if let Some((_, who, cause)) = found.worst {
+        window.worst = cause.word().to_string();
+        window.who = who.word().to_string();
+    }
     window
 }
 
@@ -259,36 +356,63 @@ fn naming(most: Option<(String, f64)>, digits: usize) -> String {
 /// stalled 23%; a wakeup in session waited at most 0.75 ms and in app
 /// 1.3 ms; niri's main thread waited 23 us a turn on average across a
 /// day of builds; one 120 Hz frame is 8.3 ms.
-fn trouble(w: &Window, then: &Snapshot, now: &Snapshot) -> Vec<String> {
-    let mut found = Vec::new();
+fn trouble(w: &Window, then: &Snapshot, now: &Snapshot) -> Found {
+    let mut found = Found::default();
     let s = |name: &str| w.stalls.get(name).copied().unwrap_or_default();
     if s("session").cpu_some > 1.0 {
-        found.push(format!(
-            "the desktop waited for a CPU {:.1}% of the time",
-            s("session").cpu_some
-        ));
+        found.add(
+            Who::Desktop,
+            2,
+            Cause::Cpu,
+            format!(
+                "the desktop waited for a CPU {:.1}% of the time",
+                s("session").cpu_some
+            ),
+        );
     }
     if s("session").memory_full > 0.0 {
-        found.push(format!(
-            "the desktop stalled on memory {:.2}% of the time",
-            s("session").memory_full
-        ));
+        found.add(
+            Who::Desktop,
+            4,
+            Cause::Memory,
+            format!(
+                "the desktop stalled on memory {:.2}% of the time",
+                s("session").memory_full
+            ),
+        );
     }
     if s("app").memory_full > 0.1 {
-        found.push(format!(
-            "apps stalled on memory {:.2}% of the time{}",
-            s("app").memory_full,
-            naming(most(then, now, |g| g.memory), 2)
-        ));
+        found.add(
+            Who::Apps,
+            3,
+            Cause::Memory,
+            format!(
+                "apps stalled on memory {:.2}% of the time{}",
+                s("app").memory_full,
+                naming(most(then, now, |g| g.memory), 2)
+            ),
+        );
     }
     if s("app").io_full > 1.0 {
-        found.push(format!(
-            "apps stalled on the disk {:.1}% of the time{}",
-            s("app").io_full,
-            naming(most(then, now, |g| g.io), 1)
-        ));
+        found.add(
+            Who::Apps,
+            3,
+            Cause::Disk,
+            format!(
+                "apps stalled on the disk {:.1}% of the time{}",
+                s("app").io_full,
+                naming(most(then, now, |g| g.io), 1)
+            ),
+        );
     }
-    // A program ended for memory is the worst a wait comes to.
+    lost(w, then, now, &mut found);
+    turns(w, &mut found);
+    found
+}
+
+/// Programs ended for memory, the worst a wait comes to, and the
+/// desktop's memory sent to swap.
+fn lost(w: &Window, then: &Snapshot, now: &Snapshot, found: &mut Found) {
     let ended = |name: &str| {
         let was = then.groups.get(name).map_or(0, |g| g.killed);
         now.groups
@@ -296,10 +420,15 @@ fn trouble(w: &Window, then: &Snapshot, now: &Snapshot) -> Vec<String> {
             .map_or(0, |g| g.killed.saturating_sub(was))
     };
     if ended("session") > 0 {
-        found.push(format!(
-            "the desktop lost {} programs to the kernel's OOM killer",
-            ended("session")
-        ));
+        found.add(
+            Who::Desktop,
+            7,
+            Cause::Memory,
+            format!(
+                "the desktop lost {} programs to the kernel's OOM killer",
+                ended("session")
+            ),
+        );
     }
     if ended("app") > 0 {
         let unit = now
@@ -311,50 +440,76 @@ fn trouble(w: &Window, then: &Snapshot, now: &Snapshot) -> Vec<String> {
                     .is_some_and(|old| g.killed > old.killed)
             })
             .map_or_else(String::new, |(name, _)| format!(", in {name}"));
-        found.push(format!(
-            "apps lost {} programs to the kernel's OOM killer{unit}",
-            ended("app")
-        ));
+        found.add(
+            Who::Apps,
+            7,
+            Cause::Memory,
+            format!(
+                "apps lost {} programs to the kernel's OOM killer{unit}",
+                ended("app")
+            ),
+        );
     }
     if let (Some(now), Some(old)) = (w.memory.get("session"), then.groups.get("session"))
         && now.swap_mib > old.swap >> 20
     {
-        found.push(format!(
-            "the desktop went to swap, {} MiB now",
-            now.swap_mib
-        ));
+        found.add(
+            Who::Desktop,
+            3,
+            Cause::Memory,
+            format!("the desktop went to swap, {} MiB now", now.swap_mib),
+        );
     }
+}
+
+/// niri's and sound's turns for a CPU, and how niri answered.
+fn turns(w: &Window, found: &mut Found) {
     if let Some(niri) = w.waits.get("niri")
         && niri.mean_us > 50.0
     {
-        found.push(format!(
-            "niri waited {:.0} us a turn for a CPU",
-            niri.mean_us
-        ));
+        found.add(
+            Who::Desktop,
+            2,
+            Cause::Cpu,
+            format!("niri waited {:.0} us a turn for a CPU", niri.mean_us),
+        );
     }
     if let Some(pw) = w.waits.get("pipewire")
         && pw.worst_us > 100.0
     {
-        found.push(format!(
-            "sound waited {:.0} us a turn for a CPU",
-            pw.worst_us
-        ));
+        found.add(
+            Who::Desktop,
+            2,
+            Cause::Cpu,
+            format!("sound waited {:.0} us a turn for a CPU", pw.worst_us),
+        );
     }
     if w.niri.max_ms > 50.0 {
-        found.push(format!("niri took {:.0} ms to answer", w.niri.max_ms));
+        found.add(
+            Who::Desktop,
+            5,
+            Cause::Niri,
+            format!("niri took {:.0} ms to answer", w.niri.max_ms),
+        );
     } else if w.niri.p99_ms > 8.3 {
-        found.push(format!(
-            "niri took over a frame to answer, {:.1} ms",
-            w.niri.p99_ms
-        ));
+        found.add(
+            Who::Desktop,
+            4,
+            Cause::Niri,
+            format!("niri took over a frame to answer, {:.1} ms", w.niri.p99_ms),
+        );
     }
     if w.niri.unanswered > 0 {
-        found.push(format!(
-            "niri didn't answer {} of {} times",
-            w.niri.unanswered, w.niri.asked
-        ));
+        found.add(
+            Who::Desktop,
+            6,
+            Cause::Niri,
+            format!(
+                "niri didn't answer {} of {} times",
+                w.niri.unanswered, w.niri.asked
+            ),
+        );
     }
-    found
 }
 
 #[cfg(test)]
@@ -420,6 +575,7 @@ mod tests {
         let w = between(&then, &now, quiet_niri(), 0, "gen");
         assert_eq!(w.band, Band::Loaded);
         assert!(w.trouble.is_empty(), "{:?}", w.trouble);
+        assert_eq!((w.worst.as_str(), w.who.as_str()), ("", ""));
         assert!((w.waits["niri"].mean_us - 20.0).abs() < 1e-9);
     }
 
@@ -441,6 +597,7 @@ mod tests {
                 "niri waited 90 us a turn for a CPU"
             ]
         );
+        assert_eq!(w.worst, "cpu");
     }
 
     #[test]
@@ -468,6 +625,7 @@ mod tests {
                 "the desktop went to swap, 64 MiB now"
             ]
         );
+        assert_eq!(w.worst, "memory");
     }
 
     #[test]
@@ -494,6 +652,55 @@ mod tests {
             w.trouble,
             ["apps lost 2 programs to the kernel's OOM killer, in chrome.scope"]
         );
+        assert_eq!(w.worst, "memory");
+    }
+
+    #[test]
+    fn the_worst_is_what_joel_would_feel_most_not_what_came_first() {
+        let then = snapshot(
+            0.0,
+            &[("session", group(0, 0, 0)), ("app", group(0, 0, 0))],
+            0,
+            0,
+        );
+        let mut now = snapshot(
+            10.0,
+            &[("session", group(300_000, 0, 0)), ("app", group(0, 0, 0))],
+            0,
+            0,
+        );
+        now.groups.get_mut("app").unwrap().io = Stall {
+            some: 200_000,
+            full: 200_000,
+        };
+        // The desktop's CPU wait comes first, but a disk stall of 2% is felt more.
+        let w = between(&then, &now, quiet_niri(), 0, "gen");
+        assert_eq!(w.trouble.len(), 2, "{:?}", w.trouble);
+        assert_eq!(w.worst, "disk");
+        // niri not answering is felt more than either.
+        let w = between(&then, &now, Answers::of(&[0.5, 0.5], 1), 0, "gen");
+        assert_eq!(w.worst, "niri");
+        assert_eq!(w.who, "desktop");
+        // And a program ended for memory more than anything.
+        now.groups.get_mut("app").unwrap().killed = 1;
+        let w = between(&then, &now, Answers::of(&[0.5, 0.5], 1), 0, "gen");
+        assert_eq!((w.worst.as_str(), w.who.as_str()), ("memory", "apps"));
+    }
+
+    #[test]
+    fn trouble_that_lasts_says_since_when() {
+        let then = snapshot(0.0, &[("session", group(0, 0, 0))], 0, 0);
+        let busy = snapshot(10.0, &[("session", group(300_000, 0, 0))], 0, 0);
+        let quiet = snapshot(10.0, &[("session", group(0, 0, 0))], 0, 0);
+        let mut since = None;
+        let mut seen = Vec::new();
+        for (ended, now) in [(100, &quiet), (110, &busy), (120, &busy), (130, &quiet)] {
+            let mut w = between(&then, now, quiet_niri(), ended, "gen");
+            w.carry(since);
+            since = w.since;
+            seen.push(since);
+        }
+        assert_eq!(seen, [None, Some(110), Some(110), None]);
     }
 
     #[test]
@@ -532,6 +739,7 @@ mod tests {
                 "niri didn't answer 1 of 6 times"
             ]
         );
+        assert_eq!(w.worst, "niri");
     }
 
     #[test]

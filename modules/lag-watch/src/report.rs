@@ -144,6 +144,9 @@ mod tests {
                 ..Answers::default()
             },
             trouble: trouble.iter().map(ToString::to_string).collect(),
+            worst: String::new(),
+            who: String::new(),
+            since: None,
         }
     }
 

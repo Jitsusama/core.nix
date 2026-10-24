@@ -13,7 +13,11 @@
 //! the work behind Joel was working, so like is compared with like.
 //!
 //! The latest window goes to $XDG_RUNTIME_DIR/lag-watch/status.json, for
-//! the shell to show, and every window to a day's file under
+//! the shell to show: its `trouble` in sentences; `worst`, one word for
+//! what the wait Joel would feel most was on (cpu, memory, disk or niri),
+//! and `who`, whose it was (desktop or apps), both empty when nothing
+//! waited; and `since`, when the run of troubled windows began. Every
+//! window to a day's file under
 //! $XDG_STATE_HOME/lag-watch, kept two weeks.
 //!
 //! Usage: lag-watch run
@@ -298,6 +302,7 @@ fn run() -> ExitCode {
     let mut unanswered = 0;
     let mut tick = 0u32;
     let mut windows = 0u64;
+    let mut since = None;
     loop {
         thread::sleep(TICK);
         match niri_socket().and_then(|s| ask_niri(&s)) {
@@ -310,13 +315,15 @@ fn run() -> ExitCode {
         }
         tick = 0;
         let now = snapshot(&cgroups, &account, &threads);
-        let w = window::between(
+        let mut w = window::between(
             &then,
             &now,
             Answers::of(&answers, unanswered),
             seconds_now(),
             &system(),
         );
+        w.carry(since);
+        since = w.since;
         keep(&w);
         answers.clear();
         unanswered = 0;
