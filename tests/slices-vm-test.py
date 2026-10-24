@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from driver_names import machine, subtest, t
+    from driver_names import machine, ordered, start_all, subtest, t
 
 # coreutils' sleep and bash, by their paths in the store.
 values = json.loads(Path("@values@").read_text())
@@ -21,6 +21,9 @@ sleep: str = values["sleep"]
 bash: str = values["bash"]
 
 account = "/sys/fs/cgroup/user.slice/user-1000.slice/user@1000.service"
+# Both machines boot at once, rather than the measured one only once the first is done with, so
+# a slow host waits for one boot instead of two in a row.
+start_all()
 machine.wait_for_unit("user@1000.service")
 
 # A slice's cgroup exists only while something runs in it.
@@ -133,3 +136,55 @@ with subtest("a scope that work in jobs starts goes back, unless it sets limits"
         f"grep -q jobs.slice/jobs.service /proc/$(pgrep -xf '{sleep} 1001')/cgroup", timeout=30
     )
     t.assertIn("app.slice/kept.scope", cgroup_of(1002))
+
+
+def weight(path: str) -> str:
+    """Give the weight the cgroup has on every disk shared by weight."""
+    return machine.succeed(f"cat {path}/io.weight").strip()
+
+
+with subtest("on the disk, slices weigh as they do on the CPU"):
+    t.assertEqual(weight(f"{account}/session.slice"), "default 1000")
+    t.assertEqual(weight(f"{account}/app.slice"), "default 100")
+    t.assertEqual(weight(jobs), "default 1")
+    t.assertEqual(weight(timed), "default 10000")
+    t.assertEqual(weight(f"{jobs}/jobs-awaited.slice"), "default 1000")
+    t.assertEqual(weight(f"{account}/background.slice"), "default 1")
+    t.assertEqual(weight("/sys/fs/cgroup/user.slice"), "default 1000")
+    t.assertEqual(weight("/sys/fs/cgroup/system.slice"), "default 100")
+
+# The measured machine: its disk, and units holding app.slice and
+# session.slice open.
+ordered.wait_for_unit("user@1000.service")
+for name in ["app", "session"]:
+    ordered.succeed(
+        f"systemd-run -M alice@ --user --slice={name}.slice --unit=in-{name} {sleep} infinity"
+    )
+    ordered.wait_until_succeeds(
+        f"systemctl -M alice@ --user is-active in-{name}.service", timeout=30
+    )
+vda = ordered.succeed("cat /sys/class/block/vda/dev").strip()
+
+
+def cost(name: str) -> list[str]:
+    """Give the settings io.cost holds for the measured disk, from its model or qos file."""
+    lines = ordered.succeed(f"cat /sys/fs/cgroup/io.cost.{name}").splitlines()
+    return next(line.split()[1:] for line in lines if line.startswith(f"{vda} "))
+
+
+with subtest("a measured disk is shared by weight, by the model it was given"):
+    ordered.wait_for_unit("disk-order-vda.service")
+    model = cost("model")
+    for setting in ["ctrl=user", "rbps=1000000000", "rrandiops=50000", "wseqiops=80000"]:
+        t.assertIn(setting, model)
+    qos = cost("qos")
+    for setting in ["enable=1", "ctrl=user", "rlat=5000", "wlat=5000"]:
+        t.assertIn(setting, qos)
+
+with subtest("with it, no slice holds a latency target"):
+    for path in [f"{account}/app.slice", f"{account}/session.slice", "/sys/fs/cgroup/user.slice"]:
+        t.assertEqual(ordered.succeed(f"cat {path}/io.latency").strip(), "", msg=path)
+
+with subtest("stopping it hands the disk back to first come, first served"):
+    ordered.succeed("systemctl stop disk-order-vda.service")
+    t.assertIn("enable=0", cost("qos"))
