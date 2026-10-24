@@ -286,6 +286,9 @@ let
     vm-clock-keeps-time = import ./tests/clock.nix { inherit self pkgs; };
     # The greeter is all that stands between a logout and the desktop.
     vm-greeter-signs-in = import ./tests/greeter.nix { inherit self pkgs; };
+    # Whether the shell's surfaces come back after a screen goes shows only
+    # with niri on the screen itself, not nested in Cage.
+    vm-screens-come-and-go = import ./tests/screens.nix { inherit self pkgs; };
     vm-boot-asks-in-the-theme = import ./tests/plymouth.nix { inherit self pkgs; };
     # Whether the ask shows whole on screens of different sizes shows only
     # with Plymouth drawing on two of them at once.
