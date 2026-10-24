@@ -16,6 +16,10 @@
     Quickshell's FileView, told not to print errors, says nothing of a file that opens and refuses
     every read, as one not told still warns
   '';
+  a-sender-keeps-to-its-level = ''
+    a notice reaches no further than its sender is kept to, however critical, and each level shows,
+    counts and stays as it says
+  '';
   a-theme-changes-everything = ''
     another theme leaves none of the first's colours behind
   '';
@@ -102,8 +106,12 @@
   dictation-passes-clippy = ''
     clippy finds nothing in dictation or its tests
   '';
+  dictation-says-what-its-doing = ''
+    dictation's surface says listening with the time, counts down from 25 s, says typing once it
+    lasts, still writing, and why it heard nothing; its wave keeps the loudest peak of each step
+  '';
   dictation-stops-by-its-chord = ''
-    the margin's dictation piece looks for the action Super+D runs
+    a chord runs `dictation hold`, so dictation can be held to talk
   '';
   dictation-switches-to-the-new-one = ''
     a switch restarts dictation after reloading its units
@@ -555,6 +563,11 @@
   '';
   the-mac-guards-its-disk = ''
     a Mac's guards run under launchd, with a Mac's paths and nothing to confine a run
+  '';
+  the-margins-glyphs-stand-level = ''
+    every glyph in the margin stands one height on the gap's middle line, read from the corner by
+    kind, in the colour that says how much it asks; what was on air lingers, what a notice will say
+    waits for its card, and a wait shows once the same one lasts
   '';
   the-music-follows-the-player = ''
     the music is the player that started last, never playerctld's echo

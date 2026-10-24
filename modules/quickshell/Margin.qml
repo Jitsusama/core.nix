@@ -1,684 +1,226 @@
 // The margin: what's on that Joel would otherwise forget, in the top right
 // corner, without covering a window (docs/design.md, Shape and Kinds, the
-// drawer). Each overview piece with a mark that's true right now (Keep
-// Awake, do not disturb, the microphone muted, the screen shared or
-// recorded, notices waiting, the battery low) hangs a pull from the
-// screen's top edge, as wide as its mark, in the gap above the windows.
+// margin). Each overview piece with a mark that's true right now (the
+// camera, the screen shared or recorded, a pi session or a notice waiting,
+// the battery low, Keep Awake, do not disturb, the microphone muted) is
+// its glyph alone, in the gap the windows already leave above them.
 // Nothing true, nothing drawn.
 //
-// Super+O draws the drawer out of the top edge, its marks riding its front
-// edge with the pulls beneath them, the one that wants Joel selected, and
-// its panel below: the launcher holding that thing, with what can be done
-// to it. The arrows move between things and their actions, Return does one,
-// and Escape puts it all away. The pointer does the same: at the top edge
-// it draws the drawer out, resting on a mark says what it is, and a click
-// selects it and opens its panel.
+// Every glyph's ink stands the same height, the gap less a step, on the
+// gap's middle line, however tall its font draws it, so a row of them is
+// level and no window moves. They read from the corner inward by how much
+// each asks (Marks.js): what's on air nearest the corner, then what wants
+// Joel, then what was left on, a step apart. Colour says only how much:
+// strong for what's on air or wants him, muted for what was left on, the
+// alert for what needs him now. Something on air that goes stays a while
+// in its place, muted (jitsusama.quickshell.margin.linger), so a camera let
+// go is still seen to have been on. The glyphs are lifted off the picture
+// by the theme's text shadows, as the clock on the lock screen is.
 //
-// A mark wears its kind's colour only while its thing wants Joel, so what
-// has colour is what matters. The overview draws nothing of its own, so the
-// margin stays while it's open, the one place that says what's on.
+// What each is, in words, and what can be done about it, is the launcher's
+// What's on (launcher/WhatsOn.qml): Super+O opens it, and clicking a glyph
+// opens it on that glyph's row. A piece whose program has a card on screen
+// saying the same, as pi's want or a call ringing, waits for the card to
+// go: a card or a mark, never both. The overview draws nothing of its own, so
+// the margin stays while it's open, the one place that says what's on.
 pragma ComponentBehavior: Bound
 import Quickshell
-import Quickshell.Io
 import Quickshell.Wayland
 import QtQuick
-import QtQuick.Effects
+import "Marks.js" as Marks
 
 Scope {
     id: root
 
-    // The launcher, for the actions that open it.
+    // The launcher, which says what the glyphs are.
     required property var launcher
-    readonly property var shell: ({ launcher: root.launcher })
-
-    // The output the keys brought it out on, or "" while they haven't.
-    property string keyed: ""
 
     // The right edge everything in the corner shares: a step inside the
     // windows' own, so nothing lines up with a window's border by chance.
     readonly property int corner: Theme.space.m + Theme.space.s
+    // How tall each glyph's ink stands, with a step above and below.
+    readonly property int ink: Theme.gap - Theme.space.xs
 
-    // What's on now: every piece with a mark that's true, as { entry,
-    // piece, glyph }, in the overview's order.
-    readonly property var on: Facts.all
+    // Every piece with a mark that's true now, as { entry, piece, mark,
+    // glyph, kind, order, tone }.
+    readonly property var lit: Facts.all
         .filter(fact => fact.entry.mark !== null && fact.piece
-            && fact.piece.present && fact.piece.active)
-        .map(fact => ({ entry: fact.entry, piece: fact.piece,
-            glyph: Theme.glyph[fact.entry.mark] }))
+            && fact.piece.present && fact.piece.active && !fact.piece.collected)
+        .map(fact => ({
+            entry: fact.entry,
+            piece: fact.piece,
+            mark: fact.entry.mark,
+            app: fact.piece.app,
+            glyph: Theme.glyph[fact.entry.mark],
+            kind: fact.piece.kind,
+            order: fact.entry.order,
+            tone: Marks.tone(fact.piece)
+        }))
+    // What was on air and has just gone, which stays a while, muted
+    // (Marks.lingers), and what was lit before the last change.
+    property var kept: []
+    property var before: []
+    readonly property int linger: Options.margin.linger * 1000
+    // What has just come true and waits a moment for its card
+    // (Marks.awaited), long enough for a notice to be sent and shown on a
+    // busy machine; with no card coming, as for a want in the window Joel's
+    // in, the glyph is that much late, which nobody waits on.
+    property var waits: []
+    readonly property int wait: 2000
+    readonly property var waiting: waits.map(one => one.mark)
+    // The programs with a card on screen, whose pieces' marks wait for it
+    // to go, as a card or a mark, never both; none while the launcher has
+    // gathered them.
+    readonly property var carded: Notices.gathered ? []
+        : Object.keys(Notices.live).map(id => Notices.live[id].appName.toLowerCase())
+    // What's drawn: what's lit and has no card up, and what lingers, left
+    // to right, the corner's last.
+    readonly property var on: Marks.arranged(lit
+        .filter(thing => !root.waiting.includes(thing.mark))
+        .filter(thing => thing.piece.app === ""
+            || !root.carded.includes(thing.piece.app.toLowerCase()))
+        .concat(kept.map(one => one.thing)))
 
-    // The colour a thing wears: its kind's, or its role's, while it wants
-    // Joel, and the text's otherwise.
-    function hue(thing) {
-        if (!thing.piece.wants)
-            return Theme.text;
-        return thing.piece.role !== "text" ? Theme[thing.piece.role] : Theme[thing.piece.hue];
+    // Lingers what just went, holds back what just came for its card, and
+    // wakes when the soonest of either is due.
+    function settle() {
+        const at = Date.now();
+        root.kept = Marks.lingers(root.kept, root.before, root.lit, {
+            at,
+            linger: root.linger
+        });
+        root.waits = Marks.awaited(root.waits, root.before, root.lit, {
+            at,
+            wait: root.wait
+        });
+        root.before = root.lit;
+        const times = root.kept.concat(root.waits).map(one => one.until);
+        if (times.length === 0) {
+            due.stop();
+            return;
+        }
+        const soonest = times.reduce((soon, until) => Math.min(soon, until), times[0]);
+        due.interval = Math.max(0, soonest - at);
+        due.restart();
     }
 
-    IpcHandler {
-        target: "margin"
+    onLitChanged: settle()
 
-        // Brings the drawer out on the focused output with its keys, or
-        // puts it away.
-        function toggle(): void {
-            const focused = Niri.workspace();
-            root.keyed = root.keyed !== "" ? "" : focused ? focused.output : "*";
-        }
+    Timer {
+        id: due
+        onTriggered: root.settle()
+    }
+
+    // Opens What's on with this thing's row selected.
+    function show(thing) {
+        root.launcher.into("on");
+        const row = root.launcher.matches.findIndex(row => row.key === `on:${thing.entry.mark}`);
+        if (row >= 0)
+            root.launcher.current = row;
     }
 
     Variants {
         model: Quickshell.screens
 
-        Scope {
-            id: here
+        PanelWindow {
+            id: window
 
             required property ShellScreen modelData
 
-            // A screen that goes away is read once more before it does.
-            readonly property bool keyed: root.keyed === "*" || root.keyed === modelData?.name
-            // Which thing is selected, its panel open, and which of its
-            // actions, or -1.
-            property int selected: -1
-            property int action: 0
-            // The mark the pointer rests on, for its hint.
-            property int resting: -1
-            property bool rested: false
+            screen: modelData
+            visible: root.on.length > 0
+            anchors.top: true
+            anchors.right: true
+            implicitWidth: glyphs.width + root.corner + lifted.reach
+            implicitHeight: Theme.gap + lifted.reach
+            exclusionMode: ExclusionMode.Ignore
+            color: "transparent"
+            WlrLayershell.layer: WlrLayer.Overlay
+            WlrLayershell.namespace: "margin"
+            WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
 
-            readonly property var thing: selected >= 0 && selected < root.on.length
-                ? root.on[selected] : null
-            readonly property bool panelled: keyed || thing !== null
-            readonly property bool out: (root.on.length > 0 && pointed) || panelled
-            property bool pointed: false
-
-            // Brought out by the keys: what wants Joel first, or what's
-            // nearest the corner.
-            onKeyedChanged: {
-                if (keyed) {
-                    const wanting = root.on.findIndex(thing => thing.piece.wants);
-                    selected = wanting >= 0 ? wanting : root.on.length - 1;
-                    action = 0;
-                } else {
-                    selected = -1;
-                }
+            // Only the glyphs take the pointer, so the gap beside them is
+            // still the windows'.
+            mask: Region {
+                item: glyphs
             }
 
-            function away() {
-                root.keyed = "";
-                selected = -1;
-                resting = -1;
-                rested = false;
+            // A glyph coming or going changes what's drawn while the margin
+            // stays up.
+            Reported {
+                id: reported
+                name: "margin"
             }
 
-            function select(index) {
-                selected = Math.max(0, Math.min(index, root.on.length - 1));
-                action = 0;
-            }
-
-            function run() {
-                if (!thing || thing.piece.actions.length === 0)
-                    return;
-                const actions = thing.piece.actions;
-                const chosen = actions[Math.min(action, actions.length - 1)];
-                away();
-                chosen.run(root.shell);
-            }
-
-            // A thing that stops being true takes its selection with it.
             Connections {
                 target: root
 
                 function onOnChanged() {
-                    if (here.selected >= root.on.length)
-                        here.selected = root.on.length - 1;
-                    if (root.on.length === 0 && !here.keyed)
-                        here.away();
+                    reported.changed();
+                    // Said once the pieces' words have caught up.
+                    if (Options.reports)
+                        Qt.callLater(window.tell);
                 }
             }
 
-            // While the panel is open a click anywhere else puts it away,
-            // as a menu does; the margin's own window sits above this.
-            PanelWindow {
-                screen: here.modelData
-                visible: here.panelled
-                anchors.top: true
-                anchors.bottom: true
-                anchors.left: true
-                anchors.right: true
-                exclusionMode: ExclusionMode.Ignore
-                color: "transparent"
-                WlrLayershell.layer: WlrLayer.Top
-                WlrLayershell.namespace: "outside"
-                WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
-
-                MouseArea {
-                    anchors.fill: parent
-                    onClicked: here.away()
-                }
+            // What the margin holds, and how each is drawn, so a test sees
+            // what Joel sees.
+            function tell() {
+                Report.say(`holds margin ${root.on.map(thing => thing.entry.mark).join(" ")}`);
+                Report.say(`sets margin ${JSON.stringify(root.on.map(thing => ({
+                    mark: thing.entry.mark,
+                    kind: thing.kind,
+                    tone: thing.tone,
+                    state: thing.piece.value
+                })))}`);
             }
 
-            PanelWindow {
-                id: window
+            Lifted {
+                id: lifted
+                x: window.width - root.corner - glyphs.width
 
-                readonly property int reach: Theme.floating.reach
-                // Where the drawer, the hint and the panel end on the right.
-                readonly property real edge: width - root.corner
+                Row {
+                    id: glyphs
+                    spacing: Theme.space.s
 
-                // Measured to the ink: the deepest a mark reaches above its
-                // baseline and below it.
-                readonly property real up: Math.max(0, ...[...marks.children]
-                    .filter(slot => slot.up !== undefined).map(slot => slot.up))
-                readonly property real down: Math.max(0, ...[...marks.children]
-                    .filter(slot => slot.down !== undefined).map(slot => slot.down))
-                // Drawn out, the drawer: a step from the screen's edge to the
-                // ink, and a step from the ink to its frame's outer edge.
-                readonly property real open: Theme.space.m + up + down + Theme.space.m
-                readonly property real drawerWidth: marks.width + 2 * Theme.space.m
+                    Repeater {
+                        model: root.on
 
-                screen: here.modelData
-                visible: root.on.length > 0 || here.keyed
-                anchors.top: true
-                anchors.right: true
-                implicitWidth: 440 + root.corner + reach
-                implicitHeight: open + Theme.space.m + 320 + reach
-                exclusionMode: ExclusionMode.Ignore
-                color: "transparent"
-                WlrLayershell.layer: WlrLayer.Overlay
-                WlrLayershell.namespace: "margin"
-                WlrLayershell.keyboardFocus: here.panelled
-                    ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
-
-                // A pull coming or going changes what's drawn while the
-                // margin stays up.
-                Reported {
-                    id: reported
-                    name: "margin"
-                }
-
-                Connections {
-                    target: root
-
-                    function onOnChanged() {
-                        reported.changed();
-                        const marks = root.on.map(fact => fact.entry.mark);
-                        Report.say(`holds margin ${marks.join(" ")}`);
-                    }
-                }
-
-                // The pointer reaches the strip above the windows over the
-                // pulls, a column wider at its left, and once the drawer is
-                // out, the drawer and what hangs below it.
-                mask: Region {
-                    regions: [
-                        Region { item: strip },
-                        Region { item: drawer.height > 0 ? frame : null },
-                        Region { item: panel.visible ? panel : null }
-                    ]
-                }
-                BackgroundEffect.blurRegion: Region {
-                    regions: [
-                        Region { item: drawer.height > 0 ? frame : null },
-                        Region { item: hint.visible ? hint.area.item : null },
-                        Region { item: panel.visible ? panel.area.item : null }
-                    ]
-                }
-
-                // The notices make way below whatever hangs here.
-                Binding {
-                    target: Notices
-                    property: "below"
-                    value: !here.out ? 0
-                        : window.open + Theme.space.m
-                            + (panel.visible ? panel.height : hint.height)
-                }
-
-                Item {
-                    id: strip
-                    x: window.edge - window.drawerWidth - Theme.space.xl
-                    width: window.width - x
-                    height: Theme.space.m
-                }
-
-                // Passive, so it hears the pointer over the marks too.
-                HoverHandler {
-                    onHoveredChanged: here.pointed = hovered
-                }
-
-                // The drawer's shadows, outside its frame.
-                Repeater {
-                    model: Theme.floating.shadows
-
-                    RectangularShadow {
-                        required property var modelData
-
-                        visible: drawer.height > 0
-                        anchors.fill: frame
-                        offset.y: modelData.offset
-                        blur: modelData.blur
-                        radius: Theme.radius
-                        color: Qt.alpha(Theme.shadow, modelData.opacity)
-                    }
-                }
-
-                // Its frame starts above the screen's edge, so its top
-                // border and top corners are never seen: it hangs from the
-                // edge, rounded only below.
-                Rectangle {
-                    id: frame
-                    x: window.edge - window.drawerWidth
-                    y: -Theme.radius
-                    width: window.drawerWidth
-                    height: drawer.height + Theme.radius
-                    visible: drawer.height > 0
-                    radius: Theme.radius
-                    border.width: Theme.border
-                    border.color: Theme.rule
-                    // Deeper toward the back, where it runs under the edge.
-                    gradient: Gradient {
-                        GradientStop {
-                            position: 0
-                            color: Qt.alpha(Theme.deepest, Theme.floating.opacity)
-                        }
-                        GradientStop {
-                            position: 1
-                            color: Qt.alpha(Theme.background, Theme.floating.opacity)
-                        }
-                    }
-                }
-
-                Item {
-                    id: drawer
-                    x: frame.x
-                    width: frame.width
-                    height: here.out ? window.open : 0
-                    clip: true
-
-                    Behavior on height {
-                        NumberAnimation {
-                            duration: here.out ? Theme.motion.medium : Theme.motion.short
-                            easing.type: Easing.BezierSpline
-                            easing.bezierCurve: Theme.motion.curve
-                        }
-                    }
-
-                    // What's inside rides the front edge out from under the
-                    // screen's.
-                    Item {
-                        id: content
-                        y: drawer.height - window.open
-                        width: drawer.width
-                        height: window.open
-
-                        // The selected mark's fill: a part, a step inside
-                        // the frame and a little round the ink.
-                        Rectangle {
-                            readonly property var slot: {
-                                slots.count;
-                                return here.selected >= 0 ? slots.itemAt(here.selected) : null;
-                            }
-                            visible: slot !== null
-                            x: visible ? marks.x + slot.x - Theme.space.xs : 0
-                            y: Theme.space.m - Theme.space.xs
-                            width: visible ? slot.width + 2 * Theme.space.xs : 0
-                            height: window.up + window.down + 2 * Theme.space.xs
-                            radius: Theme.inner
-                            color: Qt.alpha(Theme.selection, Theme.floating.selection)
-                        }
-
-                        Row {
-                            id: marks
-                            x: Theme.space.m
-                            spacing: Theme.space.m
-
-                            Repeater {
-                                id: slots
-                                model: root.on
-
-                                // A mark set by its ink, and its badge a
-                                // little after, their tops level.
-                                Item {
-                                    id: slot
-
-                                    required property var modelData
-                                    required property int index
-                                    readonly property real up: -glyphInk.tightBoundingRect.y
-                                    readonly property real down: glyphInk.tightBoundingRect.y
-                                        + glyphInk.tightBoundingRect.height
-                                    readonly property real glyphWidth:
-                                        glyphInk.tightBoundingRect.width
-                                    // Where the marks' baselines sit, level across them.
-                                    readonly property real line: Theme.space.m + window.up
-
-                                    width: glyphWidth + (badge.text === "" ? 0
-                                        : Theme.space.xs + badgeInk.tightBoundingRect.width)
-                                    height: window.open
-
-                                    TextMetrics {
-                                        id: glyphInk
-                                        font: glyph.font
-                                        text: glyph.text
-                                    }
-
-                                    TextMetrics {
-                                        id: badgeInk
-                                        font: badge.font
-                                        text: badge.text
-                                    }
-
-                                    Text {
-                                        id: glyph
-                                        x: -glyphInk.tightBoundingRect.x
-                                        y: slot.line - baselineOffset
-                                        text: slot.modelData.glyph
-                                        color: root.hue(slot.modelData)
-                                        font.family: Theme.mono.family
-                                        font.pointSize: Theme.mono.body
-                                    }
-
-                                    Text {
-                                        id: badge
-                                        x: slot.glyphWidth + Theme.space.xs
-                                            - badgeInk.tightBoundingRect.x
-                                        y: slot.line + glyphInk.tightBoundingRect.y
-                                            - badgeInk.tightBoundingRect.y - baselineOffset
-                                        text: slot.modelData.piece.badge
-                                        color: slot.modelData.piece.wants
-                                            ? Theme.strong : Theme.text
-                                        font.family: Theme.mono.family
-                                        font.pointSize: Theme.mono.small
-                                        font.features: { "tnum": 1 }
-                                    }
-
-                                    MouseArea {
-                                        x: -Theme.space.m / 2
-                                        width: parent.width + Theme.space.m
-                                        height: parent.height
-                                        hoverEnabled: true
-                                        onContainsMouseChanged: {
-                                            if (containsMouse) {
-                                                here.resting = slot.index;
-                                                if (!here.rested)
-                                                    rest.restart();
-                                            } else if (here.resting === slot.index) {
-                                                here.resting = -1;
-                                            }
-                                        }
-                                        onClicked: {
-                                            if (here.selected === slot.index && !here.keyed)
-                                                here.away();
-                                            else
-                                                here.select(slot.index);
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        // The shade toward the back, along the edge it runs
-                        // under.
-                        Rectangle {
-                            width: parent.width
-                            height: Theme.space.m
-                            gradient: Gradient {
-                                GradientStop {
-                                    position: 0
-                                    color: Qt.alpha(Theme.deepest, 0.9)
-                                }
-                                GradientStop {
-                                    position: 1
-                                    color: "transparent"
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // A hint waits for the pointer to rest, then follows it.
-                Timer {
-                    id: rest
-                    interval: 400
-                    onTriggered: here.rested = here.resting >= 0
-                }
-
-                Connections {
-                    target: here
-
-                    function onOutChanged() {
-                        if (!here.out)
-                            here.rested = false;
-                    }
-                }
-
-                // The pulls: one under each mark, as wide as its ink, hanging
-                // from the screen's edge at rest and from the drawer's once
-                // it's out. A hairline in the drawer's border colour runs
-                // round each, its top hidden above whichever edge it hangs
-                // from, lifted off the picture by the theme's text shadows.
-                Lifted {
-                    id: pulls
-                    x: drawer.x + marks.x - Theme.border
-                    y: drawer.height - Theme.border
-
-                    // Lifted draws from its own corner, so the pulls sit in
-                    // one piece that starts there.
-                    Item {
-                        width: marks.width + 2 * Theme.border
-                        height: Theme.space.xs + 2 * Theme.border
-
-                        Repeater {
-                            model: root.on
-
-                            Rectangle {
-                                required property var modelData
-                                required property int index
-                                readonly property var slot: {
-                                    slots.count;
-                                    return slots.itemAt(index);
-                                }
-
-                                x: slot ? slot.x : 0
-                                width: (slot ? slot.glyphWidth : 0) + 2 * Theme.border
-                                height: Theme.space.xs + 2 * Theme.border
-                                color: Theme.rule
-
-                                Rectangle {
-                                    x: Theme.border
-                                    y: Theme.border
-                                    width: parent.width - 2 * Theme.border
-                                    height: Theme.space.xs
-                                    color: root.hue(parent.modelData)
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // What the mark rested on is, in words, below the drawer.
-                Floating {
-                    id: hint
-
-                    readonly property var thing: here.resting >= 0 && here.resting < root.on.length
-                        ? root.on[here.resting] : null
-
-                    visible: here.out && here.rested && thing !== null && !panel.visible
-                    x: window.edge - width
-                    y: window.open + Theme.space.m
-                    width: words.width + 2 * Theme.space.s
-                    height: capital.tightBoundingRect.height + 2 * Theme.space.s
-
-                    TextMetrics {
-                        id: capital
-                        font: words.font
-                        text: "H"
-                    }
-
-                    Text {
-                        id: words
-                        x: Theme.space.s - Theme.border
-                        y: Theme.space.s - Theme.border
-                            - capital.tightBoundingRect.y - baselineOffset
-                        text: hint.thing ? hint.thing.piece.hint : ""
-                        color: Theme.text
-                        font.family: Theme.sans.family
-                        font.pointSize: Theme.sans.body
-                    }
-                }
-
-                // The panel is the launcher holding the thing: its glyph,
-                // its name in a chip and how it stands; a hairline; what can
-                // be done, in the launcher's rows; and the launcher's footer.
-                Floating {
-                    id: panel
-
-                    readonly property var thing: here.thing
-
-                    visible: here.panelled
-                    keys: true
-                    x: window.edge - width
-                    y: (root.on.length > 0 ? window.open : 0) + Theme.space.m
-                    width: 440
-                    focus: visible
-
-                    Keys.onEscapePressed: here.away()
-                    Keys.onLeftPressed: here.select(here.selected - 1)
-                    Keys.onRightPressed: here.select(here.selected + 1)
-                    Keys.onUpPressed: here.action = Math.max(0, here.action - 1)
-                    Keys.onDownPressed: here.action = panel.thing
-                        ? Math.min(here.action + 1, panel.thing.piece.actions.length - 1) : 0
-                    Keys.onReturnPressed: here.run()
-                    Keys.onEnterPressed: here.run()
-
-                    Column {
-                        width: parent.width
-
-                        // Nothing on says so, in the launcher's quiet row.
+                        // A glyph measured at the body's size, then drawn
+                        // at the size that makes its ink the set height.
                         Item {
-                            visible: panel.thing === null
-                            width: parent.width
-                            height: Theme.space.xxxl + 2 * Theme.inset
+                            id: slot
 
-                            Choice {
-                                x: Theme.inset
-                                y: Theme.inset
-                                width: parent.width - 2 * Theme.inset
-                                glyph: String.fromCodePoint(0xf0674)
-                                hue: Theme.voice
-                                quiet: true
-                                // As tests/rows.qml holds it, whole.
-                                name: "Nothing's on or waiting."
-                            }
-                        }
+                            required property var modelData
+                            readonly property var set: Marks.fit(measured.tightBoundingRect,
+                                root.ink, Theme.gap / 2)
 
-                        Item {
-                            visible: panel.thing !== null
-                            width: parent.width
-                            height: Theme.space.xxxl + 2 * Theme.inset
+                            width: set.width
+                            height: Theme.gap
 
-                            Text {
-                                id: lead
-                                x: Theme.inset + Theme.space.l
-                                anchors.verticalCenter: parent.verticalCenter
-                                text: panel.thing ? panel.thing.glyph : ""
-                                color: panel.thing ? (panel.thing.piece.role !== "text"
-                                    ? Theme[panel.thing.piece.role] : Theme[panel.thing.piece.hue])
-                                    : Theme.text
+                            TextMetrics {
+                                id: measured
                                 font.family: Theme.mono.family
-                                font.pointSize: Theme.mono.large
-                            }
-
-                            Rectangle {
-                                id: chip
-                                x: Theme.inset + Theme.space.l + Theme.space.xxl
-                                anchors.verticalCenter: parent.verticalCenter
-                                width: name.implicitWidth + 2 * Theme.space.m
-                                height: Theme.space.xxl
-                                radius: Theme.inner
-                                color: Theme.raised
-
-                                Text {
-                                    id: name
-                                    anchors.centerIn: parent
-                                    text: panel.thing ? panel.thing.piece.title : ""
-                                    color: Theme.strong
-                                    font.family: Theme.mono.family
-                                    font.pointSize: Theme.mono.large
-                                }
+                                font.pointSize: Theme.mono.body
+                                text: slot.modelData.glyph
                             }
 
                             Text {
-                                x: chip.x + chip.width + Theme.space.m
-                                width: parent.width - x - Theme.inset - Theme.space.l
-                                anchors.verticalCenter: parent.verticalCenter
-                                elide: Text.ElideRight
-                                text: panel.thing ? panel.thing.piece.value : ""
-                                color: Theme.muted
+                                x: slot.set.x
+                                y: slot.set.baseline - baselineOffset
+                                text: slot.modelData.glyph
+                                textFormat: Text.PlainText
+                                color: Theme[slot.modelData.tone]
                                 font.family: Theme.mono.family
-                                font.pointSize: Theme.mono.large
-                                font.features: { "tnum": 1 }
-                            }
-                        }
-
-                        Rectangle {
-                            visible: panel.thing !== null
-                            width: parent.width
-                            height: Theme.border
-                            color: Theme.edge
-                        }
-
-                        Column {
-                            visible: panel.thing !== null
-                            x: Theme.inset
-                            width: parent.width - 2 * Theme.inset
-                            topPadding: Theme.inset
-                            bottomPadding: Theme.inset
-
-                            Repeater {
-                                model: panel.thing ? panel.thing.piece.actions : []
-
-                                Choice {
-                                    required property var modelData
-                                    required property int index
-
-                                    selected: index === here.action
-                                    glyph: modelData.glyph
-                                    hue: Theme.action
-                                    name: modelData.name
-                                    chord: modelData.chord ?? []
-                                    onClicked: {
-                                        here.action = index;
-                                        here.run();
-                                    }
-                                    onPointed: here.action = index
-                                }
+                                font.pointSize: Theme.mono.body * slot.set.scale
                             }
 
-                            // What more there is to know, and what Return does.
-                            Item {
-                                width: parent.width
-                                height: Theme.space.xxl + Theme.space.s
-
-                                Text {
-                                    x: Theme.space.l
-                                    width: done.x - x - Theme.space.xl
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    elide: Text.ElideRight
-                                    text: panel.thing ? panel.thing.piece.context : ""
-                                    color: Theme.muted
-                                    font.family: Theme.mono.family
-                                    font.pointSize: Theme.mono.large
-                                }
-
-                                Text {
-                                    id: done
-                                    anchors.right: parent.right
-                                    anchors.rightMargin: Theme.space.l
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    visible: panel.thing !== null
-                                        && panel.thing.piece.actions.length > 0
-                                    text: `<font color="${Theme.text}">\u21b5</font> run`
-                                    textFormat: Text.StyledText
-                                    color: Theme.muted
-                                    font.family: Theme.mono.family
-                                    font.pointSize: Theme.mono.large
-                                }
+                            MouseArea {
+                                x: -Theme.space.s / 2
+                                width: parent.width + Theme.space.s
+                                height: parent.height
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: root.show(slot.modelData)
                             }
                         }
                     }

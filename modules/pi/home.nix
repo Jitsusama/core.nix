@@ -49,7 +49,7 @@ let
       searchMatchText = roles.strong;
       scrollbarTrack = roles.raised;
       scrollbarThumb = roles.rule;
-      # What Joel wrote sits on the sunken shade, as a drawer's inside does.
+      # What Joel wrote sits on the sunken shade, a step below the rest.
       userMessageBg = roles.sunken;
       userMessageText = roles.text;
       customMessageBg = roles.sunken;

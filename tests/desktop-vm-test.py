@@ -882,8 +882,15 @@ with subtest("the launcher finds a pi session by its quest, and goes to its wind
     # on what follows, so Super+N takes the stack at once: held, it waits.
     with told("keys notices"):
         machine.send_key("meta_l-n")
-    reported("holds margin ", lambda rest: "agent" in rest.split(), since)
-    photograph("margin-pi-wants")
+    # The card says it, so pi's mark waits for the card to go: a card or
+    # a mark, never both.
+    told_since = as_account(
+        "journalctl --user --unit=quickshell --no-pager --output=cat"
+        f" --after-cursor={shlex.quote(since)}"
+    )
+    t.assertNotRegex(
+        told_since, r"holds margin [^\n]*\bagent\b", "pi's mark showed beside its card"
+    )
     # The same want, its file replaced again, says nothing new.
     presence_says({"addresses": ["TESTQA"], "busy": False, "wants": question})
     time.sleep(3)
@@ -892,11 +899,15 @@ with subtest("the launcher finds a pi session by its quest, and goes to its wind
         " | grep -c 'report\\[shows card A quest of its own & whole asks you'"
     )
     t.assertEqual(as_account(cards).strip(), "1", "the same want was said twice")
+    since = mark()
     machine.send_key("ret")
     machine.wait_until_succeeds(
         in_session("niri msg --json focused-window | grep -q TESTQA"), timeout=10
     )
     machine.wait_until_fails(in_session("niri msg layers | grep -q notifications"), timeout=10)
+    # Its card gone, the want still stands, so pi's mark shows.
+    reported("holds margin ", lambda rest: "agent" in rest.split(), since)
+    photograph("margin-pi-wants")
     # Another, unanswered, from the other window: its notice says what
     # it wants, and goes when the want does, missed by nobody. Notices
     # missed earlier are let go first, so the margin's notices mark is
@@ -2665,20 +2676,84 @@ with subtest("the launcher keeps the machine awake, lid shut too, then lets it s
     machine.send_key("ret")
     machine.wait_until_fails(held, timeout=10)
 
-# The margin is there only while something's on, and every part of it
-# is reached by the keys: Super+O brings out the drawer with what wants
-# Joel selected, the arrows move, Return does the action.
+# The margin is there only while something's on, each thing its glyph
+# alone, and what each is, in words, is the launcher's What's on: Super+O
+# or a click on a glyph opens it, Return does a thing's first action and
+# the right arrow steps into the rest.
 margin = "niri msg layers | grep -q margin"
 notices = "niri msg layers | grep -q notifications"
 
-with subtest("a camera open shows in the margin, and the launcher says by what"):
+
+def margin_sets(*wanted: tuple[str, str, str]) -> Callable[[str], bool]:
+    """Test what the margin says it draws: each glyph's mark, kind and colour, left to right."""
+
+    def sets(rest: str) -> bool:
+        drawn = [(glyph["mark"], glyph["kind"], glyph["tone"]) for glyph in json.loads(rest)]
+        return drawn == list(wanted)
+
+    return sets
+
+
+def screen_now() -> Image.Image:
+    """Give the screen as it is, from QEMU's own picture of it."""
+    with tempfile.TemporaryDirectory() as folder:
+        shot = Path(folder) / "shot.ppm"
+        machine.send_monitor_command(f"screendump {shot}")
+        return Image.open(shot).convert("RGB")
+
+
+def changed_in_the_corner(before: Image.Image, after: Image.Image) -> tuple[float, float]:
+    """Give the middle of what changed in the screen's top right corner, as a fraction of it.
+
+    That's a glyph the margin drew, and its shadows, which fall round it.
+    """
+    width, height = after.size
+    was, now = before.tobytes(), after.tobytes()
+
+    def moved(x: int, y: int) -> int:
+        at = 3 * (y * width + x)
+        return sum(abs(was[at + c] - now[at + c]) for c in range(3))
+
+    corner = [
+        (x, y)
+        for y in range(height // 20)
+        for x in range(width - width // 8, width)
+        if moved(x, y) > NEAR_THE_ACTION
+    ]
+    assert corner, "nothing changed in the top right corner"
+    xs, ys = [x for x, _ in corner], [y for _, y in corner]
+    return (min(xs) + max(xs)) / 2 / width, (min(ys) + max(ys)) / 2 / height
+
+
+def whats_on(selected: str) -> None:
+    """Wait until the launcher holds What's on and the keys, with this thing's row selected."""
+    launcher_until(
+        lambda shown: (
+            shown["open"]
+            and shown["keys"]
+            and shown["held"] == ["what's on"]
+            and (shown["selected"] or {}).get("name") == selected
+        )
+    )
+
+
+with subtest("a camera opened is said, then shows in the margin, and the launcher says by what"):
     machine.wait_until_fails(in_session(margin), timeout=10)
-    # Written whole, as the camera's module writes it.
-    with told("drawn margin"):
+    # What's true as the shell starts isn't news, so it's waited out.
+    reported("settles arrivals", lambda rest: rest == "", "")
+    # Written whole, as the camera's module writes it. A program opened
+    # it by itself, so it's said as a notice of the camera's.
+    since = mark()
+    with told("shows card chrome has the camera open"):
         machine.succeed(
             "echo chrome > /run/camera-holders/.camera"
             " && mv /run/camera-holders/.camera /run/camera-holders/camera"
         )
+    photograph("notice-camera")
+    # A card or a mark: once the card goes, the glyph shows, on air, so
+    # strong, and the card wasn't missed, since the glyph says it.
+    machine.wait_until_fails(in_session(notices), timeout=30)
+    reported("sets margin ", margin_sets(("camera", "onAir", "strong")), since)
     photograph("margin-camera")
     as_account("qs ipc call launcher toggle")
     launcher_ready()
@@ -2686,10 +2761,13 @@ with subtest("a camera open shows in the margin, and the launcher says by what")
     launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "in use by chrome")
     machine.send_key("esc")
     machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
+    # Let go, it lingers a moment, muted, then goes.
+    since = mark()
     machine.succeed(
         ": > /run/camera-holders/.camera"
         " && mv /run/camera-holders/.camera /run/camera-holders/camera"
     )
+    reported("sets margin ", margin_sets(("camera", "onAir", "muted")), since)
     machine.wait_until_fails(in_session(margin), timeout=10)
 
 with subtest("a USB camera's stream shows in the margin too, and leaves with the camera"):
@@ -2707,17 +2785,39 @@ with subtest("a USB camera's stream shows in the margin too, and leaves with the
     machine.succeed(f"rm '{usb}'")
     machine.wait_until_fails(in_session(margin), timeout=10)
 
-with subtest("Super+O shows Keep Awake in the margin, and Return lets it sleep"):
+with subtest("Keep Awake shows in the margin, and What's on says it and lets it sleep"):
     # Keep Awake was just let go, and the margin leaves as it fades.
     machine.wait_until_fails(in_session(margin), timeout=10)
+    # Its own, so it runs alone: whether something holds the machine awake.
+    held = "systemd-inhibit --list --no-pager | grep Caffeinate"
+    # A camera's card from before is gone first, so what changes in the
+    # corner is the glyph alone.
+    machine.wait_until_fails(in_session(notices), timeout=30)
+    # Left on, so muted.
+    held_still()
+    empty = screen_now()
+    since = mark()
     with told("drawn margin"):
         as_account("systemctl --user start caffeinate.service")
+    reported("sets margin ", margin_sets(("awake", "leftOn", "muted")), since)
     photograph("margin-awake")
-    # The panel takes the keys, and a click anywhere else puts it away.
-    with told("keys margin"):
-        machine.send_key("meta_l-o")
-    wait_for_surface("outside")
-    photograph("margin-drawer")
+    # Super+O opens What's on at its row.
+    glyph = changed_in_the_corner(empty, screen_now())
+    machine.send_key("meta_l-o")
+    whats_on("Keep Awake")
+    photograph("launcher-whats-on")
+    machine.send_key("esc")
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
+    # A click on the glyph opens it the same, and Return lets the
+    # machine sleep.
+    click(*glyph)
+    try:
+        whats_on("Keep Awake")
+    except AssertionError:
+        # Where the click went, beside where the shell's surfaces are.
+        print(f"clicked at {glyph} of the screen")
+        print(as_account("niri msg layers; niri msg --json focused-output"))
+        raise
     machine.send_key("ret")
     machine.wait_until_fails(held, timeout=10)
     machine.wait_until_fails(in_session(margin), timeout=10)
@@ -2734,37 +2834,84 @@ with subtest("do not disturb holds a notice, shows it held, and ends from the ma
     with told("held Held back"):
         as_account("notify-send 'Held back' 'until it ends'")
     machine.fail(in_session(notices))
-    # Its panel offers ending it, an hour more, then what's held.
-    with told("keys margin"):
-        machine.send_key("meta_l-o")
     photograph("margin-quiet")
-    machine.send_key("down")
-    machine.send_key("down")
+    # Its row ends it, and a step in offers the rest, what's held last:
+    # an hour more comes first only when it ends by itself.
+    machine.send_key("meta_l-o")
+    whats_on("Do Not Disturb")
+    step_in()
+    if (showing()["selected"] or {}).get("name") != "Show what's held":
+        machine.send_key("down")
+    launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Show what's held")
     machine.send_key("ret")
-    launcher_ready()
+    launcher_until(lambda shown: shown["keys"] and shown["held"] == ["notices"])
     photograph("launcher-held")
     machine.send_key("esc")
     machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
-    with told("keys margin"):
-        machine.send_key("meta_l-o")
+    machine.send_key("meta_l-o")
+    whats_on("Do Not Disturb")
     machine.send_key("ret")
     machine.wait_until_fails(in_session(margin), timeout=10)
     as_account("test ! -s $XDG_RUNTIME_DIR/quiet")
 
-with subtest("a missed notice lights its pull, and Return shows the notices"):
-    # On screen it isn't waiting yet; once it goes by itself, it is.
+with subtest("a missed notice shows its glyph, and What's on shows the notices"):
+    # On screen it isn't waiting yet; once it goes by itself, it is, and
+    # it wants Joel, so it's strong.
+    since = mark()
     with told("drawn margin"), told("shows card Peter"):
         as_account("notify-send --expire-time=1000 'Peter' 'are you there?'")
     machine.wait_until_fails(in_session(notices), timeout=15)
+    reported("sets margin ", margin_sets(("waiting", "wants", "strong")), since)
     photograph("margin-waiting")
-    with told("keys margin"):
-        machine.send_key("meta_l-o")
+    machine.send_key("meta_l-o")
+    whats_on("Notices")
     machine.send_key("ret")
-    launcher_ready()
+    launcher_until(lambda shown: shown["keys"] and shown["held"] == ["notices"])
     photograph("launcher-from-margin")
     machine.send_key("esc")
     # Opening them counted them seen, so nothing's waiting.
     machine.wait_until_fails(in_session(margin), timeout=10)
+
+with subtest("waiting that lasts a minute shows in the margin, quietly"):
+    # lag-watch would write its own window over a stand-in's, so it rests.
+    as_account("systemctl --user stop lag-watch.service")
+    lagged = "$XDG_RUNTIME_DIR/lag-watch/status.json"
+
+    def lag_says(worst: str, who: str, ago: int) -> None:
+        """Write a window as lag-watch does, renamed in, its run begun so long ago."""
+        now = int(machine.succeed("date +%s").strip())
+        window = {
+            "ended": now,
+            "trouble": [f"{who} waited on {worst}"] if worst else [],
+            "worst": worst,
+            "who": who,
+            "since": now - ago if worst else None,
+        }
+        as_account(
+            f"mkdir -p $(dirname {lagged}) && echo '{json.dumps(window)}' > {lagged}.new"
+            f" && mv {lagged}.new {lagged}"
+        )
+
+    # A moment's wait says nothing.
+    since = mark()
+    lag_says("memory", "apps", 10)
+    time.sleep(2)
+    said = as_account(
+        "journalctl --user --unit=quickshell --no-pager --output=cat"
+        f" --after-cursor={shlex.quote(since)}"
+    )
+    t.assertNotRegex(said, r"holds margin [^\n]*\blag\b", "a moment's wait showed")
+    # A minute of it does, left on, so muted. A run that began a minute
+    # ago is another run, so the last one ends first.
+    lag_says("", "", 0)
+    time.sleep(2)
+    lag_says("memory", "apps", 70)
+    reported("sets margin ", margin_sets(("lag", "leftOn", "muted")), since)
+    photograph("margin-lag")
+    # Over, it goes.
+    lag_says("", "", 0)
+    reported("holds margin", lambda rest: "lag" not in rest.split(), since)
+    as_account("systemctl --user start lag-watch.service")
 
 with subtest("the microphone muted shows in the margin, and Return unmutes it"):
     try:
@@ -2777,9 +2924,9 @@ with subtest("the microphone muted shows in the margin, and Return unmutes it"):
         print(as_account("pw-dump stand-in-microphone"))
         raise
     machine.wait_until_fails(in_session("niri msg layers | grep -q microphone"), timeout=10)
-    with told("keys margin"):
-        machine.send_key("meta_l-o")
     photograph("margin-muted")
+    machine.send_key("meta_l-o")
+    whats_on("Microphone")
     machine.send_key("ret")
     muted = "wpctl get-volume @DEFAULT_AUDIO_SOURCE@ | grep -q MUTED"
     machine.wait_until_fails(in_session(muted), timeout=10)
@@ -2787,6 +2934,30 @@ with subtest("the microphone muted shows in the margin, and Return unmutes it"):
     # Unmuting shows the meter a moment, which the next pictures
     # would hold for as long as the host takes to reach them.
     machine.wait_until_fails(in_session("niri msg layers | grep -q microphone"), timeout=10)
+
+# Dictation shows at the bottom centre, never in the margin, and says what
+# it heard, from a stand-in for its service (desktop.nix).
+with subtest("dictation says what it's doing, and when it heard nothing"):
+    dictation = "niri msg layers | grep -q dictation"
+    # The volume's and the microphone's meters share the bottom centre, and
+    # show for a moment as the shell first hears them, so they're let go.
+    meters = "niri msg layers | grep -Eq 'Namespace: \"(volume|microphone)\"'"
+    machine.wait_until_fails(in_session(meters), timeout=15)
+    since = mark()
+    as_account("dictation toggle")
+    reported("says dictation listening", lambda rest: rest == "", since)
+    wait_for_surface("dictation")
+    photograph("dictation-listening")
+    # Typing shows once it lasts, and a press meanwhile says it's still
+    # writing; the stand-in types for five seconds.
+    as_account("dictation toggle")
+    reported("says dictation typing", lambda rest: rest == "", since)
+    as_account("dictation toggle")
+    reported("says dictation still writing", lambda rest: rest == "", since)
+    photograph("dictation-still-writing")
+    reported("says dictation heard nothing", lambda rest: rest == "", since)
+    photograph("dictation-heard-nothing")
+    machine.wait_until_fails(in_session(dictation), timeout=10)
 
 # Any player that tells the desktop what it plays shows in the margin
 # while it plays, and the media keys' command shows what it is.
@@ -2872,9 +3043,9 @@ with subtest("a Tuple call ringing wants Joel, and one not answered is kept as m
     machine.wait_until_fails(in_session(margin), timeout=10)
     with told("shows card Someone is calling"):
         tuple_said("received incoming call: a caller")
-    wait_for_surface("margin")
     machine.succeed(offered)
-    photograph("margin-ringing")
+    # The ring's card says it, so the margin's phone waits for it to go.
+    photograph("notice-ringing")
     # The caller gives up: the ring's notice goes, and a missed call stays.
     tuple_said("Caller.cpp:985|invalidating call")
     machine.wait_until_fails(offered, timeout=10)

@@ -3,7 +3,7 @@
 # meters, and the theme's shades for its graphs:
 # https://github.com/omacom/omarchy/blob/a466dcc04f937a41c820aaa990a31f36ecaed543/default/themed/btop.theme.tpl
 #
-# Its boxes are drawn as the drawer is, in a hairline of the rule colour with
+# Its boxes are drawn in a hairline of the rule colour, as a floating one is, with
 # their titles in the strongest text, the accent kept for the letters that
 # are keys, and the chosen row in the strongest text as the launcher's is.
 # It leaves out the clock and the battery, which the shell already shows.

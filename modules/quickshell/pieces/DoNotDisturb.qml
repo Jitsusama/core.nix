@@ -13,10 +13,11 @@ Piece {
     readonly property int held: Quiet.held.length
 
     active: Quiet.on
+    // On only because the screen is shared, the share's mark says it.
+    collected: !Quiet.kept
     hue: "voice"
     value: Quiet.lasts
     title: "Do Not Disturb"
-    badge: ends
     hint: `Quiet ${Quiet.lasts}` + (held === 0 ? "" : `, ${held} held`)
     context: held === 0 ? "nothing held yet" : held === 1 ? "1 notice held" : `${held} notices held`
     actions: [{

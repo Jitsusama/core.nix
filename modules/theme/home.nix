@@ -740,7 +740,7 @@ in
           ];
           description = ''
             The shadows, in the shadow colour, that lift text set straight on
-            a picture, the lock screen's time and the margin's pulls, so it
+            a picture, the lock screen's time and the margin's glyphs, so it
             reads while the picture shows whole. Nearest first.
           '';
         };

@@ -25,8 +25,10 @@ Singleton {
     property bool kept: false
     property real since: 0
     property real until: 0
+    // A window being recorded streams as a share would, but nobody sees it.
     readonly property bool sharing: Options.quiet.whileSharing && Object.values(Niri.casts)
-        .some(cast => cast.kind === "PipeWire" && cast.is_active)
+        .some(cast => cast.kind === "PipeWire" && cast.is_active
+            && cast.session_id !== Recorder.windowSession)
     // Ended while sharing, so notices show until the sharing stops.
     property bool waived: false
     property real sharedSince: 0

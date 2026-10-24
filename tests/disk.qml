@@ -49,17 +49,16 @@ ShellRoot {
         account: status([disk("/", "pressure", 120.5, 5400)],
             { at: root.now, path: "/", band: "pressure", end: "exhausted", freed: 0 }),
         machine: status([disk("/", "healthy", 400)]),
-        holds: piece => piece.active && piece.role === "warning" && !piece.wants
+        holds: piece => piece.active && piece.role === "warning" && piece.wants && !piece.now
             && piece.value === "120.5 GiB free on /, pressure"
-            && piece.badge === "120G"
             && piece.context === "the next band in 1:30; nothing more is safe to take"
     }, {
         what: "a critical disk",
         account: status([disk("/", "critical", 8.25)],
             { at: root.now, path: "/", band: "critical", end: "reached", freed: 3 * gib }),
         machine: status([]),
-        holds: piece => piece.active && piece.role === "alert" && piece.wants
-            && piece.value === "8.2 GiB free on /, critical" && piece.badge === "8.2G"
+        holds: piece => piece.active && piece.role === "alert" && piece.wants && piece.now
+            && piece.value === "8.2 GiB free on /, critical"
             && piece.hint === "/ is short of room: 8.2 GiB free"
             && piece.context === "freed 3.0 GiB on /"
     }, {
@@ -157,7 +156,7 @@ ShellRoot {
                 stop();
                 console.warn(`FAIL ${step.what}: present ${piece.present}, active ${piece.active},`
                     + ` role ${piece.role}, wants ${piece.wants}, value "${piece.value}",`
-                    + ` badge "${piece.badge}", hint "${piece.hint}", context "${piece.context}"`);
+                    + ` now ${piece.now}, hint "${piece.hint}", context "${piece.context}"`);
                 Qt.exit(1);
             }
         }

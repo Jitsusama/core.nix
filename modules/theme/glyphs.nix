@@ -106,12 +106,14 @@ in
     means = "notices came and went unseen";
   };
   quiet = {
-    glyph = nerd "f00a0";
+    # The bell struck through, since the bell asleep, with its small z,
+    # reads as a plain bell at the margin's size, beside the notices'.
+    glyph = nerd "f009b";
     console = "Q";
     means = "notices are held, not shown";
   };
-  listening = {
-    glyph = nerd "f036c";
+  dictating = {
+    glyph = nerd "f05cb";
     console = "D";
     means = "dictation hears what's said, to type it";
   };
@@ -166,6 +168,11 @@ in
     glyph = nerd "f02ca";
     console = "D";
     means = "a disk is short of room, a writer was frozen, or nothing watches it";
+  };
+  lag = {
+    glyph = nerd "f051f";
+    console = "W";
+    means = "the desktop or its apps have waited on the same thing a while";
   };
   spend = {
     glyph = nerd "f01c1";

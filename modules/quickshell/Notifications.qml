@@ -16,7 +16,7 @@
 // The notices sit a step inside the window under the top right corner, so
 // a notice lies on one window rather than across a border, or a step inside
 // where a window's corner would be when there's none (`inside` says how),
-// and they make way below the margin's drawer while it's out.
+// below the margin's glyphs, which stand in the gap above the windows.
 //
 // Each is kept in the session's history as it arrives (Notices.qml), for
 // the launcher to find later, where the ones still here can be answered
@@ -42,6 +42,7 @@ import Quickshell.Services.Notifications
 import Quickshell.Wayland
 import QtQuick
 import QtQuick.Effects
+import "Levels.js" as Levels
 
 Scope {
     id: root
@@ -142,6 +143,11 @@ Scope {
     // are notices; whether they've stepped into the front one's verbs, as
     // the right arrow does into a launcher row's; and which verb is chosen.
     property bool holding: false
+    // Whether Joel's away: nothing typed or moved for a while, whatever
+    // keeps the screen awake, since a call or Keep Awake does that while
+    // he's gone too. A card waits while he's away, so one that comes while
+    // he's gone is there when he's back, counting again in full.
+    readonly property bool away: idle.isIdle
     property bool stepped: false
     property int chosen: 0
     onShownChanged: {
@@ -154,6 +160,13 @@ Scope {
         Report.say(holding ? "holds notices" : "lets notices go");
     }
     onSteppedChanged: if (!stepped) Report.say("notice back")
+    onAwayChanged: Report.say(away ? "away" : "back")
+
+    IdleMonitor {
+        id: idle
+        timeout: Options.notices.away
+        respectInhibitors: false
+    }
     onChosenChanged: if (stepped) Report.say(`notice verb ${verbs[chosen]?.name ?? ""}`)
 
     // What can be done with the front one besides what Return does, the
@@ -381,12 +394,17 @@ Scope {
         keepOnReload: true
         onNotification: notification => {
             root.arrived[notification.id] = Date.now();
+            // How far it reaches is its sender's level at most (Levels.js):
+            // one never shown is held, as one is while notices are.
+            const level = Levels.reached(Options.notices.senders[notification.appName
+                .toLowerCase()], notification.urgency === NotificationUrgency.Critical);
+            const reach = Levels.reach(level);
+            const urgent = reach.urgent;
+            const held = !reach.shown || (Quiet.on && !urgent);
             // One its sender marks transient asks not to be kept, as niri's
             // screenshot notice does.
-            const urgent = notification.urgency === NotificationUrgency.Critical;
-            const held = Quiet.on && !urgent;
             if (!notification.transient)
-                Notices.arrived(notification, urgent, held);
+                Notices.arrived(notification, urgent, held, reach.counted);
             if (held)
                 Report.say(`held ${notification.summary}`);
             const id = notification.id;
@@ -454,7 +472,7 @@ Scope {
         Column {
             id: stack
             x: Theme.floating.reach
-            y: Math.max(root.inside.top, Theme.space.m + Theme.space.s + Notices.below)
+            y: Math.max(root.inside.top, Theme.space.m + Theme.space.s)
             onHeightChanged: reported.changed()
             // Where the pointer reaches and what niri blurs follow a card
             // only as it moves within the column, so they're gathered again
@@ -464,7 +482,7 @@ Scope {
 
             Behavior on y {
                 NumberAnimation {
-                    duration: Notices.below > 0 ? Theme.motion.medium : Theme.motion.short
+                    duration: Theme.motion.short
                     easing.type: Easing.BezierSpline
                     easing.bezierCurve: Theme.motion.curve
                 }
@@ -952,9 +970,11 @@ Scope {
                     // one counts, so one behind waits its turn and is seen
                     // whole; and it waits while the keys hold the notices,
                     // here or in the launcher, so one being acted on can't
-                    // go from under them, starting again in full after.
+                    // go from under them, or while Joel's away, starting
+                    // again in full after.
                     Timer {
                         running: !card.urgent && !Notices.gathered && card.front && !root.holding
+                            && !root.away
                         onRunningChanged: Report.say(
                             `${running ? "counts" : "waits"} card ${card.modelData.summary}`)
                         interval: card.modelData.expireTimeout > 0

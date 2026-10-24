@@ -1,7 +1,7 @@
 // pi at a glance: how many sessions run and how many are working, for the
 // launcher's foot, where the time and the battery are; and a mark in the
 // margin while any wants Joel (Sessions.qml: a question, an approval, or a
-// run stuck without him), its panel saying which and what, with a way to
+// run stuck without him), What's on saying which and what, with a way to
 // each one's window. With no pi running there's nothing to show.
 import qs
 import QtQuick
@@ -13,6 +13,8 @@ Piece {
     present: Sessions.running.length > 0
     active: wanting.length > 0
     wants: active
+    // Its want is said as a notice of pi's (Sessions.qml) while it's new.
+    app: "pi"
     // A program's, as π is on its notice and in Agents.
     hue: "program"
     value: [`${Sessions.running.length} running`,
@@ -24,7 +26,6 @@ Piece {
     glance: wanting.length > 0 ? `${wanting.length} ${wanting.length === 1 ? "wants" : "want"} you`
         : Sessions.working > 0 ? `${Sessions.working} working` : ""
     title: "pi"
-    badge: wanting.length > 0 ? String(wanting.length) : ""
     hint: !first ? value : `${first.title} ${Sessions.wanted(first.presence.wants)}`
     context: !first ? "" : wanting.length === 1 ? (first.presence.wants.said ?? "")
         : `and ${wanting.length - 1} more`

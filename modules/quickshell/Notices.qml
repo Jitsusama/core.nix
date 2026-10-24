@@ -37,10 +37,6 @@ Singleton {
     // Those missed and gone from the screen, which wait for Joel.
     readonly property var waiting: history.filter(notice => notice.missed && !(notice.id in live))
 
-    // How far down the notices make way for the margin's drawer while it's
-    // out, so neither covers the other (Margin.qml).
-    property real below: 0
-
     // The notifications still on screen, by id, whose own actions (Reply,
     // Mark as read) can be done from the launcher's keys while they last.
     property var live: ({})
@@ -60,7 +56,11 @@ Singleton {
         // A pi session wanting Joel (Sessions.qml), in its mark. It's
         // never missed, since the margin's mark says it while it holds.
         "pi": { glyph: Theme.glyph.agent.codePointAt(0), hue: "program", answers: true },
-        "recorder": { glyph: 0xf0ec2, hue: "machine", answers: true }
+        "recorder": { glyph: 0xf0ec2, hue: "machine", answers: true },
+        // What arrives by itself (Arrivals.qml), in its margin mark, which
+        // says it while it holds, so it's never missed either.
+        "camera": { glyph: Theme.glyph.camera.codePointAt(0), hue: "machine", answers: true },
+        "battery": { glyph: Theme.glyph.low.codePointAt(0), hue: "machine", answers: true }
     })
 
     function sender(name) {
@@ -75,9 +75,9 @@ Singleton {
             .slice(0, keep);
     }
 
-    // Keeps a notification as it arrives, missed until it's seen, and held
-    // when it's never shown.
-    function arrived(notification, urgent, held) {
+    // Keeps a notification as it arrives, missed until it's seen unless
+    // it's never counted, and held when it's never shown.
+    function arrived(notification, urgent, held, counted) {
         const from = sender(notification.appName);
         const notice = {
             id: notification.id,
@@ -91,7 +91,7 @@ Singleton {
             hue: from.hue,
             urgent: urgent,
             held: held,
-            missed: !from.answers,
+            missed: counted && !from.answers,
             read: false
         };
         // Live before it's kept, so it never reads as missed and gone from

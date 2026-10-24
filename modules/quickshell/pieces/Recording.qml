@@ -17,10 +17,10 @@ Piece {
         `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`
 
     active: casts.length > 0
+    kind: "onAir"
     onActiveChanged: began = active ? Date.now() : 0
     value: length
     title: "Recording"
-    badge: length
     hint: `Recording ${Recorder.what}, ${length}`
     context: Recorder.what
     actions: Recorder.stoppable ? [{

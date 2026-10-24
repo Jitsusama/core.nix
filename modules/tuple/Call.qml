@@ -1,12 +1,12 @@
 // A Tuple call (Tuple.qml): true while Joel's in one, saying who with and
 // for how long, and while one rings, when it wants him. Its line below
 // says what matters most in the call now: that it's connecting, whose
-// screen is shown, whose camera is on, and otherwise who's in it. Its panel brings a
-// ringing call's window forward, since that's where it's answered; in a
-// call it leaves, shares the screen while nothing's shared (the sharing
-// piece stops a share), mutes Joel in Tuple or lets him be heard again,
-// and copies his room's link. Muting is Tuple's own, so the others see
-// it, and the margin says so beside the mark. The clock ticks only during
+// screen is shown, whose camera is on, and otherwise who's in it. Its
+// actions bring a ringing call's window forward, since that's where it's
+// answered; in a call they leave, share the screen while nothing's shared
+// (the sharing piece stops a share), mute Joel in Tuple or let him be heard
+// again, and copy his room's link. Muting is Tuple's own, so the others
+// see it, and how the call stands says so. The clock ticks only during
 // a call, so it costs nothing otherwise.
 import qs
 import Quickshell
@@ -23,7 +23,7 @@ Piece {
         .some(cast => cast.kind === "PipeWire" && cast.is_active)
     readonly property bool rings: Tuple.ringing !== "" && !Tuple.calling
     readonly property string caller: Tuple.name(Tuple.ringing) || "Someone"
-    // First names, for the panel's one short line.
+    // First names, for its one short line.
     function first(who) {
         return Tuple.name(who).split(" ")[0];
     }
@@ -33,10 +33,14 @@ Piece {
 
     active: Tuple.calling || rings
     wants: rings
+    kind: rings ? "wants" : "onAir"
+    now: rings
+    // Who's calling, joining or leaving is said as a notice of Tuple's.
+    app: "Tuple"
     hue: "person"
-    value: rings ? `${caller} is calling` : length
+    value: rings ? `${caller} is calling`
+        : length + (Tuple.muted === true ? ", muted" : "")
     title: rings ? "Ringing" : "In a call"
-    badge: Tuple.calling && Tuple.muted === true ? "muted" : ""
     hint: rings ? `${caller} is calling on Tuple`
         : `In a Tuple call ${Tuple.company} for ${length}`
             + (Tuple.muted === true ? ", muted" : "")

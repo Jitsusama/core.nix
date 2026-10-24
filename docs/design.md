@@ -27,7 +27,7 @@ Every surface is held to the same twelve, and a surface isn't done until each
 one is answered for it in [the surfaces table][surfaces].
 
 1. **Keys first.** Everything can be done with the keyboard alone, and done
-   comfortably: a popup, a notice, a menu, a drawer, a prompt, every
+   comfortably: a popup, a notice, a menu, the margin, a prompt, every
    surface. Each is designed around the keys and then given the pointer,
    never the other way round, and nothing can be reached only by pointing.
    Chords are short, keep to the hands' strong positions and favour a
@@ -257,9 +257,8 @@ that does. The kinds that follow from it:
 | palette | the launcher           | the accent                | a quarter down        | large, monospace  | a command line over a list |
 | prompt  | polkit, the lock screen | the accent, the alert after a wrong answer | dead centre | large | a scrim stops what's behind it; who asks and why, in words, then the padlock beside the dots |
 | notice  | a notification         | the edge, the accent while it holds the keys, the alert when critical | a step inside the window at the top right | body, Mona Sans | who first, then the message, then a footer of where from and when; Super+N gives it the launcher's keys, the footer saying them where it said when |
-| meter   | the volume, the microphone, the brightness, the charge when power comes or goes | the edge | bottom centre | body, monospace | reads a level back while it changes |
+| meter   | the volume, the microphone, the brightness, the charge when power comes or goes, dictation while it's on | the edge | bottom centre | body, monospace | reads a level back while it changes; dictation's says what it's doing in a word, with a wave rather than a bar, so it's never the microphone's volume |
 | map     | the keyboard's layout  | the edge                  | bottom centre         | body, monospace   | the keys where they sit, their layer named, following the board while typing carries on |
-| drawer  | the margin: Keep Awake, do not disturb, the mic muted, notices waiting | the rule, with no top | hanging from the top edge, at the top right | body, monospace | pulls at rest, glyphs once drawn out, and the launcher holding what's chosen |
 
 **Floating surfaces** are the deepest colour at `floating.opacity`, cloudy
 enough to hint at what's beneath without showing it, over a blur of the
@@ -302,33 +301,51 @@ text `space.l` inside its row. A notice keeps `space.l` from its letters to
 its frame, and a meter is `space.xxxl` tall with `space.l` at its sides.
 
 **The top right corner sits a step inside the windows' edge,** `space.s`
-past their gap, so a notice or the drawer never lines up with a window's
-border by chance and reads as its own thing.
+past their gap, so a notice or the margin's glyphs never line up with a
+window's border by chance and read as their own thing.
 
-**The drawer** is how the shell shows what's on that Joel would otherwise
-forget, without covering a window. At rest it's only pulls: a short line
-hanging from the screen's top edge, `space.xs` tall, for each thing that's
-true, as wide as its glyph and above where the glyph will be. Each is framed
-by a hairline in the rule colour and lifted off the picture by the
-wallpaper's text shadows. Super+O, or the pointer at the edge, draws the
-drawer out: it grows down from the edge with its glyphs riding its front
-edge, and the pulls hang on below it, the same height, outside it, as
-handles do. It has no top border, since it runs under the screen's edge, and
-it shades darker toward the back, so it has depth. Its glyphs sit `space.m`
-apart and `space.m` from its frame, measured to the ink, each with a short
-badge (a time, a count, a charge) a step after it. A glyph wears its kind's
-colour only while its thing wants Joel, so what has colour is what matters.
+**The margin** is how the shell shows what's on that Joel would otherwise
+forget, without covering a window or taking a pixel from one. It isn't a
+surface at all: each thing that's true is its glyph alone, set straight on
+the picture in the gap the windows already leave above them, lifted off it
+by the wallpaper's text shadows, as the lock screen's time is. Nothing true,
+nothing drawn, so an empty corner says all is well.
 
-The pointer resting on a glyph says what it is, in words, below the drawer;
-nothing is highlighted until it's chosen. Choosing one, by a click or by the
-keys, fills it in the selection colour and opens its panel, which is the
-launcher holding that thing: its glyph in its colour, its name in a chip and
-how it stands, then what can be done to it in the launcher's own rows, and
-the launcher's footer. Super+O opens on what wants Joel, or else the thing nearest the corner.
-The left and right arrows move between things, up and down between actions,
-Return does one, and Escape or Super+O puts it away. Notices below make way
-for it, so the two never cover each other, and it stays while the overview
-is open, which draws nothing of the shell's own.
+Every glyph's ink stands the same height, `shape.gap` less `space.xs`,
+centred on the gap's middle line, however tall its font draws it, so a row
+of them is level and nothing moves when one comes. They sit `space.s` apart,
+measured to the ink, the last at the corner, read from there inward by how
+much each asks: what's on air first (a camera, a share, a recording, a call),
+then what wants Joel, then what was left on (Keep Awake, do not disturb, the
+mic muted, caps lock), and within each in the overview's order. Colour says
+only how much: strong for what's on air or wants him, muted for what was
+left on, and the alert for what needs him now, the battery about to die or
+a call ringing. Nothing else in the margin has a hue, no glyph carries a
+badge, and no line underlines one, since a glyph that pictures its thing
+needs nothing told twice. Something on air that goes stays fifteen
+seconds in its place, muted (`margin.linger`), so a camera that was on
+for a moment is still seen to have been on; nothing else lingers. A card
+or a mark, never both: while a program's notice is on screen saying the
+same thing, as pi's want or a call ringing does, its glyph waits for the
+card to go. What comes true by itself, a camera a program opened or the
+battery running low, arrives as one notice of its own, signed with its
+glyph and name and carrying what can be done about it, and again, urgent,
+when it comes to need Joel now; what his own keys turned on, and what was
+already true as the shell started, says nothing, since he knows. The
+desktop or its apps kept waiting on the same thing, memory, the disk, the
+processor or niri, for a minute shows quietly, as something left on, from
+lag-watch's windows; a moment's wait never does, since Joel feels it
+himself, and the launcher's "lag" says what waited.
+
+What each is, in words, is the launcher's What's on, opened by Super+O or by
+clicking a glyph, on that glyph's row: a row each, its glyph as the margin
+draws it, its name, how it stands at the right, and what more there is to
+know in the footer, grouped by how much it asks with what wants Joel first.
+Return does its first action and the right arrow steps into the rest. It
+stays while the overview is open, which draws nothing of the shell's own,
+and it shows in a screenshot or a share: niri can only black out a layer
+it's asked to keep from a capture, which would put a black patch in the
+corner of every one.
 
 What takes the keys appears on the next frame, a notice slides in from its
 corner, and a prompt's scrim fades in.
@@ -415,23 +432,23 @@ it. Owners go by layer:
 | Fact                                                                   | At a glance                                        | In detail, in the launcher   |
 | ---------------------------------------------------------------------- | -------------------------------------------------- | ---------------------------- |
 | Time, date                                                             | the launcher's foot; the lock screen and greeter, when they're up | "time", a place's time |
-| Battery, power                                                         | the margin mark, only when low or charging matters; the launcher's foot | "battery", "charger" |
-| Network, Bluetooth, audio devices                                      | the margin mark, only when something's wrong; the network in the launcher's foot | Wi-Fi, Bluetooth and Sound |
+| Battery, power                                                         | the margin mark, only when low; the launcher's foot | "battery", "charger"; What's on |
+| Network, Bluetooth, audio devices                                      | the network in the launcher's foot, in the warning colour when something's wrong | Wi-Fi, Bluetooth and Sound |
 | Volume, brightness                                                     | an overlay while it changes; the volume in the launcher's foot | Sound                |
-| Do not disturb, caffeinate, recording, sharing, mic muted, caps lock   | the margin mark, while true                        | the mark's panel; the session's rows |
+| Do not disturb, caffeinate, recording, sharing, mic muted, caps lock   | the margin mark, while true                        | What's on; the session's rows |
 | Keyboard layer                                                         | the margin mark, while locked; nothing while a key holds it | Keyboard            |
-| Music playing                                                          | the margin mark while it plays; a notice for a moment when the track changes or a media key is pressed | the mark's panel |
-| A pi session wanting Joel, and for what                               | the margin mark while one waits, a notice once     | "pi"; the mark's panel       |
-| A camera open, and by what                                            | the margin mark, while a program reads one         | "camera"; the mark's panel   |
-| In a call                                                              | the margin mark, while in one                      | the mark's panel             |
-| Notifications waiting                                                  | the margin mark, as a count                        | Notices (Super+N)            |
-| Disk space                                                             | the margin mark, only while a disk is short of room, a writer is frozen or nothing watches it; a notice when the guard acts | the mark's panel |
-| AI spend and its caps                                                  | the margin mark, only while a finding wants a look or nothing watches it; a notice once when one starts to; a line each morning; the launcher's foot | AI spend (Super+U) |
+| Music playing                                                          | the margin mark while it plays; a notice for a moment when the track changes or a media key is pressed | What's on |
+| A pi session wanting Joel, and for what                               | the margin mark while one waits, a notice once     | "pi"; What's on             |
+| A camera open, and by what                                            | the margin mark, while a program reads one         | "camera"; What's on         |
+| In a call                                                              | the margin mark, while in one                      | What's on                    |
+| Notifications waiting                                                  | the margin mark                                    | Notices (Super+N); What's on |
+| Disk space                                                             | the margin mark, only while a disk is short of room, a writer is frozen or nothing watches it; a notice when the guard acts | What's on |
+| AI spend and its caps                                                  | the margin mark, only while a finding wants a look or nothing watches it; a notice once when one starts to; a line each morning; the launcher's foot | AI spend (Super+U); What's on |
 | Directory, repository, branch, git state                               | the program running the window                     | nobody                       |
 | Window titles                                                          | a terminal's unseen tabs; the launcher's windows   | the launcher's windows       |
 
-The margin mark is the one always-visible desktop element: the drawer's
-pulls at the top right (Shape and Kinds), nothing at all when nothing is
+The margin mark is the one always-visible desktop element: a glyph at the
+top right for each thing that's true (Shape and Kinds), nothing at all when nothing is
 true, so the screen is calm by default. The launcher's foot is the other
 glance: one line, its keys on the right, and on the left what the
 selection has to say or, when it says nothing, how things stand. It's the
@@ -576,7 +593,16 @@ works the same way everywhere.
   shell's memory. One clicked, or withdrawn by its program because it was
   read there, was seen; one that left by itself was missed, and the notices'
   row at home says how many until they're opened. Return on one goes to the
-  program that sent it, its window when one is open.
+  program that sent it, its window when one is open. A notice on screen
+  waits while Joel's away, thirty seconds with nothing typed or moved
+  (`notices.away`), whatever keeps the screen awake, so one that comes
+  while he's gone is there when he's back, counting again in full. Each
+  program can be kept to how far its notices reach (`notices.senders`):
+  the history alone, counted as waiting but never shown, a card, or, when
+  it's critical, a card that stays; a notice asking for less reaches less
+  far, and none reaches further than its program is kept to. The shell
+  makes one sound, softly: when a pi session first wants Joel and its
+  notice is said (`sounds.wants`), never while notices are held.
 - **Joining waits to say how it went.** Return on a Wi-Fi network joins it
   and the launcher stays, its footer saying how far the join has got, until
   the network takes it or says why not. A locked network met for the first
@@ -675,8 +701,8 @@ collection of every layer's shortcuts, Neovim's and pi's among them, each
 with its chord and where it works. Inside a layer its own "what's here"
 shows only its keys: Ctrl+Shift+/ in the terminal, Space ? in Neovim.
 
-Nothing the shell shows is reached only by pointing. Super+O brings out the
-margin's drawer with what's on, and Super+N takes the notices on screen by
+Nothing the shell shows is reached only by pointing. Super+O opens What's on,
+the margin's glyphs in words, and Super+N takes the notices on screen by
 the launcher's keys, then gathers every notice into the launcher. Either
 way Return goes to who sent one, and the right arrow steps into its verbs:
 its own actions (Reply, Mark as read), copying what it said, and letting it
@@ -892,6 +918,7 @@ by them isn't done.
 | The greeter                               | Quickshell, greetd       | both           | the time, the date, who's signing in, the session it starts | a refused password, what PAM says | Tab to the next account | the lock screen's | the boot's timings; the time stays |
 | The compositor                            | niri                     | none           |        |        |           |         |          |
 | The wallpaper                             | Quickshell, niri         | none           |        |        |           |         |          |
+| Dictation                                 | dictation, Quickshell    | monospace      | nothing | while it listens, at the bottom centre in a meter's frame: a person speaking in the voice colour, listening, a wave of what the microphone hears, and the time, counting down the last five of Whisper's thirty seconds with the glyph in the warning colour; typing, once it lasts long enough to see; then for a moment heard nothing, still writing, or, with the muted microphone, the microphone is muted | nothing | Super+D starts and stops it | nothing; it's never in the margin, and never a notice while the shell watches |
 | The launcher's foot and the margin mark   | Quickshell               | both           | the foot, when the selection says nothing: the time, the date, the battery with its time and watts, the network, the volume, the day's AI spend, pi, each after its glyph | the battery running low, offline, a network wanting a sign-in, muted | step 2's doors | step 2 | volume, network, battery, date; the time stays |
 | The launcher and palette                  | Quickshell               | monospace      | what's typed; the selected row: its glyph, its name, its kind or its chord; Return's verb at the foot's right | the foot's note: "sl is enough", the chord that opens a thing next time, where an answer came from | a thing's verbs, a collection's members and an answer's parts, a step in by the right arrow | the accent frame, a command line over a list split by a hairline, a quarter down | past eight rows the list scrolls, keeping the height it opened at; a note takes the glance's place in the foot |
 | Notifications                             | Quickshell               | both           |        |        |           |         |          |
@@ -901,9 +928,9 @@ by them isn't done.
 | The browser                               | chrome                   | proportional   |        |        |           |         |          |
 | Images and drawings                       | swayimg, gimp, inkscape, Quickshell | proportional | nothing | nothing | nothing | the launcher's rows: edit the newest screenshot in GIMP, at home below the window in front for two minutes after it's taken; look through the screenshots in swayimg's gallery; in swayimg, e edits, y copies, Delete trashes, q closes | swayimg's name and place go two seconds after each picture opens |
 | Documents                                 | zathura                  | proportional   | nothing | nothing | nothing | zathura's own keys | its bar and command line show only while they're asked for |
-| Music                                     | spotify, Quickshell      | both           | nothing | a note in the margin while any player plays; for a moment, the track as a notice | the mark's panel: the track, artist, album and player; pause, next, previous, the player's window, and pausing a second player | Play or pause the music, Play the next track, Play the previous track, on the media keys | the mark carries no words; a title wraps to two lines, then gives way |
-| Pairing                                   | tuple, Quickshell, niri  | both           | nothing | a phone in the margin while in a call, and wanting Joel while one rings; for a moment, who joined or left, and that he's the only one left; a ring, and a missed call kept | the mark's panel: how long, and who with or who's sharing; leave, share the screen, mute him in Tuple, copy the room's link; while ringing, show the call | the launcher's rows: show a ringing call, first at home; open the room and copy its link; join a copied call's link, first at home once copied; leave, share, mute; a tuple: link from the browser joins its room | the mark carries no words; its panel says how long and who with |
-| AI spend                                  | spend-watch, Quickshell  | both           | the launcher's foot: today's spend against usual ("$214 today · usual") | the margin's pull while a finding wants a look: a cap near, over or refused, an override ending, a cap lowered or lapsed, a credential nobody knew spending, a source signed out, or the watch stopped or on hold; a notice once for each, at most three a week beside a cap's, and one line each morning | the mark's panel: how it stands, the day's likely end, the week, and how the figures were got; go to the session, ask for more, sign in, it's expected, read the week's report, show where it went | the launcher's rows: "spend", "cap" and a report by its words ("spend last week by quest"), Return copying it as markdown and the right arrow stepping into its rows; Super+U opens the collection: what wants a look first, then today, each cap longer than a day and earlier, a day's cap behind today and the next seven days behind the week's cap, each a figure of a few words with the rest in the footer and its parts a step in (a period's cuts and their rows, a cap's changes and its sign-in), then what was found | the row gives way before the network; the mark carries only its badge; while sharing, every amount gives way and the words stay; a source that can't be read says nothing for its first fifteen minutes, as a machine waking finds its network, and no more than a note unless only a sign-in fixes it; a history a newer watch keeps, as when an older system boots again, is left as it is, the watch on hold and saying so until that one runs; a cap's allowance that changes for one reading and comes back says nothing, a change being told once it has stood ten minutes unless the cap warns or refuses at it, and a fall stops asking once the cap is back |
+| Music                                     | spotify, Quickshell      | both           | nothing | a note in the margin while any player plays; for a moment, the track as a notice | What's on: the track, artist, album and player; pause, next, previous, the player's window, and pausing a second player | Play or pause the music, Play the next track, Play the previous track, on the media keys | the mark carries no words; a title wraps to two lines, then gives way |
+| Pairing                                   | tuple, Quickshell, niri  | both           | nothing | a phone in the margin while in a call, and wanting Joel while one rings; for a moment, who joined or left, and that he's the only one left; a ring, and a missed call kept | What's on: how long, and who with or who's sharing; leave, share the screen, mute him in Tuple, copy the room's link; while ringing, show the call | the launcher's rows: show a ringing call, first at home; open the room and copy its link; join a copied call's link, first at home once copied; leave, share, mute; a tuple: link from the browser joins its room | the mark carries no words; What's on says how long and who with |
+| AI spend                                  | spend-watch, Quickshell  | both           | the launcher's foot: today's spend against usual ("$214 today · usual") | the margin's glyph while a finding wants a look: a cap near, over or refused, an override ending, a cap lowered or lapsed, a credential nobody knew spending, a source signed out, or the watch stopped or on hold; a notice once for each, at most three a week beside a cap's, and one line each morning | What's on: how it stands, the day's likely end, the week, and how the figures were got; go to the session, ask for more, sign in, it's expected, read the week's report, show where it went | the launcher's rows: "spend", "cap" and a report by its words ("spend last week by quest"), Return copying it as markdown and the right arrow stepping into its rows; Super+U opens the collection: what wants a look first, then today, each cap longer than a day and earlier, a day's cap behind today and the next seven days behind the week's cap, each a figure of a few words with the rest in the footer and its parts a step in (a period's cuts and their rows, a cap's changes and its sign-in), then what was found | the row gives way before the network; the mark carries no words; while sharing, every amount gives way and the words stay; a source that can't be read says nothing for its first fifteen minutes, as a machine waking finds its network, and no more than a note unless only a sign-in fixes it; a history a newer watch keeps, as when an older system boots again, is left as it is, the watch on hold and saying so until that one runs; a cap's allowance that changes for one reading and comes back says nothing, a change being told once it has stood ten minutes unless the cap warns or refuses at it, and a fall stops asking once the cap is back |
 | Chat, passwords, calls                    | their own settings       | proportional   |        |        |           |         |          |
 | The terminal                              | kitty                    | monospace      |        |        |           |         |          |
 | The prompt                                | prompt, kitty            | monospace      | where Joel is, told from the nearest root (the root in text, the folders between muted, the folder he's in strong); the glyph where his keys go, in the accent, red after a failure, # in gold as root | another machine, @ and its name; a rebase, merge or pick under way, a rebase drawn as its steps, red while a conflict waits; a development shell and jobs as glyphs; a long command's time; the branch, muted, with a mark for unsaved work and one for unpushed; over ssh in kitty, the window a little towards the machine hue | git status, and a wider window | nothing | laid out per prompt, never per keystroke: a long run's time, the shell's glyphs, the branch's middle, the path's middle, the branch to its glyph, the right side, then what's under way to its glyph, the more mark wherever something's hidden; the left keeps to a third of the window; zsh clears the right side once typing reaches it |
@@ -934,6 +961,25 @@ as an exception with the reason.
 ## Decisions
 
 What each studio round settled, newest first, with the reason.
+
+- **The margin is glyphs alone, and the drawer goes** (2026-10-24, at
+  Joel's word: "having a little square in my top right doesn't really let
+  me know what is happening"; "having different width lines of a few
+  colours does not tell me anything"; "every pixel of my screen is
+  precious"). The research behind it (calm and peripheral displays, the
+  aircraft's dark cockpit) found a colour or a length can't say which
+  thing is which out at the edge of the eye, and an unlearned sign is
+  slower than a picture of its thing. Three rounds were mocked at full
+  size in the theme. Pulls, badges and coloured wants read "too busy", and
+  the drawer "really feels out of place with the rest of the launcher and
+  lock screen", since no other surface was shaped like it. Glyphs at
+  their font's own heights set off "my autism infused OCD", so each now
+  stands the same height, inside the gap the windows already leave, since
+  a taller gap would move every window. The third round, "it seems nice i
+  think", is what's built: glyphs alone, level, coloured only by how much
+  each asks, with their words in the launcher's What's on, a surface Joel
+  already knows. A sixteen-pixel gap read better in the mock but cost
+  every window four pixels, so twelve stays.
 
 - **A row says its kind, and a thing is one row** (2026-10-23, at Joel's
   word: "seeing multiples of the same thing gives me executive

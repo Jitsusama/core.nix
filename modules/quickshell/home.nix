@@ -57,6 +57,9 @@ let
     "Choice.qml"
     "Chord.qml"
     "Margin.qml"
+    "Marks.js"
+    "Arrivals.qml"
+    "Levels.js"
     "Notifications.qml"
     "Music.qml"
     "Music.js"
@@ -361,11 +364,9 @@ let
         clipboard = nerd "f0a38";
         emoji = nerd "f01f5";
         notices = nerd "f009c";
+        on = nerd "f1513";
       }
       .${lib.last run} or (nerd "f097b")
-    # The margin's drawer, which hangs from the top of the screen.
-    else if program == "qs" && lib.elem "margin" run then
-      nerd "f1513"
     else if program == "qs" && lib.elem "keyboard" run then
       nerd "f030c"
     else
@@ -439,6 +440,7 @@ let
     volume = ./pieces/Volume.qml;
     awake = ./pieces/Awake.qml;
     disk = ./pieces/Disk.qml;
+    lag = ./pieces/Lag.qml;
     spend = ./pieces/Spend.qml;
     notices = ./pieces/Waiting.qml;
     quiet = ./pieces/DoNotDisturb.qml;
@@ -490,6 +492,7 @@ let
     keyboard = ./launcher/Keyboard.qml;
     clipboard = ./launcher/Copies.qml;
     notices = ./launcher/PastNotices.qml;
+    on = ./launcher/WhatsOn.qml;
     wifi = ./launcher/Wireless.qml;
     sound = ./launcher/Sound.qml;
     bluetooth = ./launcher/Accessories.qml;
@@ -704,6 +707,81 @@ in
       changes one setting in one line, or adds a piece whose source is a
       QML file starting from pieces/Piece.qml; lib.mkForce replaces them
       all.
+    '';
+  };
+
+  options.jitsusama.quickshell.margin.linger = lib.mkOption {
+    type = lib.types.ints.unsigned;
+    default = 15;
+    description = ''
+      How many seconds something on air (a camera, a share, a recording, a
+      call) stays in the margin, muted, once it has gone, so a camera let go
+      is still seen to have been on. Nothing else lingers.
+    '';
+  };
+
+  options.jitsusama.quickshell.notices.away = lib.mkOption {
+    type = lib.types.ints.positive;
+    default = 30;
+    description = ''
+      How many seconds with nothing typed or moved count as Joel being away,
+      while a notice on screen waits rather than counting down, so one that
+      comes while he's gone is there when he's back.
+    '';
+  };
+
+  options.jitsusama.quickshell.notices.senders = lib.mkOption {
+    type = lib.types.attrsOf (
+      lib.types.submodule {
+        options.level = lib.mkOption {
+          type = lib.types.enum [
+            "history"
+            "count"
+            "card"
+            "urgent"
+          ];
+          description = ''
+            The furthest a sender's notices reach: kept in the history alone,
+            counted as waiting in the margin but never shown, shown as a card,
+            or, when the notice is critical, shown as one that stays until
+            it's answered. A notice reaches less far when it asks for less,
+            never further than this.
+          '';
+        };
+      }
+    );
+    default = { };
+    example = {
+      Spotify.level = "history";
+      Slack.level = "card";
+    };
+    description = ''
+      How far each program's notices reach, by the name a notice gives as
+      its sender, in any case. A program not named reaches as far as it
+      asks.
+    '';
+  };
+
+  options.jitsusama.quickshell.sounds.wants = lib.mkOption {
+    type = lib.types.nullOr lib.types.path;
+    default = "${pkgs.sound-theme-freedesktop}/share/sounds/freedesktop/stereo/message.oga";
+    defaultText = lib.literalExpression ''"${pkgs.sound-theme-freedesktop}/share/sounds/freedesktop/stereo/message.oga"'';
+    description = ''
+      The one sound the shell makes, softly, when a pi session first wants
+      Joel and its notice is said, so he hears it from across the room;
+      never while notices are held, nor for a want he's already looking
+      at. Null makes none.
+    '';
+  };
+
+  options.jitsusama.quickshell.surfaces = lib.mkOption {
+    type = lib.types.attrsOf lib.types.path;
+    default = { };
+    description = ''
+      Surfaces another module adds to the shell, by a name starting with a
+      capital, each a QML file whose root is a window or a Scope holding
+      them, as dictation's own look at the bottom centre is. The shell
+      loads each beside its own, as surfaces/<name>.qml.
     '';
   };
 
@@ -1052,6 +1130,12 @@ in
         source = "runs";
         weight = 0.9;
       };
+      # The margin's glyphs in words, opened by Super+O or a glyph's click,
+      # not shown in a search.
+      on = {
+        order = 113;
+        source = "on";
+      };
       # Opened by its own chord, not shown in a search.
       shortcuts = {
         order = 120;
@@ -1113,7 +1197,7 @@ in
         mark = "awake";
       };
       # What AI use cost today against usual, where spend-watch runs
-      # (modules/spend-watch), and a pull in the margin while something
+      # (modules/spend-watch), and a glyph in the margin while something
       # wants a look. It gives way before the network.
       spend = {
         order = 52;
@@ -1135,7 +1219,7 @@ in
         # In the margin while a session wants Joel.
         mark = "agent";
       };
-      # What's on only now and then, each also a pull in the margin while
+      # What's on only now and then, each also a glyph in the margin while
       # it's true (Margin.qml), in the order the overview gives them.
       notices = {
         order = 54;
@@ -1159,6 +1243,15 @@ in
         label = "disks";
         tier = "when";
         mark = "disk";
+      };
+      # Only once the same thing has kept the desktop or its apps waiting a
+      # minute, from lag-watch; a moment's wait Joel feels for himself.
+      lag = {
+        order = 59;
+        source = "lag";
+        label = "lag";
+        tier = "when";
+        mark = "lag";
       };
       microphone = {
         order = 70;
@@ -1256,6 +1349,9 @@ in
           piece: lib.nameValuePair "quickshell/pieces/${fileName piece}" { source = linked piece; }
         ) overview
       )
+      // lib.mapAttrs' (
+        name: source: lib.nameValuePair "quickshell/surfaces/${name}.qml" { inherit source; }
+      ) config.jitsusama.quickshell.surfaces
       // lib.listToAttrs (
         map (
           provider:
@@ -1315,6 +1411,26 @@ in
           Singleton {
               readonly property var quiet: ${object config.jitsusama.quickshell.quiet}
               readonly property bool reports: ${lib.boolToString config.jitsusama.quickshell.reports}
+              readonly property var margin: ${object config.jitsusama.quickshell.margin}
+              // The sound a want makes, and what plays it; "" for none.
+              readonly property var sounds: ${
+                object {
+                  wants = toString config.jitsusama.quickshell.sounds.wants;
+                  player = lib.getExe' pkgs.pipewire "pw-play";
+                }
+              }
+              readonly property var notices: ${
+                object {
+                  inherit (config.jitsusama.quickshell.notices) away;
+                  senders = lib.mapAttrs' (
+                    name: sender: lib.nameValuePair (lib.toLower name) sender.level
+                  ) config.jitsusama.quickshell.notices.senders;
+                }
+              }
+              // Other modules' surfaces, by file, from jitsusama.quickshell.surfaces.
+              readonly property var surfaces: ${
+                builtins.toJSON (map (name: "${name}.qml") (lib.attrNames config.jitsusama.quickshell.surfaces))
+              }
           }
         '';
         "quickshell/Overview.qml".text = ''
@@ -1370,6 +1486,9 @@ in
               readonly property int border: ${toString shape.border}
               readonly property int radius: ${toString shape.radius}
               readonly property int inset: ${toString shape.inset}
+              // The gap niri leaves between windows and round the screen's
+              // edge, which the margin's glyphs stand in.
+              readonly property int gap: ${toString shape.gap}
               // A part's corners: the whole's radius less its border and the
               // inset, so the curves run parallel.
               readonly property int inner: ${toString inner}

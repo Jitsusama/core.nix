@@ -92,6 +92,63 @@ let
     mv "$out.part" "$out.exit"
   '';
 
+  # Stands in for dictation's service, which would load Whisper, on the
+  # socket systemd hands it, speaking its protocol (src/service.rs): the
+  # first press listens, the second types for five seconds, a press
+  # meanwhile says it's still writing, and then it says it heard nothing
+  # in the silence the VM's microphone gives.
+  standInDictation = pkgs.writers.writePython3 "stand-in-dictation" { } ''
+    import socket
+    import threading
+    import time
+
+    listener = socket.socket(fileno=3)
+    watchers = []
+    lock = threading.Lock()
+    state = ["idle"]
+
+
+    def tell(word):
+        for watcher in list(watchers):
+            try:
+                watcher.sendall(f"{word}\n".encode())
+            except OSError:
+                watchers.remove(watcher)
+
+
+    def typed():
+        time.sleep(5)
+        with lock:
+            tell("heard-nothing silent")
+            state[0] = "idle"
+            tell("idle")
+
+
+    def serve(client):
+        line = client.makefile().readline().strip()
+        with lock:
+            if line == "watch":
+                client.sendall(f"{state[0]}\n".encode())
+                watchers.append(client)
+                return
+            if state[0] == "idle":
+                state[0] = "listening"
+                tell("listening")
+            elif state[0] == "listening":
+                state[0] = "transcribing"
+                tell("transcribing")
+                threading.Thread(target=typed, daemon=True).start()
+            else:
+                tell("still-writing")
+            client.sendall(f"{state[0]}\n".encode())
+        client.close()
+
+
+    while True:
+        client, _ = listener.accept()
+        threading.Thread(target=serve, args=(client,), daemon=True).start()
+  '';
+
   # Asks the portal to open a file, always asking what with, as a program
   # does, and stays on the bus until the portal answers, since it drops a
   # request whose caller has gone. Its answer, 0 for opened and 1 for
@@ -585,6 +642,15 @@ pkgs.testers.runNixOSTest {
         # A camera whose holders a module would name, for the test to
         # write in its place, since the VM has none.
         jitsusama.quickshell.overview.pieces.camera.holders = [ "camera" ];
+        # Something on air lingers in the margin once it goes; a moment is
+        # enough to see it, and keeps the test's waits for it to go short.
+        jitsusama.quickshell.margin.linger = 2;
+        # The test types nothing for long stretches while it reads the
+        # journal, so it never counts as away, and its notices go by
+        # themselves when they're meant to.
+        jitsusama.quickshell.notices.away = 3600;
+        # Dictation's own service would load Whisper in the VM.
+        systemd.user.services.dictation.Service.ExecStart = lib.mkForce "${standInDictation}";
         # No key repeats. A key the test presses is let go when the host gets
         # round to it, which on a busy host is past the delay a held key
         # repeats after, so a letter typed once arrived twice.

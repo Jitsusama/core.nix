@@ -60,11 +60,21 @@ Piece {
 
     present: names.length > 0
     active: programs.length > 0
+    kind: "onAir"
     value: programs.length === 0 ? "off" : programs.join(", ")
     title: "Camera"
-    hint: `${programs.join(" and ")} ${programs.length === 1 ? "has" : "have"} the camera open`
-    context: reading.filter(camera => camera.programs.length > 0)
-        .map(camera => `${camera.name}: ${camera.programs.join(", ")}`).join("; ")
+    // A program opens a camera by itself, so it's said when it does.
+    arrives: true
+    app: "Camera"
+    // The cameras being read. With one, the hint says which and who, and
+    // nothing more needs saying; with more, the context says who has each.
+    readonly property var open: reading.filter(camera => camera.programs.length > 0)
+    hint: open.length === 1
+        ? `${open[0].programs.join(" and ")} ${open[0].programs.length === 1 ? "has" : "have"}`
+            + ` ${open[0].name} open`
+        : `${programs.join(" and ")} have cameras open`
+    context: open.length > 1
+        ? open.map(camera => `${camera.name}: ${camera.programs.join(", ")}`).join("; ") : ""
 
     FolderListModel {
         id: folder

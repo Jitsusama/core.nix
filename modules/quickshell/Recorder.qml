@@ -33,8 +33,12 @@ Singleton {
     // own. A call's shares are left out.
     readonly property var casts: Object.values(Niri.casts)
         .filter(cast => cast.is_active && (cast.kind === "WlrScreencopy"
-            || cast.kind === "PipeWire" && windowRecording.said !== null
-                && cast.session_id === windowRecording.said.session))
+            || cast.kind === "PipeWire" && windowSession !== null
+                && cast.session_id === windowSession))
+    // The screencast session record-window records a window through, which
+    // looks to niri like a call's share, so sharing and do not disturb leave
+    // it out (pieces/Sharing.qml, Quiet.qml).
+    readonly property var windowSession: windowRecording.said?.session ?? null
     readonly property bool recording: casts.length > 0
     // Whether a recording can be stopped from here, which takes its process.
     readonly property bool stoppable: casts.some(cast => recorderOf(cast) !== null)
