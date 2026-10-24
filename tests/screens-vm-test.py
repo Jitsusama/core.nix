@@ -7,6 +7,7 @@ runs whichever subtests are chosen. Each subtest takes the screen as the one bef
 so they're meant to run in order.
 """
 
+import datetime as dt
 import json
 import shlex
 import time
@@ -69,7 +70,8 @@ def displays_say(*, named: bool) -> None:
     """Wait until desk-facts' displays.json names the screen, or no longer names it."""
     facts = "/run/user/1000/desk/displays.json"
     machine.wait_until_succeeds(
-        f"test -s {facts} && {'' if named else '! '}grep -qF '\"Virtual-1\"' {facts}", timeout=30
+        f"test -s {facts} && {'' if named else '! '}grep -qF '\"Virtual-1\"' {facts}",
+        timeout=dt.timedelta(seconds=30),
     )
     machine.log(f"displays.json: {machine.succeed(f'cat {facts}')}")
 
@@ -109,10 +111,11 @@ with subtest("the screen comes back, and the launcher and the notice with it"):
 with subtest("the margin's mark and dictation's bar come back with the screen"):
     wait_for_surfaces("margin", "dictation")
 
-# desk-facts naming the screen again isn't held here: the VM's display driver reads the
-# screen's EDID only when QEMU says its screens changed, so a forced detect brings the
-# connector back with an empty EDID, and desk-facts rightly says nothing of a screen with
-# none. A real DisplayPort replug reads the EDID afresh.
+with subtest("desk-facts names the screen again once it's back"):
+    # bochs-drm reads the screen's EDID from QEMU at each probe, as a real display's driver
+    # does at a replug, so the screen comes back whole.
+    machine.log(f"EDID: {machine.succeed(f'wc -c < {connector}/edid').strip()} bytes")
+    displays_say(named=True)
 
 
 def niri_answers(after: str) -> None:
