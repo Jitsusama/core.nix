@@ -130,12 +130,17 @@ def plug_stick_back() -> None:
     machine.wait_until_succeeds("test -e /dev/disk/by-partlabel/vault", timeout=30)
 
 
+# Before its keyboard screen, the stick copies its whole system into memory through QEMU's
+# USB stick, which on a host busy with other machines' disks took past five minutes. The test
+# proves what the screens say and in what order, not how fast.
+COPIED = 900
+
 machine.start(allow_reboot=True)
 
 with subtest(
     "the stick boots into the guide, which runs its system from memory and checks the keyboard"
 ):
-    on_screen("Check the keyboard types what you mean", timeout=300)
+    on_screen("Check the keyboard types what you mean", timeout=COPIED)
     # Done before the keyboard, and said so above it.
     on_screen("The stick's system runs from memory")
     table = machine.succeed("dmsetup table usr")
@@ -445,7 +450,8 @@ with subtest("the install's own stick boots, enforcing, and reinstalls with the 
     t.assertIn("install machine on it again", " ".join(screen().split()))
     machine.send_key("down")
     enter("")
-    on_screen("Check the keyboard types what you mean")
+    # The stick copies its system into memory first, as on the first boot.
+    on_screen("Check the keyboard types what you mean", timeout=COPIED)
     enter("keyboard")
     on_screen("the stick's passphrase")
     enter(passphrase)
