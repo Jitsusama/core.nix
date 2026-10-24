@@ -41,13 +41,22 @@
 
   # A Mac's guards run under launchd, the machine's as a daemon and the
   # account's as an agent in the background, with a Mac's own paths and
-  # nothing to confine a linking run to, since a Mac has no scopes.
+  # nothing to confine a linking run to, since a Mac has no scopes. Both
+  # run the machine's own Nix, which on a Mac whose Nix nix-darwin doesn't
+  # manage isn't where the guard looks by default; Linux's account keeps
+  # that default, where NixOS always puts Nix.
   the-mac-guards-its-disk =
     let
       daemon = macWorkstation.config.launchd.daemons.disk-guard.serviceConfig;
       agent = (account macWorkstation).launchd.agents.disk-guard;
       system = macWorkstation.config.jitsusama.disk-guard.settings;
       user = (account macWorkstation).jitsusama.disk-guard.settings;
+      # A Mac whose Nix the installer manages rather than nix-darwin.
+      installers =
+        (account (bareDarwin [
+          self.darwinModules.workstation
+          { nix.enable = false; }
+        ])).jitsusama.disk-guard.settings;
       # Homebrew comes with the graphical role.
       brewing =
         (account (bareDarwin [
@@ -56,9 +65,12 @@
         ])).jitsusama.disk-guard.settings.sources;
     in
     holds "the-mac-guards-its-disk"
-      "A Mac's guards don't run under launchd, their config names Linux's paths or systemd-run, a cache is looked for where a Mac's programs don't keep it, or a Mac's own sources are missing."
+      "A Mac's guards don't run under launchd, their config names Linux's paths or systemd-run, a cache is looked for where a Mac's programs don't keep it, a Mac's own sources are missing, or the account's guard runs a Nix the machine's doesn't."
       (
         builtins.elemAt daemon.ProgramArguments 1 == "system"
+        && (user.nix.bin or null) == system.nix.bin
+        && (installers.nix.bin or null) == "/nix/var/nix/profiles/default/bin/nix"
+        && !((account workstation).jitsusama.disk-guard.settings.nix ? bin)
         && daemon.KeepAlive
         && agent.enable
         && builtins.elemAt agent.config.ProgramArguments 1 == "user"

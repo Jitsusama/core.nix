@@ -82,6 +82,17 @@ let
   podman = osConfig.virtualisation.podman or { };
   inherit (pkgs.stdenv.hostPlatform) isDarwin isLinux;
 
+  # A Mac's Nix, as its machine's guard finds it (darwin.nix): nix-darwin's
+  # when it manages Nix, and otherwise the installer's, as Determinate's is.
+  # The guard's default lives in /run/current-system/sw/bin, where nix-darwin
+  # puts Nix only when it manages it, so expiring the account's generations
+  # would run a nix-env that isn't there. NixOS keeps Nix there always.
+  macNix =
+    if osConfig.nix.enable or false then
+      lib.getExe' osConfig.nix.package "nix"
+    else
+      "/nix/var/nix/profiles/default/bin/nix";
+
   # Predicates and worktree pruning ask git, which the guard finds on PATH
   # as the account's own programs do, after what a machine puts first.
   path = lib.makeBinPath (config.jitsusama.disk-guard.path ++ [ config.programs.git.package ]);
@@ -131,6 +142,7 @@ in
       # The generations Home Manager and nix profile make, which no system
       # daemon may expire for the account.
       nix.profiles = lib.mkDefault "${stateHome}/nix/profiles";
+      nix.bin = lib.mkIf isDarwin (lib.mkDefault macNix);
       sources = {
         src = lib.mkDefault {
           kind = "cargo";
