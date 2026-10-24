@@ -263,7 +263,7 @@ impl Step for SealTpm {
         });
         if proven && policy_current(machine)? {
             return Ok(Standing::Done {
-                evidence: "the TPM opens the disk with its PIN, tried before the others".into(),
+                evidence: "the TPM opens the disk with the YubiKeys' PIN, tried before them".into(),
             });
         }
         // Sealing again now would lock this boot's firmware programs in,
@@ -273,51 +273,31 @@ impl Step for SealTpm {
                 evidence: "this boot went through the firmware's own menu, which the TPM's policy leaves out, so the next ordinary boot opens with the TPM's PIN again".into(),
             });
         }
+        // The disk tries whatever is typed at boot on the TPM and the
+        // YubiKey both, so a PIN of the TPM's own would cost one of them a
+        // wrong try at every boot the TPM can't open. The YubiKeys' PIN,
+        // proven by opening the disk with it, serves for both.
         Ok(Standing::Needed {
             asks: vec![
-                Ask::Secret {
-                    id: "tpm-pin",
-                    name: "a PIN for the TPM, which the disk asks for at every boot".into(),
-                },
-                Ask::Secret {
-                    id: "again",
-                    name: "the same PIN again".into(),
-                },
                 Ask::Act {
                     id: "key",
                     what: "Plug in a YubiKey, which opens the disk for the TPM's slot to be made. Touch it when it blinks.".into(),
                 },
                 Ask::Secret {
                     id: "key-pin",
-                    name: "the YubiKey's PIN".into(),
+                    name: "the YubiKey's PIN, which the TPM takes too, so the disk asks for that one PIN at every boot".into(),
                 },
             ],
         })
     }
 
     fn run(&self, machine: &mut dyn Machine, answers: &Answers) -> Result<(), Fault> {
-        let (Some(pin), Some(again), Some(key_pin)) = (
-            secret(answers, "tpm-pin"),
-            secret(answers, "again"),
-            secret(answers, "key-pin"),
-        ) else {
+        let Some(pin) = secret(answers, "key-pin") else {
             return Err(Fault::Unanswered {
                 step: self.id(),
-                ask: "tpm-pin",
+                ask: "key-pin",
             });
         };
-        if pin != again {
-            return Err(Fault::Blocked {
-                step: self.id(),
-                why: "the two PINs weren't the same".into(),
-            });
-        }
-        if pin.expose().chars().count() < 4 {
-            return Err(Fault::Blocked {
-                step: self.id(),
-                why: "a TPM PIN has to be at least 4 characters".into(),
-            });
-        }
         let facts = facts(machine)?;
         let volume = volume(&facts);
         let before = luks::observe_as_root(machine, &volume)?;
@@ -326,7 +306,7 @@ impl Step for SealTpm {
         if policy_index(machine)?.is_some() && !policy_current(machine)? {
             renew_policy(machine)?;
         }
-        enrol_tpm(machine, &volume, &before, pin, key_pin)?;
+        enrol_tpm(machine, &volume, &before, pin)?;
 
         let after = luks::observe_as_root(machine, &volume)?;
         let slots: Vec<u32> = after
@@ -365,14 +345,13 @@ impl Step for SealTpm {
 }
 
 /// Seals `volume` to the TPM with `pin` under the measured-boot policy,
-/// opened by the plugged-in YubiKey with `key_pin`, in place of any slot
-/// `before` shows sealed already.
+/// opened by the plugged-in YubiKey with the same PIN, in place of any
+/// slot `before` shows sealed already.
 fn enrol_tpm(
     machine: &mut dyn Machine,
     volume: &str,
     before: &luks::Header,
     pin: &Secret,
-    key_pin: &Secret,
 ) -> Result<(), Fault> {
     let pcrlock = format!("--tpm2-pcrlock={PCRLOCK}");
     let mut args = vec![
@@ -397,8 +376,8 @@ fn enrol_tpm(
             // askpw_credential), so the PIN goes under both: the name
             // read today, and the one cryptenroll means.
             credentials: vec![
-                ("cryptsetup.fido2-pin", key_pin),
-                ("cryptenroll.fido2-pin", key_pin),
+                ("cryptsetup.fido2-pin", pin),
+                ("cryptenroll.fido2-pin", pin),
                 ("cryptenroll.new-tpm2-pin", pin),
             ],
             as_root: true,

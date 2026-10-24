@@ -72,6 +72,7 @@ pub enum Moment<'a> {
     },
 }
 
+#[derive(Clone)]
 pub struct Drawn {
     pub lines: Vec<Line>,
     /// Where the caret goes, as a row and a column, when something's typed.

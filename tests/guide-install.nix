@@ -9,6 +9,8 @@
 # them, so it boots again with Secure Boot enforced and reinstalls the
 # machine with its keys put back, the firmware never visited. Once the disk
 # is sealed to the TPM, the guide makes the account's SSH keys there too.
+# Last, the firmware is cleared of its keys, and the machine's next boot
+# puts them back, once every program the firmware starts is signed.
 #
 # One machine plays the whole of it, as a laptop does, since lanzaboote
 # predicts the TPM's policy as it installs and the stick runs on the
@@ -25,7 +27,6 @@
 let
   inherit (pkgs) lib;
   pin = "123456";
-  tpmPin = "24681357";
   # Spaces inside, which ssh-tpm-keygen keeps.
   keyPin = "the keys PIN";
   password = "a password for alice";
@@ -225,7 +226,6 @@ pkgs.testers.runNixOSTest {
           inherit
             image
             pin
-            tpmPin
             keyPin
             password
             passphrase

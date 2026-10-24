@@ -39,10 +39,14 @@ qemu_img: str = values["qemuImg"]
 guide: str = values["guide"]
 tpm2_clear: str = values["tpm2Clear"]
 keygen: str = values["keygen"]
+
+# systemd saying the disk opened, perhaps coloured. The driver matches across lines joined with
+# nothing between them, so nothing here may span one.
+OPENED = r"Finished (?:\x1b\[[0-9;]*m)*Cryptography Setup for system"
+
 # What's typed at the guide: the keys' PIN, the TPM's, the account's password, the stick's
 # passphrase and the rescue bundle's.
 pin: str = values["pin"]
-tpm_pin: str = values["tpmPin"]
 key_pin: str = values["keyPin"]
 password: str = values["password"]
 passphrase: str = values["passphrase"]
@@ -148,6 +152,11 @@ with subtest(
     on_screen("The stick's system runs from memory")
     table = machine.succeed("dmsetup table usr")
     t.assertRegex(table, r" verity 1 7:\d+ 7:\d+ ", "the store reads from the copies")
+    # Held awake while the guide works: sleep, idling and the lid.
+    held = machine.succeed("systemd-inhibit --list --no-legend --no-pager")
+    t.assertRegex(
+        held, r"guide .*sleep:idle:handle-lid-switch +installing this machine +block", held
+    )
     enter("keyboard")
 
 with subtest("the vault opens with the stick's passphrase, named as it's kept on the phone"):
@@ -169,6 +178,9 @@ def fixture(name: str, command: str) -> None:
 with subtest("the disk is shown and the machine's name typed back"):
     on_screen("Confirm the disk to wipe")
     on_screen("wipes")
+    # The whole install walks again the steps the vault was opened by,
+    # and each is listed once.
+    t.assertEqual(screen().count("The stick's vault is open"), 1, screen())
     fixture("lsblk-blank.json", "lsblk --json --output-all --bytes")
     enter("machine")
 
@@ -200,6 +212,9 @@ def keep_the_recovery_key() -> str:
     words = " ".join(screen().split())
     enter("")
     on_screen("reading it off your phone")
+    # The firmware's check and the keys' step each say their own line,
+    # though a short screen may have let the earlier go.
+    t.assertLessEqual(screen().count("Secure Boot keys are in place"), 1, screen())
     enter(words)
     return words
 
@@ -285,11 +300,23 @@ with subtest("the stick comes out, and the machine boots its own disk with a key
             machine.send_console(secret + "\n")
             # A prompt left asking times the wait out, and the next try answers it.
             with contextlib.suppress(Exception):
-                machine.wait_for_console_text(
-                    "Finished .*Cryptography Setup for system", timeout=30
-                )
+                machine.wait_for_console_text(OPENED, timeout=30)
                 return
         message = "the disk never opened with the key's PIN"
+        raise RuntimeError(message)
+
+    def unlock_as_asked() -> str:
+        """Answer each of the disk's prompts with the one PIN, and say which key took it."""
+        asked = r"Please enter (?:LUKS2 token|TPM2|security token) PIN"
+        since = len(machine.get_console_log())
+        for _ in range(8):
+            machine.wait_for_console_text(f"{asked}|{OPENED}")
+            boot = machine.get_console_log()[since:]
+            if re.search(OPENED, boot):
+                # systemd asks a YubiKey only once the TPM has refused.
+                return "the key" if "Asking FIDO2 token" in boot else "the TPM"
+            machine.send_console(pin + "\n")
+        message = "the disk never opened with the one PIN"
         raise RuntimeError(message)
 
     machine.start(allow_reboot=True)
@@ -326,6 +353,17 @@ def policies() -> list[int]:
     return [index for index in indices if index in UNASSIGNED]
 
 
+def lockouts() -> int:
+    """Give how many failed authorisations the TPM is counting towards its lockout."""
+    getcap = Path(tpm2_clear).parent / "tpm2_getcap"
+    shown = machine.succeed(f"{getcap} -T device:/dev/tpmrm0 properties-variable")
+    counted = re.search(r"TPM2_PT_LOCKOUT_COUNTER: (0x[0-9A-Fa-f]+)", shown)
+    if counted is None:
+        message = "the TPM didn't say its lockout counter:\n" + shown
+        raise RuntimeError(message)
+    return int(counted.group(1), 16)
+
+
 def own_policy() -> int:
     """Give the NV index this disk's policy file names."""
     policy: int = json.loads(machine.succeed("cat /var/lib/systemd/pcrlock.json"))["nvIndex"]
@@ -333,15 +371,21 @@ def own_policy() -> int:
 
 
 with subtest("the guide seals the disk to the TPM with a PIN, a YubiKey opening it to do so"):
-    on_screen("a PIN for the TPM")
+    on_screen("Plug in a YubiKey, which opens the disk for the TPM")
     # The units still starting don't write across it.
     t.assertEqual(machine.succeed("systemctl show -P ShowStatus").strip(), "no")
-    enter(tpm_pin)
-    on_screen("the same PIN again")
-    enter(tpm_pin)
-    on_screen("Plug in a YubiKey")
+    # Held awake while the guide works: sleep, idling and the lid.
+    held = machine.succeed("systemd-inhibit --list --no-legend --no-pager")
+    t.assertRegex(
+        held, r"guide .*sleep:idle:handle-lid-switch +finishing this machine +block", held
+    )
+    # Whatever writes over the screen as it waits, as the kernel does
+    # when a device comes or goes, is undone within seconds.
+    machine.succeed("for _ in $(seq 40); do echo scribbled; done > /dev/tty1")
+    on_screen("Plug in a YubiKey, which opens the disk for the TPM", timeout=10)
+    t.assertNotIn("scribbled", screen())
     enter("")
-    on_screen("the YubiKey's PIN")
+    on_screen("which the TPM takes too")
     enter(pin)
     # Sealed, the guide goes on to the account's keys.
     on_screen("a PIN for alice's SSH keys", timeout=300)
@@ -433,10 +477,10 @@ with subtest("the guide keeps a spare SSH key on each YubiKey, refusing the one 
     # And they show again once it's gone, as the machine had them.
     t.assertEqual(machine.succeed("systemctl show -P ShowStatus").strip(), "yes")
 
-with subtest("after the restart the disk asks once, and opens with the TPM's PIN"):
+with subtest("after the restart the disk asks once, and the TPM opens it"):
     before = len(machine.get_console_log())
     machine.reboot()
-    unlock(tpm_pin)
+    unlock()
     machine.connect()
     machine.wait_for_unit("multi-user.target")
     # With nothing to do, the guide showed nothing and left.
@@ -444,29 +488,37 @@ with subtest("after the restart the disk asks once, and opens with the TPM's PIN
     t.assertNotIn("Finish machine", screen())
     t.assertEqual(machine.succeed("systemctl show -P ShowStatus").strip(), "yes")
     t.assertEqual(machine.succeed("systemctl show -P Result guide-installed").strip(), "success")
-    # One prompt, which the TPM's PIN answered: no YubiKey's PIN is
-    # that, so only the TPM's slot could have opened the disk.
-    prompts = re.findall(r"Please enter [^:(]*:", machine.get_console_log()[before:])
+    # One prompt, and the TPM opened the disk: systemd asks a YubiKey
+    # only once the TPM has refused.
+    boot = machine.get_console_log()[before:]
+    prompts = re.findall(r"Please enter [^:(]*:", boot)
     t.assertEqual(prompts, ["Please enter LUKS2 token PIN:"])
+    t.assertNotIn("Asking FIDO2 token", boot)
 
 with subtest("a cleared TPM leaves a YubiKey to open the disk, and the guide seals it again"):
     # The guide sees nothing to do, until the TPM is cleared, which
-    # takes the NV index the disk's pcrlock policy lives in. The Nano's
-    # spare goes too, for the guide to bring back off the Nano.
+    # takes the NV index the disk's pcrlock policy lives in, and the seed
+    # alice's keys were sealed under. The Nano's spare goes too, for the
+    # guide to bring back off the Nano.
     nano = spare("nano")
+    tpm_keys = ["/home/alice/.ssh/id_ecdsa", "/home/alice/.ssh/agent-signing"]
+    before_clear = {file: machine.succeed(f"cat {file}.pub") for file in tpm_keys}
     machine.succeed("rm /home/alice/.ssh/yubikey-nano /home/alice/.ssh/yubikey-nano.pub")
     machine.succeed(f"{tpm2_clear} -T device:/dev/tpmrm0 -c l")
     machine.reboot()
     unlock()
     machine.connect()
-    on_screen("a PIN for the TPM")
-    enter(tpm_pin)
-    on_screen("the same PIN again")
-    enter(tpm_pin)
-    on_screen("Plug in a YubiKey")
+    on_screen("Plug in a YubiKey, which opens the disk for the TPM")
     enter("")
-    on_screen("the YubiKey's PIN")
+    on_screen("which the TPM takes too")
     enter(pin)
+    # The TPM refuses the keys it sealed before, so the guide makes them
+    # again, saying why.
+    on_screen("a PIN for alice's new SSH keys", timeout=300)
+    t.assertIn("the tpm was cleared", " ".join(screen().split()).lower())
+    enter(key_pin)
+    on_screen("the same PIN again")
+    enter(key_pin)
     # The 5C is in from its spare, so the Nano goes in for its own.
     on_screen("Plug in the Nano", timeout=300)
     plug("nano")
@@ -476,6 +528,17 @@ with subtest("a cleared TPM leaves a YubiKey to open the disk, and the guide sea
     on_screen("machine is finished", timeout=300)
     # Downloaded from the Nano, the same key, under its own comment again.
     t.assertEqual(spare("nano"), nano)
+    # New keys in place of the old, which this TPM loads, and nothing the
+    # guide loaded them in is left.
+    for file in tpm_keys:
+        public = machine.succeed(f"cat {file}.pub")
+        t.assertNotEqual(public.split()[1], before_clear[file].split()[1], file)
+        t.assertEqual(machine.succeed(f"stat -c %U {file}.tpm").strip(), "alice", file)
+        t.assertEqual(machine.succeed(f"{keygen} --print-pubkey {file}.tpm"), public)
+    # Changing its PIN to itself loads the login key, as only this TPM can.
+    quoted = shlex.quote(key_pin)
+    machine.succeed(f"runuser -u alice -- {keygen} -p -f {tpm_keys[0]}.tpm -P {quoted} -N {quoted}")
+    machine.fail("test -e /run/guide/tpm-key")
     header = json.loads(
         machine.succeed("cryptsetup luksDump --dump-json-metadata /dev/disk/by-partlabel/system")
     )
@@ -484,11 +547,13 @@ with subtest("a cleared TPM leaves a YubiKey to open the disk, and the guide sea
     machine.wait_for_unit("getty@tty1.service")
     before = len(machine.get_console_log())
     machine.reboot()
-    unlock(tpm_pin)
+    unlock()
     machine.connect()
     machine.wait_for_unit("multi-user.target")
-    prompts = re.findall(r"Please enter [^:(]*:", machine.get_console_log()[before:])
+    boot = machine.get_console_log()[before:]
+    prompts = re.findall(r"Please enter [^:(]*:", boot)
     t.assertEqual(prompts, ["Please enter LUKS2 token PIN:"])
+    t.assertNotIn("Asking FIDO2 token", boot)
 
 with subtest("a stick carrying the machine's own Secure Boot keys is written on a host"):
     # The bundle the install made, taken off as alice can, sealed.
@@ -599,7 +664,7 @@ with subtest("the reinstalled machine enforces with the same keys, the firmware 
     machine.connect()
     # Its new disk isn't sealed to the TPM yet, so the guide asks;
     # Ctrl+C leaves that for another boot.
-    on_screen("a PIN for the TPM")
+    on_screen("Plug in a YubiKey, which opens the disk for the TPM")
     machine.send_key("ctrl-c")
     machine.wait_for_unit("multi-user.target")
     # The firmware already enforces with the keys it carried, so the
@@ -619,14 +684,79 @@ with subtest("the reinstalled machine's guide frees the TPM of the first install
     machine.reboot()
     unlock()
     machine.connect()
-    on_screen("a PIN for the TPM")
-    enter(tpm_pin)
-    on_screen("the same PIN again")
-    enter(tpm_pin)
-    on_screen("Plug in a YubiKey")
+    on_screen("Plug in a YubiKey, which opens the disk for the TPM")
     enter("")
-    on_screen("the YubiKey's PIN")
+    on_screen("which the TPM takes too")
     enter(pin)
     # Sealed, and freed before the guide asks for the account's keys.
     on_screen("a PIN for alice's SSH keys", timeout=300)
     t.assertEqual(policies(), [own_policy()])
+
+with subtest("a firmware cleared of its keys gets them back once the machine's are all signed"):
+    # A program the firmware would start, left unsigned on the ESP, which
+    # would leave the machine unable to start once the keys enforce.
+    unsigned = "/boot/EFI/Linux/unsigned.efi"
+    machine.succeed(
+        f"cp /run/current-system/systemd/lib/systemd/boot/efi/systemd-bootx64.efi {unsigned}"
+    )
+    lockouts_before = lockouts()
+    # A firmware's setup clearing its keys leaves it as a fresh copy of
+    # OVMF's variables is: in setup mode, with no keys and no boot
+    # entries, so it starts systemd-boot from the disk's fallback path.
+    machine.shutdown()
+    machine.efi_vars_path.unlink()
+    machine.start(allow_reboot=True)
+    # Without Secure Boot the TPM's policy doesn't hold, so it refuses
+    # the PIN for the boot, and a YubiKey opens the disk with the same
+    # one, so neither counts a wrong try.
+    t.assertEqual(unlock_as_asked(), "the key")
+    machine.connect()
+    # lanzaboote readies the keys again, from the machine's own, and
+    # fails only at predicting the TPM's policy, which systemd-pcrlock
+    # won't rewrite from a boot that policy doesn't cover. The restart
+    # goes by what's on the ESP instead, and finds the unsigned program.
+    machine.wait_until_succeeds(
+        "systemctl show -P Result secure-boot-enrol-restart | grep -qx exit-code", timeout=300
+    )
+    t.assertEqual(
+        machine.succeed("systemctl show -P Result prepare-sb-auto-enroll").strip(), "exit-code"
+    )
+    refused = machine.succeed("journalctl -b -o cat -u secure-boot-enrol-restart")
+    t.assertIn("isn't signed, so the keys aren't enrolled", refused)
+    t.assertIn(unsigned, refused)
+    t.assertIn("Secure Boot: disabled", machine.succeed("bootctl status"))
+    # Nor are they left for systemd-boot to enrol at whatever restart
+    # comes next.
+    machine.succeed("test ! -e /boot/loader/keys/auto")
+    # With it gone, a restart readies them again, the check passes, and
+    # the machine restarts itself for systemd-boot to enrol them before
+    # any kernel starts.
+    machine.succeed(f"rm {unsigned}")
+    machine.reboot()
+    rebooted = len(machine.get_console_log())
+    t.assertEqual(unlock_as_asked(), "the key")
+    machine.wait_for_console_text("Custom Secure Boot keys successfully enrolled")
+    # A boot that restarted itself may have greeted the driver first, and
+    # the driver takes the first greeting it reads for the boot it's in.
+    restarted_boot = machine.get_console_log()[rebooted:]
+    greeted = "Started backdoor.service" in restarted_boot
+    # Enforcing with the same keys, the TPM's policy, which the boot
+    # without them couldn't rewrite, holds again, and its PIN alone opens
+    # the disk.
+    t.assertEqual(unlock_as_asked(), "the TPM")
+    machine.connect()
+    if greeted:
+        machine.connected = False
+        machine.connect()
+    log = machine.get_console_log()
+    enrolled = log.rfind("Custom Secure Boot keys successfully enrolled")
+    t.assertEqual(log[enrolled:].count("Linux version"), 1)
+    # Refusing for the boot, not the PIN, cost the TPM no tries.
+    t.assertEqual(lockouts(), lockouts_before)
+    # The guide finds the TPM still sealed, and goes on to the keys.
+    on_screen("a PIN for alice's SSH keys", timeout=300)
+    t.assertIn("Secure Boot: enabled (user)", machine.succeed("bootctl status"))
+    t.assertIn(owner, machine.succeed("sbctl status"))
+    # And the files it enrolled from go, so a later clearing can't have
+    # them enrolled again behind the person's back.
+    machine.wait_until_succeeds("test ! -e /boot/loader/keys/auto")

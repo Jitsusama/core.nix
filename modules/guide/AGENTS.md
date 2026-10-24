@@ -154,9 +154,11 @@ driven on; the installed machine's steps come later.
   input and output. A step that stops shows Ctrl+C beside Return, since
   at boot it holds the sign-in back. It checks
   Secure Boot enforces with the machine's own keys before anything is
-  sealed to it, then seals the disk to the TPM with a PIN under the
-  measured-boot policy, a YubiKey opening the disk to do so, prefers the
-  TPM's slot and proves it opens. The seal counts as done only while the
+  sealed to it, then seals the disk to the TPM under the measured-boot
+  policy with the YubiKey's PIN, the YubiKey opening the disk to do so,
+  prefers the TPM's slot and proves it opens. One PIN, because the boot
+  tries what's typed on each key, and a PIN one doesn't know costs it a
+  try at every boot the TPM refuses. The seal counts as done only while the
   policy follows the boot: the TPM holds its NV index, and lanzaboote's
   unit remade it this boot. A cleared TPM loses the index, and a firmware
   update changes PCR 0 past what the policy can follow, so that unit
@@ -189,9 +191,15 @@ driven on; the installed machine's steps come later.
   `GUIDE_ASKPASS`, set only in the keygen's environment. A key counts as
   made when both its halves are there and the public one is what
   `--print-pubkey` reads from the private one; half a key blocks rather
-  than being made over. A cleared TPM leaves the keys unable to load,
-  which the guide can't see without their PIN: move them away for it to
-  make new ones.
+  than being made over. A cleared TPM has another seed, so a key made
+  before can't load: the guide loads each whole key as root, no PIN
+  needed, under the storage key go-tpm-keyfiles makes from the owner's
+  seed (the TCG's ECC template H-2), in `/run/guide/tpm-key`, and a key
+  the TPM refuses with `TPM_RC_INTEGRITY` (`Esys_Load(0x1DF)`) is
+  removed and made again under a new PIN. tpm2-tools 5.8 can't read a
+  key file with a description, as ssh-tpm-keygen writes, so the guide
+  takes its halves out itself (`observe::keyfile`). Any other refusal
+  is a fault, and a key under another parent is taken as it stands.
 - **The spares on the YubiKeys.** Then the installed guide keeps the
   login key's spare, a resident ed25519-sk key, on each YubiKey the
   stick enrolled, for the one account with
@@ -279,10 +287,11 @@ driven on; the installed machine's steps come later.
   passphrase, or a YubiKey and its PIN) is one field under both, never
   two screens. Each step done stays listed above the step at hand with
   what showed it done, the latest nearest, the earliest giving way on a
-  short screen. A step at work is drawn again once a second, from a
+  short screen, and listed once, though the whole install walks again
+  the steps that opened its vault. A step at work is drawn again once a second, from a
   thread of its own, with what the machine's meter says (`progress.rs`):
-  the bytes done of how many, how fast and how long is left, where the
-  step feeds it, and otherwise how long it has run, so a wait never looks
+  the bytes done of how many, how fast and, once a hundredth is done,
+  how long is left, where the step feeds it, and otherwise how long it has run, so a wait never looks
   like a hang. The stick's write and read-back count every byte through
   the disk; copying off the stick counts what it writes; a copy a program
   does, as `nix copy` onto the disk, is counted by what that program has
@@ -305,6 +314,16 @@ driven on; the installed machine's steps come later.
   /run/guide when the vault opens, so they go on with the stick out; a
   step that needs the vault itself says to put the stick back, and goes
   on once it's in.
+- **Awake.** Installing, finishing, recovering and writing a stick each
+  hold logind's block lock on sleep, idling and the lid's switch
+  (`src/awake.rs`) until the guide exits, so a lid closed partway
+  through a long copy doesn't leave a step half done and a stick or
+  YubiKey come back as another device. A Mac runs caffeinate instead,
+  which can't keep it awake with its lid closed. A refused lock leaves
+  the guide working on.
+- **Drawn again.** A screen waiting for a key is drawn again every two
+  seconds (`src/screen/terminal.rs`), since the kernel writes on the
+  console when a device comes or goes and nothing else would redraw it.
 - **The vault.** A FAT32 partition any machine can read, holding files
   sealed with age to a vault key made for it. The key is sealed to each
   YubiKey, and separately to the recovery passphrase, since age won't mix a

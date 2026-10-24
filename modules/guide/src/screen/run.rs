@@ -412,12 +412,15 @@ impl Walk<'_> {
     ) -> Result<Ended, Fault> {
         // What earlier journeys did stays; this one's steps are listed as
         // each look finds them done, so a guide started again still shows
-        // the steps it did before.
-        let earlier = done.len();
+        // the steps it did before. A step this journey shares with an
+        // earlier one, as the whole install shares the steps before its
+        // vault opens, is listed once, where this journey finds it.
+        let earlier = std::mem::take(done);
         loop {
             let mut seen = Vec::new();
             let next = self.journey.next_seeing(self.here, machine, &mut seen);
-            done.truncate(earlier);
+            done.clear();
+            done.extend(earlier.iter().filter(|line| !seen.contains(line)).cloned());
             done.extend(seen);
             let next = match next {
                 Ok(next) => next,
@@ -899,6 +902,29 @@ mod tests {
                 .any(|line| line.contains("Something was copied")),
             "{shown:#?}"
         );
+    }
+
+    #[test]
+    fn a_step_two_journeys_share_is_listed_once() {
+        let opening = Journey::new(vec![Box::new(Slow)]).unwrap();
+        let whole = Journey::new(vec![Box::new(Slow), Box::new(Asking)]).unwrap();
+        let theme = Theme::from("", "", true);
+        let mut stand = Stand::default();
+        stand.keys.extend([Press::Char('1'), Press::Return]);
+        let mut machine = fake();
+        machine.file("/copied", b"yes");
+        let mut walk = walk(&opening, &theme);
+        walk.walk(&mut machine, &mut stand).unwrap();
+        walk.journey = &whole;
+        walk.walk(&mut machine, &mut stand).unwrap();
+        let shown = stand.shown.lock().unwrap().clone();
+        for lines in &shown {
+            let listed = lines
+                .iter()
+                .filter(|line| line.contains("Something was copied"))
+                .count();
+            assert!(listed <= 1, "{lines:#?}");
+        }
     }
 
     #[test]

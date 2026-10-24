@@ -15,10 +15,12 @@ use guide::install::disk::{ConfirmDisk, LayOutDisk, WipeInstallKey};
 use guide::install::keys::{EnrolYubikey, NAMED, NameYubikeys, Named};
 use guide::install::memory::{self, RunFromMemory};
 use guide::install::system::{
-    CheckFirmware, KeepOnStick, ReadyEnrolment, SealRescueBundle, SecureBootKeys,
+    self, CheckFirmware, KeepOnStick, ReadyEnrolment, SealRescueBundle, SecureBootKeys,
 };
 use guide::install::vault::OpenVault;
-use guide::install::{INSTALL_KEY, RECOVERY_KEY, STICK_VAULT, TARGET, Target, VAULT_KEY};
+use guide::install::{
+    INSTALL_KEY, RECOVERY_KEY, STICK_VAULT, SYSTEM_CACHE, TARGET, Target, VAULT_KEY,
+};
 use guide::rescue::{self, Bundle};
 use guide::vault::store::{Directory, Store};
 use guide::vault::{self, Manifest, Packer, Vault, VaultKey};
@@ -922,6 +924,63 @@ fn a_firmware_trusting_the_carried_keys_lets_the_install_go_on() {
         matches!(&standing, Standing::Done { evidence } if evidence.contains("trusts the keys this stick carries")),
         "{standing:?}"
     );
+}
+
+#[test]
+fn the_copy_onto_the_disk_is_measured_against_the_paths_unpacked() {
+    let target = target("/dev/disk/by-id/virtio-root");
+    let scratch = Scratch::new("install-unpacked-size");
+    let carried: &[(&str, &[u8])] = &[
+        (
+            "cache/system/a.narinfo",
+            b"StorePath: /nix/store/a\nNarSize: 1000\n",
+        ),
+        (
+            "cache/system/b.narinfo",
+            b"StorePath: /nix/store/b\nNarSize: 2500\n",
+        ),
+        ("cache/system/nar/a.nar.zst", b"squeezed"),
+    ];
+    let mut fake = stick_carrying(&scratch, &target, carried);
+    let key = guide::install::vault_key(&mut fake).unwrap().unwrap();
+    fake.unpack(key.clone(), SYSTEM_CACHE, system::CACHE)
+        .unwrap();
+    assert_eq!(system::unpacked_size(&mut fake, key).unwrap(), Some(3500));
+}
+
+#[test]
+fn a_narinfo_without_its_size_measures_nothing() {
+    let target = target("/dev/disk/by-id/virtio-root");
+    let scratch = Scratch::new("install-unpacked-unsized");
+    let carried: &[(&str, &[u8])] = &[
+        (
+            "cache/system/a.narinfo",
+            b"StorePath: /nix/store/a\nNarSize: 1000\n",
+        ),
+        ("cache/system/b.narinfo", b"StorePath: /nix/store/b\n"),
+    ];
+    let mut fake = stick_carrying(&scratch, &target, carried);
+    let key = guide::install::vault_key(&mut fake).unwrap().unwrap();
+    fake.unpack(key.clone(), SYSTEM_CACHE, system::CACHE)
+        .unwrap();
+    assert_eq!(system::unpacked_size(&mut fake, key).unwrap(), None);
+}
+
+#[test]
+fn once_the_keys_are_made_the_firmware_check_says_what_it_found_not_what_they_are() {
+    let target = target("/dev/disk/by-id/virtio-root");
+    let scratch = Scratch::new("install-firmware-after-keys");
+    let mut fake = stick(&scratch, &target);
+    fake.file(&format!("{SBCTL}/keys/db/db.key"), b"key")
+        .file(&format!("{SBCTL}/GUID"), b"guid");
+    let evidence = |standing: Standing| match standing {
+        Standing::Done { evidence } => evidence,
+        other => panic!("{other:?}"),
+    };
+    let firmware = evidence(CheckFirmware.observe(&mut fake).unwrap());
+    let keys = evidence(SecureBootKeys.observe(&mut fake).unwrap());
+    assert_ne!(firmware, keys, "each step done is listed once");
+    assert!(firmware.contains("firmware"), "{firmware}");
 }
 
 const BUNDLE: &str = "/mnt/var/lib/guide/rescue-bundle.json";

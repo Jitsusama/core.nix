@@ -190,8 +190,9 @@ sudo systemd-cryptenroll --fido2-device=auto $disk
 sudo systemd-cryptenroll --recovery-key $disk
 ```
 
-The first asks for the passphrase and a new PIN, the second for the YubiKey's
-PIN and a touch. The third prints a recovery key: keep it somewhere off this
+The first asks for the passphrase and a new PIN: give it the YubiKeys' PIN, so
+one PIN opens the disk whichever key takes it. The second asks for that PIN
+and a touch. The third prints a recovery key: keep it somewhere off this
 machine, and check it opens the disk:
 
 ```sh
@@ -227,9 +228,10 @@ off or changing its keys needs it.
 
 On a machine the guide installed, it makes the TPM's keys itself, at the boot
 after the disk is sealed: every key a module names in `jitsusama.tpmKeys`, as
-its account, with one PIN for each that asks for one. Then it keeps the login
-key's spare on each YubiKey the stick enrolled, asking for each by name: it
-downloads the spare a YubiKey already holds, and makes one only on a YubiKey
+its account, with one PIN for each that asks for one. After a cleared TPM, which
+can never load the keys it held before, it makes them again. Then it keeps the
+login key's spare on each YubiKey the stick enrolled, asking for each by name:
+it downloads the spare a YubiKey already holds, and makes one only on a YubiKey
 holding none. On any other machine, make them by hand, as below.
 
 Run this step as the account, never under sudo. Every key here belongs in the
@@ -273,12 +275,16 @@ signing keys, and to the machine repository's
 ## When the TPM Refuses
 
 At boot, systemd asks for one PIN and tries it on each key in turn, the TPM
-first. When the TPM won't release the key, the same PIN goes to the YubiKey,
-and the prompt comes back: type the YubiKey's PIN, then touch it. The recovery
-key is tried only once the YubiKey is unplugged or blocked, so typed while it
-is plugged in it opens nothing; to use it, unplug the YubiKey. A wrong PIN
-costs a try on both: the TPM locks itself after 32 and forgives one every two
-hours it's on, and the YubiKey's FIDO2 PIN blocks for good after 8 in a row.
+first. When the TPM won't release the key, the same PIN goes to the YubiKey:
+touch it when it blinks. The TPM and the YubiKeys share one PIN for this, since
+a TPM refusing the boot costs no try, while a PIN one of them doesn't know
+costs a try on each it reaches, at every boot the TPM refuses. systemd may ask
+again, as "TPM2 PIN" or "security token PIN"; the answer is the same PIN.
+The recovery key is tried only once the YubiKey is unplugged or blocked, so
+typed while it is plugged in it opens nothing; to use it, unplug the YubiKey.
+A wrong PIN costs a try on both: the TPM locks itself after 32 and forgives
+one every two hours it's on, and the YubiKey's FIDO2 PIN blocks for good after
+8 in a row.
 
 The policy can't follow a change it didn't predict. systemd-pcrlock rewrites
 it with a recovery PIN it keeps sealed to the policy itself, so once the

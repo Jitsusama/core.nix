@@ -17,10 +17,39 @@ use crate::{
     Answer, Answers, Ask, Fault, Given, Machine, Place, Program, Secret, Standing, Step, Tool,
 };
 
+/// How many bytes the cache's paths come to unpacked, from the `NarSize`
+/// each narinfo the vault unpacked names; none where one doesn't say.
+pub fn unpacked_size(
+    machine: &mut dyn Machine,
+    key: crate::vault::VaultKey,
+) -> Result<Option<u64>, Fault> {
+    let narinfos: Vec<String> = Vault::open(machine.vault()?, key)?
+        .files()
+        .iter()
+        .filter_map(|file| file.path.strip_prefix(SYSTEM_CACHE))
+        .filter(|path| path.ends_with(".narinfo"))
+        .map(|path| format!("{CACHE}/{}", path.trim_start_matches('/')))
+        .collect();
+    let mut total = 0;
+    for narinfo in narinfos {
+        let size = machine.read(&narinfo)?.and_then(|text| {
+            String::from_utf8_lossy(&text)
+                .lines()
+                .find_map(|line| line.strip_prefix("NarSize:"))
+                .and_then(|size| size.trim().parse::<u64>().ok())
+        });
+        let Some(size) = size else {
+            return Ok(None);
+        };
+        total += size;
+    }
+    Ok((total > 0).then_some(total))
+}
+
 /// Where lanzaboote signs from on the installed machine (core's
 /// lanzaboote module's pkiBundle), under the install's root.
 const SBCTL: &str = "/mnt/var/lib/sbctl";
-const CACHE: &str = "/mnt/var/cache/guide";
+pub const CACHE: &str = "/mnt/var/cache/guide";
 const PROFILE: &str = "/mnt/nix/var/nix/profiles/system";
 const BOOT_LOADER: &str = "/mnt/boot/EFI/systemd/systemd-bootx64.efi";
 /// What core's lanzaboote module links at a system's top to ready its
@@ -125,9 +154,11 @@ impl Step for CheckFirmware {
 
     fn observe(&self, machine: &mut dyn Machine) -> Result<Standing, Fault> {
         // Once the machine's keys are in place the install has passed this.
+        // It says so in its own words, as the keys' step says they're there.
         if machine.read(&format!("{SBCTL}/keys/db/db.key"))?.is_some() {
             return Ok(Standing::Done {
-                evidence: "the machine's own Secure Boot keys are in place".into(),
+                evidence: "the firmware was ready for the machine's keys before they were made"
+                    .into(),
             });
         }
         Ok(match firmware_takes_keys(machine)? {
@@ -341,7 +372,10 @@ impl Step for InstallSystem {
             && machine.read(BOOT_LOADER)?.is_some();
         Ok(if installed {
             Standing::Done {
-                evidence: format!("{} is installed, with its boot loader", target.machine),
+                evidence: format!(
+                    "the system is installed as {}, with its boot loader",
+                    target.machine
+                ),
             }
         } else {
             Standing::Needed { asks: vec![] }
@@ -356,12 +390,14 @@ impl Step for InstallSystem {
         })?;
         // The cache goes onto the new disk, never into memory, since it's
         // the whole system.
-        let cached = machine.unpack(key, SYSTEM_CACHE, CACHE)?;
-        // Nix reads every file of the cache once as it copies the system,
-        // so what it has read says how far along it is.
+        let cached = machine.unpack(key.clone(), SYSTEM_CACHE, CACHE)?;
+        // Nix maps the cache's files rather than reading them, so Linux
+        // counts none of its reads; what it writes is the system's paths
+        // unpacked, whose sizes the narinfos add up to.
+        let unpacked = unpacked_size(machine, key)?.unwrap_or(cached);
         machine
             .meter()
-            .stage_by_reads("Copying it onto the disk", Some(cached));
+            .stage_by_writes("Copying it onto the disk", Some(unpacked));
         let from = format!("file://{CACHE}");
         let to = format!("local?root={ROOT}");
         // The cache carries no Nix signatures, since the vault already
@@ -450,7 +486,9 @@ impl Step for ReadyEnrolment {
             }
         }
         Ok(Standing::Done {
-            evidence: "systemd-boot enrols its Secure Boot keys as it first starts, before the disk is opened".into(),
+            // Not opening with systemd-boot's name, which a done line would
+            // capitalise.
+            evidence: "the boot loader enrols its Secure Boot keys as it first starts, before the disk is opened".into(),
         })
     }
 
@@ -620,7 +658,7 @@ impl Step for SetPassword {
         Ok(
             if has_password(&String::from_utf8_lossy(&shadow), &target.account) {
                 Standing::Done {
-                    evidence: format!("{} has a password", target.account),
+                    evidence: format!("the account {} has a password", target.account),
                 }
             } else {
                 Standing::Needed {
