@@ -12,26 +12,43 @@ The working tree is read as Nix reads a git checkout, so a new file counts
 only once git knows it (git add -N). A change that only some checks read,
 such as a module's, touches only those; one every check reads, such as
 flake.lock, touches them all.
+
+The checks are evaluated a few dozen at a time, in a nix eval each, rather
+than all in one, which held every check at once and reached 24 GB on a
+machine many sessions share; each evaluation's memory goes when it ends. A
+commit's derivations never change, so the base's are kept under
+~/.cache/changed-checks, and only the working tree is evaluated again.
 """
 
 import argparse
 import json
+import os
+import re
 import subprocess
 import sys
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping, Sequence
+    from collections.abc import Callable, Mapping, Sequence
 
 # What a run asked for is refused with, as sysexits.h numbers it.
 USAGE = 64
 
-# Each check's derivation path, or null for one that doesn't evaluate, so one
-# broken check is named rather than stopping the whole evaluation.
-DERIVATIONS = (
+# How many checks one nix eval takes. Nix's evaluator never gives memory
+# back, so one holds everything its checks share and each machine they
+# build: a quarter of core's 231 checks held 11.3 GB at their peak and took
+# 77 s at a load of 59, and every check at once about 24 GB.
+CHUNK = 40
+# What a check's name may hold, so a name is never read as Nix code.
+NAME = re.compile(r"[A-Za-z0-9_.+-]+")
+# Each chosen check's derivation path, or null for one that doesn't evaluate,
+# so one broken check is named rather than stopping the whole evaluation.
+SELECTING = (
     "checks: builtins.mapAttrs (_: check: let tried = builtins.tryEval check.drvPath; "
-    "in if tried.success then tried.value else null) checks"
+    "in if tried.success then tried.value else null) (builtins.intersectAttrs "
+    "(builtins.listToAttrs (map (name: {{ inherit name; value = null; }}) [{names}])) checks)"
 )
 
 type Derivations = Mapping[str, str | None]
@@ -80,12 +97,56 @@ def run(*command: str) -> str:
     ).stdout.strip()
 
 
+def chunks(names: Sequence[str], size: int) -> list[list[str]]:
+    """Split the names, in order, into lists of at most size."""
+    return [list(names[start : start + size]) for start in range(0, len(names), size)]
+
+
+def selecting(names: Sequence[str]) -> str:
+    """Give the Nix function taking the checks to these ones' derivations.
+
+    A name that could be read as Nix code rather than a name is refused.
+    """
+    for name in names:
+        if not NAME.fullmatch(name):
+            message = f"{name!r} isn't a check's name"
+            raise ValueError(message)
+    return SELECTING.format(names=" ".join(f'"{name}"' for name in names))
+
+
 def derivations(flake: str, system: str) -> dict[str, str | None]:
     """Evaluate each of a flake's checks for a system to its derivation's path."""
-    found: dict[str, str | None] = json.loads(
-        run("nix", "eval", "--json", f"{flake}#checks.{system}", "--apply", DERIVATIONS)
+    checks = f"{flake}#checks.{system}"
+    names: list[str] = json.loads(
+        run("nix", "eval", "--json", checks, "--apply", "builtins.attrNames")
     )
+    found: dict[str, str | None] = {}
+    for chunk in chunks(names, CHUNK):
+        found |= json.loads(run("nix", "eval", "--json", checks, "--apply", selecting(chunk)))
     return found
+
+
+def kept(path: Path, evaluate: Callable[[], dict[str, str | None]]) -> dict[str, str | None]:
+    """Give the derivations kept at the path, or evaluate and keep them.
+
+    They're written beside the path and moved onto it, so a run stopped
+    halfway keeps nothing rather than half.
+    """
+    if path.exists():
+        found: dict[str, str | None] = json.loads(path.read_text())
+        return found
+    found = evaluate()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    writing = path.with_suffix(".writing")
+    writing.write_text(json.dumps(found))
+    writing.replace(path)
+    return found
+
+
+def keeping(base: str, system: str) -> Path:
+    """Give where a commit's derivations for a system are kept."""
+    cache = os.environ.get("XDG_CACHE_HOME") or str(Path.home() / ".cache")
+    return Path(cache) / "changed-checks" / f"{base}-{system}.json"
 
 
 def arguments(argv: Sequence[str]) -> argparse.Namespace:
@@ -123,7 +184,8 @@ def main(argv: Sequence[str]) -> int:
         print("changed-checks: Nix doesn't read files git doesn't know:", file=sys.stderr)
         print(untracked, file=sys.stderr)
     print(f"comparing {system}'s checks at {base[:12]} with the working tree", file=sys.stderr)
-    comparison = compare(derivations(f"{flake}?rev={base}", system), derivations(flake, system))
+    before = kept(keeping(base, system), lambda: derivations(f"{flake}?rev={base}", system))
+    comparison = compare(before, derivations(flake, system))
     for kind in ("added", "changed", "removed", "broken"):
         for name in getattr(comparison, kind):
             print(f"{kind:8} {name}")

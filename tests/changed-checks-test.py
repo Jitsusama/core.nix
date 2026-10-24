@@ -2,18 +2,22 @@
 
 A check is worth building again only when its derivation differs from the
 base's, so the comparison has to tell a changed check from one that stopped
-evaluating, and one never evaluated from one fixed. The tool is the file
-CHANGED_CHECKS names, since it's a program rather than a module.
+evaluating, and one never evaluated from one fixed. Each side's checks are
+evaluated a few dozen at a time, in a process each, and the base's are kept
+by its commit, so a second run evaluates only the working tree. The tool is
+the file CHANGED_CHECKS names, since it's a program rather than a module.
 """
 
 import importlib.machinery
 import importlib.util
 import os
+import tempfile
 import unittest
+from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, cast
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Callable, Mapping, Sequence
 
 
 class Comparison(Protocol):
@@ -35,6 +39,17 @@ class Tool(Protocol):
         self, before: Mapping[str, str | None], after: Mapping[str, str | None]
     ) -> Comparison:
         """Compare each check's derivation at the base with the working tree's."""
+
+    def chunks(self, names: Sequence[str], size: int) -> list[list[str]]:
+        """Split the names, in order, into lists of at most size."""
+
+    def selecting(self, names: Sequence[str]) -> str:
+        """Give the Nix function taking the checks to these ones' derivations."""
+
+    def kept(
+        self, path: Path, evaluate: Callable[[], dict[str, str | None]]
+    ) -> dict[str, str | None]:
+        """Give the derivations kept at the path, or evaluate and keep them."""
 
 
 def load(path: str) -> Tool:
@@ -103,6 +118,65 @@ class Compare(unittest.TestCase):
         comparison = self.tool.compare(BEFORE, AFTER)
         self.assertEqual(comparison.to_build(vm=True), ["new", "mends", "moved", "vm-moved"])
         self.assertEqual(comparison.to_build(vm=False), ["new", "mends", "moved"])
+
+
+class Chunks(unittest.TestCase):
+    """Evaluating the checks a few at a time, so no process holds them all."""
+
+    tool: Tool
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.tool = load(os.environ["CHANGED_CHECKS"])
+
+    def test_every_name_is_in_one_chunk_in_its_order(self) -> None:
+        names = ["a", "b", "c", "d", "e"]
+        self.assertEqual(self.tool.chunks(names, 2), [["a", "b"], ["c", "d"], ["e"]])
+
+    def test_no_checks_need_no_evaluation(self) -> None:
+        self.assertEqual(self.tool.chunks([], 40), [])
+
+    def test_a_chunk_names_each_of_its_checks(self) -> None:
+        chosen = self.tool.selecting(["formatting", "vm-desktop-works"])
+        self.assertIn('"formatting"', chosen)
+        self.assertIn('"vm-desktop-works"', chosen)
+
+    def test_a_name_nix_would_read_as_code_is_refused(self) -> None:
+        with self.assertRaises(ValueError):
+            self.tool.selecting(["ok", "x''; builtins.abort \"\"; ''"])
+
+
+class Kept(unittest.TestCase):
+    """Keeping a commit's derivations, which never change, so it's evaluated once."""
+
+    tool: Tool
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.tool = load(os.environ["CHANGED_CHECKS"])
+
+    def setUp(self) -> None:
+        folder = tempfile.TemporaryDirectory()
+        self.addCleanup(folder.cleanup)
+        self.path = Path(folder.name) / "kept" / "abc-x86_64-linux.json"
+        self.evaluated = 0
+
+    def evaluate(self) -> dict[str, str | None]:
+        """Stand in for an evaluation, counting how often it's asked."""
+        self.evaluated += 1
+        return {"a": "a.drv", "broken": None}
+
+    def test_the_first_run_evaluates_and_keeps_what_it_found(self) -> None:
+        found = self.tool.kept(self.path, self.evaluate)
+        self.assertEqual(found, {"a": "a.drv", "broken": None})
+        self.assertEqual(self.evaluated, 1)
+        self.assertTrue(self.path.exists())
+
+    def test_a_later_run_reads_what_was_kept_without_evaluating(self) -> None:
+        self.tool.kept(self.path, self.evaluate)
+        found = self.tool.kept(self.path, self.evaluate)
+        self.assertEqual(found, {"a": "a.drv", "broken": None})
+        self.assertEqual(self.evaluated, 1)
 
 
 if __name__ == "__main__":
