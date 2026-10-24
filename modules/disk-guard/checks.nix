@@ -83,7 +83,11 @@
   # guard's PATH, under systemd and launchd alike, with core's git after.
   disk-guard-finds-a-machines-programs-first =
     let
-      first = [ pkgs.hello ];
+      # A package, and a profile kept outside the store, whose bin is searched.
+      first = [
+        pkgs.hello
+        "/home/someone/.local/state/tools/profile"
+      ];
       given =
         machine:
         account (machine [
