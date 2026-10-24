@@ -132,6 +132,11 @@ pkgs.testers.runNixOSTest {
     '';
     # getfattr, to read the mark vm-first leaves for systemd-oomd.
     environment.systemPackages = [ pkgs.attr ];
+    # The module's free-space floor is far more than the machine's disk, so
+    # every build would first collect garbage. Run by hand, the machine's
+    # store is the host's whole one, and that takes longer than any wait
+    # here.
+    nix.settings.min-free = pkgs.lib.mkForce 0;
     # Looking every 20 ms rather than every second, so a hand-off racing a
     # restart of the daemon is caught rather than missed.
     systemd.services.vm-first.serviceConfig.ExecStart = pkgs.lib.mkForce "${
@@ -139,8 +144,14 @@ pkgs.testers.runNixOSTest {
     }/bin/vm-first --every 20";
   };
 
-  testScript = builtins.readFile ./vm-first-vm-test.py;
-  # nix fmt holds the script to mypy --strict against the driver's own types,
-  # through driver_names.pyi, which the driver's lighter check can't find.
+  # What VM tests' scripts share, and pytest, which runs this one's tests (tests/lib).
+  extraPythonPackages = python: [ (pkgs.callPackage ./lib/vm-helpers.nix { } python) ];
+
+  # Run by hand, the driver takes pytest's options from PYTEST_ADDOPTS, so
+  # PYTEST_ADDOPTS='-k restart' runs only the tests that name a restart.
+  testScript = ''import vm_pytest; vm_pytest.run(globals(), "${./vm-first-vm-test.py}")'';
+  # nix fmt holds the tests and vm_pytest to mypy --strict against the
+  # driver's own types, so the driver's check of this one line would add only
+  # its time.
   skipTypeCheck = true;
 }
