@@ -53,6 +53,36 @@ Singleton {
     // since they're few and change seldom.
     property var casts: ({})
 
+    // Whether niri's last load of its settings failed, which it says as the
+    // stream begins and at every reload. niri then keeps the settings it
+    // had, so nothing changed in them takes effect, and its own warning
+    // shows for a few seconds only: on 2026-10-24 a running niri older than
+    // its settings refused every change for four hours while Joel slept.
+    // So a critical notice says so until a load succeeds, and why: the
+    // installed niri accepting them means the running one is older, and a
+    // new sign-in starts the newer; refusing them means they're wrong.
+    property bool settingsFailed: false
+
+    onSettingsFailedChanged: {
+        const notice = '"$XDG_RUNTIME_DIR/niri-settings-notice"';
+        spawn(["sh", "-c", settingsFailed ? [
+            `if niri validate > /dev/null 2>&1; then`,
+            `  why="Log out and back in to take the new ones, which need the newer window manager."`,
+            `else`,
+            `  why="The new ones have a mistake in them, which niri validate shows."`,
+            `fi`,
+            `replace=$(cat ${notice} 2> /dev/null)`,
+            `notify-send --app-name=niri --urgency=critical --print-id \\`,
+            `  \${replace:+--replace-id="$replace"} \\`,
+            `  "The window manager kept its old settings" "$why" > ${notice}`
+        ].join("\n") : [
+            `[ -s ${notice} ] && busctl --user call org.freedesktop.Notifications \\`,
+            `  /org/freedesktop/Notifications org.freedesktop.Notifications \\`,
+            `  CloseNotification u "$(cat ${notice})"`,
+            `rm -f ${notice}`
+        ].join("\n")]);
+    }
+
     // A window opened, or changed what it shows; one closed; some moved.
     signal windowOpenedOrChanged(var window)
     signal windowClosed(var id)
@@ -152,6 +182,8 @@ Singleton {
             const all = Object.assign({}, casts);
             delete all[event.CastStopped.stream_id];
             casts = all;
+        } else if (event.ConfigLoaded) {
+            settingsFailed = event.ConfigLoaded.failed;
         } else if (event.ScreenshotCaptured) {
             screenshotCaptured(event.ScreenshotCaptured.path ?? null);
         } else if (event.WorkspaceActiveWindowChanged) {
