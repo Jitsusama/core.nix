@@ -160,6 +160,7 @@ pub fn steps(yubikeys: &[String]) -> Vec<Box<dyn Step>> {
     for name in yubikeys {
         steps.push(Box::new(keys::EnrolYubikey::new(name)));
     }
+    steps.push(Box::new(keys::NameYubikeys));
     // The Secure Boot keys before the recovery key, so the rescue bundle
     // is sealed to it while it's still held, before it's typed back.
     steps.push(Box::new(system::SecureBootKeys));

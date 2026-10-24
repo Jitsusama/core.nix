@@ -4,21 +4,20 @@
 //! it downloaded rather than made again, since a new one would leave
 //! every place the old one was added holding a key nothing can use.
 //!
-//! The YubiKeys are the ones the machine's rescue bundle names, asked for
-//! one at a time by those names. The installed machine can't tell one
-//! from another by name, so the first time a key gives its spare, the
-//! guide remembers which of the disk's credentials it holds under that
-//! name, and a key that holds another name's is refused.
+//! The YubiKeys are the ones the stick enrolled, asked for one at a time
+//! by name, and each known by the disk credential it enrolled, which the
+//! stick wrote down (`install::keys::NAMED`): a key holding another
+//! name's is refused, and so is one holding none.
 //!
 //! ssh-keygen runs as root, in memory: at boot nobody is signed in, so
 //! the account can't reach the key. The files go to the account after.
 
 use serde::Deserialize;
 
-use super::{facts, secret, volume};
-use crate::install::keys::{holds, slug};
-use crate::observe::{fido2, luks};
-use crate::{Ask, Fault, Given, Machine, Place, Program, Secret, Standing, Step, Tool, rescue};
+use super::{facts, secret};
+use crate::install::keys::{NAMED, Named, holds, slug};
+use crate::observe::fido2;
+use crate::{Ask, Fault, Given, Machine, Place, Program, Secret, Standing, Step, Tool};
 
 use super::keys::ASKPASS;
 
@@ -51,11 +50,13 @@ pub struct SpareKeys;
 
 const ID: &str = "spare-keys";
 
-/// The YubiKeys the machine's rescue bundle names, none when it has no
-/// bundle or its bundle names none.
-fn named(machine: &mut dyn Machine) -> Result<Vec<String>, Fault> {
-    Ok(match machine.read(rescue::KEPT)? {
-        Some(bytes) => rescue::Bundle::read(&bytes)?.yubikeys(),
+/// The YubiKeys the stick enrolled, by name, none on a machine the
+/// guide didn't install.
+fn named(machine: &mut dyn Machine) -> Result<Vec<Named>, Fault> {
+    Ok(match machine.read(NAMED)? {
+        Some(bytes) => {
+            serde_json::from_slice(&bytes).map_err(|why| Fault::unreadable(NAMED, why))?
+        }
         None => vec![],
     })
 }
@@ -103,7 +104,7 @@ fn kept(machine: &mut dyn Machine, file: &str) -> Result<Kept, Fault> {
 /// YubiKey's name, or why nothing can be done.
 enum Next {
     Nothing { evidence: String },
-    Make { spare: Spare, name: String },
+    Make { spare: Spare, key: Named },
     Refused(String),
 }
 
@@ -117,18 +118,17 @@ fn next(machine: &mut dyn Machine) -> Result<Next, Fault> {
     }
     if names.is_empty() {
         return Ok(Next::Nothing {
-            evidence: "this machine's rescue bundle names no YubiKeys to keep a spare SSH key on"
-                .into(),
+            evidence: "the stick named no YubiKeys here to keep a spare SSH key on".into(),
         });
     }
     for spare in &spares {
-        for name in &names {
-            match kept(machine, &spare.file(name))? {
+        for key in &names {
+            match kept(machine, &spare.file(&key.name))? {
                 Kept::Whole => {}
                 Kept::Missing => {
                     return Ok(Next::Make {
                         spare: spare.clone(),
-                        name: name.clone(),
+                        key: key.clone(),
                     });
                 }
                 Kept::Mismatched(why) => return Ok(Next::Refused(why)),
@@ -136,6 +136,7 @@ fn next(machine: &mut dyn Machine) -> Result<Next, Fault> {
         }
     }
     let accounts: Vec<&str> = spares.iter().map(|spare| spare.account.as_str()).collect();
+    let names: Vec<&str> = names.iter().map(|key| key.name.as_str()).collect();
     Ok(Next::Nothing {
         evidence: format!(
             "{} each hold {}'s spare SSH key",
@@ -165,17 +166,18 @@ impl Step for SpareKeys {
                 why,
                 remedy: "Move both halves somewhere else, then look again, and the guide brings the spare back from the YubiKey.".into(),
             },
-            Next::Make { name, .. } => Standing::Needed {
+            Next::Make { key, .. } => Standing::Needed {
                 asks: vec![
                     Ask::Act {
                         id: "plugged",
                         what: format!(
-                            "Plug in {name}, and only {name}. Touch it if it blinks."
+                            "Plug in {}, and only {}. Touch it if it blinks.",
+                            key.name, key.name
                         ),
                     },
                     Ask::Secret {
                         id: "pin",
-                        name: format!("{name}'s PIN"),
+                        name: format!("{}'s PIN", key.name),
                     },
                 ],
             },
@@ -183,26 +185,24 @@ impl Step for SpareKeys {
     }
 
     fn run(&self, machine: &mut dyn Machine, answers: &crate::Answers) -> Result<(), Fault> {
-        let (spare, name) = match next(machine)? {
+        let (spare, key) = match next(machine)? {
             Next::Nothing { .. } => return Ok(()),
             Next::Refused(why) => return Err(Fault::Blocked { step: ID, why }),
-            Next::Make { spare, name } => (spare, name),
+            Next::Make { spare, key } => (spare, key),
         };
+        let name = key.name.clone();
         let pin = secret(answers, "pin").ok_or(Fault::Unanswered {
             step: ID,
             ask: "pin",
         })?;
         let device = only_plugged(machine, &name)?;
-        let credential = which(machine, &device, &name)?;
+        is_the_one(machine, &device, &key)?;
 
         machine.remove_tree(MAKING)?;
         let made = spare_from(machine, &device, pin, &spare, &name);
-        let moved = made.and_then(|key| keep(machine, &key, &spare, &name));
+        let moved = made.and_then(|file| keep(machine, &file, &spare, &name));
         machine.remove_tree(MAKING)?;
-        moved?;
-        machine
-            .journal()
-            .record(ID, &format!("{}:{credential}", slug(&name)))
+        moved
     }
 }
 
@@ -221,39 +221,26 @@ fn only_plugged(machine: &mut dyn Machine, name: &str) -> Result<String, Fault> 
     }
 }
 
-/// Which of the disk's credentials the key at `device` holds, refused
-/// when it holds none, so isn't one of the person's, or holds one the
-/// guide has already met under another name.
-fn which(machine: &mut dyn Machine, device: &str, name: &str) -> Result<String, Fault> {
-    let facts = facts(machine)?;
-    let header = luks::observe_as_root(machine, &volume(&facts))?;
-    let credentials: Vec<String> = header.credentials().into_iter().map(String::from).collect();
-    let mut held = None;
-    for credential in credentials {
-        if holds(machine, device, &credential)? {
-            held = Some(credential);
-            break;
-        }
+/// Whether the key at `device` is `key`: it holds the credential that
+/// key enrolled, and when it doesn't, which it is instead, if it's one
+/// of the person's at all.
+fn is_the_one(machine: &mut dyn Machine, device: &str, key: &Named) -> Result<(), Fault> {
+    if holds(machine, device, &key.credential)? {
+        return Ok(());
     }
-    let Some(credential) = held else {
-        return Err(Fault::Blocked {
-            step: ID,
-            why: format!("this key doesn't open the disk, so it isn't {name}"),
-        });
-    };
+    let name = &key.name;
     for other in named(machine)? {
-        if other != name
-            && machine
-                .journal()
-                .knows(ID, &format!("{}:{credential}", slug(&other)))
-        {
+        if other.name != *name && holds(machine, device, &other.credential)? {
             return Err(Fault::Blocked {
                 step: ID,
-                why: format!("this key is {other}, not {name}; plug in {name}"),
+                why: format!("this key is {}, not {name}; plug in {name}", other.name),
             });
         }
     }
-    Ok(credential)
+    Err(Fault::Blocked {
+        step: ID,
+        why: format!("this key doesn't open the disk, so it isn't {name}"),
+    })
 }
 
 /// The spare off the key at `device`, downloaded when the key holds one

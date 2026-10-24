@@ -4,9 +4,10 @@
 //! back from it, since that's where it'll be when it's needed.
 
 use base64::Engine;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-use crate::install::{INSTALL_KEY, RECOVERY_KEY, held, target};
+use crate::install::{INSTALL_KEY, RECOVERY_KEY, ROOT, held, target};
 use crate::observe::{fido2, luks};
 use crate::tool::Path;
 use crate::{
@@ -211,6 +212,102 @@ impl Step for EnrolYubikey {
         machine
             .journal()
             .record(self.id, &format!("opened:{credential}"))
+    }
+}
+
+/// Where the installed machine keeps which of the disk's FIDO2
+/// credentials each of its YubiKeys enrolled, by the name the person
+/// knows it by, for the installed guide to ask for a key by name and know
+/// the one plugged in is that one. Credential ids open nothing, so anyone
+/// may read it.
+pub const NAMED: &str = "/var/lib/guide/yubikeys.json";
+
+/// One YubiKey, by name, and the disk credential it enrolled.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub struct Named {
+    pub name: String,
+    pub credential: String,
+}
+
+/// Each YubiKey the target names, with the credential its enrolment
+/// proved opens the disk, or the first name not enrolled yet.
+fn enrolled(machine: &mut dyn Machine) -> Result<Result<Vec<Named>, String>, Fault> {
+    let target = target(machine)?;
+    let header = luks::observe(machine, &target.volume())?;
+    let credentials: Vec<String> = header.credentials().into_iter().map(String::from).collect();
+    let mut named = vec![];
+    for name in &target.yubikeys {
+        let step = format!("enrol-{}", slug(name));
+        let Some(credential) = credentials.iter().find(|credential| {
+            machine
+                .journal()
+                .knows(&step, &format!("opened:{credential}"))
+        }) else {
+            return Ok(Err(name.clone()));
+        };
+        named.push(Named {
+            name: name.clone(),
+            credential: credential.clone(),
+        });
+    }
+    Ok(Ok(named))
+}
+
+/// The YubiKeys' names and credentials written onto the installed disk,
+/// since only the stick's journal knows which key enrolled which.
+pub struct NameYubikeys;
+
+impl Step for NameYubikeys {
+    fn id(&self) -> &'static str {
+        "name-yubikeys"
+    }
+
+    fn place(&self) -> Place {
+        Place::Stick
+    }
+
+    fn title(&self) -> &'static str {
+        "Tell the installed system which YubiKey is which"
+    }
+
+    fn observe(&self, machine: &mut dyn Machine) -> Result<Standing, Fault> {
+        let named = match enrolled(machine)? {
+            Ok(named) => named,
+            Err(name) => {
+                return Ok(Standing::Blocked {
+                    why: format!("{name} isn't enrolled yet"),
+                    remedy: "look again, and the guide asks for it first".into(),
+                });
+            }
+        };
+        let kept: Option<Vec<Named>> = machine
+            .read(&format!("{ROOT}{NAMED}"))?
+            .and_then(|bytes| serde_json::from_slice(&bytes).ok());
+        Ok(if kept.as_ref() == Some(&named) {
+            let keys: Vec<&str> = named.iter().map(|key| key.name.as_str()).collect();
+            Standing::Done {
+                evidence: if keys.is_empty() {
+                    "the installed system has no YubiKeys to tell apart".into()
+                } else {
+                    format!(
+                        "the installed system knows {} by the credential each enrolled",
+                        keys.join(" and ")
+                    )
+                },
+            }
+        } else {
+            Standing::Needed { asks: vec![] }
+        })
+    }
+
+    fn run(&self, machine: &mut dyn Machine, _answers: &Answers) -> Result<(), Fault> {
+        let named = enrolled(machine)?.map_err(|name| Fault::Blocked {
+            step: "name-yubikeys",
+            why: format!("{name} isn't enrolled yet"),
+        })?;
+        let bytes = serde_json::to_vec_pretty(&named)
+            .map_err(|why| Fault::unreadable("the YubiKeys' names", why))?;
+        machine.publish(&format!("{ROOT}{NAMED}"), &bytes)
     }
 }
 

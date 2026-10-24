@@ -194,14 +194,17 @@ driven on; the installed machine's steps come later.
   make new ones.
 - **The spares on the YubiKeys.** Then the installed guide keeps the
   login key's spare, a resident ed25519-sk key, on each YubiKey the
-  machine's rescue bundle names, for the one account with
+  stick enrolled, for the one account with
   `jitsusama.yubikeySpare` (a YubiKey holds one, so the module refuses
   two). It asks for each by name and first downloads what the key
   holds, making a spare only on a key holding none, since a new one
-  would strand every place the old one was added. The installed machine
-  can't tell its YubiKeys apart by name, so the first key to give a
-  spare is remembered under that name by the disk credential it holds,
-  and a key holding another name's credential is refused. ssh-keygen
+  would strand every place the old one was added. Only the stick's
+  journal knows which key enrolled which of the disk's FIDO2
+  credentials, so the stick writes each name and its credential to
+  /var/lib/guide/yubikeys.json on the installed disk (`NameYubikeys`),
+  and the installed guide takes a key as the one it asked for only when
+  it holds that credential, naming the other key when it's that one
+  instead. ssh-keygen
   runs as root in /run/guide/spare, since at boot nobody is signed in
   for the account to reach the key, and the files are the account's
   once moved. Its `SSH_ASKPASS` is the guide, as for the TPM's keys,

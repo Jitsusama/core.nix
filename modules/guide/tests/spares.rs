@@ -1,20 +1,16 @@
 //! The spare SSH key on each YubiKey, held against what the machine and
-//! the key hold: asked for by the name the rescue bundle gives it, made
+//! the key hold: asked for by the name the stick enrolled it under, made
 //! only on a key holding none and downloaded from one that does, the PIN
-//! only ever in ssh-keygen's environment, and a key the guide met under
-//! another name, or one that doesn't open the disk, refused.
+//! only ever in ssh-keygen's environment, and a key holding another
+//! name's credential, or one that doesn't open the disk, refused.
 
 use guide::fake::Fake;
+use guide::install::keys::NAMED;
 use guide::installed::FACTS;
 use guide::installed::keys::ASKPASS;
 use guide::installed::spares::SpareKeys;
-use guide::{Answer, Answers, Ask, Fault, Machine, Program, Secret, Standing, Step, Tool, rescue};
+use guide::{Answer, Answers, Ask, Fault, Program, Secret, Standing, Step, Tool};
 
-const DUMP: &[&str] = &[
-    "luksDump",
-    "--dump-json-metadata",
-    "/dev/disk/by-partlabel/system",
-];
 const DEVICE: &str = "/dev/hidraw1";
 const MAKING: &str = "/run/guide/spare";
 const NANO: &str = "/home/alice/.ssh/yubikey-nano";
@@ -35,21 +31,21 @@ fn program(tool: Tool) -> &'static str {
     tool.program().expect("the guide is built with its tools")
 }
 
-/// The disk's first FIDO2 credential, which the Fake's key holds.
-fn first_credential() -> String {
+/// The disk's FIDO2 credentials, the Nano's then the 5C's.
+fn credentials() -> Vec<String> {
     let header: serde_json::Value =
         serde_json::from_str(fixture!("luks-dump-sealed.json")).unwrap();
     let tokens = header["tokens"].as_object().unwrap();
     let mut ids: Vec<&String> = tokens.keys().collect();
     ids.sort();
     ids.iter()
-        .find_map(|id| tokens[*id]["fido2-credential"].as_str())
-        .unwrap()
-        .to_string()
+        .filter_map(|id| tokens[*id]["fido2-credential"].as_str())
+        .map(String::from)
+        .collect()
 }
 
-/// alice's machine, keeping a spare on each of the two YubiKeys its
-/// rescue bundle names, one canokey plugged in that opens the disk.
+/// alice's machine, keeping a spare on each of the two YubiKeys the
+/// stick enrolled, one canokey plugged in.
 fn machine() -> Fake {
     let mut fake = Fake::new();
     fake.file(
@@ -58,18 +54,19 @@ fn machine() -> Fake {
             {"account":"alice","folder":"/home/alice/.ssh","comment":"alice@yubikey"}
         ]}"#,
     );
-    fake.file(
-        rescue::KEPT,
-        br#"{"format":1,"machine":"machine","opened_by":["the Nano","the 5C","the disk's recovery key"],
-            "owner":"o","db":"d","to_keys":"k","to_passphrase":"p","keys":"s"}"#,
+    let [nano, five_c] = credentials()
+        .try_into()
+        .expect("the disk has two keys' credentials");
+    let named = format!(
+        r#"[{{"name":"the Nano","credential":"{nano}"}},{{"name":"the 5C","credential":"{five_c}"}}]"#
     );
+    fake.file(NAMED, named.as_bytes());
     fake.prints(Tool::Fido2Token, &["-L"], fixture!("fido2-token-L.txt"));
     fake.prints(
         Tool::Fido2Token,
         &["-I", DEVICE],
         fixture!("fido2-token-I.txt"),
     );
-    fake.prints(Tool::Cryptsetup, DUMP, fixture!("luks-dump-sealed.json"));
     for file in [NANO, FIVE_C] {
         without(&mut fake, file);
     }
@@ -79,7 +76,8 @@ fn machine() -> Fake {
     fake
 }
 
-/// The plugged key holds the disk's first credential, or none of them.
+/// Whether the plugged key holds the next credential asked of it: each
+/// answer is given in turn, and the last stays.
 fn opens(fake: &mut Fake, opens: bool) {
     let (status, stderr) = if opens {
         (0, "")
@@ -207,7 +205,7 @@ fn makes(fake: &mut Fake, comment: &str) {
 }
 
 #[test]
-fn a_missing_spare_is_asked_for_by_the_name_the_bundle_gives_its_key() {
+fn a_missing_spare_is_asked_for_by_the_name_the_stick_enrolled_its_key_under() {
     let mut fake = machine();
     let Standing::Needed { asks } = SpareKeys.observe(&mut fake).unwrap() else {
         panic!("the Nano's spare is still to keep")
@@ -251,8 +249,6 @@ fn a_key_holding_no_spare_has_one_made_as_root_and_given_to_the_account() {
         "{:?}",
         fake.secrets
     );
-    let remembered = format!("nano:{}", first_credential());
-    assert!(fake.journal().knows("spare-keys", &remembered));
 }
 
 #[test]
@@ -284,13 +280,12 @@ fn a_key_holding_a_spare_has_it_downloaded_rather_than_made_over() {
 }
 
 #[test]
-fn a_key_the_guide_met_under_another_name_is_refused() {
+fn a_key_holding_another_names_credential_is_refused() {
     let mut fake = machine();
+    // Not the 5C's credential, asked first, but the Nano's.
+    opens(&mut fake, false);
     opens(&mut fake, true);
     whole(&mut fake, NANO, true);
-    fake.journal()
-        .record("spare-keys", &format!("nano:{}", first_credential()))
-        .unwrap();
     let Standing::Needed { asks } = SpareKeys.observe(&mut fake).unwrap() else {
         panic!("the 5C's spare is still to keep")
     };
@@ -360,11 +355,11 @@ fn half_a_spare_blocks_rather_than_being_made_over() {
 }
 
 #[test]
-fn a_machine_without_a_bundle_naming_its_keys_has_nothing_to_keep() {
+fn a_machine_the_guide_didnt_install_has_nothing_to_keep() {
     let mut fake = machine();
-    fake.no_file(rescue::KEPT);
+    fake.no_file(NAMED);
     let Standing::Done { evidence } = SpareKeys.observe(&mut fake).unwrap() else {
         panic!("no YubiKey is named here")
     };
-    assert!(evidence.contains("names no YubiKeys"), "{evidence}");
+    assert!(evidence.contains("named no YubiKeys"), "{evidence}");
 }
