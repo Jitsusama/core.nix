@@ -421,12 +421,20 @@ fn keep(memory: &mut Memory, s: &mut Shaped) {
         return;
     }
     let known = memory.get(&s.network).unwrap_or(Held {
-        up: up.held,
-        down: down.held,
+        up: up.remembered(),
+        down: down.remembered(),
     });
     let held = Held {
-        up: if up.learned { up.held } else { known.up },
-        down: if down.learned { down.held } else { known.down },
+        up: if up.learned {
+            up.remembered()
+        } else {
+            known.up
+        },
+        down: if down.learned {
+            down.remembered()
+        } else {
+            known.down
+        },
     };
     memory.put(&s.network, held);
     up.learned = false;
