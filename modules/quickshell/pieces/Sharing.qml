@@ -28,6 +28,7 @@ Piece {
     actions: [{
         glyph: String.fromCodePoint(0xf0d90),
         name: casts.length === 1 ? "Stop sharing" : "Stop sharing all of it",
+        verb: "stop sharing",
         run: () => {
             for (const session of new Set(casts.map(cast => cast.session_id)))
                 Niri.act({ StopCast: { session_id: session } });

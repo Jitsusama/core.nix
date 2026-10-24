@@ -47,6 +47,7 @@ Piece {
     }))).concat([{
         glyph: String.fromCodePoint(0xf012a),
         name: "Show where it went",
+        verb: "show",
         chord: opening.chord,
         run: shell => shell.launcher.into("spend")
     }]).concat(silent ? [{

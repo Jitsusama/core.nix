@@ -69,11 +69,10 @@ Provider {
         return member({
             key: `on:${fact.entry.mark}`,
             is: provider.same[fact.entry.mark] ?? `on:${fact.entry.mark}`,
-            // What Return does, said in the foot as the action says it when
-            // that's short ("let it sleep", "unmute it"), else its verb.
-            verb: actions.length === 0 ? "close"
-                : actions[0].name.split(" ").length <= 3 ? actions[0].name.toLowerCase()
-                : actions[0].name.toLowerCase().split(" ")[0],
+            // What Return does, said in the foot: the first action's own
+            // verb where it gives one, else its name ("let it sleep").
+            verb: piece.actions.length === 0 ? "close"
+                : piece.actions[0].verb ?? piece.actions[0].name.toLowerCase(),
             name: piece.title,
             side: piece.value,
             note: piece.context,
