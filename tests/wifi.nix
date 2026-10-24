@@ -17,7 +17,8 @@
 # the card on its network takes it off: not wifid starting again, nor a
 # saved file it can't read, nor another card plugged in and pulled out,
 # which looks for networks from made-up addresses with its link up. The
-# boot waits on wifid to say there's no more to wait for.
+# boot waits on wifid to say there's no more to wait for. The card stays
+# awake while a charger is plugged in, and dozes once both are pulled.
 # The shell, as an account of the machine's and no other, is told all of
 # it over varlink as it changes, and can have wifid check again, trust a
 # network or forget one, though never one Nix declares. The script is
@@ -176,7 +177,11 @@ pkgs.testers.runNixOSTest {
 
       # Six stand-in radios: two access points, the laptop's card, a USB
       # card in a drawer, the Office's access point and Lantern's second.
-      boot.kernelModules = [ "mac80211_hwsim" ];
+      # And the kernel's stand-in battery, with its chargers, which start on.
+      boot.kernelModules = [
+        "mac80211_hwsim"
+        "test_power"
+      ];
       boot.extraModprobeConfig = "options mac80211_hwsim radios=6";
 
       # The first two radios and the last two move to the access points'
