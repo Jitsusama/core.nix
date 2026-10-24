@@ -42,6 +42,45 @@ let
     '';
   };
 
+  # Where lanzaboote leaves the keys' files for systemd-boot to enrol.
+  autoKeys = "${config.boot.loader.efi.efiSysMountPoint}/loader/keys/auto";
+
+  # Whether the programs the firmware starts from the ESP are signed by the
+  # machine's keys, which it enforces once systemd-boot enrols them: a
+  # restart to enrol them with one unsigned would leave a machine the
+  # firmware refuses to start. Those are systemd-boot, at its own path and
+  # the fallback one, and each generation's stub; the kernels and initrds
+  # beside them are checked by the stub, by their hashes, and a kernel an
+  # earlier boot loader left in EFI/nixos starts nothing.
+  #
+  # Refused, it takes the keys' files away as well, since systemd-boot
+  # enrols whatever it finds there at the next start, whoever restarts;
+  # that boot readies them again and checks once more.
+  signedCheck = pkgs.writeShellApplication {
+    name = "secure-boot-signed-check";
+    runtimeInputs = [
+      pkgs.coreutils
+      pkgs.jq
+      pkgs.sbctl
+    ];
+    text = ''
+      started='[.[] | select(.file_name | test("/EFI/BOOT/BOOTX64\\.EFI$|/EFI/systemd/systemd-bootx64\\.efi$|/EFI/Linux/[^/]+\\.efi$"; "i"))]'
+      # Named, or sbctl looks for it with lsblk; and it says why it
+      # failed on its standard output.
+      if ! verified="$(ESP_PATH=${lib.escapeShellArg config.boot.loader.efi.efiSysMountPoint} sbctl verify --json)"; then
+        echo "sbctl couldn't check the ESP, so the keys aren't enrolled: $verified" >&2
+        rm -r ${lib.escapeShellArg autoKeys}
+        exit 1
+      fi
+      if ! jq -e "$started | length > 0 and all(.[]; .is_signed == 1)" <<< "$verified" > /dev/null; then
+        echo "A program the firmware starts isn't signed, so the keys aren't enrolled:" >&2
+        jq -r "$started | .[] | select(.is_signed != 1) | .file_name" <<< "$verified" >&2
+        rm -r ${lib.escapeShellArg autoKeys}
+        exit 1
+      fi
+    '';
+  };
+
   # How many boots a new generation gets to reach multi-user.target before
   # systemd-boot passes it over for the last one that did.
   tries = 3;
@@ -250,11 +289,19 @@ in
     # boot before the stick: a countdown before any disk asks for a PIN. A
     # firmware cleared on its own still gets them back, from the next boot
     # that gets past the disk.
+    #
+    # lanzaboote's install ends by predicting the TPM's policy for later
+    # boots, and systemd-pcrlock refuses to rewrite a policy from a boot the
+    # policy doesn't cover, as one whose firmware lost its keys isn't. By
+    # then the keys' files are on the ESP and every boot program is signed,
+    # so the restart goes by those, after a failure as after success, and
+    # the policy stays the one the keys' next boot matches.
     systemd.services.prepare-sb-auto-enroll = lib.mkIf enrolment.enable {
       # OnSuccess only follows a unit that ends.
       serviceConfig.RemainAfterExit = lib.mkForce false;
       unitConfig.ConditionSecurity = "!uefi-secureboot";
       unitConfig.OnSuccess = [ "secure-boot-enrol-restart.service" ];
+      unitConfig.OnFailure = [ "secure-boot-enrol-restart.service" ];
       # Without checksums or Microsoft's keys, the firmware would stop
       # running any option ROM it runs now, so enrolment goes ahead only when
       # it runs none. A machine that does run one keeps its factory keys and
@@ -272,11 +319,19 @@ in
       description = "Restart for systemd-boot to enrol the Secure Boot keys";
       unitConfig = {
         ConditionSecurity = "!uefi-secureboot";
+        # Only with the keys' files there to enrol, which a failure before
+        # they're made, such as an option ROM's refusal, leaves none of.
+        ConditionPathExists = map (file: "${autoKeys}/${file}.auth") [
+          "PK"
+          "KEK"
+          "db"
+        ];
+        RequiresMountsFor = [ config.boot.loader.efi.efiSysMountPoint ];
         SuccessAction = "reboot";
       };
       serviceConfig = {
         Type = "oneshot";
-        ExecStart = "${pkgs.coreutils}/bin/true";
+        ExecStart = lib.getExe signedCheck;
       };
     };
 
@@ -285,12 +340,12 @@ in
       wantedBy = [ "multi-user.target" ];
       unitConfig = {
         ConditionSecurity = "uefi-secureboot";
-        ConditionPathExists = "${config.boot.loader.efi.efiSysMountPoint}/loader/keys/auto";
+        ConditionPathExists = autoKeys;
         RequiresMountsFor = [ config.boot.loader.efi.efiSysMountPoint ];
       };
       serviceConfig = {
         Type = "oneshot";
-        ExecStart = "${pkgs.coreutils}/bin/rm -r ${config.boot.loader.efi.efiSysMountPoint}/loader/keys/auto";
+        ExecStart = "${pkgs.coreutils}/bin/rm -r ${autoKeys}";
       };
     };
 

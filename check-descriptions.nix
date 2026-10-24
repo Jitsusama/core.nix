@@ -902,8 +902,8 @@
     recovery key, which the firmware boots while enforcing; then the install's own stick, which it
     made the machine's by carrying its keys and bundle and signing itself with them, boots enforcing
     and reinstalls the machine with the same keys, whose guide frees the first install's policy; and
-    a firmware cleared of its keys gets them back from the machine's next boot, its TPM's PIN alone
-    opening the disk once they're enrolled
+    a firmware cleared of its keys gets them back from the machine's next boot, not while a program
+    it would start is unsigned, and its TPM's PIN alone opens the disk once they're enrolled
   '';
   vm-guide-opens-the-vault = ''
     a stick's vault sealed to a FIDO2 key opens with its PIN, and without it by the passphrase

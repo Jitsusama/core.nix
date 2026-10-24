@@ -652,7 +652,13 @@ with subtest("the reinstalled machine's guide frees the TPM of the first install
     on_screen("a PIN for alice's SSH keys", timeout=300)
     t.assertEqual(policies(), [own_policy()])
 
-with subtest("a firmware cleared of its keys gets them back from the machine itself"):
+with subtest("a firmware cleared of its keys gets them back once the machine's are all signed"):
+    # A program the firmware would start, left unsigned on the ESP, which
+    # would leave the machine unable to start once the keys enforce.
+    unsigned = "/boot/EFI/Linux/unsigned.efi"
+    machine.succeed(
+        f"cp /run/current-system/systemd/lib/systemd/boot/efi/systemd-bootx64.efi {unsigned}"
+    )
     # A firmware's setup clearing its keys leaves it as a fresh copy of
     # OVMF's variables is: in setup mode, with no keys and no boot
     # entries, so it starts systemd-boot from the disk's fallback path.
@@ -660,21 +666,41 @@ with subtest("a firmware cleared of its keys gets them back from the machine its
     machine.efi_vars_path.unlink()
     machine.start(allow_reboot=True)
     # Without Secure Boot the TPM's policy doesn't hold, so a YubiKey
-    # opens the disk. lanzaboote then readies the keys again, from the
-    # machine's own, and core restarts for systemd-boot to enrol them
-    # before any kernel starts.
+    # opens the disk.
+    unlock()
+    machine.connect()
+    # lanzaboote readies the keys again, from the machine's own, and
+    # fails only at predicting the TPM's policy, which systemd-pcrlock
+    # won't rewrite from a boot that policy doesn't cover. The restart
+    # goes by what's on the ESP instead, and finds the unsigned program.
+    machine.wait_until_succeeds(
+        "systemctl show -P Result secure-boot-enrol-restart | grep -qx exit-code", timeout=300
+    )
+    t.assertEqual(
+        machine.succeed("systemctl show -P Result prepare-sb-auto-enroll").strip(), "exit-code"
+    )
+    refused = machine.succeed("journalctl -b -o cat -u secure-boot-enrol-restart")
+    t.assertIn("isn't signed, so the keys aren't enrolled", refused)
+    t.assertIn(unsigned, refused)
+    t.assertIn("Secure Boot: disabled", machine.succeed("bootctl status"))
+    # Nor are they left for systemd-boot to enrol at whatever restart
+    # comes next.
+    machine.succeed("test ! -e /boot/loader/keys/auto")
+    # With it gone, a restart readies them again, the check passes, and
+    # the machine restarts itself for systemd-boot to enrol them before
+    # any kernel starts.
+    machine.succeed(f"rm {unsigned}")
+    machine.reboot()
     unlock()
     machine.wait_for_console_text("Custom Secure Boot keys successfully enrolled")
-    # Enforcing with the same keys, the TPM's policy holds again, and
-    # its PIN alone opens the disk.
+    # Enforcing with the same keys, the TPM's policy, which the boot
+    # without them couldn't rewrite, holds again, and its PIN alone opens
+    # the disk.
     unlock(tpm_pin)
     machine.connect()
-    # systemd-boot enrolled them and restarted before a kernel started.
     log = machine.get_console_log()
     enrolled = log.rfind("Custom Secure Boot keys successfully enrolled")
     t.assertEqual(log[enrolled:].count("Linux version"), 1)
-    # What the boot without the keys made of the TPM's policy.
-    print(machine.succeed("journalctl -b -1 -o cat -u systemd-pcrlock-make-policy"))
     # The guide finds the TPM still sealed, and goes on to the keys.
     on_screen("a PIN for alice's SSH keys", timeout=300)
     t.assertIn("Secure Boot: enabled (user)", machine.succeed("bootctl status"))
