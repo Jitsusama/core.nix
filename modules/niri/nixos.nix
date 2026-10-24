@@ -64,7 +64,19 @@
     # the rest) gives an output `srgb-gamut`, which maps sRGB to the
     # primaries its EDID declares in the display engine: a degamma curve,
     # a colour matrix and a gamma curve, at no cost to drawing.
+    #
+    # niri turns a screen off through smithay, which waits out the commit,
+    # so the XPS 14's eDP panel powering down at a lid shut or an idle
+    # power-off held niri's main thread for about 200 ms, freezing input
+    # and every other screen. The patch (smithay-nonblocking-off.patch),
+    # on the smithay niri vendors, which carries no checksums to break,
+    # commits it without waiting, and waits as before when that's refused
+    # as busy.
     package = pkgs.niri.overrideAttrs (old: {
+      postPatch = (old.postPatch or "") + ''
+        chmod -R u+w "$cargoDepsCopy"/source-git-0/smithay-0.7.0
+        patch -p1 -d "$cargoDepsCopy"/source-git-0/smithay-0.7.0 < ${./smithay-nonblocking-off.patch}
+      '';
       patches = (old.patches or [ ]) ++ [
         ./touchscreen-gestures.patch
         ./prune-imports.patch
