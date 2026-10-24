@@ -1,16 +1,91 @@
 # The checks of guide, which checks.nix gathers with every other folder's;
 # its opening comment says what each kind of check proves.
 {
+  bareNixos,
   clippyConfig,
   clippyLints,
+  holds,
   lib,
   onLinux,
   passesClippy,
   pkgs,
   rust-overlay,
+  self,
   ...
 }:
 onLinux {
+  # The keys an account's modules name in the TPM reach what the installed
+  # guide reads, each with its account and a comment saying whose and
+  # where: tpm-signing's two and ssh-tpm-agent's login key, which
+  # tpm-signing brings.
+  the-guide-makes-the-keys-the-modules-name =
+    let
+      machine = bareNixos [
+        self.nixosModules.disko
+        self.nixosModules.guide
+        {
+          networking.hostName = "laptop";
+          home-manager.users.someone.imports = [ self.homeModules.tpm-signing ];
+        }
+      ];
+      home = machine.config.home-manager.users.someone.home.homeDirectory;
+      facts = builtins.fromJSON machine.config.environment.etc."guide/machine.json".text;
+      key = file: comment: pin: {
+        account = "someone";
+        file = "${home}/${file}";
+        inherit comment pin;
+      };
+    in
+    holds "the-guide-makes-the-keys-the-modules-name"
+      "The installed guide doesn't see the keys in the TPM that an account's modules name."
+      (
+        lib.sort (one: other: one.file < other.file) facts.keys == [
+          (key ".local/share/signing/joel-signing" "someone@laptop signing" true)
+          (key ".ssh/agent-signing" "someone@laptop agents" false)
+          (key ".ssh/id_ecdsa" "someone@laptop" true)
+        ]
+      );
+
+  # An account with ssh-tpm-agent keeps its login key's spare on each
+  # YubiKey, which reaches what the installed guide reads; a second
+  # account wanting one is refused, since a YubiKey holds one.
+  the-guide-keeps-one-accounts-spare-on-the-yubikeys =
+    let
+      machine =
+        others:
+        bareNixos [
+          self.nixosModules.disko
+          self.nixosModules.guide
+          {
+            home-manager.users = {
+              someone.imports = [ self.homeModules.ssh-tpm-agent ];
+            }
+            // lib.genAttrs others (_: {
+              imports = [ self.homeModules.ssh-tpm-agent ];
+              home.stateVersion = "26.05";
+            });
+            users.users = lib.genAttrs others (_: {
+              isNormalUser = true;
+            });
+          }
+        ];
+      alone = machine [ ];
+      facts = builtins.fromJSON alone.config.environment.etc."guide/machine.json".text;
+      refused = lib.filter (check: !check.assertion) (machine [ "another" ]).config.assertions;
+    in
+    holds "the-guide-keeps-one-accounts-spare-on-the-yubikeys"
+      "The installed guide doesn't see the account keeping a spare on the YubiKeys, or two accounts aren't refused."
+      (
+        facts.spares == [
+          {
+            account = "someone";
+            folder = "${alone.config.home-manager.users.someone.home.homeDirectory}/.ssh";
+            comment = "someone@yubikey";
+          }
+        ]
+        && lib.any (check: lib.hasPrefix "Only one account" check.message) refused
+      );
+
   # The guide's tests run as it builds: each step proven by observing it
   # again, each parser reading what real machines printed, each stick it
   # writes read back by sfdisk and fsck.fat, and each signature compared

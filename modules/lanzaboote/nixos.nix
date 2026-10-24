@@ -77,6 +77,20 @@ let
     '';
   };
 
+  # What the first boot does to have systemd-boot enrol the keys, as a
+  # program an installer runs inside the installed system before that boot,
+  # so systemd-boot enrols them at the very first, before any disk asks for
+  # a PIN. It's the unit's own commands, read from it, so the two can't
+  # differ; the unit then finds the files there and does nothing.
+  prepared = config.systemd.services.prepare-sb-auto-enroll;
+  enrolBeforeFirstBoot = pkgs.writeShellScript "secure-boot-enrolment" ''
+    set -euo pipefail
+    export PATH=${lib.escapeShellArg prepared.environment.PATH}
+    ${prepared.preStart}
+    cd "$(mktemp -d)"
+    ${prepared.script}
+  '';
+
   # Every NvPCR this systemd defines, each pointed at /dev/null, which is how
   # systemd reads a definition it should ignore. Taken from the package, so a
   # new one in a later systemd is masked as well.
@@ -249,6 +263,11 @@ in
         lib.getExe optionRomCheck
       );
     };
+    # At the system's top, where an installer finds it by the profile.
+    system.extraSystemBuilderCmds = lib.mkIf enrolment.enable ''
+      ln -s ${enrolBeforeFirstBoot} $out/secure-boot-enrolment
+    '';
+
     systemd.services.secure-boot-enrol-restart = lib.mkIf enrolment.enable {
       description = "Restart for systemd-boot to enrol the Secure Boot keys";
       unitConfig = {

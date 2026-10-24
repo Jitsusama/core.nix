@@ -160,6 +160,7 @@ pub fn steps(yubikeys: &[String]) -> Vec<Box<dyn Step>> {
     for name in yubikeys {
         steps.push(Box::new(keys::EnrolYubikey::new(name)));
     }
+    steps.push(Box::new(keys::NameYubikeys));
     // The Secure Boot keys before the recovery key, so the rescue bundle
     // is sealed to it while it's still held, before it's typed back.
     steps.push(Box::new(system::SecureBootKeys));
@@ -167,6 +168,7 @@ pub fn steps(yubikeys: &[String]) -> Vec<Box<dyn Step>> {
     steps.push(Box::new(system::SealRescueBundle));
     steps.push(Box::new(keys::KeepRecoveryKey));
     steps.push(Box::new(system::InstallSystem));
+    steps.push(Box::new(system::ReadyEnrolment));
     steps.push(Box::new(system::SetPassword));
     steps.push(Box::new(disk::WipeInstallKey {
         yubikeys: yubikeys.len(),

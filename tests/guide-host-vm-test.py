@@ -57,7 +57,15 @@ def on_screen(pattern: str, timeout: int = 120) -> None:
         return re.search("(?i)" + pattern, text) is not None
 
     with host.nested(f"waiting for {pattern} on the guide's screen"):
-        retry(shown, timeout)
+        try:
+            retry(shown, timeout)
+        except Exception:
+            # What the host was at when the wait ran out: the screen, the
+            # guide's own log, and the journal's last.
+            print("SCREEN\n" + screen())
+            print("LOG\n" + host.execute("tail -n 60 /home/alice/.local/state/guide/log")[1])
+            print("JOURNAL\n" + host.execute("journalctl -b -n 80 -o cat")[1])
+            raise
 
 
 def type_in(text: str) -> None:

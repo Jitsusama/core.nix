@@ -11,9 +11,15 @@ use std::io::Write;
 use crate::vault::store::Store;
 use crate::{Fault, Given, Journal, Machine, Program, Ran, Tool};
 
+/// A call as the Fake keys what it answers: the program, then its
+/// arguments.
+type Call = (String, Vec<String>);
+
 #[derive(Default)]
 pub struct Fake {
-    answers: BTreeMap<(String, Vec<String>), Vec<Ran>>,
+    answers: BTreeMap<Call, Vec<Ran>>,
+    /// The files a program leaves behind when run with these arguments.
+    left: BTreeMap<Call, Vec<(String, Vec<u8>)>>,
     files: BTreeMap<String, Vec<u8>>,
     absent: Vec<String>,
     links: BTreeMap<String, Option<String>>,
@@ -70,6 +76,16 @@ impl Fake {
                 stdout: stdout.into(),
                 stderr: stderr.into(),
             });
+        self
+    }
+
+    /// A file the tool leaves behind when run with these arguments, as
+    /// ssh-keygen leaves the keys it downloads.
+    pub fn leaves(&mut self, tool: Tool, args: &[&str], path: &str, bytes: &[u8]) -> &mut Fake {
+        self.left
+            .entry(key(Program::Tool(tool), args))
+            .or_default()
+            .push((path.into(), bytes.into()));
         self
     }
 
@@ -192,11 +208,20 @@ impl Machine for Fake {
             .answers
             .get_mut(&key(program, args))
             .ok_or(Fault::Unscripted { call })?;
-        Ok(if queued.len() > 1 {
+        let ran = if queued.len() > 1 {
             queued.remove(0)
         } else {
             queued[0].clone()
-        })
+        };
+        for (path, bytes) in self
+            .left
+            .get(&key(program, args))
+            .cloned()
+            .unwrap_or_default()
+        {
+            self.file(&path, &bytes);
+        }
+        Ok(ran)
     }
 
     fn read(&mut self, path: &str) -> Result<Option<Vec<u8>>, Fault> {

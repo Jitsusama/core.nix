@@ -5,7 +5,9 @@
 #
 # ssh-tpm-agent loads every key under ~/.ssh when it starts, without asking
 # to confirm, so Joel's key lives outside it and the signing-key unit adds it
-# with confirmation whenever the agent starts. docs/installing.md makes both.
+# with confirmation whenever the agent starts. jitsusama.tpmKeys names both,
+# for the guide to make on a machine it installed, and docs/installing.md
+# says how to make them by hand.
 {
   config,
   lib,
@@ -33,6 +35,19 @@ in
     makesKeys = "docs/installing.md's step 9";
     environment.SSH_AUTH_SOCK = "\${SSH_TPM_AUTH_SOCK:-$XDG_RUNTIME_DIR/ssh-tpm-agent.sock}";
   };
+
+  jitsusama.tpmKeys = [
+    {
+      file = joelKey;
+      label = "signing";
+      pin = true;
+    }
+    {
+      file = agentKey;
+      label = "agents";
+      pin = false;
+    }
+  ];
 
   systemd.user.services.signing-key = {
     Unit = {

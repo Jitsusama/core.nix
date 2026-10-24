@@ -33,12 +33,16 @@ in
   GUIDE_BASH = lib.getExe pkgs.bash;
   GUIDE_BOOTCTL = lib.getExe' systemd "bootctl";
   GUIDE_CAT = lib.getExe' pkgs.coreutils "cat";
+  GUIDE_CHOWN = lib.getExe' pkgs.coreutils "chown";
   GUIDE_CRYPTSETUP = lib.getExe' pkgs.cryptsetup "cryptsetup";
+  GUIDE_ENV = lib.getExe' pkgs.coreutils "env";
   GUIDE_DMSETUP = lib.getExe' pkgs.lvm2 "dmsetup";
   GUIDE_FIDO2_ASSERT = lib.getExe' pkgs.libfido2 "fido2-assert";
   GUIDE_FIDO2_TOKEN = lib.getExe' pkgs.libfido2 "fido2-token";
   GUIDE_LOSETUP = lib.getExe' pkgs.util-linux "losetup";
   GUIDE_LSBLK = lib.getExe' pkgs.util-linux "lsblk";
+  GUIDE_MKDIR = lib.getExe' pkgs.coreutils "mkdir";
+  GUIDE_MV = lib.getExe' pkgs.coreutils "mv";
   GUIDE_MOUNT = lib.getExe' pkgs.util-linux "mount";
   GUIDE_NIX = lib.getExe pkgs.nix;
   GUIDE_NIXOS_ENTER = lib.getExe pkgs.nixos-enter;
@@ -46,11 +50,21 @@ in
   # systemd keeps systemd-pcrlock with its private programs, not in bin.
   GUIDE_PCRLOCK = "${systemd}/lib/systemd/systemd-pcrlock";
   GUIDE_RUN0 = lib.getExe' systemd "run0";
+  GUIDE_RUNUSER = lib.getExe' pkgs.util-linux "runuser";
   GUIDE_SBCTL = lib.getExe pkgs.sbctl;
   GUIDE_SGDISK = lib.getExe' pkgs.gptfdisk "sgdisk";
+  # Built for the guide alone, so nothing else on a machine rebuilds: its
+  # spares step reads a YubiKey holding no resident keys as having none to
+  # download, where OpenSSH 10.5p1 fails (openssh-empty-key.patch says why).
+  GUIDE_SSH_KEYGEN = lib.getExe' (pkgs.openssh.overrideAttrs (old: {
+    patches = old.patches or [ ] ++ [ ./openssh-empty-key.patch ];
+  })) "ssh-keygen";
+  GUIDE_SSH_TPM_KEYGEN = lib.getExe' pkgs.ssh-tpm-agent "ssh-tpm-keygen";
   GUIDE_SYSTEMD_CRYPTENROLL = lib.getExe' systemd "systemd-cryptenroll";
   GUIDE_SYSTEMCTL = lib.getExe' systemd "systemctl";
   GUIDE_TPM2_GETCAP = lib.getExe' pkgs.tpm2-tools "tpm2_getcap";
+  GUIDE_TPM2_NVREADPUBLIC = lib.getExe' pkgs.tpm2-tools "tpm2_nvreadpublic";
+  GUIDE_TPM2_NVUNDEFINE = lib.getExe' pkgs.tpm2-tools "tpm2_nvundefine";
   GUIDE_UDEVADM = lib.getExe' systemd "udevadm";
   GUIDE_UMOUNT = lib.getExe' pkgs.util-linux "umount";
   GUIDE_VERITYSETUP = lib.getExe' pkgs.cryptsetup "veritysetup";

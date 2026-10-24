@@ -12,15 +12,17 @@ use std::path::PathBuf;
 
 use guide::fake::Fake;
 use guide::install::disk::{ConfirmDisk, LayOutDisk, WipeInstallKey};
-use guide::install::keys::EnrolYubikey;
+use guide::install::keys::{EnrolYubikey, NAMED, NameYubikeys, Named};
 use guide::install::memory::{self, RunFromMemory};
-use guide::install::system::{CheckFirmware, KeepOnStick, SealRescueBundle, SecureBootKeys};
+use guide::install::system::{
+    CheckFirmware, KeepOnStick, ReadyEnrolment, SealRescueBundle, SecureBootKeys,
+};
 use guide::install::vault::OpenVault;
 use guide::install::{INSTALL_KEY, RECOVERY_KEY, STICK_VAULT, TARGET, Target, VAULT_KEY};
 use guide::rescue::{self, Bundle};
 use guide::vault::store::{Directory, Store};
 use guide::vault::{self, Manifest, Packer, Vault, VaultKey};
-use guide::{Answer, Answers, Ask, Fault, Journey, Program, Secret, Standing, Step, Tool};
+use guide::{Answer, Answers, Ask, Fault, Journey, Machine, Program, Secret, Standing, Step, Tool};
 
 macro_rules! fixture {
     ($file:literal) => {
@@ -1414,4 +1416,222 @@ fn the_recovery_key_is_shown_alone_for_the_phone_then_typed_back_from_it() {
         KeepRecoveryKey.run(&mut fake, &answers),
         Err(Fault::Blocked { .. })
     ));
+}
+
+/// The installed system's profile leading to the target's system, and
+/// that system with core's program to ready its keys, or without.
+fn installed(fake: &mut Fake, target: &Target, readies: bool) {
+    fake.pointer("/mnt/nix/var/nix/profiles/system", &target.system);
+    if readies {
+        fake.pointer(
+            &format!("/mnt{}/secure-boot-enrolment", target.system),
+            "/nix/store/def-secure-boot-enrolment",
+        );
+    }
+}
+
+/// The firmware in setup mode, or in user mode enforcing.
+fn firmware_in_setup(fake: &mut Fake, setup: bool) {
+    let (enforcing, setup): (&[u8], &[u8]) = if setup {
+        (&[6, 0, 0, 0, 0], &[6, 0, 0, 0, 1])
+    } else {
+        (&[6, 0, 0, 0, 1], &[6, 0, 0, 0, 0])
+    };
+    fake.file(
+        &format!("/sys/firmware/efi/efivars/SecureBoot-{GLOBAL}"),
+        enforcing,
+    )
+    .file(
+        &format!("/sys/firmware/efi/efivars/SetupMode-{GLOBAL}"),
+        setup,
+    )
+    .no_file(&format!("/sys/firmware/efi/efivars/AuditMode-{GLOBAL}"))
+    .no_file(&format!("/sys/firmware/efi/efivars/DeployedMode-{GLOBAL}"));
+}
+
+const AUTO: [&str; 3] = [
+    "/mnt/boot/loader/keys/auto/PK.auth",
+    "/mnt/boot/loader/keys/auto/KEK.auth",
+    "/mnt/boot/loader/keys/auto/db.auth",
+];
+
+#[test]
+fn a_firmware_in_setup_mode_gets_the_keys_readied_inside_the_installed_system() {
+    let target = target("/dev/disk/by-id/virtio-root");
+    let scratch = Scratch::new("install-ready-enrolment");
+    let mut fake = stick(&scratch, &target);
+    installed(&mut fake, &target, true);
+    firmware_in_setup(&mut fake, true);
+    for file in AUTO {
+        fake.no_file(file);
+    }
+    assert!(matches!(
+        ReadyEnrolment.observe(&mut fake).unwrap(),
+        Standing::Needed { .. }
+    ));
+    let program = format!("{}/secure-boot-enrolment", target.system);
+    fake.prints(Tool::NixosEnter, &["--root", "/mnt", "-c", &program], "");
+    ReadyEnrolment.run(&mut fake, &Answers::new()).unwrap();
+    assert!(
+        fake.calls
+            .iter()
+            .any(|call| call == &format!("nixos-enter --root /mnt -c {program}")),
+        "{:#?}",
+        fake.calls
+    );
+    // What it left on the ESP is what proves it.
+    for file in AUTO {
+        fake.file(file, b"an authenticated variable");
+    }
+    let Standing::Done { evidence } = ReadyEnrolment.observe(&mut fake).unwrap() else {
+        panic!("the keys are readied")
+    };
+    assert!(evidence.contains("before the disk is opened"), "{evidence}");
+}
+
+#[test]
+fn a_firmware_with_keys_of_its_own_gets_nothing_readied() {
+    let target = target("/dev/disk/by-id/virtio-root");
+    let scratch = Scratch::new("install-ready-nothing");
+    let mut fake = stick(&scratch, &target);
+    installed(&mut fake, &target, true);
+    firmware_in_setup(&mut fake, false);
+    let Standing::Done { evidence } = ReadyEnrolment.observe(&mut fake).unwrap() else {
+        panic!("a firmware with its own keys enrols nothing")
+    };
+    assert!(evidence.contains("isn't in setup mode"), "{evidence}");
+    ReadyEnrolment.run(&mut fake, &Answers::new()).unwrap();
+    assert!(
+        !fake
+            .calls
+            .iter()
+            .any(|call| call.starts_with("nixos-enter")),
+        "{:#?}",
+        fake.calls
+    );
+}
+
+#[test]
+fn a_system_that_readies_no_keys_itself_is_left_to_its_first_boot() {
+    let target = target("/dev/disk/by-id/virtio-root");
+    let scratch = Scratch::new("install-ready-no-program");
+    let mut fake = stick(&scratch, &target);
+    installed(&mut fake, &target, false);
+    // The firmware isn't even looked at: nothing here would ready keys.
+    assert!(matches!(
+        ReadyEnrolment.observe(&mut fake).unwrap(),
+        Standing::Done { .. }
+    ));
+}
+
+#[test]
+fn nothing_is_readied_before_the_system_is_installed() {
+    let target = target("/dev/disk/by-id/virtio-root");
+    let scratch = Scratch::new("install-ready-first");
+    let mut fake = stick(&scratch, &target);
+    fake.pointer("/mnt/nix/var/nix/profiles/system", "/nix/store/old-system");
+    assert!(matches!(
+        ReadyEnrolment.observe(&mut fake).unwrap(),
+        Standing::Needed { .. }
+    ));
+}
+
+/// The installed disk's FIDO2 credentials, in the order of their tokens.
+fn installed_credentials() -> Vec<String> {
+    let header: serde_json::Value =
+        serde_json::from_str(fixture!("luks-dump-installed.json")).unwrap();
+    let tokens = header["tokens"].as_object().unwrap();
+    let mut ids: Vec<&String> = tokens.keys().collect();
+    ids.sort();
+    ids.iter()
+        .filter_map(|id| tokens[*id]["fido2-credential"].as_str())
+        .map(String::from)
+        .collect()
+}
+
+/// A stick whose journal knows the Nano, and the 5C when `both`, opened
+/// the installed disk with its own credential.
+fn enrolled_stick(scratch: &Scratch, target: &Target, both: bool) -> (Fake, Vec<String>) {
+    let mut fake = stick(scratch, target);
+    fake.prints(
+        Tool::Cryptsetup,
+        &["luksDump", "--dump-json-metadata", VOLUME],
+        fixture!("luks-dump-installed.json"),
+    );
+    let credentials = installed_credentials();
+    fake.journal()
+        .record("enrol-nano", &format!("opened:{}", credentials[1]))
+        .unwrap();
+    if both {
+        fake.journal()
+            .record("enrol-5c", &format!("opened:{}", credentials[0]))
+            .unwrap();
+    }
+    (fake, credentials)
+}
+
+#[test]
+fn the_installed_system_is_told_which_credential_each_named_key_enrolled() {
+    let target = target("/dev/disk/by-id/virtio-root");
+    let scratch = Scratch::new("install-named");
+    let (mut fake, credentials) = enrolled_stick(&scratch, &target, true);
+    let kept = format!("/mnt{NAMED}");
+    fake.no_file(&kept);
+    assert!(matches!(
+        NameYubikeys.observe(&mut fake).unwrap(),
+        Standing::Needed { .. }
+    ));
+    NameYubikeys.run(&mut fake, &Answers::new()).unwrap();
+    assert!(
+        fake.calls.contains(&format!("publishing {kept}")),
+        "{:#?}",
+        fake.calls
+    );
+    let named: Vec<Named> = serde_json::from_slice(&fake.read(&kept).unwrap().unwrap()).unwrap();
+    assert_eq!(
+        named,
+        [
+            Named {
+                name: "the Nano".into(),
+                credential: credentials[1].clone(),
+            },
+            Named {
+                name: "the 5C".into(),
+                credential: credentials[0].clone(),
+            },
+        ]
+    );
+    let Standing::Done { evidence } = NameYubikeys.observe(&mut fake).unwrap() else {
+        panic!("the names are kept")
+    };
+    assert!(evidence.contains("knows the Nano and the 5C"), "{evidence}");
+}
+
+#[test]
+fn names_kept_from_another_enrolment_are_written_again() {
+    let target = target("/dev/disk/by-id/virtio-root");
+    let scratch = Scratch::new("install-named-again");
+    let (mut fake, credentials) = enrolled_stick(&scratch, &target, true);
+    // Swapped, as an earlier install's would differ.
+    let stale = format!(
+        r#"[{{"name":"the Nano","credential":"{}"}},{{"name":"the 5C","credential":"{}"}}]"#,
+        credentials[0], credentials[1]
+    );
+    fake.file(&format!("/mnt{NAMED}"), stale.as_bytes());
+    assert!(matches!(
+        NameYubikeys.observe(&mut fake).unwrap(),
+        Standing::Needed { .. }
+    ));
+}
+
+#[test]
+fn a_key_not_yet_enrolled_leaves_nothing_to_name() {
+    let target = target("/dev/disk/by-id/virtio-root");
+    let scratch = Scratch::new("install-named-early");
+    let (mut fake, _) = enrolled_stick(&scratch, &target, false);
+    let Standing::Blocked { why, .. } = NameYubikeys.observe(&mut fake).unwrap() else {
+        panic!("the 5C isn't enrolled")
+    };
+    assert!(why.contains("the 5C isn't enrolled"), "{why}");
+    assert!(NameYubikeys.run(&mut fake, &Answers::new()).is_err());
 }

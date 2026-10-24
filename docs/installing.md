@@ -121,6 +121,12 @@ bootctl status | grep 'Secure Boot'   # Secure Boot: enabled (user)
 sudo sbctl verify                     # every file on the boot partition signed
 ```
 
+A machine the guide installs skips the first of those boots: the stick runs
+the same commands inside the installed system, through the
+`secure-boot-enrolment` program core's lanzaboote module puts at the system's
+top, so systemd-boot enrols the keys as the machine first starts, before any
+disk asks for a PIN.
+
 Some firmware, such as Dell's, locks itself into deployed mode once it has a
 platform key, so `enabled (deployed)` is as good as `enabled (user)`.
 
@@ -218,6 +224,13 @@ In the setup screen, set an administrator password, so turning Secure Boot
 off or changing its keys needs it.
 
 ## 9. Make the SSH Keys
+
+On a machine the guide installed, it makes the TPM's keys itself, at the boot
+after the disk is sealed: every key a module names in `jitsusama.tpmKeys`, as
+its account, with one PIN for each that asks for one. Then it keeps the login
+key's spare on each YubiKey the stick enrolled, asking for each by name: it
+downloads the spare a YubiKey already holds, and makes one only on a YubiKey
+holding none. On any other machine, make them by hand, as below.
 
 Run this step as the account, never under sudo. Every key here belongs in the
 account's home, and under sudo they land in root's.

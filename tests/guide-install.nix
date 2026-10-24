@@ -7,7 +7,8 @@
 # boots its own disk, opened by a key's PIN, and enrols its Secure Boot keys.
 # By then the stick is the machine's own, carrying its keys and signed with
 # them, so it boots again with Secure Boot enforced and reinstalls the
-# machine with its keys put back, the firmware never visited.
+# machine with its keys put back, the firmware never visited. Once the disk
+# is sealed to the TPM, the guide makes the account's SSH keys there too.
 #
 # One machine plays the whole of it, as a laptop does, since lanzaboote
 # predicts the TPM's policy as it installs and the stick runs on the
@@ -25,6 +26,8 @@ let
   inherit (pkgs) lib;
   pin = "123456";
   tpmPin = "24681357";
+  # Spaces inside, which ssh-tpm-keygen keeps.
+  keyPin = "the keys PIN";
   password = "a password for alice";
   passphrase = "the stick's recovery passphrase";
   # Typed into a shell as it is, so a word with nothing to quote.
@@ -92,7 +95,7 @@ pkgs.testers.runNixOSTest {
 
   # The machine, as its own repository would describe it.
   nodes.machine =
-    { lib, ... }:
+    { lib, pkgs, ... }:
     {
       imports = [
         self.nixosModules.disko
@@ -111,7 +114,37 @@ pkgs.testers.runNixOSTest {
       users.users.alice = {
         isNormalUser = true;
         uid = 1000;
+        # Every account reaches the TPM, as core's tpm module lets it.
+        extraGroups = [ "tss" ];
       };
+      security.tpm2.enable = true;
+      # fido2-token, which the test watches a YubiKey come and go by, as
+      # core's yubikey module gives a machine.
+      environment.systemPackages = [ pkgs.libfido2 ];
+      # Two SSH keys in the TPM, one asking for a PIN and one not, as
+      # ssh-tpm-agent's and tpm-signing's modules name them.
+      jitsusama.guide.keys = [
+        {
+          account = "alice";
+          file = "/home/alice/.ssh/id_ecdsa";
+          comment = "alice@machine";
+          pin = true;
+        }
+        {
+          account = "alice";
+          file = "/home/alice/.ssh/agent-signing";
+          comment = "alice@machine agents";
+          pin = false;
+        }
+      ];
+      # And a spare on each YubiKey, as ssh-tpm-agent's module asks.
+      jitsusama.guide.spares = [
+        {
+          account = "alice";
+          folder = "/home/alice/.ssh";
+          comment = "alice@yubikey";
+        }
+      ];
       # Nothing starts the guide but core's module, and nothing lets anyone
       # past polkit: what a machine of its own would have.
       boot.loader.timeout = 0;
@@ -186,12 +219,14 @@ pkgs.testers.runNixOSTest {
           written = "${written}/stick.raw";
           toplevel = "${nodes.machine.system.build.toplevel}";
           tpm2Clear = "${pkgs.tpm2-tools}/bin/tpm2_clear";
+          keygen = "${pkgs.ssh-tpm-agent}/bin/ssh-tpm-keygen";
           payload = "${payload}";
           guide = "${guide}/bin/guide";
           inherit
             image
             pin
             tpmPin
+            keyPin
             password
             passphrase
             bundlePassphrase

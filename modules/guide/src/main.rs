@@ -43,6 +43,18 @@ const USAGE: &str = "usage: guide observe | guide tools | guide install | guide 
        guide seal-keys TARGET BUNDLE";
 
 fn main() -> ExitCode {
+    // Run by ssh-tpm-keygen as its SSH_ASKPASS, for the PIN of a key the
+    // guide is making (src/installed/keys.rs), it answers that and only
+    // that, whatever it's asked.
+    if let Some(pin) = std::env::var_os(guide::installed::keys::ASKPASS) {
+        use std::io::Write as _;
+        let mut answer = pin.into_encoded_bytes();
+        answer.push(b'\n');
+        return match std::io::stdout().write_all(&answer) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(_) => ExitCode::FAILURE,
+        };
+    }
     // age finds its plugins on PATH and takes no other, so the guide's own
     // PATH is the one this build was given, and nothing a shell set can
     // put another plugin in its place. The programs the guide runs get
@@ -500,7 +512,7 @@ fn installed() -> Result<(), Fault> {
     let mut machine = System::new(journal, host_log());
     // At boot it's looked at every time, so a machine with nothing to do
     // shows nothing, and the sign-in follows at once.
-    let journey = Journey::new(guide::installed::steps())
+    let journey = Journey::new(guide::installed::steps(&mut machine)?)
         .map_err(|why| Fault::unreadable("the installed machine's steps", why))?;
     if matches!(
         journey.next(Place::Installed, &mut machine),

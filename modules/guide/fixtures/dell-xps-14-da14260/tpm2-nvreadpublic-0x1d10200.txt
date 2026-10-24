@@ -1,0 +1,10 @@
+0x1d10200:
+  name: 000b542eaa7a1855c0c84380f655ff6d51d5cd078bcf431a73e7965e11c0f1c65b66
+  hash algorithm:
+    friendly: sha256
+    value: 0xB
+  attributes:
+    friendly: ownerwrite|authwrite|nt=0x1|ownerread|authread|orderly|clear_stclear
+    value: 0xC060046
+  size: 32
+

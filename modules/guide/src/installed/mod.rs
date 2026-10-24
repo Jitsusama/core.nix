@@ -2,8 +2,15 @@
 //! own disk: Secure Boot checked to enforce with its own keys, then the
 //! disk sealed to the TPM with a PIN and its slot tried first, so every
 //! boot asks for that PIN, and a YubiKey or the recovery key opens it when
-//! the TPM won't. The guide runs as root here, at boot from core's guide
-//! module, or by hand through run0.
+//! the TPM won't, then the accounts' SSH keys made in the TPM (keys.rs)
+//! and a spare kept on each YubiKey (spares.rs). The TPM is freed of the
+//! policies earlier installs left in it (policies.rs).
+//! The guide runs as root here, at boot from core's guide module, or by
+//! hand through run0.
+
+pub mod keys;
+pub mod policies;
+pub mod spares;
 
 use serde::Deserialize;
 
@@ -24,6 +31,13 @@ pub const PCRLOCK: &str = "/var/lib/systemd/pcrlock.json";
 pub struct Facts {
     /// What core calls the disk's encrypted volume.
     pub disk_name: String,
+    /// The SSH keys each account keeps in the TPM, none when no module
+    /// names one.
+    #[serde(default)]
+    pub keys: Vec<keys::TpmKey>,
+    /// The accounts that keep a spare SSH key on each YubiKey.
+    #[serde(default)]
+    pub spares: Vec<spares::Spare>,
 }
 
 pub fn facts(machine: &mut dyn Machine) -> Result<Facts, Fault> {
@@ -424,7 +438,15 @@ fn prove_tpm_opens(machine: &mut dyn Machine, volume: &str, pin: &Secret) -> Res
     Ok(())
 }
 
-/// Every step on the installed machine, in order.
-pub fn steps() -> Vec<Box<dyn Step>> {
-    vec![Box::new(CheckSecureBoot), Box::new(SealTpm)]
+/// Every step on the installed machine, in order, with a spare's for
+/// each YubiKey the stick named.
+pub fn steps(machine: &mut dyn Machine) -> Result<Vec<Box<dyn Step>>, Fault> {
+    let mut steps: Vec<Box<dyn Step>> = vec![
+        Box::new(CheckSecureBoot),
+        Box::new(SealTpm),
+        Box::new(policies::FreeOldPolicies),
+        Box::new(keys::MakeKeys),
+    ];
+    steps.extend(spares::steps(machine)?);
+    Ok(steps)
 }
