@@ -71,6 +71,19 @@ Singleton {
         }
     }
 
+    // A screen coming or going (a dock, the lid, a monitor) leaves the box
+    // measured on a screen that may be gone, and the window on Qt's
+    // stand-in for one, where no surface can be made (Launcher.qml says
+    // more). So the pick ends, as the launcher closes then, and Print
+    // starts it again on the screens there are.
+    Connections {
+        target: Quickshell
+
+        function onScreensChanged() {
+            root.asked = null;
+        }
+    }
+
     // Escape clears the letters first, so nothing is lost by pressing it
     // once.
     function back(): void {
