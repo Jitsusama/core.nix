@@ -893,7 +893,8 @@
     stage, and Plymouth hears which
   '';
   vm-screens-come-and-go = ''
-    the launcher and a notice come back after the screen goes and returns
+    the launcher, a notice, the margin's marks and dictation's bar come back after the screen goes
+    and returns
   '';
   vm-secure-boot-installs = ''
     the whole install works, and the disk opens only for it

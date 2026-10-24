@@ -1,14 +1,21 @@
 # Boots the graphical role in a virtual machine with niri straight on its
 # screen, not nested in Cage as the desktop test runs it, so the screen can
 # really go and come back, as at an undock. The shell's surfaces must be
-# there again after: the launcher, and a notice that was up. The script is
-# screens-vm-test.py.
+# there again after: the launcher, a notice that was up, the margin's marks
+# and dictation listening. The script is screens-vm-test.py.
 { self, pkgs }:
 let
   account = "jitsusama";
 
   # What the script needs of the above, which it reads at its top.
   values = pkgs.writeText "screens-values.json" (builtins.toJSON { inherit account; });
+
+  # Stands in for dictation's service, which would load Whisper, as the
+  # desktop test's does (desktop/stand-in-dictation.py): it listens from
+  # the first press until the next.
+  standInDictation = pkgs.writers.writePython3 "stand-in-dictation" {
+    doCheck = false;
+  } (builtins.readFile ./desktop/stand-in-dictation.py);
 in
 pkgs.testers.runNixOSTest {
   name = "screens";
@@ -55,6 +62,7 @@ pkgs.testers.runNixOSTest {
       home-manager.users.${account} = {
         home.stateVersion = "26.05";
         jitsusama.quickshell.reports = true;
+        systemd.user.services.dictation.Service.ExecStart = lib.mkForce "${standInDictation}";
       };
       # As in the greeter test: debug lines copied to the serial console make
       # journald fall behind, and PID 1 drops lines it won't take.

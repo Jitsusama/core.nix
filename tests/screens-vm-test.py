@@ -74,6 +74,13 @@ with subtest("a critical notice is up before the screen goes"):
     )
     wait_for_surfaces("notifications")
 
+with subtest("the margin shows a mark, and dictation listens, before the screen goes"):
+    # Keep Awake is a mark the margin keeps for as long as it's on.
+    machine.succeed(in_niri("systemctl --user start caffeinate.service"))
+    # The stand-in listens from the first press until the next.
+    machine.succeed(in_niri("dictation toggle"))
+    wait_for_surfaces("margin", "dictation")
+
 with subtest("the screen goes, and niri lets it go"):
     plug("off")
     machine.wait_until_succeeds(in_niri("niri msg --json outputs | grep -qx '{}'"), timeout=60)
@@ -82,3 +89,6 @@ with subtest("the screen comes back, and the launcher and the notice with it"):
     plug("detect")
     machine.wait_until_succeeds(in_niri("niri msg outputs | grep -qF Virtual-1"), timeout=60)
     wait_for_surfaces("wallpaper", "launcher", "notifications")
+
+with subtest("the margin's mark and dictation's bar come back with the screen"):
+    wait_for_surfaces("margin", "dictation")
