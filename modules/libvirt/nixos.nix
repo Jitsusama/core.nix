@@ -50,27 +50,15 @@ let
   '';
 
   # Every architecture QEMU emulates, so Arm and RISC-V guests run too, each
-  # emulator run through the refusal.
+  # emulator run through the refusal (wrap-emulators.sh).
   qemu = pkgs.symlinkJoin {
     name = "qemu-${pkgs.qemu.version}";
     inherit (pkgs.qemu) version;
     paths = [ pkgs.qemu ];
-    postBuild = ''
-      for emulator in $out/bin/qemu-system-* $out/bin/qemu-kvm; do
-        [ -e "$emulator" ] || continue
-        real=$(readlink -f "$emulator")
-        rm "$emulator"
-        printf '#!%s\nexec %s %s "$@"\n' ${pkgs.runtimeShell} \
-          ${refuseIoUring}/bin/refuse-io-uring "$real" > "$emulator"
-        chmod +x "$emulator"
-      done
-      # libvirt's module finds the firmware by this package's own path.
-      for descriptor in $out/share/qemu/firmware/*.json; do
-        real=$(readlink -f "$descriptor")
-        rm "$descriptor"
-        substitute "$real" "$descriptor" --replace-quiet ${pkgs.qemu} $out
-      done
-    '';
+    shell = pkgs.runtimeShell;
+    refuse = "${refuseIoUring}/bin/refuse-io-uring";
+    inherit (pkgs) qemu;
+    postBuild = builtins.readFile ./wrap-emulators.sh;
   };
 in
 {
