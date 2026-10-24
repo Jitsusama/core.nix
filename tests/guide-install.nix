@@ -95,7 +95,7 @@ pkgs.testers.runNixOSTest {
 
   # The machine, as its own repository would describe it.
   nodes.machine =
-    { lib, ... }:
+    { lib, pkgs, ... }:
     {
       imports = [
         self.nixosModules.disko
@@ -118,6 +118,9 @@ pkgs.testers.runNixOSTest {
         extraGroups = [ "tss" ];
       };
       security.tpm2.enable = true;
+      # fido2-token, which the test watches a YubiKey come and go by, as
+      # core's yubikey module gives a machine.
+      environment.systemPackages = [ pkgs.libfido2 ];
       # Two SSH keys in the TPM, one asking for a PIN and one not, as
       # ssh-tpm-agent's and tpm-signing's modules name them.
       jitsusama.guide.keys = [
