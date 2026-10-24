@@ -201,6 +201,31 @@ def frozen_unit() -> str:
     return machine.succeed(f"jq -r '.frozen[0].unit' {status}").strip()
 
 
+# A runaway's rate, a mebibyte a second over the last minute, as the guard's daemon.rs has it.
+RUNAWAY = 1 << 20
+
+
+def seen_running_away(pid: str) -> None:
+    """Wait until the account's guard looks again and sees pid writing at a runaway's rate.
+
+    While a disk is short, each step names who writes most of the last minute's writes, at
+    a rate that changes with every sample, so each look writes the status afresh under a
+    later heartbeat. It names them by the rule a freeze goes by, so a look naming pid at a
+    runaway's rate is one at which the guard would freeze it, had it not spared it.
+    """
+    seen = machine.succeed(f"jq -r .heartbeat {status}").strip()
+    running_away = f".writer.pid == {pid} and .writer.rate >= {RUNAWAY}"
+    machine.wait_until_succeeds(
+        f"jq -e '.heartbeat > {seen} and {running_away}' {status}", timeout=120
+    )
+
+
+def freezes_tried() -> int:
+    """Give how many times the account's guard has tried to freeze a writer, as it journals."""
+    journal = "/run/current-system/sw/bin/disk-guard journal --json"
+    return int(as_joel(f"{journal} | jq -s '[.[] | select(.kind == \"freeze\")] | length'"))
+
+
 def freezer_state(unit: str) -> str:
     """Give whether the account's unit is frozen or running, as systemd says."""
     return as_joel(f"systemctl --user show -P FreezerState {unit}").strip()
@@ -210,10 +235,16 @@ with subtest("a runaway writer at critical is frozen, and stays thawed once thaw
     fill_to(0.03)
     run_away("runaway")
     unit = frozen_unit()
+    writer = machine.succeed(f"jq -r '.frozen[0].pid' {status}").strip()
+    freezes = freezes_tried()
     t.assertEqual(freezer_state(unit), "frozen")
     t.assertIn("Thawed " + unit, as_joel("/run/current-system/sw/bin/disk-guard thaw"))
     machine.wait_until_succeeds(f"jq -e '.frozen | length == 0' {status}", timeout=60)
-    machine.sleep(20)
+    # The guard let it go in the look that emptied its list; a later one sees it running
+    # away again. A second freeze of its scope, still there, would fail, so it's the try
+    # that shows.
+    seen_running_away(writer)
+    t.assertEqual(freezes_tried(), freezes, "The guard tried to freeze a writer thawed by hand")
     t.assertEqual(freezer_state(unit), "running")
     as_joel(f"systemctl --user kill {unit}; systemctl --user stop runaway.scope || true")
     as_joel("rm -f ~/runaway ~/fill-*")
