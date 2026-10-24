@@ -24,7 +24,10 @@
 # A build that keeps the machine short of memory is stopped by systemd-oomd
 # after 30 s, at the same pressure as the user slices, rather than left to the
 # kernel's OOM killer, which picks by size and could pick the browser instead.
-# oomd stops the daemon's whole group, every build with it; the daemon starts
+# oomd stops whichever of the daemon's cgroups reclaims most, which with a
+# cgroup for each build is most often one build. vm-first marks the daemon's
+# own cgroup for oomd to pass over while a build can go instead, since the
+# daemon's going takes every connection with it; when it does go, it starts
 # again with the next connection.
 #
 # A build that brings free space under 24 GiB has the daemon collect garbage
@@ -45,7 +48,9 @@
 # stay in build.slice, under its weight and its limits. Nix 3.21 makes the
 # cgroups without handing them any controllers, and systemd handed the
 # daemon none for the CPU until asked, so vm-first hands on what systemd
-# gives; Nix 2.35 does that itself. The daemon stops only its own process
+# gives, once the daemon has moved aside, since systemd can't start a new
+# daemon in a cgroup that hands controllers on; Nix 2.35 does that itself.
+# The daemon stops only its own process
 # when it restarts, so a switch that turns this on lets the builds already
 # running finish where they are.
 #

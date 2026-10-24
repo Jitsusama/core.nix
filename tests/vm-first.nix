@@ -44,6 +44,13 @@ pkgs.testers.runNixOSTest {
     environment.etc."vm-build.nix".source = buildOf "vm-build" fakeVm;
     environment.etc."compiler-build.nix".source = buildOf "compiler-build" fakeCompiler;
     environment.etc."uid-range.nix".source = ./uid-range.nix;
+    # getfattr, to read the mark vm-first leaves for systemd-oomd.
+    environment.systemPackages = [ pkgs.attr ];
+    # Looking every 20 ms rather than every second, so a hand-off racing a
+    # restart of the daemon is caught rather than missed.
+    systemd.services.vm-first.serviceConfig.ExecStart = pkgs.lib.mkForce "${
+      pkgs.callPackage ../modules/nix-daemon/vm-first/package.nix { }
+    }/bin/vm-first --every 20";
   };
 
   testScript = builtins.readFile ./vm-first-vm-test.py;

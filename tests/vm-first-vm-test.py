@@ -5,9 +5,11 @@ handed the controllers for CPU, disk, memory and pids. A build running a
 process named as qemu is has every thread of it put to the normal policy at
 nice -10, a thread it starts afterwards included, and its cgroup weighed at
 1000 for CPU and disk, while a compiler's build beside it stays as the
-daemon set it, at 100. Restarting the daemon leaves both running, and the
-new daemon builds again. Stopping a build leaves nothing of it. A build
-asking for a range of user ids gets 65,536.
+daemon set it, at 100. The daemon's own cgroup is marked for systemd-oomd
+to spare while a build can go instead. Restarting the daemon, ten times
+over with vm-first looking every 20 ms, leaves both running, and the new
+daemon starts and builds again. Stopping a build leaves nothing of it. A
+build asking for a range of user ids gets 65,536.
 """
 
 from typing import TYPE_CHECKING
@@ -88,6 +90,12 @@ with subtest("the daemon sits beside its builds, each in a cgroup of its own"):
 with subtest("the builds are handed the controllers to weigh and count them by"):
     wait_for_the_controllers()
 
+with subtest("systemd-oomd is asked to take a build before the daemon"):
+    machine.wait_until_succeeds(
+        f'[ "$(getfattr -n user.oomd_avoid --only-values {DAEMON}/nix-daemon)" = 1 ]',
+        timeout=10,
+    )
+
 with subtest("every thread of the VM goes ahead, one started later too"):
     machine.wait_until_succeeds(f"[ $(ls /proc/{vm}/task | wc -l) -ge 5 ]", timeout=20)
     machine.wait_until_succeeds(
@@ -108,11 +116,16 @@ with subtest("a compiler's build stays as the daemon set it"):
     assert machine.succeed(f"cat {cgroup_of(compiler)}/cpu.weight").strip() == "100"
 
 with subtest("a restarted daemon leaves its builds running, and builds again"):
-    machine.succeed("systemctl restart nix-daemon.service")
-    machine.wait_for_unit("nix-daemon.service")
+    # Between the old daemon going and the new one moving aside, the
+    # service's cgroup must take no controllers, or systemd can't start
+    # the new daemon in it. One restart can miss that window; ten, with
+    # vm-first looking every 20 ms, don't.
+    for _ in range(10):
+        machine.succeed("systemctl restart nix-daemon.service")
+        machine.wait_for_unit("nix-daemon.service")
+        wait_for_the_daemon_aside()
 
     machine.succeed(f"kill -0 {vm} {compiler}")
-    wait_for_the_daemon_aside()
     wait_for_the_controllers()
 
     # A build asking for a range of user ids, as a container's check does.

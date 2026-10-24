@@ -20,7 +20,9 @@
 //! Usage: vm-first [--cgroup /sys/fs/cgroup/build.slice/nix-daemon.service]
 //!        [--name qemu-system]... [--nice -10] [--weight 1000] [--every 1000]
 
+use std::ffi::{CStr, CString, c_char};
 use std::fs;
+use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 use std::process;
 use std::thread;
@@ -40,7 +42,18 @@ struct SchedParam {
     sched_priority: i32,
 }
 
+/// The mark systemd-oomd reads to pass over a cgroup while another can go.
+const OOMD_AVOID: &CStr = c"user.oomd_avoid";
+
 unsafe extern "C" {
+    fn getxattr(path: *const c_char, name: *const c_char, value: *mut u8, size: usize) -> isize;
+    fn setxattr(
+        path: *const c_char,
+        name: *const c_char,
+        value: *const u8,
+        size: usize,
+        flags: i32,
+    ) -> i32;
     fn setpriority(which: i32, who: u32, prio: i32) -> i32;
     fn sched_setscheduler(pid: i32, policy: i32, param: *const SchedParam) -> i32;
 }
@@ -129,15 +142,31 @@ fn weight_files(weight: u64) -> [(&'static str, String); 2] {
     ]
 }
 
+/// Whether a command line is the daemon's own, `nix-daemon --daemon`. Each
+/// per-connection worker writes its client's pid over `--daemon`.
+fn is_daemon(cmdline: &[u8]) -> bool {
+    let mut args = cmdline.split(|&byte| byte == 0);
+    let named = args
+        .next()
+        .and_then(|argv0| argv0.rsplit(|&byte| byte == b'/').next())
+        .is_some_and(|name| name == b"nix-daemon");
+    named && args.next() == Some(b"--daemon".as_slice())
+}
+
+/// Whether the daemon has moved itself into the `nix-daemon` cgroup, given
+/// the pids that cgroup holds. Its workers outlive a restart there, so the
+/// cgroup is there, and holds processes, before the new daemon is.
+fn daemon_aside(pids: &str, cmdline: impl Fn(&str) -> Vec<u8>) -> bool {
+    pids.lines().any(|pid| is_daemon(&cmdline(pid)))
+}
+
 /// Hands the daemon's builds the controllers, once Nix has moved the daemon
-/// into a cgroup of its own beside them, which it does with `use-cgroups`;
-/// until then the daemon's cgroup holds processes, and the kernel takes no
-/// controllers for a cgroup that does. Nix 2.35 does this itself, and finds
-/// it done.
+/// into a cgroup of its own beside them, which it does with `use-cgroups`.
+/// Until then the service's cgroup holds the daemon, or is about to: systemd
+/// starts each new daemon in it, and can't once it has controllers to hand
+/// on, so a restart that found them handed would fail to start. Nix 2.35
+/// does this itself, and finds it done.
 fn hand_controllers(root: &Path, warned: &mut bool) {
-    if !root.join("nix-daemon").is_dir() {
-        return;
-    }
     let read = |file: &str| fs::read_to_string(root.join(file)).unwrap_or_default();
     let Some(enable) = to_enable(&read("cgroup.controllers"), &read("cgroup.subtree_control"))
     else {
@@ -240,8 +269,50 @@ fn sort_vm(pid: &str, settings: &Settings, warned: &mut bool) -> usize {
     moved
 }
 
+/// Marks the daemon's cgroup for systemd-oomd to spare while a build can go
+/// instead. oomd kills whichever of the service's cgroups reclaims most, and
+/// the daemon's going takes every connection with it; it still goes when
+/// nothing else can.
+fn spare_the_daemon(daemon: &Path, warned: &mut bool) {
+    let Ok(path) = CString::new(daemon.as_os_str().as_bytes()) else {
+        return;
+    };
+    let mut value = [0u8; 8];
+    // SAFETY: both names are NUL-terminated, and the buffer is as long as
+    // said.
+    let read = unsafe {
+        getxattr(
+            path.as_ptr(),
+            OOMD_AVOID.as_ptr(),
+            value.as_mut_ptr(),
+            value.len(),
+        )
+    };
+    if read == 1 && value[0] == b'1' {
+        return;
+    }
+    // SAFETY: as above, the value being one byte long.
+    let set = unsafe { setxattr(path.as_ptr(), OOMD_AVOID.as_ptr(), b"1".as_ptr(), 1, 0) };
+    if set == 0 {
+        eprintln!("Asked systemd-oomd to stop a build before the daemon.");
+    } else if !*warned {
+        eprintln!(
+            "Couldn't ask systemd-oomd to spare the daemon: {}",
+            std::io::Error::last_os_error()
+        );
+        *warned = true;
+    }
+}
+
 fn look(settings: &Settings, warned: &mut bool) {
-    hand_controllers(&settings.cgroup, warned);
+    let daemon = settings.cgroup.join("nix-daemon");
+    let pids = fs::read_to_string(daemon.join("cgroup.procs")).unwrap_or_default();
+    if daemon_aside(&pids, |pid| {
+        fs::read(format!("/proc/{pid}/cmdline")).unwrap_or_default()
+    }) {
+        hand_controllers(&settings.cgroup, warned);
+        spare_the_daemon(&daemon, warned);
+    }
     sort_cgroup(&settings.cgroup, settings, warned);
     for build in build_cgroups(&settings.cgroup) {
         if sort_cgroup(&build, settings, warned) {
@@ -375,6 +446,36 @@ mod tests {
             None
         );
         assert_eq!(to_enable("", ""), None);
+    }
+
+    #[test]
+    fn knows_the_daemon_from_its_workers() {
+        assert!(is_daemon(
+            b"/nix/store/abc-nix/bin/nix-daemon\x00--daemon\x00"
+        ));
+        assert!(is_daemon(b"nix-daemon\x00--daemon\x00"));
+        // A worker, which writes its client's pid over --daemon.
+        assert!(!is_daemon(b"nix-daemon\x00307605\x00"));
+        assert!(!is_daemon(b"bash\x00--daemon\x00"));
+        assert!(!is_daemon(b""));
+    }
+
+    #[test]
+    fn the_daemon_is_aside_only_once_it_has_moved_itself() {
+        let workers_left = |pid: &str| match pid {
+            "696" | "702" => b"nix-daemon\x00307605\x00".to_vec(),
+            _ => Vec::new(),
+        };
+        // A restarted daemon's workers stay behind in its cgroup, the new
+        // daemon not yet among them.
+        assert!(!daemon_aside("696\n702\n", workers_left));
+        assert!(!daemon_aside("", workers_left));
+
+        let moved = |pid: &str| match pid {
+            "966" => b"nix-daemon\x00--daemon\x00".to_vec(),
+            other => workers_left(other),
+        };
+        assert!(daemon_aside("696\n702\n966\n", moved));
     }
 
     #[test]
