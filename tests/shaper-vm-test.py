@@ -184,6 +184,37 @@ with subtest("what Joel waits on at a terminal goes as an app's would, both ways
 with subtest("the system's builds go in bulk"):
     lands("bulk", "system:build.slice", upload)
 
+with subtest("what it forwards for a machine or a container goes in bulk, both ways"):
+    # A guest as libvirt's NAT or a container's bridge makes one: its own network
+    # namespace behind a veth, sent out eth1 under the client's address. Nothing it
+    # sends is a socket on the client, so only the forward chain can class it.
+    client.succeed(
+        "ip netns add guest",
+        "ip link add vethguest type veth peer name eth0 netns guest",
+        "ip address add 10.99.0.1/24 dev vethguest",
+        "ip link set vethguest up",
+        "ip -n guest address add 10.99.0.2/24 dev eth0",
+        "ip -n guest link set eth0 up",
+        "ip -n guest route add default via 10.99.0.1",
+        "sysctl -w net.ipv4.ip_forward=1",
+        "nft add table ip guest",
+        "nft 'add chain ip guest out { type nat hook postrouting priority srcnat; }'",
+        "nft add rule ip guest out ip saddr 10.99.0.0/24 oifname eth1 masquerade",
+    )
+
+    def guest(script: str) -> Callable[[], None]:
+        """Return a sender that runs a script inside the guest."""
+
+        def send() -> None:
+            """Run the script inside the guest."""
+            client.succeed(f"ip netns exec guest {BIN}/bash -c '{script}'")
+
+        return send
+
+    reaches("bulk", "a guest", guest(upload), "eth1", LEAST_TRANSFER)
+    reaches("bulk", "a guest", guest(download), ifb("eth1"), LEAST_TRANSFER)
+    client.succeed("nft delete table ip guest", "ip link delete vethguest", "ip netns delete guest")
+
 with subtest("an app's pages are best effort, and its calls video"):
     lands("best effort", "app.slice", upload)
     lands("best effort", "app.slice", download, dev=ifb("eth1"))

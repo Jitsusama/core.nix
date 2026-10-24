@@ -1,8 +1,8 @@
 # Runs the shaper on a client whose line goes through a router to a server,
 # and reads from CAKE's own counts which tin each kind of traffic went to,
 # both ways: the account's jobs, the work Joel waits on at a terminal, the
-# system's builds, an app's page and its call, Tuple's daemon, names and the
-# shaper's pings. Traffic to the router,
+# system's builds, a guest it forwards for, an app's page and its call,
+# Tuple's daemon, names and the shaper's pings. Traffic to the router,
 # on the client's own network, goes by unslowed. When the default route
 # moves to the client's other link, the queues move with it, and when the
 # shaper stops, it takes them all away. Inside a WireGuard tunnel to the
