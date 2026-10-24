@@ -951,7 +951,7 @@
     passkeys and security keys are made in the TPM, each after a yes
   '';
   vm-pebble-speakers-are-tuned = ''
-    a Pebble X Plus hears its tuning, headphones don't
+    a Pebble X Plus hears its tuning, again once it's plugged back in, and headphones don't
   '';
   vm-plugging-in-wakes-it = ''
     every USB root hub may wake the machine, so a cable plugged into a sleeping laptop wakes it
