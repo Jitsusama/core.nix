@@ -102,232 +102,33 @@ let
     mv "$out.part" "$out.exit"
   '';
 
-  # Stands in for dictation's service, which would load Whisper, on the
-  # socket systemd hands it, speaking its protocol (src/service.rs): the
-  # first press listens, the second types for five seconds, a press
-  # meanwhile says it's still writing, and then it says it heard nothing
-  # in the silence the VM's microphone gives.
-  standInDictation = pkgs.writers.writePython3 "stand-in-dictation" { } ''
-    import socket
-    import threading
-    import time
+  # Stands in for dictation's service, on the socket systemd hands it
+  # (desktop/stand-in-dictation.py). ruff and mypy read each of these
+  # stand-ins through `nix fmt`, so the writers' flake8 is off.
+  standInDictation = pkgs.writers.writePython3 "stand-in-dictation" {
+    doCheck = false;
+  } (builtins.readFile ./desktop/stand-in-dictation.py);
 
-    listener = socket.socket(fileno=3)
-    watchers = []
-    lock = threading.Lock()
-    state = ["idle"]
+  # Asks the portal to open a file, always asking what with, and writes down
+  # its answer (desktop/ask-portal.py).
+  askPortal = pkgs.writers.writePython3 "ask-portal" {
+    libraries = [ pkgs.python3Packages.jeepney ];
+    doCheck = false;
+  } (builtins.readFile ./desktop/ask-portal.py);
 
+  # A window through X11 named only as Tuple names its windows
+  # (desktop/tuple-window.py).
+  tupleWindow = pkgs.writers.writePython3 "tuple-window" {
+    libraries = [ pkgs.python3Packages.xlib ];
+    doCheck = false;
+  } (builtins.readFile ./desktop/tuple-window.py);
 
-    def tell(word):
-        for watcher in list(watchers):
-            try:
-                watcher.sendall(f"{word}\n".encode())
-            except OSError:
-                watchers.remove(watcher)
-
-
-    def typed():
-        time.sleep(5)
-        with lock:
-            tell("heard-nothing silent")
-            state[0] = "idle"
-            tell("idle")
-
-
-    def serve(client):
-        line = client.makefile().readline().strip()
-        with lock:
-            if line == "watch":
-                client.sendall(f"{state[0]}\n".encode())
-                watchers.append(client)
-                return
-            if state[0] == "idle":
-                state[0] = "listening"
-                tell("listening")
-            elif state[0] == "listening":
-                state[0] = "transcribing"
-                tell("transcribing")
-                threading.Thread(target=typed, daemon=True).start()
-            else:
-                tell("still-writing")
-            client.sendall(f"{state[0]}\n".encode())
-        client.close()
-
-
-    while True:
-        client, _ = listener.accept()
-        threading.Thread(target=serve, args=(client,), daemon=True).start()
-  '';
-
-  # Asks the portal to open a file, always asking what with, as a program
-  # does, and stays on the bus until the portal answers, since it drops a
-  # request whose caller has gone. Its answer, 0 for opened and 1 for
-  # refused, lands in the runtime folder's portal-said.
-  askPortal =
-    pkgs.writers.writePython3 "ask-portal"
-      {
-        libraries = [ pkgs.python3Packages.jeepney ];
-        flakeIgnore = [ "E501" ];
-      }
-      ''
-        import os
-        import sys
-        from jeepney import DBusAddress, MatchRule, message_bus, new_method_call
-        from jeepney.io.blocking import Proxy, open_dbus_connection
-
-        said = os.path.join(os.environ["XDG_RUNTIME_DIR"], "portal-said")
-        connection = open_dbus_connection(bus="SESSION", enable_fds=True)
-        token = "asked"
-        sender = connection.unique_name[1:].replace(".", "_")
-        print(f"on {os.environ.get('DBUS_SESSION_BUS_ADDRESS')} as {connection.unique_name}", file=sys.stderr, flush=True)
-        rule = MatchRule(
-            type="signal",
-            interface="org.freedesktop.portal.Request",
-            member="Response",
-            path=f"/org/freedesktop/portal/desktop/request/{sender}/{token}",
-        )
-        Proxy(message_bus, connection).AddMatch(rule)
-        portal = DBusAddress(
-            "/org/freedesktop/portal/desktop",
-            bus_name="org.freedesktop.portal.Desktop",
-            interface="org.freedesktop.portal.OpenURI",
-        )
-        options = {"ask": ("b", True), "handle_token": ("s", token)}
-        # The portal opens a file only as one already open, by OpenFile,
-        # and refuses its path as a file:// link.
-        opened = open(sys.argv[1], "rb")
-        asked = new_method_call(portal, "OpenFile", "sha{sv}", ("", opened, options))
-        with connection.filter(rule) as heard:
-            handle = connection.send_and_get_reply(asked)
-            print(f"asked, {handle.header.message_type} {handle.body}", file=sys.stderr, flush=True)
-            answer = connection.recv_until_filtered(heard, timeout=120)
-            print(f"answered {answer.body[0]}", file=sys.stderr, flush=True)
-        with open(said + ".part", "w") as told:
-            told.write(f"{answer.body[0]}\n")
-        os.rename(said + ".part", said)
-      '';
-
-  # A stand-in touchscreen, as wide as the screen, which swipes with as many
-  # fingers as it's told, one way, or taps: each line written to
-  # /run/touchscreen is how many and which way (RL is from right to left), or
-  # tap, then how far across an up or down swipe goes, as a fraction of the
-  # screen. Writing waits until it's read, so a swipe has started once it
-  # returns.
-  # A window through X11 named only as Tuple names its windows: its part as
-  # the WM_CLASS instance, given as the one argument, Tuple as the class, and
-  # no name. It stays until it's stopped.
-  tupleWindow =
-    pkgs.writers.writePython3 "tuple-window"
-      {
-        libraries = [ pkgs.python3Packages.xlib ];
-      }
-      ''
-        import sys
-        from Xlib import X, display
-
-        shown = display.Display()
-        screen = shown.screen()
-        window = screen.root.create_window(
-            0, 0, 450, 450, 0, screen.root_depth, X.InputOutput, X.CopyFromParent,
-            background_pixel=screen.black_pixel,
-        )
-        window.set_wm_class(sys.argv[1], "Tuple")
-        window.map()
-        shown.flush()
-        while True:
-            shown.next_event()
-      '';
-
-  touchscreen =
-    pkgs.writers.writePython3 "touchscreen"
-      {
-        libraries = [ pkgs.python3Packages.evdev ];
-        flakeIgnore = [ "E501" ];
-      }
-      ''
-        import os
-        import time
-        from evdev import AbsInfo, UInput, ecodes as e
-
-        width, height = 1280, 800
-        fifo = "/run/touchscreen"
-
-
-        def axis(most):
-            return AbsInfo(0, 0, most, 0, 0, 10)
-
-
-        device = UInput(
-            {
-                e.EV_KEY: [e.BTN_TOUCH],
-                e.EV_ABS: [
-                    (e.ABS_X, axis(width - 1)),
-                    (e.ABS_Y, axis(height - 1)),
-                    (e.ABS_MT_SLOT, axis(9)),
-                    (e.ABS_MT_TRACKING_ID, axis(65535)),
-                    (e.ABS_MT_POSITION_X, axis(width - 1)),
-                    (e.ABS_MT_POSITION_Y, axis(height - 1)),
-                ],
-            },
-            name="stand-in touchscreen",
-            input_props=[e.INPUT_PROP_DIRECT],
-        )
-
-        # Across most of the screen the way it's told, from 15% to 85%, as
-        # a person swipes: the view follows the fingers, so a short swipe
-        # snaps back.
-        ways = {"LR": (1, 0), "RL": (-1, 0), "UD": (0, 1), "DU": (0, -1)}
-
-
-        def tap():
-            device.write(e.EV_ABS, e.ABS_MT_SLOT, 0)
-            device.write(e.EV_ABS, e.ABS_MT_TRACKING_ID, 1)
-            device.write(e.EV_ABS, e.ABS_MT_POSITION_X, width // 2)
-            device.write(e.EV_ABS, e.ABS_MT_POSITION_Y, height // 2)
-            device.write(e.EV_KEY, e.BTN_TOUCH, 1)
-            device.syn()
-            time.sleep(0.05)
-            device.write(e.EV_ABS, e.ABS_MT_TRACKING_ID, -1)
-            device.write(e.EV_KEY, e.BTN_TOUCH, 0)
-            device.syn()
-
-
-        def swipe(fingers, way, across):
-            dx, dy = ways[way]
-            steps = 10
-            for step in range(steps + 1):
-                along = 14 * step - 7 * steps
-                for finger in range(fingers):
-                    x = int(width * across) + dx * width * along // (20 * steps)
-                    x += 40 * finger * abs(dy)
-                    y = height // 2 + dy * height * along // (20 * steps)
-                    y += 40 * finger * abs(dx)
-                    device.write(e.EV_ABS, e.ABS_MT_SLOT, finger)
-                    if step == 0:
-                        device.write(e.EV_ABS, e.ABS_MT_TRACKING_ID, finger + 1)
-                    device.write(e.EV_ABS, e.ABS_MT_POSITION_X, x)
-                    device.write(e.EV_ABS, e.ABS_MT_POSITION_Y, y)
-                if step == 0:
-                    device.write(e.EV_KEY, e.BTN_TOUCH, 1)
-                device.syn()
-                time.sleep(0.02)
-            for finger in range(fingers):
-                device.write(e.EV_ABS, e.ABS_MT_SLOT, finger)
-                device.write(e.EV_ABS, e.ABS_MT_TRACKING_ID, -1)
-            device.write(e.EV_KEY, e.BTN_TOUCH, 0)
-            device.syn()
-
-
-        os.mkfifo(fifo)
-        while True:
-            with open(fifo) as asked:
-                for line in asked:
-                    fingers, way, across = line.split()
-                    if way == "tap":
-                        tap()
-                    else:
-                        swipe(int(fingers), way, float(across))
-      '';
+  # A stand-in touchscreen, as wide as the screen, which swipes or taps as
+  # it's told through /run/touchscreen (desktop/touchscreen.py).
+  touchscreen = pkgs.writers.writePython3 "touchscreen" {
+    libraries = [ pkgs.python3Packages.evdev ];
+    doCheck = false;
+  } (builtins.readFile ./desktop/touchscreen.py);
 
   # A picture and a document to open, as a download would be.
   picture = "${pkgs.nixos-icons}/share/icons/hicolor/256x256/apps/nix-snowflake.png";
