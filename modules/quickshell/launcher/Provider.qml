@@ -176,6 +176,17 @@ Scope {
         return file.text();
     }
 
+    // What a JSON file another program writes says, or nothing at all when
+    // it's missing, half written or not JSON, so a reader asks only for the
+    // fields it needs and finds them or doesn't.
+    function parsed(text) {
+        try {
+            return JSON.parse(text) ?? {};
+        } catch (error) {
+            return {};
+        }
+    }
+
     // A row whose Return copies `copy`, or its name, set while the launcher
     // holds the keys, which a Wayland program needs to set the clipboard.
     // A row with an empty `copy` says something and copies nothing.

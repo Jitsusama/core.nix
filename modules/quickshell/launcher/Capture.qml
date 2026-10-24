@@ -259,14 +259,6 @@ Provider {
     // facts.
     property var facts: ({})
 
-    function parsed(text) {
-        try {
-            return JSON.parse(text) ?? {};
-        } catch (e) {
-            return {};
-        }
-    }
-
     FileView {
         path: `${Quickshell.env("XDG_RUNTIME_DIR")}/desk/cameras.json`
         watchChanges: true
