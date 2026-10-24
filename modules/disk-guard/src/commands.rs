@@ -83,8 +83,6 @@ fn idle() {
     }
 }
 
-/// Runs `job` as `run` does, until `stop` is set: then its group is asked
-/// to end, and killed if it hasn't within `grace`.
 /// Whether a stop signal has come and waits, blocked, for the guard to take
 /// it between steps. systemd sends a unit's stop signal once, so a command
 /// started after it would run unasked until systemd kills the whole unit,
@@ -119,6 +117,8 @@ fn answer_stops() {
     }
 }
 
+/// Runs `job` as `run` does, until `stop` is set: then its group is asked
+/// to end, and killed if it hasn't within `grace`.
 pub fn stoppable(job: &Job, stop: &AtomicBool, grace: Duration) -> io::Result<Ran> {
     running(job, Some((stop, grace)))
 }
