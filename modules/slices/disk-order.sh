@@ -19,6 +19,15 @@ on)
   # the one it guesses is far off, so the measured one goes in first.
   echo "$number ctrl=user model=linear $3" > /sys/fs/cgroup/io.cost.model
   echo "$number enable=1 $4" > /sys/fs/cgroup/io.cost.qos
+  # A measured disk has no latency targets, but a switch from before it was
+  # measured leaves them in the kernel: systemd doesn't write over a target
+  # it no longer manages. Left, they throttle the disk beside io.cost until
+  # a reboot, so they go here.
+  find /sys/fs/cgroup -name io.latency -print0 | while IFS= read -r -d '' held; do
+    if grep -q "^$number " "$held"; then
+      echo "$number target=max" > "$held"
+    fi
+  done
   ;;
 off)
   echo "$number enable=0" > /sys/fs/cgroup/io.cost.qos
