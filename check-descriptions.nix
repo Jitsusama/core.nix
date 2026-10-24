@@ -38,6 +38,10 @@
   backlight-passes-clippy = ''
     clippy finds nothing in the backlight daemon or its tests
   '';
+  bat-reads-its-theme = ''
+    bat colours code in the account's theme from a cache built once, saying nothing, delta finds
+    the theme through it too, and a switch builds no cache of its own
+  '';
   batteries-leave-time-to-power-off = ''
     UPower powers a laptop off at 5%, before it goes flat
   '';
