@@ -342,18 +342,56 @@ let
       ;
   };
 
-  # Every folder's checks, beside the repository's own. A name two of them give
-  # stops the evaluation rather than one check hiding the other.
-  gather = lib.foldl' (
-    gathered: these:
+  # What each check proves (check-descriptions.nix), each a sentence however
+  # its lines are wrapped.
+  descriptions = lib.mapAttrs (
+    _: text: lib.concatStringsSep " " (lib.splitString "\n" (lib.trim text))
+  ) (import ./check-descriptions.nix);
+
+  # Gives every check what it proves as its meta.description, so a query of the
+  # checks lists them, and holds that every check says it and every description
+  # names a check. Only Linux has every check, so only it holds that.
+  describe =
+    checks:
     let
-      clashes = lib.intersectLists (lib.attrNames gathered) (lib.attrNames these);
+      named = lib.attrNames checks ++ [ "every-check-says-what-it-proves" ];
+      undescribed = lib.subtractLists (lib.attrNames descriptions) named;
+      unchecked = lib.subtractLists named (lib.attrNames descriptions);
+      wrong =
+        lib.optional (undescribed != [ ])
+          "these checks say nothing in check-descriptions.nix of what they prove: ${lib.concatStringsSep ", " undescribed}"
+        ++
+          lib.optional (unchecked != [ ])
+            "these descriptions in check-descriptions.nix name no check: ${lib.concatStringsSep ", " unchecked}";
+      all =
+        checks
+        // onLinux {
+          every-check-says-what-it-proves =
+            holds "every-check-says-what-it-proves" "Of the checks, ${lib.concatStringsSep "; and " wrong}."
+              (wrong == [ ]);
+        };
     in
-    if clashes == [ ] then
-      gathered // these
-    else
-      throw "More than one file gives the checks ${lib.concatStringsSep ", " clashes}"
-  ) { };
+    lib.mapAttrs (
+      name: check: lib.addMetaAttrs { description = descriptions.${name} or null; } check
+    ) all;
+
+  # Every folder's checks, beside the repository's own, each told what it
+  # proves. A name two of them give stops the evaluation rather than one check
+  # hiding the other.
+  gather =
+    sets:
+    describe (
+      lib.foldl' (
+        gathered: these:
+        let
+          clashes = lib.intersectLists (lib.attrNames gathered) (lib.attrNames these);
+        in
+        if clashes == [ ] then
+          gathered // these
+        else
+          throw "More than one file gives the checks ${lib.concatStringsSep ", " clashes}"
+      ) { } sets
+    );
 in
 gather (
   [
