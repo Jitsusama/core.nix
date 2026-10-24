@@ -199,8 +199,30 @@ let
   # read too, held to clippyLints, and nothing installed.
   passesClippy = name: package: clippy.passes { inherit name package; };
 
+  # The packages a VM test's host runs it with, the virtiofsd its VMs share
+  # folders through started by without-syncfs (modules/nix-daemon), so a
+  # guest's sync of a share never commits the host's whole filesystem,
+  # whether the daemon runs the test or a person runs its driver. Only the
+  # host's set changes: the guests keep their own packages, which libvirt's
+  # virtiofsd comes from.
+  vmHostPkgs = pkgs // {
+    virtiofsd = pkgs.writeShellScriptBin "virtiofsd" ''
+      exec ${
+        lib.getExe (pkgs.callPackage ./modules/nix-daemon/without-syncfs/package.nix { })
+      } ${lib.getExe pkgs.virtiofsd} "$@"
+    '';
+    testers = pkgs.testers // {
+      runNixOSTest =
+        test:
+        pkgs.testers.runNixOSTest {
+          imports = [ test ];
+          hostPkgs = lib.mkForce vmHostPkgs;
+        };
+    };
+  };
+
   # The virtual machine tests. Each has to show something nothing cheaper can.
-  vmTests = {
+  vmTestsOn = pkgs: {
     # The disk layout and Secure Boot decide whether a machine starts at all.
     vm-secure-boot-installs = import ./tests/secure-boot.nix { inherit self pkgs; };
     # The guide's install is a stick, a disk, FIDO2 keys, the firmware and
@@ -320,6 +342,7 @@ let
     # polkit, systemd and a system to switch to.
     vm-admins-switch-unasked = import ./tests/switch-system.nix { inherit self pkgs; };
   };
+  vmTests = vmTestsOn vmHostPkgs;
 
   # Checks for Linux alone, which a Mac neither builds nor evaluates.
   onLinux = lib.optionalAttrs (pkgs.stdenv.hostPlatform.system == "x86_64-linux");

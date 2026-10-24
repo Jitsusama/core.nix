@@ -121,7 +121,9 @@ in
     # minutes of VM checks came from there. Answered ENOSYS, the guest's
     # FUSE stops asking, and a check's files are thrown away anyway. A
     # build's `sync -f` fails with "Function not implemented"; sync, fsync
-    # and fdatasync still work, and Nix itself calls no syncfs().
+    # and fdatasync still work, and Nix itself calls no syncfs(). A test
+    # run straight from its driver runs outside the daemon, so core's VM
+    # tests also start virtiofsd through without-syncfs (checks.nix).
     SystemCallFilter = [ "~syncfs:ENOSYS" ];
   };
 

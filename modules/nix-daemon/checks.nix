@@ -49,4 +49,14 @@
   vm-first-passes-clippy = passesClippy "vm-first-passes-clippy" (
     pkgs.callPackage ./vm-first/package.nix { }
   );
+
+  # without-syncfs's tests run as it builds: the kernel answers a program it
+  # runs ENOSYS for syncfs and runs its fsync, under one more seccomp filter
+  # than without it, since a build here is refused syncfs by the daemon too.
+  without-syncfs-refuses-only-syncfs = pkgs.callPackage ./without-syncfs/package.nix { };
+
+  # clippy finds nothing in without-syncfs, its tests included.
+  without-syncfs-passes-clippy = passesClippy "without-syncfs-passes-clippy" (
+    pkgs.callPackage ./without-syncfs/package.nix { }
+  );
 }

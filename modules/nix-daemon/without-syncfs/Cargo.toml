@@ -1,0 +1,10 @@
+# without-syncfs: runs a program refused syncfs(2), as core's VM tests run
+# virtiofsd (src/main.rs says why).
+[package]
+name = "without-syncfs"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[dependencies]

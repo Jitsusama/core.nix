@@ -232,7 +232,10 @@ picture caught before its state was drawn is a fault in the test instead.
 - A check above the promises says what the tiers below it miss.
 - What a running system shows goes in an existing virtual machine where it
   fits. A new one has to cover something none of them can; its name starts
-  with `vm-`.
+  with `vm-`, and it goes in the root `checks.nix`'s `vmTestsOn`, whose
+  `pkgs` start virtiofsd through without-syncfs so a guest's sync never
+  commits the host's whole filesystem. One defined anywhere else misses
+  that silently.
 - A VM test past about two minutes, or twenty subtests, splits by area, each
   part carrying only the stand-ins its area needs, so a change reruns only
   the part it touches. Each subtest sets up what it needs and leaves nothing
