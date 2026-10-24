@@ -707,6 +707,16 @@ in
     '';
   };
 
+  options.jitsusama.quickshell.margin.linger = lib.mkOption {
+    type = lib.types.ints.unsigned;
+    default = 15;
+    description = ''
+      How many seconds something on air (a camera, a share, a recording, a
+      call) stays in the margin, muted, once it has gone, so a camera let go
+      is still seen to have been on. Nothing else lingers.
+    '';
+  };
+
   options.jitsusama.quickshell.surfaces = lib.mkOption {
     type = lib.types.attrsOf lib.types.path;
     default = { };
@@ -1335,6 +1345,7 @@ in
           Singleton {
               readonly property var quiet: ${object config.jitsusama.quickshell.quiet}
               readonly property bool reports: ${lib.boolToString config.jitsusama.quickshell.reports}
+              readonly property var margin: ${object config.jitsusama.quickshell.margin}
               // Other modules' surfaces, by file, from jitsusama.quickshell.surfaces.
               readonly property var surfaces: ${
                 builtins.toJSON (map (name: "${name}.qml") (lib.attrNames config.jitsusama.quickshell.surfaces))

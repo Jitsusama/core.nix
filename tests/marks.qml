@@ -75,6 +75,25 @@ QtObject {
         expect("left on but needed now is the alert too",
             Marks.tone(piece("leftOn", true)), "alert");
 
+        // Something on air that goes stays a while, muted, where it was, so
+        // a camera let go is still seen to have been on; left on or
+        // wanting Joel goes at once.
+        const lit = (mark, kind) => ({ mark: mark, kind: kind, tone: "strong" });
+        const camera = lit("camera", "onAir");
+        const pi = lit("pi", "wants");
+        let kept = Marks.lingers([], [camera, pi], [], { at: 1000, linger: 15000 });
+        expect("a camera let go lingers, muted, and pi doesn't",
+            kept.map(one => [one.mark, one.until, one.thing.tone, one.thing.kind]),
+            [["camera", 16000, "muted", "onAir"]]);
+        expect("what lingered is still the thing it was", camera.tone, "strong");
+        kept = Marks.lingers(kept, [], [], { at: 9000, linger: 15000 });
+        expect("it lingers till its time", kept.map(one => one.mark), ["camera"]);
+        expect("then goes", Marks.lingers(kept, [], [], { at: 16000, linger: 15000 }), []);
+        expect("taken again, it lingers no more",
+            Marks.lingers(kept, [], [camera], { at: 2000, linger: 15000 }), []);
+        expect("let go while it lingers, it lingers once",
+            Marks.lingers(kept, [camera], [], { at: 5000, linger: 15000 }).map(one => one.until), [16000]);
+
         for (const failure of failures)
             console.warn(`FAIL ${failure}`);
         Qt.exit(failures.length === 0 ? 0 : 1);

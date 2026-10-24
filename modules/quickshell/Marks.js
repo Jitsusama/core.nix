@@ -43,3 +43,25 @@ function tone(piece) {
     }
     return piece.kind === "leftOn" ? "muted" : "strong";
 }
+
+// What lingers at a time, as { mark, until, thing }: something on air
+// that was lit before and isn't now stays a while, muted, in its place,
+// so a camera let go is still seen to have been on. One lit again stops
+// lingering, one past its time goes, and one already lingering keeps its
+// time. What was left on or wants Joel goes at once, since nothing of it
+// is private. The clock says the time now and how long to linger.
+function lingers(kept, before, after, clock) {
+    const { at, linger } = clock;
+    const lit = after.map(thing => thing.mark);
+    const stays = kept.filter(one => !lit.includes(one.mark) && one.until > at);
+    const held = stays.map(one => one.mark);
+    const went = before
+        .filter(thing => thing.kind === "onAir" && !lit.includes(thing.mark)
+            && !held.includes(thing.mark))
+        .map(thing => ({
+            mark: thing.mark,
+            until: at + linger,
+            thing: Object.assign({}, thing, { tone: "muted" })
+        }));
+    return stays.concat(went);
+}

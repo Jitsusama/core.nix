@@ -2743,10 +2743,13 @@ with subtest("a camera open shows in the margin, and the launcher says by what")
     launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "in use by chrome")
     machine.send_key("esc")
     machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
+    # Let go, it lingers a moment, muted, then goes.
+    since = mark()
     machine.succeed(
         ": > /run/camera-holders/.camera"
         " && mv /run/camera-holders/.camera /run/camera-holders/camera"
     )
+    reported("sets margin ", margin_sets(("camera", "onAir", "muted")), since)
     machine.wait_until_fails(in_session(margin), timeout=10)
 
 with subtest("a USB camera's stream shows in the margin too, and leaves with the camera"):

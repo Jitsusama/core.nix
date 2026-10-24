@@ -642,6 +642,9 @@ pkgs.testers.runNixOSTest {
         # A camera whose holders a module would name, for the test to
         # write in its place, since the VM has none.
         jitsusama.quickshell.overview.pieces.camera.holders = [ "camera" ];
+        # Something on air lingers in the margin once it goes; a moment is
+        # enough to see it, and keeps the test's waits for it to go short.
+        jitsusama.quickshell.margin.linger = 2;
         # Dictation's own service would load Whisper in the VM.
         systemd.user.services.dictation.Service.ExecStart = lib.mkForce "${standInDictation}";
         # No key repeats. A key the test presses is let go when the host gets

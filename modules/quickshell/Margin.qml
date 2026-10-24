@@ -12,8 +12,10 @@
 // each asks (Marks.js): what's on air nearest the corner, then what wants
 // Joel, then what was left on, a step apart. Colour says only how much:
 // strong for what's on air or wants him, muted for what was left on, the
-// alert for what needs him now. The glyphs are lifted off the picture by
-// the theme's text shadows, as the clock on the lock screen is.
+// alert for what needs him now. Something on air that goes stays a while
+// in its place, muted (jitsusama.quickshell.margin.linger), so a camera let
+// go is still seen to have been on. The glyphs are lifted off the picture
+// by the theme's text shadows, as the clock on the lock screen is.
 //
 // What each is, in words, and what can be done about it, is the launcher's
 // What's on (launcher/WhatsOn.qml): Super+O opens it, and clicking a glyph
@@ -37,19 +39,53 @@ Scope {
     // How tall each glyph's ink stands, with a step above and below.
     readonly property int ink: Theme.gap - Theme.space.xs
 
-    // What's on now: every piece with a mark that's true, as { entry,
-    // piece, glyph, kind, order, tone }, left to right, the corner's last.
-    readonly property var on: Marks.arranged(Facts.all
+    // Every piece with a mark that's true now, as { entry, piece, mark,
+    // glyph, kind, order, tone }.
+    readonly property var lit: Facts.all
         .filter(fact => fact.entry.mark !== null && fact.piece
             && fact.piece.present && fact.piece.active)
         .map(fact => ({
             entry: fact.entry,
             piece: fact.piece,
+            mark: fact.entry.mark,
             glyph: Theme.glyph[fact.entry.mark],
             kind: fact.piece.kind,
             order: fact.entry.order,
             tone: Marks.tone(fact.piece)
-        })))
+        }))
+    // What was on air and has just gone, which stays a while, muted
+    // (Marks.lingers), and what was lit before the last change.
+    property var kept: []
+    property var before: []
+    readonly property int linger: Options.margin.linger * 1000
+    // What's drawn: what's lit and what lingers, left to right, the
+    // corner's last.
+    readonly property var on: Marks.arranged(lit.concat(kept.map(one => one.thing)))
+
+    // Lingers what just went, and wakes when the soonest is due to go.
+    function settle() {
+        const at = Date.now();
+        root.kept = Marks.lingers(root.kept, root.before, root.lit, {
+            at,
+            linger: root.linger
+        });
+        root.before = root.lit;
+        if (root.kept.length === 0) {
+            due.stop();
+            return;
+        }
+        const soonest = root.kept.reduce((soon, one) => Math.min(soon, one.until),
+            root.kept[0].until);
+        due.interval = Math.max(0, soonest - at);
+        due.restart();
+    }
+
+    onLitChanged: settle()
+
+    Timer {
+        id: due
+        onTriggered: root.settle()
+    }
 
     // Opens What's on with this thing's row selected.
     function show(thing) {
