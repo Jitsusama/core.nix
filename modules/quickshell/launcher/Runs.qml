@@ -19,16 +19,11 @@ import "../Fuzzy.js" as Fuzzy
 Provider {
     id: provider
 
-    what: "run"
+    // Named Helpers in Joel's words (Words.qml), a part of Agents; pi's
+    // words for them find them but never name them.
+    what: Words.of("runs").what
 
-    collection: ({
-        noun: "runs",
-        title: "Runs",
-        words: ["run", "fleets", "councils", "judges", "subagents", "reviewers", "reviews"],
-        glyph: Theme.glyph.running,
-        ask: "which run?",
-        empty: "No runs today."
-    })
+    collection: Words.collection("runs")
 
     // As pi-runs wrote them, and the text they were read from, so the same
     // text read again changes nothing.
@@ -48,9 +43,11 @@ Provider {
     }
     readonly property var started: JSON.parse(holding)
 
+    // Each kind in Joel's words, its own name a hidden word (its `also`),
+    // since a fleet and a council are pi's names for helpers and a review.
     readonly property var kinds: ({
-        fleet: "fleet",
-        council: "council",
+        fleet: "helpers",
+        council: "review",
         judge: "judge",
         critique: "critique",
         audit: "audit",
@@ -183,9 +180,11 @@ Provider {
         }));
         return (session ? [thing({
             key: "verb:run:switch",
-            name: "Go to its session",
+            verb: Words.verb("verb:run:switch"),
+            name: Words.name("verb:run:switch"),
+            keywords: Words.keywords("verb:run:switch"),
             side: session.address,
-            glyph: String.fromCodePoint(0xf05b2),
+            glyph: Words.glyph("verb:run:switch"),
             hue: "action",
             later: true,
             run: () => provider.go(run)

@@ -26,14 +26,9 @@ Provider {
     readonly property bool present: Wifi.described && Wifi.cards.length > 0
     readonly property bool on: present && Wifi.radio
 
-    collection: !present ? null : {
-        noun: "networks",
-        title: "Wi-Fi",
-        words: ["wifi", "wireless", "internet", "network", "ssid", "hotspot"],
-        glyph: glyph(0xf05a9),
-        ask: "which network?",
+    collection: !present ? null : Words.collection("wifi", {
         empty: on ? "Listening for networks\u2026" : "Wi-Fi is off"
-    }
+    })
 
     function glyph(code) {
         return String.fromCodePoint(code);
@@ -53,10 +48,10 @@ Provider {
         key: "wifi:radio",
         // An act, not a network, so it says no kind (docs/design.md).
         what: "",
-        verb: on ? "turn off" : "turn on",
-        name: on ? "Turn off Wi-Fi" : "Turn on Wi-Fi",
-        keywords: "wifi wlan wireless radio network internet airplane mode flight",
-        glyph: glyph(on ? 0xf05aa : 0xf05a9),
+        verb: Words.verb("wifi:radio", on ? "" : "off"),
+        name: Words.name("wifi:radio", on ? "" : "off"),
+        keywords: `wifi wireless network internet ${Words.keywords("wifi:radio", on ? "" : "off")}`,
+        glyph: Words.glyph("wifi:radio", on ? "" : "off"),
         hue: "machine",
         run: () => Wifi.turn(!provider.on)
     })
@@ -67,10 +62,10 @@ Provider {
     readonly property var signIn: thing({
         key: "wifi:sign-in",
         what: "",
-        verb: "sign in",
-        name: `Sign in to ${SignIn.network}`,
-        keywords: "wifi portal captive login log in hotel airport cafe",
-        glyph: glyph(0xf05a9),
+        verb: Words.verb("wifi:sign-in"),
+        name: Words.name("wifi:sign-in", "", { network: SignIn.network }),
+        keywords: `wifi ${Words.keywords("wifi:sign-in")}`,
+        glyph: Words.glyph("wifi:sign-in"),
         hue: "machine",
         run: () => SignIn.open()
     })

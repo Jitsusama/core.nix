@@ -14,13 +14,9 @@ Provider {
 
     what: "key"
 
-    collection: ({
-        noun: "keys",
-        title: "Keyboard",
-        words: ["layout", "layers", "ergodox", "colemak", "keymap", "typing", "backlight"],
-        glyph: glyph(0xf030c),
-        ask: "which key?"
-    })
+    // One keyboard to Joel: its layout and keys here, the keyboards plugged
+    // in and every shortcut its parts (Words.qml).
+    collection: Words.collection("keyboard")
 
     function glyph(code) {
         return String.fromCodePoint(code);
@@ -58,7 +54,7 @@ Provider {
     ].concat(KeyboardLayer.locked ? [member({
         key: "keyboard:release",
         what: "",
-        verb: "let go",
+        verb: "release",
         name: `Let ${KeyboardLayer.name} go`,
         keywords: "unlock layer release",
         glyph: glyph(0xf0329),

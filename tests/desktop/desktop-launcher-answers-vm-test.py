@@ -103,7 +103,7 @@ with subtest("the launcher answers what's asked, and copies the answer"):
     # A collection is found by what a person calls it, not only its
     # title, and Return goes straight into it.
     # Beside the field, it says what sort of thing each is.
-    for typed, collection in [("audio", "Sound"), ("notifications", "Notices")]:
+    for typed, collection in [("audio", "Sound"), ("notifications", "Notifications")]:
         answer(typed)
         # The wait ends before the loop moves on, so it reads this pass's name.
         launcher_until(
@@ -190,8 +190,8 @@ with subtest("the launcher answers what's asked, and copies the answer"):
     # The session's actions answer to what people call them; Escape,
     # never Return, since Return would do them.
     for typed, action, verb in [
-        ("shut down", "Power off the machine", "Power off"),
-        ("restart", "Reboot the machine", "Reboot"),
+        ("shut down", "Power off", "Power off"),
+        ("restart", "Reboot", "Reboot"),
         ("sign out", "Log out", "Log out"),
     ]:
         answer(typed)
@@ -508,6 +508,79 @@ with subtest("the launcher finds emoji in their own place, and only there"):
     machine.wait_until_fails(closed, timeout=10)
     t.assertEqual(as_account("wl-paste --no-newline"), "\U0001f431")
 
+with subtest("a category's word and a space step into it, and a command finishes by Tab"):
+    closed = in_session(LAUNCHER_OPEN)
+    # The word and a space become a chip, the field cleared, listing
+    # what it holds; what's typed then searches only inside it.
+    as_account("qs ipc call launcher toggle")
+    launcher_ready()
+    machine.send_chars("ai ")
+    launcher_until(
+        lambda shown: (
+            shown["held"] == ["ai"]
+            and shown["typed"] == ""
+            and {"Agents", "Tasks", "Helpers"} <= set(shown["rows"])
+        )
+    )
+    photograph("launcher-category")
+    type_in("tas", selecting="Tasks")
+    # The left arrow takes what's typed, then steps out with the word
+    # put back.
+    machine.send_key("left")
+    launcher_until(lambda shown: shown["held"] == ["ai"] and shown["typed"] == "")
+    machine.send_key("left")
+    launcher_until(lambda shown: shown["held"] == [] and shown["typed"] == "ai")
+    machine.send_key("esc")
+    machine.wait_until_fails(closed, timeout=10)
+    # A question that starts with a category's word is still a question.
+    answer("time in utc")
+    launcher_until(lambda shown: shown["held"] == [] and shown["kind"] == "answer")
+    machine.send_key("esc")
+    machine.wait_until_fails(closed, timeout=10)
+    # Every command, its form shown; Tab puts its start in the field,
+    # out at the top, where it's finished.
+    as_account("qs ipc call launcher toggle")
+    launcher_ready()
+    machine.send_chars("commands ")
+    launcher_until(
+        lambda shown: (
+            shown["held"] == ["commands"]
+            and {"ip \u27e8address or network\u27e9", "time in \u27e8place\u27e9"}
+            <= set(shown["rows"])
+        )
+    )
+    photograph("launcher-commands")
+    type_in("ip", selecting="ip \u27e8address or network\u27e9")
+    machine.send_key("tab")
+    launcher_until(lambda shown: shown["held"] == [] and shown["typed"] == "ip ")
+    type_in("10.0.0.0/22")
+    launcher_until(lambda shown: shown["kind"] == "answer")
+    machine.send_key("esc")
+    machine.wait_until_fails(closed, timeout=10)
+
+with subtest("the session's acts are found from anywhere by Joel's own words"):
+    closed = in_session(LAUNCHER_OPEN)
+    # Short names, each found by the start Joel types, or a word of
+    # his; Escape, never Return, since Return would do them.
+    for typed, name, verb in [
+        ("sus", "Suspend", "suspend"),
+        ("caff", "Keep awake", "start"),
+        ("reb", "Reboot", "reboot"),
+        ("donot", "Do not disturb", "start"),
+        # An old name, kept as a hidden word.
+        ("suspend the machine", "Suspend", "suspend"),
+    ]:
+        answer(typed)
+        # The wait ends before the loop moves on, so it reads this pass's name.
+        launcher_until(
+            lambda shown: (
+                (shown["selected"] or {}).get("name") == name  # noqa: B023
+                and shown["selected"]["verb"] == verb  # noqa: B023
+            )
+        )
+        machine.send_key("esc")
+        machine.wait_until_fails(closed, timeout=10)
+
 with subtest("a search lists each thing once"):
     closed = in_session(LAUNCHER_OPEN)
     # Tuple's place stands alone for its rows and its people; the
@@ -546,10 +619,10 @@ with subtest("a search lists each thing once"):
     # another thing. Home, with nothing typed, lists nothing twice
     # either, a collection picked often staying in its own place.
     for typed, leading in [
-        ("tuple", ["Tuple"]),
-        ("lock", ["Lock the screen"]),
+        ("tuple", ["Calls"]),
+        ("lock", ["Lock"]),
         ("kitty", ["kitty"]),
-        ("do not disturb", ["Turn on do not disturb"]),
+        ("do not disturb", ["Do not disturb"]),
         ("screenshot", ["Capture"]),
         ("", []),
     ]:

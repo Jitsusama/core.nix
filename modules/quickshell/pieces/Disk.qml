@@ -70,6 +70,7 @@ Piece {
     actions: (frozen.length > 0 ? [{
         glyph: String.fromCodePoint(0xf040a),
         name: "Let it go on",
+        verb: "resume",
         run: () => Niri.spawn(["disk-guard", "thaw"])
     }] : []).concat([{
         glyph: String.fromCodePoint(0xf0349),

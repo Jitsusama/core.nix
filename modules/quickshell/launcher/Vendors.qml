@@ -31,7 +31,8 @@ Provider {
     }
 
     function answer(typed) {
-        const at = Addresses.mac(typed);
+        // The command's word may lead it, as the commands list it.
+        const at = Addresses.mac(typed.trim().replace(/^mac\s+(?=\S)/i, ""));
         if (!at)
             return null;
         const made = at.local ? "" : vendor(at.oui);

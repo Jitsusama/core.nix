@@ -25,14 +25,9 @@ Provider {
     readonly property var adapter: Bluetooth.defaultAdapter
     readonly property bool on: adapter !== null && adapter.enabled
 
-    collection: adapter === null ? null : {
-        noun: "devices",
-        title: "Bluetooth",
-        words: ["bt", "headphones", "earbuds", "mouse", "pair", "pairing", "accessories"],
-        glyph: glyph(0xf00af),
-        ask: "which device?",
+    collection: adapter === null ? null : Words.collection("bluetooth", {
         empty: on ? "Looking for devices\u2026" : "Bluetooth is off"
-    }
+    })
 
     function glyph(code) {
         return String.fromCodePoint(code);
@@ -51,10 +46,10 @@ Provider {
         key: "bluetooth:radio",
         // An act, not a device, so it says no kind (docs/design.md).
         what: "",
-        verb: on ? "turn off" : "turn on",
-        name: on ? "Turn off Bluetooth" : "Turn on Bluetooth",
-        keywords: "bluetooth bt radio headphones airplane mode flight",
-        glyph: glyph(on ? 0xf00b2 : 0xf00af),
+        verb: Words.verb("bluetooth:radio", on ? "" : "off"),
+        name: Words.name("bluetooth:radio", on ? "" : "off"),
+        keywords: `bluetooth bt headphones ${Words.keywords("bluetooth:radio", on ? "" : "off")}`,
+        glyph: Words.glyph("bluetooth:radio", on ? "" : "off"),
         hue: "machine",
         run: () => provider.adapter.enabled = !provider.on
     })

@@ -359,7 +359,7 @@ Scope {
         const made = Object.assign({
             // An act done to a thing (its key `verb:`) isn't of the
             // thing's kind: Return does what its name says, so the foot
-            // says "switch" for Switch to it, not a thing's "open".
+            // says "switch" for Switch, not a thing's "open".
             what: String(fields.key ?? "").startsWith("verb:") ? "" : provider.what,
             chord: [],
             side: "",
@@ -375,7 +375,7 @@ Scope {
         made.weight = provider.weight;
         made.prepared = Fuzzy.prepare(made.name);
         // Its keywords beside its name, so a search can say some words of
-        // each: "wifi off" finds Turn off Wi-Fi, "wifi" being a keyword.
+        // each: "wifi radio" finds Wi-Fi off, "radio" being a keyword.
         // A word of its name joined by a hyphen is found closed up too, as
         // it's typed: "wifi" finds Wi-Fi.
         const closed = Fuzzy.words(made.name).filter(word => word.includes("-"))

@@ -436,7 +436,7 @@ with subtest("do not disturb holds a notice, shows it held, and ends from the ma
         machine.send_key("down")
     launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Show what's held")
     machine.send_key("ret")
-    launcher_until(lambda shown: shown["keys"] and shown["held"] == ["notices"])
+    launcher_until(lambda shown: shown["keys"] and shown["held"] == ["notifications"])
     photograph("launcher-held")
     machine.send_key("esc")
     machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
@@ -458,7 +458,7 @@ with subtest("a missed notice shows its glyph, and What's on shows the notices")
     machine.send_key("meta_l-o")
     whats_on("Notices")
     machine.send_key("ret")
-    launcher_until(lambda shown: shown["keys"] and shown["held"] == ["notices"])
+    launcher_until(lambda shown: shown["keys"] and shown["held"] == ["notifications"])
     photograph("launcher-from-margin")
     machine.send_key("esc")
     # Opening them counted them seen, so nothing's waiting.
@@ -646,7 +646,7 @@ with subtest("a copied call's link can be joined until something else is copied"
     as_account(f"echo -n 'pair with me? {link}' | wl-copy > /dev/null 2>&1")
     as_account("qs ipc call launcher toggle")
     launcher_ready()
-    type_in("join", selecting="Join the Tuple call")
+    type_in("join", selecting="Join the call")
     machine.send_key("esc")
     machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
 
@@ -659,7 +659,7 @@ with subtest("a copied call's link can be joined until something else is copied"
     def joins_nothing(shown: Json) -> bool:
         """Say whether the launcher's selected row joins no Tuple call."""
         row = shown["selected"]
-        return row is None or "Tuple" not in row["name"]
+        return row is None or row["is"] != "tuple:join"
 
     launcher_until(joins_nothing)
     machine.send_key("esc")

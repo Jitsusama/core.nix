@@ -101,15 +101,19 @@ Provider {
                 verbs: () => provider.windowsOf(entry).concat([
                     thing({
                         key: "verb:start",
-                        name: "Start another",
-                        glyph: String.fromCodePoint(0xf03cc),
+                        verb: Words.verb("verb:start"),
+                        name: Words.name("verb:start"),
+                        keywords: Words.keywords("verb:start"),
+                        glyph: Words.glyph("verb:start"),
                         hue: "action",
                         run: start
                     }),
                     thing({
                         key: "verb:below",
-                        name: "Start another below this window",
-                        glyph: String.fromCodePoint(0xf03cc),
+                        verb: Words.verb("verb:below"),
+                        name: Words.name("verb:below"),
+                        keywords: Words.keywords("verb:below"),
+                        glyph: Words.glyph("verb:below"),
                         hue: "action",
                         chord: provider.launcher.belowChord,
                         run: below

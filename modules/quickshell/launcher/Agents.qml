@@ -19,16 +19,11 @@ import "Numbers.js" as Numbers
 Provider {
     id: provider
 
-    what: "pi session"
+    what: Words.of("agents").what
 
-    collection: ({
-        noun: "sessions",
-        title: "Agents",
-        words: ["pi", "sessions", "agents", "claude", "ai"],
-        glyph: Theme.glyph.agent,
-        ask: "which session?",
-        empty: "No pi running."
-    })
+    // Named, and found, as the vocabulary says (Words.qml): its tasks,
+    // helpers and spend are its parts there.
+    collection: Words.collection("agents")
 
     // Those that want Joel first, then the one used last.
     readonly property var all: Sessions.wanting
@@ -107,7 +102,7 @@ Provider {
             glyph: Theme.glyph[job.state === "waiting" ? "queued" : "running"]
         })) : [];
         const facts = [
-            quest !== "" ? fact("quest", quest, "its quest") : null,
+            quest !== "" ? fact("quest", quest, "its task") : null,
             fact("address", addresses.join(", "), addresses.length === 1 ? "its address" : "its addresses"),
             presence.owner?.startedAt ? fact("started", started(presence.owner.startedAt), "started") : null,
             spent !== "" ? fact("spent", spent, "spent today") : null
@@ -117,8 +112,10 @@ Provider {
         ]).filter(row => row !== null);
         return [thing({
             key: "verb:agent:switch",
-            name: "Go to its window",
-            glyph: String.fromCodePoint(0xf05b2),
+            verb: Words.verb("verb:agent:switch"),
+            name: Words.name("verb:agent:switch"),
+            keywords: Words.keywords("verb:agent:switch"),
+            glyph: Words.glyph("verb:agent:switch"),
             hue: "action",
             later: true,
             run: () => Niri.act({ FocusWindow: { id: session.window.id } })

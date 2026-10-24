@@ -22,6 +22,12 @@
 // arrow, or Backspace with nothing typed, steps back out, and Escape always
 // closes the launcher.
 //
+// What everything is called is the vocabulary's (Words.qml): its names,
+// the words that find it, its parts, and the categories it's in. A
+// category is a level too, found by its word, and its word and a space
+// step into it, what's typed then searching only inside it; commands is
+// the one listing every typed command, Tab putting its start in the field.
+//
 // What it finds is one row a thing, in an order that changes only when Joel
 // changes it (launcher/Rank.js): the same letters land on the same row
 // however the desktop changes around them, and the list keeps its height
@@ -87,6 +93,8 @@ Scope {
     property var found: []
 
     function answering(letters, fresh) {
+        if (held.length > 0 && category !== null)
+            return answeringIn(category, letters);
         if (held.length > 0 || letters.trim() === "")
             return null;
         for (const source of sources) {
@@ -149,6 +157,13 @@ Scope {
         const before = matches.length > 0 && matches[0].answered ? 1 : 0;
         answer = answering(typed, fresh);
         const rows = answer && answer.rows.length > 0 ? [answered(answer)] : [];
+        // A category named as a thing is, or as an answer asks, gives way to
+        // it, so "sound" is Sound and "weather" the weather; its word and a
+        // space still step into it.
+        const things = new Set(root.found.filter(row => !row.category)
+            .map(row => Fuzzy.plainly(row.name)));
+        const found = root.found.filter(row => !row.category
+            || !(things.has(row.name) || (answer && !answer.question)));
         // A thing shows once: a collection found whole stands for what's in
         // it, so neither its own rows, nor the things that live in it
         // (`inside` names it), nor a shortcut that opens it, whose chord its
@@ -240,6 +255,8 @@ Scope {
             return "";
         if (selected === headline || selected.answered)
             return "answer";
+        if (selected.category)
+            return "category";
         // A collection's own row has no provider's kind; a shortcut that
         // opens one is still a shortcut.
         if (selected.what)
@@ -257,8 +274,233 @@ Scope {
     readonly property var choices: sources.reduce((all, source) => all.concat(source.things), [])
         .filter(row => !(row.key.startsWith("action:") && root.standIns.includes(row.name)))
         .map(withSynonyms)
-        .concat(collections.map(named))
+        .concat(collections.map(named), categories)
     readonly property var collections: sources.filter(source => source.collection)
+
+    // Each row by its key, and the rows that are parts of another (`of`
+    // names it), such as Slack's theme of Slack, by the key of what they're
+    // part of: listed inside it, and found from outside only by a word past
+    // its name, so "slack" is Slack and "slack theme" the theme.
+    readonly property var keyed: {
+        const out = {};
+        for (const choice of choices)
+            out[choice.key] = choice;
+        return out;
+    }
+    readonly property var partsOfRows: {
+        const out = {};
+        for (const choice of choices)
+            if (choice.of)
+                out[choice.of] = (out[choice.of] ?? []).concat([choice]);
+        return out;
+    }
+
+    // Whether a part is left out of a search, every word typed only
+    // naming what it's part of.
+    function partHidden(choice, typedWords) {
+        const whole = keyed[choice.of];
+        if (!whole)
+            return false;
+        const named = Fuzzy.words(whole.name);
+        return typedWords.every(word => named.some(one => one.startsWith(word)));
+    }
+
+    // A row's parts as they're named inside it: "Theme" in Slack.
+    function partsIn(row) {
+        return (partsOfRows[row.key] ?? []).map(part => Object.assign({}, part, {
+            name: part.part ?? part.name
+        }));
+    }
+
+    // The categories (Words.qml), each a row found by its word, whose step
+    // in lists what it holds; its word and a space step in from anywhere,
+    // and what's typed after searches only inside it.
+    readonly property var categories: Words.categories.map(category => {
+        const row = {
+            key: `category:${category.id}`,
+            name: category.id,
+            verb: "open",
+            plain: true,
+            category: category,
+            glyph: Theme.glyph.category,
+            hue: "voice",
+            chord: [],
+            side: "",
+            chip: category.id,
+            ask: "what in it?",
+            lead: Theme.glyph.category,
+            leadHue: "voice",
+            // What it holds are things with verbs of their own, as a
+            // collection's are.
+            nested: true,
+            named: true,
+            weight: 1,
+            verbs: () => root.members(category)
+        };
+        row.prepared = Fuzzy.prepare(row.name);
+        row.keywords = Fuzzy.prepare([row.name].concat(category.words ?? []).join(" "));
+        return row;
+    })
+
+    // The category held, or null.
+    readonly property var category: held.length > 0 ? held[held.length - 1].row.category ?? null
+        : null
+
+    // The category a word and a space step into: its own word, or one of
+    // its others typed whole.
+    function categoryFor(word) {
+        const said = word.toLowerCase();
+        return Words.categories.find(category => category.id === said
+            || (category.words ?? []).includes(said)) ?? null;
+    }
+
+    // What a category holds, in its order: each thing the vocabulary names
+    // as it's found anywhere, and only those this machine has.
+    function members(category) {
+        if (category.id === "commands")
+            return commands();
+        return (category.holds ?? []).map(id => resolved(id)).filter(row => row !== null);
+    }
+
+    // A thing the vocabulary names, as a row: the row of that key, a
+    // collection whole, an answer to its question, or a provider's things
+    // as one row holding them. Null where this machine has none.
+    function resolved(id) {
+        const known = keyed[id];
+        if (known && !known.category)
+            return known;
+        const entry = Words.of(id);
+        const source = sources.find(one => one.settings.name === (entry.provider ?? id));
+        if (!source)
+            return null;
+        if (source.collection && !entry.question)
+            return whole(source, false);
+        const question = entry.question ?? source.questions[0];
+        if (question !== undefined) {
+            const said = source.answer(question);
+            return said && said.rows.length > 0
+                ? Object.assign(answered(said), { is: `answer:${id}`, chip: question }) : null;
+        }
+        const things = source.things.filter(row => !(row.key.startsWith("action:")
+            && standIns.includes(row.name)));
+        if (things.length === 0)
+            return null;
+        const row = {
+            key: `group:${id}`,
+            name: entry.name,
+            verb: "open",
+            plain: true,
+            glyph: Words.glyph(id),
+            hue: "voice",
+            chord: [],
+            side: "",
+            count: String(things.length),
+            chip: entry.name.toLowerCase(),
+            nested: true,
+            group: true,
+            verbs: () => things
+        };
+        row.prepared = Fuzzy.prepare(row.name);
+        return row;
+    }
+
+    // Every command that takes something after it, its form shown, from
+    // the providers this machine has: Return or Tab puts its start in the
+    // field, out at the top, so it's finished there.
+    function commands() {
+        return Words.commands.filter(command => sources.some(source => source.settings.name
+            === command.provider)).map(command => {
+            const row = {
+                key: command.id,
+                name: `${command.start}${command.form}`.trim(),
+                form: command.form,
+                start: command.start,
+                verb: "type",
+                glyph: Theme.glyph.command,
+                hue: "action",
+                chord: [],
+                side: command.says ?? "",
+                plain: true
+            };
+            row.prepared = Fuzzy.prepare(row.name);
+            row.keywords = Fuzzy.prepare([row.name].concat(command.words ?? []).join(" "));
+            return row;
+        });
+    }
+
+    // A collection's parts the vocabulary names, before its own members:
+    // Agents holds its tasks, helpers and spend, the Keyboard its
+    // keyboards and shortcuts.
+    function partsOf(source) {
+        return Words.of(source.settings.name).parts.map(id => resolved(id))
+            .filter(row => row !== null);
+    }
+
+    // Rows found by the words typed, by their names or their other words,
+    // best first, as a step's are.
+    function within(rows, typedWords) {
+        const found = [];
+        for (const row of rows) {
+            const prepared = row.prepared ?? Fuzzy.prepare(row.name);
+            const byName = Fuzzy.match(prepared, typedWords, false);
+            const byWord = row.keywords ? Fuzzy.match(row.keywords, typedWords, false)
+                : { score: -1, grade: 3 };
+            const best = byName.score >= 0 ? byName : byWord;
+            if (best.score >= 0)
+                found.push({ item: prepared, score: best.score, grade: best.grade, choice: row });
+        }
+        return Fuzzy.keep(found).map(f => f.choice);
+    }
+
+    // What's typed in a category: what it holds, and what's held in the
+    // things it holds as one row (Programs' programs), found by their
+    // words, then each of its collections' best match, as at the top.
+    function inCategory(letters) {
+        const pool = offered.reduce((all, row) => all.concat([row], row.group ? row.verbs() : []),
+            []);
+        const inside = offered.filter(row => row.from).map(row => row.from);
+        return within(pool, words).concat(gathering(letters, inside));
+    }
+
+    // What a category's own answers make of what's typed in it: in
+    // computer, "battery". Commands answer nothing there, since what's
+    // typed finds a command, which finishes at the top.
+    function answeringIn(category, letters) {
+        if (letters.trim() === "" || category.id === "commands")
+            return null;
+        const names = (category.holds ?? []).map(id => Words.of(id).provider ?? id);
+        for (const source of sources.filter(one => names.includes(one.settings.name))) {
+            const said = source.answer(letters);
+            if (said)
+                return said;
+        }
+        return null;
+    }
+
+    // Whether the category's word and what's typed after it ask something
+    // whole ("time in tokyo", "time left", "weather tokyo"): a question,
+    // not a search inside it, so the field gives it back whole.
+    function askedWhole(letters) {
+        if (held.length !== 1 || Fuzzy.words(letters).length === 0)
+            return "";
+        const whole = `${held[0].typed} ${letters}`;
+        return sources.some(source => source.answer(whole)) ? whole : "";
+    }
+
+    // Steps into a category from a word and a space, the word put back on
+    // the way out.
+    function intoCategory(category, word) {
+        const row = categories.find(one => one.category === category);
+        held = [Object.assign(here(), { typed: word, row: row, rows: members(category) })];
+        restart("");
+    }
+
+    // Puts a command's start in the field, out at the top, where it's
+    // finished.
+    function fill(start) {
+        held = [];
+        restart(start);
+    }
 
     // A collection as a row the search finds: as it is at home, but for its
     // count, which would read all of it at every change.
@@ -279,13 +521,14 @@ Scope {
     // row.
     property var gathered: []
 
-    function gathering(letters) {
+    function gathering(letters, among) {
         if (letters.replace(/\s+/g, "").length < 2)
             return [];
         const rows = [];
-        for (const source of collections) {
-            // One opened only by its own chord adds no row to a search.
-            if (source.collection.searched === false)
+        for (const source of among ?? collections) {
+            // One opened only by its own chord adds no row to a search, but
+            // does inside a category that holds it.
+            if (source.collection.searched === false && !among)
                 continue;
             const said = source.gather(letters);
             const found = learnedFirst(said.rows, letters);
@@ -341,8 +584,16 @@ Scope {
         if (!row)
             return "";
         if ((row.verb ?? "") !== "")
-            return row.verb;
-        return kindOf(row) !== "" ? "open" : Rank.verbIn(row.name ?? "") || "open";
+            return oneWord(row.verb);
+        return kindOf(row) !== "" ? "open" : oneWord(Rank.verbIn(row.name ?? "") || "open");
+    }
+
+    // A verb as the foot says it, one word (Joel, 2026-10-24: "Switch to
+    // it" was too many): a turn by the way it goes ("off"), anything else
+    // by its first word.
+    function oneWord(verb) {
+        const said = verb.split(" ");
+        return said[0] === "turn" && said.length > 1 ? said[said.length - 1] : said[0];
     }
 
     // A chord as words, for the foot: its keys joined by +, those pressed
@@ -600,8 +851,11 @@ Scope {
             ask(row);
             return true;
         }
-        const into = held.length === 0 || collecting ? (row.verbs ? row.verbs() : null)
-            : row.targets ? row.targets() : null;
+        const things = held.length === 0 || collecting;
+        const own = things ? (row.verbs ? row.verbs() : null) : row.targets ? row.targets() : null;
+        // A thing's parts come after what can be done to it.
+        const parts = things ? partsIn(row) : [];
+        const into = parts.length > 0 ? (own ?? []).concat(parts) : own;
         if (!into || into.length === 0)
             return false;
         held = held.concat([Object.assign(here(), { row: row, rows: into })]);
@@ -720,12 +974,36 @@ Scope {
             current = 0;
             return;
         }
+        // A category's word and a space step into it.
+        const chipped = held.length === 0 ? /^(\S+) $/.exec(letters) : null;
+        const named = chipped ? categoryFor(chipped[1]) : null;
+        if (named) {
+            intoCategory(named, chipped[1]);
+            return;
+        }
+        const whole = category !== null ? askedWhole(letters) : "";
+        if (whole !== "") {
+            held = [];
+            restart(whole);
+            return;
+        }
+        if (category !== null) {
+            // What's typed searches only inside it, its answers first.
+            gathered = [];
+            root.found = words.length === 0 ? offered.slice() : inCategory(letters);
+            compose(true);
+            list.positionViewAtBeginning();
+            return;
+        }
         if (held.length > 0) {
             const from = held[held.length - 1].row.from;
-            // A collection searches itself, all of it until something's typed.
+            // A collection searches itself, all of it until something's
+            // typed, and then its parts: Agents its agents, then their
+            // tasks, helpers and spend. A part named leads what's found.
             if (from)
-                matches = words.length === 0 ? from.everything()
-                    : learnedFirst(from.search(letters).rows, letters);
+                matches = words.length === 0 ? from.everything().concat(partsOf(from))
+                    : within(partsOf(from), words)
+                        .concat(learnedFirst(from.search(letters).rows, letters));
             // A step's rows, all of them in their order until something's
             // typed, then those it finds, best first.
             else if (words.length === 0)
@@ -762,6 +1040,12 @@ Scope {
             // collection held back only for being too short yet.
             const early = [];
             for (const choice of narrowing ? candidates : choices) {
+                // A part whose whole is all that's named is found in it,
+                // and kept for a word past the whole's name.
+                if (choice.of && partHidden(choice, words)) {
+                    early.push(choice);
+                    continue;
+                }
                 const byName = (choice.prepared.mask & need) === need
                     ? Fuzzy.match(choice.prepared, words, false) : { score: -1 };
                 if (byName.score >= 0) {
@@ -862,6 +1146,10 @@ Scope {
                 ? `<font color="${Theme.strong}">${letter}</font>`
                 : letter;
         }
+        // A command's form, what's typed after its start, is muted, so
+        // what to type reads apart from what to put there.
+        if ((choice.form ?? "") !== "")
+            out = out.replace(/\u27e8[^\u27e9]*\u27e9/g, said => `<font color="${Theme.muted}">${said}</font>`);
         return out;
     }
 
@@ -870,6 +1158,14 @@ Scope {
             open = false;
             return;
         }
+        // A command puts its start in the field, to be finished there.
+        if (choice.start !== undefined) {
+            fill(choice.start);
+            return;
+        }
+        // A category, or a row holding a provider's things, steps in.
+        if ((choice.category || choice.group) && enter(choice))
+            return;
         // A verb that needs a target asks for it, and one that needs words
         // asks for them.
         if (held.length > 0 && choice.targets) {
@@ -883,7 +1179,7 @@ Scope {
         // One that can't be taken back, such as powering off, steps into
         // its verbs, which say what it does, so a second Return does it and
         // Escape or the left arrow backs out.
-        if (choice.confirm && held.length === 0 && enter(choice))
+        if (choice.confirm && (held.length === 0 || collecting) && enter(choice))
             return;
         // One with nothing to do of its own, only more inside, steps in.
         if (!choice.run && enter(choice))
@@ -905,13 +1201,14 @@ Scope {
             choice.run();
         open = false;
         // Acting on a thing says it was what was meant by what was typed;
-        // in a collection, the one picked from it was.
+        // in a collection or a category, the one picked from it was.
         const first = held.length > 0 ? held[0] : { row: choice, typed: typed };
-        const meant = first.row.from ? choice : first.row;
+        const picking = !!first.row.from || !!first.row.category;
+        const meant = picking ? choice : first.row;
         // One that can't be taken back is latched only once its first word's
         // been typed (Rank.js's leastOf), so a slip of two letters never
         // powers off.
-        picks.picked(first.row.from ? typed : first.typed, meant.key, knowing());
+        picks.picked(picking ? typed : first.typed, meant.key, knowing());
         if (choice.now)
             return;
         if (below && choice.below)
@@ -1202,6 +1499,9 @@ Scope {
                             // At home, Tab takes the suggestion to try.
                             if (root.atHome && root.example !== "")
                                 text = root.example;
+                            // A command puts its start in the field.
+                            else if (root.current !== -1 && root.selected?.start !== undefined)
+                                root.fill(root.selected.start);
                             // A question only started is finished first.
                             else if (root.question !== ""
                                 && (root.current === -1 || root.selected?.answered))

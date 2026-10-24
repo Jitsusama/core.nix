@@ -85,6 +85,7 @@ let
     "Floating.qml"
     "Fuzzy.js"
     "Picks.qml"
+    "Words.qml"
     "Notices.qml"
     "Sessions.qml"
     "SpendWatch.qml"
@@ -363,16 +364,13 @@ let
       nerd "f0570"
     else if lib.hasInfix "monitor" action then
       nerd "f0379"
-    # A collection's own glyph, as its row in the launcher wears.
+    # A collection's own glyph, as its row in the launcher wears
+    # (launcher/words.json).
     else if program == "launcher-say" && lib.elem "collection" run then
-      {
-        capture = nerd "f0100";
-        clipboard = nerd "f0a38";
-        emoji = nerd "f01f5";
-        notices = nerd "f009c";
-        on = nerd "f1513";
-      }
-      .${lib.last run} or (nerd "f097b")
+      let
+        named = lib.findFirst (thing: thing.id == lib.last run) { } launcher.words.things;
+      in
+      config.jitsusama.theme.glyphs.${named.glyph or "shortcuts"}.glyph
     else if program == "qs" && lib.elem "keyboard" run then
       nerd "f030c"
     else
@@ -881,6 +879,19 @@ in
         row found by one shows the word in quotes after its name.
       '';
     };
+    words = lib.mkOption {
+      type = lib.types.attrsOf lib.types.anything;
+      default = lib.importJSON ./launcher/words.json;
+      defaultText = lib.literalExpression "lib.importJSON ./launcher/words.json";
+      description = ''
+        The launcher's vocabulary, as launcher/words.json writes it: its
+        categories in order and what each holds, every thing's name as
+        shown, the other words and old names that find it and the glyph it
+        wears, the commands that take something after them, and the words
+        meant to find more than one thing. A machine changes a name here,
+        and the check that no word is ambiguous reads the file.
+      '';
+    };
     home = {
       likely = lib.mkOption {
         type = lib.types.ints.unsigned;
@@ -914,9 +925,9 @@ in
       default = {
         program = "program";
         window = "window";
-        "pi session" = "pi";
-        quest = "quest";
-        run = "run";
+        agent = "agent";
+        task = "task";
+        helper = "helper";
         copy = "copy";
         notice = "notice";
         emoji = "emoji";
@@ -1001,11 +1012,11 @@ in
       byhand = {
         order = 79;
         source = "byhand";
+        # Each named, and found, as the vocabulary says its id
+        # (`byhand:<app>`): a part of its program.
         programs = [
           {
-            name = "Slack's Theme";
             app = "slack";
-            keywords = "slack theme colours sidebar";
             side = "pick Aubergine, then Custom theme, Import";
             copy = slackTheme;
           }
@@ -1388,6 +1399,8 @@ in
         ) providers
       )
       // {
+        # Read by Words.qml as it's written, so a name is said once.
+        "quickshell/launcher/words.json".text = builtins.toJSON launcher.words;
         "quickshell/Providers.qml".text = ''
           pragma Singleton
           import Quickshell

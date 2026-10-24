@@ -35,14 +35,9 @@ Provider {
     readonly property bool sharing: Quiet.sharing
     readonly property var reports: said?.reports ?? {}
 
-    collection: said === null ? null : {
-        noun: "spend",
-        title: "AI spend",
-        words: ["cost", "money", "usage", "tokens", "bill", "budget", "claude", "pi"],
-        glyph: String.fromCodePoint(0xf01c1),
-        ask: "which?",
-        empty: "nothing spent yet"
-    }
+    // Named, and found, as the vocabulary says (Words.qml): a part of
+    // Agents, wearing their glyph, and no longer found by pi's names.
+    collection: said === null ? null : Words.collection("spend")
     examples: said?.examples ?? []
 
     // Each row's glyph and colour by its role: money for how things stand,

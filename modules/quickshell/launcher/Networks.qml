@@ -45,7 +45,9 @@ Provider {
         const text = typed.trim();
         if (asks(text) !== "" || wholly.includes(plainly(text)))
             return mine();
-        const read = Addresses.read(text);
+        // The command's word may lead it, as the commands list it:
+        // "ip 10.0.0.0/22".
+        const read = Addresses.read(text.replace(/^ip\s+(?=\S)/i, ""));
         return read ? about(read) : null;
     }
 

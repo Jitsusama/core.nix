@@ -22,14 +22,7 @@ Provider {
 
     what: "display"
 
-    collection: ({
-        noun: "displays",
-        title: "Displays",
-        words: ["monitors", "screens", "resolution", "scale", "refresh", "rotate", "external", "hdmi"],
-        glyph: glyph(0xf037a),
-        ask: "which display?",
-        empty: "No displays"
-    })
+    collection: Words.collection("displays")
 
     function glyph(code) {
         return String.fromCodePoint(code);

@@ -19,15 +19,9 @@ Provider {
 
     what: "on"
 
-    collection: ({
-        noun: "what's on",
-        title: "What's on",
-        words: ["status", "margin"],
-        glyph: String.fromCodePoint(0xf1513),
-        ask: "which?",
-        empty: "Nothing's on or waiting.",
-        searched: false
-    })
+    // Named Now, as the vocabulary says (Words.qml), its old name a hidden
+    // word, under the calendar clock.
+    collection: Words.collection("on", { searched: false })
 
     // How the groups follow one another, top to bottom.
     readonly property var groups: ["wants", "onAir", "leftOn"]
