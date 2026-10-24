@@ -47,41 +47,8 @@ let
   '';
 
   # Lantern's front desk, as a hotel's: every page is sent there until
-  # someone signs in, which its one button does. It answers each connection
-  # on a thread of its own, as a real one does: WebKit opens a connection
-  # ahead of asking anything, and a server answering one at a time waits on
-  # it while the page and wifid's next check wait behind.
-  frontDesk = pkgs.writeText "front-desk.py" ''
-    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-
-    PAGE = b"""<!doctype html><title>Lantern</title>
-    <form method="post" action="/sign-in"><button autofocus>Sign in</button></form>"""
-    signed_in = False
-
-    class Desk(BaseHTTPRequestHandler):
-        def answer(self, code, headers={}, body=b""):
-            self.send_response(code)
-            for name, value in headers.items():
-                self.send_header(name, value)
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
-
-        def do_GET(self):
-            if self.path == "/sign-in":
-                return self.answer(200, {"Content-Type": "text/html"}, PAGE)
-            if signed_in:
-                return self.answer(204)
-            self.answer(302, {"Location": "http://front-desk.lantern/sign-in"})
-
-        def do_POST(self):
-            global signed_in
-            self.rfile.read(int(self.headers.get("Content-Length", 0)))
-            signed_in = True
-            self.answer(200, {"Content-Type": "text/html"}, b"<p>Welcome to Lantern.</p>")
-
-    ThreadingHTTPServer(("10.42.0.1", 80), Desk).serve_forever()
-  '';
+  # someone signs in (desktop/front-desk.py).
+  frontDesk = ./desktop/front-desk.py;
 
   # Text views and file lists draw on the theme's dark background, which
   # nothing else on the screen uses, so a window that hasn't drawn can't pass

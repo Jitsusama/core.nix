@@ -73,32 +73,11 @@ let
     source = ./people.rs;
   };
 
-  # Opens a tuple: link, or starts the daemon when given none. A room's
-  # name is letters, digits, - and _, as Tuple's links write it, and
-  # anything else is said rather than run.
+  # Opens a tuple: link, or starts the daemon when given none (opens.sh).
+  # The wrapper names tuple and notify-send by their paths, which
+  # tuple-opens-its-links swaps for its stand-ins.
   opens = pkgs.writeShellScript "tuple-opens" ''
-    link=''${1:-}
-    if [ -z "$link" ]; then
-      exec ${tuple} start
-    fi
-    set -f
-    room=""
-    case "$link" in
-      tuple://join\?*)
-        IFS='&'
-        for pair in ''${link#*\?}; do
-          case "$pair" in
-            call_url_slug=*) room=''${pair#call_url_slug=} ;;
-          esac
-        done
-        ;;
-    esac
-    case "$room" in
-      "" | *[!A-Za-z0-9_-]*) ;;
-      *) exec ${tuple} call join "https://tuple.app/c/$room" ;;
-    esac
-    exec ${lib.getExe' pkgs.libnotify "notify-send"} --app-name=Tuple \
-      "Tuple can't open that link" "$link"
+    exec ${lib.getExe pkgs.bash} ${./opens.sh} ${tuple} ${lib.getExe' pkgs.libnotify "notify-send"} "$@"
   '';
 
   # zsh's completion for the tuple command, as Tuple's command writes it,

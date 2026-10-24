@@ -225,21 +225,8 @@ in
         }
       } qs/greeter.qml
       # Quickshell finds a folder's files as a module by its path; qmllint
-      # needs a qmldir saying so.
-      find qs -type d | while read -r dir; do
-        {
-          echo "module ''${dir//\//.}"
-          for file in "$dir"/[A-Z]*.qml; do
-            [ -e "$file" ] || continue
-            name=$(basename "$file" .qml)
-            if grep -q '^pragma Singleton' "$file"; then
-              echo "singleton $name 1.0 $name.qml"
-            else
-              echo "$name 1.0 $name.qml"
-            fi
-          done
-        } > "$dir/qmldir"
-      done
+      # needs a qmldir saying so (tests/qmldir.sh).
+      ${lib.getExe pkgs.bash} ${../../tests/qmldir.sh} qs
       ${qt}/bin/qmllint --ignore-settings --max-warnings 0 \
         -I ${quickshellTypes}/lib/qt-6/qml -I ${qt}/lib/qt-6/qml -I . \
         --unresolved-type disable --signal-handler-parameters disable \
@@ -501,22 +488,10 @@ in
       shortcuts = singleton "Shortcuts.qml" ''
         property var actions: [{ opens: "spend", chord: [{ text: "Super" }, { text: "U" }] }]
       '';
-      turn =
-        ''{"type":"message","timestamp":"%s","message":{"role":"assistant","model":"%s",''
-        + ''"usage":{"input":10,"output":100,"cacheRead":1000,"cacheWrite":100,''
-        + ''"cost":{"total":1.5}}}}\n'';
     in
     pkgs.runCommandLocal "the-shell-reads-the-spend-watch" { } ''
       mkdir -p runtime/written runtime/spend-watch sessions/thing state launcher && chmod 700 runtime
-      log=sessions/thing/session.jsonl
-      now=$(date -u +%s)
-      at() { date -u -d @$((now - $1)) +%FT%TZ; }
-      printf '{"type":"session","version":3,"id":"s1","timestamp":"%s","cwd":"/src/thing"}\n' \
-        "$(at 90000)" > $log
-      for hours in $(seq 24 -1 0); do
-        printf '${turn}' "$(at $((hours * 3600)))" opus >> $log
-        printf '${turn}' "$(at $((hours * 3600 + 60)))" sonnet >> $log
-      done
+      ${lib.getExe pkgs.bash} ${../../tests/spend-session.sh} sessions/thing/session.jsonl
       cat > config.json <<EOF
       {"sessions": "$PWD/sessions", "runs": "$PWD/runs.db", "registry": "$PWD/registry",
        "quests": "$PWD/quests", "state": "$PWD/state", "runtime": "$PWD/runtime/written",

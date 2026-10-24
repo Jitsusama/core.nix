@@ -2,6 +2,7 @@
 # its opening comment says what each kind of check proves.
 {
   account,
+  lib,
   pkgs,
   workstation,
   ...
@@ -22,34 +23,7 @@
         ];
       }
       ''
-        export HOME=$TMPDIR/home TERM=xterm-256color
-        mkdir -p $HOME/zsh repo/a/b
-        echo "source ${(account workstation).jitsusama.prompt.file}" > $HOME/zsh/.zshrc
-        git -C repo init -q -b main
-        git init -q --ref-format=reftable -b main table
-        touch repo/a/b/file
-        # Typed ahead, each line a prompt; the two reads mark where to count.
-        printf '%s\r' 'cd repo' ': < /dev/null' 'cd a/b' true false 'cd ../../../table' true \
-          'cd ..' ': < /dev/zero' exit > keys
-        ZDOTDIR=$HOME/zsh script -q -c \
-          "stty cols 90 rows 30; strace -f -qq -o trace -e trace=process,openat zsh -i" \
-          /dev/null < keys > /dev/null
-        shell=$(head -1 trace | cut -d' ' -f1)
-        awk -v shell=$shell '
-          $1 == shell && /\/dev\/null/ { counting = 1 }
-          $1 == shell && /\/dev\/zero/ { counting = 0 }
-          counting && $1 == shell
-        ' trace > prompts
-        # Each program the shell ran, by name; a PATH lookup's misses fail.
-        ran=$(grep 'execve("' trace | grep -v '= -1 ' | sed 's|.*execve("\([^"]*\)".*|\1|; s|.*/||' |
-          sort -u | tr '\n' ' ')
-        [ "$ran" = "git-engine mkfifo zsh " ] || { echo "The shell ran: $ran" >&2; exit 1; }
-        grep -q HEAD prompts || { echo "No prompt read the repository." >&2; exit 1; }
-        grep -q tables.list prompts || { echo "No prompt read the reftable." >&2; exit 1; }
-        if grep -E 'clone|fork|execve' prompts; then
-          echo "A prompt started a process." >&2
-          exit 1
-        fi
+        ${lib.getExe pkgs.bash} ${../../tests/the-prompt-starts-nothing.sh} ${(account workstation).jitsusama.prompt.file}
         touch $out
       '';
 

@@ -34,27 +34,12 @@
         FONTCONFIG_FILE = pkgs.makeFontsConf { fontDirectories = machine.config.fonts.packages; };
       }
       ''
-        export HOME=$PWD
-        dir=${lib.head themePackages}/share/plymouth/themes/jitsusama
-        for scale in 1 2; do
-          pango-view -q --no-display --dpi=$((96 * scale)) --margin=$((64 * scale)) \
-            --antialias=gray --hinting=none --background=transparent --foreground=white \
-            --font=${lib.escapeShellArg "${theme.font.mono.family} ${toString theme.type.mono.large}"} \
-            --output=roomy.png --text=$'\uf023'
-          pango-view -q --no-display --dpi=$((96 * scale)) --margin=0 \
-            --hinting=none --font=${lib.escapeShellArg "${theme.font.mono.family} ${toString theme.type.mono.large}"} \
-            --output=line.png --text=x
-          want="$(magick roomy.png -trim -format '%wx%h' info:)"
-          got="$(magick $dir/lock-$scale.png -trim -format '%wx%h' info:)"
-          if [ "$got" != "$want" ]; then
-            echo "the lock drawn at $scale holds $got of its $want ink"; exit 1
-          fi
-          line="$(magick line.png -format '%h' info:)"
-          height="$(magick $dir/lock-$scale.png -format '%h' info:)"
-          if [ "$height" != "$line" ]; then
-            echo "the lock drawn at $scale is $height tall, not the line's $line"; exit 1
-          fi
-        done
+        ${lib.getExe pkgs.bash} ${../../tests/boot-lock-is-whole.sh} ${
+          lib.escapeShellArgs [
+            "${lib.head themePackages}/share/plymouth/themes/jitsusama"
+            "${theme.font.mono.family} ${toString theme.type.mono.large}"
+          ]
+        }
         touch $out
       '';
 

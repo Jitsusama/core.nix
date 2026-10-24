@@ -18,58 +18,17 @@
 let
   inherit (pkgs) lib;
 
-  # Starts only while the uplink reaches 10.0.0.53, then runs until stopped.
-  # QEMU's own network is on another link networkd keeps up throughout,
-  # with a default route, so the route has to go by the uplink. Its --check
-  # says whether it could start; --never that it never could. --reexec
-  # checks as --check does, but the first time it passes it has the
-  # account's systemd execute itself again, holding it there a while, and
-  # returns once systemd stops answering, noting that it saw it go. systemd
-  # keeps its old bus connection open until it's back and only then closes
-  # it, so the start that follows waits on that connection and is told it
-  # went, as a start asked in a switch is. Sent without waiting, the start
-  # could overtake the request; unheld, systemd is back in a blink, and the
-  # start finds it there and is never asked again.
+  # Starts only while the uplink reaches 10.0.0.53, then runs until
+  # stopped, or checks whether it could (network-revive-stand-in.sh).
   standIn = pkgs.writeShellScript "stand-in" ''
     export PATH=${
       lib.makeBinPath [
         pkgs.iproute2
         pkgs.coreutils
-        pkgs.gnugrep
         pkgs.systemd
       ]
     }
-    reaches() {
-      ip -o route get 10.0.0.53 2> /dev/null | grep -q " dev uplink "
-    }
-    case "''${1-}" in
-      --check) reaches ;;
-      --never) echo "never ready" >&2; exit 1 ;;
-      --reexec)
-        reaches || exit 1
-        if [ ! -e "$HOME/reexecuted" ]; then
-          touch "$HOME/reexecuted"
-          touch "$HOME/hold"
-          busctl --user call --expect-reply=no org.freedesktop.systemd1 \
-            /org/freedesktop/systemd1 org.freedesktop.systemd1.Manager Reexecute
-          # Asked with call, since get-property does not keep to --timeout.
-          looks=0
-          while busctl --user --timeout=0.5 call org.freedesktop.systemd1 \
-            /org/freedesktop/systemd1 org.freedesktop.DBus.Properties Get \
-            ss org.freedesktop.systemd1.Manager Version \
-            > /dev/null 2>&1; do
-            looks=$((looks + 1))
-            [ "$looks" -lt 1000 ] || { echo "systemd kept answering" >&2; exit 1; }
-          done
-          touch "$HOME/away"
-        fi
-        ;;
-      --once) reaches || { echo "10.0.0.53 is out of reach" >&2; exit 1; } ;;
-      *)
-        reaches || { echo "10.0.0.53 is out of reach" >&2; exit 1; }
-        exec sleep infinity
-        ;;
-    esac
+    exec ${lib.getExe pkgs.bash} ${./network-revive-stand-in.sh} "$@"
   '';
 
   # Writes the servers resolved asks on the link at each reload, so the

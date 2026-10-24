@@ -62,7 +62,8 @@
   # back. It acts only when that choice changes, so a profile picked by hand
   # holds, and a line from UPower that isn't a change does nothing. UPower and
   # the daemon are stand-ins: each time the service asks whether the machine
-  # is on battery, UPower answers with the next of the states listed below.
+  # is on battery, UPower answers with the next of the states listed below
+  # (tests/battery-stand-ins).
   the-profile-saves-power-on-a-low-battery =
     let
       inherit ((bareNixos [ self.nixosModules.power-profiles-daemon ]).config) services systemd;
@@ -73,77 +74,36 @@
         echo "UPower's low mark isn't the 20% the steps below expect." >&2
         exit 1
       ''}
-      export STATE=$PWD
-      mkdir bin
-      cat > steps <<'EOF'
-      false 79
-      true 35
-      true 20
-      true 19
-      true 21
-      false 21
-      true 15
-      false 15
-      EOF
-      cat > bin/busctl <<'EOF'
-      #!${pkgs.bash}/bin/bash
-      case "$*" in
-        *OnBattery*)
-          if [ ! -s "$STATE/steps" ]; then
-            echo "asked once too often" >> "$STATE/errors"
-            exit 1
-          fi
-          head -n 1 "$STATE/steps" > "$STATE/now"
-          tail -n +2 "$STATE/steps" > "$STATE/rest"
-          mv "$STATE/rest" "$STATE/steps"
-          read -r battery _ < "$STATE/now"
-          echo "b $battery"
-          ;;
-        *Percentage*)
-          read -r _ percent < "$STATE/now"
-          echo "d $percent.6"
-          ;;
-      esac
-      EOF
-      cat > bin/powerprofilesctl <<'EOF'
-      #!${pkgs.bash}/bin/bash
-      case "$1" in
-        list) printf '%s\n' '  performance:' '* balanced:' '  power-saver:' ;;
-        set) echo "$(cat "$STATE/now"): $2" >> "$STATE/calls" ;;
-      esac
-      EOF
-      cat > bin/gdbus <<'EOF'
-      #!${pkgs.bash}/bin/bash
-      changed="org.freedesktop.DBus.Properties.PropertiesChanged"
-      echo "The name org.freedesktop.UPower is owned by :1.12"
-      for _ in 1 2 3 4 5 6 7; do
-        echo "/org/freedesktop/UPower/devices/DisplayDevice: $changed ('org.freedesktop.UPower.Device', ...)"
-      done
-      EOF
-      chmod +x bin/*
-      export PATH=$PWD/bin:${
-        lib.makeBinPath [
-          pkgs.coreutils
-          pkgs.diffutils
-          pkgs.gnugrep
+      ${lib.getExe pkgs.bash} ${../../tests/battery-stand-ins}/run.sh ${
+        lib.escapeShellArgs [
+          (unit.serviceConfig.ExecStart or "false")
+          # On battery or not, and its percentage, as UPower gives them.
+          (pkgs.writeText "steps" ''
+            false 79
+            true 35
+            true 20
+            true 19
+            true 21
+            false 21
+            true 15
+            false 15
+          '')
+          (pkgs.writeText "expected" ''
+            false 79: performance
+            true 35: balanced
+            true 19: power-saver
+            false 21: performance
+            true 15: power-saver
+            false 15: performance
+          '')
+          "The power profile"
+          (lib.makeBinPath [
+            pkgs.coreutils
+            pkgs.diffutils
+            pkgs.gnugrep
+          ])
         ]
       }
-      if ${unit.serviceConfig.ExecStart or "false"}; then
-        echo "The service ended without its monitor failing." >&2
-        exit 1
-      fi
-      cat > expected <<'EOF'
-      false 79: performance
-      true 35: balanced
-      true 19: power-saver
-      false 21: performance
-      true 15: power-saver
-      false 15: performance
-      EOF
-      if [ -e errors ] || [ -s steps ] || ! diff expected calls; then
-        echo "The power profile didn't follow the battery as listed." >&2
-        exit 1
-      fi
       touch $out
     '';
 }
