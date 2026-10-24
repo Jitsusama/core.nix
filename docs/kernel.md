@@ -344,11 +344,12 @@ if less; record a new one after moving to a new series.
 - **An I/O scheduler.** NVMe runs without one. On the XPS 14, BFQ cut a
   desktop read's p99 from 3 ms to 0.15 ms behind a build's I/O, but lost up
   to nine tenths of the disk's throughput when uncontended; mq-deadline and
-  Kyber changed nothing. `io.cost` needs a model of the disk, and the one it
-  guesses is out by an order of magnitude. Behind a build's writes, a
-  synced write waits out the drive's cache, and an `io.latency` target,
-  which needs no scheduler, holds the build back for it (the
-  [`slices`][slices] module).
+  Kyber changed nothing. `io.cost` needs no scheduler either, but needs a
+  model of the disk, and the one it guesses is out by an order of
+  magnitude, so a machine gives it one measured on its own disk, and the
+  [`slices`][slices] module shares the disk by each slice's weight. A
+  machine that gives none keeps an `io.latency` target on what Joel uses,
+  which holds a build back while a synced write waits out the drive's cache.
 - **Building in every module a boot loads.** See
   [Built In or a Module](#built-in-or-a-module): only the ones the boot waits
   for earn it.

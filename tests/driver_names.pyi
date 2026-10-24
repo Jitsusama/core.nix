@@ -27,6 +27,9 @@ host: QemuMachine
 # the shaper's tests' far end.
 server: QemuMachine
 
+# The slices test's machine with a measured disk, beside one without.
+ordered: QemuMachine
+
 # unittest's assertions, which fail the test with what they say.
 t: AssertionTester
 

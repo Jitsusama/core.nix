@@ -49,7 +49,12 @@
 # least it takes from the limit before asking rtkit, so its own threads keep
 # rtkit's 20, and keyd its 49. A real-time thread that runs 200 ms without
 # resting is stopped, so one that spins can't take the machine.
-{ pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 let
   sorter = pkgs.callPackage ./jobs-sorter/package.nix { };
   limits = {
@@ -72,7 +77,30 @@ let
   # about half its writing speed while an app saves ten times a second, and
   # about a tenth while the apps Joel has open only idle. The disk is
   # whichever holds /home: systemd follows it through dm-crypt to the drive.
-  disk = "/home 1ms";
+  #
+  # A target holds back every slice beside the one it's on, whoever waits.
+  # user.slice's holds build.slice back for everything the account does on
+  # the disk, jobs' own writes included: with no app using the disk, Nix's
+  # builds waited on it 88% of the time while it was under half busy. So a
+  # disk the machine has measured is shared by weight instead, through the
+  # kernel's io.cost: each slice using it gets it in proportion to its
+  # weight, and what an idle slice leaves goes to the rest. io.cost needs a
+  # model of what the disk can do, and the one it guesses for the XPS 14's
+  # was 489 MB/s and 8,500 operations a second, against a measured 3.8 GB/s
+  # and 340,000. A machine names its measured disks, the one behind /home
+  # among them, in jitsusama.slices.disks, and then sets no targets. The
+  # weights follow the CPU's: the compositor's ten times an app's, the work
+  # Joel starts a hundredth of one, timed and awaited work ahead of agents'
+  # within it, and the account ten times the system's other slices. Without
+  # io.cost they do nothing, so a machine that names no disk keeps targets.
+  disks = config.jitsusama.slices.disks;
+  latency = lib.optionalAttrs (disks == { }) { IODeviceLatencyTargetSec = "/home 1ms"; };
+  settings = attrs: lib.concatStringsSep " " (lib.mapAttrsToList (k: v: "${k}=${toString v}") attrs);
+  diskOrder = pkgs.writeShellApplication {
+    name = "disk-order";
+    runtimeInputs = [ pkgs.coreutils ];
+    text = builtins.readFile ./disk-order.sh;
+  };
 
   # The programs Joel works in keep their memory while a build fills the
   # rest. With a build taking all but 2 GiB of a 62 GiB laptop, a program in
@@ -90,156 +118,262 @@ let
   account = "16%";
 in
 {
-  systemd.user.slices.session.sliceConfig = {
-    CPUWeight = 1000;
-    MemoryMin = "1536M";
-    IODeviceLatencyTargetSec = disk;
-  };
-
-  systemd.user.slices.app.sliceConfig = {
-    MemoryMin = apps;
-    IODeviceLatencyTargetSec = disk;
-  };
-
-  # Beside app.slice and session.slice, so it yields to both, and held to
-  # half of memory. The floors keep only what apps already hold: work in
-  # jobs still took the rest, pushing out to swap what an app reached for
-  # next. Past the ceiling, jobs swaps its own memory instead. In 238
-  # ten-second windows without it, apps waited on memory 0.67% of the time,
-  # over 1% in 28 windows. In 298 with it, while three evaluations held jobs
-  # at the ceiling with up to 44 GiB swapped, they waited 0.024%, over 1% in
-  # one. Jobs pays: it waited 12.7% of the time rather than 8.3%, its worst
-  # minute at 55%, under the 80% for 30 s at which oomd ends it. MemoryHigh
-  # slows work past the ceiling and never ends it.
-  systemd.user.slices.jobs.sliceConfig = {
-    CPUWeight = "idle";
-    MemoryHigh = "50%";
-  };
-
-  # The cgroup work is moved into. A cgroup holds only while something is
-  # in it, so this one holds a process of its own, and its delegation says
-  # the processes others write into it are theirs, not the unit's.
-  systemd.user.services.jobs = {
-    description = "The place work Joel starts runs, behind what he uses";
-    wantedBy = [ "default.target" ];
-    serviceConfig = {
-      Slice = "jobs.slice";
-      Delegate = true;
-      ExecStart = "${pkgs.coreutils}/bin/sleep infinity";
-      # systemd-oomd ends the whole cgroup when work in it runs memory out,
-      # holder and all, and pi's writes would find nowhere to go until the
-      # next login. Coming back at once restarts the sorter with it.
-      Restart = "always";
-      RestartSec = 1;
+  options.jitsusama.slices.disks = lib.mkOption {
+    description = ''
+      The disks shared by the slices' weights, by their names under
+      /sys/class/block, each with the model io.cost measured on it. Naming
+      any drops the latency targets, so the disk behind /home belongs here.
+      The name is the kernel's, which follows the order disks are found in:
+      on a machine with two of a kind, the model can land on the other one.
+    '';
+    default = { };
+    example = {
+      nvme0n1.model = {
+        rbps = 3800000000;
+        rseqiops = 340000;
+        rrandiops = 340000;
+        wbps = 3000000000;
+        wseqiops = 300000;
+        wrandiops = 300000;
+      };
     };
+    type = lib.types.attrsOf (
+      lib.types.submodule {
+        options = {
+          model = lib.genAttrs [ "rbps" "rseqiops" "rrandiops" "wbps" "wseqiops" "wrandiops" ] (
+            name:
+            lib.mkOption {
+              type = lib.types.ints.positive;
+              description = "io.cost.model's ${name}, as measured on the disk.";
+            }
+          );
+          qos = lib.mkOption {
+            type = lib.types.attrsOf (lib.types.either lib.types.ints.unsigned lib.types.str);
+            default = { };
+            example = {
+              rpct = 95;
+              rlat = 5000;
+              wpct = 95;
+              wlat = 5000;
+            };
+            description = "io.cost.qos's settings beside enable, the kernel's own where unset.";
+          };
+        };
+      }
+    );
   };
 
-  # Work whose result depends on its timing, as a VM test's timeouts and a
-  # benchmark's numbers do, takes jobs' share ahead of bulk work and still
-  # gives way to what Joel uses. So it runs inside jobs, idle as that is,
-  # rather than beside the apps: there, a VM's or a container's threads at
-  # any weight but idle made apps wait, and call audio break up (see
-  # machines below). On one CPU shared with a spinner in jobs, a spinner here
-  # took 92 to 94% of it in three runs, against an even split in jobs. pi's
-  # queue moves timed work here, from the waiting shell; TIMED_CGROUP names
-  # the place, held as jobs is.
-  systemd.user.slices.jobs-timed.sliceConfig.CPUWeight = 10000;
+  config = {
+    systemd.user.slices.session.sliceConfig = {
+      CPUWeight = 1000;
+      IOWeight = 1000;
+      MemoryMin = "1536M";
+    }
+    // latency;
 
-  systemd.user.services.timed = {
-    description = "The place timed work runs, ahead of other work";
-    wantedBy = [ "default.target" ];
-    serviceConfig = {
-      Slice = "jobs-timed.slice";
-      Delegate = true;
-      ExecStart = "${pkgs.coreutils}/bin/sleep infinity";
-      Restart = "always";
-      RestartSec = 1;
+    systemd.user.slices.app.sliceConfig = {
+      MemoryMin = apps;
+    }
+    // latency;
+
+    # Beside app.slice and session.slice, so it yields to both, and held to
+    # half of memory. The floors keep only what apps already hold: work in
+    # jobs still took the rest, pushing out to swap what an app reached for
+    # next. Past the ceiling, jobs swaps its own memory instead. In 238
+    # ten-second windows without it, apps waited on memory 0.67% of the time,
+    # over 1% in 28 windows. In 298 with it, while three evaluations held jobs
+    # at the ceiling with up to 44 GiB swapped, they waited 0.024%, over 1% in
+    # one. Jobs pays: it waited 12.7% of the time rather than 8.3%, its worst
+    # minute at 55%, under the 80% for 30 s at which oomd ends it. MemoryHigh
+    # slows work past the ceiling and never ends it.
+    systemd.user.slices.jobs.sliceConfig = {
+      CPUWeight = "idle";
+      MemoryHigh = "50%";
+      IOWeight = 1;
     };
-  };
+    systemd.user.slices.background.sliceConfig.IOWeight = 1;
 
-  # Work Joel starts in a terminal is work he's waiting on, so it goes ahead
-  # of what agents start, and still gives way to what he uses. pi puts its
-  # own work in jobs.service; the sorter moves a terminal's busy work here
-  # instead, inside jobs, idle as that is. On one CPU shared with a spinner
-  # in jobs, a spinner here took 91% of it, as its weight says. Timed work
-  # stays ahead of both, since its results fail when it waits.
-  systemd.user.slices.jobs-awaited.sliceConfig.CPUWeight = 1000;
+    # Each measured disk is shared by weight from the moment it appears, and
+    # stopping its unit hands it back to first come, first served. Boot wants
+    # the unit, for a disk the initrd already found: a device plugged before
+    # the switch to the real root never changes state again, so its own wants
+    # are never pulled in. Boot doesn't wait for the disk, though: without
+    # it the unit is skipped, and a disk that comes later wants it itself.
+    # Its stop reaches the unit without the unit requiring it, since a
+    # requirement would have boot wait out the device's timeout.
+    systemd.services = {
+      # Every account's manager, user@<uid>.service, beside its slice.
+      "user@".serviceConfig = limits // {
+        MemoryMin = account;
+      };
+    }
+    // lib.mapAttrs' (
+      disk: measured:
+      lib.nameValuePair "disk-order-${disk}" {
+        description = "Shares ${disk} by the slices' weights";
+        wantedBy = [
+          "multi-user.target"
+          "dev-${disk}.device"
+        ];
+        after = [ "dev-${disk}.device" ];
+        unitConfig = {
+          ConditionPathExists = "/sys/class/block/${disk}";
+          StopPropagatedFrom = "dev-${disk}.device";
+        };
+        serviceConfig = {
+          Type = "oneshot";
+          RemainAfterExit = true;
+          ExecStart = lib.escapeShellArgs [
+            (lib.getExe diskOrder)
+            "on"
+            disk
+            (settings measured.model)
+            (settings measured.qos)
+          ];
+          ExecStop = lib.escapeShellArgs [
+            (lib.getExe diskOrder)
+            "off"
+            disk
+          ];
+        };
+      }
+    ) disks;
 
-  systemd.user.services.awaited = {
-    description = "The place Joel's own work runs, ahead of agents' work";
-    wantedBy = [ "default.target" ];
-    serviceConfig = {
-      Slice = "jobs-awaited.slice";
-      Delegate = true;
-      ExecStart = "${pkgs.coreutils}/bin/sleep infinity";
-      Restart = "always";
-      RestartSec = 1;
+    # The cgroup work is moved into. A cgroup holds only while something is
+    # in it, so this one holds a process of its own, and its delegation says
+    # the processes others write into it are theirs, not the unit's.
+    systemd.user.services.jobs = {
+      description = "The place work Joel starts runs, behind what he uses";
+      wantedBy = [ "default.target" ];
+      serviceConfig = {
+        Slice = "jobs.slice";
+        Delegate = true;
+        ExecStart = "${pkgs.coreutils}/bin/sleep infinity";
+        # systemd-oomd ends the whole cgroup when work in it runs memory out,
+        # holder and all, and pi's writes would find nowhere to go until the
+        # next login. Coming back at once restarts the sorter with it.
+        Restart = "always";
+        RestartSec = 1;
+      };
     };
-  };
 
-  systemd.user.services.jobs-sorter = {
-    description = "Moves a terminal's busy work, and scopes work in jobs starts, into jobs";
-    wantedBy = [ "default.target" ];
-    requires = [ "awaited.service" ];
-    after = [ "awaited.service" ];
-    serviceConfig = {
-      Slice = "session.slice";
-      ExecStart = "${sorter}/bin/jobs-sorter --home kitty- --keep pi --jobs jobs.slice/jobs-awaited.slice/awaited.service";
-      Restart = "on-failure";
-      RestartSec = 5;
+    # Work whose result depends on its timing, as a VM test's timeouts and a
+    # benchmark's numbers do, takes jobs' share ahead of bulk work and still
+    # gives way to what Joel uses. So it runs inside jobs, idle as that is,
+    # rather than beside the apps: there, a VM's or a container's threads at
+    # any weight but idle made apps wait, and call audio break up (see
+    # machines below). On one CPU shared with a spinner in jobs, a spinner here
+    # took 92 to 94% of it in three runs, against an even split in jobs. pi's
+    # queue moves timed work here, from the waiting shell; TIMED_CGROUP names
+    # the place, held as jobs is.
+    systemd.user.slices.jobs-timed.sliceConfig = {
+      CPUWeight = 10000;
+      IOWeight = 10000;
     };
-  };
 
-  # Machines are work too, however long they run, so a virtual machine or a
-  # container yields to what Joel uses as a build does. libvirt's system
-  # machines and systemd-nspawn's run in machine.slice, beside build.slice,
-  # and take its weight. Inside the account, a weight buys nothing: with a
-  # container spinning sixteen threads in the account's own user.slice, an
-  # app's wakeup waited up to 15 ms and a 10 ms stream of sound broke up 46
-  # times in 20 s at weight 10, and 4.9 ms and 58 times at 100. Idle, as
-  # jobs is, the wakeup waited at most 2.0 ms and the sound never broke. So
-  # there machines are idle: rootless Podman's containers in user.slice,
-  # and libvirt's session machines in the account's machine.slice
-  # (modules/libvirt). A guest then waits only while what Joel uses takes
-  # every core, and catches up after.
-  systemd.slices.machine.sliceConfig.CPUWeight = 10;
-  systemd.user.slices.user.sliceConfig.CPUWeight = "idle";
-  systemd.user.slices.machine.sliceConfig.CPUWeight = "idle";
+    systemd.user.services.timed = {
+      description = "The place timed work runs, ahead of other work";
+      wantedBy = [ "default.target" ];
+      serviceConfig = {
+        Slice = "jobs-timed.slice";
+        Delegate = true;
+        ExecStart = "${pkgs.coreutils}/bin/sleep infinity";
+        Restart = "always";
+        RestartSec = 1;
+      };
+    };
 
-  # Where pi, and anything else that wants to, finds jobs: a path under the
-  # account's own user@<uid>.service.
-  environment.sessionVariables = {
-    JOBS_CGROUP = "jobs.slice/jobs.service";
-    TIMED_CGROUP = "jobs.slice/jobs-timed.slice/timed.service";
-  };
+    # Work Joel starts in a terminal is work he's waiting on, so it goes ahead
+    # of what agents start, and still gives way to what he uses. pi puts its
+    # own work in jobs.service; the sorter moves a terminal's busy work here
+    # instead, inside jobs, idle as that is. On one CPU shared with a spinner
+    # in jobs, a spinner here took 91% of it, as its weight says. Timed work
+    # stays ahead of both, since its results fail when it waits.
+    systemd.user.slices.jobs-awaited.sliceConfig = {
+      CPUWeight = 1000;
+      IOWeight = 1000;
+    };
 
-  # The Nix daemon's builds run outside the account, in build.slice beside
-  # user.slice, where the account's own targets don't reach. Beside 1.5 GiB/s
-  # of writes from there, an app's synced 4 KiB write took 26 ms at the
-  # median and up to 2 s. With user.slice at the same target it took 3.9 ms
-  # and at most 205 ms, and the build wrote 974 MiB/s while the app saved
-  # ten times a second. Its siblings, build.slice, machine.slice and
-  # system.slice, give way.
-  systemd.slices.user.sliceConfig = {
-    MemoryMin = account;
-    IODeviceLatencyTargetSec = disk;
-  };
+    systemd.user.services.awaited = {
+      description = "The place Joel's own work runs, ahead of agents' work";
+      wantedBy = [ "default.target" ];
+      serviceConfig = {
+        Slice = "jobs-awaited.slice";
+        Delegate = true;
+        ExecStart = "${pkgs.coreutils}/bin/sleep infinity";
+        Restart = "always";
+        RestartSec = 1;
+      };
+    };
 
-  # Every account's user-<uid>.slice, which logind makes as it logs in.
-  systemd.slices."user-" = {
-    overrideStrategy = "asDropin";
-    sliceConfig.MemoryMin = account;
-  };
+    systemd.user.services.jobs-sorter = {
+      description = "Moves a terminal's busy work, and scopes work in jobs starts, into jobs";
+      wantedBy = [ "default.target" ];
+      requires = [ "awaited.service" ];
+      after = [ "awaited.service" ];
+      serviceConfig = {
+        Slice = "session.slice";
+        ExecStart = "${sorter}/bin/jobs-sorter --home kitty- --keep pi --jobs jobs.slice/jobs-awaited.slice/awaited.service";
+        Restart = "on-failure";
+        RestartSec = 5;
+      };
+    };
 
-  systemd.services."user@".serviceConfig = limits // {
-    MemoryMin = account;
-  };
+    # Machines are work too, however long they run, so a virtual machine or a
+    # container yields to what Joel uses as a build does. libvirt's system
+    # machines and systemd-nspawn's run in machine.slice, beside build.slice,
+    # and take its weight. Inside the account, a weight buys nothing: with a
+    # container spinning sixteen threads in the account's own user.slice, an
+    # app's wakeup waited up to 15 ms and a 10 ms stream of sound broke up 46
+    # times in 20 s at weight 10, and 4.9 ms and 58 times at 100. Idle, as
+    # jobs is, the wakeup waited at most 2.0 ms and the sound never broke. So
+    # there machines are idle: rootless Podman's containers in user.slice,
+    # and libvirt's session machines in the account's machine.slice
+    # (modules/libvirt). A guest then waits only while what Joel uses takes
+    # every core, and catches up after.
+    systemd.slices.machine.sliceConfig.CPUWeight = 10;
+    systemd.user.slices.user.sliceConfig = {
+      CPUWeight = "idle";
+      IOWeight = 1;
+    };
+    systemd.user.slices.machine.sliceConfig = {
+      CPUWeight = "idle";
+      IOWeight = 1;
+    };
 
-  # What the account's own units start with, said outright rather than
-  # left to whatever the manager inherited.
-  systemd.user.settings.Manager = {
-    DefaultLimitRTPRIO = limits.LimitRTPRIO;
-    DefaultLimitNICE = limits.LimitNICE;
-    DefaultLimitRTTIME = limits.LimitRTTIME;
+    # Where pi, and anything else that wants to, finds jobs: a path under the
+    # account's own user@<uid>.service.
+    environment.sessionVariables = {
+      JOBS_CGROUP = "jobs.slice/jobs.service";
+      TIMED_CGROUP = "jobs.slice/jobs-timed.slice/timed.service";
+    };
+
+    # The Nix daemon's builds run outside the account, in build.slice beside
+    # user.slice, where the account's own targets don't reach. Beside 1.5 GiB/s
+    # of writes from there, an app's synced 4 KiB write took 26 ms at the
+    # median and up to 2 s. With user.slice at the same target it took 3.9 ms
+    # and at most 205 ms, and the build wrote 974 MiB/s while the app saved
+    # ten times a second. Its siblings, build.slice, machine.slice and
+    # system.slice, give way: to its target, or on a measured disk to its
+    # weight, ten times theirs.
+    systemd.slices.user.sliceConfig = {
+      MemoryMin = account;
+      IOWeight = 1000;
+    }
+    // latency;
+
+    # Every account's user-<uid>.slice, which logind makes as it logs in.
+    systemd.slices."user-" = {
+      overrideStrategy = "asDropin";
+      sliceConfig.MemoryMin = account;
+    };
+
+    # What the account's own units start with, said outright rather than
+    # left to whatever the manager inherited.
+    systemd.user.settings.Manager = {
+      DefaultLimitRTPRIO = limits.LimitRTPRIO;
+      DefaultLimitNICE = limits.LimitNICE;
+      DefaultLimitRTTIME = limits.LimitRTTIME;
+    };
   };
 }
