@@ -53,7 +53,7 @@ use std::io::{self, Read};
 use std::os::fd::{AsRawFd, FromRawFd};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 const AF_NETLINK: c_int = 16;
 const SOCK_DGRAM: c_int = 2;
@@ -1240,6 +1240,34 @@ fn watches(watched: &[(PathBuf, u32)]) -> io::Result<File> {
     Ok(file)
 }
 
+/// When sound is read again after a sound device is heard, from then. A
+/// stream's parameters are set, and it starts running, a moment after its
+/// device opens, and nothing is heard when it does, so the first read
+/// finds it not yet running.
+const SETTLING: [Duration; 4] = [
+    Duration::from_millis(250),
+    Duration::from_millis(500),
+    Duration::from_secs(1),
+    Duration::from_secs(2),
+];
+
+/// How long poll waits: until the next read while sound settles, and
+/// otherwise until something is heard.
+fn waiting_for(settling: Option<(Instant, usize)>, now: Instant) -> c_int {
+    settling
+        .and_then(|(since, step)| SETTLING.get(step).map(|after| since + *after))
+        .map_or(-1, |at| {
+            let left = at.saturating_duration_since(now).as_millis();
+            c_int::try_from(left).unwrap_or(c_int::MAX)
+        })
+}
+
+/// The read after this one while sound settles, if there's one left.
+fn settled_once(settling: Option<(Instant, usize)>) -> Option<(Instant, usize)> {
+    let (since, step) = settling?;
+    (step + 1 < SETTLING.len()).then_some((since, step + 1))
+}
+
 /// Whether inotify's events name a sound device or the lighting's file, or
 /// lost some that might have.
 fn names_one(events: &[u8], lighting: &str) -> bool {
@@ -1376,6 +1404,7 @@ fn run(folder: &Path) -> ExitCode {
         folder.join("bluetooth.json"),
     ];
     let mut due = DISPLAYS | SOUND | CAMERAS | BLUETOOTH;
+    let mut settling = None;
     loop {
         rewrite(due, &files, folder, &lighting);
         let mut waiting = [
@@ -1392,8 +1421,15 @@ fn run(folder: &Path) -> ExitCode {
         });
         due = 0;
         while due == 0 {
+            let wait = waiting_for(settling, Instant::now());
             // SAFETY: five valid pollfds for the length given.
-            if unsafe { poll(waiting.as_mut_ptr(), 5, -1) } < 0 {
+            let ready = unsafe { poll(waiting.as_mut_ptr(), 5, wait) };
+            if ready < 0 {
+                continue;
+            }
+            if ready == 0 {
+                settling = settled_once(settling);
+                due |= SOUND;
                 continue;
             }
             if waiting[0].revents & POLLIN != 0 {
@@ -1420,6 +1456,9 @@ fn run(folder: &Path) -> ExitCode {
             due |= heard(&mut said, &|events| {
                 if names_a_monitor(events) { DISPLAYS } else { 0 }
             });
+            if due & SOUND != 0 {
+                settling = Some((Instant::now(), 0));
+            }
         }
     }
 }
@@ -1664,6 +1703,30 @@ Capture:
         assert_eq!(matters(&mouse), BLUETOOTH);
         let input = uevent(&["add@/devices/.../input/input42", "SUBSYSTEM=input"]);
         assert_eq!(matters(&input), BLUETOOTH);
+    }
+
+    #[test]
+    fn sound_is_read_again_as_it_settles_and_then_only_when_heard() {
+        let since = Instant::now();
+        assert_eq!(
+            waiting_for(None, since),
+            -1,
+            "nothing settling waits for events"
+        );
+        assert_eq!(waiting_for(Some((since, 0)), since), 250);
+        assert_eq!(waiting_for(Some((since, 3)), since), 2000);
+        assert_eq!(
+            waiting_for(Some((since, 1)), since + Duration::from_secs(9)),
+            0,
+            "one overdue reads at once"
+        );
+        let mut settling = Some((since, 0));
+        let mut reads = 0;
+        while settling.is_some() {
+            settling = settled_once(settling);
+            reads += 1;
+        }
+        assert_eq!(reads, SETTLING.len());
     }
 
     #[test]
