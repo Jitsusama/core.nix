@@ -3268,37 +3268,41 @@ with subtest("polkit's prompt lets the account start a system service"):
     machine.send_chars(f"{SECRET}\n")
     machine.wait_for_file("/run/polkit-allowed", timeout=30)
 
+
 # ssh-tpm-agent asks before a key confirmed on use signs, and for a
 # key's PIN, and ssh for a security key's touch, all through the
 # shell's askpass, which answers as OpenSSH's contract says.
+def ask(kind: str, prompt: str) -> None:
+    """Ask through the askpass, started by the account's systemd as ssh-tpm-agent is.
+
+    That way it has what the agent has.
+    """
+    as_account(f"systemd-run --user --collect --quiet -- {ASKING} {kind} '{prompt}'")
+
+
+def answered_with(kind: str, code: int, answer: str = "", timeout: int = 30) -> None:
+    """Wait until an ask is answered, and check how it exited and what it gave back."""
+    exited = f"$XDG_RUNTIME_DIR/asked-{kind}.exit"
+    machine.wait_until_succeeds(in_session(f"test -e {exited}"), timeout=timeout)
+    t.assertEqual(as_account(f"cat {exited}").strip(), str(code))
+    t.assertEqual(as_account(f"cat $XDG_RUNTIME_DIR/asked-{kind}.answer"), answer)
+
+
+# What ssh-tpm-agent asks before Joel's key signs.
+SIGNING = (
+    "Allow use of key joel-signing?\\nKey fingerprint SHA256:abc."
+    "\\nRequested by ssh-keygen (1234) \u2190 tpm-sign \u2190 git \u2190 zsh"
+)
+
 with subtest("the askpass asks for a yes, a PIN and a touch"):
-
-    def ask(kind: str, prompt: str) -> None:
-        """Ask through the askpass, started by the account's systemd as ssh-tpm-agent is.
-
-        That way it has what the agent has.
-        """
-        as_account(f"systemd-run --user --collect --quiet -- {ASKING} {kind} '{prompt}'")
-
-    def answered_with(kind: str, code: int, answer: str = "", timeout: int = 30) -> None:
-        """Wait until an ask is answered, and check how it exited and what it gave back."""
-        exited = f"$XDG_RUNTIME_DIR/asked-{kind}.exit"
-        machine.wait_until_succeeds(in_session(f"test -e {exited}"), timeout=timeout)
-        t.assertEqual(as_account(f"cat {exited}").strip(), str(code))
-        t.assertEqual(as_account(f"cat $XDG_RUNTIME_DIR/asked-{kind}.answer"), answer)
-
-    signing = (
-        "Allow use of key joel-signing?\\nKey fingerprint SHA256:abc."
-        "\\nRequested by ssh-keygen (1234) \u2190 tpm-sign \u2190 git \u2190 zsh"
-    )
     with told("keys askpass"):
-        ask("confirm", signing)
+        ask("confirm", SIGNING)
     photograph("askpass")
     machine.send_key("ret")
     answered_with("confirm", 0)
 
     with told("keys askpass"):
-        ask("confirm", signing)
+        ask("confirm", SIGNING)
     with told("gone askpass"):
         machine.send_key("esc")
     answered_with("confirm", 1)
@@ -3320,14 +3324,14 @@ with subtest("the askpass asks for a yes, a PIN and a touch"):
 # The shell holds an ask only in memory, as a switch restarts it.
 with subtest("the askpass asks a restarted shell again, and gives up on a gone one"):
     with told("keys askpass"):
-        ask("confirm", signing)
+        ask("confirm", SIGNING)
     with told("keys askpass", timeout=60):
         as_account("systemctl --user restart quickshell")
     machine.send_key("ret")
     answered_with("confirm", 0)
 
     with told("keys askpass"):
-        ask("confirm", signing)
+        ask("confirm", SIGNING)
     as_account("systemctl --user stop quickshell")
     answered_with("confirm", 1, timeout=60)
     as_account("! ls $XDG_RUNTIME_DIR | grep -q '^askpass'")
