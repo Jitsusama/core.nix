@@ -103,7 +103,7 @@ Provider {
         const live = run => Number(run.participants.some(p => running(p.state)));
         return live(b) - live(a) || String(b.started).localeCompare(String(a.started));
     }).map(run => made(run))
-    onAllChanged: changed()
+    onAllChanged: changedTo(all)
 
     function named(run) {
         return run.about ? `${kinds[run.kind] ?? run.kind} on ${run.about}` : run.id;

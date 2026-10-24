@@ -293,6 +293,23 @@ in
       touch $out
     '';
 
+  # A list the launcher shows holds still as what's in it changes: its rows
+  # keep their order, new ones come last and the selection keeps its row, as
+  # tests/steady.qml holds launcher/Steady.js to it in Qt's own engine.
+  the-launcher-holds-still-as-it-refreshes =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "the-launcher-holds-still-as-it-refreshes" { } ''
+      cp ${../../tests/steady.qml} steady.qml
+      cp ${./launcher/Steady.js} Steady.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml steady.qml
+      touch $out
+    '';
+
   # The launcher finds emoji by what they're called and what they mean, best
   # first, as tests/emoji.qml lists them, over the list it's built with, and
   # in about three times the least a search could take.

@@ -607,15 +607,24 @@ works the same way everywhere.
 - **Nothing moves that Joel didn't move.** Rows that arrive late go below
   the ones of their kind already shown, the selection stays on its thing
   as rows come and go, and the list keeps the height it opened at, so the
-  foot never jumps.
+  foot never jumps. Only what he types orders a list by rank: a list that
+  changes while he looks at it (the agents starting and stopping work, a
+  window renamed) refreshes in place, each row saying what it says now in
+  the order it's shown, a new one at the end and one gone taken out, the
+  selection on the same row, or where it was when that row went, and the
+  list scrolled where it was. A category held, as Agents in "ai", refreshes
+  the same way. A collection says it changed only when what its rows show
+  did, not each time what they're made from moves.
 - **Home is what's next.** With nothing typed, the launcher shows what's in
   front of you (the focused window, its verbs one arrow away), then the
   three likeliest picks, then after a gap the same three collections in the
   same order, Windows, Clipboard and Notifications, so home's shape never
-  changes.
-  Every other collection is its name away. The field suggests something to try, a different
-  one each time it opens, drawn from what the providers can answer; Tab
-  takes it.
+  changes, and below them the fifteen categories in their order, each
+  saying what it holds after its name, muted (ai: "agents, tasks,
+  helpers, AI spend"), as many names whole as fit, so scrolling down
+  reminds Joel what there is. Tab goes to the first of them, and the foot
+  says so ("⇥ browse"). Every other collection is its name away, and every
+  typed command is in **commands**.
 - **Every row is a thing with verbs.** The right arrow at the end of the line
   steps into the selected row, and so does Tab when the row holds more, so a
   few letters reach inside a thing from anywhere: what can be done to it,

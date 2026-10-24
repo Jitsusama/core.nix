@@ -65,6 +65,23 @@ Scope {
     // A collection's things changed while it might be open.
     signal changed
 
+    // Says `changed` only when what its rows show has, for a collection
+    // whose rows are made again whenever anything they're made from moves,
+    // as the agents' are every few seconds, since each change searches an
+    // open list again. What they show is each row's identity, name, words
+    // at the right and after it, note and glyph, as one string.
+    property string lastSaid: ""
+
+    function changedTo(rows) {
+        const now = rows.map(row => [row.is ?? "", row.key ?? "", row.name ?? "",
+            row.side ?? "", row.count ?? "", row.note ?? "", row.glyph ?? ""]
+            .join("\u241f")).join("\u241e");
+        if (now === lastSaid)
+            return;
+        lastSaid = now;
+        changed();
+    }
+
     function answer(typed) {
         return null;
     }
@@ -90,8 +107,9 @@ Scope {
         return [];
     }
 
-    // Things worth typing to try it, which the field suggests in turn at
-    // home, one each time the launcher opens.
+    // Things worth typing to try it, as its data: the field no longer
+    // suggests them at home, since the commands category lists each typed
+    // command with its form (Words.qml's commands).
     property var examples: []
 
     // A provider with too many things to mix into the main search, such as

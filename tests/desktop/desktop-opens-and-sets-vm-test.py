@@ -146,18 +146,20 @@ with subtest("Forget the Clipboard forgets every copy, and what it held"):
     t.assertEqual(as_account("ls -A $XDG_RUNTIME_DIR/clipboard-history"), "")
 
 # Home is a shelf that keeps its shape: what's in front and the likely
-# picks, then the same three collections last, in the same order.
-# The rest are a word away.
+# picks, then the same three collections, in the same order, then the
+# categories to browse. The rest are a word away.
 with subtest("the launcher's home keeps its shelf, and a collection opens by name"):
     windows = len(json.loads(as_account("niri msg --json windows")))
     as_account("qs ipc call launcher toggle")
     launcher_ready()
     photograph("launcher-home")
-    t.assertEqual(showing()["rows"][-3:], ["Windows", "Clipboard", "Notifications"])
-    # A page down stops on the last of them.
-    for _page in range(4):
+    rows = showing()["rows"]
+    shelf = rows.index("Windows")
+    t.assertEqual(rows[shelf : shelf + 4], ["Windows", "Clipboard", "Notifications", "computer"])
+    # A page down stops on the last of the categories.
+    for _page in range(6):
         machine.send_key("pgdn")
-    launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Notifications")
+    launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "commands")
     # Opening a collection keeps the launcher open, where a program
     # picked instead would close it.
     type_in("shortcuts", selecting="Shortcuts")

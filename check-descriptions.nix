@@ -603,6 +603,9 @@
   the-launcher-finds-what-is-meant = ''
     the right row comes first for each query, within budget
   '';
+  the-launcher-holds-still-as-it-refreshes = ''
+    a list the launcher shows keeps its order and its selection as what's in it changes
+  '';
   the-launcher-lands-where-it-did = ''
     a thing is one row, the same letters keep their row, one slip teaches nothing
   '';

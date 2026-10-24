@@ -676,6 +676,108 @@ with subtest("the launcher remembers where it was when stepping back"):
     machine.send_key("esc")
     launcher_until(lambda shown: not shown["open"])
 
+with subtest("the launcher's home lists the categories to browse, each saying what it holds"):
+    as_account("qs ipc call launcher toggle")
+    launcher_ready()
+
+    def selected_is() -> str:
+        """Give what the launcher's selected row is, or nothing."""
+        return cast("str", (showing()["selected"] or {}).get("is", ""))
+
+    # Down past what's in front, the likely picks and the shelf, into
+    # the categories, the first of them first.
+    while not selected_is().startswith("category:"):
+        before = selected_is()
+        machine.send_key("down")
+        # The wait ends before the loop moves on, so it reads this pass's row.
+        launcher_until(
+            lambda shown: (shown["selected"] or {}).get("is", "") != before  # noqa: B023
+        )
+    t.assertEqual(selected_is(), "category:computer")
+    # Each says what it holds after its name, from the vocabulary.
+    reads = {thing["is"]: thing["reads"] for thing in showing()["things"]}
+    t.assertTrue(
+        reads["category:ai"].startswith("ai \u00b7 agents, tasks, helpers, AI spend"),
+        f"ai reads {reads['category:ai']!r}",
+    )
+    photograph("launcher-home-categories")
+    machine.send_key("esc")
+    launcher_until(lambda shown: not shown["open"])
+    # Tab, with nothing typed, goes straight to them, and Return on one
+    # steps into it.
+    as_account("qs ipc call launcher toggle")
+    launcher_ready()
+    machine.send_key("tab")
+    launcher_until(lambda shown: (shown["selected"] or {}).get("is") == "category:computer")
+    for _row in range(4):
+        machine.send_key("down")
+    launcher_until(lambda shown: (shown["selected"] or {}).get("is") == "category:ai")
+    step_in("ret")
+    launcher_until(lambda shown: shown["held"] == ["ai"] and "Agents" in shown["rows"])
+    machine.send_key("esc")
+    launcher_until(lambda shown: not shown["open"])
+
+with subtest("the launcher's agents hold still as one changes, the selection on its row"):
+    pi_session()
+    # A second session in a window of its own, with its own presence.
+    other = "\u03c0 - TESTQB Another of its own - other-tree"
+
+    def present(address: str, said: Json) -> None:
+        """Replace a session's presence with this, by rename, as pi does."""
+        name = address.lower()
+        as_account(
+            f"echo '{json.dumps(said)}' > {PI_PRESENCE}/.{name}"
+            f" && mv {PI_PRESENCE}/.{name} {PI_PRESENCE}/{name}.json"
+        )
+
+    present("TESTQB", {"addresses": ["TESTQB"], "busy": True})
+    as_account(f"niri msg action spawn -- kitty --title '{other}'")
+    machine.wait_until_succeeds(
+        in_session(f"niri msg --json windows | grep -qF '{other}'"), timeout=STARTING
+    )
+    as_account("qs ipc call launcher toggle")
+    launcher_ready()
+    type_in("agents")
+    launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Agents")
+    machine.send_key("ret")
+    launcher_until(lambda shown: shown["held"] == ["agents"] and len(shown["rows"]) > 1)
+    # The second, which would go first once it wants Joel.
+    machine.send_key("down")
+    launcher_until(lambda shown: (shown["selected"] or {}).get("name") == shown["rows"][1])
+    shown = showing()
+    order = shown["rows"]
+    chosen = shown["selected"]["name"]
+    address = shown["selected"]["side"].split(" \u00b7 ")[0]
+    stays = "TESTQA" if address == "TESTQB" else "TESTQB"
+    # It comes to want Joel, a want older than the shell so no notice
+    # takes the screen, and the other stops working.
+    present(
+        address,
+        {
+            "addresses": [address],
+            "busy": False,
+            "wants": {"kind": "question", "since": "2000-01-01T00:00:00Z", "said": "Which?"},
+        },
+    )
+    present(stays, {"addresses": [stays], "busy": False})
+    launcher_until(
+        lambda shown: (
+            "asks you" in (shown["selected"] or {}).get("side", "")
+            and any("waiting" in thing["reads"] for thing in shown["things"])
+        )
+    )
+    # Said in place: the same rows in the same order, the selection
+    # still on its row.
+    shown = showing()
+    t.assertEqual(shown["rows"], order, "the agents moved under the selection")
+    t.assertEqual(shown["selected"]["name"], chosen, "the selection left its row")
+    machine.send_key("esc")
+    launcher_until(lambda shown: not shown["open"])
+    as_account(f"niri msg action close-window --id {window_titled(other)['id']}")
+    as_account(f"rm -f {PI_PRESENCE}/testqb.json")
+    present("TESTQA", {"addresses": ["TESTQA"], "busy": False})
+    machine.wait_until_fails(in_session("niri msg --json windows | grep -q TESTQB"), timeout=30)
+
 with subtest("a word typed whole lands on what it says"):
     # "pi" is meant for pi's sessions, so there has to be one.
     pi_session()
