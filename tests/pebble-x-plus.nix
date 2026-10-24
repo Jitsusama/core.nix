@@ -4,8 +4,9 @@
 # the tuning finds them by, and a second for headphones. 10.2 kHz sits in the
 # tuning's deepest cut, 6 dB, and 1 kHz below all three, so through the
 # tuning the first falls about 6 dB and the second about half of one. The
-# headphones should hear both as they were played. The script is
-# pebble-x-plus-vm-test.py.
+# headphones should hear both as they were played. The stand-in speakers are
+# then pulled out and made again, as at a replug, and must hear the tuning
+# again with nobody choosing them. The script is pebble-x-plus-vm-test.py.
 { pkgs }:
 let
   silentSink = name: properties: {

@@ -7,6 +7,7 @@ tones and the helpers, runs whichever subtests are chosen. The script needs no v
 Nix: the stand-in speakers and headphones are named in the machine pebble-x-plus.nix builds.
 """
 
+import datetime as dt
 import math
 from typing import TYPE_CHECKING
 
@@ -64,6 +65,20 @@ def tuning_ready() -> None:
     )
 
 
+# The stand-in speakers, as pebble-x-plus.nix makes them at boot, to make again as if plugged
+# back in. Lingering, they outlive the pw-cli that makes them.
+PEBBLE = (
+    "{ factory.name = support.null-audio-sink node.name = pebble media.class = Audio/Sink"
+    " audio.position = [ FL FR ] monitor.channel-volumes = true object.linger = true"
+    ' alsa.components = "USB041e:329a" }'
+)
+
+
+def in_session(command: str) -> str:
+    """Give a shell command that runs as joel in his session, for the driver to wait on."""
+    return f"su - joel -c 'XDG_RUNTIME_DIR=/run/user/1000 {command}'"
+
+
 # The tones played, in Hz: one below every cut of the tuning, and one in its deepest.
 tones = (1000, 10200)
 machine.wait_for_unit("multi-user.target")
@@ -92,6 +107,32 @@ with subtest("the speakers hear the tuning"):
     as_account(machine, "pactl set-default-sink pebble")
     kept = decibels(level(1000, "pebble"), played[1000])
     cut = decibels(level(10200, "pebble"), played[10200])
+    machine.log(f"1 kHz changed by {kept:.1f} dB, 10.2 kHz by {cut:.1f} dB")
+    assert abs(kept) < UNCHANGED, kept
+    assert cut < CUT, cut
+
+with subtest("pulled out and plugged back in, the speakers hear the tuning again"):
+    # Nobody picks the speakers again: PipeWire's default goes back to them as it would at a
+    # replug, and the tuning follows them back by their USB id.
+    as_account(
+        machine,
+        "pw-cli destroy $(pw-cli ls Node | awk '/^\\tid / {id = $2}"
+        ' /node.name = "pebble"$/ {sub(",", "", id); print id}\')',
+    )
+    machine.wait_until_fails(
+        in_session('pw-cli ls Node | grep -q "node.name = \\"pebble\\""'),
+        timeout=dt.timedelta(seconds=10),
+    )
+    as_account(machine, f"pw-cli create-node adapter '{PEBBLE}'")
+    machine.wait_until_succeeds(
+        in_session("pw-link -l | grep -A1 ^pebble:playback_FL | grep -q pebble_x_plus_tuning"),
+        timeout=dt.timedelta(seconds=30),
+    )
+    heard = {frequency: level(frequency, "pebble") for frequency in tones}
+    machine.log(f"heard after the replug: {heard}")
+    assert all(value > HEARD for value in heard.values()), heard
+    kept = decibels(heard[1000], played[1000])
+    cut = decibels(heard[10200], played[10200])
     machine.log(f"1 kHz changed by {kept:.1f} dB, 10.2 kHz by {cut:.1f} dB")
     assert abs(kept) < UNCHANGED, kept
     assert cut < CUT, cut
