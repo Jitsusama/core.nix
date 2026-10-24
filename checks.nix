@@ -484,12 +484,18 @@ gather (
           cd ${./.}
           # The launcher's colour answers, and the colours they're tested on, name
           # colours because colours are what's asked; neither is a look.
-          if rg --line-number --no-heading --hidden --glob '!modules/theme/**' \
+          # ripgrep answers 0 for a match, 1 for none and 2 when it can't
+          # search, and only none passes.
+          status=0
+          rg --line-number --no-heading --hidden --glob '!modules/theme/**' \
             --glob '!modules/quickshell/launcher/Colours.js' --glob '!tests/colour-cases.js' \
-            -e ${lib.escapeShellArg pattern} modules roles hardware tests examples flake.nix; then
+            -e ${lib.escapeShellArg pattern} modules roles hardware tests examples flake.nix \
+            || status=$?
+          if [ $status = 0 ]; then
             echo "The lines above name a colour or a face; name the theme's role or font instead."
             exit 1
           fi
+          [ $status = 1 ]
           touch $out
         '';
 

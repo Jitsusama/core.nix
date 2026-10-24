@@ -106,7 +106,7 @@ onLinux {
   # page's and ones it mustn't run. xdg-open finds the entry by what it
   # says it opens, beside a list of defaults a browser wrote, which names
   # none for Tuple's links; gio, and so the portal, are asked too, and
-  # find it only through niri's own list.
+  # find it only through niri's own list (tests/tuple-opens-its-links.sh).
   tuple-opens-its-links =
     let
       home = account graphical;
@@ -122,52 +122,13 @@ onLinux {
         ];
       }
       ''
-        mkdir -p data/applications config
-        printf '%s' ${lib.escapeShellArg entry} > tuple.desktop
-        cp tuple.desktop data/applications/
-        printf '[Default Applications]\nx-scheme-handler/https=browser.desktop\n' \
-          > config/mimeapps.list
-        printf '%s' ${lib.escapeShellArg defaults} > config/niri-mimeapps.list
-        found=$(HOME=$PWD XDG_DATA_HOME=$PWD/data XDG_DATA_DIRS=$PWD/none \
-          XDG_CONFIG_HOME=$PWD/config XDG_CURRENT_DESKTOP=niri \
-          xdg-mime query default x-scheme-handler/tuple)
-        if [ "$found" != tuple.desktop ]; then
-          echo "xdg-open opens Tuple's links with '$found'"
-          exit 1
-        fi
-        said=$(HOME=$PWD XDG_DATA_HOME=$PWD/data XDG_DATA_DIRS=$PWD/none \
-          XDG_CONFIG_HOME=$PWD/config XDG_CONFIG_DIRS=$PWD/none XDG_CURRENT_DESKTOP=niri \
-          gio mime x-scheme-handler/tuple 2>&1)
-        if ! printf '%s\n' "$said" \
-          | grep -qxF 'Default application for “x-scheme-handler/tuple”: tuple.desktop' \
-          || printf '%s\n' "$said" | grep -q WARNING; then
-          echo "gio opens Tuple's links with: $said"
-          exit 1
-        fi
-        opens=$(sed -n 's|^Exec=\(.*\) %u$|\1|p' tuple.desktop)
-        sed -e 's|${lib.getExe tuple}|'"$PWD"'/tuple|g' \
-          -e 's|/nix/store/[^ ]*/bin/notify-send|'"$PWD"'/notify-send|g' "$opens" > opens
-        for stand_in in tuple notify-send; do
-          printf '#!/bin/sh\necho "%s $*" > "%s/asked"\n' "$stand_in" "$PWD" > "$stand_in"
-        done
-        chmod +x opens tuple notify-send
-
-        failed=0
-        opening() {
-          rm -f asked
-          ./opens "$1"
-          if [ "$(cat asked)" != "$2" ]; then
-            echo "'$1' asked '$(cat asked)', not '$2'"
-            failed=1
-          fi
+        ${lib.getExe pkgs.bash} ${../../tests/tuple-opens-its-links.sh} ${
+          lib.escapeShellArgs [
+            (pkgs.writeText "tuple.desktop" entry)
+            (pkgs.writeText "niri-mimeapps.list" defaults)
+            (lib.getExe tuple)
+          ]
         }
-        opening 'tuple://join?call_url_slug=U7BVv2' 'tuple call join https://tuple.app/c/U7BVv2'
-        opening 'tuple://join?from=web&call_url_slug=a_b-9' 'tuple call join https://tuple.app/c/a_b-9'
-        opening 'tuple://join?call_url_slug=a;b' "notify-send --app-name=Tuple Tuple can't open that link tuple://join?call_url_slug=a;b"
-        opening 'tuple://join?call_url_slug=*' "notify-send --app-name=Tuple Tuple can't open that link tuple://join?call_url_slug=*"
-        opening 'tuple://auth?code=abc' "notify-send --app-name=Tuple Tuple can't open that link tuple://auth?code=abc"
-        opening "" 'tuple start'
-        [ "$failed" = 0 ]
         touch $out
       '';
 }

@@ -9,9 +9,15 @@
   # The libraries core's own Python imports.
   jitsusama.mypy.packages = python: [
     python.dbus-fast
+    # The desktop test's touchscreen.
+    python.evdev
     python.fido2
+    # The desktop test's caller of the portal.
+    python.jeepney
     # The desktop test reads its photographs with Pillow.
     python.pillow
+    # The desktop test's window named as Tuple's.
+    python.xlib
   ];
 
   # biome reads the JavaScript QML imports as the modules it means
