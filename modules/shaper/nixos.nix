@@ -69,6 +69,15 @@ in
   # would only sit there.
   config.boot.extraModprobeConfig = "options ifb numifbs=0";
 
+  # udev gives every new link systemd's default .link, whose name, address
+  # and queue settings an IFB can't take, and says so in the journal each
+  # time the shaper makes one. The IFBs are the shaper's alone, named by
+  # it, so udev is told to set nothing on them.
+  config.systemd.network.links."10-shaper-ifb" = {
+    matchConfig.Driver = "ifb";
+    linkConfig.MACAddressPolicy = "none";
+  };
+
   config.systemd.services.shaper = {
     description = "Keep the network's queue here, sorted by the slices";
     wantedBy = [ "multi-user.target" ];

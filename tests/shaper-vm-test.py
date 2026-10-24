@@ -313,6 +313,10 @@ with subtest("its status says what it holds the link to"):
     t.assertIn("eth2", status)
     t.assertIn("held under load", status)
 
+with subtest("udev leaves the shaper's IFBs as it made them"):
+    # Each IFB came and went with a link above, so udev has met several.
+    client.fail("journalctl -b --no-pager | grep -E 'shaper[0-9a-f]+: Could not set'")
+
 with subtest("stopping it leaves the links as they were"):
     eth2_ifb = ifb("eth2")
     client.succeed("systemctl stop shaper.service")
