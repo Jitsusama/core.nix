@@ -459,6 +459,7 @@ it. Owners go by layer:
 | In a call                                                              | the margin mark, while in one                      | What's on                    |
 | Notifications waiting                                                  | the margin mark                                    | Notices (Super+N); What's on |
 | Disk space                                                             | the margin mark, only while a disk is short of room, a writer is frozen or nothing watches it; a notice when the guard acts | What's on |
+| RAM type, speed, maker and part                                        | nothing, since it never changes                    | Memory's Type                |
 | AI spend and its caps                                                  | the margin mark, only while a finding wants a look or nothing watches it; a notice once when one starts to; a line each morning; the launcher's foot | AI spend (Super+U); What's on |
 | Directory, repository, branch, git state                               | the program running the window                     | nobody                       |
 | Window titles                                                          | a terminal's unseen tabs; the launcher's windows   | the launcher's windows       |

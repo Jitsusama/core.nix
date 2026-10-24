@@ -113,6 +113,15 @@ with subtest("the power profile follows the charger from boot"):
         timeout=30,
     )
 
+# Only root reads the firmware's memory devices, so a unit writes them out at boot for the
+# launcher's Memory to read as the account, and QEMU lists the machine's memory as one.
+with subtest("the memory modules are written out at boot for the account to read"):
+    machine.wait_until_succeeds("test -e /run/memory-modules.json", timeout=30)
+    memory = json.loads(as_account("cat /run/memory-modules.json"))
+    print(memory)
+    assert memory["modules"], memory
+    assert all(module["size"] for module in memory["modules"]), memory
+
 with subtest("Quickshell starts without a QML error"):
     log = as_account("journalctl --user -u quickshell --no-pager -o cat")
     print(log)

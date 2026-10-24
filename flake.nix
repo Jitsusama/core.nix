@@ -249,6 +249,7 @@
         linux-id = ./modules/linux-id/nixos.nix;
         litra = ./modules/litra/nixos.nix;
         memory = ./modules/memory/nixos.nix;
+        memory-modules = ./modules/memory-modules/nixos.nix;
         mpv = ./modules/mpv/nixos.nix;
         network-revive = ./modules/network-revive/nixos.nix;
         nftables = ./modules/nftables/nixos.nix;

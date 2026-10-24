@@ -1,5 +1,6 @@
 # A NixOS machine with a screen in front of Joel: fonts, sound, Bluetooth for
-# headphones and mice, a plugged-in monitor's own controls, which programs
+# headphones and mice, a plugged-in monitor's own controls, which memory
+# modules the firmware lists, for the launcher to say what RAM it is, which programs
 # stream from a USB camera, a desk light lit while one does, a keyring the TPM unlocks, 1Password, and niri, started
 # at boot by greetd, with the console, the consoles signed in on, and
 # Plymouth, which asks for the disk's PIN, in the theme of the account it
@@ -34,6 +35,7 @@
     nixosModules.greetd
     nixosModules.kmscon
     nixosModules.litra
+    nixosModules.memory-modules
     nixosModules.mpv
     nixosModules.niri
     nixosModules.onepassword
