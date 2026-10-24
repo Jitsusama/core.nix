@@ -443,10 +443,12 @@
     the shaper reads a queue from delayed pings, not one late ping or a silent host; cuts under what
     the line carried, holds while it drains, and climbs while it's quiet, past what it held only
     once busy five seconds, so bursts fit under the line; forgets a cut ten quiet minutes old, and
-    keeps one the line then proves; cuts no download arriving faster than its rate, nor again for a
-    queue back within two seconds; climbs back from a cut no queue returns for, so late pings alone
-    don't wear an upload down, yet retries no cut near one confirmed; remembers the line's best,
-    not its latest cut; reads sets, routes and queues from what the kernel prints
+    keeps one the line then proves; cuts no download arriving faster than its rate, nor beside one
+    an upload carrying under half the line's best, nor again for a queue back within two seconds;
+    climbs back from a cut no queue returns for, so late pings alone don't wear an upload down, yet
+    retries no cut near one confirmed; never cuts Wi-Fi more than a fifth under the best it carried,
+    while following a cable down; remembers the line's best, not its latest cut; reads sets, routes
+    and queues from what the kernel prints
   '';
   shaper-passes-clippy = ''
     clippy finds nothing in the shaper or its tests

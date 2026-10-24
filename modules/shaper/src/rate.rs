@@ -116,6 +116,9 @@ pub struct Settings {
     /// Seconds after a cut within which a queue back again is the same
     /// spell's, not a new one's.
     pub spell_gap_s: f64,
+    /// The share of the best rate a direction has held that no cut goes
+    /// under; none lets a cut follow the line down to its floor.
+    pub least_of_best: f64,
 }
 
 impl Default for Settings {
@@ -155,6 +158,25 @@ impl Default for Settings {
             // late and early by turns, and each turn read as a new spell
             // cut the upload from 1.8 Mbit/s to 1.0 within three seconds.
             spell_gap_s: 2.0,
+            // A cable's line does fall, to half on a busy evening, and a
+            // cut that follows it keeps its queue short.
+            least_of_best: 0.0,
+        }
+    }
+}
+
+impl Settings {
+    /// What a link of this kind is shaped by. On Wi-Fi a ping comes back
+    /// late for the air's sake, a neighbour's or the router's as often as
+    /// for a queue of this machine's: three times on one day, cuts for such
+    /// pings took its upload of about 10 Mbit/s to 1 or 2 and its download
+    /// from 50 to 6 or 17. Joel wants the line's whole rate kept, and a
+    /// shaper over the line only leaves it as unshaped, so a cut there
+    /// never goes more than a fifth under the best the line has carried.
+    pub fn for_link(wireless: bool) -> Self {
+        Settings {
+            least_of_best: if wireless { 0.8 } else { 0.0 },
+            ..Settings::default()
         }
     }
 }
@@ -173,6 +195,9 @@ pub struct Direction {
     /// The highest rate it held under load without delay, which an old cut
     /// is forgotten back to.
     pub peak: u64,
+    /// The highest peak it has had, which a cut that lowers the peak
+    /// leaves alone: the rate no cut goes under is a share of it.
+    pub best: u64,
     /// Whether the held rate is the peak put back since the last cut, so a
     /// cut that follows shows the peak is no longer the line's.
     forgot: bool,
@@ -206,6 +231,7 @@ impl Direction {
             held,
             learned: false,
             peak: held,
+            best: held,
             forgot: false,
             proving: None,
             cut_at: None,
@@ -253,6 +279,7 @@ impl Direction {
             // A trial's way up isn't yet the line's best.
             if self.on_trial.is_none() {
                 self.peak = self.peak.max(self.held);
+                self.best = self.best.max(self.peak);
             }
             self.learned = true;
         }
@@ -350,6 +377,9 @@ pub struct Controller {
     cut_alone: Option<usize>,
     /// Whether this spell has cut each direction, up and down.
     cut_in_spell: [bool; 2],
+    /// When a download last arrived faster than its rate while the line
+    /// built a queue.
+    held_at: Option<f64>,
 }
 
 /// One step's climb, from a direction's rate and what it held.
@@ -390,6 +420,7 @@ impl Controller {
             quiet_shares: [0.0; 2],
             cut_alone: None,
             cut_in_spell: [false; 2],
+            held_at: None,
         }
     }
 
@@ -483,47 +514,22 @@ impl Controller {
             // queue half drained.
             let drain = 1.0 - (level / s.drain_ms).min(0.5);
             let mut cuts = [false; 2];
-            let fell = [
-                self.quiet_shares[0] - shares[0],
-                self.quiet_shares[1] - shares[1],
-            ];
             if new_spell {
                 self.cut_in_spell = [false; 2];
             }
-            // A download arriving faster than its rate is held back by the
-            // shaping here, so the line carries more than that rate and
-            // the download can't be what queues on it: the queue is the
-            // upload's, or another machine's. Cut for every spell while a
-            // video took its rate, a download on Wi-Fi fell from 85 Mbit/s
-            // to the floor of 5 within ten minutes and never climbed back.
-            // Once this spell has cut it, though, the line's queue drains
-            // at the line's speed, over the new rate, so it says nothing.
-            let held_here = [false, shares[1] > s.held_here && !self.cut_in_spell[1]];
-            // A queue still growing after one direction alone was cut is
-            // the other's, when it carries enough to fill it.
-            let likeliest = if held_here[1] {
-                0
-            } else if let Some(cut) = self.cut_alone.filter(|_| !new_spell) {
-                1 - cut
-            } else if fell[0].max(fell[1]) >= s.fuller {
-                usize::from(fell[1] > fell[0])
-            } else {
-                usize::from(shares[1] > shares[0])
-            };
-            for (i, ((dir, carried), share)) in [(&mut self.up, sent), (&mut self.down, received)]
+            let filling = self.suspects(now, [sent, received], shares, new_spell);
+            for (i, (dir, carried)) in [(&mut self.up, sent), (&mut self.down, received)]
                 .into_iter()
-                .zip(shares)
                 .enumerate()
             {
-                let filling =
-                    !held_here[i] && (share >= s.loaded || (share >= s.fuller && i == likeliest));
-                if filling && !resting && rising {
+                if filling[i] && !resting && rising {
                     let from = carried.min(float(dir.rate));
                     // A queue still growing after a cut says that rate too
                     // was over the line, so each cut is the line's best
                     // guess.
-                    dir.cut_to(whole(from * s.cut).clamp(dir.bounds.min, dir.bounds.max));
-                    dir.set(float(dir.held) * drain);
+                    let least = whole(float(dir.best) * s.least_of_best).max(dir.bounds.min);
+                    dir.cut_to(whole(from * s.cut).clamp(least, dir.bounds.max.max(least)));
+                    dir.set((float(dir.held) * drain).max(float(least)));
                     dir.learned = true;
                     if std::mem::replace(&mut dir.forgot, false) {
                         dir.peak = dir.held;
@@ -574,6 +580,71 @@ impl Controller {
             State::Resting
         }
     }
+
+    /// Which directions, up and down, may be filling the line's building
+    /// queue, given what each `carried` and its share of its rate.
+    fn suspects(
+        &mut self,
+        now: f64,
+        carried: [f64; 2],
+        shares: [f64; 2],
+        new_spell: bool,
+    ) -> [bool; 2] {
+        let s = &self.settings;
+        let fell = [
+            self.quiet_shares[0] - shares[0],
+            self.quiet_shares[1] - shares[1],
+        ];
+        // A download arriving faster than its rate is held back by the
+        // shaping here, so the line carries more than that rate and
+        // the download can't be what queues on it: the queue is the
+        // upload's, or another machine's. Cut for every spell while a
+        // video took its rate, a download on Wi-Fi fell from 85 Mbit/s
+        // to the floor of 5 within ten minutes and never climbed back.
+        // Once this spell has cut it, though, the line's queue drains
+        // at the line's speed, over the new rate, so it says nothing.
+        let held_here = [false, shares[1] > s.held_here && !self.cut_in_spell[1]];
+        // That leaves the upload, or another machine, but not the upload by
+        // elimination: it's cut only when it carries enough to fill the
+        // queue on its own. A video's bursts arrive faster than the
+        // download's rate and queue on the line as they do, and put to the
+        // upload, the agents' requests beside it took Wi-Fi's upload of
+        // about 10 Mbit/s to its floor within three minutes. The pings stay
+        // late a moment after a burst ends, while its queue drains, so a
+        // spell gap after it is still the burst's.
+        if held_here[1] {
+            self.held_at = Some(now);
+        }
+        let held_lately = self.held_at.is_some_and(|at| now - at < s.spell_gap_s);
+        // A cut leaves a direction under what it's asked to carry, so
+        // weighed against its rate it reads as full at every burst after,
+        // and requests asking 3 Mbit/s beside a video were held at 2.3.
+        // Beside a burst, each is weighed against the best the line has
+        // carried for it instead.
+        let weighed = if held_lately {
+            [
+                carried[0] / float(self.up.peak.max(self.up.rate).max(1)),
+                carried[1] / float(self.down.peak.max(self.down.rate).max(1)),
+            ]
+        } else {
+            shares
+        };
+        // A queue still growing after one direction alone was cut is the
+        // other's, when it carries enough to fill it.
+        let likeliest = if held_lately {
+            None
+        } else if let Some(cut) = self.cut_alone.filter(|_| !new_spell) {
+            Some(1 - cut)
+        } else if fell[0].max(fell[1]) >= s.fuller {
+            Some(usize::from(fell[1] > fell[0]))
+        } else {
+            Some(usize::from(shares[1] > shares[0]))
+        };
+        [0, 1].map(|i| {
+            !held_here[i]
+                && (weighed[i] >= s.loaded || (weighed[i] >= s.fuller && likeliest == Some(i)))
+        })
+    }
 }
 
 #[cfg(test)]
@@ -582,7 +653,7 @@ mod tests {
 
     fn controller(up: u64, down: u64) -> Controller {
         Controller::new(
-            Settings::default(),
+            Settings::for_link(false),
             Direction::new(
                 Bounds {
                     min: 1_000,
@@ -703,6 +774,122 @@ mod tests {
             }
         }
         assert!(c.down.rate >= 85_000, "{}", c.down.rate);
+    }
+
+    #[test]
+    fn an_upload_carrying_little_isnt_cut_for_a_download_held_back_here() {
+        let mut c = controller(10_000, 50_000);
+        pings(&mut c, 20.0, 6);
+        // A 4K video fetches a second of every four at more than the
+        // download's rate, and the line's queue builds 40 ms while it does,
+        // as the agents' requests keep a third of the upload busy. Put to
+        // the upload as the only other likeliest, every burst cut it, and
+        // Wi-Fi's upload of about 10 Mbit/s was at its floor of 1 within
+        // three minutes.
+        let (mut at, mut lowest) = (0.0, u64::MAX);
+        while at < 180.0 {
+            let fetching = at % 4.0 < 1.0;
+            let late = if fetching { 40.0 } else { 0.0 };
+            let received = if fetching { 1.3 } else { 0.05 } * float(c.down.rate);
+            pings(&mut c, 20.0 + late, 3);
+            at += 0.2;
+            c.step(at, 0.3 * float(c.up.rate), received);
+            lowest = lowest.min(c.up.rate);
+        }
+        assert!(lowest >= 9_000, "{lowest}");
+        assert!(c.down.rate >= 50_000, "{}", c.down.rate);
+    }
+
+    #[test]
+    fn requests_beside_a_video_get_what_they_ask_for() {
+        let mut c = controller(10_000, 50_000);
+        pings(&mut c, 20.0, 6);
+        // The same video, beside requests asking 3 Mbit/s and 8 for a
+        // second of every seven. When a request's burst meets a video's,
+        // the upload carries enough to be cut; each video burst after that
+        // confirmed the cut, and held the requests at 2.3 Mbit/s.
+        let (mut at, mut lowest) = (0.0, u64::MAX);
+        while at < 180.0 {
+            let fetching = at % 4.0 < 1.0;
+            let late = if fetching { 40.0 } else { 0.0 };
+            let received = if fetching { 1.3 } else { 0.05 } * float(c.down.rate);
+            let asked: f64 = if at % 7.0 < 1.0 { 8_000.0 } else { 3_000.0 };
+            pings(&mut c, 20.0 + late, 3);
+            at += 0.2;
+            c.step(at, asked.min(float(c.up.rate)), received);
+            if at > 60.0 {
+                lowest = lowest.min(c.up.rate);
+            }
+        }
+        assert!(lowest >= 3_000, "{lowest}");
+    }
+
+    #[test]
+    fn a_wi_fi_line_is_never_cut_far_under_its_best() {
+        let bounds = |min| Bounds {
+            min,
+            max: 1_000_000,
+        };
+        let mut c = Controller::new(
+            Settings::for_link(true),
+            Direction::new(bounds(1_000), 10_000),
+            Direction::new(bounds(5_000), 50_000),
+        );
+        pings(&mut c, 20.0, 6);
+        // As the agents came back after a reboot, the line's queue grew
+        // from 29 ms to 92 while each cut took the upload and then the
+        // download, from 10 Mbit/s to 2.4 and from 50 to 16 within a
+        // second: the queue was neither's. Here pings grow late for a
+        // second of every three whatever either direction carries.
+        let (mut at, mut lowest) = (0.0, [u64::MAX; 2]);
+        while at < 180.0 {
+            let late = if at % 3.0 < 1.0 {
+                30.0 + 60.0 * (at % 1.0)
+            } else {
+                0.0
+            };
+            pings(&mut c, 20.0 + late, 3);
+            at += 0.2;
+            c.step(at, 0.6 * float(c.up.rate), 0.6 * float(c.down.rate));
+            lowest = [lowest[0].min(c.up.rate), lowest[1].min(c.down.rate)];
+        }
+        assert!(lowest[0] >= 8_000, "{lowest:?}");
+        assert!(lowest[1] >= 40_000, "{lowest:?}");
+    }
+
+    #[test]
+    fn a_wi_fi_line_s_best_is_the_most_it_has_carried() {
+        let bounds = |min| Bounds {
+            min,
+            max: 1_000_000,
+        };
+        let mut c = Controller::new(
+            Settings::for_link(true),
+            Direction::new(bounds(1_000), 10_000),
+            Direction::new(bounds(5_000), 50_000),
+        );
+        pings(&mut c, 20.0, 6);
+        // A push finds the line faster than where it started.
+        let mut at = 0.0;
+        while at < 30.0 {
+            pings(&mut c, 20.0, 3);
+            at += 0.2;
+            c.step(at, float(c.up.rate), 0.0);
+        }
+        let climbed = c.up.rate;
+        assert!(climbed > 15_000, "{climbed}");
+        let mut lowest = u64::MAX;
+        while at < 120.0 {
+            let late = if at % 3.0 < 1.0 { 60.0 } else { 0.0 };
+            pings(&mut c, 20.0 + late, 3);
+            at += 0.2;
+            c.step(at, 0.6 * float(c.up.rate), 0.0);
+            lowest = lowest.min(c.up.rate);
+        }
+        assert!(
+            float(lowest) >= 0.8 * float(climbed) - 1.0,
+            "{lowest} of {climbed}"
+        );
     }
 
     #[test]
