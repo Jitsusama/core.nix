@@ -2,8 +2,15 @@
 // want, a window, an application, an action or what a key does, pick it
 // with the arrows, and Return runs it, or Shift+Return opens it below the
 // focused window. Tab takes the completion the command line offers. Each
-// action shows its chord, so keys are learned by use. It lives in the shell
-// and only shows and hides, so it opens as fast as niri can draw it.
+// action shows its chord, so keys are learned by use.
+//
+// It opens as fast as niri can hand it the keys. Super+Space says "toggle"
+// down a socket the shell keeps open (launcher-say, in home.nix), not
+// through a second Quickshell that has to start first. Its surface stays
+// mapped all along, a single clear pixel that takes neither the keys nor
+// the pointer while it's closed. Opening only grows it, gives it the keys
+// and shows the card, whose field already holds the focus. A letter typed
+// straight after the chord then reaches the field, not the window below.
 //
 // What it finds comes from its providers, one file each in launcher/, in
 // the order jitsusama.quickshell.launcher.providers lists them (rendered
@@ -712,6 +719,31 @@ Scope {
         }
     }
 
+    // What a key says down the socket, a line each: "toggle", or
+    // "collection" and a collection's name. Each connection is closed from
+    // this end once its line is read, so launcher-say returns at once and
+    // Quickshell has no peer's hang-up to warn of.
+    SocketServer {
+        active: true
+        path: `${Quickshell.env("XDG_RUNTIME_DIR")}/launcher.sock`
+        handler: Socket {
+            id: caller
+
+            parser: SplitParser {
+                onRead: line => {
+                    caller.connected = false;
+                    const words = line.trim().split(/\s+/);
+                    if (words[0] === "toggle")
+                        root.open = !root.open;
+                    else if (words[0] === "collection")
+                        root.into(words.slice(1).join(" "));
+                    else
+                        console.warn(`The launcher was told "${line}", which it doesn't know.`);
+                }
+            }
+        }
+    }
+
     IpcHandler {
         target: "launcher"
 
@@ -808,23 +840,55 @@ Scope {
             held = [];
             tried += 1;
             restart("");
+            // Before niri hands over the keys, so the first one lands.
+            prompt.take();
             Report.say(`stands ${standing.said}`);
+        } else {
+            screenHere = focusedScreen;
         }
     }
 
+    // The screen the keys are on, followed while the launcher is closed so
+    // its surface is already there when Super+Space comes, and kept while
+    // it's open so it never jumps from under Joel's eyes.
+    readonly property var focusedScreen: {
+        Niri.revision;
+        const workspace = Niri.workspace();
+        return Quickshell.screens.find(screen => workspace && screen.name === workspace.output)
+            ?? Quickshell.screens[0] ?? null;
+    }
+    property var screenHere: focusedScreen
+
+    onFocusedScreenChanged: {
+        if (!open)
+            screenHere = focusedScreen;
+    }
+
+    // Nothing at all: the pointer's reach and niri's blur while closed.
+    Region {
+        id: nowhere
+    }
+
+    // Mapped all along, so opening makes no surface and draws no first
+    // frame before niri hands over the keys. While closed it's one pixel at
+    // the screen's top edge rather than the card's size, since niri draws a
+    // surface kept out of screencasts (config.kdl) as a black box the size
+    // of the whole surface, shown or not.
     PanelWindow {
-        visible: root.open
+        visible: true
+        screen: root.screenHere
         anchors.top: true
         // Quickshell's type files can't place margins, so qmllint can't.
-        margins.top: screen ? screen.height / 4 - card.reach : 0 // qmllint disable unqualified
-        implicitWidth: root.width + 2 * card.reach
-        implicitHeight: card.height + 2 * card.reach
+        margins.top: root.open && screen // qmllint disable unqualified
+            ? screen.height / 4 - card.reach : 0 // qmllint disable unqualified
+        implicitWidth: root.open ? root.width + 2 * card.reach : 1
+        implicitHeight: root.open ? card.height + 2 * card.reach : 1
         exclusionMode: ExclusionMode.Ignore
         color: "transparent"
-        mask: card.area
-        BackgroundEffect.blurRegion: card.area
+        mask: root.open ? card.area : nowhere
+        BackgroundEffect.blurRegion: root.open ? card.area : nowhere
         WlrLayershell.layer: WlrLayer.Overlay
-        WlrLayershell.keyboardFocus: WlrKeyboardFocus.Exclusive
+        WlrLayershell.keyboardFocus: root.open ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
         WlrLayershell.namespace: "launcher"
 
         Floating {
@@ -833,6 +897,10 @@ Scope {
             y: reach
             width: root.width
             keys: true
+            // Clear rather than hidden while closed, since a hidden field
+            // can't hold the focus, and a key that came before the card was
+            // shown would be lost.
+            opacity: root.open ? 1 : 0
 
             Column {
                 width: parent.width

@@ -344,7 +344,7 @@ let
     else if lib.hasInfix "monitor" action then
       nerd "f0379"
     # A collection's own glyph, as its row in the launcher wears.
-    else if program == "qs" && lib.elem "collection" run then
+    else if program == "launcher-say" && lib.elem "collection" run then
       {
         capture = nerd "f0100";
         clipboard = nerd "f0a38";
@@ -391,13 +391,10 @@ let
   ) [ ];
   opensCollection =
     run:
-    lib.length run == 6
+    lib.length run == 3
     &&
-      lib.take 5 run == [
-        "qs"
-        "ipc"
-        "call"
-        "launcher"
+      lib.take 2 run == [
+        "launcher-say"
         "collection"
       ];
   takesNotices = [
@@ -408,10 +405,7 @@ let
     "take"
   ];
   launcherToggle = [
-    "qs"
-    "ipc"
-    "call"
-    "launcher"
+    "launcher-say"
     "toggle"
   ];
 
@@ -559,6 +553,24 @@ let
   # hour, so one a restarted shell forgot can't linger. Its want's key goes
   # with it as a hint, for the shell to know which notice is whose. niri is
   # the one the session runs, from the path.
+  # What a key says to the launcher: "toggle", or "collection" and a
+  # collection's name. It goes down the socket the shell keeps open
+  # (Launcher.qml), which takes a few milliseconds where starting `qs ipc`
+  # takes a hundred or more, and every one of those is a letter typed
+  # after Super+Space that could land in the window below. With no shell
+  # listening, as while it restarts, qs ipc carries it instead.
+  launcherSay = pkgs.writeShellApplication {
+    name = "launcher-say";
+    runtimeInputs = [
+      pkgs.quickshell
+      pkgs.socat
+    ];
+    text = ''
+      printf '%s\n' "$*" | socat - "UNIX-CONNECT:$XDG_RUNTIME_DIR/launcher.sock" 2>/dev/null \
+        || exec qs ipc call launcher "$@"
+    '';
+  };
+
   piWants = pkgs.writeShellApplication {
     name = "pi-wants-you";
     runtimeInputs = [
@@ -1128,6 +1140,7 @@ in
     # run's answer through pi-runs too.
     home.packages = [
       askpass
+      launcherSay
       piWants
       pkgs.quickshell
       pkgs.wf-recorder
@@ -1400,6 +1413,12 @@ in
         # shell's default font and slows its start, and it draws from the
         # theme itself.
         UnsetEnvironment = [ "QT_QPA_PLATFORMTHEME" ];
+        # The bar, the launcher, notices and the lock screen are the
+        # desktop's own, so they sit with the compositor in session.slice, at
+        # its tenfold CPU weight and behind its memory floor (modules/slices),
+        # rather than in app.slice beside Chrome and Slack, where a build's
+        # pressure reaches them first.
+        Slice = "session.slice";
         Restart = "on-failure";
         RestartSec = 1;
       };
