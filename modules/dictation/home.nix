@@ -58,6 +58,7 @@ in
           lib.makeBinPath [
             pkgs.libnotify
             pkgs.pipewire
+            pkgs.wireplumber
             pkgs.wtype
           ]
         }"

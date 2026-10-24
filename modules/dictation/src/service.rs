@@ -7,7 +7,12 @@
 //! - `toggle`: start listening, or stop and type; the answer is the state
 //!   it's in after, one line.
 //! - `watch`: the state now, then a line at each change, until the client
-//!   goes: `idle`, `listening` or `transcribing`.
+//!   goes: `idle`, `listening` or `transcribing`. Between them come words
+//!   for what the shell says: `still-writing` for a press while Whisper
+//!   works, and, before an `idle` that typed nothing, `heard-nothing`
+//!   with why: `muted`, the microphone was muted as listening began;
+//!   `short`, under a third of a second; `silent`, under -40 dBFS
+//!   throughout; or `unclear`, Whisper found no words.
 //!
 //! One thread holds the state and hears every event, so a press is always
 //! answered at once. The microphone is read by pw-record into memory on a
@@ -56,6 +61,36 @@ impl State {
     }
 }
 
+/// Why a recording typed nothing.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Nothing {
+    Muted,
+    Short,
+    Silent,
+    Unclear,
+}
+
+impl Nothing {
+    fn word(self) -> &'static str {
+        match self {
+            Self::Muted => "heard-nothing muted",
+            Self::Short => "heard-nothing short",
+            Self::Silent => "heard-nothing silent",
+            Self::Unclear => "heard-nothing unclear",
+        }
+    }
+}
+
+/// What a press has to say beside the state: a word for the watchers, or,
+/// for what can't happen, a notice.
+#[derive(PartialEq, Eq, Debug)]
+enum Said {
+    Word(&'static str),
+    Notice(&'static str, String),
+}
+
+const STILL_WRITING: &str = "still-writing";
+
 enum Event {
     Toggle(UnixStream),
     Watch(UnixStream),
@@ -73,6 +108,7 @@ struct Recording {
     child: Child,
     reader: thread::JoinHandle<()>,
     samples: Arc<Mutex<Vec<i16>>>,
+    muted: bool,
 }
 
 /// The socket path a client and a hand-run service use.
@@ -164,15 +200,15 @@ fn coordinate(heard: &Receiver<Event>, events: &Sender<Event>, jobs: &Sender<Job
             Event::Toggle(mut stream) => {
                 let said;
                 (state, said) = press(state, &mut recording, &mut generation, events, jobs);
-                if let Some((summary, body)) = said {
-                    notice(summary, &body);
+                if let Some(said) = said {
+                    say(said, &mut watchers);
                 }
                 let _ = stream.write_all(format!("{}\n", state.word()).as_bytes());
             }
             Event::Full(at) => {
                 if state == State::Listening && at == generation {
                     generation += 1;
-                    state = stop(recording.take(), jobs);
+                    state = stopped(stop(recording.take(), jobs), &mut watchers);
                 }
             }
             Event::Heard(result) => {
@@ -183,13 +219,13 @@ fn coordinate(heard: &Receiver<Event>, events: &Sender<Event>, jobs: &Sender<Job
                             notice("Dictation can't type", &error);
                         }
                     }
-                    Ok(_) => {}
+                    Ok(_) => say(Said::Word(Nothing::Unclear.word()), &mut watchers),
                     Err(error) => notice("Dictation failed", &error),
                 }
             }
         }
         if state != before {
-            tell(state, &mut watchers);
+            tell(state.word(), &mut watchers);
         }
     }
 }
@@ -197,15 +233,15 @@ fn coordinate(heard: &Receiver<Event>, events: &Sender<Event>, jobs: &Sender<Job
 /// What a press does in each state: start listening, stop and hand what
 /// was heard to Whisper, or, while Whisper works, say so rather than
 /// nothing, since it can't listen again until what it heard is typed. The
-/// shell shows listening from the watchers' stream, so a notice is only
-/// for what can't happen.
+/// shell shows what the watchers' stream says, so a notice is only for
+/// what can't happen.
 fn press(
     state: State,
     recording: &mut Option<Recording>,
     generation: &mut u64,
     events: &Sender<Event>,
     jobs: &Sender<Job>,
-) -> (State, Option<(&'static str, String)>) {
+) -> (State, Option<Said>) {
     match state {
         State::Idle => match listen(events, *generation) {
             Ok(started) => {
@@ -213,26 +249,59 @@ fn press(
                 let _ = jobs.send(Job::Warm);
                 (State::Listening, None)
             }
-            Err(error) => (State::Idle, Some(("Dictation can't listen", error))),
+            Err(error) => (
+                State::Idle,
+                Some(Said::Notice("Dictation can't listen", error)),
+            ),
         },
         State::Listening => {
             *generation += 1;
-            (stop(recording.take(), jobs), None)
+            match stop(recording.take(), jobs) {
+                Ok(state) => (state, None),
+                Err(nothing) => (State::Idle, Some(Said::Word(nothing.word()))),
+            }
         }
-        State::Transcribing => (
-            State::Transcribing,
-            Some((
-                "Dictation is still writing",
-                "It types what you said as soon as it's done; press again then.".to_owned(),
-            )),
-        ),
+        State::Transcribing => (State::Transcribing, Some(Said::Word(STILL_WRITING))),
     }
 }
 
-/// Tells each watcher the state, leaving out any that's gone.
-fn tell(state: State, watchers: &mut Vec<UnixStream>) {
-    let line = format!("{}\n", state.word());
+/// The state a stop leaves, after telling the watchers why it typed
+/// nothing when it didn't.
+fn stopped(stop: Result<State, Nothing>, watchers: &mut Vec<UnixStream>) -> State {
+    stop.unwrap_or_else(|nothing| {
+        say(Said::Word(nothing.word()), watchers);
+        State::Idle
+    })
+}
+
+/// Says a word to the watchers, or shows a notice. With nobody watching,
+/// "still writing" is a notice too, so a press is never answered with
+/// nothing.
+fn say(said: Said, watchers: &mut Vec<UnixStream>) {
+    match said {
+        Said::Word(STILL_WRITING) if watchers.is_empty() => notice(
+            "Dictation is still writing",
+            "It types what you said as soon as it's done; press again then.",
+        ),
+        Said::Word(word) => tell(word, watchers),
+        Said::Notice(summary, body) => notice(summary, &body),
+    }
+}
+
+/// Tells each watcher a line, leaving out any that's gone.
+fn tell(word: &str, watchers: &mut Vec<UnixStream>) {
+    let line = format!("{word}\n");
     watchers.retain_mut(|watcher| watcher.write_all(line.as_bytes()).is_ok());
+}
+
+/// Whether the default microphone is muted, as `wpctl` says. When it
+/// can't be asked, it's taken as not.
+fn muted() -> bool {
+    Command::new("wpctl")
+        .args(["get-volume", "@DEFAULT_AUDIO_SOURCE@"])
+        .stderr(Stdio::null())
+        .output()
+        .is_ok_and(|out| String::from_utf8_lossy(&out.stdout).contains("[MUTED]"))
 }
 
 /// Starts pw-record on the default microphone, its samples read into
@@ -254,6 +323,7 @@ fn listen(events: &Sender<Event>, generation: u64) -> Result<Recording, String> 
         .stderr(Stdio::null())
         .spawn()
         .map_err(|e| format!("starting pw-record: {e}"))?;
+    let muted = muted();
     let mut stdout = child.stdout.take().ok_or("pw-record has no output")?;
     let samples = Arc::new(Mutex::new(Vec::with_capacity(SAMPLES)));
     let kept = Arc::clone(&samples);
@@ -290,14 +360,28 @@ fn listen(events: &Sender<Event>, generation: u64) -> Result<Recording, String> 
         child,
         reader,
         samples,
+        muted,
     })
 }
 
+/// Why audio can't be transcribed, if it can't: a muted microphone gives
+/// silence, and saying so is the more useful of the two.
+fn judge(audio: &[f32], muted: bool) -> Option<Nothing> {
+    let short = audio.len() < RATE / 3;
+    let silent = audio.iter().all(|s| s.abs() < SILENT);
+    match (short || silent, muted, short) {
+        (false, _, _) => None,
+        (true, true, _) => Some(Nothing::Muted),
+        (true, false, true) => Some(Nothing::Short),
+        (true, false, false) => Some(Nothing::Silent),
+    }
+}
+
 /// Stops listening and hands what was heard to Whisper, unless it was
-/// silence or less than a third of a second.
-fn stop(recording: Option<Recording>, jobs: &Sender<Job>) -> State {
+/// silence or less than a third of a second, which it says.
+fn stop(recording: Option<Recording>, jobs: &Sender<Job>) -> Result<State, Nothing> {
     let Some(mut recording) = recording else {
-        return State::Idle;
+        return Ok(State::Idle);
     };
     let _ = recording.child.kill();
     let _ = recording.child.wait();
@@ -309,13 +393,13 @@ fn stop(recording: Option<Recording>, jobs: &Sender<Job>) -> State {
             .unwrap_or_else(PoisonError::into_inner),
     );
     let audio: Vec<f32> = samples.iter().map(|&s| f32::from(s) / 32_768.0).collect();
-    if audio.len() < RATE / 3 || audio.iter().all(|s| s.abs() < SILENT) {
-        return State::Idle;
+    if let Some(nothing) = judge(&audio, recording.muted) {
+        return Err(nothing);
     }
     if jobs.send(Job::Transcribe(audio)).is_err() {
-        return State::Idle;
+        return Ok(State::Idle);
     }
-    State::Transcribing
+    Ok(State::Transcribing)
 }
 
 /// The thread that holds Whisper: it loads the models when listening
@@ -467,7 +551,7 @@ mod tests {
             &jobs,
         );
         assert_eq!(state, State::Transcribing);
-        assert!(matches!(said, Some((summary, _)) if summary.contains("still writing")));
+        assert_eq!(said, Some(Said::Word("still-writing")));
         assert_eq!(generation, 3);
         assert!(work.try_recv().is_err());
     }
@@ -483,38 +567,85 @@ mod tests {
         assert_eq!(generation, 4);
     }
 
-    #[test]
-    fn silence_isnt_transcribed() {
-        let (jobs, work) = mpsc::channel();
-        let silent = Recording {
+    /// A recording that has ended, holding `samples` of one level.
+    fn recorded(level: i16, samples: usize, muted: bool) -> Recording {
+        Recording {
             child: Command::new("true").spawn().expect("true runs"),
             reader: thread::spawn(|| {}),
-            samples: Arc::new(Mutex::new(vec![12; RATE])),
-        };
-        assert_eq!(stop(Some(silent), &jobs), State::Idle);
+            samples: Arc::new(Mutex::new(vec![level; samples])),
+            muted,
+        }
+    }
+
+    #[test]
+    fn each_reason_for_nothing_has_its_word() {
+        assert_eq!(
+            [
+                Nothing::Muted,
+                Nothing::Short,
+                Nothing::Silent,
+                Nothing::Unclear
+            ]
+            .map(Nothing::word),
+            [
+                "heard-nothing muted",
+                "heard-nothing short",
+                "heard-nothing silent",
+                "heard-nothing unclear"
+            ]
+        );
+    }
+
+    #[test]
+    fn silence_isnt_transcribed_and_says_so() {
+        let (jobs, work) = mpsc::channel();
+        let silent = recorded(12, RATE, false);
+        assert_eq!(stop(Some(silent), &jobs), Err(Nothing::Silent));
         assert!(work.try_recv().is_err());
     }
 
     #[test]
     fn speech_is_handed_to_whisper() {
         let (jobs, work) = mpsc::channel();
-        let speech = Recording {
-            child: Command::new("true").spawn().expect("true runs"),
-            reader: thread::spawn(|| {}),
-            samples: Arc::new(Mutex::new(vec![8_000; RATE])),
-        };
-        assert_eq!(stop(Some(speech), &jobs), State::Transcribing);
+        let speech = recorded(8_000, RATE, false);
+        assert_eq!(stop(Some(speech), &jobs), Ok(State::Transcribing));
         assert!(matches!(work.try_recv(), Ok(Job::Transcribe(audio)) if audio.len() == RATE));
     }
 
     #[test]
-    fn a_moment_isnt_transcribed() {
+    fn a_moment_isnt_transcribed_and_says_so() {
         let (jobs, _work) = mpsc::channel();
-        let brief = Recording {
-            child: Command::new("true").spawn().expect("true runs"),
-            reader: thread::spawn(|| {}),
-            samples: Arc::new(Mutex::new(vec![8_000; RATE / 4])),
-        };
-        assert_eq!(stop(Some(brief), &jobs), State::Idle);
+        let brief = recorded(8_000, RATE / 4, false);
+        assert_eq!(stop(Some(brief), &jobs), Err(Nothing::Short));
+    }
+
+    #[test]
+    fn a_muted_microphone_is_named_over_silence_or_a_moment() {
+        let (jobs, _work) = mpsc::channel();
+        assert_eq!(
+            stop(Some(recorded(0, RATE, true)), &jobs),
+            Err(Nothing::Muted)
+        );
+        assert_eq!(
+            stop(Some(recorded(0, RATE / 4, true)), &jobs),
+            Err(Nothing::Muted)
+        );
+    }
+
+    #[test]
+    fn speech_from_a_microphone_read_as_muted_is_still_typed() {
+        assert_eq!(judge(&vec![0.25; RATE], true), None);
+    }
+
+    #[test]
+    fn a_stop_that_typed_nothing_says_why_before_idle() {
+        let (mut ours, theirs) = UnixStream::pair().expect("a socket pair");
+        let mut watchers = vec![theirs];
+        assert_eq!(stopped(Err(Nothing::Short), &mut watchers), State::Idle);
+        tell(State::Idle.word(), &mut watchers);
+        drop(watchers);
+        let mut heard = String::new();
+        ours.read_to_string(&mut heard).expect("what was said");
+        assert_eq!(heard, "heard-nothing short\nidle\n");
     }
 }
