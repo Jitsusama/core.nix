@@ -384,7 +384,7 @@
             pkgs.rust-analyzer
             pkgs.rustc
             pkgs.rustfmt
-            (pkgs.callPackage ./tests/changed-checks.nix { }).tool
+            (pkgs.callPackage ./tests/changed-checks/package.nix { })
             (pkgs.callPackage ./tests/shots-changed.nix { })
           ]
           # The guide's tests check the sticks it writes with sfdisk,

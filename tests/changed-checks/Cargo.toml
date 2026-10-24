@@ -1,0 +1,11 @@
+# changed-checks: names the checks a change touches, by their derivations, and
+# builds only those (src/main.rs says how).
+[package]
+name = "changed-checks"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[dependencies]
+serde_json = "1"

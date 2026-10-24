@@ -73,8 +73,12 @@
     cargo links an account's Rust builds with mold
   '';
   changed-checks-names-what-moved = ''
-    changed-checks names a check added, changed, removed or broken by its derivation, and builds VM
-    tests only when asked
+    changed-checks names a check added, changed, removed or broken by its derivation, fails on a
+    broken one, builds those added and changed when asked, leaving out the VM tests with --no-vm,
+    and evaluates a commit's checks once
+  '';
+  changed-checks-passes-clippy = ''
+    clippy finds nothing in changed-checks or its tests
   '';
   chromium-knows-the-panels-colours = ''
     the XPS 14's Chrome, Slack and 1Password convert their colours to its panel's P3
