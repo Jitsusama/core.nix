@@ -29,6 +29,12 @@ let
     root = ../../tests;
     fileset = ../../tests/driver_names.pyi;
   };
+  # What VM tests' scripts share, which a script imports as vm_helpers in any
+  # repository that takes these linters, as its driver does (tests/lib).
+  vmHelpers = lib.fileset.toSource {
+    root = ../../tests/lib;
+    fileset = ../../tests/lib/vm_helpers.py;
+  };
   python = pkgs.python3.withPackages (
     python:
     [
@@ -39,7 +45,7 @@ let
   );
   mypy = pkgs.writeShellApplication {
     name = "mypy";
-    text = ''MYPYPATH=${driverNames} exec ${python}/bin/mypy "$@"'';
+    text = ''MYPYPATH=${driverNames}:${vmHelpers} exec ${python}/bin/mypy "$@"'';
   };
 in
 {

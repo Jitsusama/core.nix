@@ -13,6 +13,8 @@ import shlex
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from vm_helpers import as_account
+
 if TYPE_CHECKING:
     from driver_names import machine, subtest, t
 
@@ -29,9 +31,7 @@ other_signer: str = values["otherSigner"]
 
 def as_joel(command: str, *, succeed: bool = True) -> str:
     """Run a command as Joel, in his home, and give what it said, failing as it's told to."""
-    environment = f"export XDG_RUNTIME_DIR={runtime}; cd ~; "
-    run = machine.succeed if succeed else machine.fail
-    return run("su - joel -c " + shlex.quote(environment + command))
+    return as_account(machine, command, runtime=runtime, succeed=succeed)
 
 
 def at_terminal(command: str) -> str:

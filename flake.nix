@@ -348,6 +348,11 @@
       # check that the package passes, with its lints and core's settings.
       lib.clippy = pkgs: pkgs.callPackage ./modules/clippy/clippy.nix { };
 
+      # What VM tests' scripts share, for a repository built on core to give
+      # its own: `extraPythonPackages = core.lib.vmHelpers pkgs;` lets a
+      # script import vm_helpers, and core's linters read its types.
+      lib.vmHelpers = pkgs: python: [ (pkgs.callPackage ./tests/lib/vm-helpers.nix { } python) ];
+
       # How a repository built on core formats and lints itself as core does,
       # imported into the module it gives treefmt-nix.
       treefmtModules = {

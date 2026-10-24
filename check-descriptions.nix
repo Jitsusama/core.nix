@@ -767,6 +767,10 @@
     it keeps for itself is opened with its passphrase and signs the stick's boot program with the
     machine's db key
   '';
+  vm-helpers-say-what-they-mean = ''
+    the helpers VM tests' scripts share run a command as the account asked, with its runtime folder
+    and bus, and read a journal's cursor or refuse output without one
+  '';
   vm-ir-camera-opens-for-readers = ''
     the IR camera waits for udev and its loopback, opens only while read, its frames grey, no frame
     from before a reader opened
