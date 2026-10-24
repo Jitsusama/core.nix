@@ -264,6 +264,14 @@ impl History {
         db.pragma_update(None, "journal_mode", "WAL").map_err(sql)?;
         db.pragma_update(None, "synchronous", "NORMAL")
             .map_err(sql)?;
+        // A pass's picture sorts and groups more turns than SQLite keeps in
+        // memory, and by default it spills them to files in the temporary
+        // folder: four of them, about 62 MB, every pass. Writeback reaches
+        // them before they're deleted, so on a busy day the watch wrote
+        // about 200 GB to the disk, ahead of Joel's own saves in its queue.
+        // In memory they cost about that much RAM for the length of a pass.
+        db.pragma_update(None, "temp_store", "MEMORY")
+            .map_err(sql)?;
         // Without the table, the schema reads as none.
         db.execute_batch(
             "CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);",
@@ -451,6 +459,18 @@ impl History {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_history_sorts_in_memory() {
+        let dir = tempfile::tempdir().unwrap();
+        let history = History::open(&dir.path().join("history.db")).unwrap();
+        let store: i64 = history
+            .db
+            .pragma_query_value(None, "temp_store", |row| row.get(0))
+            .unwrap();
+        // 2 is MEMORY.
+        assert_eq!(store, 2);
+    }
 
     #[test]
     fn an_older_shape_is_set_aside_and_built_again() {
