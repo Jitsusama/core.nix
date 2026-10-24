@@ -991,20 +991,28 @@ Scope {
             return;
         const from = held.findIndex(step => step.row.from === source);
         const ofSource = step => !!step.row.category && holdsFrom(step.row.category, source);
-        if (from < 0 && !held.some(ofSource))
+        // A thing of its own stepped into from the top, as a program is, is
+        // made again too, with everything it holds, so its Media and Sound
+        // say how its player and its streams stand now.
+        const top = from < 0 && held.length > 0 && !held[0].row.from && !held[0].row.category
+            && source.things.some(row => row.key === held[0].row.key);
+        if (from < 0 && !top && !held.some(ofSource))
             return;
         const steps = held.map(step => ofSource(step) ? Object.assign({}, step, {
             rows: Steady.kept(step.rows, members(step.row.category), Rank.identity)
         }) : step);
-        let rows = from < 0 ? [] : source.everything();
-        for (let at = from < 0 ? held.length : from + 1; at < held.length; at++) {
+        let rows = top ? source.things : from < 0 ? [] : source.everything();
+        for (let at = top ? 0 : from < 0 ? held.length : from + 1; at < held.length; at++) {
             const step = steps[at];
             const thing = rows.find(row => row.key === step.row.key);
-            // Asked as enter asks: a collection's things, or a nested row's,
-            // for their verbs, anything else for its targets.
-            const into = !thing ? null
-                : collects(steps[at - 1]) ? (thing.verbs ? thing.verbs() : null)
+            // Asked as enter asks: a thing at the top, a collection's things
+            // or a nested row's, for their verbs and then their parts,
+            // anything else for its targets.
+            const things = at === 0 || collects(steps[at - 1]);
+            const own = !thing ? null : things ? (thing.verbs ? thing.verbs() : null)
                 : thing.targets ? thing.targets() : null;
+            const parts = thing && things ? partsIn(thing) : [];
+            const into = parts.length > 0 ? (own ?? []).concat(parts) : own;
             if (!into)
                 return;
             steps[at] = Object.assign({}, step, {
@@ -1504,11 +1512,14 @@ Scope {
     // The screen the keys are on, followed while the launcher is closed so
     // its surface is already there when Super+Space comes, and kept while
     // it's open so it never jumps from under Joel's eyes.
+    // With no screen left, Qt lists a stand-in of its own, which has no name
+    // and can hold no surface, so it's never one.
     readonly property var focusedScreen: {
         Niri.revision;
         const workspace = Niri.workspace();
-        return Quickshell.screens.find(screen => workspace && screen.name === workspace.output)
-            ?? Quickshell.screens[0] ?? null;
+        const real = Quickshell.screens.filter(screen => screen.name !== "");
+        return real.find(screen => workspace && screen.name === workspace.output)
+            ?? real[0] ?? null;
     }
     property var screenHere: focusedScreen
 
@@ -1524,7 +1535,9 @@ Scope {
     // screen and never makes the surface again, and Super+Space finds
     // nothing. So once the screens have changed, the launcher closes and its
     // surface is made again on the screen the keys are on, as the margin's
-    // are made anew for each screen.
+    // are made anew for each screen. With no screen at all, there's nowhere
+    // to make it: niri would refuse it and Quickshell warn, so it waits
+    // unmade for the next screen, which changes the screens again.
     Connections {
         target: Quickshell
 
@@ -1537,7 +1550,7 @@ Scope {
         open = false;
         screenHere = focusedScreen;
         surface.visible = false;
-        surface.visible = true;
+        surface.visible = screenHere !== null;
     }
 
     // Nothing at all: the pointer's reach and niri's blur while closed.

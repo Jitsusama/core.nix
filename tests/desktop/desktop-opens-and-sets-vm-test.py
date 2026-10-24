@@ -6,21 +6,28 @@ the helpers every area shares, so the names it takes from there are imported onl
 checkers.
 """
 
+import datetime
 import json
 import time
 from datetime import timedelta
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Any, cast
+
+from PIL import Image, ImageChops
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from desktop_prelude import (
         ACCOUNT,
         ASK_PORTAL,
+        FFMPEG_HEADLESS,
         LAUNCHER_OPEN,
         PAGE,
         PICTURE,
         SIGNING_IN,
         STARTING,
         ZENITY,
+        Json,
         as_account,
         copied_then_closed,
         drawn_at,
@@ -32,6 +39,7 @@ if TYPE_CHECKING:
         pasted_the_picture,
         photograph,
         reported,
+        settled_screen,
         showing,
         step_in,
         told,
@@ -385,6 +393,230 @@ with subtest("the launcher's Sound moves sound to another output, and back"):
         used = f"wpctl inspect @DEFAULT_AUDIO_SINK@ | grep -q 'node.name = \"{output}\"'"
         machine.wait_until_succeeds(in_session(used), timeout=10)
         machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
+
+# A program's own Media and Sound, against a real player playing real
+# sound: mpv, through its MPRIS script, playing two tones in turn through
+# PipeWire to the speakers. What each act does is read back from the
+# player over D-Bus and from the stream in PipeWire, never from the
+# launcher, which is only asked what it shows. The tones are long and the
+# playlist loops, so nothing moves on by itself, and Next and Previous
+# always apply, as they do in a music player set to repeat.
+#
+# How long the player, PipeWire or the launcher may take to show a change.
+WAIT = datetime.timedelta(seconds=15)
+# How far a pixel's shade moves, of 255, to count as drawn anew rather than
+# as noise.
+CHANGED = 24
+# How far above and below the line that changed most a row's dots reach,
+# in pixels, which is less than the gap to the next row's.
+ROW = 16
+
+
+with subtest("a program's Media and Sound work its real player and its stream"):
+    tones = f"/home/{ACCOUNT}/tones"
+    as_account(f"mkdir -p {tones}")
+    for title, pitch in [("First tone", 440), ("Second tone", 660)]:
+        as_account(
+            f"{FFMPEG_HEADLESS}/bin/ffmpeg -loglevel error -f lavfi"
+            f" -i sine=frequency={pitch}:sample_rate=8000:duration=600"
+            f" -metadata title='{title}' -metadata artist='Test tones' {tones}/{pitch}.flac"
+        )
+    as_account(
+        "systemd-run --user --unit=tones mpv --ao=pipewire --no-video --no-terminal"
+        f" --loop-playlist=inf {tones}/440.flac {tones}/660.flac"
+    )
+    # Its name on the bus ends in an instance of its own making.
+    named = "busctl --user list --acquired | grep -o '^org\\.mpris\\.MediaPlayer2\\.mpv\\S*'"
+    bus = machine.wait_until_succeeds(in_session(named), timeout=WAIT).strip()
+    mpris = (
+        f"busctl --user --json=short get-property {bus}"
+        " /org/mpris/MediaPlayer2 org.mpris.MediaPlayer2.Player"
+    )
+
+    def player(field: str) -> Any:  # noqa: ANN401, since D-Bus says what type it is.
+        """Give one of the player's own properties, as it tells D-Bus."""
+        return json.loads(as_account(f"{mpris} {field}"))["data"]
+
+    def playing(status: str, title: str) -> None:
+        """Wait until the player says it's in this state, playing this tone."""
+
+        def says(_: bool) -> bool:
+            return bool(
+                player("PlaybackStatus") == status
+                and player("Metadata")["xesam:title"]["data"] == title
+            )
+
+        retry(says, timeout=datetime.timedelta(seconds=15))
+
+    def stream() -> int:
+        """Give the id of the stream mpv plays through, as PipeWire lists it."""
+        nodes: list[Json] = json.loads(as_account("pw-dump"))
+        return next(
+            int(node["id"])
+            for node in nodes
+            if node.get("type") == "PipeWire:Interface:Node"
+            and node["info"]["props"].get("media.class") == "Stream/Output/Audio"
+            and node["info"]["props"].get("application.name") == "mpv"
+        )
+
+    playing("Playing", "First tone")
+    machine.wait_until_succeeds(in_session("pw-dump | grep -q Stream/Output/Audio"), timeout=WAIT)
+    tone = stream()
+
+    def heard(volume: str) -> None:
+        """Wait until PipeWire says the stream is this loud, as wpctl says it."""
+        loud = f"wpctl get-volume {tone} | grep -qxF 'Volume: {volume}'"
+        machine.wait_until_succeeds(in_session(loud), timeout=WAIT)
+
+    def reads(name: str, said: str) -> Callable[[Json], bool]:
+        """Make a test of whether the launcher shows a row by this name reading this."""
+        return lambda shown: any(
+            thing["reads"].startswith(name) and said in thing["reads"] for thing in shown["things"]
+        )
+
+    def controls(part: str = "") -> None:
+        """Open the launcher on mpv's controls, and on one of its parts when one is named."""
+        as_account("qs ipc call launcher toggle")
+        launcher_ready()
+        type_in("mpv", selecting="mpv Media Player")
+        step_in()
+        launcher_until(lambda shown: {"Media", "Sound"} <= set(shown["rows"]))
+        if part:
+            type_in(part.lower(), selecting=part)
+            step_in()
+
+    def press(name: str, then: str = "") -> None:
+        """Type a row's name and press Return on it, then clear what was typed if it stays."""
+        type_in(name.lower(), selecting=name)
+        machine.send_key("ret")
+        if then:
+            launcher_until(lambda shown: shown["footer"] == then)
+            machine.send_key("left")
+            launcher_until(lambda shown: shown["typed"] == "")
+        else:
+            machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=WAIT)
+
+    # The right arrow on the program holds Media and Sound, each saying
+    # how it stands.
+    controls()
+    photograph("launcher-program-parts")
+    launcher_until(reads("Media", "playing"))
+    launcher_until(reads("Sound", "100%"))
+    type_in("media", selecting="Media")
+    step_in()
+    photograph("launcher-program-media")
+    launcher_until(lambda shown: shown["rows"] == ["Pause", "Next", "Previous", "First tone"])
+    launcher_until(reads("First tone", "Test tones"))
+    # Next and Previous keep the launcher, saying what's on now, and what's
+    # playing follows.
+    press("Next", then="Second tone, Test tones")
+    playing("Playing", "Second tone")
+    launcher_until(lambda shown: shown["rows"][-1] == "Second tone")
+    press("Previous", then="First tone, Test tones")
+    playing("Playing", "First tone")
+    launcher_until(lambda shown: shown["rows"][-1] == "First tone")
+    # Paused from elsewhere, as a media key does, Pause says Play.
+    as_account("qs ipc call music toggle")
+    playing("Paused", "First tone")
+    launcher_until(lambda shown: shown["rows"][0] == "Play")
+    press("Play")
+    playing("Playing", "First tone")
+    controls("Media")
+    press("Pause")
+    playing("Paused", "First tone")
+    controls()
+    launcher_until(reads("Media", "paused"))
+    machine.send_key("esc")
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=WAIT)
+
+    # Sound's Louder and Quieter step the stream by a twentieth, keeping
+    # the launcher, and its volume follows. The stream is only ever set
+    # from the launcher here: set from elsewhere, as by wpctl, Quickshell
+    # now and then reads the stream's volume back from before the change
+    # and keeps it until the next one, which is PipeWire's and Quickshell's
+    # to mend, not the launcher's.
+    controls("Sound")
+    photograph("launcher-program-sound")
+    launcher_until(lambda shown: shown["rows"] == ["Mute", "Louder", "Quieter", "Volume"])
+    launcher_until(reads("Volume", "100%"))
+    press("Quieter", then="now 95%")
+    heard("0.95")
+    launcher_until(reads("Volume", "95%"))
+    press("Louder", then="now 100%")
+    heard("1.00")
+    launcher_until(reads("Volume", "100%"))
+    # Mute closes the launcher, and the stream is muted; it says Unmute
+    # when next opened, and the program's Sound says it's muted.
+    press("Mute")
+    heard("1.00 [MUTED]")
+    controls()
+    launcher_until(reads("Sound", "muted"))
+    type_in("sound", selecting="Sound")
+    step_in()
+    launcher_until(lambda shown: shown["rows"][0] == "Unmute")
+    launcher_until(reads("Volume", "muted"))
+    # Louder is meant to be heard, so it unmutes.
+    press("Louder", then="now 100%")
+    heard("1.00")
+
+    # The volume's bar follows too, filling from the left by the volume:
+    # twenty places in ten characters, so a twentieth more lights one
+    # place just past where half ends. Each is measured with the volume
+    # row selected and only two figures beside it, so nothing else on the
+    # screen moves and the graphs' column stays put. Page Down stops on
+    # the last row, the volume; Louder is two rows up, Quieter one.
+    loudness = {"now": 100}
+
+    def foot(said: str) -> Callable[[Json], bool]:
+        """Make a test of whether the launcher's foot says this."""
+        return lambda shown: bool(shown["footer"] == said)
+
+    def shown_at(volume: int) -> Image.Image:
+        """Turn the stream to this loud from the launcher, and give the screen at its volume."""
+        steps = (volume - loudness["now"]) // 5
+        machine.send_key("pgdn")
+        launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Volume")
+        for _up in range(2 if steps > 0 else 1):
+            machine.send_key("up")
+        turning = "Louder" if steps > 0 else "Quieter"
+        launcher_until(lambda shown: (shown["selected"] or {}).get("name") == turning)
+        for step in range(1, abs(steps) + 1):
+            now = loudness["now"] + (5 if steps > 0 else -5) * step
+            machine.send_key("ret")
+            launcher_until(foot(f"now {now}%"))
+        loudness["now"] = volume
+        heard(f"0.{volume}")
+        machine.send_key("pgdn")
+        launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Volume")
+        launcher_until(reads("Volume", f"{volume}%"))
+        return settled_screen(f"launcher-program-volume-{volume}")
+
+    def changed(before: Image.Image, after: Image.Image) -> int:
+        """Give the leftmost of what changed in the row that changed most."""
+        difference = ImageChops.difference(before, after).convert("L")
+        mask = difference.point(lambda shade: 255 if shade > CHANGED else 0)
+        width, height = mask.size
+        data = mask.tobytes()
+        counts = [width - data[y * width : (y + 1) * width].count(0) for y in range(height)]
+        busiest = max(range(height), key=counts.__getitem__)
+        if counts[busiest] == 0:
+            before.save(machine.out_dir / "launcher-program-unchanged-before.png")
+            after.save(machine.out_dir / "launcher-program-unchanged-after.png")
+        assert counts[busiest] > 0, "nothing changed, as the pictures kept show"
+        box = mask.crop((0, busiest - ROW, width, busiest + ROW)).getbbox()
+        assert box is not None
+        return box[0]
+
+    most, more, half, tenth = (shown_at(volume) for volume in [90, 55, 50, 10])
+    filling = changed(tenth, half)
+    past_half = changed(half, more)
+    to_most = changed(half, most)
+    assert filling < past_half, (filling, past_half)
+    assert abs(past_half - to_most) <= 1, (past_half, to_most)
+    machine.send_key("esc")
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=WAIT)
+    as_account("systemctl --user stop tones")
+    machine.succeed(f"rm -r {tones}")
 
 with subtest("the launcher sets the power profile"):
     # By its name, or a word a person would call it.

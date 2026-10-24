@@ -14,7 +14,8 @@
 // has a player, Sound while it has a stream open, Notifications while the
 // history holds any of its), then any part another provider gives it, such
 // as Slack's theme (ByHand.qml). All of it is made as the arrow is
-// pressed, never as letters are typed, and nothing is read from a file.
+// pressed, and again as its player or its streams change while it's open,
+// never as letters are typed, and nothing is read from a file.
 import Quickshell
 import qs
 import QtQuick
@@ -30,6 +31,25 @@ Provider {
 
     // How far Louder and Quieter go, as a share of the whole.
     readonly property real step: 0.05
+
+    // How every player and stream stands, in what a program's Media and
+    // Sound say of them, as one string. Mpris and PipeWire say when any of
+    // it changes, so nothing is polled, and while something is stepped
+    // into the launcher hears that this provider changed, which makes a
+    // program held from the top again (Launcher.qml's refreshed): Pause
+    // turns to Play when a media key pauses its player, Previous comes
+    // once there's a track before, and the volume's bar moves with Louder.
+    readonly property string playingNow: Playing.players.map(player => [player.dbusName,
+        player.isPlaying, player.canPlay, player.canPause, player.canGoNext,
+        player.canGoPrevious, player.trackTitle, player.trackArtist].join("\u241f"))
+        .concat(Playing.streams.map(node => node.audio
+            ? `${node.id} ${node.audio.volume} ${node.audio.muted}` : String(node.id)))
+        .join("\u241e")
+
+    onPlayingNowChanged: {
+        if (launcher?.open && launcher.held.length > 0)
+            changed();
+    }
 
     // The desktop's actions that run exactly this command.
     function opening(command) {
@@ -108,8 +128,10 @@ Provider {
     }
 
     // A figure inside a part, whose name, side and any graph are read as
-    // it's drawn, so it follows what Louder or Next just did. Return copies
-    // nothing.
+    // they're asked for, so the foot follows what Louder or Next just did.
+    // The list shows a row as it was when it was given, so a program
+    // stepped into is made again as its player and streams change
+    // (`playingNow`). Return copies nothing.
     function figure(key, name, side, graph) {
         const row = copyRow({ key: key, name: name(), copy: "" });
         Object.defineProperties(row, {
@@ -262,13 +284,20 @@ Provider {
                 || same(node.properties["application.process.binary"]) || same(node.name)));
     }
 
+    // Those of its streams still open: a row read once its program has
+    // closed a stream, as the launcher's last rows are after it closes,
+    // finds the stream without its audio.
+    function live(streams) {
+        return streams.filter(node => !!node?.audio);
+    }
+
     // How loud it is: its loudest stream, as a share of the whole.
     function level(streams) {
-        return Math.max(0, ...streams.map(node => node.audio.volume));
+        return Math.max(0, ...live(streams).map(node => node.audio.volume));
     }
 
     function muted(streams) {
-        return streams.every(node => node.audio.muted);
+        return live(streams).every(node => node.audio.muted);
     }
 
     function loudness(streams) {
@@ -289,7 +318,7 @@ Provider {
     // as one; louder is meant to be heard, so it unmutes.
     function turn(streams, by) {
         const to = Math.min(1, Math.max(0, Math.round((level(streams) + by) / step) * step));
-        for (const node of streams) {
+        for (const node of live(streams)) {
             node.audio.volume = to;
             if (by > 0)
                 node.audio.muted = false;
@@ -310,7 +339,7 @@ Provider {
                 return [provider.said("verb:program:mute", provider.muted(streams) ? "muted" : "", {
                     run: () => {
                         const hushed = provider.muted(streams);
-                        for (const node of streams)
+                        for (const node of provider.live(streams))
                             node.audio.muted = !hushed;
                     }
                 }), provider.said("verb:program:louder", "", stepping(step)),
