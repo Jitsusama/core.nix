@@ -59,6 +59,11 @@ pub struct Settings {
     /// A direction carrying this share of its rate is loaded enough to be
     /// the one filling the queue.
     pub loaded: f64,
+    /// The one of the two carrying the larger share of its rate fills the
+    /// queue from this share. What arrives is capped by the line, so a line
+    /// fallen under half of the download's rate brings in under half of it
+    /// while its queue grows, and at `loaded` alone would never be cut.
+    pub fuller: f64,
     /// What a cut leaves of what the direction carried.
     pub cut: f64,
     /// How much a climb adds each step, below the held rate and above it.
@@ -84,6 +89,7 @@ impl Default for Settings {
             delayed_needed: 3,
             busy: 0.75,
             loaded: 0.5,
+            fuller: 0.2,
             cut: 0.9,
             // About 10% a second at five steps a second, and about 2.5%:
             // a line that dipped to half is found again in about 30 s.
@@ -278,8 +284,14 @@ impl Controller {
             // queue half drained.
             let drain = 1.0 - (level / s.drain_ms).min(0.5);
             let mut cut = false;
-            for (dir, carried) in [(&mut self.up, sent), (&mut self.down, received)] {
-                if carried >= float(dir.rate) * s.loaded && !resting && rising {
+            let shares = [sent / float(self.up.rate), received / float(self.down.rate)];
+            let fullest = shares[0].max(shares[1]);
+            for ((dir, carried), share) in [(&mut self.up, sent), (&mut self.down, received)]
+                .into_iter()
+                .zip(shares)
+            {
+                let filling = share >= s.loaded || (share >= s.fuller && share >= fullest);
+                if filling && !resting && rising {
                     let from = carried.min(float(dir.rate));
                     // A queue still growing after a cut says that rate too
                     // was over the line, so each cut is the line's best
@@ -605,5 +617,68 @@ mod tests {
             b.update(200.0);
         }
         assert!(b.ms.unwrap() < 40.0, "{:?}", b.ms);
+    }
+
+    /// A download over a line beyond the router: `line` kbit/s, with an
+    /// ISP's buffer, and senders that fill what the shaper lets through and
+    /// a little more, as TCP probing does. What arrives is what the line
+    /// carries while its queue holds anything. Steps it for `seconds`,
+    /// three pings a step, and gives the seconds the queue was over 30 ms.
+    struct Download {
+        queue_kbit: f64,
+        at: f64,
+    }
+
+    impl Download {
+        fn run(&mut self, c: &mut Controller, line: f64, seconds: f64, acks: f64) -> f64 {
+            let dt = 0.2;
+            let end = self.at + seconds;
+            let mut late = 0.0;
+            while self.at < end {
+                let offered = float(c.down.rate) * 1.05;
+                self.queue_kbit = (self.queue_kbit + (offered - line) * dt).clamp(0.0, 100_000.0);
+                let received = if self.queue_kbit > 0.0 { line } else { offered };
+                let delay = self.queue_kbit / line * 1000.0;
+                if delay > 30.0 {
+                    late += dt;
+                }
+                pings(c, 20.0 + delay, 3);
+                self.at += dt;
+                c.step(self.at, acks, received);
+            }
+            late
+        }
+    }
+
+    #[test]
+    fn a_line_fallen_under_half_the_download_is_followed_down() {
+        let mut c = controller(10_000, 95_000);
+        pings(&mut c, 20.0, 6);
+        let mut line = Download {
+            queue_kbit: 0.0,
+            at: 0.0,
+        };
+        line.run(&mut c, 100_000.0, 2.0, 1_000.0);
+        // The line falls to 40: what arrives is then 42% of the shaped
+        // rate, under `loaded`, but the download is still what fills it.
+        let late = line.run(&mut c, 40_000.0, 10.0, 1_000.0);
+        assert!(c.down.rate < 40_000, "{}", c.down.rate);
+        assert!(late < 2.0, "{late}");
+        let late = line.run(&mut c, 40_000.0, 10.0, 1_000.0);
+        assert!(late < 0.5, "{late}");
+    }
+
+    #[test]
+    fn a_download_s_acks_are_not_cut_for_its_queue() {
+        let mut c = controller(10_000, 95_000);
+        pings(&mut c, 20.0, 6);
+        let mut line = Download {
+            queue_kbit: 0.0,
+            at: 0.0,
+        };
+        // A quarter of the upload is the download's acknowledgements.
+        line.run(&mut c, 40_000.0, 10.0, 2_500.0);
+        assert_eq!(c.up.rate, 10_000);
+        assert!(c.down.rate < 40_000, "{}", c.down.rate);
     }
 }
