@@ -664,11 +664,14 @@ later. The driver then
 took a PWM signal, which this OLED ignores, so the keys did nothing until 0
 turned it off, and `max_brightness` read 192000. The panel also offers
 Intel's interface (TCON capability 1, brightness in nits), which the driver
-tries only for a panel older than eDP 1.5 and, by default, only with HDR
-metadata in the EDID. `xe.enable_dpcd_backlight=3` drops that last
-condition, so a bad read gets Intel's interface, and a good one still gets
-VESA's. `edp-wakes-the-panel`, from linux-next, wakes the panel before that
-read, for a panel that powers on asleep and fails reads until it's woken.
+tries only for a panel older than eDP 1.5. With `xe.enable_dpcd_backlight=3`
+a bad read took it, and the keys still did nothing: written by hand over the
+AUX channel, Intel's nits at 0x354 left the screen as it was, VESA's
+brightness at 0x722 dimmed it with flicker, and VESA's luminance at 0x734,
+with 0x721 at 0x82, dimmed it cleanly. So `xe.enable_dpcd_backlight=2`
+holds the driver to VESA's controls, which take luminance when the panel
+offers it. `edp-wakes-the-panel`, from linux-next, wakes the panel before
+the read, but a boot with a monitor on USB-C still read it wrong.
 
 ### The Touchpad's Click
 
