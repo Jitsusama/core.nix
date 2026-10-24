@@ -44,14 +44,12 @@ let
       test -s $out/$name
     done
   '';
-  setPin = pkgs.writers.writePython3Bin "set-pin" { libraries = [ pkgs.python3Packages.fido2 ]; } ''
-    import sys
-    from fido2.hid import CtapHidDevice
-    from fido2.ctap2 import Ctap2, ClientPin
-
-    device = next(iter(CtapHidDevice.list_devices()))
-    ClientPin(Ctap2(device)).set_pin(sys.argv[1])
-  '';
+  # Gives the key a PIN (set-pin.py), held to ruff and mypy through
+  # `nix fmt` rather than the writers' flake8.
+  setPin = pkgs.writers.writePython3Bin "set-pin" {
+    libraries = [ pkgs.python3Packages.fido2 ];
+    doCheck = false;
+  } (builtins.readFile ./set-pin.py);
 in
 pkgs.testers.runNixOSTest {
   name = "guide-recover";

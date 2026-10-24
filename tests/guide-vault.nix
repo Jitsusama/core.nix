@@ -32,57 +32,20 @@ let
     canokey-qemu = canokey;
   };
 
-  setPin = pkgs.writers.writePython3Bin "set-pin" { libraries = [ pkgs.python3Packages.fido2 ]; } ''
-    import sys
-    from fido2.hid import CtapHidDevice
-    from fido2.ctap2 import Ctap2, ClientPin
-
-    device = next(iter(CtapHidDevice.list_devices()))
-    ClientPin(Ctap2(device)).set_pin(sys.argv[1])
-  '';
+  # Gives the key a PIN (set-pin.py), held to ruff and mypy through
+  # `nix fmt` rather than the writers' flake8.
+  setPin = pkgs.writers.writePython3Bin "set-pin" {
+    libraries = [ pkgs.python3Packages.fido2 ];
+    doCheck = false;
+  } (builtins.readFile ./set-pin.py);
 
   # A recipient made as a person makes one, the plugin's questions
-  # answered as its README says: the PIN, a PIN for decrypting too, and no
-  # separate identity, so the key alone opens what's sealed to it. age's
-  # terminal takes a choice as 1 or 2 (filippo.io/age/plugin/tui.go), and
-  # a minute's silence ends it with what it said.
-  makeRecipient = pkgs.writers.writePython3Bin "make-recipient" { flakeIgnore = [ "E501" ]; } ''
-    import os
-    import pty
-    import re
-    import select
-    import sys
-
-    pid, fd = pty.fork()
-    if pid == 0:
-        os.execvp("${lib.getExe pkgs.age-plugin-fido2-hmac}", ["age-plugin-fido2-hmac", "-g"])
-
-    said = ""
-    answered = set()
-    answers = [
-        ("enter your PIN", sys.argv[1]),
-        ("require a PIN", "1"),
-        ("separate identity", "2"),
-    ]
-    while True:
-        if not select.select([fd], [], [], 60)[0]:
-            sys.exit("the plugin went quiet, having said:\n" + said)
-        try:
-            chunk = os.read(fd, 1024).decode(errors="replace")
-        except OSError:
-            break
-        if not chunk:
-            break
-        said += chunk
-        for prompt, answer in answers:
-            if prompt in said and prompt not in answered:
-                answered.add(prompt)
-                # A choice is one key; a value ends with Return.
-                os.write(fd, (answer if answer in "12" else answer + "\n").encode())
-    os.waitpid(pid, 0)
-    sys.stderr.write(said)
-    print(re.findall(r"age1fido2-hmac1[0-9a-z]+", said)[-1])
-  '';
+  # answered as its README says (guide-vault/make-recipient.py).
+  makeRecipient = pkgs.writers.writePython3Bin "make-recipient" { doCheck = false; } (
+    builtins.replaceStrings [ "@plugin@" ] [ (lib.getExe pkgs.age-plugin-fido2-hmac) ] (
+      builtins.readFile ./guide-vault/make-recipient.py
+    )
+  );
 in
 pkgs.testers.runNixOSTest {
   name = "guide-vault";
