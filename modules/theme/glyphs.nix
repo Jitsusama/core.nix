@@ -415,6 +415,11 @@ in
     console = "c";
     means = "copying something to the clipboard";
   };
+  paste = {
+    glyph = nerd "f0192";
+    console = "v";
+    means = "pasting into the window the launcher opened over";
+  };
   close = {
     glyph = nerd "f05ad";
     console = "x";

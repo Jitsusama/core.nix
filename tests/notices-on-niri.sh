@@ -34,7 +34,19 @@ trap "kill $drawing 2> /dev/null || true" EXIT
 says "Configuration Loaded"
 notify-send --app-name=Check "A notice" "Sent as a program sends one."
 says "report[shows card A notice]"
-if ! niri msg layers | grep -q notifications; then
+# The card is made before its window is drawn, and niri lists the layer
+# once it has the window's first frame, which a loaded machine can take a
+# while to send.
+says "report[drawn notifications]"
+listed=false
+for _ in $(seq "$saying"); do
+  if niri msg layers | grep -q notifications; then
+    listed=true
+    break
+  fi
+  sleep 0.1
+done
+if [ "$listed" != true ]; then
   echo "niri lists no notices' layer:" >&2
   niri msg layers >&2
   exit 1

@@ -84,6 +84,8 @@ ShellRoot {
             expect("a subquest says its kind too", prompt.side === "subquest \u00b7 queued", prompt.side);
             expect("a blocked one wears waiting's mark", stick.glyph === Theme.glyph.pending, stick.glyph);
             expect("an active one wears its own", laptop.glyph === Theme.glyph.active, laptop.glyph);
+            expect("one reads its summary's first paragraph",
+                laptop.reads === "What Bootstrap the laptop is about.", laptop.reads);
             expect("the foot's count", quests.counted() === "3 open, 1 driving", quests.counted());
 
             const banner = quests.search("banner").rows;

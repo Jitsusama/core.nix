@@ -14,7 +14,7 @@ mkdir -p store/QEST-20261005-NOTES store/QEST-20261006-PLAIN older newer session
   later/QEST-20261020-NEWONE
 
 # Writes a quest's README: its front matter from the input, then its title,
-# then a heading that isn't its title.
+# its summary in two paragraphs, and a heading that isn't its title.
 quest() {
   mkdir -p "store/$1"
   {
@@ -24,6 +24,13 @@ quest() {
     echo ---
     echo
     echo "# $2"
+    echo
+    echo "## 📜 Summary"
+    echo
+    echo "What $2"
+    echo "is about."
+    echo
+    echo "Not its first paragraph."
     echo
     echo "# Not the title"
   } > "store/$1/README.md"

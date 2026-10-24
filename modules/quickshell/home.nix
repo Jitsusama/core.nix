@@ -1359,7 +1359,8 @@ in
     # copies it, and notify-send says where the file went. The launcher's
     # quests and runs read pi through pi-quests and pi-runs
     # (launcher/Quests.qml, launcher/Runs.qml), and a terminal shows a
-    # run's answer through pi-runs too.
+    # run's answer through pi-runs too. The clipboard's Paste presses its
+    # window's paste keys through wtype (launcher/Copies.qml).
     home.packages = [
       askpass
       launcherSay
@@ -1377,6 +1378,7 @@ in
       })
       pkgs.grim
       pkgs.wl-clipboard
+      pkgs.wtype
       pkgs.libnotify
     ];
 
