@@ -91,17 +91,29 @@ let
   # user.slice's holds build.slice back for everything the account does on
   # the disk, jobs' own writes included: with no app using the disk, Nix's
   # builds waited on it 88% of the time while it was under half busy. So a
-  # disk the machine has measured is shared by weight instead, through the
-  # kernel's io.cost: each slice using it gets it in proportion to its
+  # disk the machine has measured can be shared by weight instead, through
+  # the kernel's io.cost: each slice using it gets it in proportion to its
   # weight, and what an idle slice leaves goes to the rest. io.cost needs a
   # model of what the disk can do, and the one it guesses for the XPS 14's
-  # was 489 MB/s and 8,500 operations a second, against a measured 3.8 GB/s
-  # and 340,000. A machine names its measured disks, the one behind /home
-  # among them, in jitsusama.slices.disks, and then sets no targets. The
+  # was 489 MB/s and 8,500 operations a second, far from what the disk
+  # measured: 5.8 GB/s of reads, but 403 MB/s of writes once its cache was
+  # full. A machine names its measured disks, the one behind /home among
+  # them, in jitsusama.slices.disks, and then sets no targets. The
   # weights follow the CPU's: the compositor's ten times an app's, the work
   # Joel starts a hundredth of one, timed and awaited work ahead of agents'
   # within it, and the account ten times the system's other slices. Without
   # io.cost they do nothing, so a machine that names no disk keeps targets.
+  #
+  # Name a disk only once io.cost has been shown to beat the targets on it,
+  # with the same synced write beside the same writers. On the XPS 14's,
+  # which has no DRAM of its own, it didn't. Beside two buffered writers in
+  # jobs, an app's worst synced save in four runs took 55 to 170 ms under the
+  # targets, and 76 to 492 ms under every io.cost setting tried: its
+  # automatic one, a 5 or 10 ms latency goal, and a goal held to the model.
+  # io.cost let the writers run at two to two and a half times the model's
+  # write rate. The disk's cache taking them quickly, with a sync then
+  # waiting behind them, is the suspected cause, not yet measured. So that
+  # disk keeps its targets.
   disks = config.jitsusama.slices.disks;
   latency = lib.optionalAttrs (disks == { }) { IODeviceLatencyTargetSec = "/home 1ms"; };
   settings = attrs: lib.concatStringsSep " " (lib.mapAttrsToList (k: v: "${k}=${toString v}") attrs);
@@ -135,7 +147,8 @@ in
     description = ''
       The disks shared by the slices' weights, by their names under
       /sys/class/block, each with the model io.cost measured on it. Naming
-      any drops the latency targets, so the disk behind /home belongs here.
+      any drops the latency targets, so the disk behind /home belongs here,
+      and only once io.cost has measured better than the targets on it.
       The name is the kernel's, which follows the order disks are found in:
       on a machine with two of a kind, the model can land on the other one.
     '';
