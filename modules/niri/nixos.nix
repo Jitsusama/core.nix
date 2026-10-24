@@ -49,6 +49,14 @@
     # in the inheritable and ambient sets too, which every program niri
     # starts would inherit; the patch (keep-capabilities.patch) clears
     # them as niri starts, so niri alone keeps it.
+    #
+    # niri sends its sRGB frames to a screen as they are, so a wide-gamut
+    # panel, the XPS 14's OLED at 1.55 times sRGB's area, stretched every
+    # colour out to its own and beside an sRGB monitor made that look
+    # washed out. The patch (srgb-gamut.patch, last, since it's made on
+    # the rest) gives an output `srgb-gamut`, which maps sRGB to the
+    # primaries its EDID declares in the display engine: a degamma curve,
+    # a colour matrix and a gamma curve, at no cost to drawing.
     package = pkgs.niri.overrideAttrs (old: {
       patches = (old.patches or [ ]) ++ [
         ./touchscreen-gestures.patch
@@ -66,6 +74,7 @@
           url = "https://github.com/niri-wm/niri/commit/bb38b7e14f8f7bbef6584cf263bf36b0044d63d3.patch";
           hash = "sha256-83i8Mpyc6k4BqBjPYEY/M4XnEbxBb4RKiFJ7tk4mXfM=";
         })
+        ./srgb-gamut.patch
       ];
     });
     # The GTK file chooser, rather than installing Nautilus to provide one.

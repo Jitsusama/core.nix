@@ -1,0 +1,984 @@
+tty: hold a wide-gamut output to sRGB in the display engine
+
+An output with `srgb-gamut` set has sRGB's colours mapped onto its own
+primaries, read from its EDID, so a wide-gamut panel stops stretching
+every colour to its own and matches an sRGB monitor beside it. The
+CRTC's DEGAMMA_LUT decodes sRGB to linear light, its CTM takes sRGB's
+primaries to the panel's at the panel's white, and GAMMA_LUT encodes
+sRGB again, with a gamma-control client's ramp composed after it. All
+three go in one atomic commit, so it costs nothing to draw. An output
+whose primaries are sRGB's already, or whose EDID gives none, is left
+as it is.
+
+diff --git a/docs/wiki/Configuration:-Outputs.md b/docs/wiki/Configuration:-Outputs.md
+index 73a0220..4ae91ba 100644
+--- a/docs/wiki/Configuration:-Outputs.md
++++ b/docs/wiki/Configuration:-Outputs.md
+@@ -225,6 +225,24 @@ output "HDMI-A-1" {
+ }
+ ```
+ 
++### `srgb-gamut`
++
++Show colours on this output as sRGB, rather than stretched to its own primaries.
++
++niri draws in sRGB and sends it to the output as it is.
++On a screen whose primaries reach past sRGB's, such as many OLED laptop panels, every colour then comes out oversaturated.
++With `srgb-gamut`, niri reads the primaries the screen's EDID declares and has the display engine map sRGB to them, through the CRTC's degamma curve, colour matrix and gamma curve, at no cost to rendering.
++White and greys stay as they were.
++
++It needs the driver to offer `DEGAMMA_LUT`, `CTM` and `GAMMA_LUT`, and an EDID that declares primaries; niri logs a warning when either is missing.
++A gamma control client, such as a night light, still applies on top.
++
++```kdl
++output "eDP-1" {
++    srgb-gamut
++}
++```
++
+ ### `focus-at-startup`
+ 
+ <sup>Since: 25.05</sup>
+diff --git a/niri-config/src/lib.rs b/niri-config/src/lib.rs
+index 329b766..e1ef640 100644
+--- a/niri-config/src/lib.rs
++++ b/niri-config/src/lib.rs
+@@ -740,6 +740,7 @@ mod tests {
+ 
+             output "eDP-1" {
+                 focus-at-startup
++                srgb-gamut
+                 scale 2
+                 transform "flipped-90"
+                 position x=10 y=20
+@@ -1177,6 +1178,7 @@ mod tests {
+                             },
+                         ),
+                         focus_at_startup: true,
++                        srgb_gamut: true,
+                         background_color: Some(
+                             Color {
+                                 r: 0.09803922,
+@@ -1218,6 +1220,7 @@ mod tests {
+                         modeline: None,
+                         variable_refresh_rate: None,
+                         focus_at_startup: false,
++                        srgb_gamut: false,
+                         background_color: None,
+                         backdrop_color: None,
+                         hot_corners: None,
+@@ -1247,6 +1250,7 @@ mod tests {
+                         ),
+                         variable_refresh_rate: None,
+                         focus_at_startup: false,
++                        srgb_gamut: false,
+                         background_color: None,
+                         backdrop_color: None,
+                         hot_corners: None,
+diff --git a/niri-config/src/output.rs b/niri-config/src/output.rs
+index 5d6565f..ca9305a 100644
+--- a/niri-config/src/output.rs
++++ b/niri-config/src/output.rs
+@@ -67,6 +67,8 @@ pub struct Output {
+     pub variable_refresh_rate: Option<Vrr>,
+     #[knuffel(child)]
+     pub focus_at_startup: bool,
++    #[knuffel(child)]
++    pub srgb_gamut: bool,
+     // Deprecated; use layout.background_color.
+     #[knuffel(child)]
+     pub background_color: Option<Color>,
+@@ -97,6 +99,7 @@ impl Default for Output {
+         Self {
+             off: false,
+             focus_at_startup: false,
++            srgb_gamut: false,
+             name: String::new(),
+             scale: None,
+             transform: Transform::Normal,
+diff --git a/src/backend/tty.rs b/src/backend/tty.rs
+index 741f218..46744f9 100644
+--- a/src/backend/tty.rs
++++ b/src/backend/tty.rs
+@@ -70,6 +70,8 @@ use crate::render_helpers::renderer::AsGlesRenderer;
+ use crate::render_helpers::{resources, shaders, RenderCtx, RenderTarget};
+ use crate::utils::{get_monotonic_time, is_laptop_panel, logical_output, PanelOrientation};
+ 
++mod gamut;
++
+ const SUPPORTED_COLOR_FORMATS: [Fourcc; 4] = [
+     Fourcc::Xrgb8888,
+     Fourcc::Xbgr8888,
+@@ -399,6 +401,26 @@ struct GammaProps {
+     gamma_lut: property::Handle,
+     gamma_lut_size: property::Handle,
+     previous_blob: Option<NonZeroU64>,
++    /// The degamma curve and colour matrix, where the CRTC has them, which
++    /// hold a wide-gamut screen to sRGB (gamut.rs).
++    colour: Option<ColourProps>,
++    /// Whether the screen's config asks to hold it to sRGB.
++    srgb_wanted: bool,
++    /// The matrix from sRGB to the screen's primaries, from its EDID, while
++    /// the screen is held to sRGB: none when it isn't, or its primaries are
++    /// sRGB's already, or its EDID gives none.
++    srgb: Option<gamut::Matrix>,
++    /// The ramp a gamma control client set, kept to follow the encoding
++    /// while the screen is held to sRGB.
++    client_ramp: Option<Vec<u16>>,
++}
++
++struct ColourProps {
++    degamma_lut: property::Handle,
++    degamma_lut_size: property::Handle,
++    ctm: property::Handle,
++    degamma_blob: Option<NonZeroU64>,
++    ctm_blob: Option<NonZeroU64>,
+ }
+ 
+ struct ConnectorProperties<'a> {
+@@ -1322,10 +1344,21 @@ impl Tty {
+             .map_err(|err| debug!("couldn't get gamma properties: {err:?}"))
+             .ok();
+ 
+-        // Reset gamma in case it was set before.
++        // Reset gamma in case it was set before, holding the screen to sRGB
++        // if its config asks.
+         let res = if let Some(gamma_props) = &mut gamma_props {
+-            gamma_props.set_gamma(&device.drm, None)
++            gamma_props.set_gamma(&device.drm, None).and_then(|()| {
++                gamma_props.hold_to_srgb(
++                    &device.drm,
++                    connector.handle(),
++                    &connector_name,
++                    config.srgb_gamut,
++                )
++            })
+         } else {
++            if config.srgb_gamut {
++                warn!("output {connector_name:?}: can't hold it to sRGB without a GAMMA_LUT");
++            }
+             set_gamma_for_crtc(&device.drm, crtc, None)
+         };
+         if let Err(err) = res {
+@@ -2432,6 +2465,20 @@ impl Tty {
+ 
+                 let change_mode = surface.compositor.pending_mode() != mode;
+ 
++                if let Some(gamma_props) = &mut surface.gamma_props {
++                    if let Err(err) = gamma_props.hold_to_srgb(
++                        &device.drm,
++                        surface.connector,
++                        &surface.name.connector,
++                        config.srgb_gamut,
++                    ) {
++                        warn!(
++                            "output {:?}: error changing its gamut: {err:?}",
++                            surface.name.connector
++                        );
++                    }
++                }
++
+                 let vrr_enabled = surface.compositor.vrr_enabled();
+                 let change_always_vrr = vrr_enabled != config.is_vrr_always_on();
+                 let is_on_demand_vrr = config.is_vrr_on_demand();
+@@ -2596,6 +2643,9 @@ impl GammaProps {
+     fn new(device: &DrmDevice, crtc: crtc::Handle) -> anyhow::Result<Self> {
+         let mut gamma_lut = None;
+         let mut gamma_lut_size = None;
++        let mut degamma_lut = None;
++        let mut degamma_lut_size = None;
++        let mut ctm = None;
+ 
+         let props = device
+             .get_properties(crtc)
+@@ -2609,21 +2659,21 @@ impl GammaProps {
+                 continue;
+             };
+ 
++            let blob = matches!(info.value_type(), property::ValueType::Blob);
++            let range = matches!(info.value_type(), property::ValueType::UnsignedRange(_, _));
+             match name {
+                 "GAMMA_LUT" => {
+-                    ensure!(
+-                        matches!(info.value_type(), property::ValueType::Blob),
+-                        "wrong GAMMA_LUT value type"
+-                    );
++                    ensure!(blob, "wrong GAMMA_LUT value type");
+                     gamma_lut = Some(prop);
+                 }
+                 "GAMMA_LUT_SIZE" => {
+-                    ensure!(
+-                        matches!(info.value_type(), property::ValueType::UnsignedRange(_, _)),
+-                        "wrong GAMMA_LUT_SIZE value type"
+-                    );
++                    ensure!(range, "wrong GAMMA_LUT_SIZE value type");
+                     gamma_lut_size = Some(prop);
+                 }
++                // Optional: without them, a screen can't be held to sRGB.
++                "DEGAMMA_LUT" if blob => degamma_lut = Some(prop),
++                "DEGAMMA_LUT_SIZE" if range => degamma_lut_size = Some(prop),
++                "CTM" if blob => ctm = Some(prop),
+                 _ => (),
+             }
+         }
+@@ -2631,11 +2681,26 @@ impl GammaProps {
+         let gamma_lut = gamma_lut.context("missing GAMMA_LUT property")?;
+         let gamma_lut_size = gamma_lut_size.context("missing GAMMA_LUT_SIZE property")?;
+ 
++        let colour = match (degamma_lut, degamma_lut_size, ctm) {
++            (Some(degamma_lut), Some(degamma_lut_size), Some(ctm)) => Some(ColourProps {
++                degamma_lut,
++                degamma_lut_size,
++                ctm,
++                degamma_blob: None,
++                ctm_blob: None,
++            }),
++            _ => None,
++        };
++
+         Ok(Self {
+             crtc,
+             gamma_lut,
+             gamma_lut_size,
+             previous_blob: None,
++            colour,
++            srgb_wanted: false,
++            srgb: None,
++            client_ramp: None,
+         })
+     }
+ 
+@@ -2648,26 +2713,64 @@ impl GammaProps {
+     fn set_gamma(&mut self, device: &DrmDevice, gamma: Option<&[u16]>) -> anyhow::Result<()> {
+         let _span = tracy_client::span!("GammaProps::set_gamma");
+ 
+-        let blob = if let Some(gamma) = gamma {
+-            let gamma_size = self
+-                .gamma_size(device)
+-                .context("error getting gamma size")? as usize;
++        self.client_ramp = gamma.map(<[u16]>::to_vec);
++        self.apply(device)
++    }
+ 
+-            ensure!(gamma.len() == gamma_size * 3, "wrong gamma length");
++    /// Holds the screen to sRGB, or lets it go, as its config says.
++    fn hold_to_srgb(
++        &mut self,
++        device: &DrmDevice,
++        connector: connector::Handle,
++        connector_name: &str,
++        wanted: bool,
++    ) -> anyhow::Result<()> {
++        if wanted == self.srgb_wanted {
++            return Ok(());
++        }
++        self.srgb_wanted = wanted;
++        if wanted && self.colour.is_none() {
++            warn!(
++                "output {connector_name:?}: can't hold it to sRGB, \
++                 since its CRTC has no DEGAMMA_LUT and CTM"
++            );
++            return Ok(());
++        }
++        self.srgb = wanted
++            .then(|| srgb_matrix(device, connector, connector_name))
++            .flatten();
++        self.apply(device)
++    }
+ 
+-            #[allow(non_camel_case_types)]
+-            #[repr(C)]
+-            #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+-            pub struct drm_color_lut {
+-                pub red: u16,
+-                pub green: u16,
+-                pub blue: u16,
+-                pub reserved: u16,
++    /// Sends the CRTC its gamma curve, and its degamma curve and colour
++    /// matrix: sRGB's curves and the matrix while the screen is held to
++    /// sRGB, with a client's ramp after them, and otherwise the client's
++    /// ramp alone, or nothing.
++    fn apply(&mut self, device: &DrmDevice) -> anyhow::Result<()> {
++        let srgb = self.srgb.filter(|_| self.colour.is_some());
++
++        let ramp = match (srgb, &self.client_ramp) {
++            (None, None) => None,
++            (None, Some(ramp)) => {
++                let gamma_size = self
++                    .gamma_size(device)
++                    .context("error getting gamma size")? as usize;
++                ensure!(ramp.len() == gamma_size * 3, "wrong gamma length");
++                Some(ramp.clone())
+             }
++            (Some(_), ramp) => {
++                let gamma_size = self
++                    .gamma_size(device)
++                    .context("error getting gamma size")? as usize;
++                Some(gamut::gamma(gamma_size, ramp.as_deref()))
++            }
++        };
+ 
++        let blob = if let Some(gamma) = ramp {
++            let gamma_size = gamma.len() / 3;
+             let (red, rest) = gamma.split_at(gamma_size);
+-            let (blue, green) = rest.split_at(gamma_size);
+-            let mut data = zip(zip(red, blue), green)
++            let (green, blue) = rest.split_at(gamma_size);
++            let data = zip(zip(red, green), blue)
+                 .map(|((&red, &green), &blue)| drm_color_lut {
+                     red,
+                     green,
+@@ -2675,40 +2778,57 @@ impl GammaProps {
+                     reserved: 0,
+                 })
+                 .collect::<Vec<_>>();
+-            let data = cast_slice_mut(&mut data);
+-
+-            let blob = drm_ffi::mode::create_property_blob(device.as_fd(), data)
+-                .context("error creating property blob")?;
+-            NonZeroU64::new(u64::from(blob.blob_id))
++            create_blob(device, &data)?
+         } else {
+             None
+         };
+ 
+-        {
+-            let _span = tracy_client::span!("set_property");
+-
+-            let blob = blob.map(NonZeroU64::get).unwrap_or(0);
+-            device
+-                .set_property(
+-                    self.crtc,
+-                    self.gamma_lut,
+-                    property::Value::Blob(blob).into(),
++        let mut sets = vec![(self.gamma_lut, blob, "GAMMA_LUT")];
++        let mut colour_blobs = None;
++        if let Some(colour) = &self.colour {
++            let made = if let Some(matrix) = srgb {
++                let size = get_drm_property(device, self.crtc, colour.degamma_lut_size)
++                    .context("missing DEGAMMA_LUT_SIZE property")?;
++                let data = gamut::degamma(size as usize)
++                    .into_iter()
++                    .map(|value| drm_color_lut {
++                        red: value,
++                        green: value,
++                        blue: value,
++                        reserved: 0,
++                    })
++                    .collect::<Vec<_>>();
++                let ctm = drm_color_ctm {
++                    matrix: gamut::ctm(&matrix),
++                };
++                (
++                    create_blob(device, &data)?,
++                    create_blob(device, std::slice::from_ref(&ctm))?,
+                 )
+-                .context("error setting GAMMA_LUT")
+-                .inspect_err(|_| {
+-                    if blob != 0 {
+-                        // Destroy the blob we just allocated.
+-                        if let Err(err) = device.destroy_property_blob(blob) {
+-                            warn!("error destroying GAMMA_LUT property blob: {err:?}");
+-                        }
+-                    }
+-                })?;
++            } else {
++                (None, None)
++            };
++            sets.push((colour.degamma_lut, made.0, "DEGAMMA_LUT"));
++            sets.push((colour.ctm, made.1, "CTM"));
++            colour_blobs = Some(made);
+         }
+ 
+-        if let Some(blob) = mem::replace(&mut self.previous_blob, blob) {
+-            if let Err(err) = device.destroy_property_blob(blob.get()) {
+-                warn!("error destroying previous GAMMA_LUT blob: {err:?}");
++        if let Err(err) = set_blobs(device, self.crtc, &sets) {
++            // Destroy the blobs we just allocated.
++            for (_, blob, name) in sets {
++                if let Some(blob) = blob {
++                    if let Err(err) = device.destroy_property_blob(blob.get()) {
++                        warn!("error destroying {name} property blob: {err:?}");
++                    }
++                }
+             }
++            return Err(err);
++        }
++
++        replace_blob(device, &mut self.previous_blob, blob);
++        if let (Some(colour), Some((degamma, ctm))) = (&mut self.colour, colour_blobs) {
++            replace_blob(device, &mut colour.degamma_blob, degamma);
++            replace_blob(device, &mut colour.ctm_blob, ctm);
+         }
+ 
+         Ok(())
+@@ -2717,16 +2837,107 @@ impl GammaProps {
+     fn restore_gamma(&self, device: &DrmDevice) -> anyhow::Result<()> {
+         let _span = tracy_client::span!("GammaProps::restore_gamma");
+ 
+-        let blob = self.previous_blob.map(NonZeroU64::get).unwrap_or(0);
+-        device
+-            .set_property(
+-                self.crtc,
+-                self.gamma_lut,
+-                property::Value::Blob(blob).into(),
+-            )
+-            .context("error setting GAMMA_LUT")?;
++        let mut sets = vec![(self.gamma_lut, self.previous_blob, "GAMMA_LUT")];
++        if let Some(colour) = &self.colour {
++            sets.push((colour.degamma_lut, colour.degamma_blob, "DEGAMMA_LUT"));
++            sets.push((colour.ctm, colour.ctm_blob, "CTM"));
++        }
++        set_blobs(device, self.crtc, &sets)
++    }
++}
+ 
+-        Ok(())
++#[allow(non_camel_case_types)]
++#[repr(C)]
++#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
++struct drm_color_lut {
++    red: u16,
++    green: u16,
++    blue: u16,
++    reserved: u16,
++}
++
++#[allow(non_camel_case_types)]
++#[repr(C)]
++#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
++struct drm_color_ctm {
++    matrix: [u64; 9],
++}
++
++fn create_blob<T: bytemuck::Pod>(
++    device: &DrmDevice,
++    data: &[T],
++) -> anyhow::Result<Option<NonZeroU64>> {
++    let mut data = data.to_vec();
++    let blob = drm_ffi::mode::create_property_blob(device.as_fd(), cast_slice_mut(&mut data))
++        .context("error creating property blob")?;
++    Ok(NonZeroU64::new(u64::from(blob.blob_id)))
++}
++
++/// Sets a CRTC's blob properties together, in one atomic commit where the
++/// device takes them, so no frame shows the screen with one curve and not
++/// the other.
++fn set_blobs(
++    device: &DrmDevice,
++    crtc: crtc::Handle,
++    sets: &[(property::Handle, Option<NonZeroU64>, &str)],
++) -> anyhow::Result<()> {
++    let _span = tracy_client::span!("set_property");
++
++    let value =
++        |blob: Option<NonZeroU64>| property::Value::Blob(blob.map(NonZeroU64::get).unwrap_or(0));
++
++    if device.is_atomic() && sets.len() > 1 {
++        let mut req = AtomicModeReq::new();
++        for &(property, blob, _) in sets {
++            req.add_property(crtc, property, value(blob));
++        }
++        match device.atomic_commit(AtomicCommitFlags::ALLOW_MODESET, req) {
++            Ok(()) => return Ok(()),
++            Err(err) => debug!("error setting colour properties at once, so one by one: {err:?}"),
++        }
++    }
++
++    for &(property, blob, name) in sets {
++        device
++            .set_property(crtc, property, value(blob).into())
++            .with_context(|| format!("error setting {name}"))?;
++    }
++    Ok(())
++}
++
++/// Keeps the blob now set, destroying the one it replaces.
++fn replace_blob(device: &DrmDevice, kept: &mut Option<NonZeroU64>, blob: Option<NonZeroU64>) {
++    if let Some(previous) = mem::replace(kept, blob) {
++        if let Err(err) = device.destroy_property_blob(previous.get()) {
++            warn!("error destroying previous property blob: {err:?}");
++        }
++    }
++}
++
++/// The matrix from sRGB to a connector's primaries, from its EDID, or none
++/// when it declares none a matrix can be made from.
++fn srgb_matrix(
++    device: &DrmDevice,
++    connector: connector::Handle,
++    connector_name: &str,
++) -> Option<gamut::Matrix> {
++    let matrix = get_edid(device, connector)
++        .ok()
++        .and_then(|edid| gamut::Primaries::from_edid(&edid))
++        .and_then(|primaries| primaries.srgb_to_screen());
++    match matrix {
++        Some(matrix) if gamut::changes_nothing(&matrix) => {
++            debug!("output {connector_name:?}: its primaries are sRGB's already");
++            None
++        }
++        Some(matrix) => {
++            info!("output {connector_name:?}: holding it to sRGB: {matrix:?}");
++            Some(matrix)
++        }
++        None => {
++            warn!("output {connector_name:?}: its EDID gives no primaries to hold it to sRGB");
++            None
++        }
+     }
+ }
+ 
+@@ -3221,10 +3432,7 @@ fn pick_mode(
+     mode.map(|m| (*m, fallback))
+ }
+ 
+-fn get_edid_info(
+-    device: &DrmDevice,
+-    connector: connector::Handle,
+-) -> anyhow::Result<libdisplay_info::info::Info> {
++fn get_edid(device: &DrmDevice, connector: connector::Handle) -> anyhow::Result<Vec<u8>> {
+     let (_, info, value) =
+         find_drm_property(device, connector, "EDID").context("no EDID property")?;
+     let blob = info
+@@ -3232,9 +3440,16 @@ fn get_edid_info(
+         .convert_value(value)
+         .as_blob()
+         .context("EDID was not blob type")?;
+-    let data = device
++    device
+         .get_property_blob(blob)
+-        .context("error getting EDID blob value")?;
++        .context("error getting EDID blob value")
++}
++
++fn get_edid_info(
++    device: &DrmDevice,
++    connector: connector::Handle,
++) -> anyhow::Result<libdisplay_info::info::Info> {
++    let data = get_edid(device, connector)?;
+     libdisplay_info::info::Info::parse_edid(&data).context("error parsing EDID")
+ }
+ 
+diff --git a/src/backend/tty/gamut.rs b/src/backend/tty/gamut.rs
+new file mode 100644
+index 0000000..2c41ea8
+--- /dev/null
++++ b/src/backend/tty/gamut.rs
+@@ -0,0 +1,416 @@
++//! Showing sRGB on a wide-gamut screen as sRGB.
++//!
++//! niri draws in sRGB and sends it to the screen as it is, so a panel whose
++//! primaries reach past sRGB's stretches every colour out to its own, and
++//! shows them oversaturated. The display engine can undo that at no cost to
++//! the GPU: its degamma curve takes the sRGB values back to light, its colour
++//! matrix (CTM) moves that light from sRGB's primaries to the panel's, and
++//! its gamma curve encodes it again. The matrix comes from the primaries the
++//! screen's EDID declares, and both sides keep the screen's own white, so
++//! white and every grey come out as they went in.
++
++/// A screen's primaries and white point, as CIE 1931 xy chromaticities.
++#[derive(Debug, Clone, Copy, PartialEq)]
++pub struct Primaries {
++    pub red: (f64, f64),
++    pub green: (f64, f64),
++    pub blue: (f64, f64),
++    pub white: (f64, f64),
++}
++
++/// sRGB's primaries (IEC 61966-2-1), white given by the screen.
++const SRGB_RED: (f64, f64) = (0.640, 0.330);
++const SRGB_GREEN: (f64, f64) = (0.300, 0.600);
++const SRGB_BLUE: (f64, f64) = (0.150, 0.060);
++
++pub type Matrix = [[f64; 3]; 3];
++
++impl Primaries {
++    /// The primaries and white an EDID's base block declares in its colour
++    /// characteristics (bytes 25 to 34, ten bits each).
++    pub fn from_edid(edid: &[u8]) -> Option<Self> {
++        let bytes = edid.get(25..35)?;
++        let low = |byte: u8, shift: u8| u16::from((byte >> shift) & 0b11);
++        let value = |high: u8, low: u16| f64::from((u16::from(high) << 2) | low) / 1024.;
++
++        let primaries = Self {
++            red: (
++                value(bytes[2], low(bytes[0], 6)),
++                value(bytes[3], low(bytes[0], 4)),
++            ),
++            green: (
++                value(bytes[4], low(bytes[0], 2)),
++                value(bytes[5], low(bytes[0], 0)),
++            ),
++            blue: (
++                value(bytes[6], low(bytes[1], 6)),
++                value(bytes[7], low(bytes[1], 4)),
++            ),
++            white: (
++                value(bytes[8], low(bytes[1], 2)),
++                value(bytes[9], low(bytes[1], 0)),
++            ),
++        };
++
++        // A screen that leaves them out writes zeroes, and a y of zero has no
++        // colour to stand for.
++        let points = [
++            primaries.red,
++            primaries.green,
++            primaries.blue,
++            primaries.white,
++        ];
++        points
++            .iter()
++            .all(|&(x, y)| x > 0. && y > 0. && x + y < 1.)
++            .then_some(primaries)
++    }
++
++    /// The matrix from these primaries' linear RGB to CIE XYZ, scaled so
++    /// that full RGB is the white point at a luminance of one.
++    fn xyz(self) -> Option<Matrix> {
++        let xyz = |(x, y): (f64, f64)| [x / y, 1., (1. - x - y) / y];
++        let [r, g, b] = [xyz(self.red), xyz(self.green), xyz(self.blue)];
++        let columns = [[r[0], g[0], b[0]], [r[1], g[1], b[1]], [r[2], g[2], b[2]]];
++        let white = xyz(self.white);
++        let scale = multiply_vector(&invert(&columns)?, white);
++        Some(std::array::from_fn(|row| {
++            std::array::from_fn(|column| columns[row][column] * scale[column])
++        }))
++    }
++
++    /// The matrix taking sRGB's linear light to this screen's, both at this
++    /// screen's white, or nothing when its primaries can't stand for a
++    /// screen: a matrix with no inverse, or one that would send a colour
++    /// more than twice past full, which no real screen's primaries ask.
++    pub fn srgb_to_screen(self) -> Option<Matrix> {
++        let srgb = Self {
++            red: SRGB_RED,
++            green: SRGB_GREEN,
++            blue: SRGB_BLUE,
++            white: self.white,
++        };
++        let matrix = multiply(&invert(&self.xyz()?)?, &srgb.xyz()?);
++        matrix
++            .iter()
++            .flatten()
++            .all(|value| value.abs() <= 2.)
++            .then_some(matrix)
++    }
++}
++
++/// Whether a matrix from sRGB is near enough the identity that it would
++/// change nothing anybody could see, as for a screen that is sRGB already.
++pub fn changes_nothing(matrix: &Matrix) -> bool {
++    matrix.iter().enumerate().all(|(row, values)| {
++        values.iter().enumerate().all(|(column, &value)| {
++            let identity = if row == column { 1. } else { 0. };
++            (value - identity).abs() < 0.01
++        })
++    })
++}
++
++fn multiply(a: &Matrix, b: &Matrix) -> Matrix {
++    std::array::from_fn(|row| {
++        std::array::from_fn(|column| (0..3).map(|k| a[row][k] * b[k][column]).sum())
++    })
++}
++
++fn multiply_vector(a: &Matrix, v: [f64; 3]) -> [f64; 3] {
++    std::array::from_fn(|row| (0..3).map(|k| a[row][k] * v[k]).sum())
++}
++
++fn invert(m: &Matrix) -> Option<Matrix> {
++    let cofactor = |row: usize, column: usize| {
++        let (r1, r2) = ((row + 1) % 3, (row + 2) % 3);
++        let (c1, c2) = ((column + 1) % 3, (column + 2) % 3);
++        m[r1][c1] * m[r2][c2] - m[r1][c2] * m[r2][c1]
++    };
++    let determinant: f64 = (0..3)
++        .map(|column| m[0][column] * cofactor(0, column))
++        .sum();
++    if determinant.abs() < 1e-12 {
++        return None;
++    }
++    Some(std::array::from_fn(|row| {
++        std::array::from_fn(|column| cofactor(column, row) / determinant)
++    }))
++}
++
++/// The matrix as the kernel's `drm_color_ctm` holds it: row by row, each in
++/// S31.32 sign-magnitude.
++pub fn ctm(matrix: &Matrix) -> [u64; 9] {
++    std::array::from_fn(|i| {
++        let value = matrix[i / 3][i % 3];
++        // A matrix from primaries stays well inside 2^31 either way.
++        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
++        let magnitude = (value.abs() * f64::from(1u32 << 31) * 2.).round() as u64;
++        if value < 0. {
++            magnitude | (1 << 63)
++        } else {
++            magnitude
++        }
++    })
++}
++
++/// sRGB's curve from an encoded value to light.
++fn decode(value: f64) -> f64 {
++    if value <= 0.04045 {
++        value / 12.92
++    } else {
++        ((value + 0.055) / 1.055).powf(2.4)
++    }
++}
++
++/// sRGB's curve from light to an encoded value.
++fn encode(light: f64) -> f64 {
++    if light <= 0.003_130_8 {
++        light * 12.92
++    } else {
++        1.055 * light.powf(1. / 2.4) - 0.055
++    }
++}
++
++fn to_u16(value: f64) -> u16 {
++    // Clamped to 0 to 1 first, so it fits.
++    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
++    let value = (value.clamp(0., 1.) * f64::from(u16::MAX)).round() as u16;
++    value
++}
++
++/// The degamma curve, one value for all three channels at each of `size`
++/// evenly spaced inputs.
++pub fn degamma(size: usize) -> Vec<u16> {
++    let last = (size.max(2) - 1) as f64;
++    (0..size).map(|i| to_u16(decode(i as f64 / last))).collect()
++}
++
++/// The gamma curve as niri's gamma ramps lay it out, `size` reds, then
++/// `size` greens, then `size` blues: sRGB's encoding, followed by a gamma
++/// control client's ramp when it has set one, so a night light still works
++/// on what the screen is sent.
++pub fn gamma(size: usize, client: Option<&[u16]>) -> Vec<u16> {
++    let last = (size.max(2) - 1) as f64;
++    let encoded = (0..size).map(|i| encode(i as f64 / last));
++    match client {
++        None => {
++            let channel: Vec<u16> = encoded.map(to_u16).collect();
++            channel.repeat(3)
++        }
++        Some(ramp) => {
++            let steps = ramp.len() / 3;
++            let encoded: Vec<f64> = encoded.collect();
++            (0..3)
++                .flat_map(|channel| {
++                    let ramp = &ramp[channel * steps..(channel + 1) * steps];
++                    encoded.iter().map(move |&value| sample(ramp, value))
++                })
++                .collect()
++        }
++    }
++}
++
++/// A ramp read at `value`, from 0 to 1, between its two nearest steps.
++fn sample(ramp: &[u16], value: f64) -> u16 {
++    match ramp {
++        [] => to_u16(value),
++        [only] => *only,
++        _ => {
++            let position = value.clamp(0., 1.) * (ramp.len() - 1) as f64;
++            // Clamped above, so it's an index into the ramp.
++            #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
++            let below = (position.floor() as usize).min(ramp.len() - 2);
++            let fraction = position - below as f64;
++            let (a, b) = (f64::from(ramp[below]), f64::from(ramp[below + 1]));
++            to_u16((a + (b - a) * fraction) / f64::from(u16::MAX))
++        }
++    }
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    /// The XPS 14 DA14260's OLED panel (LG Display), as its EDID gives it.
++    const PANEL: Primaries = Primaries {
++        red: (0.6894, 0.3095),
++        green: (0.2402, 0.7207),
++        blue: (0.1357, 0.0449),
++        white: (0.3134, 0.3291),
++    };
++
++    /// Its EDID's bytes 25 to 34, and an HP Z27k G3's, an sRGB monitor.
++    const PANEL_BYTES: [u8; 10] = [0x9a, 0xe5, 0xb0, 0x4f, 0x3d, 0xb8, 0x22, 0x0b, 0x50, 0x54];
++    const MONITOR_BYTES: [u8; 10] = [0xee, 0x95, 0xa3, 0x54, 0x4c, 0x99, 0x26, 0x0f, 0x50, 0x54];
++
++    fn edid(colours: [u8; 10]) -> Vec<u8> {
++        let mut edid = vec![0u8; 128];
++        edid[25..35].copy_from_slice(&colours);
++        edid
++    }
++
++    fn close(a: f64, b: f64, within: f64) -> bool {
++        (a - b).abs() <= within
++    }
++
++    #[test]
++    fn reads_the_panel_from_its_edid() {
++        // The panel's bytes 25 to 34, read from its connector.
++        let read = Primaries::from_edid(&edid(PANEL_BYTES)).unwrap();
++        for (got, want) in [
++            (read.red, PANEL.red),
++            (read.green, PANEL.green),
++            (read.blue, PANEL.blue),
++            (read.white, PANEL.white),
++        ] {
++            assert!(close(got.0, want.0, 0.001), "{got:?} against {want:?}");
++            assert!(close(got.1, want.1, 0.001), "{got:?} against {want:?}");
++        }
++    }
++
++    #[test]
++    fn an_edid_without_colours_has_no_primaries() {
++        assert_eq!(Primaries::from_edid(&[0u8; 128]), None);
++        assert_eq!(Primaries::from_edid(&[0u8; 20]), None);
++    }
++
++    #[test]
++    fn the_panel_takes_srgb_to_its_own_primaries() {
++        // X7FXPL's matrix for this panel, worked by hand.
++        let want = [
++            [0.7350, 0.2297, 0.0353],
++            [0.0473, 0.9363, 0.0164],
++            [0.0163, 0.0796, 0.9042],
++        ];
++        let got = PANEL.srgb_to_screen().unwrap();
++        for row in 0..3 {
++            for column in 0..3 {
++                assert!(
++                    close(got[row][column], want[row][column], 0.0005),
++                    "{got:?}"
++                );
++            }
++        }
++    }
++
++    #[test]
++    fn white_stays_white() {
++        let matrix = PANEL.srgb_to_screen().unwrap();
++        for row in matrix {
++            assert!(close(row.iter().sum(), 1., 1e-9), "{row:?}");
++        }
++    }
++
++    #[test]
++    fn an_srgb_screen_is_left_as_it_is() {
++        let srgb = Primaries {
++            red: SRGB_RED,
++            green: SRGB_GREEN,
++            blue: SRGB_BLUE,
++            white: (0.3127, 0.3290),
++        };
++        let matrix = srgb.srgb_to_screen().unwrap();
++        for (row, values) in matrix.iter().enumerate() {
++            for (column, &value) in values.iter().enumerate() {
++                let identity = if row == column { 1. } else { 0. };
++                assert!(close(value, identity, 1e-9), "{matrix:?}");
++            }
++        }
++    }
++
++    #[test]
++    fn an_srgb_monitor_barely_moves() {
++        let monitor = Primaries::from_edid(&edid(MONITOR_BYTES)).unwrap();
++        let matrix = monitor.srgb_to_screen().unwrap();
++        for (row, values) in matrix.iter().enumerate() {
++            for (column, &value) in values.iter().enumerate() {
++                let identity = if row == column { 1. } else { 0. };
++                assert!(close(value, identity, 0.01), "{matrix:?}");
++            }
++        }
++    }
++
++    #[test]
++    fn primaries_that_stand_for_no_screen_have_no_matrix() {
++        // In a line, so no three of them make a gamut.
++        let flat = Primaries {
++            red: (0.3, 0.3),
++            green: (0.4, 0.4),
++            blue: (0.45, 0.45),
++            white: (0.3134, 0.3291),
++        };
++        assert_eq!(flat.srgb_to_screen(), None);
++        // A gamut, but a sliver round white, which sRGB's colours would
++        // overflow many times over.
++        let sliver = Primaries {
++            red: (0.33, 0.33),
++            green: (0.31, 0.35),
++            blue: (0.30, 0.31),
++            white: (0.3134, 0.3291),
++        };
++        assert_eq!(sliver.srgb_to_screen(), None);
++    }
++
++    #[test]
++    fn only_an_srgb_screen_counts_as_srgb() {
++        let monitor = Primaries::from_edid(&edid(MONITOR_BYTES)).unwrap();
++        assert!(changes_nothing(&monitor.srgb_to_screen().unwrap()));
++        assert!(!changes_nothing(&PANEL.srgb_to_screen().unwrap()));
++    }
++
++    #[test]
++    fn the_kernel_reads_the_matrix_as_s31_32() {
++        let ctm = ctm(&[[1., -0.5, 0.25], [0., 2., -1.], [0.75, 0., 1.5]]);
++        assert_eq!(ctm[0], 1 << 32);
++        assert_eq!(ctm[1], (1 << 63) | (1 << 31));
++        assert_eq!(ctm[2], 1 << 30);
++        assert_eq!(ctm[3], 0);
++        assert_eq!(ctm[4], 2 << 32);
++        assert_eq!(ctm[5], (1 << 63) | (1 << 32));
++        assert_eq!(ctm[6], 3 << 30);
++        assert_eq!(ctm[8], 3 << 31);
++    }
++
++    #[test]
++    fn the_curves_undo_each_other() {
++        for i in 0..=1000 {
++            let value = f64::from(i) / 1000.;
++            assert!(close(encode(decode(value)), value, 1e-12), "{value}");
++        }
++        let degamma = degamma(129);
++        assert_eq!((degamma[0], degamma[128]), (0, u16::MAX));
++        // Half the encoded value is a fifth of the light.
++        assert!(close(f64::from(degamma[64]) / 65535., 0.2140, 0.001));
++    }
++
++    #[test]
++    fn the_gamma_curve_encodes_each_channel_alike() {
++        let gamma = gamma(1024, None);
++        assert_eq!(gamma.len(), 3072);
++        assert_eq!(&gamma[..1024], &gamma[1024..2048]);
++        assert_eq!(&gamma[..1024], &gamma[2048..]);
++        assert_eq!((gamma[0], gamma[1023]), (0, u16::MAX));
++        assert!(gamma[..1024].windows(2).all(|pair| pair[0] <= pair[1]));
++    }
++
++    #[test]
++    fn a_clients_ramp_follows_the_encoding() {
++        // A night light: full red, three quarters green, half blue.
++        let steps = 256;
++        let ramp: Vec<u16> = [1., 0.75, 0.5]
++            .iter()
++            .flat_map(|&gain: &f64| {
++                (0..steps).map(move |i| to_u16(gain * f64::from(i) / f64::from(steps - 1)))
++            })
++            .collect();
++        let gamma = gamma(1024, Some(&ramp));
++        let plain = super::gamma(1024, None);
++        assert_eq!(gamma.len(), 3072);
++        for i in [0, 100, 511, 1023] {
++            let encoded = f64::from(plain[i]);
++            assert!(close(f64::from(gamma[i]), encoded, 2.));
++            assert!(close(f64::from(gamma[1024 + i]), encoded * 0.75, 2.));
++            assert!(close(f64::from(gamma[2048 + i]), encoded * 0.5, 2.));
++        }
++    }
++}

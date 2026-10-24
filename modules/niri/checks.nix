@@ -63,15 +63,19 @@ onLinux {
     let
       files = (account graphical).xdg.configFile;
     in
-    pkgs.runCommandLocal "niri-accepts-its-configuration" { nativeBuildInputs = [ pkgs.niri ]; } ''
-      mkdir niri
-      cp ${files."niri/config.kdl".source} niri/config.kdl
-      cp ${files."niri/theme.kdl".source} niri/theme.kdl
-      cp ${files."niri/binds.kdl".source} niri/binds.kdl
-      cp ${files."niri/keyboard.kdl".source} niri/keyboard.kdl
-      niri validate --config niri/config.kdl
-      touch $out
-    '';
+    # The session's own niri reads it, patches and all, since an option one
+    # of them adds is unknown to niri as it ships.
+    pkgs.runCommandLocal "niri-accepts-its-configuration"
+      { nativeBuildInputs = [ graphical.config.programs.niri.package ]; }
+      ''
+        mkdir niri
+        cp ${files."niri/config.kdl".source} niri/config.kdl
+        cp ${files."niri/theme.kdl".source} niri/theme.kdl
+        cp ${files."niri/binds.kdl".source} niri/binds.kdl
+        cp ${files."niri/keyboard.kdl".source} niri/keyboard.kdl
+        niri validate --config niri/config.kdl
+        touch $out
+      '';
 
   # niri's own screens are drawn in colours no theme reaches, so no key
   # opens one: not its screenshot screen, not its key list, and no quit that
