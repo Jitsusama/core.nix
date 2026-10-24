@@ -11,16 +11,22 @@
 //! niri gives it ("DP-4", "eDP-1"), with what the display's EDID says of
 //! itself: who made it and when, its size, native mode, refresh range, colour
 //! depth and connection, its colours against sRGB's, and whether it takes
-//! HDR. `sound.json` is keyed by a USB sound card's ALSA id and direction
-//! ("MV7:in", "Plus:out"), PipeWire carrying the id on each node as
-//! `alsa.id`, with what the card offers, how its clock keeps time, its USB
-//! speed and firmware, and, while it plays or records, the format, period
-//! and buffer it runs at and the rate the kernel measures it taking. The
-//! Pebble X Plus's lighting comes from the file `pebble-lights` keeps beside
-//! the folder. `cameras.json` is keyed by a USB camera's name as its holders
-//! file in /run/camera-holders is named, with what it streams while it
-//! streams, the largest and the fastest mode of each format it offers, its
-//! field of view where a Logitech Brio says it, and its USB speed and
+//! HDR. After those come what a monitor says of itself over DDC/CI, its
+//! brightness, contrast, colour preset, panel, controller, hot-plug
+//! detection, firmware level and MCCS version, which the backlight daemon
+//! keeps in FOLDER as `ddc-` and the hex of the EDID's bytes 8 to 17
+//! (modules/backlight's facts.rs), since the bus it reads behind an MST hub
+//! names no connector. `sound.json` is keyed by a USB sound card's ALSA id
+//! and direction ("MV7:in", "Plus:out"), PipeWire carrying the id on each
+//! node as `alsa.id`, with what the card offers, how its clock keeps time,
+//! its USB speed and firmware, and, while it plays or records, the format,
+//! period and buffer it runs at, in frames and milliseconds, and the rate
+//! the kernel measures it taking.
+//! The Pebble X Plus's lighting comes from the file `pebble-lights` keeps
+//! beside the folder. `cameras.json` is keyed by a USB camera's name as its
+//! holders file in /run/camera-holders is named, with what it streams while
+//! it streams, the largest and the fastest mode of each format it offers,
+//! its field of view where a Logitech Brio says it, and its USB speed and
 //! firmware.
 //!
 //! A file is written only when what it says changes, by writing a copy and
@@ -28,7 +34,8 @@
 //! so a fact is never left behind its device. It hears the kernel's uevents
 //! for displays, cards and cameras coming, going and changing, and inotify
 //! for a playback or capture device opening and closing, the lighting's
-//! file being written and a camera's holders changing; nothing is looked at
+//! file being written, a camera's holders changing and a monitor's DDC/CI
+//! facts being kept or removed; nothing is looked at
 //! between, and each kind is read again only when what it hears is about
 //! it.
 //!
@@ -361,7 +368,7 @@ fn display(edid: &[u8]) -> Option<Facts> {
 
 /// Every connected display by niri's name for its connector, from the DRM
 /// connectors `sys` lists.
-fn displays(sys: &Path) -> Vec<(String, Facts)> {
+fn displays(sys: &Path, told: &Path) -> Vec<(String, Facts)> {
     let Ok(entries) = fs::read_dir(sys.join("class/drm")) else {
         return Vec::new();
     };
@@ -375,11 +382,53 @@ fn displays(sys: &Path) -> Vec<(String, Facts)> {
                 return None;
             }
             let edid = fs::read(entry.path().join("edid")).ok()?;
-            Some((connector.to_owned(), display(&edid)?))
+            let mut facts = display(&edid)?;
+            facts.extend(monitor_said(told, &edid));
+            Some((connector.to_owned(), facts))
         })
         .collect();
     found.sort();
     found
+}
+
+/// What a monitor says of itself over DDC/CI, as the backlight daemon keeps
+/// it in `told` (modules/backlight's facts.rs): a file named for the EDID's
+/// bytes 8 to 17, a fact a line, its name and value split by a tab.
+fn monitor_said(told: &Path, edid: &[u8]) -> Facts {
+    let Some(identity) = edid.get(8..18) else {
+        return Facts::new();
+    };
+    let name = identity
+        .iter()
+        .fold(String::from("ddc-"), |mut name, byte| {
+            let _ = write!(name, "{byte:02x}");
+            name
+        });
+    let text = fs::read_to_string(told.join(name)).unwrap_or_default();
+    text.lines()
+        .filter_map(|line| line.split_once('\t'))
+        .map(|(name, value)| (name.to_owned(), value.to_owned()))
+        .collect()
+}
+
+/// Whether inotify's events name a monitor's DDC facts written whole, or
+/// lost some that might have.
+fn names_a_monitor(events: &[u8]) -> bool {
+    let mut rest = events;
+    while let Some((head, tail)) = rest.split_at_checked(16) {
+        let word =
+            |at: usize| u32::from_ne_bytes([head[at], head[at + 1], head[at + 2], head[at + 3]]);
+        let (mask, length) = (word(4), word(12) as usize);
+        let Some((name, after)) = tail.split_at_checked(length) else {
+            return true;
+        };
+        let name = name.split(|byte| *byte == 0).next().unwrap_or(name);
+        if mask & IN_Q_OVERFLOW != 0 || (name.starts_with(b"ddc-") && !name.ends_with(b".new")) {
+            return true;
+        }
+        rest = after;
+    }
+    false
 }
 
 // --- Sound cards, from what ALSA says of them ---
@@ -508,7 +557,9 @@ fn offered(settings: &[Setting]) -> String {
     said.join("; ")
 }
 
-/// What a running stream's `hw_params` say it runs at.
+/// What a running stream's `hw_params` say it runs at: its period and
+/// buffer in frames, and the time each holds at its rate, which is the
+/// card's own share of the delay.
 fn running(hw_params: &str) -> String {
     let field = |name: &str| {
         hw_params
@@ -520,13 +571,24 @@ fn running(hw_params: &str) -> String {
         return String::new();
     };
     let mut said = format!("{}, {}", kilohertz(&rate), bits(&format));
-    if let Some(period) = field("period_size") {
-        let _ = write!(said, ", period {period}");
-    }
-    if let Some(buffer) = field("buffer_size") {
-        let _ = write!(said, ", buffer {buffer}");
+    let hertz = rate.parse::<u32>().ok().filter(|hertz| *hertz > 0);
+    for (name, size) in [
+        ("period", field("period_size")),
+        ("buffer", field("buffer_size")),
+    ] {
+        let Some(size) = size else { continue };
+        let _ = write!(said, ", {name} {size}");
+        if let (Some(hertz), Ok(frames)) = (hertz, size.parse::<u32>()) {
+            let _ = write!(said, " ({})", milliseconds(frames, hertz));
+        }
     }
     said
+}
+
+/// The time some frames hold at a rate, to a tenth of a millisecond.
+fn milliseconds(frames: u32, hertz: u32) -> String {
+    let tenths = (u64::from(frames) * 10_000 + u64::from(hertz) / 2) / u64::from(hertz);
+    format!("{}.{} ms", tenths / 10, tenths % 10)
 }
 
 /// A USB release number as its device gives it: 0x1310 is "13.10", and
@@ -1063,6 +1125,32 @@ fn heard(file: &mut File, heard: &dyn Fn(&[u8]) -> u8) -> u8 {
     kinds
 }
 
+/// Writes the files of the kinds that are due: displays, sound, cameras.
+fn rewrite(due: u8, files: &[PathBuf; 3], folder: &Path, lighting: &Path) {
+    let (sys, dev) = (Path::new("/sys"), Path::new("/dev"));
+    let mut written = Ok(());
+    if due & DISPLAYS != 0 {
+        written = written.and(write(&files[0], &json(&displays(sys, folder))));
+    }
+    if due & SOUND != 0 {
+        let said = fs::read_to_string(lighting).ok();
+        let lit = said.as_deref().map(str::trim);
+        written = written.and(write(
+            &files[1],
+            &json(&sound(Path::new("/proc/asound"), sys, lit)),
+        ));
+    }
+    if due & CAMERAS != 0 {
+        written = written.and(write(
+            &files[2],
+            &json(&cameras(sys, dev, Path::new(HOLDERS))),
+        ));
+    }
+    if let Err(error) = written {
+        eprintln!("<4>can't write the desk's facts: {error}");
+    }
+}
+
 fn run(folder: &Path) -> ExitCode {
     let lighting = folder
         .parent()
@@ -1078,52 +1166,45 @@ fn run(folder: &Path) -> ExitCode {
         PathBuf::from(HOLDERS),
         IN_CLOSE_WRITE | IN_MOVED_TO | IN_CREATE | IN_DELETE,
     )];
-    let (mut stop, mut kernel, mut changes, mut held) =
-        match (stopping(), uevents(), watches(&sounds), watches(&holders)) {
-            (Ok(stop), Ok(kernel), Ok(changes), Ok(held)) => (stop, kernel, changes, held),
-            (Err(error), ..) | (_, Err(error), ..) | (_, _, Err(error), _) | (.., Err(error)) => {
-                eprintln!("<3>can't hear the desk's devices: {error}");
-                return ExitCode::FAILURE;
-            }
-        };
+    // Made before it's watched for the monitors' facts.
     if let Err(error) = fs::create_dir_all(folder) {
         eprintln!("<3>can't make {}: {error}", folder.display());
         return ExitCode::FAILURE;
     }
+    let monitors = vec![(folder.to_owned(), IN_MOVED_TO | IN_DELETE)];
+    let (mut stop, mut kernel, mut changes, mut held, mut said) = match (
+        stopping(),
+        uevents(),
+        watches(&sounds),
+        watches(&holders),
+        watches(&monitors),
+    ) {
+        (Ok(stop), Ok(kernel), Ok(changes), Ok(held), Ok(said)) => {
+            (stop, kernel, changes, held, said)
+        }
+        (Err(error), ..)
+        | (_, Err(error), ..)
+        | (_, _, Err(error), ..)
+        | (_, _, _, Err(error), _)
+        | (.., Err(error)) => {
+            eprintln!("<3>can't hear the desk's devices: {error}");
+            return ExitCode::FAILURE;
+        }
+    };
     let files = [
         folder.join("displays.json"),
         folder.join("sound.json"),
         folder.join("cameras.json"),
     ];
-    let (sys, dev) = (Path::new("/sys"), Path::new("/dev"));
     let mut due = DISPLAYS | SOUND | CAMERAS;
     loop {
-        let mut written = Ok(());
-        if due & DISPLAYS != 0 {
-            written = written.and(write(&files[0], &json(&displays(sys))));
-        }
-        if due & SOUND != 0 {
-            let said = fs::read_to_string(&lighting).ok();
-            let lit = said.as_deref().map(str::trim);
-            written = written.and(write(
-                &files[1],
-                &json(&sound(Path::new("/proc/asound"), sys, lit)),
-            ));
-        }
-        if due & CAMERAS != 0 {
-            written = written.and(write(
-                &files[2],
-                &json(&cameras(sys, dev, Path::new(HOLDERS))),
-            ));
-        }
-        if let Err(error) = written {
-            eprintln!("<4>can't write the desk's facts: {error}");
-        }
+        rewrite(due, &files, folder, &lighting);
         let mut waiting = [
             stop.as_raw_fd(),
             kernel.as_raw_fd(),
             changes.as_raw_fd(),
             held.as_raw_fd(),
+            said.as_raw_fd(),
         ]
         .map(|fd| PollFd {
             fd,
@@ -1132,8 +1213,8 @@ fn run(folder: &Path) -> ExitCode {
         });
         due = 0;
         while due == 0 {
-            // SAFETY: four valid pollfds for the length given.
-            if unsafe { poll(waiting.as_mut_ptr(), 4, -1) } < 0 {
+            // SAFETY: five valid pollfds for the length given.
+            if unsafe { poll(waiting.as_mut_ptr(), 5, -1) } < 0 {
                 continue;
             }
             if waiting[0].revents & POLLIN != 0 {
@@ -1156,6 +1237,9 @@ fn run(folder: &Path) -> ExitCode {
             });
             due |= heard(&mut held, &|events| {
                 if events.is_empty() { 0 } else { CAMERAS }
+            });
+            due |= heard(&mut said, &|events| {
+                if names_a_monitor(events) { DISPLAYS } else { 0 }
             });
         }
     }
@@ -1321,7 +1405,12 @@ Capture:
     #[test]
     fn a_running_stream_says_its_format_period_and_buffer() {
         let hw = "access: MMAP_INTERLEAVED\nformat: S24_3LE\nsubformat: STD\nchannels: 1\nrate: 48000 (48000/1)\nperiod_size: 256\nbuffer_size: 16384\n";
-        assert_eq!(running(hw), "48 kHz, 24 bit, period 256, buffer 16384");
+        assert_eq!(
+            running(hw),
+            "48 kHz, 24 bit, period 256 (5.3 ms), buffer 16384 (341.3 ms)"
+        );
+        assert_eq!(milliseconds(1024, 44_100), "23.2 ms");
+        assert_eq!(milliseconds(0, 48_000), "0.0 ms");
         assert_eq!(running("closed\n"), "");
     }
 
@@ -1463,6 +1552,47 @@ Capture:
         event.extend_from_slice(&u32::try_from(padded.len()).unwrap().to_ne_bytes());
         event.extend_from_slice(&padded);
         event
+    }
+
+    #[test]
+    fn a_monitor_s_ddc_facts_are_found_by_its_edid() {
+        let told = std::env::temp_dir().join(format!("desk-told-{}", std::process::id()));
+        fs::create_dir_all(&told).unwrap();
+        fs::write(
+            told.join("ddc-220ed336000000001c1f"),
+            "brightness\t40%\nnot a fact\nfirmware level\t1.0\n",
+        )
+        .unwrap();
+        let said = monitor_said(&told, &bytes(Z27K_G3));
+        assert_eq!(
+            said,
+            vec![
+                ("brightness".to_owned(), "40%".to_owned()),
+                ("firmware level".to_owned(), "1.0".to_owned()),
+            ]
+        );
+        assert!(
+            monitor_said(&told, &[0; 128]).is_empty(),
+            "another monitor's"
+        );
+        fs::remove_dir_all(&told).unwrap();
+    }
+
+    #[test]
+    fn a_monitor_s_facts_written_whole_are_heard_and_their_copy_is_not() {
+        assert!(names_a_monitor(&event(
+            IN_MOVED_TO,
+            "ddc-220ed336000000001c1f"
+        )));
+        assert!(names_a_monitor(&event(
+            IN_DELETE,
+            "ddc-220ed336000000001c1f"
+        )));
+        assert!(!names_a_monitor(&event(
+            IN_MOVED_TO,
+            "ddc-220ed336000000001c1f.new"
+        )));
+        assert!(!names_a_monitor(&event(IN_MOVED_TO, "displays.json")));
     }
 
     #[test]
