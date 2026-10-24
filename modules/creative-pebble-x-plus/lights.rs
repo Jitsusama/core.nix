@@ -30,6 +30,11 @@
 //! it stays off until it's switched on again, and switched on there, it
 //! counts as someone using them.
 //!
+//! What the lighting is doing, "on", "off" or "off by hand", goes to a
+//! file named `pebble-lights` beside LOCKED, for the launcher's facts
+//! (modules/desk-facts), and the file goes when the speakers do or this
+//! stops.
+//!
 //! It needs only the standard library, which already links the C library
 //! these few calls come from.
 
@@ -378,11 +383,17 @@ struct Lights {
     told: Option<bool>,
     /// Whether someone switched it off at the speakers.
     by_hand: bool,
+    /// Where what it's doing is said, and what was last said there.
+    said: PathBuf,
+    saying: Option<&'static str>,
 }
 
 impl Lights {
     fn new(lock: PathBuf, idle: Duration) -> Self {
+        let said = lock.with_file_name("pebble-lights");
         Self {
+            said,
+            saying: None,
             lock,
             idle,
             speakers: None,
@@ -493,6 +504,42 @@ impl Lights {
         }
     }
 
+    /// What the lighting is doing, in words, while there are speakers.
+    fn doing(&self) -> Option<&'static str> {
+        self.speakers.as_ref()?;
+        match (self.lit?, self.by_hand) {
+            (true, _) => Some("on"),
+            (false, true) => Some("off by hand"),
+            (false, false) => Some("off"),
+        }
+    }
+
+    /// Says what the lighting is doing, when that's changed: written whole
+    /// through a copy renamed over the file, or the file removed.
+    fn say(&mut self) {
+        let doing = self.doing();
+        if doing == self.saying {
+            return;
+        }
+        let copy = self.said.with_extension("new");
+        let said = match doing {
+            Some(words) => {
+                fs::write(&copy, format!("{words}\n")).and_then(|()| fs::rename(&copy, &self.said))
+            }
+            None => fs::remove_file(&self.said).or_else(|error| {
+                if error.kind() == ErrorKind::NotFound {
+                    Ok(())
+                } else {
+                    Err(error)
+                }
+            }),
+        };
+        match said {
+            Ok(()) => self.saying = doing,
+            Err(error) => eprintln!("<4>can't say what the lighting does: {error}"),
+        }
+    }
+
     /// How long until the lighting should go out of itself, if it will.
     fn until_quiet(&self) -> Option<Duration> {
         (self.lit == Some(true) && !self.playing && !self.locked && !self.by_hand)
@@ -523,6 +570,7 @@ fn run(lock: PathBuf, idle: Duration) -> ExitCode {
         let on = lights.wanted();
         let why = lights.why(on);
         lights.settle(on, why);
+        lights.say();
 
         let speakers = lights
             .speakers
@@ -557,6 +605,8 @@ fn run(lock: PathBuf, idle: Duration) -> ExitCode {
             let mut signal = [0; 128];
             let _ = stop.read(&mut signal);
             lights.settle(false, "it's stopping");
+            lights.speakers = None;
+            lights.say();
             return ExitCode::SUCCESS;
         }
         if waiting[0].revents & POLLIN != 0 {
@@ -789,6 +839,23 @@ mod tests {
         assert!(!lights.wanted());
         lights.hear(&[Said::Lit(true)]);
         assert!(lights.wanted());
+    }
+
+    #[test]
+    fn what_the_lighting_does_is_said_only_while_there_are_speakers() {
+        let mut lights = lights();
+        lights.lit = Some(false);
+        assert_eq!(lights.doing(), None);
+        lights.speakers = Some(Speakers {
+            file: File::open("/dev/null").unwrap(),
+        });
+        assert_eq!(lights.doing(), Some("off"));
+        lights.by_hand = true;
+        assert_eq!(lights.doing(), Some("off by hand"));
+        lights.lit = Some(true);
+        assert_eq!(lights.doing(), Some("on"));
+        lights.lit = None;
+        assert_eq!(lights.doing(), None, "not yet known");
     }
 
     #[test]

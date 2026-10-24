@@ -59,6 +59,8 @@ in
       PrivateNetwork = true;
       RestrictAddressFamilies = "none";
       ProtectSystem = "strict";
+      # Where it says what the lighting does.
+      ReadWritePaths = [ "%t" ];
       ProtectHome = "read-only";
       PrivateTmp = true;
       CapabilityBoundingSet = "";
