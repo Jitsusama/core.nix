@@ -1767,6 +1767,32 @@ with subtest("a search lists each thing once"):
     machine.send_key("esc")
     machine.wait_until_fails(closed, timeout=10)
 
+with subtest("a word typed whole lands on what it says"):
+    closed = in_session(LAUNCHER_OPEN)
+
+    def selects(key: str) -> Callable[[Json], bool]:
+        """Give a test that Return's row is the one with this key."""
+        return lambda shown: bool(shown["selected"]) and shown["selected"]["is"] == key
+
+    # "quiet" is do not disturb's own word, and only the start of the
+    # volume's "quieter". "pi" is two letters, too few for a
+    # collection's words to count by their start, so the Clipboard's
+    # pictures don't. "copy" and "light" each once found nothing.
+    lands: list[tuple[str, Callable[[Json], bool]]] = [
+        ("quiet", selects("session:quiet")),
+        (
+            "pi",
+            lambda shown: selects("collection:agents")(shown) and "Clipboard" not in shown["rows"],
+        ),
+        ("copy", selects("collection:clipboard")),
+        ("light", lambda shown: "Brighten the screen" in shown["rows"]),
+    ]
+    for typed, holds in lands:
+        answer(typed)
+        launcher_until(holds)
+        machine.send_key("esc")
+        machine.wait_until_fails(closed, timeout=10)
+
 with subtest("Super+Shift+/ shows every layer's shortcuts, and runs the desktop's"):
     windows = len(json.loads(as_account("niri msg --json windows")))
     machine.send_key("meta_l-shift-slash")
