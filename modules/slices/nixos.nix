@@ -49,6 +49,15 @@
 # least it takes from the limit before asking rtkit, so its own threads keep
 # rtkit's 20, and keyd its 49. A real-time thread that runs 200 ms without
 # resting is stopped, so one that spins can't take the machine.
+#
+# Agents' work runs without real time. What pi starts inherits the account's
+# limit, and a headless compositor an agent starts for a test takes SCHED_RR
+# with it, ahead of everything Joel uses. So jobs-sorter puts every
+# real-time thread under jobs.service, jobs-work.slice and jobs-timed.slice
+# back on the ordinary policy, and drops its process's real-time limit to
+# none, so what it starts afterwards can't take it either. Joel's own
+# terminal work in jobs-awaited.slice keeps it: a player he runs there is
+# something he listens to.
 {
   config,
   lib,
@@ -345,6 +354,12 @@ in
           "jobs.slice/jobs-awaited.slice/awaited.service"
           "--split"
           "jobs.slice/jobs-timed.slice/timed.service"
+          "--no-real-time"
+          "jobs.slice/jobs.service"
+          "--no-real-time"
+          "jobs.slice/jobs-work.slice"
+          "--no-real-time"
+          "jobs.slice/jobs-timed.slice"
         ];
         Restart = "on-failure";
         RestartSec = 5;

@@ -19,6 +19,7 @@ if TYPE_CHECKING:
 values = json.loads(Path("@values@").read_text())
 sleep: str = values["sleep"]
 bash: str = values["bash"]
+chrt: str = values["chrt"]
 
 account = "/sys/fs/cgroup/user.slice/user-1000.slice/user@1000.service"
 # Both machines boot at once, rather than the measured one only once the first is done with, so
@@ -167,6 +168,49 @@ with subtest("each piece of work written into jobs gets a scope of its own"):
     # The holder stays, so the next write still lands.
     holder = machine.succeed("systemctl -M alice@ --user show -P MainPID jobs.service").strip()
     t.assertIn(holder, machine.succeed(f"cat {jobs}/jobs.service/cgroup.procs").split())
+
+
+def real_time(seconds: int, cgroup: str) -> None:
+    """Write a shell into the cgroup as pi or a terminal does, to sleep in SCHED_RR.
+
+    It takes real time only once it has a scope of its own, then sleeps the given seconds.
+    """
+    machine.succeed(
+        f"systemd-run -M alice@ --user --slice=jobs.slice --unit=rt-{seconds}"
+        f" --expand-environment=no -p KillMode=process {bash} -c"
+        f" 'echo $$ > {cgroup}/cgroup.procs;"
+        " until grep -q /work- /proc/$$/cgroup; do sleep 0.1; done;"
+        f" exec {chrt} --rr 1 {sleep} {seconds}'"
+    )
+
+
+def policy(seconds: int) -> str:
+    """Give the scheduling policy of the sleep that waits the given seconds."""
+    return machine.succeed(f"{chrt} -p $(pgrep -xf '{sleep} {seconds}')")
+
+
+def rt_limit(seconds: int) -> list[str]:
+    """Give the real-time priority limit of the sleep that waits the given seconds."""
+    return machine.succeed(
+        f"grep 'Max realtime priority' /proc/$(pgrep -xf '{sleep} {seconds}')/limits"
+    ).split()[3:5]
+
+
+with subtest("work from agents loses real time, and Joel's own work keeps it"):
+    # Joel's first: once an agent's has lost it, the sorter has looked at
+    # Joel's in the same pass, while it ran in real time.
+    real_time(1006, f"{jobs}/jobs-awaited.slice/awaited.service")
+    machine.wait_until_succeeds(
+        f"{chrt} -p $(pgrep -xf '{sleep} 1006') | grep -q SCHED_RR", timeout=30
+    )
+    real_time(1005, f"{jobs}/jobs.service")
+    machine.wait_until_succeeds(
+        f"{chrt} -p $(pgrep -xf '{sleep} 1005') | grep -q SCHED_OTHER", timeout=30
+    )
+    # Nor can it, or what it starts, take real time back.
+    t.assertEqual(rt_limit(1005), ["0", "0"])
+    t.assertIn("SCHED_RR", policy(1006))
+    t.assertEqual(rt_limit(1006), ["10", "10"])
 
 
 def weight(path: str) -> str:

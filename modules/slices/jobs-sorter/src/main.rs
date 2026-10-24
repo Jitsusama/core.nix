@@ -36,9 +36,15 @@
 //! A process forked as its tree moved goes to its parent's scope. The
 //! unit's own holder stays, so the cgroup is there for the next write.
 //!
+//! Work under a `--no-real-time` cgroup runs without real time, which
+//! `src/real_time.rs` says why and how.
+//!
 //! Usage: jobs-sorter [--under app.slice] [--home kitty-]... [--keep pi]...
 //!        [--jobs jobs.slice/jobs.service] [--busy 500] [--ticks 2]
 //!        [--every 1000] [--split jobs.slice/jobs.service[=SLICE]]...
+//!        [--no-real-time jobs.slice/jobs-work.slice]...
+
+mod real_time;
 
 use std::collections::{HashMap, HashSet};
 use std::fs;
@@ -61,6 +67,7 @@ struct Settings {
     ticks: u32,
     every: Duration,
     split: Vec<String>,
+    no_real_time: Vec<String>,
 }
 
 /// One process, as /proc/<pid>/stat describes it.
@@ -535,6 +542,7 @@ fn settings() -> Result<Settings, String> {
         ticks: 2,
         every: Duration::from_millis(1000),
         split: Vec::new(),
+        no_real_time: Vec::new(),
     };
     let mut args = std::env::args().skip(1);
     while let Some(flag) = args.next() {
@@ -545,6 +553,7 @@ fn settings() -> Result<Settings, String> {
             "--keep" => settings.keep.push(value()?),
             "--jobs" => settings.jobs = value()?,
             "--split" => settings.split.push(value()?),
+            "--no-real-time" => settings.no_real_time.push(value()?),
             "--busy" => settings.busy_ms = value()?.parse().map_err(|_| "--busy is ms")?,
             "--ticks" => settings.ticks = value()?.parse().map_err(|_| "--ticks is a count")?,
             "--every" => {
@@ -586,6 +595,7 @@ fn run() -> Result<(), String> {
     };
     let mut warned = false;
     let mut holders: Vec<Option<u32>> = vec![None; settings.split.len()];
+    let mut pass: u32 = 0;
     loop {
         thread::sleep(settings.every);
         let now = uptime_ticks().ok_or("can't read /proc/uptime")?;
@@ -619,6 +629,12 @@ fn run() -> Result<(), String> {
         for (cgroup, holder) in settings.split.iter().zip(holders.iter_mut()) {
             split(&root, &manager, cgroup, holder, &mut warned);
         }
+        if pass.is_multiple_of(real_time::EVERY) {
+            for cgroup in &settings.no_real_time {
+                real_time::take(&root.join(cgroup), &mut warned);
+            }
+        }
+        pass = pass.wrapping_add(1);
         sorter.finish(&alive, now);
     }
 }
@@ -644,6 +660,7 @@ mod tests {
             ticks: 2,
             every: Duration::from_millis(1000),
             split: vec!["jobs.slice/jobs.service".into()],
+            no_real_time: vec!["jobs.slice/jobs-work.slice".into()],
         }
     }
 
