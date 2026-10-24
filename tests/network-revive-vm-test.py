@@ -11,6 +11,8 @@ import re
 import shlex
 from typing import TYPE_CHECKING
 
+from vm_helpers import as_account
+
 if TYPE_CHECKING:
     from driver_names import machine, subtest, t
 
@@ -20,8 +22,7 @@ JOURNAL = "su - joel -c 'XDG_RUNTIME_DIR=/run/user/1000 journalctl --user -u net
 
 def as_joel(command: str) -> str:
     """Run the command as joel, in his home, with his systemd at hand, and give its output."""
-    environment = "export XDG_RUNTIME_DIR=/run/user/1000; cd ~; "
-    return machine.succeed("su - joel -c " + shlex.quote(environment + command))
+    return as_account(machine, command)
 
 
 def state(unit: str) -> list[str]:
