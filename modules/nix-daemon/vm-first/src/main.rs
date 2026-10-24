@@ -17,6 +17,15 @@
 //! controllers to weigh them by, so this hands them on too. Everything
 //! outside the daemon's cgroup, what Joel uses, keeps its lead.
 //!
+//! Any other build is weighed by the quest that asked for it. Each of the
+//! daemon's workers serves one client and writes the client's pid in its
+//! own command line, which anyone may read, and a build's processes are
+//! the worker's children. A client an agent ran sits in its quest's slice,
+//! jobs-work-<quest>.slice, which jobs-sorter weighs by the quest's
+//! priority, so the build takes that slice's CPU weight, kept below a VM's.
+//! A build whose client sits in no quest's slice, or has gone, stays as
+//! Nix made it.
+//!
 //! Usage: vm-first [--cgroup /sys/fs/cgroup/build.slice/nix-daemon.service]
 //!        [--name qemu-system]... [--nice -10] [--weight 1000] [--every 1000]
 
@@ -36,6 +45,12 @@ const ESRCH: i32 = 3;
 const ENOENT: i32 = 2;
 /// errno for a cgroup that still holds processes of its own.
 const EBUSY: i32 = 16;
+/// Where the cgroup file system is, which a process's cgroup is under.
+const CGROUP_ROOT: &str = "/sys/fs/cgroup";
+/// How jobs-sorter names a quest's slice, before the quest's folded id.
+const QUEST_SLICE: &str = "jobs-work-";
+/// How far up from a build's process its worker may be.
+const WORKER_DEPTH: usize = 8;
 
 #[repr(C)]
 struct SchedParam {
@@ -84,6 +99,75 @@ fn parse_stat(line: &str) -> Option<Scheduling> {
         nice: rest.get(19 - 3)?.parse().ok()?,
         policy: rest.get(41 - 3)?.parse().ok()?,
     })
+}
+
+/// Reads a process's parent (field 4) from its stat line.
+fn parse_ppid(line: &str) -> Option<u32> {
+    let close = line.rfind(')')?;
+    line[close + 1..]
+        .split_whitespace()
+        .nth(4 - 3)?
+        .parse()
+        .ok()
+}
+
+/// The client a daemon worker serves, from its command line: Nix writes
+/// the client's pid over the worker's `--daemon`, padding it with NULs.
+fn client_of(cmdline: &[u8]) -> Option<u32> {
+    let mut args = cmdline.split(|byte| *byte == 0);
+    let program = args.next()?;
+    if !program
+        .rsplit(|byte| *byte == b'/')
+        .next()?
+        .eq(b"nix-daemon")
+    {
+        return None;
+    }
+    std::str::from_utf8(args.next()?).ok()?.parse().ok()
+}
+
+/// The quest's slice a process's cgroup sits in, as a path under the
+/// cgroup file system, from its `/proc/<pid>/cgroup`.
+fn quest_slice(cgroup: &str) -> Option<&str> {
+    let path = cgroup.lines().find_map(|line| line.strip_prefix("0::"))?;
+    let mut end = 0;
+    for part in path.split('/') {
+        end += part.len();
+        let quest = part
+            .strip_prefix(QUEST_SLICE)
+            .and_then(|rest| rest.strip_suffix(".slice"));
+        if quest.is_some_and(|id| !id.is_empty()) {
+            return Some(&path[..end]);
+        }
+        end += 1;
+    }
+    None
+}
+
+/// A quest's build weight: the quest's own, kept below a VM's so a check's
+/// VM still goes ahead of every build.
+fn quest_weight(quest: u64, vm: u64) -> u64 {
+    quest.min(vm.saturating_sub(1)).max(1)
+}
+
+/// The CPU weight of the quest that asked for a build, if its client sits
+/// in a quest's slice.
+fn weight_of_quest(build: &Path) -> Option<u64> {
+    let procs = fs::read_to_string(build.join("cgroup.procs")).ok()?;
+    let mut pid: u32 = procs.lines().next()?.parse().ok()?;
+    for _ in 0..WORKER_DEPTH {
+        if let Some(client) = fs::read(format!("/proc/{pid}/cmdline"))
+            .ok()
+            .and_then(|cmdline| client_of(&cmdline))
+        {
+            let cgroup = fs::read_to_string(format!("/proc/{client}/cgroup")).ok()?;
+            let slice = quest_slice(&cgroup)?;
+            let weight = format!("{CGROUP_ROOT}{slice}/cpu.weight");
+            return fs::read_to_string(weight).ok()?.trim().parse().ok();
+        }
+        pid = parse_ppid(&fs::read_to_string(format!("/proc/{pid}/stat")).ok()?)?;
+    }
+    None
 }
 
 /// Whether a process's name marks it as a VM. A name is at most 15
@@ -185,10 +269,10 @@ fn hand_controllers(root: &Path, warned: &mut bool) {
     }
 }
 
-/// Weighs a build holding a VM above the builds beside it. The weight
-/// ranks it only among the daemon's builds, all in build.slice, so it
-/// never comes before what Joel uses.
-fn weigh(build: &Path, weight: u64, warned: &mut bool) {
+/// Weighs a build, for the VM it holds or the quest that asked for it.
+/// The weight ranks it only among the daemon's builds, all in build.slice,
+/// so it never comes before what Joel uses.
+fn weigh(build: &Path, weight: u64, reason: &str, warned: &mut bool) {
     for (file, value) in weight_files(weight) {
         let path = build.join(file);
         // A controller the daemon hasn't handed on has no file to write.
@@ -199,7 +283,7 @@ fn weigh(build: &Path, weight: u64, warned: &mut bool) {
             continue;
         }
         match fs::write(&path, &value) {
-            Ok(()) => eprintln!("Weighed {} at {value} for its VM.", path.display()),
+            Ok(()) => eprintln!("Weighed {} at {value} for its {reason}.", path.display()),
             Err(error) if error.raw_os_error() == Some(ENOENT) => {}
             Err(error) if !*warned => {
                 eprintln!("Couldn't weigh {}: {error}", path.display());
@@ -316,7 +400,14 @@ fn look(settings: &Settings, warned: &mut bool) {
     sort_cgroup(&settings.cgroup, settings, warned);
     for build in build_cgroups(&settings.cgroup) {
         if sort_cgroup(&build, settings, warned) {
-            weigh(&build, settings.weight, warned);
+            weigh(&build, settings.weight, "VM", warned);
+        } else if let Some(quest) = weight_of_quest(&build) {
+            weigh(
+                &build,
+                quest_weight(quest, settings.weight),
+                "quest",
+                warned,
+            );
         }
     }
 }
@@ -508,6 +599,56 @@ mod tests {
                 ("io.weight", "default 1000".to_string())
             ]
         );
+    }
+
+    #[test]
+    fn a_daemon_worker_names_its_client() {
+        // Nix writes the client's pid over "--daemon", padding with NULs.
+        assert_eq!(
+            client_of(b"nix-daemon\x00307605\x00\x00\x00"),
+            Some(307_605)
+        );
+        assert_eq!(
+            client_of(b"/nix/store/x-nix/bin/nix-daemon\x0042\x00"),
+            Some(42)
+        );
+        assert_eq!(client_of(b"nix-daemon\x00--daemon\x00"), None);
+        assert_eq!(client_of(b"bash\x00123\x00"), None);
+        assert_eq!(client_of(b""), None);
+    }
+
+    #[test]
+    fn reads_a_parent() {
+        let mut line = stat("cc1", 0, 3);
+        line = line.replacen(" S 0 ", " S 307960 ", 1);
+        assert_eq!(parse_ppid(&line), Some(307_960));
+        assert_eq!(parse_ppid("4242 (cc1)"), None);
+    }
+
+    #[test]
+    fn finds_the_quest_a_client_works_for() {
+        let quest = "/user.slice/user-1000.slice/user@1000.service/jobs.slice/jobs-work.slice/jobs-work-qest20261024abc123.slice";
+        assert_eq!(
+            quest_slice(&format!("0::{quest}/work-307590-4656305.scope\n")),
+            Some(quest)
+        );
+        assert_eq!(
+            quest_slice(
+                "0::/user.slice/user-1000.slice/user@1000.service/jobs.slice/jobs-work.slice/work-1-2.scope\n"
+            ),
+            None
+        );
+        assert_eq!(
+            quest_slice("0::/system.slice/compiler-build.service\n"),
+            None
+        );
+    }
+
+    #[test]
+    fn a_quests_build_stays_below_a_vms() {
+        assert_eq!(quest_weight(400, 1000), 400);
+        assert_eq!(quest_weight(10_000, 1000), 999);
+        assert_eq!(quest_weight(0, 1000), 1);
     }
 
     #[test]

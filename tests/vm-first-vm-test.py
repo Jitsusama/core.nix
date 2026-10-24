@@ -5,11 +5,13 @@ handed the controllers for CPU, disk, memory and pids. A build running a
 process named as qemu is has every thread of it put to the normal policy at
 nice -10, a thread it starts afterwards included, and its cgroup weighed at
 1000 for CPU and disk, while a compiler's build beside it stays as the
-daemon set it, at 100. The daemon's own cgroup is marked for systemd-oomd
-to spare while a build can go instead. Restarting the daemon, ten times
-over with vm-first looking every 20 ms, leaves both running, and the new
-daemon starts and builds again. Stopping a build leaves nothing of it. A
-build asking for a range of user ids gets 65,536.
+daemon set it, at 100. A build asked for from a quest's slice, as an agent's
+command asks, takes that slice's weight, and follows it when it changes.
+The daemon's own cgroup is marked for systemd-oomd to spare while a build
+can go instead. Restarting the daemon, ten times over with vm-first looking
+every 20 ms, leaves the builds running, and the new daemon starts and
+builds again. Stopping a build leaves nothing of it. A build asking for a
+range of user ids gets 65,536.
 """
 
 from typing import TYPE_CHECKING
@@ -24,6 +26,8 @@ AS_BUILT = "0 B"
 # The ids a build that asks for a range of them is given.
 RANGE = "65536"
 DAEMON = "/sys/fs/cgroup/build.slice/nix-daemon.service"
+# A quest's slice, named as jobs-sorter names one under jobs-work.slice.
+QUEST = "jobs-work-qestabc.slice"
 
 
 def scheduling(pid: str) -> str:
@@ -115,6 +119,26 @@ with subtest("a compiler's build stays as the daemon set it"):
     assert scheduling(compiler) == AS_BUILT, scheduling(compiler)
     assert machine.succeed(f"cat {cgroup_of(compiler)}/cpu.weight").strip() == "100"
 
+with subtest("a quest's build is weighed as its quest, and follows it"):
+    # The slice an agent's command for a quest runs in, as jobs-sorter
+    # names it, weighed once the build's client brings it into being.
+    machine.succeed(
+        f"systemd-run --unit=quest-build --slice={QUEST} {NIX_BUILD} /etc/quest-build.nix"
+    )
+    machine.succeed(f"systemctl set-property --runtime {QUEST} CPUWeight=400")
+    machine.wait_until_succeeds(f"[ $(ls -d {DAEMON}/nix-build-* | wc -l) -eq 3 ]", timeout=60)
+    others = {cgroup_of(vm), cgroup_of(compiler)}
+    builds = machine.succeed(f"ls -d {DAEMON}/nix-build-*").split()
+    (quests,) = [build for build in builds if build not in others]
+
+    machine.wait_until_succeeds(f"grep -qx 400 {quests}/cpu.weight", timeout=10)
+    assert machine.succeed(f"cat {quests}/io.weight").strip() == "default 400"
+
+    machine.succeed(f"systemctl set-property --runtime {QUEST} CPUWeight=50")
+
+    machine.wait_until_succeeds(f"grep -qx 50 {quests}/cpu.weight", timeout=10)
+    assert machine.succeed(f"cat {cgroup_of(compiler)}/cpu.weight").strip() == "100"
+
 with subtest("a restarted daemon leaves its builds running, and builds again"):
     # Between the old daemon going and the new one moving aside, the
     # service's cgroup must take no controllers, or systemd can't start
@@ -138,7 +162,7 @@ with subtest("a restarted daemon leaves its builds running, and builds again"):
     assert given == RANGE, f"the build was given {given} ids"
 
 with subtest("a stopped build leaves nothing running, nor its cgroup"):
-    machine.succeed("systemctl stop vm-build compiler-build")
+    machine.succeed("systemctl stop vm-build compiler-build quest-build")
 
     machine.wait_until_fails("pgrep -x qemu-system-x86 || pgrep -x cc1", timeout=60)
     machine.wait_until_fails(f"ls -d {DAEMON}/nix-build-*", timeout=60)
