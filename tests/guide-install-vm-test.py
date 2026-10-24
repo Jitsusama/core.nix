@@ -373,6 +373,11 @@ with subtest("the guide seals the disk to the TPM with a PIN, a YubiKey opening 
     t.assertRegex(
         held, r"guide .*sleep:idle:handle-lid-switch +finishing this machine +block", held
     )
+    # Whatever writes over the screen as it waits, as the kernel does
+    # when a device comes or goes, is undone within seconds.
+    machine.succeed("for _ in $(seq 40); do echo scribbled; done > /dev/tty1")
+    on_screen("Plug in a YubiKey, which opens the disk for the TPM", timeout=10)
+    t.assertNotIn("scribbled", screen())
     enter("")
     on_screen("which the TPM takes too")
     enter(pin)

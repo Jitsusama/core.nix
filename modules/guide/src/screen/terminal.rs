@@ -72,10 +72,16 @@ fn broken(why: std::io::Error) -> Fault {
     Fault::unreadable("the terminal", why)
 }
 
+/// How often a screen waiting for a key is drawn again, undoing whatever
+/// else wrote over it meanwhile: the kernel's messages on a console, a
+/// device plugged in or out.
+const REPAINT: Duration = Duration::from_secs(2);
+
 /// The terminal the guide runs in, held in raw mode on its own screen
-/// until it's dropped.
+/// until it's dropped, with the last screen it showed.
 pub struct Terminal {
     out: Stdout,
+    last: Option<(Drawn, Theme)>,
 }
 
 impl Terminal {
@@ -83,7 +89,7 @@ impl Terminal {
         let mut out = stdout();
         terminal::enable_raw_mode().map_err(broken)?;
         execute!(out, terminal::EnterAlternateScreen, cursor::Hide).map_err(broken)?;
-        Ok(Terminal { out })
+        Ok(Terminal { out, last: None })
     }
 
     /// Whether it's the Linux console, whose font has none of the marks
@@ -121,9 +127,23 @@ fn pressed(event: &Event) -> Option<Press> {
     })
 }
 
+impl Terminal {
+    /// Draws the last screen shown again, as it was.
+    fn repaint(&mut self) -> Result<(), Fault> {
+        match &self.last {
+            Some((drawn, theme)) => paint(&mut self.out, drawn, theme),
+            None => Ok(()),
+        }
+    }
+}
+
 impl Keys for Terminal {
     fn press(&mut self) -> Result<Press, Fault> {
         loop {
+            if !event::poll(REPAINT).map_err(broken)? {
+                self.repaint()?;
+                continue;
+            }
             if let Some(press) = pressed(&event::read().map_err(broken)?) {
                 return Ok(press);
             }
@@ -134,8 +154,12 @@ impl Keys for Terminal {
         let until = std::time::Instant::now() + wait;
         loop {
             let left = until.saturating_duration_since(std::time::Instant::now());
-            if left.is_zero() || !event::poll(left).map_err(broken)? {
+            if left.is_zero() {
                 return Ok(None);
+            }
+            if !event::poll(left.min(REPAINT)).map_err(broken)? {
+                self.repaint()?;
+                continue;
             }
             if let Some(press) = pressed(&event::read().map_err(broken)?) {
                 return Ok(Some(press));
@@ -150,7 +174,9 @@ impl Screen for Terminal {
     }
 
     fn show(&mut self, drawn: &Drawn, theme: &Theme) -> Result<(), Fault> {
-        paint(&mut self.out, drawn, theme)
+        paint(&mut self.out, drawn, theme)?;
+        self.last = Some((drawn.clone(), theme.clone()));
+        Ok(())
     }
 
     fn painter(&self) -> Option<Box<dyn Paint>> {

@@ -320,6 +320,9 @@ driven on; the installed machine's steps come later.
   YubiKey come back as another device. A Mac runs caffeinate instead,
   which can't keep it awake with its lid closed. A refused lock leaves
   the guide working on.
+- **Drawn again.** A screen waiting for a key is drawn again every two
+  seconds (`src/screen/terminal.rs`), since the kernel writes on the
+  console when a device comes or goes and nothing else would redraw it.
 - **The vault.** A FAT32 partition any machine can read, holding files
   sealed with age to a vault key made for it. The key is sealed to each
   YubiKey, and separately to the recovery passphrase, since age won't mix a

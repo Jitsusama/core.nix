@@ -892,19 +892,20 @@
     the greeter signs in and out, not waiting on the account's setup
   '';
   vm-guide-installs = ''
-    the guide, driven by its keys and holding the machine awake, installs a machine from its stick:
-    two keys and a recovery key of seven words, shown alone for a phone and typed back, Secure Boot
-    enforcing with its keys, its firmware enrolling them before the disk first asks; then seals the
-    disk to the TPM with a PIN, which opens it at the next boot, leaving one systemd-pcrlock policy;
-    makes the account's TPM keys under one PIN and a spare SSH key on each YubiKey, refusing one
-    asked for by the other's name; clears the TPM, opens with a YubiKey, seals again, makes the keys
-    it lost again and downloads a lost spare; a host writes a stick from the rescue bundle the
-    install sealed to the recovery key, which the firmware boots while enforcing; then the install's
-    own stick, which it made the machine's by carrying its keys and bundle and signing itself with
-    them, boots enforcing and reinstalls the machine with the same keys, whose guide frees the first
-    install's policy; and a firmware cleared of its keys gets them back from the machine's next
-    boot, not while a program it would start is unsigned, and the TPM alone opens the disk once
-    they're enrolled, the TPM and the YubiKeys sharing one PIN so no boot costs either a try
+    the guide, driven by its keys, holding the machine awake and drawing over what writes on its
+    screen, installs a machine from its stick: two keys and a recovery key of seven words, shown
+    alone for a phone and typed back, Secure Boot enforcing with its keys, its firmware enrolling
+    them before the disk first asks; then seals the disk to the TPM with a PIN, which opens it at
+    the next boot, leaving one systemd-pcrlock policy; makes the account's TPM keys under one PIN
+    and a spare SSH key on each YubiKey, refusing one asked for by the other's name; clears the TPM,
+    opens with a YubiKey, seals again, makes the keys it lost again and downloads a lost spare; a
+    host writes a stick from the rescue bundle the install sealed to the recovery key, which the
+    firmware boots while enforcing; then the install's own stick, which it made the machine's by
+    carrying its keys and bundle and signing itself with them, boots enforcing and reinstalls the
+    machine with the same keys, whose guide frees the first install's policy; and a firmware cleared
+    of its keys gets them back from the machine's next boot, not while a program it would start is
+    unsigned, and the TPM alone opens the disk once they're enrolled, the TPM and the YubiKeys
+    sharing one PIN so no boot costs either a try
   '';
   vm-guide-opens-the-vault = ''
     a stick's vault sealed to a FIDO2 key opens with its PIN, and without it by the passphrase
