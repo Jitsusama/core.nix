@@ -5,33 +5,29 @@ sound cards stand in for microphones, the second marked a webcam by udev, and th
 the rank WirePlumber gave each from pw-dump. It needs no value from Nix.
 """
 
-import shlex
 from typing import TYPE_CHECKING
+
+from vm_helpers import as_account
 
 if TYPE_CHECKING:
     from driver_names import machine, subtest
 
 
-def as_joel(command: str) -> str:
-    """Run a command in Joel's account, with his PipeWire's runtime folder, and give its output."""
-    environment = "export XDG_RUNTIME_DIR=/run/user/1000; cd ~; "
-    return machine.succeed("su - joel -c " + shlex.quote(environment + command))
-
-
 def rank(card: int) -> str:
     """Give the rank WirePlumber gave the microphone on a card, by the card's number."""
-    return as_joel(
+    return as_account(
+        machine,
         "pw-dump | jq -r '.[] | .info.props? // empty"
         ' | select(."media.class" == "Audio/Source"'
         f' and ."alsa.card" == {card}) | ."priority.session"'
-        "'"
+        "'",
     ).strip()
 
 
 machine.wait_for_unit("multi-user.target")
 machine.succeed("loginctl enable-linger joel")
 machine.wait_for_unit("user@1000.service")
-as_joel("systemctl --user start pipewire.service")
+as_account(machine, "systemctl --user start pipewire.service")
 machine.wait_for_unit("wireplumber.service", "joel")
 machine.wait_until_succeeds(
     "su - joel -c 'XDG_RUNTIME_DIR=/run/user/1000 pw-dump'"

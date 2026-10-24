@@ -41,6 +41,9 @@ pkgs.testers.runNixOSTest {
     ];
   };
 
+  # What VM tests' scripts share (tests/lib).
+  extraPythonPackages = python: [ (pkgs.callPackage ./lib/vm-helpers.nix { } python) ];
+
   testScript = builtins.readFile ./pebble-x-plus-vm-test.py;
   # nix fmt holds the script to mypy --strict against the driver's own types,
   # through driver_names.pyi, which the driver's lighter check can't find.

@@ -8,8 +8,9 @@ Nix: the stand-in speakers and headphones are named in the machine pebble-x-plus
 """
 
 import math
-import shlex
 from typing import TYPE_CHECKING
+
+from vm_helpers import as_account
 
 if TYPE_CHECKING:
     from driver_names import machine, subtest
@@ -23,12 +24,6 @@ UNCHANGED = 1
 CUT = -4
 
 
-def as_joel(command: str) -> str:
-    """Run a command as Joel, in his home, and give what it said."""
-    environment = "export XDG_RUNTIME_DIR=/run/user/1000; cd ~; "
-    return machine.succeed("su - joel -c " + shlex.quote(environment + command))
-
-
 def level(frequency: int, sink: str) -> float:
     """Play a tone to the default sink, and give the level its middle second reached sink at.
 
@@ -36,7 +31,8 @@ def level(frequency: int, sink: str) -> float:
     monitor by hand: left to WirePlumber, a recording of a sink with a smart filter is given the
     filter's input instead, which is the sound before the filter.
     """
-    as_joel(
+    as_account(
+        machine,
         "pw-record -P '{ node.name = heard node.autoconnect = false }' heard.wav"
         " & recording=$!;"
         " until pw-link -i | grep -q '^heard:input_FR'; do sleep 0.1; done;"
@@ -44,11 +40,12 @@ def level(frequency: int, sink: str) -> float:
         f" pw-play tone-{frequency}.wav;"
         # pw-record exits with 1 when interrupted, so its file is the
         # evidence rather than its status.
-        " kill -INT $recording; wait $recording; test -s heard.wav"
+        " kill -INT $recording; wait $recording; test -s heard.wav",
     )
-    rms = as_joel(
+    rms = as_account(
+        machine,
         "sox heard.wav -n silence 1 0.01 0.1% trim 1 1 stat 2>&1"
-        " | awk '/RMS +amplitude/ {print $3}'"
+        " | awk '/RMS +amplitude/ {print $3}'",
     )
     return float(rms)
 
@@ -72,25 +69,27 @@ tones = (1000, 10200)
 machine.wait_for_unit("multi-user.target")
 machine.succeed("loginctl enable-linger joel")
 machine.wait_for_unit("user@1000.service")
-as_joel("systemctl --user start pipewire.service")
+as_account(machine, "systemctl --user start pipewire.service")
 machine.wait_for_unit("wireplumber.service", "joel")
 for frequency in tones:
-    as_joel(f"sox -n -r 48000 -c 2 tone-{frequency}.wav synth 3 sine {frequency} vol 0.1")
+    as_account(
+        machine, f"sox -n -r 48000 -c 2 tone-{frequency}.wav synth 3 sine {frequency} vol 0.1"
+    )
 
 with subtest("the tuning starts with PipeWire"):
     tuning_ready()
 
 with subtest("without the tuning, the speakers hear what was played"):
-    as_joel("systemctl --user stop pebble-x-plus-tuning")
-    as_joel("pactl set-default-sink pebble")
+    as_account(machine, "systemctl --user stop pebble-x-plus-tuning")
+    as_account(machine, "pactl set-default-sink pebble")
     played = {frequency: level(frequency, "pebble") for frequency in tones}
     machine.log(f"played: {played}")
     assert all(value > HEARD for value in played.values()), played
 
 with subtest("the speakers hear the tuning"):
-    as_joel("systemctl --user start pebble-x-plus-tuning")
+    as_account(machine, "systemctl --user start pebble-x-plus-tuning")
     tuning_ready()
-    as_joel("pactl set-default-sink pebble")
+    as_account(machine, "pactl set-default-sink pebble")
     kept = decibels(level(1000, "pebble"), played[1000])
     cut = decibels(level(10200, "pebble"), played[10200])
     machine.log(f"1 kHz changed by {kept:.1f} dB, 10.2 kHz by {cut:.1f} dB")
@@ -98,7 +97,7 @@ with subtest("the speakers hear the tuning"):
     assert cut < CUT, cut
 
 with subtest("the headphones hear what was played"):
-    as_joel("pactl set-default-sink headphones")
+    as_account(machine, "pactl set-default-sink headphones")
     for frequency in tones:
         change = decibels(level(frequency, "headphones"), played[frequency])
         machine.log(f"{frequency} Hz changed by {change:.1f} dB on the headphones")
