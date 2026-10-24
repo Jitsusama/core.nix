@@ -2281,6 +2281,55 @@
       ]
     },
     {
+      "id": "bluetooth:signal",
+      "in": "bluetooth",
+      "name": "Signal"
+    },
+    {
+      "id": "bluetooth:quality",
+      "in": "bluetooth",
+      "name": "Link"
+    },
+    {
+      "id": "bluetooth:codec",
+      "in": "bluetooth",
+      "name": "Codec"
+    },
+    {
+      "id": "bluetooth:channels",
+      "in": "bluetooth",
+      "name": "Channels"
+    },
+    {
+      "id": "verb:bluetooth-connect",
+      "in": "bluetooth",
+      "name": "Connect it",
+      "states": {
+        "unpaired": {
+          "name": "Pair and connect it"
+        }
+      }
+    },
+    {
+      "id": "verb:bluetooth-disconnect",
+      "in": "bluetooth",
+      "name": "Disconnect it"
+    },
+    {
+      "id": "verb:bluetooth-passkey",
+      "in": "bluetooth",
+      "name": "Pair it with a passkey",
+      "hidden": [
+        "bluetoothctl",
+        "pin"
+      ]
+    },
+    {
+      "id": "verb:bluetooth-forget",
+      "in": "bluetooth",
+      "name": "Forget it"
+    },
+    {
       "id": "verb:copy:paste",
       "in": "clipboard",
       "name": "Paste",
