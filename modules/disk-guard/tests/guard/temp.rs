@@ -179,6 +179,44 @@ fn a_leftover_holding_a_socket_or_checkout_is_kept() {
 }
 
 #[test]
+fn a_link_is_never_surveyed_since_taking_it_frees_nothing() {
+    // The harness gives each loaded quest a TMPDIR of
+    // /tmp/pi-QEST-<id>, a link into the quest's workspace. Its name
+    // ends in a run with digits, so it read as a one-off, and taking it
+    // freed its own 85 bytes while a job reading through it met "No such
+    // file or directory". Eleven went at once on 24 October.
+    let temp = tempfile::tempdir().unwrap();
+    let workspace = tempfile::tempdir().unwrap();
+    fs::write(workspace.path().join("run.log"), vec![1u8; 10_000]).unwrap();
+    std::os::unix::fs::symlink(workspace.path(), temp.path().join("pi-QEST-A1B2C3")).unwrap();
+    std::os::unix::fs::symlink("/nowhere", temp.path().join("dangling-x9y8z7")).unwrap();
+    fs::write(temp.path().join("note-123"), "hi").unwrap();
+
+    let names: Vec<_> = survey(temp.path())
+        .iter()
+        .map(|e| e.path.file_name().unwrap().to_owned())
+        .collect();
+
+    assert_eq!(names, ["note-123"]);
+}
+
+#[test]
+fn a_live_tmpdir_named_by_a_link_keeps_the_link() {
+    // Resolving the TMPDIR alone leaves only where the link points, so
+    // the link itself never matched the entry it names.
+    let temp = tempfile::tempdir().unwrap();
+    let workspace = tempfile::tempdir().unwrap();
+    let link = temp.path().join("pi-QEST-A1B2C3");
+    std::os::unix::fs::symlink(workspace.path(), &link).unwrap();
+    let entries = vec![Entry {
+        path: link.clone(),
+        ..entry("pi-QEST-A1B2C3")
+    }];
+
+    assert!(leftovers(entries, 1000, &[link]).is_empty());
+}
+
+#[test]
 fn a_live_processes_tmpdir_keeps_what_holds_it() {
     let tmpdirs = [
         PathBuf::from("/tmp/nix-shell.a1b2c3/inner"),
