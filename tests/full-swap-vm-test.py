@@ -25,8 +25,13 @@ machine.succeed("systemd-run --unit=big -p Type=exec grow 4096")
 
 with subtest("the work that filled swap is ended by systemd-oomd"):
     machine.wait_until_succeeds(
-        "journalctl -u systemd-oomd -o cat | grep -F 'Killed /system.slice/big.service'",
+        "journalctl -u systemd-oomd -o cat"
+        " | grep -F 'Marked /system.slice/big.service for killing'",
         timeout=300,
+    )
+    # systemd says who ended it, which tells oomd from the kernel's killer.
+    machine.wait_until_succeeds(
+        "journalctl -u big.service -o cat | grep -F 'systemd-oomd killed'", timeout=30
     )
     t.assertNotIn("Out of memory", machine.succeed("journalctl -k -o cat"))
 
