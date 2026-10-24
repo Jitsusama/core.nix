@@ -45,6 +45,16 @@
     # Keep directory and inode caches longer, which large source trees and
     # the tools that walk them depend on.
     "vm.vfs_cache_pressure" = 50;
+
+    # Wake kswapd 2% of memory before it runs out, not 0.1%, so it frees
+    # pages ahead of the builds' allocations rather than leaving them to
+    # reclaim and compact for themselves, which every program then waits
+    # behind. In seven interleaved five-minute rounds under agents' builds,
+    # 200 against 10 took allocation stalls from 50 to 154 a second to 0 to
+    # 16, slow touches of an app's memory (8 ms or more) from 19 to 2, and
+    # lag-watch's marks for waits on memory from 11 to 3. kswapd then keeps
+    # 1.2 to 2.5 GiB more free, two of its 2% steps at most.
+    "vm.watermark_scale_factor" = 200;
   };
 
   # Never evict what was used in the last second: past that, the kernel's OOM
