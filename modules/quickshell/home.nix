@@ -57,6 +57,7 @@ let
     "KeyHints.qml"
     "Launcher.qml"
     "Choice.qml"
+    "Graph.qml"
     "Chord.qml"
     "Margin.qml"
     "Marks.js"
@@ -103,6 +104,8 @@ let
     "pieces/Piece.qml"
     "pieces/StatusFile.qml"
     "launcher/Provider.qml"
+    "launcher/Sensors.qml"
+    "launcher/Machine.js"
     "launcher/Numbers.js"
     "launcher/Addresses.js"
     "launcher/Units.js"
@@ -529,6 +532,15 @@ let
   # Every emoji, in a skin tone.
   emojiList = import ./launcher/emoji.nix { inherit lib pkgs; };
   timeZones = import ./launcher/zones.nix { inherit lib pkgs; };
+
+  # Every process's counters at one moment, for the machine's answers to
+  # say which programs use the processors and the memory: the page size,
+  # then the machine's counters and each process's, in one spawn rather
+  # than a read for each of hundreds of files on the shell's thread.
+  processList = pkgs.writeShellScript "process-list" ''
+    ${lib.getExe' pkgs.getconf "getconf"} PAGESIZE
+    exec ${lib.getExe' pkgs.coreutils "cat"} /proc/stat /proc/[0-9]*/stat 2>/dev/null
+  '';
 
   # The IEEE's hardware address vendors, from hwdata, in a file for each
   # first byte: a line for each vendor, its first three bytes and its name,
@@ -1404,6 +1416,14 @@ in
                     }
                     // lib.optionalAttrs (provider.source == "time") {
                       list = "${timeZones}";
+                    }
+                    # What the machine's answers spawn: the processes'
+                    # counters, UDisks for the disk's health, and stat for
+                    # a file system's room where no disk guard says it.
+                    // lib.optionalAttrs (provider.source == "machine") {
+                      processes = "${processList}";
+                      busctl = lib.getExe' pkgs.systemd "busctl";
+                      stat = lib.getExe' pkgs.coreutils "stat";
                     }
                     # A colour is told against the theme's own pigments.
                     // lib.optionalAttrs (provider.source == "colours") {

@@ -16,6 +16,7 @@ Provider {
         side: program.side,
         copy: program.copy,
         glyph: provider.programGlyph(program.app),
-        hue: "program"
+        hue: "program",
+        figure: false
     }))
 }

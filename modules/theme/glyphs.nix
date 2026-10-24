@@ -240,6 +240,16 @@ in
       "M0 5A6 2 0 0 0 12 5V6.5A6 2 0 0 1 0 6.5Z"
     ];
   };
+  processor = {
+    glyph = nerd "f061a";
+    console = "P";
+    means = "the processor: how busy it is, its cores, its clock and its heat";
+  };
+  memory = {
+    glyph = nerd "f035b";
+    console = "M";
+    means = "the memory: what's used, what's waiting for it and what holds it";
+  };
   lag = {
     glyph = nerd "f051f";
     console = "W";

@@ -232,6 +232,13 @@ Provider {
         return told();
     }
 
+    // How loud a device is as a bar, empty while it's muted. A loud one
+    // wants nothing, so the bar never warns.
+    function loudness(node) {
+        const share = !node || !node.audio || node.audio.muted ? 0 : node.audio.volume;
+        return { shape: "bar", values: [share], warn: false };
+    }
+
     function told() {
         const out = Pipewire.defaultAudioSink;
         const into = Pipewire.defaultAudioSource;
@@ -242,13 +249,15 @@ Provider {
             rows.push(copyRow({
                 name: named(out),
                 side: `out \u00b7 ${level(out)}`,
-                glyph: glyph(kind(out))
+                glyph: glyph(kind(out)),
+                graph: loudness(out)
             }));
         if (into)
             rows.push(copyRow({
                 name: named(into),
                 side: `in \u00b7 ${level(into)}`,
-                glyph: glyph(kind(into))
+                glyph: glyph(kind(into)),
+                graph: loudness(into)
             }));
         // The track playing, as the music mark has it (Music.qml), then
         // each program with a stream open to play through, by the name it
@@ -269,6 +278,7 @@ Provider {
             rows.push(copyRow({ name: name, side: "has sound open", glyph: glyph(0xf057e) }));
         return {
             headline: out ? `${level(out)}, through ${named(out)}` : "nothing to play through",
+            graph: out ? loudness(out) : undefined,
             rows: rows,
             note: !Music.playing && playing.length === 0 ? "nothing playing" : "from PipeWire"
         };

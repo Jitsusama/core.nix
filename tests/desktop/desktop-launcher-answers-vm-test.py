@@ -97,6 +97,8 @@ with subtest("the launcher answers what's asked, and copies the answer"):
     launcher_until(lambda shown: shown["kind"] == "answer")
     step_in()
     launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "mains")
+    # Its charge among them, drawn as a bar, and none of them a glyph.
+    photograph("launcher-charger-parts")
     machine.send_key("esc")
     # A collection is found by what a person calls it, not only its
     # title, and Return goes straight into it.
@@ -247,9 +249,38 @@ with subtest("the launcher answers what's asked, and copies the answer"):
         lambda shown: (shown["selected"] or {}).get("name", "").endswith(" free on /nix")
     )
     photograph("launcher-disks")
-    # Its first part, a step in, is the headline's disk.
+    # Its first part, a step in, is the space the headline's disk has,
+    # and the disk's speed, how busy it is and its latency come after.
     step_in()
-    launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "20.0 GiB free")
+    launcher_until(
+        lambda shown: (
+            (shown["selected"] or {}).get("name") == "Space"
+            and shown["selected"]["side"] == "20.0 GiB free"
+            and {"Speed", "Busy", "Latency"} <= set(shown["rows"])
+        )
+    )
+    # A step further, each disk the guard watches, the headline's first.
+    step_in()
+    launcher_until(
+        lambda shown: (
+            shown["rows"][:1] == ["/nix"]
+            and shown["selected"]["side"] == "20.0 GiB free \u00b7 pressure"
+        )
+    )
+    machine.send_key("esc")
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
+    # A part asked for alone, by its own words: how fast the disk
+    # reads and writes, each a step in.
+    answer("disk speed")
+    launcher_until(
+        lambda shown: (
+            shown["kind"] == "answer"
+            and re.fullmatch(r"[\d.,]+ (B|kB|MB|GB)/s", (shown["selected"] or {}).get("name", ""))
+            is not None
+        )
+    )
+    step_in()
+    launcher_until(lambda shown: shown["rows"] == ["Reading", "Writing"])
     machine.send_key("esc")
     machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
     # A guard that stops writing is silent once its last heartbeat is
@@ -345,6 +376,30 @@ with subtest("the launcher answers what's asked, and copies the answer"):
     machine.send_key("esc")
     machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
     as_account("rm $XDG_RUNTIME_DIR/jobs/queue.json")
+    # How busy the processors are, read again while it's shown, so a
+    # moment on it says just now; a step in, each core and the rest.
+    answer("cpu")
+    launcher_until(
+        lambda shown: (
+            re.fullmatch(r"\d+% busy", (shown["selected"] or {}).get("name", "")) is not None
+            and shown["footer"] == "just now"
+        )
+    )
+    step_in()
+    launcher_until(lambda shown: {"Cores", "Maxed", "Load"} <= set(shown["rows"]))
+    step_in()
+    launcher_until(lambda shown: shown["rows"][0] == "Core 0")
+    machine.send_key("esc")
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
+    # The memory, and the programs holding most of it, read once it's
+    # asked.
+    answer("memory")
+    launcher_until(lambda shown: "GiB used" in (shown["selected"] or {}).get("name", ""))
+    time.sleep(2)
+    step_in()
+    launcher_until(lambda shown: {"Used", "Cached", "Using it"} <= set(shown["rows"]))
+    machine.send_key("esc")
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
     # The keyboards QEMU gives it, however many, and caps lock.
     answer("keyboards")
     photograph("launcher-keyboards")
@@ -388,6 +443,32 @@ with subtest("the launcher answers what's asked, and copies the answer"):
         machine.send_key("esc")
     answer("weather tokyo")
     photograph("launcher-offline")
+    machine.send_key("esc")
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
+    # The rain is the weather's to answer: here asks where here is, since
+    # the VM has no time zone, and a place's rain asks the same forecast.
+    # Built as a check, the VM has no network and says Open-Meteo didn't
+    # answer; run by hand it may reach Open-Meteo itself, and then says the
+    # next rain. That the next rain is said from the hours is the
+    # launcher's rain check's to show.
+    answer("rain")
+    launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "where?")
+    machine.send_key("esc")
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
+    answer("when will it rain in tokyo")
+    rained = r"rain (now|from \d\d:00|unlikely), .*|no rain in the next 12 hours"
+    launcher_until(
+        lambda shown: (
+            (
+                (shown["selected"] or {}).get("name") == "no forecast"
+                and shown["footer"] == "Open-Meteo didn't answer"
+            )
+            or (
+                re.fullmatch(rained, (shown["selected"] or {}).get("name", "")) is not None
+                and shown["footer"] == "Tokyo, Japan \u00b7 Open-Meteo"
+            )
+        )
+    )
     machine.send_key("esc")
     log = shell_said("ERROR", "Error:")
     assert "ERROR" not in log, "an answer raised an error"

@@ -190,11 +190,15 @@ Scope {
     // A row whose Return copies `copy`, or its name, set while the launcher
     // holds the keys, which a Wayland program needs to set the clipboard.
     // A row with an empty `copy` says something and copies nothing.
+    // It's a figure, saying a value, so it wears no glyph unless it does
+    // more (verbs) or says it's an act to copy (figure false), as a theme to
+    // paste is (Choice.qml).
     function copyRow(fields) {
         const text = fields.copy ?? fields.name;
         return thing(Object.assign({
             verb: text === "" ? "close" : "copy",
             hue: "voice",
+            figure: true,
             plain: true,
             now: true,
             run: () => {

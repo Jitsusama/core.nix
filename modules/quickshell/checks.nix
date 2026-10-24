@@ -300,8 +300,8 @@ in
 
   # The launcher answers what's asked: sums and number bases, IPv4 and IPv6
   # addresses and networks with the kind of range each is in, hardware
-  # addresses, measures and the time in any zone tzdata names, as
-  # tests/answers.qml lists them, and leaves alone what isn't one, in Qt's
+  # addresses, measures, the time in any zone tzdata names and the
+  # machine's figures from its files, as tests/answers.qml lists them, and leaves alone what isn't one, in Qt's
   # own JavaScript engine.
   the-launcher-answers-what-is-asked =
     let
@@ -315,6 +315,7 @@ in
       cp ${./launcher/Zones.js} Zones.js
       cp ${./launcher/Colours.js} Colours.js
       cp ${./launcher/Asking.js} Asking.js
+      cp ${./launcher/Machine.js} Machine.js
       cp ${../../tests/colour-cases.js} colour-cases.js
       cp ${import ./launcher/zones.nix { inherit lib pkgs; }} zones.jsonl
       export QML_XHR_ALLOW_FILE_READ=1
@@ -571,6 +572,26 @@ in
       timeout 60 ${lib.getExe' graphical.pkgs.quickshell "qs"} -p shell.qml
       touch $out
     '';
+
+  # The launcher's weather answers now, its parts and the rain by the hour
+  # from one forecast, and the rain's own words answer the next rain
+  # (tests/weather.qml), with what Open-Meteo would say kept beforehand, so
+  # nothing leaves the sandbox.
+  the-launcher-answers-the-rain = pkgs.runCommandLocal "the-launcher-answers-the-rain" { } ''
+    mkdir launcher
+    cp ${./Fuzzy.js} Fuzzy.js
+    cp ${./launcher/Provider.qml} launcher/Provider.qml
+    cp ${./launcher/Asking.js} launcher/Asking.js
+    cp ${./launcher/Numbers.js} launcher/Numbers.js
+    cp ${./launcher/Weather.qml} launcher/Weather.qml
+    cp ${../../tests/weather.qml} shell.qml
+    export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
+    mkdir -m 700 $XDG_RUNTIME_DIR
+    export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+    ${shellFolderLint}
+    timeout 60 ${lib.getExe' graphical.pkgs.quickshell "qs"} -p shell.qml
+    touch $out
+  '';
 
   # The launcher tells how the desk light is lit and sets it, and the
   # brightness bar hears its changes but not a camera lighting it
@@ -882,6 +903,30 @@ in
     touch $out
   '';
 
+  # A row's graph is ten braille characters over a dim track of every dot,
+  # a bar filling from the left, a spark from the right with the newest last
+  # and a strip a reading for each member, in the warning colour at 95% or
+  # when it says it warns; rows' graphs stand in one column, and a figure
+  # wears no glyph, as tests/graphs.qml draws them through Quickshell in the
+  # theme's own face and sizes, at a panel's width.
+  palette-graphs-draw-in-braille =
+    let
+      machine = graphical.config;
+    in
+    pkgs.runCommandLocal "palette-graphs-draw-in-braille" { } ''
+      cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
+      cp ${./Choice.qml} Choice.qml
+      cp ${./Graph.qml} Graph.qml
+      cp ${./Chord.qml} Chord.qml
+      cp ${../../tests/graphs.qml} shell.qml
+      export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
+      mkdir -m 700 $XDG_RUNTIME_DIR
+      export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = machine.fonts.packages; }}
+      ${shellFolderLint}
+      timeout 60 ${lib.getExe' graphical.pkgs.quickshell "qs"} -p shell.qml
+      touch $out
+    '';
+
   # A palette's row and its field keep their words apart and inside their
   # edges however long they run, ending what doesn't fit in an ellipsis, as
   # tests/rows.qml draws them through Quickshell in the theme's own face and
@@ -899,6 +944,7 @@ in
     pkgs.runCommandLocal "palette-rows-keep-their-words-apart" { } ''
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
       cp ${./Choice.qml} Choice.qml
+      cp ${./Graph.qml} Graph.qml
       cp ${./Chord.qml} Chord.qml
       cp ${./Prompt.qml} Prompt.qml
       cp ${lights} Lights.qml

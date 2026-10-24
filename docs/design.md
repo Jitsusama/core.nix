@@ -273,7 +273,15 @@ blur never spills past a corner. Two light shadows lift it
 
 **A glyph leads a line only when the line is something to act on:** a field,
 such as the padlock beside a password or the magnifier on the command line,
-or a result in a list, where every row has one and they form a column. In a
+or a result in a list, where the glyphs form a column. In a list a row's
+glyph says what sort of row it is, so a thing to do never reads like a
+figure. An act (a thing with verbs, a verb, anything Return does) wears its
+own glyph, or else its thing's, in its hue. A row that holds more (an
+answer, whose parts are a step in, a row of rows, a collection) wears its
+glyph in the edge colour, since what it's for is inside. A figure, a value
+an answer's part only says, wears none, even where Return copies it, and
+its words keep the column's edge; a colour's swatch stays, since it is the
+figure. In a
 block of text a glyph never starts a line, since it would leave a hole under
 itself or push the text off its edge. It sits inline before the word it
 marks, or in a footer, as a notice signs where it came from: its glyph, a
@@ -296,6 +304,20 @@ name, muted. A row for an act or a set already says what it is in its name
 ("Lock the screen", "Windows"), so its chord stays at the right. A thing's
 chord is taught in the foot instead, "next time" and the keys. Inside a
 collection the chip says the kind, so its rows don't.
+
+**A figure with a range draws a graph,** set in braille in the monospace
+face and always ten characters wide, so every graph is the same size: a
+bar for a level (the charge, a light, the volume), filling from the left;
+a spark for a history, filling from the right with the newest last, a step
+brighter; a strip for a reading of each member, such as each core, from
+the left. Every dot lies under it in the edge colour at half its opacity,
+so an empty graph and a full one both show where they'd end. It's muted,
+text on the selected row, and the warning colour goes on a reading of 95%
+or more, or all of it when the row says it warns; a row that's never a
+warning however high, as a full battery isn't, says so. A row's graph sits
+between its words and what it says at the right, and the graphs in a list
+stand in one column, clear of the widest of those, the name giving way to
+it before anything else does.
 
 **The space from text to its frame is the same on every side,** measured to
 the letters rather than their boxes. In the palette and a prompt, large type
@@ -579,10 +601,27 @@ works the same way everywhere.
   time or the weather somewhere, or how the machine is doing is one row
   first in the list, named by what it says and saying it's an answer at its
   right edge, with its parts a step in, so a question never lists a column
-  of bare figures. So is the machine itself, in its own words: "battery" or
+  of bare figures. The weather's parts are Now, Rain, Wind, Today, Tomorrow
+  and the day after, Rain saying when it next rains ("from 15:00, 70%")
+  beside the next twelve hours' chance, and holding those hours, each its
+  chance and how much; "rain", "umbrella" or "when will it rain", here or
+  in a place, answers with the next rain, its hours a step in. So is the
+  machine itself, in its own words: "battery" or
   "charger", "temperature" or "fans", "date" or "epoch", "brightness",
   "volume", "keyboards", and "lag" or "slow" for whether anything waited
-  in the last ten seconds. The start of one of those words, three letters
+  in the last ten seconds. The machine's own things answer the same way,
+  each with its parts a step in: "cpu" (its Cores, one reading each in
+  order, which are Maxed, the Clock, the Temperature as "temperature"
+  says it, the programs Using it, the Load, the Kinds of core and the
+  Model), "memory" (Used, Pressure, Swap, Cached, Using it and the Type
+  read at boot), "disk" (the Space the disk guard says, Speed, Busy,
+  Latency, Temperature, Health as UDisks has it, and the Model), "uptime"
+  and "queue". A part answers alone by its own words, "disk speed" or
+  "ram type". A rate is the difference between two reads, read again
+  once a second while it's shown and never for a key, and the footer says
+  whether it's just now or since last asked. A part holding more steps in
+  on Return as on the right arrow; a figure copies nothing, and a model
+  does. The start of one of those words, three letters
   or more, asks it too: "batt" shows the battery, the rest of the word in
   grey, and Tab finishes it. A row whose name starts the same way is
   chosen first, so "pow" is still Power Off. A colour's first row wears
@@ -993,6 +1032,16 @@ as an exception with the reason.
 ## Decisions
 
 What each studio round settled, newest first, with the reason.
+
+- **Actions read apart from figures, and a figure draws its range in
+  braille** (2026-10-24, at Joel's word: "it is hard to tell actions from
+  stats"). Every row wore a glyph in its kind's hue, so the battery's
+  health and Turn on do not disturb led the same way. Now the glyph says
+  the sort of row: an act its own in its hue, a row holding more its glyph
+  in the edge colour, and a figure none. In the approved spike graphs were
+  drawn in braille, ten characters over a dim track of every dot, after
+  block characters read as "too blocky"; the track shows a graph's ends
+  whatever it holds, and one width keeps every graph in one column.
 
 - **The margin's marks sit at the top centre, lit rather than grown**
   (2026-10-24, at Joel's word on the drawn marks: "i don't like the line

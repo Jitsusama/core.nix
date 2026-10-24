@@ -99,7 +99,10 @@ constrain".
 
 - **The text is the star, the glyphs add the impact.** A glyph leads only a
   line to act on, and text below a glyph lines up with its ink, never
-  indented from it.
+  indented from it. A figure wears none, since "it is hard to tell actions
+  from stats" when both lead alike (2026-10-24).
+- **Braille graphs, ten characters wide.** Over a dim track of every dot,
+  so a graph's ends show; block characters were "too blocky".
 - **One frame, shared radii.** The launcher won when it became one border
   round a field and its results, split by a hairline, its selected row an
   inset whose curve runs parallel to the frame's.

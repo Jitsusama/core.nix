@@ -370,6 +370,11 @@
   open-with-passes-clippy = ''
     clippy finds nothing in the portal's chooser or its tests
   '';
+  palette-graphs-draw-in-braille = ''
+    a row's graph is ten braille characters over a dim track, a bar from the left, a spark from the
+    right and a strip a reading a member, warning at 95%; graphs line up in one column, and a
+    figure wears no glyph
+  '';
   palette-rows-keep-their-words-apart = ''
     a palette's row and field keep their words apart and inside them, however long, ending what
     doesn't fit in an ellipsis
@@ -564,8 +569,12 @@
     the shell finds the keyboard's light among the kernel's and hears each change its firmware
     makes, once, with its level, off as dark
   '';
+  the-launcher-answers-the-rain = ''
+    the weather's parts and the rain by the hour come from one forecast, and "rain", "umbrella"
+    or "when will it rain" answer when it next rains, here or in a place
+  '';
   the-launcher-answers-what-is-asked = ''
-    sums, addresses, measures, zones and colours answer
+    sums, addresses, measures, zones, colours and the machine's figures answer
   '';
   the-launcher-finds-emoji = ''
     emoji are found by name and meaning, best first
