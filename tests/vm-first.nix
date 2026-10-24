@@ -43,6 +43,7 @@ pkgs.testers.runNixOSTest {
     ];
     environment.etc."vm-build.nix".source = buildOf "vm-build" fakeVm;
     environment.etc."compiler-build.nix".source = buildOf "compiler-build" fakeCompiler;
+    environment.etc."quest-build.nix".source = buildOf "quest-build" fakeCompiler;
     environment.etc."uid-range.nix".source = ./uid-range.nix;
     # getfattr, to read the mark vm-first leaves for systemd-oomd.
     environment.systemPackages = [ pkgs.attr ];

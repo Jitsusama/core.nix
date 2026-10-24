@@ -783,10 +783,11 @@
     the daemon sits in a cgroup beside its builds, each build in one of its own handed cpu, io,
     memory and pids; a build's qemu goes from batch to normal at nice -10, every thread and a later
     one, and its build's cgroup is weighed at 1000 for CPU and disk, while a compiler's build beside
-    it stays batch at 100; the daemon's own cgroup carries oomd's mark to pass it over; ten
-    restarts of the daemon, vm-first looking every 20 ms, each start and leave both builds running,
-    the daemon builds again, a build asking for a range of user ids gets 65,536, and a stopped build
-    leaves no process nor cgroup
+    it stays batch at 100; a build asked for from a quest's slice takes the slice's weight and
+    follows it; the daemon's own cgroup carries oomd's mark to pass it over; ten restarts of the
+    daemon, vm-first looking every 20 ms, each start and leave the builds running, the daemon builds
+    again, a build asking for a range of user ids gets 65,536, and a stopped build leaves no process
+    nor cgroup
   '';
   vm-clock-keeps-time = ''
     the clock sets from the machine's servers past a network's silent one
@@ -830,8 +831,9 @@
     the guards answer each band, sparing what's in use
   '';
   vm-first-finds-the-vms = ''
-    vm-first reads a thread's nice and policy, knows qemu by its name and nothing else, and knows
-    the daemon from the workers it leaves behind
+    vm-first reads a thread's nice and policy, knows qemu by its name and nothing else, knows the
+    daemon from the workers it leaves behind, finds a worker's client and the quest's slice it sits
+    in, and keeps a quest's build below a VM's
   '';
   vm-first-passes-clippy = ''
     clippy finds nothing in vm-first or its tests
