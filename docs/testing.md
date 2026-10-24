@@ -181,7 +181,10 @@ through `tests/lib/vm_pytest.py`; its `testScript` is the one line
 `import vm_pytest; vm_pytest.run(globals(), "${./<name>-vm-test.py}")`.
 The driver's machines are fixtures (`machine`, `machines`, `driver`), and
 each state a test starts from, booted or with the network let down, is a
-fixture of its own, made once a run however many tests ask for it. Each
+fixture of its own, made once a run however many tests ask for it. What
+the tests need from Nix is one JSON file, handed to `run` as `values=`,
+which a test reads parsed through the `values` fixture, as
+`tests/signing.nix` does. Each
 test is one of the driver's subtests in the log, named by its docstring's
 first line, so a test runs alone, after only what it asks for, with
 `PYTEST_ADDOPTS` and the driver itself:

@@ -5,6 +5,9 @@ calls `run(globals(), path)` hands a pytest file to pytest, in the driver's own 
 the machines as fixtures. Each test is one of the driver's subtests in its log, named by the
 first line of its docstring, and a failed test fails the driver as a failed subtest does.
 
+What a test needs from Nix, a PIN or a program in the store, comes as a JSON file whose path
+the script hands `run` as values, and a test asking for the `values` fixture gets it parsed.
+
 PYTEST_ADDOPTS picks tests and adds options as it does for any pytest run, so
 `PYTEST_ADDOPTS='-k reload'` before the driver's command runs only the tests it names, after
 whatever fixtures they ask for.
@@ -13,6 +16,7 @@ whatever fixtures they ask for.
 from __future__ import annotations
 
 import inspect
+import json
 import re
 import shutil
 import sys
@@ -58,9 +62,10 @@ def described(item: pytest.Item) -> str:
 class Driven:
     """The driver's machines as fixtures, and each test as one of its subtests."""
 
-    def __init__(self, symbols: Mapping[str, Any]) -> None:
-        """Take what the driver gave the script as its globals."""
+    def __init__(self, symbols: Mapping[str, Any], values: Path | None = None) -> None:
+        """Take what the driver gave the script as its globals, and the test's values file."""
         self.symbols = symbols
+        self.values = values
 
     @pytest.fixture(scope="session")
     def driver(self) -> Driver:
@@ -78,6 +83,14 @@ class Driven:
     def machines(self, driver: Driver) -> dict[str, BaseMachine]:
         """Give every machine, by its name in the test's nodes."""
         return {machine.name: machine for machine in driver.machines}
+
+    @pytest.fixture(scope="session", name="values")
+    def given_values(self) -> dict[str, Any]:
+        """Give the values the test's Nix wrote for it, read from their JSON file."""
+        if self.values is None:
+            pytest.fail("The test asks for values, but no values were given to vm_pytest.run.")
+        values: dict[str, Any] = json.loads(self.values.read_text())
+        return values
 
     @pytest.hookimpl(wrapper=True)
     def pytest_runtest_setup(self, item: pytest.Item) -> Generator[None]:
@@ -121,14 +134,16 @@ def arguments(tests: Path) -> list[str]:
     return [str(tests), f"--rootdir={tests.parent}", *OPTIONS]
 
 
-def run(symbols: Mapping[str, Any], tests: str) -> None:
+def run(symbols: Mapping[str, Any], tests: str, values: str | None = None) -> None:
     """Run the pytest file given with the driver's machines, ending the driver if one fails.
 
-    It exits as the driver does on a failed subtest, so the driver stops its machines, says
-    the test failed, and the build fails with it.
+    The values file, when there is one, is what the tests' `values` fixture reads. It exits
+    as the driver does on a failed subtest, so the driver stops its machines, says the test
+    failed, and the build fails with it.
     """
+    driven = Driven(symbols, Path(values) if values is not None else None)
     with tempfile.TemporaryDirectory(prefix="vm-pytest-") as folder:
         copy = staged(Path(tests), Path(folder))
-        code = pytest.main(arguments(copy), plugins=[Driven(symbols)])
+        code = pytest.main(arguments(copy), plugins=[driven])
     if code != pytest.ExitCode.OK:
         sys.exit(1)

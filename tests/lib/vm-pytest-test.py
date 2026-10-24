@@ -71,11 +71,16 @@ def symbols(driver: Driver) -> dict[str, Any]:
     return {"driver": driver, "machine": driver.machines[0], "subtest": driver.logger.subtest}
 
 
-def run_tests(pytester: pytest.Pytester, symbols: dict[str, Any], source: str) -> pytest.RunResult:
+def run_tests(
+    pytester: pytest.Pytester,
+    symbols: dict[str, Any],
+    source: str,
+    values: Path | None = None,
+) -> pytest.RunResult:
     """Run a pytest file holding that source with the plugin, as the driver would."""
     tests = pytester.makepyfile(source)
     return pytester.runpytest_inprocess(
-        *vm_pytest.arguments(tests), plugins=[vm_pytest.Driven(symbols)]
+        *vm_pytest.arguments(tests), plugins=[vm_pytest.Driven(symbols, values)]
     )
 
 
@@ -156,6 +161,30 @@ def test_what_a_tests_fixtures_do_is_grouped_under_its_name(
     assert driver.logger.said == ["getting ready to prove It's ready.", "subtest: It's ready."]
 
 
+def test_the_values_fixture_gives_what_the_tests_nix_wrote(
+    pytester: pytest.Pytester, symbols: dict[str, Any], tmp_path: Path
+) -> None:
+    written = tmp_path / "values.json"
+    written.write_text('{"pin": "2468", "runtime": "/run/user/1000"}')
+    run_tests(
+        pytester,
+        symbols,
+        """
+        def test_values(values):
+            assert values == {"pin": "2468", "runtime": "/run/user/1000"}
+        """,
+        values=written,
+    ).assert_outcomes(passed=1)
+
+
+def test_a_test_asking_for_values_none_were_given_fails_saying_so(
+    pytester: pytest.Pytester, symbols: dict[str, Any]
+) -> None:
+    result = run_tests(pytester, symbols, "def test_values(values): pass")
+    result.assert_outcomes(errors=1)
+    result.stdout.fnmatch_lines(["*no values were given to vm_pytest.run*"])
+
+
 def test_tests_from_the_store_are_staged_under_the_name_they_were_written_with(
     tmp_path: Path,
 ) -> None:
@@ -207,3 +236,22 @@ def test_the_driver_carries_on_when_every_test_passes_given_a_copy_of_its_own(
     assert copy.name == "tests.py"
     assert copy.parent != tmp_path
     assert options == [f"--rootdir={copy.parent}", *vm_pytest.OPTIONS]
+
+
+def test_the_values_file_given_to_run_is_the_one_the_tests_read(
+    monkeypatch: pytest.MonkeyPatch, symbols: dict[str, Any], tmp_path: Path
+) -> None:
+    tests = tmp_path / "tests.py"
+    tests.write_text("")
+    written = tmp_path / "values.json"
+    given: list[object] = []
+
+    def main(_: list[str], plugins: list[object]) -> pytest.ExitCode:
+        given.extend(plugins)
+        return pytest.ExitCode.OK
+
+    monkeypatch.setattr(pytest, "main", main)
+    vm_pytest.run(symbols, str(tests), values=str(written))
+    (plugin,) = given
+    assert isinstance(plugin, vm_pytest.Driven)
+    assert plugin.values == written

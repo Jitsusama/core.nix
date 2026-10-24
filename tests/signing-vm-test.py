@@ -1,37 +1,30 @@
 """Commits signed in a virtual machine with keys made in its TPM, as Joel and his agents commit.
 
-tests/signing.nix runs this, and its opening comment says what the test proves. run-subtests
-cuts the script into subtests at each top-level `with subtest(`, so every subtest stays at
-the top level under its own name, and what sits outside them, the boot and the helpers, runs
-whichever subtests are chosen. The PIN, the askpasses that answer for Joel and the signer the
-module lists are signing.nix's, so they come from the JSON file it writes, whose path it puts
-in place of the marker below.
+tests/signing.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and its
+opening comment says what the test proves. Each test asks for the state it starts from as a
+fixture: Joel's account up with the askpass answering for him, then both keys made in the TPM.
+A fixture's work is done once a run, however many tests ask for it, and each test reads only
+the prompts its own commit asked, so any test runs alone with `-k`. The PIN, the askpasses
+and the signer the module lists are signing.nix's, given as the `values` fixture.
 """
 
-import json
-import shlex
-from pathlib import Path
-from typing import TYPE_CHECKING
+from __future__ import annotations
 
+import shlex
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any
+
+import pytest
 from vm_helpers import as_account
 
 if TYPE_CHECKING:
-    from driver_names import machine, subtest, t
+    from collections.abc import Iterator
 
-# Joel's runtime folder, where the askpass writes down what it's asked; the PIN it answers
-# with; it and one answering nothing, as programs in the store; and the other machine's
-# signer the module lists, all as signing.nix has them.
-values = json.loads(Path("@values@").read_text())
-runtime: str = values["runtime"]
-pin: str = values["pin"]
-askpass: str = values["askpass"]
-no_pin: str = values["noPin"]
-other_signer: str = values["otherSigner"]
+    from test_driver.machine import BaseMachine
 
-
-def as_joel(command: str, *, succeed: bool = True) -> str:
-    """Run a command as Joel, in his home, and give what it said, failing as it's told to."""
-    return as_account(machine, command, runtime=runtime, succeed=succeed)
+# Where Joel's key and the agent's key are made, as docs/installing.md makes them.
+JOEL_KEY = "~/.local/share/signing/joel-signing"
+AGENT_KEY = "~/.ssh/agent-signing"
 
 
 def at_terminal(command: str) -> str:
@@ -39,72 +32,138 @@ def at_terminal(command: str) -> str:
     return "script -qec " + shlex.quote(command) + " /dev/null"
 
 
-def signer_of_last_commit() -> list[str]:
-    """Give whether git trusts the last commit's signature, and the key that made it."""
-    return as_joel(
-        "git -C repo -c gpg.ssh.allowedSignersFile=$HOME/signers log -1 --format='%G? %GK'"
-    ).split()
+class Joel:
+    """Joel's account, whose agent signs his commits, and the askpass answering for him."""
+
+    def __init__(self, machine: BaseMachine, runtime: str) -> None:
+        """Act on Joel's account on that machine, his runtime folder that one."""
+        self.machine = machine
+        self.runtime = runtime
+
+    def run(self, command: str, *, succeed: bool = True) -> str:
+        """Run a command as Joel in his home, giving its output; unless succeed, it must fail."""
+        return as_account(self.machine, command, runtime=self.runtime, succeed=succeed)
+
+    def asked_while(self, command: str, *, succeed: bool = True) -> list[str]:
+        """Run a command as Joel and give every prompt the askpass was asked while it ran."""
+        self.run(f"rm -f {self.runtime}/asked")
+        self.run(command, succeed=succeed)
+        return self.run(f"cat {self.runtime}/asked 2>/dev/null || true").split()
+
+    def signer_of_last_commit(self) -> list[str]:
+        """Give whether git trusts the last commit's signature, and the key that made it."""
+        return self.run(
+            "git -C repo -c gpg.ssh.allowedSignersFile=$HOME/signers log -1 --format='%G? %GK'"
+        ).split()
+
+    def fingerprint(self, public_key: str) -> str:
+        """Give the fingerprint of the public key in the file."""
+        return self.run(f"ssh-keygen -lf {public_key}").split()[1]
+
+    def head(self) -> str:
+        """Give the commit the repository is at, or nothing before its first."""
+        return self.run("git -C repo rev-parse -q --verify HEAD || true")
 
 
-def fingerprint(public_key: str) -> str:
-    """Give the fingerprint of the public key in the file."""
-    return as_joel(f"ssh-keygen -lf {public_key}").split()[1]
+@dataclass(frozen=True)
+class Keys:
+    """The fingerprints of the two keys made in the TPM."""
+
+    joel: str
+    agent: str
 
 
-def asked() -> list[str]:
-    """Give every prompt the askpass has been asked."""
-    return as_joel(f"cat {runtime}/asked 2>/dev/null || true").split()
-
-
-machine.wait_for_unit("multi-user.target")
-machine.succeed("loginctl enable-linger joel")
-machine.wait_for_unit("user@1000.service")
-machine.wait_for_unit("ssh-tpm-agent.socket", "joel")
-as_joel(f"systemctl --user set-environment SSH_ASKPASS={askpass} SSH_ASKPASS_REQUIRE=force")
-
-joel_key = "~/.local/share/signing/joel-signing"
-agent_key = "~/.ssh/agent-signing"
-
-with subtest("both keys are made in the TPM and the agent holds them"):
-    as_joel("mkdir -p ~/.ssh ~/.local/share/signing")
-    as_joel(f"ssh-tpm-keygen -N {pin} -C joel@test -f {joel_key}")
-    # No PIN: an empty answer to both of the keygen's prompts.
-    as_joel(
-        f"SSH_ASKPASS_REQUIRE=force SSH_ASKPASS={no_pin}"
-        f" ssh-tpm-keygen -C agent@test -f {agent_key}"
+@pytest.fixture(scope="module")
+def joel(machine: BaseMachine, values: dict[str, Any]) -> Joel:
+    """Give Joel's account, his agent listening and the askpass answering its prompts."""
+    account = Joel(machine, values["runtime"])
+    machine.wait_for_unit("multi-user.target")
+    machine.succeed("loginctl enable-linger joel")
+    machine.wait_for_unit("user@1000.service")
+    machine.wait_for_unit("ssh-tpm-agent.socket", "joel")
+    account.run(
+        f"systemctl --user set-environment SSH_ASKPASS={values['askpass']}"
+        " SSH_ASKPASS_REQUIRE=force"
     )
-    as_joel(
-        f"for key in {joel_key}.pub {agent_key}.pub;"
+    return account
+
+
+@pytest.fixture(scope="module")
+def keys(joel: Joel, values: dict[str, Any]) -> Keys:
+    """Give Joel's key, behind his PIN, and the agent's, without one, both made in the TPM.
+
+    Both are trusted in ~/signers, which the tests verify against, and the agent holds them
+    once it starts again. A repository waits for commits.
+    """
+    joel.run("mkdir -p ~/.ssh ~/.local/share/signing")
+    joel.run(f"ssh-tpm-keygen -N {values['pin']} -C joel@test -f {JOEL_KEY}")
+    # No PIN: an empty answer to both of the keygen's prompts.
+    joel.run(
+        f"SSH_ASKPASS_REQUIRE=force SSH_ASKPASS={values['noPin']}"
+        f" ssh-tpm-keygen -C agent@test -f {AGENT_KEY}"
+    )
+    joel.run(
+        f"for key in {JOEL_KEY}.pub {AGENT_KEY}.pub;"
         ' do echo "joel@test namespaces=\\"git\\" $(cat $key)"; done > signers'
     )
-    as_joel("systemctl --user restart ssh-tpm-agent")
-    machine.wait_for_unit("signing-key.service", "joel")
-    listed = as_joel(f"SSH_AUTH_SOCK={runtime}/ssh-tpm-agent.sock ssh-add -l")
-    assert "joel@test" in listed, listed
-    assert "agent@test" in listed, listed
-    as_joel("git init -q repo")
+    joel.run("systemctl --user restart ssh-tpm-agent")
+    joel.machine.wait_for_unit("signing-key.service", "joel")
+    joel.run("git init -q repo")
+    return Keys(
+        joel=joel.fingerprint(f"{JOEL_KEY}.pub"), agent=joel.fingerprint(f"{AGENT_KEY}.pub")
+    )
 
-with subtest("git trusts the signers the module lists"):
-    signers = as_joel('cat "$(git config gpg.ssh.allowedSignersFile)"')
-    t.assertEqual(signers.strip(), other_signer)
 
-with subtest("a commit over pipes is the agent's and asks nothing"):
-    as_joel("git -C repo commit -q --allow-empty -m 'from a harness' < /dev/null")
-    t.assertEqual(signer_of_last_commit(), ["G", fingerprint(f"{agent_key}.pub")])
-    t.assertEqual(asked(), [])
+@pytest.fixture
+def refusing(joel: Joel) -> Iterator[None]:
+    """Have the askpass refuse every confirmation until the test ends."""
+    joel.run(f"touch {joel.runtime}/refuse")
+    yield
+    joel.run(f"rm {joel.runtime}/refuse")
 
-with subtest("a commit at a terminal is Joel's, after his PIN and a confirmation"):
-    as_joel(at_terminal("git -C repo commit -q --allow-empty -m 'from Joel'"))
-    t.assertEqual(signer_of_last_commit(), ["G", fingerprint(f"{joel_key}.pub")])
-    t.assertIn("confirm", asked())
-    t.assertIn("pin", asked())
 
-with subtest("SIGN_AS picks the key outright"):
-    as_joel(at_terminal("SIGN_AS=agent git -C repo commit -q --allow-empty -m 'chosen'"))
-    t.assertEqual(signer_of_last_commit(), ["G", fingerprint(f"{agent_key}.pub")])
+def test_both_keys_are_made_in_the_tpm_and_the_agent_holds_them(joel: Joel, keys: Keys) -> None:
+    """Both keys are made in the TPM and the agent holds them."""
+    listed = joel.run(f"SSH_AUTH_SOCK={joel.runtime}/ssh-tpm-agent.sock ssh-add -l")
+    assert keys.joel in listed
+    assert keys.agent in listed
 
-with subtest("a refused confirmation leaves no commit"):
-    head = as_joel("git -C repo rev-parse HEAD")
-    as_joel(f"touch {runtime}/refuse")
-    as_joel(at_terminal("git -C repo commit -q --allow-empty -m 'refused'"), succeed=False)
-    t.assertEqual(as_joel("git -C repo rev-parse HEAD"), head)
+
+def test_git_trusts_the_signers_the_module_lists(joel: Joel, values: dict[str, Any]) -> None:
+    """Git trusts the signers the module lists."""
+    signers = joel.run('cat "$(git config gpg.ssh.allowedSignersFile)"')
+    assert signers.strip() == values["otherSigner"]
+
+
+def test_a_commit_over_pipes_is_the_agents_and_asks_nothing(joel: Joel, keys: Keys) -> None:
+    """A commit over pipes is the agent's and asks nothing."""
+    asked = joel.asked_while("git -C repo commit -q --allow-empty -m 'from a harness' < /dev/null")
+    assert joel.signer_of_last_commit() == ["G", keys.agent]
+    assert asked == []
+
+
+def test_a_commit_at_a_terminal_is_joels_after_his_pin_and_a_confirmation(
+    joel: Joel, keys: Keys
+) -> None:
+    """A commit at a terminal is Joel's, after his PIN and a confirmation."""
+    asked = joel.asked_while(at_terminal("git -C repo commit -q --allow-empty -m 'from Joel'"))
+    assert joel.signer_of_last_commit() == ["G", keys.joel]
+    assert "confirm" in asked
+    assert "pin" in asked
+
+
+def test_sign_as_picks_the_key_outright(joel: Joel, keys: Keys) -> None:
+    """SIGN_AS picks the key outright."""
+    joel.run(at_terminal("SIGN_AS=agent git -C repo commit -q --allow-empty -m 'chosen'"))
+    assert joel.signer_of_last_commit() == ["G", keys.agent]
+
+
+@pytest.mark.usefixtures("keys", "refusing")
+def test_a_refused_confirmation_leaves_no_commit(joel: Joel) -> None:
+    """A refused confirmation leaves no commit."""
+    head = joel.head()
+    asked = joel.asked_while(
+        at_terminal("git -C repo commit -q --allow-empty -m 'refused'"), succeed=False
+    )
+    assert "confirm" in asked
+    assert joel.head() == head
