@@ -12,6 +12,7 @@ import "Zones.js" as Zones
 import "Colours.js" as Colours
 import "Asking.js" as Asking
 import "Machine.js" as Machine
+import "Standing.js" as Standing
 import "colour-cases.js" as ColourCases
 
 QtObject {
@@ -433,6 +434,30 @@ QtObject {
         machine("the processor's hottest core", Machine.processor(sensors.filter(s => s.label !== "Package id 0")).label,
             "Core 8");
         machine("a processor's only sensor", Machine.processor([{ label: "", value: 1 }]).value, 1);
+
+        // How things stand in the foot, as room runs short: the least of
+        // each, then each its glyph by rank, then each gives way, each a
+        // character wide here, two between.
+        const fact = (sign, glance, least, collapse) => ({ sign, glance, least, entry: { collapse } });
+        const facts = [fact("", "17:30", "17:30", null), fact("", "Sat 24 Oct", "Sat 24 Oct", 3),
+            fact("B", "50% 0:02 left", "50%", 20), fact("N", "", "", 10), fact("V", "40%", "", 0),
+            fact("R", "$9 today", "$9", 5), fact("R", "2 working", "2", 6)];
+        const footFor = room => Standing.fitted(facts, told => told.reduce((sum, one) => sum
+            + one.said.length, 0) + 2 * Math.max(0, told.length - 1) <= room)
+            .map(one => one.said).join("  ");
+        for (const [room, said] of [
+            [100, "17:30  Sat 24 Oct  B 50% 0:02 left  N  V 40%  R $9 today  2 working"],
+            [39, "17:30  Sat 24 Oct  B 50%  N  V  R $9  2"],
+            // The date has no glyph, so it gives way where it'd shrink.
+            [30, "17:30  B 50%  N  V  R $9  2"],
+            // The day's spend and the agents as their glyph are one robot.
+            [22, "17:30  B 50%  N  V  R"],
+            [17, "17:30  B  N  V  R"],
+            [12, "17:30  B  N"],
+            // The time never gives way.
+            [3, "17:30"]
+        ])
+            machine(`how things stand in ${room}`, footFor(room), said);
 
         // Said as warnings, since Qt keeps ordinary logging quiet.
         for (const failure of failures)

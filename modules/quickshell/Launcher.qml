@@ -48,6 +48,7 @@ import QtQuick.Effects
 import qs.launcher
 import "Fuzzy.js" as Fuzzy
 import "launcher/Rank.js" as Rank
+import "launcher/Standing.js" as Standing
 import "launcher/Steady.js" as Steady
 
 Scope {
@@ -1887,8 +1888,10 @@ Scope {
                         // all muted but a fact that wants him, which
                         // wears its colour. It's the same whatever's
                         // typed, held or asked, so it's always where he
-                        // looks for it; the facts give way by collapse
-                        // rank, lowest first, as room runs short. Two
+                        // looks for it. As room runs short, each says its
+                        // least, then by collapse rank, lowest first, its
+                        // glyph alone, and only then do they give way, in
+                        // that order (launcher/Standing.js). Two
                         // facts side by side under one glyph (the day's
                         // AI spend and the agents, both AI's) wear it
                         // once.
@@ -1908,36 +1911,10 @@ Scope {
                                 // The network's glyph alone says all is well.
                                 .filter(fact => fact.sign !== "" || fact.glance !== "")
 
-                            // Each fact as it reads, its glance or its least,
-                            // among those kept: a glyph that the fact before
-                            // wears too is drawn once, and a fact left with
-                            // no words then says nothing.
-                            function told(facts, field) {
-                                return facts.map((fact, index) => {
-                                    const shared = index > 0 && fact.sign !== "" && facts[index - 1].sign === fact.sign;
-                                    const said = [shared ? "" : fact.sign, fact[field]].filter(part => part !== "").join(" ");
-                                    return Object.assign({}, fact, { said: said });
-                                }).filter(fact => fact.said !== "");
-                            }
-
-                            // Short of room, every fact says its least before
-                            // any gives way.
                             readonly property var kept: {
                                 const wide = facts => facts.reduce((sum, fact) => sum + measure.advanceWidth(fact.said), 0)
                                     + Math.max(0, facts.length - 1) * spacing;
-                                const whole = told(facts, "glance");
-                                if (wide(whole) <= foot.room)
-                                    return whole;
-                                let left = facts;
-                                for (;;) {
-                                    const kept = told(left, "least");
-                                    const ranks = left.map(fact => fact.entry.collapse)
-                                        .filter(rank => rank !== null && rank !== undefined);
-                                    if (wide(kept) <= foot.room || ranks.length === 0)
-                                        return kept;
-                                    const lowest = Math.min(...ranks);
-                                    left = left.filter(fact => fact.entry.collapse !== lowest);
-                                }
+                                return Standing.fitted(facts, told => wide(told) <= foot.room);
                             }
                             // As it's drawn, for a test.
                             readonly property string said: kept.map(fact => fact.said).join("  ")

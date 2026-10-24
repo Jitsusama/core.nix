@@ -502,9 +502,12 @@ all is well; the agents are what's moving. It's the time, the date, the
 battery, the network, the volume, the day's AI spend and the agents, the
 last two both AI's and so under the agents' glyph, drawn once for both.
 Short of room, each says its least first, the battery its charge
-alone, and then the rest give way by collapse rank, the volume and
-the date first, since they're not what Joel looks there for, and each
-fact's detail is a word away ("battery", Wi-Fi, Sound, Agents). Both draw from the same pieces,
+alone; then each shrinks to its glyph alone by collapse rank, the
+volume first, so every fact still shows it's there; and only once all
+are glyphs do they give way, in the same order. The date, with no
+glyph, goes where it would shrink, and the time never goes. The volume
+and the date go first since they're not what Joel looks there for, and
+each fact's detail is a word away ("battery", Wi-Fi, Sound, Agents). Both draw from the same pieces,
 so a piece with a mark is in each. The overview draws nothing of the
 shell's own: it's for finding windows (2026-10-21, at Joel's word: "having
 any widgets on Super A can be abolished, it is fucking annoying relying on

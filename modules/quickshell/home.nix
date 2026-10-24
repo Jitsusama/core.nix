@@ -115,6 +115,7 @@ let
     "launcher/Colours.js"
     "launcher/Asking.js"
     "launcher/Rank.js"
+    "launcher/Standing.js"
     "launcher/Steady.js"
     "launcher/Emoji.js"
     "launcher/KeyGroups.js"
