@@ -43,6 +43,7 @@ import Quickshell
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
 import "Asking.js" as Asking
+import "Numbers.js" as Numbers
 
 Scope {
     id: provider
@@ -312,6 +313,21 @@ Scope {
         return title;
     }
 
+    // Where a window is, as its row says it: its workspace when that isn't
+    // the one in front (here), and when other windows read the same (alike,
+    // how many do), its column and how far down it, the top one only its
+    // column, so no two rows read alike. The Windows collection and a
+    // program's own list say it the same way.
+    function placeOf(window, workspace, here, alike) {
+        const tile = window.layout?.pos_in_scrolling_layout ?? [];
+        const column = tile[0];
+        const elsewhere = workspace && !(here && workspace.id === here.id);
+        const down = tile[1] > 1 ? `, ${Numbers.ordinal(tile[1])} down` : "";
+        return [elsewhere ? `workspace ${workspace.idx}` : "",
+            alike > 1 && column ? `${Numbers.ordinal(column)} column${down}` : ""]
+            .filter(part => part !== "").join(", ");
+    }
+
     // What a desktop entry runs, spelled out for niri to spawn: in kitty
     // when the entry asks for a terminal, and from its own directory when it
     // names one.
@@ -326,7 +342,10 @@ Scope {
     // prepared for matching once rather than on every key.
     function thing(fields) {
         const made = Object.assign({
-            what: provider.what,
+            // An act done to a thing (its key `verb:`) isn't of the
+            // thing's kind: Return does what its name says, so the foot
+            // says "switch" for Switch to it, not a thing's "open".
+            what: String(fields.key ?? "").startsWith("verb:") ? "" : provider.what,
             chord: [],
             side: "",
             count: "",

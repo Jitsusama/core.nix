@@ -49,18 +49,26 @@ Provider {
         return open === 0 ? "" : open === 1 ? "1 window" : `${open} windows`;
     }
 
-    // Its windows as rows Return goes to, each by its own title.
+    // Its windows as rows Return goes to, each by its own title, saying
+    // where it is as the Windows collection does: nothing on the workspace
+    // in front, and a column when two are titled alike.
     function windowsOf(entry) {
-        return (running[entry.id] ?? []).map(window => {
+        const windows = running[entry.id] ?? [];
+        const here = Niri.workspace();
+        const titled = window => provider.tidy(window.title ?? "", entry.name) || entry.name;
+        const alike = {};
+        for (const window of windows)
+            alike[titled(window)] = (alike[titled(window)] ?? 0) + 1;
+        return windows.map(window => {
             const workspace = Niri.workspaces[window.workspace_id];
             return thing({
                 key: `window:${window.app_id}:${provider.tidy(window.title ?? "", entry.name)}`,
                 is: `window:${window.id}`,
                 verb: "switch",
-                name: provider.tidy(window.title ?? "", entry.name) || entry.name,
+                name: titled(window),
                 glyph: programGlyph(entry.id),
                 hue: "program",
-                side: workspace ? `workspace ${workspace.idx}` : "",
+                side: provider.placeOf(window, workspace, here, alike[titled(window)]),
                 run: () => Niri.act({ FocusWindow: { id: window.id } })
             });
         });

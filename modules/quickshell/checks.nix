@@ -418,6 +418,7 @@
       cp ${./Fuzzy.js} Fuzzy.js
       cp ${./launcher/Provider.qml} launcher/Provider.qml
       cp ${./launcher/Asking.js} launcher/Asking.js
+      cp ${./launcher/Numbers.js} launcher/Numbers.js
       cp ${./launcher/Spend.qml} launcher/Spend.qml
       cp ${./SpendWatch.qml} SpendWatch.qml
       cp ${../../tests/spend.qml} shell.qml
@@ -523,6 +524,7 @@
       cp ${./Fuzzy.js} Fuzzy.js
       cp ${./launcher/Provider.qml} launcher/Provider.qml
       cp ${./launcher/Asking.js} launcher/Asking.js
+      cp ${./launcher/Numbers.js} launcher/Numbers.js
       cp ${./launcher/Quests.qml} launcher/Quests.qml
       cp ${../../tests/quests.qml} shell.qml
       cp ${niri} Niri.qml
@@ -589,6 +591,7 @@
       cp ${./DeskLight.qml} DeskLight.qml
       cp ${./launcher/Provider.qml} launcher/Provider.qml
       cp ${./launcher/Asking.js} launcher/Asking.js
+      cp ${./launcher/Numbers.js} launcher/Numbers.js
       cp ${./launcher/Light.qml} launcher/Light.qml
       cp ${../../tests/desk-light.qml} shell.qml
       cp ${niri} Niri.qml
@@ -676,6 +679,7 @@
       cp ${./Fuzzy.js} Fuzzy.js
       cp ${./launcher/Provider.qml} launcher/Provider.qml
       cp ${./launcher/Asking.js} launcher/Asking.js
+      cp ${./launcher/Numbers.js} launcher/Numbers.js
       cp ${./launcher/Runs.qml} launcher/Runs.qml
       cp ${../../tests/runs.qml} shell.qml
       cp ${niri} Niri.qml
@@ -795,6 +799,7 @@
       cp ${./Fuzzy.js} Fuzzy.js
       cp ${./launcher/Provider.qml} launcher/Provider.qml
       cp ${./launcher/Asking.js} launcher/Asking.js
+      cp ${./launcher/Numbers.js} launcher/Numbers.js
       cp ${../tuple/People.qml} launcher/People.qml
       cp ${../../tests/people.qml} shell.qml
       cp ${niri} Niri.qml
@@ -934,6 +939,7 @@
       cp ${./Fuzzy.js} Fuzzy.js
       cp ${./launcher/Provider.qml} launcher/Provider.qml
       cp ${./launcher/Asking.js} launcher/Asking.js
+      cp ${./launcher/Numbers.js} launcher/Numbers.js
       cp ${./launcher/Keyboard.qml} launcher/Keyboard.qml
       cp ${niri} Niri.qml
       cp ${singleton "Shortcuts.qml" "property var actions: []"} Shortcuts.qml
@@ -956,6 +962,7 @@
         cp ${./Fuzzy.js} Fuzzy.js
         cp ${./launcher/Provider.qml} launcher/Provider.qml
         cp ${./launcher/Asking.js} launcher/Asking.js
+        cp ${./launcher/Numbers.js} launcher/Numbers.js
         cp ${./launcher/Accessories.qml} launcher/Accessories.qml
         cp ${../../tests/bluetooth-pairing.qml} shell.qml
         cp ${pkgs.writeText "Niri.qml" ''
