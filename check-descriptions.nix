@@ -425,7 +425,9 @@
     the shaper reads a queue from delayed pings, not one late ping or a silent host; cuts under what
     the line carried, holds while it drains, and climbs while it's quiet, past what it held only
     once busy five seconds, so bursts fit under the line; forgets a cut ten quiet minutes old, and
-    keeps one the line then proves; reads sets, routes and queues from what the kernel prints
+    keeps one the line then proves; cuts no download arriving faster than its rate, nor again for a
+    queue back within two seconds; remembers the line's best, not its latest cut; reads sets,
+    routes and queues from what the kernel prints
   '';
   shaper-passes-clippy = ''
     clippy finds nothing in the shaper or its tests

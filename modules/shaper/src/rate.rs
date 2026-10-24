@@ -33,6 +33,13 @@
 //! every few seconds a queue of about 20 ms built that calls shared. A
 //! burst now fits under the held rate, and a transfer that lasts still
 //! looks for more.
+//! Only this machine's own traffic is cut for a queue. A download that
+//! arrives faster than its rate is held back here, so the line carries
+//! more than that and its queue is the upload's or another machine's; on
+//! Wi-Fi, cut for each such spell, a download fell from 85 Mbit/s to its
+//! floor of 5 and stayed there. Pings come back late and early by turns
+//! on Wi-Fi, so a queue back within moments of a cut is still the same
+//! spell, cut again only if it grows.
 
 use std::collections::{HashMap, VecDeque};
 
@@ -99,6 +106,12 @@ pub struct Settings {
     /// Seconds a direction must stay busy before it climbs past its held
     /// rate.
     pub probe_after_s: f64,
+    /// A download arriving at more than this share of its rate is held
+    /// back here, not on the line.
+    pub held_here: f64,
+    /// Seconds after a cut within which a queue back again is the same
+    /// spell's, not a new one's.
+    pub spell_gap_s: f64,
 }
 
 impl Default for Settings {
@@ -130,6 +143,14 @@ impl Default for Settings {
             // Longer than a request's burst, and short beside a download
             // or a push that a faster line would help.
             probe_after_s: 5.0,
+            // Past the twentieth over its rate that senders send while
+            // they probe; a download arriving between its rate and that
+            // may still be what fills the line.
+            held_here: 1.05,
+            // Over a few pings' worth: on Wi-Fi a queue's pings come back
+            // late and early by turns, and each turn read as a new spell
+            // cut the upload from 1.8 Mbit/s to 1.0 within three seconds.
+            spell_gap_s: 2.0,
         }
     }
 }
@@ -180,6 +201,16 @@ impl Direction {
 
     fn set(&mut self, rate: f64) {
         self.rate = whole(rate).clamp(self.bounds.min, self.bounds.max);
+    }
+
+    /// What the network's memory keeps of this direction: the best it held
+    /// under load without delay, which a cut long past is forgotten back
+    /// to, rather than the latest cut. A restart from the cut had no better
+    /// rate to forget back to, and held a download on Wi-Fi at 5 Mbit/s
+    /// where the line carried 85. Should the line be slower now, the first
+    /// burst's queue cuts it within a second or two.
+    pub fn remembered(&self) -> u64 {
+        self.peak
     }
 
     /// A busy step on a quiet line: climbs back to the held rate, past it
@@ -274,6 +305,8 @@ pub struct Controller {
     quiet_shares: [f64; 2],
     /// The direction this spell's latest cut took alone, 0 up and 1 down.
     cut_alone: Option<usize>,
+    /// Whether this spell has cut each direction, up and down.
+    cut_in_spell: [bool; 2],
 }
 
 /// One step's climb, from a direction's rate and what it held.
@@ -311,6 +344,7 @@ impl Controller {
             in_spell: false,
             quiet_shares: [0.0; 2],
             cut_alone: None,
+            cut_in_spell: [false; 2],
         }
     }
 
@@ -390,7 +424,8 @@ impl Controller {
         }
         if self.building() {
             let resting = self.last_cut.is_some_and(|at| now - at < s.after_cut_s);
-            let new_spell = !self.in_spell;
+            let new_spell =
+                !self.in_spell && self.last_cut.is_none_or(|at| now - at >= s.spell_gap_s);
             let level = self.level();
             // A queue that drains needs no cut: only one still growing does.
             let rising = new_spell || level > self.cut_level + s.delay_ms / 3.0;
@@ -407,9 +442,23 @@ impl Controller {
                 self.quiet_shares[0] - shares[0],
                 self.quiet_shares[1] - shares[1],
             ];
+            if new_spell {
+                self.cut_in_spell = [false; 2];
+            }
+            // A download arriving faster than its rate is held back by the
+            // shaping here, so the line carries more than that rate and
+            // the download can't be what queues on it: the queue is the
+            // upload's, or another machine's. Cut for every spell while a
+            // video took its rate, a download on Wi-Fi fell from 85 Mbit/s
+            // to the floor of 5 within ten minutes and never climbed back.
+            // Once this spell has cut it, though, the line's queue drains
+            // at the line's speed, over the new rate, so it says nothing.
+            let held_here = [false, shares[1] > s.held_here && !self.cut_in_spell[1]];
             // A queue still growing after one direction alone was cut is
             // the other's, when it carries enough to fill it.
-            let likeliest = if let Some(cut) = self.cut_alone.filter(|_| !new_spell) {
+            let likeliest = if held_here[1] {
+                0
+            } else if let Some(cut) = self.cut_alone.filter(|_| !new_spell) {
                 1 - cut
             } else if fell[0].max(fell[1]) >= s.fuller {
                 usize::from(fell[1] > fell[0])
@@ -421,7 +470,8 @@ impl Controller {
                 .zip(shares)
                 .enumerate()
             {
-                let filling = share >= s.loaded || (share >= s.fuller && i == likeliest);
+                let filling =
+                    !held_here[i] && (share >= s.loaded || (share >= s.fuller && i == likeliest));
                 if filling && !resting && rising {
                     let from = carried.min(float(dir.rate));
                     // A queue still growing after a cut says that rate too
@@ -440,6 +490,8 @@ impl Controller {
                 }
             }
             if cuts[0] || cuts[1] {
+                self.cut_in_spell[0] |= cuts[0];
+                self.cut_in_spell[1] |= cuts[1];
                 self.cut_alone = match cuts {
                     [true, false] => Some(0),
                     [false, true] => Some(1),
@@ -569,6 +621,46 @@ mod tests {
     }
 
     #[test]
+    fn a_download_arriving_faster_than_its_rate_isnt_cut_for_the_line_s_queue() {
+        let mut c = controller(10_000, 20_000);
+        pings(&mut c, 20.0, 6);
+        // A video takes all the download's rate and more arrives: the
+        // shaping here holds it back, so the line carries more than the
+        // download's rate and the download can't be what queues on it.
+        // The queue is the upload's, or another machine's.
+        pings(&mut c, 60.0, 3);
+        assert_eq!(c.step(1.0, 9_500.0, 22_000.0), State::Cut);
+        assert!(c.up.rate < 10_000, "{}", c.up.rate);
+        assert_eq!((c.down.rate, c.down.held), (20_000, 20_000));
+    }
+
+    #[test]
+    fn a_queue_nobody_here_fills_leaves_a_download_held_back_here_alone() {
+        let mut c = controller(10_000, 85_000);
+        pings(&mut c, 20.0, 6);
+        // Another machine keeps the line's queue at 20 to 40 ms over its
+        // baseline, with quiet moments between, while a video here takes
+        // all of the download's rate and more arrives. Cut at every spell,
+        // the download fell from 85 to the floor of 5 within ten minutes
+        // and stayed there.
+        let mut at = 0.0;
+        for spell in 0..200 {
+            let over = if spell % 2 == 0 { 40.0 } else { 20.0 };
+            for _ in 0..5 {
+                pings(&mut c, 20.0 + over, 3);
+                at += 0.2;
+                c.step(at, 500.0, float(c.down.rate) * 1.1);
+            }
+            for _ in 0..5 {
+                pings(&mut c, 20.0, 3);
+                at += 0.2;
+                c.step(at, 500.0, float(c.down.rate) * 1.1);
+            }
+        }
+        assert!(c.down.rate >= 85_000, "{}", c.down.rate);
+    }
+
+    #[test]
     fn a_cut_waits_for_pings_sent_after_it() {
         let mut c = controller(20_000, 100_000);
         pings(&mut c, 20.0, 6);
@@ -623,6 +715,20 @@ mod tests {
         c.step(4.0, 8_000.0, 0.0);
         assert_eq!(c.up.held, 7_200);
         assert!(c.up.rate < 7_200);
+    }
+
+    #[test]
+    fn a_queue_back_within_moments_of_a_cut_is_the_same_spell() {
+        let mut c = controller(20_000, 100_000);
+        pings(&mut c, 20.0, 6);
+        pings(&mut c, 200.0, 3);
+        c.step(1.0, 11_000.0, 0.0);
+        let (rate, held) = (c.up.rate, c.up.held);
+        // On Wi-Fi a draining queue's pings come back early, then late.
+        pings(&mut c, 20.0, 6);
+        pings(&mut c, 200.0, 3);
+        assert_eq!(c.step(2.0, 9_000.0, 0.0), State::Holding);
+        assert_eq!((c.up.rate, c.up.held), (rate, held));
     }
 
     #[test]
@@ -861,6 +967,25 @@ mod tests {
         line.run(&mut c, 50_000.0, 10.0, 1_000.0);
         assert!(c.down.held < 50_000, "{}", c.down.held);
         (c, line)
+    }
+
+    #[test]
+    fn a_dip_leaves_the_line_s_best_to_be_remembered() {
+        // A restart starts from what is remembered: a cut remembered in
+        // place of the best held a download on Wi-Fi at 5 Mbit/s with no
+        // peak to forget back to, where the line carried 85.
+        let (c, _) = cut_by_a_dip();
+        assert_eq!(c.down.remembered(), 95_000);
+    }
+
+    #[test]
+    fn a_peak_the_line_no_longer_carries_is_remembered_no_more() {
+        let (mut c, mut line) = cut_by_a_dip();
+        line.rest(&mut c, 600.0);
+        // The line stayed at 50: the peak put back is cut again, and that
+        // cut is what the line now holds.
+        line.run(&mut c, 50_000.0, 10.0, 1_000.0);
+        assert!(c.down.remembered() < 50_000, "{}", c.down.remembered());
     }
 
     #[test]

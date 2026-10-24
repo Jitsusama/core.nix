@@ -1,4 +1,4 @@
-//! The rates each network last held, so a network met before starts right.
+//! The best rates each network held, so a network met before starts right.
 //! A network is named by its router's hardware address, kept in one JSON
 //! file of name to rates.
 
