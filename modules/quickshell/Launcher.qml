@@ -1039,6 +1039,29 @@ Scope {
             screenHere = focusedScreen;
     }
 
+    // A screen coming or going (a dock, the lid, a monitor) can leave the
+    // surface nowhere. With no screen left, Qt moves the window onto a
+    // stand-in that can hold no layer surface; when a screen comes back, Qt
+    // moves the window onto it by itself, so Quickshell sees no change of
+    // screen and never makes the surface again, and Super+Space finds
+    // nothing. So once the screens have changed, the launcher closes and its
+    // surface is made again on the screen the keys are on, as the margin's
+    // are made anew for each screen.
+    Connections {
+        target: Quickshell
+
+        function onScreensChanged() {
+            Qt.callLater(root.remake);
+        }
+    }
+
+    function remake() {
+        open = false;
+        screenHere = focusedScreen;
+        surface.visible = false;
+        surface.visible = true;
+    }
+
     // Nothing at all: the pointer's reach and niri's blur while closed.
     Region {
         id: nowhere
@@ -1050,6 +1073,7 @@ Scope {
     // surface kept out of screencasts (config.kdl) as a black box the size
     // of the whole surface, shown or not.
     PanelWindow {
+        id: surface
         visible: true
         screen: root.screenHere
         anchors.top: true
