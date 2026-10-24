@@ -165,6 +165,11 @@ with subtest("each piece of work written into jobs gets a scope of its own"):
     # oomd reads each one's swap, as it does any leaf's.
     scope = first.removeprefix("0::").removeprefix("/user.slice/user-1000.slice/user@1000.service")
     machine.succeed(f"test -e {account}{scope}/memory.swap.current")
+    # A scope that fails, as one does when its command exits before it's
+    # moved, is unloaded rather than left in the failed list.
+    unit = scope.rsplit("/", 1)[-1]
+    collect = machine.succeed(f"systemctl -M alice@ --user show -P CollectMode {unit}")
+    t.assertEqual(collect.strip(), "inactive-or-failed")
     # The holder stays, so the next write still lands.
     holder = machine.succeed("systemctl -M alice@ --user show -P MainPID jobs.service").strip()
     t.assertIn(holder, machine.succeed(f"cat {jobs}/jobs.service/cgroup.procs").split())
