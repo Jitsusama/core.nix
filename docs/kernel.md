@@ -346,10 +346,13 @@ if less; record a new one after moving to a new series.
   to nine tenths of the disk's throughput when uncontended; mq-deadline and
   Kyber changed nothing. `io.cost` needs no scheduler either, but needs a
   model of the disk, and the one it guesses is out by an order of
-  magnitude, so a machine gives it one measured on its own disk, and the
-  [`slices`][slices] module shares the disk by each slice's weight. A
+  magnitude, so a machine can give it one measured on its own disk, and the
+  [`slices`][slices] module then shares the disk by each slice's weight. A
   machine that gives none keeps an `io.latency` target on what Joel uses,
   which holds a build back while a synced write waits out the drive's cache.
+  On the XPS 14's disk, which has no DRAM of its own, the target won: an
+  app's worst synced save beside heavy writes took 55 to 170 ms under it, and
+  76 to 492 ms under every `io.cost` setting tried, so that disk keeps it.
 - **Building in every module a boot loads.** See
   [Built In or a Module](#built-in-or-a-module): only the ones the boot waits
   for earn it.
