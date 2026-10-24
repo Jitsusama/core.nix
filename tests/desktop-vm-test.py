@@ -352,7 +352,9 @@ def commonest_colour_in(title: str, picture: str, wanted: str) -> str | None:
 
 
 machine.wait_for_unit("multi-user.target")
-machine.wait_until_succeeds("ls /run/user/1000/niri.*.sock", timeout=60)
+# niri builds its software renderer before it opens its socket, which on a
+# busy host has taken past two minutes.
+machine.wait_until_succeeds("ls /run/user/1000/niri.*.sock", timeout=STARTING)
 as_account(
     "NIRI_SOCKET=$(ls /run/user/1000/niri.*.sock) niri msg action spawn --"
     " systemctl --user import-environment WAYLAND_DISPLAY NIRI_SOCKET"
