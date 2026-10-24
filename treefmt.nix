@@ -10,6 +10,8 @@
   jitsusama.mypy.packages = python: [
     python.dbus-fast
     python.fido2
+    # The desktop test reads its photographs with Pillow.
+    python.pillow
   ];
 
   # biome reads the JavaScript QML imports as the modules it means
