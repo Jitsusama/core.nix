@@ -810,8 +810,9 @@
     running, the daemon builds again, a build asking for a range of user ids gets 65,536, a
     finished build that wrote 64 MiB is said with at least that and its client's command, one that
     wrote 64 MiB without waiting for the disk says at least that between what it wrote and what it
-    left, a stopped quest's build is said with its quest, and a stopped build leaves no process nor
-    cgroup
+    left, a build's sync -f is refused with "Function not implemented" while its sync runs and
+    root's sync -f outside the daemon works, a stopped quest's build is said with its quest, and a
+    stopped build leaves no process nor cgroup
   '';
   vm-clock-keeps-time = ''
     the clock sets from the machine's servers past a network's silent one

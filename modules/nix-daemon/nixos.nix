@@ -114,6 +114,15 @@ in
     Delegate = "cpu io memory pids";
     ManagedOOMMemoryPressure = "kill";
     ManagedOOMMemoryPressureLimit = "80%";
+    # A VM check's guest syncs the folders it shares with the host, and
+    # virtiofsd forwards each as syncfs() of the host's whole filesystem,
+    # read-only shares too. On btrfs each one commits a transaction, which
+    # every program's saves then wait behind: 133 of 160 commits in ten
+    # minutes of VM checks came from there. Answered ENOSYS, the guest's
+    # FUSE stops asking, and a check's files are thrown away anyway. A
+    # build's `sync -f` fails with "Function not implemented"; sync, fsync
+    # and fdatasync still work, and Nix itself calls no syncfs().
+    SystemCallFilter = [ "~syncfs:ENOSYS" ];
   };
 
   systemd.services.vm-first = {
