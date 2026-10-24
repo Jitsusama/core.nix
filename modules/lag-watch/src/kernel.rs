@@ -65,6 +65,8 @@ pub struct Group {
     pub refaults: u64,
     /// Times the kernel held back its sockets for memory.
     pub sock_throttled: u64,
+    /// Programs in it or below it the kernel's OOM killer ended.
+    pub killed: u64,
 }
 
 fn text(path: &Path) -> String {
@@ -88,6 +90,9 @@ pub fn group(dir: &Path) -> Option<Group> {
             .unwrap_or(0),
         refaults: field(&stat, "workingset_refault_anon") + field(&stat, "workingset_refault_file"),
         sock_throttled: field(&events, "sock_throttled"),
+        // The cgroup's own file counts its descendants' kills, as a
+        // slice's must, since a slice runs nothing itself.
+        killed: field(&text(&dir.join("memory.events")), "oom_kill"),
     })
 }
 
@@ -229,8 +234,12 @@ mod tests {
             &root.join("app.slice/memory.stat"),
             "workingset_refault_anon 3\nworkingset_refault_file 4\n",
         );
+        write(
+            &root.join("app.slice/memory.events"),
+            "low 0\nhigh 0\nmax 0\noom 2\noom_kill 1\noom_group_kill 0\n",
+        );
         let g = group(&root.join("app.slice")).unwrap();
-        assert_eq!((g.cpu.some, g.swap, g.refaults), (10, 4096, 7));
+        assert_eq!((g.cpu.some, g.swap, g.refaults, g.killed), (10, 4096, 7, 1));
         assert_eq!(group(&root.join("gone.slice")), None);
     }
 }

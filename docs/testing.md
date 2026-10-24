@@ -229,7 +229,7 @@ kernel guide][2] says what that catches.
 | `jobs-sorter-passes-clippy`       | clippy finds nothing in the jobs sorter or its tests      |
 | `shaper-finds-the-rate`           | the shaper reads a queue from delayed pings, not one late ping or a silent host; cuts under what the line carried, holds while it drains, and climbs while it's quiet; reads sets, routes and queues from what the kernel prints |
 | `shaper-passes-clippy`            | clippy finds nothing in the shaper or its tests           |
-| `lag-watch-tells-who-waited`      | lag-watch counts the desktop or apps waiting as trouble and work waiting on work as none, names the app's unit that stalled most, finds the threads it watches by name, and sums each generation by its load |
+| `lag-watch-tells-who-waited`      | lag-watch counts the desktop or apps waiting as trouble and work waiting on work as none, names the app's unit that stalled most, tells of the desktop's or an app's program the kernel ended for memory, finds the threads it watches by name, and sums each generation by its load |
 | `lag-watch-passes-clippy`         | clippy finds nothing in lag-watch or its tests            |
 | `vm-first-finds-the-vms`          | vm-first reads a thread's nice and policy, knows qemu by its name and nothing else |
 | `vm-first-passes-clippy`          | clippy finds nothing in vm-first or its tests             |
