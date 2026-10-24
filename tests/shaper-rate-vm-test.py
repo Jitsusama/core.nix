@@ -1,17 +1,30 @@
 """Whether the shaper finds a modem's line and keeps an app's pings near it, under load.
 
-tests/shaper-rate.nix runs this, and its opening comment says what the test proves. The router
-is the line: a netem delay, then a tbf whose rate the test changes and whose backlog is the
-modem's queue. The test waits on that queue rather than on the clock, as it's what the pings
-would wait in. The script needs no value from Nix: it asks the server for its address.
+tests/shaper-rate.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and
+its opening comment says what the test proves. The router is the line: a netem delay, then a
+tbf whose rate the test changes and whose backlog is the modem's queue. The test waits on that
+queue rather than on the clock, as it's what the pings would wait in.
+
+Each test asks for the state it starts from as a fixture: the line found under the jobs'
+uploads, then halved, then back at its full rate. A fixture's work is done once a run, however
+many tests ask for it, so any test runs alone with `-k`, and all of them run in the order
+they're written, each after what it needs. The tests need no value from Nix: they ask the
+server for its address.
 """
 
+from __future__ import annotations
+
+import datetime as dt
 import json
 import statistics
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
+import pytest
+from test_driver.machine import retry
+
 if TYPE_CHECKING:
-    from driver_names import client, retry, router, server, start_all, subtest, t
+    from test_driver.machine import BaseMachine
 
 # A JSON object as tc or the shaper gives it, whose fields the test reads as it finds them.
 type Json = dict[str, Any]
@@ -55,183 +68,208 @@ QUIET_LOOKS = 2
 # What the app's upload sends before the count starts, so its first round
 # trips, while the jobs still have the line, aren't counted against it.
 APP_STARTS = 500_000
+# How long the client may take to boot to its first queues, and the
+# server's link to take its address.
+COMING_UP = dt.timedelta(seconds=30)
+ADDRESSING = dt.timedelta(seconds=60)
+# How long the shaper may take to find the line from where it starts, to
+# follow it down or a second link, and to climb back to it.
+FINDING = dt.timedelta(seconds=90)
+FOLLOWING = dt.timedelta(seconds=60)
+CLIMBING = dt.timedelta(seconds=120)
+# How long an upload may take to send what's counted, and the line's queue
+# to fill without the shaper.
+SENDING = dt.timedelta(seconds=60)
+FILLING = dt.timedelta(seconds=30)
 
 
-def up() -> int:
-    """Return the rate the shaper sends at on eth1, in kbit/s."""
-    status: list[Json] = json.loads(client.succeed("cat /run/shaper/status.json"))
-    return int(next(link for link in status if link["name"] == "eth1")["up"])
+@dataclass
+class Rig:
+    """The client, the router that is its line, the server past it, and what each counts."""
+
+    client: BaseMachine
+    router: BaseMachine
+    far: str
+
+    def up(self) -> int:
+        """Give the rate the shaper sends at on eth1, in kbit/s."""
+        status: list[Json] = json.loads(self.client.succeed("cat /run/shaper/status.json"))
+        return int(next(link for link in status if link["name"] == "eth1")["up"])
+
+    def backlog(self) -> int:
+        """Give the bytes waiting in the line's queue at the router."""
+        queues: list[Json] = json.loads(self.router.succeed("tc -s -j qdisc show dev eth2"))
+        return int(next(q for q in queues if q["kind"] == "tbf")["backlog"])
+
+    def sent(self) -> dict[str, int]:
+        """Give the bytes CAKE on eth1 has sent from each tin."""
+        queues: list[Json] = json.loads(self.client.succeed("tc -s -j qdisc show dev eth1"))
+        cake = next(q for q in queues if q["kind"] == "cake")
+        return dict(zip(TINS, (int(tin["sent_bytes"]) for tin in cake["tins"]), strict=True))
+
+    def sent_by(self, link: str) -> int:
+        """Give the bytes the client has sent on a link."""
+        return int(self.client.succeed(f"cat /sys/class/net/{link}/statistics/tx_bytes"))
+
+    def line(self, kbit: int) -> None:
+        """Set the line's rate."""
+        self.router.succeed(
+            f"tc qdisc change dev eth2 parent 1: handle 2: {LINE.format(f'{kbit}kbit')}"
+        )
+
+    def uploads(self) -> None:
+        """Start four uploads from the account's jobs, until they're stopped."""
+        self.client.succeed(
+            "systemd-run -M alice@ --user --slice=jobs.slice --unit=uploads"
+            f" {BIN}/bash -c 'for i in 1 2 3 4; do"
+            f" (while true; do {BIN}/cat /dev/zero > /dev/tcp/{self.far}/5201; done) & done;"
+            " wait'"
+        )
+
+    def ping(self, name: str) -> float:
+        """Give the median round trip of an app's pings to the server, in ms."""
+        self.client.succeed(
+            "systemd-run -M alice@ --user --wait --collect --slice=app.slice"
+            f" -p StandardOutput=file:/tmp/{name}.txt {BIN}/ping -n -c 40 -i 0.25 {self.far}"
+        )
+        text = self.client.succeed(f"cat /tmp/{name}.txt")
+        words = text.split()
+        times = [float(word.removeprefix("time=")) for word in words if word.startswith("time=")]
+        assert len(times) > ANSWERS, text
+        return statistics.median(times)
+
+    def holds_under(self, kbit: int) -> bool:
+        """Say whether the shaper holds under that rate with the line's queue drained."""
+        return self.up() < kbit and self.backlog() < DRAINED
 
 
-def backlog() -> int:
-    """Return the bytes waiting in the line's queue at the router."""
-    queues: list[Json] = json.loads(router.succeed("tc -s -j qdisc show dev eth2"))
-    return int(next(q for q in queues if q["kind"] == "tbf")["backlog"])
-
-
-def sent() -> dict[str, int]:
-    """Return the bytes CAKE on eth1 has sent from each tin."""
-    queues: list[Json] = json.loads(client.succeed("tc -s -j qdisc show dev eth1"))
-    cake = next(q for q in queues if q["kind"] == "cake")
-    return dict(zip(TINS, (int(tin["sent_bytes"]) for tin in cake["tins"]), strict=True))
-
-
-def sent_by(link: str) -> int:
-    """Return the bytes the client has sent on a link."""
-    return int(client.succeed(f"cat /sys/class/net/{link}/statistics/tx_bytes"))
-
-
-def line(kbit: int) -> None:
-    """Set the line's rate."""
-    router.succeed(f"tc qdisc change dev eth2 parent 1: handle 2: {LINE.format(f'{kbit}kbit')}")
-
-
-def uploads() -> None:
-    """Start four uploads from the account's jobs, until they're stopped."""
-    client.succeed(
-        "systemd-run -M alice@ --user --slice=jobs.slice --unit=uploads"
-        f" {BIN}/bash -c 'for i in 1 2 3 4; do"
-        f" (while true; do {BIN}/cat /dev/zero > /dev/tcp/{far}/5201; done) & done; wait'"
+@pytest.fixture(scope="module")
+def rig(machines: dict[str, BaseMachine]) -> Rig:
+    """Give the machines once the shaper shapes the client's line and the server listens."""
+    client, router, server = machines["client"], machines["router"], machines["server"]
+    for node in machines.values():
+        node.start()
+    server.wait_for_open_port(5201)
+    router.wait_for_unit("line.service")
+    client.wait_for_unit("user@1000.service")
+    client.wait_until_succeeds("tc -j qdisc show dev eth1 | grep -q cake", timeout=COMING_UP)
+    # The sink listens on every address, so its port can open before the
+    # server's link has its own; wait for the address itself.
+    shown = server.wait_until_succeeds(
+        "ip -4 -o address show dev eth1 | grep inet", timeout=ADDRESSING
     )
+    return Rig(client=client, router=router, far=shown.split()[3].split("/")[0])
 
 
-def ping(name: str) -> float:
-    """Return the median round trip of an app's pings to the server, in ms."""
-    client.succeed(
-        "systemd-run -M alice@ --user --wait --collect --slice=app.slice"
-        f" -p StandardOutput=file:/tmp/{name}.txt {BIN}/ping -n -c 40 -i 0.25 {far}"
-    )
-    text = client.succeed(f"cat /tmp/{name}.txt")
-    times = [float(word.removeprefix("time=")) for word in text.split() if word.startswith("time=")]
-    t.assertGreater(len(times), ANSWERS, text)
-    return statistics.median(times)
-
-
-start_all()
-server.wait_for_open_port(5201)
-router.wait_for_unit("line.service")
-client.wait_for_unit("user@1000.service")
-client.wait_until_succeeds("tc -j qdisc show dev eth1 | grep -q cake", timeout=30)
-# The sink listens on every address, so its port can open before the
-# server's link has its own; wait for the address itself.
-far = (
-    server.wait_until_succeeds("ip -4 -o address show dev eth1 | grep inet", timeout=60)
-    .split()[3]
-    .split("/")[0]
-)
-
-uploads()
-
-with subtest("the shaper finds the line and an app's pings stay near it"):
+@pytest.fixture(scope="module")
+def loaded(rig: Rig) -> Rig:
+    """Give the rig with the jobs' uploads filling the line, and the shaper holding under it."""
+    rig.uploads()
 
     def found(_last_try: bool) -> bool:
         """Say whether the shaper holds under the line with its queue drained."""
-        return SETTLED < up() < FULL and backlog() < DRAINED
+        return SETTLED < rig.up() < FULL and rig.backlog() < DRAINED
 
-    retry(found, timeout_seconds=90)
-    shaped = ping("shaped")
-    rate = up()
-    t.assertGreater(rate, SETTLED)
-    t.assertLess(rate, PROBED)
-    t.assertLess(shaped, SHAPED, f"shaped at {rate} kbit/s")
+    retry(found, timeout=FINDING)
+    return rig
 
-with subtest("an app's upload takes the line from the jobs' while it runs"):
-    started = sent()["best effort"]
-    client.succeed(
+
+@pytest.fixture(scope="module")
+def dropped(loaded: Rig) -> Rig:
+    """Give the loaded rig once its line is halved and the shaper has followed it down."""
+    loaded.line(HALVED)
+    retry(lambda _last_try: loaded.holds_under(HALVED), timeout=FOLLOWING)
+    return loaded
+
+
+@pytest.fixture(scope="module")
+def returned(dropped: Rig) -> Rig:
+    """Give the rig once its line is back at its full rate and the shaper has climbed to it."""
+    dropped.line(FULL)
+    retry(lambda _last_try: dropped.up() > SETTLED, timeout=CLIMBING)
+    return dropped
+
+
+def test_finds_the_line(loaded: Rig) -> None:
+    """The shaper finds the line and an app's pings stay near it."""
+    shaped = loaded.ping("shaped")
+    rate = loaded.up()
+    assert SETTLED < rate < PROBED, rate
+    assert shaped < SHAPED, f"{shaped} ms shaped at {rate} kbit/s"
+
+
+def test_app_upload(loaded: Rig) -> None:
+    """An app's upload takes the line from the jobs' while it runs."""
+    started = loaded.sent()["best effort"]
+    loaded.client.succeed(
         "systemd-run -M alice@ --user --slice=app.slice --unit=app-upload"
-        f" {BIN}/bash -c 'while true; do {BIN}/cat /dev/zero > /dev/tcp/{far}/5201; done'"
+        f" {BIN}/bash -c 'while true; do {BIN}/cat /dev/zero > /dev/tcp/{loaded.far}/5201; done'"
     )
-
-    def under_way(_last_try: bool) -> bool:
-        """Say whether the app's upload is past its first round trips."""
-        return sent()["best effort"] - started >= APP_STARTS
-
-    retry(under_way, timeout_seconds=60)
-    before = sent()
-
-    def uploaded(_last_try: bool) -> bool:
-        """Say whether the app's upload has sent its share."""
-        return sent()["best effort"] - before["best effort"] >= APP_SENDS
-
-    retry(uploaded, timeout_seconds=60)
-    after = sent()
-    client.succeed("systemctl -M alice@ --user stop app-upload.service")
+    retry(lambda _last_try: loaded.sent()["best effort"] - started >= APP_STARTS, timeout=SENDING)
+    before = loaded.sent()
+    retry(
+        lambda _last_try: loaded.sent()["best effort"] - before["best effort"] >= APP_SENDS,
+        timeout=SENDING,
+    )
+    after = loaded.sent()
+    loaded.client.succeed("systemctl -M alice@ --user stop app-upload.service")
     moved = {tin: after[tin] - before[tin] for tin in TINS}
     print(f"while an app uploads: {moved}")
-    t.assertLess(moved["bulk"], moved["best effort"] // JOBS_SHARE, f"{moved}")
+    assert moved["bulk"] < moved["best effort"] // JOBS_SHARE, moved
 
-with subtest("when the line drops, the shaper follows it down"):
-    line(HALVED)
 
-    def followed(_last_try: bool) -> bool:
-        """Say whether the shaper holds under the halved line with its queue drained."""
-        return up() < HALVED and backlog() < DRAINED
+def test_follows_down(dropped: Rig) -> None:
+    """When the line drops, the shaper follows it down."""
+    assert dropped.ping("dropped") < DROPPED
 
-    retry(followed, timeout_seconds=60)
-    t.assertLess(ping("dropped"), DROPPED)
 
-with subtest("and back up when it returns"):
-    line(FULL)
+def test_climbs_back(returned: Rig) -> None:
+    """And back up when it returns."""
+    assert returned.up() > SETTLED
 
-    def climbed(_last_try: bool) -> bool:
-        """Say whether the shaper has climbed back near the full line."""
-        return up() > SETTLED
 
-    retry(climbed, timeout_seconds=120)
-
-with subtest("uploads over a second link to the same router count against the line"):
-    client.succeed("systemctl -M alice@ --user stop uploads.service")
+def test_second_link(returned: Rig) -> None:
+    """Uploads over a second link to the same router count against the line."""
+    rig = returned
+    rig.client.succeed("systemctl -M alice@ --user stop uploads.service")
 
     def follows(_last_try: bool) -> bool:
         """Say whether eth2 takes eth1's rate, as both reach the one router."""
-        status: list[Json] = json.loads(client.succeed("cat /run/shaper/status.json"))
+        status: list[Json] = json.loads(rig.client.succeed("cat /run/shaper/status.json"))
         return any(link["name"] == "eth2" and link.get("follows") == "eth1" for link in status)
 
-    retry(follows, timeout_seconds=60)
+    retry(follows, timeout=FOLLOWING)
     # eth1's controller judges by its last second or so of traffic, so it
     # must have none of its own left before only eth2 carries the uploads:
     # then it sees the line fill only if it counts what eth2 sends.
-    last = {"sent": sent_by("eth1"), "quiet": 0}
+    last = {"sent": rig.sent_by("eth1"), "quiet": 0}
 
     def quiet(_last_try: bool) -> bool:
         """Say whether eth1 has sent next to nothing for QUIET_LOOKS looks running."""
-        now = sent_by("eth1")
+        now = rig.sent_by("eth1")
         last["quiet"] = last["quiet"] + 1 if now - last["sent"] < QUIET else 0
         last["sent"] = now
         return last["quiet"] >= QUIET_LOOKS
 
-    retry(quiet, timeout_seconds=60)
-    client.succeed(
+    retry(quiet, timeout=SENDING)
+    rig.client.succeed(
         "systemd-run --unit=second-link-uploads"
         f" {BIN}/bash -c 'for i in 1 2 3 4; do (while true; do"
-        f" {BIN}/socat -u /dev/zero TCP:{far}:5201,so-bindtodevice=eth2; done) & done; wait'"
+        f" {BIN}/socat -u /dev/zero TCP:{rig.far}:5201,so-bindtodevice=eth2; done) & done; wait'"
     )
-    started = sent_by("eth2")
+    started = rig.sent_by("eth2")
+    retry(lambda _last_try: rig.sent_by("eth2") - started >= APP_SENDS, timeout=SENDING)
+    rig.line(HALVED)
+    retry(lambda _last_try: rig.holds_under(HALVED), timeout=FOLLOWING)
+    rig.client.succeed("systemctl stop second-link-uploads.service")
+    rig.line(FULL)
+    rig.uploads()
 
-    def sending(_last_try: bool) -> bool:
-        """Say whether eth2's uploads are under way."""
-        return sent_by("eth2") - started >= APP_SENDS
 
-    retry(sending, timeout_seconds=60)
-    line(HALVED)
-
-    def followed_both(_last_try: bool) -> bool:
-        """Say whether the shaper holds under the halved line with its queue drained."""
-        return up() < HALVED and backlog() < DRAINED
-
-    retry(followed_both, timeout_seconds=60)
-    client.succeed("systemctl stop second-link-uploads.service")
-    line(FULL)
-    uploads()
-
-with subtest("without the shaper, the line's buffer fills"):
-    client.succeed("systemctl stop shaper.service")
-
-    def filled(_last_try: bool) -> bool:
-        """Say whether the line's queue holds half a second."""
-        return backlog() > FILLED
-
-    retry(filled, timeout_seconds=30)
-    unshaped = ping("unshaped")
-    t.assertGreater(unshaped, UNSHAPED)
-    print(f"an app's median round trip: {shaped} ms shaped, {unshaped} ms not")
+def test_unshaped(loaded: Rig) -> None:
+    """Without the shaper, the line's buffer fills."""
+    loaded.client.succeed("systemctl stop shaper.service")
+    retry(lambda _last_try: loaded.backlog() > FILLED, timeout=FILLING)
+    unshaped = loaded.ping("unshaped")
+    assert unshaped > UNSHAPED, unshaped
+    print(f"an app's median round trip without the shaper: {unshaped} ms")
