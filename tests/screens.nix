@@ -34,32 +34,40 @@ pkgs.testers.runNixOSTest {
       ...
     }:
     let
-      # The machine's store as a read-only image, packed as NixOS packs one
-      # for useNixStoreImage, but built once, as a derivation of its own,
-      # rather than afresh at every start. Packing it wrote about 17 GiB
-      # each run; now that's written once for each closure, and a run
-      # writes a few MiB. The registration the machine loads at boot goes
-      # in with it.
+      # The machine's store as a read-only image, built once for each
+      # closure as a derivation of its own, rather than afresh at every
+      # start as useNixStoreImage does. It's packed as NixOS packs one
+      # (nixos/lib/erofs-store-image.nix), but in the tar's own order and
+      # compressed: sorting by path, mkfs.erofs's default for a tar, first
+      # copies every file aside, which wrote twice the image. So a new
+      # closure writes about 7 GiB rather than 18, and a run a few MiB.
+      # The registration the machine loads at boot goes in with it.
       registration =
         (import "${pkgs.path}/nixos/lib/store-registration-info.nix" {
           hostPkgs = pkgs;
           rootPaths = config.virtualisation.additionalPaths;
         }).regInfo;
-      storeImage = pkgs.runCommand "screens-store.img" { } (
-        import "${pkgs.path}/nixos/lib/erofs-store-image.nix" {
-          hostPkgs = pkgs;
-          storePaths = "${
-            pkgs.closureInfo {
-              rootPaths = [
-                config.system.build.toplevel
-                registration
-              ];
-            }
-          }/store-paths";
-          label = "nix-store";
-          destination = "$out";
-        }
-      );
+      closure = pkgs.closureInfo {
+        rootPaths = [
+          config.system.build.toplevel
+          registration
+        ];
+      };
+      storeImage =
+        pkgs.runCommand "screens-store.img"
+          {
+            nativeBuildInputs = [
+              pkgs.gnutar
+              pkgs.erofs-utils
+            ];
+          }
+          ''
+            tar --create --absolute-names --verbatim-files-from \
+              --transform 'flags=rSh;s|/nix/store/||' \
+              --files-from ${closure}/store-paths \
+              | mkfs.erofs --quiet --sort=none -zlz4 --force-uid=0 --force-gid=0 -L nix-store \
+                -U eb176051-bd15-49b7-9e6b-462e0b467019 -T 0 --hard-dereference --tar=f "$out"
+          '';
     in
     {
       imports = [ self.nixosModules.graphical ];
