@@ -8,6 +8,8 @@
 # other card off its network; a USB card plugged in would drop the laptop's
 # own. This runs wpa_supplicant as its upstream unit does, started by D-Bus,
 # with nothing restarting it but a change to it.
+#
+# Each card stays awake on mains power and dozes on battery (power-save.sh).
 {
   config,
   lib,
@@ -21,6 +23,17 @@ let
   wpa_supplicant = pkgs.wpa_supplicant.overrideAttrs (old: {
     patches = (old.patches or [ ]) ++ [ ./retry-after-a-failed-join.patch ];
   });
+
+  # Whether each card dozes, by the power it runs on (power-save.sh says why).
+  powerSave = pkgs.writeShellApplication {
+    name = "wifi-power-save";
+    runtimeInputs = [
+      pkgs.coreutils
+      pkgs.iw
+      pkgs.util-linux
+    ];
+    text = builtins.readFile ./power-save.sh;
+  };
 in
 {
   # What every card wifid adds starts from. wpa_cli reaches a card through
@@ -45,6 +58,13 @@ in
     # Turns a WPA3 password into a key either way an access point asks for,
     # the newer hash-to-element way included, which some offer alone.
     sae_pwe=2
+  '';
+
+  # udev sets each Wi-Fi card as it appears, and every card again when a
+  # charger comes or goes, which a battery's own changes as it drains don't.
+  services.udev.extraRules = ''
+    SUBSYSTEM=="net", ACTION=="add", ENV{DEVTYPE}=="wlan", RUN+="${lib.getExe powerSave}"
+    SUBSYSTEM=="power_supply", ATTR{type}=="Mains|USB", RUN+="${lib.getExe powerSave}"
   '';
 
   users.users.wpa_supplicant = {

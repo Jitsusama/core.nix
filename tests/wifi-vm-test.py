@@ -789,3 +789,28 @@ with subtest("a card whose access point doesn't answer moves to another of its n
         f"wpa_cli -i wlan2 set_network {lantern} priority {ranked}"
         " && systemctl stop lantern-two && systemctl start lantern"
     )
+
+
+# The kernel's stand-in battery has two chargers, mains and USB, and the machine is on
+# battery only with both pulled.
+def chargers(plugged: str) -> None:
+    """Plug both of the stand-in battery's chargers in, or pull them."""
+    for supply in ["ac", "usb"]:
+        machine.succeed(f"echo {plugged} > /sys/module/test_power/parameters/{supply}_online")
+
+
+def dozes(answer: str) -> None:
+    """Wait until the laptop's card says whether it dozes, on or off."""
+    machine.wait_until_succeeds(
+        f"iw dev wlan2 get power_save | grep -qx 'Power save: {answer}'", timeout=30
+    )
+
+
+with subtest("the card stays awake on mains power, and dozes on battery"):
+    chargers("on")
+    dozes("off")
+    chargers("off")
+    dozes("on")
+    chargers("on")
+    dozes("off")
+    machine.succeed("journalctl -t wifi-power-save -o cat | grep -qx 'wlan2: power save on'")

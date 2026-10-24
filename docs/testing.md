@@ -329,7 +329,7 @@ emptying, and then look.
 | `vm-webcam-microphones-yield`     | a webcam's microphone ranks below a USB microphone's    |
 | `vm-desktop-works`                | it boots clean; the desktop shows, opens, locks and asks, a USB camera's stream included |
 | `vm-greeter-signs-in`             | the greeter signs in and out, not waiting on the account's setup |
-| `vm-wifi-joins`                   | wifid joins, moves past a silent access point, nudges a stuck look, finds sign-ins, keeps others' routing rules |
+| `vm-wifi-joins`                   | wifid joins, moves past a silent access point, nudges a stuck look, finds sign-ins, keeps others' routing rules, keeps the card awake on mains power |
 | `vm-disk-guard-keeps-the-disk`    | the guards answer each band, sparing what's in use       |
 | `vm-network-revives-units`        | what the network let down starts, and reloads on change  |
 | `vm-clock-keeps-time`             | the clock sets from the machine's servers past a network's silent one |
