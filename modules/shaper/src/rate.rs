@@ -116,6 +116,9 @@ pub struct Settings {
     /// Seconds after a cut within which a queue back again is the same
     /// spell's, not a new one's.
     pub spell_gap_s: f64,
+    /// The share of the best rate a direction has held that no cut goes
+    /// under; none lets a cut follow the line down to its floor.
+    pub least_of_best: f64,
 }
 
 impl Default for Settings {
@@ -155,6 +158,25 @@ impl Default for Settings {
             // late and early by turns, and each turn read as a new spell
             // cut the upload from 1.8 Mbit/s to 1.0 within three seconds.
             spell_gap_s: 2.0,
+            // A cable's line does fall, to half on a busy evening, and a
+            // cut that follows it keeps its queue short.
+            least_of_best: 0.0,
+        }
+    }
+}
+
+impl Settings {
+    /// What a link of this kind is shaped by. On Wi-Fi a ping comes back
+    /// late for the air's sake, a neighbour's or the router's as often as
+    /// for a queue of this machine's: three times on one day, cuts for such
+    /// pings took its upload of about 10 Mbit/s to 1 or 2 and its download
+    /// from 50 to 6 or 17. Joel wants the line's whole rate kept, and a
+    /// shaper over the line only leaves it as unshaped, so a cut there
+    /// never goes more than a fifth under the best the line has carried.
+    pub fn for_link(wireless: bool) -> Self {
+        Settings {
+            least_of_best: if wireless { 0.8 } else { 0.0 },
+            ..Settings::default()
         }
     }
 }
@@ -173,6 +195,9 @@ pub struct Direction {
     /// The highest rate it held under load without delay, which an old cut
     /// is forgotten back to.
     pub peak: u64,
+    /// The highest peak it has had, which a cut that lowers the peak
+    /// leaves alone: the rate no cut goes under is a share of it.
+    pub best: u64,
     /// Whether the held rate is the peak put back since the last cut, so a
     /// cut that follows shows the peak is no longer the line's.
     forgot: bool,
@@ -206,6 +231,7 @@ impl Direction {
             held,
             learned: false,
             peak: held,
+            best: held,
             forgot: false,
             proving: None,
             cut_at: None,
@@ -253,6 +279,7 @@ impl Direction {
             // A trial's way up isn't yet the line's best.
             if self.on_trial.is_none() {
                 self.peak = self.peak.max(self.held);
+                self.best = self.best.max(self.peak);
             }
             self.learned = true;
         }
@@ -500,8 +527,9 @@ impl Controller {
                     // A queue still growing after a cut says that rate too
                     // was over the line, so each cut is the line's best
                     // guess.
-                    dir.cut_to(whole(from * s.cut).clamp(dir.bounds.min, dir.bounds.max));
-                    dir.set(float(dir.held) * drain);
+                    let least = whole(float(dir.best) * s.least_of_best).max(dir.bounds.min);
+                    dir.cut_to(whole(from * s.cut).clamp(least, dir.bounds.max.max(least)));
+                    dir.set((float(dir.held) * drain).max(float(least)));
                     dir.learned = true;
                     if std::mem::replace(&mut dir.forgot, false) {
                         dir.peak = dir.held;
@@ -625,7 +653,7 @@ mod tests {
 
     fn controller(up: u64, down: u64) -> Controller {
         Controller::new(
-            Settings::default(),
+            Settings::for_link(false),
             Direction::new(
                 Bounds {
                     min: 1_000,
@@ -794,6 +822,74 @@ mod tests {
             }
         }
         assert!(lowest >= 3_000, "{lowest}");
+    }
+
+    #[test]
+    fn a_wi_fi_line_is_never_cut_far_under_its_best() {
+        let bounds = |min| Bounds {
+            min,
+            max: 1_000_000,
+        };
+        let mut c = Controller::new(
+            Settings::for_link(true),
+            Direction::new(bounds(1_000), 10_000),
+            Direction::new(bounds(5_000), 50_000),
+        );
+        pings(&mut c, 20.0, 6);
+        // As the agents came back after a reboot, the line's queue grew
+        // from 29 ms to 92 while each cut took the upload and then the
+        // download, from 10 Mbit/s to 2.4 and from 50 to 16 within a
+        // second: the queue was neither's. Here pings grow late for a
+        // second of every three whatever either direction carries.
+        let (mut at, mut lowest) = (0.0, [u64::MAX; 2]);
+        while at < 180.0 {
+            let late = if at % 3.0 < 1.0 {
+                30.0 + 60.0 * (at % 1.0)
+            } else {
+                0.0
+            };
+            pings(&mut c, 20.0 + late, 3);
+            at += 0.2;
+            c.step(at, 0.6 * float(c.up.rate), 0.6 * float(c.down.rate));
+            lowest = [lowest[0].min(c.up.rate), lowest[1].min(c.down.rate)];
+        }
+        assert!(lowest[0] >= 8_000, "{lowest:?}");
+        assert!(lowest[1] >= 40_000, "{lowest:?}");
+    }
+
+    #[test]
+    fn a_wi_fi_line_s_best_is_the_most_it_has_carried() {
+        let bounds = |min| Bounds {
+            min,
+            max: 1_000_000,
+        };
+        let mut c = Controller::new(
+            Settings::for_link(true),
+            Direction::new(bounds(1_000), 10_000),
+            Direction::new(bounds(5_000), 50_000),
+        );
+        pings(&mut c, 20.0, 6);
+        // A push finds the line faster than where it started.
+        let mut at = 0.0;
+        while at < 30.0 {
+            pings(&mut c, 20.0, 3);
+            at += 0.2;
+            c.step(at, float(c.up.rate), 0.0);
+        }
+        let climbed = c.up.rate;
+        assert!(climbed > 15_000, "{climbed}");
+        let mut lowest = u64::MAX;
+        while at < 120.0 {
+            let late = if at % 3.0 < 1.0 { 60.0 } else { 0.0 };
+            pings(&mut c, 20.0 + late, 3);
+            at += 0.2;
+            c.step(at, 0.6 * float(c.up.rate), 0.0);
+            lowest = lowest.min(c.up.rate);
+        }
+        assert!(
+            float(lowest) >= 0.8 * float(climbed) - 1.0,
+            "{lowest} of {climbed}"
+        );
     }
 
     #[test]

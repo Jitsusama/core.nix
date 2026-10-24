@@ -223,8 +223,13 @@ fn start(
     let network = network_of(&uplink);
     let held = memory.get(&network).unwrap_or(FIRST);
     let max = ceiling(&uplink.name);
+    // The kernel gives a Wi-Fi link a wireless folder of its own.
+    let wireless = Path::new("/sys/class/net")
+        .join(&uplink.name)
+        .join("wireless")
+        .is_dir();
     let controller = Controller::new(
-        Settings::default(),
+        Settings::for_link(wireless),
         Direction::new(Bounds { min: FLOOR.up, max }, held.up),
         Direction::new(
             Bounds {
