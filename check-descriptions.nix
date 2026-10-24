@@ -857,7 +857,9 @@
   '';
   vm-helpers-say-what-they-mean = ''
     the helpers VM tests' scripts share run a command as the account asked, with its runtime folder
-    and bus, and read a journal's cursor or refuse output without one
+    and bus, read a journal's cursor or refuse output without one, and pace each wait to how busy
+    the host is as it starts, from as long as it says to four times that, describing the machine
+    when one fails
   '';
   vm-ir-camera-opens-for-readers = ''
     the IR camera waits for udev and its loopback, opens only while read, its frames grey, no frame
