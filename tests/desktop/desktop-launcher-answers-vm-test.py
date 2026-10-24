@@ -325,6 +325,56 @@ with subtest("the launcher answers what's asked, and copies the answer"):
     launcher_until(lambda shown: shown["rows"] == ["Reading", "Writing"])
     machine.send_key("esc")
     machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
+    # What the network carries now, in and out, from the kernel's
+    # counters, and what the line can and how quickly it answers, from
+    # what the shaper last wrote, here a stand-in for the machine's card.
+    card = machine.succeed(
+        "for n in /sys/class/net/*; do if [ -e $n/device ]; then basename $n; fi; done"
+    ).split()[0]
+    shaped = [
+        {
+            "name": card,
+            "ifb": "shaper9",
+            "up": 11830,
+            "down": 40000,
+            "state": "climbing",
+            "baselines": [["9.9.9.9", 51.1], ["1.1.1.1", 21.1], ["8.8.8.8", 20.6]],
+            "follows": None,
+        }
+    ]
+    machine.succeed(
+        "systemctl stop shaper.service; mkdir -p /run/shaper"
+        f" && echo '{json.dumps(shaped)}' > /run/shaper/status.json"
+    )
+    rate = r"[\d.,]+ (b|kb|Mb|Gb)/s"
+    answer("network speed")
+    launcher_until(
+        lambda shown: (
+            shown["kind"] == "answer"
+            and re.fullmatch(
+                f"{rate} in \u00b7 {rate} out", (shown["selected"] or {}).get("name", "")
+            )
+            is not None
+        )
+    )
+    step_in()
+    # Connections follows only where more than one interface is listed.
+    launcher_until(
+        lambda shown: shown["rows"][:5] == ["In", "Out", "Line", "Round trip", "Dropped"]
+    )
+    t.assertEqual(showing()["things"][2]["reads"], "Line \u00b7 40 Mb/s in \u00b7 12 Mb/s out")
+    machine.send_key("esc")
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
+    # "ping" asks the round trip alone, the middle of the servers, each
+    # a step in, the quickest first.
+    answer("ping")
+    launcher_until(
+        lambda shown: shown["kind"] == "answer" and (shown["selected"] or {}).get("name") == "21 ms"
+    )
+    step_in()
+    launcher_until(lambda shown: shown["rows"] == ["8.8.8.8", "1.1.1.1", "9.9.9.9"])
+    machine.send_key("esc")
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
     # A guard that stops writing is silent once its last heartbeat is
     # two minutes old, by a deadline that heartbeat set, with nothing
     # read again in between.

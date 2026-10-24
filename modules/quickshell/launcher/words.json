@@ -37,6 +37,7 @@
       "holds": [
         "wifi",
         "bluetooth",
+        "traffic",
         "networks",
         "wifi:radio",
         "bluetooth:radio",
@@ -602,6 +603,25 @@
         "energy",
         "watt",
         "ac"
+      ]
+    },
+    {
+      "id": "traffic",
+      "name": "Network speed",
+      "question": "network speed",
+      "glyph": "traffic",
+      "answers": [
+        "network speed",
+        "network performance",
+        "internet speed",
+        "bandwidth",
+        "throughput",
+        "traffic",
+        "ping",
+        "latency",
+        "round trip",
+        "download speed",
+        "upload speed"
       ]
     },
     {

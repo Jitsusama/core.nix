@@ -13,6 +13,7 @@ import "Colours.js" as Colours
 import "Asking.js" as Asking
 import "Machine.js" as Machine
 import "Standing.js" as Standing
+import "Traffic.js" as Traffic
 import "colour-cases.js" as ColourCases
 
 QtObject {
@@ -458,6 +459,61 @@ QtObject {
             [3, "17:30"]
         ])
             machine(`how things stand in ${room}`, footFor(room), said);
+
+        // The network's figures, from /proc/net/dev and the shaper's file.
+        const netdev = (wifi, warp) => "Inter-|   Receive |  Transmit\n"
+            + " face |bytes    packets errs drop fifo frame compressed multicast|bytes ...\n"
+            + "    lo: 500 5 0 0 0 0 0 0 500 5 0 0 0 0 0 0\n"
+            + `wlp0s20f3: ${wifi[0]} 10 0 1 0 0 0 0 ${wifi[1]} 10 0 2 0 0 0 0\n`
+            + `tailscale0: ${warp[0]} 4 0 0 0 0 0 0 ${warp[1]} 4 0 0 0 0 0 0\n`
+            + "shaper2: 9000 9 0 0 0 0 0 0 0 0 0 0 0 0 0 0\n";
+        const counted = Traffic.counters(netdev([1000, 200], [400, 100]));
+        machine("an interface's counters", counted.wlp0s20f3, { in: 1000, out: 200, dropped: 3 });
+        machine("every interface listed", Object.keys(counted),
+            ["lo", "wlp0s20f3", "tailscale0", "shaper2"]);
+        machine("what isn't /proc/net/dev", Traffic.counters("nothing here\n"), {});
+        machine("a Wi-Fi card", Traffic.kind("wlp0s20f3", true), "wifi");
+        machine("a cable's card", Traffic.kind("enp1s0", true), "cable");
+        machine("a tunnel", Traffic.kind("tailscale0", false), "virtual");
+        machine("the loopback, never listed", Traffic.kind("lo", false), "");
+        const cardKinds = { lo: "", wlp0s20f3: "wifi", tailscale0: "virtual", shaper2: "" };
+        const named = all => {
+            const out = {};
+            for (const name of Object.keys(all))
+                out[name] = { kind: cardKinds[name], counters: all[name] };
+            return out;
+        };
+        const recounted = Traffic.counters(netdev([3000, 600], [1400, 300]));
+        const moved = Traffic.rates(named(recounted), named(counted), 2);
+        machine("the cards' rates, without the tunnel over them",
+            [moved.in, moved.out, moved.dropped], [1000, 200, 0]);
+        machine("a tunnel's rates, listed apart",
+            moved.each.find(one => one.name === "tailscale0").in, 500);
+        machine("the loopback and mirrors left out", moved.each.map(one => one.name),
+            ["wlp0s20f3", "tailscale0"]);
+        const reset = Traffic.counters(netdev([100, 50], [0, 0]));
+        machine("a counter that went back starts from nothing",
+            Traffic.rates(named(reset), named(counted), 1).in, 100);
+        machine("since the start, with no read before",
+            Traffic.rates(named(counted), null, 10).in, 100);
+        const number = (value, places) => value.toFixed(places);
+        machine("a rate in megabits", Traffic.bits(1500000, number), "12 Mb/s");
+        machine("a slow rate in kilobits", Traffic.bits(500, number), "4.0 kb/s");
+        machine("nothing moving", Traffic.bits(0, number), "0 b/s");
+        const status = [{
+            name: "wlp0s20f3", ifb: "shaper2", up: 11830, down: 40000, state: "climbing",
+            baselines: [["9.9.9.9", 51.1], ["1.1.1.1", 21.1], ["8.8.8.8", 20.6]], follows: null
+        }];
+        const link = Traffic.line(status, "wlp0s20f3");
+        machine("what the line carries, in bytes a second", [link.in, link.out], [5000000, 1478750]);
+        machine("the quickest server first", link.trips.map(trip => trip.server),
+            ["8.8.8.8", "1.1.1.1", "9.9.9.9"]);
+        machine("a line not shaped", Traffic.line(status, "enp1s0"), null);
+        machine("no shaper at all", Traffic.line({}, "wlp0s20f3"), null);
+        machine("the shaper's mirrors", Traffic.mirrors(status), ["shaper2"]);
+        machine("the middle round trip", Traffic.typical(link.trips), 21.1);
+        machine("the middle of an even count", Traffic.typical([{ ms: 10 }, { ms: 20 }]), 15);
+        machine("no round trips", Traffic.typical([]), null);
 
         // Said as warnings, since Qt keeps ordinary logging quiet.
         for (const failure of failures)
