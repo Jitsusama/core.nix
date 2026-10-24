@@ -31,7 +31,12 @@ pkgs.testers.runNixOSTest {
   node.pkgsReadOnly = false;
 
   nodes.machine =
-    { lib, pkgs, ... }:
+    {
+      config,
+      lib,
+      pkgs,
+      ...
+    }:
     {
       imports = [ self.nixosModules.graphical ];
 
@@ -46,13 +51,16 @@ pkgs.testers.runNixOSTest {
         automatic = false;
         session = [ "${session}" ];
         # niri refuses to drive a display through a software renderer, and
-        # the VM has no GPU, so the greeter's niri runs nested in Cage.
+        # the VM has no GPU, so the greeter's niri runs nested in Cage. It's
+        # the machine's niri, with its patches, since the config it reads
+        # holds options only they add; nixpkgs's niri falls back to its own
+        # defaults and never starts the greeter.
         compositor = [
           (lib.getExe' pkgs.coreutils "env")
           "WLR_RENDERER=pixman"
           (lib.getExe pkgs.cage)
           "--"
-          (lib.getExe pkgs.niri)
+          (lib.getExe config.programs.niri.package)
         ];
       };
 
