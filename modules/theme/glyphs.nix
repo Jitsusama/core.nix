@@ -111,11 +111,11 @@ in
     glyph = nerd "f0176";
     console = "C";
     means = "the machine is kept from sleeping";
-    # A cup on its saucer.
+    # A mug, the grid's full height on its own, since a saucer drawn under a
+    # cup read as a line of its own beneath it.
     drawn = drawing [
-      "M0 0H9V5A4.5 4.5 0 0 1 0 5Z"
-      "M9 1H10A2 2 0 0 1 10 5H9V4H10A1 1 0 0 0 10 2H9Z"
-      "M0 11H12V12H0Z"
+      "M0 0H9V9A3 3 0 0 1 6 12H3A3 3 0 0 1 0 9Z"
+      "M9 2H10A2 3 0 0 1 10 8H9V6.5H10A0.5 1.5 0 0 0 10 3.5H9Z"
     ];
   };
   waiting = {
