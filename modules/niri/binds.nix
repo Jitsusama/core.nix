@@ -93,12 +93,16 @@ in
     action = ''spawn "launcher-say" "collection" "emoji";'';
   }
   # What's said, typed where the focus is (modules/dictation). D for
-  # dictate; niri fires a chord on press only, so a second press stops it.
+  # dictate: a tap starts it and the next stops it, and held, it listens
+  # until the chord is let go. niri fires a chord on press only, so the
+  # service hears the release from its own watch on the keys; a repeat
+  # would stop what the press started.
   {
     chord = "Super+D";
     does = "Dictate into the focused window, or stop and type it";
-    also = "speak voice talk transcribe speech";
-    action = ''spawn "dictation" "toggle";'';
+    also = "speak voice talk transcribe speech hold";
+    action = ''spawn "dictation" "hold";'';
+    flags.repeat = "false";
   }
   {
     chord = "Super+N";

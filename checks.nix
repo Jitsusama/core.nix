@@ -292,6 +292,9 @@ let
     # Whether a reboot gets past what won't stop shows only by rebooting, with
     # a watchdog there to reset the machine.
     vm-reboot-cannot-hang = import ./tests/shutdown.nix { inherit self pkgs; };
+    # Whether dictation's chord is heard let go, and nothing else of the
+    # keys, shows only with a keyboard there and an account outside its group.
+    vm-dictation-hears-the-chord-let-go = import ./tests/dictation-chord.nix { inherit self pkgs; };
     # What logind makes of a shut lid shows only with logind watching one.
     vm-lid-stays-at-the-desk = import ./tests/lid.nix { inherit self pkgs; };
     # Whether udev turns a root hub's wakeup on shows only with a USB
