@@ -444,6 +444,32 @@ with subtest("the launcher answers what's asked, and copies the answer"):
     answer("weather tokyo")
     photograph("launcher-offline")
     machine.send_key("esc")
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
+    # The rain is the weather's to answer: here asks where here is, since
+    # the VM has no time zone, and a place's rain asks the same forecast.
+    # Built as a check, the VM has no network and says Open-Meteo didn't
+    # answer; run by hand it may reach Open-Meteo itself, and then says the
+    # next rain. That the next rain is said from the hours is the
+    # launcher's rain check's to show.
+    answer("rain")
+    launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "where?")
+    machine.send_key("esc")
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
+    answer("when will it rain in tokyo")
+    rained = r"rain (now|from \d\d:00|unlikely), .*|no rain in the next 12 hours"
+    launcher_until(
+        lambda shown: (
+            (
+                (shown["selected"] or {}).get("name") == "no forecast"
+                and shown["footer"] == "Open-Meteo didn't answer"
+            )
+            or (
+                re.fullmatch(rained, (shown["selected"] or {}).get("name", "")) is not None
+                and shown["footer"] == "Tokyo, Japan \u00b7 Open-Meteo"
+            )
+        )
+    )
+    machine.send_key("esc")
     log = shell_said("ERROR", "Error:")
     assert "ERROR" not in log, "an answer raised an error"
     assert "Error:" not in log, "an answer raised an error"

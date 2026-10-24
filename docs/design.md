@@ -601,7 +601,12 @@ works the same way everywhere.
   time or the weather somewhere, or how the machine is doing is one row
   first in the list, named by what it says and saying it's an answer at its
   right edge, with its parts a step in, so a question never lists a column
-  of bare figures. So is the machine itself, in its own words: "battery" or
+  of bare figures. The weather's parts are Now, Rain, Wind, Today, Tomorrow
+  and the day after, Rain saying when it next rains ("from 15:00, 70%")
+  beside the next twelve hours' chance, and holding those hours, each its
+  chance and how much; "rain", "umbrella" or "when will it rain", here or
+  in a place, answers with the next rain, its hours a step in. So is the
+  machine itself, in its own words: "battery" or
   "charger", "temperature" or "fans", "date" or "epoch", "brightness",
   "volume", "keyboards", and "lag" or "slow" for whether anything waited
   in the last ten seconds. The machine's own things answer the same way,

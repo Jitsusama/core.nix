@@ -573,6 +573,26 @@ in
       touch $out
     '';
 
+  # The launcher's weather answers now, its parts and the rain by the hour
+  # from one forecast, and the rain's own words answer the next rain
+  # (tests/weather.qml), with what Open-Meteo would say kept beforehand, so
+  # nothing leaves the sandbox.
+  the-launcher-answers-the-rain = pkgs.runCommandLocal "the-launcher-answers-the-rain" { } ''
+    mkdir launcher
+    cp ${./Fuzzy.js} Fuzzy.js
+    cp ${./launcher/Provider.qml} launcher/Provider.qml
+    cp ${./launcher/Asking.js} launcher/Asking.js
+    cp ${./launcher/Numbers.js} launcher/Numbers.js
+    cp ${./launcher/Weather.qml} launcher/Weather.qml
+    cp ${../../tests/weather.qml} shell.qml
+    export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
+    mkdir -m 700 $XDG_RUNTIME_DIR
+    export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+    ${shellFolderLint}
+    timeout 60 ${lib.getExe' graphical.pkgs.quickshell "qs"} -p shell.qml
+    touch $out
+  '';
+
   # The launcher tells how the desk light is lit and sets it, and the
   # brightness bar hears its changes but not a camera lighting it
   # (tests/desk-light.qml), over a stand-in litra that keeps a light's

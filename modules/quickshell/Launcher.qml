@@ -885,6 +885,9 @@ Scope {
         // Escape or the left arrow backs out.
         if (choice.confirm && held.length === 0 && enter(choice))
             return;
+        // One with nothing to do of its own, only more inside, steps in.
+        if (!choice.run && enter(choice))
+            return;
         // One whose outcome takes a while keeps the launcher, which says how
         // it's going.
         if (choice.stays) {

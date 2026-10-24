@@ -569,6 +569,10 @@
     the shell finds the keyboard's light among the kernel's and hears each change its firmware
     makes, once, with its level, off as dark
   '';
+  the-launcher-answers-the-rain = ''
+    the weather's parts and the rain by the hour come from one forecast, and "rain", "umbrella"
+    or "when will it rain" answer when it next rains, here or in a place
+  '';
   the-launcher-answers-what-is-asked = ''
     sums, addresses, measures, zones, colours and the machine's figures answer
   '';
