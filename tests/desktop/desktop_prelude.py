@@ -16,6 +16,7 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, TypedDict, cast
 
+import vm_helpers
 from PIL import Image, ImageStat
 
 if TYPE_CHECKING:
@@ -179,7 +180,7 @@ def reported(prefix: str, test: Callable[[str], object], since: str, timeout: in
     The point is one mark gave, or "" for the boot. What the shell did say is printed when it
     never says what's wanted.
     """
-    deadline = time.monotonic() + timeout
+    deadline = time.monotonic() + timeout * vm_helpers.pace(vm_helpers.busyness())
     start = since
 
     def never() -> str:
@@ -218,7 +219,7 @@ def held_still(timeout: int = 10, span: float = 0.5) -> bool:
     it's asked to, windows and surfaces move as they come, and a busy host can draw two frames
     in a row the same mid-motion.
     """
-    deadline = time.monotonic() + timeout
+    deadline = time.monotonic() + timeout * vm_helpers.pace(vm_helpers.busyness())
     with tempfile.TemporaryDirectory() as folder:
         shot = Path(folder) / "shot.ppm"
         last: bytes | None = None
@@ -407,6 +408,21 @@ def commonest_colour_in(title: str, picture: str, wanted: str) -> str | None:
     as_account(f"niri msg action close-window --id {window_titled(title)['id']}")
     return colour
 
+
+def described() -> None:
+    """Print the windows and surfaces niri shows, for a wait that failed to say what was there.
+
+    It asks without a wait of its own, and says nothing more when niri can't answer.
+    """
+    _, shown = machine.execute(in_session("niri msg windows; niri msg layers"), timeout=30)
+    print(f"niri shows:\n{shown}")
+
+
+# A busy host is slower at everything, so every wait allows for how busy it is as it starts.
+vm_helpers.pace_the_driver(globals(), describe=described)
+print(
+    f"waits allow {vm_helpers.pace(vm_helpers.busyness()):.1f} times as long as they say, for now"
+)
 
 machine.wait_for_unit("multi-user.target")
 # niri builds its software renderer before it opens its socket, which on a
