@@ -135,6 +135,31 @@
         && lib.elem graphical.config.systemd.package sorter.path
       );
 
+  # A real-time thread runs ahead of every cgroup's weight, and what agents
+  # start inherits the account's real-time limit, so the sorter takes real
+  # time from everything in agents' and timers' cgroups. Joel's own terminal
+  # work keeps it.
+  agents-work-runs-without-real-time =
+    let
+      sorter = graphical.config.systemd.user.services.jobs-sorter;
+      # The word after each --no-real-time, as the unit quotes it.
+      taken = map (part: lib.head (lib.splitString " " part)) (
+        lib.drop 1 (lib.splitString " --no-real-time " sorter.serviceConfig.ExecStart)
+      );
+      takes = cgroup: lib.elem (lib.escapeShellArg cgroup) taken;
+    in
+    holds "agents-work-runs-without-real-time"
+      "What agents or timers start may run in real time, ahead of everything Joel uses, or Joel's own terminal work loses it."
+      (
+        takes "jobs.slice/jobs.service"
+        && takes "jobs.slice/jobs-work.slice"
+        && takes "jobs.slice/jobs-timed.slice"
+        # None holds Joel's, jobs.slice itself included.
+        && !lib.any (
+          cgroup: cgroup == "jobs.slice" || lib.hasPrefix "jobs.slice/jobs-awaited.slice" cgroup
+        ) taken
+      );
+
   # A machine runs behind what the user works in only while libvirt's system
   # machines in machine.slice are weighed as a build is, and inside the
   # account, where a weight buys nothing, rootless containers in its

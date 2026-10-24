@@ -27,6 +27,10 @@
     the shell's status file hears a status once its folder is made, after the shell starts and again
     after it's removed, and says nothing while it's gone
   '';
+  agents-work-runs-without-real-time = ''
+    the jobs sorter takes real time from work under jobs.service, jobs-work.slice and
+    jobs-timed.slice, and from nothing that holds Joel's own terminal work
+  '';
   backlight-passes-clippy = ''
     clippy finds nothing in the backlight daemon or its tests
   '';

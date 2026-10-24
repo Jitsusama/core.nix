@@ -13,6 +13,7 @@ let
     builtins.toJSON {
       sleep = "${pkgs.coreutils}/bin/sleep";
       bash = "${pkgs.bash}/bin/bash";
+      chrt = "${pkgs.util-linux}/bin/chrt";
     }
   );
 in
