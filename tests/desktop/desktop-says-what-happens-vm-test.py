@@ -56,6 +56,11 @@ if TYPE_CHECKING:
     )
     from driver_names import machine, retry, subtest, t
 
+# How far right of a glyph's middle a click lands, in pixels: inside its
+# cell, and past where what takes the pointer would end had it stayed half
+# a cell to the left, where the row was before it slid.
+BESIDE_THE_MIDDLE = 2
+
 with subtest("niri's settings failing to load is said until they load again"):
     # niri keeps the settings it had when a load fails, and says so for a
     # few seconds only. A setting it doesn't know stands in for one only a
@@ -385,8 +390,18 @@ with subtest("Keep Awake shows in the margin, and What's on says it and lets it 
     machine.send_key("esc")
     machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
     reported("sets margin ", margin_points(""), since)
-    # A click on the glyph opens it the same, and Return lets the
-    # machine sleep.
+    # Another mark comes and goes, so the row slides aside and back, and
+    # what takes the pointer has to follow it there.
+    since = mark()
+    as_account("wpctl set-mute @DEFAULT_AUDIO_SOURCE@ 1")
+    reported("holds margin ", lambda rest: sorted(rest.split()) == ["awake", "muted"], since)
+    held_still()
+    since = mark()
+    as_account("wpctl set-mute @DEFAULT_AUDIO_SOURCE@ 0")
+    reported("holds margin ", lambda rest: rest.split() == ["awake"], since)
+    held_still()
+    glyph = (glyph[0] + BESIDE_THE_MIDDLE / screen_now().width, glyph[1])
+    # A click there opens it the same, and Return lets the machine sleep.
     click(*glyph)
     try:
         whats_on("Keep Awake")
