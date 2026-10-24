@@ -2,13 +2,11 @@
 # RAM it is: each one's locator, size, type, speed, maker and part, as the
 # firmware lists them in SMBIOS. The kernel lets only root read those, so a
 # unit run as root once at boot writes them to /run/memory-modules.json,
-# readable by everyone; modules.py says how it reads them. Nothing waits on
+# readable by everyone; src/main.rs says how it reads them. Nothing waits on
 # it, since nothing needs it until Joel asks.
 { pkgs, ... }:
 let
-  modules = pkgs.writers.writePython3Bin "memory-modules" { doCheck = false; } (
-    builtins.readFile ./modules.py
-  );
+  modules = pkgs.callPackage ./package.nix { };
   written = "/run/memory-modules.json";
 in
 {
