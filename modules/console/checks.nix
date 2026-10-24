@@ -122,22 +122,14 @@
         "The console's font isn't loaded in the initrd, or a machine without an account has one."
         false
     else
+      # tests/console-wears-the-face.sh reads the font.
       pkgs.runCommandLocal "the-console-wears-the-face" { } ''
-        font=${console.font}
-        word() { od -An -t u4 -j $(( $1 * 4 )) -N 4 "$font" | tr -d ' '; }
-        fail() { echo "The console's font $1."; exit 1; }
-        [ "$(word 0)" = 2253043058 ] || fail "isn't a PSF 2 font"
-        [ "$(word 3)" = 1 ] || fail "doesn't say what its glyphs stand for"
-        [ "$(word 4)" -le 256 ] || fail "holds $(word 4) glyphs, past which the console loses its bright colours"
-        [ "$(word 6)x$(word 7)" = 32x16 ] || fail "draws $(word 7) by $(word 6), not the kernel's 16 by 32"
-        ink=$(od -An -t x1 -v -j $(( 32 + 32 * $(word 5) )) -N "$(word 5)" "$font" | tr -d ' \n0')
-        [ -z "$ink" ] || fail "has ink in slot 32, which the console clears the screen with"
-        printf '%s\nMedium\n' ${lib.escapeShellArg face} | cmp -s - "$(dirname "$font")/face" \
-          || fail "isn't drawn from ${face} at Medium"
-        tail -c +$(( 32 + $(word 4) * $(word 5) + 1 )) "$font" | tr '\377' '\n' > table
-        for c in A '~' ─ █ ● é; do
-          grep -qxF "$c" table || fail "has no glyph for $c"
-        done
+        ${lib.getExe pkgs.bash} ${../../tests/console-wears-the-face.sh} ${
+          lib.escapeShellArgs [
+            console.font
+            face
+          ]
+        }
         touch $out
       '';
 
