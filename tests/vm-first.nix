@@ -132,6 +132,11 @@ pkgs.testers.runNixOSTest {
     '';
     # getfattr, to read the mark vm-first leaves for systemd-oomd.
     environment.systemPackages = [ pkgs.attr ];
+    # The module's free-space floor is far more than the machine's disk, so
+    # every build would first collect garbage. Run by hand, the machine's
+    # store is the host's whole one, and that takes longer than any wait
+    # here.
+    nix.settings.min-free = pkgs.lib.mkForce 0;
     # Looking every 20 ms rather than every second, so a hand-off racing a
     # restart of the daemon is caught rather than missed.
     systemd.services.vm-first.serviceConfig.ExecStart = pkgs.lib.mkForce "${
