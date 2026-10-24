@@ -10,6 +10,14 @@
   workstation,
   ...
 }:
+let
+  # Runs Neovim headless with a probe and fails unless it answers as
+  # expected (probe.sh).
+  probed = "${lib.getExe pkgs.bash} ${./probe.sh}";
+  # What runs a probe once Neovim has entered (probes/at-first-screen.lua).
+  atFirstScreen =
+    probe: "--cmd \"let g:probe = '${probe}'\" --cmd 'luafile ${./probes/at-first-screen.lua}'";
+in
 onLinux {
   # Neovim starts with the configuration an account gets, in the theme's own
   # colour scheme drawn on the terminal's own background, with Tree-sitter
@@ -34,9 +42,7 @@ onLinux {
       ''
         ${neovimAt home}
         echo 'return {}' > probe.lua
-        nvim --headless probe.lua -c "lua io.stdout:write(${report})" -c 'qa!' > answer 2> complaints
-        if [ -s complaints ]; then cat complaints; exit 1; fi
-        if [ "$(cat answer)" != "jitsusama nil true objects" ]; then cat answer; exit 1; fi
+        ${probed} 'jitsusama nil true objects' probe.lua -c "lua io.stdout:write(${report})" -c 'qa!'
         touch $out
       '';
 
@@ -56,15 +62,7 @@ onLinux {
       ''
         ${neovimAt home}
         echo 'return {}' > probe.lua
-        # From VimEnter, which a person meets Neovim after, rather than from
-        # a -c command, which runs before it. A probe that fails says why and
-        # quits, and one that never finishes is stopped, so the check fails
-        # rather than waits.
-        timeout 120 nvim --headless --cmd 'autocmd VimEnter * ++once lua local ok, problem = xpcall(dofile, debug.traceback, "${probe}") if not ok then io.stdout:write(problem) vim.cmd("qa!") end' probe.lua \
-          > answer 2> complaints || true
-        if [ -s complaints ]; then cat complaints; exit 1; fi
-        if [ ! -s answer ]; then echo 'Neovim did not finish in two minutes'; exit 1; fi
-        if [ "$(cat answer)" != "as designed" ]; then cat answer; exit 1; fi
+        ${probed} 'as designed' ${atFirstScreen probe} probe.lua
         touch $out
       '';
 
@@ -81,11 +79,7 @@ onLinux {
     pkgs.runCommandLocal "neovim-floats-by-shade" { nativeBuildInputs = [ home.home.path ]; } ''
       ${neovimAt home}
       echo 'return {}' > probe.lua
-      timeout 120 nvim --headless --cmd 'autocmd VimEnter * ++once lua local ok, problem = xpcall(dofile, debug.traceback, "${probe}") if not ok then io.stdout:write(problem) vim.cmd("qa!") end' probe.lua \
-        > answer 2> complaints || true
-      if [ -s complaints ]; then cat complaints; exit 1; fi
-      if [ ! -s answer ]; then echo 'Neovim did not finish in two minutes'; exit 1; fi
-      if [ "$(cat answer)" != "as designed" ]; then cat answer; exit 1; fi
+      ${probed} 'as designed' ${atFirstScreen probe} probe.lua
       touch $out
     '';
 
@@ -121,11 +115,7 @@ onLinux {
       pkgs.runCommandLocal "neovim-finds-in-every-group" { nativeBuildInputs = [ home.home.path ]; } ''
         ${neovimAt home}
         echo 'return {}' > probe.lua
-        timeout 120 nvim --headless --cmd 'autocmd VimEnter * ++once lua local ok, problem = xpcall(dofile, debug.traceback, "${probe}") if not ok then io.stdout:write(problem) vim.cmd("qa!") end' probe.lua \
-          > answer 2> complaints || true
-        if [ -s complaints ]; then cat complaints; exit 1; fi
-        if [ ! -s answer ]; then echo 'Neovim did not finish in two minutes'; exit 1; fi
-        if [ "$(cat answer)" != "as designed" ]; then cat answer; exit 1; fi
+        ${probed} 'as designed' ${atFirstScreen probe} probe.lua
         touch $out
       '';
 
@@ -149,9 +139,7 @@ onLinux {
       git -C project -c user.name=check -c user.email=check@localhost -c commit.gpgsign=false \
         commit -q -m first
       echo 'a second line' >> project/sub/notes.txt
-      nvim --headless project/sub/notes.txt -c 'luafile ${probe}' > answer 2> complaints
-      if [ -s complaints ]; then cat complaints; exit 1; fi
-      if [ "$(cat answer)" != "as designed" ]; then cat answer; exit 1; fi
+      ${probed} 'as designed' project/sub/notes.txt -c 'luafile ${probe}'
       touch $out
     '';
 
@@ -168,9 +156,7 @@ onLinux {
       ''
         ${neovimAt home}
         seq 1 120 > lines.txt
-        nvim --headless lines.txt -c 'luafile ${probe}' > answer 2> complaints
-        if [ -s complaints ]; then cat complaints; exit 1; fi
-        if [ "$(cat answer)" != "as designed" ]; then cat answer; exit 1; fi
+        ${probed} 'as designed' lines.txt -c 'luafile ${probe}'
         touch $out
       '';
 
@@ -185,9 +171,7 @@ onLinux {
       ''
         ${neovimAt home}
         echo "Neovim's niri and Quickshell, a YubiKey and the TPM, in monospace: a speling slip." > notes.md
-        nvim --headless notes.md -c 'luafile ${probe}' > answer 2> complaints
-        if [ -s complaints ]; then cat complaints; exit 1; fi
-        if [ "$(cat answer)" != "as designed" ]; then cat answer; exit 1; fi
+        ${probed} 'as designed' notes.md -c 'luafile ${probe}'
         touch $out
       '';
 
@@ -206,10 +190,8 @@ onLinux {
       ${neovimAt home}
       # Neovim says where each key was set only when it's verbose, which
       # goes to a file rather than among the complaints.
-      nvim --headless --cmd 'set verbose=1 verbosefile=verbose' \
-        -c 'set verbose=0' -c 'luafile ${probe}' -c 'qa!' > answer 2> complaints
-      if [ -s complaints ]; then cat complaints; exit 1; fi
-      if [ "$(cat answer)" != "every key" ]; then cat answer; exit 1; fi
+      ${probed} 'every key' --cmd 'set verbose=1 verbosefile=verbose' \
+        -c 'set verbose=0' -c 'luafile ${probe}' -c 'qa!'
       touch $out
     '';
 }
