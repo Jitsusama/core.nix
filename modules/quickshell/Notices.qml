@@ -56,7 +56,11 @@ Singleton {
         // A pi session wanting Joel (Sessions.qml), in its mark. It's
         // never missed, since the margin's mark says it while it holds.
         "pi": { glyph: Theme.glyph.agent.codePointAt(0), hue: "program", answers: true },
-        "recorder": { glyph: 0xf0ec2, hue: "machine", answers: true }
+        "recorder": { glyph: 0xf0ec2, hue: "machine", answers: true },
+        // What arrives by itself (Arrivals.qml), in its margin mark, which
+        // says it while it holds, so it's never missed either.
+        "camera": { glyph: Theme.glyph.camera.codePointAt(0), hue: "machine", answers: true },
+        "battery": { glyph: Theme.glyph.low.codePointAt(0), hue: "machine", answers: true }
     })
 
     function sender(name) {

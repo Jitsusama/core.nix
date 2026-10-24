@@ -157,17 +157,22 @@ Scope {
 
                 function onOnChanged() {
                     reported.changed();
-                    if (!Options.reports)
-                        return;
-                    Report.say(`holds margin ${root.on.map(thing => thing.entry.mark).join(" ")}`);
-                    // How each is drawn, so a test sees what Joel sees.
-                    Report.say(`sets margin ${JSON.stringify(root.on.map(thing => ({
-                        mark: thing.entry.mark,
-                        kind: thing.kind,
-                        tone: thing.tone,
-                        state: thing.piece.value
-                    })))}`);
+                    // Said once the pieces' words have caught up.
+                    if (Options.reports)
+                        Qt.callLater(window.tell);
                 }
+            }
+
+            // What the margin holds, and how each is drawn, so a test sees
+            // what Joel sees.
+            function tell() {
+                Report.say(`holds margin ${root.on.map(thing => thing.entry.mark).join(" ")}`);
+                Report.say(`sets margin ${JSON.stringify(root.on.map(thing => ({
+                    mark: thing.entry.mark,
+                    kind: thing.kind,
+                    tone: thing.tone,
+                    state: thing.piece.value
+                })))}`);
             }
 
             Lifted {

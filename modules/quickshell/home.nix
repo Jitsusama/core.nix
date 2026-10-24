@@ -58,6 +58,7 @@ let
     "Chord.qml"
     "Margin.qml"
     "Marks.js"
+    "Arrivals.qml"
     "Notifications.qml"
     "Music.qml"
     "Music.js"

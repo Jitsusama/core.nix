@@ -2737,15 +2737,22 @@ def whats_on(selected: str) -> None:
     )
 
 
-with subtest("a camera open shows in the margin, and the launcher says by what"):
+with subtest("a camera opened is said, then shows in the margin, and the launcher says by what"):
     machine.wait_until_fails(in_session(margin), timeout=10)
-    # Written whole, as the camera's module writes it. On air, so strong.
+    # What's true as the shell starts isn't news, so it's waited out.
+    reported("settles arrivals", lambda rest: rest == "", "")
+    # Written whole, as the camera's module writes it. A program opened
+    # it by itself, so it's said as a notice of the camera's.
     since = mark()
-    with told("drawn margin"):
+    with told("shows card chrome has the camera open"):
         machine.succeed(
             "echo chrome > /run/camera-holders/.camera"
             " && mv /run/camera-holders/.camera /run/camera-holders/camera"
         )
+    photograph("notice-camera")
+    # A card or a mark: once the card goes, the glyph shows, on air, so
+    # strong, and the card wasn't missed, since the glyph says it.
+    machine.wait_until_fails(in_session(notices), timeout=30)
     reported("sets margin ", margin_sets(("camera", "onAir", "strong")), since)
     photograph("margin-camera")
     as_account("qs ipc call launcher toggle")

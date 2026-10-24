@@ -40,6 +40,9 @@ Piece {
     }
 
     title: "Battery"
+    // Running low, and then critical, is said as it happens.
+    arrives: true
+    app: "Battery"
     hint: battery.timeToEmpty > 0
         ? `${charge}% left, about ${Math.round(battery.timeToEmpty / 60)} minutes`
         : `${charge}% left`

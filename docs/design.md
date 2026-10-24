@@ -327,7 +327,11 @@ seconds in its place, muted (`margin.linger`), so a camera that was on
 for a moment is still seen to have been on; nothing else lingers. A card
 or a mark, never both: while a program's notice is on screen saying the
 same thing, as pi's want or a call ringing does, its glyph waits for the
-card to go.
+card to go. What comes true by itself, a camera a program opened or the
+battery running low, arrives as one notice of its own, signed with its
+glyph and name and carrying what can be done about it, and again, urgent,
+when it comes to need Joel now; what his own keys turned on, and what was
+already true as the shell started, says nothing, since he knows.
 
 What each is, in words, is the launcher's What's on, opened by Super+O or by
 clicking a glyph, on that glyph's row: a row each, its glyph as the margin

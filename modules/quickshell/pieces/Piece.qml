@@ -55,6 +55,9 @@ Item {
     // names it, so its mark waits while one of its cards is on screen:
     // a card or a mark, never both.
     property string app: ""
+    // Whether it comes true by itself, not by Joel's keys, and so is said
+    // as a notice of its app's when it does (Arrivals.qml).
+    property bool arrives: false
     property string hue: "machine"
     // { glyph, name, chord, run(shell) }
     property var actions: []

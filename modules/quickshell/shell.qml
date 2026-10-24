@@ -38,6 +38,10 @@ ShellRoot {
         launcher: launcher
     }
 
+    Arrivals {
+        launcher: launcher
+    }
+
     // What other modules add, such as dictation's look, each its own file.
     Variants {
         model: Options.surfaces
