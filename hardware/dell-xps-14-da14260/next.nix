@@ -41,6 +41,12 @@ in
       # a PWM signal this OLED ignores. The driver wakes the panel before
       # reading it.
       "edp-wakes-the-panel"
+      # Each draw kept a program's own buffers fresh for reclaim, but never
+      # those it shares with another, such as the windows a compositor
+      # imports from its clients, so reclaim took those first, and the
+      # next draw brought them back with their lock held. The compositor's
+      # own draws were seen waiting on such a lock for up to 250 ms.
+      "xe-shared-buffers-keep-their-place"
     ]
   );
 
