@@ -4,7 +4,9 @@
 //! cable's I2C bus, which the kernel offers as /dev/i2c-N. Only the buses of
 //! DisplayPort connectors, and those a dock's MST hub makes for the monitors
 //! behind it, are tried; the panel's own and the machine's other buses are
-//! left alone. udev lets the person at the seat open those buses.
+//! left alone. udev lets the person at the seat open those buses. A
+//! connector DRM says has nothing on it is passed over, so an empty port
+//! isn't tried and warned about at every start.
 //!
 //! A connector's bus passes through to the hub behind it, so a monitor on a
 //! dock is reached twice: by its hub's bus and by the connector's. Two
@@ -595,18 +597,22 @@ enum Reach {
 }
 
 /// How a bus in /sys/class/i2c-dev reaches a monitor, if it does.
+///
+/// A connector that DRM says has nothing on it reaches none. A dock's hub is
+/// one of those too, since its monitors are on connectors of their own, which
+/// its hub's buses reach.
 fn reach(bus: &Path) -> Option<Reach> {
     let name = fs::read_to_string(bus.join("name")).unwrap_or_default();
     if name.trim() == "DPMST" {
         return Some(Reach::ThroughAHub);
     }
-    let on_a_connector = fs::canonicalize(bus.join("device")).is_ok_and(|device| {
-        device
-            .parent()
-            .and_then(Path::file_name)
-            .is_some_and(|connector| is_displayport(&connector.to_string_lossy()))
-    });
-    on_a_connector.then_some(Reach::ByItsConnector)
+    let device = fs::canonicalize(bus.join("device")).ok()?;
+    let connector = device.parent()?;
+    let displayport = connector
+        .file_name()
+        .is_some_and(|connector| is_displayport(&connector.to_string_lossy()));
+    let status = fs::read_to_string(connector.join("status")).unwrap_or_default();
+    (displayport && status.trim() != "disconnected").then_some(Reach::ByItsConnector)
 }
 
 /// A bus that reaches a monitor, and which monitor once its EDID is read.
@@ -1070,6 +1076,12 @@ mod tests {
             fs::write(self.0.join("dev").join(bus), "").unwrap();
         }
 
+        /// What a connector under devices says is on it, as DRM's status.
+        fn status(&self, connector: &str, status: &str) {
+            let dir = self.0.join("devices").join(connector);
+            fs::write(dir.join("status"), format!("{status}\n")).unwrap();
+        }
+
         fn buses(&self) -> Vec<(String, Reach)> {
             buses(&self.0.join("class"), &self.0.join("dev")).unwrap()
         }
@@ -1103,6 +1115,24 @@ mod tests {
         tree.add("i2c-3", "AUX A/DDI A/PHY A", "card1/card1-eDP-1/i2c-3");
         tree.add("i2c-5", "i915 gmbus dpb", "card1/card1-HDMI-A-1/i2c-5");
         assert_eq!(tree.buses(), [("i2c-7".into(), Reach::ByItsConnector)]);
+    }
+
+    #[test]
+    fn a_connector_with_nothing_on_it_is_passed_over() {
+        let tree = Tree::new("disconnected");
+        tree.add(
+            "i2c-10",
+            "AUX USBC1/DDI TC1/PHY TC1",
+            "card0/card0-DP-1/i2c-10",
+        );
+        tree.add(
+            "i2c-11",
+            "AUX USBC2/DDI TC2/PHY TC2",
+            "card0/card0-DP-2/i2c-11",
+        );
+        tree.status("card0/card0-DP-1", "disconnected");
+        tree.status("card0/card0-DP-2", "connected");
+        assert_eq!(tree.buses(), [("i2c-11".into(), Reach::ByItsConnector)]);
     }
 
     #[test]
