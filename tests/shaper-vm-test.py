@@ -317,6 +317,29 @@ with subtest("udev leaves the shaper's IFBs as it made them"):
     # Each IFB came and went with a link above, so udev has met several.
     client.fail("journalctl -b --no-pager | grep -E 'shaper[0-9a-f]+: Could not set'")
 
+with subtest("a link unplugged and plugged back in is shaped afresh, both ways"):
+    # A dock's network adapter is a USB device: pulling the dock takes the link away, and
+    # plugging it back makes it anew under a new index, as unbinding a virtio NIC from its
+    # driver and binding it again does here. Its address comes back by itself, and the
+    # default route is put back as the network's DHCP would.
+    device = client.succeed("basename $(readlink /sys/class/net/eth2/device)").strip()
+    unplugged_ifb = ifb("eth2")
+    client.succeed(f"echo {device} > /sys/bus/virtio/drivers/virtio_net/unbind")
+    client.wait_until_succeeds("! ip link show eth2", timeout=15)
+    client.wait_until_succeeds("journalctl -u shaper | grep -q 'eth2 no longer routes'", timeout=15)
+    client.succeed(f"! ip link show {unplugged_ifb}")
+    client.succeed(f"echo {device} > /sys/bus/virtio/drivers/virtio_net/bind")
+    client.wait_until_succeeds("ip -4 -o address show dev eth2 | grep -q 192.168.3.", timeout=30)
+    client.succeed("ip route replace default via 192.168.3.2 dev eth2")
+    client.wait_until_succeeds("tc -j qdisc show dev eth2 | grep -q cake", timeout=15)
+    plugged_ifb = ifb("eth2")
+    t.assertNotEqual(plugged_ifb, unplugged_ifb)
+    client.wait_until_succeeds(f"tc -j qdisc show dev {plugged_ifb} | grep -q cake", timeout=15)
+    t.assertTrue(shaped("eth2"))
+    client.wait_until_succeeds("nft list set inet shaper uplinks | grep -q eth2", timeout=15)
+    lands("bulk", "jobs.slice", upload, dev="eth2")
+    lands("bulk", "jobs.slice", download, dev=plugged_ifb)
+
 with subtest("stopping it leaves the links as they were"):
     eth2_ifb = ifb("eth2")
     client.succeed("systemctl stop shaper.service")
