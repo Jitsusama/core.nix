@@ -2,8 +2,11 @@
 
 Checks are for the loop of making a change: each one has to tell whoever is
 changing core.nix something they need to know, quickly, and something no
-cheaper check already tells them. Every check is defined in
-[`checks.nix`][1], and nothing runs on a schedule.
+cheaper check already tells them. A check sits in the `checks.nix` of the
+folder it proves something about, a module's or a hardware model's, and
+[`checks.nix`][1] at the root gathers them, names the virtual machine tests,
+and holds the few about the repository as a whole. Nothing runs on a
+schedule.
 
 ## The Loop
 
@@ -33,7 +36,7 @@ deadnix for Nix, and the `formatting` check holds the repository to it.
 Two linters run in checks rather than `nix fmt`, since each needs what a
 build brings. clippy reads every crate and single-file program with its
 pedantic group on top of its defaults, less three lints about a published
-library's API, as `clippyLints` in `checks.nix` says; `clippy.toml` holds
+library's API, as `lints` in `modules/clippy/clippy.nix` says; `clippy.toml` holds
 its settings, and the `-passes-clippy` checks hold the code to both, which
 a bare `cargo clippy` doesn't. qmllint reads the account's shell and the
 greeter (`quickshell-passes-qmllint`), and each offscreen check's own
@@ -366,6 +369,10 @@ picture caught before its state was drawn is a fault in the test instead.
 
 - A new check goes in the lowest tier that can show what it covers. Most
   belong with the promises.
+- It goes in the `checks.nix` of the folder whose promise it holds, which
+  takes the helpers it uses by name. A folder's first check makes the file,
+  which the root `checks.nix` then lists, alphabetically; a name two files
+  give stops the evaluation.
 - A check above the promises says what the tiers below it miss.
 - What a running system shows goes in an existing virtual machine where it
   fits. A new one has to cover something none of them can; its name starts

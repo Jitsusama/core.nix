@@ -85,11 +85,12 @@ core.nix/
 │   ├── darwin.nix         #   its nix-darwin module
 │   ├── nixos.nix          #   its NixOS module
 │   ├── system.nix         #   one module for both NixOS and nix-darwin
+│   ├── checks.nix         #   what holds it to its promises
 │   └── <config files>     #   the tool's own configuration, in its own format
 ├── roles/<role>/          # what a machine is for, one file per module system
 ├── hardware/<model>/      # what one machine model needs, kernel included
 ├── examples/              # machines written the way a machine repository would
-├── checks.nix             # what `nix flake check` runs
+├── checks.nix             # what `nix flake check` runs, every folder's gathered
 ├── tests/                 # checks that boot a virtual machine
 ├── treefmt.nix            # what `nix fmt` runs
 └── docs/                  # how it works, and why

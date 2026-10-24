@@ -114,7 +114,7 @@ brighter.
 
 - **Legibility.** Build any check with the theme picked
   (`jitsusama.theme.name = "<name>"` on a bare machine, as
-  `a-faint-theme-is-refused` in `checks.nix` does). Every text pair under
+  `a-faint-theme-is-refused` in `modules/theme/checks.nix` does). Every text pair under
   4.5:1 is listed by name with its ratio. Fix each by adding a pigment, never
   by loosening the check.
 - **Nothing hard-coded.** A module that names a colour of its own isn't a

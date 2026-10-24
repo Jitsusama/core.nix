@@ -77,7 +77,7 @@ pushing, run the whole test once, and compare its pictures with main's using
 `shots-changed`, as [testing][testing] says, looking at every one it draws:
 a change to one surface can move another.
 
-[checks]: ../../checks.nix
+[checks]: checks.nix
 [clipboard]: clipboard/
 [design]: ../../docs/design.md
 [desktop]: ../../tests/desktop.nix

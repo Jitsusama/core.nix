@@ -10,11 +10,11 @@ no framework, and nothing found by scanning the file tree.
 | Path                | Holds                                                     |
 | ------------------- | --------------------------------------------------------- |
 | `flake.nix`         | the index: every module, role and input, by module system |
-| `modules/<tool>/`   | one tool: a module per system, and its own config files   |
+| `modules/<tool>/`   | one tool: a module per system, its config files, checks   |
 | `roles/<role>/`     | what a machine is for: imports only, one file per system  |
 | `hardware/<model>/` | one machine model's needs, and the kernel it runs         |
 | `examples/`         | machines built only from the outputs, as a consumer would |
-| `checks.nix`        | what `nix flake check` runs                               |
+| `checks.nix`        | what `nix flake check` runs: every folder's `checks.nix`  |
 | `treefmt.nix`       | what `nix fmt` runs                                       |
 | `docs/`             | architecture, conventions, guides and decision records    |
 | `.agents/skills/`   | how to do this repository's recurring jobs, step by step  |
