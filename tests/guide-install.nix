@@ -27,7 +27,6 @@
 let
   inherit (pkgs) lib;
   pin = "123456";
-  tpmPin = "24681357";
   # Spaces inside, which ssh-tpm-keygen keeps.
   keyPin = "the keys PIN";
   password = "a password for alice";
@@ -227,7 +226,6 @@ pkgs.testers.runNixOSTest {
           inherit
             image
             pin
-            tpmPin
             keyPin
             password
             passphrase

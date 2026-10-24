@@ -553,7 +553,7 @@ fn installed() -> Result<(), Fault> {
     // No restart: at boot the guide holds the boot back from counting as
     // good, so restarting from here would spend one of a new generation's
     // tries.
-    let next = "From the next start, the disk asks for the TPM's PIN. A YubiKey or the recovery key still opens it whenever the TPM won't.";
+    let next = "From the next start, the disk asks for the YubiKey's PIN, which the TPM takes too. A YubiKey with that PIN, or the recovery key, still opens it whenever the TPM won't.";
     walk.card(
         &mut terminal,
         &format!("{name} is finished"),

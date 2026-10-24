@@ -6,7 +6,7 @@
 
 use guide::fake::Fake;
 use guide::installed::{CheckSecureBoot, FACTS, PCRLOCK, SealTpm};
-use guide::{Answer, Answers, Fault, Journey, Machine, Program, Secret, Standing, Step, Tool};
+use guide::{Answer, Answers, Ask, Fault, Journey, Machine, Program, Secret, Standing, Step, Tool};
 use std::fmt::Write as _;
 
 const GLOBAL: &str = "8be4df61-93ca-11d2-aa0d-00e098032b8c";
@@ -191,12 +191,10 @@ fn holding(indices: &str) -> Fake {
     holding_after(indices, "success")
 }
 
-fn answers(pin: &str, again: &str) -> Answers {
+fn answers(pin: &str) -> Answers {
     let mut answers = Answers::new();
-    answers.give("tpm-pin", Answer::Secret(Secret::new(pin.into())));
-    answers.give("again", Answer::Secret(Secret::new(again.into())));
     answers.give("key", Answer::Done);
-    answers.give("key-pin", Answer::Secret(Secret::new("123456".into())));
+    answers.give("key-pin", Answer::Secret(Secret::new(pin.into())));
     answers
 }
 
@@ -252,8 +250,9 @@ fn the_tpm_is_sealed_through_run0_its_slot_preferred_and_proven() {
     let Standing::Needed { asks } = SealTpm.observe(&mut fake).unwrap() else {
         panic!("the TPM is still to seal")
     };
-    assert_eq!(asks.len(), 4, "{asks:?}");
-    Journey::attempt(&SealTpm, &mut fake, &answers("24681357", "24681357")).unwrap();
+    let ids: Vec<&str> = asks.iter().map(Ask::id).collect();
+    assert_eq!(ids, ["key", "key-pin"]);
+    Journey::attempt(&SealTpm, &mut fake, &answers("123456")).unwrap();
 
     let privileged: Vec<&String> = fake
         .calls
@@ -274,21 +273,37 @@ fn the_tpm_is_sealed_through_run0_its_slot_preferred_and_proven() {
         enrolled.contains("[cryptsetup.fido2-pin cryptenroll.fido2-pin cryptenroll.new-tpm2-pin]"),
         "{enrolled}"
     );
+    // The TPM takes the YubiKey's PIN, so whichever the disk reaches at
+    // boot, the one PIN typed is right; the proof opens it with that PIN.
+    let handed: Vec<(&str, &str)> = fake
+        .secrets
+        .iter()
+        .map(|(place, secret)| (place.as_str(), secret.as_str()))
+        .collect();
+    assert_eq!(
+        handed,
+        [
+            ("cryptsetup.fido2-pin", "123456"),
+            ("cryptenroll.fido2-pin", "123456"),
+            ("cryptenroll.new-tpm2-pin", "123456"),
+            ("stdin", "123456\n"),
+        ]
+    );
     assert!(
-        fake.calls
-            .iter()
-            .all(|call| !call.contains("24681357") && !call.contains("123456")),
+        fake.calls.iter().all(|call| !call.contains("123456")),
         "{:#?}",
         fake.calls
     );
 }
 
 #[test]
-fn pins_that_differ_seal_nothing() {
+fn no_pin_seals_nothing() {
     let mut fake = machine();
-    let refused = SealTpm.run(&mut fake, &answers("24681357", "24681358"));
+    let mut answers = Answers::new();
+    answers.give("key", Answer::Done);
+    let refused = SealTpm.run(&mut fake, &answers);
     assert!(
-        matches!(&refused, Err(Fault::Blocked { why, .. }) if why.contains("weren't the same")),
+        matches!(&refused, Err(Fault::Unanswered { ask: "key-pin", .. })),
         "{refused:?}"
     );
     assert!(fake.calls.is_empty(), "{:#?}", fake.calls);
@@ -441,7 +456,7 @@ fn a_cleared_tpm_gets_its_policy_made_again_before_the_disk_is_sealed_to_it() {
         ],
         "",
     );
-    Journey::attempt(&SealTpm, &mut fake, &answers("24681357", "24681357")).unwrap();
+    Journey::attempt(&SealTpm, &mut fake, &answers("123456")).unwrap();
 
     let at = |start: &str| {
         fake.calls

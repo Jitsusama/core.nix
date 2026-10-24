@@ -154,9 +154,11 @@ driven on; the installed machine's steps come later.
   input and output. A step that stops shows Ctrl+C beside Return, since
   at boot it holds the sign-in back. It checks
   Secure Boot enforces with the machine's own keys before anything is
-  sealed to it, then seals the disk to the TPM with a PIN under the
-  measured-boot policy, a YubiKey opening the disk to do so, prefers the
-  TPM's slot and proves it opens. The seal counts as done only while the
+  sealed to it, then seals the disk to the TPM under the measured-boot
+  policy with the YubiKey's PIN, the YubiKey opening the disk to do so,
+  prefers the TPM's slot and proves it opens. One PIN, because the boot
+  tries what's typed on each key, and a PIN one doesn't know costs it a
+  try at every boot the TPM refuses. The seal counts as done only while the
   policy follows the boot: the TPM holds its NV index, and lanzaboote's
   unit remade it this boot. A cleared TPM loses the index, and a firmware
   update changes PCR 0 past what the policy can follow, so that unit
