@@ -25,8 +25,9 @@
 # until it rests, and for its first two seconds a build in a terminal
 # shares the CPU as an app would.
 #
-# session.slice peaks at about 400 MiB, so a 1 GiB floor keeps it in memory
-# however hard a build pushes. The floor is a hard one, MemoryMin: the kernel
+# session.slice holds the compositor and the shell, which took 0.98 GiB
+# between them on the XPS 14, so a 1.5 GiB floor keeps it in memory however
+# hard a build pushes. The floor is a hard one, MemoryMin: the kernel
 # takes a soft one, MemoryLow, back whenever it finds nothing else to take, and
 # when an evaluation filled a 61 GiB laptop it did so 215,001 times, leaving
 # two thirds of niri in swap. niri then read keys up to 281 ms late, and past
@@ -81,17 +82,17 @@ let
   # it back. A hard one, MemoryMin, to 26 ms and 68 ms, and nothing was
   # ended. The floor is a share of memory, about 8 GiB there, so it scales
   # with the machine. Every slice above app.slice claims a little more, to
-  # cover session.slice's few hundred MiB beside it; what the floors below
-  # leave unused the kernel shares among the account's other slices. Work in
-  # jobs, background and containers has the rest of memory, and when that
-  # runs out, it's what swaps.
+  # cover session.slice's 1.5 GiB beside it: 9.96 GiB there, against 9.6 GiB
+  # below. What the floors below leave unused the kernel shares among the
+  # account's other slices. Work in jobs, background and containers has the
+  # rest of memory, and when that runs out, it's what swaps.
   apps = "13%";
-  account = "15%";
+  account = "16%";
 in
 {
   systemd.user.slices.session.sliceConfig = {
     CPUWeight = 1000;
-    MemoryMin = "1G";
+    MemoryMin = "1536M";
     IODeviceLatencyTargetSec = disk;
   };
 
@@ -100,8 +101,20 @@ in
     IODeviceLatencyTargetSec = disk;
   };
 
-  # Beside app.slice and session.slice, so it yields to both.
-  systemd.user.slices.jobs.sliceConfig.CPUWeight = "idle";
+  # Beside app.slice and session.slice, so it yields to both, and held to
+  # half of memory. The floors keep only what apps already hold: work in
+  # jobs still took the rest, pushing out to swap what an app reached for
+  # next. Past the ceiling, jobs swaps its own memory instead. In 238
+  # ten-second windows without it, apps waited on memory 0.67% of the time,
+  # over 1% in 28 windows. In 298 with it, while three evaluations held jobs
+  # at the ceiling with up to 44 GiB swapped, they waited 0.024%, over 1% in
+  # one. Jobs pays: it waited 12.7% of the time rather than 8.3%, its worst
+  # minute at 55%, under the 80% for 30 s at which oomd ends it. MemoryHigh
+  # slows work past the ceiling and never ends it.
+  systemd.user.slices.jobs.sliceConfig = {
+    CPUWeight = "idle";
+    MemoryHigh = "50%";
+  };
 
   # The cgroup work is moved into. A cgroup holds only while something is
   # in it, so this one holds a process of its own, and its delegation says
@@ -165,7 +178,7 @@ in
   };
 
   systemd.user.services.jobs-sorter = {
-    description = "Moves a terminal's busy work into jobs";
+    description = "Moves a terminal's busy work, and scopes work in jobs starts, into jobs";
     wantedBy = [ "default.target" ];
     requires = [ "awaited.service" ];
     after = [ "awaited.service" ];

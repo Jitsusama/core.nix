@@ -35,6 +35,17 @@
       "A slice above session.slice or app.slice lacks its hard memory floor, so they have none."
       (lib.all (floor: floor != null) floors && lib.all (floor: floor == lib.head parents) parents);
 
+  # Work in jobs swaps its own memory past half of it, rather than pushing
+  # out what an app reaches for next, and is only ever slowed there: a hard
+  # limit would end an evaluation that a slow one lets finish.
+  work-swaps-its-own-memory =
+    let
+      jobs = graphical.config.systemd.user.slices.jobs.sliceConfig;
+    in
+    holds "work-swaps-its-own-memory"
+      "jobs has no ceiling at half of memory, so its work pushes apps' memory out to swap, or it has a hard limit that ends work."
+      ((jobs.MemoryHigh or null) == "50%" && !(jobs ? MemoryMax));
+
   # Work yields to what the user works in only while jobs is idle beside
   # app.slice, the sorter runs outside both, pi is told where jobs is, jobs
   # comes back after systemd-oomd ends it, and a window's own scope, where
