@@ -4,11 +4,11 @@
 # The target is written by systemd as a slice starts, for the drive it finds
 # behind /home, and the kernel takes it only for a drive whose queue it can
 # watch, so reading the module's settings back would prove neither. The
-# script is slices-vm-test.py.
+# tests are slices-vm-test.py, which pytest runs inside the driver.
 { self, pkgs }:
 let
-  # The programs the script's units run, which it reads from this file,
-  # swapped in for its @values@ marker.
+  # The programs the tests' units run, which they read from this file as
+  # their values fixture.
   values = pkgs.writeText "slices-values.json" (
     builtins.toJSON {
       sleep = "${pkgs.coreutils}/bin/sleep";
@@ -55,10 +55,17 @@ pkgs.testers.runNixOSTest {
     };
   };
 
-  testScript = builtins.replaceStrings [ "@values@" ] [ "${values}" ] (
-    builtins.readFile ./slices-vm-test.py
-  );
-  # nix fmt holds the script to mypy --strict against the driver's own types,
-  # through driver_names.pyi, which the driver's lighter check can't find.
+  # What VM tests share, and pytest, which runs these tests (tests/lib).
+  extraPythonPackages = python: [ (pkgs.callPackage ./lib/vm-helpers.nix { } python) ];
+
+  # Run by hand, the driver takes pytest's options from PYTEST_ADDOPTS, so
+  # PYTEST_ADDOPTS='-k quest' runs only the tests of quests' slices.
+  testScript = ''
+    import vm_pytest
+    vm_pytest.run(globals(), "${./slices-vm-test.py}", values="${values}")
+  '';
+  # nix fmt holds the tests and vm_pytest to mypy --strict against the
+  # driver's own types, so the driver's check of this one line would add only
+  # its time.
   skipTypeCheck = true;
 }

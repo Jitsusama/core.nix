@@ -4,13 +4,13 @@
 # gets the pattern in 8-bit grey, the camera closes when it stops, and no reader
 # gets a frame from before it opened, the last one's face least of all, and a
 # relay whose loopback has gone waits for it rather than failing over and over.
-# The script is ir-camera-vm-test.py.
+# The tests are ir-camera-vm-test.py, which pytest runs inside the driver.
 { self, pkgs }:
 let
   width = 648;
   height = 368;
 
-  # The frames' size, which the script and the stand-ins read from this
+  # The frames' size, which the tests and the stand-ins read from this
   # file.
   values = pkgs.writeText "ir-camera-values.json" (builtins.toJSON { inherit width height; });
   # A Python file of ir-camera/, given the values, and held to ruff and mypy
@@ -71,10 +71,17 @@ pkgs.testers.runNixOSTest {
       '';
     };
 
-  testScript = builtins.replaceStrings [ "@values@" ] [ "${values}" ] (
-    builtins.readFile ./ir-camera-vm-test.py
-  );
-  # nix fmt holds the script to mypy --strict against the driver's own types,
-  # through driver_names.pyi, which the driver's lighter check can't find.
+  # What VM tests share, and pytest, which runs these tests (tests/lib).
+  extraPythonPackages = python: [ (pkgs.callPackage ./lib/vm-helpers.nix { } python) ];
+
+  # Run by hand, the driver takes pytest's options from PYTEST_ADDOPTS, so
+  # PYTEST_ADDOPTS='-k gone' runs only the relay whose loopback went.
+  testScript = ''
+    import vm_pytest
+    vm_pytest.run(globals(), "${./ir-camera-vm-test.py}", values="${values}")
+  '';
+  # nix fmt holds the tests and vm_pytest to mypy --strict against the
+  # driver's own types, so the driver's check of this one line would add only
+  # its time.
   skipTypeCheck = true;
 }
