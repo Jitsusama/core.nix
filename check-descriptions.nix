@@ -473,7 +473,10 @@
   '';
   shell-preview-follows-the-working-copy = ''
     shell-preview links each built file the working copy holds back to it, copies what the build
-    made, and ends the nested desktop it started however it's ended
+    made, and ends the nested desktop it started however it's ended, asking it before killing it
+  '';
+  shell-preview-passes-clippy = ''
+    clippy finds nothing in shell-preview or its tests
   '';
   shutdown-status-passes-clippy = ''
     clippy finds nothing in shutdown-status or its tests
