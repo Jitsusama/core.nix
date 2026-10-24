@@ -108,6 +108,7 @@ let
     "launcher/Playing.qml"
     "launcher/Sensors.qml"
     "launcher/Machine.js"
+    "launcher/Traffic.js"
     "launcher/Numbers.js"
     "launcher/Addresses.js"
     "launcher/Units.js"
@@ -501,6 +502,7 @@ let
     machine = ./launcher/Machine.qml;
     power = ./launcher/Power.qml;
     heat = ./launcher/Heat.qml;
+    traffic = ./launcher/Traffic.qml;
     waits = ./launcher/Waits.qml;
     today = ./launcher/Today.qml;
     light = ./launcher/Light.qml;
@@ -1081,6 +1083,12 @@ in
       heat = {
         order = 98;
         source = "heat";
+      };
+      # What the network carries now, what the line can, and how quickly it
+      # answers, from the kernel's counters and the shaper's measures.
+      traffic = {
+        order = 92;
+        source = "traffic";
       };
       # Whether anything Joel uses waited, from lag-watch, which a machine
       # without it simply doesn't answer.

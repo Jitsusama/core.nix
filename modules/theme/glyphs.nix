@@ -286,6 +286,11 @@ in
     console = "e";
     means = "joined to a network by a cable";
   };
+  traffic = {
+    glyph = nerd "f04e1";
+    console = "%";
+    means = "what the network carries in and out, and how fast";
+  };
   offline = {
     glyph = nerd "f05aa";
     console = "X";
