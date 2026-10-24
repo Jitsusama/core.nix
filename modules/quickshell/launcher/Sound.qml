@@ -278,6 +278,7 @@ Provider {
             rows.push(copyRow({ name: name, side: "has sound open", glyph: glyph(0xf057e) }));
         return {
             headline: out ? `${level(out)}, through ${named(out)}` : "nothing to play through",
+            graph: out ? loudness(out) : undefined,
             rows: rows,
             note: !Music.playing && playing.length === 0 ? "nothing playing" : "from PipeWire"
         };

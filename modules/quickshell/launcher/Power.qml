@@ -108,16 +108,12 @@ Provider {
         // The charge, as a bar: the headline says it, but not once it's
         // stepped into.
         const charge = Math.round(battery.percentage * 100);
-        rows.push(copyRow({
-            name: `${charge}%`,
-            side: "charge",
-            glyph: glyph,
-            graph: {
-                shape: "bar",
-                values: [battery.percentage],
-                warn: battery.state === UPowerDeviceState.Discharging && charge <= low
-            }
-        }));
+        const bar = {
+            shape: "bar",
+            values: [battery.percentage],
+            warn: battery.state === UPowerDeviceState.Discharging && charge <= low
+        };
+        rows.push(copyRow({ name: `${charge}%`, side: "charge", glyph: glyph, graph: bar }));
         if (battery.changeRate >= 0.05)
             row(`${number(battery.changeRate, 1)} W`,
                 battery.state === UPowerDeviceState.Charging ? "charging at" : "drawn from the battery");
@@ -150,7 +146,7 @@ Provider {
             row(dated ? `${what}, made ${year}-${String(month).padStart(2, "0")}` : what,
                 "the battery");
 
-        return { headline: doing(), rows: rows, note: "from UPower and the kernel" };
+        return { headline: doing(), graph: bar, rows: rows, note: "from UPower and the kernel" };
     }
 
     FileView {
