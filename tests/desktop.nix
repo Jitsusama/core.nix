@@ -1708,6 +1708,47 @@ pkgs.testers.runNixOSTest {
           machine.send_key("esc")
           launcher_until(lambda shown: not shown["open"])
 
+      # Seeing one thing twice costs Joel more than any other mess in the
+      # list, so for everything he typed in a week of picks, every word of
+      # the launcher's photo survey and every case its audit found listed
+      # twice, no two rows may be the same thing, nor read the same.
+      with subtest("the launcher lists each thing once, for everything Joel types"):
+          typed = [
+              "1p", "a", "agents", "ai", "b", "bto", "btop", "ca", "caf", "caff", "came",
+              "captu", "ch", "chr", "chro", "chrom", "chrome", "close", "donot", "dot", "gimp",
+              "ink", "kit", "kitt", "kitty", "left", "light", "lo", "loc", "lock", "mute", "ova",
+              "pow", "powe", "re", "reb", "rebo", "rest", "runs", "shrim", "sl", "sla", "slac",
+              "slack", "slack theme", "soun", "spend", "spo", "spot", "spoti", "sus", "susp",
+              "time", "time in gmt", "tme", "tupl", "tuple", "volume", "wifi",
+          ]
+          surveyed = [
+              "s", "tu", "batt", "12*7", "sound", "pi", "emoji", "copy", "key", "screen",
+              "notes", "power", "open", "turn",
+          ]
+          audited = [
+              "keyboard layout", "stop rec", "tuesday", "this window", "headphones",
+              "bluetooth", "clipboard", "keyboard", "dim", "keyboard backlight", "camera",
+              "quest", "terminal", "below", "zsh",
+          ]
+          twice = []
+          seen = 0
+          for text in typed + surveyed + audited:
+              as_account("qs ipc call launcher toggle")
+              launcher_ready()
+              type_in(text)
+              things = showing()["things"]
+              seen += len([thing for thing in things if thing["is"]])
+              for field in ("is", "reads"):
+                  said = [thing[field] for thing in things if thing[field]]
+                  again = sorted({one for one in said if said.count(one) > 1})
+                  if again:
+                      twice.append(f"{text!r}: {field} {again}")
+              machine.send_key("esc")
+              machine.wait_until_fails(in_session(launcher_open), timeout=10)
+          t.assertEqual(twice, [], "a thing was listed twice")
+          # Most of those find something, so the rows were looked at.
+          t.assertGreater(seen, 100)
+
       with subtest("the launcher answers what's asked, and copies the answer"):
 
           def answer(typed):
@@ -2016,8 +2057,8 @@ pkgs.testers.runNixOSTest {
               "Take a screenshot of the window",
           ]
 
-          # Open windows are found by their program too, and two may share
-          # a title, so a search's rows are held to what stands for what;
+          # Two windows may share a title, told apart by where they are, so
+          # a search's rows are held to what stands for what;
           # home's, with no windows but the focused one, are held to once.
           def once(shown, leading):
               rows = shown["rows"]
@@ -2200,17 +2241,22 @@ pkgs.testers.runNixOSTest {
           # The pictures' files go with them.
           t.assertEqual(as_account("ls -A $XDG_RUNTIME_DIR/clipboard-history"), "")
 
-      with subtest("the launcher's home shows each collection, and opens it"):
+      # Home is a shelf that keeps its shape: what's in front and the likely
+      # picks, then the same three collections last, in the same order.
+      # The rest are a word away.
+      with subtest("the launcher's home keeps its shelf, and a collection opens by name"):
           windows = len(json.loads(as_account("niri msg --json windows")))
           as_account("qs ipc call launcher toggle")
           launcher_ready()
           photograph("launcher-home")
-          # The last row at home is the last collection, the shortcuts; a page
-          # down stops there, so more than home's pages reach it as it grows.
+          t.assertEqual(showing()["rows"][-3:], ["Windows", "Clipboard", "Notices"])
+          # A page down stops on the last of them.
           for _ in range(4):
               machine.send_key("pgdn")
+          launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Notices")
           # Opening a collection keeps the launcher open, where a program
           # picked instead would close it.
+          type_in("shortcuts", selecting="Shortcuts")
           step_in("ret")
           type_in("open a terminal")
           machine.send_key("ret")

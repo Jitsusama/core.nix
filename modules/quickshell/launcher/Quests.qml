@@ -102,6 +102,10 @@ Provider {
         const session = loaded[quest.id];
         const row = member({
             key: `quest:${quest.id}`,
+            // A quest a session has loaded is that session's window, which
+            // its Agents row says more of (Launcher.qml's compose).
+            is: session ? `window:${session.window}` : `quest:${quest.id}`,
+            rich: 1,
             verb: session ? "switch" : "open",
             name: quest.title || quest.id,
             unfinished: isOpen(quest),

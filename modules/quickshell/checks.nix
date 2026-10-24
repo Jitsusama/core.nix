@@ -181,6 +181,23 @@
     touch $out
   '';
 
+  # The launcher lands where it did: a thing is one row, the same letters
+  # keep their row, and one slip teaches nothing, as tests/ranking.qml holds
+  # launcher/Rank.js to it in Qt's own engine.
+  the-launcher-lands-where-it-did =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "the-launcher-lands-where-it-did" { } ''
+      cp ${../../tests/ranking.qml} ranking.qml
+      cp ${./launcher/Rank.js} Rank.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml ${qt}/bin/qml ranking.qml
+      touch $out
+    '';
+
   # The launcher finds emoji by what they're called and what they mean, best
   # first, as tests/emoji.qml lists them, over the list it's built with, and
   # in about three times the least a search could take.

@@ -8,7 +8,10 @@
 //                          glyph: "…", hue: "voice", run: () => … })]
 //     }
 //
-// A thing is a row: what learning knows it by (key), what Return does to it
+// A thing is a row: what learning knows it by (key), what thing it is now
+// (is, when that's not its key: `window:<niri id>` for a window, so a pi
+// session's window, its Agents row and its quest are one row, the one
+// with the highest `rich`), what Return does to it
 // (verb), its name and what else finds it (keywords), its glyph and the
 // theme's colour for its kind (hue), its chord or what it is (chord, side),
 // what Return and Shift+Return run (run, below), whether running it waits
@@ -295,6 +298,18 @@ Scope {
     function programGlyph(id) {
         const code = programGlyphs[(id ?? "").toLowerCase()] ?? "f0614";
         return String.fromCodePoint(parseInt(code, 16));
+    }
+
+    // A window's title without its program's name trailing it, as Chrome
+    // adds " - Google Chrome", since the glyph and the row already say
+    // whose window it is.
+    function tidy(title, program) {
+        if (program === "")
+            return title;
+        for (const joint of [" - ", " \u2013 ", " \u2014 ", " | "])
+            if (title.endsWith(joint + program))
+                return title.slice(0, title.length - joint.length - program.length);
+        return title;
     }
 
     // What a desktop entry runs, spelled out for niri to spawn: in kitty

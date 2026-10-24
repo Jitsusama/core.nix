@@ -22,6 +22,11 @@
 // arrow, or Backspace with nothing typed, steps back out, and Escape always
 // closes the launcher.
 //
+// What it finds is one row a thing, in an order that changes only when Joel
+// changes it (launcher/Rank.js): the same letters land on the same row
+// however the desktop changes around them, and the list keeps its height
+// while it's open, so nothing moves under his eyes.
+//
 // It's the palette kind (docs/design.md, Shape and Kinds): the accent frame,
 // since it holds the keys; a command line over a list, split by a hairline;
 // every row a glyph in its column, a name, and its chord or what it is.
@@ -34,6 +39,7 @@ import QtQuick.Effects
 // and the providers are made from launcher/ by name, so it's imported here.
 import qs.launcher
 import "Fuzzy.js" as Fuzzy
+import "launcher/Rank.js" as Rank
 
 Scope {
     id: root
@@ -149,15 +155,21 @@ Scope {
             .map(row => row.opens));
         const once = row => row.key.startsWith("collection:")
             || !(whole.has(row.inside ?? "") || whole.has(row.opens ?? ""));
-        const below = placed(found.filter(once),
-            gathered.filter(row => !whole.has(row.from.settings.name)));
+        // The row it was on, by what it is, so rows that come late, as a
+        // collection's or an answer's do, never move it.
+        const was = !fresh && current >= 0 && matches[current]
+            ? Rank.identity(matches[current]) : "";
+        // And a thing found more than one way is one row, as the one
+        // with the most to say.
+        const below = Rank.once(Rank.placed(found.filter(once),
+            gathered.filter(row => !whole.has(row.from.settings.name)), picks.latched(typed)));
         matches = rows.concat(below);
         // An answer only started gives way to a name that starts the same.
         const meant = answer && !(answer.question && below.length > 0 && startsAWord(below[0].name, typed));
         if (fresh || (current === -1 && !answer))
             current = meant ? -1 : answer ? rows.length : 0;
         else if (current >= 0)
-            current = Math.max(0, Math.min(current + rows.length - before, matches.length - 1));
+            current = Rank.pinned(matches, was, current + rows.length - before);
     }
 
     function reanswer() {
@@ -228,18 +240,6 @@ Scope {
     // row.
     property var gathered: []
 
-    // What was found with each collection's row among it: below the rows
-    // matched as tidily or picked before, above any matched more loosely,
-    // so "tada" is the party popper, not a scattered match for a command.
-    function placed(found, rows) {
-        const all = found.slice();
-        for (const row of rows) {
-            const at = all.findIndex(f => !f.kept && !f.from && f.grade > row.grade);
-            all.splice(at < 0 ? all.length : at, 0, row);
-        }
-        return all;
-    }
-
     function gathering(letters) {
         if (letters.replace(/\s+/g, "").length < 2)
             return [];
@@ -261,8 +261,9 @@ Scope {
                 lead: source.collection.glyph,
                 leadHue: "voice",
                 from: source,
-                // One picked before for this query is as tidy as can be.
-                grade: found[0] === said.rows[0] ? said.grade : 0,
+                // Found by a word of its name, after the main search's own
+                // (Rank.js's placed).
+                tier: 1,
                 verbs: () => found
             }));
         }
@@ -272,8 +273,51 @@ Scope {
     // How many of the likeliest picks the home screen shows.
     readonly property int likely: 3
 
-    // With nothing typed: what's in front of you, the likeliest picks, then
-    // after a gap each collection whole, its size and the chord that opens
+    // How tall the list is while the launcher's open: as tall as home was
+    // when it opened.
+    property int tall: rows * Theme.space.xxxl
+
+    // What kind of thing a row is, as it says at its right edge, by what
+    // its provider calls its things: a closed set of nouns, so a kind is
+    // learned once. An act or a set says what it is by its words, and an
+    // answer's rows are the answer's, so they have none.
+    readonly property var kinds: ({
+        "program": "program",
+        "window": "window",
+        "pi session": "pi",
+        "quest": "quest",
+        "run": "run",
+        "copy": "copy",
+        "notice": "notice",
+        "emoji": "emoji",
+        "key": "key",
+        "Wi-Fi": "network",
+        "Bluetooth": "device",
+        "sound": "device",
+        "display": "display",
+        "person": "person",
+        "call": "call"
+    })
+
+    function kindOf(row) {
+        if (!row || row.opens || row.plain || (answer && answer.rows.includes(row)))
+            return "";
+        return kinds[row.what ?? ""] ?? "";
+    }
+
+    // The collections home keeps on its shelf, in this order, each with
+    // the chord that opens it: the ones reached most. The rest are a word
+    // away, and most have chords of their own.
+    readonly property var shelf: ["windows", "clipboard", "notices"]
+
+    // How often each thing's been picked, taken as the launcher opens, so
+    // what it orders holds still while it's open.
+    property var often: ({})
+
+    // With nothing typed, a shelf that's always the same shape: what's in
+    // front of you, then what holds while it's on (a mode, a screenshot
+    // just taken), then the likeliest picks, most picked first, and after a
+    // gap the shelf's collections, each its size and the chord that opens
     // it, so the chords are learned by seeing them where they're used.
     function home() {
         const rows = [];
@@ -281,24 +325,29 @@ Scope {
         for (const source of sources)
             for (const row of source.home()) {
                 rows.push(row);
-                shown.add(row.key);
+                shown.add(Rank.identity(row));
             }
         const byKey = {};
-        for (const choice of choices)
+        const names = {};
+        for (const choice of choices) {
             byKey[choice.key] = choice;
+            names[choice.key] = choice.name;
+        }
         let added = 0;
-        for (const key of picks.likeliest()) {
+        for (const key of Rank.likeliest(often, names)) {
             const choice = byKey[key];
             // A collection is always below with the rest, in its own place,
             // so it isn't listed again as a likely pick.
-            if (!choice || shown.has(key) || choice.named)
+            if (!choice || shown.has(Rank.identity(choice)) || choice.named)
                 continue;
             rows.push(choice);
-            shown.add(key);
+            shown.add(Rank.identity(choice));
             if (++added === likely)
                 break;
         }
-        return rows.concat(collections.map((source, index) => whole(source, index === 0
+        const kept = shelf.map(name => collections.find(source => source.settings.name === name))
+            .filter(source => !!source);
+        return rows.concat(kept.map((source, index) => whole(source, index === 0
             && rows.length > 0)));
     }
 
@@ -374,16 +423,18 @@ Scope {
         return {
             typed: typed,
             at: current,
-            key: row && row.key ? row.key : "",
+            key: row ? Rank.identity(row) : "",
             scroll: list.contentY
         };
     }
 
-    // Selects what was selected before, by its key when it's still there,
-    // since what was searched again may have moved it, or else by where it
-    // was, and scrolls the list back to where it stood.
+    // Selects what was selected before, by what it is when it's still
+    // there, so of two windows titled alike it's the same one, since what
+    // was searched again may have moved it, or else by where it was, and
+    // scrolls the list back to where it stood.
     function reselect(left) {
-        const byKey = left.key === "" ? -1 : matches.findIndex(row => row.key === left.key);
+        const byKey = left.key === "" ? -1
+            : matches.findIndex(row => Rank.identity(row) === left.key);
         const lowest = answer ? -1 : 0;
         const at = left.at === -1 && answer ? -1
             : byKey >= 0 ? byKey : Math.max(lowest, Math.min(left.at, matches.length - 1));
@@ -517,16 +568,10 @@ Scope {
         remember: Providers.learning.remember
     }
 
-    // How much one past pick for exactly this query is worth, against a
-    // match's score: enough to settle a close call, as much as a good match
-    // is worth, while a far better match can still win.
-    readonly property int learnedWorth: 100
-
-    // Every choice the words find, best first (Fuzzy.js says how), with
-    // what was picked for this query before leaning on the order (Picks.qml
-    // says how); a thing picked before is shown even when it matches more
-    // loosely than the rest. One found only with its keywords, beside its
-    // name or alone, ranks well below those found by name, but for a
+    // Every choice the words find (Fuzzy.js says how), in Rank.js's order:
+    // what's latched for what's typed, then by tier, then what was picked
+    // for it, what's picked most and the better match. One found only with
+    // its keywords, beside its name or alone, is in the last tier, but for a
     // collection's own words, which are what it's called.
     function search(letters) {
         const narrowing = typed !== "" && letters.startsWith(typed);
@@ -582,6 +627,7 @@ Scope {
                         item: choice.prepared,
                         score: byName.score * choice.weight,
                         grade: byName.grade,
+                        tier: Rank.tier(choice.name, letters, false),
                         choice: choice
                     });
                     continue;
@@ -594,25 +640,24 @@ Scope {
                         item: choice.prepared,
                         score: byWord.score * choice.weight / (choice.named ? 1 : 4),
                         grade: byWord.grade,
+                        tier: choice.named ? 1 : 2,
                         choice: choice,
                         byWord: true
                     });
             }
             candidates = found.map(f => f.choice);
             const learned = picks.weights(letters);
-            for (const f of found) {
-                const before = learned[f.choice.key];
-                if (!before)
-                    continue;
-                f.score += learnedWorth * before.weight;
-                f.kept = true;
-                f.times = before.times;
-            }
-            root.found = Fuzzy.keep(found).map(f => Object.assign({
+            const ordered = Rank.order(found, {
+                latched: picks.latched(letters),
+                picked: learned,
+                often: often
+            });
+            root.found = ordered.map(f => Object.assign({
                 byWord: f.byWord === true,
-                times: f.times ?? 0,
+                times: (learned[f.choice.key] ?? { times: 0 }).times,
                 grade: f.grade,
-                kept: f.kept === true
+                tier: f.tier,
+                kept: !!learned[f.choice.key]
             }, f.choice));
         }
         compose(true);
@@ -697,8 +742,11 @@ Scope {
         // Acting on a thing says it was what was meant by what was typed;
         // in a collection, the one picked from it was.
         const first = held.length > 0 ? held[0] : { row: choice, typed: typed };
-        picks.picked(first.row.from ? typed : first.typed, first.row.from ? choice.key
-            : first.row.key);
+        const meant = first.row.from ? choice : first.row;
+        // One that can't be taken back is latched only once its first word's
+        // been typed, so a slip of two letters never powers off.
+        picks.picked(first.row.from ? typed : first.typed, meant.key,
+            meant.confirm ? Rank.firstWord(meant.name).length : 1);
         if (choice.now)
             return;
         if (below && choice.below)
@@ -774,6 +822,13 @@ Scope {
             typed: root.typed,
             held: root.held.map(step => step.row.chip ?? step.row.name),
             rows: root.matches.slice(0, 20).map(row => row.name),
+            // What each of those rows is, and how it reads whole, so a
+            // test can say no thing is listed twice.
+            things: root.matches.slice(0, 20).map(row => ({
+                is: Rank.identity(row),
+                reads: [row.name, row.count ?? "", row.side ?? "", root.kindOf(row)]
+                    .filter(part => part !== "").join(" \u00b7 ")
+            })),
             asking: !!root.asking,
             selected: !row ? null : {
                 name: row.name,
@@ -839,7 +894,12 @@ Scope {
             pointer = Qt.point(-1, -1);
             held = [];
             tried += 1;
+            often = picks.counts();
             restart("");
+            // Home's height, which the list keeps until it closes.
+            const shown = Math.max(1, Math.min(matches.length, rows));
+            tall = shown * Theme.space.xxxl + (matches.slice(0, shown).some(row => row.gap)
+                ? Theme.space.m : 0);
             // Before niri hands over the keys, so the first one lands.
             prompt.take();
             Report.say(`stands ${standing.said}`);
@@ -931,10 +991,10 @@ Scope {
                         ghost: root.completion
                         // At home, something to try; elsewhere, where the
                         // selection is, once there's more than fits.
+                        // The row says what it is, so this doesn't.
                         aside: root.atHome && root.example !== "" ? `try  ${root.example}`
-                            : [root.kind, root.matches.length > root.rows && root.current >= 0
-                                ? `${root.current + 1} of ${root.matches.length}` : ""]
-                                .filter(part => part !== "").join("  \u00b7  ")
+                            : root.matches.length > root.rows && root.current >= 0
+                                ? `${root.current + 1} of ${root.matches.length}` : ""
                         onTextChanged: root.search(text)
                         onAccepted: below => root.asking ? root.give()
                             : root.run(root.selected, below)
@@ -987,42 +1047,68 @@ Scope {
                     topPadding: Theme.inset
                     bottomPadding: Theme.inset
 
-                    ListView {
-                        id: list
-
+                    // As tall as it opened, whatever's found, so the foot
+                    // never jumps and a row never moves because others
+                    // came or went: the rows it doesn't fill are space.
+                    Item {
                         width: parent.width
-                        // A gap sets the collections apart at home.
-                        readonly property int apart: root.matches.some(row => row.gap)
-                            ? Theme.space.m : 0
-                        height: Math.min(count, root.rows) * Theme.space.xxxl + apart
-                        visible: count > 0
-                        clip: true
-                        boundsBehavior: Flickable.StopAtBounds
-                        model: root.matches
+                        height: root.tall
 
-                        delegate: Item {
-                            id: entry
+                        ListView {
+                            id: list
 
-                            required property var modelData
-                            required property int index
+                            anchors.fill: parent
+                            // A gap sets the collections apart at home.
+                            readonly property int apart: root.matches.some(row => row.gap)
+                                ? Theme.space.m : 0
+                            clip: true
+                            boundsBehavior: Flickable.StopAtBounds
+                            model: root.matches
 
-                            width: list.width
-                            height: Theme.space.xxxl + (modelData.gap ? list.apart : 0)
+                            delegate: Item {
+                                id: entry
 
-                            Choice {
-                                anchors.bottom: parent.bottom
-                                selected: entry.index === root.current
-                                glyph: entry.modelData.glyph
-                                // A colour's swatch wears the colour itself.
-                                hue: entry.modelData.swatch ?? Theme[entry.modelData.hue]
-                                name: selected ? entry.modelData.name
-                                    : root.marked(entry.modelData)
-                                chord: entry.modelData.chord
-                                side: entry.modelData.side
-                                count: entry.modelData.count ?? ""
-                                onClicked: root.run(entry.modelData, false)
-                                onPointed: at => root.pointed(entry.index, at)
+                                required property var modelData
+                                required property int index
+
+                                width: list.width
+                                height: Theme.space.xxxl + (modelData.gap ? list.apart : 0)
+
+                                Choice {
+                                    anchors.bottom: parent.bottom
+                                    selected: entry.index === root.current
+                                    glyph: entry.modelData.glyph
+                                    // A colour's swatch wears the colour itself.
+                                    hue: entry.modelData.swatch ?? Theme[entry.modelData.hue]
+                                    name: selected ? entry.modelData.name
+                                        : root.marked(entry.modelData)
+                                    chord: entry.modelData.chord
+                                    side: entry.modelData.side
+                                    count: entry.modelData.count ?? ""
+                                    kind: root.held.length === 0 ? root.kindOf(entry.modelData) : ""
+                                    onClicked: root.run(entry.modelData, false)
+                                    onPointed: at => root.pointed(entry.index, at)
+                                }
                             }
+                        }
+
+                        // With nothing typed, the shell says what it can do, or an
+                        // empty collection says it's empty in its own words; with
+                        // nothing found, it says so. A field asking for words has
+                        // only space below it.
+                        Choice {
+                            readonly property var inside: root.held.length > 0
+                                ? root.held[root.held.length - 1].row.from ?? null : null
+                            visible: root.matches.length === 0 && root.answer === null
+                                && root.asking === null
+                            glyph: root.typed === "" ? root.sparkle : root.ghost
+                            hue: Theme.voice
+                            quiet: true
+                            name: root.typed !== ""
+                                ? `Nothing answers to \u201c${root.typed}\u201d.`
+                                : inside?.collection
+                                    ? inside.collection.empty ?? `No ${inside.collection.noun} yet.`
+                                : "A window, a program, an action, or what a key does."
                         }
                     }
 
@@ -1086,24 +1172,6 @@ Scope {
                         }
                     }
 
-                    // With nothing typed, the shell says what it can do, or an
-                    // empty collection says it's empty in its own words; with
-                    // nothing found, it says so. A field asking for words has
-                    // only the footer below it.
-                    Choice {
-                        readonly property var inside: root.held.length > 0
-                            ? root.held[root.held.length - 1].row.from ?? null : null
-                        visible: root.matches.length === 0 && root.answer === null
-                            && root.asking === null
-                        glyph: root.typed === "" ? root.sparkle : root.ghost
-                        hue: Theme.voice
-                        quiet: true
-                        name: root.typed !== "" ? `Nothing answers to \u201c${root.typed}\u201d.`
-                            : inside?.collection
-                                ? inside.collection.empty ?? `No ${inside.collection.noun} yet.`
-                            : "A window, a program, an action, or what a key does."
-                    }
-
                     // The foot, one line, the one place that teaches, so the
                     // rows stay clean. On the right, what Return does here,
                     // Shift+Return where it can, and where the arrows step.
@@ -1141,6 +1209,12 @@ Scope {
                                 : (foot.choice.note ?? "") !== "" ? foot.choice.note
                                 : foot.choice.plain && root.answer ? root.answer.note ?? ""
                                 : root.held.length > 0 ? root.held[0].row.context ?? ""
+                                // A thing's row says its kind where a chord
+                                // would be, so its chord is taught here.
+                                : root.kindOf(foot.choice) !== ""
+                                    && (foot.choice.chord ?? []).length > 0
+                                    ? `next time ${foot.choice.chord.map(key => key.text)
+                                        .join("+")}`
                                 : times === 0 ? "" : `you picked this for \u201c${asked}\u201d ${
                                     times === 1 ? "once" : `${times} times`}`
                             // What it said last, kept while it fades out.

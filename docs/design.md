@@ -45,9 +45,9 @@ one is answered for it in [the surfaces table][surfaces].
    type, and each surface can turn them off once they're learned.
 7. **No hidden modes.** A mode always shows that it's on, and Escape always
    leaves it.
-8. **One gesture per meaning.** Arrows move, Enter opens or confirms, Escape
-   backs out one level, typing filters, and each layer has one "what's here"
-   key.
+8. **One gesture per meaning.** Arrows move, Enter opens or confirms, the
+   left arrow backs out one step, Escape leaves, typing filters, and each
+   layer has one "what's here" key.
 9. **Collapses on purpose.** As space shrinks, a surface gives way in a
    written order, never by truncation.
 10. **The theme, whole.** Type, colour, glyphs, space and motion come from
@@ -286,6 +286,15 @@ same room on each side, all muted, even on the selected row. A chord sits at
 the right of its row, at least `space.xxl` from the name. Nothing says what
 Escape does, since it always leaves.
 
+**A row says what it is.** A thing's row (a program, a window, a pi
+session, a network, a device, a copy) says its kind at its right edge, muted:
+`program`, `window`, `pi`, from one closed list, so a kind is learned once.
+Its detail, a window count, a workspace or what the program is, follows its
+name, muted. A row for an act or a set already says what it is in its name
+("Lock the screen", "Windows"), so its chord stays at the right. A thing's
+chord is taught in the foot instead, "next time" and the keys. Inside a
+collection the chip says the kind, so its rows don't.
+
 **The space from text to its frame is the same on every side,** measured to
 the letters rather than their boxes. In the palette and a prompt, large type
 sits in rows of `space.xxxl`, each region an inset inside the border and its
@@ -467,14 +476,30 @@ works the same way everywhere.
   a failing check.
 - **Few rows, and learned.** A query leaves the handful of things it could
   mean, not a wall: each word typed has to start a word, its letters
-  unbroken, so nothing is found by letters scattered through it, and a thing
-  is listed once. What's picked for what was typed becomes what
-  it means, said in the footer, so there are no aliases to set up or
-  remember.
+  unbroken, so nothing is found by letters scattered through it.
+- **One row a thing.** A thing found several ways is one row: a program and
+  its windows are the program, saying how many, with its windows a step in;
+  a pi session's window, its quest and its Agents row are the session. A
+  window is found by its own title, and two titled alike say where each is.
+  A desktop check types everything Joel has picked for, and fails on a thing
+  listed twice.
+- **The same letters land on the same row.** The name typed whole comes
+  first, then a word it starts, then a word that only finds it. What's
+  picked for what was typed is first there from then on, and at every
+  shorter start of the word, so "sl", "sla" and "slac" all mean Slack. One
+  slip teaches nothing: another row takes the place only when it's picked
+  twice running. Something that can't be taken back, such as powering off,
+  is learned only once its first word is typed whole. What's learned is
+  said in the footer, so there are no aliases to set up or remember.
+- **Nothing moves that Joel didn't move.** Rows that arrive late go below
+  the ones of their kind already shown, the selection stays on its thing
+  as rows come and go, and the list keeps the height it opened at, so the
+  foot never jumps.
 - **Home is what's next.** With nothing typed, the launcher shows what's in
   front of you (the focused window, its verbs one arrow away), then the
-  likeliest picks, then after a gap each collection whole, with its size and
-  the chord that opens it. The field suggests something to try, a different
+  three likeliest picks, then after a gap the same three collections in the
+  same order, Windows, Clipboard and Notices, so home's shape never changes.
+  Every other collection is its name away. The field suggests something to try, a different
   one each time it opens, drawn from what the providers can answer; Tab
   takes it.
 - **Every row is a thing with verbs.** The right arrow at the end of the line
@@ -511,14 +536,14 @@ works the same way everywhere.
   what a person would call it ("audio" is Sound, "notifications" the
   Notices), and Return steps into it; found that way, it stands alone for
   what it holds, so neither its members nor things that live in it, nor the
-  shortcut that opens it, sit beside it. Beside the field, a word says what
-  the selection is: an
-  answer, a collection, a window, a program, a shortcut, a pi session.
-  Each is whole at home, and most have a chord that opens them: Super+V the
+  shortcut that opens it, sit beside it. Each thing's row says what kind
+  of thing it is at its right edge (Shape and Kinds).
+  The windows, the copies and the notices are whole at home, and most have
+  a chord that opens them: Super+V the
   copies, Super+E the emoji, Super+N the notices (the stack on screen
   first, by the keys, then the history), Super+Shift+/ the shortcuts.
-- **A thing is listed once.** A key's action that a row already does is
-  that row, drawing the key's chord: Super+L is the session's Lock,
+- **A key's action is its row.** A key's action that a row already does
+  is that row, drawing the key's chord: Super+L is the session's Lock,
   Super+Return is kitty, and the screenshot keys are Capture's rows.
 - **Copies stay in memory.** One program hears every copy for the session,
   text and pictures, and the shell asks it for them, so none is written to
@@ -887,6 +912,21 @@ as an exception with the reason.
 ## Decisions
 
 What each studio round settled, newest first, with the reason.
+
+- **A row says its kind, and a thing is one row** (2026-10-23, at Joel's
+  word: "seeing multiples of the same thing gives me executive
+  dysfunction"; "i have an impossible time knowing what i'm looking at").
+  Four ways of saying a row's kind were drawn at full size in the theme's
+  own type: the kind at the right edge on every row, its chord moved to
+  the foot; the kind in a narrow column after the glyph; no kind, as
+  before; and the kind at the right only on a thing's row. A column of
+  kinds pushed every name right and read as a table, and no kind left
+  "Slack" the program and "Slack" the window looking alike. A sentence
+  ("Lock the screen") already says what it is, so only a thing says its
+  kind, muted, and an act keeps its chord where it was. Typing "tuple" had listed
+  the program, its window, its room and people by scattered letters; the
+  program and its windows are one row now, found by words, and a window
+  only by its own title.
 
 - **The launcher has one foot, and a held notice speaks its keys**
   (2026-10-22, at Joel's word: "i don't like losing the context hints in
