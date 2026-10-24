@@ -921,7 +921,7 @@
   '';
   vm-screens-come-and-go = ''
     the launcher, a notice, the margin's marks and dictation's bar come back after the screen goes
-    and returns
+    and returns, and desk-facts stops naming the screen once it's gone
   '';
   vm-secure-boot-installs = ''
     the whole install works, and the disk opens only for it
