@@ -2,7 +2,9 @@
 # screen, not nested in Cage as the desktop test runs it, so the screen can
 # really go and come back, as at an undock. The shell's surfaces must be
 # there again after: the launcher, a notice that was up, the margin's marks
-# and dictation listening. The script is screens-vm-test.py.
+# and dictation listening. Then the console is switched away and back, and
+# the machine sleeps as a laptop does and wakes at a key, and they must all
+# be there again after each. The script is screens-vm-test.py.
 { self, pkgs }:
 let
   account = "jitsusama";
@@ -41,11 +43,15 @@ pkgs.testers.runNixOSTest {
       virtualisation = {
         memorySize = 4096;
         cores = 4;
-        qemu.options = [ "-vga none -device virtio-gpu-pci,xres=1280,yres=800" ];
+        # QEMU's plain VGA card, which bochs-drm drives. virtio-gpu's driver
+        # can't suspend yet (Linux 6.18): after a wake its queue never
+        # drains, and niri waits on it for good. This card has no render
+        # node, so the patch lets niri draw through the card's own node.
+        qemu.options = [ "-vga none -device VGA,xres=1280,yres=800,edid=on" ];
         # virtio-fs can't suspend, and refuses a sleep for the whole
-        # machine, so the store is a disk image and nothing is shared, ready
-        # for a sleep and wake this test is to gain. It's writable over the
-        # image, since Home Manager writes the account's profile.
+        # machine, so the store is a disk image and nothing is shared. It's
+        # writable over the image, since Home Manager writes the account's
+        # profile.
         useNixStoreImage = true;
         mountHostNixStore = false;
         writableStore = true;
@@ -54,6 +60,8 @@ pkgs.testers.runNixOSTest {
 
       # greetd signs the account in by itself, into niri's own session.
       jitsusama.login.account = account;
+      # Laptops of this age sleep by s2idle alone, so the machine does too.
+      boot.kernelParams = [ "mem_sleep_default=s2idle" ];
       users.users.${account} = {
         isNormalUser = true;
         uid = 1000;
