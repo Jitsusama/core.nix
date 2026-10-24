@@ -77,7 +77,10 @@ let
         touch $out
       '';
 in
-{
+# The shell runs only on Linux, so a Mac has none of its checks: most build
+# Quickshell or a program only Linux has, and the rest read a Linux machine,
+# which Linux's own checks already do.
+onLinux {
   # The notices draw a notice a program sends as a card on a layer niri
   # lists, and Super+Shift+N puts away one that stays
   # (tests/notices-on-niri.sh). Away only after an hour, since nobody types

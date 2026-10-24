@@ -5,6 +5,7 @@
   bareNixos,
   holds,
   lib,
+  onLinux,
   pkgs,
   self,
   ...
@@ -16,7 +17,10 @@
   zsh-is-the-login-shell =
     holds "zsh-is-the-login-shell" "An account on NixOS doesn't log in to zsh."
       (lib.getName (bareNixos [ self.nixosModules.base ]).config.users.users.someone.shell == "zsh");
-
+}
+# What a shell starts is traced with strace, which only Linux has, on the
+# NixOS workstation's own shell.
+// onLinux {
   # The account's whole shell, not only its prompt: once its completion dump
   # is made, starting it runs git-engine, its fifo and direnv's first look,
   # and each prompt runs direnv alone, asking it whether the folder's .envrc
