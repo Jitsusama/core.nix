@@ -26,12 +26,20 @@
 //! A build whose client sits in no quest's slice, or has gone, stays as
 //! Nix made it.
 //!
+//! As each build goes, this says in its journal what the build read and
+//! wrote, from its cgroup's io.stat, with its client's command and quest,
+//! so the builds that wear the disk most can be found. A build's own name
+//! sits in its environment, which only its user may read, so it's known by
+//! what asked for it.
+//!
 //! Usage: vm-first [--cgroup /sys/fs/cgroup/build.slice/nix-daemon.service]
 //!        [--name qemu-system]... [--nice -10] [--weight 1000] [--every 1000]
 
+use std::collections::HashMap;
 use std::ffi::{CStr, CString, c_char};
 use std::fs;
 use std::os::unix::ffi::OsStrExt;
+use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 use std::process;
 use std::thread;
@@ -150,9 +158,9 @@ fn quest_weight(quest: u64, vm: u64) -> u64 {
     quest.min(vm.saturating_sub(1)).max(1)
 }
 
-/// The CPU weight of the quest that asked for a build, if its client sits
-/// in a quest's slice.
-fn weight_of_quest(build: &Path) -> Option<u64> {
+/// The client that asked for a build, found through the daemon's worker
+/// its processes descend from.
+fn client_of_build(build: &Path) -> Option<u32> {
     let procs = fs::read_to_string(build.join("cgroup.procs")).ok()?;
     let mut pid: u32 = procs.lines().next()?.parse().ok()?;
     for _ in 0..WORKER_DEPTH {
@@ -160,14 +168,169 @@ fn weight_of_quest(build: &Path) -> Option<u64> {
             .ok()
             .and_then(|cmdline| client_of(&cmdline))
         {
-            let cgroup = fs::read_to_string(format!("/proc/{client}/cgroup")).ok()?;
-            let slice = quest_slice(&cgroup)?;
-            let weight = format!("{CGROUP_ROOT}{slice}/cpu.weight");
-            return fs::read_to_string(weight).ok()?.trim().parse().ok();
+            return Some(client);
         }
         pid = parse_ppid(&fs::read_to_string(format!("/proc/{pid}/stat")).ok()?)?;
     }
     None
+}
+
+/// The CPU weight of the quest that asked for a build, if its client sits
+/// in a quest's slice.
+fn weight_of_quest(build: &Path) -> Option<u64> {
+    let client = client_of_build(build)?;
+    let cgroup = fs::read_to_string(format!("/proc/{client}/cgroup")).ok()?;
+    let slice = quest_slice(&cgroup)?;
+    let weight = format!("{CGROUP_ROOT}{slice}/cpu.weight");
+    fs::read_to_string(weight).ok()?.trim().parse().ok()
+}
+
+/// Who asked for a build: the client's command, and its quest if it sits
+/// in one's slice.
+struct Asker {
+    command: String,
+    quest: Option<String>,
+}
+
+/// What one build has read and written so far. Nix names a build's cgroup
+/// by its build user, and the next build of that user makes it again, so a
+/// build is known by its cgroup's inode, which the kernel never reuses
+/// while vm-first runs.
+struct Tally {
+    cgroup: u64,
+    read: u64,
+    written: u64,
+    asked: Option<Asker>,
+}
+
+/// The bytes a cgroup has read and written, every disk's together, from
+/// its `io.stat`.
+fn parse_io_stat(stat: &str) -> (u64, u64) {
+    let count = |key: &str| -> u64 {
+        stat.split_whitespace()
+            .filter_map(|field| field.strip_prefix(key))
+            .filter_map(|value| value.parse::<u64>().ok())
+            .sum()
+    };
+    (count("rbytes="), count("wbytes="))
+}
+
+/// A count of bytes as a person reads it, in binary units.
+fn size(bytes: u64) -> String {
+    const UNITS: [&str; 4] = ["KiB", "MiB", "GiB", "TiB"];
+    if bytes < 1024 {
+        return format!("{bytes} B");
+    }
+    #[allow(clippy::cast_precision_loss)] // A tenth of a unit is all it says.
+    let mut scaled = bytes as f64 / 1024.0;
+    let mut unit = 0;
+    while scaled >= 1024.0 && unit < UNITS.len() - 1 {
+        scaled /= 1024.0;
+        unit += 1;
+    }
+    format!("{scaled:.1} {}", UNITS[unit])
+}
+
+/// The longest a client's command is said at, in characters.
+const COMMAND_LENGTH: usize = 120;
+
+/// A client's command as a person would type it, from its command line:
+/// the program by its name alone, and cut short past `COMMAND_LENGTH`.
+fn command_of(cmdline: &[u8]) -> String {
+    let mut args = cmdline
+        .split(|&byte| byte == 0)
+        .filter(|arg| !arg.is_empty())
+        .map(String::from_utf8_lossy);
+    let Some(program) = args.next() else {
+        return String::new();
+    };
+    let name = program.rsplit('/').next().unwrap_or(&program).to_string();
+    let said = std::iter::once(name)
+        .chain(args.map(std::borrow::Cow::into_owned))
+        .collect::<Vec<_>>()
+        .join(" ");
+    if said.chars().count() <= COMMAND_LENGTH {
+        return said;
+    }
+    let mut cut: String = said.chars().take(COMMAND_LENGTH - 1).collect();
+    cut.push('\u{2026}');
+    cut
+}
+
+/// The line vm-first says when a build has gone.
+fn told(tally: &Tally) -> String {
+    let did = format!(
+        "wrote {} and read {}.",
+        size(tally.written),
+        size(tally.read)
+    );
+    match &tally.asked {
+        Some(asker) => {
+            let quest = asker
+                .quest
+                .as_ref()
+                .map_or("no quest".to_string(), |quest| format!("quest {quest}"));
+            format!("A build for `{}`, for {quest}, {did}", asker.command)
+        }
+        None => format!("A build whose client had gone {did}"),
+    }
+}
+
+/// The quest a quest's slice is for, from the slice's path.
+fn quest_of(slice: &str) -> Option<&str> {
+    slice
+        .rsplit('/')
+        .next()?
+        .strip_prefix(QUEST_SLICE)?
+        .strip_suffix(".slice")
+        .filter(|quest| !quest.is_empty())
+}
+
+/// Who asked for a build, while its client is still there to ask.
+fn asker_of(build: &Path) -> Option<Asker> {
+    let client = client_of_build(build)?;
+    let command = command_of(&fs::read(format!("/proc/{client}/cmdline")).ok()?);
+    let cgroup = fs::read_to_string(format!("/proc/{client}/cgroup")).ok()?;
+    let quest = quest_slice(&cgroup).and_then(quest_of).map(str::to_string);
+    Some(Asker { command, quest })
+}
+
+/// Brings each build's tally up to date, and says what each build that has
+/// gone since the last look read and wrote.
+fn tally(tallies: &mut HashMap<PathBuf, Tally>, builds: &[PathBuf]) {
+    let mut seen = Vec::with_capacity(builds.len());
+    for build in builds {
+        let Ok(cgroup) = fs::metadata(build).map(|meta| meta.ino()) else {
+            continue;
+        };
+        if tallies
+            .get(build)
+            .is_some_and(|known| known.cgroup != cgroup)
+            && let Some(gone) = tallies.remove(build)
+        {
+            eprintln!("{}", told(&gone));
+        }
+        let known = tallies.entry(build.clone()).or_insert_with(|| Tally {
+            cgroup,
+            read: 0,
+            written: 0,
+            asked: None,
+        });
+        if known.asked.is_none() {
+            known.asked = asker_of(build);
+        }
+        if let Ok(stat) = fs::read_to_string(build.join("io.stat")) {
+            (known.read, known.written) = parse_io_stat(&stat);
+        }
+        seen.push(build);
+    }
+    tallies.retain(|build, gone| {
+        let here = seen.contains(&build);
+        if !here {
+            eprintln!("{}", told(gone));
+        }
+        here
+    });
 }
 
 /// Whether a process's name marks it as a VM. A name is at most 15
@@ -388,7 +551,7 @@ fn spare_the_daemon(daemon: &Path, warned: &mut bool) {
     }
 }
 
-fn look(settings: &Settings, warned: &mut bool) {
+fn look(settings: &Settings, tallies: &mut HashMap<PathBuf, Tally>, warned: &mut bool) {
     let daemon = settings.cgroup.join("nix-daemon");
     let pids = fs::read_to_string(daemon.join("cgroup.procs")).unwrap_or_default();
     if daemon_aside(&pids, |pid| {
@@ -398,7 +561,9 @@ fn look(settings: &Settings, warned: &mut bool) {
         spare_the_daemon(&daemon, warned);
     }
     sort_cgroup(&settings.cgroup, settings, warned);
-    for build in build_cgroups(&settings.cgroup) {
+    let builds = build_cgroups(&settings.cgroup);
+    tally(tallies, &builds);
+    for build in builds {
         if sort_cgroup(&build, settings, warned) {
             weigh(&build, settings.weight, "VM", warned);
         } else if let Some(quest) = weight_of_quest(&build) {
@@ -482,9 +647,10 @@ fn run() -> Result<(), String> {
         settings.nice
     );
     let mut warned = false;
+    let mut tallies = HashMap::new();
     loop {
         if Path::new(&settings.cgroup).exists() {
-            look(&settings, &mut warned);
+            look(&settings, &mut tallies, &mut warned);
         }
         thread::sleep(settings.every);
     }
@@ -623,6 +789,78 @@ mod tests {
         line = line.replacen(" S 0 ", " S 307960 ", 1);
         assert_eq!(parse_ppid(&line), Some(307_960));
         assert_eq!(parse_ppid("4242 (cc1)"), None);
+    }
+
+    #[test]
+    fn reads_what_a_build_wrote_and_read_on_every_disk() {
+        let stat = "259:0 rbytes=100 wbytes=2048 rios=1 wios=2 dbytes=0 dios=0\n\
+                    8:0 rbytes=5 wbytes=10 rios=1 wios=1 dbytes=0 dios=0\n";
+        assert_eq!(parse_io_stat(stat), (105, 2058));
+        assert_eq!(parse_io_stat(""), (0, 0));
+    }
+
+    #[test]
+    fn says_sizes_as_a_person_reads_them() {
+        assert_eq!(size(0), "0 B");
+        assert_eq!(size(1023), "1023 B");
+        assert_eq!(size(1536), "1.5 KiB");
+        assert_eq!(size(64 << 20), "64.0 MiB");
+        assert_eq!(size(3 << 30), "3.0 GiB");
+        assert_eq!(size(5 << 40), "5.0 TiB");
+    }
+
+    #[test]
+    fn names_a_client_by_its_command() {
+        assert_eq!(
+            command_of(
+                b"/run/current-system/sw/bin/nix-build\x00--store\x00daemon\x00/etc/a.nix\x00"
+            ),
+            "nix-build --store daemon /etc/a.nix"
+        );
+        let long = [b"nix\x00build\x00".as_slice(), &[b'x'; 400]].concat();
+        let said = command_of(&long);
+        assert!(said.starts_with("nix build xxx"), "{said}");
+        assert!(said.ends_with('\u{2026}'), "{said}");
+        assert!(said.chars().count() <= 120, "{said}");
+    }
+
+    #[test]
+    fn says_which_quest_asked_for_a_build_and_what_it_wrote() {
+        let mut tally = Tally {
+            cgroup: 1,
+            read: 0,
+            written: 1 << 30,
+            asked: Some(Asker {
+                command: "nix build .#checks".into(),
+                quest: Some("qestabc".into()),
+            }),
+        };
+        assert_eq!(
+            told(&tally),
+            "A build for `nix build .#checks`, for quest qestabc, wrote 1.0 GiB and read 0 B."
+        );
+        tally.asked = Some(Asker {
+            command: "nix-build x".into(),
+            quest: None,
+        });
+        assert_eq!(
+            told(&tally),
+            "A build for `nix-build x`, for no quest, wrote 1.0 GiB and read 0 B."
+        );
+        tally.asked = None;
+        assert_eq!(
+            told(&tally),
+            "A build whose client had gone wrote 1.0 GiB and read 0 B."
+        );
+    }
+
+    #[test]
+    fn names_the_quest_of_its_slice() {
+        assert_eq!(
+            quest_of("/user.slice/jobs.slice/jobs-work.slice/jobs-work-qestabc.slice"),
+            Some("qestabc")
+        );
+        assert_eq!(quest_of("/user.slice/jobs.slice/jobs-work.slice"), None);
     }
 
     #[test]

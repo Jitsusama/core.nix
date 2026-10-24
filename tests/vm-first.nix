@@ -20,6 +20,15 @@ let
     name = "fake-compiler";
     text = "exec ${impostors}/bin/cc1 -c 'while :; do ${pkgs.coreutils}/bin/sleep 1; done'";
   };
+  # A build that writes 64 MiB through to the disk and then finishes.
+  fakeWriter = pkgs.writeShellApplication {
+    name = "fake-writer";
+    text = ''
+      ${pkgs.coreutils}/bin/dd if=/dev/zero of=written bs=1M count=64 conv=fsync status=none
+      ${pkgs.coreutils}/bin/sleep 1
+      ${pkgs.coreutils}/bin/touch "$out"
+    '';
+  };
   # A build that runs one of them as the daemon runs any build, which the
   # machine's store already holds, so nothing is fetched.
   buildOf =
@@ -40,10 +49,12 @@ pkgs.testers.runNixOSTest {
     system.extraDependencies = [
       fakeVm
       fakeCompiler
+      fakeWriter
     ];
     environment.etc."vm-build.nix".source = buildOf "vm-build" fakeVm;
     environment.etc."compiler-build.nix".source = buildOf "compiler-build" fakeCompiler;
     environment.etc."quest-build.nix".source = buildOf "quest-build" fakeCompiler;
+    environment.etc."writer-build.nix".source = buildOf "writer-build" fakeWriter;
     environment.etc."uid-range.nix".source = ./uid-range.nix;
     # getfattr, to read the mark vm-first leaves for systemd-oomd.
     environment.systemPackages = [ pkgs.attr ];

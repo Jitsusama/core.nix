@@ -10,10 +10,13 @@ command asks, takes that slice's weight, and follows it when it changes.
 The daemon's own cgroup is marked for systemd-oomd to spare while a build
 can go instead. Restarting the daemon, ten times over with vm-first looking
 every 20 ms, leaves the builds running, and the new daemon starts and
-builds again. Stopping a build leaves nothing of it. A build asking for a
-range of user ids gets 65,536.
+builds again. A build that has gone is said in vm-first's journal, with
+what its client ran, its quest, and what it wrote and read. Stopping a
+build leaves nothing of it. A build asking for a range of user ids gets
+65,536.
 """
 
+import re
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -26,6 +29,8 @@ AS_BUILT = "0 B"
 # The ids a build that asks for a range of them is given.
 RANGE = "65536"
 DAEMON = "/sys/fs/cgroup/build.slice/nix-daemon.service"
+# What the writer's build puts through to the disk, in MiB.
+WRITTEN_MIB = 64
 # A quest's slice, named as jobs-sorter names one under jobs-work.slice.
 QUEST = "jobs-work-qestabc.slice"
 
@@ -161,8 +166,24 @@ with subtest("a restarted daemon leaves its builds running, and builds again"):
 
     assert given == RANGE, f"the build was given {given} ids"
 
+with subtest("a finished build says what it wrote, and who asked for it"):
+    machine.succeed(f"{NIX_BUILD} /etc/writer-build.nix")
+    writer = f"A build for `{NIX_BUILD} /etc/writer-build.nix`, for no quest"
+
+    machine.wait_until_succeeds(
+        f"journalctl -u vm-first.service -o cat | grep -qF '{writer}'", timeout=10
+    )
+
+    told = machine.succeed("journalctl -u vm-first.service -o cat")
+    (line,) = [line for line in told.splitlines() if line.startswith(writer)]
+    written = re.search(r"wrote ([\d.]+) MiB", line)
+    assert written is not None, line
+    assert float(written.group(1)) >= WRITTEN_MIB, line
+
 with subtest("a stopped build leaves nothing running, nor its cgroup"):
     machine.succeed("systemctl stop vm-build compiler-build quest-build")
 
     machine.wait_until_fails("pgrep -x qemu-system-x86 || pgrep -x cc1", timeout=60)
     machine.wait_until_fails(f"ls -d {DAEMON}/nix-build-*", timeout=60)
+    told = machine.succeed("journalctl -u vm-first.service -o cat")
+    assert "/etc/quest-build.nix`, for quest qestabc, wrote" in told, told
