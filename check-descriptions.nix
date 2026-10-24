@@ -347,6 +347,10 @@
   onepassword-works-with-chrome = ''
     1Password has its Chrome helper and unlocks with polkit
   '';
+  only-external-monitors-reach-the-seat = ''
+    ddcutil's rules give the seat a DisplayPort connector's AUX bus and an MST branch's, and keep
+    the panel's eDP, HDMI's, the GPU's own and the touchpad's buses root's, ahead of seat-late
+  '';
   open-with-passes-clippy = ''
     clippy finds nothing in the portal's chooser or its tests
   '';
