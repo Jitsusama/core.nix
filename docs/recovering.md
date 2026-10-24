@@ -3,7 +3,7 @@
 What to do on a bad day, for a laptop [installed][1] with Secure Boot on Joel's
 own keys and a disk the TPM opens. Each section starts from what happened:
 the disk won't open, a new generation won't start, nothing boots, a YubiKey
-is lost, the disk dies, or the laptop is gone. A machine's own repository
+is lost, the disk dies, the laptop is gone, or 1Password won't open. A machine's own repository
 adds what's particular to it, such as anything an employer manages.
 
 ## What Makes It Recoverable
@@ -20,6 +20,7 @@ the guide made, or systemd's own from an install by hand.
 | The machine's stick | apart from the laptop          | recovers or installs the machine     |
 | Firmware password   | kept off the laptop            | keeps Secure Boot on                 |
 | Machine repository  | where it's hosted              | builds the machine again             |
+| 1Password's code    | printed, with its Emergency Kit | opens 1Password when nothing else can |
 
 The machine's stick is the one its repository writes with `nix run .#guide`
 (core's `lib.guide`), on any x86-64 Linux machine. It carries the machine's
@@ -138,6 +139,38 @@ dies][4]. New hardware's firmware trusts none of the machine's keys, so put
 it in setup mode first, as [installing][5] says, and the guide makes new
 Secure Boot keys there rather than putting the old ones back.
 
+## 1Password Won't Open
+
+The recovery key and the firmware's password are often kept in 1Password,
+so being locked out of it hurts most on the day the laptop is lost too.
+
+- **A device still unlocks it:** a phone or another computer that opens
+  1Password with a fingerprint or a face keeps working. Don't sign it out or
+  reinstall it, and read what's needed from it.
+- **The account password or the Secret Key is gone:** an individual or
+  family account comes back with its [recovery code][7]: on 1Password.com's
+  sign-in page, Having Trouble Signing In?, then Use Recovery Code. It sends
+  a code to the account's email, then makes a new Secret Key and account
+  password. Every item stays, every device signs in again, and the recovery
+  code stays good for next time. A family's organiser can recover a member
+  instead; a team or business account has no recovery code, and its
+  administrators recover it.
+- **Neither is there:** nobody can open the account, 1Password included,
+  since only the account password and the [Secret Key][8] together decrypt
+  it.
+
+So three things have to live outside 1Password:
+
+1. The recovery code, printed with the Emergency Kit and kept apart from the
+   laptop. Make one, if there isn't one, in the app's Manage Accounts, then
+   Sign-in & Recovery. An account that unlocks with a passkey always has
+   one.
+2. The way into the account's email, since recovering needs a code sent
+   there: its password known by heart or kept with the recovery code, and
+   its second factor a YubiKey rather than something kept in 1Password.
+3. Patience: a recovery started within an hour of signing in, or with a
+   sign-in during it, is stopped, and the code then waits a day.
+
 ## Writing a New Stick
 
 From any x86-64 Linux machine with Nix and the machine repository, with one
@@ -156,3 +189,5 @@ and finishes by saying how to start that machine from it.
 [4]: #the-disk-dies-or-is-wiped
 [5]: installing.md#3-put-the-firmware-in-setup-mode
 [6]: #a-yubikey-is-lost
+[7]: https://support.1password.com/recovery-codes/
+[8]: https://support.1password.com/secret-key/
