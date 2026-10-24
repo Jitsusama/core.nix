@@ -35,39 +35,39 @@ fails() {
   exit 1
 }
 
-# Builds the font for Monaspace with fontconfig answering as given, into a
+# Builds the font for Aurora, a face made up for the test, with fontconfig answering as given, into a
 # fresh $out, keeping what it said in $WORK/said and its status in $status.
 build() {
   printf '%s\n' "$@" > "$work/answer"
   rm -rf "$work/out"
   status=0
-  env PATH="$work/bin:$PATH" TMPDIR="$work" out="$work/out" face=Monaspace \
+  env PATH="$work/bin:$PATH" TMPDIR="$work" out="$work/out" face=Aurora \
     glyphs=/glyphs.txt convert="$work/bin/convert" \
     "$BASH" "$font" 2> "$work/said" || status=$?
 }
 font=$1
 
-build Monaspace Medium /fonts/monaspace-medium.otf
+build Aurora Medium /fonts/aurora-medium.otf
 ((status == 0)) || fails "refused the face it asked for: $(cat "$work/said")"
-[[ $(cat "$work/asked") == "Monaspace:style=Medium" ]] \
-  || fails "asked fontconfig for $(cat "$work/asked"), not Monaspace at Medium"
-[[ $(cat "$work/out/console.psf") == "drawn from /fonts/monaspace-medium.otf with /glyphs.txt" ]] \
+[[ $(cat "$work/asked") == "Aurora:style=Medium" ]] \
+  || fails "asked fontconfig for $(cat "$work/asked"), not Aurora at Medium"
+[[ $(cat "$work/out/console.psf") == "drawn from /fonts/aurora-medium.otf with /glyphs.txt" ]] \
   || fails "didn't draw the file fontconfig found with the glyphs given"
-printf 'Monaspace\nMedium\n' | cmp -s - "$work/out/face" \
+printf 'Aurora\nMedium\n' | cmp -s - "$work/out/face" \
   || fails "didn't name the face it drew beside the font"
 
 # fontconfig lists every name a face goes by, and the face asked for counts
 # wherever it falls among them.
-build "Monaspace Xe,Monaspace" "Regular,Medium" /fonts/monaspace-medium.otf
+build "Aurora Wide,Aurora" "Regular,Medium" /fonts/aurora-medium.otf
 ((status == 0)) || fails "refused the face among its other names: $(cat "$work/said")"
 
-build "DejaVu Sans Mono" Book /fonts/dejavu.ttf
+build "Fallback Mono" Book /fonts/fallback.ttf
 ((status == 1)) || fails "drew fontconfig's nearest face rather than refusing it"
-grep -qF "Monaspace isn't among the machine's fonts (fonts.packages); fontconfig offered DejaVu Sans Mono" \
+grep -qF "Aurora isn't among the machine's fonts (fonts.packages); fontconfig offered Fallback Mono" \
   "$work/said" || fails "refused another face without saying which: $(cat "$work/said")"
 
-build Monaspace Regular /fonts/monaspace-regular.otf
+build Aurora Regular /fonts/aurora-regular.otf
 ((status == 1)) || fails "drew the face without its Medium rather than refusing it"
-grep -qF "Monaspace has no Medium; fontconfig offered Regular" "$work/said" \
+grep -qF "Aurora has no Medium; fontconfig offered Regular" "$work/said" \
   || fails "refused a missing Medium without saying what was offered: $(cat "$work/said")"
 [[ ! -e $work/out ]] || fails "left a font behind after refusing"
