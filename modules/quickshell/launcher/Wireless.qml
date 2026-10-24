@@ -68,7 +68,7 @@ Provider {
         key: "wifi:sign-in",
         what: "",
         verb: "sign in",
-        name: `Sign In to ${SignIn.network}`,
+        name: `Sign in to ${SignIn.network}`,
         keywords: "wifi portal captive login log in hotel airport cafe",
         glyph: glyph(0xf05a9),
         hue: "machine",
