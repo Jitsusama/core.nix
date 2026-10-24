@@ -446,7 +446,7 @@
     keeps one the line then proves; cuts no download arriving faster than its rate, nor beside one
     an upload carrying under half the line's best, nor again for a queue back within two seconds;
     climbs back from a cut no queue returns for, so late pings alone don't wear an upload down, yet
-    retries no cut near one confirmed; never cuts Wi-Fi more than a fifth under the best it carried,
+    retries no cut near one confirmed; never cuts Wi-Fi more than 5% under the best it carried,
     while following a cable down; remembers the line's best, not its latest cut; reads sets, routes
     and queues from what the kernel prints
   '';
