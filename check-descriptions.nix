@@ -913,7 +913,8 @@
     a Pebble X Plus hears its tuning, headphones don't
   '';
   vm-plugging-in-wakes-it = ''
-    every USB root hub may wake the machine, so a cable plugged into a sleeping laptop wakes it
+    every USB 2 and 1.1 root hub may wake the machine, so a cable plugged into a sleeping laptop
+    wakes it, and the SuperSpeed ones may not, so a USB 3 device pulled out doesn't
   '';
   vm-reboot-cannot-hang = ''
     a reboot forces on after a minute of a service not stopping, the watchdog resets a stuck last
