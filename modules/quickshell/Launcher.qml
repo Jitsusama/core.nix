@@ -1406,6 +1406,8 @@ Scope {
                 verb: root.verbOf(row),
                 chord: (row.chord ?? []).map(key => key.text).join(" "),
                 side: row.side ?? "",
+                // The whole words drawn below the rows for it, if any.
+                reads: row.reads ?? "",
                 settled: !(row === root.headline || row.answered)
                     || !(root.answer && root.answer.asking)
             },
