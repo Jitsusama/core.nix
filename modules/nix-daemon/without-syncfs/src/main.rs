@@ -17,9 +17,9 @@
 //! program, and everything it starts, is barred from gaining any
 //! (`PR_SET_NO_NEW_PRIVS`): virtiofsd, run as the test's own user, gains
 //! none. Only this machine's own calling convention is filtered, the one
-//! virtiofsd is built for. When the filter can't be put in place, the
-//! program runs anyway, and this says so, since a test that runs beats
-//! one that fails over the disk's wear.
+//! virtiofsd is built for, x32's numbers within it included. When the
+//! filter can't be put in place, the program runs anyway, and this says
+//! so, since a test that runs beats one that fails over the disk's wear.
 
 use std::env;
 use std::ffi::{c_int, c_ulong};
@@ -51,6 +51,8 @@ const LOAD_WORD: u16 = 0x20;
 const JUMP_IF_EQUAL: u16 = 0x15;
 /// Ends the program with the operand as its answer.
 const RETURN: u16 = 0x06;
+/// Keeps only the loaded word's bits the operand has.
+const AND: u16 = 0x54;
 
 /// Where `struct seccomp_data` holds the call's number, and the calling
 /// convention it was made by.
@@ -67,17 +69,24 @@ const ENOSYS: u32 = 38;
 const CONVENTION: u32 = 0xc000_003e;
 #[cfg(target_arch = "x86_64")]
 const SYNCFS: u32 = 306;
+/// x32's calls share `x86_64`'s convention, numbered with this bit set, so
+/// it's cleared before the number is compared.
+#[cfg(target_arch = "x86_64")]
+const NUMBER: u32 = !0x4000_0000;
 #[cfg(target_arch = "aarch64")]
 const CONVENTION: u32 = 0xc000_00b7;
 #[cfg(target_arch = "aarch64")]
 const SYNCFS: u32 = 267;
+#[cfg(target_arch = "aarch64")]
+const NUMBER: u32 = !0;
 
 /// Lets every call through but `syncfs`, which it answers `ENOSYS`.
-const FILTER: [Instruction; 6] = [
+const FILTER: [Instruction; 7] = [
     instruction(LOAD_WORD, 0, 0, CONVENTION_AT),
     // Another calling convention's numbers mean other calls.
-    instruction(JUMP_IF_EQUAL, 0, 3, CONVENTION),
+    instruction(JUMP_IF_EQUAL, 0, 4, CONVENTION),
     instruction(LOAD_WORD, 0, 0, NUMBER_AT),
+    instruction(AND, 0, 0, NUMBER),
     instruction(JUMP_IF_EQUAL, 0, 1, SYNCFS),
     instruction(RETURN, 0, 0, REFUSE | ENOSYS),
     instruction(RETURN, 0, 0, ALLOW),
@@ -103,7 +112,7 @@ const SECCOMP_MODE_FILTER: c_ulong = 2;
 /// Refuses this process, and whatever it runs from now on, `syncfs`.
 fn refuse_syncfs() -> io::Result<()> {
     let program = Program {
-        length: u16::try_from(FILTER.len()).expect("the filter is six instructions"),
+        length: u16::try_from(FILTER.len()).expect("the filter is seven instructions"),
         instructions: FILTER.as_ptr(),
     };
     let (on, unused): (c_ulong, c_ulong) = (1, 0);
@@ -161,6 +170,10 @@ mod tests {
                     };
                     at += 1;
                 }
+                AND => {
+                    word &= step.operand;
+                    at += 1;
+                }
                 JUMP_IF_EQUAL => {
                     let by = if word == step.operand {
                         step.jump_if_true
@@ -178,6 +191,12 @@ mod tests {
     #[test]
     fn answers_syncfs_as_not_implemented() {
         assert_eq!(answer(CONVENTION, SYNCFS), REFUSE | ENOSYS);
+    }
+
+    #[cfg(target_arch = "x86_64")]
+    #[test]
+    fn answers_x32s_syncfs_as_not_implemented() {
+        assert_eq!(answer(CONVENTION, 0x4000_0000 | SYNCFS), REFUSE | ENOSYS);
     }
 
     #[test]
