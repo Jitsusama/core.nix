@@ -1,18 +1,24 @@
 // Sound, a collection: the devices sound goes out of and comes in through,
 // outputs then inputs, the one in use first in each, every glyph saying
 // what kind of device it is, its volume drawn as a bar and said in the
-// footer. Return uses one, or mutes or unmutes the one in use, and the
-// right arrow holds its parts, each named first and saying how it stands:
+// footer. A jack with nothing plugged into it, as the headphones' while
+// none are, isn't listed unless it's the one in use, which says so. Return
+// uses one, or mutes or unmutes the one in use, and the right arrow holds
+// its parts, each named first and saying how it stands:
 //
-// - an output: its Level going out, live while it shows; its Volume, with
-//   Louder, Quieter, Mute and levels to set a step in; the Programs playing
-//   through it, each muted or turned a step in; its Tuning, when a filter
-//   puts itself in front of it; its Channels; its Hardware; and what the
-//   kernel says of its card.
-// - an input: its Level coming in, live while it shows; its Gain, set as
-//   the volume is; its Mute; the programs Recording from it, each muted a
-//   step in; its Voice processing, when a filter sits in front of it; its
-//   Channels, Hardware and card.
+// - an output: its Level going out, live while it shows; its Volume, in
+//   percent and in decibels, with Louder, Quieter and levels to set a step
+//   in; whether it's Muted, Mute and Unmute a step in; the programs
+//   Playing through it, each muted or turned a step in; its Tuning, when a
+//   filter puts itself in front of it; its Port, when its card offers it
+//   several; its Channels; its Profile, over Bluetooth; its Hardware; and
+//   what the kernel says of its card.
+// - an input: the same, its Gain for a Volume, and the programs Recording
+//   from it for those Playing, its Voice processing for a Tuning.
+//
+// A Bluetooth device's Codec and its link are Bluetooth's (Accessories.qml),
+// so they're said there, and Sound says only what its sound is for now,
+// music or calls, and points there.
 //
 // Its name, its parts, its acts, the words that find and ask it and those
 // it says are the vocabulary's (launcher/words.json, Words.qml).
@@ -25,9 +31,12 @@
 // Everything comes from the sound server through Quickshell, so nothing is
 // asked and nothing is spawned, but for what a sound card says only to the
 // kernel: what it offers and runs at, its clock, USB speed and firmware,
-// which desk-facts writes to a file (modules/desk-facts), and which the
-// right arrow lists last, Return copying one. A Level is read only while
-// it's on screen, by Quickshell's own peak monitor, in the shell's process.
+// and what its jacks have plugged in, which desk-facts writes to a file
+// (modules/desk-facts), and which the right arrow lists last, Return
+// copying one; and a card's ports, which Quickshell doesn't carry, so
+// pw-dump is asked for them once a device with several is stepped into. A
+// Level is read only while it's on screen, by Quickshell's own peak
+// monitor, in the shell's process.
 import qs
 import Quickshell
 import Quickshell.Bluetooth
@@ -35,7 +44,6 @@ import Quickshell.Io
 import Quickshell.Services.Pipewire
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
-import "Links.js" as Links
 import "Sounds.js" as Sounds
 
 Provider {
@@ -76,7 +84,7 @@ Provider {
             && (node.type & PwNodeType.Audio) && (node.isSink || (node.type & PwNodeType.Source)))
     readonly property var filters: nodes.filter(node => node.properties["filter.smart"] === "true")
     readonly property var devices: nodes
-        .filter(node => node.properties["filter.smart"] !== "true" && (displayed || !display(node)))
+        .filter(node => node.properties["filter.smart"] !== "true" && listed(node))
     readonly property var outputs: devices.filter(node => node.isSink)
     readonly property var inputs: devices.filter(node => !node.isSink)
 
@@ -108,6 +116,17 @@ Provider {
         return node === (node.isSink ? Pipewire.defaultAudioSink : Pipewire.defaultAudioSource);
     }
 
+    // A device is listed while there's something to hear it through: a jack
+    // desk-facts says has nothing plugged in isn't, as the headphones
+    // aren't while none are, unless it's the one in use, which says so. A
+    // display's output desk-facts says nothing of waits for a display.
+    function listed(node) {
+        const told = factsOf(node);
+        if (Sounds.plugged(told) !== "")
+            return !Sounds.unplugged(told) || inUse(node);
+        return displayed || !display(node);
+    }
+
     // Its own short name, rather than the sound card's long one before it.
     function named(node) {
         // A node going away can have lost all three.
@@ -119,10 +138,7 @@ Provider {
     // on the device rather than its sound: over Bluetooth, through a
     // display, worn, or the machine's own.
     function kind(node) {
-        // WirePlumber's stand-in for a headset's microphone says whose it is
-        // only in its name.
-        const address = node.properties["api.bluez5.address"]
-            ?? (/^bluez_input\.([0-9A-F:]{17})$/.exec(node.name) || ["", ""])[1];
+        const address = Sounds.address(node.name, node.properties);
         const accessory = address
             ? Bluetooth.devices.values.find(device => device.address === address) : null;
         const known = [node.name, named(node), node.properties["device.form-factor"] ?? "",
@@ -139,7 +155,11 @@ Provider {
 
     // The glyph it wears, struck through while it's muted.
     function worn(node) {
-        return glyph(node.audio.muted ? (node.isSink ? 0xf0581 : 0xf036d) : kind(node));
+        return node.audio.muted ? struck(node) : glyph(kind(node));
+    }
+
+    function struck(node) {
+        return node.isSink ? Theme.glyph.silent : Theme.glyph.muted;
     }
 
     function use(node) {
@@ -157,7 +177,10 @@ Provider {
         const used = inUse(node);
         const muted = node.audio.muted;
         const note = [said(node.isSink ? "output" : "input"), percent(node.audio.volume)]
-            .concat(muted ? [said("muted")] : []).join(" \u00b7 ");
+            .concat(muted ? [said("muted")] : [],
+                Sounds.unplugged(factsOf(node)) ? [said("unplugged")] : [],
+                switches(node) ? [said("to-calls")] : [])
+            .join(" \u00b7 ");
         return member({
             key: `sound:${node.name}`,
             // Return does what its first act would: use it, or mute or
@@ -188,22 +211,31 @@ Provider {
         onLoadFailed: provider.facts = ({})
     }
 
-    // What the kernel says of a device's card, each named first as a part
-    // is, Return copying its value. A card with one device each way is
-    // keyed by its id and direction ("MV7:in"); one with several, as the
-    // machine's own has its speakers, headphones and displays, by its
-    // device's number too ("sofsoundwire,2:out"), and whichever the file
-    // holds is shown.
-    function factRows(node) {
+    // What the kernel says of a device's card, by its key in the file, or
+    // "". A card with one device each way is keyed by its id and direction
+    // ("MV7:in"); one with several, as the machine's own has its speakers,
+    // headphones and displays, by its device's number too
+    // ("sofsoundwire,2:out"), and whichever the file holds is the one.
+    function factKey(node) {
         const card = node.properties["alsa.id"];
         if (!card)
-            return [];
+            return "";
         const way = node.isSink ? "out" : "in";
         const device = node.properties["alsa.device"] ?? node.properties["api.alsa.pcm.device"];
         const keys = (device !== undefined ? [`${card},${device}:${way}`] : [])
             .concat([`${card}:${way}`]);
-        const key = keys.find(each => facts[each] !== undefined);
-        return key === undefined ? []
+        return keys.find(each => facts[each] !== undefined) ?? "";
+    }
+
+    function factsOf(node) {
+        const key = factKey(node);
+        return key === "" ? [] : facts[key] ?? [];
+    }
+
+    // Each of them named first as a part is, Return copying its value.
+    function factRows(node) {
+        const key = factKey(node);
+        return key === "" ? []
             : factParts("sound", key, facts[key], ["lighting", "playing", "recording"]);
     }
 
@@ -218,24 +250,13 @@ Provider {
             keywords: Words.keywords("verb:sound-use", using),
             glyph: glyph(kind(node)),
             hue: "action",
+            note: switches(node) ? said("profile-switches") : "",
             run: () => provider.use(node)
         })];
-        rows.push(levelPart(node), volumePart(node));
-        if (!node.isSink)
-            rows.push(mutePart(node));
-        const programs = programsPart(node);
-        if (programs)
-            rows.push(programs);
-        const filtered = filterPart(node);
-        if (filtered)
-            rows.push(filtered);
-        const channels = channelsPart(node);
-        if (channels)
-            rows.push(channels);
-        const hardware = hardwarePart(node);
-        if (hardware)
-            rows.push(hardware);
-        return rows.concat(factRows(node));
+        const parts = [levelPart(node), volumePart(node), mutePart(node), programsPart(node),
+            filterPart(node), portPart(node), channelsPart(node), profilePart(node),
+            hardwarePart(node)];
+        return rows.concat(parts.filter(part => part !== null), factRows(node));
     }
 
     // Figures, as the theme draws them.
@@ -286,9 +307,13 @@ Provider {
     property var heard: []
     readonly property int moments: 20
 
+    // The device whose Level is read: the one watched, unless reading it
+    // would switch a headset playing music to calls (`switches`).
+    readonly property var metered: watched !== null && !switches(watched) ? watched : null
+
     PwNodePeakMonitor {
-        node: provider.watched
-        enabled: provider.watched !== null
+        node: provider.metered
+        enabled: provider.metered !== null
         onPeakChanged: provider.loudest = Math.max(provider.loudest, peak)
     }
 
@@ -297,7 +322,7 @@ Provider {
     Timer {
         interval: 250
         repeat: true
-        running: provider.watched !== null
+        running: provider.metered !== null
         onTriggered: {
             provider.heard = provider.heard.concat([provider.loudest]).slice(-provider.moments);
             provider.loudest = 0;
@@ -306,7 +331,16 @@ Provider {
     }
 
     function levelPart(node) {
-        const peaks = node === watched ? heard : [];
+        // A headset's microphone, while it plays music, is heard only by
+        // switching it to calls, so it isn't, and says why.
+        if (switches(node))
+            return figureRow({
+                key: `sound:${node.name}:level`,
+                name: Words.name("sound:level"),
+                side: said("unheard"),
+                note: said("level-switches")
+            });
+        const peaks = node === metered ? heard : [];
         const now = peaks.length > 0 ? peaks[peaks.length - 1] : 0;
         return figureRow({
             key: `sound:${node.name}:level`,
@@ -337,6 +371,7 @@ Provider {
             side: level(node),
             graph: loudness(node),
             glyph: worn(node),
+            note: Sounds.decibels(node.audio.volume),
             offers: true
         }, () => provider.volumeChoices(node));
     }
@@ -352,18 +387,9 @@ Provider {
         }, fields));
     }
 
-    function muteAct(node) {
-        const muting = node.audio.muted ? "muted" : "";
-        return act("verb:sound-mute", muting, {
-            glyph: glyph(node.audio.muted ? 0xf057e : 0xf0581),
-            run: () => provider.mute(node)
-        });
-    }
-
     // Louder and Quieter keep the launcher, to be pressed again, and say
-    // where it is now; louder is meant to be heard, so it unmutes. An
-    // output's Mute is one of its volume's choices; a microphone's is a
-    // part of its own.
+    // where it is now; louder is meant to be heard, so it unmutes, as a
+    // level set is. Each level says its decibels in the footer.
     function volumeChoices(node) {
         const stepping = by => ({
             glyph: Theme.glyph.volume,
@@ -377,8 +403,6 @@ Provider {
         });
         const rows = [act("verb:sound-louder", "", stepping(step)),
             act("verb:sound-quieter", "", stepping(-step))];
-        if (node.isSink)
-            rows.push(muteAct(node));
         const state = node.isSink ? "" : "input";
         return rows.concat(levels.map(each => act("verb:sound-to", state, {
             key: `verb:sound-to-${percent(each)}`,
@@ -386,6 +410,7 @@ Provider {
             glyph: Theme.glyph.volume,
             side: !node.audio.muted && Math.abs(node.audio.volume - each) < 0.005
                 ? said("in-use") : "",
+            note: Sounds.decibels(each),
             run: () => {
                 node.audio.volume = each;
                 node.audio.muted = false;
@@ -393,17 +418,34 @@ Provider {
         })));
     }
 
+    // Whether it's Muted: a setting, saying yes or no as Bluetooth's are,
+    // Mute and Unmute a step in, the one it is in use. Each keeps the words
+    // that found it before ("mute it").
     function mutePart(node) {
+        const muted = node.audio.muted;
         return holderRow({
             key: `sound:${node.name}:mute`,
             name: Words.name("sound:mute"),
-            side: said(node.audio.muted ? "on" : "off"),
+            side: said(muted ? "yes" : "no"),
             glyph: worn(node),
             offers: true
-        }, () => [provider.muteAct(node)]);
+        }, () => [act("verb:sound-mute", "", {
+            glyph: provider.struck(node),
+            side: node.audio.muted ? provider.said("in-use") : "",
+            run: () => {
+                node.audio.muted = true;
+            }
+        }), act("verb:sound-mute", "muted", {
+            key: "verb:sound-unmute",
+            glyph: provider.glyph(provider.kind(node)),
+            side: node.audio.muted ? "" : provider.said("in-use"),
+            run: () => {
+                node.audio.muted = false;
+            }
+        })]);
     }
 
-    // The Programs playing through an output, or Recording from an input:
+    // The programs Playing through an output, or Recording from an input:
     // each a part saying how loud it is, muted or turned a step in.
 
     // Each stream linked to a device, or to a filter in front of it, which
@@ -519,17 +561,17 @@ Provider {
                     name: Words.name("sound:rate"),
                     side: rate
                 }));
+            // How long it waits, first; how that's asked for, in the footer.
             const asked = Sounds.fraction(first.properties["node.latency"]);
             if (asked)
                 rows.push(figureRow({
                     key: `${key}:delay`,
                     name: Words.name("sound:delay"),
-                    side: said("delay", {
+                    side: `${asked.ms.toFixed(1)} ms`,
+                    note: said("delay-note", {
                         frames: asked.frames,
-                        rate: Sounds.kilohertz(asked.hertz),
-                        ms: `${asked.ms.toFixed(1)} ms`
-                    }),
-                    note: said("delay-note")
+                        rate: Sounds.kilohertz(asked.hertz)
+                    })
                 }));
             return rows;
         });
@@ -582,7 +624,8 @@ Provider {
                 key: `${key}:${filter.name}:level`,
                 name: Words.name(node.isSink ? "sound:volume" : "sound:gain"),
                 side: provider.level(filter),
-                graph: provider.loudness(filter)
+                graph: provider.loudness(filter),
+                note: filter.audio ? Sounds.decibels(filter.audio.volume) : ""
             })
         ]), []));
     }
@@ -605,16 +648,144 @@ Provider {
             key: `${key}:${i}`,
             name: Sounds.channel(PwAudioChannel.toString(channel)),
             side: provider.percent(volumes[i] ?? 0),
-            graph: provider.bar(node.audio.muted ? 0 : volumes[i] ?? 0)
+            graph: provider.bar(node.audio.muted ? 0 : volumes[i] ?? 0),
+            note: Sounds.decibels(volumes[i] ?? 0)
         })));
+    }
+
+    // Its Port, when its card offers it several, as one card's analog
+    // output offers its speakers and a headphone jack: a setting, saying
+    // the one in use, the others a step in, each saying when nothing's
+    // plugged into it. Quickshell carries no card's ports, so pw-dump is
+    // asked for them, once a device the sound server says has several is
+    // stepped into, and again when a jack or the port changes.
+    property var portsOf: ({})
+
+    function routed(node) {
+        return !!node && Number(node.properties["device.routes"] ?? 0) > 1
+            && node.properties["device.id"] !== undefined;
+    }
+
+    readonly property var porting: routed(watched) ? watched : null
+    onPortingChanged: readPorts(porting)
+    onFactsChanged: readPorts(porting)
+
+    function readPorts(node) {
+        if (!routed(node) || portReader.running)
+            return;
+        portReader.reading = node;
+        portReader.command = [provider.settings.pwDump ?? "pw-dump",
+            String(node.properties["device.id"])];
+        portReader.running = true;
+    }
+
+    Process {
+        id: portReader
+        property var reading: null
+        stdout: StdioCollector {
+            id: dump
+            onStreamFinished: {
+                const node = portReader.reading;
+                if (!node || !node.audio)
+                    return;
+                const read = Object.assign({}, provider.portsOf);
+                read[node.name] = Sounds.ports(dump.text, node.properties, node.isSink);
+                provider.portsOf = read;
+                provider.changed();
+            }
+        }
+    }
+
+    // Moves a device to a port, by its card's index for it, then reads its
+    // ports again to say so.
+    Process {
+        id: portMover
+        property var moving: null
+        onExited: provider.readPorts(portMover.moving)
+    }
+
+    function movePort(node, port) {
+        portMover.moving = node;
+        portMover.command = [provider.settings.wpctl ?? "wpctl", "set-route", String(node.id),
+            String(port.index)];
+        portMover.running = true;
+    }
+
+    function portPart(node) {
+        const offered = portsOf[node.name] ?? [];
+        const now = offered.find(port => port.active) ?? null;
+        // A port nothing's plugged into is no choice, unless it's in use.
+        const choosable = offered.filter(port => port.active || port.available !== "no");
+        if (!routed(node) || now === null || choosable.length < 2)
+            return null;
+        const mark = glyph(kind(node));
+        return holderRow({
+            key: `sound:${node.name}:port`,
+            name: Words.name("sound:port"),
+            side: now.available === "no" ? `${now.name}, ${said("unplugged")}` : now.name,
+            glyph: mark,
+            offers: true
+        }, () => choosable.map(port => provider.act("verb:sound-port", "", {
+            key: `verb:sound-port-${port.index}`,
+            fill: { port: port.name },
+            glyph: mark,
+            side: port.active ? provider.said("in-use") : "",
+            note: port.available === "no" ? provider.said("unplugged") : "",
+            run: () => provider.movePort(node, port)
+        })));
+    }
+
+    // A Bluetooth device's Profile: what its sound is for now, music or
+    // calls, said in those words. Its Codec and link are said once, in
+    // Bluetooth, which the footer points to. A headset microphone's
+    // stand-in has no profile of its own: it says its headset's, and that
+    // listening through it, while that's music, switches it to calls.
+    function headsetOf(node) {
+        const address = Sounds.address(node.name, node.properties);
+        if (address === "")
+            return null;
+        if (node.properties["api.bluez5.profile"])
+            return node;
+        return nodes.find(each => each.properties["api.bluez5.address"] === address
+            && !!each.properties["api.bluez5.profile"]) ?? null;
+    }
+
+    function carried(node) {
+        const headset = headsetOf(node);
+        return headset ? Sounds.carries(headset.properties["api.bluez5.profile"]) : "";
+    }
+
+    // Whether listening through it would switch a headset from music to
+    // calls, as anything reading its microphone's stand-in does.
+    function switches(node) {
+        return !!node && !node.isSink && Sounds.standIn(node.properties)
+            && carried(node) === "music";
+    }
+
+    function profilePart(node) {
+        const carries = carried(node);
+        if (carries === "")
+            return null;
+        return figureRow({
+            key: `sound:${node.name}:profile`,
+            name: Words.name("sound:profile"),
+            side: said(carries),
+            note: said(switches(node) ? "profile-switches" : "profile-elsewhere")
+        });
     }
 
     // Its Hardware, from what the sound server says of its card: the chip
     // it goes through, as the card's components name them, picked by what
-    // the device is, then how a Bluetooth device is carried, the card, and
-    // the bits its samples carry.
+    // the device is, unless desk-facts names it, by its maker too, among
+    // the facts after it; then a USB card's ids and its name, and the bits
+    // its samples carry. A card built into the machine is named by its
+    // driver ("sof-soundwire"), which says nothing, so it isn't.
+    readonly property var chipFacts: ["codec", "amplifiers"]
+
     function hardwarePart(node) {
         const properties = node.properties;
+        const told = factsOf(node).some(fact => provider.chipFacts
+            .includes(String(fact.name).toLowerCase()));
         const chips = Sounds.components(properties["alsa.components"] ?? "");
         const what = `${properties["device.profile.description"] ?? ""} ${named(node)}`
             .toLowerCase();
@@ -625,19 +796,20 @@ Provider {
                 rows.push(provider.leafRow({ key: `${key}:${id}`, name: Words.name(`sound:${id}`),
                     side: side }));
         };
-        if (what.includes("head"))
-            add("codec", chips.headset);
-        else if (node.isSink && chips.speaker !== "")
-            add("amplifiers", chips.amplifiers > 0
-                ? said("amplifiers", { count: chips.amplifiers, chip: chips.speaker })
-                : chips.speaker);
-        else if (!node.isSink && chips.microphone !== "")
-            add("microphones", chips.digital ? said("digital", { chip: chips.microphone })
-                : chips.microphone);
-        add("codec", Links.codec(properties["api.bluez5.codec"])?.name ?? "");
-        add("profile", String(properties["api.bluez5.profile"] ?? ""));
+        if (!told) {
+            if (what.includes("head"))
+                add("codec", chips.headset);
+            else if (node.isSink && chips.speaker !== "")
+                add("amplifiers", chips.amplifiers > 0
+                    ? said("amplifiers", { count: chips.amplifiers, chip: chips.speaker })
+                    : chips.speaker);
+            else if (!node.isSink && chips.microphone !== "")
+                add("microphones", chips.digital ? said("digital", { chip: chips.microphone })
+                    : chips.microphone);
+        }
         add("usb-id", chips.usb);
-        add("card", String(properties["alsa.card_name"] ?? ""));
+        if (properties["device.bus"] !== "pci")
+            add("card", String(properties["alsa.card_name"] ?? ""));
         const bits = properties["alsa.resolution_bits"];
         if (bits)
             add("resolution", said("bits", { count: bits }));

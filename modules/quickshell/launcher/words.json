@@ -1446,10 +1446,16 @@
         "muted": "muted",
         "none": "none",
         "on": "on",
-        "off": "off",
+        "yes": "yes",
+        "no": "no",
         "running": "running",
         "waiting": "waiting",
         "silent": "silent",
+        "unheard": "not heard",
+        "unplugged": "nothing plugged in",
+        "music": "music",
+        "calls": "calls",
+        "le-audio": "LE Audio",
         "paused": "paused",
         "nothing": "nothing",
         "playing": "playing",
@@ -1468,13 +1474,16 @@
         "amplifiers": "{count} \u00d7 {chip}",
         "digital": "{chip}, digital",
         "bits": "{count} bit",
-        "delay": "{frames} at {rate}, {ms}",
         "level-out": "the loudest of each moment going out, of full scale",
         "level-in": "listening while this shows, the loudest of each moment, of full scale",
+        "level-switches": "listening would switch the headset from music to calls",
+        "profile-elsewhere": "its codec and connection are in Bluetooth",
+        "profile-switches": "listening through it switches the headset to calls",
+        "to-calls": "using it switches the headset to calls",
         "recording-none": "no program is listening",
         "tuning": "the filter sound goes through on its way out",
         "voice": "the filter programs hear it through",
-        "delay-note": "what it asks to be given at once"
+        "delay-note": "{frames} frames at {rate}, what it asks to be given at once"
       }
     },
     {
@@ -1506,15 +1515,21 @@
     {
       "id": "sound:mute",
       "in": "sound",
-      "name": "Mute"
+      "name": "Muted",
+      "hidden": [
+        "mute"
+      ]
     },
     {
       "id": "sound:programs",
       "in": "sound",
-      "name": "Programs",
+      "name": "Playing",
       "words": [
         "streams",
         "apps"
+      ],
+      "hidden": [
+        "programs"
       ]
     },
     {
@@ -1550,6 +1565,15 @@
       "name": "Filter"
     },
     {
+      "id": "sound:port",
+      "in": "sound",
+      "name": "Port",
+      "words": [
+        "jack",
+        "route"
+      ]
+    },
+    {
       "id": "sound:channels",
       "in": "sound",
       "name": "Channels",
@@ -1578,7 +1602,10 @@
     {
       "id": "sound:codec",
       "in": "sound",
-      "name": "Codec"
+      "name": "Chip",
+      "hidden": [
+        "codec"
+      ]
     },
     {
       "id": "sound:microphones",
@@ -1603,7 +1630,10 @@
     {
       "id": "sound:rate",
       "in": "sound",
-      "name": "Rate"
+      "name": "Sample rate",
+      "hidden": [
+        "rate"
+      ]
     },
     {
       "id": "sound:delay",
@@ -1701,14 +1731,26 @@
     {
       "id": "verb:sound-mute",
       "in": "sound",
-      "name": "Mute it",
+      "name": "Mute",
       "verb": "mute",
+      "hidden": [
+        "mute it"
+      ],
       "states": {
         "muted": {
-          "name": "Unmute it",
-          "verb": "unmute"
+          "name": "Unmute",
+          "verb": "unmute",
+          "hidden": [
+            "unmute it"
+          ]
         }
       }
+    },
+    {
+      "id": "verb:sound-port",
+      "in": "sound",
+      "name": "Use {port}",
+      "verb": "use"
     },
     {
       "id": "keyboard",

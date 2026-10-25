@@ -859,6 +859,65 @@ QtObject {
         machine("a step louder", Sounds.stepped(0.42, 0.05, 0.05), 0.45);
         machine("never past the whole", Sounds.stepped(0.98, 0.05, 0.05), 1);
         machine("never below nothing", Sounds.stepped(0.02, -0.05, 0.05), 0);
+        machine("a level in decibels", [Sounds.decibels(1), Sounds.decibels(0.5),
+            Sounds.decibels(0.35), Sounds.decibels(1.2), Sounds.decibels(0)],
+            ["0 dB", "-18.1 dB", "-27.4 dB", "+4.8 dB", "-\u221e dB"]);
+        machine("what a jack has plugged in", Sounds.plugged([{ name: "codec", value: "CS42L45" },
+            { name: "plugged in", value: "headphones" }]), "headphones");
+        machine("a jack with nothing in it", Sounds.unplugged([{ name: "plugged in",
+            value: "nothing" }]), true);
+        machine("speakers have no jack", [Sounds.plugged([{ name: "amplifiers", value: "4" }]),
+            Sounds.unplugged(undefined)], ["", false]);
+
+        // What Sound says of Bluetooth headphones, as the sound server has
+        // them while they play music in AAC: their output, and WirePlumber's
+        // stand-in for their microphone, which names them only by address.
+        const soundHeadphones = { "api.bluez5.address": "12:34:56:78:9A:BC",
+            "api.bluez5.codec": "aac", "api.bluez5.profile": "a2dp-sink",
+            "node.description": "Muse", "device.id": 65, "card.profile.device": 1 };
+        const soundStandIn = { "bluez5.loopback": "true", "node.description": "Muse" };
+        machine("a Bluetooth output's address", Sounds.address("bluez_output.12_34_56_78_9A_BC.1",
+            soundHeadphones), "12:34:56:78:9A:BC");
+        machine("its microphone's stand-in's, from its name",
+            Sounds.address("bluez_input.12:34:56:78:9A:BC", soundStandIn), "12:34:56:78:9A:BC");
+        machine("a card's own output has none", Sounds.address("alsa_output.pci", {}), "");
+        machine("the stand-in is one", [Sounds.standIn(soundStandIn),
+            Sounds.standIn(soundHeadphones)], [true, false]);
+        machine("music, not a2dp", Sounds.carries(soundHeadphones["api.bluez5.profile"]),
+            "music");
+        machine("calls, not hfp", [Sounds.carries("headset-head-unit"),
+            Sounds.carries("hfp-hf")], ["calls", "calls"]);
+        machine("no profile, nothing carried", Sounds.carries(undefined), "");
+
+        // A card's ports, as pw-dump says them: one analog output with its
+        // speakers and a headphone jack nothing's plugged into, and its
+        // microphone, in the profile it's in.
+        const soundCard = JSON.stringify([{ id: 7, type: "PipeWire:Interface:Device", info: {
+            params: {
+                Profile: [{ index: 1, name: "output:analog-stereo+input:analog-stereo" }],
+                Route: [{ index: 3, device: 4, direction: "Output" }],
+                EnumRoute: [
+                    { index: 3, name: "analog-output-speaker", description: "Speakers",
+                        direction: "Output", available: "unknown", devices: [4],
+                        profiles: [1] },
+                    { index: 4, name: "analog-output-headphones", description: "Headphones",
+                        direction: "Output", available: "no", devices: [4], profiles: [1] },
+                    { index: 5, name: "analog-input-mic", description: "Microphone",
+                        direction: "Input", available: "unknown", devices: [5],
+                        profiles: [1] },
+                    { index: 6, name: "hdmi-output-0", description: "HDMI",
+                        direction: "Output", available: "no", devices: [4], profiles: [2] }
+                ]
+            } } }]);
+        machine("an output's ports, the one in use", Sounds.ports(soundCard,
+            { "device.id": "7", "card.profile.device": "4" }, true), [
+            { index: 3, name: "Speakers", available: "unknown", active: true },
+            { index: 4, name: "Headphones", available: "no", active: false }]);
+        machine("an input's, the other way", Sounds.ports(soundCard,
+            { "device.id": "7", "card.profile.device": "5" }, false).map(port => port.name),
+            ["Microphone"]);
+        machine("another card's, none", Sounds.ports(soundCard, { "device.id": "8" }, true), []);
+        machine("no dump, no ports", Sounds.ports("", { "device.id": "7" }, true), []);
 
         // What each camera says of itself, from sysfs and desk-facts.
         machine("a loopback's format at a fraction of frames",

@@ -2,7 +2,9 @@
 // themselves, in plain JavaScript so a check can run it in Qt's own engine,
 // as the shell does: which device a filter puts itself in front of, the
 // chips a sound card names, how much a stream asks for at once and at what
-// rate, and a channel's name as it's said. Sound.qml reads the nodes and
+// rate, a channel's name as it's said, a level in decibels, whether a
+// device's jack has anything plugged in, the ports its card offers it, and
+// what a Bluetooth device's sound is for. Sound.qml reads the nodes and
 // draws the rows.
 .pragma library
 
@@ -20,6 +22,18 @@ const SPACES = /\s+/;
 const DIGITAL = /-dmic$/;
 const HERTZ_PER_KILOHERTZ = 1000;
 const MILLISECONDS = 1000;
+// A level is a share of the whole cubed, as the sound server and wpctl
+// give it, so its gain in decibels is twenty times the log of the cube.
+const DECIBELS_CUBED = 60;
+const TENTHS = 10;
+// What desk-facts says a jack has plugged into it, and its word for none.
+const PLUGGED = "plugged in";
+const NOTHING = "nothing";
+// What a Bluetooth device's profile carries, as the vocabulary says it.
+const CARRIES = [[/^a2dp/, "music"], [/^(headset|hfp|hsp)/, "calls"], [/^bap/, "le-audio"]];
+// WirePlumber's stand-in for a headset's microphone says whose it is only
+// in its name.
+const STAND_IN = /^bluez_input\.([0-9A-F]{2}(?::[0-9A-F]{2}){5})$/;
 
 // What a smart filter's target says a device must have, by property:
 // { "node.name": "alsa_output…" }, or nothing when it says nothing.
@@ -120,4 +134,96 @@ const PLACES = 6;
 function stepped(level, by, step) {
     const kept = Math.min(1, Math.max(0, Math.round((level + by) / step) * step));
     return Number(kept.toFixed(PLACES));
+}
+
+// A level in decibels, to a tenth, as a mixer says it: 100% is 0 dB,
+// 50% is -18.1 dB, past the whole is above it, and nothing is -\u221e dB.
+function decibels(level) {
+    const share = Number(level);
+    if (!(share > 0)) {
+        return "-\u221e dB";
+    }
+    const tenths = Math.round(DECIBELS_CUBED * Math.log10(share) * TENTHS) / TENTHS;
+    if (tenths === 0) {
+        return "0 dB";
+    }
+    return `${tenths > 0 ? "+" : ""}${tenths.toFixed(1)} dB`;
+}
+
+// What desk-facts says a device's jack has plugged into it ("nothing",
+// "headphones"), or "" for a device it says no jack of, such as speakers.
+function plugged(facts) {
+    const found = (facts ?? []).find((fact) => String(fact.name).toLowerCase() === PLUGGED);
+    return found ? String(found.value) : "";
+}
+
+// Whether a device is a jack with nothing plugged into it, as the
+// headphones are while none are: its port is there, but nothing hears it.
+function unplugged(facts) {
+    return plugged(facts) === NOTHING;
+}
+
+// The Bluetooth address a device's sound is of, from the sound server's
+// properties or, for a headset microphone's stand-in, its name, or "".
+function address(name, properties) {
+    const said = properties?.["api.bluez5.address"];
+    if (said) {
+        return String(said);
+    }
+    const found = STAND_IN.exec(String(name ?? ""));
+    return found ? found[1] : "";
+}
+
+// Whether a device is WirePlumber's stand-in for a headset's microphone,
+// which switches the headset to calls once anything listens through it.
+function standIn(properties) {
+    return String(properties?.["bluez5.loopback"] ?? "") === "true";
+}
+
+// What a Bluetooth profile carries, as the vocabulary words it: A2DP's
+// "music", a hands-free profile's "calls", LE Audio's "le-audio", or "".
+function carries(profile) {
+    const found = CARRIES.find((each) => each[0].test(String(profile ?? "")));
+    return found ? found[1] : "";
+}
+
+// What pw-dump says, as a list, or none when it isn't pw-dump's.
+function dumped(text) {
+    let said = null;
+    try {
+        said = JSON.parse(text);
+    } catch (_error) {
+        return [];
+    }
+    return Array.isArray(said) ? said : [];
+}
+
+// The ports a device's card offers it, from what pw-dump says of the card
+// (its EnumRoute, Route and Profile), each { index, name, available,
+// active }: those of the device's own part of the card (its
+// card.profile.device), in the profile the card is in, going its way, by
+// the index wpctl set-route takes. `available` is the server's "yes",
+// "no" or "unknown".
+function ports(text, properties, playing) {
+    const said = properties ?? {};
+    const card = Number(said["device.id"]);
+    const device = Number(said["card.profile.device"]);
+    const found = dumped(text).find((each) => each?.id === card && Boolean(each.info));
+    const params = found ? (found.info.params ?? {}) : {};
+    const [profile] = (params.Profile ?? []).map((each) => each.index);
+    const route = (params.Route ?? []).find((each) => each.device === device);
+    const way = playing ? "Output" : "Input";
+    return (params.EnumRoute ?? [])
+        .filter(
+            (each) =>
+                each.direction === way &&
+                (each.devices ?? []).includes(device) &&
+                (profile === undefined || (each.profiles ?? []).includes(profile)),
+        )
+        .map((each) => ({
+            index: each.index,
+            name: String(each.description || each.name || ""),
+            available: String(each.available ?? "unknown"),
+            active: route !== undefined && route.index === each.index,
+        }));
 }
