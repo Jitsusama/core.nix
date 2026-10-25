@@ -385,25 +385,37 @@ function joined(whens) {
 // several of a group's places, as reacting does in a pull request, an issue
 // and a review's thread, is one chord saying every place it works, since
 // Joel sees nothing twice. Each says where its binds were in `binds`, as
-// `places`.
+// `places`. And one thing done by several chords in one place, as Super+L
+// and the screensaver key both lock the screen, is one row too, its first
+// chord drawn and the rest in `also`.
 function merged(layer, binds) {
     const at = {};
+    const alike = {};
     const out = [];
     binds.forEach((bind, place) => {
+        const group = groupOf(layer, bind);
         // A chord is a string in the key map and drawn key by key in the
         // shell, so it's compared as JSON.
-        const id = `${JSON.stringify(bind.chord)}\n${bind.does}\n${groupOf(layer, bind)}`;
-        if (at[id] === undefined) {
-            at[id] = out.length;
-            out.push({ bind, places: [place], whens: [bind.when ?? ""] });
-        } else {
+        const chord = JSON.stringify(bind.chord);
+        const id = `${chord}\n${bind.does}\n${group}`;
+        const twin = `${bind.does}\n${group}\n${bind.when ?? ""}`;
+        if (at[id] !== undefined) {
             out[at[id]].places.push(place);
             out[at[id]].whens.push(bind.when ?? "");
+        } else if (alike[twin] === undefined) {
+            at[id] = out.length;
+            alike[twin] = out.length;
+            out.push({ bind, places: [place], whens: [bind.when ?? ""], also: [] });
+        } else {
+            at[id] = alike[twin];
+            out[alike[twin]].places.push(place);
+            out[alike[twin]].also.push(bind.chord);
         }
     });
     return out.map(one => Object.assign({}, one.bind, {
         when: joined(one.whens),
-        places: one.places
+        places: one.places,
+        also: one.also
     }));
 }
 

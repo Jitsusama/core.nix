@@ -45,7 +45,8 @@ ShellRoot {
             expect("the layers", names(top).join(", ")
                 === "Desktop, Touchscreen, Terminal, Neovim, Agents", names(top).join(", "));
             const desktop = top[0];
-            const binds = Shortcuts.layers[0].binds.length;
+            // Counted as rows: two chords for one act are one.
+            const binds = KeyGroups.merged("desktop", Shortcuts.layers[0].binds).length;
             expect("the desktop's count and first groups", desktop.count === String(binds)
                 && desktop.side === "Windows, Columns", `${desktop.count} ${desktop.side}`);
             expect("a short layer, its chords alone",
@@ -55,6 +56,13 @@ ShellRoot {
                 + KeyGroups.merged(layer.name, layer.binds).length, 0);
             expect("home counts every chord", map.counted() === String(total).replace(
                 /\B(?=(\d{3})+(?!\d))/g, ","), map.counted());
+            // A second chord for one act is said in the first's note.
+            const spelt = map.spelled([{ text: "Super" }, { text: "L" }, { text: "g", after: true }]);
+            expect("a chord as words", spelt === "Super+L g", spelt);
+            // And no two rows read alike: one act in one place is one row.
+            const read = map.all.map(one => `${one.name} (${one.note})`);
+            const twice = read.filter((one, at) => read.indexOf(one) !== at);
+            expect("no two rows read alike", twice.length === 0, twice.join("; "));
 
             expect("pi found whole", map.search("pi").rows[0].name === "Agents",
                 names(map.search("pi").rows.slice(0, 3)).join(", "));
@@ -97,11 +105,11 @@ ShellRoot {
             expect("Code in groups of a dozen or fewer", code.verbs().every(one => one.verbs
                 && Number(one.count) <= 12) && names(code.verbs()).slice(0, 2).join(", ")
                 === "Definitions and calls, Hints and fixes", names(code.verbs()).join(", "));
-            // Windows, Columns, Workspaces and Screens each have Focus, so
+            // Windows, Columns, Workspaces and Displays each have Focus, so
             // each found from above says what holds it.
             const holders = rows => rows.filter(one => one.name === "Focus")
                 .map(one => one.side).sort().join(", ");
-            const focus = "Columns, Screens, Windows, Workspaces";
+            const focus = "Columns, Displays, Windows, Workspaces";
             expect("a group found from the top says what holds it",
                 holders(map.search("focus").rows) === focus, holders(map.search("focus").rows));
             expect("and found inside its layer",
