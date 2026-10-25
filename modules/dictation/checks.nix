@@ -52,7 +52,8 @@
 
   # dictation's tests run as it builds: its spectrogram matches the one that
   # transcribed a clip word for word, its transform the plain sum, its
-  # vocabulary reads back into text, and silence or a moment isn't heard.
+  # vocabulary reads back into text and words into tokens, and silence or a
+  # moment isn't heard.
   dictation-works-it-out = pkgs.callPackage ./package.nix { };
 
   # The whole of dictation's Whisper, on the CPU as a machine with no NPU
@@ -75,6 +76,44 @@
       fi
       touch $out
     '';
+
+  # Whisper writes a name it reads in the words file as it's spelled there.
+  # espeak-ng says a sentence with Penetanguishene in it, which Whisper
+  # alone hears as "Pennett and Wishing"; so the name missing without the
+  # words proves the clip needs them, and present with them, that they
+  # reach the decoder.
+  dictation-writes-the-words-it-knows =
+    let
+      dictation = pkgs.callPackage ./package.nix { };
+      model = pkgs.callPackage ./model.nix { };
+      name = "Penetanguishene";
+      words = pkgs.writeText "dictation-words" "${name}\n";
+    in
+    pkgs.runCommand "dictation-writes-the-words-it-knows"
+      {
+        nativeBuildInputs = [
+          pkgs.espeak-ng
+          pkgs.sox
+        ];
+      }
+      ''
+        espeak-ng -v en-us -s 160 -w said.wav "The drive from ${name} takes about three hours."
+        sox said.wav -r 16000 -c 1 -b 16 clip.wav
+        export DICTATION_DEVICE=CPU
+        alone=$(${lib.getExe dictation} transcribe ${model} clip.wav)
+        echo "without the words: $alone"
+        if echo "$alone" | grep -q ${name}; then
+          echo "Whisper knew the name without the words, so this proves nothing"
+          exit 1
+        fi
+        knowing=$(DICTATION_WORDS=${words} ${lib.getExe dictation} transcribe ${model} clip.wav)
+        echo "with the words: $knowing"
+        if ! echo "$knowing" | grep -q ${name}; then
+          echo "Whisper didn't write the name it was given"
+          exit 1
+        fi
+        touch $out
+      '';
 
   # clippy finds nothing in dictation, its tests included.
   dictation-passes-clippy = passesClippy "dictation-passes-clippy" (
