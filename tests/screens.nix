@@ -36,14 +36,19 @@ pkgs.testers.runNixOSTest {
       ...
     }:
     let
-      # The machine's store as a read-only image, built once for each
-      # closure as a derivation of its own, rather than afresh at every
-      # start as useNixStoreImage does. It's packed as NixOS packs one
-      # (nixos/lib/erofs-store-image.nix), but in the tar's own order and
-      # compressed: sorting by path, mkfs.erofs's default for a tar, first
-      # copies every file aside, which wrote twice the image. So a new
-      # closure writes about 7 GiB rather than 18, and a run a few MiB.
-      # The registration the machine loads at boot goes in with it.
+      # The machine's store as two read-only images, built once for each
+      # closure as derivations of their own, rather than afresh at every
+      # start as useNixStoreImage does. The base holds what the machine's
+      # packages, fonts, graphics and kernel need, which an edit to the
+      # shell or a module's settings leaves alone; the rest holds what's
+      # left, the system, its units and the account's files among it. So
+      # a Quickshell edit makes only the rest again: about 330 MiB of the
+      # 8.8 GiB closure, where one image made all of it every time. Both
+      # are packed as NixOS packs one (nixos/lib/erofs-store-image.nix),
+      # but in the tar's own order and compressed: sorting by path,
+      # mkfs.erofs's default for a tar, first copies every file aside,
+      # which wrote twice the image. The registration the machine loads at
+      # boot goes in the rest.
       registration =
         (import "${pkgs.path}/nixos/lib/store-registration-info.nix" {
           hostPkgs = pkgs;
@@ -55,8 +60,22 @@ pkgs.testers.runNixOSTest {
           registration
         ];
       };
+      base = pkgs.closureInfo {
+        rootPaths = [
+          config.system.path
+          config.home-manager.users.${account}.home.path
+          config.system.modulesTree
+          config.boot.kernelPackages.kernel
+          config.hardware.graphics.package
+        ]
+        ++ config.hardware.graphics.extraPackages
+        ++ config.fonts.packages;
+      };
+      # Packs the store paths a file names into an image with a label and
+      # a UUID of its own.
       storeImage =
-        pkgs.runCommand "screens-store.img"
+        name: label: uuid: paths:
+        pkgs.runCommand name
           {
             nativeBuildInputs = [
               pkgs.gnutar
@@ -66,10 +85,21 @@ pkgs.testers.runNixOSTest {
           ''
             tar --create --absolute-names --verbatim-files-from \
               --transform 'flags=rSh;s|/nix/store/||' \
-              --files-from ${closure}/store-paths \
-              | mkfs.erofs --quiet --sort=none -zlz4 --force-uid=0 --force-gid=0 -L nix-store \
-                -U eb176051-bd15-49b7-9e6b-462e0b467019 -T 0 --hard-dereference --tar=f "$out"
+              --files-from ${paths} \
+              | mkfs.erofs --quiet --sort=none -zlz4 --force-uid=0 --force-gid=0 -L ${label} \
+                -U ${uuid} -T 0 --hard-dereference --tar=f "$out"
           '';
+      baseImage =
+        storeImage "screens-store-base.img" "nix-store-base" "eb176051-bd15-49b7-9e6b-462e0b467019"
+          "${base}/store-paths";
+      # What the closure holds that the base doesn't.
+      rest = pkgs.runCommand "screens-store-rest" { } ''
+        sort ${base}/store-paths > base
+        sort ${closure}/store-paths | comm -23 - base > "$out"
+      '';
+      restImage =
+        storeImage "screens-store-rest.img" "nix-store-rest" "5d1b8a2e-6c3f-4f0a-9b7e-2a4c8e1f3d60"
+          rest;
     in
     {
       imports = [ self.nixosModules.graphical ];
@@ -100,28 +130,51 @@ pkgs.testers.runNixOSTest {
           "-device secondary-vga,id=second,xres=1024,yres=768,edid=on"
         ];
         # virtio-fs can't suspend, and refuses a sleep for the whole
-        # machine, so the store is the image above and nothing is shared.
+        # machine, so the store is the images above and nothing is shared.
         # The host's store stays on in name, so NixOS still registers the
         # store and lays a writable layer over it, where Home Manager writes
-        # the account's profile; the image stands where the share was.
+        # the account's profile; the images stand where the share was, the
+        # rest over the base, which share no path. The rest is mounted where
+        # the share was, since the registration is in it, and the kernel's
+        # command line names it there.
         mountHostNixStore = true;
         writableStore = true;
         sharedDirectories = lib.mkForce { };
         qemu.drives = [
           {
-            name = "nix-store";
-            file = "${storeImage}";
+            name = "nix-store-base";
+            file = "${baseImage}";
+            driveExtraOpts = {
+              format = "raw";
+              readonly = "on";
+            };
+          }
+          {
+            name = "nix-store-rest";
+            file = "${restImage}";
             driveExtraOpts = {
               format = "raw";
               readonly = "on";
             };
           }
         ];
-        fileSystems."/nix/.ro-store" = {
-          device = "/dev/disk/by-label/nix-store";
-          fsType = "erofs";
-          neededForBoot = true;
-          options = [ "ro" ];
+        fileSystems = {
+          "/nix/.ro-store" = {
+            device = "/dev/disk/by-label/nix-store-rest";
+            fsType = "erofs";
+            neededForBoot = true;
+            options = [ "ro" ];
+          };
+          "/nix/.ro-store-base" = {
+            device = "/dev/disk/by-label/nix-store-base";
+            fsType = "erofs";
+            neededForBoot = true;
+            options = [ "ro" ];
+          };
+          "/nix/store".overlay.lowerdir = lib.mkForce [
+            "/nix/.ro-store"
+            "/nix/.ro-store-base"
+          ];
         };
       };
 
