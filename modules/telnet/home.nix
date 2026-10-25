@@ -1,3 +1,4 @@
+# telnet, for talking to a port by hand.
 { pkgs, ... }:
 {
   # inetutils ships a dozen clients that would shadow better ones, such

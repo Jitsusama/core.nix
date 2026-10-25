@@ -659,6 +659,48 @@ gather (
         }
       );
 
+      # Every folder says what goes in it, so a reader reaches any file from the
+      # map by names alone: in a README, the opening comment of its entry file
+      # or of a file beside it of its name, or a row of AGENTS.md's map. The
+      # folders below are still waiting for their note, and the check fails
+      # once one has it or is gone, so the list only shrinks.
+      every-folder-says-what-it-holds =
+        let
+          waiting = [
+            # Crates' helper-program folders, for their owners.
+            "modules/device-check/src/bin"
+            "modules/dictation/src/bin"
+            "modules/wifid/daemon"
+            # The guide's machines, as it sees them in its tests.
+            "modules/guide/fixtures/dell-xps-14-da14260"
+            "modules/guide/fixtures/microsoft-surface-laptop-4-1958"
+            "modules/guide/fixtures/qemu-canokey"
+            "modules/guide/fixtures/tpm-simulator"
+            # The shell's launcher steps and margin pieces.
+            "modules/quickshell/launcher"
+            "modules/quickshell/pieces"
+            # Neovim's colours, patches, plugins and probes.
+            "modules/neovim/colors"
+            "modules/neovim/patches"
+            "modules/neovim/plugins"
+            "modules/neovim/probes"
+            # The desk's keyboard and microphone.
+            "modules/ergodox/keymap"
+            "modules/shure-mv7/paths"
+            # tests/, given notes as it's grouped by level.
+            "tests/battery-stand-ins"
+            "tests/lib"
+            "tests/stand-in-backlight"
+            "tests/stand-in-lid"
+            "tests/stand-in-light"
+            "tests/stand-in-monitor"
+          ];
+        in
+        pkgs.runCommandLocal "every-folder-says-what-it-holds" { } ''
+          ${lib.getExe pkgs.bash} ${./tests/every-folder-says-what-it-holds.sh} ${./.} ${pkgs.writeText "waiting" (lib.concatLines waiting)}
+          touch $out
+        '';
+
       # core.nix knows nothing about what builds on it: no file names a machine, a
       # machine repository or an employer, so the repositories that use core name
       # it and never the other way round. Every file is read but this one, which

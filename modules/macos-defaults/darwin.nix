@@ -1,3 +1,5 @@
+# The Mac's own settings that differ from Apple's: its shortcuts, keyboard
+# repeat and the like, written as the defaults macOS reads.
 let
   repeat = import ../keyboard/repeat.nix;
 in
