@@ -74,8 +74,7 @@ pkgs.testers.runNixOSTest {
     { nodes, ... }:
     let
       encrypted = nodes.machine.specialisation.encrypted.configuration.system.build.toplevel;
-      # What the script needs from Nix, which it reads from this file at its
-      # top. ImageMagick and Tesseract run beside the driver, not on the
+      # What the tests need from Nix, as their values fixture. ImageMagick and Tesseract run beside the driver, not on the
       # machine, so they come as paths rather than on its PATH.
       values = pkgs.writeText "plymouth-screens-values.json" (
         builtins.toJSON {
@@ -86,10 +85,13 @@ pkgs.testers.runNixOSTest {
         }
       );
     in
-    builtins.replaceStrings [ "@values@" ] [ "${values}" ] (
-      builtins.readFile ./plymouth-screens-vm-test.py
-    );
-  # nix fmt holds the script to mypy --strict against the driver's own types,
-  # through driver_names.pyi, which the driver's lighter check can't find.
+    ''
+      import vm_pytest
+      vm_pytest.run(globals(), "${./plymouth-screens-vm-test.py}", values="${values}")
+    '';
+  # What VM tests share (tests/lib), pytest and its runner among them.
+  extraPythonPackages = python: [ (pkgs.callPackage ./lib/vm-helpers.nix { } python) ];
+  # nix fmt holds the tests and vm_pytest to mypy --strict against the
+  # driver's own types, which the driver's lighter check can't find.
   skipTypeCheck = true;
 }
