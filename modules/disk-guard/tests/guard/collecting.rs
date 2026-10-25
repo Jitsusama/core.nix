@@ -329,6 +329,26 @@ fn garbage_a_running_build_holds_is_left_for_a_later_pass() {
 }
 
 #[test]
+fn garbage_a_running_process_has_open_is_left_for_a_later_pass() {
+    // As a test VM's virtiofsd keeps open each store path its machine
+    // looked at, which Nix counts as a root.
+    let store = Store::new();
+    let open = store.dead("aaa-open", 10.0 * DAY, 4096);
+    let free = store.dead("bbb-free", 10.0 * DAY, 4096);
+    fs::create_dir_all(store.root.join("proc/4242/fd")).unwrap();
+    std::os::unix::fs::symlink(open.join("meta"), store.root.join("proc/4242/fd/7")).unwrap();
+    let mut guard = store.guard(store.config("0%", "0%"));
+    store.step_until(&mut guard, |_| !free.exists());
+    let deletes: Vec<String> = store
+        .log()
+        .into_iter()
+        .filter(|line| line.starts_with("delete"))
+        .collect();
+    assert_eq!(deletes, [format!("delete {}", free.display())]);
+    assert!(open.exists(), "a process has it open");
+}
+
+#[test]
 fn a_listing_is_kept_for_the_next_guard() {
     let store = Store::new();
     store.dead("aaa-young", 3600.0, 4096);

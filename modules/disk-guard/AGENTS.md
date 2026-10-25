@@ -76,11 +76,12 @@ it under systemd or launchd, and [`home.nix`][2] the account's.
   again.
 - **Nix.** The system daemon lists the dead paths every six hours in a spare
   moment, and deletes them oldest first, keeping three days' within a budget
-  of 10% of the filesystem. A path a running build or evaluation holds as a
-  temporary root, and every dead path it reaches, is left for a later pass,
-  since Nix refuses it and each refusal costs a delete its whole look for
-  roots. It expires generations, never the current, running or booted one,
-  the newest five, or one with a boot entry. It links the store's identical
+  of 10% of the filesystem. A path a running process holds, as a temporary
+  root or a file it has open, and every dead path it reaches, is left for a
+  later pass: Nix refuses a whole delete for one live path, deleting none,
+  and each refusal costs it a whole look for roots. It expires generations,
+  never the current, running or booted one, the newest five, or one with a
+  boot entry. It links the store's identical
   files weekly in a scope of its own at idle priority, only while nothing
   stalls on the disk or memory, since it can wait without cost, stopping
   when the moment ends. An account's guard on the same filesystem asks it to

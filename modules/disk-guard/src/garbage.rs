@@ -125,6 +125,58 @@ pub fn temp_roots(dir: &Path) -> HashSet<String> {
         .collect()
 }
 
+/// Every store path under `store` a running process has in hand, read from
+/// `processes` as Nix reads its runtime roots: each open file, each mapped
+/// one, its program and its folder, by the store path it lies in. A test
+/// VM's `virtiofsd` shares the whole store and keeps a descriptor open on
+/// each path its machine has looked at, which can be tens of thousands. A
+/// process gone between listing and reading holds nothing.
+pub fn runtime_roots(processes: &Path, store: &Path) -> HashSet<String> {
+    let Ok(entries) = std::fs::read_dir(processes) else {
+        return HashSet::new();
+    };
+    let mut held = HashSet::new();
+    let mut note = |file: &Path| {
+        if let Ok(within) = file.strip_prefix(store)
+            && let Some(std::path::Component::Normal(name)) = within.components().next()
+        {
+            held.insert(store.join(name).to_string_lossy().into_owned());
+        }
+    };
+    for entry in entries.filter_map(Result::ok) {
+        let process = entry.path();
+        let named = entry.file_name();
+        if !named
+            .to_string_lossy()
+            .bytes()
+            .all(|byte| byte.is_ascii_digit())
+        {
+            continue;
+        }
+        for link in ["exe", "cwd"] {
+            if let Ok(file) = std::fs::read_link(process.join(link)) {
+                note(&file);
+            }
+        }
+        if let Ok(fds) = std::fs::read_dir(process.join("fd")) {
+            for fd in fds.filter_map(Result::ok) {
+                if let Ok(file) = std::fs::read_link(fd.path()) {
+                    note(&file);
+                }
+            }
+        }
+        // A mapping's file is the line's last field, after five others.
+        if let Ok(maps) = std::fs::read_to_string(process.join("maps")) {
+            for line in maps.lines() {
+                if let Some(file) = line.splitn(6, ' ').nth(5).map(str::trim_start) {
+                    note(Path::new(file));
+                }
+            }
+        }
+    }
+    held
+}
+
 /// How long one step of `nix store gc --max` may take, when there is no
 /// listing to delete from.
 pub const GC_TIMEOUT: Duration = Duration::from_mins(10);
@@ -269,14 +321,16 @@ pub fn list(nix: &Path, idle: bool) -> Result<Vec<Listed>, String> {
 
 /// How long deleting one batch may take.
 const DELETE_TIMEOUT: Duration = Duration::from_mins(10);
-/// How many paths may come alive since the listing before it's taken as
-/// too stale to go on with.
-const REVIVALS: usize = 16;
+/// How many paths may come alive since the batch was made before it's
+/// taken as too stale to go on with. Each refusal costs Nix a whole look
+/// for roots and deletes nothing, so a batch that keeps meeting them is
+/// left for a pass that makes its batches afresh.
+const REVIVALS: usize = 3;
 
 /// Deletes the batch's `paths` that still exist through `nix store
-/// delete`, whose dead referrers are among them or gone. Nix refuses a path a root
-/// reaches again since the listing, having deleted those before it, so
-/// it's dropped and the rest tried again.
+/// delete`, whose dead referrers are among them or gone. Nix refuses the
+/// whole call when any path a root reaches again since the batch was
+/// made, naming one, so it's dropped and the rest tried again.
 pub fn delete(nix: &Path, paths: &[String], idle: bool) -> Result<(), String> {
     let mut alive: Vec<String> = Vec::new();
     loop {
@@ -364,8 +418,9 @@ impl Listing {
     /// refuses any of them, and each refusal costs a delete its whole look
     /// for roots, so they're left for a pass after their holder lets go.
     /// An evaluation holds every derivation it writes until it ends, and
-    /// writes the same ones again each time it runs, so on a busy machine
-    /// most of a listing's derivations are held at any moment.
+    /// writes the same ones again each time it runs, and a test VM's
+    /// `virtiofsd` holds what its machine looked at, so on a busy machine
+    /// much of a listing is held at any moment.
     pub fn held_back(&self, held: &HashSet<String>) -> HashSet<&str> {
         let mut back: Vec<bool> = self
             .dead
