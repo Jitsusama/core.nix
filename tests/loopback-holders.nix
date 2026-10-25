@@ -58,9 +58,8 @@ pkgs.testers.runNixOSTest {
       loopback = "${config.jitsusama.v4l2loopback.package.bin}/bin/v4l2loopback-ctl";
     in
     {
-      imports = [ "${self}/modules/v4l2loopback/nixos.nix" ];
+      imports = [ self.nixosModules.v4l2loopback ];
       jitsusama.v4l2loopback = {
-        enable = true;
         holders.stand-in = {
           device = "/run/stand-in/device";
           unit = "stand-in.service";

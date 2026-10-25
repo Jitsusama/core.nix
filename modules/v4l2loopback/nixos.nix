@@ -1,6 +1,6 @@
 # The loopback camera module, for a relay that reads a camera and hands its
 # frames on through a camera other programs can open. Whichever module makes
-# a loopback turns it on, and takes v4l2loopback-ctl from its package, so the
+# a loopback imports it, and takes v4l2loopback-ctl from its package, so the
 # module loaded and the program making its cameras are the same build.
 #
 # Nothing says which program has a loopback camera open: PipeWire doesn't
@@ -23,7 +23,6 @@ let
 in
 {
   options.jitsusama.v4l2loopback = {
-    enable = lib.mkEnableOption "the loopback camera module";
     package = lib.mkOption {
       type = lib.types.package;
       readOnly = true;
@@ -97,7 +96,7 @@ in
     };
   };
 
-  config = lib.mkIf cfg.enable {
+  config = {
     boot.extraModulePackages = [ cfg.package ];
     # Each relay makes the loopback it needs, so the module makes none.
     boot.extraModprobeConfig = ''
