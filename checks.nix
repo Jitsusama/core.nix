@@ -827,6 +827,7 @@ gather (
     ./modules/signing/checks.nix
     ./modules/slices/checks.nix
     ./modules/spend-watch/checks.nix
+    ./modules/sudo/checks.nix
     ./modules/spotify/checks.nix
     ./modules/ssh-tpm-agent/checks.nix
     ./modules/swayidle/checks.nix

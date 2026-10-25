@@ -205,6 +205,7 @@
         homebrew = ./modules/homebrew/darwin.nix;
         macos-defaults = ./modules/macos-defaults/darwin.nix;
         nixpkgs = ./modules/nixpkgs/system.nix;
+        sudo = ./modules/sudo/darwin.nix;
         yubikey = ./modules/yubikey/system.nix;
         zsh = ./modules/zsh/system.nix;
 
