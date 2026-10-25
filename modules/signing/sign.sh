@@ -5,7 +5,8 @@
 # name, the program's own name; real, the ssh-keygen that signs; joel_key and
 # agent_key, what ssh-keygen's -f takes for each key; and makes_keys, what
 # makes a key that's missing. It may export what that ssh-keygen needs to
-# reach the keys, too.
+# reach the keys, too, and defines agent_environment, which exports what it
+# needs to reach the agent's key alone.
 #
 # git runs it for verifying as well, so anything but a signature goes
 # straight to ssh-keygen. A signature is made with the chosen key in place of
@@ -31,7 +32,10 @@ pick_signer() {
 
   case "$signer" in
     joel) key=$joel_key ;;
-    agent) key=$agent_key ;;
+    agent)
+      key=$agent_key
+      agent_environment
+      ;;
     *)
       echo "$name: SIGN_AS must be joel or agent, not '$signer'." >&2
       exit 2

@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import shlex
 from dataclasses import dataclass
+from datetime import timedelta
 from typing import TYPE_CHECKING, Any
 
 import pytest
@@ -25,6 +26,8 @@ if TYPE_CHECKING:
 # Where Joel's key and the agent's key are made, as docs/installing.md makes them.
 JOEL_KEY = "~/.local/share/signing/joel-signing"
 AGENT_KEY = "~/.ssh/agent-signing"
+# How long the askpass may take to be asked, or a held commit to end once answered.
+WAITING = timedelta(seconds=30)
 
 
 def at_terminal(command: str) -> str:
@@ -108,6 +111,8 @@ def keys(joel: Joel, values: dict[str, Any]) -> Keys:
     )
     joel.run("systemctl --user restart ssh-tpm-agent")
     joel.machine.wait_for_unit("signing-key.service", "joel")
+    # The agents' own agent reads its key as it starts, so it starts again too.
+    joel.run("systemctl --user stop agent-signing.service")
     joel.run("git init -q repo")
     return Keys(
         joel=joel.fingerprint(f"{JOEL_KEY}.pub"), agent=joel.fingerprint(f"{AGENT_KEY}.pub")
@@ -120,6 +125,22 @@ def refusing(joel: Joel) -> Iterator[None]:
     joel.run(f"touch {joel.runtime}/refuse")
     yield
     joel.run(f"rm {joel.runtime}/refuse")
+
+
+@pytest.fixture
+def held(joel: Joel) -> Iterator[None]:
+    """Give a commit of Joel's left waiting on his confirmation, as when he's away.
+
+    It's answered, and its commit made, as the test ends.
+    """
+    joel.run(f"touch {joel.runtime}/hold; rm -f {joel.runtime}/asked")
+    committing = at_terminal("git -C ~/repo commit -q --allow-empty -m held")
+    joel.run(f"systemd-run --user --unit=waiting -- sh -c {shlex.quote(committing)}")
+    joel.machine.wait_until_succeeds(f"grep -qx confirm {joel.runtime}/asked", timeout=WAITING)
+    yield
+    joel.run(f"rm {joel.runtime}/hold")
+    running = f"XDG_RUNTIME_DIR={joel.runtime} systemctl --user is-active -q waiting"
+    joel.machine.wait_until_fails(f"su - joel -c {shlex.quote(running)}", timeout=WAITING)
 
 
 def test_both_keys_are_made_in_the_tpm_and_the_agent_holds_them(joel: Joel, keys: Keys) -> None:
@@ -150,6 +171,23 @@ def test_a_commit_at_a_terminal_is_joels_after_his_pin_and_a_confirmation(
     assert joel.signer_of_last_commit() == ["G", keys.joel]
     assert "confirm" in asked
     assert "pin" in asked
+
+
+@pytest.mark.usefixtures("held")
+def test_a_harness_commits_while_joels_confirmation_waits(joel: Joel, keys: Keys) -> None:
+    """A harness commits while Joel's confirmation waits, since its key has an agent of its own.
+
+    One agent signs nothing else while a prompt waits, so a harness's commit would wait as long.
+    """
+    joel.run("timeout 60 git -C repo commit -q --allow-empty -m 'beside it' < /dev/null")
+    assert joel.signer_of_last_commit() == ["G", keys.agent]
+
+
+def test_the_agents_agent_holds_their_key_alone(joel: Joel, keys: Keys) -> None:
+    """The agents' own agent holds their key alone, so none of Joel's prompts reach it."""
+    listed = joel.run(f"SSH_AUTH_SOCK={joel.runtime}/agent-signing.sock ssh-add -l")
+    assert keys.agent in listed
+    assert keys.joel not in listed
 
 
 def test_sign_as_picks_the_key_outright(joel: Joel, keys: Keys) -> None:
