@@ -21,8 +21,8 @@
 # keeps one global state, so a second device crashes it, a state file made
 # on a hot-plug answers every makeCredential with 0xF1, and its random
 # numbers come from a fixed seed, so every key it made would hold the same
-# secrets. A getrandom-backed random32 makes each key its own. The script
-# is guide-install-vm-test.py.
+# secrets. A getrandom-backed random32 makes each key its own. The tests
+# are guide-install-vm-test.py, run through pytest.
 { self, pkgs }:
 let
   inherit (pkgs) lib;
@@ -80,6 +80,7 @@ pkgs.testers.runNixOSTest {
   name = "guide-install";
   globalTimeout = 60 * 60;
   qemu.package = qemu;
+  extraPythonPackages = python: [ (pkgs.callPackage ./lib/vm-helpers.nix { } python) ];
 
   # The stick's system, built as a test node so the driver can reach its
   # shell, and never started itself: the machine boots its image from USB.
@@ -208,9 +209,9 @@ pkgs.testers.runNixOSTest {
             truncate -s $(( $(stat -c %s ${image}) + (room << 20) + (512 << 20) + 7 * 512 )) $out/stick.raw
             echo ${lib.escapeShellArg passphrase} | guide write-stick ${image} $out/stick.raw --install ${payload}
           '';
-      # The driver runs on the host, so what the script needs from Nix, the
-      # keys' state, the sticks' images, the programs it runs and the secrets
-      # to type, reaches it in one file. tpm2_clear is run on the machine by
+      # The driver runs on the host, so what the tests need from Nix, the
+      # keys' state, the sticks' images, the programs they run and the secrets
+      # to type, reaches them as their values fixture. tpm2_clear is run on the machine by
       # its place in the store, rather than put on the machine's path, which
       # would change the system the guide installs.
       values = pkgs.writeText "guide-install-values.json" (
@@ -233,10 +234,12 @@ pkgs.testers.runNixOSTest {
             ;
         }
       );
-      script = builtins.readFile ./guide-install-vm-test.py;
     in
-    builtins.replaceStrings [ "@values@" ] [ "${values}" ] script;
-  # nix fmt holds the script to mypy --strict against the driver's own types,
-  # through driver_names.pyi, which the driver's lighter check can't find.
+    ''
+      import vm_pytest
+      vm_pytest.run(globals(), "${./guide-install-vm-test.py}", values="${values}")
+    '';
+  # nix fmt holds the tests and vm_pytest to mypy --strict against the
+  # driver's own types, which the driver's lighter check can't find.
   skipTypeCheck = true;
 }
