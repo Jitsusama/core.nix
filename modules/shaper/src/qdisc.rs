@@ -19,6 +19,8 @@
 
 use serde_json::Value;
 
+use crate::rate::float;
+
 /// The conntrack mark's bits the shaper owns: the class, 1 to 4 in CAKE's
 /// tin order (bulk, best effort, video, voice), and a bit for local
 /// traffic. They sit clear of WARP's 0x100cf and Tailscale's 0xff0000.
@@ -194,9 +196,78 @@ pub fn tins(json: &str) -> Vec<Tin> {
         .unwrap_or_default()
 }
 
+/// Where real-time traffic goes: an app's calls and everything Tuple's
+/// daemon sends, in CAKE's tin order (bulk, best effort, video, voice).
+const VIDEO: usize = 2;
+/// Packets a second in the video tins, both ways together, that say a call
+/// or a screen share runs: a call's audio alone is about 50 a second each
+/// way, where nothing else is classed there.
+const LIVE_PACKETS: f64 = 20.0;
+/// How long after its last such second real-time traffic still counts as
+/// flowing, so a pause in talk doesn't put the floor back mid-call.
+const LIVE_HOLD_S: f64 = 30.0;
+
+/// The packets the video tin of the CAKE in `tc -s -j qdisc show dev` has
+/// sent.
+pub fn video_packets(json: &str) -> u64 {
+    tins(json).get(VIDEO).map_or(0, |tin| tin.packets)
+}
+
+/// Whether real-time traffic crosses a link, from its video tins' counts.
+#[derive(Clone, Debug, Default)]
+pub struct RealTime {
+    /// The packets counted last, and when, in seconds.
+    seen: Option<(u64, f64)>,
+    /// Until when it counts as flowing.
+    until: f64,
+}
+
+impl RealTime {
+    /// Takes the video tins' packets, sent and received together, at `now`
+    /// seconds, and gives whether real-time traffic flows. A count that
+    /// starts over, as a link's queues made again do, reads as none.
+    pub fn count(&mut self, packets: u64, now: f64) -> bool {
+        if let Some((before, at)) = self.seen {
+            let seconds = (now - at).max(0.001);
+            if float(packets.saturating_sub(before)) / seconds >= LIVE_PACKETS {
+                self.until = now + LIVE_HOLD_S;
+            }
+        }
+        self.seen = Some((packets, now));
+        now < self.until
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_call_s_packets_count_as_real_time_and_last_through_a_pause() {
+        let mut live = RealTime::default();
+        assert!(!live.count(0, 0.0));
+        // A call's audio, 50 packets a second each way.
+        assert!(live.count(100, 1.0));
+        // Silence for a while keeps it, as talk pauses.
+        assert!(live.count(100, 20.0));
+        assert!(!live.count(100, 32.0));
+    }
+
+    #[test]
+    fn a_trickle_isn_t_real_time_and_a_count_started_over_isn_t_a_burst() {
+        let mut live = RealTime::default();
+        live.count(1_000, 0.0);
+        assert!(!live.count(1_010, 1.0));
+        assert!(!live.count(3, 2.0));
+    }
+
+    #[test]
+    fn the_video_tin_s_packets_are_read() {
+        let json = r#"[{"kind":"htb"},{"kind":"cake","tins":[
+            {"sent_packets":1},{"sent_packets":2},{"sent_packets":3},{"sent_packets":4}]}]"#;
+        assert_eq!(video_packets(json), 3);
+        assert_eq!(video_packets("[]"), 0);
+    }
 
     #[test]
     fn an_ifbs_name_fits_the_kernels_limit() {

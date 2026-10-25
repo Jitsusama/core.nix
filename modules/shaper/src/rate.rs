@@ -122,6 +122,9 @@ pub struct Settings {
     /// The share of the best rate a direction has held that no cut goes
     /// under; none lets a cut follow the line down to its floor.
     pub least_of_best: f64,
+    /// The same share while real-time traffic flows, when the line's
+    /// queue has to be this machine's, where CAKE sends a call first.
+    pub least_of_best_live: f64,
 }
 
 impl Default for Settings {
@@ -167,6 +170,7 @@ impl Default for Settings {
             // A cable's line does fall, to half on a busy evening, and a
             // cut that follows it keeps its queue short.
             least_of_best: 0.0,
+            least_of_best_live: 0.0,
         }
     }
 }
@@ -182,9 +186,17 @@ impl Settings {
     /// carried, as a cable's ceiling sits. At a fifth, live under the
     /// agents' load, 104 of 115 cuts in 13 minutes ended at that floor,
     /// holding an upload of 10.5 Mbit/s at 8.
+    ///
+    /// While a call or a screen share runs, though, Joel wants it to work
+    /// well above all, and a floor over the line leaves its packets behind
+    /// the line's own queue: at 95% of a best learned in an upload's first
+    /// seconds, a bulk upload took pings past the router from 27 ms to 44
+    /// on average, and up to 134. Then a cut may go to three fifths of the
+    /// best, which still keeps a call's few Mbit/s whatever the air does.
     pub fn for_link(wireless: bool) -> Self {
         Settings {
             least_of_best: if wireless { 0.95 } else { 0.0 },
+            least_of_best_live: if wireless { 0.6 } else { 0.0 },
             ..Settings::default()
         }
     }
@@ -355,9 +367,14 @@ impl Direction {
     /// live the floor held an upload at 11.7 Mbit/s over a line of 9.3,
     /// its queue at 60 to 70 ms. A climb puts the best back once the line
     /// carries more.
-    fn pinned(&mut self, s: &Settings, now: f64, carried: f64) {
+    ///
+    /// Only a direction that may be filling the line counts: a download
+    /// arriving faster than its rate is held back here, and lowering its
+    /// best for a queue elsewhere took one from 50 Mbit/s to 8 in two
+    /// minutes.
+    fn pinned(&mut self, s: &Settings, now: f64, carried: f64, suspect: bool) {
         let least = whole(float(self.best) * s.least_of_best).max(self.bounds.min);
-        if carried < float(self.rate) * s.busy || self.held > least {
+        if !suspect || carried < float(self.rate) * s.busy || self.held > least {
             self.floored_since = None;
             return;
         }
@@ -411,6 +428,9 @@ pub struct Controller {
     pub settings: Settings,
     pub up: Direction,
     pub down: Direction,
+    /// Whether real-time traffic, a call's or a screen share's, crosses the
+    /// line now, as the shaper's video tin says.
+    pub live: bool,
     baselines: HashMap<String, Baseline>,
     recent: VecDeque<bool>,
     /// How far over its baseline each of the latest pings came back, in
@@ -463,6 +483,7 @@ impl Controller {
             settings,
             up,
             down,
+            live: false,
             baselines: HashMap::new(),
             recent: VecDeque::new(),
             levels: VecDeque::new(),
@@ -535,7 +556,10 @@ impl Controller {
     /// One step, given what each direction carried since the last, in
     /// kbit/s, at `now` seconds. Returns what it decided.
     pub fn step(&mut self, now: f64, sent: f64, received: f64) -> State {
-        let s = self.settings.clone();
+        let mut s = self.settings.clone();
+        if self.live {
+            s.least_of_best = s.least_of_best.min(s.least_of_best_live);
+        }
         let shares = [
             sent / float(self.up.rate.max(1)),
             received / float(self.down.rate.max(1)),
@@ -592,8 +616,11 @@ impl Controller {
                     cuts[i] = true;
                 }
             }
-            for (dir, carried) in [(&mut self.up, sent), (&mut self.down, received)] {
-                dir.pinned(&s, now, carried);
+            for (i, (dir, carried)) in [(&mut self.up, sent), (&mut self.down, received)]
+                .into_iter()
+                .enumerate()
+            {
+                dir.pinned(&s, now, carried, filling[i]);
             }
             if cuts[0] || cuts[1] {
                 self.cut_in_spell[0] |= cuts[0];
@@ -1045,6 +1072,69 @@ mod tests {
         }
         assert!(lowest >= 9_500, "{lowest}");
         assert!(c.up.best >= 10_000, "{}", c.up.best);
+    }
+
+    #[test]
+    fn a_download_held_back_here_keeps_its_best_through_a_standing_queue() {
+        // Binks's case on core #616: a Wi-Fi download at its floor, arriving
+        // at 1.1 times its rate, is held back here and fills no line; with
+        // pings standing 60 ms late, its rate fell to 18 Mbit/s in a minute
+        // and a best of 19 was kept.
+        let mut c = wi_fi(10_000);
+        // Cut to its floor earlier.
+        c.down.held = 47_500;
+        c.down.rate = 47_500;
+        pings(&mut c, 20.0, 6);
+        let mut at = 0.0;
+        while at < 120.0 {
+            pings(&mut c, 80.0, 3);
+            at += 0.2;
+            c.step(at, 0.0, 1.1 * float(c.down.rate));
+        }
+        assert!(c.down.best >= 50_000, "{}", c.down.best);
+        assert!(c.down.rate >= 47_500, "{}", c.down.rate);
+    }
+
+    /// Uploads four seconds of every five into a line of 11 Mbit/s, under a
+    /// best of 12.3 whose floor is over the line, and gives the worst
+    /// queue of the last minute, in ms, and the least rate held in it: the
+    /// queue rises and drains by turns, as it did live at 20:21, never
+    /// standing long.
+    fn bursts_over_the_floor(live: bool) -> (f64, u64) {
+        let mut c = wi_fi(12_300);
+        c.live = live;
+        pings(&mut c, 20.0, 6);
+        let (mut at, mut queue_kbit, mut worst, mut least) = (0.0, 0.0_f64, 0.0_f64, u64::MAX);
+        while at < 240.0 {
+            let sent = if at % 5.0 < 4.0 {
+                float(c.up.rate)
+            } else {
+                0.0
+            };
+            queue_kbit = (queue_kbit + (sent - 11_000.0) * 0.2).clamp(0.0, 8_000.0);
+            let delay = queue_kbit / 11_000.0 * 1000.0;
+            pings(&mut c, 20.0 + delay, 3);
+            at += 0.2;
+            c.step(at, sent.min(11_000.0), 0.0);
+            if at > 180.0 {
+                worst = worst.max(delay);
+                least = least.min(c.up.rate);
+            }
+        }
+        (worst, least)
+    }
+
+    #[test]
+    fn while_real_time_flows_a_wi_fi_line_keeps_its_queue_here() {
+        // Live, a bulk upload took pings past the router from 27 ms to 44
+        // on average, up to 134, while the floor held it at 11.7 Mbit/s:
+        // its queue was the line's, where a call's packets wait behind it.
+        let (held, _) = bursts_over_the_floor(false);
+        let (live, rate) = bursts_over_the_floor(true);
+        assert!(held > 60.0, "{held} ms at the floor");
+        assert!(live < 30.0, "{live} ms while live, against {held}");
+        // It gives up little of the line for it.
+        assert!(rate >= 8_800, "{rate}");
     }
 
     #[test]

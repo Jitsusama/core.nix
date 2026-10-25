@@ -349,6 +349,20 @@ def test_apps(line: Line) -> None:
     line.lands("video", "app.slice", line.datagrams(9000))
 
 
+def test_real_time(line: Line) -> None:
+    """A call's packets make the shaper keep the line's queue here.
+
+    Datagrams an app sends past 443 are a call's, in the video tin, and a few hundred in a
+    second are as many as a call's audio sends; the shaper looks once a second.
+    """
+    line.run("app.slice", line.datagrams(9000, n=600))
+    # grep reads it all: one that stops at the match leaves the status writing to nothing.
+    line.client.wait_until_succeeds(
+        "shaper status | grep 'real-time traffic flows'", timeout=SHAPING
+    )
+    line.client.succeed("journalctl -u shaper | grep -q 'real-time traffic flows'")
+
+
 def test_tuple(line: Line) -> None:
     """Everything Tuple's daemon sends is video.
 
