@@ -21,8 +21,8 @@
 # awake while a charger is plugged in, and dozes once both are pulled.
 # The shell, as an account of the machine's and no other, is told all of
 # it over varlink as it changes, and can have wifid check again, trust a
-# network or forget one, though never one Nix declares. The script is
-# wifi-vm-test.py.
+# network or forget one, though never one Nix declares. The tests are
+# wifi-vm-test.py, run in order through pytest.
 { self, pkgs }:
 let
   inherit (pkgs) lib;
@@ -343,8 +343,13 @@ pkgs.testers.runNixOSTest {
       ];
     };
 
-  testScript = builtins.readFile ./wifi-vm-test.py;
-  # nix fmt holds the script to mypy --strict against the driver's own types,
-  # through driver_names.pyi, which the driver's lighter check can't find.
+  testScript = ''
+    import vm_pytest
+    vm_pytest.run(globals(), "${./wifi-vm-test.py}")
+  '';
+  # What VM tests share (tests/lib), pytest and its runner among them.
+  extraPythonPackages = python: [ (pkgs.callPackage ./lib/vm-helpers.nix { } python) ];
+  # nix fmt holds the tests and vm_pytest to mypy --strict against the
+  # driver's own types, which the driver's lighter check can't find.
   skipTypeCheck = true;
 }
