@@ -28,6 +28,7 @@ if TYPE_CHECKING:
         STARTING,
         ZENITY,
         Json,
+        answer,
         as_account,
         copied_then_closed,
         drawn_at,
@@ -883,27 +884,46 @@ with subtest("a Wi-Fi network is joined from the launcher, a new one asking its 
     )
     machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
     # Stepped into, a network says after what can be done to it what's
-    # heard of it, a row each, the selected row's footer saying more:
-    # the card's link to it once the card has read it, and its access
-    # points a step further in.
+    # heard of it, each a part named first, the selected row's footer
+    # saying more: the card's Signal and Speed once the card has read
+    # them, each holding more, and its access points a step further in.
     as_account("qs ipc call launcher collection wifi")
     launcher_ready()
     type_in("office", selecting="Office")
     step_in()
-    # The link's row by its signal, which is always read; its rates
-    # say in and out only while they differ, which the simulated
-    # radio's don't always.
-    type_in("dbm", selecting="dBm \u00b7")
+    office = len(showing()["held"])
+    # The Signal says its dBm, always read, and how far over the noise
+    # below; Return opens it, where iw, read while the network shows,
+    # says what the card sends at.
+    type_in("signal", selecting="Signal")
+    launcher_until(lambda shown: str(shown["selected"]["side"]).endswith(" dBm"))
     launcher_until(lambda shown: "over the noise" in shown["footer"])
-    for _ in "dbm":
-        machine.send_key("backspace")
-    launcher_until(lambda shown: shown["typed"] == "")
+    step_in("ret")
+    launcher_until(lambda shown: "Transmit power" in shown["rows"])
+    # The left arrow steps out with the word put back, and again takes
+    # the word.
+    machine.send_key("left")
+    launcher_until(lambda shown: len(shown["held"]) == office and shown["typed"] == "signal")
+    machine.send_key("left")
+    launcher_until(lambda shown: len(shown["held"]) == office and shown["typed"] == "")
     photograph("launcher-wifi-detail")
-    type_in("access", selecting="1 access point")
+    # The Speed holds each way and the retries, the right arrow into it.
+    type_in("speed", selecting="Speed")
     step_in()
-    launcher_until(lambda shown: shown["footer"].startswith("02:00:00:00:02:00 \u00b7 "))
-    assert showing()["selected"]["name"].startswith("2.4 GHz ch 1\u00a0"), showing()
+    launcher_until(lambda shown: {"In", "Retries"} <= set(shown["rows"]))
+    machine.send_key("left")
+    launcher_until(lambda shown: len(shown["held"]) == office and shown["typed"] == "speed")
+    machine.send_key("left")
+    launcher_until(lambda shown: len(shown["held"]) == office and shown["typed"] == "")
+    # The access points, each named by its band and channel, and each
+    # holding its own parts, its hardware address among them.
+    type_in("access", selecting="Access points")
+    step_in()
+    launcher_until(lambda shown: shown["rows"] == ["2.4 GHz, channel 1"])
     photograph("launcher-wifi-points")
+    step_in("ret")
+    type_in("hardware", selecting="Hardware address")
+    t.assertEqual(showing()["selected"]["side"], "02:00:00:00:02:00")
     machine.send_key("esc")
     machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
     # Turning Wi-Fi off is an action like any.
@@ -913,6 +933,46 @@ with subtest("a Wi-Fi network is joined from the launcher, a new one asking its 
     machine.send_key("ret")
     machine.wait_until_succeeds("rfkill list wifi | grep -q 'Soft blocked: yes'", timeout=15)
     machine.succeed("rfkill unblock wifi")
+
+with subtest("the addresses name each connection, its parts a step in"):
+    # A tunnel beside the Wi-Fi, as the laptop has.
+    machine.succeed(
+        "ip tuntap add dev tailscale0 mode tun"
+        " && ip address add 100.100.1.2/32 dev tailscale0 && ip link set tailscale0 up"
+    )
+    # Wi-Fi was turned off and on again, so the card joins again first.
+    machine.wait_until_succeeds("ip -4 address show wlan1 | grep -q 'inet 10.4'", timeout=90)
+    answer("ip")
+    step_in()
+    addresses = len(showing()["held"])
+    # Each is named by what it is, never by the kernel's name for it.
+    launcher_until(lambda shown: {"Wi-Fi", "Tunnel"} <= set(shown["rows"]))
+    assert not {"wlan1", "tailscale0"} & set(showing()["rows"]), showing()
+    # Return opens the Wi-Fi's parts, the kernel's name a figure among them.
+    type_in("wi-fi", selecting="Wi-Fi")
+    step_in("ret")
+    launcher_until(
+        lambda shown: (
+            {"Address", "Hardware address", "MTU", "State", "Device name"} <= set(shown["rows"])
+        )
+    )
+    type_in("device", selecting="Device name")
+    t.assertEqual(showing()["selected"]["side"], "wlan1")
+    photograph("launcher-addresses-wifi")
+    machine.send_key("left")
+    machine.send_key("left")
+    launcher_until(lambda shown: len(shown["held"]) == addresses and shown["typed"] == "wi-fi")
+    machine.send_key("left")
+    launcher_until(lambda shown: len(shown["held"]) == addresses and shown["typed"] == "")
+    # The right arrow opens the tunnel's, which has no hardware address.
+    type_in("tunnel", selecting="Tunnel")
+    step_in()
+    type_in("address", selecting="Address")
+    t.assertEqual(showing()["selected"]["side"], "100.100.1.2/32")
+    assert "Hardware address" not in showing()["rows"], showing()
+    machine.send_key("esc")
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
+    machine.succeed("ip link delete tailscale0")
 
 # A binding that throws or assigns the wrong type only warns, and
 # only once a surface draws it, which can be long after the start.

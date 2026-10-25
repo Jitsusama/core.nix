@@ -414,9 +414,9 @@ onLinux {
   # machine's figures from its files, its parts' heat from their sensors,
   # the keyboards in the kernel's list of input devices, how each Bluetooth
   # link is doing from what bluetooth-links writes, what Sound makes of a
-  # sound device's properties, as tests/answers.qml lists them, and leaves
-  # alone what isn't one, in Qt's
-  # own JavaScript engine.
+  # sound device's properties, the machine's connections from what ip, the
+  # routing tables, resolv.conf and iw say, as tests/answers.qml lists them,
+  # and leaves alone what isn't one, in Qt's own JavaScript engine.
   the-launcher-answers-what-is-asked =
     let
       qt = pkgs.qt6.qtdeclarative;
@@ -433,6 +433,7 @@ onLinux {
       cp ${./launcher/Heat.js} Heat.js
       cp ${./launcher/Standing.js} Standing.js
       cp ${./launcher/Traffic.js} Traffic.js
+      cp ${./launcher/Interfaces.js} Interfaces.js
       cp ${./launcher/Links.js} Links.js
       cp ${./launcher/Sounds.js} Sounds.js
       cp ${./launcher/Cameras.js} Cameras.js

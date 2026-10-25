@@ -19,6 +19,7 @@ import "Standing.js" as Standing
 import "Traffic.js" as Traffic
 import "Sounds.js" as Sounds
 import "Cameras.js" as Cameras
+import "Interfaces.js" as Interfaces
 import "colour-cases.js" as ColourCases
 
 QtObject {
@@ -611,6 +612,131 @@ QtObject {
         machine("the middle round trip", Traffic.typical(link.trips), 21.1);
         machine("the middle of an even count", Traffic.typical([{ ms: 10 }, { ms: 20 }]), 15);
         machine("no round trips", Traffic.typical([]), null);
+
+        // The machine's connections, from ip, the routing tables and
+        // resolv.conf, each by what it is.
+        const networkListed = [{
+            ifname: "lo", flags: ["LOOPBACK", "UP", "LOWER_UP"], mtu: 65536,
+            link_type: "loopback", address: "00:00:00:00:00:00",
+            addr_info: [{ family: "inet", local: "127.0.0.1", prefixlen: 8, scope: "host" }]
+        }, {
+            ifname: "wlp0s20f3", flags: ["BROADCAST", "MULTICAST", "UP", "LOWER_UP"], mtu: 1500,
+            link_type: "ether", address: "02:00:00:00:01:00", parentbus: "pci",
+            addr_info: [
+                { family: "inet", local: "192.168.4.48", prefixlen: 22, scope: "global" },
+                { family: "inet6", local: "fe80::ff:fe00:100", prefixlen: 64,
+                    scope: "link" }
+            ]
+        }, {
+            ifname: "enp1s0", flags: ["NO-CARRIER", "BROADCAST", "UP"], mtu: 1500,
+            link_type: "ether", address: "3c:22:fb:12:34:56", permaddr: "3c:22:fb:00:00:01",
+            parentbus: "pci", addr_info: []
+        }, {
+            ifname: "virbr0", flags: ["NO-CARRIER", "BROADCAST", "MULTICAST", "UP"], mtu: 1500,
+            link_type: "ether", address: "52:54:00:62:19:d2", linkinfo: { info_kind: "bridge" },
+            addr_info: [{ family: "inet", local: "192.168.122.1", prefixlen: 24, scope: "global" }]
+        }, {
+            ifname: "tailscale0", flags: ["POINTOPOINT", "UP", "LOWER_UP"], mtu: 1280,
+            link_type: "none", linkinfo: { info_kind: "tun" },
+            addr_info: [
+                { family: "inet", local: "100.101.102.103", prefixlen: 32, scope: "global" },
+                { family: "inet6", local: "fd7a:115c:a1e0::1", prefixlen: 128, scope: "global" }
+            ]
+        }, {
+            ifname: "ifb4wlp0s20f3", flags: ["UP"], mtu: 1500, link_type: "ether",
+            linkinfo: { info_kind: "ifb" }, addr_info: []
+        }, {
+            ifname: "veth0", flags: ["UP"], mtu: 1500, link_type: "ether",
+            linkinfo: { info_kind: "veth" }, addr_info: []
+        }];
+        const networkLinks = Interfaces.interfaces(networkListed, ["wlp0s20f3"]);
+        const networkKinds = {};
+        for (const each of networkLinks)
+            networkKinds[each.name] = each.kind;
+        machine("each connection by what it is", networkKinds, {
+            wlp0s20f3: "wifi", enp1s0: "wired", virbr0: "bridge", tailscale0: "tunnel",
+            veth0: "virtual"
+        });
+        const networkLink = name => networkLinks.find(each => each.name === name);
+        machine("a card's address, past its own link only", networkLink("wlp0s20f3").four,
+            [{ address: "192.168.4.48", prefix: 22 }]);
+        machine("no link-local IPv6 address", networkLink("wlp0s20f3").six, []);
+        machine("a tunnel's IPv6 address", networkLink("tailscale0").six[0].address,
+            "fd7a:115c:a1e0::1");
+        machine("a tunnel has no hardware address", networkLink("tailscale0").mac, "");
+        machine("a card on its own address", networkLink("wlp0s20f3").own, "");
+        machine("a card on another address than its own", networkLink("enp1s0").own,
+            "3c:22:fb:00:00:01");
+        machine("how each stands", ["wlp0s20f3", "enp1s0"].map(name => networkLink(name).state),
+            ["up", "no link"]);
+        machine("a card turned off", Interfaces.state({ flags: ["BROADCAST"] }), "off");
+        machine("what isn't ip's", Interfaces.interfaces({}, []), []);
+        machine("where a hardware address came from", ["0", "1", "3", ""].map(Interfaces.assigned),
+            ["own", "random", "set", ""]);
+        const networkRoute = "Iface\tDestination\tGateway \tFlags\tRefCnt\tUse\tMetric\tMask\t"
+            + "\tMTU\tWindow\tIRTT\n"
+            + "wlp0s20f3\t00000000\t0104A8C0\t0003\t0\t0\t600\t00000000\t0\t0\t0\n"
+            + "enp1s0\t00000000\t0100000A\t0003\t0\t0\t100\t00000000\t0\t0\t0\n"
+            + "wlp0s20f3\t0004A8C0\t00000000\t0001\t0\t0\t600\t00FCFFFF\t0\t0\t0\n";
+        const networkGateways = Interfaces.gateways(networkRoute);
+        machine("each default gateway", networkGateways, {
+            wlp0s20f3: { address: "192.168.4.1", metric: 600 },
+            enp1s0: { address: "10.0.0.1", metric: 100 }
+        });
+        machine("the way out, costing least", Interfaces.wayOut(networkGateways), "enp1s0");
+        machine("no way out", Interfaces.wayOut({}), "");
+        const networkZeros = "00000000000000000000000000000000";
+        const networkSix = `${networkZeros} 00 ${networkZeros} 00 `
+            + "fe800000000000000000000000000001 00000400 00000001 00000000 00450003 wlp0s20f3\n"
+            + "fd7a115ca1e000000000000000000000 30 00000000000000000000000000000000 00 "
+            + "00000000000000000000000000000000 00000100 00000001 00000000 00000001 tailscale0\n";
+        machine("an IPv6 default gateway", Interfaces.gateways6(networkSix), {
+            wlp0s20f3: { address: "fe80:0000:0000:0000:0000:0000:0000:0001", metric: 1024 }
+        });
+        const networkResolv = "# written by resolved\nnameserver 127.0.2.2\nnameserver 127.0.2.3\n"
+            + "search .\noptions edns0\n";
+        machine("the name servers", Interfaces.servers(networkResolv), ["127.0.2.2", "127.0.2.3"]);
+        machine("resolved's stub",
+            Interfaces.stubbed(Interfaces.servers("nameserver 127.0.0.53\n")), true);
+        machine("name servers of their own", Interfaces.stubbed(["127.0.2.2"]), false);
+
+        // A Wi-Fi card's link as iw reads it.
+        const networkIw = "@@ link\nConnected to 02:00:00:00:02:00 (on wlp0s20f3)\n"
+            + "\tSSID: Lantern\n\tfreq: 5745.0\n\tsignal: -43 dBm\n"
+            + "@@ station\nStation 02:00:00:00:02:00 (on wlp0s20f3)\n"
+            + "\tMFP:\t\tno\n\ttx retries:\t12\n\ttx failed:\t1\n\tbeacon loss:\t0\n"
+            + "\trx drop misc:\t5451\n\tsignal:  \t-43 [-52, -43] dBm\n\tsignal avg:\t-40 dBm\n"
+            + "\tbeacon signal avg:\t-35 dBm\n"
+            + "\ttx bitrate:\t1134.2 MBit/s 80MHz HE-MCS 11 HE-NSS 2 HE-GI 1 HE-DCM 0\n"
+            + "\trx bitrate:\t1200.9 MBit/s 80MHz HE-MCS 11 HE-NSS 2 HE-GI 0 HE-DCM 0\n"
+            + "\tconnected time:\t11744 seconds\n"
+            + "@@ info\nInterface wlp0s20f3\n\tifindex 2\n"
+            + "\tchannel 149 (5745 MHz), width: 80 MHz, center1: 5775 MHz\n\ttxpower 22.00 dBm\n";
+        const networkRadio = Interfaces.radio(networkIw);
+        machine("the signal at each antenna", [networkRadio.signal, networkRadio.antennas],
+            [-43, [-52, -43]]);
+        machine("the signal on average and of the beacons",
+            [networkRadio.average, networkRadio.beacons], [-40, -35]);
+        machine("what the card sends at", networkRadio.power, 22);
+        machine("what was sent again, never sent, missed and dropped", [networkRadio.retries,
+            networkRadio.failed, networkRadio.missed, networkRadio.dropped], [12, 1, 0, 5451]);
+        machine("how long it's been on", networkRadio.connected, 11744);
+        machine("its management frames unprotected", networkRadio.protected, false);
+        machine("its channel and frequency", [networkRadio.channel, networkRadio.frequency],
+            [149, 5745]);
+        machine("a Wi-Fi 6 rate", networkRadio.receive,
+            { mbps: 1200.9, width: 80, generation: 6, mcs: 11, streams: 2 });
+        machine("a Wi-Fi 7 rate", Interfaces.rate("2882.4 MBit/s 160MHz EHT-MCS 13 EHT-NSS 2")
+            .generation, 7);
+        machine("a Wi-Fi 4 rate's streams", Interfaces.rate("144.4 MBit/s MCS 15 short GI"),
+            { mbps: 144.4, width: null, generation: 4, mcs: 7, streams: 2 });
+        machine("an older rate", Interfaces.rate("54.0 MBit/s").generation, null);
+        machine("a card on no network", Interfaces.radio("@@ link\nNot connected.\n@@ station\n"),
+            null);
+        machine("how long, in hours and minutes", Interfaces.lasted(11744), "3 h 15 min");
+        machine("how long, in days", Interfaces.lasted(200000), "2 d 7 h");
+        machine("how long, only just", Interfaces.lasted(20), "under a minute");
+        machine("a signal's height", [-90, -60, -30, -10].map(Interfaces.level), [0, 0.5, 1, 1]);
 
         // How each Bluetooth link is doing, from what bluetooth-links writes.
         const btMap = `${"1".repeat(22)}${"0".repeat(18)}${"1".repeat(39)}`;

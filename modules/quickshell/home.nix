@@ -112,6 +112,7 @@ let
     "launcher/Heat.js"
     "launcher/Traffic.js"
     "launcher/Cameras.js"
+    "launcher/Interfaces.js"
     "launcher/Links.js"
     "launcher/Sounds.js"
     "launcher/Numbers.js"
@@ -561,6 +562,17 @@ let
   processList = pkgs.writeShellScript "process-list" ''
     ${lib.getExe' pkgs.getconf "getconf"} PAGESIZE
     exec ${lib.getExe' pkgs.coreutils "cat"} /proc/stat /proc/[0-9]*/stat 2>/dev/null
+  '';
+
+  # A Wi-Fi card's link as iw reads it, for a network's detail in the
+  # launcher: the link, the access point as the card hears it, and what
+  # the card sends at, each headed so the launcher reads them apart, in one
+  # spawn every few seconds while the network is shown.
+  wifiLink = pkgs.writeShellScript "wifi-link" ''
+    iw=${lib.getExe pkgs.iw}
+    echo "@@ link"; "$iw" dev "$1" link
+    echo "@@ station"; "$iw" dev "$1" station dump
+    echo "@@ info"; "$iw" dev "$1" info
   '';
 
   # The IEEE's hardware address vendors, from hwdata, in a file for each
@@ -1504,6 +1516,14 @@ in
                       processes = "${processList}";
                       busctl = lib.getExe' pkgs.systemd "busctl";
                       stat = lib.getExe' pkgs.coreutils "stat";
+                    }
+                    # What each connection is, from ip, and a Wi-Fi link
+                    # in detail, from iw.
+                    // lib.optionalAttrs (provider.source == "networks") {
+                      ip = lib.getExe' pkgs.iproute2 "ip";
+                    }
+                    // lib.optionalAttrs (provider.source == "wifi") {
+                      iw = "${wifiLink}";
                     }
                     # A colour is told against the theme's own pigments.
                     // lib.optionalAttrs (provider.source == "colours") {
