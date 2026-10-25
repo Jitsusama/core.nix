@@ -282,8 +282,8 @@ Provider {
         const first = lit[0].rows[0];
         if (lit.length === 1)
             return {
-                headline: first.side !== "" ? `the keyboard's lights are ${first.side}`
-                    : "the keyboard's lights",
+                headline: first.side !== "" ? `the keyboard's backlight is ${first.side}`
+                    : "the keyboard's backlight",
                 graph: first.graph,
                 glyph: Theme.glyph.brightness,
                 rows: inside(lit[0]),
@@ -291,7 +291,7 @@ Provider {
                 live: provider
             };
         return {
-            headline: `${lit.length} keyboards' lights`,
+            headline: `${lit.length} keyboards' backlights`,
             glyph: Theme.glyph.brightness,
             rows: lit.map(each => holderRow({
                 key: `keyboards:${each.device.phys || each.device.name}:lit`,

@@ -1025,7 +1025,6 @@
       "name": "Light",
       "answers": [
         "brightness",
-        "backlight",
         "light",
         "screen brightness",
         "screen light",
@@ -1234,9 +1233,15 @@
     {
       "id": "keyboards:lights",
       "in": "keyboards",
-      "name": "Lights",
+      "name": "Backlight",
+      "hidden": [
+        "lights"
+      ],
       "answers": [
+        "backlight",
+        "backlights",
         "keyboard light",
+        "keyboard lights",
         "keyboard backlight",
         "keyboard brightness",
         "key light"
@@ -1245,11 +1250,11 @@
     {
       "id": "keyboards:lights:to",
       "in": "keyboards:lights",
-      "name": "Lights to {n} of {most}",
+      "name": "Backlight to {n} of {most}",
       "verb": "set",
       "states": {
         "off": {
-          "name": "Lights off",
+          "name": "Backlight off",
           "verb": "turn off"
         }
       }
@@ -1257,7 +1262,7 @@
     {
       "id": "keyboards:lights:on",
       "in": "keyboards:lights",
-      "name": "Lights on",
+      "name": "Backlight on",
       "verb": "turn on"
     },
     {
@@ -1275,7 +1280,7 @@
     {
       "id": "keyboards:timeout",
       "in": "keyboards",
-      "name": "Lights out after"
+      "name": "Backlight off after"
     },
     {
       "id": "keyboards:connection",
@@ -1848,16 +1853,18 @@
     {
       "id": "keyboard:lights",
       "in": "keyboard",
-      "name": "Lights",
+      "name": "Backlight",
       "words": [
-        "backlight",
         "leds"
+      ],
+      "hidden": [
+        "lights"
       ]
     },
     {
       "id": "keyboard:lights-off",
       "in": "keyboard:lights",
-      "name": "Turn off the keyboard's lights",
+      "name": "Turn off the keyboard's backlight",
       "verb": "turn off",
       "words": [
         "dark"
@@ -1866,13 +1873,13 @@
     {
       "id": "keyboard:lights-on",
       "in": "keyboard:lights",
-      "name": "Turn on the keyboard's lights",
+      "name": "Turn on the keyboard's backlight",
       "verb": "turn on"
     },
     {
       "id": "keyboard:brighter",
       "in": "keyboard:lights",
-      "name": "Brighten the keyboard's lights",
+      "name": "Brighten the keyboard's backlight",
       "verb": "brighten",
       "words": [
         "brighter",
@@ -1882,7 +1889,7 @@
     {
       "id": "keyboard:dimmer",
       "in": "keyboard:lights",
-      "name": "Dim the keyboard's lights",
+      "name": "Dim the keyboard's backlight",
       "verb": "dim",
       "words": [
         "dimmer",
@@ -4408,8 +4415,7 @@
       "says": "sets the screen's light",
       "verb": "set",
       "words": [
-        "screen",
-        "backlight"
+        "screen"
       ]
     },
     {
