@@ -336,6 +336,22 @@ pub struct FilesystemStatus {
     pub forecast: Option<f64>,
 }
 
+impl FilesystemStatus {
+    /// Takes a fresh measure, during a pass long enough that its start's
+    /// would mislead: its band is worked out as the guard's watch works it
+    /// out, from the band it showed. A forecast made for another band no
+    /// longer holds, so it goes.
+    pub fn measured(&mut self, space: &Space, bands: &crate::config::Bands) {
+        let band = Thresholds::new(bands, space.total).band(space, self.band);
+        if band != self.band {
+            self.forecast = None;
+        }
+        self.band = band;
+        self.free = space.free;
+        self.total = space.total;
+    }
+}
+
 /// What a pass on one filesystem would take, in order, done nowhere.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Preview {
@@ -1628,13 +1644,14 @@ impl Guard {
         else {
             return Box::new(|| {});
         };
+        let bands = self.config.bands.clone();
         Box::new(move || {
             status.heartbeat = SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .map_or(0.0, |since| since.as_secs_f64());
             for filesystem in &mut status.filesystems {
                 if let Ok(space) = crate::sys::space(&filesystem.path) {
-                    filesystem.free = space.free;
+                    filesystem.measured(&space, &bands);
                 }
             }
             if let Err(error) = state::save(&path, &status) {
