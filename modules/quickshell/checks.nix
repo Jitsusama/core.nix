@@ -412,7 +412,8 @@ onLinux {
   # addresses and networks with the kind of range each is in, hardware
   # addresses, measures, the time in any zone tzdata names and the
   # machine's figures from its files, how each Bluetooth link is doing from
-  # what bluetooth-links writes, as tests/answers.qml lists them, and leaves alone what isn't one, in Qt's
+  # what bluetooth-links writes, what Sound makes of a sound device's properties, as
+  # tests/answers.qml lists them, and leaves alone what isn't one, in Qt's
   # own JavaScript engine.
   the-launcher-answers-what-is-asked =
     let
@@ -430,6 +431,7 @@ onLinux {
       cp ${./launcher/Standing.js} Standing.js
       cp ${./launcher/Traffic.js} Traffic.js
       cp ${./launcher/Links.js} Links.js
+      cp ${./launcher/Sounds.js} Sounds.js
       cp ${../../tests/colour-cases.js} colour-cases.js
       cp ${import ./launcher/zones.nix { inherit lib pkgs; }} zones.jsonl
       export QML_XHR_ALLOW_FILE_READ=1
@@ -838,10 +840,12 @@ onLinux {
       '';
       # The tester's player, found by its desktop entry, a radio's, found
       # only by its identity, and one nobody's; the tester's two streams, a
-      # filter's carrying its name too, and another program's.
+      # filter's carrying its name too, and another program's; and the
+      # radio recording from a microphone, beside a level meter of its own.
       playing = singleton "Playing.qml" ''
         property var players: [tester, radio, nobody]
         property var streams: [first, second, filter, other]
+        property var recorders: [listening, meter]
         QtObject {
           id: tester
           property string desktopEntry: "tester"
@@ -907,6 +911,12 @@ onLinux {
           name: "Other"
           properties: ({ "application.name": "Other" })
           volume: 0.7
+        }
+        Stream { id: listening; name: "Radio"; properties: ({ "application.name": "Radio" }) }
+        Stream {
+          id: meter
+          name: "Radio"
+          properties: ({ "application.name": "Radio", "stream.monitor": "true" })
         }
       '';
       entry =

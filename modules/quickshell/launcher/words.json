@@ -937,7 +937,251 @@
         "song",
         "track",
         "music"
+      ],
+      "said": {
+        "output": "output",
+        "input": "input",
+        "in-use": "in use",
+        "muted": "muted",
+        "none": "none",
+        "on": "on",
+        "off": "off",
+        "running": "running",
+        "waiting": "waiting",
+        "silent": "silent",
+        "paused": "paused",
+        "nothing": "nothing",
+        "playing": "playing",
+        "recording": "recording",
+        "open": "has sound open",
+        "nothing-playing": "nothing playing",
+        "nothing-out": "nothing to play through",
+        "out": "out \u00b7 {level}",
+        "in": "in \u00b7 {level}",
+        "through": "{level}, through {device}",
+        "set": "set {device} to {level}",
+        "now": "now {level}",
+        "mono": "mono",
+        "stereo": "stereo",
+        "channels": "{count} channels",
+        "amplifiers": "{count} \u00d7 {chip}",
+        "digital": "{chip}, digital",
+        "bits": "{count} bit",
+        "delay": "{frames} at {rate}, {ms}",
+        "level-out": "the loudest of each moment going out, of full scale",
+        "level-in": "listening while this shows, the loudest of each moment, of full scale",
+        "recording-none": "no program is listening",
+        "tuning": "the filter sound goes through on its way out",
+        "voice": "the filter programs hear it through",
+        "delay-note": "what it asks to be given at once"
+      }
+    },
+    {
+      "id": "sound:level",
+      "in": "sound",
+      "name": "Level",
+      "words": [
+        "peak",
+        "meter"
       ]
+    },
+    {
+      "id": "sound:volume",
+      "in": "sound",
+      "name": "Volume",
+      "words": [
+        "loudness"
+      ]
+    },
+    {
+      "id": "sound:gain",
+      "in": "sound",
+      "name": "Gain",
+      "words": [
+        "input volume",
+        "sensitivity"
+      ]
+    },
+    {
+      "id": "sound:mute",
+      "in": "sound",
+      "name": "Mute"
+    },
+    {
+      "id": "sound:programs",
+      "in": "sound",
+      "name": "Programs",
+      "words": [
+        "streams",
+        "apps"
+      ]
+    },
+    {
+      "id": "sound:recorders",
+      "in": "sound",
+      "name": "Recording",
+      "words": [
+        "listening",
+        "who's listening"
+      ]
+    },
+    {
+      "id": "sound:tuning",
+      "in": "sound",
+      "name": "Tuning",
+      "words": [
+        "equaliser",
+        "equalizer",
+        "eq"
+      ]
+    },
+    {
+      "id": "sound:voice",
+      "in": "sound",
+      "name": "Voice processing",
+      "words": [
+        "voice filter"
+      ]
+    },
+    {
+      "id": "sound:filter",
+      "in": "sound",
+      "name": "Filter"
+    },
+    {
+      "id": "sound:channels",
+      "in": "sound",
+      "name": "Channels",
+      "words": [
+        "balance"
+      ]
+    },
+    {
+      "id": "sound:hardware",
+      "in": "sound",
+      "name": "Hardware",
+      "words": [
+        "chips"
+      ]
+    },
+    {
+      "id": "sound:card",
+      "in": "sound",
+      "name": "Card"
+    },
+    {
+      "id": "sound:amplifiers",
+      "in": "sound",
+      "name": "Amplifiers"
+    },
+    {
+      "id": "sound:codec",
+      "in": "sound",
+      "name": "Codec"
+    },
+    {
+      "id": "sound:microphones",
+      "in": "sound",
+      "name": "Microphones"
+    },
+    {
+      "id": "sound:resolution",
+      "in": "sound",
+      "name": "Resolution"
+    },
+    {
+      "id": "sound:usb-id",
+      "in": "sound",
+      "name": "USB id"
+    },
+    {
+      "id": "sound:profile",
+      "in": "sound",
+      "name": "Profile"
+    },
+    {
+      "id": "sound:rate",
+      "in": "sound",
+      "name": "Rate"
+    },
+    {
+      "id": "sound:delay",
+      "in": "sound",
+      "name": "Delay",
+      "words": [
+        "latency"
+      ]
+    },
+    {
+      "id": "sound:lighting",
+      "in": "sound",
+      "name": "Lighting"
+    },
+    {
+      "id": "sound:playing",
+      "in": "sound",
+      "name": "Playing at"
+    },
+    {
+      "id": "sound:recording",
+      "in": "sound",
+      "name": "Recording at"
+    },
+    {
+      "id": "sound:measured-rate",
+      "in": "sound",
+      "name": "Measured rate"
+    },
+    {
+      "id": "sound:offers",
+      "in": "sound",
+      "name": "Offers"
+    },
+    {
+      "id": "sound:clock",
+      "in": "sound",
+      "name": "Clock"
+    },
+    {
+      "id": "sound:usb",
+      "in": "sound",
+      "name": "USB"
+    },
+    {
+      "id": "sound:firmware",
+      "in": "sound",
+      "name": "Firmware"
+    },
+    {
+      "id": "verb:sound-louder",
+      "in": "sound",
+      "name": "Louder",
+      "verb": "louder",
+      "words": [
+        "turn up",
+        "volume up"
+      ]
+    },
+    {
+      "id": "verb:sound-quieter",
+      "in": "sound",
+      "name": "Quieter",
+      "verb": "quieter",
+      "words": [
+        "turn down",
+        "volume down"
+      ]
+    },
+    {
+      "id": "verb:sound-to",
+      "in": "sound",
+      "name": "Volume to {level}",
+      "verb": "set",
+      "states": {
+        "input": {
+          "name": "Gain to {level}"
+        }
+      }
     },
     {
       "id": "verb:sound-use",
@@ -2708,7 +2952,12 @@
         "audio",
         "volume",
         "loudness"
-      ]
+      ],
+      "said": {
+        "muted": "muted",
+        "now": "now {level}",
+        "recording": "recording"
+      }
     },
     {
       "id": "verb:program:mute",
@@ -2759,6 +3008,22 @@
         "level",
         "how loud"
       ]
+    },
+    {
+      "id": "program:microphone",
+      "in": "program:sound",
+      "name": "Microphone",
+      "verb": "more",
+      "words": [
+        "mic",
+        "recording"
+      ],
+      "states": {
+        "muted": {
+          "name": "Microphone",
+          "glyph": "muted"
+        }
+      }
     },
     {
       "id": "program:notices",

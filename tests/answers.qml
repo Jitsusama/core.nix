@@ -15,6 +15,7 @@ import "Machine.js" as Machine
 import "Links.js" as Links
 import "Standing.js" as Standing
 import "Traffic.js" as Traffic
+import "Sounds.js" as Sounds
 import "colour-cases.js" as ColourCases
 
 QtObject {
@@ -582,6 +583,42 @@ QtObject {
         machine("a busy adapter's traffic", Links.traffic({ received: 2.5e6, sent: 0,
             traffic: [2.5e6] }), { side: "2.5 MB/s", values: [1],
             note: "2.5 MB/s in, 0 B/s out" });
+
+        // What Sound makes of what a device and a stream say of themselves.
+        const soundTuning = Sounds.target("{\n  node.name = \"alsa_output.speaker\"\n}");
+        machine("what a filter aims at", soundTuning, { "node.name": "alsa_output.speaker" });
+        machine("a filter aiming at two things", Sounds.target(
+            "{ alsa.components = \"USB14ed:1012\" media.class = \"Audio/Source\" }"),
+            { "alsa.components": "USB14ed:1012", "media.class": "Audio/Source" });
+        machine("a filter's aim written as JSON", Sounds.target('{"node.name":"mic"}'),
+            { "node.name": "mic" });
+        machine("the device a filter aims at",
+            Sounds.aims(soundTuning, { "node.name": "alsa_output.speaker", "node.nick": "Speaker" }),
+            true);
+        machine("a device it doesn't", Sounds.aims(soundTuning, { "node.name": "headphones" }),
+            false);
+        machine("a filter aiming at nothing", Sounds.aims(Sounds.target(""), {}), false);
+        machine("the laptop's chips", Sounds.components("HDA:80862822,80860101,00100000  "
+            + "cfg-amp:4 iec61937-pcm:7,6,5 hs:cs42l45 mic:cs42l45-dmic spk:cs35l56"),
+            { amplifiers: 4, speaker: "CS35L56", headset: "CS42L45", microphone: "CS42L45",
+                digital: true, usb: "" });
+        machine("a USB card's ids", Sounds.components("USB041e:329a").usb, "041e:329a");
+        machine("a card that names nothing", Sounds.components(undefined).speaker, "");
+        machine("a stream's rate", Sounds.rate("1/44100"), "44.1 kHz");
+        machine("a rate in whole kilohertz", Sounds.kilohertz(48000), "48 kHz");
+        machine("no rate said", Sounds.rate(undefined), "");
+        const soundAsked = Sounds.fraction("8192/44100");
+        machine("what a stream asks for at once", [soundAsked.frames, soundAsked.hertz,
+            soundAsked.ms.toFixed(1)], [8192, 44100, "185.8"]);
+        machine("nothing asked", Sounds.fraction(""), null);
+        machine("a channel's name", Sounds.channel("FrontLeft"), "Front left");
+        machine("a lone channel", Sounds.channel("Mono"), "Mono");
+        machine("each program's streams together", Sounds.grouped(["a1", "b1", "a2"],
+            stream => stream.charAt(0)), [{ name: "a", streams: ["a1", "a2"] },
+            { name: "b", streams: ["b1"] }]);
+        machine("a step louder", Sounds.stepped(0.42, 0.05, 0.05), 0.45);
+        machine("never past the whole", Sounds.stepped(0.98, 0.05, 0.05), 1);
+        machine("never below nothing", Sounds.stepped(0.02, -0.05, 0.05), 0);
 
         // Said as warnings, since Qt keeps ordinary logging quiet.
         for (const failure of failures)

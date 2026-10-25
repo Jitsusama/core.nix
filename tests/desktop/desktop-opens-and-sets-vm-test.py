@@ -394,6 +394,120 @@ with subtest("the launcher's Sound moves sound to another output, and back"):
         machine.wait_until_succeeds(in_session(used), timeout=10)
         machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
 
+
+def sound_reads(name: str, said: str) -> Callable[[Json], bool]:
+    """Make a test of whether the launcher shows a row by this name reading this."""
+    return lambda shown: any(
+        thing["reads"].startswith(name) and said in thing["reads"] for thing in shown["things"]
+    )
+
+
+def sound_selected(name: str) -> Callable[[Json], bool]:
+    """Make a test of whether the launcher's selected row is this one."""
+    return lambda shown: (shown["selected"] or {}).get("name") == name
+
+
+def sound_device(typed: str, named: str) -> None:
+    """Open the launcher's Sound, and step into a device's parts by the right arrow."""
+    as_account("qs ipc call launcher collection sound")
+    launcher_ready()
+    type_in(typed, selecting=named)
+    step_in()
+
+
+def sound_recording() -> int | None:
+    """Give the id of pw-record's stream, as the sound server lists it, if it's there."""
+    nodes: list[Json] = json.loads(as_account("pw-dump"))
+    return next(
+        (
+            int(node["id"])
+            for node in nodes
+            if node.get("type") == "PipeWire:Interface:Node"
+            and node["info"]["props"].get("media.class") == "Stream/Input/Audio"
+            and "pw-record"
+            in {
+                node["info"]["props"].get("application.name"),
+                node["info"]["props"].get("node.name"),
+            }
+        ),
+        None,
+    )
+
+
+with subtest("the launcher's Sound opens an output's and a microphone's parts"):
+    # The speakers, in use, hold their Level, Volume and Channels, named
+    # first; the null sink has no card, so nothing more.
+    sound_device("speakers", "speakers")
+    launcher_until(lambda shown: shown["rows"][:2] == ["Level", "Volume"])
+    launcher_until(lambda shown: "Channels" in shown["rows"])
+    launcher_until(sound_reads("Channels", "stereo"))
+    # Nothing plays, so the Level reads silent, and no program is listed.
+    launcher_until(sound_reads("Level", "silent"))
+    t.assertNotIn("Programs", showing()["rows"])
+    photograph("launcher-sound-output-parts")
+    # Return on Volume steps into its choices, Mute among them.
+    machine.send_key("down")
+    launcher_until(sound_selected("Volume"))
+    step_in("ret")
+    launcher_until(lambda shown: shown["rows"][:3] == ["Louder", "Quieter", "Mute it"])
+    photograph("launcher-sound-volume")
+    type_in("50", selecting="Volume to 50%")
+    machine.send_key("ret")
+    sink = "wpctl get-volume @DEFAULT_AUDIO_SINK@ | grep -qx 'Volume: 0.50'"
+    machine.wait_until_succeeds(in_session(sink), timeout=10)
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
+    # The part says what it was set to.
+    sound_device("speakers", "speakers")
+    launcher_until(sound_reads("Volume", "50%"))
+    machine.send_key("esc")
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
+
+    # The microphone holds its own: a live Level, its Gain, its Mute, and
+    # who's Recording, which is nobody, though the Level's own stream is
+    # reading it while it shows.
+    sound_device("microphone", "stand-in microphone")
+    launcher_until(
+        lambda shown: shown["rows"][:4] == ["Level", "Gain", "Mute", "Recording"],
+    )
+    launcher_until(sound_reads("Level", "%"))
+    launcher_until(sound_reads("Mute", "off"))
+    launcher_until(sound_reads("Recording", "nothing"))
+    photograph("launcher-sound-input-parts")
+    machine.send_key("esc")
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
+    listening = f"/home/{ACCOUNT}/listening.wav"
+    as_account(
+        f"systemd-run --user --unit=listening pw-record --target stand-in-microphone {listening}"
+    )
+
+    def records(last: bool) -> bool:
+        """Say whether pw-record's stream is there, and on the last try, what is."""
+        if last:
+            print(as_account("systemctl --user status listening; pw-cli ls Node"))
+        return sound_recording() is not None
+
+    retry(records, timeout=datetime.timedelta(seconds=30))
+    recording = sound_recording()
+    sound_device("microphone", "stand-in microphone")
+    launcher_until(lambda shown: "Recording" in shown["rows"])
+    launcher_until(lambda shown: not sound_reads("Recording", "nothing")(shown))
+    # The right arrow on Recording, then on the program, and Return mutes
+    # what it records.
+    for _down in range(3):
+        machine.send_key("down")
+    launcher_until(sound_selected("Recording"))
+    step_in()
+    step_in()
+    launcher_until(lambda shown: shown["rows"][:3] == ["Mute", "Louder", "Quieter"])
+    photograph("launcher-sound-recording")
+    launcher_until(sound_selected("Mute"))
+    machine.send_key("ret")
+    hushed = f"wpctl get-volume {recording} | grep -q MUTED"
+    machine.wait_until_succeeds(in_session(hushed), timeout=10)
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
+    as_account("systemctl --user stop listening")
+    as_account(f"rm -f {listening}")
+
 # A program's own Media and Sound, against a real player playing real
 # sound: mpv, through its MPRIS script, playing two tones in turn through
 # PipeWire to the speakers. What each act does is read back from the

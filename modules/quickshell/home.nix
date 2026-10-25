@@ -111,6 +111,7 @@ let
     "launcher/Machine.js"
     "launcher/Traffic.js"
     "launcher/Links.js"
+    "launcher/Sounds.js"
     "launcher/Numbers.js"
     "launcher/Addresses.js"
     "launcher/Units.js"
