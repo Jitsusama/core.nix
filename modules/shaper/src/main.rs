@@ -155,6 +155,8 @@ struct Shaped {
     follows: Option<String>,
     /// Whether the journal has been told of the line's queue building now.
     told: bool,
+    /// Whether a call's or a screen share's traffic crosses the link.
+    real_time: qdisc::RealTime,
 }
 
 impl Shaped {
@@ -257,6 +259,7 @@ fn start(
         state: State::Resting,
         follows: None,
         told: false,
+        real_time: qdisc::RealTime::default(),
     };
     let (tx, rx) = shaped.bytes();
     shaped.counted = (tx, rx, Instant::now());
@@ -361,6 +364,7 @@ fn run(options: &Options) -> ExitCode {
                 .map(|s| s.applied.0);
             follow_tunnels(&mut tunnels, &options.tunnels, base);
             reach = local(&shaped, &tunnels);
+            watch_real_time(&mut shaped, (now - began).as_secs_f64());
         }
         // A slice or unit made a moment ago reaches its set at the next
         // step. nixos-rebuild loads the table afresh on a switch, empty, so
@@ -554,6 +558,30 @@ fn look(
     order
 }
 
+/// Tells each link's controller whether real-time traffic crosses it, from
+/// the packets its video tins sent each way, and the journal when that
+/// changes.
+fn watch_real_time(shaped: &mut BTreeMap<String, Shaped>, t: f64) {
+    for (name, s) in shaped {
+        let packets = [&s.uplink.name, &s.ifb]
+            .iter()
+            .map(|dev| {
+                sh(&words(&format!("tc -s -j qdisc show dev {dev}")))
+                    .map_or(0, |json| qdisc::video_packets(&json))
+            })
+            .sum();
+        let live = s.real_time.count(packets, t);
+        if live != s.controller.live {
+            if live {
+                eprintln!("{name}: real-time traffic flows, so the line's queue is kept here");
+            } else {
+                eprintln!("{name}: no real-time traffic now, so the line's whole rate is kept");
+            }
+            s.controller.live = live;
+        }
+    }
+}
+
 /// One step of an uplink's controller on what its line carried, in kbit/s,
 /// applying its rates when they moved.
 fn step(s: &mut Shaped, t: f64, sent: f64, received: f64) {
@@ -640,6 +668,9 @@ struct LinkStatus {
     baselines: Vec<(String, f64)>,
     #[serde(default)]
     follows: Option<String>,
+    /// Whether real-time traffic crosses the link now.
+    #[serde(default)]
+    live: bool,
 }
 
 fn write_status(runtime: &Path, shaped: &BTreeMap<String, Shaped>) {
@@ -657,6 +688,7 @@ fn write_status(runtime: &Path, shaped: &BTreeMap<String, Shaped>) {
             building: s.controller.building(),
             baselines: s.controller.baselines(),
             follows: s.follows.clone(),
+            live: s.controller.live,
         })
         .collect();
     let path = runtime.join("status.json");
@@ -695,6 +727,9 @@ fn status(runtime: &Path) -> ExitCode {
         // Said only while it holds: a quiet line needs no line saying so.
         if link.building && link.follows.is_none() {
             println!("  the line's queue is building, so the shaper is slowing");
+        }
+        if link.live {
+            println!("  real-time traffic flows, so the line's queue is kept here");
         }
         if link.follows.is_none() {
             println!(
