@@ -327,6 +327,13 @@ fn a_bundle_sealed_to_a_yubikey_opens_by_its_passphrase_with_the_key_plugged_in(
     );
     step.run(&mut fake, &typed(passphrase().expose())).unwrap();
     assert_eq!(opened.borrow().as_ref(), Some(&keys));
+    // Said as done, it opens with the guide's words, not the machine's
+    // name, which the screen would capitalise.
+    let standing = step.observe(&mut fake).unwrap();
+    assert!(
+        matches!(&standing, Standing::Done { evidence } if evidence.starts_with("the Secure Boot keys of ")),
+        "{standing:?}"
+    );
 }
 
 #[test]

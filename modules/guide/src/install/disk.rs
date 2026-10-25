@@ -8,8 +8,7 @@ use std::fmt::Write as _;
 
 use crate::install::keys::slug;
 use crate::install::{
-    INSTALL_KEY, LAYOUT, LAYOUT_SCRIPT, MOUNT, MOUNT_SCRIPT, ROOT, Target, boot_journal, target,
-    vault,
+    INSTALL_KEY, LAYOUT, LAYOUT_SCRIPT, MOUNT, ROOT, Target, boot_journal, target, vault,
 };
 use crate::observe::disks::{self, Disk, Kind};
 use crate::observe::{fido2, luks};
@@ -43,7 +42,7 @@ pub fn found(machine: &mut dyn Machine, target: &Target) -> Result<Result<Disk, 
     let Some(path) = machine.resolve(&target.disk)? else {
         return Ok(Err(blocked(
             format!(
-                "{}'s disk, {}, isn't in this machine",
+                "the disk {} installs onto, {}, isn't in this machine",
                 target.machine, target.disk
             ),
             format!(
@@ -216,7 +215,7 @@ impl Step for LayOutDisk {
         if target.install_key != INSTALL_KEY {
             return Ok(blocked(
                 format!(
-                    "{}'s layout reads its first key from {}, not {INSTALL_KEY}",
+                    "the layout of {} reads its first key from {}, not {INSTALL_KEY}",
                     target.machine, target.install_key
                 ),
                 format!("set jitsusama.disk.installKey to {INSTALL_KEY} and write the stick again"),
@@ -232,7 +231,7 @@ impl Step for LayOutDisk {
         if !missing.is_empty() {
             return Ok(blocked(
                 format!(
-                    "{}'s layout needs {}, which this stick hasn't got",
+                    "the layout of {} needs {}, which this stick hasn't got",
                     target.machine,
                     missing.join(", ")
                 ),
@@ -422,6 +421,11 @@ impl Step for OpenStoppedInstall {
             }
         };
 
+        // The script that opens the disk, read first, so nothing on the
+        // disk changes without it; held since the vault opened, so the
+        // stick can be out for the key.
+        let script = crate::install::mount_script(machine)?;
+
         // The new install key held before it's enrolled, as the first was,
         // and the slot the first one opened wiped, since nobody has it.
         let key = Secret::new(new_key()?);
@@ -450,8 +454,6 @@ impl Step for OpenStoppedInstall {
             return Err(enrolled.refusal());
         }
 
-        let mut script = vec![];
-        vault(machine)?.extract(MOUNT_SCRIPT, &mut script)?;
         machine.write(MOUNT, &script)?;
         let ran = machine.run_given(
             Program::Tool(Tool::Bash),

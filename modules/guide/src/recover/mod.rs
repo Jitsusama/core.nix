@@ -121,7 +121,7 @@ fn stopped_install(
     match read? {
         Some(bytes) => Ok(Some(journal::facts_in(
             &String::from_utf8_lossy(&bytes),
-            &format!("{}'s install journal", described(&found.disk)),
+            &format!("the install journal on {}", described(&found.disk)),
         )?)),
         None => Ok(None),
     }

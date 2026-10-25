@@ -206,8 +206,10 @@ impl Step for OpenVault {
         };
         machine.write(VAULT_KEY, key.to_secret().expose().as_bytes())?;
         // What it says to install is held too, so the steps that only read
-        // it go on while the stick is out for a YubiKey's port.
+        // it go on while the stick is out for a YubiKey's port, as is the
+        // script that opens a stopped install's disk through a YubiKey.
         crate::install::hold_target(machine)?;
+        crate::install::hold_mount_script(machine)?;
         crate::install::system::hold_carried_db(machine)
     }
 }

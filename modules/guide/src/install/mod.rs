@@ -150,6 +150,38 @@ pub fn hold_target(machine: &mut dyn Machine) -> Result<(), Fault> {
     }
 }
 
+/// Holds the script that opens and mounts the machine's disk as it was laid
+/// out, where the vault has one, since carrying on a stopped install opens
+/// the disk through a YubiKey, which may need the stick's port.
+pub fn hold_mount_script(machine: &mut dyn Machine) -> Result<(), Fault> {
+    let read = vault(machine).and_then(|mut vault| {
+        if !vault.files().iter().any(|file| file.path == MOUNT_SCRIPT) {
+            return Ok(None);
+        }
+        let mut script = vec![];
+        vault.extract(MOUNT_SCRIPT, &mut script)?;
+        Ok(Some(script))
+    })?;
+    match read {
+        Some(script) => machine.write(MOUNT, &script),
+        None => Ok(()),
+    }
+}
+
+/// The script that opens and mounts the machine's disk: from the vault,
+/// or, while the stick is out, as it was held when the vault opened.
+pub fn mount_script(machine: &mut dyn Machine) -> Result<Vec<u8>, Fault> {
+    let read = vault(machine).and_then(|mut vault| {
+        let mut script = vec![];
+        vault.extract(MOUNT_SCRIPT, &mut script)?;
+        Ok(script)
+    });
+    match read {
+        Err(Fault::StickOut) => machine.read(MOUNT)?.ok_or(Fault::StickOut),
+        read => read,
+    }
+}
+
 /// The steps before the vault is open, which say what else there is.
 pub fn opening() -> Vec<Box<dyn Step>> {
     vec![

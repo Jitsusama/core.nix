@@ -1,32 +1,38 @@
 """A stick's vault sealed to a YubiKey, opened with its PIN, and without it by the passphrase.
 
-tests/guide-vault.nix runs this, and its opening comment says what the test proves. run-subtests
-cuts the script into subtests at each top-level `with subtest(`, so every subtest stays at the
-top level under its own name, and what sits outside them, the boot and the helpers, runs
-whichever subtests are chosen. What the script needs from Nix, the key's PIN and the stick's
-recovery passphrase, comes in one JSON file, whose path guide-vault.nix writes in place of the
-marker at the top.
+tests/guide-vault.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and
+its opening comment says what the test proves. Each test asks for the state it starts from as a
+fixture: the machine booted with its key plugged in, the key given a PIN and a recipient, and a
+stick written and looped. A fixture's work is done once a run, however many tests ask for it,
+so any test runs alone with `-k`. The key's PIN and the stick's recovery passphrase are
+guide-vault.nix's, given as the `values` fixture.
 """
+
+from __future__ import annotations
 
 import json
 import re
-from pathlib import Path
-from typing import TYPE_CHECKING
+import shlex
+from datetime import timedelta
+from typing import TYPE_CHECKING, Any
+
+import pytest
+from test_driver.machine import retry
 
 if TYPE_CHECKING:
-    from driver_names import machine, retry, subtest
+    from test_driver.machine import QemuMachine
 
-values = json.loads(Path("@values@").read_text())
-pin: str = values["pin"]
-passphrase: str = values["passphrase"]
+# How long a screen of the guide may take to come, and the key to come or go.
+SCREEN = timedelta(seconds=60)
+KEY = timedelta(seconds=30)
 
 
-def screen() -> str:
+def screen(machine: QemuMachine) -> str:
     """Give what the guide shows on the first console."""
     return machine.get_tty_text("1")
 
 
-def on_screen(pattern: str, timeout: int = 60) -> None:
+def on_screen(machine: QemuMachine, pattern: str, timeout: timedelta = SCREEN) -> None:
     """Wait until the guide's screen matches the pattern, saying what was running if it never does.
 
     It fails at once if the guide stopped.
@@ -34,7 +40,7 @@ def on_screen(pattern: str, timeout: int = 60) -> None:
 
     def shown(_: bool) -> bool:
         """Say whether the screen matches the pattern, or fail if the guide stopped."""
-        text = screen()
+        text = screen(machine)
         if re.search(r"(?i)(try again)", text):
             message = "the guide stopped:\n" + text
             raise RuntimeError(message)
@@ -42,9 +48,9 @@ def on_screen(pattern: str, timeout: int = 60) -> None:
 
     with machine.nested(f"waiting for {pattern} on the guide's screen"):
         try:
-            retry(shown, timeout)
+            retry(shown, timeout=timeout)
         except Exception:
-            print("SCREEN\n" + screen())
+            print("SCREEN\n" + screen(machine))
             _, processes = machine.execute(
                 "ps -eo pid,stat,wchan:20,args | grep -i -e guide -e age-plugin"
             )
@@ -54,27 +60,36 @@ def on_screen(pattern: str, timeout: int = 60) -> None:
             raise
 
 
-def type_in(text: str) -> None:
+def type_in(machine: QemuMachine, text: str) -> None:
     """Type the text at the guide, and Return."""
     machine.send_chars(text + "\n")
 
 
-machine.wait_for_unit("multi-user.target")
-machine.wait_until_succeeds('test -n "$(fido2-token -L)"')
+@pytest.fixture(scope="module")
+def booted(machine: QemuMachine) -> QemuMachine:
+    """Give the machine booted, its key plugged in."""
+    machine.wait_for_unit("multi-user.target")
+    machine.wait_until_succeeds('test -n "$(fido2-token -L)"', timeout=KEY)
+    return machine
 
-with subtest("the key gets a PIN and a recipient, as a person makes one"):
-    machine.succeed(f"set-pin {pin}")
-    recipient = machine.succeed(f"make-recipient {pin}").strip()
-    assert recipient.startswith("age1fido2-hmac1"), recipient
 
-with subtest("the guide seals a stick's vault to it, needing no touch"):
+@pytest.fixture(scope="module")
+def recipient(booted: QemuMachine, values: dict[str, Any]) -> str:
+    """Give the key a PIN, then the recipient made for it as a person makes one."""
+    booted.succeed(f"set-pin {shlex.quote(values['pin'])}")
+    return booted.succeed(f"make-recipient {shlex.quote(values['pin'])}").strip()
+
+
+@pytest.fixture(scope="module")
+def stick(booted: QemuMachine, recipient: str, values: dict[str, Any]) -> QemuMachine:
+    """Write a stick sealed to the key into a file, and loop it so its vault is a partition."""
     # A small image with an ESP and one more partition, as core's has.
-    machine.succeed(
+    booted.succeed(
         "truncate -s 16M /root/image.raw && "
         "printf 'label: gpt\\nsize=4M, type=uefi, name=esp\\nsize=4M, name=store\\n'"
         " | sfdisk /root/image.raw"
     )
-    machine.succeed(
+    booted.succeed(
         "mkdir -p /root/payload/cache && touch /root/payload/layout.sh /root/payload/mount.sh"
     )
     target = {
@@ -88,32 +103,49 @@ with subtest("the guide seals a stick's vault to it, needing no touch"):
         "yubikeys": ["the Nano"],
         "recipients": [recipient],
     }
-    machine.succeed(f"echo '{json.dumps(target)}' > /root/payload/target.json")
-    machine.succeed("truncate -s 120M /root/stick.raw")
+    booted.succeed(f"echo {shlex.quote(json.dumps(target))} > /root/payload/target.json")
+    booted.succeed("truncate -s 120M /root/stick.raw")
     print(
-        machine.succeed(
-            f"echo '{passphrase}' | guide write-stick /root/image.raw /root/stick.raw"
-            " --install /root/payload"
+        booted.succeed(
+            f"echo {shlex.quote(values['passphrase'])}"
+            " | guide write-stick /root/image.raw /root/stick.raw --install /root/payload"
         )
     )
-    machine.succeed("losetup --find --partscan --show /root/stick.raw && udevadm settle")
-    machine.succeed("test -e /dev/disk/by-partlabel/vault")
+    booted.succeed("losetup --find --partscan --show /root/stick.raw && udevadm settle")
+    return booted
 
-with subtest("on the stick, the key and its PIN open the vault"):
-    machine.wait_until_succeeds("pgrep -u root -t tty1 bash")
-    type_in("guide install")
-    on_screen("Check the keyboard")
-    type_in("keyboard")
-    on_screen("Or plug in the Nano")
-    type_in(pin)
-    on_screen("vault is open")
 
-with subtest("with the key taken out, the recovery passphrase opens it"):
-    machine.send_key("ctrl-c")
-    machine.succeed("rm /run/guide/vault-key")
-    machine.send_monitor_command("device_del key")
-    machine.wait_until_succeeds('test -z "$(fido2-token -L)"', timeout=30)
-    type_in("guide install")
-    on_screen("the stick's passphrase")
-    type_in(passphrase)
-    on_screen("vault is open")
+def test_key_gets_a_pin_and_a_recipient(recipient: str) -> None:
+    """The key gets a PIN and a recipient, as a person makes one."""
+    assert recipient.startswith("age1fido2-hmac1"), recipient
+
+
+def test_guide_seals_a_sticks_vault(stick: QemuMachine) -> None:
+    """The guide seals a stick's vault to it, needing no touch."""
+    stick.succeed("test -e /dev/disk/by-partlabel/vault")
+
+
+def test_key_and_its_pin_open_the_vault(stick: QemuMachine, values: dict[str, Any]) -> None:
+    """On the stick, the key and its PIN open the vault."""
+    stick.wait_until_succeeds("pgrep -u root -t tty1 bash")
+    type_in(stick, "guide install")
+    on_screen(stick, "Check the keyboard")
+    type_in(stick, "keyboard")
+    on_screen(stick, "Or plug in the Nano")
+    type_in(stick, values["pin"])
+    on_screen(stick, "vault is open")
+
+
+def test_recovery_passphrase_opens_it(stick: QemuMachine, values: dict[str, Any]) -> None:
+    """With the key taken out, the recovery passphrase opens it."""
+    # The guide left as a person leaves it, if it's running, and the key
+    # it opened the vault with forgotten.
+    stick.send_key("ctrl-c")
+    stick.succeed("rm -f /run/guide/vault-key")
+    stick.send_monitor_command("device_del key")
+    stick.wait_until_succeeds('test -z "$(fido2-token -L)"', timeout=KEY)
+    stick.wait_until_succeeds("pgrep -u root -t tty1 bash")
+    type_in(stick, "guide install")
+    on_screen(stick, "the stick's passphrase")
+    type_in(stick, values["passphrase"])
+    on_screen(stick, "vault is open")

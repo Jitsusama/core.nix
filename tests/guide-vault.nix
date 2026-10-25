@@ -4,7 +4,7 @@
 # its recipient made on the machine as a person makes one, with the
 # plugin's own questions answered; the stick is a small image the guide
 # writes into a file, looped so its vault is a partition as on a stick.
-# The script is guide-vault-vm-test.py.
+# The tests are guide-vault-vm-test.py, run through pytest.
 { pkgs }:
 let
   inherit (pkgs) lib;
@@ -50,6 +50,7 @@ in
 pkgs.testers.runNixOSTest {
   name = "guide-vault";
   qemu.package = qemu;
+  extraPythonPackages = python: [ (pkgs.callPackage ./lib/vm-helpers.nix { } python) ];
 
   nodes.machine = {
     services.getty.autologinUser = "root";
@@ -70,8 +71,8 @@ pkgs.testers.runNixOSTest {
     };
   };
 
-  # The key's PIN and the stick's recovery passphrase, which the script types
-  # and hands to the guide, reach it in one file it reads at its top.
+  # pytest runs the tests inside the driver, with the key's PIN and the
+  # stick's recovery passphrase as their values fixture.
   testScript =
     let
       values = pkgs.writeText "guide-vault-values.json" (
@@ -79,10 +80,12 @@ pkgs.testers.runNixOSTest {
           inherit pin passphrase;
         }
       );
-      script = builtins.readFile ./guide-vault-vm-test.py;
     in
-    builtins.replaceStrings [ "@values@" ] [ "${values}" ] script;
-  # nix fmt holds the script to mypy --strict against the driver's own types,
-  # through driver_names.pyi, which the driver's lighter check can't find.
+    ''
+      import vm_pytest
+      vm_pytest.run(globals(), "${./guide-vault-vm-test.py}", values="${values}")
+    '';
+  # nix fmt holds the tests and vm_pytest to mypy --strict against the
+  # driver's own types, which the driver's lighter check can't find.
   skipTypeCheck = true;
 }

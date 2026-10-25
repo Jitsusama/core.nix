@@ -812,6 +812,75 @@ fn a_stopped_install_asks_for_the_key_it_proved_opens_the_disk() {
 }
 
 #[test]
+fn a_stopped_install_opens_with_the_stick_out_for_the_key() {
+    let target = target("/dev/disk/by-id/virtio-root");
+    let scratch = Scratch::new("install-stopped-stick-out");
+    let mut fake = stopped_on(&scratch, &target);
+    // Held as the vault opened, with the stick in; then out for the key,
+    // as on a laptop whose one port takes the stick or a YubiKey.
+    guide::install::hold_target(&mut fake).unwrap();
+    guide::install::hold_mount_script(&mut fake).unwrap();
+    fake.stick_out(true);
+    plugged(&mut fake, &[("/dev/hidraw1", "canokey")]);
+    fake.prints(
+        Tool::SystemdCryptenroll,
+        &[
+            "--unlock-fido2-device=/dev/hidraw1",
+            "--wipe-slot=password",
+            "--password",
+            "/dev/disk/by-partlabel/system",
+        ],
+        "",
+    )
+    .prints(Tool::Bash, &["/run/guide/mount"], "")
+    .prints(Tool::Udevadm, &["settle"], "");
+    let mut answers = Answers::new();
+    answers.give("plugged", Answer::Done);
+    answers.give("pin", Answer::Secret(Secret::new("123456".into())));
+    OpenStoppedInstall {
+        yubikeys: target.yubikeys.clone(),
+    }
+    .run(&mut fake, &answers)
+    .unwrap();
+    assert_eq!(fake.holds("/run/guide/mount"), Some(b"mount it".as_slice()));
+    assert!(
+        fake.calls
+            .iter()
+            .any(|call| call.starts_with("bash /run/guide/mount")),
+        "{:#?}",
+        fake.calls
+    );
+}
+
+#[test]
+fn a_stopped_install_with_no_script_held_and_the_stick_out_changes_nothing() {
+    let target = target("/dev/disk/by-id/virtio-root");
+    let scratch = Scratch::new("install-stopped-unheld");
+    let mut fake = stopped_on(&scratch, &target);
+    guide::install::hold_target(&mut fake).unwrap();
+    fake.no_file("/run/guide/mount").stick_out(true);
+    plugged(&mut fake, &[("/dev/hidraw1", "canokey")]);
+    let mut answers = Answers::new();
+    answers.give("plugged", Answer::Done);
+    answers.give("pin", Answer::Secret(Secret::new("123456".into())));
+    let ran = OpenStoppedInstall {
+        yubikeys: target.yubikeys.clone(),
+    }
+    .run(&mut fake, &answers);
+    // Said as the stick being out, to be put back, before the disk's
+    // key slots are touched.
+    assert!(matches!(ran, Err(Fault::StickOut)), "{ran:?}");
+    assert!(
+        !fake
+            .calls
+            .iter()
+            .any(|call| call.starts_with("systemd-cryptenroll")),
+        "{:#?}",
+        fake.calls
+    );
+}
+
+#[test]
 fn a_stopped_install_no_key_opens_can_only_start_again() {
     let target = target("/dev/disk/by-id/virtio-root");
     let scratch = Scratch::new("install-stopped-shut");
