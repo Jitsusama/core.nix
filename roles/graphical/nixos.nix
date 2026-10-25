@@ -18,7 +18,7 @@
 # before anything Joel starts, and calls, music and what he waits on get the
 # network before the work he started, and a write a program makes behind an
 # upload goes out soon after; lag-watch keeps a standing watch on whether
-# they wait.
+# they wait, and load-proof proves on demand that they don't under full load.
 { nixosModules, homeModules }:
 {
   imports = [
@@ -64,6 +64,7 @@
     homeModules.niri
     homeModules.kitty
     homeModules.lag-watch
+    homeModules.load-proof
     homeModules.open-with
     homeModules.mpv
     homeModules.qt

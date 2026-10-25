@@ -156,6 +156,7 @@
         keys = ./modules/keys/home.nix;
         kitty = ./modules/kitty/home.nix;
         lag-watch = ./modules/lag-watch/home.nix;
+        load-proof = ./modules/load-proof/home.nix;
         lsd = ./modules/lsd/home.nix;
         mpv = ./modules/mpv/home.nix;
         neovim = moduleFrom ./modules/neovim/home.nix { inherit neovim-pi; };
