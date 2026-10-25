@@ -31,7 +31,7 @@ let
   # The HAL's configuration with Dell's tuning for the laptop's camera module
   # in place of Intel's, from Dell's driver pack, which can't be shared, so
   # it's fetched as the system builds. The HAL reads the tuning the sensor's
-  # file names, and the file is the same format on Linux as on Windows.
+  # file names, and Dell's file is in the format the HAL reads.
   module = config.jitsusama.dellXps14.cameraModule;
   driverPack = pkgs.fetchurl {
     url = "https://downloads.dell.com/FOLDER14363593M/1/XPS-14-DA14260-10KF7_Win11_1.0_A01.exe";
@@ -240,7 +240,7 @@ in
       name = "cvs-link-owner-wait";
       patch = ./cvs-link-owner-wait.patch;
     }
-    # The IR camera Windows signs in with: an HM1092 on one of the IPU7's
+    # The IR camera, made for signing in by face: an HM1092 on one of the IPU7's
     # CSI-2 ports, powered by its own INT3472. The four patches below, three
     # from the media list and one written here, take it from unknown to
     # streaming greyscale frames.

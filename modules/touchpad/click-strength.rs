@@ -1,5 +1,4 @@
-//! Sets how strongly a haptic touchpad clicks, as Windows' "haptic feedback
-//! intensity" slider does: a percentage written to the field a Precision
+//! Sets how strongly a haptic touchpad clicks: a percentage written to the field a Precision
 //! Touchpad's report descriptor names Intensity on the Haptics usage page.
 //! The field is found in the descriptor rather than known by its report, so
 //! any pad that has one is set and every other device is passed over.

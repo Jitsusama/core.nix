@@ -264,7 +264,7 @@ in
     }
     {
       # The firmware gives Bluetooth's power limits and antenna gain setting
-      # only where Windows looks, not in ACPI where the kernel does, so
+      # only as UEFI variables, not in ACPI where the kernel looks, so
       # Bluetooth ran without them. Written here; the patch says why. It
       # needs the revision 2 patch before it.
       name = "bluetooth-uefi-power-tables";

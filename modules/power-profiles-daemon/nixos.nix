@@ -2,8 +2,8 @@
 # performance, balanced or power saver. The profile follows the charger:
 # performance on mains power where the machine has that profile, and balanced on
 # battery, which the daemon itself leans towards battery life. Below UPower's
-# low mark, 20%, it goes to power saver until the charger is back, as Windows'
-# energy saver does by default (follow.sh says how). A profile picked by hand
+# low mark, 20%, it goes to power saver until the charger is back (follow.sh
+# says how). A profile picked by hand
 # holds until the next of those changes. The daemon leaves a battery that
 # charges adaptively or to custom limits as it is, so the profile never changes
 # how the battery charges.
