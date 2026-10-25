@@ -1,8 +1,8 @@
 # Runs Joel's kernel, from package.nix, compiled for the CPU the machine's
 # hardware module names and optimized with the profile the machine recorded.
 # Out-of-tree modules are built by the same compiler. Its panic screen wears
-# the theme of the account the machine signs in, as the console does
-# (../console/nixos.nix); a machine without one keeps the kernel's.
+# the theme of the account the machine signs in, read as the console reads it
+# (../greetd/account.nix); a machine without one keeps the kernel's.
 {
   config,
   lib,
@@ -11,13 +11,8 @@
   ...
 }:
 let
-  account = if options ? jitsusama.login.account then config.jitsusama.login.account else null;
-  home =
-    if account != null && options ? home-manager then
-      config.home-manager.users.${account} or null
-    else
-      null;
-  roles = lib.attrByPath [ "jitsusama" "theme" "roles" ] null home;
+  inherit (import ../greetd/account.nix { inherit config lib options; }) theme;
+  roles = lib.attrByPath [ "roles" ] null theme;
   panic = if roles == null then null else { inherit (roles) text background; };
 in
 {
