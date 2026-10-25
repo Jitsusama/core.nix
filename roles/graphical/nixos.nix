@@ -1,12 +1,12 @@
 # A NixOS machine with a screen in front of Joel: fonts, sound, Bluetooth for
 # headphones and mice, how well each Bluetooth link is doing, for the
-# launcher to say, a plugged-in monitor's own controls, which memory
-# modules the firmware lists, for the launcher to say what RAM it is, which programs
-# stream from a USB camera, a desk light lit while one does, a keyring the TPM unlocks, 1Password, and niri, started
-# at boot by greetd, with the console, the consoles signed in on, and
-# Plymouth, which asks for the disk's PIN, in the theme of the account it
-# signs in. Every account gets
-# niri's configuration, kitty, Quickshell for the launcher, notifications
+# launcher to say, a plugged-in monitor's own controls, which memory modules
+# the firmware lists, for the launcher to say what RAM it is, which programs
+# stream from a USB camera, a desk light lit while one does, a keyring the
+# TPM unlocks, 1Password, and niri, started at boot by greetd, with the
+# console, the consoles signed in on, and Plymouth, which asks for the disk's
+# PIN, in the theme of the account it signs in. Every account gets niri's
+# configuration, kitty, Quickshell for the launcher, notifications
 # and lock screen, which swayidle locks, a backlight that follows the
 # light, and GTK programs and the monospace default in the theme. It also
 # gets the programs Joel views, draws, reads, watches, listens and pairs

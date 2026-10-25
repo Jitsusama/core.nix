@@ -1,7 +1,8 @@
 # spend-watch keeps the account told what its AI use costs: a daemon that
 # reads pi's session logs as they grow, its agents' too (a swarm's, a
-# review council's), the harness's subagent runs and its quests, and whatever feeds a machine adds for a provider's bill, keeps a
-# history of every dollar, and writes what the shell draws: the overview's
+# review council's), the harness's subagent runs and its quests, and
+# whatever feeds a machine adds for a provider's bill, keeps a history of
+# every dollar, and writes what the shell draws: the overview's
 # row, the margin while something wants Joel, and the launcher's collection
 # on Super+U. AGENTS.md beside this says how it decides.
 #
