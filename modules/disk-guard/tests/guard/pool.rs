@@ -39,13 +39,15 @@ fn a_filesystem_of_one_volume_is_known_by_its_device() {
         pool(dir.path()).unwrap(),
         pool(&dir.path().join("inside")).unwrap()
     );
-    if !on_btrfs(dir.path()) {
-        assert_eq!(
-            pool(dir.path()).unwrap(),
-            fs::metadata(dir.path()).unwrap().dev()
-        );
+    // A Btrfs pool or an APFS container is known by a number of its own,
+    // with the top bit set; anything else by its device.
+    let known = pool(dir.path()).unwrap();
+    if known & 1 << 63 == 0 {
+        assert_eq!(known, fs::metadata(dir.path()).unwrap().dev());
     }
-    assert_ne!(pool(Path::new("/proc")).unwrap(), pool(dir.path()).unwrap());
+    // Another filesystem on both systems: a Mac has no /proc.
+    let elsewhere = if cfg!(target_os = "macos") { "/dev" } else { "/proc" };
+    assert_ne!(pool(Path::new(elsewhere)).unwrap(), known);
     assert!(pool(&dir.path().join("gone")).is_err());
 }
 
