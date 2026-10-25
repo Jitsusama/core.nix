@@ -184,6 +184,21 @@ in
       "C4.5 11.5 0.5 7.5 0 2.5Z"
     ];
   };
+  joinCall = {
+    glyph = nerd "f0659";
+    console = "+";
+    means = "joining a call already under way";
+  };
+  hangUp = {
+    glyph = nerd "f03f5";
+    console = "_";
+    means = "leaving a call";
+  };
+  openRoom = {
+    glyph = nerd "f081c";
+    console = "#";
+    means = "opening a room others can join a call in";
+  };
   sharing = {
     glyph = nerd "f1483";
     console = "V";

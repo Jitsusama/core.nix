@@ -304,7 +304,7 @@ ShellRoot {
                                 // A layer surface's keys go nowhere until
                                 // something in it asks for them.
                                 Component.onCompleted: take()
-                                glyph: String.fromCodePoint(0xf023)
+                                glyph: Theme.glyph.secret
                                 hue: Theme.machine
                                 secret: root.question === "" || !root.answerShows
                                 hint: root.question !== "" ? root.question.toLowerCase()

@@ -32,7 +32,7 @@ Provider {
         noun: "apps",
         title: "Open With",
         searched: false,
-        glyph: String.fromCodePoint(0xf03cc),
+        glyph: Theme.glyph.below,
         ask: asking.what === "" ? "open it with?" : `open ${named(asking.what)} with?`,
         empty: "Nothing here opens it."
     })

@@ -153,7 +153,7 @@ Provider {
             key: busy ? "verb:person:join" : "verb:person:call",
             name: busy ? "Join their call" : "Call them",
             side: how(stood).said,
-            glyph: String.fromCodePoint(busy ? 0xf0659 : 0xf03f2),
+            glyph: busy ? Theme.glyph.joinCall : Theme.glyph.call,
             hue: "action",
             later: true,
             run: () => provider.pair(person)

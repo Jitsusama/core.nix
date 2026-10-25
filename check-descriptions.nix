@@ -395,6 +395,9 @@
   nothing-names-its-own-look = ''
     no module but the theme's names a colour or a face
   '';
+  nothing-spells-a-mark = ''
+    no module but the theme's spells a mark's code point instead of naming it
+  '';
   one-niri = ''
     the screens go off through the machine's patched niri, not a second one
   '';
