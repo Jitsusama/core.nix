@@ -9,6 +9,7 @@ points, networks and accounts are all named in the machine wifi.nix builds.
 
 import json
 import shlex
+from datetime import timedelta
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -46,27 +47,31 @@ STRONGEST = 4
 def holds_address(prefix: str) -> None:
     """Wait until the card holds an address starting with the prefix, and is routable."""
     machine.wait_until_succeeds(
-        f"ip -4 -o address show dev wlan2 | grep -q 'inet {prefix}'", timeout=60
+        f"ip -4 -o address show dev wlan2 | grep -q 'inet {prefix}'", timeout=timedelta(seconds=60)
     )
-    machine.wait_until_succeeds("networkctl status wlan2 | grep -q 'State: routable'", timeout=30)
+    machine.wait_until_succeeds(
+        "networkctl status wlan2 | grep -q 'State: routable'", timeout=timedelta(seconds=30)
+    )
 
 
 def on_file(file: str) -> None:
     """Wait until networkd configures the card from the file."""
     machine.wait_until_succeeds(
-        f"networkctl status wlan2 | grep -q 'Network File: {file}'", timeout=30
+        f"networkctl status wlan2 | grep -q 'Network File: {file}'", timeout=timedelta(seconds=30)
     )
 
 
 def joined(ssid: str) -> None:
     """Wait until the card is on the network."""
-    machine.wait_until_succeeds(f"wpa_cli -i wlan2 status | grep -qx 'ssid={ssid}'", timeout=60)
+    machine.wait_until_succeeds(
+        f"wpa_cli -i wlan2 status | grep -qx 'ssid={ssid}'", timeout=timedelta(seconds=60)
+    )
 
 
 def answers(name: str, address: str) -> None:
     """Wait until the name resolves to the address."""
     machine.wait_until_succeeds(
-        f"resolvectl query --legend=no {name} | grep -qF {address}", timeout=30
+        f"resolvectl query --legend=no {name} | grep -qF {address}", timeout=timedelta(seconds=30)
     )
 
 
@@ -78,7 +83,7 @@ def rules_stand() -> None:
         )
 
 
-def says(line: str, timeout: int = 30) -> None:
+def says(line: str, timeout: timedelta = timedelta(seconds=30)) -> None:
     """Wait for wifid, as it runs now, to say line in the journal."""
     machine.wait_until_succeeds(
         "journalctl -o cat _PID=$(systemctl show -P MainPID wifid)"
@@ -193,9 +198,9 @@ with subtest("and what's in the air, looking again when asked"):
     machine.succeed(
         "busctl monitor --match \"type='signal',member='ScanDone'\" > /tmp/scans 2>&1 &"
     )
-    machine.wait_until_succeeds("grep -q Monitoring /tmp/scans", timeout=10)
+    machine.wait_until_succeeds("grep -q Monitoring /tmp/scans", timeout=timedelta(seconds=10))
     ask("Scan")
-    machine.wait_until_succeeds("grep -q ScanDone /tmp/scans", timeout=30)
+    machine.wait_until_succeeds("grep -q ScanDone /tmp/scans", timeout=timedelta(seconds=30))
     machine.succeed("pkill -f 'busctl monitor'")
 
 with subtest("and one network in detail, with the link of the card on it as it changes"):
@@ -228,7 +233,7 @@ with subtest("and one network in detail, with the link of the card on it as it c
         """Say whether wifid no longer reads the Inn's link."""
         return not ask("Detail", {"name": "Roadside Inn"})["joined"]
 
-    retry(unpolled, timeout_seconds=30)
+    retry(unpolled, timeout=timedelta(seconds=30))
     # Though it still says which access point the card is joined to.
     once = ask("Detail", {"name": "Roadside Inn"})["points"][0]
     assert once["joined"], once
@@ -240,7 +245,7 @@ with subtest("and one network in detail, with the link of the card on it as it c
         found: list[Json] = ask("Detail", {"name": "Roadside Inn"})["points"]
         return found
 
-    retry(lambda _: any(point["joined"] for point in points()), timeout_seconds=30)
+    retry(lambda _: any(point["joined"] for point in points()), timeout=timedelta(seconds=30))
     # Lantern's beacon says how it's protected.
     guarded = ask("Detail", {"name": "Lantern"})["points"][0]["protection"]
     assert guarded["standard"] == "WPA2/WPA3", guarded
@@ -270,7 +275,7 @@ with subtest("a network saved from the launcher is laid over the defaults and ch
     machine.succeed("test -s /var/lib/wifid/vault.cred")
     # The card stays where it is until it next chooses, as the
     # launcher's join will have it do.
-    machine.wait_until_succeeds(f"test -e {given}", timeout=30)
+    machine.wait_until_succeeds(f"test -e {given}", timeout=timedelta(seconds=30))
     joined("Roadside Inn")
     machine.succeed("wpa_cli -i wlan2 reassociate")
     joined("Lantern")
@@ -298,7 +303,10 @@ with subtest("and keeps the channel it joined Lantern on, and nothing of where")
     machine.succeed('test "$(stat -c %a /var/lib/wifid/seen)" = 600')
 
 with subtest("and asks Lantern again as the session it gave ends"):
-    says("Lantern on wlan2 wants a sign-in at https://router.lantern/renew", timeout=45)
+    says(
+        "Lantern on wlan2 wants a sign-in at https://router.lantern/renew",
+        timeout=timedelta(seconds=45),
+    )
 
 with subtest("a stranger's network gets no LLMNR or mDNS"):
     resolving = machine.succeed("resolvectl status wlan2")
@@ -308,11 +316,15 @@ with subtest("a stranger's network gets no LLMNR or mDNS"):
 with subtest("trusting it from the shell turns on mDNS, and the card stays on it"):
     since = journal_now()
     ask("Trust", {"name": "Lantern", "trusted": True})
-    machine.wait_until_succeeds("resolvectl status wlan2 | grep -qF +mDNS", timeout=30)
+    machine.wait_until_succeeds(
+        "resolvectl status wlan2 | grep -qF +mDNS", timeout=timedelta(seconds=30)
+    )
     machine.succeed(f"grep -qx MulticastDNS=yes {saved}")
     assert saved_as("Lantern")[0]["trusted"], saved_as("Lantern")
     ask("Trust", {"name": "Lantern", "trusted": False})
-    machine.wait_until_succeeds("resolvectl status wlan2 | grep -qF -- -mDNS", timeout=30)
+    machine.wait_until_succeeds(
+        "resolvectl status wlan2 | grep -qF -- -mDNS", timeout=timedelta(seconds=30)
+    )
     assert not saved_as("Lantern")[0]["trusted"], saved_as("Lantern")
     holds_address("10.42.0.")
     stayed_on(since)
@@ -357,11 +369,13 @@ with subtest("another card coming and going leaves the first on its network"):
         "ip netns exec drawer iw dev wlan3 info | sed -n 's/^.*wiphy /phy/p'"
     ).strip()
     machine.succeed(f"ip netns exec drawer iw phy {radio} set netns 1")
-    machine.wait_until_succeeds("wpa_cli -i wlan3 ping | grep -qx PONG", timeout=30)
+    machine.wait_until_succeeds(
+        "wpa_cli -i wlan3 ping | grep -qx PONG", timeout=timedelta(seconds=30)
+    )
     # It's given every network, their passwords opened without systemd.
     retry(
         lambda _: "lighthouse-8" in machine.succeed("wpa_cli -i wlan3 list_networks"),
-        timeout_seconds=30,
+        timeout=timedelta(seconds=30),
     )
     machine.fail(f"journalctl -o cat --after-cursor='{since}' | grep systemd-creds@")
     # It looks for networks from addresses its driver makes up, so its
@@ -373,10 +387,10 @@ with subtest("another card coming and going leaves the first on its network"):
     machine.wait_until_succeeds(
         f"busctl get-property fi.w1.wpa_supplicant1 {held}"
         " fi.w1.wpa_supplicant1.Interface MACAddressRandomizationMask | grep -q scan",
-        timeout=30,
+        timeout=timedelta(seconds=30),
     )
     machine.wait_until_succeeds(
-        "wpa_cli -i wlan3 status | grep -qx wpa_state=COMPLETED", timeout=30
+        "wpa_cli -i wlan3 status | grep -qx wpa_state=COMPLETED", timeout=timedelta(seconds=30)
     )
     # Joining takes the link down once, to give the card the address it
     # has for the Inn; looking first takes it down no more.
@@ -386,7 +400,7 @@ with subtest("another card coming and going leaves the first on its network"):
     )
     assert int(drops) <= 1, drops
     machine.succeed(f"iw phy {radio} set netns name drawer")
-    machine.wait_until_succeeds("! test -e /sys/class/net/wlan3", timeout=30)
+    machine.wait_until_succeeds("! test -e /sys/class/net/wlan3", timeout=timedelta(seconds=30))
     assert machine.succeed("systemctl show -P MainPID wpa_supplicant") == supplicant
     stayed_on(since)
     joined("Roadside Inn")
@@ -399,7 +413,9 @@ with subtest("and networkd restarting"):
 
 with subtest("wifid adds the card again when wpa_supplicant restarts"):
     machine.succeed("systemctl restart wpa_supplicant")
-    machine.wait_until_succeeds("wpa_cli -i wlan2 ping | grep -qx PONG", timeout=30)
+    machine.wait_until_succeeds(
+        "wpa_cli -i wlan2 ping | grep -qx PONG", timeout=timedelta(seconds=30)
+    )
     joined("Roadside Inn")
     holds_address("10.43.0.")
 
@@ -436,20 +452,20 @@ with subtest("networkd's file for a network no longer saved is taken away"):
     )
     machine.succeed("systemctl restart wifid")
     machine.wait_for_unit("wifid.service")
-    machine.wait_until_succeeds(f"! test -e {gone}", timeout=30)
+    machine.wait_until_succeeds(f"! test -e {gone}", timeout=timedelta(seconds=30))
 
 with subtest("signing in at the Inn is noticed when asked, and the shell told"):
     machine.succeed(
         f"runuser -u guest -- varlinkctl -E --json=short call {wifi}"
         " io.jitsusama.Wifi.Describe '{}' > /tmp/described 2>&1 &"
     )
-    machine.wait_until_succeeds("grep -q signIn /tmp/described", timeout=10)
+    machine.wait_until_succeeds("grep -q signIn /tmp/described", timeout=timedelta(seconds=10))
     machine.succeed("curl -sf --interface wlan2 http://front-desk.inn/sign-in")
     ask("Check")
     # Well before the half-minute the Inn would otherwise wait.
-    says("Roadside Inn on wlan2 reaches beyond itself", timeout=15)
+    says("Roadside Inn on wlan2 reaches beyond itself", timeout=timedelta(seconds=15))
     machine.wait_until_succeeds(
-        'tail -n1 /tmp/described | grep -qF \'"reach":"online"\'', timeout=10
+        'tail -n1 /tmp/described | grep -qF \'"reach":"online"\'', timeout=timedelta(seconds=10)
     )
 
 with subtest("a network letting only the plain check through reaches no further"):
@@ -478,7 +494,7 @@ sealed = "/var/lib/wifid/networks/lantern.sealed"
 
 with subtest("joining Lantern from the launcher with the wrong password saves nothing"):
     machine.systemctl("start lantern")
-    retry(lambda _: hears("Lantern"), timeout_seconds=60)
+    retry(lambda _: hears("Lantern"), timeout=timedelta(seconds=60))
     refused("Join", {"name": "Lantern"}, "NeedsPassword")
     refused("Join", {"name": "Nowhere"}, "NotNearby")
     status, stages, said = joining({"name": "Lantern", "password": "not the password"})
@@ -519,7 +535,7 @@ with subtest("joining the Inn again moves the card, and says how far the Inn rea
     joined("Roadside Inn")
 
 with subtest("the Office is joined with an account, its server first proving itself"):
-    retry(lambda _: hears("Office"), timeout_seconds=60)
+    retry(lambda _: hears("Office"), timeout=timedelta(seconds=60))
     nearby = {network["name"]: network for network in ask("Describe")["nearby"]}
     assert nearby["Office"]["security"] == "enterprise", nearby
     refused("Join", {"name": "Office", "password": "hunter22"}, "NeedsAccount")
@@ -554,11 +570,11 @@ def on_network(name: str) -> bool:
 with subtest("leaving the Inn from the shell keeps the card off it until it's joined"):
     ask("Leave", {"name": "Roadside Inn"})
     machine.wait_until_succeeds(
-        "wpa_cli -i wlan2 status | grep -qx wpa_state=DISCONNECTED", timeout=30
+        "wpa_cli -i wlan2 status | grep -qx wpa_state=DISCONNECTED", timeout=timedelta(seconds=30)
     )
-    retry(lambda _: not on_network("Roadside Inn"), timeout_seconds=30)
+    retry(lambda _: not on_network("Roadside Inn"), timeout=timedelta(seconds=30))
     refused("Leave", {"name": "Roadside Inn"}, "NotJoined")
-    machine.sleep(10)
+    machine.sleep(timedelta(seconds=10))
     machine.succeed("wpa_cli -i wlan2 status | grep -qx wpa_state=DISCONNECTED")
     status, stages, said = joining({"name": "Roadside Inn"})
     assert status == 0, said
@@ -570,16 +586,16 @@ with subtest("the shell is told whether a cable reaches beyond the machine"):
     cables = [line.split()[1] for line in links.splitlines() if line.split()[2] == "ether"]
     assert "routable" in links, links
     assert cables, links
-    retry(lambda _: ask("Describe")["wired"] is True, timeout_seconds=30)
+    retry(lambda _: ask("Describe")["wired"] is True, timeout=timedelta(seconds=30))
     for cable in cables:
         machine.succeed(f"ip link set {cable} down")
-    retry(lambda _: ask("Describe")["wired"] is False, timeout_seconds=30)
+    retry(lambda _: ask("Describe")["wired"] is False, timeout=timedelta(seconds=30))
 
 with subtest("wifid says it's settled once the card's online, or Wi-Fi's off"):
     settled = calling("Settled", {}).replace("call", "call --timeout=5", 1)
     machine.succeed(settled)
     ask("Leave", {"name": "Roadside Inn"})
-    retry(lambda _: not on_network("Roadside Inn"), timeout_seconds=30)
+    retry(lambda _: not on_network("Roadside Inn"), timeout=timedelta(seconds=30))
     # The Inn is still heard, so the card has more to join, and wifid
     # answers everything else while the wait goes on.
     machine.succeed(
@@ -588,13 +604,13 @@ with subtest("wifid says it's settled once the card's online, or Wi-Fi's off"):
         " io.jitsusama.Wifi.Settled '{}'"
     )
     assert ask("Describe")["cards"], ask("Describe")
-    machine.wait_until_succeeds("systemctl is-failed -q settling", timeout=15)
+    machine.wait_until_succeeds("systemctl is-failed -q settling", timeout=timedelta(seconds=15))
     machine.succeed("journalctl -u settling -o cat | grep -q 'Timer expired'")
     machine.succeed("systemctl reset-failed settling")
     ask("Radio", {"on": False})
     machine.succeed(settled)
     ask("Radio", {"on": True})
-    retry(lambda _: ",UP" in machine.succeed("ip link show wlan2"), timeout_seconds=30)
+    retry(lambda _: ",UP" in machine.succeed("ip link show wlan2"), timeout=timedelta(seconds=30))
     status, stages, said = joining({"name": "Roadside Inn"})
     assert status == 0, said
     machine.succeed(settled)
@@ -602,7 +618,7 @@ with subtest("wifid says it's settled once the card's online, or Wi-Fi's off"):
 with subtest("and the cables come back"):
     for cable in cables:
         machine.succeed(f"ip link set {cable} up")
-    retry(lambda _: ask("Describe")["wired"] is True, timeout_seconds=60)
+    retry(lambda _: ask("Describe")["wired"] is True, timeout=timedelta(seconds=60))
 
 with subtest("turning Wi-Fi off from the shell switches the radios off, and on again"):
     assert ask("Describe")["radio"], ask("Describe")
@@ -610,15 +626,19 @@ with subtest("turning Wi-Fi off from the shell switches the radios off, and on a
     # card's link up again once the radios are back.
     ask("Leave", {"name": "Roadside Inn"})
     machine.wait_until_succeeds(
-        "wpa_cli -i wlan2 status | grep -qx wpa_state=DISCONNECTED", timeout=30
+        "wpa_cli -i wlan2 status | grep -qx wpa_state=DISCONNECTED", timeout=timedelta(seconds=30)
     )
     ask("Radio", {"on": False})
-    machine.wait_until_succeeds("rfkill list wifi | grep -q 'Soft blocked: yes'", timeout=10)
-    retry(lambda _: ask("Describe")["radio"] is False, timeout_seconds=30)
+    machine.wait_until_succeeds(
+        "rfkill list wifi | grep -q 'Soft blocked: yes'", timeout=timedelta(seconds=10)
+    )
+    retry(lambda _: ask("Describe")["radio"] is False, timeout=timedelta(seconds=30))
     ask("Radio", {"on": True})
-    machine.wait_until_succeeds("! rfkill list wifi | grep -q 'Soft blocked: yes'", timeout=10)
-    retry(lambda _: ask("Describe")["radio"] is True, timeout_seconds=30)
-    retry(lambda _: ",UP" in machine.succeed("ip link show wlan2"), timeout_seconds=30)
+    machine.wait_until_succeeds(
+        "! rfkill list wifi | grep -q 'Soft blocked: yes'", timeout=timedelta(seconds=10)
+    )
+    retry(lambda _: ask("Describe")["radio"] is True, timeout=timedelta(seconds=30))
+    retry(lambda _: ",UP" in machine.succeed("ip link show wlan2"), timeout=timedelta(seconds=30))
     status, stages, said = joining({"name": "Roadside Inn"})
     assert status == 0, said
     joined("Roadside Inn")
@@ -661,7 +681,7 @@ with subtest("a network saved from the shell without joining it is kept, sealed"
 with subtest("a card scanning too long with a saved network in range is told to join it"):
     machine.succeed("wpa_cli -i wlan2 disconnect")
     machine.wait_until_succeeds(
-        "wpa_cli -i wlan2 status | grep -qx wpa_state=DISCONNECTED", timeout=30
+        "wpa_cli -i wlan2 status | grep -qx wpa_state=DISCONNECTED", timeout=timedelta(seconds=30)
     )
     held = machine.succeed(
         "busctl call fi.w1.wpa_supplicant1 /fi/w1/wpa_supplicant1"
@@ -672,17 +692,17 @@ with subtest("a card scanning too long with a saved network in range is told to 
         " 'sa{sv}as' fi.w1.wpa_supplicant1.Interface 1 State s scanning 0"
     )
     # Nothing else joins it: a card stopped so stays stopped.
-    machine.sleep(10)
+    machine.sleep(timedelta(seconds=10))
     machine.succeed("wpa_cli -i wlan2 status | grep -qx wpa_state=DISCONNECTED")
     # Which saved network it hears best varies from run to run among
     # the several here, and the card joins whichever it can.
     machine.wait_until_succeeds(
         "journalctl -o cat _PID=$(systemctl show -P MainPID wifid) | grep -qxE"
         " 'wlan2 looked for networks for 20 s with .+ in range; asking it to join'",
-        timeout=30,
+        timeout=timedelta(seconds=30),
     )
     machine.wait_until_succeeds(
-        "wpa_cli -i wlan2 status | grep -qx wpa_state=COMPLETED", timeout=30
+        "wpa_cli -i wlan2 status | grep -qx wpa_state=COMPLETED", timeout=timedelta(seconds=30)
     )
 
 # On a laptop at boot, the access point wpa_supplicant picked didn't
@@ -701,18 +721,18 @@ with subtest("a card whose access point doesn't answer moves on to another netwo
         f" && wpa_cli -i wlan2 set_network {lantern} priority 100"
     )
     machine.wait_until_succeeds(
-        "wpa_cli -i wlan2 status | grep -qx wpa_state=DISCONNECTED", timeout=30
+        "wpa_cli -i wlan2 status | grep -qx wpa_state=DISCONNECTED", timeout=timedelta(seconds=30)
     )
-    retry(lambda _: hears("Lantern"), timeout_seconds=60)
+    retry(lambda _: hears("Lantern"), timeout=timedelta(seconds=60))
     since = journal_now()
     machine.succeed("systemctl stop lantern && wpa_cli -i wlan2 reconnect")
     machine.wait_until_succeeds(
         f"journalctl -k -o cat --after-cursor='{since}'"
         " | grep -q 'wlan2: authentication with 02:00:00:00:00:00 timed out'",
-        timeout=30,
+        timeout=timedelta(seconds=30),
     )
     machine.wait_until_succeeds(
-        "wpa_cli -i wlan2 status | grep -qx wpa_state=COMPLETED", timeout=30
+        "wpa_cli -i wlan2 status | grep -qx wpa_state=COMPLETED", timeout=timedelta(seconds=30)
     )
     machine.succeed(
         f"wpa_cli -i wlan2 set_network {lantern} priority {ranked} && systemctl start lantern"
@@ -722,7 +742,7 @@ with subtest("and says each step of the join and each look, for a join that dawd
     for said in ["wlan2 is scanning", "wlan2 is completed", "wlan2 is done looking"]:
         machine.wait_until_succeeds(
             f"journalctl -o cat _PID=$(systemctl show -P MainPID wifid) | grep -qx '{said}'",
-            timeout=30,
+            timeout=timedelta(seconds=30),
         )
 
 # On a laptop at boot, the access point first picked ignored the first
@@ -743,7 +763,7 @@ with subtest("a card whose access point doesn't answer moves to another of its n
         f" && wpa_cli -i wlan2 set_network {lantern} priority 100"
     )
     machine.wait_until_succeeds(
-        "wpa_cli -i wlan2 status | grep -qx wpa_state=DISCONNECTED", timeout=30
+        "wpa_cli -i wlan2 status | grep -qx wpa_state=DISCONNECTED", timeout=timedelta(seconds=30)
     )
 
     def hears_both(_: bool) -> bool:
@@ -758,19 +778,19 @@ with subtest("a card whose access point doesn't answer moves to another of its n
         first, second = levels.get("02:00:00:00:00:00"), levels.get("02:00:00:00:05:00")
         return first is not None and second is not None and first > second
 
-    retry(hears_both, timeout_seconds=60)
+    retry(hears_both, timeout=timedelta(seconds=60))
     since = journal_now()
     machine.succeed("systemctl stop lantern && wpa_cli -i wlan2 reconnect")
     machine.wait_until_succeeds(
         f"journalctl -k -o cat --after-cursor='{since}'"
         " | grep -q 'wlan2: authentication with 02:00:00:00:00:00 timed out'",
-        timeout=30,
+        timeout=timedelta(seconds=30),
     )
     machine.wait_until_succeeds(
         "s=$(wpa_cli -i wlan2 status)"
         ' && echo "$s" | grep -qx wpa_state=COMPLETED'
         ' && echo "$s" | grep -qx bssid=02:00:00:00:05:00',
-        timeout=30,
+        timeout=timedelta(seconds=30),
     )
     logged = machine.succeed(
         f"journalctl -o cat --after-cursor='{since}'"
@@ -802,7 +822,8 @@ def chargers(plugged: str) -> None:
 def dozes(answer: str) -> None:
     """Wait until the laptop's card says whether it dozes, on or off."""
     machine.wait_until_succeeds(
-        f"iw dev wlan2 get power_save | grep -qx 'Power save: {answer}'", timeout=30
+        f"iw dev wlan2 get power_save | grep -qx 'Power save: {answer}'",
+        timeout=timedelta(seconds=30),
     )
 
 

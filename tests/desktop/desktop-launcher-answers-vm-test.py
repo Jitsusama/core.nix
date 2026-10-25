@@ -116,7 +116,7 @@ with subtest("the launcher answers what's asked, and copies the answer"):
         answer(typed)
         machine.send_key("ret")
         closed = in_session(LAUNCHER_OPEN)
-        machine.wait_until_fails(closed, timeout=10)
+        machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
         t.assertEqual(as_account("wl-paste --no-newline"), expected)
 
     copied("12*7", "84")
@@ -128,7 +128,7 @@ with subtest("the launcher answers what's asked, and copies the answer"):
     answer("battery")
     photograph("launcher-battery")
     machine.send_key("ret")
-    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
     t.assertTrue(as_account("wl-paste --no-newline").startswith(f"{charge}%, "))
     # Then what feeds it: the stand-in's mains, plugged in, a step
     # into the answer's row.
@@ -186,7 +186,7 @@ with subtest("the launcher answers what's asked, and copies the answer"):
     machine.send_key("tab")
     launcher_until(lambda shown: shown["typed"] == "battery")
     machine.send_key("ret")
-    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
     t.assertTrue(as_account("wl-paste --no-newline").startswith(f"{charge}%, "))
     # The words a poor memory reaches for ask the same answers.
     # "lag" answers from lag-watch's last ten seconds.
@@ -221,7 +221,7 @@ with subtest("the launcher answers what's asked, and copies the answer"):
     answer("temperature")
     photograph("launcher-heat")
     machine.send_key("ret")
-    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
     t.assertRegex(as_account("wl-paste --no-newline"), r"^-?\d+ \u00b0C at the ")
     # Each part reads name first, a step in; Return opens one, its
     # history first, and so does the right arrow, once back out.
@@ -248,14 +248,14 @@ with subtest("the launcher answers what's asked, and copies the answer"):
     step_in()
     launcher_until(in_battery)
     machine.send_key("esc")
-    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
     # The date in full, as the machine's clock has it; the day may
     # turn while it's asked, so either will do.
     before = machine.succeed("date '+%A %-d %B %Y'").strip()
     answer("date")
     photograph("launcher-date")
     machine.send_key("ret")
-    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
     after = machine.succeed("date '+%A %-d %B %Y'").strip()
     t.assertIn(as_account("wl-paste --no-newline"), [before, after])
     # The stand-in backlight's share, as its files say.
@@ -271,9 +271,9 @@ with subtest("the launcher answers what's asked, and copies the answer"):
     machine.send_key("ret")
     machine.wait_until_succeeds(
         f"test $(cat /sys/class/backlight/stand-in/brightness) -eq {most * 30 // 100}",
-        timeout=10,
+        timeout=dt.timedelta(seconds=10),
     )
-    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
     # A step into its answer, the screen is a setting: its share, its
     # levels a step in by Return, and beside it the room's light as the
     # stand-in sensor hears it.
@@ -300,9 +300,9 @@ with subtest("the launcher answers what's asked, and copies the answer"):
     machine.send_key("ret")
     machine.wait_until_succeeds(
         f"test $(cat /sys/class/backlight/stand-in/brightness) -eq {most * 40 // 100}",
-        timeout=10,
+        timeout=dt.timedelta(seconds=10),
     )
-    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
     # "keyboard light" asks the keyboard's lights alone, as the stand-in's
     # files say: its levels are the answer's rows, a step in by the right
     # arrow, and Return on one sets it, through logind as the screen's is.
@@ -323,8 +323,8 @@ with subtest("the launcher answers what's asked, and copies the answer"):
         machine.send_key("down")
     launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Lights to 2 of 2")
     machine.send_key("ret")
-    machine.wait_until_succeeds(f"grep -qx 2 {kbd_light}", timeout=10)
-    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
+    machine.wait_until_succeeds(f"grep -qx 2 {kbd_light}", timeout=dt.timedelta(seconds=10))
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
     # The session's actions answer to what people call them; Escape,
     # never Return, since Return would do them.
     for typed, action, verb in [
@@ -355,7 +355,7 @@ with subtest("the launcher answers what's asked, and copies the answer"):
             )
         )
         machine.send_key("esc")
-        machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
+        machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
     # A key's action, by the other words its bind lists.
     answer("fullscreen")
     launcher_until(
@@ -366,7 +366,7 @@ with subtest("the launcher answers what's asked, and copies the answer"):
         )
     )
     machine.send_key("esc")
-    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
     # Each disk's room, as a disk guard says it, the tightest first.
     status = {
         "version": 1,
@@ -406,7 +406,7 @@ with subtest("the launcher answers what's asked, and copies the answer"):
         )
     )
     machine.send_key("esc")
-    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
     # A part asked for alone, by its own words: how fast the disk
     # reads and writes, each a step in.
     answer("disk speed")
@@ -420,7 +420,7 @@ with subtest("the launcher answers what's asked, and copies the answer"):
     step_in()
     launcher_until(lambda shown: shown["rows"] == ["Reading", "Writing"])
     machine.send_key("esc")
-    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
     # What the network carries now, in and out, from the kernel's
     # counters, and what the line can and how quickly it answers, from
     # what the shaper last wrote, here a stand-in for the machine's card.
@@ -460,7 +460,7 @@ with subtest("the launcher answers what's asked, and copies the answer"):
     )
     t.assertEqual(showing()["things"][2]["reads"], "Line \u00b7 40 Mb/s in \u00b7 12 Mb/s out")
     machine.send_key("esc")
-    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
     # "ping" asks the round trip alone, the middle of the servers, each
     # a step in, the quickest first.
     answer("ping")
@@ -470,7 +470,7 @@ with subtest("the launcher answers what's asked, and copies the answer"):
     step_in()
     launcher_until(lambda shown: shown["rows"] == ["8.8.8.8", "1.1.1.1", "9.9.9.9"])
     machine.send_key("esc")
-    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
     # A guard that stops writing is silent once its last heartbeat is
     # two minutes old, by a deadline that heartbeat set, with nothing
     # read again in between.
@@ -482,12 +482,12 @@ with subtest("the launcher answers what's asked, and copies the answer"):
     answer("disk")
     launcher_until(lambda shown: shown["footer"] == "from the disk guard")
     machine.send_key("esc")
-    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
     time.sleep(25)
     answer("disk")
     launcher_until(lambda shown: shown["footer"] == "the disk guard has stopped saying")
     machine.send_key("esc")
-    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
     machine.succeed("rm /run/disk-guard/status.json")
     # The machine's queue as pi's harness writes it, replaced whole:
     # what runs, then what waits in turn, and the room to spare.
@@ -562,7 +562,7 @@ with subtest("the launcher answers what's asked, and copies the answer"):
         )
     photograph("launcher-queue")
     machine.send_key("esc")
-    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
     as_account("rm $XDG_RUNTIME_DIR/jobs/queue.json")
     # How busy the processors are, read again while it's shown, so a
     # moment on it says just now; a step in, each core and the rest.
@@ -578,7 +578,7 @@ with subtest("the launcher answers what's asked, and copies the answer"):
     step_in()
     launcher_until(lambda shown: shown["rows"][0] == "Core 0")
     machine.send_key("esc")
-    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
     # The memory, and the programs holding most of it, read once it's
     # asked.
     answer("memory")
@@ -587,12 +587,12 @@ with subtest("the launcher answers what's asked, and copies the answer"):
     step_in()
     launcher_until(lambda shown: {"Used", "Cached", "Using it"} <= set(shown["rows"]))
     machine.send_key("esc")
-    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
     # The keyboards QEMU gives it, however many, and caps lock.
     answer("keyboards")
     photograph("launcher-keyboards")
     machine.send_key("ret")
-    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
     t.assertRegex(
         as_account("wl-paste --no-newline"),
         r"^(one keyboard|[1-9]\d* keyboards), caps lock off$",
@@ -638,8 +638,8 @@ with subtest("the launcher answers what's asked, and copies the answer"):
     launcher_until(lambda shown: shown["rows"][:3] == kbd_levels)
     launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Lights off")
     machine.send_key("ret")
-    machine.wait_until_succeeds(f"grep -qx 0 {kbd_light}", timeout=10)
-    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
+    machine.wait_until_succeeds(f"grep -qx 0 {kbd_light}", timeout=dt.timedelta(seconds=10))
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
     answer("keyboards")
     step_in()
     launcher_until(lambda shown: board in shown["rows"])
@@ -660,7 +660,7 @@ with subtest("the launcher answers what's asked, and copies the answer"):
         lambda shown: (shown["selected"] or {}).get("side", "").startswith("after "),
     )
     machine.send_key("ret")
-    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
     t.assertRegex(as_account("wl-paste --no-newline"), r"^after \d+ ms, \d+ a second$")
     answer("350 f in c")
     photograph("launcher-units")
@@ -671,7 +671,7 @@ with subtest("the launcher answers what's asked, and copies the answer"):
     answer("time in utc")
     photograph("launcher-time")
     machine.send_key("ret")
-    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
     after = machine.succeed("date -u +%H:%M").strip()
     t.assertIn(as_account("wl-paste --no-newline"), [before, after])
     # A theme's colour is found by its role, as the theme exports it.
@@ -697,7 +697,7 @@ with subtest("the launcher answers what's asked, and copies the answer"):
     answer("weather tokyo")
     photograph("launcher-offline")
     machine.send_key("esc")
-    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
     # The rain is the weather's to answer: here asks where here is, since
     # the VM has no time zone, and a place's rain asks the same forecast.
     # Built as a check, the VM has no network and says Open-Meteo didn't
@@ -707,7 +707,7 @@ with subtest("the launcher answers what's asked, and copies the answer"):
     answer("rain")
     launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "where?")
     machine.send_key("esc")
-    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=10)
+    machine.wait_until_fails(in_session(LAUNCHER_OPEN), timeout=dt.timedelta(seconds=10))
     answer("when will it rain in tokyo")
     rained = r"rain (now|from \d\d:00|unlikely), .*|no rain in the next 12 hours"
     launcher_until(
@@ -733,7 +733,7 @@ with subtest("the launcher finds emoji in their own place, and only there"):
     answer("tada")
     t.assertNotIn("Party popper", showing()["rows"])
     machine.send_key("esc")
-    machine.wait_until_fails(closed, timeout=10)
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
     answer("emoji")
     launcher_until(lambda shown: shown["rows"] == ["Emoji"])
     machine.send_key("ret")
@@ -741,7 +741,7 @@ with subtest("the launcher finds emoji in their own place, and only there"):
     # Its name capitalised, as every row's is.
     type_in("tada", selecting="Party popper")
     machine.send_key("ret")
-    machine.wait_until_fails(closed, timeout=10)
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
     t.assertEqual(as_account("wl-paste --no-newline"), "\U0001f389")
     machine.send_key("meta_l-e")
     launcher_ready()
@@ -750,7 +750,7 @@ with subtest("the launcher finds emoji in their own place, and only there"):
     type_in(" cat")
     photograph("launcher-emoji-all")
     machine.send_key("ret")
-    machine.wait_until_fails(closed, timeout=10)
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
     # The grinning cat with smiling eyes, first among the smiling cats.
     t.assertEqual(as_account("wl-paste --no-newline"), "\U0001f638")
     # Super+E opens the emoji straight away, so "kitty" is a cat there,
@@ -759,7 +759,7 @@ with subtest("the launcher finds emoji in their own place, and only there"):
     launcher_ready()
     type_in("kitty")
     machine.send_key("ret")
-    machine.wait_until_fails(closed, timeout=10)
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
     t.assertEqual(as_account("wl-paste --no-newline"), "\U0001f431")
     # Over a window, Return pastes the emoji into it as well as copying
     # it, as Super+V's copies do, and a step in are Paste and Copy.
@@ -769,7 +769,7 @@ with subtest("the launcher finds emoji in their own place, and only there"):
     )
     machine.wait_until_succeeds(
         in_session("niri msg focused-window | grep -q emoji-here"),
-        timeout=dt.timedelta(seconds=STARTING),
+        timeout=STARTING,
     )
     machine.send_key("meta_l-e")
     launcher_ready()
@@ -810,12 +810,12 @@ with subtest("a category's word and a space step into it, and a command finishes
     machine.send_key("left")
     launcher_until(lambda shown: shown["held"] == [] and shown["typed"] == "ai")
     machine.send_key("esc")
-    machine.wait_until_fails(closed, timeout=10)
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
     # A question that starts with a category's word is still a question.
     answer("time in utc")
     launcher_until(lambda shown: shown["held"] == [] and shown["kind"] == "answer")
     machine.send_key("esc")
-    machine.wait_until_fails(closed, timeout=10)
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
     # Every command, its form shown; Tab puts its start in the field,
     # out at the top, where it's finished.
     as_account("qs ipc call launcher toggle")
@@ -835,7 +835,7 @@ with subtest("a category's word and a space step into it, and a command finishes
     type_in("10.0.0.0/22")
     launcher_until(lambda shown: shown["kind"] == "answer")
     machine.send_key("esc")
-    machine.wait_until_fails(closed, timeout=10)
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
 
 with subtest("the session's acts are found from anywhere by Joel's own words"):
     closed = in_session(LAUNCHER_OPEN)
@@ -858,7 +858,7 @@ with subtest("the session's acts are found from anywhere by Joel's own words"):
             )
         )
         machine.send_key("esc")
-        machine.wait_until_fails(closed, timeout=10)
+        machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
 
 with subtest("a search lists each thing once"):
     closed = in_session(LAUNCHER_OPEN)
@@ -908,17 +908,17 @@ with subtest("a search lists each thing once"):
         answer(typed)
         launcher_until(once(leading))
         machine.send_key("esc")
-        machine.wait_until_fails(closed, timeout=10)
+        machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
     answer("zqxj")
     launcher_until(lambda shown: shown["rows"] == [])
     machine.send_key("esc")
-    machine.wait_until_fails(closed, timeout=10)
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
     # The speakers' tuning plays through them, and is no program.
     answer("volume")
     launcher_until(lambda shown: "Turn the volume up" in shown["rows"])
     t.assertNotIn("pebble_x_plus_tuning_output", showing()["rows"])
     machine.send_key("esc")
-    machine.wait_until_fails(closed, timeout=10)
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
 
 with subtest("a step finds its rows by their hidden words, and its parts move in place"):
     closed = in_session(LAUNCHER_OPEN)
@@ -947,7 +947,7 @@ with subtest("a step finds its rows by their hidden words, and its parts move in
         lambda shown: len(shown["held"]) == 1 and (shown["selected"] or {}).get("name") == "Tunnel"
     )
     machine.send_key("esc")
-    machine.wait_until_fails(closed, timeout=10)
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
     machine.succeed("ip link delete tailscale0")
     # The processors, a step into Computer, are named as the thing they
     # are, and their cores, a step further, read again each second there
@@ -987,7 +987,7 @@ with subtest("a step finds its rows by their hidden words, and its parts move in
     busy = re.compile(r"Core \d+ \u00b7 ([89]\d|100)%")
     launcher_until(
         lambda shown: all(busy.fullmatch(thing["reads"]) for thing in shown["things"]),
-        timeout=60,
+        timeout=dt.timedelta(seconds=60),
     )
     shown = showing()
     t.assertEqual(shown["rows"], cores, "the cores moved as they were read again")
@@ -997,7 +997,7 @@ with subtest("a step finds its rows by their hidden words, and its parts move in
     machine.send_key("left")
     launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Cores")
     machine.send_key("esc")
-    machine.wait_until_fails(closed, timeout=10)
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
 
 # A binding that throws or assigns the wrong type only warns, and
 # only once a surface draws it, which can be long after the start.
