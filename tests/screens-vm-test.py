@@ -14,9 +14,11 @@ import shlex
 import tempfile
 import time
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, cast
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from driver_names import machine, subtest
 
 # The account greetd signs in, as screens.nix declares it.
@@ -293,3 +295,217 @@ with subtest("the screen comes back, and the margin is on both again"):
     # Still listening through it all, so the second press ends it.
     machine.succeed(in_niri("dictation toggle"))
     wait_for_no_surface("dictation")
+
+
+# The launcher is how Joel reaches everything, so it must work on whichever
+# screen he's on after any of these: Super+Space opens it there and gives
+# it the keys, typing finds a row, Return runs it and the launcher closes,
+# and Escape closes it too. The row is Keep Awake, whose unit says it ran;
+# each run turns it the other way, so it's typed by the name it has now.
+
+
+def launcher_shows() -> dict[str, Any]:
+    """Give what the launcher says it shows, from its showing call."""
+    return cast(
+        "dict[str, Any]", json.loads(machine.succeed(in_niri("qs ipc call launcher showing")))
+    )
+
+
+def launcher_until(
+    test: Callable[[dict[str, Any]], object], what: str, timeout: int = 30
+) -> dict[str, Any]:
+    """Wait until what the launcher shows passes the test, saying what it never did."""
+    deadline = time.monotonic() + timeout
+    while not test(shown := launcher_shows()):
+        assert time.monotonic() < deadline, f"the launcher never {what}: {shown}"
+        time.sleep(0.5)
+    return shown
+
+
+def awake() -> bool:
+    """Say whether Keep Awake is on."""
+    status, _ = machine.execute(in_niri("systemctl --user is-active --quiet caffeinate.service"))
+    return status == 0
+
+
+def super_space_on(screen: str) -> None:
+    """Put the keys on a screen and press Super+Space, waiting until the launcher has them there."""
+    machine.succeed(in_niri(f"niri msg action focus-monitor {screen}"))
+    machine.wait_until_succeeds(
+        in_niri(f"niri msg --json focused-output | grep -qF '\"{screen}\"'"),
+        timeout=dt.timedelta(seconds=10),
+    )
+    machine.send_key("meta_l-spc")
+    launcher_until(lambda shown: shown["open"] and shown["keys"], f"took the keys on {screen}")
+    wait_for_held_on("launcher", {screen}, timeout=10)
+
+
+def launcher_works_on(screen: str) -> None:
+    """Open the launcher on a screen, find Keep Awake and run it, then open it and close it."""
+    was = awake()
+    typed, row = ("let it sleep", "Let it sleep") if was else ("keep awake", "Keep awake")
+    super_space_on(screen)
+    machine.send_chars(typed)
+    launcher_until(
+        lambda shown: shown["typed"] == typed and (shown["selected"] or {}).get("name") == row,
+        f"found {row!r} on {screen}",
+    )
+    machine.send_key("ret")
+    launcher_until(lambda shown: not shown["open"], f"closed once {row!r} ran on {screen}")
+    deadline = time.monotonic() + 30
+    while awake() == was:
+        assert time.monotonic() < deadline, f"{row!r} did nothing on {screen}"
+        time.sleep(0.5)
+    super_space_on(screen)
+    machine.send_key("esc")
+    launcher_until(lambda shown: not shown["open"], f"closed at Escape on {screen}")
+
+
+def outputs_say(screen: str, *, there: bool) -> None:
+    """Wait until niri lists a screen among its outputs, or no longer lists it."""
+    machine.wait_until_succeeds(
+        in_niri(f"{'' if there else '! '}niri msg --json outputs | grep -qF '\"{screen}\"'"),
+        timeout=dt.timedelta(seconds=60),
+    )
+
+
+def gone_while_open(*screens: str) -> None:
+    """Open the launcher on the first screen, and take these screens while it's open.
+
+    A launcher left on no screen would never open again, so it must close and stand ready.
+    """
+    super_space_on(screens[0])
+    plug("off", *screens)
+    for screen in screens:
+        outputs_say(screen, there=False)
+    launcher_until(lambda shown: not shown["open"], f"closed when {screens} went")
+
+
+def come_back(*screens: str) -> None:
+    """Bring these screens back, and wait until the launcher's surface is on one again."""
+    plug("detect", *screens)
+    for screen in screens:
+        outputs_say(screen, there=True)
+    wait_for_surfaces("launcher")
+
+
+# What the account's password is, as screens.nix sets it, which lets the
+# lock go after a sleep.
+password = "correct-horse"  # noqa: S105 (a test machine's, said in screens.nix)
+
+
+def unlock() -> None:
+    """Let the lock go with the account's password, as Joel does after a sleep, if it's up."""
+    locked, _ = machine.execute(in_niri("qs ipc call lock isLocked | grep -qx true"))
+    if locked != 0:
+        return
+    # A letter typed before the lock has the keys goes nowhere.
+    machine.wait_until_succeeds(
+        in_niri("journalctl --user -u quickshell -o cat | grep -qF 'report[keys lock]'"),
+        timeout=dt.timedelta(seconds=30),
+    )
+    machine.send_chars(f"{password}\n")
+    machine.wait_until_succeeds(
+        in_niri("qs ipc call lock isLocked | grep -qx false"), timeout=dt.timedelta(seconds=30)
+    )
+
+
+# The sleep above leaves the screens locked, and the launcher is for after.
+unlock()
+
+# Where the shell's journal stood before these, so what they make it say
+# can be read apart from what the start and the screens before said. The
+# shell warns of what this machine lacks, such as UPower, in its first
+# seconds, so the mark waits until it's been up a while.
+machine.wait_until_succeeds(
+    in_niri(
+        "test $(ps -o etimes= -p $(systemctl --user show -p MainPID --value quickshell)) -ge 20"
+    ),
+    timeout=dt.timedelta(seconds=60),
+)
+launcher_since = machine.succeed("date +%s").strip()
+
+with subtest("the launcher opens, finds and runs a row on each of two screens"):
+    for screen in sorted(both):
+        launcher_works_on(screen)
+
+with subtest("the first screen goes with the launcher open on it, and it works on the other"):
+    gone_while_open("Virtual-1")
+    launcher_works_on("Virtual-2")
+
+with subtest("the first screen comes back, and the launcher works on both"):
+    come_back("Virtual-1")
+    for screen in sorted(both):
+        launcher_works_on(screen)
+
+with subtest("the second screen goes with the launcher open on it, and it works on the other"):
+    gone_while_open("Virtual-2")
+    launcher_works_on("Virtual-1")
+
+with subtest("the second screen comes back, and the launcher works on both"):
+    come_back("Virtual-2")
+    for screen in sorted(both):
+        launcher_works_on(screen)
+
+with subtest("both screens go with the launcher open, come back, and it works on both"):
+    gone_while_open(*sorted(both))
+    come_back(*sorted(both))
+    for screen in sorted(both):
+        launcher_works_on(screen)
+
+
+def sleep_and_wake() -> None:
+    """Put the machine to sleep and wake it at a key, as the sleep above does."""
+    machine.succeed("systemctl suspend")
+    machine.wait_for_console_text("PM: suspend entry", timeout=dt.timedelta(seconds=60))
+    # A key while it's still going to sleep would only stop it going.
+    time.sleep(5)
+    machine.send_key("shift")
+    machine.wait_for_console_text("PM: suspend exit", timeout=dt.timedelta(seconds=60))
+    niri_answers("a sleep")
+
+
+def minute() -> str:
+    """Give the machine's time to the minute, as the launcher's foot says it."""
+    return machine.succeed("date +%H:%M").strip()
+
+
+with subtest("a sleep with the launcher open, and after the wake it works on both screens"):
+    # The keyboard may wake the machine, as the sleep above allowed.
+    machine.succeed("for w in /sys/bus/serio/devices/*/power/wakeup; do echo enabled > $w; done")
+    super_space_on("Virtual-1")
+    sleep_and_wake()
+    # The screens lock before a sleep, so the keys are the lock's until
+    # the password lets it go.
+    machine.wait_until_succeeds(
+        in_niri("qs ipc call lock isLocked | grep -qx true"), timeout=dt.timedelta(seconds=30)
+    )
+    unlock()
+    # Whether it's still open after is the shell's to say, but it must hold
+    # the keys if it is, and close at Escape.
+    if launcher_until(lambda shown: not shown["open"] or shown["keys"], "held the keys")["open"]:
+        machine.send_key("esc")
+        launcher_until(lambda shown: not shown["open"], "closed at Escape after the wake")
+    for screen in sorted(both):
+        launcher_works_on(screen)
+
+with subtest("after the wake, the launcher's foot still tells the time as it passes"):
+    # A clock that stopped in the sleep would still say the minute it
+    # stopped at, so the foot must follow the minute after the wake.
+    woke = minute()
+    machine.log(f"the foot says: {launcher_shows()['glance']}")
+    deadline = time.monotonic() + 90
+    while (now := minute()) == woke or now not in launcher_shows()["glance"]:
+        assert time.monotonic() < deadline, f"the foot says {launcher_shows()['glance']!r} at {now}"
+        time.sleep(1)
+
+# A surface made where there's no screen, or a binding that throws or
+# assigns the wrong type as a screen comes or goes, only warns.
+with subtest("Quickshell warned of nothing as the launcher's screens came and went"):
+    warned = machine.succeed(
+        in_niri(
+            f"journalctl --user -u quickshell --since @{launcher_since} --no-pager -o cat"
+            " | grep -a -F WARN || true"
+        )
+    )
+    assert warned.strip() == "", f"Quickshell warned:\n{warned}"

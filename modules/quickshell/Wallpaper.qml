@@ -12,7 +12,8 @@ import QtQuick
 
 Scope {
     Variants {
-        model: Theme.wallpaper.desktop === "" ? [] : Quickshell.screens
+        model: Theme.wallpaper.desktop === "" ? []
+            : Quickshell.screens.filter(screen => screen.name !== "")
 
         PanelWindow {
             id: window
