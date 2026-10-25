@@ -10,16 +10,8 @@ schedule.
 
 ## The Loop
 
-```sh
-nix fmt                                  # format, and lint every language strictly
-nix build .#checks.x86_64-linux.<name>   # the checks the change touches, as you go
-run-subtests <vm-test> <words>           # a VM test's subtests named, in seconds
-shell-preview --type <words>             # the shell from the working copy, in a niri window
-changed-checks --build --no-vm           # every check the change touched, VM tests aside
-nix flake check --keep-going             # everything, once, before pushing
-```
-
-While editing, a change is proven by the cheapest checks that show it,
+The commands are in [AGENTS.md][6]'s Commands, kept there alone so the two
+can't drift. While editing, a change is proven by the cheapest checks that show it,
 which [AGENTS.md][6] lists by kind of change, and a VM test only by the
 subtests it touches. `changed-checks`, in the dev shell, finds them all: it
 evaluates every check at the change's merge base with origin's main and in
@@ -195,9 +187,9 @@ run-subtests vm-network-revives-units reload    # run those named, and what they
 PYTEST_ADDOPTS=-x run-subtests vm-commits-are-signed terminal
 ```
 
-One older test, usb-wake, is still one script, its subtests at the top of
-the file in `with subtest(...)`, where `run-subtests` cuts it. It moves to
-pytest in its turn, and nothing new is written that way.
+One older test, usb-wake, is still a script the driver runs top to bottom:
+one check and no subtests, so `run-subtests` has nothing in it to pick. It
+moves to pytest in its turn, and nothing new is written that way.
 
 A selection that picks no test fails the run, so a mistyped name can't pass
 for a proof. A failed assert says what each side held, and the run ends by

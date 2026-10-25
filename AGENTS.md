@@ -125,6 +125,9 @@ Renaming or removing an output or a `jitsusama.*` option is breaking: mark it
   by it
 - [docs/design.md][9]: how everything on a screen looks, reads and behaves
 - [docs/decisions/][6]: why the design is what it is
+- The four modules that are programs of their own keep a guide beside their
+  code, read before changing them: [the disk guard][11], [the guide][12],
+  [the shell][13] and [spend-watch][14]
 
 [1]: docs/testing.md
 [2]: docs/architecture.md
@@ -136,3 +139,7 @@ Renaming or removing an output or a `jitsusama.*` option is breaking: mark it
 [8]: docs/hardware.md
 [9]: docs/design.md
 [10]: modules/theme/SKILL.md
+[11]: modules/disk-guard/AGENTS.md
+[12]: modules/guide/AGENTS.md
+[13]: modules/quickshell/AGENTS.md
+[14]: modules/spend-watch/AGENTS.md
