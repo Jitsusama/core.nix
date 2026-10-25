@@ -33,6 +33,9 @@ Piece {
         const at = Date.now() / 1000;
         held = Marks.lasted(window, held, at);
         lasting = held !== null && at - held.since >= lasts;
+        // What the test waits on before writing the next window, since two
+        // written together would be heard as one.
+        Report.say(`heard lag ${held?.worst ?? "nothing"}`);
     }
 
     present: window !== null

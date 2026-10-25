@@ -11,7 +11,6 @@ from __future__ import annotations
 import json
 import re
 import shlex
-import time
 from datetime import timedelta
 from typing import TYPE_CHECKING, Any, cast
 
@@ -587,8 +586,8 @@ def test_waiting_that_lasts_a_minute_shows_in_the_margin_quietly(desktop: Deskto
 
     # A moment's wait says nothing.
     since = desktop.mark()
-    lag_says("memory", "apps", 10)
-    time.sleep(2)
+    with desktop.told("heard lag memory"):
+        lag_says("memory", "apps", 10)
     said = desktop.as_account(
         "journalctl --user --unit=quickshell --no-pager --output=cat"
         f" --after-cursor={shlex.quote(since)}"
@@ -596,8 +595,8 @@ def test_waiting_that_lasts_a_minute_shows_in_the_margin_quietly(desktop: Deskto
     assert not re.search(r"holds margin [^\n]*\blag\b", said), "a moment's wait showed"
     # A minute of it does, left on, so muted. A run that began a minute
     # ago is another run, so the last one ends first.
-    lag_says("", "", 0)
-    time.sleep(2)
+    with desktop.told("heard lag nothing"):
+        lag_says("", "", 0)
     lag_says("memory", "apps", 70)
     desktop.reported("sets margin ", margin_sets(("lag", "leftOn", "muted")), since)
     desktop.photograph("margin-lag")
