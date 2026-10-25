@@ -1,6 +1,7 @@
 # The machine's administrators switch it to a system already built with no
-# password, and nobody else can (modules/switch-system). The script is
-# switch-system-vm-test.py.
+# password, and nobody else can (modules/switch-system). The tests are
+# switch-system-vm-test.py, which pytest runs inside the driver
+# (tests/lib/vm_pytest.py).
 { self, pkgs }:
 pkgs.testers.runNixOSTest {
   name = "switch-system";
@@ -19,8 +20,10 @@ pkgs.testers.runNixOSTest {
     specialisation.switched.configuration.environment.etc.switched.text = "switched\n";
   };
 
-  testScript = builtins.readFile ./switch-system-vm-test.py;
-  # nix fmt holds the script to mypy --strict against the driver's own types,
-  # through driver_names.pyi, which the driver's lighter check can't find.
+  testScript = ''import vm_pytest; vm_pytest.run(globals(), "${./switch-system-vm-test.py}")'';
+  extraPythonPackages = python: [ (pkgs.callPackage ./lib/vm-helpers.nix { } python) ];
+  # nix fmt holds the tests and vm_pytest to mypy --strict against the
+  # driver's own types, so the driver's check of this one line would add only
+  # its time.
   skipTypeCheck = true;
 }

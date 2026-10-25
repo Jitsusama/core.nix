@@ -3,13 +3,12 @@
 # machine running chrony, which it reaches; it has to get there, and not keep
 # asking the network's. Nothing names the network's server until networkd has
 # it, so timesyncd starts once it does: started sooner, it would find no server
-# named and fall back to the machine's, which proves nothing. The script is
-# clock-vm-test.py.
+# named and fall back to the machine's, which proves nothing. The tests are
+# clock-vm-test.py, which pytest runs inside the driver (tests/lib/vm_pytest.py).
 { self, pkgs }:
 let
   silent = "192.168.1.99";
-  # What the script needs from Nix, in one file whose path takes the place
-  # of the script's @values@ marker.
+  # What the tests need from Nix, in one file, their `values` fixture.
   values = pkgs.writeText "clock-values.json" (builtins.toJSON { inherit silent; });
 in
 pkgs.testers.runNixOSTest {
@@ -41,10 +40,13 @@ pkgs.testers.runNixOSTest {
       systemd.services.systemd-timesyncd.wantedBy = lib.mkForce [ ];
     };
 
-  testScript = builtins.replaceStrings [ "@values@" ] [ "${values}" ] (
-    builtins.readFile ./clock-vm-test.py
-  );
-  # nix fmt holds the script to mypy --strict against the driver's own types,
-  # through driver_names.pyi, which the driver's lighter check can't find.
+  testScript = ''
+    import vm_pytest
+    vm_pytest.run(globals(), "${./clock-vm-test.py}", values="${values}")
+  '';
+  extraPythonPackages = python: [ (pkgs.callPackage ./lib/vm-helpers.nix { } python) ];
+  # nix fmt holds the tests and vm_pytest to mypy --strict against the
+  # driver's own types, so the driver's check of these lines would add only
+  # its time.
   skipTypeCheck = true;
 }

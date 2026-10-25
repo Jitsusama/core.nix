@@ -9,14 +9,12 @@
 #
 # Each reboot also says what it told Plymouth: a stand-in for its client
 # writes the keyword to the console, where a healthy reboot must write none.
-# The script is shutdown-vm-test.py.
+# The tests are shutdown-vm-test.py, which pytest runs inside the driver
+# (tests/lib/vm_pytest.py).
 { self, pkgs }:
 let
-  plymouth = pkgs.writeShellScript "plymouth" ''
-    echo "<3>told plymouth $2" > /dev/kmsg
-  '';
-  # What the stuck service and the leftover run, which the script reads from
-  # this file, swapped in for its @values@ marker.
+  plymouth = pkgs.writeShellScript "plymouth" (builtins.readFile ./shutdown-plymouth.sh);
+  # What the stuck service and the leftover run, the tests' `values` fixture.
   values = pkgs.writeText "shutdown-values.json" (
     builtins.toJSON {
       sleep = "${pkgs.coreutils}/bin/sleep";
@@ -37,10 +35,13 @@ pkgs.testers.runNixOSTest {
       systemd.services.shutdown-status.environment.PLYMOUTH = lib.mkForce "${plymouth}";
     };
 
-  testScript = builtins.replaceStrings [ "@values@" ] [ "${values}" ] (
-    builtins.readFile ./shutdown-vm-test.py
-  );
-  # nix fmt holds the script to mypy --strict against the driver's own types,
-  # through driver_names.pyi, which the driver's lighter check can't find.
+  testScript = ''
+    import vm_pytest
+    vm_pytest.run(globals(), "${./shutdown-vm-test.py}", values="${values}")
+  '';
+  extraPythonPackages = python: [ (pkgs.callPackage ./lib/vm-helpers.nix { } python) ];
+  # nix fmt holds the tests and vm_pytest to mypy --strict against the
+  # driver's own types, so the driver's check of these lines would add only
+  # its time.
   skipTypeCheck = true;
 }

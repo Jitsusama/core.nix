@@ -2,30 +2,16 @@
 # udev does to probe it when swapoff closes it, and lets go only once the
 # reset has found it busy. The kernel won't reset a device anything holds
 # open, so a reset that tries once fails, and the device stays set up. The
-# script is zram-vm-test.py.
+# test is zram-vm-test.py, which pytest runs inside the driver
+# (tests/lib/vm_pytest.py).
 { self, pkgs }:
 let
   # Holds the device open until the reset says it waits, then lets go at
-  # once, as udev's probe would, well inside the time the reset allows.
-  hold = pkgs.writers.writePython3Bin "hold-zram" { } ''
-    import os
-    import subprocess
-
-    device = os.open("/dev/zram0", os.O_RDONLY)
-    journal = subprocess.Popen(
-        ["journalctl", "-k", "-f", "-n", "1", "-o", "cat"],
-        stdout=subprocess.PIPE,
-        text=True,
-    )
-    # The last line already logged, so the journal is followed from here.
-    journal.stdout.readline()
-    open("/run/holding-zram", "w").close()
-    for line in journal.stdout:
-        if "zram0 is busy" in line:
-            break
-    os.close(device)
-    journal.kill()
-  '';
+  # once, as udev's probe would. ruff and mypy read it through `nix fmt`, so
+  # the writers' flake8 is off.
+  hold = pkgs.writers.writePython3Bin "hold-zram" { doCheck = false; } (
+    builtins.readFile ./zram-hold.py
+  );
 in
 pkgs.testers.runNixOSTest {
   name = "zram";
@@ -35,8 +21,10 @@ pkgs.testers.runNixOSTest {
     environment.systemPackages = [ hold ];
   };
 
-  testScript = builtins.readFile ./zram-vm-test.py;
-  # nix fmt holds the script to mypy --strict against the driver's own types,
-  # through driver_names.pyi, which the driver's lighter check can't find.
+  testScript = ''import vm_pytest; vm_pytest.run(globals(), "${./zram-vm-test.py}")'';
+  extraPythonPackages = python: [ (pkgs.callPackage ./lib/vm-helpers.nix { } python) ];
+  # nix fmt holds the tests and vm_pytest to mypy --strict against the
+  # driver's own types, so the driver's check of this one line would add only
+  # its time.
   skipTypeCheck = true;
 }

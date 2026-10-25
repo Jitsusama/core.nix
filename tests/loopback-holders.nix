@@ -7,34 +7,20 @@
 # that outlives the camera's service and says nobody while it's down,
 # follows the camera to its next loopback, takes no loopback of another
 # name for it, and waits rather than failing while the camera isn't there.
-# The script is loopback-holders-vm-test.py.
+# The tests are loopback-holders-vm-test.py, which pytest runs inside the
+# driver (tests/lib/vm_pytest.py).
 { self, pkgs }:
 let
-  # Holds the loopback it's given open as a relay would, writing nothing.
-  relay = pkgs.writers.writePython3Bin "stand-in-relay" { } ''
-    import os
-    import sys
-    import time
-
-    device = os.open(sys.argv[1], os.O_RDWR)
-    while True:
-        time.sleep(60)
-  '';
-
-  # Takes the name it's given, any bytes, then holds the camera open.
-  renamed = pkgs.writers.writePython3Bin "renamed" { } ''
-    import ctypes
-    import os
-    import sys
-    import time
-
-    PR_SET_NAME = 15
-    name = sys.argv[1].encode().decode("unicode_escape").encode("latin-1")
-    ctypes.CDLL(None).prctl(PR_SET_NAME, ctypes.c_char_p(name), 0, 0, 0)
-    device = os.open(sys.argv[2], os.O_RDONLY)
-    while True:
-        time.sleep(60)
-  '';
+  # Holds the loopback it's given open as a relay would, writing nothing;
+  # and takes the name it's given, any bytes, then holds the camera open.
+  # ruff and mypy read them through `nix fmt`, so the writers' flake8 is off.
+  helper =
+    name:
+    pkgs.writers.writePython3Bin name { doCheck = false; } (
+      builtins.readFile ./loopback-holders/${name}.py
+    );
+  relay = helper "stand-in-relay";
+  renamed = helper "renamed";
 
   # A program as Nix wraps one, whose process is .doze-wrapped: it waits, so
   # it holds whatever it's handed open until it's stopped.
@@ -50,9 +36,9 @@ let
         wrapProgram $out/bin/doze
       '';
 
-  # What the script needs from Nix, which it reads from this file at its top:
-  # the file naming the stand-in's holders, and the programs that hold it,
-  # none of them on the machine's PATH.
+  # What the tests need from Nix, their `values` fixture: the file naming the
+  # stand-in's holders, and the programs that hold it, none of them on the
+  # machine's PATH.
   values = pkgs.writeText "loopback-holders-values.json" (
     builtins.toJSON {
       file = "/run/camera-holders/stand-in";
@@ -102,10 +88,13 @@ pkgs.testers.runNixOSTest {
       ];
     };
 
-  testScript = builtins.replaceStrings [ "@values@" ] [ "${values}" ] (
-    builtins.readFile ./loopback-holders-vm-test.py
-  );
-  # nix fmt holds the script to mypy --strict against the driver's own types,
-  # through driver_names.pyi, which the driver's lighter check can't find.
+  testScript = ''
+    import vm_pytest
+    vm_pytest.run(globals(), "${./loopback-holders-vm-test.py}", values="${values}")
+  '';
+  extraPythonPackages = python: [ (pkgs.callPackage ./lib/vm-helpers.nix { } python) ];
+  # nix fmt holds the tests and vm_pytest to mypy --strict against the
+  # driver's own types, so the driver's check of these lines would add only
+  # its time.
   skipTypeCheck = true;
 }
