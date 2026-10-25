@@ -349,6 +349,24 @@ fn garbage_a_running_process_has_open_is_left_for_a_later_pass() {
 }
 
 #[test]
+fn many_small_paths_go_in_one_delete() {
+    // Each delete costs Nix a whole look for roots, which a store of tens of
+    // thousands takes most of a second over, whatever the batch holds.
+    let store = Store::new();
+    let dead: Vec<PathBuf> = (0..1000)
+        .map(|n| store.dead(&format!("{n:04}-small.drv"), 10.0 * DAY, 4096))
+        .collect();
+    let mut guard = store.guard(store.config("0%", "0%"));
+    store.step_until(&mut guard, |_| dead.iter().all(|path| !path.exists()));
+    let deletes = store
+        .log()
+        .into_iter()
+        .filter(|line| line.starts_with("delete"))
+        .count();
+    assert_eq!(deletes, 1, "a thousand small paths took {deletes} deletes");
+}
+
+#[test]
 fn a_listing_is_kept_for_the_next_guard() {
     let store = Store::new();
     store.dead("aaa-young", 3600.0, 4096);
