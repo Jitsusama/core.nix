@@ -218,7 +218,9 @@ fn the_vault_asks_on_one_screen_for_the_passphrase_by_its_name_on_the_phone_or_a
         "{name}"
     );
     assert!(
-        or.starts_with("plug in the Nano or the 5C beside the stick, type its PIN"),
+        or.starts_with(
+            "if a port is free beside the stick, plug in the Nano or the 5C there, type its PIN"
+        ),
         "{or}"
     );
 }

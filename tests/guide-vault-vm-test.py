@@ -131,7 +131,7 @@ def test_key_and_its_pin_open_the_vault(stick: QemuMachine, values: dict[str, An
     type_in(stick, "guide install")
     on_screen(stick, "Check the keyboard")
     type_in(stick, "keyboard")
-    on_screen(stick, "Or plug in the Nano")
+    on_screen(stick, "Or if a port is free beside the stick")
     type_in(stick, values["pin"])
     on_screen(stick, "vault is open")
 
