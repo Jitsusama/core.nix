@@ -80,6 +80,10 @@ in
       serviceConfig = {
         ExecStart = "${lib.getExe package} system --config ${configFile}";
         Slice = "background.slice";
+        # A stop goes to the guard alone, which ends its commands with SIGKILL
+        # (src/commands.rs); sent to the whole unit, it made Nix abort in a
+        # delete and dump core. What's left once the guard exits is killed.
+        KillMode = "mixed";
         # The socket every account's guard asks, and the status file
         # `disk-guard status` reads, both open to every account. It's kept
         # while the guard is down, so its last status, heartbeat and all,

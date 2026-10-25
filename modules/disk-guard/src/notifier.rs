@@ -51,7 +51,8 @@ fn ran(argv: &[&str]) -> Result<String, String> {
             argv[0],
             String::from_utf8_lossy(&output.stderr).trim()
         )),
-        Ran::TimedOut | Ran::Stopped => Err(format!("{} ran past {PATIENCE:?}", argv[0])),
+        Ran::TimedOut => Err(format!("{} ran past {PATIENCE:?}", argv[0])),
+        Ran::Stopped => Err(format!("{} was stopped with the guard", argv[0])),
     }
 }
 

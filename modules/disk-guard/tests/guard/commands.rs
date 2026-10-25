@@ -245,6 +245,42 @@ fn no_command_starts_once_a_stop_is_waiting() {
     assert!(!ran, "the command ran");
 }
 
+/// A stop that comes while a command runs ends it at once, by SIGKILL, and
+/// it's said to have stopped: the unit sends its stop to the guard alone,
+/// since Nix sent SIGTERM mid-delete aborted and dumped core.
+#[cfg(target_os = "linux")]
+#[test]
+fn a_stop_that_comes_while_a_command_runs_kills_it() {
+    let (sender, receiver) = std::sync::mpsc::channel();
+    let worker = std::thread::spawn(move || {
+        // SAFETY: set is a valid sigset_t; the signal comes to this thread,
+        // which blocks it, and is taken back before the thread ends.
+        unsafe {
+            let mut set = std::mem::zeroed::<libc::sigset_t>();
+            libc::sigemptyset(&raw mut set);
+            libc::sigaddset(&raw mut set, libc::SIGTERM);
+            libc::pthread_sigmask(libc::SIG_BLOCK, &raw const set, std::ptr::null_mut());
+            sender.send(libc::pthread_self()).unwrap();
+            let started = Instant::now();
+            let ran = run(&job(&["sleep", "30"])).unwrap();
+            let took = started.elapsed();
+            let mut taken = 0;
+            libc::sigwait(&raw const set, &raw mut taken);
+            (ran, took)
+        }
+    });
+    let thread = receiver.recv().unwrap();
+    std::thread::sleep(Duration::from_millis(300));
+    // SAFETY: the worker blocks SIGTERM, so it waits for the worker to take it.
+    unsafe { libc::pthread_kill(thread, libc::SIGTERM) };
+    let (ran, took) = worker.join().unwrap();
+    assert!(matches!(ran, Ran::Stopped), "{ran:?}");
+    assert!(
+        took < Duration::from_secs(5),
+        "ran on {took:?} after the stop"
+    );
+}
+
 #[test]
 fn a_missing_program_is_an_error() {
     assert!(run(&job(&["/nonexistent/program"])).is_err());

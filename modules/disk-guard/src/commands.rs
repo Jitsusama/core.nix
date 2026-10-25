@@ -40,7 +40,8 @@ pub struct Output {
 pub enum Ran {
     Finished(Output),
     TimedOut,
-    /// Asked to stop before it finished, and ended or killed.
+    /// Asked to stop before it finished, by its caller or the guard's
+    /// unit, and ended or killed.
     Stopped,
 }
 
@@ -105,9 +106,8 @@ pub fn stop_waiting() -> bool {
 
 /// Lets the command take every signal. The guard blocks its stop signals in
 /// each of its threads so it stops between steps, and a child keeps the mask
-/// it's forked with, which would leave what a step waits on deaf to the
-/// SIGTERM a stop sends the whole unit; systemd then waited out its stop
-/// timeout and killed both.
+/// it's forked with, which left what a step waited on deaf to the SIGTERM
+/// systemd once sent the whole unit, until its stop timeout killed both.
 fn answer_stops() {
     // SAFETY: an empty set made on the stack, then sigprocmask, which is
     // async-signal-safe.
@@ -184,6 +184,16 @@ fn running(job: &Job, stop: Option<(&AtomicBool, Duration)>) -> io::Result<Ran> 
             && let Some(status) = child.try_wait()?
         {
             exited = Some((status, now));
+        }
+        // A stop the unit was sent ends what's running at once, by SIGKILL:
+        // Nix aborts on SIGTERM in the middle of a delete, dumping core,
+        // and dies no less, while a kill leaves the store as safe and the
+        // journal clean. The unit sends its stop to the guard alone, so it's
+        // the guard's to end its commands.
+        if exited.is_none() && stop_waiting() {
+            signal(&child, libc::SIGKILL);
+            child.wait()?;
+            return Ok(Ran::Stopped);
         }
         if let Some((stop, grace)) = stop {
             match (ending, exited) {

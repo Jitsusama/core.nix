@@ -277,6 +277,10 @@ in
         # Whatever the account runs comes first: the guard's own passes
         # yield, and its notices wait for nothing.
         Slice = "background.slice";
+        # A stop goes to the guard alone, which ends its commands with SIGKILL
+        # (src/commands.rs); sent to the whole unit, it made Nix abort in a
+        # delete and dump core. What's left once the guard exits is killed.
+        KillMode = "mixed";
         # What the guard holds itself, 17 MiB at its peak while planning a
         # pass of 14,000 candidates on a workstation, is far under the high
         # mark, which reclaims the page cache its walks fill. The ceiling is the
