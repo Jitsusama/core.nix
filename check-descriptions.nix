@@ -451,6 +451,10 @@
   pnpm-keeps-one-store = ''
     pnpm 10 and 12 find an account's one store from what its shells and user manager are given
   '';
+  qemu-starts-after-its-sockets = ''
+    the qemu VM tests run starts once the sockets it connects to are there, and fails naming one
+    that never comes, ending what its script started
+  '';
   qt-programs-wear-the-theme = ''
     Qt programs in the session take GTK's platform theme, and Quickshell is started without it
   '';
