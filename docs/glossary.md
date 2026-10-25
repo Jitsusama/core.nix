@@ -84,6 +84,80 @@ What a machine is made of, and the programs that look after each part.
 | virtual machine | a computer run as a program on this one | VM | | libvirt, QEMU |
 | container | a program run apart from the machine, with its own files | | | Podman |
 
+## The Desktop and the Screen
+
+What Joel sees and reaches for on the desktop.
+
+| Word | Means | Also | Not | In code |
+| ---- | ----- | ---- | --- | ------- |
+| launcher | the window on Super+Space that finds programs, windows, actions and answers | | palette, command palette | `Launcher.qml` |
+| foot | the launcher's bottom line: the time, the battery and what the keys do | | glance | `foot` |
+| margin | the row of marks at the top of the screen saying what's true now | | corner | `Margin.qml`, `overview.pieces` |
+| Now | the launcher's list of what's on and waiting, on Super+O | | What's on | `WhatsOn.qml` |
+| meter | a level shown while it changes, such as the volume | | overlay | `Meter.qml` |
+| map | the keyboard's layout, shown on screen | | | `KeyboardMap.qml` |
+| wallpaper | the picture behind every window | | painting | |
+| overview | niri's view of every workspace and its windows, on Super+A | | | |
+| window | a program's rectangle on the screen | | | |
+| program | something Joel runs, with or without a window | | app, application | the `applications` provider |
+| Keep awake | the setting that keeps the machine from sleeping or locking while it's on | | Caffeinate | |
+| Do not disturb | the setting that holds notices back while it's on | | dnd, quiet | `session:quiet` |
+| brightness | how bright a screen is, which follows the room's light | | | the `backlight` program |
+| backlight | the keyboards' light | | | |
+
+## The Harness
+
+The words of the agents' tooling: quests, sessions, trees and reviews.
+
+| Word | Means | Also | Not | In code |
+| ---- | ----- | ---- | --- | ------- |
+| quest | a piece of Joel's work, with its own folder, README and documents | | | `QEST-` ids, the `quest` tool |
+| subquest | a quest that is part of another's work | | | `kind: subquest` |
+| sidequest | a quest that came up beside another, not part of it | | | `kind: sidequest` |
+| plan | a quest's document for building something, through think, draft and build | | | `PLAN-` ids |
+| research | a quest's document for finding something out: question, method, findings, verdict | | | `RSCH-` ids |
+| brief | a quest's document asking someone for something: audience, ask, background, recommendation | | | `BRIF-` ids |
+| report | a quest's document on what happened, its outcomes and lessons | | | |
+| Journey | a quest's dated log of what happened | | | `quest journal` |
+| peer | another session on the same machine, reached over the mesh | | instance, swarm | |
+| mesh | how sessions on one machine message each other | | | `mesh_send` |
+| hold | a peer asking every other to put something off, such as a switch, until it says it's over | | | `intent: hold` |
+| steer | Joel's words, delivered to a session from outside its window | | | `steer/<ADDRESS>/` |
+| hand | a subagent, seen on the mesh as its parent's hands | | | `hand.ts` |
+| tree | a folder holding a repository's files to work in: a worktree or a snapshot | | working tree | the `work` tool |
+| worktree | a tree checked out at a branch, one session's alone | | | `git worktree` |
+| snapshot | a tree pinned at a commit, read only and shareable | | | |
+| checkout | a repository's clone, which trees are cut from | | | |
+| cut | making a tree | | scaffold | `work tree` |
+| release | giving back a tree one holds | | prune, reap | `work release`; `quest tree-prune`, to be renamed |
+| tidy | reporting which trees on the machine are spent, removing nothing | | | `work tidy` |
+| reclaim | taking back the trees nobody owns | | | `work reclaim` |
+| fleet | subagents run at once on one piece of work | | fan-out, batch | the `subagent` tool |
+| subagent | a pi a session starts to do part of its work | | sub-agent, worker, lane | |
+| council | reviewing models each reading one change on their own | | | `review_ask council` |
+| judge | the model that consolidates a council's findings | | | |
+| finding | something a review raised | | | |
+| change | work put up for review | | PR, pull request, proposal | |
+| person | the human a session works for | | user, human, operator | |
+| status line | the line under a session saying how it stands | | status bar | |
+
+## Checks
+
+How core.nix proves what it promises. A check's name is a sentence saying what
+it holds, subject first, with no prefix but `vm-`, which marks a VM test and
+nothing else; its description in `check-descriptions.nix` finishes the
+sentence.
+
+| Word | Means | Also | Not | In code |
+| ---- | ----- | ---- | --- | ------- |
+| check | one promise that `nix flake check` builds and holds | | | `checks.x86_64-linux.<name>` |
+| VM test | a check that boots machines in virtual machines | | | a `vm-` name |
+| subtest | a named part of a VM test, which can run alone | | | `with subtest(...)` |
+| example machine | a whole machine built only from core's outputs, as a machine repository would | | | `example-nixos`, `example-laptop`, `example-darwin` |
+| stand-in | something standing in for a real program or device in a check | | fake | |
+| shot | a picture a VM test takes of one state of the screen | | photograph | `screendump`, `shots-changed` |
+| decision record | a document saying why the design is what it is | | ADR | `docs/decisions/` |
+
 ## Still to Settle
 
 Words that mean two things today. Each waits on one choice, and moves into a
@@ -105,6 +179,17 @@ table above once it's made.
 - **how full a disk is**: the disk guard says "nearly full" and "critically
   full" on screen and `urgent` and `critical` in code, and calls the band
   below them "pressure", which is also memory's word.
+- **session**: a pi, the login session, the desktop's slice, and the
+  launcher's Session row.
+- **notice**: notice in the design and most code, notification on screen.
+- **mark**: mark in the design and the margin, glyph in the theme's table
+  and the launcher's words, for one drawn symbol.
+- **prompt**: zsh's prompt, and the design's centred questions (polkit, a
+  PIN, the lock).
+- **screen**: a monitor, and the launcher's Displays.
+- **workspace**: niri's workspaces, and a quest's scratch folder.
+- **check names**: whether a check's name may name its program
+  (`quickshell-`, `niri-`, `pi-`), which `nix flake check` shows Joel.
 - **TPM**: the chip that keeps the machine's keys is shown by its acronym;
   a plain word for it is still to be chosen.
 
