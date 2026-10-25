@@ -749,6 +749,7 @@ gather (
     ./modules/kitty/checks.nix
     ./modules/kmscon/checks.nix
     ./modules/lag-watch/checks.nix
+    ./modules/load-proof/checks.nix
     ./modules/lanzaboote/checks.nix
     ./modules/libvirt/checks.nix
     ./modules/lid/checks.nix

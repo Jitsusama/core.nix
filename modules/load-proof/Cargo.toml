@@ -1,0 +1,14 @@
+# load-proof runs the machine at full load and says, signal by signal,
+# whether what Joel uses still feels idle (src/main.rs says how).
+[package]
+name = "load-proof"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[dependencies]
+rustix = { version = "1.1", features = ["fs", "time"] }
+wayland-client = "0.31"
+wayland-protocols = { version = "0.32", features = ["client"] }
+wayland-protocols-wlr = { version = "0.3", features = ["client"] }
