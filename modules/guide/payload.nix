@@ -68,5 +68,8 @@ runCommand "${config.networking.hostName}-stick-payload" { } ''
   mkdir $out
   cp ${target} $out/target.json
   cp ${config.system.build.formatMountNoDeps}/bin/disko-format-mount $out/layout.sh
+  # What opens and mounts the disk as it was left, for an install a
+  # restart stopped part way.
+  cp ${config.system.build.mountNoDeps}/bin/disko-mount $out/mount.sh
   ln -s ${cache} $out/cache
 ''

@@ -74,7 +74,9 @@ with subtest("the guide seals a stick's vault to it, needing no touch"):
         "printf 'label: gpt\\nsize=4M, type=uefi, name=esp\\nsize=4M, name=store\\n'"
         " | sfdisk /root/image.raw"
     )
-    machine.succeed("mkdir -p /root/payload/cache && touch /root/payload/layout.sh")
+    machine.succeed(
+        "mkdir -p /root/payload/cache && touch /root/payload/layout.sh /root/payload/mount.sh"
+    )
     target = {
         "machine": "laptop",
         "disk": "/dev/disk/by-id/nvme-the-laptops",

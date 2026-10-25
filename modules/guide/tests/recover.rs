@@ -4,7 +4,9 @@
 
 use guide::Machine;
 use guide::fake::Fake;
-use guide::recover::{BootGeneration, FindMachine, OpenDisk, already_there, the_machine};
+use guide::recover::{
+    AlreadyThere, BootGeneration, FindMachine, OpenDisk, STOPPED, already_there, the_machine,
+};
 use guide::{Answer, Answers, Ask, Fault, Journey, Program, Secret, Standing, Step, Tool};
 
 macro_rules! fixture {
@@ -106,17 +108,95 @@ fn the_machine_is_the_internal_disk_with_cores_layout() {
     assert_eq!(found.volume(), "/dev/disk/by-partlabel/system");
 }
 
+const BOOT_MOUNT: &[&str] = &[
+    "-o",
+    "ro,X-mount.mkdir",
+    "/dev/disk/by-partlabel/system-boot",
+    "/run/guide/boot",
+];
+const BOOT_COPY: &str = "/run/guide/boot/guide/install-journal";
+
+/// The laid-out disk, its boot partition mounting read-only and holding
+/// this copy of an install's journal, or none.
+fn laid_out_holding(copy: Option<&str>) -> Fake {
+    let mut fake = lsblk(fixture!("lsblk-laid-out.json"));
+    fake.prints(Tool::Mount, BOOT_MOUNT, "")
+        .prints(Tool::Umount, &["/run/guide/boot"], "");
+    match copy {
+        Some(text) => fake.file(BOOT_COPY, text.as_bytes()),
+        None => fake.no_file(BOOT_COPY),
+    };
+    fake
+}
+
+fn line(step: &str, fact: &str) -> String {
+    format!("{{\"step\":\"{step}\",\"fact\":\"{fact}\",\"at\":1}}\n")
+}
+
+fn machine_question(there: Option<AlreadyThere>) -> String {
+    match there {
+        Some(AlreadyThere::Machine { question }) => question,
+        other => panic!("asked about a machine, not {other:?}"),
+    }
+}
+
 #[test]
 fn a_machines_stick_asks_before_installing_over_a_machine() {
-    let mut fake = lsblk(fixture!("lsblk-laid-out.json"));
-    let question = already_there(&mut fake, "laptop")
-        .unwrap()
-        .expect("a question");
+    let mut fake = laid_out_holding(None);
+    let question = machine_question(already_there(&mut fake, "laptop").unwrap());
     assert!(question.contains("serial root"), "{question}");
     assert!(
         question.contains("install laptop on it again"),
         "{question}"
     );
+    // The boot partition was let go again, having changed nothing.
+    assert!(
+        fake.calls
+            .iter()
+            .any(|call| call == "umount /run/guide/boot"),
+        "{:#?}",
+        fake.calls
+    );
+}
+
+#[test]
+fn an_install_of_this_machine_stopped_part_way_is_offered_to_carry_on() {
+    let copy = [
+        line("confirm-disk", "/dev/vda"),
+        line("lay-out-disk", "laptop"),
+        line("enrol-nano", "opened:abc"),
+    ]
+    .concat();
+    let mut fake = laid_out_holding(Some(&copy));
+    let Some(AlreadyThere::Stopped {
+        question,
+        disk,
+        facts,
+    }) = already_there(&mut fake, "laptop").unwrap()
+    else {
+        panic!("a stopped install")
+    };
+    assert!(
+        question.contains("The install of laptop onto") && question.contains("serial root"),
+        "{question}"
+    );
+    assert_eq!(disk, "/dev/vda");
+    assert!(facts.contains(&("enrol-nano".into(), "opened:abc".into())));
+    assert_eq!(STOPPED, &["Carry it on", "Start again, wiping the disk"]);
+}
+
+#[test]
+fn an_install_stopped_for_another_machine_is_a_machine_to_install_over() {
+    let copy = line("lay-out-disk", "desktop");
+    let mut fake = laid_out_holding(Some(&copy));
+    machine_question(already_there(&mut fake, "laptop").unwrap());
+}
+
+#[test]
+fn a_boot_partition_that_wont_mount_is_a_machine_to_install_over() {
+    let mut fake = lsblk(fixture!("lsblk-laid-out.json"));
+    fake.refuses(Tool::Mount, BOOT_MOUNT, 32, "wrong fs type");
+    machine_question(already_there(&mut fake, "laptop").unwrap());
 }
 
 #[test]

@@ -27,6 +27,7 @@ use guide::host::carried;
 use guide::host::{self, GatherBundles, Payload, WriteStick};
 use guide::install;
 use guide::observe::{disks, efi, entries, fido2, sbctl, tpm};
+use guide::recover::AlreadyThere;
 use guide::rescue::{Bundle, Keys, OpenRescueBundle, SealKeys};
 use guide::screen::Theme;
 use guide::screen::run::{Ended, Walk};
@@ -669,6 +670,69 @@ fn recover() -> Result<(), Fault> {
 const JOURNAL: &str = "/run/guide/journal";
 const LOG: &str = "/run/guide/log";
 
+/// What the person chose to do with what the disk already holds.
+enum Chosen {
+    Leave,
+    Recover,
+    Install(install::Start),
+}
+
+/// One stick for everything: on a disk that already holds a machine, it
+/// asks first whether to recover it or install over it, and on one holding
+/// this machine's install stopped part way, whether to carry it on or
+/// start again. With nothing there, it installs afresh without asking.
+fn what_is_there(
+    machine: &mut System,
+    machine_name: &str,
+    title: &str,
+    theme: &Theme,
+) -> Result<Chosen, Fault> {
+    let Some(found) = guide::recover::already_there(machine, machine_name)? else {
+        return Ok(Chosen::Install(install::Start::Afresh));
+    };
+    let (heading, question, choices) = match &found {
+        AlreadyThere::Machine { question } => (
+            "A machine is already here",
+            question,
+            guide::recover::ALREADY_THERE,
+        ),
+        AlreadyThere::Stopped { question, .. } => (
+            "An install stopped part way",
+            question,
+            guide::recover::STOPPED,
+        ),
+    };
+    let chosen = {
+        let mut terminal = Terminal::open()?;
+        let ask =
+            Journey::new(vec![]).map_err(|why| Fault::unreadable("the install's steps", why))?;
+        Walk {
+            journey: &ask,
+            here: Place::Stick,
+            name: title,
+            theme,
+            log: Some(Path::new(LOG)),
+            whole: false,
+            done: RefCell::default(),
+        }
+        .choose(&mut terminal, heading, question, choices)?
+    };
+    Ok(match (chosen, found) {
+        (None, _) => Chosen::Leave,
+        (Some(0), AlreadyThere::Machine { .. }) => Chosen::Recover,
+        // What the stopped start knew, but for the steps true only of it,
+        // such as its system running from memory; the disk taken as
+        // confirmed, since carrying on wipes nothing.
+        (Some(0), AlreadyThere::Stopped { disk, facts, .. }) => {
+            let opening: Vec<&str> = install::opening().iter().map(|step| step.id()).collect();
+            machine.journal().learn(&facts, &opening)?;
+            machine.journal().record("confirm-disk", &disk)?;
+            Chosen::Install(install::Start::CarryingOn)
+        }
+        (Some(_), _) => Chosen::Install(install::Start::Afresh),
+    })
+}
+
 /// The install, on the stick's console: the vault opened, then every step
 /// it holds for the machine, then the stick taken out and the machine
 /// restarted.
@@ -707,38 +771,14 @@ fn install() -> Result<(), Fault> {
     let theme = Theme::built(Terminal::is_console());
     let title = format!("Install {machine_name}");
 
-    // One stick for everything: on a disk that already holds a machine, it
-    // asks first whether to recover it or install over it.
-    if let Some(question) = guide::recover::already_there(&mut machine, &machine_name)? {
-        let chosen = {
-            let mut terminal = Terminal::open()?;
-            let ask = Journey::new(vec![])
-                .map_err(|why| Fault::unreadable("the install's steps", why))?;
-            Walk {
-                journey: &ask,
-                here: Place::Stick,
-                name: &title,
-                theme: &theme,
-                log: Some(Path::new(LOG)),
-                whole: false,
-                done: RefCell::default(),
-            }
-            .choose(
-                &mut terminal,
-                "A machine is already here",
-                &question,
-                guide::recover::ALREADY_THERE,
-            )?
-        };
-        match chosen {
-            Some(0) => {
-                drop(machine);
-                return recover();
-            }
-            Some(_) => {}
-            None => return Ok(()),
+    let start = match what_is_there(&mut machine, &machine_name, &title, &theme)? {
+        Chosen::Leave => return Ok(()),
+        Chosen::Recover => {
+            drop(machine);
+            return recover();
         }
-    }
+        Chosen::Install(start) => start,
+    };
     let mut terminal = Terminal::open()?;
 
     // The steps before the vault opens, then, from what it holds, all of
@@ -758,7 +798,7 @@ fn install() -> Result<(), Fault> {
         return Ok(());
     }
     let target = install::target(&mut machine)?;
-    let journey = Journey::new(install::steps(&target.yubikeys))
+    let journey = Journey::new(install::steps(&target.yubikeys, start))
         .map_err(|why| Fault::unreadable("the install's steps", why))?;
     walk.journey = &journey;
     walk.whole = true;

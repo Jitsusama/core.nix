@@ -14,7 +14,7 @@ use std::fs::File;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
-use crate::install::{LAYOUT_SCRIPT, SYSTEM_CACHE, TARGET, Target};
+use crate::install::{LAYOUT_SCRIPT, MOUNT_SCRIPT, SYSTEM_CACHE, TARGET, Target};
 use crate::observe::disks::{self, Disk, Kind};
 use crate::rescue::{self, Keys};
 use crate::sign::Signer;
@@ -105,6 +105,10 @@ impl Payload {
             (
                 LAYOUT_SCRIPT.to_string(),
                 Source::File(self.root.join("layout.sh")),
+            ),
+            (
+                MOUNT_SCRIPT.to_string(),
+                Source::File(self.root.join("mount.sh")),
             ),
         ];
         for relative in &self.cached {

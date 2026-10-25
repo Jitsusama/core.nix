@@ -394,6 +394,9 @@ impl Step for MakeRecoveryKey {
         let key = if let Some(key) = held(machine, RECOVERY_KEY)? {
             key
         } else {
+            // A rescue bundle an earlier start sealed to words lost with
+            // its memory goes too, so the next step seals it to these.
+            machine.remove(&crate::install::system::bundle_path())?;
             let made = words::made()?;
             machine.write(RECOVERY_KEY, made.expose().as_bytes())?;
             made

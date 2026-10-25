@@ -238,7 +238,41 @@ with subtest(
     machine.send_key("ctrl-c")
     machine.wait_until_tty_matches("1", "Stopped. Start the guide again", timeout=60)
     machine.wait_until_tty_matches("1", "type guide install, then press Return", timeout=60)
+    # The journal's copy on the disk's boot partition, from the layout on.
+    machine.succeed("grep -q '\"keep-recovery-key\"' /mnt/boot/guide/install-journal")
+
+# A restart as the guide meets it: what the stick held in memory gone, the
+# install's key and journal with it, and the disk let go. The system's own
+# copies in /run/stick stay, as a restarted stick makes them again.
+with subtest("an install a restart stopped is carried on, opened by a key it enrolled"):
+    machine.succeed("umount --recursive /mnt && cryptsetup close system")
+    machine.succeed("find /run/guide -maxdepth 1 -type f -delete")
     enter("guide install")
+    on_screen("An install stopped part way")
+    on_screen("Carry it on from where it stopped")
+    enter("")
+    on_screen("Check the keyboard types what you mean")
+    enter("keyboard")
+    on_screen("the stick's passphrase")
+    enter(passphrase)
+    on_screen("Open the install that stopped")
+    on_screen("Plug in the Nano or the 5C, which opened the disk")
+    enter("")
+    on_screen("its PIN")
+    enter(pin)
+    # What only the journal knew came back with its copy: the recovery key
+    # typed back stays done, the same words opening the disk.
+    on_screen(r"Copying it off the stick: [0-9.]+ [KMG]B of ", timeout=300, stopped="try again")
+    machine.succeed("grep -q '\"keep-recovery-key\"' /run/guide/journal")
+    machine.succeed(
+        f"printf %s {shlex.quote(key)} | cryptsetup open --test-passphrase --key-file=- "
+        "/dev/disk/by-partlabel/system"
+    )
+    # The new install key, made through the key, opens the disk.
+    machine.succeed(
+        "cryptsetup open --test-passphrase --key-file=/run/guide/install-key "
+        "/dev/disk/by-partlabel/system"
+    )
 
 with subtest("the system installs from the vault, and the account gets its password"):
     on_screen("a password for alice", timeout=1800)
@@ -256,6 +290,8 @@ with subtest("only the keys and the recovery key open the disk once it's done"):
     system = machine.succeed("readlink -f /mnt/nix/var/nix/profiles/system").strip()
     assert system == toplevel, system
     machine.fail("test -e /run/guide/install-key")
+    # Nothing is left to carry on, so the journal's copy is gone.
+    machine.fail("test -e /mnt/boot/guide/install-journal")
     machine.succeed("test -s /mnt/var/lib/sbctl/keys/db/db.key")
     # The rescue bundle, sealed, readable without root.
     made = json.loads(machine.succeed("cat /mnt/var/lib/guide/rescue-bundle.json"))
