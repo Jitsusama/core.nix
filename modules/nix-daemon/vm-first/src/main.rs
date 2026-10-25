@@ -34,10 +34,10 @@
 //! Nix made it.
 //!
 //! As each build goes, this says in its journal what the build read and
-//! wrote, from its cgroup's io.stat, with its client's command and quest,
-//! so the builds that wear the disk most can be found. A build's own name
-//! sits in its environment, which only its user may read, so it's known by
-//! what asked for it.
+//! wrote on the disks themselves, from its cgroup's io.stat, with its
+//! client's command and quest, so the builds that wear the disk most can
+//! be found. A build's own name sits in its environment, which only its
+//! user may read, so it's known by what asked for it.
 //!
 //! Usage: vm-first [--cgroup /sys/fs/cgroup/build.slice/nix-daemon.service]
 //!        [--name nixos-test-driver\*]... [--nice -10] [--weight 1000] [--every 1000]
@@ -227,16 +227,36 @@ fn parse_unwritten(stat: &str) -> u64 {
         .sum()
 }
 
-/// The bytes a cgroup has read and written, every disk's together, from
-/// its `io.stat`.
-fn parse_io_stat(stat: &str) -> (u64, u64) {
+/// The bytes a cgroup has read and written, from its `io.stat`, on the
+/// devices `counts` takes by their `major:minor`. `io.stat` lists a write
+/// on every layer it passes through, so a disk under LUKS shows each byte
+/// twice, on the mapper and on the disk beneath it, and zram shows swap
+/// that never leaves memory; counting only the disks themselves counts
+/// each byte the hardware takes once.
+fn parse_io_stat(stat: &str, counts: impl Fn(&str) -> bool) -> (u64, u64) {
+    let lines: Vec<&str> = stat
+        .lines()
+        .filter(|line| line.split_whitespace().next().is_some_and(&counts))
+        .collect();
     let count = |key: &str| -> u64 {
-        stat.split_whitespace()
+        lines
+            .iter()
+            .flat_map(|line| line.split_whitespace())
             .filter_map(|field| field.strip_prefix(key))
             .filter_map(|value| value.parse::<u64>().ok())
             .sum()
     };
     (count("rbytes="), count("wbytes="))
+}
+
+/// Whether a block device, by its `major:minor`, is hardware: a disk the
+/// kernel found on a bus, rather than a layer such as device-mapper's or a
+/// device kept in memory such as zram, which have no device behind them.
+fn is_a_disk(device: &str) -> bool {
+    Path::new("/sys/dev/block")
+        .join(device)
+        .join("device")
+        .exists()
 }
 
 /// A count of bytes as a person reads it, in binary units.
@@ -353,7 +373,7 @@ fn tally(tallies: &mut HashMap<PathBuf, Tally>, builds: &[PathBuf]) {
             known.asked = asker_of(build);
         }
         if let Ok(stat) = fs::read_to_string(build.join("io.stat")) {
-            (known.read, known.written) = parse_io_stat(&stat);
+            (known.read, known.written) = parse_io_stat(&stat, is_a_disk);
         }
         if let Ok(stat) = fs::read_to_string(build.join("memory.stat")) {
             known.unwritten = parse_unwritten(&stat);
@@ -904,8 +924,18 @@ mod tests {
     fn reads_what_a_build_wrote_and_read_on_every_disk() {
         let stat = "259:0 rbytes=100 wbytes=2048 rios=1 wios=2 dbytes=0 dios=0\n\
                     8:0 rbytes=5 wbytes=10 rios=1 wios=1 dbytes=0 dios=0\n";
-        assert_eq!(parse_io_stat(stat), (105, 2058));
-        assert_eq!(parse_io_stat(""), (0, 0));
+        assert_eq!(parse_io_stat(stat, |_| true), (105, 2058));
+        assert_eq!(parse_io_stat("", |_| true), (0, 0));
+    }
+
+    #[test]
+    fn counts_a_write_once_however_many_layers_it_passes() {
+        // As a laptop's build.slice reads: zram, then the disk, then the
+        // LUKS mapper on it, holding the disk's bytes again.
+        let stat = "253:0 rbytes=7 wbytes=70 rios=1 wios=1 dbytes=0 dios=0\n\
+                    259:0 rbytes=100 wbytes=2048 rios=1 wios=2 dbytes=0 dios=0\n\
+                    254:0 rbytes=100 wbytes=2048 rios=1 wios=2 dbytes=0 dios=0\n";
+        assert_eq!(parse_io_stat(stat, |device| device == "259:0"), (100, 2048));
     }
 
     #[test]
