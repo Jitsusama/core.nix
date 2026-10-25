@@ -36,6 +36,16 @@ Joel sees.
 
 - `*.qml` at the top: the singletons and the surfaces, `shell.qml` making
   each surface.
+- `*.js` at the top: what a surface works out apart from drawing, such as
+  `Stack.js` for the notices' order or `Picking.js` for the region picker,
+  each held by a test in Qt's own engine, as its header says.
+- Programs the shell runs: `askpass.sh`, OpenSSH's askpass asked through
+  the shell; `quests.rs` and `runs.rs`, the launcher's quests and runs,
+  built by `pi-helper.nix`; `keyboard-lights.rs`, which says whether caps
+  lock is on, run by `nixos.nix`; and [`record-window/`][record], one
+  window's recording for the recorder.
+- `*.patch`: Quickshell's own fixes, each saying in its header what it
+  mends.
 - [`launcher/`][launcher]: one provider per kind of thing the launcher finds,
   each starting from [`Provider.qml`][provider], whose header says what a
   row holds. Every name, word and glyph a provider shows or is found by is
@@ -96,6 +106,7 @@ a change to one surface can move another.
 [design]: ../../docs/design.md
 [desktop]: ../../tests/desktop.nix
 [home]: home.nix
+[record]: record-window/
 [launcher]: launcher/
 [pieces]: pieces/
 [provider]: launcher/Provider.qml
