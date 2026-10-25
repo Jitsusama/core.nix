@@ -9,7 +9,9 @@
 # can't read. A target on a disk too full to make a trash in is deleted in
 # place. With its store under pressure, the machine's guard expires all but
 # the newest five of a profile's generations and collects what that and
-# anything else left dead. The script is disk-guard-vm-test.py.
+# anything else left dead. The tests are disk-guard-vm-test.py, which pytest
+# runs inside the driver (tests/lib/vm_pytest.py); one runs alone with
+# `run-subtests vm-disk-guard-keeps-the-disk <words>`.
 { self, pkgs }:
 let
 
@@ -118,9 +120,9 @@ pkgs.testers.runNixOSTest {
     };
   };
 
-  # The driver runs on the host, so what the script needs from Nix, the
+  # The driver runs on the host, so what the tests need from Nix, the
   # drop-ins that give each guard the test's config and the build script
-  # that waits, reaches it in one file rather than spliced into its text.
+  # that waits, reaches them in one file, their `values` fixture.
   testScript =
     { nodes, ... }:
     let
@@ -166,10 +168,14 @@ pkgs.testers.runNixOSTest {
           waiting = "${waiting}";
         }
       );
-      script = builtins.readFile ./disk-guard-vm-test.py;
     in
-    builtins.replaceStrings [ "@values@" ] [ "${values}" ] script;
-  # nix fmt holds the script to mypy --strict against the driver's own types,
-  # through driver_names.pyi, which the driver's lighter check can't find.
+    ''
+      import vm_pytest
+      vm_pytest.run(globals(), "${./disk-guard-vm-test.py}", values="${values}")
+    '';
+  extraPythonPackages = python: [ (pkgs.callPackage ./lib/vm-helpers.nix { } python) ];
+  # nix fmt holds the tests and vm_pytest to mypy --strict against the
+  # driver's own types, so the driver's check of this one line would add only
+  # its time.
   skipTypeCheck = true;
 }
